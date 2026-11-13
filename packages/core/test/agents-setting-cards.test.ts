@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'bun:test';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { AGENT_PICTURE_MAX_BYTES, AGENT_PROJECTS_MAX, type AgentProfile, type AgentProjectAdded, type MessagePart, type ModelInfo } from '@boite/contracts';
+import { AGENT_PICTURE_MAX_BYTES, AGENT_PROJECTS_MAX, type AgentCreated, type AgentProfile, type AgentProjectAdded, type MessagePart, type ModelInfo } from '@boite/contracts';
 import { runCli } from '../src/cli.ts';
 import { connect } from '../src/client.ts';
 import { setDriver } from '../src/drivers/index.ts';
@@ -274,7 +274,7 @@ test("an agent asks about its own settings from its thread; a change from its se
 test('a bot asks to rename itself and to pause, then archive, another bot; the owner applies each card', async () => {
   const { h, owner, self, worker, prompts, run, profile, cards, drawn } = await setup();
   const heard = (text: string) => (prompts.get(self) ?? []).some(p => p.includes(text));
-  const { agent: herald } = await owner.call('agents.create', { threadId: worker, name: 'Herald' });
+  const { agent: herald } = await owner.call('agents.create', { threadId: worker, name: 'Herald' }) as AgentCreated;
   const heraldNow = () => h.core.workforce.records.get('profile', herald.id) as AgentProfile;
   const apply = async (questionId: string) => { await owner.call('agents.settings.apply', { threadId: self, questionId }); await waitFor(() => !cards(self).some(c => c.id === questionId)); };
 
@@ -330,7 +330,7 @@ test('a bot asks to rename itself and to pause, then archive, another bot; the o
 
 test('a bot puts on a picture file at once, dresses another bot by name, and a card proposes one; unknown pictures and bad files are refused', async () => {
   const { h, owner, self, worker, run, profile, cards } = await setup();
-  const { agent: herald } = await owner.call('agents.create', { threadId: worker, name: 'Herald' });
+  const { agent: herald } = await owner.call('agents.create', { threadId: worker, name: 'Herald' }) as AgentCreated;
   const heraldNow = () => h.core.workforce.records.get('profile', herald.id) as AgentProfile;
   const png = join(h.dataDir, 'cat.png');
   writeFileSync(png, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64'));
@@ -491,5 +491,5 @@ test('a discussion creates the bot the user asked for, without a card, and reads
   expect((await run(['settings', 'bot', 'create', 'herald'], worker)).err).toContain('a bot named "Herald" already exists');
 
   // The owner may call it too.
-  expect((await owner.call('agents.create', { threadId: worker, name: 'Scout' })).agent.name).toBe('Scout');
+  expect((await owner.call('agents.create', { threadId: worker, name: 'Scout' }) as AgentCreated).agent.name).toBe('Scout');
 });

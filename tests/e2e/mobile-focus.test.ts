@@ -9,7 +9,7 @@ let url: string;
 const typing = `!!document.activeElement?.matches('textarea, input:not([type=radio]):not([type=checkbox]), [contenteditable=true]')`;
 
 async function capture(name: string) {
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
   await page.screenshot(join(import.meta.dir, '.artifacts', name));
 }
@@ -100,9 +100,12 @@ test('phone choices, folder browsing and overlay dismissal never focus a text fi
   await shiftTab();
   expect(await page.evaluate(`document.activeElement?.matches('[data-testid=diagnostics-report-dialog] .actions .ghost')`)).toBe(true);
   await tap('[data-testid=diagnostics-report-dialog] .actions .ghost');
-  // Settle both phone history entries before the next test changes viewport and navigates.
+  // Settle the phone history entries before the next test changes viewport and navigates: the page's, then
+  // Settings' own, since Settings is a page over the list that Back leaves.
   await page.evaluate('__boiteTest.workspace.active.showSettings()');
-  await page.waitFor(`!document.querySelector('[data-testid=diagnostics-report-dialog]') && !history.state?.boiteOverlay`);
+  await page.waitFor(`!document.querySelector('[data-testid=diagnostics-report-dialog]') && document.querySelector('[data-testid=mobile-settings-home]')`);
+  await tap('[data-testid=mobile-settings-leave]');
+  await page.waitFor(`!document.querySelector('.mobile-settings') && !history.state?.boiteOverlay`);
   expect(page.errors()).toEqual([]);
 }, 30_000);
 

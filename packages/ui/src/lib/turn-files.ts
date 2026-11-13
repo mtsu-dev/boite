@@ -242,6 +242,21 @@ function touched(part: Extract<MessagePart, { type: 'tool' }>): { path: string; 
   return [];
 }
 
+/**
+ * The tool line a turn's change count sits on: its last call that changed a
+ * file, as the message and the part's place in it. Null when no drawn call
+ * did, and the count stands at the turn's end instead.
+ */
+export function changeHost(messages: readonly Message[]): { messageId: string; index: number } | null {
+  for (let at = messages.length - 1; at >= 0; at -= 1) {
+    const message = messages[at]!;
+    if (message.role !== 'assistant') continue;
+    const index = message.parts.findLastIndex(part => part.type === 'tool' && part.status === 'done' && touched(part).length > 0);
+    if (index >= 0) return { messageId: message.id, index };
+  }
+  return null;
+}
+
 /** One file's identity in an answer: relative to the thread's directory when inside it, else its absolute form. */
 function fileKey(cwd: string, path: string): string {
   return relativeTo(cwd, path) ?? normal(path);

@@ -45,10 +45,10 @@
 <style>
   .connect { width: 100%; max-width: 440px; margin: auto; padding: 30px 6px 20px; }
   .intro { margin-bottom: 26px; }
-  .symbol { display: grid; place-items: center; width: 56px; height: 56px; margin-bottom: 22px; border-radius: var(--radius-xl); background: var(--color-surface-2); border: 1px solid var(--color-edge); color: var(--color-accent); }
+  .symbol { display: grid; place-items: center; width: 56px; height: 56px; margin-bottom: 22px; border-radius: var(--radius-xl); background: var(--color-surface-2); border: 1px solid var(--color-edge); color: var(--color-foreground); }
   h1 { margin: 0 0 12px; max-width: 300px; font-size: 26px; line-height: 1.18; font-weight: 600; letter-spacing: -0.7px; }
   p { margin: 0; font-size: var(--text-sm); line-height: 1.6; color: var(--color-muted-foreground); }
-  .pairing { padding: 18px; border: 1px solid var(--color-edge); border-radius: var(--radius-xl); background: var(--color-surface); }
+  .pairing { padding: 18px; border-radius: var(--radius-lg); background: var(--color-surface); }
   .pairing :global(.pair-machine) { margin-bottom: 0; }
   /* Already inside this card: the pasted link's form takes no second frame. */
   .pairing :global(.paste-form) { padding: 4px 0 0; margin: 0; border: none; background: none; box-shadow: none; }

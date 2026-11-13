@@ -53,11 +53,17 @@ test('profile User-Agent settings save, survive rename and clear on desktop and 
     page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&open=recent` });
     await page.waitFor("document.querySelector('[data-testid=nav-settings]')", 40_000);
     await page.click('[data-testid=nav-settings]');
-    await page.click('[data-testid=settings-tab-general]');
+    // Browser profiles are their own settings page, under Connections.
+    await page.click('[data-testid=settings-tab-browser]');
     const store = 'globalThis.__boiteTest.workspace.active';
     for (const [width, height, mobile] of [[1280, 900, false], [390, 844, true]] as const) {
       await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile });
-      if (mobile) await page.click('[data-testid=mobile-settings-browser-profiles]');
+      if (mobile) {
+        // The phone opens on the page the desktop left; it goes back to the settings list and taps Browser there.
+        await page.waitFor("document.querySelector('[data-testid=mobile-settings-back]')");
+        await page.click('[data-testid=mobile-settings-back]');
+        await page.click('[data-testid=settings-tab-browser]');
+      }
       await page.evaluate(`${store}.saveSettings({ browserProfiles: [{ id: 'p-research', name: 'Research' }] })`);
       await page.click('[data-testid=browser-user-agent-edit]');
       await page.type('[data-testid=browser-user-agent-value]', 'Bounty/1');

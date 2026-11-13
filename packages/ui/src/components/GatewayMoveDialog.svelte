@@ -176,10 +176,10 @@
     width: min(580px, calc(100vw - 32px));
     max-height: min(80vh, 680px);
     display: flex; flex-direction: column;
-    background: var(--color-surface);
-    border: 1px solid var(--color-edge);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-e3);
+    background: var(--overlay-surface);
+    border: 1px solid var(--overlay-edge);
+    border-radius: var(--radius-overlay);
+    box-shadow: var(--shadow-overlay);
     overflow: hidden;
     animation: pop var(--dur-2) var(--ease-out-quint);
   }
@@ -210,11 +210,11 @@
   .token input[type='password'] { width: 100%; min-width: 0; }
   .hint { font-size: var(--text-sm); }
   .clear { display: flex; align-items: center; gap: 6px; min-height: var(--row); }
-  .error { margin: 0; padding: 8px 18px 0; color: var(--color-danger); font-size: var(--text-sm); overflow-wrap: anywhere; }
+  .error { margin: 0; padding: 8px 18px 0; }
   .actions { display: flex; justify-content: flex-end; gap: 6px; padding: 8px 12px 10px; border-top: 1px solid var(--color-border); }
   @media (max-width: 720px) {
     .scrim { align-items: flex-end; padding-top: 0; }
-    .dialog { width: 100vw; max-height: 88dvh; border-radius: var(--radius-xl) var(--radius-xl) 0 0; padding-bottom: env(safe-area-inset-bottom); }
+    .dialog { width: 100vw; max-height: 88dvh; border-radius: var(--radius-overlay) var(--radius-overlay) 0 0; padding-bottom: env(safe-area-inset-bottom); }
     .row { align-items: flex-start; flex-wrap: wrap; }
     .status { max-width: none; flex-basis: 100%; text-align: left; padding-left: 26px; }
   }

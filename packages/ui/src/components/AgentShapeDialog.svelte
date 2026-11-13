@@ -160,7 +160,7 @@
     background: var(--color-scrim); animation: fade var(--dur-2) var(--ease-out-quint); }
   .scrim.closing { animation-name: fade-out; pointer-events: none; }
   .dialog { width: min(640px, calc(100vw - 32px)); max-height: min(80vh, 760px); display: flex; flex-direction: column;
-    background: var(--color-surface); border: 1px solid var(--color-edge); border-radius: var(--radius-xl); box-shadow: var(--shadow-e3);
+    background: var(--overlay-surface); border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); box-shadow: var(--shadow-overlay);
     overflow: hidden; animation: pop var(--dur-2) var(--ease-out-quint); color: var(--color-foreground); }
   .dialog.closing { animation-name: pop-out; }
   .dialog:focus { outline: none; }
@@ -189,7 +189,7 @@
   .blocks li + li, .tools-list li + li { margin-top: 2px; }
   summary { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 8px; border-radius: var(--radius-md); cursor: pointer; list-style: none; font-size: var(--text-sm); }
   summary::-webkit-details-marker { display: none; }
-  summary:hover, summary:focus-visible { background: var(--color-hover); outline: none; }
+  summary:hover, summary:focus-visible { background: var(--color-hover); }
   summary :global(.caret) { flex: none; color: var(--color-muted-foreground); transition: transform var(--dur-2) var(--ease-out-quint); }
   details[open] summary :global(.caret) { transform: rotate(90deg); }
   .label { flex: none; }
@@ -208,7 +208,7 @@
   .chip-beta { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 1px 6px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); color: var(--color-muted-foreground); }
   @media (max-width: 720px) {
     .scrim { padding-top: 0; align-items: flex-end; }
-    .dialog { width: 100%; max-height: calc(100dvh - 24px); border-radius: var(--radius-xl) var(--radius-xl) 0 0; border-bottom: none; }
+    .dialog { width: 100%; max-height: calc(100dvh - 24px); border-radius: var(--radius-overlay) var(--radius-overlay) 0 0; border-bottom: none; }
     .head { padding: 14px 8px 10px 14px; }
     .head .icon { width: var(--touch-target); height: var(--touch-target); }
     .body { padding: 12px 14px calc(16px + env(safe-area-inset-bottom)); }

@@ -78,3 +78,26 @@ test('Escape closes it and gives the focus back to the button', () => {
   flushSync();
   expect(button.getAttribute('aria-expanded')).toBe('true');
 });
+
+test("a settings card's title tip says what its rows' tips say, so one \"i\" serves the section", () => {
+  const card = document.createElement('section');
+  card.className = 'card';
+  const settings = document.createElement('div');
+  settings.className = 'settings';
+  settings.append(card);
+  document.body.append(settings);
+  const title = document.createElement('h2');
+  const row = document.createElement('label');
+  card.append(title, row);
+  const rowTip = mount(InfoTip, { target: row, props: { topic: 'Notifications', text: 'A toast when a thread finishes.' } });
+  running = mount(InfoTip, { target: title, props: { topic: 'Conversations', text: '', testid: 'section-info' } });
+  flushSync();
+  const section = document.querySelector<HTMLButtonElement>('[data-testid=section-info]')!;
+  expect(section.hasAttribute('data-gather')).toBe(true);
+  expect(section.hidden).toBe(false);
+  // The row's own "i" carries what it says, for app.css to hide and the title's to read.
+  expect(row.querySelector('.info-tip')?.getAttribute('data-tip-text')).toBe('A toast when a thread finishes.');
+  pointer(section, 'pointerenter', 'mouse');
+  expect(document.querySelector('[data-testid=section-info-text]')?.textContent).toBe('Notifications A toast when a thread finishes.');
+  unmount(rowTip);
+});

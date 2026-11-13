@@ -6,6 +6,10 @@ export const strings = {
     archivedGroup: 'Archived',
     workingThreads: 'Working',
     projectWorkingThreads: '{project}: {count} working',
+    projectWaitingThreads: '{project}: {count} need you',
+    projectFailedThreads: '{project}: {count} failed',
+    projectMixedThreads: '{project}: {waiting} need you, {failed} failed',
+    loadingProjects: 'Loading projects',
     projectDoneThreads: '{project}: {count} done',
     projectArchivedThreads: '{project}: {count} archived',
     /** The fold under the list for projects with no open conversation, and what choosing one does. */
@@ -17,30 +21,39 @@ export const strings = {
     laterProjects: 'Set aside',
     laterProjectsHint: 'Conversations you archived to pick up later, in projects with nothing else open.',
     idleProjectsHint: 'Nothing to do here: no open or set-aside conversation. Choose one to start a thread.',
+    filter: 'Filter',
+    /** A filter on, as a chip under the list's head (FilterChips.svelte): its press removes it. */
+    filterClear: 'Remove the {name} filter',
+    /** Recent's filter on the rows still at work, named on its chip. */
+    filterWorking: 'Working',
     groupingOptions: 'Display options',
-    /** The sidebar's top switch between the thread list and the Bots page. */
-    surface: 'Threads or bots',
+    /** The thread list's name, in the rail and over the list. */
     threads: 'Threads',
-    agents: 'Bots',
-    /** The count beside Threads or Bots in that switch: what works now, and whether something there needs the user. */
+    /** The phone's Bots tab, read aloud: how many work now, and whether one needs the user. */
     surfaceWorking: '{count} at work',
     surfaceWaiting: '{count} at work, something needs you',
-    surfaceSubagentsOne: 'and 1 subagent',
-    surfaceSubagentsMany: 'and {count} subagents',
     /** The two ways the display options can list threads. */
     projectsView: 'Projects',
     recentView: 'Recent',
     /** The display options panel: its sections, and the short names its rows use under them. */
+    /** A project card's quiet threads folded under one action (FoldMore.svelte); a press shows them in place. */
+    moreThreads: 'Show {count} more',
+    /** The same action once they show: a press folds them back. */
+    lessThreads: 'Show less',
     displayView: 'View',
-    displayOrder: 'Project order',
-    displayGroup: 'Group',
+    displayOrder: 'Sort by',
     groupWorkingRow: 'Working threads',
     groupIdleRow: 'Idle projects',
-    customOrderShort: 'Custom',
+    showDoneRow: 'Done threads',
+    showDoneHint: 'Lists finished threads after the live ones, in Projects and Recent. This device only.',
     autoArchiveMergedPrHint: 'A worktree conversation leaves the list for Done once its branch is merged. Its history stays. Applies to this project.',
     autoRemoveWorktreesHint: 'An hour after every conversation in a worktree is done or archived, Boite deletes the worktree if nothing would be lost: its last commit is on another branch, or a merged pull request has that exact commit. A merged branch goes too. Uncommitted changes always stay. Applies to this project.',
     noActiveProjects: 'No conversations need attention.',
     markDone: 'Mark done',
+    /** Why Mark done is off, beside its disabled row. */
+    doneWhyWorking: 'Still working',
+    doneWhyOffline: 'Not connected',
+    doneWhyMoving: 'Moving',
     doneToast: 'Marked "{title}" done',
     doneLoadFailed: 'Some completed threads could not be loaded.',
     /** The pull request under a done or archived conversation, which opens it on the forge. */
@@ -61,22 +74,24 @@ export const strings = {
       ownerOnly: 'Trust it from the computer that runs this Boite.'
     },
     worktreeGone: {
-      title: 'Worktree removed',
+      title: 'This thread\'s folder was cleaned up',
       merged: 'Boite removed this thread\'s worktree {when}, after #{number} was merged.',
       clean: 'Boite removed this thread\'s worktree {when}: every commit in it was already on another branch.',
       branchDeleted: 'Branch {branch} was deleted.',
       branchKept: 'Branch {branch} is still there.',
-      archived: 'Moved to Recent, this thread has no folder to work in.',
-      live: 'A new message here has no folder to run in. Start a new thread to keep working.'
+      startHere: 'Start a new thread here',
+      done: 'This thread is done and its folder was cleaned up.'
     },
     allProjects: 'All projects',
     filterProject: 'Filter by project',
-    recentOrder: 'Recent activity',
+    recentOrder: 'Last activity',
     customOrder: 'Custom order',
     moveProjectUp: 'Move project up',
     moveProjectDown: 'Move project down',
     search: 'Search threads',
     newThread: 'New thread',
+    /** The phone header's new thread button where the row is narrow; its label stays `newThread`. */
+    newShort: 'New',
     newThreadIn: 'New thread in {project}',
     addProject: 'Add a project',
     noProjects: 'No project yet.',
@@ -96,8 +111,8 @@ export const strings = {
     autoArchiveMergedPr: 'Hide merged PR conversations',
     autoRemoveWorktrees: 'Remove settled worktrees',
     backToProjectMenu: 'Back',
-    viewArchivedThreads: 'View archived threads',
-    importSession: 'Import a Claude Code session',
+    backToThreadMenu: 'Back',
+    importSession: 'Import a session',
     /** Out of the list, not out of Boite: its threads keep running and a new one brings it back. */
     archiveProject: 'Archive project',
     refreshIcon: 'Refresh icon',
@@ -130,13 +145,6 @@ export const strings = {
       delegating: 'Sub-agents',
       delegatingOne: 'Waiting on 1 sub-agent',
       delegatingMany: 'Waiting on {count} sub-agents',
-      /** The chip a parent's row carries while its delegated agents work, in every state. */
-      subagentsOne: '1 sub-agent at work',
-      subagentsMany: '{count} sub-agents at work',
-      /** The chip's own words, its count written out: the full sentence stays in its title. */
-      /** The same chip once a sub-agent asks the user something: the parent reads Needs you. */
-      subagentsAskingOne: '1 sub-agent needs you',
-      subagentsAskingMany: '{count} sub-agents need you',
       /** The turn ended, the agent still watches something: a monitor it left going. */
       monitoring: 'Monitoring',
       monitoringFor: 'Monitoring for {elapsed}',
@@ -149,22 +157,22 @@ export const strings = {
       /** A delegated agent's turn ended on its own background work, which wakes it: what it waits for. */
       awaiting: 'Waiting on {what}',
       /** That work ended without waking it: the agent stopped there, its result never came. */
-      interrupted: 'Interrupted',
+      interrupted: 'Stopped',
       /** Its machine stopped answering while it worked: what it does now is unknown until the machine is back. */
-      unreachable: 'Unreachable',
-      unreachableWas: 'Machine unreachable. Last known state: {state}',
-      interruptedBy: '{what} ended without waking it: {reason}',
+      unreachableWas: 'Machine offline. Last known state: {state}',
+      interruptedBy: '{what} ended without reporting back: {reason}',
       interruption: {
         'error': 'the task failed',
         'cancelled': 'the task was cancelled',
         'no-longer-reported': 'its process ended',
-        'session-ended': 'its agent process was ended',
+        'session-ended': 'the agent was stopped',
         'core-restarted': 'Boite or the PC restarted'
       }
     },
     /** A folded project's mark for the threads it hides: `2 threads: Needs you`. */
     rollupOne: '1 thread: {state}',
     rollupMany: '{count} threads: {state}',
+    /** The list's foot: what the tightest subscription window has left, `6% of your weekly limit left` (`quotaLimitName`). */
     pin: 'Pin',
     unpin: 'Unpin',
     archive: 'Archive',

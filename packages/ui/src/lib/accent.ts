@@ -1,14 +1,14 @@
 import { applyColors, COLORS_EVENT, resetAccentColor } from './theme-colors';
 
 export const ACCENT_KEY = 'boite.accent-hue';
-export const ACCENT_PRESETS = [260, 300, 355, 50, 85, 145, 190] as const;
+export const ACCENT_PRESETS = [260, 295, 355, 50, 85, 145, 190] as const;
 
 export function readAccent(): number {
   try {
     const value = localStorage.getItem(ACCENT_KEY);
     const hue = value === null ? NaN : Number(value);
-    return Number.isFinite(hue) && hue >= 0 && hue <= 360 ? hue : 260;
-  } catch { return 260; }
+    return Number.isFinite(hue) && hue >= 0 && hue <= 360 ? hue : 295;
+  } catch { return 295; }
 }
 
 export function setAccent(hue: number): void {

@@ -2,21 +2,25 @@
   import { tick, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import WindowList from './WindowList.svelte';
-  import { ChevronRight, Ellipsis, FolderX, GripVertical, FolderPlus } from '@lucide/svelte';
-  import type { Project, ThreadId } from '@boite/contracts';
+  import { ChevronRight, Ellipsis, FolderPlus, FolderX, GripVertical, LoaderCircle, PanelRightClose, PanelRightOpen, UserPlus } from '@lucide/svelte';
+  import type { Project, ThreadId, ThreadSummary } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
   import { workspace, type Machine } from '../lib/workspace.svelte';
-  import PluginSlotButtons from './PluginSlotButtons.svelte';
   import { fill, strings } from '../lib/strings';
   import { projectName } from '../lib/format';
-  import { compareThreads } from '../lib/thread-order';
-  import { projectRollup } from '../lib/thread-state';
+  import { compareRecent } from '../lib/thread-order';
+  import { rowPlaces } from '../lib/row-place';
+  import { hostName } from '../lib/machine-host';
+  import { projectRollup, threadState } from '../lib/thread-state';
+  import { foldQuiet } from '../lib/card-fold';
+  import { storeNeeds } from '../lib/activity-feed';
+  import { needsYou, rowAsks } from '../lib/status-order';
   import { groupWorkingThread, recentPreferences } from '../lib/recent.svelte';
   import { dropKey as threadDropKey, takesDrop, threadDrag } from '../lib/thread-move.svelte';
-  import { controlMenu } from '../lib/controls';
   import { sidebarRows } from '../lib/sidebar-rows.svelte';
   import { projectMenu } from '../lib/project-menu';
   import { work } from '../lib/work-prefs.svelte';
+  import { machineFilter } from '../lib/machine-filter.svelte';
   import { projectActivity, projectKey, projectView, type ProjectEntry } from '../lib/project-view.svelte';
   import { projectDrag, startProjectDrag } from '../lib/project-drag.svelte';
   import { activeProject, archiveCount, projectListMap, projectSections, projectThreadView, type ArchiveKind, type ProjectSection } from '../lib/project-threads.svelte';
@@ -27,17 +31,21 @@
   import ProjectThreadCounters from './ProjectThreadCounters.svelte';
   import ProjectShelf from './ProjectShelf.svelte';
   import ProjectCardsSection from './ProjectCardsSection.svelte';
-  import MachineStatus from './MachineStatus.svelte';
   import ThreadCard from './ThreadCard.svelte';
-  import AgentAvatar from './agents/AgentAvatar.svelte';
-  import { openResident, residentsOf } from '../lib/resident';
   import DraftRow from './DraftRow.svelte';
   import GroupLabel from './GroupLabel.svelte';
-  import MachineIcon from './MachineIcon.svelte';
   import ProjectTile from './ProjectTile.svelte';
+  import MachineIcon from './MachineIcon.svelte';
+  import MachineOffline from './MachineOffline.svelte';
   import ProjectRollup from './ProjectRollup.svelte';
   import RailFrame from './RailFrame.svelte';
+  import FoldMore from './FoldMore.svelte';
   import { minuteClock } from '../lib/clock.svelte';
+  import { doneFilter } from '../lib/inbox.svelte';
+  import { needsAnAI } from '../lib/first-run';
+  import { listAbsent } from '../lib/list-absent';
+  import { contactsRail, contactsShown } from '../lib/contacts-rail.svelte';
+  import SideHead from './agents/SideHead.svelte';
   let { store }: { store: Store } = $props();
   const mobile = new MediaQuery('(max-width: 720px)');
   let scrollRoot = $state<HTMLDivElement>();
@@ -47,17 +55,43 @@
     if (!measuredRows.has(key)) measuredRows.set(key, new Map());
     return measuredRows.get(key)!;
   }
-  const showRows = $derived(mobile.current ? store.sidebarOpen : !store.sidebarCollapsed);
+  const rowsWanted = $derived(mobile.current ? store.sidebarOpen : !store.sidebarCollapsed);
+  /**
+   * The rows stay drawn while the column folds away (RailFrame.svelte's one
+   * motion), so the list leaves whole beside the panel coming in rather than
+   * emptying on the first frame; they go once the motion is over.
+   */
+  let showRows = $state(untrack(() => rowsWanted));
+  $effect(() => {
+    if (rowsWanted) { showRows = true; return; }
+    const token = scrollRoot ? getComputedStyle(scrollRoot).getPropertyValue('--motion-duration').trim() : '';
+    const duration = parseFloat(token) * (token.endsWith('ms') ? 1 : 1000) || 0;
+    if (duration <= 1) { showRows = false; return; }
+    const timer = setTimeout(() => { showRows = false; }, duration);
+    return () => clearTimeout(timer);
+  });
+  /**
+   * On a desktop the Contacts page turns the list to its Contacts side, the
+   * Bots column's other side (agents/SideHead.svelte), whose head folds the
+   * contacts column on the right edge. Its rows load with the page.
+   */
+  const contactsSide = $derived(!mobile.current && store.page === 'home' && contactsShown(store));
+  let ContactRows = $state<typeof import('./home/ContactRows.svelte').default>();
+  $effect(() => {
+    if (!contactsSide || ContactRows) return;
+    void import('./home/ContactRows.svelte').then(module => { ContactRows = module.default; }).catch(() => {});
+  });
+  const foldLabel = $derived(contactsRail.folded ? strings.contacts.rail.show : strings.contacts.rail.hide);
   $effect(() => { if (showRows && scrollRoot) void tick().then(() => { if (scrollRoot && showRows) scrollRoot.scrollTop = savedScroll; }); });
-  let projectButton = $state<HTMLButtonElement>();
   /** The clock the rows' times read: a minute's precision is all they show. */
   const now = $derived(minuteClock.now);
-  let filter = $state<string | null>(null);
   let machines = $derived(workspace.machinesOr(store));
   /** One machine says nothing about where a thread runs: its icon only shows once there are two. */
   let multi = $derived(machines.length > 1);
-  /** A filter on a machine that has since gone filters nothing, so the list never empties itself. */
-  let shownFilter = $derived(machines.some((m) => m.id === filter) ? filter : null);
+  /** The machine a card names (lib/machine-host.ts): another connected one once two are, an unreachable one always, with the word. */
+  const host = (machine: Machine) => hostName(machine, machines, machines.find(entry => entry.store === workspace.primary)?.id);
+  /** The display menu and the rail's machine button set it (machine-filter.svelte.ts). */
+  let shownFilter = $derived(machineFilter.shown(machines));
   let visible = $derived(machines.filter((m) => shownFilter === null || m.id === shownFilter));
   let all = $derived(visible.flatMap((machine) => machine.store.projects.map((project) => ({ machine, project }))));
   /** An archived project leaves the list for the fold under it; its threads keep running. */
@@ -66,8 +100,6 @@
   let sections = $derived(projectSections(groups, recentPreferences.groupOtherProjects, recentPreferences.groupWorking));
   /** The cards in drawn order, the folded sections included: Alt+digit skips the rows a folded section hides. */
   let activeGroups = $derived([...sections.working, ...sections.open, ...sections.later]);
-  /** A set-aside card shows its archived conversations as its body: their pill shows only while it is folded. */
-  const laterLists = ['archived'] as const;
   /** The first card drawn, and the first open one: a prompt can lead either, the Working section sitting above the open cards. */
   const leaders = () => [activeGroups[0], sections.open[0]] as const;
   let previousLeaders: ({ key: string; activity: number } | undefined)[] = [];
@@ -101,8 +133,10 @@
           .threadsOf(project.id)
           .map((thread) => ({ machine, project, thread }))
       )
-      .sort((a, b) => compareThreads(a.thread, b.thread))
+      .sort(compareRecent)
   );
+  /** Recent's second line: where each row lives, once the tiles alone may not tell them apart; this app's own machine goes unsaid. */
+  const places = $derived(rowPlaces(recent, machines.find(machine => machine.store === workspace.primary)?.id));
   let workingOpen = $state(false);
   let doneRows = $state.raw<{ store: Store; threadId: ThreadId }[]>([]);
   let archivedRows = $state.raw<{ store: Store; threadId: ThreadId }[]>([]);
@@ -123,6 +157,24 @@
   let working = $derived(recentPreferences.groupWorking ? recent.filter(({ machine, thread }) => groupWorkingThread(machine.store, thread)) : []);
   let attention = $derived(recentPreferences.groupWorking ? recent.filter(({ machine, thread }) => !groupWorkingThread(machine.store, thread)) : recent);
   const listsFor = projectListMap();
+  /** The cards whose quiet threads the user unfolded, by project key, for this session. */
+  let unfolded = $state<Record<string, true>>({});
+  /** A card's rows as drawn: what has something to say, then its quiet threads, folded on a big card until asked for.
+      `folded` keeps naming the quiet threads once shown (`open`), so the card can fold them back. */
+  function cardRows(entry: ProjectEntry, attention: ThreadSummary[]): { shown: ThreadSummary[]; folded: ThreadSummary[]; open: boolean } {
+    const owner = entry.machine.store;
+    const fold = foldQuiet(attention, thread => thread.pinned === true || threadState(thread, rowAsks(owner, thread.id)) !== null
+      || (owner === workspace.active && owner.openThread?.id === thread.id));
+    const open = !!unfolded[projectKey(entry)] && fold.folded.length > 0;
+    return open ? { shown: attention, folded: fold.folded, open } : { ...fold, open };
+  }
+  /** Shows a card's quiet threads, or folds them back. */
+  function toggleFold(key: string) {
+    const { [key]: was, ...rest } = unfolded;
+    unfolded = was ? rest : { ...rest, [key]: true };
+  }
+  /** A card lists its done threads under the display menu's switch, or once its own Done count is pressed. */
+  const doneShown = (entry: ProjectEntry) => doneFilter.shown || projectThreadView.isOpen(entry, 'done');
   /** Each listed project's sorted rows, shared by its section and by Alt+digit. */
   let projectLists = $derived(listsFor(activeGroups));
   /** The rows of the listed projects in drawn order, read only as far as the ninth: projects below it cost nothing. */
@@ -135,29 +187,40 @@
       if (later ? !projectThreadView.laterOpen : sections.working.includes(entry) && !projectThreadView.workingOpen) continue;
       const open = projectThreadView.isOpen(entry, 'working');
       const { lists } = projectLists.get(projectKey(entry))!;
-      for (const thread of open ? [...lists.attention, ...lists.working] : lists.attention) rows.push({ store: entry.machine.store, threadId: thread.id });
-      for (const kind of ['done', 'archived'] as const) if ((later && kind === 'archived') || projectThreadView.isOpen(entry, kind)) rows.push(...projectDoneRows[JSON.stringify([kind, projectKey(entry)])] ?? []);
+      const { shown } = cardRows(entry, lists.attention);
+      for (const thread of open ? [...shown, ...lists.working] : shown) rows.push({ store: entry.machine.store, threadId: thread.id });
+      for (const kind of ['done', 'archived'] as const) if (kind === 'done' ? doneShown(entry) : later) rows.push(...projectDoneRows[JSON.stringify([kind, projectKey(entry)])] ?? []);
     }
     return rows;
   }
   // Alt+1 to Alt+9 count the rows as drawn: this view, open projects, then unfolded idle history.
   $effect(() => {
     sidebarRows.list = (workspace.view === 'recent'
-      ? [...attention, ...(workingOpen ? working : [])].map(({ machine, thread }) => ({ store: machine.store, threadId: thread.id })).concat(doneRows, archivedRows)
+      ? attention.map(({ machine, thread }) => ({ store: machine.store, threadId: thread.id })).concat(doneRows, (workingOpen ? working : []).map(({ machine, thread }) => ({ store: machine.store, threadId: thread.id })), archivedRows)
       : projectRows().concat(idleRows)
     ).slice(0, 9);
   });
-  function addProject() {
-    store.projectPickerOpen = true;
+  /** The threads of a project that need the user, its header's count, and how many of them failed; a sub-agent's question counts for its parent. */
+  function needsCount(entry: ProjectEntry): { count: number; failed: number } {
+    const owner = entry.machine.store;
+    // Activity's own count over the project's threads, a machine out of reach included as its last known state: the card and the rail's badge never disagree.
+    return storeNeeds(owner, owner.threadsOf(entry.project.id));
   }
-  /** `list` is the section the card sits in: a project moves among its neighbours there, as the sections place it themselves. */
-  function openProjectMenu(event: MouseEvent, machine: Machine, project: Project, list: ProjectEntry[]) {
-    const key = projectKey({ machine, project });
+  const canAddProject = $derived(store.addsProjects && work.shows('sidebar.add-project'));
+  /** Nothing listed yet: the list says why, and where the projects come from. */
+  const loading = $derived(groups.length === 0 && visible.some(machine => machine.store.connection !== 'ready'));
+  /**
+   * `list` is the section the card sits in: a project moves among its neighbours there, as the sections place it themselves.
+   * The menu also shows or hides the card's archived threads; a set-aside card's body is them already, so there it folds the card.
+   */
+  function openProjectMenu(event: MouseEvent, machine: Machine, project: Project, list: ProjectEntry[], section: ProjectSection) {
+    const entry = { machine, project };
+    const key = projectKey(entry);
     projectMenu(event, machine.store, project, projectView.order === 'manual' ? {
       up: list[0] !== undefined && projectKey(list[0]) !== key,
       down: list.at(-1) !== undefined && projectKey(list.at(-1)!) !== key,
       move: direction => projectView.step(list, key, direction)
-    } : undefined);
+    } : undefined, undefined, { count: archiveCount(project, 'archived') });
   }
   /** A project header dragged to a new place among the cards of its section, in the manual order; idle projects sit in their fold as rows. */
   function dragProject(event: PointerEvent, entry: ProjectEntry, list: ProjectEntry[]) {
@@ -171,31 +234,60 @@
   }
 </script>
 
-<RailFrame {store} kind="sidebar" label={strings.sidebar.threads} testid="sidebar" drawer bind:scroller={scrollRoot} onscroll={() => { if (showRows && scrollRoot) savedScroll = scrollRoot.scrollTop; }}>
-  {#snippet head()}<ProjectViews entries={groups} {store} />{/snippet}
-    {#if showRows}
-    {#if groups.length === 0}<p class="empty">{strings.sidebar.noProjects}</p>{/if}
+<RailFrame {store} kind="sidebar" label={strings.sidebar.threads} testid="sidebar" drawer absent={listAbsent(workspace.machinesOr(store).map(machine => machine.store), mobile.current)} bind:scroller={scrollRoot} onscroll={() => { if (showRows && scrollRoot) savedScroll = scrollRoot.scrollTop; }}>
+  {#snippet head()}
+    {#if contactsSide}
+      <SideHead {store} current="home">
+        {#snippet actions()}
+          <button type="button" class="icon-button" title={strings.contacts.add} aria-label={strings.contacts.add} data-testid="side-contacts-add" onclick={() => store.showHome()}><UserPlus size={16} /></button>
+          <button type="button" class="icon-button" title={foldLabel} aria-label={foldLabel} aria-expanded={!contactsRail.folded} data-testid="contacts-toggle" onclick={() => contactsRail.toggle()}>
+            {#if contactsRail.folded}<PanelRightOpen size={16} />{:else}<PanelRightClose size={16} />{/if}
+          </button>
+        {/snippet}
+      </SideHead>
+    {:else}
+      <ProjectViews entries={groups} {store} quiet={groups.length === 0 && needsAnAI(store) && !loading} />
+    {/if}
+  {/snippet}
+    {#if contactsSide}
+      {#if ContactRows}<div class="contact-rows" data-testid="side-contact-rows"><ContactRows {store} /></div>{/if}
+    {:else if showRows}
+    {#if groups.length === 0 && !(needsAnAI(store) && !loading)}
+      <div class="empty" data-testid="sidebar-empty" role={loading ? 'status' : undefined}>
+        {#if loading}<LoaderCircle size={16} class="spinner" aria-hidden="true" /><span class="ui-label">{strings.sidebar.loadingProjects}</span>
+        {:else}
+          <span class="ui-label">{strings.sidebar.noProjects}</span>
+          {#if canAddProject}<button type="button" class="ghost small add" data-testid="add-project" onclick={() => { store.projectPickerOpen = true; }}><FolderPlus size={14} /><span class="ui-label">{strings.sidebar.addProject}</span></button>{/if}
+        {/if}
+      </div>
+    {/if}
     {#if workspace.view === 'recent'}
       {#each visible as machine (machine.id)}
         {#each machine.store.draftEntries.filter(entry => !selected || (selected.machine.id === machine.id && selected.project.id === entry.projectId)) as entry (entry.id)}
           <DraftRow owner={machine.store} {entry} />
         {/each}
       {/each}
-      <WindowList items={attention} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={56} measurements={measurements('recent')}>
-        {#snippet row(entry)}<ThreadCard {...entry} {now} showProject={recentGroups.length > 1} showMachine={multi} showDone />{/snippet}
+      <!-- One history, newest first under the pins (lib/thread-order.ts compareRecent): the marks say what needs you. -->
+      <WindowList items={attention} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={54} measurements={measurements('recent')}>
+        {#snippet row(entry)}<ThreadCard {...entry} {now} classic showDone where={places(entry)} />{/snippet}
       </WindowList>
+      <!-- Done is the display menu's filter: on, the finished threads follow the live ones. -->
+      {#if doneFilter.shown}
+        <div class="recent-done" data-testid="recent-done-rows">
+          <RecentDone entries={recentGroups} {scrollRoot} {now} open header={false} onrows={rows => doneRows = rows} />
+        </div>
+      {/if}
       {#if groups.length > 0 && recent.length === 0 && !recentGroups.some(entry => entry.project.archivedThreads)}<p class="none">
           {strings.sidebar.noThreads}
         </p>{/if}
       <div class="recent-folds">
         {#if working.length > 0}
           <RecentGroup kind="working" count={working.length} bind:open={workingOpen}>
-            <WindowList items={working} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={56} measurements={measurements('recent-working')}>
-              {#snippet row(entry)}<ThreadCard {...entry} {now} showProject={recentGroups.length > 1} showMachine={multi} showDone />{/snippet}
+            <WindowList items={working} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={34} measurements={measurements('recent-working')}>
+              {#snippet row(entry)}<ThreadCard {...entry} {now} classic showDone where={places(entry)} />{/snippet}
             </WindowList>
           </RecentGroup>
         {/if}
-        <RecentDone entries={recentGroups} {scrollRoot} {now} onrows={rows => doneRows = rows} />
         <RecentDone kind="archived" entries={recentGroups} {scrollRoot} {now} onrows={rows => archivedRows = rows} />
       </div>
     {:else}
@@ -209,13 +301,16 @@
         {@const owner = machine.store}
         {@const workingOpen = projectThreadView.isOpen(entry, 'working')}
         {@const later = section === 'later'}
-        {@const doneOpen = archiveCount(project, 'done') > 0 && projectThreadView.isOpen(entry, 'done')}
-        {@const archivedOpen = archiveCount(project, 'archived') > 0 && (later || projectThreadView.isOpen(entry, 'archived'))}
+        {@const doneOpen = archiveCount(project, 'done') > 0 && doneShown(entry)}
+        {@const archivedOpen = later && archiveCount(project, 'archived') > 0}
         {@const { lists } = projectLists.get(projectKey(entry))!}
+        {@const fold = cardRows(entry, lists.attention)}
         {@const controls = `sidebar-project-${encodeURIComponent(projectKey(entry))}`}
         {@const collapsed = owner.isCollapsed(project.id)}
+        {@const listed = collapsed ? 0 : fold.shown.filter(thread => needsYou(threadState(thread, rowAsks(owner, thread.id)))).length}
         {@const away = owner.connection !== 'ready'}
-        {@const rollup = collapsed && !away ? projectRollup(owner.threadsOf(project.id), thread => owner.subagents(thread.id)) : null}
+        {@const needs = needsCount(entry)}
+        {@const rollup = collapsed && !away ? projectRollup(owner.threadsOf(project.id), thread => rowAsks(owner, thread.id)) : null}
         {@const draftsHere = owner.draftEntries.filter(entry => entry.projectId === project.id)}
         {@const dropKey = threadDropKey(machine.id, project.id)}
         {@const key = projectKey(entry)}
@@ -236,7 +331,7 @@
           aria-label={threadDrag.over === dropKey ? fill(strings.threadMove.dropHere, { project: projectName(project) }) : undefined}
         >
           <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div class="head" oncontextmenu={(e) => openProjectMenu(e, machine, project, list)}>
+          <div class="head" oncontextmenu={(e) => openProjectMenu(e, machine, project, list, section)}>
             <button
               class="ghost toggle"
               class:grab={projectView.order === 'manual'}
@@ -249,38 +344,36 @@
               title={multi ? `${project.path} · ${machine.label}` : project.path}
               onclick={() => projectThreadView.toggleProject(entry, lists, draftsHere.length)}
             >
-              {#if projectView.order === 'manual'}<GripVertical size={12} />{/if}<span class="mark"><ProjectTile {project} store={owner} /><span class="fold-caret" class:open={!collapsed} aria-hidden="true"><ChevronRight size={16} /></span></span
+              {#if projectView.order === 'manual'}<GripVertical size={12} />{/if}<span class="mark"><ProjectTile {project} store={owner} size={18} /><span class="fold-caret" class:open={!collapsed} aria-hidden="true"><ChevronRight size={16} /></span></span
               >{#if multi}<span class="host" data-testid="project-host" class:offline={owner.connection !== 'ready'}
-                title={`${machine.label} · ${strings.connection[owner.connection]}`} aria-label={machine.label}><MachineIcon icon={machine.icon} os={owner.core?.os} size={14} /></span>{/if}<span class="name ui-label" class:gone={project.missing === true}>{projectName(project)}</span
-              >{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup}<ProjectRollup {rollup} />{/if}
+                title={`${machine.label} · ${strings.connection[owner.connection]}`} aria-label={machine.label}><MachineIcon icon={machine.icon} os={owner.core?.os} size={14} /></span>{/if}<span class="name project-title ui-label" class:gone={project.missing === true}>{projectName(project)}</span
+              >{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup && !needsYou(rollup.kind) && rollup.kind !== 'done' && lists.working.length === 0}<ProjectRollup {rollup} />{/if}
             </button>
-            {#each residentsOf(owner, project.id).slice(0, 2) as resident (resident.id)}
-              <!-- An agent the owner entrusted this project to: its robot, and the way to its conversation. -->
-              <button type="button" class="ghost icon small resident-mark" title={fill(strings.resident.lookedAfterBy, { name: resident.name })} aria-label={fill(strings.resident.lookedAfterBy, { name: resident.name })}
-                onclick={() => openResident(owner, resident.id)} data-testid="project-resident" data-agent-id={resident.id}>
-                <AgentAvatar kind="profile" id={resident.id} name={resident.name} avatar={resident.avatar} size={18} />
-              </button>
-            {/each}
-            <ProjectThreadCounters {entry} working={lists.working.length} {controls} {collapsed} {away} body={later ? laterLists : undefined} />
+            <ProjectThreadCounters {entry} working={lists.working.length} waiting={needs.count} failed={needs.failed} {listed} {controls} {collapsed} {away} />
             <button
               class="ghost small icon project-actions"
               data-testid="project-menu"
               title={strings.sidebar.projectMenu}
               aria-label={strings.sidebar.projectMenu}
-              onclick={(e) => openProjectMenu(e, machine, project, list)}><Ellipsis size={15} /></button
+              onclick={(e) => openProjectMenu(e, machine, project, list, section)}><Ellipsis size={15} /></button
             >
           </div>
+          <!-- Offline, said once under the name with its next step; the rows below dim as last seen. A reconnect
+               in progress says nothing here: the rows dim and the machine's icon says it, so a blip does not jump the list. -->
+          {#if owner.connection === 'closed'}<div class="offline"><MachineOffline store={owner} label={machine.label} /></div>{/if}
           <div id="{controls}-body" class="disclosure-fold" class:open={!collapsed} inert={collapsed}>
             <div>
               <SharedProjectThreads store={owner} projectId={project.id} active={!collapsed && !away}>
               {#each draftsHere as draft (draft.id)}<DraftRow {owner} entry={draft} />{/each}
-              <WindowList items={lists.attention} keyOf={thread => JSON.stringify([machine.id, thread.id])} {scrollRoot} active={!collapsed} estimate={34} measurements={measurements(JSON.stringify([machine.id, project.id]))}>
-                {#snippet row(thread)}<ThreadCard {machine} {project} {thread} {now} showProject={false} showMachine={false} showDone />{/snippet}
+              <WindowList items={fold.shown} keyOf={thread => JSON.stringify([machine.id, thread.id])} {scrollRoot} active={!collapsed} estimate={36} measurements={measurements(JSON.stringify([machine.id, project.id]))}>
+                {#snippet row(thread)}<ThreadCard {machine} {project} {thread} {now} classic showDone placed={!!host(machine)?.away} />{/snippet}
               </WindowList>
+              {#if fold.folded.length}<FoldMore count={fold.folded.length} open={fold.open} ontoggle={() => toggleFold(key)} />{/if}
+              <ProjectThreadCounters {entry} working={lists.working.length} waiting={needs.count} {controls} {collapsed} {away} place="fold" />
               <div id="{controls}-working" hidden={!workingOpen || lists.working.length === 0} data-testid="project-working">
                 {#if workingOpen && lists.working.length > 0}
-                  <WindowList items={lists.working} keyOf={thread => JSON.stringify([machine.id, thread.id])} {scrollRoot} active={!collapsed} estimate={34} measurements={measurements(JSON.stringify([machine.id, project.id, 'working']))}>
-                    {#snippet row(thread)}<ThreadCard {machine} {project} {thread} {now} showProject={false} showMachine={false} showDone />{/snippet}
+                  <WindowList items={lists.working} keyOf={thread => JSON.stringify([machine.id, thread.id])} {scrollRoot} active={!collapsed} estimate={36} measurements={measurements(JSON.stringify([machine.id, project.id, 'working']))}>
+                    {#snippet row(thread)}<ThreadCard {machine} {project} {thread} {now} classic showDone placed={!!host(machine)?.away} />{/snippet}
                   </WindowList>
                 {/if}
               </div>
@@ -290,7 +383,6 @@
                   onrows={doneObserver(entry, 'done')} />
               </div>
               <div id="{controls}-archived" hidden={!archivedOpen} data-testid="project-archived">
-                {#if archivedOpen && !later}<GroupLabel kind="archived" count={archiveCount(project, 'archived')} />{/if}
                 <RecentDone kind="archived" entries={[entry]} {scrollRoot} {now} open={archivedOpen && !collapsed && (!later || projectThreadView.laterOpen)} header={false}
                   onrows={doneObserver(entry, 'archived')} />
               </div>
@@ -319,39 +411,40 @@
       </div>
     {/if}
     {/if}
-  {#snippet lead()}
-    <MachineStatus {store} filter={shownFilter} onfilter={id => { if (id && selected && selected.machine.id !== id) projectView.pick('all'); filter = id; }} />
-  {/snippet}
-  {#snippet foot()}
-    {#if store === workspace.primary}<PluginSlotButtons slot="sidebar" threadId={store.openThread?.id ?? null} />{/if}
-    {#if store.addsProjects && work.shows('sidebar.add-project')}
-      <button class="ghost icon" data-testid="add-project" bind:this={projectButton} onclick={addProject}
-        title={strings.sidebar.addProject} aria-label={strings.sidebar.addProject}
-        oncontextmenu={(event) => controlMenu(event, store, 'sidebar.add-project')}><FolderPlus size={16} /></button>
-    {/if}
-  {/snippet}
 </RailFrame>
 
 <style>
   /* `sidebar` is the container RailFrame.svelte declares on the column. */
-  @container sidebar (max-width: 240px) {
-    .project .head { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
-    .head .toggle { grid-column: 1; grid-row: 1; }
-    .head .project-actions { grid-column: 2; grid-row: 1; }
-    .head :global(.counters) { grid-column: 1 / -1; grid-row: 2; justify-content: flex-end; margin-bottom: 4px; }
-  }
   .recent-folds { margin-top: auto; padding-top: 12px; }
+  .contact-rows { display: flex; flex-direction: column; gap: 2px; }
+  .recent-done { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--color-border); }
   .project-folds { margin-top: auto; }
+  /* A card is a quiet surface on the inset panel, with no edge of its own: the panel is the one frame. */
   .project {
-    margin-bottom: 10px;
+    margin-bottom: 8px;
     padding: 4px;
-    border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
-    background: color-mix(in srgb, var(--color-surface-2) 55%, transparent);
+    background: var(--color-surface);
   }
+  /* Recent's label between the threads with something to say and the ones at rest: a word, not a bare rule, on
+     the titles' edge in the label's ink, a hairline running on to the row's end. */
+  .empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 28px 12px;
+    color: var(--color-subtle);
+    font-size: var(--text-sm);
+    text-align: center;
+  }
+  .empty .add { gap: 6px; color: var(--color-muted-foreground); }
+  .empty .add:hover { color: var(--color-foreground); }
+  .empty :global(.spinner) { color: var(--color-accent); animation: spin 1s steps(60) infinite var(--loops); }
+  @media (prefers-reduced-motion: reduce) { .empty :global(.spinner) { animation: none; } }
   .project {
     transition:
-      border-color var(--dur-2) var(--ease-out-quint),
+      outline-color var(--dur-2) var(--ease-out-quint),
       background var(--dur-2) var(--ease-out-quint),
       box-shadow var(--dur-2) var(--ease-out-quint),
       opacity var(--dur-2) var(--ease-out-quint);
@@ -361,17 +454,13 @@
     opacity: 0.6;
   }
   .project.candidate {
-    border-style: dashed;
-    border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border));
+    outline: 1px dashed var(--color-edge);
+    outline-offset: -1px;
   }
-  /* The one under the mouse takes the row: solid accent edge, soft fill and a ring. */
+  /* The one under the mouse takes the row: a solid edge and the selection fill. */
   .project.drop {
-    border-style: solid;
-    border-color: var(--color-accent);
-    background: var(--color-accent-soft);
-  }
-  .project.candidate.drop {
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
+    outline: 1px solid var(--color-muted-foreground);
+    background: var(--color-active);
   }
   /* A project on the move leaves a faded slot; a line between two sections says where it lands. */
   .project { position: relative; }
@@ -384,12 +473,11 @@
     right: 6px;
     height: 2px;
     border-radius: var(--radius-full);
-    background: var(--color-accent);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent);
+    background: var(--color-foreground);
     pointer-events: none;
     animation: insert-in var(--dur-2) var(--ease-out-quint);
   }
-  /* Centred in the 10px gap outside the 1px border. */
+  /* Centred in the gap between two cards. */
   .project.insert-before::before { top: -7px; }
   .project.insert-after::after { bottom: -7px; }
   @keyframes insert-in { from { opacity: 0; transform: scaleX(0.6); } }
@@ -400,27 +488,63 @@
     cursor: grabbing !important;
     user-select: none;
   }
+  /* The card's head stays at the list's top while its threads scroll under it, on the card's own ground so no
+     row reads through, and the next card's head pushes it off: the card bounds it. */
   .head {
+    position: sticky;
+    /* At the scroll box's very edge, over its 3 px top inset (RailFrame.svelte), so no row shows above it. */
+    top: calc(-1 * var(--fade-top, 0px));
+    z-index: 2;
     display: flex;
     align-items: center;
     gap: 2px;
+    height: 38px;
+    background: var(--color-surface);
   }
+  .project.drop .head { background: transparent; }
+  /* The machine's state under the name, its dot on the name's edge: the toggle's 4 px, the 18 px tile and its 8 px gap. */
+  .offline { padding: 0 8px 6px 30px; }
+  /* A row passing under it melts into the head instead of being sliced; over the card's own ground it shows nothing. */
+  .head::after { content: ''; position: absolute; inset: 100% 0 auto; height: 6px; background: linear-gradient(var(--color-surface), transparent); pointer-events: none; }
+  /* Stuck over rows (a scroll-state query on the head itself), the shared eased edge under it, as the phone's
+     heading: the list comes to rest with a whole row under the head (the snap below), so the fade only softens
+     the row passing under it in motion and covers nothing but that row's top padding at rest. */
+  .head { container-type: scroll-state; }
+  @container scroll-state(stuck: top) {
+    .head::after { height: var(--scroll-edge); background: linear-gradient(var(--color-surface), color-mix(in oklab, var(--color-surface) 45%, transparent) 50%, transparent); }
+  }
+  /* Where the list comes to rest (RailFrame snaps it): a card's top, its head whole, or a row's top right under the
+     stuck head (38 px, pinned 3 px over the scroll box's edge), never a row sliced by the head. Both offsets undo
+     the box's scroll padding (`--fade-top` + 4 px). */
+  .project { scroll-snap-align: start; scroll-margin-top: 4px; }
+  .project :global(:is([data-testid=thread-row], [data-testid=draft-row])) { scroll-snap-align: start; scroll-margin-top: calc(38px - 2 * var(--fade-top, 0px) - 4px); }
+  .project.drop .head::after { display: none; }
+  /* Sized by its content, so the counters beside it give way first (their spare word, ProjectThreadCounters.svelte). */
   .toggle {
-    flex: 1;
+    flex: 1 1 auto;
     min-width: 0;
-    height: var(--control-lg);
+    height: 38px;
     padding: 0 4px;
     justify-content: flex-start;
-    gap: 6px;
+    gap: 8px;
   }
+  .toggle:hover:not(:disabled) { background: transparent; }
+  /* The rows' ring, inside the header: the list's scroll edge would clip one outside it. */
+  .toggle:focus-visible { outline-offset: -2px; }
+  .toggle:active:not(:disabled) { transform: none; }
+  /* The card's title, the user's folder name: it takes what is left after the
+     machine and the counters, which stay whole, and ends in an ellipsis. */
   .name {
-    flex: 1;
+    flex: 0 1 auto;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     text-align: left;
     white-space: nowrap;
-    font-weight: 600;
+    /* A full size step over the rows' 14 px: the card reads as a place, its rows as what is in it. */
+    font-size: var(--text-title);
+    font-weight: var(--weight-title);
+    letter-spacing: -0.01em;
     color: var(--color-foreground);
   }
   /* Its folder left the disk: the name steps back and a mark says why. */
@@ -452,29 +576,29 @@
   @media (prefers-reduced-motion: reduce) {
     .mark > :global(*) { transition: none; }
   }
-  .host {
-    display: flex;
-    flex: none;
-    color: var(--color-muted-foreground);
-  }
+  /* The machine, once two are listed: its icon before the name, its name and state in the tooltip. */
+  .host { display: flex; flex: none; color: var(--color-muted-foreground); }
   /* The rows under it carry no machine icon, so the header says the machine is unreachable. */
-  .host.offline {
-    color: var(--color-danger);
-  }
-  .resident-mark { flex: none; width: var(--control-sm); height: var(--control-sm); padding: 0; }
-  /* The menu keeps its slot at the right end even while hidden, so it sits at
-     the same place on every project and the counters never move. */
+  .host.offline { color: var(--color-danger); }
+  .head :global(.counters) { flex: 0 1000 auto; min-width: min-content; margin-right: 2px; transition: margin-right var(--dur-2) var(--ease-out-quint); }
+  /* The menu appears at the right end on hover and the counters step left of it, as a row's state does. */
   .project-actions {
-    flex: none;
+    position: absolute;
+    right: 2px;
+    top: 6px;
     opacity: 0;
   }
   .head:hover .project-actions,
   .head:focus-within .project-actions {
     opacity: 1;
   }
+  .head:hover :global(.counters),
+  .head:focus-within :global(.counters) {
+    margin-right: 28px;
+  }
   .none {
     padding: 4px 10px;
-    color: var(--color-subtle);
+    color: var(--color-muted-foreground);
     font-size: var(--text-sm);
   }
   @keyframes leave {
@@ -487,5 +611,6 @@
     .project-actions {
       opacity: 1;
     }
+    .head :global(.counters) { margin-right: 28px; }
   }
 </style>

@@ -7,7 +7,6 @@ import { Store } from './store.svelte';
 import { FakeClient } from './fake-client';
 import { fakeCore } from './fake-client/coordination';
 import { workspace } from './workspace.svelte';
-import { setExperiment } from './experiments';
 import { RpcFailure } from './client';
 import { RpcErrorCode } from '@boite/contracts';
 import { strings } from './strings';
@@ -19,7 +18,6 @@ afterEach(async () => {
   if (running) await unmount(running, { outro: false });
   running = undefined;
   workspace.close();
-  setExperiment('resident-agents', false);
   vi.restoreAllMocks();
   document.body.innerHTML = '';
   localStorage.clear();
@@ -244,7 +242,6 @@ test.each(['current', 'thread', 'draft', 'machine', 'disconnection'] as const)(
 );
 
 test.each(['agents', 'settings'] as const)('palette remote selection leaves source %s history untouched', async page => {
-  setExperiment('resident-agents', true);
   const { a, b, ca } = await setup();
   const ctx = fakeCore(ca.core!.coreId!)!;
   const id = 'thr_agent123456789';
@@ -264,7 +261,6 @@ test.each(['agents', 'settings'] as const)('palette remote selection leaves sour
 test.each([{ remote: true, projectId: 'p-boite', agent: true }, { remote: true, projectId: null, agent: false }, { remote: false, projectId: 'p-boite', agent: false }])(
   'draft selection keeps its id, text, file and project ($projectId, remote=$remote) without opening an abandoned thread',
   async ({ remote, projectId, agent }) => {
-    setExperiment('resident-agents', true);
     const { a, b, cb } = await setup();
     await b.open('t-descriptors');
     const oldId = agent ? 'thr_agent123456789' : 't-descriptors';
@@ -363,7 +359,6 @@ test.each(['draft', 'disconnection'] as const)('a delayed coordination address i
 });
 
 test('a local palette target exits settings without reloading the previous chat', async () => {
-  setExperiment('resident-agents', true);
   const { a, ca } = await setup();
   const id = 'thr_agent123456789';
   const ctx = fakeCore(ca.core!.coreId!)!;
@@ -381,7 +376,6 @@ test('a local palette target exits settings without reloading the previous chat'
 });
 
 test('a bot on another machine opens straight on its Agents page, never through that machine\'s chat', async () => {
-  setExperiment('resident-agents', true);
   const { a, b, cb } = await setup();
   await b.open('t-trace');
   const call = cb.call.bind(cb);
@@ -403,7 +397,6 @@ test('a bot on another machine opens straight on its Agents page, never through 
 });
 
 test('back on a machine whose bot was open, its conversation listens again', async () => {
-  setExperiment('resident-agents', true);
   const { a, b } = await setup();
   const cb = new FakeClient({ delayMs: 0, coreId: 'c'.repeat(64), agentsDemo: true });
   b.attach(cb);

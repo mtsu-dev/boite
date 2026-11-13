@@ -4,18 +4,23 @@
   import type { ToolDisclosure } from '../lib/store/deferred-parts';
   import { errorText } from '../lib/errors';
   import { secondClock } from '../lib/clock.svelte';
-  import { Bot, ChevronRight, FilePen, FileText, Globe, Search, ShieldCheck, ShieldX, SquareTerminal, Wrench, X } from '@lucide/svelte';
+  import { Bot, ChevronRight, FilePen, FileText, Globe, Search, ShieldCheck, ShieldX, SquareTerminal, Wrench } from '@lucide/svelte';
   import type { ToolDocument, ToolStatus } from '@boite/contracts';
   import { elapsed, json } from '../lib/format';
+  import { verdictWord } from '../lib/verdict-word';
   import { fill, strings } from '../lib/strings';
   import { familyOf, liveLabel, runSummary, toolLine, type ToolPart } from '../lib/tool-groups';
   import { describeTool, fileName } from '../lib/tool-summary';
   import { toolErrorPreview } from '../lib/tool-error';
   import { diffCountsOf } from '../lib/diff';
-  import Deferred, { parts } from './Deferred.svelte';
+  import Deferred from './Deferred.svelte';
+  import { parts } from '../lib/deferred-parts';
   import DocumentView from './DocumentView.svelte';
+  import ChangeCount from './ChangeCount.svelte';
+  import Spinner from './Spinner.svelte';
   import { chatPrefs } from '../lib/chat-prefs.svelte';
   import type { Store } from '../lib/store.svelte';
+  import { lastHeard, machineAway } from '../lib/machine-away';
 
   /*
    * One tool call as a plain line of the timeline: what it did
@@ -44,6 +49,7 @@
     nested = false,
     folded = false,
     permission = null,
+    carded = false,
     store,
     threadId
   }: {
@@ -73,16 +79,20 @@
     folded?: boolean;
     /** What the user answered when the agent asked to make this call, null when it did not ask. */
     permission?: 'allow' | 'deny' | null;
+    /** The turn's error card says this call's stop and exit code: its line marks nothing. */
+    carded?: boolean;
     /** Where a thread link in a document starts from. */
     store?: Store;
     threadId?: string;
   } = $props();
 
+  /** The machine is out of reach: a running call is its last known state, its clock stopped at the last word heard. */
+  let away = $derived(!!store && machineAway(store));
   /** Shown from one second on: a quick call needs no clock. */
   let took = $derived.by(() => {
     if (startedAt === null) return '';
     // A running call reads the second clock, paused while the page is hidden.
-    const end = status === 'running' ? secondClock.now : finishedAt;
+    const end = status === 'running' ? away ? lastHeard(store?.openThread) : secondClock.now : finishedAt;
     if (end === null || end === undefined) return '';
     const spent = end - startedAt;
     return spent >= 1000 ? elapsed(spent) : '';
@@ -216,35 +226,34 @@
     onclick={() => { if (!shown) { attempted = false; loadError = null; } toggled = !shown; }}
   >
     <span class="glyph"><Glyph size={15} strokeWidth={1.75} /></span>
-    <span class="line ui-label" class:mono={!compact && line.mono} class:live={status === 'running'} title={diffs[0]?.path ?? line.title}>{label}</span>
+    <span class="line ui-label" class:mono={!compact && line.mono} class:live={status === 'running' && !away} title={diffs[0]?.path ?? line.title}>{label}</span>
     {#if counts.added > 0 || counts.removed > 0}
-      <span class="counts" data-testid="tool-diff-counts">
-        {#if counts.added > 0}<span class="added">{fill(strings.chat.diffAdded, { count: String(counts.added) })}</span>{/if}
-        {#if counts.removed > 0}<span class="removed">{fill(strings.chat.diffRemoved, { count: String(counts.removed) })}</span>{/if}
-      </span>
+      <span class="counts" data-testid="tool-diff-counts"><ChangeCount added={counts.added} removed={counts.removed} /></span>
     {/if}
     {#if chip}
-      <span class="chip" data-testid="tool-document-chip"><span class="ui-label">{chip}</span></span>
+      <span class="ui-chip" data-testid="tool-document-chip"><span class="ui-label">{chip}</span></span>
     {/if}
     {#if background}
-      <span class="chip live" data-testid="tool-background"><span class="pulse" aria-hidden="true"></span><span class="ui-label">{strings.chat.backgroundChip}</span></span>
+      <span class="ui-chip live" data-testid="tool-background"><span class="pulse" aria-hidden="true"></span><span class="ui-label">{strings.chat.backgroundChip}</span></span>
     {/if}
     {#if took}
-      <span class="took ui-label" data-testid="tool-elapsed">{took}</span>
-    {/if}
-    {#if exitLabel}
-      <span class="took ui-label" data-testid="tool-exit-code">{exitLabel}</span>
+      <span class="took ui-label" class:settled={status !== 'running'} data-testid="tool-elapsed">{took}</span>
     {/if}
     {#if permission}
       {@const verdict = permission === 'allow' ? strings.chat.permissionAllowedBy : strings.chat.permissionDeniedBy}
       <span class="verdict" class:denied={permission === 'deny'} data-testid="tool-permission" data-decision={permission} title={verdict} aria-label={verdict}>
-        {#if permission === 'allow'}<ShieldCheck size={13} strokeWidth={2} />{:else}<ShieldX size={13} strokeWidth={2} />{/if}
+        {#if permission === 'allow'}<ShieldCheck size={13} strokeWidth={2} />{:else}<ShieldX size={13} strokeWidth={2} />{/if}<span class="ui-label verdict-word">{verdictWord(permission)}</span>
       </span>
     {/if}
     {#if status === 'running'}
-      <span class="status" title={strings.chat.toolStatus.running}><span class="spinner"></span></span>
+      <span class="status" title={away ? strings.chat.toolPaused : strings.chat.toolStatus.running}><Spinner size={11} stale={away} /></span>
+    {:else if carded}
+      <!-- The error card under the answer says this stop, its code and its log. -->
     {:else if failed && permission !== 'deny'}
-      <span class="status" title={strings.chat.toolStatus[status]}><X size={12} strokeWidth={2.25} /></span>
+      <!-- A dot and a word: a bare cross at a row's end reads as its close button. -->
+      <span class="status failed" data-testid={exitLabel ? 'tool-exit-code' : 'tool-failed'}><span class="dot" aria-hidden="true"></span><span class="ui-label">{exitLabel || strings.chat.toolFailed}</span></span>
+    {:else if exitLabel}
+      <span class="took ui-label" data-testid="tool-exit-code">{exitLabel}</span>
     {/if}
     <span class="fold-caret" class:open={shown} aria-hidden="true"><ChevronRight size={12} /></span>
   </button>
@@ -332,6 +341,8 @@
     color: var(--color-muted-foreground);
     font-size: var(--text-sm);
     font-weight: 400;
+    /* The run's line drops the body tracking, as ToolGroup's does: on whole-pixel glyphs it eats a space ("Ran 1command"). */
+    letter-spacing: normal;
     justify-content: flex-start;
   }
 
@@ -366,13 +377,13 @@
 
   /* A command is set in the code face, a step smaller so it sits on the same line height. */
   .line.mono {
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
   }
 
   .line.live { color: var(--color-accent); }
-  .error-preview { margin: 0 0 4px; color: var(--color-danger); font-size: var(--text-xs); overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+  .error-preview { margin: 0 0 4px; color: var(--color-danger); font-size: var(--text-sm); overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 
-  .chip {
+  .ui-chip {
     flex: none;
     height: 18px;
     display: inline-flex;
@@ -382,14 +393,14 @@
     border-radius: var(--radius-sm);
     background: var(--color-surface-2);
     color: var(--color-muted-foreground);
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
   }
 
-  .chip.live {
+  .ui-chip.live {
     gap: 5px;
-    color: var(--color-accent);
-    border-color: color-mix(in oklch, var(--color-accent) 40%, transparent);
+    color: var(--color-muted-foreground);
+    border-color: var(--color-edge);
   }
 
   .pulse {
@@ -402,10 +413,14 @@
 
   .took {
     flex: none;
-    color: var(--color-subtle);
-    font-size: var(--text-xs);
+    color: var(--color-muted-foreground);
+    font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
   }
+
+  /* A finished step's time is read on demand: under the pointer, the keyboard or an open row. */
+  .took.settled { opacity: 0; transition: opacity var(--dur-2); }
+  .head:hover .took.settled, .head:focus-visible .took.settled, .head[aria-expanded='true'] .took.settled { opacity: 1; }
 
   .status {
     display: inline-flex;
@@ -413,23 +428,21 @@
     color: var(--color-subtle);
   }
 
+  .status.failed { align-items: center; gap: 5px; color: var(--color-danger); font-size: var(--text-sm); }
+  .status.failed .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
   /* The user's answer to the agent's ask: the shield in the answer's colour. */
   .verdict {
     display: inline-flex;
+    align-items: center;
+    gap: 4px;
     flex: none;
     color: var(--color-success);
   }
+  /* The verdict's word, the receipt's own, beside the shield. */
+  .verdict-word { font-size: var(--text-sm); }
 
   .verdict.denied { color: var(--color-danger); }
-
-  .spinner {
-    width: 11px;
-    height: 11px;
-    border-radius: 50%;
-    border: 1.5px solid var(--color-edge);
-    border-top-color: var(--color-live);
-    animation: spin 0.9s steps(54) infinite var(--loops);
-  }
 
   /* The body sits under the line's words, past the glyph. */
   .body {
@@ -476,13 +489,8 @@
   .counts {
     display: inline-flex;
     flex: none;
-    gap: 6px;
-    font-size: var(--text-xs);
-    font-variant-numeric: tabular-nums;
+    font-size: var(--text-sm);
   }
-
-  .counts .added { color: var(--color-success); }
-  .counts .removed { color: var(--color-danger); }
 
   .diffs {
     display: flex;
@@ -512,6 +520,6 @@
   }
 
   /* An endless loop stops under reduced motion; the static mark keeps its colour. */
-  @media (prefers-reduced-motion: reduce) { :is(.pulse, .spinner, .cursor) { animation: none; } }
-  :global(html[data-motion='reduced']) :is(.pulse, .spinner, .cursor) { animation: none; }
+  @media (prefers-reduced-motion: reduce) { :is(.pulse, .cursor) { animation: none; } }
+  :global(html[data-motion='reduced']) :is(.pulse, .cursor) { animation: none; }
 </style>

@@ -122,6 +122,7 @@ export function replyOf(store: Store, questionId: string): { replying: boolean; 
  */
 export async function sendAnswer(store: Store, question: QuestionRequest): Promise<boolean> {
   const held = repliesOf(store);
+  // Read as the press lands: the answer may restart the turn before it comes back.
   const state = replyTarget(store)?.id === question.id ? store.composerStates[question.threadId] : undefined;
   const optionIds = held.picks[question.id] ?? [];
   const text = state?.text ?? '';
@@ -162,4 +163,17 @@ export function ignoreQuestions(store: Store): void {
     if (question.threadId === store.openThread?.id) held.ignored[question.id] = true;
   }
   held.chosen = null;
+}
+
+/**
+ * Key 1 to 9 picks that option of the question on screen, or drops it when it
+ * was picked; a question with several answers keeps the others. False for a
+ * key that names no option.
+ */
+export function pickOption(store: Store, question: QuestionRequest, key: string): boolean {
+  if (!/^[1-9]$/.test(key) || Number(key) > question.options.length) return false;
+  const id = question.options[Number(key) - 1]!.id;
+  const held = repliesOf(store).picks[question.id] ?? [];
+  repliesOf(store).picks[question.id] = question.multiple ? (held.includes(id) ? held.filter((one) => one !== id) : [...held, id]) : held[0] === id ? [] : [id];
+  return true;
 }

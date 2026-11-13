@@ -22,5 +22,5 @@
 
 <style>
   .scope { overflow-wrap: anywhere; }
-  .name { color: var(--color-accent); }
+  .name { color: var(--color-foreground); }
 </style>

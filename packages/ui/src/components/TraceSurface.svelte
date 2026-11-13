@@ -4,6 +4,7 @@
   import { strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import TraceTable from './TraceTable.svelte';
+  import SurfaceHead from './SurfaceHead.svelte';
 
   let { store }: { store: Store } = $props();
 
@@ -24,20 +25,20 @@
 </script>
 
 <div class="trace-surface" data-testid="trace-panel">
-  <div class="bar">
+  <SurfaceHead>
     <span class="totals ui-label">{store.trace.length} {strings.trace.recorded} · {load?.processes ?? store.trace.filter(record => record.exitedAt === null).length} {strings.trace.active}</span>
     <span class="spacer"></span>
     <button
       type="button"
-      class="ghost small icon"
+      class="icon-button"
       title={strings.common.refresh}
       aria-label={strings.common.refresh}
       data-testid="trace-refresh"
       onclick={() => void store.refreshTrace()}
     >
-      <RefreshCw size={13} strokeWidth={1.75} />
+      <RefreshCw size={14} strokeWidth={1.75} />
     </button>
-  </div>
+  </SurfaceHead>
   {#if load}
     <div class="load"><span>{strings.trace.cpu} <b>{percent(load.cpuPercent)}</b></span><span>{strings.trace.currentMemory} <b>{bytes(load.memoryBytes)}</b></span></div>
   {/if}
@@ -52,15 +53,6 @@
     flex-direction: column;
     min-height: 0;
     height: 100%;
-  }
-
-  .bar {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    height: var(--row);
-    padding: 0 6px 0 12px;
-    flex: none;
   }
 
   .spacer {

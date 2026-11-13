@@ -3,9 +3,9 @@ import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
 import { startDevUi } from './lib/ui.ts';
 
-// `team=1` seeds a running workflow and its subagents on `t-trace`: the bar
-// that counts them stands between the timeline and the composer, where the
-// band of tasks floats.
+// `team=1` seeds a running workflow and its subagents on `t-trace`: the
+// "Waiting on" line that counts and names them stands above the composer card, outside
+// it, and the band of tasks floats inside the card.
 let server: { close(): Promise<void> };
 let page: BrowserPage;
 const id = (name: string) => `[data-testid="${name}"]`;
@@ -16,7 +16,13 @@ async function size(phone: boolean) {
   await page.waitFor(`innerWidth === ${phone ? 390 : 1280}`);
 }
 async function settle() {
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+  // Each animation is awaited until its own end. One whose subtree turns `content-visibility: hidden` before it ends
+  // (a fold closing over its rows, the phone's covered page) stops updating: Chrome never settles its `finished` and
+  // drops it from getAnimations(), so the wait stops at the end time the animation declared, plus two frames.
+  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => Promise.race([
+    a.finished.catch(() => {}),
+    new Promise(resolve => setTimeout(resolve, Math.max(0, (a.effect.getComputedTiming().endTime - (a.currentTime ?? 0)) / Math.abs(a.playbackRate || 1)) + 34)),
+  ]))])`);
   // The band measures itself on the next frame; the timeline's reserve follows.
   await page.evaluate(`new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
 }
@@ -29,9 +35,9 @@ beforeAll(async () => {
 }, 60_000);
 afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
 
-test('the task band stacks above the subagent bar, folded and open, on desktop and phone', async () => {
+test('the waiting line stands above the card that holds the task band, folded and open, on desktop and phone', async () => {
   await page.evaluate(`import('/src/lib/store.svelte.ts').then(({store}) => store.open('t-trace'))`);
-  await page.waitFor(`document.querySelector('${id('active-subagents')}')?.textContent.includes('1 workflow')`);
+  await page.waitFor(`document.querySelector('${id('agent-dock')}')?.dataset.runs === '1'`);
   // Enough to scroll, so the last message has to clear the band at the bottom.
   await page.evaluate(`globalThis.__boiteTest.workspace.active.openThread.messages.at(-1).parts.push({ type: 'text', text: 'Earlier conversation context.\\n'.repeat(80) })`);
   await page.evaluate(`import('/src/lib/store.svelte.ts').then(({store}) => { store.openThread.activity = {goal:null,loop:null,tasks:[
@@ -41,10 +47,10 @@ test('the task band stacks above the subagent bar, folded and open, on desktop a
   await page.waitFor(`document.querySelector('${id('activity-tasks-toggle')}')`);
   const layout = `(() => {
     const band = document.querySelector('${id('thread-activity')}').getBoundingClientRect();
-    const bar = document.querySelector('${id('active-subagents')}').getBoundingClientRect();
+    const bar = document.querySelector('${id('agent-dock')}').getBoundingClientRect();
     const covering = document.elementFromPoint(bar.left + bar.width / 2, bar.top + bar.height / 2);
     const messages = document.querySelectorAll('[data-mid]');
-    return { gap: bar.top - band.bottom, barOnTop: !!covering?.closest('${id('agent-dock')}'), lastClear: messages[messages.length - 1].getBoundingClientRect().bottom <= band.top };
+    return { gap: band.top - bar.bottom, barOnTop: !!covering?.closest('${id('agent-dock')}'), lastClear: messages[messages.length - 1].getBoundingClientRect().bottom <= bar.top };
   })()`;
   for (const phone of [false, true]) {
     await size(phone);
@@ -60,7 +66,7 @@ test('the task band stacks above the subagent bar, folded and open, on desktop a
       if (!open) expect(at.lastClear).toBe(true);
     }
   }
-  // A notice standing in the same column leaves the bar where the band expects it, on the composer.
+  // A notice standing in the same column leaves the line above the card.
   await size(false);
   await page.evaluate(`import('/src/lib/store.svelte.ts').then(({store}) => { store.openThread.retry = { kind: 'capacity', turnId: 'turn-retry', at: Date.now() + 600_000, attempt: 1, attempts: 3 }; })`);
   await page.waitFor(`document.querySelector('${id('thread-retry')}')`);
@@ -69,14 +75,15 @@ test('the task band stacks above the subagent bar, folded and open, on desktop a
   expect(withNotice.gap).toBeGreaterThanOrEqual(0);
   expect(withNotice.barOnTop).toBe(true);
   await page.evaluate(`import('/src/lib/store.svelte.ts').then(({store}) => { store.openThread.retry = null; })`);
-  // Queued prompts make room for the band inside the composer: it stays under them, the bar above them all.
+  // Queued prompts stand as bubbles under the waiting line, above the card, with nothing to unfold; the band stays inside the card.
   await page.evaluate(`globalThis.__boiteTest.workspace.active.composerStates['t-trace'] = { text: '', attachments: [], queued: [{ text: 'Check the review once the subagent is back', attachments: [] }], paused: true, sending: false }`);
-  await page.waitFor(`(() => { const band = document.querySelector('${id('thread-activity')}'); return band.offsetHeight > 0 && parseFloat(document.querySelector('.queue-region').style.paddingBottom) === band.offsetHeight; })()`);
+  await page.waitFor(`document.querySelector('${id('composer-queued')}') && document.querySelector('${id('thread-activity')}').offsetHeight > 0`);
+  expect(await page.evaluate(`document.querySelector('${id('agent-dock-queued')}') === null`)).toBe(true);
   await settle();
   const stack = await page.evaluate<{ order: boolean; barOnTop: boolean }>(`(() => {
-    const [bar, queue, band, composer] = ['${id('active-subagents')}', '${id('composer-queued')}', '${id('thread-activity')}', '${id('composer')}'].map(selector => document.querySelector(selector).getBoundingClientRect());
+    const [bar, queue, band, composer] = ['${id('agent-dock')}', '${id('composer-queued')}', '${id('thread-activity')}', '${id('composer')}'].map(selector => document.querySelector(selector).getBoundingClientRect());
     const covering = document.elementFromPoint(bar.left + bar.width / 2, bar.top + bar.height / 2);
-    return { order: bar.bottom <= queue.top && queue.bottom <= band.top && band.bottom <= composer.top, barOnTop: !!covering?.closest('${id('agent-dock')}') };
+    return { order: bar.bottom <= queue.top && queue.bottom <= composer.top && band.top >= composer.top && band.bottom <= composer.bottom, barOnTop: !!covering?.closest('${id('agent-dock')}') };
   })()`);
   await page.screenshot(join(import.meta.dir, '.artifacts', 'activity-agent-dock-queued-desktop.png'));
   expect(stack).toEqual({ order: true, barOnTop: true });

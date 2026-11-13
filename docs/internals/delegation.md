@@ -28,9 +28,8 @@ runnable provider and account. Native provider subagents are separate from
 these Boite subagents, and appear in their own section of the tab. The global
 Bots page holds bots: agents with their own identity, memory and
 routines, each in a thread of its own; it is not the list of children of a
-conversation. Enable it in Settings > Experiments to show the Threads and
-Bots switch at the top of the desktop sidebar and the Bots tab in the phone's
-bottom navigation. Each bot opens its ordinary conversation, with its desk in
+conversation. The bots are in the desktop's app rail and the Bots tab is in the
+phone's bottom navigation, in every build. Each bot opens its ordinary conversation, with its desk in
 the right panel ([bots](bots.md)).
 
 A bot delegates project work with `boite delegate spawn "<brief>" --project <project>`.
@@ -114,33 +113,52 @@ reconstructed from its journal.
 
 ## Follow and steer
 
-The parent chat keeps one "Started N agents" row per launch: the children
-started after the same message share a row, placed where the first of them
-started, and it stays once they finish. A launch older than the loaded history
-shows when that page loads. Each row shows successful completions out of its
-agents, failed or stopped tasks, and elapsed time, in hours past an hour. Click
-it to open every agent's model, task, status and result in the right panel. The timer runs locally while work is active and freezes when
-all agents settle. Sending a follow-up to a child resumes its status and timer.
+The parent chat keeps one grouped row per launch: the children started after
+the same message share a row, placed where the first of them started, and it
+stays once they finish. A launch older than the loaded history shows when that
+page loads. The row shows up to three provider marks then "+N", "4 subagents"
+over one muted line of counts ("4 working", or "2 working, 1 needs you, 1
+done", with failed and stopped ones), the elapsed time, in hours past an hour,
+and a chevron. A click unfolds it in place on one row per subagent: its
+provider's mark, its name, its state (a spinner, the amber dot when it waits on
+the user, a check, the red mark, a square when stopped) and its time. Clicking
+a subagent opens its own conversation (on its machine, under "parent /
+subagent" in the header, a back arrow to the parent on a phone); one whose
+machine is not connected opens the team overview. The timer runs locally while
+work is active and freezes when all agents settle. Sending a follow-up to a
+child resumes its status and timer. A workflow the thread started has one
+grouped row of its own, where it started, with its state, its steps and one
+tick per phase; a click opens its graph. The components are
+`DelegationActivity.svelte` and `WorkflowActivity.svelte` on `ActivityCard.svelte`.
 
-One button above the composer shows the number of active subagents and running
-workflows, with elapsed time since the oldest active start. It appears for a
-running workflow even before a child starts. Click it to open the team overview,
-then select an agent or workflow to inspect its progress. The panel keeps
-completed results after the button disappears. The button sits right on the
-composer, below any notice; the task overlay floats above it, never over it.
+While the thread waits on work it sent, one quiet line stands above the
+composer card, outside it, in the same words on a desktop and a phone: a
+spinner, "Waiting on 4 subagents" (or workflows, or both; "· 1 queued" follows
+with queued messages), their names in muted ink cut at a word (a phone cuts
+them earlier, never drops them while a word fits), and at the right a Stop
+that names what it stops: "Stop
+subagents" or "Stop workflows" for the work it sent, "Stop all" when it also
+ends the turn, its tooltip saying the rest. A press on the counts unfolds one
+row per subagent and workflow, each opening it, then the queued messages with
+their Edit and Delete. A provider's own running subagents count in it, and
+Stop ends the turn that runs them. An agent a command started follows its own
+process: it counts too, but the line offers no Stop for it alone. A
+subagent's own conversation counts only the children it started, never itself
+or its siblings. The component is `AgentDock.svelte`.
 
 A parent's row in the sidebar, the Recent list and the phone's list carries a
 chip with the number of its subagents at work, in every state of the parent.
 When a child asks the user something or waits on a permission, the chip takes
 the waiting colour and the parent reads Needs you, unless the parent itself
-failed. The parent's question dock shows each such child's question, "Asked by"
-its title, with its options and an Open button that goes to the child's
-conversation; a permission gets a row with the tool it asks for and Open, since
-it is approved in the child's conversation only. Text typed in the parent's
-composer never answers a child's question: it stays a message to the parent,
-and a written answer goes through Open. The core sends a child's `question.*`
-and `permission.*` events to the windows that have its parent open, and the
-dock reads the children's open cards when the parent opens.
+failed. A child's question is the question at the top of the parent's
+composer, titled "Asked by" the child's name, with its options and an Open
+button that goes to the child's conversation. A child's permission is approved
+in the child's conversation only: the parent's grouped row marks that child as
+needing the user, and its row opens it. Text typed in the parent's composer
+never answers a child's question: it stays a message to the parent, and a
+written answer goes through Open. The core sends a child's `question.*` and
+`permission.*` events to the windows that have its parent open, and the
+composer reads the children's open questions when the parent opens.
 
 Messages carry the authenticated sender and appear as forwarded messages.
 Claude receives them at a tool boundary; Codex, Muse, pi and Grok can accept
@@ -186,7 +204,9 @@ delivery path and stay available. They wake an idle parent or join its next
 prompt when live steering is unavailable.
 The panel lists children by their summaries and streams none of them. Clicking
 a child opens its conversation in the chat like any thread; its header reads
-"parent title / child title" and the parent's title goes back to it. After a
+"parent title / child title" and the parent's title goes back to it. On a
+phone the parent's title gives its room to the child's: a back arrow to the
+parent in a touch-sized square stands in its place, named by that title. After a
 reconnect, the panel reads the team and coordination views again, since events
 sent while the socket was down reach no client.
 

@@ -8,7 +8,7 @@ let page: BrowserPage;
 let uiUrl: string;
 
 async function settled() {
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(animation => animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {}))])`);
+  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(animation => animation.timeline === document.timeline && animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {}))])`);
 }
 
 beforeAll(async () => {
@@ -24,6 +24,21 @@ beforeEach(async () => {
   // Cold Vite imports belong to fixture setup, before panel interaction deadlines.
   await page.evaluate(`Promise.all([import('/src/components/RightPanel.svelte'), import('/src/components/CoordinationDialog.svelte')])`, 60_000);
 }, 60_000);
+
+/** Coordination is a row of the Panels door's list: the door opens the panel, whose switcher lists it. */
+async function openCoordination() {
+  if (!await page.evaluate(`!!document.querySelector('[data-testid=panel-add]')`)) await page.click('[data-testid=panel-toggle]');
+  await page.waitFor(`document.querySelector('[data-testid=panel-add]')`);
+  await page.click('[data-testid=panel-add]');
+  await page.waitFor(`document.querySelector('[data-testid=panel-add-menu]:not(.closing) [data-value="coordination"]')`);
+  await page.click('[data-testid=panel-add-menu]:not(.closing) [data-value="coordination"]');
+}
+
+/** Maximize and restore are a button of the panel's strip. */
+async function toggleMaximize() {
+  await page.waitFor(`document.querySelector('[data-testid=panel-maximize]')`);
+  await page.click('[data-testid=panel-maximize]');
+}
 
 async function prepareDiscussions() {
   await page.evaluate(`(async () => {
@@ -166,12 +181,12 @@ test('the chat shows one row per discussion, and the panel lists discussions and
   await settled();
   await checkSides();
   await page.screenshot(join(import.meta.dir, '.artifacts', 'agent-discussion-desktop.png'));
-  await page.click('[data-testid=panel-maximize]');
+  await toggleMaximize();
   await page.waitFor(`getComputedStyle(document.querySelector('[data-testid=agent-discussions]')).display !== 'none' && document.querySelector('[data-testid=agent-discussion-view]') !== null`);
   await settled();
   expect(await page.evaluate(`(() => { const list = document.querySelector('[data-testid=agent-discussions]').getBoundingClientRect(); const view = document.querySelector('[data-testid=agent-discussion-view]').getBoundingClientRect(); return list.right <= view.left + 1 && list.width > 200; })()`)).toBe(true);
   await page.screenshot(join(import.meta.dir, '.artifacts', 'agent-discussion-desktop-wide.png'));
-  await page.click('[data-testid=panel-maximize]');
+  await toggleMaximize();
   await page.click(`[data-testid=agent-discussion][data-peer="here/t-bench"]`);
   await page.waitFor(`document.querySelector('[data-testid=agent-discussion-view][data-peer="here/t-bench"]')`);
   expect(await page.evaluate(`(() => { const user = document.querySelector('[data-letter-id="user-delegation"]'); return [user.classList.contains('right'), user.querySelector('.label')?.textContent]; })()`)).toEqual([true, 'You']);
@@ -189,8 +204,7 @@ test('the chat shows one row per discussion, and the panel lists discussions and
   await page.waitFor(`!document.querySelector('[role=menu]:not(.closing)')`);
 
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
-  await page.click('[data-testid="thread-menu-trigger"]');
-  await page.click('[data-value="coordination"]');
+  await openCoordination();
   await page.waitFor(`document.querySelector('[data-testid="coordination-dialog"]')?.open`);
   await settled();
   expect(await page.evaluate(`document.activeElement.closest('[data-testid="coordination-dialog"]') !== null`)).toBe(true);
@@ -205,19 +219,18 @@ test('the chat shows one row per discussion, and the panel lists discussions and
   await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape' });
   await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape' });
   await page.waitFor(`document.querySelector('[data-testid="coordination-dialog"]') === null`);
-  expect(await page.evaluate(`document.activeElement.dataset.testid`)).toBe('thread-menu-trigger');
+  // Closed, the dialog gives the focus back to the door it was opened from.
+  expect(await page.evaluate(`document.activeElement.dataset.testid`)).toBe('panel-add');
 
   // The choice holds when the dialog opens again.
-  await page.click('[data-testid="thread-menu-trigger"]');
-  await page.click('[data-value="coordination"]');
+  await openCoordination();
   await page.waitFor(`document.querySelector('[data-testid="coordination-dialog"]')?.open`);
   expect(await page.evaluate(`document.querySelector('[data-testid="coordination-mode-off"]').getAttribute('aria-checked')`)).toBe('true');
   await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape' });
   await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape' });
   await page.waitFor(`document.querySelector('[data-testid="coordination-dialog"]') === null`);
 
-  await page.click('[data-testid="thread-menu-trigger"]');
-  await page.click('[data-value="coordination"]');
+  await openCoordination();
   await page.waitFor(`document.querySelector('[data-testid="coordination-dialog"]')?.open`);
   await page.evaluate(`window.__boiteTest.workspace.active.open('t-bench')`);
   await page.waitFor(`document.querySelector('[data-testid="coordination-dialog"]') === null`);

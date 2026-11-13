@@ -173,7 +173,9 @@
       {#if providersReachable}<button type="button" onclick={() => workspace.active.showSettings('accounts')}><span class="ui-label">{strings.settings.connectProvider}</span></button>{/if}
     </div>{/if}
   {:else}
-    {#if rows.length > 0}<UsageLimits {rows} {store} loading={reader.busy} completed={reader.landed} onalert={alert} />{/if}
+    <!-- The priority the popup, the tray and the pinned card follow: the owner reorders it here too, on a phone as well. -->
+    {#if rows.length > 0}<UsageLimits {rows} {store} loading={reader.busy} completed={reader.landed} onalert={alert}
+      order={store.settings?.quotaOrder ?? []} onreorder={store.owner ? (quotaOrder) => store.saveSettings({ quotaOrder }) : undefined} />{/if}
     {#if store.owner}<section class="card tracked" data-testid="limits-tracked">
       <h2 class="ui-label-box"><span class="ui-label">{strings.quotas.tracked}</span><InfoTip topic={strings.quotas.tracked} text={strings.quotas.trackedHint} /></h2>
       {#each tracked as row (row.accountId)}
@@ -193,8 +195,8 @@
   {#if store.owner && store.settings && !dashboard}
     <section class="card resume" id="settings-limit-resume">
       <label for="{uid}-resume" class="switch-row">
-        <span class="text ui-label-box"><span class="ui-label" id="{uid}-resume-name">{strings.quotas.autoResume}</span><InfoTip topic={strings.quotas.autoResume} text={strings.quotas.autoResumeHint} /></span>
-        <input id="{uid}-resume" type="checkbox" role="switch" data-testid="setting-auto-resume" aria-labelledby="{uid}-resume-name"
+        <span class="text"><span class="ui-label-box"><span class="ui-label" id="{uid}-resume-name">{strings.quotas.autoResume}</span><InfoTip topic={strings.quotas.autoResume} text={strings.quotas.autoResumeHint} /></span><span class="hint" id="{uid}-resume-effect">{strings.settings.effects.autoResume}</span></span>
+        <input id="{uid}-resume" type="checkbox" role="switch" data-testid="setting-auto-resume" aria-labelledby="{uid}-resume-name" aria-describedby="{uid}-resume-effect"
           checked={store.settings.autoResumeLimitedThreads === true} onchange={(event) => void toggleAutoResume(event.currentTarget)} />
       </label>
     </section>
@@ -222,7 +224,7 @@
   .tracked-account { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 8px; }
   .tracked-account :global(form) { grid-column: 1 / -1; }
   .who { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; font-size: var(--text-sm); }
-  .provider { flex: none; font-weight: 500; }
+  .provider { flex: none; font-weight: 400; }
   .account { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-muted-foreground); }
   @media (max-width: 480px) { .who { flex-direction: column; align-items: flex-start; gap: 2px; } .account { max-width: 100%; } }
   .failed { display: flex; align-items: center; justify-content: space-between; gap: 16px; max-width: var(--settings-width); margin-bottom: 12px; padding: var(--settings-padding); color: var(--color-danger); font-size: var(--text-sm); }

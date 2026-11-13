@@ -135,7 +135,7 @@
 </aside>
 
 <style>
-  .pinned-quota { position: absolute; z-index: 5; width: min(var(--quota-width), calc(100% - 24px)); max-height: min(320px, calc(100% - 24px)); display: flex; flex-direction: column; overflow: hidden; color: var(--color-foreground); background: color-mix(in srgb, var(--color-surface-2) 92%, transparent); border: 1px solid var(--color-edge); border-radius: var(--radius-lg); box-shadow: var(--shadow-e1); opacity: 0.7; transition: opacity var(--dur-2), background-color var(--dur-2); cursor: grab; touch-action: pan-y; }
+  .pinned-quota { position: absolute; z-index: 5; width: min(var(--quota-width), calc(100% - 24px)); max-height: min(320px, calc(100% - 24px)); display: flex; flex-direction: column; overflow: hidden; color: var(--color-foreground); background: color-mix(in srgb, var(--color-surface-2) 92%, transparent); border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); box-shadow: var(--shadow-overlay); opacity: 0.9; transition: opacity var(--dur-2), background-color var(--dur-2); cursor: grab; touch-action: pan-y; }
   .pinned-quota.dragging { z-index: 100; cursor: grabbing; user-select: none; opacity: 1; }
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .pinned-quota:hover, .pinned-quota:focus-within { opacity: 1; background: var(--color-surface-2); }
@@ -159,10 +159,11 @@
   .window { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1fr) 3.3em; align-items: center; gap: 8px; font-size: var(--text-xs); }
   .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-muted-foreground); }
   .amount { text-align: right; font-variant-numeric: tabular-nums; }
-  .amount[data-tone='low'], .amount[data-tone='out'] { color: var(--color-live); }
+  .amount[data-tone='low'] { color: var(--color-caution); }
+  .amount[data-tone='out'] { color: var(--color-danger); }
   .track { height: 4px; overflow: hidden; background: var(--color-surface-3); border-radius: var(--radius-sm); }
   .fill { display: block; height: 100%; background: var(--color-success); border-radius: inherit; transition: width var(--dur-3); }
-  .track[data-tone='low'] .fill { background: var(--color-live); }
+  .track[data-tone='low'] .fill { background: var(--color-caution); }
   .track[data-tone='out'] { background: color-mix(in srgb, var(--color-danger) 35%, var(--color-surface-3)); }
   .track[aria-busy='true'] { filter: saturate(0.15); }
   .stale .track { opacity: 0.45; }

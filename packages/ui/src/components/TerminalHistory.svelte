@@ -128,10 +128,10 @@
     flex-direction: column;
     width: min(520px, calc(100% - 36px));
     max-height: calc(100% - 12px);
-    border: 1px solid var(--color-edge);
-    border-radius: var(--radius-md);
-    background: var(--color-surface);
-    box-shadow: var(--shadow-e2);
+    border: 1px solid var(--overlay-edge);
+    border-radius: var(--radius-overlay);
+    background: var(--overlay-surface);
+    box-shadow: var(--shadow-overlay);
     overflow: hidden;
     animation: pop var(--dur-2) var(--ease-out-quint);
   }

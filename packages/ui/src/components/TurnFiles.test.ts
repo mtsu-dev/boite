@@ -49,6 +49,24 @@ test('new edits retry an open deferred preview and clear its previous error', as
   expect(document.querySelector('[data-testid=diff-view]')).not.toBeNull();
 });
 
+test('the card has one action: its own diff, with the folder\'s whole change set offered under it', async () => {
+  const diff = { kind: 'diff' as const, path: 'a.ts', oldText: 'old\n', newText: 'new\nmore\n' };
+  const openChanges = vi.fn();
+  const files = turnFiles([{ type: 'tool', toolId: 'edit', name: 'Edit', input: { file_path: '/repo/a.ts' }, output: null, status: 'done', documents: [diff] }], '/repo');
+  component = mount(TurnFiles, { target: document.body, props: {
+    store: { openProject: { repository: true }, pickerAvailable: false, panel: { openChanges } } as unknown as Store, files, diffs: [diff], cwd: '/repo',
+    deferred: [], loadDiffs: async () => {},
+  } });
+  flushSync();
+  const header = document.querySelector('[data-testid=turn-files] header, .turn-files header')!;
+  expect(header.querySelector('[data-testid=turn-diff-toggle]')).not.toBeNull();
+  expect(document.querySelector('[data-testid=turn-all-changes]')).toBeNull();
+  document.querySelector<HTMLButtonElement>('[data-testid=turn-diff-toggle]')!.click(); flushSync();
+  await vi.waitFor(() => expect(document.querySelector('[data-testid=diff-view]')).not.toBeNull());
+  document.querySelector<HTMLButtonElement>('[data-testid=turn-all-changes]')!.click();
+  expect(openChanges).toHaveBeenCalledWith('a.ts');
+});
+
 test('leased diffs retry failed reads on reopening without using the legacy loader', async () => {
   const diff = { kind: 'diff' as const, path: 'a.ts', oldText: 'old', newText: 'new' };
   const refresh = vi.fn().mockRejectedValueOnce(new Error('temporarily unavailable')).mockResolvedValue(undefined);

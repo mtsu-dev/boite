@@ -47,7 +47,9 @@ for (const [name, width, height, touch] of [['desktop', 1280, 900, false], ['pho
       const shown = touch ? '1' : '0';
       expect(await page.evaluate<string>(opacity(summary))).toBe(shown);
       expect(await page.evaluate<string>(opacity(stamp))).toBe(shown);
-      expect(await page.evaluate<string>(opacity(ticks))).toBe(shown);
+      // A finger has no pointer to bring settled ticks up: they are not drawn at all, so nothing waits for a hover that never comes.
+      if (touch) expect(await page.evaluate<string>(`getComputedStyle([...document.querySelectorAll('${ticks}')].at(-1)).display`)).toBe('none');
+      else expect(await page.evaluate<string>(opacity(ticks))).toBe(shown);
       if (touch) return;
       await hover(page, summary);
       await settle(page);

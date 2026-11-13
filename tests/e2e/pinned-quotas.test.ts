@@ -9,7 +9,6 @@ let origin: string;
 const card = '[data-testid="pinned-quota"]';
 const account = '[data-testid="pinned-quota-account"]';
 const position = '[data-testid="pinned-quota-position"]';
-const experiment = '[data-testid="experiment-pinned-quotas"]';
 
 beforeAll(async () => {
   const port = await freePort();
@@ -62,11 +61,7 @@ async function fixture() {
 }
 
 async function enableAndPin() {
-  await page.click('[data-testid="nav-settings"]');
-  await page.click('[data-testid="settings-tab-experiments"]');
-  await page.click(experiment);
-  await page.waitFor(`document.querySelector('${experiment}')?.checked === true`);
-  await page.evaluate('globalThis.__boiteTest.workspace.active.showChat()');
+  // Pinned quotas are on in every build: the pin is there with nothing stored.
   await page.click('[data-testid="nav-limits"]');
   await page.click('[data-testid="quota-pin"]');
   await page.click('[data-testid="limits-glance"] button[aria-label="Close"]');
@@ -111,11 +106,8 @@ async function fitsConversation() {
   })()`);
 }
 
-test('Settings enables pinning, and all Claude gateway accounts share a translucent card in every chat corner', async () => {
+test('The limits glance pins the quotas, and all Claude gateway accounts share a translucent card in every chat corner', async () => {
   await boot();
-  await page.click('[data-testid="nav-limits"]');
-  expect(await page.evaluate(`document.querySelector('[data-testid="quota-pin"]')`)).toBeNull();
-  await page.click('[data-testid="limits-glance"] button[aria-label="Close"]');
   await enableAndPin();
   expect(await page.evaluate(`JSON.parse(localStorage.getItem('boite.pinned-quotas.v1'))`)).toEqual({ pinned: true, position: 'bottom-left' });
   expect(await page.evaluate(`Array.from(document.querySelectorAll('${account}')).map(row => [row.dataset.provider, row.dataset.accountId])`)).toEqual([
@@ -239,10 +231,15 @@ test('dock reserves rail space above the foot and leaves the final thread reacha
     const base = store.threads.find(thread => thread.id === 't-trace');
     store.threads = [...store.threads, ...Array.from({ length: 24 }, (_, i) => ({ ...base, id: 'pinned-list-' + i, title: 'Fixture thread ' + String(i + 1).padStart(2, '0'), updatedAt: base.updatedAt - (i + 1) * 1000 }))];
   })()`);
+  // A big project card folds its quiet threads under "N more" (lib/card-fold.ts): unfold them so the list overflows.
+  await page.waitFor(`document.querySelector('[data-testid="sidebar"] [data-testid="project-more"][aria-expanded="false"]')`);
+  await page.evaluate(`document.querySelectorAll('[data-testid="sidebar"] [data-testid="project-more"][aria-expanded="false"]').forEach(button => button.click())`);
+  await page.waitFor(`document.querySelectorAll('[data-project-list] [data-testid="thread-row"]').length > 24`);
   await move('dock');
   expect(await page.evaluate(`(() => {
     const q = document.querySelector('${card}'), list = document.querySelector('[data-project-list]');
-    const foot = q.parentElement.querySelector('.foot');
+    // The desktop rail's foot is the limits line (QuotaLine.svelte) since the redesign.
+    const foot = q.parentElement.querySelector(':scope > .quota-line');
     return !list.contains(q) && q.previousElementSibling === list && q.nextElementSibling === foot
       && list.getBoundingClientRect().bottom <= q.getBoundingClientRect().top
       && q.getBoundingClientRect().bottom <= foot.getBoundingClientRect().top;
@@ -271,8 +268,6 @@ test('a saved dock preference uses the bot sidebar and reserves space in a phone
   await enableAndPin();
   await move('dock');
   await page.evaluate(`(async () => {
-    const { setExperiment } = await import('/src/lib/experiments.ts');
-    setExperiment('resident-agents', true);
     const store = globalThis.__boiteTest.workspace.active;
     const agent = (await store.client.call('agents.snapshot', {})).profiles.find(profile => profile.name === 'Mira');
     store.showAgents(agent.id);
@@ -327,7 +322,7 @@ test('the owning machine refreshes explicitly, and model and provider switches s
   expect(page.errors()).toEqual([]);
 }, 60_000);
 
-test('reload restores pin and placement, unpin persists, and switching off the experiment hides the card', async () => {
+test('reload restores pin and placement, and unpin persists', async () => {
   await boot();
   await enableAndPin();
   await move('top-right');
@@ -342,13 +337,6 @@ test('reload restores pin and placement, unpin persists, and switching off the e
   await page.click('[data-testid="quota-pin"]');
   await page.click('[data-testid="limits-glance"] button[aria-label="Close"]');
   await page.waitFor(`document.querySelector('${card}')`);
-  await page.click('[data-testid="nav-settings"]');
-  await page.click('[data-testid="settings-tab-experiments"]');
-  await page.click(experiment);
-  await page.evaluate('globalThis.__boiteTest.workspace.active.showChat()');
-  await page.waitFor(`!document.querySelector('${card}')`);
-  await page.click('[data-testid="nav-limits"]');
-  expect(await page.evaluate(`document.querySelector('[data-testid="quota-pin"]')`)).toBeNull();
   expect(page.errors()).toEqual([]);
 }, 60_000);
 

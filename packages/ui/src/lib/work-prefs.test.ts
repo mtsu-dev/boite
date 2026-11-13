@@ -93,5 +93,5 @@ test('a record that does not read like one is ignored, and unknown buttons are d
     panel: 'launcher',
     hidden: []
   });
-  expect(parseWork('{"hidden":["panel.trace","nope",3,"panel.trace","header.project"]}')?.hidden).toEqual(['header.project', 'panel.trace']);
+  expect(parseWork('{"hidden":["panel.trace","nope",3,"panel.trace","header.branch"]}')?.hidden).toEqual(['header.branch', 'panel.trace']);
 });

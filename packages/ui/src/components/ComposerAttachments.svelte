@@ -184,12 +184,12 @@
 
   .image-open { display: flex; width: 100%; height: 100%; padding: 0; border: none; border-radius: inherit; background: transparent; box-shadow: none; }
   .attachment img { display: block; width: 100%; height: 100%; object-fit: cover; }
-  .attachment:hover, .attachment:focus-within, .attachment.highlighted, .attachment.selected, .more.highlighted { border-color: var(--color-accent); background: var(--color-accent-soft); }
+  .attachment:hover, .attachment:focus-within, .attachment.highlighted, .attachment.selected, .more.highlighted { border-color: var(--color-muted-foreground); background: var(--color-active); }
   .attachment.highlighted, .more.highlighted { box-shadow: 0 0 0 2px var(--color-accent-soft); }
 
   .image-preview { margin: 10px 10px 0; overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-background); animation: pop var(--dur-2) var(--ease-out-quint); }
   .image-preview.closing { animation-name: pop-out; }
-  .image-preview.highlighted { border-color: var(--color-accent); }
+  .image-preview.highlighted { border-color: var(--color-muted-foreground); }
   .image-preview header { display: flex; align-items: center; gap: 10px; padding: 2px 4px 2px 12px; font-size: var(--text-xs); }
   .preview-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-muted-foreground); }
   .preview-image { display: block; width: 100%; height: auto; padding: 0; border: none; border-radius: 0; background: transparent; box-shadow: none; cursor: zoom-out; }

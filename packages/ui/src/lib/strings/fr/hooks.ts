@@ -2,8 +2,8 @@ import type { Translation } from '../../i18n.svelte';
 
 export const fr: Translation = {
   hooks: {
-    heading: 'Hooks',
-    description: 'Les scripts que vos agents lancent sur leurs propres événements. Les compteurs et la liste récente partent du démarrage de Boite sur cette machine.',
+    heading: 'Scripts lancés par vos agents',
+    description: 'Hooks : les scripts que vos agents lancent sur leurs propres événements. Les compteurs et la liste récente partent du démarrage de Boite sur cette machine.',
     refresh: 'Actualiser les hooks',
     missing: 'Mettez Boite à jour sur cette machine pour voir vos hooks.',
     hookOne: '{count} hook', hookMany: '{count} hooks',

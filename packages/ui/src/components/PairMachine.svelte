@@ -205,7 +205,6 @@
   .link-target, .error, .leaving { font-size: var(--text-sm); overflow-wrap: anywhere; margin: 0; }
   .link-target { color: var(--color-muted-foreground); }
   .leaving { color: var(--color-foreground); }
-  .error { color: var(--color-danger); }
   .mobile .head-actions { flex-direction: column; }
   .mobile .add-open { width: 100%; min-height: var(--touch-target); }
   .mobile .add { padding: 16px; }

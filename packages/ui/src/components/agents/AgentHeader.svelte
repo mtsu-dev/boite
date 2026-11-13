@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ArrowLeft, Brain, Ellipsis, Archive, Pause, Play, LampDesk, RotateCcw, Settings2, TriangleAlert } from '@lucide/svelte';
+  import { ArrowLeft, Brain, ChevronDown, Ellipsis, Archive, Pause, Play, RotateCcw, Search, Settings2 } from '@lucide/svelte';
   import type { AgentProfile, AgentStatus, ThreadSummary } from '@boite/contracts';
   import { moodOf, liveState, liveStep, resetBuiltin, waitingOn, type AgentsView } from '../../lib/agents.svelte';
   import { confirmArchive } from '../../lib/agent-menu';
@@ -11,15 +11,26 @@
   import Menu from '../Menu.svelte';
   import Elapsed from '../Elapsed.svelte';
   import AgentAvatar from './AgentAvatar.svelte';
+  import { avatarLit } from '../../lib/avatar-lit';
+  import StatusMark from '../StatusMark.svelte';
   import BuiltinBadge from './BuiltinBadge.svelte';
+  import PanelDoor from '../PanelDoor.svelte';
+  import { separator, type MenuItem } from '../../lib/menu';
+  import { routeGone } from '../../lib/agent-route';
+  import { tick } from 'svelte';
 
   /**
-   * The top of an agent's conversation: its robot in its ring (breathing
-   * while it works), its name and one live line that says what it does this
-   * second (the step its turn is on, with the time it has run), what it waits
-   * on, or when it next wakes. Beside it the
-   * desk toggle and a menu with its settings, its brain, pause and archive. A
-   * problem that keeps it from running shows under it with the way to fix it.
+   * The top of an agent's conversation, in a thread header's pattern: on a
+   * desktop its name where a thread's crumb starts, the chevron that opens
+   * its view menu (find in the conversation, then its settings, its brain,
+   * pause and archive), and the same "Panels" door (`PanelDoor.svelte`),
+   * which opens on the desk. On a phone (`onback`) it is the screen's only
+   * head: its
+   * robot in its ring (breathing while it works), its name and one live line
+   * that says what it does this second (the step its turn is on, with the time
+   * it has run), what it waits on, or when it next wakes. A problem that keeps
+   * it from running shows under it, from the page, with the way to fix it.
+   * On a desktop the page draws this line in the window's top bar.
    */
   let { store, view, agent, status, thread, onpane, onback }: {
     store: Store;
@@ -40,10 +51,31 @@
   const state = $derived(liveState(agent, status, thread, !!pending));
   const step = $derived(liveStep(status, thread));
   const since = $derived(thread?.status === 'running' ? thread.runningSince ?? thread.progress?.since ?? null : null);
-  /** The desk is a surface of its thread's panel: pressed while the panel shows it. */
-  const deskOpen = $derived(store.panelOpen && store.panel.active?.kind === 'desk');
+  /** The panel button, as on a thread's header: it opens the panel on the desk, whose selector holds every other panel. */
+  function togglePanel() {
+    if (store.panelOpen) store.panel.hide();
+    else store.panel.toggleKind('desk');
+  }
 
-  const menuItems = $derived([
+  /** A bot whose account was removed failed for that reason: the line says what it needs, the banner how to give it. */
+  const gone = $derived(routeGone(store, agent.selection));
+
+  /**
+   * The desktop's way back once the bot column is folded: the column again,
+   * its open row focused, as a thread's project crumb does for its list.
+   */
+  async function backToList() {
+    if (store.sidebarCollapsed) store.toggleSidebar();
+    await tick();
+    document.querySelector<HTMLElement>(`[data-testid="agent-entry-${CSS.escape(agent.id)}"]`)?.focus({ preventScroll: true });
+  }
+
+  /** How many panels the door holds, as a thread's header counts them. */
+  const panelCount = $derived(store.panel.surfaces.length);
+
+  /** The thread menu's order: the view's own Find first, then what is done to the bot, its danger last. */
+  const menuItems = $derived<MenuItem[]>([
+    ...(thread ? [{ id: 'find', label: strings.palette.find, glyph: Search }, separator('sep-find')] : []),
     { id: 'settings', label: labels.settings, glyph: Settings2 },
     { id: 'brain', label: labels.brain, glyph: Brain },
     ...(store.owner && agent.status !== 'archived' ? [
@@ -59,7 +91,10 @@
     await view.call('agents.profile.save', { id, expectedRevision: revision, value: { ...value, status: next } });
   }
   async function pick(id: string) {
-    if (id === 'settings' || id === 'brain') onpane(id);
+    if (id === 'find') {
+      store.findOpen = true;
+      store.findRequest += 1;
+    } else if (id === 'settings' || id === 'brain') onpane(id);
     else if (id === 'pause') await setStatus('paused');
     else if (id === 'resume') await setStatus('active');
     else if (id === 'reset') await resetBuiltin(view, agent);
@@ -67,45 +102,64 @@
   }
 </script>
 
-<header class="agent-head" data-state={state} data-testid="agent-header">
+<header class="agent-head" class:compact={!onback} data-state={state} data-testid="agent-header">
   {#if onback}
     <button type="button" class="ghost icon agent-mobile-back" aria-label={labels.list} title={labels.list} onclick={onback} data-testid="agent-back"><ArrowLeft size={18} strokeWidth={1.75} /></button>
   {/if}
+  {#if !onback && store.sidebarCollapsed}
+    <!-- The column folded away: a named way back to every bot, before this one's name. -->
+    <button type="button" class="ghost agent-crumb" data-testid="agent-list-crumb" title={labels.backToList} onclick={() => void backToList()}><span class="ui-label">{labels.heading}</span></button>
+    <span class="agent-crumb-sep" aria-hidden="true">/</span>
+  {/if}
   <button type="button" class="ghost agent-head-identity" onclick={() => onpane('settings')} aria-label={fill(labels.settingsOf, { name: agent.name })}>
-    <span class="agent-head-robot"><AgentAvatar kind="profile" id={agent.id} name={agent.name} avatar={agent.avatar} mood={moodOf(state)} size={36} ring /></span>
+    {#if onback}<span class="agent-head-robot"><AgentAvatar kind="profile" id={agent.id} name={agent.name} avatar={agent.avatar} mood={moodOf(state)} size={32} lit={avatarLit({ open: true })} /></span>{/if}
     <span class="agent-head-text">
-      {#if agent.builtin}<span class="agent-head-name"><strong>{agent.name}</strong><BuiltinBadge word /></span>{:else}<strong>{agent.name}</strong>{/if}
-      <span class="agent-live" data-state={state} aria-live="polite" data-testid="agent-live">
-        {#if state === 'working'}
-          <span class="agent-live-text">{step ?? labels.state.working}</span>
-          {#if since !== null}<span class="agent-live-time">· <Elapsed startedAt={since} finishedAt={null} active /></span>{/if}
-        {:else if state === 'queued'}
-          <span class="agent-live-text">{labels.state.queued}</span>
-        {:else if state === 'waiting'}
-          <span class="agent-live-text">{pending ? fill(labels.waitingOn, { what: pending }) : labels.state.waiting}</span>
-        {:else if state === 'error'}
-          <span class="agent-live-text">{labels.state.error}</span>
-        {:else if state === 'paused' || state === 'archived'}
-          <span class="agent-live-text">{labels.state[state]}</span>
-        {:else if status?.nextWake}
-          <span class="agent-live-text">{fill(labels.nextWake, { name: status.nextWake.label, when: dateTime(status.nextWake.at, now) })}</span>
-        {:else}
-          <span class="agent-live-text">{agent.domain || labels.state.idle}</span>
-        {/if}
-      </span>
+      <span class="agent-head-name"><strong>{agent.name}</strong>{#if agent.builtin}<BuiltinBadge word />{/if}</span>
+      {#if onback}
+        <span class="agent-live" data-state={state} aria-live="polite" data-testid="agent-live">
+          <!-- One signal per state: the mark carries the hue, the words stay neutral (AgentRow.svelte). -->
+          {#if state === 'working' || state === 'waiting' || state === 'error'}<StatusMark tone={state === 'working' ? 'running' : state} label={labels.state[state]} />{/if}
+          {#if state === 'working'}
+            <span class="agent-live-text">{step ?? labels.state.working}</span>
+            {#if since !== null}<span class="agent-live-time">· <Elapsed startedAt={since} finishedAt={null} active /></span>{/if}
+          {:else if state === 'queued'}
+            <span class="agent-live-text">{labels.state.queued}</span>
+          {:else if state === 'waiting'}
+            <span class="agent-live-text">{pending ? fill(labels.waitingOn, { what: pending }) : labels.state.waiting}</span>
+          {:else if state === 'error'}
+            <span class="agent-live-text" data-testid="agent-live-error">{gone ? labels.needsAccount : labels.state.error}</span>
+          {:else if state === 'paused' || state === 'archived'}
+            <span class="agent-live-text">{labels.state[state]}</span>
+          {:else if status?.nextWake}
+            <span class="agent-live-text">{fill(labels.nextWake, { name: status.nextWake.label, when: dateTime(status.nextWake.at, now) })}</span>
+          {:else}
+            <span class="agent-live-text">{agent.domain || labels.state.idle}</span>
+          {/if}
+        </span>
+      {/if}
     </span>
   </button>
+  {#if !onback}
+    <!-- The view menu right after the name, as a thread's chevron after its title. -->
+    <span class="agent-head-menu">
+      <Menu placement="bottom" variant="text" label={labels.more} heading={agent.name} testid="agent-menu" items={menuItems} onpick={id => void pick(id)}>
+        <ChevronDown size={16} />
+      </Menu>
+    </span>
+  {/if}
   <nav class="agent-head-actions" aria-label={agent.name}>
-    <button type="button" class="ghost icon" class:active={deskOpen} aria-pressed={deskOpen} title={labels.desk} aria-label={labels.desk} onclick={() => store.panel.toggleKind('desk')} data-testid="agent-desk-toggle"><LampDesk size={17} strokeWidth={1.75} /></button>
-    <Menu placement="bottom" align="end" variant="ghost" label={labels.more} testid="agent-menu" items={menuItems} onpick={id => void pick(id)}>
-      <Ellipsis size={18} strokeWidth={1.75} />
-    </Menu>
+    <PanelDoor {store} count={panelCount} ontoggle={togglePanel} testid="agent-desk-toggle" />
+    {#if onback}
+      <Menu placement="bottom" align="end" variant="ghost" label={labels.more} heading={agent.name} testid="agent-menu" items={menuItems} onpick={id => void pick(id)}>
+        <Ellipsis size={18} strokeWidth={1.75} />
+      </Menu>
+    {/if}
   </nav>
 </header>
-{#if status?.problem && agent.status !== 'archived'}
-  <div class="agent-problem" role="alert" data-testid="agent-problem">
-    <TriangleAlert size={15} strokeWidth={1.75} />
-    <span>{status.problem}</span>
-    {#if store.owner}<button type="button" class="small" onclick={() => onpane('settings')}>{labels.fix}</button>{/if}
-  </div>
-{/if}
+
+<style>
+  .agent-crumb { flex: none; height: var(--control); padding: 0 6px; margin-left: -6px; color: var(--color-muted-foreground); font-weight: 500; }
+  .agent-crumb:hover { color: var(--color-foreground); }
+  /* The slash sits midway, as in a thread's "project / title": the name's button has a narrower inset than a title's. */
+  .agent-crumb-sep { flex: none; margin: 0 3px 0 -4px; color: var(--color-subtle); }
+</style>

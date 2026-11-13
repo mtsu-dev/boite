@@ -1,8 +1,7 @@
 import { afterEach, expect, onTestFinished, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
-import type { QuestionRequest, Thread, ThreadActivity, ThreadSummary } from '@boite/contracts';
+import type { Thread, ThreadActivity } from '@boite/contracts';
 import { Store } from '../lib/store.svelte';
-import { replyTarget } from '../lib/question-reply.svelte';
 import ThreadActivityView from './ThreadActivity.svelte';
 import { workspace } from '../lib/workspace.svelte';
 
@@ -26,47 +25,6 @@ const tasks = () => [
   { id: 'two', text: 'Check the result', status: 'in_progress' as const }
 ];
 function toggle() { return document.querySelector<HTMLButtonElement>('[data-testid=activity-tasks-toggle]')!; }
-const question = (id: string, createdAt: number): QuestionRequest => ({
-  id, threadId: 'thread', turnId: 'turn', text: `Question ${id}`, options: [{ id: 'yes', label: 'Yes' }], allowText: true, multiple: false, async: true, createdAt
-});
-const shownQuestion = () => document.querySelector('[data-testid=activity-question]:not([hidden])')?.getAttribute('data-question');
-
-test('pending questions open oldest first, including a restored unordered list', () => {
-  const store = render({ goal: null, loop: null, tasks: [] });
-  flushSync(() => { store.pendingQuestions = [question('middle', 2), question('oldest', 1), question('newest', 3)]; });
-  expect(shownQuestion()).toBe('oldest');
-  document.querySelector<HTMLButtonElement>('[data-testid=activity-question-next]')!.click();
-  flushSync();
-  expect(shownQuestion()).toBe('middle');
-});
-
-test('new questions leave the current question and selection in place, then answers advance oldest first', () => {
-  const store = render({ goal: null, loop: null, tasks: [] });
-  flushSync(() => { store.pendingQuestions = [question('oldest', 1)]; });
-  const option = document.querySelector<HTMLButtonElement>('[data-testid=question-option]')!;
-  option.click();
-  flushSync();
-  const fold = document.querySelector<HTMLButtonElement>('[data-testid=activity-question-toggle]')!;
-  fold.click();
-  flushSync();
-  expect(fold.getAttribute('aria-expanded')).toBe('false');
-  flushSync(() => { store.pendingQuestions = [...store.pendingQuestions, question('middle', 2), question('newest', 3)]; });
-  expect(fold.getAttribute('aria-expanded')).toBe('false');
-  expect(shownQuestion()).toBe('oldest');
-  expect(document.querySelector('[data-testid=activity-question-index]')!.textContent).toBe('1 of 3');
-  expect(option.getAttribute('aria-checked')).toBe('true');
-  // Explicit navigation remains possible, and later arrivals do not steal it.
-  document.querySelector<HTMLButtonElement>('[data-testid=activity-question-next]')!.click();
-  flushSync();
-  expect(shownQuestion()).toBe('middle');
-  flushSync(() => { store.pendingQuestions = [...store.pendingQuestions, question('last', 4)]; });
-  expect(fold.getAttribute('aria-expanded')).toBe('false');
-  expect(shownQuestion()).toBe('middle');
-  flushSync(() => { store.pendingQuestions = store.pendingQuestions.filter(q => q.id !== 'middle'); });
-  expect(shownQuestion()).toBe('oldest');
-  flushSync(() => { store.pendingQuestions = store.pendingQuestions.filter(q => q.id !== 'oldest'); });
-  expect(shownQuestion()).toBe('newest');
-});
 
 test('hover keeps tasks collapsed and only explicit disclosure opens them', () => {
   render({ goal: null, loop: null, tasks: tasks() });
@@ -123,86 +81,6 @@ test('pause targets the owning store and disabled control prevents duplicate req
   flushSync();
   expect(call).toHaveBeenCalledWith('threads.activity.control', { threadId: 'thread', kind: 'goal', action: 'pause' });
   await vi.waitFor(() => expect(document.querySelector('[aria-label=Resume]')).not.toBeNull());
-});
-
-test('another thread\'s question comes up open over one folded here, as many questions as before', () => {
-  const question = (id: string, threadId: string): QuestionRequest => ({
-    id, threadId, turnId: 'turn', text: `Which way for ${threadId}?`, options: [], allowText: true, multiple: false, async: true, createdAt: 1
-  });
-  const store = render({ goal: null, loop: null, tasks: [] });
-  flushSync(() => { store.pendingQuestions = [question('first', 'thread'), question('second', 'other')]; });
-  expect(document.querySelector('section')!.classList.contains('inline')).toBe(true);
-  expect(document.querySelector('[data-testid=composer-reply]')!.getAttribute('data-question')).toBe('first');
-  expect(document.querySelector('[data-testid=question-reply-hint], [data-testid=question-submit]')).toBeNull();
-  const fold = () => document.querySelector<HTMLButtonElement>('[data-testid=activity-question-toggle]')!;
-  fold().click();
-  flushSync();
-  expect(fold().getAttribute('aria-expanded')).toBe('false');
-  flushSync(() => { store.openThread = { id: 'other', activity: { goal: null, loop: null, tasks: [] } } as unknown as Thread; });
-  expect(fold().getAttribute('aria-expanded')).toBe('true');
-  expect(document.querySelector('[data-testid=activity-question]:not([hidden])')!.getAttribute('data-question')).toBe('second');
-});
-
-test('a subagent\'s questions stay out of its parent\'s dock while permissions still link to the child', () => {
-  const question = (id: string, threadId: string, async: boolean): QuestionRequest => ({
-    id, threadId, turnId: 'turn', text: `Which way for ${id}?`, options: [{ id: 'a', label: 'A' }], allowText: true, multiple: false, ...(async ? { async: true } : {}), createdAt: 1
-  });
-  const store = render({ goal: null, loop: null, tasks: [] });
-  const open = vi.spyOn(store, 'open').mockResolvedValue(undefined as never);
-  const row = (id: string, title: string, parentThreadId: string | null, archived = false) => ({ id, title, parentThreadId, archived, status: 'running' }) as ThreadSummary;
-  flushSync(() => {
-    store.threads = [row('thread', 'Parent', null), row('child', 'Migrate the keys', 'thread'), row('gone', 'Archived child', 'thread', true), row('stranger', 'Elsewhere', null)];
-    // Its own question without stopping, a child's of both kinds, and questions no child of this thread asked.
-    store.pendingQuestions = [question('own', 'thread', true), question('child-async', 'child', true), question('child-stop', 'child', false), question('archived', 'gone', true), question('stranger', 'stranger', true)];
-    store.pendingPermissions = [{ id: 'perm', threadId: 'child', turnId: 'turn', toolName: 'Bash', input: { command: 'bun run migrate' }, description: 'Run it', createdAt: 2 }];
-  });
-  const docked = () => [...document.querySelectorAll<HTMLElement>('[data-testid=activity-question]')];
-  expect(docked().map(card => card.dataset['question'])).toEqual(['own']);
-  const shown = () => document.querySelector<HTMLElement>('[data-testid=activity-question]:not([hidden])')!;
-  expect(shown().dataset['question']).toBe('own');
-  expect(shown().querySelector('[data-testid=activity-subagent-question]')).toBeNull();
-  expect(replyTarget(store)?.id).toBe('own');
-
-  const wait = document.querySelector<HTMLElement>('[data-testid=activity-subagent-permission]')!;
-  expect(wait.dataset['thread']).toBe('child');
-  expect(wait.textContent).toContain('Migrate the keys waits for your permission');
-  expect(wait.textContent).toContain('Run a command');
-  wait.querySelector<HTMLButtonElement>('[data-testid=activity-open-subagent]')!.click();
-  expect(open).toHaveBeenLastCalledWith('child');
-});
-
-test('the chatbar links child questions on their owning machine without taking the parent reply', async () => {
-  const store = render(null);
-  const select = vi.spyOn(workspace, 'select').mockResolvedValue(undefined);
-  const remoteStore = new Store();
-  vi.spyOn(workspace, 'machineOf').mockReturnValue({ id: 'other-machine', label: 'Other machine', store: remoteStore });
-  flushSync(() => { store.threads = [{ id: 'thread', subagentQuestions: [
-    { threadId: 'child', title: 'Check the parser' },
-    { threadId: 'child', title: 'Remote parser', machine: { coreId: 'other-core', name: 'Other machine' } }
-  ] } as ThreadSummary]; });
-  const bar = document.querySelector('[data-testid=thread-activity]')!;
-  expect(bar).not.toBeNull();
-  expect(bar.classList.contains('hidden')).toBe(false);
-  expect(bar.classList.contains('inline')).toBe(true);
-  const alerts = bar.querySelectorAll<HTMLButtonElement>('[data-testid=subagent-question-alert]');
-  expect(alerts).toHaveLength(2);
-  expect(alerts[0]!.textContent).toContain('A subagent has a question');
-  expect(alerts[0]!.textContent).toContain('Check the parser');
-  expect(replyTarget(store)).toBeNull();
-  alerts[0]!.click();
-  expect(select).toHaveBeenCalledExactlyOnceWith(store, 'child');
-  expect(alerts[1]!.disabled).toBe(true);
-  flushSync(() => { remoteStore.connection = 'ready'; });
-  expect(alerts[1]!.disabled).toBe(false);
-  alerts[1]!.click();
-  expect(select).toHaveBeenLastCalledWith(remoteStore, 'child');
-  flushSync(() => { store.pendingQuestions = [question('own', 1)]; });
-  expect(replyTarget(store)?.id).toBe('own');
-  flushSync(() => { store.threads = [{ id: 'thread', subagentQuestions: [] } as unknown as ThreadSummary]; });
-  expect(document.querySelector('[data-testid=subagent-question-alert]')).toBeNull();
-  expect(replyTarget(store)?.id).toBe('own');
-  flushSync(() => { store.pendingQuestions = []; });
-  expect(document.querySelector('[data-testid=thread-activity]')).toBeNull();
 });
 
 test('a blocked goal asks for an answer and its reply button focuses the composer', () => {

@@ -70,13 +70,10 @@ test('a group contact keeps both sides of its exchange in the initiating convers
   // As the core: routed contact mail outside a shared project holds the recipient.
   expect((await source!.call('threads.get', { threadId: 't-trace' })).contactHold).toEqual({ contacts: [mine[1]!.contact!.name] });
   expect((await gateway!.call('collaboration.get', { threadId: 't-trace' })).messages).toEqual([]);
-  // A request needs the Operator: an ordinary thread's waits for it, the Operator's own goes out through the gateway.
-  await expect(source!.call('collaboration.ask', { threadId: 't-trace', contact: 'outside', text: 'x' })).rejects.toMatchObject({ code: RpcErrorCode.Refused });
+  // A request that names no contact needs the Operator to pick one; one that names it goes out through the gateway.
+  await expect(source!.call('collaboration.ask', { threadId: 't-trace', text: 'x' })).rejects.toMatchObject({ code: RpcErrorCode.Refused });
   await source!.call('agents.builtin.ensure', { kind: 'contacts' });
   const operator = (await source!.call('contacts.get', {})).bot!.threadId;
-  const waiting = await source!.call('collaboration.ask', { threadId: 't-trace', contact: 'outside', text: 'An agent for the notes project' });
-  expect([waiting.stage, waiting.coreId]).toEqual(['bot', 'core-outside']);
-  expect((await outside!.call('contacts.get', {})).requests.some(request => request.text === waiting.text)).toBe(false);
   const asked = await source!.call('collaboration.ask', { threadId: operator, contact: 'outside', text: 'An agent for the notes project' });
   expect(asked.from.coreId).toBe('core-source');
   const incoming = (await outside!.call('contacts.get', {})).requests.find(request => request.id === asked.id)!;

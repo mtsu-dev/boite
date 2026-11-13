@@ -341,15 +341,15 @@
     .counter.done { border-width: 11px 0; }
     .counter.done.active { border-color: transparent; background-clip: padding-box; box-shadow: inset 0 0 0 1px var(--color-edge); }
   }
-  /* A dragged thread can land on an idle project: same dashed edge and accent fill as a project section. */
+  /* A dragged thread can land on an idle project: same edge and neutral fill as a project section. */
   :global(html.thread-dragging) li:not(.candidate) {
     opacity: 0.6;
   }
   li.candidate {
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 45%, var(--color-border));
+    box-shadow: inset 0 0 0 1px var(--color-edge);
   }
   li.drop {
     background: var(--color-accent-soft);
-    box-shadow: inset 0 0 0 1px var(--color-accent), 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
+    box-shadow: inset 0 0 0 1px var(--color-muted-foreground);
   }
 </style>

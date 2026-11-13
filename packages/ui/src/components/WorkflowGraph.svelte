@@ -8,7 +8,7 @@
   import Elapsed from './Elapsed.svelte';
   import ProviderLogo from './ProviderLogo.svelte';
   import StatusMark from './StatusMark.svelte';
-  import { workflowTone } from '../lib/thread-state';
+  import { workflowTone } from '../lib/status-tone';
 
   /**
    * The run top to bottom, one row per dependency level, the steps of a row
@@ -240,7 +240,7 @@
   .loop-tip.live { fill: color-mix(in srgb, var(--color-live) 75%, transparent); }
   .loop-tip.failed { fill: color-mix(in srgb, var(--color-danger) 65%, transparent); }
   .loop-tip.over { fill: color-mix(in srgb, var(--color-success) 55%, transparent); }
-  .loop-mark { position: absolute; z-index: 1; width: 16px; height: 16px; display: grid; place-items: center; transform: translate(-50%, -50%); border: 1px solid var(--color-border); border-radius: var(--radius-full); background: var(--color-surface-2); color: var(--color-muted-foreground); pointer-events: none; }
+  .loop-mark { position: absolute; z-index: 1; width: 16px; height: 16px; display: grid; place-items: center; transform: translate(-50%, -50%); border: 1px solid var(--color-border); border-radius: var(--radius-full); background: var(--color-surface-2); color: var(--color-muted-foreground); pointer-events: none; transition-property: none; }
   .loop-mark.live { border-color: color-mix(in srgb, var(--color-live) 55%, var(--color-border)); color: var(--color-live); }
   .loop-mark.failed { border-color: color-mix(in srgb, var(--color-danger) 55%, var(--color-border)); color: var(--color-danger); }
   .loop-mark.over { color: var(--color-success); }
@@ -259,7 +259,7 @@
   .down { align-self: center; display: grid; place-items: center; height: 26px; color: var(--color-subtle); }
   .node { position: relative; width: 100%; height: auto; min-height: 0; padding: 9px 10px; display: flex; flex-direction: column; align-items: stretch; gap: 5px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); box-shadow: var(--shadow-e1); color: var(--color-foreground); text-align: left; font-weight: 400; transition: background var(--dur-2) var(--ease-out-quint), border-color var(--dur-2) var(--ease-out-quint); }
   .node:hover { background: color-mix(in srgb, var(--color-surface-2) 100%, var(--color-foreground) 4%); border-color: var(--color-edge); }
-  .node:focus-visible { outline: none; border-color: var(--color-edge); background: color-mix(in srgb, var(--color-surface-2) 100%, var(--color-foreground) 4%); }
+  .node:focus-visible { border-color: var(--color-edge); background: color-mix(in srgb, var(--color-surface-2) 100%, var(--color-foreground) 4%); }
   .node.selected { border-color: var(--color-foreground); }
   .node.running { border-color: color-mix(in srgb, var(--color-live) 45%, var(--color-border)); }
   .node.failed { border-color: color-mix(in srgb, var(--color-danger) 55%, var(--color-border)); }

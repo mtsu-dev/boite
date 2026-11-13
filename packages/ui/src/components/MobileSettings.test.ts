@@ -6,6 +6,8 @@ import { closeTour } from '../lib/onboarding.svelte';
 import { archiveThread } from '../lib/archive';
 import type { FakeClient } from '../lib/fake-client';
 import { workspace } from '../lib/workspace.svelte';
+import { experimentOn } from '../lib/experiments.svelte';
+import { strings } from '../lib/strings';
 
 /** The phone has no General page: the archive it can fill must be reachable from its own settings list. */
 
@@ -68,7 +70,7 @@ test('a thread archived on the phone comes back from its own settings list', asy
   client.setMergedPrFixture(merged.id, { repository: 'github.com/example/repo', branch: merged.branch!, tip: 'a'.repeat(40), clean: true, candidates: [{ repository: 'github.com/example/repo', branch: merged.branch!, sha: 'a'.repeat(40), number: 7, url: 'https://github.com/example/repo/pull/7', mergedAt: '2026-10-01T12:00:00Z' }] });
   expect(await client.sweepMergedPrArchives()).toBe(1);
   store.showSettings('general');
-  await waitFor(() => document.querySelector('[data-testid=mobile-settings-home]') !== null);
+  await waitFor(() => document.querySelector('[data-testid=mobile-settings-general]') !== null);
   query<HTMLButtonElement>('[data-testid=mobile-settings-archived]').click();
   // The page of its own reads the list at once: no second tap on Show.
   await waitFor(() => document.querySelector('[data-testid=archived-restore]') !== null);
@@ -80,6 +82,9 @@ test('a thread archived on the phone comes back from its own settings list', asy
   query<HTMLButtonElement>('[data-thread-id=t-trace] [data-testid=archived-restore]').click();
   await waitFor(() => store.threads.find((t) => t.id === 't-trace')?.archived === false);
 
+  // Back climbs to the archive's group, General, then Home.
+  query<HTMLButtonElement>('[data-testid=mobile-settings-back]').click();
+  await waitFor(() => document.querySelector('[data-testid=mobile-settings-general]') !== null);
   query<HTMLButtonElement>('[data-testid=mobile-settings-back]').click();
   await waitFor(() => document.querySelector('[data-testid=mobile-settings-home]') !== null);
 
@@ -96,7 +101,7 @@ test('a thread archived on the phone comes back from its own settings list', asy
   expect(await client.sweepMergedPrArchives()).toBe(0);
 });
 
-test('the phone settings hold this phone\'s three screens and the machine\'s essentials, Usage and Limits on one screen', async () => {
+test('the phone settings list the desktop\'s families, each page a peer row, General holding the phone\'s pages, Usage and Limits on one screen', async () => {
   phoneWidth();
   // The usage chart and the composer measure themselves; jsdom has no observer.
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
@@ -113,34 +118,75 @@ test('the phone settings hold this phone\'s three screens and the machine\'s ess
   running = mount(App, { target });
   await waitFor(() => store.booted && (store.openThread !== null || store.draft !== null));
 
-  const home = () => document.querySelector('[data-testid=mobile-settings-home]') !== null;
-  const back = async () => { query<HTMLButtonElement>('[data-testid=mobile-settings-back]').click(); await waitFor(home); };
+  const shown = (id: string) => () => document.querySelector(`[data-testid=${id}]`) !== null;
+  const home = shown('mobile-settings-home');
+  const back = async (to = home) => { query<HTMLButtonElement>('[data-testid=mobile-settings-back]').click(); await waitFor(to); };
+  const rows = (screen: string) => [...document.querySelectorAll<HTMLElement>(`[data-testid=${screen}] .row`)].map(row => row.dataset.testid);
+  const general = shown('mobile-settings-general');
+  const advanced = shown('mobile-settings-advanced');
+  const open = async (id: string, screen: () => boolean) => { query<HTMLButtonElement>(`[data-testid=${id}]`).click(); await waitFor(screen); };
   store.showSettings();
   await waitFor(home);
-  expect([...document.querySelectorAll<HTMLElement>('[data-testid=mobile-settings-home] .row')].map(row => row.dataset.testid)).toEqual([
-    'mobile-settings-phone', 'settings-tab-appearance', 'mobile-settings-privacy', 'settings-tab-experiments',
-    'mobile-settings-connection', 'settings-tab-usage', 'settings-tab-voice', 'settings-tab-plugins', 'mobile-settings-browser-profiles', 'mobile-settings-compaction', 'mobile-settings-windows', 'mobile-settings-archived',
-    'mobile-settings-secrets'
+  expect(rows('mobile-settings-home')).toEqual([
+    'settings-tab-general', 'settings-tab-voice', 'settings-tab-appearance', 'settings-tab-accounts', 'settings-tab-plugins', 'settings-tab-brain', 'settings-tab-limits', 'settings-tab-usage',
+    'settings-tab-browser', 'mobile-settings-connection', 'settings-tab-advanced', 'settings-tab-experiments', 'settings-tab-diagnostics'
+  ]);
+  // A row holding one value shows it before its chevron: the theme and language, the machine reached, dictation on or off once read.
+  expect(query('[data-testid=settings-tab-appearance-value]').textContent).toBe(`${strings.settings.themeSystem} · ${strings.settings.languageNames.en}`);
+  expect(query('[data-testid=mobile-settings-connection-value]').textContent?.trim()).not.toBe('');
+  await waitFor(shown('settings-tab-voice-value'));
+  expect([strings.settings.homeOn, strings.settings.homeOff]).toContain(query('[data-testid=settings-tab-voice-value]').textContent);
+  // The rows stand under the desktop's four family heads, Advanced named like the others.
+  expect([...document.querySelectorAll<HTMLElement>('[data-testid=mobile-settings-home] [data-testid=settings-family]')].map(family => [family.dataset.family, family.querySelector('h2')?.textContent ?? null])).toEqual([
+    ['app', 'App'], ['agents', 'Agents'], ['connections', 'Connections'], ['advanced', 'Advanced']
   ]);
   // The header already says Settings, and the list's display options group the threads.
   expect(document.querySelector('[data-testid=mobile-settings-home] h1')).toBeNull();
+  // The desktop's search is the home's first row: its results take the families' place, a pick opens the page.
+  expect(query('[data-testid=mobile-settings-home]').firstElementChild?.getAttribute('data-testid')).toBe('settings-home');
+  const search = query<HTMLInputElement>('[data-testid=mobile-settings-home] [data-testid=settings-search]');
+  search.value = strings.settings.tabs.appearance;
+  search.dispatchEvent(new Event('input', { bubbles: true }));
+  await waitFor(shown('settings-search-results'));
+  expect(document.querySelector('[data-testid=mobile-settings-home] [data-testid=settings-family]')).toBeNull();
+  query<HTMLButtonElement>('[data-testid=settings-search-result]').click();
+  await waitFor(() => store.settingsTab === 'appearance' && document.querySelector('[data-testid=mobile-settings-header]') !== null);
+  await back();
+  expect(query<HTMLInputElement>('[data-testid=settings-search]').value).toBe('');
+  expect(document.querySelectorAll('[data-testid=mobile-settings-home] [data-testid=settings-family]')).toHaveLength(4);
+  expect(query('[data-testid=settings]').dataset.detail).toBeUndefined();
+  await open('settings-tab-general', general);
+  expect(rows('mobile-settings-general')).toEqual([
+    'mobile-settings-conversations', 'mobile-settings-phone', 'mobile-settings-archived', 'mobile-settings-worktrees'
+  ]);
+  // Privacy is two switches: a card at the index's foot, out of the notifications.
+  await waitFor(() => document.querySelector('[data-testid=mobile-settings-general] [data-testid=telemetry-settings]') !== null);
+  // A page carries its own header, so the app drops its own over it: one header a screen.
+  expect(query('[data-testid=settings]').dataset.detail).toBe('true');
+  await back();
+  // Experiments and Diagnostics are rows of Home now, so System's index holds its compaction card alone; the task
+  // manager is the last section of Diagnostics, so the owner's Home has no row of its own for it.
+  expect(document.querySelector('[data-testid=settings-tab-task-manager]')).toBeNull();
+  await open('settings-tab-advanced', advanced);
+  expect(rows('mobile-settings-advanced')).toEqual([]);
   expect(document.querySelector('[data-testid=setting-group-working-threads]')).toBeNull();
+  await back();
 
-  // Experiments are this phone's own: Bots on the computer does not give the phone its tab until it is switched on here.
-  expect(document.querySelector('[data-testid=mobile-agents]')).toBeNull();
+  // Experiments are this phone's own: its page lists the switches of a build that runs them, Bots not among them.
+  expect(experimentOn('resident-agents')).toBe(true);
   query<HTMLButtonElement>('[data-testid=settings-tab-experiments]').click();
-  await waitFor(() => document.querySelector('[data-testid=experiment-resident-agents]') !== null);
-  query<HTMLInputElement>('[data-testid=experiment-resident-agents]').click();
-  await waitFor(() => document.querySelector('[data-testid=mobile-tabs] [data-testid=mobile-agents]') !== null);
+  await waitFor(() => document.querySelector('[data-testid=experiment-whip]') !== null);
+  expect(document.querySelector('[data-testid=experiment-resident-agents]')).toBeNull();
+  query<HTMLInputElement>('[data-testid=experiment-whip]').click();
+  // The bar waits under the page, which is Settings' own; the switch is what took.
+  await waitFor(() => experimentOn('whip'));
+  expect(document.querySelector('[data-testid=mobile-tabs]')).toBeNull();
   await back();
-
-  query<HTMLButtonElement>('[data-testid=mobile-settings-browser-profiles]').click();
-  await waitFor(() => document.querySelector('[data-testid=browser-profiles-card]') !== null);
-  await back();
+  await open('settings-tab-advanced', advanced);
 
   Element.prototype.scrollIntoView ??= vi.fn();
-  query<HTMLButtonElement>('[data-testid=mobile-settings-compaction]').click();
-  await waitFor(() => document.querySelector('[data-testid=compaction-settings]') !== null);
+  // Compaction is one card, at the index's foot.
+  await waitFor(() => document.querySelector('[data-testid=mobile-settings-advanced] [data-testid=compaction-settings]') !== null);
   for (const type of ['common', 'agent', 'subagent', 'bot']) {
     expect(document.querySelector(`[data-testid=compaction-target-${type}]`)).not.toBeNull();
   }
@@ -149,27 +195,54 @@ test('the phone settings hold this phone\'s three screens and the machine\'s ess
   expect(query<HTMLInputElement>('[data-testid=compaction-customize]').checked).toBe(false);
   await back();
 
-  // The analytics switches have a screen of their own, out of the notifications.
+  // The keys sit at the foot of Providers; the browser profiles have their own page under Connections.
+  await open('settings-tab-accounts', () => document.querySelector('[data-testid=secrets-card]') !== null);
+  expect(document.querySelector('[data-testid=browser-profiles-card]')).toBeNull();
+  await back();
+  await open('settings-tab-browser', () => document.querySelector('[data-testid=browser-page] [data-testid=browser-profiles-card]') !== null);
+  // A page of this device's settings alone says so once under its title; its card carries no tag.
+  expect(query('[data-testid=mobile-settings-page-scope]').textContent?.trim()).toBe(strings.settings.scopeDevice);
+  expect(document.querySelector('[data-testid=browser-profiles-card] [data-testid=card-scope]')).toBeNull();
+  await back();
+
+  await open('settings-tab-general', general);
   query<HTMLButtonElement>('[data-testid=mobile-settings-phone]').click();
   await waitFor(() => document.querySelector('[data-testid=phone-settings]') !== null);
   expect(document.querySelector('[data-testid=telemetry-settings]')).toBeNull();
-  await back();
-  query<HTMLButtonElement>('[data-testid=mobile-settings-privacy]').click();
-  await waitFor(() => document.querySelector('[data-testid=telemetry-settings]') !== null);
+  await back(general);
   await back();
 
-  query<HTMLButtonElement>('[data-testid=settings-tab-usage]').click();
-  await waitFor(() => document.querySelector('[data-testid=mobile-usage-tab-usage][aria-selected=true]') !== null);
-  query<HTMLButtonElement>('[data-testid=mobile-usage-tab-limits]').click();
+  // Usage is a page of Limits: the entry opens on the limits, its tab on the usage.
+  query<HTMLButtonElement>('[data-testid=settings-tab-limits]').click();
   await waitFor(() => store.settingsTab === 'limits' && document.querySelector('[data-testid=mobile-usage-tab-limits][aria-selected=true]') !== null);
+  query<HTMLButtonElement>('[data-testid=mobile-usage-tab-usage]').click();
+  await waitFor(() => store.settingsTab === 'usage' && document.querySelector('[data-testid=mobile-usage-tab-usage][aria-selected=true]') !== null);
   await back();
 
-  // Appearance takes the files and previews and element reference switches, and leaves the desktop's rows behind.
+  // Appearance holds visual choices only, and leaves the desktop's rows behind.
   query<HTMLButtonElement>('[data-testid=settings-tab-appearance]').click();
   await waitFor(() => document.querySelector('[data-testid=appearance-page]') !== null);
-  expect(document.querySelector('[data-testid=setting-chat-artifacts]')).not.toBeNull();
-  expect(document.querySelector('[data-testid=setting-preview-comments]')).not.toBeNull();
-  for (const id of ['chat-width-comfortable', 'terminal-gpu', 'settings-buttons', 'start-in-drafts', 'setting-edge-scrollbars']) expect(document.querySelector(`[data-testid=${id}]`)).toBeNull();
+  for (const id of ['chat-width-comfortable', 'terminal-gpu', 'settings-buttons', 'start-in-drafts', 'setting-edge-scrollbars', 'setting-chat-artifacts', 'chat-group-changes']) expect(document.querySelector(`[data-testid=${id}]`)).toBeNull();
+  await back();
+
+  // The conversation switches sit under General, as on the desktop.
+  await open('settings-tab-general', general);
+  query<HTMLButtonElement>('[data-testid=mobile-settings-conversations]').click();
+  await waitFor(() => document.querySelector('[data-testid=setting-chat-artifacts]') !== null);
+  for (const id of ['setting-preview-comments', 'chat-group-changes', 'chat-expand-diffs']) expect(document.querySelector(`[data-testid=${id}]`), id).not.toBeNull();
+  // How agents answer is the machine's, a phone reaches it here too, under the machine's name.
+  for (const id of ['setting-async-questions', 'setting-short-answers', 'setting-tool-summaries']) expect(document.querySelector(`[data-testid=agent-replies] [data-testid=${id}]`), id).not.toBeNull();
+  // Two of the page's three cards are the machine's: the page says the machine once, and this phone's switches say their own.
+  expect(query('#settings-conversations [data-testid=card-scope]').dataset.kind).toBe('device');
+  expect(document.querySelector('[data-testid=agent-replies] [data-testid=card-scope]')).toBeNull();
+  expect(document.querySelector('[data-testid=mobile-settings-page-scope]')?.textContent?.trim()).not.toBe(strings.settings.scopeDevice);
+  expect(document.querySelector('[data-testid=setting-group-working-threads]')).toBeNull();
+  await back(general);
+  await back();
+
+  // Providers, the desktop's third group, has its page here too.
+  query<HTMLButtonElement>('[data-testid=settings-tab-accounts]').click();
+  await waitFor(() => document.querySelector('[data-testid=accounts-page]') !== null);
 });
 
 test('on a phone too, a page of one machine is picked above it without moving the window', async () => {
@@ -186,7 +259,7 @@ test('on a phone too, a page of one machine is picked above it without moving th
   const remote = workspace.machines.find((machine) => machine.store !== store)!;
   await remote.store.client!.call('settings.set', { muteAgents: true });
   await store.client!.call('settings.set', { muteAgents: true });
-  store.showSettings('resources');
+  store.showSettings('general', 'quiet');
   await waitFor(() => document.querySelector('[data-testid=settings-machine]') !== null && document.querySelector('[data-testid=setting-mute-agents]') !== null);
   query<HTMLButtonElement>('[data-testid=settings-machine]').click();
   await waitFor(() => document.querySelector('[data-testid=settings-machine-menu]') !== null);
@@ -196,4 +269,8 @@ test('on a phone too, a page of one machine is picked above it without moving th
   await waitFor(() => remote.store.settings?.muteAgents === false);
   expect(store.settings?.muteAgents).toBe(true);
   expect(workspace.active).toBe(store);
+  // On a page that changes one machine whole, the header's scope word is the picker, and there is one.
+  store.showSettings('voice');
+  await waitFor(() => document.querySelector('[data-testid=mobile-settings-page-scope] [data-testid=settings-machine]') !== null);
+  expect(document.querySelectorAll('[data-testid=settings-machine]')).toHaveLength(1);
 });

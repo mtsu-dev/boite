@@ -1,0 +1,47 @@
+<script lang="ts" module>
+  import { HOUSE_BOT as HOUSE, type Robot } from '../lib/robots';
+  /** The house creature (`lib/robots.ts`), kept here for the views that drew it from this module. */
+  export const HOUSE_BOT: Robot = HOUSE;
+</script>
+
+<script lang="ts">
+  import type { Snippet } from 'svelte';
+  import RobotFace from './agents/RobotFace.svelte';
+
+  /**
+   * The one empty view of the app (first run, "All caught up", a list with
+   * nothing in it): a drawn bot in its colours (none with `robot={null}`), one line, one action, as one
+   * block centred in whatever card holds it. The rail keeps its bots grey;
+   * here they are shown as drawn. `action` is the button or the short note
+   * under the line.
+   */
+  let { line, robot = HOUSE_BOT, testid, markTestid, small = false, action }: {
+    line: string;
+    robot?: Robot | null;
+    testid?: string;
+    markTestid?: string;
+    /** A list's empty pane rather than a whole screen: a smaller bot and line. */
+    small?: boolean;
+    action?: Snippet;
+  } = $props();
+</script>
+
+<div class="empty-state" class:small data-testid={testid}>
+  {#if robot}<span class="mark" data-testid={markTestid} aria-hidden="true"><RobotFace {robot} /></span>{/if}
+  <h1 class="line">{line}</h1>
+  {#if action}<div class="action">{@render action()}</div>{/if}
+</div>
+
+<style>
+  .empty-state { flex: 1; align-self: stretch; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-4); min-height: 0; padding: var(--space-8) var(--space-6); text-align: center; animation: rise var(--dur-3) var(--ease-out-quint); }
+  .mark { display: block; width: 96px; height: 96px; margin-bottom: var(--space-2); }
+  .mark :global(svg.robot) { display: block; width: 100%; height: 100%; border-radius: 50%; }
+  .line { max-width: 24ch; margin: 0; font-size: var(--text-lg); font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; text-wrap: balance; }
+  .action { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); margin-top: var(--space-1); }
+  .action :global(p) { max-width: 36ch; margin: 0; font-size: var(--text-base); line-height: 1.5; color: var(--color-muted-foreground); }
+  .small { gap: var(--space-3); }
+  .small .mark { width: 64px; height: 64px; margin-bottom: var(--space-1); }
+  .small .line { font-size: var(--text-md); }
+  /* A phone gives the bot a list pane's size: at 96 px it pushed the action toward the fold. */
+  @media (max-width: 720px) { .mark { width: 64px; height: 64px; margin-bottom: 0; } }
+</style>

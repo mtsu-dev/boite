@@ -40,7 +40,7 @@
   let time = $state(from && 'time' in from ? from.time : '09:00');
   let day = $state(from?.kind === 'monthly' || from?.kind === 'yearly' ? from.day : new Date().getDate());
   let month = $state(from?.kind === 'yearly' ? from.month : new Date().getMonth() + 1);
-  const months = $derived(Array.from({ length: 12 }, (_, i) => ({ id: String(i + 1), label: new Date(2000, i, 1).toLocaleDateString(formatLocale(), { month: 'long' }), active: month === i + 1 })));
+  const months = $derived(Array.from({ length: 12 }, (_, i) => ({ id: String(i + 1), label: new Date(2000, i, 1).toLocaleDateString(formatLocale(), { month: 'long' }), checked: month === i + 1, radio: true })));
   const maxDay = $derived(mode === 'yearly' ? new Date(Date.UTC(2000, month, 0)).getUTCDate() : 31);
   let days = $state<number[]>(from?.kind === 'daily' && from.days ? [...from.days] : [...WEEKDAYS]);
   let every = $state(from?.kind === 'interval' ? from.everyMinutes : 60);
@@ -95,7 +95,7 @@
   {#if !initial.routine && !initial.agentId}
     <div class="agent-field"><span>{t.who}</span>
       {#if agents.length}
-        <Menu placement="bottom" label={t.who} testid="schedule-agent" items={agents.map(a => ({ id: a.id, label: a.name, hint: a.domain || undefined, active: a.id === owner }))} onpick={id => { owner = id; }}>
+        <Menu placement="bottom" label={t.who} testid="schedule-agent" items={agents.map(a => ({ id: a.id, label: a.name, hint: a.domain || undefined, checked: a.id === owner, radio: true }))} onpick={id => { owner = id; }}>
           {#if agent}<AgentAvatar kind="profile" id={agent.id} name={agent.name} avatar={agent.avatar} size={20} />{agent.name}{:else}{t.pickAgent}{/if}
         </Menu>
       {:else}<p class="hint">{labels.noMembers}</p>{/if}
@@ -117,15 +117,15 @@
   <div class="schedule-detail">
     {#if mode === 'once'}
       <div class="agent-checks">
-        <button type="button" class="chip" onclick={() => quickOnce('hour')}>{t.inAnHour}</button>
-        <button type="button" class="chip" onclick={() => quickOnce('evening')}>{t.thisEvening}</button>
-        <button type="button" class="chip" onclick={() => quickOnce('morning')}>{t.tomorrowMorning}</button>
+        <button type="button" class="ui-chip" onclick={() => quickOnce('hour')}>{t.inAnHour}</button>
+        <button type="button" class="ui-chip" onclick={() => quickOnce('evening')}>{t.thisEvening}</button>
+        <button type="button" class="ui-chip" onclick={() => quickOnce('morning')}>{t.tomorrowMorning}</button>
       </div>
       <input type="datetime-local" required bind:value={at} aria-label={t.dateAndTime} data-testid="schedule-at" />
     {:else if mode === 'interval'}
       <div class="agent-checks" role="radiogroup" aria-label={t.modes.interval}>
         {#each INTERVALS as minutes (minutes)}
-          <button type="button" class="chip" class:on={every === minutes} role="radio" aria-checked={every === minutes} onclick={() => { every = minutes; }}>{intervalChip(minutes)}</button>
+          <button type="button" class="ui-chip" class:on={every === minutes} role="radio" aria-checked={every === minutes} onclick={() => { every = minutes; }}>{intervalChip(minutes)}</button>
         {/each}
       </div>
       <label class="agent-inline muted">{t.otherInterval}<input class="agent-number" type="number" min="1" max="525600" required bind:value={every} aria-label={t.otherInterval} />{t.minutesUnit}</label>
@@ -155,7 +155,7 @@
       {:else if mode === 'days' && !days.length}{t.pickDays}
       {:else if schedule}
         <strong>{describeSchedule(schedule)}</strong>
-        {#if next !== null && schedule.kind !== 'once'}<span class="muted"> · {fill(t.next, { when: dateTime(next) })}</span>{/if}
+        {#if next !== null && schedule.kind !== 'once'}<span class="muted">{` · ${fill(t.next, { when: dateTime(next) })}`}</span>{/if}
       {/if}
     </span>
   </p>

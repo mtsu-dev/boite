@@ -22,7 +22,7 @@
 
   /**
    * A project's mark: the logo the core found in its folder, else the mark of
-   * the stack it reads as, else its initial on a tile. The logo's bytes come
+   * the stack it reads as in its brand colour, else its initial on a tile. The logo's bytes come
    * from the Store that owns the project, fetched the first time a tile needs
    * them; until they land, and if they never do, the initial stands.
    */
@@ -60,13 +60,17 @@
     height: var(--tile);
     flex: none;
     overflow: hidden;
-    border-radius: var(--radius-sm);
+    /* Rounding follows the size, as an app icon's does: 4.5 px at 16, 5 at 18, the token's 6 px from 22 up. */
+    border-radius: min(var(--radius-sm), calc(var(--tile) * 0.28));
   }
   .letter {
     background: var(--color-surface-3);
     color: var(--color-muted-foreground);
     font-size: var(--text-xs);
   }
+  /* A stack's mark keeps its brand colour and a folder's logo its own palette: the colour
+     is how a project is found in the list at a glance. A mark that is black or white by
+     brand takes the text's ink, so it reads on every theme. */
   .tech {
     background: var(--color-surface-3);
   }

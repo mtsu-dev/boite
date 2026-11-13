@@ -11,7 +11,7 @@ const send = '[data-testid=composer-send]';
 const captures = process.env.BOITE_E2E_CAPTURE_DIR ?? join(import.meta.dir, '.artifacts');
 
 async function capture(page: BrowserPage, name: string): Promise<void> {
-  await page.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(animation => animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {}))])');
+  await page.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(animation => animation.timeline === document.timeline && animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {}))])');
   await page.screenshot(join(captures, name));
 }
 
@@ -80,16 +80,21 @@ test('desktop and paired phone replace an edited message and silently skip a que
       expect(await page.text('[data-testid=activity-question] [data-testid=question-text]')).toBe(question);
       expect(await page.evaluate('document.querySelectorAll("[data-testid=question-text]").length')).toBe(1);
       expect(await page.evaluate('document.querySelector("[data-testid=activity-question] [data-testid=question-reply-hint], [data-testid=activity-question] [data-testid=question-submit]")')).toBeNull();
-      expect(await page.evaluate('document.querySelector("[data-testid=composer-picker]")')).toBeNull();
-      expect((await page.text(send)).trim()).toBe('Envoyer la réponse');
-      expect(await page.evaluate('(() => { const dock = document.querySelector("[data-testid=thread-activity]").getBoundingClientRect(); const field = document.querySelector("[data-testid=composer]").getBoundingClientRect(); return dock.top >= field.top && dock.bottom <= field.bottom && document.documentElement.scrollWidth <= innerWidth; })()')).toBe(true);
+      // The model chip stays named while the box answers: the next turn runs on it. Send names the reply.
+      expect(await page.evaluate('!!document.querySelector("[data-testid=composer-picker]")')).toBe(true);
+      expect((await page.text(send)).trim()).toBe('Répondre');
+      // The question is attached to the top of the composer card, over the field it is answered in.
+      expect(await page.evaluate('(() => { const decision = document.querySelector("[data-testid=thread-decision]"); const card = decision.getBoundingClientRect(); const shell = decision.closest("[data-testid=composer]")?.getBoundingClientRect(); const field = document.querySelector("[data-testid=composer-input]").getBoundingClientRect(); return !!shell && card.top >= shell.top - 0.5 && card.left >= shell.left - 0.5 && card.right <= shell.right + 0.5 && card.bottom <= field.top && document.documentElement.scrollWidth <= innerWidth; })()')).toBe(true);
       await capture(page, `question-answer-${mobile ? 'phone' : 'desktop'}.png`);
       const clip = await page.evaluate<{ x: number; y: number; width: number; height: number; scale: number }>('(() => { const r = document.querySelector("[data-testid=composer]").getBoundingClientRect(); return {x:r.x, y:r.y, width:r.width, height:r.height, scale:1}; })()');
       const detail = await page.send('Page.captureScreenshot', { format: 'png', clip }) as { data: string };
       await writeFile(join(captures, `question-detail-${mobile ? 'phone' : 'desktop'}.png`), Buffer.from(detail.data, 'base64'));
-      await page.click('[data-testid=composer-reply-ignore]');
+      // Folding the question sets it aside: the box sends ordinary messages again.
+      await page.click('[data-testid=activity-question-toggle]');
       await page.waitFor('!document.querySelector("[data-testid=composer-reply]") && document.querySelector("[data-testid=composer-picker]")');
       expect(await client.call('questions.list', { threadId: thread.id })).toHaveLength(1);
+      // Folded, the question is its head alone; opened again, it offers to answer in writing.
+      await page.click('[data-testid=activity-question-toggle]');
       await page.click('[data-testid=question-write]');
       await page.waitFor('document.querySelector("[data-testid=composer-reply]")');
       await page.type(input, 'Oui, vérifiez les réglages.');

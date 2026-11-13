@@ -4,7 +4,7 @@
   import { fill, strings } from '../lib/strings';
   import Elapsed from './Elapsed.svelte';
   import StatusMark from './StatusMark.svelte';
-  import { threadTone } from '../lib/thread-state';
+  import { threadTone } from '../lib/status-tone';
   let { agents, source = 'provider' }: { agents: NativeAgent[]; source?: 'provider' | 'process' } = $props();
 </script>
 

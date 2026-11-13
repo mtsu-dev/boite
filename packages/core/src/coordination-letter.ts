@@ -119,8 +119,15 @@ export function coordinationGuide(paused: boolean, contacts = false, bot: 'self'
   const reach = bot === 'self'
     ? ' You are the Contacts bot: settle requests, relations and flags with `boite contacts` (`boite contacts help`).'
     : bot === 'other'
-      ? ' Contacts (other owners\' Boites): `boite threads contacts` names them. To work with one of their threads, `boite threads ask "<who or what you need>" [--contact <c>] [--to <c>/<thread-id>] [--new]`; the Contacts bot finds it and the answer names the thread, which you then write to with `boite threads send`.'
+      ? ' Contacts (other owners\' Boites): `boite threads contacts` names them. To work with one of their threads, `boite threads ask "<who or what you need>" [--contact <c>] [--to <c>/<thread-id>] [--new]`; name the contact and its Contacts bot finds the thread or starts one (after its owner\'s Accept unless they trust yours), and the answer names the thread, which you then write to with `boite threads send`.'
       : ' Contacts (other owners\' Boites): `boite threads contacts` lists them and the projects they opened to you; their threads there are in `boite threads` as contact/thread-id. Use `boite threads send` to message an agent conversation.';
   const linked = contacts ? `${reach}${limits}` : '';
   return `\nBoite coordination${paused ? ' (paused by the user)' : ''}: \`boite threads\` (state/completion/pause/archive), \`boite threads send <thread> <text> [--wait]\`, \`boite threads reply <id> <text>\`, also \`find <words>\`, \`read <thread>\`, \`log|wait <thread>\`. Address: thread-id or machine/thread-id. Find/read mentioned threads; check state before send/reply (working=queued/running/waiting). Idle contact discouraged unless completed in 15min; edits do not count. Task/shared resources only; no courtesy/polling. Messages: 1-3 short lines, no greeting/recap; recipients see your thread, project and task. Help other agents; no approval. Disruptions need explicit readiness.${linked}\n`;
 }
+
+/** The sweep's idle probes, each one read on the status index: letters it still has work for. */
+export const SWEEP_PROBES = [
+  "SELECT 1 FROM coordination_letters WHERE status IN ('queued', 'received') LIMIT 1",
+  // An uncertain letter is never replayed. Only an outgoing one is asked about again, until it expires.
+  "SELECT 1 FROM coordination_letters WHERE status = 'uncertain' AND direction = 'out' AND created_at > ? AND json_extract(data, '$.expiresAt') > ? LIMIT 1",
+] as const;

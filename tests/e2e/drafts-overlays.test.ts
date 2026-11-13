@@ -19,6 +19,8 @@ test('height-capped desktop popovers can scroll to their last action', async () 
     page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&open=recent`, windowSize: { width: 1100, height: 760 } });
     await page.waitFor('document.querySelector("[data-testid=composer-mode]")');
     await page.send('Emulation.setDeviceMetricsOverride', { width: 1100, height: 220, deviceScaleFactor: 1, mobile: false });
+    // The composer row draws the context meter once the context matters (from 70% used): this thread's is made 75% used.
+    await page.evaluate('globalThis.__boiteTest.workspace.active.openThread.context = { tokens: 150000, window: 200000, at: Date.now() }');
     for (const [trigger, popup] of [['composer-mode', 'composer-mode-menu'], ['context-trigger', 'context-popup']]) {
       await page.click(`[data-testid="${trigger}"]`);
       await page.waitFor(`document.querySelector('[data-testid="${popup}"]')`);
@@ -109,13 +111,19 @@ test('drafts survive reload and composer menus stay above the chrome', async () 
   try {
     page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1`, windowSize: { width: 1100, height: 760 } });
     await page.waitFor('document.querySelector("[data-testid=composer-input]")');
-    await page.type('[data-testid=composer-input]', 'A draft worth keeping');
+    // Longer than the list is wide: the row cuts it, and never widens its card.
+    const kept = 'A draft worth keeping, long enough to run past the edge of the list: one line of it would be several columns wide';
+    await page.type('[data-testid=composer-input]', kept);
     await page.settleAnimations();
     await page.screenshot(join(import.meta.dir, '.artifacts', 'drafts-desktop.png'));
+    // A long draft once pushed its card's rows out to the text's width: the thread under it lost its "Needs you" past the edge.
+    const edges = await page.evaluate<{ card: number; rows: number[] }>(`(() => { const draft = document.querySelector('[data-testid=draft-row]'); const card = draft.closest('.project'); return { card: card.getBoundingClientRect().right, rows: [draft, ...card.querySelectorAll('[data-testid=thread-row]')].map(row => row.getBoundingClientRect().right) }; })()`);
+    expect(edges.rows.length).toBeGreaterThan(1);
+    for (const right of edges.rows) expect(right).toBeLessThanOrEqual(edges.card);
     const heights = await page.evaluate<{ draft: number; row: number }>(`({ draft: document.querySelector('[data-testid=draft-row]').getBoundingClientRect().height, row: document.querySelector('[data-testid=thread-row]').getBoundingClientRect().height })`);
     expect(heights.draft).toBeLessThanOrEqual(heights.row + 1);
     await page.send('Page.reload', {});
-    await page.waitFor('document.querySelector("[data-testid=composer-input]")?.value === "A draft worth keeping"');
+    await page.waitFor(`document.querySelector("[data-testid=composer-input]")?.value === ${JSON.stringify(kept)}`);
     await page.click('[data-testid=thread-row]');
     await page.waitFor('document.querySelector("[data-testid=timeline]")');
     expect(await page.evaluate('document.querySelector("[data-testid=draft-row]") !== null')).toBe(true);
@@ -157,7 +165,8 @@ test('drafts survive reload and composer menus stay above the chrome', async () 
     await page.waitFor('window.panelAnimations.length > 1');
     expect(await page.evaluate('window.panelAnimations')).toEqual(['slide-left', 'slide-right-out']);
     await page.waitFor('!document.querySelector("[data-testid=right-panel]")');
-    await page.click('[data-testid=terminal-toggle]');
+    // The terminal is a developer's control, out of the everyday header: Ctrl+J opens the drawer on every profile.
+    for (const type of ['rawKeyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key: 'j', code: 'KeyJ', windowsVirtualKeyCode: 74, modifiers: 2 });
     await page.waitFor('document.querySelector("[data-testid=terminal-drawer]")');
     await page.settleAnimations();
     expect(await page.evaluate('getComputedStyle(document.querySelector("[data-testid=terminal-drawer]")).transitionProperty')).toBe('height');

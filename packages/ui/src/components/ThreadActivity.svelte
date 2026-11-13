@@ -1,92 +1,17 @@
 <script lang="ts">
   import { errorText } from '../lib/errors';
-  import { Bot, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleCheck, CircleDot, Hand, KeyRound, ListChecks, ListTodo, MessageCircleQuestionMark, PanelRight, Pause, Play, Repeat, Reply, Settings2, ShieldQuestion, Target, Users, X } from '@lucide/svelte';
-  import type { MessagePart, QuestionRequest, SecretRequest, ThreadSummary } from '@boite/contracts';
+  import { Check, ChevronDown, Circle, CircleCheck, CircleDot, Hand, ListChecks, ListTodo, PanelRight, Pause, Play, Repeat, Reply, Target, X } from '@lucide/svelte';
   import { focusComposer } from '../lib/focus';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
-  import { permissionSentence } from '../lib/tool-summary';
-  import { dockRoom, questionDock } from '../lib/question-dock.svelte';
-  import { ignoreQuestions, releaseWaiting, replyOf, repliesOf, sendAnswer, writeAnswer } from '../lib/question-reply.svelte';
-  import Deferred, { parts } from './Deferred.svelte';
-  import InfoTip from './InfoTip.svelte';
-  import { openQuestionPage } from '../lib/question-page';
-  import SettingRequestCard from './SettingRequestCardLoader.svelte';
-  import { settingHeading } from '../lib/setting-requests';
-  import { teamHeading } from '../lib/team-requests';
-  import AgentSettingCard from './AgentSettingCardLoader.svelte';
   import GoalChecklist from './GoalChecklistLoader.svelte';
-  import SubagentQuestions from './SubagentQuestions.svelte';
 
-  let { store, reserveInComposer = false, onroom }: {
-    store: Store;
-    reserveInComposer?: boolean;
-    onroom?: (height: number) => void;
-  } = $props();
+  let { store }: { store: Store } = $props();
   let activity = $derived(store.openThread?.activity);
   let expanded = $state(false);
   let saving = $state(false);
 
-  /*
-   * The questions an agent asked without stopping (`boite ask`) wait here, on
-   * top of the goal, the loop and the tasks, rather than in the timeline where
-   * a running turn would push them out of sight. Several stack behind a pager;
-   * each keeps what was picked or typed while another is on screen.
-   *
-   * A subagent's questions link to its conversation from this chatbar. Only
-   * this thread's questions use this composer's answers. Child permissions
-   * and secret requests still provide a way into their owner.
-   */
-  let children = $derived(new Map(store.openThread ? store.threads.filter((row) => row.parentThreadId === store.openThread?.id && !row.archived).map((row) => [row.id, row] as const) : []));
-  let childQuestions = $derived(store.openThread ? store.subagentQuestions(store.openThread.id) : []);
-  type DockRequest = QuestionRequest & { secret?: SecretRequest };
-  let asked: DockRequest[] = $derived.by(() => {
-    const threadId = store.openThread?.id;
-    if (!threadId) return [];
-    const questions: DockRequest[] = store.pendingQuestions.filter((question) => question.async === true && question.threadId === threadId);
-    const secrets: DockRequest[] = store.pendingSecrets
-      .filter((request) => request.threadId === threadId || children.has(request.threadId))
-      .map((secret) => ({ id: secret.id, threadId: secret.threadId, turnId: secret.turnId, text: secret.reason, options: [], allowText: false, multiple: false, createdAt: secret.createdAt, secret }));
-    return [...questions, ...secrets].sort((a, b) => a.createdAt - b.createdAt);
-  });
-
-  function secretPart(request: SecretRequest): Extract<MessagePart, { type: 'secret_request' }> {
-    return { type: 'secret_request', requestId: request.id, name: request.name, reason: request.reason, placeholder: request.placeholder, status: request.status, ref: request.ref, expiresAt: request.expiresAt };
-  }
-  let waits = $derived(store.pendingPermissions.filter((request) => children.has(request.threadId)));
-  let shownId = $state<string | null>(null);
-  let shown = $derived(asked.find((question) => question.id === shownId) ?? asked[0]);
-  let at = $derived(shown ? asked.indexOf(shown) : 0);
-  let questionOpen = $state(true);
-  let inline = $derived(asked.length > 0 || waits.length > 0 || childQuestions.length > 0);
-  // Start with the oldest pending question. New arrivals keep the current
-  // question, its answers and its folded state; explicit navigation still wins.
-  // The dock stays mounted when switching threads, so reset its selection then.
-  let seenThread: string | undefined;
-  $effect(() => {
-    const thread = store.openThread?.id;
-    if (thread !== seenThread || !asked.some((question) => question.id === shownId)) {
-      shownId = asked[0]?.id ?? null;
-      questionOpen = true;
-    }
-    seenThread = thread;
-  });
-  // The timeline's line for a docked question brings that one up.
-  $effect(() => {
-    if (questionDock.nonce === 0 || questionDock.focus === null) return;
-    shownId = questionDock.focus;
-    questionOpen = true;
-  });
-  // The composer answers the question on screen when the agent stopped for none.
-  $effect(() => { repliesOf(store).docked = shown?.id ?? null; });
-  // A question that arrived while the user wrote takes the composer once it is empty and quiet.
-  $effect(() => releaseWaiting(store));
-  function page(step: -1 | 1) {
-    const next = asked[(at + step + asked.length) % asked.length];
-    if (next) shownId = next.id;
-  }
-
-  let visible = $derived(Boolean(asked.length > 0 || waits.length > 0 || childQuestions.length > 0 || activity?.goal && !activity.goal.dismissed || activity?.loop || activity?.tasks.length && !activity.tasksDismissed));
+  let visible = $derived(Boolean(activity?.goal && !activity.goal.dismissed || activity?.loop || activity?.tasks.length && !activity.tasksDismissed));
   // Keep completed content mounted during the fade out, without occupying chat space.
   let tasks = $derived(activity?.tasksDismissed && visible ? [] : activity?.tasks ?? []);
   let goal = $derived(activity?.goal?.dismissed && visible ? null : activity?.goal);
@@ -128,45 +53,6 @@
   });
   const detailsId = $props.id();
 
-  // Task details overlay the timeline. Queued prompts reserve the full dock
-  // above the input so neither tasks nor questions cover them.
-  let height = $state(0);
-  let readingHeight = $state(0);
-  $effect(() => {
-    onroom?.(visible && !inline ? height : 0);
-    dockRoom.height = visible && !reserveInComposer && !inline ? readingHeight : 0;
-    dockRoom.clearance = visible && !reserveInComposer && !inline ? height : 0;
-  });
-  $effect(() => () => {
-    dockRoom.height = 0;
-    dockRoom.clearance = 0;
-  });
-  function measure(node: HTMLElement): { destroy(): void } | undefined {
-    // jsdom lays nothing out and ships no ResizeObserver.
-    if (typeof ResizeObserver === 'undefined') return;
-    // Taken on the next frame: the margin it moves can bring the timeline's
-    // scrollbar and resize the messages another observer watches, which inside
-    // this callback is a ResizeObserver loop.
-    let frame = 0;
-    const observer = new ResizeObserver(() => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        height = node.offsetHeight;
-        const details = node.querySelector<HTMLElement>(':scope > .disclosure-fold');
-        readingHeight = height - (details?.offsetHeight ?? 0);
-      });
-    });
-    observer.observe(node);
-    return {
-      destroy() {
-        observer.disconnect();
-        cancelAnimationFrame(frame);
-        height = 0;
-        readingHeight = 0;
-      }
-    };
-  }
-
   function interval(ms: number) {
     if (ms % 3_600_000 === 0) return `${ms / 3_600_000}h`;
     if (ms % 60_000 === 0) return `${ms / 60_000}m`;
@@ -191,139 +77,8 @@
   }
 </script>
 
-{#snippet openChild(child: ThreadSummary)}
-  {@const hint = fill(strings.activity.openSubagentHint, { title: child.title })}
-  <button type="button" class="ghost small open-child" title={hint} aria-label={hint} data-testid="activity-open-subagent" onclick={() => void store.open(child.id)}>{strings.activity.openSubagent}</button>
-{/snippet}
-
-{#snippet fromChild(child: ThreadSummary, testid: string)}
-  <div class="from-child" data-testid={testid}>
-    <Bot size={14} />
-    <span class="ui-label">{fill(strings.activity.subagentAsks, { title: child.title })}</span>
-    {@render openChild(child)}
-  </div>
-{/snippet}
-
-{#if activity || asked.length > 0 || waits.length > 0 || childQuestions.length > 0}
-  <section class="activity" class:inline class:reserved={reserveInComposer} class:hidden={!visible} use:measure data-testid="thread-activity" aria-label={shown || childQuestions.length ? strings.activity.question : strings.activity.tasks} inert={!visible}>
-    {#if childQuestions.length > 0 && store.openThread}
-      <div class="child-questions"><SubagentQuestions {store} threadId={store.openThread.id} /></div>
-    {/if}
-    {#if shown}
-      <div class="questions" data-testid="activity-questions" data-count={asked.length}>
-        <div class="activity-row question-row">
-          {#if shown.secret}<KeyRound size={16} />{:else if shown.setting}<Settings2 size={16} />{:else if shown.agentSetting}<Bot size={16} />{:else if shown.team}<Users size={16} />{:else}<MessageCircleQuestionMark size={16} />{/if}
-          <button type="button" class="ghost objective question-toggle" aria-expanded={questionOpen}
-            title={questionOpen ? strings.activity.questionFold : strings.activity.questionUnfold} data-testid="activity-question-toggle"
-            onclick={() => (questionOpen = !questionOpen)}>
-            <span class="question-line ui-label">{shown.secret ? shown.secret.name : questionOpen ? (shown.setting ? settingHeading(shown.setting) : shown.agentSetting ? fill(strings.agentSettingRequest.heading, { name: shown.agentSetting.agentName }) : shown.team ? teamHeading(shown.team) : strings.chat.questionAsyncHeading) : shown.text}</span>
-            <ChevronDown size={16} class={questionOpen ? 'turned' : ''} />
-          </button>
-          {#if shown.secret}
-            <InfoTip text={strings.secrets.neverShown} topic={strings.secrets.cardLabel} />
-          {/if}
-          {#if !shown.secret && replyOf(store, shown.id).replying}
-            <span data-testid="composer-reply" data-question={shown.id}>
-              <button type="button" class="ghost small" data-testid="composer-reply-ignore" title={strings.composer.replyIgnoreHint} onclick={() => ignoreQuestions(store)}>{strings.composer.replyIgnore}</button>
-            </span>
-          {/if}
-          {#if asked.length > 1}
-            <span class="pager">
-              <button type="button" class="ghost small icon" aria-label={strings.activity.questionPrev} title={strings.activity.questionPrev} data-testid="activity-question-prev" onclick={() => page(-1)}><ChevronLeft size={16} /></button>
-              <span class="meta ui-label" data-testid="activity-question-index">{fill(strings.activity.questionOf, { index: String(at + 1), total: String(asked.length) })}</span>
-              <button type="button" class="ghost small icon" aria-label={strings.activity.questionNext} title={strings.activity.questionNext} data-testid="activity-question-next" onclick={() => page(1)}><ChevronRight size={16} /></button>
-            </span>
-          {/if}
-        </div>
-        <div class="disclosure-fold" class:open={questionOpen} inert={!questionOpen}>
-          <div>
-            {#each asked as question (question.id)}
-              {@const reply = replyOf(store, question.id)}
-              {@const child = children.get(question.threadId)}
-              <div hidden={question.id !== shown.id} data-testid="activity-question" data-question={question.id} data-thread={question.threadId}>
-                {#if child}
-                  {@render fromChild(child, 'activity-subagent-question')}
-                {/if}
-                {#if question.secret}
-                {@const secret = secretPart(question.secret)}
-                <Deferred part={parts.SecretCard}>{#snippet children(SecretCard)}<SecretCard {store} threadId={question.threadId} part={secret} docked />{/snippet}</Deferred>
-                {:else if question.agentSetting}
-                <AgentSettingCard
-                  {store}
-                  threadId={question.threadId}
-                  questionId={question.id}
-                  text={question.text}
-                  setting={question.agentSetting}
-                  answer={null}
-                  pending
-                  docked
-                  respond={(optionId) => store.answerQuestion(question.threadId, question.id, [optionId])}
-                />
-                {:else if question.team}
-                {@const team = question.team}
-                <Deferred part={parts.TeamCard}>{#snippet children(TeamCard)}<TeamCard
-                  {store}
-                  questionId={question.id}
-                  text={question.text}
-                  {team}
-                  answer={null}
-                  pending
-                  docked
-                  respond={(optionId) => store.answerQuestion(question.threadId, question.id, [optionId])}
-                />{/snippet}</Deferred>
-                {:else if question.setting}
-                <SettingRequestCard
-                  {store}
-                  text={question.text}
-                  setting={question.setting}
-                  answer={null}
-                  pending
-                  docked
-                  respond={(optionId) => store.answerQuestion(question.threadId, question.id, [optionId])}
-                />
-                {:else}
-                <Deferred part={parts.QuestionCard}>{#snippet children(QuestionCard)}<QuestionCard
-                  text={question.text}
-                  options={question.options}
-                  allowText={question.allowText}
-                  multiple={question.multiple}
-                  async={question.async === true}
-                  docked
-                  answer={null}
-                  pending
-                  bind:picked={() => repliesOf(store).picks[question.id] ?? [], (ids) => (repliesOf(store).picks[question.id] = ids)}
-                  replying={reply.replying}
-                  drafted={reply.drafted}
-                  submit={() => sendAnswer(store, question)}
-                  skip={() => store.skipQuestion(question.threadId, question.id)}
-                  onwrite={child ? undefined : () => writeAnswer(store, question.id)}
-                  page={question.open?.url}
-                  onopen={() => openQuestionPage(store, question.threadId, question.id)}
-                />{/snippet}</Deferred>
-                {/if}
-              </div>
-            {/each}
-          </div>
-        </div>
-      </div>
-    {/if}
-    {#if waits.length > 0}
-      <div class="waits" data-testid="activity-subagent-permissions">
-        {#each waits as request (request.id)}
-          {@const child = children.get(request.threadId)}
-          {#if child}
-            <div class="wait" data-testid="activity-subagent-permission" data-thread={request.threadId}>
-              <ShieldQuestion size={16} />
-              <span class="wait-text">
-                <span>{fill(strings.activity.subagentPermission, { title: child.title })}</span>
-                <span class="meta">{permissionSentence(request.toolName, request.input)}</span>
-              </span>
-              {@render openChild(child)}
-            </div>
-          {/if}
-        {/each}
-      </div>
-    {/if}
+{#if activity}
+  <section class="activity" class:hidden={!visible} data-testid="thread-activity" aria-label={strings.activity.tasks} inert={!visible}>
     {#each ['goal', 'loop'] as kind (kind)}
       {@const entry = kind === 'goal' ? goal : loop}
       {@const waiting = kind === 'goal' && blocked}
@@ -439,42 +194,17 @@
 {/if}
 
 <style>
-  /* Four pixels of card around every line: the rows and the toggle carry their
-     own inline padding, so a hover fill sits inset by the same four pixels on
-     every side and the air above the first line equals the air under the last.
-     The subagent bar stands between the timeline and the composer: the band
-     rises by the bar's height, which ChatView sets, into the air the bar keeps
-     above itself, and covers no more of the timeline than the reading room
-     reserves. Over queued prompts it stays in the room they leave it. */
-  .activity { position: absolute; bottom: calc(100% + 4px + var(--agent-dock-room, 0px)); inset-inline: 0; z-index: 5; width: 100%; margin-inline: auto; max-height: 45vh; overflow-y: auto; padding: 4px; border: 1px solid var(--color-border); border-top-color: var(--color-edge); border-radius: var(--radius-lg); background: var(--composer-glaze) var(--color-activity-surface); backdrop-filter: blur(16px) saturate(1.2); -webkit-backdrop-filter: blur(16px) saturate(1.2); box-shadow: var(--shadow-e1); font-size: var(--text-sm); transition: opacity var(--dur-3), transform var(--dur-3); }
-  .activity.hidden { opacity: 0; transform: translateY(8px); pointer-events: none; }
-  .activity.reserved { bottom: calc(100% + 4px); }
-  .activity.inline { position: relative; bottom: auto; inset-inline: auto; z-index: auto; background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; border: none; border-bottom: 1px solid var(--color-border); border-radius: 0; box-shadow: none; padding: 8px 4px 4px; }
+  /* The head of the composer card, in the flow, so the timeline gives way to
+     it: the goal, the loop and the tasks as plain lines. Four pixels around
+     every line, so a hover fill sits inset by the same four pixels on every
+     side. */
+  .activity { display: flex; flex-direction: column; overflow-y: auto; padding: 4px; font-size: var(--text-sm); }
+  .activity > * { flex: none; }
+  .activity.hidden { display: none; }
   .activity-row { display: flex; align-items: center; gap: 8px; min-height: var(--control); min-width: 0; padding: 0 2px 0 8px; }
-  /* The questions sit above the goal, the loop and the tasks, a hairline between. */
-  .child-questions + :is(.questions, .entry, .tasks-toggle, .waits), .questions + :is(.entry, .tasks-toggle, .waits), .waits + :is(.entry, .tasks-toggle) { margin-top: 4px; border-top: 1px solid var(--color-border); padding-top: 4px; }
-  /* A sub-agent's request: whose it is, muted, and the way into its conversation on the right. */
-  .from-child, .wait { display: flex; align-items: center; gap: 8px; min-height: var(--control); min-width: 0; padding: 0 2px 0 8px; }
-  .from-child { color: var(--color-muted-foreground); }
-  .from-child > :global(svg) { flex: none; margin-inline: 1px; }
-  .from-child > .ui-label { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  .wait > :global(svg) { flex: none; color: var(--color-live); }
-  /* Two stacked lines keep their full line boxes: a trimmed `.ui-label` would lay them over each other. */
-  .wait-text { display: flex; flex-direction: column; flex: 1; min-width: 0; padding-block: 4px; line-height: 1.35; }
-  .wait-text > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  .open-child { flex: none; padding-inline: 10px; color: var(--color-accent); }
-  .question-row > :global(svg) { color: var(--color-live); }
-  .question-toggle { display: flex; align-items: center; gap: 6px; height: var(--control-sm); padding: 0 6px; font-weight: 400; color: var(--color-foreground); justify-content: flex-start; }
-  .question-toggle > :global(svg) { flex: none; color: var(--color-muted-foreground); transition: transform var(--dur-2) var(--ease-out-quint); }
-  .question-toggle > :global(.turned) { transform: rotate(180deg); }
-  .question-line { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: left; }
-  .pager { display: inline-flex; align-items: center; gap: 2px; flex: none; }
-  .pager .meta { font-variant-numeric: tabular-nums; }
   .activity-row > :global(svg) { flex: none; color: var(--color-muted-foreground); }
   .activity-row button { flex: none; }
-  /* A folded question's text gives way to the pager, not the pager to it. */
-  .activity-row .question-toggle { flex: 1 1 auto; min-width: 0; }
-  .kind { flex: none; white-space: nowrap; font-weight: 600; color: var(--color-accent); }
+  .kind { flex: none; white-space: nowrap; font-weight: 600; color: var(--color-foreground); }
   .kind .narrow { display: none; }
   .status { padding: 2px 8px; border-radius: var(--radius-sm); background: var(--color-surface-2); }
   .status.live { color: var(--color-accent); }
@@ -491,18 +221,18 @@
   .blocker p { flex: 1; min-width: 0; margin: 0; line-height: 1.45; overflow-wrap: anywhere; }
   .ask { font-weight: 600; color: var(--color-foreground); }
   .hint { color: var(--color-muted-foreground); }
-  .reply { flex: none; gap: 6px; padding-inline: 10px; border: none; border-radius: var(--radius-full); background: var(--color-accent-soft); color: var(--color-accent); font-weight: 600; }
-  .reply:hover { background: color-mix(in oklch, var(--color-accent) 28%, transparent); }
+  .reply { flex: none; gap: 6px; color: var(--color-foreground); }
+  .reply:hover { background: var(--color-hover); }
   .objective, .current { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; min-width: 0; text-align: left; }
   .meta, .count { color: var(--color-muted-foreground); font-size: var(--text-xs); flex: none; }
   .tasks-toggle { display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 6px; width: 100%; height: auto; min-height: var(--control); padding: 6px 8px; font-weight: 400; color: var(--color-foreground); }
   .toggle-line { display: flex; align-items: center; gap: 8px; min-width: 0; line-height: 16px; }
   .toggle-line > :global(svg) { flex: none; color: var(--color-muted-foreground); }
-  .toggle-line > :global(svg:last-child) { transition: transform var(--dur-2) var(--ease-out-quint); }
+  .toggle-line > :global(svg:last-child) { transition: transform var(--motion-duration) var(--motion-curve); }
   .toggle-line > :global(.turned) { transform: rotate(180deg); }
   progress { display: block; appearance: none; width: 100%; height: 3px; border: none; border-radius: var(--radius-sm); overflow: hidden; background: var(--color-surface-3); }
   progress::-webkit-progress-bar { background: var(--color-surface-3); }
-  progress::-webkit-progress-value { background: var(--color-accent); transition: width var(--dur-3); }
+  progress::-webkit-progress-value { background: var(--color-accent); transition: width var(--motion-duration) var(--motion-curve); }
   progress::-moz-progress-bar { background: var(--color-accent); }
   ul, ol { list-style: none; margin: 0; padding: 2px 8px 6px; }
   li { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; line-height: 1.5; overflow-wrap: anywhere; }
@@ -531,7 +261,7 @@
   .verdict[data-verdict='running']::before { animation: pulse 1.8s var(--loop-ease-in-out-54) infinite var(--loops); }
   .verdict-name { color: var(--verdict); font-weight: 600; }
   .open-review { margin-top: 4px; padding-inline: 6px; color: var(--color-accent); }
-  .error { color: var(--color-danger); margin: 2px 8px 6px; overflow-wrap: anywhere; }
+  .error { margin: 2px 8px 6px; }
   @media (max-width: 720px) {
     .activity-row { gap: 6px; }
     .kind .wide { display: none; }

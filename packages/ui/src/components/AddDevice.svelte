@@ -145,7 +145,6 @@
     gap: 18px;
     margin-top: 14px;
     padding: 16px;
-    border: 1px solid var(--color-edge);
     border-radius: var(--radius-lg);
     background: var(--color-surface-2);
     animation: rise var(--dur-3) var(--ease-out-quint);
@@ -170,18 +169,6 @@
   .icon-only { width: var(--control); padding: 0; color: var(--color-muted-foreground); }
   .tailscale { display: grid; gap: 6px; justify-items: start; margin-top: 8px; }
   .error { color: var(--color-danger); }
-  a.button {
-    display: inline-flex;
-    align-items: center;
-    height: var(--control);
-    padding: 0 14px;
-    border: 1px solid var(--color-edge);
-    border-radius: var(--radius-md);
-    font-size: var(--text-sm);
-    font-weight: 500;
-    color: var(--color-foreground);
-    text-decoration: none;
-  }
   @keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
   @media (prefers-reduced-motion: reduce) { .add-device { animation: none; } }
   @media (max-width: 520px) {

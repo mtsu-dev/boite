@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { SharedProjectRef } from '@boite/contracts';
@@ -54,6 +54,61 @@ async function associated() {
   await b.client.call('sharedProjects.decide', { sharedProjectId: offered.shared.id, accept: true, requestId: 'accept' });
   return { a, b, offered, scope };
 }
+
+/** The same data directory, opened again by a Release core. */
+async function asRelease(was: Awaited<ReturnType<typeof side>>) {
+  was.client.close();
+  await cores.splice(cores.indexOf(was.h), 1)[0]!.stop();
+  const h = await startTestCore({ dataDir: was.h.dataDir, version: '2.0.0' });
+  cores.push(h);
+  return { ...was, h, client: await h.connect() };
+}
+const NIGHTLY_ONLY = 'experiment.contacts runs in Nightly builds only, and this machine runs a Release (2.0.0)';
+
+test('a Release accepts no association a Nightly left pending, and still declines it', async () => {
+  const { a, b } = await pair();
+  const offered = await b.client.call('sharedProjects.offer', { coreId: a.coreId, projectId: b.ref.projectId, remote: a.ref, requestId: 'offer' });
+  const id = offered.shared.id;
+  await waitFor(() => a.h.core.sharedProjects.journal.all().some(shared => shared.id === id && shared.state === 'pending'));
+  const release = await asRelease(a);
+  expect(await thrown(release.client.call('sharedProjects.decide', { sharedProjectId: id, accept: true, requestId: 'accept' }))).toThrow(NIGHTLY_ONLY);
+  expect(release.h.core.sharedProjects.require(id).state).toBe('pending');
+  await release.client.call('sharedProjects.decide', { sharedProjectId: id, accept: false, requestId: 'decline' }).catch(() => undefined);
+  expect(release.h.core.sharedProjects.require(id).state).toBe('declined');
+}, 30000);
+
+test('a Release activates, creates and relaunches nothing in an association a Nightly left active, and still disables and revokes', async () => {
+  const { a, b, scope } = await associated();
+  const id = scope.sharedProjectId;
+  await b.client.call('sharedProjects.configure', { sharedProjectId: id, board: true });
+  await waitFor(() => a.h.core.sharedProjects.require(id).access[1].board === true);
+  await a.client.call('sharedProjects.configure', { sharedProjectId: id, board: true });
+  await a.client.call('sharedBoard.apply', { ...scope, command: { requestId: 'card-1', cardId: 'card-1', kind: 'add', text: 'Written as a Nightly' } });
+  writeFileSync(join(a.h.dataDir, 'project', 'notes.md'), 'notes');
+
+  const release = await asRelease(a);
+  const call = release.client.call.bind(release.client);
+  // The authority of the board, with both consents already stored: nothing but the build stands in the way.
+  expect(await thrown(call('sharedBoard.apply', { ...scope, command: { requestId: 'card-2', cardId: 'card-2', kind: 'add', text: 'Written as a Release' } }))).toThrow(NIGHTLY_ONLY);
+  expect(await thrown(call('sharedBoard.apply', { ...scope, command: { requestId: 'card-1b', cardId: 'card-1', kind: 'update', text: 'Edited as a Release' } }))).toThrow(NIGHTLY_ONLY);
+  expect(await thrown(call('todos.update', { threadId: scope.threadId, sharedProjectId: id, todoId: 'card-1', text: 'Edited as a todo' }))).toThrow(NIGHTLY_ONLY);
+  expect(await thrown(call('sharedAccess.override', { sharedProjectId: id, requestId: 'override', override: { path: 'notes.md', actions: ['read'], jobId: null, reason: 'Needed', expiresAt: Date.now() + 60_000 } }))).toThrow(NIGHTLY_ONLY);
+  expect(await thrown(call('sharedCompute.send', { ...scope, jobId: 'job-none', text: 'Go on', requestId: 'send' }))).toThrow(NIGHTLY_ONLY);
+  // A workflow step starts its job through the service, past the RPC: the build is read there too.
+  expect(await thrown(release.h.core.sharedCompute.start({ ...scope, requestId: 'wf-step', task: 'Run', title: 'Step' } as never))).toThrow(NIGHTLY_ONLY);
+  expect(await thrown(call('sharedProjects.configure', { sharedProjectId: id, compute: { enabled: true, profiles: [], permissionMode: 'default', maxConcurrent: null } }))).toThrow(NIGHTLY_ONLY);
+  expect(await thrown(call('sharedProjects.configure', { sharedProjectId: id, reviewer: { enabled: true, providerId: 'echo', accountId: 'none', model: null, effort: null, revokeOnViolation: false } as never }))).toThrow(NIGHTLY_ONLY);
+  expect(release.h.core.sharedAccess.overrides(id)).toEqual([]);
+  const board = await call('sharedBoard.get', scope);
+  expect(board.kind === 'snapshot' ? board.cards.map(card => card.text) : null).toEqual(['Written as a Nightly']);
+
+  // Turning the board off and on: off is upkeep and goes through, on would activate it again.
+  expect((await call('sharedProjects.configure', { sharedProjectId: id, board: false })).shared.access[0].board).toBe(false);
+  expect(await thrown(call('sharedProjects.configure', { sharedProjectId: id, board: true }))).toThrow(NIGHTLY_ONLY);
+  await call('sharedBoard.apply', { ...scope, command: { requestId: 'card-1c', cardId: 'card-1', kind: 'remove' } }).catch((error: Error) => expect(error.message).not.toContain('Nightly'));
+  await call('sharedProjects.revoke', { sharedProjectId: id, requestId: 'revoke' }).catch(() => undefined);
+  expect(release.h.core.sharedProjects.require(id).state).toBe('revoked');
+}, 30000);
 
 test.each(['unsubscribe', 'disconnect'] as const)('a current grant revision closes the peer lease on %s', async action => {
   const {a,b,scope}=await associated();

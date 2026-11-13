@@ -3,6 +3,7 @@
   import { MediaQuery } from 'svelte/reactivity';
   import { currentSetting, experimentOf, isExperimentKey, type QuestionAnswer, type Settings, type SettingAsk } from '@boite/contracts';
   import { readExperiments, setExperiment, subscribeExperiments } from '../lib/experiments';
+  import { experimentsListed } from '../lib/experiments.svelte';
   import { keepFocus } from '../lib/focus';
   import { desktopSettings } from '../lib/settings-tabs';
   import { retiredHint, settingHeading, settingHint, settingLabel, settingPlaceText, settingsReachable, settingValueText } from '../lib/setting-requests';
@@ -11,6 +12,7 @@
   import { GroupLinks } from '../lib/group-links.svelte';
   import { workspace } from '../lib/workspace.svelte';
   import InfoTip from './InfoTip.svelte';
+  import DecisionActions from './DecisionActions.svelte';
 
   /**
    * A settings card an agent put in the conversation (`boite settings
@@ -52,8 +54,10 @@
 
   const change = $derived(setting.kind === 'change' ? setting : null);
   /** An experiment is this device's own switch, which any of the user's devices flips for itself. */
-  const experiment = $derived(change === null ? null : experimentOf(change.key));
-  /** An experiment this build no longer lists: it graduated, and the card can only be refused. */
+  const known = $derived(change === null ? null : experimentOf(change.key));
+  /** Null too for an id without a switch in the build that decides: a finished feature, or any experiment on a Release. */
+  const experiment = $derived(known !== null && experimentsListed().includes(known) ? known : null);
+  /** An experiment this build no longer lists: it graduated or runs in a Nightly only, and the card can only be refused. */
   const retired = $derived(change !== null && experiment === null && isExperimentKey(change.key));
   let experiments = $state(readExperiments());
   $effect(() => subscribeExperiments((enabled) => { experiments = enabled; }));
@@ -182,33 +186,31 @@
       <p class="hint" data-testid="setting-sensitive-hint">{strings.settingRequest.sensitiveHint}</p>
     {/if}
 
-    <div class="actions">
+    <!-- The app's one decision pair (DecisionActions.svelte): outlines first, the solid primary last. -->
+    <DecisionActions>
       {#if setting.kind === 'open'}
+        <button type="button" class="secondary" data-testid="setting-refuse" disabled={busy} onmousedown={keepFocus} onclick={() => answerWith('refuse')}><span class="ui-label">{strings.settingRequest.dismiss}</span></button>
         {#if reachable}
           <button type="button" class="primary" data-testid="setting-open" disabled={busy} onmousedown={keepFocus} onclick={() => answerWith('open')}><span class="ui-label">{plugin ? strings.settingRequest.preview : strings.settingRequest.open}</span></button>
         {/if}
-        <button type="button" class="ghost" data-testid="setting-refuse" disabled={busy} onmousedown={keepFocus} onclick={() => answerWith('refuse')}><span class="ui-label">{strings.settingRequest.dismiss}</span></button>
       {:else}
+        <button type="button" class="secondary" data-testid="setting-refuse" disabled={busy} onmousedown={keepFocus} onclick={() => answerWith('refuse')}><span class="ui-label">{strings.settingRequest.refuse}</span></button>
+        <!-- A paired device has no owner's page to show it on, and a phone lacks some cards. -->
+        {#if canApply && reachable}
+          <button type="button" class="secondary" data-testid="setting-show" onmousedown={keepFocus} onclick={show}><span class="ui-label">{strings.settingRequest.show}</span></button>
+        {/if}
         {#if canApply && !toggle}
           <button type="button" class="primary" data-testid="setting-apply" disabled={busy} onmousedown={keepFocus} onclick={() => apply(change?.value)}><span class="ui-label">{strings.settingRequest.apply}</span></button>
         {/if}
-        <!-- A paired device has no owner's page to show it on, and a phone lacks some cards. -->
-        {#if canApply && reachable}
-          <button type="button" class="ghost" data-testid="setting-show" onmousedown={keepFocus} onclick={show}><span class="ui-label">{strings.settingRequest.show}</span></button>
-        {/if}
-        <button type="button" class="ghost" data-testid="setting-refuse" disabled={busy} onmousedown={keepFocus} onclick={() => answerWith('refuse')}><span class="ui-label">{strings.settingRequest.refuse}</span></button>
       {/if}
-    </div>
+    </DecisionActions>
   </div>
 {/if}
 
 <style>
   .setting-card {
-    border: 1px solid var(--color-edge);
-    border-left-style: dashed;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     background: var(--color-surface);
-    box-shadow: var(--shadow-e1);
     padding: 8px 12px 10px;
     display: flex;
     flex-direction: column;
@@ -224,7 +226,7 @@
   }
 
   .head { display: flex; align-items: center; gap: 6px; }
-  .glyph { display: inline-flex; flex: none; color: var(--color-accent); }
+  .glyph { display: inline-flex; flex: none; color: var(--color-muted-foreground); }
   .sensitive .glyph { color: var(--color-danger); }
 
   .reason { margin: 0; font-weight: 500; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -245,13 +247,12 @@
   .toggle { flex-wrap: nowrap; }
   .values { display: inline-flex; align-items: center; gap: 8px; color: var(--color-subtle); min-width: 0; }
   .old { color: var(--color-muted-foreground); text-decoration: line-through; overflow-wrap: anywhere; }
-  .new { color: var(--color-accent); font-weight: 600; overflow-wrap: anywhere; }
+  .new { color: var(--color-foreground); font-weight: 600; overflow-wrap: anywhere; }
   .sensitive .new { color: var(--color-danger); }
 
   .place { margin: 0; font-size: var(--text-xs); color: var(--color-subtle); }
   .hint { margin: 0; font-size: var(--text-sm); color: var(--color-muted-foreground); }
 
-  .actions { display: flex; flex-wrap: wrap; gap: 6px; }
 
   /* Closed: one quiet row in the timeline, like an answered question. */
   .setting-card.resolved {

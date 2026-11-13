@@ -198,13 +198,15 @@
     width: max-content;
     max-width: calc(100% - 20px);
     padding: 8px 10px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-surface-2);
-    box-shadow: var(--shadow-e2);
+    border: 1px solid var(--overlay-edge);
+    border-radius: var(--radius-overlay);
+    background: var(--overlay-surface);
+    box-shadow: var(--shadow-overlay);
     font-size: var(--text-sm);
     pointer-events: none;
     animation: fade var(--dur-1) var(--ease-out-quint);
+    /* Placed under the pointer: reduced motion's blanket transition would slide it there. */
+    transition-property: none;
   }
   .tooltip strong { display: block; margin-bottom: 6px; font-weight: 600; }
   ul { display: grid; gap: 3px; margin: 0; padding: 0; list-style: none; }

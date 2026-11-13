@@ -4,11 +4,12 @@
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
   import { phasesOf, runProgress } from '../lib/workflow-view';
+  import { workflowFailure } from '../lib/failure-cause';
   import ActivityCard from './ActivityCard.svelte';
   import StatusMark from './StatusMark.svelte';
-  import { workflowTone } from '../lib/thread-state';
+  import { workflowTone } from '../lib/status-tone';
 
-  /** A run in the chat where it started: its name, one mark per phase, and the way to its graph. */
+  /** A run grouped on one row of the chat where it started, like the subagents it runs: its name over its state, steps and one tick per phase, its time, and the way to its graph. A failed run says why under them. */
   let { store, run }: { store: Store; run: WorkflowRun } = $props();
   let steps = $derived(runProgress(run));
   let phases = $derived(phasesOf(run));
@@ -28,14 +29,12 @@
   }
 </script>
 
-<ActivityCard live={run.status === 'running'} heading={`${strings.workflow.card} · ${run.name}`} timing={{ startedAt: run.createdAt, finishedAt: run.finishedAt, active: run.status === 'running' }} onclick={open} data-testid="workflow-activity" data-run-id={run.id} data-status={run.status} title={strings.workflow.show}>
-  {#snippet mark()}
-    <span class="icon" aria-hidden="true"><Workflow size={15} strokeWidth={1.75} /></span>
-  {/snippet}
+<ActivityCard live={run.status === 'running'} heading={run.name} timing={{ startedAt: run.createdAt, finishedAt: run.finishedAt, active: run.status === 'running' }} onclick={open} data-testid="workflow-activity" data-run-id={run.id} data-status={run.status} title={strings.workflow.show}
+  cause={run.status === 'failed' ? workflowFailure(run) : undefined}>
+  {#snippet mark()}<Workflow size={15} strokeWidth={1.75} />{/snippet}
   {#snippet progress()}
     <StatusMark {...workflowTone(run.status, true)} />
-    <span class="ui-label">{strings.workflow.status[run.status]}</span>
-    <span class="ui-label">· {fill(strings.workflow.steps, { done: String(steps.done), total: String(steps.total) })}</span>
+    <span>{strings.workflow.status[run.status]} · {fill(strings.workflow.steps, { done: String(steps.done), total: String(steps.total) })}</span>
   {/snippet}
   {#snippet extra()}
     <span class="phases" aria-hidden="true">
@@ -45,9 +44,9 @@
 </ActivityCard>
 
 <style>
-  .icon { display: grid; place-items: center; flex: none; width: var(--control-sm); height: var(--control-sm); border-radius: var(--radius-sm); border: 1px solid var(--color-edge); background: var(--color-surface-2); color: var(--color-foreground); }
-  .phases { display: flex; gap: 3px; max-width: 220px; height: 4px; }
-  .phases i { flex: 1; border-radius: 2px; background: var(--color-surface-3); }
+  /* One short tick per phase, read at a glance beside the step count. */
+  .phases { display: inline-flex; flex: none; gap: 2px; height: 4px; }
+  .phases i { width: 10px; border-radius: 2px; background: var(--color-surface-3); }
   .phases i.running { background: var(--color-live); }
   .phases i.done { background: var(--color-success); }
   .phases i.failed { background: var(--color-danger); }

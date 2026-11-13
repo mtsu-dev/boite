@@ -4,6 +4,7 @@ import { basename, dirname, join } from 'node:path';
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { connect } from '../../packages/core/src/client.ts';
 import { BrowserPage, freePort } from './lib/cdp.ts';
+import { clickAddProject } from './lib/views.ts';
 import { describeShell, TAURI_READY, waitForShellPage, type ShellUnderTest } from './lib/shell-diagnosis.ts';
 import { freshDataDir, killProcessTree, removeDirectory, startCore } from './lib/core.ts';
 
@@ -622,9 +623,9 @@ shellTest(
     await page?.click(testid('settings-tab-appearance'));
     await page?.waitFor(`document.querySelector('${testid('colors-customize')}')`);
     await page?.click(testid('colors-customize'));
-    await page?.waitFor(`document.querySelector('${testid('accent-300')}')`);
-    await page?.click(testid('accent-300'));
-    expect(await page?.evaluate(`document.documentElement.style.getPropertyValue('--accent-hue')`)).toBe('300');
+    await page?.waitFor(`document.querySelector('${testid('accent-295')}')`);
+    await page?.click(testid('accent-295'));
+    expect(await page?.evaluate(`document.documentElement.style.getPropertyValue('--accent-hue')`)).toBe('295');
     await page?.screenshot(join(import.meta.dir, '.artifacts', 'shell-accent.png'));
     await page?.click(testid('settings-back'));
   },
@@ -717,7 +718,7 @@ shellTest(
   async () => {
     // The dialog IPC is answered here so this test never puts a native window on screen.
     await page?.waitFor(`document.querySelector('${testid('draft-open-folder')}')`);
-    await page?.click(testid('add-project'));
+    if (page) await clickAddProject(page);
     await page?.waitFor(`document.querySelector('[data-testid=pick-project]') && !document.querySelector('[data-testid=pick-project]').disabled`);
     await page?.evaluate(`document.fonts.ready`);
     await page?.screenshot(join(import.meta.dir, '.artifacts', 'shell-project-picker.png'));
@@ -868,7 +869,8 @@ shellTest('window controls draw maximize and restore without a second status ind
   try {
     expect(await page?.evaluate(`document.querySelectorAll('[data-testid=titlebar] .state').length`)).toBe(0);
     expect(await page?.evaluate(`document.querySelector('[data-testid=titlebar]').contains(document.querySelector('[data-testid=thread-title]'))`)).toBe(true);
-    expect(await page?.evaluate(`document.querySelector('[data-testid=titlebar]').getBoundingClientRect().height`)).toBe(44);
+    // The redesign's bar is 46 px (--titlebar in app.css), up from 44.
+    expect(await page?.evaluate(`document.querySelector('[data-testid=titlebar]').getBoundingClientRect().height`)).toBe(46);
     await page?.evaluate(`document.querySelector('[data-testid=thread-header] .spacer').dispatchEvent(new MouseEvent('mousedown', { bubbles:true, button:0, detail:1 }))`);
     await page?.waitFor(`window.__headerDrags === 1`);
     await page?.evaluate(`document.querySelector('[data-testid=thread-title]').dispatchEvent(new MouseEvent('mousedown', {bubbles:true,button:0,detail:1}))`);
@@ -920,7 +922,7 @@ shellTest('the machine picker opens a folder on the selected core and reports a 
     await page?.click(testid('settings-back'));
     // One machine draws no machine button; the second one brings it back.
     await page?.waitFor(`document.querySelector('[data-testid=status-connection] [data-testid=machine-status]')`);
-    await page?.click(testid('add-project'));
+    if (page) await clickAddProject(page);
     await page?.waitFor(`document.querySelector('[data-testid=project-path]') && !document.querySelector('[data-testid=project-add]').disabled`);
     expect(await page?.evaluate(`!!document.querySelector('[data-testid=pick-project]')`)).toBe(true);
     await page?.waitFor(`document.querySelector('[data-testid=pick-project]') && !document.querySelector('[data-testid=pick-project]').disabled`);
@@ -939,12 +941,16 @@ shellTest('the machine picker opens a folder on the selected core and reports a 
     await page?.click(testid('thread-row'));
     await page?.waitFor(`document.querySelector('[data-testid=thread-title]')?.textContent.includes('shell turn')`);
     await remote.stop();
-    await page?.waitFor(`document.querySelector('[data-testid=status-connection]')?.classList.contains('problem')`);
+    // The redesign marks a machine out of reach with the offline ring on the rail's monitor, no red class.
+    await page?.waitFor(`document.querySelector('[data-testid=status-connection] [data-testid=machine-offline]')`);
     expect(await page?.evaluate(`document.querySelector('[data-testid=machine-status]').getAttribute('aria-label')`)).toContain('1 need attention');
     await page?.screenshot(join(import.meta.dir, '.artifacts', 'shell-machine-disconnected.png'));
     await page?.click(testid('nav-settings'));
     await page?.click(testid('settings-tab-machines'));
-    await page?.evaluate(`document.querySelector('[data-machine-id="${remote.url}"] [data-testid=machine-remove]').click()`);
+    // Removal is the last item of the machine's row menu since the redesign.
+    await page?.click(`[data-testid="machine-card"][data-machine-id="${remote.url}"] [data-testid=machine-menu]`);
+    await page?.waitFor(`document.querySelector('[data-testid=machine-remove]')`);
+    await page?.click(testid('machine-remove'));
     await page?.waitFor(`document.querySelector('${testid('confirm-ok')}')`);
     await page?.click(testid('confirm-ok'));
     await page?.click(testid('settings-back'));

@@ -41,7 +41,7 @@
     })
   );
   let items = $derived<MenuItem[]>([
-    { id: AUTO, label: strings.settings.titleModelAuto, hint: strings.settings.titleModelAutoHint, active: chosen === null },
+    { id: AUTO, label: strings.settings.titleModelAuto, active: chosen === null },
     ...groups.flatMap(({ provider, small, models }) => [
       separator(`sep-${provider.id}`),
       ...models.map((model) => ({

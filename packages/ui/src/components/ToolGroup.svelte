@@ -2,13 +2,18 @@
   import { secondClock } from '../lib/clock.svelte';
   import { Bot, Brain, ChevronRight, FoldVertical, FilePen, FileText, Globe, Search, ShieldCheck, ShieldX, SquareTerminal, TriangleAlert, Wrench } from '@lucide/svelte';
   import type { PermissionRequest, RequestId } from '@boite/contracts';
+  import { verdictWord } from '../lib/verdict-word';
   import { fill, strings } from '../lib/strings';
   import { elapsed } from '../lib/format';
   import { agentSummary, compactionMark, compactionText, familyOf, liveLabel, pairPermissions, runSpan, runSummary, thinkingShown, ThoughtTitleScan, type ActivityPart, type CompactionPart, type PermissionStep, type ThinkingStep, type ToolPart } from '../lib/tool-groups';
-  import PermissionCard from './PermissionCard.svelte';
+  import Deferred from './Deferred.svelte';
+  import { permissionCard } from '../lib/idle-parts';
   import ThinkingPart from './ThinkingPart.svelte';
   import ToolCard from './ToolCard.svelte';
+  import Spinner from './Spinner.svelte';
   import type { Store } from '../lib/store.svelte';
+  import { lastHeard, machineAway } from '../lib/machine-away';
+  import type { Snippet } from 'svelte';
   import type { ToolDisclosure } from '../lib/store/deferred-parts';
   import { textRevision } from '../lib/text-revisions';
 
@@ -21,7 +26,8 @@
    * on) while one runs. The fold opens on the steps, each one the same line it
    * would be alone. Reasoning with no words that took under a second is not
    * drawn at all. A permission the agent asked is one thing with its call:
-   * while it waits, its card stands for the call under the run; once answered,
+   * while it waits, its command row stands for the call under the run, with
+   * Deny and Allow once at its end; once answered,
    * the call's line carries the answer as a shield.
    */
   let {
@@ -34,7 +40,9 @@
     permissionRequest = () => null,
     answerPermission = () => false,
     store,
-    threadId
+    threadId,
+    carded = null,
+    changes
   }: {
     parts: ActivityPart[];
     /** The compactions that fell in this run: a mark on its line, no row of their own. */
@@ -52,6 +60,10 @@
     /** The machine and thread the run belongs to, where a thread link in it starts from. */
     store?: Store;
     threadId?: string;
+    /** The failed call the turn's error card says: no second red mark for it here (`cardedCall`). */
+    carded?: string | null;
+    /** The turn's change count when its last change is in this run: on the run's line, or under a lone step. */
+    changes?: Snippet<[inline: boolean]>;
   } = $props();
 
   const ICONS = { command: SquareTerminal, read: FileText, edit: FilePen, write: FilePen, search: Search, fetch: Globe, web: Globe, agent: Bot, other: Wrench };
@@ -60,7 +72,7 @@
   let pairs = $derived(pairPermissions(parts));
   /** The permission each paired call was asked under, by the call's index. */
   let asked = $derived(new Map([...pairs].map(([at, call]) => [call, parts[at] as PermissionStep])));
-  /** Waiting permissions: each card stands for its call, under the run. */
+  /** Waiting permissions: each one's command row stands for its call, under the run, with Deny and Allow once. */
   let waiting = $derived(parts.filter((part): part is PermissionStep => part.type === 'permission' && part.decision === null));
   let steps = $derived(parts.flatMap((part, index): { part: ActivityPart; index: number }[] => {
     if (part.type === 'permission') return part.decision !== null && !pairs.has(index) ? [{ part, index }] : [];
@@ -68,7 +80,7 @@
     return thinkingShown(part, isLive(index)) ? [{ part, index }] : [];
   }));
   /** The run's answers on its folded line: a cross when the user refused any call. */
-  let verdict = $derived.by(() => {
+  let verdict = $derived.by((): 'allow' | 'deny' | null => {
     const decisions = [...asked.values()].map((permission) => permission.decision);
     return decisions.includes('deny') ? 'deny' : decisions.includes('allow') ? 'allow' : null;
   });
@@ -77,8 +89,10 @@
   let open = $state(false);
   let running = $derived(tools.findLast((part) => part.status === 'running'));
   let thinking = $derived(running === undefined && thinkingLive);
-  let live = $derived(running !== undefined || thinking);
-  let issues = $derived(tools.filter(part => part.status === 'error' || part.status === 'denied').length);
+  /** Its machine is out of reach: a running step is the last state known, drawn still. */
+  let away = $derived(!!store && machineAway(store));
+  let live = $derived((running !== undefined || thinking) && !away);
+  let issues = $derived(tools.filter(part => (part.status === 'error' || part.status === 'denied') && part.toolId !== carded).length);
   let said = $derived(verdict === 'allow' ? strings.chat.permissionAllowedBy : verdict === 'deny' ? strings.chat.permissionDeniedBy : null);
   let issueLabel = $derived(fill(issues === 1 ? strings.chat.toolIssueOne : strings.chat.toolIssueMany, { count: String(issues) }));
   // Live, the thought being written; otherwise the last one that has words.
@@ -94,7 +108,7 @@
   let took = $derived.by(() => {
     const span = runSpan(parts);
     if (!span) return '';
-    const ms = (live ? secondClock.now : span.end) - span.start;
+    const ms = (live ? secondClock.now : (running || thinking) && away ? lastHeard(store?.openThread) ?? span.end : span.end) - span.start;
     return live || ms >= 1000 ? elapsed(ms) : '';
   });
 
@@ -129,6 +143,7 @@
       finishedAt={part.finishedAt ?? null}
       background={isBackground(part.toolId)}
       permission={asked.get(index)?.decision ?? null}
+      carded={part.toolId === carded}
       {nested}
       folded={nested && !open}
       {store}
@@ -138,18 +153,21 @@
 {/snippet}
 
 {#snippet ask(part: PermissionStep)}
-  <PermissionCard
+  <Deferred part={permissionCard}>{#snippet children(PermissionCard)}<PermissionCard
     toolName={part.toolName}
     decision={part.decision}
     request={permissionRequest(part.requestId)}
     answer={(decision) => answerPermission(part.requestId, decision)}
-  />
+  />{/snippet}</Deferred>
 {/snippet}
 
 {#if steps.length === 1 && steps[0] && compactions.length === 0}
   {@render step(steps[0].part, steps[0].index)}
+  {@render changes?.(false)}
 {:else if steps.length > 0}
   <div class="group" data-testid="tool-group" data-count={steps.length} data-live={live}>
+    <!-- The run's line, and the turn's change count on it when its last change is here: one row, not a card under it. -->
+    <div class="line" class:counted={!!changes}>
     <button
       type="button"
       class="ghost head"
@@ -161,7 +179,7 @@
     >
       <span class="glyph"><Glyph size={15} strokeWidth={1.75} /></span>
       <span class="label ui-label" class:shimmer={live} data-testid="tool-group-label" title={label}>{label}</span>
-      {#if took}<span class="took ui-label" data-testid="tool-group-elapsed">{took}</span>{/if}
+      {#if took}<span class="took ui-label" class:settled={!live} data-testid="tool-group-elapsed">{took}</span>{/if}
       {#each compactions as part, at (at)}
         <span class="compacted ui-label" data-testid="tool-group-compaction" title={compactionText(part)}><FoldVertical size={12} strokeWidth={1.75} aria-hidden="true" />{compactionMark(part)}</span>
       {/each}
@@ -169,11 +187,11 @@
         <span class="pulse" aria-hidden="true"></span>
       {/if}
       {#if running}
-        <span class="spinner" aria-hidden="true"></span>
+        <Spinner size={11} stale={away} label={away ? strings.chat.toolPaused : undefined} />
       {/if}
       {#if verdict}
         <span class="verdict" class:denied={verdict === 'deny'} data-testid="tool-group-permission" data-decision={verdict} title={said} aria-label={said}>
-          {#if verdict === 'allow'}<ShieldCheck size={13} strokeWidth={2} />{:else}<ShieldX size={13} strokeWidth={2} />{/if}
+          {#if verdict === 'allow'}<ShieldCheck size={13} strokeWidth={2} />{:else}<ShieldX size={13} strokeWidth={2} />{/if}<span class="ui-label verdict-word">{verdictWord(verdict)}</span>
         </span>
       {/if}
       {#if issues}
@@ -181,6 +199,8 @@
       {/if}
       <span class="fold-caret" class:open aria-hidden="true"><ChevronRight size={12} /></span>
     </button>
+    {@render changes?.(true)}
+    </div>
     <div class="disclosure-fold" class:open inert={!open}>
       <div>
         {#if built}
@@ -204,6 +224,13 @@
     min-width: 0;
   }
 
+  /* With the change count on it, the count and its diff close the line, its
+     list and diffs open under it. A phone gives the words the whole width and
+     the count the next line. */
+  .line.counted { display: flex; flex-wrap: wrap; align-items: center; column-gap: 2px; }
+  .counted > .head { flex: 1 1 0; width: auto; min-width: 0; }
+  @media (max-width: 720px) { .counted > .head { flex-basis: 100%; } }
+
   .head {
     display: flex;
     align-items: center;
@@ -213,9 +240,13 @@
     height: auto;
     padding: var(--activity-padding);
     border-radius: var(--radius-sm);
-    color: var(--color-muted-foreground);
-    font-size: var(--text-sm);
+    color: var(--instrument-ink);
+    font-size: var(--instrument-size);
+    line-height: var(--instrument-leading);
     font-weight: 400;
+    /* No body tracking on the run's line: where glyphs land on whole pixels (Chrome on Linux), the
+       -0.006em drift rounds a pixel out of a space every few glyphs ("Ran 1 command" shows as "Ran 1command"). */
+    letter-spacing: normal;
     justify-content: flex-start;
   }
 
@@ -242,15 +273,19 @@
     align-items: center;
     gap: 3px;
     flex: none;
-    color: var(--color-subtle);
-    font-size: var(--text-xs);
+    color: var(--instrument-meta);
+    font-size: var(--instrument-meta-size);
   }
 
   .verdict {
     display: inline-flex;
+    align-items: center;
+    gap: 4px;
     flex: none;
     color: var(--color-success);
   }
+  /* The verdict's word, the receipt's own, beside the shield. */
+  .verdict-word { font-size: var(--instrument-meta-size); }
 
   .verdict.denied { color: var(--color-danger); }
 
@@ -269,7 +304,7 @@
      sweep, one every fourth tick of the loops' 60 Hz grid (app.css): the text
      clipped gradient repaints on each step, not on every frame. */
   .label.shimmer {
-    background: linear-gradient(90deg, var(--color-muted-foreground) 35%, var(--color-foreground) 50%, var(--color-muted-foreground) 65%) 0 0 / 300% 100%;
+    background: linear-gradient(90deg, var(--instrument-ink) 35%, var(--color-foreground) 50%, var(--instrument-ink) 65%) 0 0 / 300% 100%;
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
@@ -281,12 +316,26 @@
     to { background-position: 0 0; }
   }
 
-  .compacted { flex: none; display: inline-flex; align-items: center; gap: 4px; color: var(--color-subtle); font-size: var(--text-xs); }
+  .compacted { flex: none; display: inline-flex; align-items: center; gap: 4px; color: var(--instrument-meta); font-size: var(--instrument-meta-size); }
   .took {
     flex: none;
-    color: var(--color-subtle);
-    font-size: var(--text-xs);
+    color: var(--instrument-meta);
+    font-size: var(--instrument-meta-size);
     font-variant-numeric: tabular-nums;
+  }
+
+  /* A finished run's time is read on demand: under the pointer, the keyboard or an open run. */
+  .took.settled { opacity: 0; transition: opacity var(--dur-2); }
+  .head:hover .took.settled, .head:focus-visible .took.settled, .head[aria-expanded='true'] .took.settled { opacity: 1; }
+
+  /* A phone reads the run's line whole: a settled summary fills the width,
+     then wraps rather than ends in an ellipsis, and its time, which no pointer can bring up there,
+     leaves the line its width until the run is opened. */
+  @media (max-width: 720px) {
+    .label:not(.shimmer) { white-space: normal; overflow-wrap: anywhere; }
+  }
+  @media (hover: none) {
+    .head[aria-expanded='false'] .took.settled { display: none; }
   }
 
   .pulse {
@@ -296,16 +345,6 @@
     border-radius: 50%;
     background: var(--color-accent);
     animation: pulse 1.6s var(--loop-ease-out-quint-48) infinite var(--loops);
-  }
-
-  .spinner {
-    flex: none;
-    width: 11px;
-    height: 11px;
-    border-radius: 50%;
-    border: 1.5px solid var(--color-edge);
-    border-top-color: var(--color-live);
-    animation: spin 0.9s steps(54) infinite var(--loops);
   }
 
   /* The calls hang off a hairline under the summary's glyph. */
@@ -318,7 +357,7 @@
     border-left: 1px solid var(--color-border);
   }
 
-  @media (prefers-reduced-motion: reduce) { :is(.pulse, .spinner, .label.shimmer) { animation: none; } .label.shimmer { color: var(--color-muted-foreground); background: none; } }
-  :global(html[data-motion='reduced']) :is(.pulse, .spinner, .label.shimmer) { animation: none; }
-  :global(html[data-motion='reduced']) .label.shimmer { color: var(--color-muted-foreground); background: none; }
+  @media (prefers-reduced-motion: reduce) { :is(.pulse, .label.shimmer) { animation: none; } .label.shimmer { color: var(--instrument-ink); background: none; } }
+  :global(html[data-motion='reduced']) :is(.pulse, .label.shimmer) { animation: none; }
+  :global(html[data-motion='reduced']) .label.shimmer { color: var(--instrument-ink); background: none; }
 </style>

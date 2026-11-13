@@ -7,7 +7,7 @@
 
   /**
    * The small buttons and send time a message shows under itself while the
-   * pointer is on it, or always under a finger: copy what it says, and for a turn the ways back
+   * pointer is on it, or with its time under a finger: copy what it says, and for a turn the ways back
    * into it. Each action is offered only when its caller hands it over.
    */
   let {
@@ -84,7 +84,7 @@
     <time class="stamp" data-testid="message-time" datetime={new Date(at).toISOString()} title={fill(strings.chat.sentAt, { time: full })}>{clockTime(at)}</time>
   {/if}
   {#each actions as action (action.id)}
-    <button type="button" class="act" data-testid={`message-${action.id}`} title={action.label} aria-label={action.label} aria-haspopup={action.id === 'fork' || action.id === 'plugins' ? 'menu' : undefined} onclick={action.run}><action.icon size={13} /></button>
+    <button type="button" class="act icon-button" data-testid={`message-${action.id}`} title={action.label} aria-label={action.label} aria-haspopup={action.id === 'fork' || action.id === 'plugins' ? 'menu' : undefined} onclick={action.run}><action.icon size={14} /></button>
   {/each}
 </span>
 
@@ -108,7 +108,8 @@
     opacity: 1;
   }
 
-  /* A finger has no hover: the buttons and the time stay. */
+  /* A finger has no hover: the buttons and the clock show together, so a button never stands alone under a
+     message (a phone shows them under the latest messages and the one tapped, app.css). */
   @media (hover: none) {
     .act, .stamp { opacity: 1; }
   }
@@ -116,33 +117,19 @@
   .stamp {
     order: 1;
     margin: 0 4px;
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
     color: var(--color-muted-foreground);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
 
-  .act {
-    display: inline-grid;
-    place-items: center;
-    width: 24px;
-    height: 24px;
-    min-height: 0;
-    padding: 0;
-    border: 1px solid transparent;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--color-muted-foreground);
-  }
+  /* The app's one icon button (app.css `button.icon-button`): its drawn box overhangs the row under the
+     message, which keeps the gap's height, and its target reaches the gaps around it. */
+  .act { margin-block: calc((var(--chat-message-gap) - var(--icon-button)) / 2); }
 
-  .act:hover:not(:disabled) {
-    background: var(--color-surface-3);
-    color: var(--color-foreground);
-  }
-
-  /* A finger takes the full target, as every other phone control does. */
+  /* A finger's targets (`--icon-button-target`) reach past the drawn boxes: the gap holds them side by side, so a
+     tap beside one button never lands on its neighbour. */
   @media (pointer: coarse), (max-width: 720px) {
-    .message-actions { gap: 0; }
-    .act { width: var(--touch-target); height: var(--touch-target); }
+    .message-actions { gap: max(4px, calc(var(--icon-button-target) - var(--icon-button))); }
   }
 </style>

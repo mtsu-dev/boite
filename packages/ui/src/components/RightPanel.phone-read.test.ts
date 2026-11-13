@@ -1,7 +1,7 @@
 /*
  * A paired phone reads a thread's changes and files, and writes nothing: the
- * Changes list then one diff at a time with steps between files, a file as
- * wrapped read-only lines, and no Save. The fake client holds the same gate as
+ * changes as one document of every file, a file as wrapped read-only lines,
+ * and no Save. The fake client holds the same gate as
  * the core, so a call the phone must not make would fail here too.
  */
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
@@ -41,46 +41,96 @@ async function phone(width: number): Promise<FakeClient> {
   return client;
 }
 
-test('a phone walks the changes one diff at a time, against HEAD only', async () => {
+test('a phone reads the changes as one document, against HEAD only', async () => {
   const client = await phone(390);
   const calls = vi.spyOn(client, 'call');
   expect(store.owner).toBe(false);
   button('launch-changes').click(); await settle();
   const rows = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-testid=changes-row]'));
   expect(rows.length).toBe(7);
-  expect(query('[data-testid=changes-pager]')).toBeNull();
-
-  rows[0]!.click(); await settle();
+  // Every file's header in the one scroll, a finger's rows on a phone.
   const panel = query('[data-testid=changes-panel]')!;
-  expect(panel.classList.contains('reading')).toBe(true);
-  expect(query('[data-testid=diff-view]')?.getAttribute('data-path')).toBe(rows[0]!.dataset.path);
-  expect(query('[data-testid=changes-position]')?.textContent).toBe('1 of 7');
-  expect(button('changes-previous').disabled).toBe(true);
-
-  button('changes-next').click(); await settle();
+  expect(panel.classList.contains('narrow')).toBe(true);
+  for (const row of rows) expect(row.closest('.detail')).not.toBeNull();
+  // The chip's menu holds every changed file; a pick marks it and reads its diff under its header.
+  const outline = async () => {
+    if (!query('[data-testid=changes-pager-menu]')) { button('changes-pager').click(); await settle(); }
+    return Array.from(document.querySelectorAll<HTMLButtonElement>('[data-testid=changes-outline-file]'));
+  };
+  expect((await outline()).map((file) => file.dataset.value)).toEqual(rows.map((row) => row.dataset.path));
+  (await outline())[1]!.click(); await settle();
   expect(store.panel.active?.path).toBe(rows[1]!.dataset.path);
-  expect(query('[data-testid=changes-position]')?.textContent).toBe('2 of 7');
-  button('changes-previous').click(); await settle();
-  expect(store.panel.active?.path).toBe(rows[0]!.dataset.path);
-
-  button('changes-back').click(); await settle();
-  expect(store.panel.active?.path).toBeUndefined();
-  expect(panel.classList.contains('reading')).toBe(false);
-  expect(query('[data-testid=changes-pager]')).toBeNull();
+  expect((await outline())[1]!.getAttribute('aria-checked')).toBe('true');
+  expect((await outline())[0]!.getAttribute('aria-checked')).toBe('false');
+  expect(rows[1]!.closest('[data-file]')!.querySelector('[data-testid=diff-view]')?.getAttribute('data-path')).toBe(rows[1]!.dataset.path);
 
   const diffs = calls.mock.calls.filter(([method]) => method === 'git.diff');
   expect(diffs.length).toBeGreaterThan(0);
   for (const [, params] of diffs) expect((params as { ref?: string }).ref).toBeUndefined();
 });
 
-test('a wide panel keeps the list beside the diff, with no pager', async () => {
-  await phone(1000);
-  button('launch-changes').click(); await settle();
-  document.querySelector<HTMLButtonElement>('[data-testid=changes-row]')!.click(); await settle();
-  expect(query('[data-testid=diff-view]')).not.toBeNull();
-  expect(query('[data-testid=changes-pager]')).toBeNull();
-  expect(query('[data-testid=changes-panel]')!.classList.contains('narrow')).toBe(false);
+// The phone's title once held the files, the refresh and the panels in one list: the file picker is its own
+// control in the body, and the panel selector lists panels only. No list page sits between the files and the chat.
+test('a phone panel head is one back arrow and the panel selector; the file picker is its own control in the body', async () => {
+  const width = Object.getOwnPropertyDescriptor(window, 'innerWidth');
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+  try {
+    await phone(390);
+    button('launch-changes').click(); await settle();
+    const title = () => query('[data-testid=panel-title]')?.textContent;
+    expect(title()).toBe('Changes');
+    expect(query('[data-testid=panel-titlebar] [data-testid=changes-refresh]')).toBeNull();
+    expect(query('[data-testid=changes-panel] [data-testid=changes-refresh]')).not.toBeNull();
+    const rows = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-testid=changes-row]'));
+    rows[0]!.click(); await settle();
+    // One arrow: the head's, back to the chat, since every file is already on this one page.
+    expect(button('panel-close').getAttribute('aria-label')).toBe('Back to chat');
+    expect(title()).toBe('Changes');
+
+    button('panel-add').click(); await settle();
+    const menu = query('[data-testid=panel-add-menu]')!;
+    expect(menu.querySelector('[data-testid=changes-outline-file]')).toBeNull();
+    expect(menu.querySelector('[data-testid=changes-refresh]')).toBeNull();
+    // Every panel by name, then a way to close this one.
+    expect(menu.querySelector('[data-value="files"]')).not.toBeNull();
+    expect(menu.querySelector('[data-value="all-panels"]')).toBeNull();
+    expect(menu.querySelector('[data-value="close-tab"]')?.textContent).toContain('Close Changes');
+    button('panel-add').click(); await settle();
+
+    button('changes-pager').click(); await settle();
+    const files = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-testid=changes-pager-menu] [data-testid=changes-outline-file]'));
+    expect(files.map((file) => file.dataset.value)).toEqual(rows.map((row) => row.dataset.path));
+    files[1]!.click(); await settle();
+    expect(store.panel.active?.path).toBe(rows[1]!.dataset.path);
+
+    expect(button('panel-close').textContent?.trim()).toBe('');
+    button('panel-close').click(); await settle();
+    expect(store.panelOpen).toBe(false);
+  } finally {
+    if (width) Object.defineProperty(window, 'innerWidth', width);
+  }
 });
+
+// The list beside one diff left most of a short file's panel empty: at every width the files stack, each header
+// over its own diff, and the chip names them all.
+for (const width of [1000, 700]) {
+  test(`a ${width} px panel reads every change as one document, each header over its diff`, async () => {
+    await phone(width);
+    button('launch-changes').click(); await settle();
+    const panel = query('[data-testid=changes-panel]')!;
+    expect(panel.querySelector('[role=listbox]')).toBeNull();
+    const rows = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-testid=changes-row]'));
+    button('changes-pager').click(); await settle();
+    const files = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-testid=changes-outline-file]'));
+    expect(files.map((file) => file.dataset.value)).toEqual(rows.map((row) => row.dataset.path));
+    files[0]!.click(); await settle();
+    expect(store.panel.active?.path).toBe(rows[0]!.dataset.path);
+    const section = rows[0]!.closest('[data-file]')!;
+    expect(section.firstElementChild).toBe(rows[0]);
+    expect(section.querySelector('[data-testid=diff-view]')?.getAttribute('data-path')).toBe(rows[0]!.dataset.path);
+    expect(panel.classList.contains('narrow')).toBe(false);
+  });
+}
 
 test('a phone reads a file as wrapped lines and is offered no save', async () => {
   const client = await phone(390);

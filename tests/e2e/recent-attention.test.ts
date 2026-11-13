@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, expect, test } from 'bun:test';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
-import { showThreadView } from './lib/views.ts';
+import { closeDisplayOptions, openDisplayOptions, openProjectFilter, showThreadView } from './lib/views.ts';
 import { startUi } from './lib/ui.ts';
 
 let server: { close(): Promise<void> };
@@ -11,10 +11,14 @@ let url: string;
 let main: string;
 let remote: string;
 const id = (name: string) => `[data-testid="${name}"]`;
+/** Page-side: the key the project filter gives a project of the second machine, Builder (lib/project-view.svelte.ts projectKey). */
+const builderKey = (projectId: string) => `(() => { const machine = globalThis.__boiteTest.workspace.machines[1], core = machine.store.core;
+  return JSON.stringify([core?.hostname ? [core.hostname, core.dataDir, core.channel] : machine.id, ${JSON.stringify(projectId)}]); })()`;
 const desktopRow = (machine: string, thread = 't-trace') => `${id('thread-row')}[data-machine-id="${machine}"][data-thread-id="${thread}"]`;
 const doneRow = (machine: string, thread = 't-trace') => `${id('done-thread')}[data-machine-id="${machine}"][data-thread-id="${thread}"]`;
 const phoneRow = (machine: string, thread = 't-trace') => `.row[data-machine-id="${machine}"][data-thread-id="${thread}"]`;
-const inGroup = (kind: 'done' | 'archived', machine: string, thread = 't-trace') => `${id(`recent-${kind}`)} ${doneRow(machine, thread)}`;
+// Done is the display menu's filter (DisplayOptionsPanel.svelte): on, its rows follow the live ones. Archived keeps its fold.
+const inGroup = (kind: 'done' | 'archived', machine: string, thread = 't-trace') => `${id(kind === 'done' ? 'recent-done-rows' : `recent-${kind}`)} ${doneRow(machine, thread)}`;
 const phoneArchived = (machine: string) => `${id('mobile-list')} ${inGroup('archived', machine)}`;
 const phoneToggle = (kind: 'done' | 'archived' | 'working') => `${id('mobile-list')} ${id(`recent-${kind}-toggle`)}`;
 const captures = process.env.BOITE_RECENT_CAPTURES ?? join(import.meta.dir, '.artifacts');
@@ -31,6 +35,14 @@ async function phone(): Promise<void> {
 async function phoneGroup(kind: 'done' | 'archived' | 'working'): Promise<void> {
   await page.evaluate(`document.querySelector('${phoneToggle(kind)}').scrollIntoView({block:'center'})`);
   await page.click(phoneToggle(kind));
+}
+/** Shows or hides the finished threads from the display menu's Done switch, and closes the menu. */
+async function showDone(on: boolean): Promise<void> {
+  await openDisplayOptions(page);
+  const done = `${id('grouping-options-menu')} [data-value=done]`;
+  if (await page.evaluate(`document.querySelector('${done}').getAttribute('aria-checked') !== '${on}'`)) await page.click(done);
+  await page.waitFor(`document.querySelector('${done}')?.getAttribute('aria-checked') === '${on}'`);
+  await closeDisplayOptions(page);
 }
 async function workingPreference(): Promise<void> {
   await page.click(id('nav-settings'));
@@ -52,7 +64,7 @@ beforeEach(async () => {
   // A phone panel's history traversal must land before the next navigation.
   await page.waitFor('!history.state?.boiteOverlay');
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
-  await page.evaluate(`localStorage.removeItem('boite.recent.v1'); localStorage.removeItem('boite.project-view.v1'); localStorage.setItem('boite.locale', 'fr')`);
+  await page.evaluate(`localStorage.removeItem('boite.recent.v1'); localStorage.removeItem('boite.project-view.v1'); localStorage.removeItem('boite.done.v1'); localStorage.setItem('boite.locale', 'fr')`);
   await page.navigate(url);
   await page.waitFor(`globalThis.__boiteTest?.workspace.machines.length === 2 && document.querySelectorAll('${id('thread-row')}').length === 8`);
   [main, remote] = await page.evaluate<[string, string]>('globalThis.__boiteTest.workspace.machines.map(machine => machine.id)');
@@ -72,9 +84,10 @@ test('Done is collapsed, can be read and reopened, and keeps the other machine w
   await page.evaluate(`document.querySelector(${JSON.stringify(desktopRow(main))}).closest('.thread').querySelector('${id('thread-done')}').click()`);
   await page.waitFor(`!document.querySelector(${JSON.stringify(desktopRow(main))})`);
   expect(await page.evaluate(`!!document.querySelector(${JSON.stringify(desktopRow(remote))})`)).toBe(true);
-  expect(await page.evaluate(`document.querySelector('${id('recent-done-toggle')}').getAttribute('aria-expanded')`)).toBe('false');
+  // Done starts hidden: no row of it until the display menu shows it.
+  expect(await page.evaluate(`!document.querySelector('${id('recent-done-rows')}')`)).toBe(true);
   expect(await page.evaluate(`document.querySelectorAll('${id('done-thread')}').length`)).toBe(0);
-  await page.click(id('recent-done-toggle'));
+  await showDone(true);
   await page.waitFor(`document.querySelector(${JSON.stringify(inGroup('done', main))})`);
   await page.click(`${inGroup('done', main)} ${id('done-thread-open')}`);
   await page.waitFor(`document.querySelector('${id('done-thread-notice')}')`);
@@ -92,7 +105,7 @@ test('Done is collapsed, can be read and reopened, and keeps the other machine w
   // Archiving by hand keeps the thread for later: it lands in Archived, not Done.
   await phoneGroup('archived');
   await page.waitFor(`document.querySelector(${JSON.stringify(phoneArchived(main))})`);
-  expect(await page.evaluate(`!!document.querySelector('${id('mobile-list')} ${id('recent-done')}')`)).toBe(false);
+  expect(await page.evaluate(`!!document.querySelector(${JSON.stringify(`${id('mobile-list')} ${inGroup('done', main)}`)})`)).toBe(false);
   await page.click(`${phoneArchived(main)} ${id('done-thread-open')}`);
   await page.waitFor(`document.querySelector('${id('done-thread-reopen')}')`);
   await page.click(id('done-thread-reopen'));
@@ -127,6 +140,8 @@ test('working grouping persists on the device, retains attention and works on th
   await phoneGroup('working');
   await page.waitFor(`document.querySelector(${JSON.stringify(phoneRow(main))})`);
   await page.click(phoneToggle('working'));
+  // The magnifier opens the search field in the title's place.
+  await page.click(id('mobile-search-open'));
   await page.type(id('mobile-search'), 'Finish the trace');
   await page.waitFor(`document.querySelector(${JSON.stringify(phoneRow(main))})`);
   // The phone groups from the display options at the end of its search field.
@@ -151,34 +166,37 @@ test('a merged PR arrives in Done and project filtering and restoration follow t
   })()`);
   expect(archived).toBe(1);
   await page.waitFor(`!document.querySelector(${JSON.stringify(desktopRow(main, threadId))})`);
-  await page.click(id('recent-done-toggle'));
+  await showDone(true);
   await page.waitFor(`document.querySelector(${JSON.stringify(inGroup('done', main, threadId))})`);
   expect(await page.evaluate(`document.querySelector(${JSON.stringify(inGroup('done', main, threadId))}).querySelector('${id('done-thread-pr')}').getAttribute('href')`)).toBe('https://github.com/example/repo/pull/407');
   await capture('recent-done-desktop.png');
-  await page.click(id('project-filter'));
-  await page.evaluate(`Array.from(document.querySelectorAll('${id('project-filter-menu')} [data-value]')).find(e => e.dataset.value === ${JSON.stringify(JSON.stringify(['http://builder.test', 'p-boite']))}).click()`);
+  await openProjectFilter(page);
+  await page.evaluate(`Array.from(document.querySelectorAll('${id('project-filter-menu')} [data-value]')).find(e => e.dataset.value === ${builderKey('p-boite')}).click()`);
+  await closeDisplayOptions(page);
   // The other machine has no done thread in this project, only its seeded archive.
-  await page.waitFor(`!document.querySelector('${id('recent-done')}')`);
+  await page.waitFor(`!document.querySelector('${id('recent-done-rows')} ${id('done-thread')}')`);
   await page.click(id('recent-archived-toggle'));
   await page.waitFor(`document.querySelectorAll('${id('done-thread')}').length === 1 && document.querySelector(${JSON.stringify(inGroup('archived', remote, 't-parser'))})`);
   expect(await page.evaluate(`!!document.querySelector(${JSON.stringify(desktopRow(remote))})`)).toBe(true);
-  await page.click(id('project-filter'));
+  await openProjectFilter(page);
   await page.click(`${id('project-filter-menu')} [data-value=all]`);
+  await closeDisplayOptions(page);
   await page.waitFor(`document.querySelector(${JSON.stringify(doneRow(main, threadId))})`);
   await page.click(`${doneRow(main, threadId)} ${id('done-thread-restore')}`);
   await page.waitFor(`document.querySelector(${JSON.stringify(desktopRow(main, threadId))})`);
   expect(await page.evaluate('globalThis.__boiteTest.workspace.machines[0].store.client.sweepMergedPrArchives()')).toBe(0);
 }, 20_000);
 
-test('the draft project picker has its logo and dashed selection at desktop and phone widths', async () => {
+test('the draft project picker has its logo and bordered selection at desktop and phone widths', async () => {
   await page.evaluate('globalThis.__boiteTest.workspace.machines[0].store.startDraft("p-boite")');
   await page.waitFor(`document.querySelector('${id('draft-project')} [data-kind=image] img')?.complete`);
   await page.waitFor(`document.querySelector('${id('recent-archived-toggle')}')`);
-  expect(await page.evaluate(`getComputedStyle(document.querySelector('${id('draft-project')}').closest('.project-choice')).borderStyle`)).toBe('dashed');
+  // A choice to make, framed as a control: a solid edge around the project.
+  expect(await page.evaluate(`(() => { const style = getComputedStyle(document.querySelector('${id('draft-project')}').closest('.project-choice')); return style.borderStyle + ' ' + style.borderTopWidth; })()`)).toBe('solid 1px');
   await capture('recent-project-desktop.png');
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await page.waitFor(`document.querySelector('${id('mobile-draft-project')} [data-kind=image] img')?.complete`);
-  expect(await page.evaluate(`getComputedStyle(document.querySelector('${id('mobile-draft-project')}').closest('.project-choice')).borderStyle`)).toBe('dashed');
+  expect(await page.evaluate(`(() => { const style = getComputedStyle(document.querySelector('${id('mobile-draft-project')}').closest('.project-choice')); return style.borderStyle + ' ' + style.borderTopWidth; })()`)).toBe('solid 1px');
   expect(await page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')).toBe(true);
   await capture('recent-project-phone.png');
   // The find chord opens the phone's copy with the keys in its search, and Back closes it.

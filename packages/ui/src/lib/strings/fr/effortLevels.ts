@@ -9,10 +9,10 @@ export const fr: Translation = {
     low: 'Faible',
     medium: 'Moyen',
     high: 'Élevé',
-    xhigh: 'Xhigh',
+    xhigh: 'Très élevé',
     max: 'Max',
     ultra: 'Ultra',
-    ultrathink: 'Ultrathink',
+    ultrathink: 'Ultra',
     fast: 'Rapide'
   }
 };

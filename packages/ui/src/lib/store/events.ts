@@ -15,7 +15,7 @@ import { needsUser } from '../thread-state';
 import { installStatesOf } from './accounts.svelte';
 import { observable } from './connection.svelte';
 import { reportPreferences } from '../client-preferences.svelte';
-import { heardDesktop } from '../experiments';
+import { desktopHeard, heardBuild, heardDesktop } from '../experiments';
 import { lightPage } from './reading-pages.svelte';
 import type { StoreContext } from './context';
 import { probeKey } from './models.svelte';
@@ -58,6 +58,8 @@ export function listen(ctx: StoreContext, client: Client): void {
           models.effortAttempts.clear();
           s.error = null;
           s.core = client.core;
+          // The primary machine's build decides which experiments exist.
+          heardBuild(s, s.core?.version);
           // The folds are kept per core, so they are read once the core says which it is: here, for
           // every ready, as a client that failed its first hello reaches ready without Store.connect.
           // Before the lists land and before the landing, so a draft it opens unfolds over them.
@@ -89,7 +91,7 @@ export function listen(ctx: StoreContext, client: Client): void {
   // After the state handler above, so a reconnect has its principal and core first.
   if (observable(client) && client.onClockOffset) ctx.off.push(client.onClockOffset((offset) => { if (current()) ctx.connection.clockOffset = offset; }));
   if (observable(client)) ctx.off.push(reportPreferences(client, current, experiments => heardDesktop(s, experiments, s.core?.coreId ?? null)));
-  on('client.desktopExperiments', ({ experiments }) => heardDesktop(s, experiments, s.core?.coreId ?? null));
+  on('client.desktopExperiments', (said) => heardDesktop(s, desktopHeard(said), s.core?.coreId ?? null));
 
   on('network.changed', () => networkChanged());
   on('core.updateChanged', snapshot => ctx.serverUpdater.apply(snapshot));

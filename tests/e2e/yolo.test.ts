@@ -32,7 +32,7 @@ test('desktop and phone can select YOLO, run without a permission card and resto
   const yolo = `${selector('composer-mode-menu')} [data-value="yolo"]`;
   const yoloSaved = client.next('thread.updated', thread => thread.id === threadId && thread.permissionMode === 'yolo');
   await page.click(yolo);
-  await page.waitFor(`document.querySelector('${selector('composer-mode')}')?.textContent.includes('YOLO')`);
+  await page.waitFor(`document.querySelector('${selector('composer-mode')}')?.textContent.includes('No limits')`);
   await yoloSaved;
   expect((await client.call('threads.get', { threadId })).permissionMode).toBe('yolo');
   await page.click(selector('composer-mode'));
@@ -46,14 +46,17 @@ test('desktop and phone can select YOLO, run without a permission card and resto
   await page.waitFor(`document.body.innerText.includes('allowed')`);
 
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-  await page.click(selector('composer-options'));
+  // The phone has the same permission chip, its menu a bottom sheet.
+  await page.click(selector('composer-mode'));
   const askSaved = client.next('thread.updated', thread => thread.id === threadId && thread.permissionMode === 'default');
-  await page.click(`${selector('composer-options-sheet')} input[value="default"]`);
+  await page.click(`${selector('composer-mode-menu')} [data-value="default"]`);
   await askSaved;
   expect((await client.call('threads.get', { threadId })).permissionMode).toBe('default');
   const phoneYoloSaved = client.next('thread.updated', thread => thread.id === threadId && thread.permissionMode === 'yolo');
-  await page.click(`${selector('composer-options-sheet')} input[value="yolo"]`);
-  await page.waitFor(`document.querySelector('${selector('composer-options-sheet')} input[value="yolo"]')?.checked`);
+  await page.click(selector('composer-mode'));
+  await page.waitFor(`document.querySelector('${selector('composer-mode-menu')}')?.dataset.mobileSheet === 'true'`);
+  await page.click(yolo);
+  await page.waitFor(`document.querySelector('${selector('composer-mode')}')?.getAttribute('aria-label')?.endsWith('No limits')`);
   await phoneYoloSaved;
   expect((await client.call('threads.get', { threadId })).permissionMode).toBe('yolo');
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);

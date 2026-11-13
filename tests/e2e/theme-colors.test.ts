@@ -8,7 +8,7 @@ let page: BrowserPage;
 let url: string;
 const id = (name: string) => `[data-testid="${name}"]`;
 async function capture(name: string) {
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
   await page.screenshot(join(import.meta.dir, '.artifacts', name));
 }
 async function appearance() {
@@ -17,6 +17,11 @@ async function appearance() {
   await page.waitFor(`document.querySelector('${id('settings-tab-appearance')}')`);
   await page.click(id('settings-tab-appearance'));
   await page.waitFor(`document.querySelector('${id('appearance-page')}')`);
+}
+/** Picks a palette, opening "All themes" first when it is not among the tiles in front. */
+async function palette(name: string) {
+  if (!await page.evaluate(`!!document.querySelector('${id(`palette-${name}`)}')`)) await page.click(id('palette-all'));
+  await page.click(id(`palette-${name}`));
 }
 beforeAll(async () => {
   const port = await freePort();
@@ -31,11 +36,11 @@ test('main colours can be edited, survive reload and keep separate light and dar
   await page.click(id('theme-dark'));
   await capture('theme-colors-desktop.png');
   expect(await page.evaluate(`!!document.querySelector('${id('palette-tokyo-night')}')`)).toBe(true);
-  await page.click(id('palette-tokyo-night'));
-  await page.click(id('palette-default'));
+  await palette('tokyo-night');
+  await palette('default');
   expect(await page.evaluate(`document.querySelector('${id('palette-default')}').getAttribute('aria-pressed')`)).toBe('true');
-  expect(await page.evaluate(`getComputedStyle(document.documentElement).getPropertyValue('--color-background').trim()`)).toBe('#101013');
-  await page.click(id('palette-tokyo-night'));
+  expect(await page.evaluate(`getComputedStyle(document.documentElement).getPropertyValue('--color-background').trim()`)).toBe('#111114');
+  await palette('tokyo-night');
   await page.click(id('colors-customize'));
   await page.click(id('color-accent'));
   await page.type(id('color-hex'), 'invalid');
@@ -51,7 +56,7 @@ test('main colours can be edited, survive reload and keep separate light and dar
   await appearance();
   await page.click(id('theme-light'));
   expect(await page.evaluate(`getComputedStyle(document.documentElement).getPropertyValue('--color-background').trim()`)).not.toBe('#14243a');
-  await page.click(id('palette-catppuccin'));
+  await palette('catppuccin');
   await capture('theme-colors-light-desktop.png');
   await page.click(id('theme-dark'));
   expect(await page.evaluate(`getComputedStyle(document.documentElement).getPropertyValue('--color-background').trim()`)).toBe('#14243a');
@@ -64,17 +69,17 @@ test('main colours can be edited, survive reload and keep separate light and dar
   await page.click(id('colors-undo'));
   await page.waitFor(`document.querySelector('${id('colors-contrast-fix')}')`);
   await page.click(id('colors-reset'));
-  expect(await page.evaluate(`getComputedStyle(document.documentElement).getPropertyValue('--color-background').trim()`)).toBe('#101013');
+  expect(await page.evaluate(`getComputedStyle(document.documentElement).getPropertyValue('--color-background').trim()`)).toBe('#111114');
 }, 30_000);
 
 test('OLED selects dark appearance, restores pure black on reload and preserves the light palette', async () => {
   await page.navigate(url);
   await appearance();
   await page.click(id('theme-light'));
-  await page.click(id('palette-catppuccin'));
+  await palette('catppuccin');
   const lightGround = await page.evaluate(`getComputedStyle(document.documentElement).getPropertyValue('--color-background').trim()`);
   expect(lightGround).toBe('#eff1f5');
-  await page.click(id('palette-oled'));
+  await palette('oled');
   expect(await page.evaluate(`localStorage.getItem('boite.theme')`)).toBe('dark');
   expect(await page.evaluate(`document.querySelector('${id('theme-dark')}').getAttribute('aria-pressed')`)).toBe('true');
   expect(await page.evaluate(`document.querySelector('${id('palette-oled')}').getAttribute('aria-pressed')`)).toBe('true');
@@ -88,7 +93,7 @@ test('OLED selects dark appearance, restores pure black on reload and preserves 
   expect(await page.evaluate(`getComputedStyle(document.documentElement).getPropertyValue('--color-background').trim()`)).toBe('#000000');
   await capture('theme-colors-oled-conversation.png');
   await appearance();
-  await page.click(id('palette-amethyst'));
+  await palette('amethyst');
   await page.evaluate(`document.querySelector('${id('theme-colors')}').scrollIntoView({block:'start'})`);
   await capture('theme-colors-amethyst-desktop.png');
   await page.navigate(url);
@@ -106,7 +111,7 @@ test('phone colour controls support touch, keyboard and French without overflow'
   await page.click(id('locale-fr'));
   await page.waitFor(`document.documentElement.lang === 'fr'`);
   await page.click(id('theme-light'));
-  await page.click(id('palette-gruvbox'));
+  await palette('gruvbox');
   await page.evaluate(`document.querySelector('${id('theme-colors')}').scrollIntoView({block:'start'})`);
   await capture('theme-colors-phone.png');
   await page.click(id('colors-customize'));
@@ -126,5 +131,6 @@ test('phone colour controls support touch, keyboard and French without overflow'
   expect(bounds.right).toBeLessThanOrEqual(390);
   expect(bounds.width).toBeLessThanOrEqual(390);
   await page.click(id('colors-reset'));
-  await page.waitFor(`document.querySelector('${id('colors-reset')}').disabled`);
+  // Reset shows only while there is something to take back: once used, it leaves.
+  await page.waitFor(`!document.querySelector('${id('colors-reset')}')`);
 }, 30_000);

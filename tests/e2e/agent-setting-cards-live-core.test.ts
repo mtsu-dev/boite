@@ -4,6 +4,7 @@ import { echoThread, quietAgent, startTestCore, waitFor } from '../../packages/c
 import { setDriver } from '../../packages/core/src/drivers/index.ts';
 import { BrowserPage } from './lib/cdp.ts';
 import { ensureProductionUi } from './lib/prod-ui.ts';
+import { openRailBot } from './lib/bots.ts';
 
 test('a real agent thread receives new setting cards and removes settled cards on desktop and phone', async () => {
   ensureProductionUi();
@@ -25,10 +26,9 @@ test('a real agent thread receives new setting cards and removes settled cards o
     // Its thread opens with its introduction; the cards land in that thread.
     const { threadId } = await owner.call('agents.open', { agentId: agent.id });
     await waitFor(() => harness.core.journal.listTurns(threadId).some(turn => turn.status === 'done'), 10_000);
-    page = await BrowserPage.launch({ url: `${harness.url}/?token=${harness.token}`, experiments: ['resident-agents'], windowSize: { width: 1440, height: 900 } });
-    await page.click('[data-testid=view-agents]');
-    await page.click(`[data-testid="agent-entry-${agent.id}"]`);
-    await page.waitFor('document.querySelector(".agents-main [data-testid=agent-header]")?.textContent.includes("Mira")');
+    page = await BrowserPage.launch({ url: `${harness.url}/?token=${harness.token}`, windowSize: { width: 1440, height: 900 } });
+    await openRailBot(page, agent.id, 30_000);
+    await page.waitFor('[...document.querySelectorAll("[data-testid=agent-header]")].some(head => head.textContent.includes("Mira"))');
 
     // A pending card waits for the user; once settled, the thread keeps one row saying how it ended.
     const pending = '.agents-main [data-testid=agent-setting-card][data-state=pending]';

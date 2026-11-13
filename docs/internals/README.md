@@ -13,7 +13,7 @@ working on the code. To learn how to use Boite, read the [user guide](../README.
 - [Android client app](android.md): the APK that opens the phone UI and connects to an existing core.
 - [Headless server](server.md): run a core with Docker or without the desktop app.
 - [Android server](android-server.md): host a core and agents on a phone with Termux and the separate Boite Server app.
-- [Experiments](experiments.md): switches for unfinished features. Bots and contacts remain experimental.
+- [Experiments](experiments.md): stages, and switches for unfinished features in Nightly and source builds. Contacts remain experimental; Bots are finished.
 
 ## Conversations and tools
 
@@ -35,13 +35,13 @@ working on the code. To learn how to use Boite, read the [user guide](../README.
 - [Reviewed goals](goals.md): `/goal2`, its fresh reviewer and the checklist of the user's requests.
 - [The project board](board.md): todo columns and reviewed `/goal2` work.
 - [Usage](usage.md): tokens, API estimates, subscription limits and quota alerts.
-- [Prompt cache timer](prompt-cache.md): experimental cache-lifetime estimates and their limits.
+- [Prompt cache timer](prompt-cache.md): cache-lifetime estimates and their limits.
 - [Voice dictation](voice.md): local Whisper, API transcription and microphone access.
 - [Secrets](secrets.md): key-request cards, project secrets, vault storage and masking limits.
 - [Keyboard shortcuts](keybindings.md): defaults and customization.
 - [Pointer interactions](interactions.md): edge scrollbars and loading a thread on press.
 - [Titles](titles.md): automatic and manual conversation titles.
-- [Session import](imports.md): experimental import of a Claude Code conversation.
+- [Session import](imports.md): import of a Claude Code conversation.
 - [Agent updates](agent-updates.md): CLI update notices, automatic updates and remote machines.
 - [Diagnostics](diagnostics.md): logs, anonymized exports and problem reports.
 
@@ -51,7 +51,7 @@ working on the code. To learn how to use Boite, read the [user guide](../README.
 - [Groups](groups.md): one owner's machines and devices, invitations, addresses and trust.
 - [Contacts](contacts.md): experimental collaboration with another owner on explicitly shared projects.
 - [Agent coordination](coordination.md): messages between threads and machines, discussions and permissions.
-- [Bots](bots.md): experimental persistent agents with their own identity, thread, memory, desk and routines.
+- [Bots](bots.md): persistent agents with their own identity, thread, memory, desk and routines.
 - [Teams](teams.md): experimental groups of bots and the owner, routing by name, group or private posts, `boite team`.
 - [Agent brain](brain.md): shared instructions, skill discovery and Git synchronization.
 - [Agent hooks](hooks.md): hooks on each account and what they blocked.
@@ -62,7 +62,7 @@ working on the code. To learn how to use Boite, read the [user guide](../README.
 
 ## Building and contributing
 
-- [Contributing](../../CONTRIBUTING.md): setup and checks before a pull request.
+- [Contributing](../../CONTRIBUTING.md): bug fixes only, the rules for a pull request and the checks.
 - [Development](development.md): local runs, test fixtures and captures.
 - [Adding an RPC method](development.md#adding-an-rpc-method): contracts, permissions and real/fake parity.
 - [Architecture](architecture.md): the core, clients, journal and drivers.

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Notice from './Notice.svelte';
   import { untrack } from 'svelte';
   import { lockedBy } from '../lib/policy';
   import { errorText } from '../lib/errors';
@@ -438,14 +439,13 @@
 </script>
 
 {#snippet refusal(rejected: PluginRejected)}
-  <div class="refusal" role="alert" data-testid="plugin-rejected" data-field={rejected.field}>
-    <p class="refusal-title"><ShieldAlert size={15} strokeWidth={1.75} /><span class="ui-label">{t.refusedTitle}</span></p>
-    <dl class="facts">
+  <Notice icon={ShieldAlert} tone="danger" role="alert" testid="plugin-rejected" kind={rejected.field} title={t.refusedTitle}>
+    <dl class="facts refusal">
       <dt>{t.refusedFile}</dt><dd class="mono">{rejected.file}</dd>
       <dt>{t.refusedField}</dt><dd class="mono">{rejected.field}</dd>
       <dt>{t.refusedExpected}</dt><dd>{rejected.expected}</dd>
     </dl>
-  </div>
+  </Notice>
 {/snippet}
 
 {#snippet autostartSwitch(plugin: PluginState, on: boolean | undefined)}
@@ -464,13 +464,13 @@
   {@const items = addsItems(adds)}
   {#if items.length > 0}
     <dt class="with-tip"><span class="ui-label">{t.adds}</span><InfoTip topic={t.adds} text={t.addsHint} /></dt>
-    <dd><ul class="chips">{#each items as item (item)}<li class="chip" class:mono={item !== t.addsPrompt && item !== strings.pluginUi.adds} data-testid="plugin-adds-item">{item}</li>{/each}</ul></dd>
+    <dd><ul class="chips">{#each items as item (item)}<li class="ui-chip" class:mono={item !== t.addsPrompt && item !== strings.pluginUi.adds} data-testid="plugin-adds-item">{item}</li>{/each}</ul></dd>
   {/if}
   {#if permissions.length > 0 || scoped}
     <dt class="with-tip"><span class="ui-label">{t.reaches}</span><InfoTip topic={t.reaches} text={t.reachesHint} /></dt>
     <dd>
       {#if permissions.length > 0}
-        <ul class="chips">{#each permissions as permission (permission)}<li class="chip" class:danger={PLUGIN_PERMISSIONS[permission]?.danger === true} title={PLUGIN_PERMISSIONS[permission]?.danger === true ? strings.pluginUi.danger : permission} data-testid="plugin-permission" data-permission={permission}>{permissionTitle(permission)}</li>{/each}</ul>
+        <ul class="chips">{#each permissions as permission (permission)}<li class="ui-chip" class:danger={PLUGIN_PERMISSIONS[permission]?.danger === true} title={PLUGIN_PERMISSIONS[permission]?.danger === true ? strings.pluginUi.danger : permission} data-testid="plugin-permission" data-permission={permission}>{permissionTitle(permission)}</li>{/each}</ul>
       {:else}<span class="subtle">{t.reachesNothing}</span>{/if}
     </dd>
   {/if}
@@ -731,13 +731,13 @@
 
   /* The search, the filter and the URL form's button on one line. */
   .toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
-  .search { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: var(--input); padding: 0 10px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-muted-foreground); transition: border-color var(--dur-1) var(--ease-out-quint); }
-  .search:focus-within { border-color: var(--color-edge); }
-  .search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: none; outline: none; box-shadow: none; }
-  .segmented { flex: none; display: flex; gap: 2px; padding: 3px; border-radius: var(--radius-md); background: var(--color-surface-2); }
-  .segmented button { height: var(--control-sm); padding: 0 10px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); font-size: var(--text-sm); }
-  .segmented button:hover:not(.on) { background: var(--color-surface-3); color: var(--color-foreground); }
-  .segmented button.on { background: var(--color-foreground); border-color: var(--color-foreground); color: var(--color-on-foreground); }
+  /* The settings search's field (SettingsShell.svelte): an edge that brightens on focus, the caret the one lit point. */
+  .search { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-2); height: var(--input); padding: 0 10px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-hover); color: var(--color-subtle); transition: border-color var(--dur-2); }
+  .search:focus-within { border-color: var(--color-composer-focus); }
+  .search :global(svg) { flex: none; }
+  .search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; outline: none; box-shadow: none; font-size: var(--text-sm); color: var(--color-foreground); }
+  .search input::-webkit-search-cancel-button { display: none; }
+  /* The filter is app.css's one segmented control. */
   .end { flex: none; display: flex; align-items: center; gap: 6px; }
   .from-url { gap: 6px; height: var(--input); }
   .from-url.on { border-color: var(--color-edge); background: var(--color-active); }
@@ -773,8 +773,7 @@
   .meta .mono { font-size: var(--text-xs); }
   .updates { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; }
 
-  .refusal { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--color-danger) 35%, var(--color-border)); border-radius: var(--radius-md); background: color-mix(in srgb, var(--color-danger) 6%, transparent); }
-  .refusal-title { margin: 0; display: flex; align-items: center; gap: 6px; font-size: var(--text-sm); font-weight: 600; color: var(--color-danger); }
+  .refusal { margin-top: 4px; }
 
   .facts { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; font-size: var(--text-sm); }
   .facts dt { color: var(--color-muted-foreground); }
@@ -796,16 +795,16 @@
   h5 { margin: 0; font-size: var(--text-sm); font-weight: 600; }
   .pool { display: grid; gap: 8px; }
   /* One box per saved login: its name, its buttons and its limits together. */
-  .saved-account { display: grid; gap: 10px; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); }
+  .saved-account { display: grid; gap: 10px; padding: 10px 12px; border-radius: var(--radius-lg); background: var(--color-surface-2); }
   .account-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .account-head strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); font-weight: 600; }
   .extras { align-items: baseline; }
   .with-tip { display: inline-flex; align-items: center; gap: 4px; }
   .chips { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 4px; }
-  .chip.danger { border-color: var(--color-danger); color: var(--color-danger); }
+  .ui-chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 1px 6px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); font-size: var(--text-xs); color: var(--color-foreground); }
+  .ui-chip.danger { border-color: var(--color-danger); color: var(--color-danger); }
   .ui-state { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
   .ui-state .state { min-width: 0; overflow-wrap: anywhere; }
-  .chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 1px 6px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); font-size: var(--text-xs); color: var(--color-foreground); }
   .tag { flex: none; padding: 1px 6px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--color-success) 16%, transparent); color: var(--color-success); font-size: var(--text-xs); font-weight: 500; }
   .account-actions { display: flex; margin-left: auto; gap: 4px; flex: none; }
 

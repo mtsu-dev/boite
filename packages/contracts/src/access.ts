@@ -367,7 +367,7 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['collaboration.read', 'the conversation of a contact it may already reach, text and tool names only, and the tool output of its own conversation, which its carried history points to; the user wants agents to help with each other'],
   ['collaboration.wait', 'blocks on its own inbox until a reply arrives'],
   ['collaboration.contacts', 'the contacts it may write to and the project names each opened to this core, never their keys or addresses'],
-  ['collaboration.ask', 'a request as this thread to a contact, handed to this core\'s Contacts bot, which forwards it; it opens nothing here'],
+  ['collaboration.ask', 'a request as this thread to a contact, sent to the contact it names or handed to this core\'s Contacts bot to pick one; it opens nothing here'],
   // The Contacts bot's own thread only (contacts/bot.ts refuses every other thread): it settles the requests
   // between this owner's agents and contacts'. Opening a project, and any request of a contact not trusted, takes the owner's card.
   ['contacts.bot.view', 'the requests, relations, flags, contacts and project names the Contacts bot settles; never keys, addresses or transcripts'],
@@ -375,7 +375,7 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['contacts.bot.connect', 'putting a contact\'s asking thread in relation with one thread here: letters only, no files or reads'],
   ['contacts.bot.start', 'starting one thread on a project here for a contact\'s request, in relation with the asking thread, as boite thread new would'],
   ['contacts.bot.share', 'a card asking the owner to open a project to a contact; only the owner\'s Yes opens it'],
-  ['contacts.bot.askOwner', 'a card asking the owner whether to act on a request of a contact not trusted'],
+  ['contacts.bot.askOwner', 'a card showing the owner what the bot will do with a request of a contact not trusted; only their Accept runs it'],
   ['contacts.bot.refuse', 'refusing a contact\'s request with a reason its asking agent reads'],
   ['contacts.bot.cut', 'ending relations or closing projects a contact reaches here; the contact and its link stay the owner\'s'],
   ['contacts.bot.flag', 'delivering or refusing a contact\'s letter held by a flag'],
@@ -433,7 +433,7 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['settings.request', 'a settings card on its own thread proposing a change or pointing at a page; only the owner applies it, through settings.set'],
   ['agents.settings.read', 'the settings of one of the owner\'s agents a card may propose to change (name, domain, instructions, avatar, status, projects, model, effort, memory pass, event wakes, adding projects, subagents, daily budget), so it reads before it proposes; never their brains or conversations'],
   ['agents.settings.request', 'a card on its own thread proposing a change to one agent setting; only the owner applies it, through agents.settings.apply'],
-  ['agents.create', 'creating the bot the user asked its thread for, as the Bots page would, without a card: the owner chose to let threads set bots up on their own (2026-10-24)'],
+  ['agents.create', 'asking for the bot the user asked its thread for: with the machine setting agentBotCreation on ask (a new install) it only draws a card the owner approves through the owner-only agents.create.approve; on free (the owner\'s choice, kept on installs older than the setting) it creates the bot at once, as the Bots page would'],
   ['agents.picture.put', 'storing an image file for a bot to wear, bounded to 512 KB of PNG, JPEG, WebP or GIF whose bytes match their type; it changes no bot, and unworn pictures are swept (agents/pictures.ts)'],
   ['agents.avatar.set', 'changing the face of a bot of this machine, its own or another\'s, without a card: the owner asked that agents may dress bots themselves (2026-11-01); only the avatar changes, to a picture this machine holds or a robot, never a name, instructions or access'],
   ['artifacts.publish', 'explicitly sharing a bounded snapshot from its own working directory in its own conversation'],

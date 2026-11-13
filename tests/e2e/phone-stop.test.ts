@@ -55,7 +55,7 @@ for (const [width, height] of [[390, 844], [360, 760]] as const) {
     const { threadId } = await owner.call('agents.open', { agentId: agent.id });
     await waitFor(() => turns(threadId).length > 0 && free(threadId), 15_000);
 
-    const page = await BrowserPage.launch({ url: 'about:blank', experiments: ['resident-agents'], windowSize: { width: 1280, height: 900 } });
+    const page = await BrowserPage.launch({ url: 'about:blank', windowSize: { width: 1280, height: 900 } });
     try {
       await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
       await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });

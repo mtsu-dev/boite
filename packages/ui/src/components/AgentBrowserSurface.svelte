@@ -205,7 +205,7 @@
   .agent-browser { flex: 1; min-height: 0; height: 100%; display: flex; flex-direction: column; }
   .empty, .cover, .start { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px; text-align: center; color: var(--color-muted-foreground); }
   .cover { background: var(--color-background); }
-  .card { display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 340px; width: 100%; padding: 20px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-2); box-shadow: var(--shadow-e2); color: var(--color-foreground); }
+  .card { display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 340px; width: 100%; padding: 20px; border-radius: var(--radius-lg); background: var(--color-surface-2); color: var(--color-foreground); }
   .card button { min-width: 112px; justify-content: center; margin-top: 4px; }
   p { margin: 0; overflow-wrap: anywhere; }
   .heading { font-weight: 600; color: var(--color-foreground); }
@@ -234,9 +234,8 @@
   .start { background: var(--color-surface); gap: 12px; border-top: 0; }
   .start .muted { max-width: 360px; }
   .start .omnibox { display: flex; align-items: center; gap: 6px; width: min(440px, 100%); padding: 4px 4px 4px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-full); background: var(--color-surface-2); }
-  .start .omnibox:focus-within { border-color: color-mix(in srgb, var(--color-accent) 60%, var(--color-edge)); box-shadow: 0 0 0 3px var(--color-accent-soft); }
+  .start .omnibox:focus-within { border-color: var(--color-muted-foreground); }
   .start input { flex: 1; min-width: 0; height: var(--control-sm); padding: 0; border: 0; background: transparent; box-shadow: none; font-size: var(--text-sm); outline: none; }
-  .start .primary { border-radius: var(--radius-full); padding: 0 14px; }
   .failure { color: var(--color-danger); font-size: var(--text-sm); }
   .failure.banner { margin: 0; padding: 6px 12px; background: var(--color-surface); border-bottom: 1px solid var(--color-border); }
   @media (hover: none), (pointer: coarse) { .close { opacity: 1; } }

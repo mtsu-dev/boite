@@ -4,14 +4,14 @@ export const fr: Translation = {
 
   activity: {
     goal: 'Objectif',
-    question: 'Question',
-    questionOf: '{index} sur {total}',
+    question: 'Vous attend',
+    questionOf: 'Question {index} sur {total}',
     questionPrev: 'Question précédente',
     questionNext: 'Question suivante',
     questionFold: 'Replier la question',
     questionUnfold: 'Déplier la question',
+    questionSetAside: 'Replier la question et écrire un message',
     subagentAsks: 'Demandé par {title}',
-    subagentPermission: '{title} attend votre autorisation',
     openSubagent: 'Ouvrir',
     openSubagentHint: 'Ouvrir {title}',
     loop: 'Boucle',
@@ -78,6 +78,9 @@ export const fr: Translation = {
     error: 'Échec',
     pending: 'À faire',
     in_progress: 'En cours',
-    completed: 'Terminée'
+    completed: 'Terminée',
+    kind: { permission: 'Permission', question: 'Question', request: 'Demande de contact', mail: 'Message retenu', failed: 'Échec', stopped: 'Arrêtée', done: 'Terminée' },
+    textAll: 'Tout afficher',
+    textLess: 'Afficher moins'
   }
 };

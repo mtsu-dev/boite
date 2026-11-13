@@ -1,13 +1,14 @@
-import { AppWindow, Archive, ArrowDown, ArrowLeft, ArrowUp, Copy, FolderMinus, GitBranch, History, Import, KeyRound, PencilLine, Plus, RefreshCw, Settings, Trash2 } from '@lucide/svelte';
+import { AppWindow, Archive, ArrowDown, ArrowUp, Copy, FolderMinus, GitBranch, History, Import, KeyRound, PencilLine, Plus, RefreshCw, Settings, Trash2 } from '@lucide/svelte';
 import type { Project } from '@boite/contracts';
 import type { Store } from './store.svelte';
 import { workspace } from './workspace.svelte';
+import { archivedFocus } from './archived-focus.svelte';
 import { confirm } from './confirm.svelte';
 import { contextMenu } from './context-menu.svelte';
 import { experimentOn } from './experiments.svelte';
 import { separator, type MenuItem } from './menu';
 import { fill, strings } from './strings';
-import { projectName } from './format';
+import { count, projectName } from './format';
 import { undo } from './undo.svelte';
 
 /** Asks before a project leaves Boite, then removes it. Its folder, when there is one left, stays. */
@@ -30,16 +31,19 @@ export async function archiveProjectWithUndo(owner: Store, project: Project): Pr
   });
 }
 
+/** A card's archived threads: their count names the menu's way to their one home, Settings' archive opened on this project. */
+export type ArchivedInCard = { count: number };
+
 export function projectMenu(event: MouseEvent, owner: Store, project: Project, reorder?: {
   up: boolean;
   down: boolean;
   move: (direction: -1 | 1) => void;
-}, opened?: () => void) {
+}, opened?: () => void, archived?: ArchivedInCard) {
   const client = owner.client;
   const clientGeneration = owner.clientGeneration;
   const management: MenuItem[] = [
-    { id: 'back', label: strings.sidebar.backToProjectMenu, glyph: ArrowLeft, back: true },
-    separator('back-sep'),
+    // The way back names the level it stands on and draws its own rule (`BackRow.svelte`), as every second level does.
+    { id: 'back', label: strings.sidebar.manageProject, title: strings.sidebar.backToProjectMenu, back: true },
     ...(reorder ? [
       { id: 'move-up', label: strings.sidebar.moveProjectUp, glyph: ArrowUp, disabled: !reorder.up },
       { id: 'move-down', label: strings.sidebar.moveProjectDown, glyph: ArrowDown, disabled: !reorder.down },
@@ -74,7 +78,13 @@ export function projectMenu(event: MouseEvent, owner: Store, project: Project, r
     { id: 'new', label: strings.sidebar.newThread, glyph: Plus, disabled: project.missing === true, ...(project.missing === true ? { title: strings.sidebar.projectMissing } : {}) },
     { id: 'copy', label: strings.sidebar.copyPath, title: project.path, glyph: Copy },
     ...(project.kind !== 'drafts' ? [{ id: 'rename', label: strings.common.rename, glyph: PencilLine }] : []),
-    { id: 'archived', label: strings.sidebar.viewArchivedThreads, glyph: History },
+    // Archived threads have one home, Settings' archive: from a card it opens on this project, its count beside.
+    {
+      id: 'archived', label: strings.settings.archived.heading, glyph: History, testid: 'project-archived-toggle',
+      ...(archived && archived.count > 0 ? {
+        hint: count(archived.count), title: fill(strings.sidebar.projectArchivedThreads, { count: String(archived.count), project: projectName(project) })
+      } : {})
+    },
     ...(owner.owner || project.kind !== 'drafts' || reorder
       ? [separator(), { id: 'manage', label: strings.sidebar.manageProject, glyph: Settings, hint: '›', submenu: true }]
       : [])
@@ -105,6 +115,8 @@ export function projectMenu(event: MouseEvent, owner: Store, project: Project, r
       }
       if (action === 'archived') {
         if (workspace.active !== owner) await workspace.select(owner);
+        archivedFocus.store = owner;
+        archivedFocus.projectId = project.id;
         owner.showSettings('general', 'archived');
       }
       if (action === 'archive-project') await archiveProjectWithUndo(owner, project);

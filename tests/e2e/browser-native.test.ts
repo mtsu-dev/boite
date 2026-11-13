@@ -108,7 +108,7 @@ test.skip('native browser fills its panel and floats inside the app without losi
     await fillsSlot();
     expect((await slot()).width).toBeLessThan(beforeResize.width - 100);
     // Drag from the middle of the bar and from a tab label, away from the grip.
-    for (const selector of ['[data-testid=panel-titlebar] .spacer', '[data-testid=panel-tab] .name']) {
+    for (const selector of ['[data-testid=panel-surface-head]', '[data-testid=panel-tab] .name']) {
       const before = await panelRect();
       await drag(selector, -40, 10);
       const after = await panelRect();
@@ -154,7 +154,7 @@ test.skip('native browser fills its panel and floats inside the app without losi
     await page.waitFor("!document.querySelector('[data-testid=panel-add-menu]') && !document.querySelector('[data-testid=browser-overlay-preview]')");
     await fillsSlot();
     expect((await command({ kind: 'evaluate', expression: 'document.hidden' })).value).toBe(false);
-    await drag('[data-testid=panel-titlebar] .spacer', -2000, -2000);
+    await drag('[data-testid=panel-surface-head]', -2000, -2000);
     const moved = await slot();
     expect(moved.x).toBeGreaterThanOrEqual(0); expect(moved.y).toBeGreaterThanOrEqual(0);
     await fillsSlot();

@@ -3,9 +3,12 @@
   import type { Snippet } from 'svelte';
   import type { Store } from '../lib/store.svelte';
   import TurnSummary, { type SummaryMemory, type SummarySteps } from './TurnSummary.svelte';
+  import { lastHeard, machineAway } from '../lib/machine-away';
   import type { CompactionPart } from '../lib/tool-groups';
 
-  let { store, threadId, turn, turns = [], message, messages, pointed = false, steps, memory, compactions, actions }: {
+  let { store, threadId, turn, turns = [], message, messages, pointed = false, tucked = false, steps, memory, compactions, actions, carded = false }: {
+    /** The failure has its own card: the line keeps its time and buttons, not a second failure mark. */
+    carded?: boolean;
     store: Store;
     threadId: string;
     turn: Turn;
@@ -15,6 +18,8 @@
     messages: Message[];
     /** The pointer is on one of the turn's answers, maybe not the one this summary closes. */
     pointed?: boolean;
+    /** A phone's message whose buttons wait for a tap (`TurnSummary`). */
+    tucked?: boolean;
     /** A persistent agent's folded steps, counted on the line and opened from it. */
     steps?: SummarySteps;
     /** The memory pass that followed this turn, as a mark on the line. */
@@ -37,6 +42,7 @@
 
 <TurnSummary
   {turn}
+  {carded}
   {workedBefore}
   clockOffset={store.clockOffset}
   progress={store.openThread?.id === threadId ? store.openThread.progress : undefined}
@@ -44,8 +50,10 @@
   {activeContent}
   waiting={store.openThread?.status === 'waiting' && turn.status === 'running'}
   background={store.openThread?.turns.at(-1)?.id === turn.id ? store.openThread?.background ?? [] : []}
-  stop={() => void store.stop()}
+  stop={machineAway(store) ? undefined : () => void store.stop()}
+  heard={machineAway(store) && store.openThread?.id === threadId ? lastHeard(store.openThread) : null}
   {pointed}
+  {tucked}
   {steps}
   {memory}
   {compactions}

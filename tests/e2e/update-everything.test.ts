@@ -11,7 +11,7 @@ const fixture = '/?fake=1&updates=1&open=recent&machines=1&appUpdate=available&s
 const width = (value: number, height = 900) => page.send('Emulation.setDeviceMetricsOverride', { width: value, height, deviceScaleFactor: 1, mobile: value < 720 });
 async function capture(name: string) {
   await page.evaluate('document.fonts.ready');
-  await page.evaluate('Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))');
+  await page.evaluate('Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))');
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
   await page.screenshot(join(process.env.BOITE_UPDATE_CAPTURES ?? join(import.meta.dir, '.artifacts'), `update-everything-${name}.png`));
 }
@@ -29,7 +29,7 @@ beforeEach(async () => {
 afterEach(async () => { await page?.close(); }, 15_000);
 afterAll(async () => { await server?.close(); }, 30_000);
 
-test('a release found opens the card bottom left at once, without downloading, and its close button puts it off until a newer one', async () => {
+test('a release found opens the card beside its rail button at once, without downloading, and its close button puts it off until a newer one', async () => {
   await page.navigate(`${base}${fixture}`);
   await page.waitFor(`window.__boiteTest?.workspace.machines.length === 2 && document.querySelector('${id('updates-card')}')`);
   // Nothing was downloaded to make it appear: the app's release is offered as found.
@@ -39,17 +39,17 @@ test('a release found opens the card bottom left at once, without downloading, a
   expect(rows.map((row) => row.part)).toEqual(expect.arrayContaining(['app', 'boite', 'claude', 'codex']));
   expect(rows.every((row) => !/Downloading|Updating/.test(row.text))).toBe(true);
   expect(await page.text(id('updates-card'))).toContain('then asks to restart');
-  // Bottom left: the card's left edge on the sidebar's, its bottom just above the foot.
-  await page.evaluate('Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))');
-  const place = await page.evaluate<{ left: number; gap: number }>(`(() => {
+  // Beside its button: right of the app rail, over nothing of it, its foot on the button's, growing upward.
+  await page.evaluate('Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))');
+  const place = await page.evaluate<{ left: number; foot: number }>(`(() => {
     const card = document.querySelector('${id('updates-card')}').getBoundingClientRect();
-    const rail = document.querySelector('${id('sidebar')}').getBoundingClientRect();
-    const foot = document.querySelector('${id('sidebar')} .foot').getBoundingClientRect();
-    return { left: Math.round(card.left - rail.left), gap: Math.round(foot.top - card.bottom) };
+    const rail = document.querySelector('${id('app-rail')}').getBoundingClientRect();
+    const button = document.querySelector('${id('nav-updates')}').getBoundingClientRect();
+    return { left: Math.round(card.left - rail.right), foot: Math.round(card.bottom - button.bottom) };
   })()`);
-  expect(place.left).toBeLessThan(24);
-  expect(place.gap).toBeGreaterThanOrEqual(0);
-  expect(place.gap).toBeLessThan(16);
+  expect(place.left).toBeGreaterThanOrEqual(0);
+  expect(place.left).toBeLessThan(16);
+  expect(Math.abs(place.foot)).toBeLessThanOrEqual(2);
   expect(await page.evaluate(`document.querySelector('${id('nav-updates-dot')}') !== null`)).toBe(true);
   // Two buttons: this app alone, or everything.
   expect(await page.evaluate(`[...document.querySelectorAll('${id('updates-card')} footer button')].map(b => b.dataset.testid)`)).toEqual(['updates-app', 'updates-run']);
@@ -81,9 +81,9 @@ test('Update all starts every machine at once, rows land one by one, and the car
   await page.waitFor(`window.__calls.filter(([, method]) => method === 'core.updateEverything').length === 2`);
   const calls = await page.evaluate<[string, string, { agents: string[]; server: string | null }][]>('window.__calls');
   expect(calls.every(([, method]) => method === 'core.updateEverything')).toBe(true);
-  // This computer's Boite comes with the app; the other machine installs its own.
+  // This computer's Boite comes with the app; the other machine installs its own. This computer goes by its host name, studio.
   expect(Object.fromEntries(calls.map(([label, , params]) => [label, params]))).toEqual({
-    'This PC': { agents: ['claude', 'codex'], server: null },
+    studio: { agents: ['claude', 'codex'], server: null },
     Builder: { agents: ['claude', 'codex'], server: '2.0.0-beta.2' }
   });
   await page.waitFor(`[...document.querySelectorAll('${id('updates-part')}')].some(row => /Updating|Downloading|Waits/.test(row.textContent))`);

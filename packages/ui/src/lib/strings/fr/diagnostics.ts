@@ -10,7 +10,8 @@ export const fr: Translation = {
     system: 'Système',
     uptime: 'Cœur lancé depuis',
     lastDay: 'Dernières 24 heures',
-    levels: { debug: 'débogage', info: 'info', warn: 'avertissements', error: 'erreurs' },
+    levels: { debug: 'détails', info: 'info', warn: 'avertissements', error: 'erreurs' },
+    levelOne: { debug: 'détail', info: 'info', warn: 'avertissement', error: 'erreur' },
     files: 'Fichiers de journal',
     noFiles: 'Aucun fichier de journal pour le moment',
     problems: 'Problèmes',
@@ -66,7 +67,6 @@ export const fr: Translation = {
     cancel: 'Annuler',
     close: 'Fermer',
     agentAccess: 'Les agents peuvent lire les journaux anonymisés',
-    agentAccessHint: "Un agent peut vérifier si Boite elle-même a échoué et rédiger un ticket. Il ne lit que la vue anonymisée, jamais les fichiers sur le disque.",
     failed: "Le diagnostic n'a pas pu se charger : {reason}",
     outdated: "Boite sur {machine} est antérieur à ce diagnostic : son journal s'affiche plus bas, mais l'état, l'export et le signalement demandent une mise à jour. Mettez-le à jour dans Réglages, Machines et mises à jour.",
     outdatedHere: "Boite sur cette machine est antérieur à ce diagnostic : son journal s'affiche plus bas, mais l'état, l'export et le signalement demandent une mise à jour. Mettez-la à jour dans Réglages, Machines et mises à jour."

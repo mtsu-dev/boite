@@ -1,6 +1,8 @@
 <script lang="ts">
+  import Notice from './Notice.svelte';
   import { untrack } from 'svelte';
   import type { FirewallStatus, NetworkCategory } from '@boite/contracts';
+  import { TriangleAlert } from '@lucide/svelte';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
 
@@ -74,18 +76,19 @@
   const outcome = $derived(!status?.detail || status.state === 'error' ? '' : status.detail === 'cancelled' ? text.cancelled : text.failed);
 </script>
 
+{#snippet fix()}
+  <button type="button" class="small" data-testid="firewall-allow" disabled={busy || store.connection !== 'ready'} onclick={() => void allow()}>
+    <span class="ui-label">{busy ? text.allowing : text.allow}</span>
+  </button>
+{/snippet}
+
 {#if listening && store.owner}
   {#if problem}
+    <!-- The one notice form: what blocks the phone and the one button that fixes it. The outcome of a refused try is the only second line. -->
     <div class="firewall" data-testid="firewall-notice" data-state={status?.state}>
-      <p class="hint warn">{problem}</p>
-      {#if outcome}<p class="hint" data-testid="firewall-outcome">{outcome}</p>{/if}
-      {#if status?.state !== 'error' && status?.state !== 'public'}
-        <div class="actions">
-          <button type="button" class="primary" data-testid="firewall-allow" disabled={busy || store.connection !== 'ready'} onclick={() => void allow()}>
-            <span class="ui-label">{busy ? text.allowing : text.allow}</span>
-          </button>
-        </div>
-      {/if}
+      <Notice icon={TriangleAlert} tone="caution" detail={problem} actions={status?.state !== 'error' && status?.state !== 'public' ? fix : undefined}>
+        {#if outcome}<span data-testid="firewall-outcome">{outcome}</span>{/if}
+      </Notice>
     </div>
   {:else if done}
     <p class="hint allowed" data-testid="firewall-allowed">{text.allowed}</p>
@@ -93,9 +96,6 @@
 {/if}
 
 <style>
-  .firewall { display: grid; gap: 8px; margin-top: 14px; }
-  .firewall p { margin: 0; }
-  .warn { color: var(--color-live); }
-  .actions { margin: 0; }
+  .firewall { margin-top: 14px; }
   .allowed { margin: 14px 0 0; }
 </style>

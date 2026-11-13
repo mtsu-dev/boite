@@ -269,7 +269,7 @@ may add any bot of the group the card names, whose own machine still answers for
 it (`team.bot`), and may take out only a bot of its own.
 
 The app draws a bot's card (`boite team propose`, `invite` or `leave`) in
-the dock above the bot's composer, with the core's only option, Refuse, and
+its own card in the bot's conversation, where the bot asked, with the core's only option, Refuse, and
 an Apply button: Create the team, Add to the team or Remove from the team.
 Apply calls the matching method with the card, so the members are the bot ids
 the card stored. The settled card stays in the conversation as one row: team
@@ -280,8 +280,8 @@ and an update of the app.
 
 ### In the app
 
-Teams needs Bots: its switch stays greyed while Bots is off, and turning Bots
-off turns Teams off too. With the experiment on, a Teams section heads the
+Teams is an experiment of a Nightly or a source build; Bots, which it builds
+on, is on in every build. With the experiment on, a Teams section heads the
 Bots page's list, above the bots, on the desktop and on the phone
 (`components/agents/AgentsRail.svelte`). The heading stays while there is no
 team yet, with one line under it, "No team yet: put a few bots in one chat.",

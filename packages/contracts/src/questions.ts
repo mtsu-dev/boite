@@ -1,7 +1,7 @@
 import type { AgentSettingAsk } from './agent-setting-requests.ts';
 import type { ProviderId, RequestId, ThreadId, Timestamp, TurnId } from './ids';
 import type { Attachment } from './messages';
-import type { SettingAsk } from './setting-requests.ts';
+import type { SettingCardAsk } from './setting-requests.ts';
 import type { TeamAsk } from './teams';
 import type { ThreadStatus, ThreadSummary } from './threads';
 import type { Turn } from './turns';
@@ -60,9 +60,10 @@ export interface QuestionRequest {
   async?: boolean;
   /**
    * A settings card (`settings.request`): the agent asks for a change, or
+   * a bot it asked to create (`agents.create` with `agentBotCreation` on `ask`), or
    * points at a page. `text` is its reason. Always asynchronous.
    */
-  setting?: SettingAsk;
+  setting?: SettingCardAsk;
   /**
    * An agent setting card (`agents.settings.request`): a thread, or a
    * persistent agent about itself, proposes a change to an agent's settings.

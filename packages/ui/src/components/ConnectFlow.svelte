@@ -317,10 +317,10 @@
     max-height: min(80dvh, 600px);
     display: flex;
     flex-direction: column;
-    background: var(--color-surface);
-    border: 1px solid var(--color-edge);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-e3);
+    background: var(--overlay-surface);
+    border: 1px solid var(--overlay-edge);
+    border-radius: var(--radius-overlay);
+    box-shadow: var(--shadow-overlay);
     overflow: hidden;
     animation: pop var(--dur-2) var(--ease-out-quint);
   }
@@ -368,7 +368,7 @@
   }
 
   .compact .service { min-height: var(--row); padding: 4px 10px; border-color: transparent; }
-  .service:hover, .service:focus-visible { background: var(--color-hover); outline: none; }
+  .service:hover, .service:focus-visible { background: var(--color-hover); }
   .service:active { transform: none; }
   .who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .name { font-weight: 500; }
@@ -381,20 +381,7 @@
   .done { display: flex; align-items: center; gap: 8px; }
   .bad { color: var(--color-danger); white-space: pre-wrap; word-break: break-word; }
   .row-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-  a.button {
-    display: inline-flex;
-    align-items: center;
-    height: var(--control);
-    padding: 0 14px;
-    border: 1px solid var(--color-edge);
-    border-radius: var(--radius-md);
-    font-size: var(--text-sm);
-    font-weight: 500;
-    color: var(--color-foreground);
-    text-decoration: none;
-  }
-  a.button.primary { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-accent-ink); }
-  a.button.primary:hover { background: color-mix(in oklch, var(--color-accent) 88%, var(--color-foreground)); }
+  /* A link drawn as the primary takes the same fill as button.primary. */
   /* The terminal's own height: a menu of a dozen lines fits without a scroll. */
   .screen { width: 100%; height: 280px; min-width: 0; border-radius: var(--radius-sm); overflow: hidden; }
   .code { display: flex; gap: 6px; width: 100%; }
@@ -407,7 +394,7 @@
 
   @media (max-width: 720px) {
     .scrim { align-items: flex-end; padding: 0; }
-    .dialog { width: 100%; max-height: calc(90dvh - env(safe-area-inset-top, 0px)); border-radius: var(--radius-xl) var(--radius-xl) 0 0; }
+    .dialog { width: 100%; max-height: calc(90dvh - env(safe-area-inset-top, 0px)); border-radius: var(--radius-overlay) var(--radius-overlay) 0 0; }
     .body { padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)); }
     .service { min-height: var(--touch-target); }
   }

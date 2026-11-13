@@ -35,7 +35,7 @@ Keep your projects, conversations and agents together, across your computers and
 - Isolate tasks in Git worktrees, delegate to subagents and run workflows.
 - Follow the same work from your desktop, a paired phone or the Android app.
 - Connect machines and headless servers; each runs agents beside its own projects.
-- Enable experimental bots for ongoing work, scheduled routines and project monitoring.
+- Give ongoing work, scheduled routines and project monitoring to bots.
 
 ## Get started
 
@@ -73,7 +73,7 @@ bun run dev:ui
 ```
 
 Open the local URL with `?fake=1` to try it without agent calls.
-[Contributing](CONTRIBUTING.md) covers checks;
+[Contributing](CONTRIBUTING.md) covers what we accept and the checks;
 [development](docs/internals/development.md) covers the real core and desktop builds.
 
 ## Thanks

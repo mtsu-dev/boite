@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick, untrack } from 'svelte';
+  import { tick, untrack, type Snippet } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { slide } from 'svelte/transition';
   import { ArrowRight, Check, CircleArrowDown, X } from '@lucide/svelte';
@@ -14,8 +14,8 @@
   import { workspace } from '../lib/workspace.svelte';
 
   /**
-   * The foot's update button and the card it opens, bottom left of the
-   * window. A release found anywhere lights the dot and opens the card by
+   * The rail foot's update button and the card it opens right of the rail,
+   * its foot on the button's, growing upward, as the machines card does. A release found anywhere lights the dot and opens the card by
    * itself on a wide window, once per release: its close button puts that
    * release off until a newer one comes, a press elsewhere only hides the
    * card. Update the app downloads this app's release alone; Update all
@@ -23,6 +23,8 @@
    * its check and goes, and the card ends on "Everything is up to date" or on
    * Restart once the app's release is downloaded: nothing restarts by itself.
    */
+  /** The rail's name card, drawn beside the button in place of the native tooltip, as every rail button's. */
+  let { name }: { name?: Snippet<[string, string | null]> } = $props();
   const card = new Closing();
   const narrow = new MediaQuery('(max-width: 720px)');
   /** How long "Everything is up to date" stays before the card puts itself away. */
@@ -173,16 +175,17 @@
 
 {#if shown}
   <button type="button" class="ghost icon update-trigger" class:busy={underWay} class:lit={fresh.length > 0 || finished} bind:this={trigger}
-    title={label} aria-label={label} aria-haspopup="dialog" aria-expanded={card.open} onclick={() => void toggle()} data-testid="nav-updates">
+    title={name ? undefined : label} aria-label={label} aria-haspopup="dialog" aria-expanded={card.open} onclick={() => void toggle()} data-testid="nav-updates">
     <CircleArrowDown size={16} strokeWidth={1.75} />
     {#if fresh.length > 0 || underWay || appReady}<span class="dot" data-testid="nav-updates-dot"></span>{/if}
   </button>
+  {@render name?.(label, underWay ? null : subtitle)}
 {/if}
 
 {#if card.shown && shown}
   <div class="updates-card" class:closing={card.closing} bind:this={content} role="dialog" tabindex="-1" aria-label={strings.updateAll.heading}
     {onkeydown} data-testid="updates-card" use:card.attach onanimationend={card.end}
-    use:floating={{ anchor: () => trigger?.closest<HTMLElement>('.foot') ?? trigger ?? null, placement: 'top', align: 'start', cap: 520, dismiss: close }}>
+    use:floating={{ anchor: () => trigger?.closest<HTMLElement>('.slot') ?? trigger ?? null, side: 'right', align: 'end', dismiss: close }}>
     <header>
       <span class="glyph" class:busy={underWay} class:done={allDone} aria-hidden="true">
         {#if allDone}<Check size={18} strokeWidth={2} />{:else}<CircleArrowDown size={18} strokeWidth={1.75} />{/if}
@@ -256,15 +259,15 @@
 <style>
   .update-trigger { position: relative; flex: none; }
   .update-trigger.lit { color: var(--color-foreground); }
-  .dot { position: absolute; width: 6px; height: 6px; right: 3px; top: 3px; border-radius: 50%; background: var(--color-accent); box-shadow: 0 0 0 2px var(--color-frame); }
+  .dot { position: absolute; width: 6px; height: 6px; right: 3px; top: 3px; border-radius: 50%; background: var(--color-caution); box-shadow: 0 0 0 2px var(--color-frame); }
   .update-trigger.busy .dot { animation: pulse 1.4s var(--ease-out-quint) infinite var(--loops); }
 
-  .updates-card { display: flex; flex-direction: column; width: 336px; max-width: calc(100vw - 24px); padding: 0; color: var(--color-foreground); background: var(--color-surface-2); border: 1px solid var(--color-edge); border-radius: var(--radius-lg); box-shadow: var(--shadow-e2); overflow: hidden; transform-origin: bottom left; animation: pop var(--dur-2) var(--ease-out-quint); }
+  .updates-card { display: flex; flex-direction: column; width: 336px; max-width: calc(100vw - 24px); padding: 0; color: var(--color-foreground); background: var(--overlay-surface); border-radius: var(--radius-overlay); box-shadow: var(--shadow-overlay); overflow: hidden; transform-origin: bottom left; animation: pop var(--dur-2) var(--ease-out-quint); border: 1px solid var(--overlay-edge); }
   .updates-card:focus { outline: none; }
   .updates-card.closing { animation-name: pop-out; pointer-events: none; }
 
   header { display: flex; align-items: center; gap: 10px; padding: 12px 14px 10px; }
-  .glyph { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: var(--radius-md); color: var(--color-accent); background: var(--color-accent-soft); transition: color var(--dur-2), background-color var(--dur-2); }
+  .glyph { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: var(--radius-md); color: var(--color-foreground); background: var(--color-active); transition: color var(--dur-2), background-color var(--dur-2); }
   .glyph.busy :global(svg) { animation: breathe 1.6s ease-in-out infinite var(--loops); }
   .glyph.done { color: var(--color-success); background: color-mix(in oklch, var(--color-success) 16%, transparent); }
   .glyph.done :global(svg) { animation: pop var(--dur-2) var(--ease-out-quint); }
@@ -280,7 +283,7 @@
   h3 span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   ul { list-style: none; margin: 0; padding: 0; }
   .part { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; column-gap: 8px; row-gap: 3px; padding: 5px 8px; border-radius: var(--radius-md); font-size: var(--text-sm); transition: opacity var(--dur-2); }
-  .part.done { opacity: 0.7; }
+  .part.done { color: var(--color-subtle); }
   .mark { display: grid; place-items: center; width: 18px; height: 18px; }
   .mark img { display: block; border-radius: 4px; }
   .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

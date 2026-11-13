@@ -81,7 +81,7 @@
   .main { flex: 1; min-width: 0; justify-content: flex-start; gap: 8px; height: var(--row); font-size: var(--text-sm); background: none; border: none; text-align: left; }
   .main span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .icon { flex: none; width: var(--control-sm); height: var(--control-sm); padding: 0; display: grid; place-items: center; }
-  .hint, .error { padding-inline: 8px; font-size: var(--text-xs); color: var(--color-muted-foreground); overflow-wrap: anywhere; }
-  .error { color: var(--color-danger); }
+  .hint, .error { padding-inline: 8px; font-size: var(--text-xs); overflow-wrap: anywhere; }
+  .hint { color: var(--color-muted-foreground); }
   @media (max-width: 720px) { .main, .icon { min-height: var(--touch-target); } .icon { min-width: var(--touch-target); } }
 </style>

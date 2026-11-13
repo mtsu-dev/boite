@@ -26,10 +26,10 @@ test('desktop and paired phone upload files, preserve bytes and show downloadabl
       if (mobile) {
         await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
         await page.click('[data-testid=composer-options]');
-        await page.waitFor('document.querySelector("[data-testid=composer-options-attach]")');
-        expect(await page.text('[data-testid=composer-options-attach]')).toContain('Attach files');
+        await page.waitFor('document.querySelector("[data-testid=composer-attach]")');
+        expect(await page.text('[data-testid=composer-attach]')).toContain('Attach files');
         await page.send('Page.setInterceptFileChooserDialog', { enabled: true });
-        await page.click('[data-testid=composer-options-attach]');
+        await page.click('[data-testid=composer-attach]');
         await page.waitFor('!document.querySelector("[data-testid=composer-options-sheet]")');
       }
       const name = mobile ? 'project-notes.md' : 'requirements.pdf';
@@ -45,7 +45,7 @@ test('desktop and paired phone upload files, preserve bytes and show downloadabl
       expect(await page.text('[data-testid=composer-attachment]')).toContain(name);
       expect(await page.evaluate('document.querySelector("[data-testid=composer-file]").accept')).toBe('');
       await page.type('[data-testid=composer-input]', 'Summarize the attached file');
-      await page.evaluate('Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))');
+      await page.evaluate('Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))');
       await page.screenshot(join(import.meta.dir, '.artifacts', `files-${mobile ? 'phone' : 'desktop'}-draft.png`));
       await page.click('[data-testid=composer-send]');
       // The prompt is on screen before the core has it: its first receipt is what says the turn exists.
@@ -66,7 +66,7 @@ test('desktop and paired phone upload files, preserve bytes and show downloadabl
       const downloaded = join(downloads, name);
       for (const deadline = Date.now() + 10_000; !(existsSync(downloaded) && statSync(downloaded).size === Buffer.byteLength(body)) && Date.now() < deadline;) await Bun.sleep(50);
       expect(readFileSync(downloaded).toString()).toBe(body);
-      await page.evaluate('Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))');
+      await page.evaluate('Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))');
       await page.screenshot(join(import.meta.dir, '.artifacts', `files-${mobile ? 'phone' : 'desktop'}-sent.png`));
       await page.close();
       page = undefined;

@@ -146,31 +146,34 @@
     align-items: center;
     justify-content: center;
     background: var(--color-scrim);
-    animation: fade var(--dur-2) var(--ease-out-quint);
+    animation: fade var(--motion-duration) var(--motion-curve);
   }
 
+  /* The one motion set (app.css): one duration and curve in and out, a cut under reduced motion. */
   .scrim.closing {
-    animation-name: fade-out;
+    animation: fade-out var(--motion-duration) var(--motion-curve);
     pointer-events: none;
   }
 
   .dialog {
     width: min(380px, calc(100vw - 32px));
-    padding: 18px 18px 14px;
-    background: var(--color-surface);
-    border: 1px solid var(--color-edge);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-e3);
-    animation: pop var(--dur-2) var(--ease-out-quint);
+    padding: var(--space-5) var(--space-5) var(--space-4);
+    /* The overlay card every menu and sheet wears (app.css). */
+    background: var(--overlay-surface);
+    border: 1px solid var(--overlay-edge);
+    border-radius: var(--radius-overlay);
+    box-shadow: var(--shadow-overlay);
+    animation: pop var(--motion-duration) var(--motion-curve);
   }
 
   .dialog.closing {
-    animation-name: pop-out;
+    animation: pop-out var(--motion-duration) var(--motion-curve);
   }
 
   h2 {
     font-size: var(--text-md);
-    margin-bottom: 6px;
+    font-weight: 600;
+    margin-bottom: var(--space-2);
     overflow-wrap: anywhere;
   }
 
@@ -182,13 +185,13 @@
 
   .name-field { display: grid; gap: 6px; margin-top: 12px; }
   .name-field input { width: 100%; min-width: 0; }
-  .required-name { margin-top: 6px; font-weight: var(--weight-medium); }
+  .required-name { margin-top: var(--space-2); font-weight: 600; }
 
   .actions {
     display: flex;
     justify-content: flex-end;
-    gap: 6px;
-    margin-top: 14px;
+    gap: var(--space-2);
+    margin-top: var(--space-4);
   }
 
   .destructive {
@@ -197,7 +200,9 @@
     color: var(--color-on-danger);
   }
 
-  .destructive:hover:not(:disabled) {
-    background: var(--color-danger-hover);
+  @media (hover: hover) {
+    .destructive:hover:not(:disabled) {
+      background: var(--color-danger-hover);
+    }
   }
 </style>

@@ -2,6 +2,7 @@
   import { untrack } from 'svelte';
   import InfoTip from './InfoTip.svelte';
   import SaveStatus from './SaveStatus.svelte';
+  import CardScope from './CardScope.svelte';
   import { Autosave, typed } from '../lib/autosave.svelte';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
@@ -56,7 +57,7 @@
 <!-- The whole card is the owner's machine, so a paired device does not see it. -->
 {#if store.owner}
   <section class="card" id="settings-execution" data-testid="scheduler-settings">
-    <h2>{strings.settings.execution}<SaveStatus {save} /></h2>
+    <h2><span class="ui-label">{strings.settings.execution}</span><CardScope {store} /><SaveStatus {save} /></h2>
     <div class="grid">
       {#each FIELDS as field (field.key)}
         <label>

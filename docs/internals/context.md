@@ -10,8 +10,7 @@ there is no usage reading, or when neither a model window nor a compaction
 threshold is known. Hovering, focusing or tapping the ring
 opens exact counts and a separate manual compaction button. The panel opens
 above the message bar, using the available height, and scrolls on short screens.
-Behind the
-`prompt-cache` experiment the meter also carries the
+The meter also carries the
 [prompt cache timer](prompt-cache.md).
 
 When automatic compaction has a token threshold, the ring, percentage, bar and
@@ -385,6 +384,17 @@ and stopping the turn would throw the question away. Skip and the stop button
 still end it. A failed send preserves the input for an explicit retry.
 An unconfirmed provider submission is never retried automatically.
 
+A permission waits on its command row in the timeline: the command in mono,
+the agent's reason on one muted line, "Waiting for approval" and Deny / Allow
+once at the row's end (under it on a phone). While one waits the composer
+reads "Send a message to decline and redirect": a message sent then joins the
+queue, every permission of the thread waiting is denied, and once the turn runs
+again Send now stops it and sends the message as the next turn. When the turn
+ends on its own first, the queue sends the message as usual. The core has no
+single call for this; the client chains deny, the queue and Send now
+(`lib/permission-redirect.svelte.ts`). A pill over the composer leads back to
+the row when it is scrolled out of view.
+
 Stopping a submitted message keeps its text and attachments in the next user
 request's context, even if Stop landed while queued or before the native session
 started. An existing native session receives stopped user messages and accepted
@@ -432,14 +442,16 @@ checks that at desktop and phone widths. Completed tasks and goals fade out on t
 prompt, and newly reported work brings the task list back. Loop details show
 the latest 50 iterations with their outcome and up to 4000 characters of result.
 
-A subagent's question stays in its own conversation. The parent's chatbar,
-above the message input, shows "A subagent has a question" with the child's
-title on desktop and phone. Clicking it opens the child on the machine that
-owns it, where choices and written answers use that child's composer. This
-includes workflow steps and children on other machines. The parent's own
-questions keep their answer controls in the chatbar; child questions only
-provide a link. Child permissions and secret requests still link to the
-child's conversation from the dock.
+A subagent's question stays in its own conversation. The top of the parent's
+composer shows "A subagent has a question" with the child's title on desktop
+and phone. Clicking it opens the child on the machine that owns it, where
+choices and written answers use that child's composer. This includes workflow
+steps and children on other machines. The parent's own questions keep their
+answer controls at the top of the composer, one at a time with a pager ("1 of
+3") when several wait; child questions only provide a link. Child permissions
+are answered in the child's conversation, which the parent's grouped subagent
+row opens. Child secret requests link to the child's conversation from the top
+of the composer.
 `tests/e2e/subagent-questions.test.ts` checks blocking and asynchronous written
 answers against a temporary core on desktop and a paired phone.
 

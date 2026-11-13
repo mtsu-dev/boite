@@ -8,6 +8,7 @@
   import Menu from './Menu.svelte';
   import InfoTip from './InfoTip.svelte';
 
+  const uid = $props.id();
   let devices = $state<MediaDeviceInfo[]>([]);
   let phase = $state<'idle' | 'opening' | 'listening'>('idle');
   let level = $state(0), error = $state('');
@@ -76,11 +77,13 @@
 
 <section class="card" data-testid="voice-input-settings">
   <label class="switch-row">
-    <span class="text ui-label-box"><span class="ui-label">{strings.speech.enabled}</span><InfoTip topic={strings.speech.enabled} text={strings.speech.enabledHint} /></span>
-    <input type="checkbox" role="switch" data-testid="voice-enabled" checked={voice.current.enabled} onchange={(event) => voice.setEnabled(event.currentTarget.checked)} />
+    <span class="text"><span class="ui-label-box"><span class="ui-label">{strings.speech.enabled}</span><InfoTip topic={strings.speech.enabled} text={strings.speech.enabledHint} /></span><span class="hint" id="{uid}-effect">{strings.settings.effects.voiceInput}</span></span>
+    <input type="checkbox" role="switch" aria-describedby="{uid}-effect" data-testid="voice-enabled" checked={voice.current.enabled} onchange={(event) => voice.setEnabled(event.currentTarget.checked)} />
   </label>
+  <!-- The microphone and its test belong to dictation: they show while it is on. -->
+  {#if voice.current.enabled}
   <div class="switch-row microphone-row">
-    <span class="text ui-label-box"><span class="ui-label">{strings.speech.microphone}</span><InfoTip topic={strings.speech.microphone} text={strings.speech.microphoneHint} /></span>
+    <span class="text ui-label">{strings.speech.microphone}</span>
     <div class="picker">
       <Menu items={inputs} onpick={pick} label={strings.speech.microphone} placement="bottom" align="end" testid="voice-microphone">
         <Mic size={15} /><span class="selected ui-label">{selected}</span><ChevronDown size={14} />
@@ -88,11 +91,12 @@
     </div>
   </div>
   <div class="test-row">
-    <button type="button" data-testid="voice-microphone-test" disabled={!voice.current.enabled} onclick={() => phase === 'idle' ? void start() : stop()}>
+    <button type="button" data-testid="voice-microphone-test" onclick={() => phase === 'idle' ? void start() : stop()}>
       <span class="ui-label">{phase === 'idle' ? strings.speech.testMicrophone : strings.speech.stopMicrophoneTest}</span>
     </button>
     <meter min="0" max="1" value={level} aria-label={strings.speech.inputLevel} data-testid="voice-microphone-level"></meter>
   </div>
+  {/if}
   {#if phase !== 'idle'}<p class="hint" role="status">{phase === 'opening' ? strings.speech.opening : strings.speech.microphoneTestHint}</p>{/if}
   {#if error}<p class="error" role="alert" data-testid="voice-microphone-error">{error}</p>{/if}
 </section>
@@ -111,7 +115,7 @@
   meter::-webkit-meter-bar { background: var(--color-edge); border: none; border-radius: var(--radius-md); }
   meter::-webkit-meter-optimum-value { background: var(--color-accent); border-radius: var(--radius-md); }
   meter::-moz-meter-bar { background: var(--color-accent); border-radius: var(--radius-md); }
-  .error { margin: 8px 0 0; color: var(--color-danger); font-size: var(--text-sm); overflow-wrap: anywhere; }
+  .error { margin: 8px 0 0; }
   @media (max-width: 480px) {
     .microphone-row { flex-direction: column; align-items: stretch; gap: 10px; }
     .picker { max-width: 100%; }

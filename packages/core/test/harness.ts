@@ -1,10 +1,10 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Settings } from '@boite/contracts';
+import { OPEN_AGENT_DEFAULTS, isReleaseVersion, type Settings } from '@boite/contracts';
 import { connect } from '../src/client.ts';
 import type { CoreClient } from '../src/client.ts';
-import { Core, type CoreOptions } from '../src/core.ts';
+import { Core, CORE_VERSION, type CoreOptions } from '../src/core.ts';
 import { newToken } from '../src/ids.ts';
 import { MemoryVault } from '../src/platform/secret-vault.ts';
 import { startServer } from '../src/server.ts';
@@ -20,6 +20,12 @@ export interface TestCore {
   stop(): Promise<void>;
 }
 
+/**
+ * The suite runs as a build where experiments exist, on a Release commit too:
+ * the tests of an experiment would otherwise fail on the day a Release is cut.
+ */
+const TEST_VERSION = isReleaseVersion(CORE_VERSION) ? `${CORE_VERSION}-test.0` : CORE_VERSION;
+
 export interface TestCoreOptions {
   /** Restart fixtures can retain the address peers already trust, like an installed core. */
   port?: number;
@@ -27,12 +33,16 @@ export interface TestCoreOptions {
   bundleHash?: string;
   helloTimeoutMs?: number;
   settings?: Partial<Settings>;
+  /** `boot`: keep `agentBotCreation` and `coordinationReach` as the core's own start stored them. */
+  agentDefaults?: 'boot';
   boiteGuide?: boolean;
   onShutdown?: () => void;
   retentionPassMs?: number;
   pullRequestWatches?: CoreOptions['pullRequestWatches'];
   /** A data directory an earlier test core used: the restart a test wants to see. The test removes it. */
   dataDir?: string;
+  /** The version the core is, instead of its package's: a test names a Release to read what it holds off. */
+  version?: string;
   /** The secret vault; a memory vault by default, so no test reaches the system's. */
   secretVault?: CoreOptions['secretVault'];
   /** The admin policy file; a missing file inside the data directory by default, so the machine's never applies. */
@@ -89,10 +99,13 @@ export async function startTestCore(options: TestCoreOptions = {}): Promise<Test
   process.env.BOITE_TERMINAL_SHELL = process.platform === 'win32' ? (process.env.ComSpec ?? 'C:\\Windows\\System32\\cmd.exe') : '/bin/sh';
 
   const token = newToken();
-  const core = new Core({ dataDir, token, onShutdown: options.onShutdown, bundleHash: options.bundleHash, serverUpdates: options.serverUpdates, retentionPassMs: options.retentionPassMs, pullRequestWatches: options.pullRequestWatches, secretVault: options.secretVault ?? (() => Promise.resolve(new MemoryVault())), policyFile: options.policyFile ?? join(dataDir, 'no-policy.json') });
+  const journalExisted = existsSync(join(dataDir, 'journal.db'));
+  const core = new Core({ dataDir, token, version: options.version ?? TEST_VERSION, onShutdown: options.onShutdown, bundleHash: options.bundleHash, serverUpdates: options.serverUpdates, retentionPassMs: options.retentionPassMs, pullRequestWatches: options.pullRequestWatches, secretVault: options.secretVault ?? (() => Promise.resolve(new MemoryVault())), policyFile: options.policyFile ?? join(dataDir, 'no-policy.json') });
   // The scripted agents echo their prompt, and the line that teaches `boite ask`
   // would ride along in every reply: a test that wants it turns it back on.
-  core.settings.set({ asyncQuestions: false, shortAnswers: false, ...options.settings });
+  // A new data directory starts closed (`agentBotCreation`, `coordinationReach`); the suites written before
+  // those settings drive agents across projects and machines, so the harness opens it unless a test asks for the start as shipped.
+  core.settings.set({ asyncQuestions: false, shortAnswers: false, ...(journalExisted || options.agentDefaults === 'boot' ? {} : OPEN_AGENT_DEFAULTS), ...options.settings });
   // An install never reads the real update sources on GitHub: a test that needs one sets its own.
   core.plugins.updateSources = {};
   // Keep scripted replies limited to test input unless testing session context.

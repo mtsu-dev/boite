@@ -3,7 +3,7 @@ export const strings = {
   devicePanel: {
     cover: 'This agent controls a device on {machine}', coverHint: 'Nothing streams to this device until you show it.',
     show: 'Show', hide: 'Hide', hideHint: 'Stop watching and cover the view again',
-    empty: 'No device is open in this conversation. An agent opens one with boite device open, or open one here.',
+    empty: 'No device is open in this thread. An agent opens one with boite device open, or open one here.',
     onMachine: 'On this machine', add: 'Open a device',
     none: 'No simulators or emulators were found on this machine.',
     starting: 'Starting {name}. This can take a minute.', failed: '{name} did not start',
@@ -16,6 +16,7 @@ export const strings = {
     deskHint: 'Click the screen, then type. Drag to swipe, scroll with the wheel, Esc goes back. Paste types the clipboard; copying from the device is not available.', image: 'Live view of {name}', gesture: 'Tap to touch. Drag to swipe.',
     deskHintLive: 'Click the screen, then type. Drag to swipe, scroll with the wheel, Esc goes back. Paste sends your clipboard to the device and pastes it; Ctrl+C copies the device\'s selection here.',
     streamOff: 'Screenshots: the live stream is off in Settings > Experiments.',
+    streamOffRelease: 'Screenshots: the live stream needs a Nightly build.',
     streamDecoder: 'Screenshots: this browser cannot decode the live video.',
     streamFailed: 'Screenshots: the live stream stopped. {reason}',
     copy: 'Copy the device\'s selection', copied: 'Copied from the device', copyEmpty: 'Nothing is selected on the device'

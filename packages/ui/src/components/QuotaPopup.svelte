@@ -3,7 +3,8 @@
   import type { AccountQuota } from '@boite/contracts';
   import type { Snippet } from 'svelte';
   import { fill, strings } from '../lib/strings';
-  import Deferred, { parts } from './Deferred.svelte';
+  import Deferred from './Deferred.svelte';
+  import { parts } from '../lib/nested-parts';
 
   let { rows, loading, completed, error = '', outdated = false, owner = true, order = [], reorder, refresh, connect, settings, close, title, actions, testPrefix = 'quota' }: {
     rows: AccountQuota[] | null;

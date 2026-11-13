@@ -1,6 +1,8 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
-import type { Account, ModelInfo } from '@boite/contracts';
+import type { ComponentProps } from 'svelte';
+import type { Account, ModelInfo, ProviderSummary } from '@boite/contracts';
+import { strings } from '../lib/strings';
 import AccountSeats from './AccountSeats.svelte';
 import App from '../App.svelte';
 import { store } from '../lib/store.svelte';
@@ -8,6 +10,20 @@ import { closeTour } from '../lib/onboarding.svelte';
 import { FIRST_MODELS } from '../lib/model-list';
 import { FakeClient } from '../lib/fake-client';
 import { phoneWidth } from '../test/phone-width';
+
+/** jsdom gets no component CSS from Vite: compile a component's own, under the scope class `node` renders with,
+ * so its computed sizes and positions are the component's and not jsdom's defaults. */
+async function styleOf(node: Element, file: string): Promise<void> {
+  const { compile } = await import('svelte/compiler');
+  const { readFileSync } = await import('node:fs');
+  // svelte.config.js names a scope `b` and the file's hash.
+  const scope = [...node.classList].find((name) => /^b[0-9a-z]{5,}$/.test(name));
+  if (!scope) throw new Error(`${file} renders no scope class on ${node.tagName}: ${node.className}`);
+  const source = readFileSync(`${import.meta.dirname}/${file}`, 'utf8');
+  const style = document.createElement('style');
+  style.textContent = compile(source, { filename: file, cssHash: () => scope }).css?.code ?? '';
+  document.head.append(style);
+}
 
 /** A provider with hundreds of models opens on its first rows; a query or the show-all row reaches the rest. */
 
@@ -49,19 +65,114 @@ async function mountAt(open: 'landing' | 'recent'): Promise<FakeClient> {
   return store.client as FakeClient;
 }
 
+function query<T extends Element = Element>(selector: string): T {
+  const found = document.querySelector<T>(selector);
+  if (!found) throw new Error(`missing ${selector}`);
+  return found;
+}
+
 const rows = () => document.querySelectorAll('[data-testid=composer-picker-menu] [data-model]').length;
 const showAll = () => document.querySelector<HTMLButtonElement>('[data-testid=picker-show-all]');
 
-test('account chips never reveal the login email in their tooltip', () => {
+const shownClaude = { id: 'claude', name: 'Claude', available: true } as ProviderSummary;
+const twoSeats: Account[] = [
+  { id: 'work', providerId: 'claude', label: 'Work', identity: 'work@example.com', isolationDir: null, status: 'ok', createdAt: 0 },
+  { id: 'personal', providerId: 'claude', label: 'Personal', identity: 'personal@example.com', isolationDir: '/accounts/personal', status: 'ok', createdAt: 0 }
+];
+
+function mountSeats(props: Partial<ComponentProps<typeof AccountSeats>>) {
+  running = mount(AccountSeats, { target: document.body, props: { name: 'Claude', shown: shownClaude, seats: twoSeats, shownAccountId: 'work', choice: null, locked: false, onpick: () => {}, ...props } });
+  flushSync();
+}
+
+function key(target: Element, name: string) {
+  target.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true }));
+  flushSync();
+}
+
+const accountButton = () => document.querySelector<HTMLButtonElement>('[data-testid=picker-account]');
+const accountItems = () => [...document.querySelectorAll<HTMLButtonElement>('[data-seat]')];
+
+test('account rows never reveal the login email in their tooltip', async () => {
   const seats: Account[] = [
     { id: 'work', providerId: 'claude', label: 'Work', identity: 'work@example.com', isolationDir: '/accounts/work', status: 'ok', createdAt: 0 },
     { id: 'personal', providerId: 'claude', label: 'Personal', identity: 'personal@example.com', isolationDir: '/accounts/personal', status: 'unauthenticated', createdAt: 0 }
   ];
-  running = mount(AccountSeats, { target: document.body, props: { shown: null, seats, shownAccountId: 'work', choice: null, locked: false, onpick: () => {} } });
+  mountSeats({ shown: null, seats });
+  accountButton()!.click();
+  await waitFor(() => accountItems().length === 2);
+  expect(accountItems().map(item => item.title)).toEqual(['Work', 'Personal']);
+  expect(accountItems().map(item => item.querySelector('.seat-name')?.textContent?.trim())).toEqual(['Work', 'Personal']);
+  // A signed-out login says so in muted words beside its name.
+  expect(accountItems().map(item => item.querySelector('.seat-note')?.textContent ?? null)).toEqual([null, strings.providerSettings.step['sign-in']]);
+});
+
+test('a signed-out account carries a Sign in button that goes to the sign-in path, and the arrows reach it', async () => {
+  const seats: Account[] = [twoSeats[0]!, { ...twoSeats[1]!, status: 'unauthenticated' }];
+  const signedIn: string[] = [];
+  mountSeats({ seats, onsignin: (seat) => signedIn.push(seat.id) });
+  accountButton()!.click();
+  await waitFor(() => accountItems().length === 2);
+  const signIn = document.querySelector<HTMLButtonElement>('[data-testid=picker-account-sign-in]')!;
+  expect(signIn.textContent?.trim()).toBe(strings.accounts.login);
+  // The signed-out row itself cannot be picked; its button is the next stop after the current account.
+  expect(accountItems()[1]!.disabled).toBe(true);
+  key(document.activeElement!, 'ArrowDown');
+  expect(document.activeElement).toBe(signIn);
+  signIn.click();
   flushSync();
-  const chips = [...document.querySelectorAll<HTMLButtonElement>('[data-seat]')];
-  expect(chips.map(chip => chip.title)).toEqual(['Work', 'Personal']);
-  expect(chips.map(chip => chip.textContent?.trim())).toEqual(['Work', 'Personal']);
+  expect(signedIn).toEqual(['personal']);
+  expect(accountItems()).toEqual([]);
+});
+
+test('without a sign-in path the signed-out row only says so', async () => {
+  mountSeats({ seats: [twoSeats[0]!, { ...twoSeats[1]!, status: 'unauthenticated' }] });
+  accountButton()!.click();
+  await waitFor(() => accountItems().length === 2);
+  expect(document.querySelector('[data-testid=picker-account-sign-in]')).toBeNull();
+});
+
+test('one account: the provider name is plain text, no button', () => {
+  mountSeats({ seats: twoSeats.slice(0, 1) });
+  expect(accountButton()).toBeNull();
+  expect(document.querySelector('.provider-name')?.textContent).toBe('Claude');
+});
+
+test('two accounts: the dropdown on the name switches the account and walks by keys', async () => {
+  const picked: string[] = [];
+  mountSeats({ onpick: (seat) => picked.push(seat.id) });
+  // The provider's own login goes unnamed; the button reads "Claude" and a chevron.
+  expect(accountButton()!.textContent?.trim()).toBe('Claude');
+  expect(accountButton()!.getAttribute('aria-expanded')).toBe('false');
+  expect(accountItems()).toEqual([]);
+
+  accountButton()!.click();
+  await waitFor(() => accountItems().length === 2);
+  // The current account carries the check and takes the focus.
+  expect(accountItems().map(item => item.getAttribute('aria-checked'))).toEqual(['true', 'false']);
+  expect(document.activeElement).toBe(accountItems()[0]);
+  accountItems()[1]!.click();
+  flushSync();
+  expect(picked).toEqual(['personal']);
+  expect(accountItems()).toEqual([]);
+  expect(document.activeElement).toBe(accountButton());
+
+  // Keys: the arrows walk the list and wrap, Escape closes it and hands the focus back.
+  accountButton()!.click();
+  await waitFor(() => accountItems().length === 2);
+  key(document.activeElement!, 'ArrowDown');
+  expect(document.activeElement).toBe(accountItems()[1]);
+  key(document.activeElement!, 'ArrowDown');
+  expect(document.activeElement).toBe(accountItems()[0]);
+  key(document.activeElement!, 'Escape');
+  expect(accountItems()).toEqual([]);
+  expect(document.activeElement).toBe(accountButton());
+});
+
+test('another login than the provider own one is named on the line', () => {
+  mountSeats({ shownAccountId: 'personal' });
+  expect(document.querySelector('[data-testid=picker-account-name]')?.textContent).toBe('Personal');
+  expect(accountButton()!.getAttribute('aria-label')).toBe(`Claude, Personal, ${strings.composer.switchAccount}`);
 });
 
 test('a column of hundreds of models draws its first rows until asked for all', async () => {
@@ -127,6 +238,78 @@ test('a short gateway catalog identifies each upstream provider, including after
     const favorite = document.querySelector<HTMLButtonElement>(`[data-testid=favorite-model][title="${models[index]!.id}"]`)!;
     expect(favorite.querySelector('.account-label')?.textContent).toBe(source);
   }
+});
+
+test('in the favorites, the refresh follows their reads, not the hidden column of the provider shown before', async () => {
+  const model: ModelInfo = { id: 'douane/opencode/solo', name: 'Solo' };
+  vi.spyOn(store, 'favorites', 'get').mockReturnValue([{ providerId: 'opencode', accountId: 'a-opencode', model, items: [] }]);
+  // A provider's probes hold while it is in `held`.
+  const held = new Set<string>();
+  const original = FakeClient.prototype.call;
+  vi.spyOn(FakeClient.prototype, 'call').mockImplementation(async function (this: FakeClient, method, params) {
+    if (method === 'providers.probe') await waitFor(() => !held.has((params as { providerId: string }).providerId));
+    return original.call(this, method, params) as never;
+  });
+  await mountAt('landing');
+  const refresh = () => query<HTMLButtonElement>('[data-testid=picker-refresh]');
+  const spins = () => refresh().querySelector('svg')!.classList.contains('spin');
+  document.querySelector<HTMLButtonElement>('[data-testid=composer-picker]')!.click();
+  await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
+  document.querySelector<HTMLButtonElement>('[data-testid=composer-picker-menu] [data-provider=claude]')!.click();
+  await waitFor(() => rows() > 0 && !refresh().disabled);
+  // Claude reads again, then the favorites open: their refresh is free.
+  held.add('claude');
+  refresh().click();
+  await waitFor(() => refresh().disabled);
+  document.querySelector<HTMLButtonElement>('[data-provider=favorites]')!.click();
+  await waitFor(() => document.querySelector('[data-testid=favorite-model]') !== null);
+  expect(refresh().disabled).toBe(false);
+  expect(spins()).toBe(false);
+  // While the favorites read, it spins and takes no second press.
+  held.add('opencode');
+  refresh().click();
+  await waitFor(() => refresh().disabled);
+  expect(spins()).toBe(true);
+  held.clear();
+  await waitFor(() => !refresh().disabled && !spins());
+});
+
+test('a provider with one model beside a long rail: the menu follows the list, the rail scrolls under a fade, the current fill spans its star', async () => {
+  const models: ModelInfo[] = [{ id: 'douane/opencode/solo', name: 'Solo' }];
+  await mountAt('landing');
+  const real = store.modelsOf.bind(store);
+  vi.spyOn(store, 'modelsOf').mockImplementation((providerId, accountId) => providerId === 'opencode' ? models : real(providerId, accountId));
+  document.querySelector<HTMLButtonElement>('[data-testid=composer-picker]')!.click();
+  await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
+  const menu = document.querySelector<HTMLElement>('[data-testid=composer-picker-menu]')!;
+  await styleOf(menu, 'ModelPickerMenu.svelte');
+  // The menu opens on the current model's column: its fill is the entry's, so it runs under the star too.
+  const current = query<HTMLElement>('[data-testid=composer-picker-menu] [aria-current=true]');
+  expect(current.querySelector('.mark svg')).not.toBeNull();
+  expect(current.closest('.model-entry')!.classList.contains('current')).toBe(true);
+  expect(document.querySelectorAll('[data-testid=composer-picker-menu] .mark svg').length).toBe(1);
+  // A fixed height left an empty band under a short list: the frame follows its content, the rail its floor.
+  expect(getComputedStyle(menu).height).not.toMatch(/px|vh/);
+  expect(getComputedStyle(menu).maxHeight).not.toBe('none');
+  document.querySelector<HTMLButtonElement>('[data-testid=composer-picker-menu] [data-provider=opencode]')!.click();
+  await waitFor(() => rows() === 1);
+  expect(getComputedStyle(menu).height).not.toMatch(/px|vh/);
+  // The rail sets no height of its own: its tiles scroll, the add tile and refresh stay pinned below them.
+  const tiles = query<HTMLElement>('[data-testid=picker-rail-tiles]');
+  expect(tiles.querySelectorAll('[data-provider]').length).toBeGreaterThan(5);
+  const foot = query('[data-testid=picker-rail] > .foot');
+  expect(foot.contains(query('[data-testid=picker-refresh]'))).toBe(true);
+  expect(tiles.contains(query('[data-testid=picker-refresh]'))).toBe(false);
+  // Tiles past the visible end fade that edge, and the fade follows the scroll.
+  Object.defineProperty(tiles, 'scrollHeight', { configurable: true, value: 400 });
+  Object.defineProperty(tiles, 'clientHeight', { configurable: true, value: 120 });
+  tiles.dispatchEvent(new Event('scroll'));
+  await waitFor(() => tiles.classList.contains('hidden-end') && !tiles.classList.contains('hidden-start'));
+  tiles.scrollTop = 280;
+  tiles.dispatchEvent(new Event('scroll'));
+  await waitFor(() => tiles.classList.contains('hidden-start') && !tiles.classList.contains('hidden-end'));
+  // The one-model column holds no current model, so no star either.
+  expect(document.querySelectorAll('[data-testid=composer-picker-menu] .mark svg').length).toBe(0);
 });
 
 test('a first probe shows a reading column, never the descriptor list it is about to replace', async () => {
@@ -277,7 +460,20 @@ test('a signed-in Claude seat is probed before its model and account are applied
 
   try {
     document.querySelector<HTMLButtonElement>('[data-testid=composer-picker]')!.click();
-    await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null && document.querySelector('[data-instance="claude::a-claude-side"]') !== null);
+    await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null && accountButton() !== null);
+    accountButton()!.click();
+    await waitFor(() => document.querySelector('[data-instance="claude::a-claude-side"]') !== null);
+    // The accounts unfold inside the column's head, in its flow: the search (on the name's line, under the open list) and the models come after them, not under a layer.
+    const list = document.querySelector<HTMLElement>('[data-testid=picker-accounts]')!;
+    const head = list.closest('.head')!;
+    const search = document.querySelector<HTMLElement>('[data-testid=composer-picker-menu] input')!;
+    const firstModel = document.querySelector<HTMLElement>('[data-testid=composer-picker-menu] [data-model]')!;
+    expect(head.closest('.main-models')).not.toBeNull();
+    expect(head.contains(search)).toBe(true);
+    expect(list.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(list.compareDocumentPosition(firstModel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await styleOf(list, 'AccountSeats.svelte');
+    expect(getComputedStyle(list).position).not.toBe('absolute');
     const seat = document.querySelector<HTMLButtonElement>('[data-instance="claude::a-claude-side"]')!;
     expect(seat.disabled).toBe(false);
     seat.click();
@@ -288,7 +484,15 @@ test('a signed-in Claude seat is probed before its model and account are applied
     expect(calls.some(({ method, params }) => method === 'threads.update' && (params as { accountId?: string }).accountId === 'a-claude-side')).toBe(false);
     expect(store.openThread?.accountId).toBe('a-claude-main');
     expect(store.probedModels[sideKey]).toBeUndefined();
-    expect(seat.disabled).toBe(true);
+    // The list closed on the pick; opened again meanwhile, it waits for the probe.
+    accountButton()!.click();
+    await waitFor(() => document.querySelector('[data-instance="claude::a-claude-side"]') !== null);
+    expect(document.querySelector<HTMLButtonElement>('[data-instance="claude::a-claude-side"]')!.disabled).toBe(true);
+    // Every model row waits with it, the older models' too: a click there would be dropped.
+    query<HTMLButtonElement>('[data-testid=picker-legacy]').click();
+    await waitFor(() => document.querySelectorAll('[data-testid=picker-legacy-menu] .row.model.legacy').length > 0);
+    expect([...document.querySelectorAll<HTMLButtonElement>('[data-testid=picker-legacy-menu] .row.model.legacy')].every((row) => row.disabled)).toBe(true);
+    expect([...document.querySelectorAll<HTMLButtonElement>('.main-models .row.model[data-model]')].every((row) => row.disabled)).toBe(true);
 
     gate.resolve();
     await waitFor(() => calls.some(({ method, params }) => method === 'threads.update' && (params as { accountId?: string }).accountId === 'a-claude-side') && store.openThread?.accountId === 'a-claude-side');

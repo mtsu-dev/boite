@@ -1,18 +1,16 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { mount, unmount } from 'svelte';
-import { setExperiment } from './experiments';
 import { FakeClient } from './fake-client';
 import { rightPanel } from './right-panel.svelte';
 import { openQuestionPage } from './question-page';
 import { Store } from './store.svelte';
-import ThreadActivity from '../components/ThreadActivity.svelte';
+import ThreadDecision from '../components/ThreadDecision.svelte';
 
 let mounted: ReturnType<typeof mount> | undefined;
 afterEach(async () => {
   if (mounted) await unmount(mounted);
   mounted = undefined;
   document.body.innerHTML = '';
-  setExperiment('resident-agents', false);
 });
 
 async function setup(): Promise<{ client: FakeClient; store: Store }> {
@@ -37,10 +35,10 @@ async function shown(client: FakeClient, store: Store, threadId: string, url: st
 
 test('in the thread, Open on a question asked with --open shows its page in the panel, on the Browser tab', async () => {
   const { client, store } = await setup();
-  // The dock above the composer holds the card the thread waits on: the seeded one is skipped first.
+  // The decision card at the timeline's end holds the question the thread waits on: the seeded one is skipped first.
   for (const question of store.pendingQuestions.filter((pending) => pending.threadId === 't-trace')) await store.skipQuestion('t-trace', question.id);
   await ask(client, 't-trace', 'https://ci.example/login');
-  mounted = mount(ThreadActivity, { target: document.body, props: { store } });
+  mounted = mount(ThreadDecision, { target: document.body, props: { store, threadId: 't-trace' } });
   await vi.waitFor(() => expect(document.querySelector('[data-testid=question-open]')).not.toBeNull());
   const open = document.querySelector<HTMLButtonElement>('[data-testid=question-open]')!;
   expect([open.textContent, open.title]).toEqual(['Open', 'https://ci.example/login']);
@@ -49,7 +47,6 @@ test('in the thread, Open on a question asked with --open shows its page in the 
 });
 
 test('from the Agents page, Open on an ordinary thread\'s question opens that thread in the chat with its page in the panel', async () => {
-  setExperiment('resident-agents', true);
   const { client, store } = await setup();
   const other = store.threads.find((thread) => thread.id !== 't-trace' && !thread.archived && !thread.agentSessionId)!.id;
   const { questionId } = await ask(client, other, 'https://ci.example/login');

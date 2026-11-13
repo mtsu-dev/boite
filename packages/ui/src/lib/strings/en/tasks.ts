@@ -9,6 +9,10 @@ export const strings = {
     agentSection: 'Agent tasks',
     todoSection: 'Project todos',
     noTodos: 'No todo on this project',
+    // The panel head: the project's todos by state, the one count the surface stands for.
+    headOpen: '{count} to do',
+    headWaiting: '{count} awaiting you',
+    headDone: '{count} done',
     addPlaceholder: 'Add a todo',
     add: 'Add',
     // The chip on a claimed card. Short enough to leave the card's own text

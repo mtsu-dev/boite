@@ -1,8 +1,14 @@
 <script lang="ts">
-  import { Check, ChevronRight, MessageCircleQuestionMark, Paperclip } from '@lucide/svelte';
+  import type { Snippet } from 'svelte';
+  import { Check, ChevronDown, ChevronRight, MessageCircleQuestionMark, Paperclip } from '@lucide/svelte';
   import type { QuestionAnswer, QuestionOption } from '@boite/contracts';
   import { keepFocus } from '../lib/focus';
+  import { glides } from '../lib/motion';
   import { fill, strings } from '../lib/strings';
+  import { answerSummary } from '../lib/answer-receipt';
+  import CodeText from './CodeText.svelte';
+  import DecisionHead from './DecisionHead.svelte';
+  import DecisionActions from './DecisionActions.svelte';
 
   let {
     text,
@@ -11,11 +17,14 @@
     multiple,
     async = false,
     docked = false,
+    folded = false,
+    head,
     answer,
     pending,
     picked = $bindable([]),
     drafted = false,
     replying = false,
+    next = false,
     submit,
     skip,
     onwrite,
@@ -28,8 +37,19 @@
     multiple: boolean;
     /** Asked with `boite ask`: the agent did not stop for it and the answer reaches it later. */
     async?: boolean;
-    /** Drawn inside the dock above the composer, whose own row names it: no frame, no heading. */
+    /**
+     * Drawn at the top of the composer: the question once, in bold on a line
+     * of its own, the fold a compact group at its end, the options as rows
+     * numbered for the keyboard (the composer's 1 to 9), then Skip question.
+     * While the composer answers it (`replying`), the composer's Send reads
+     * Answer and is the one commit: it takes the picks with its text and
+     * files. A question the composer does not answer keeps its own Answer.
+     */
     docked?: boolean;
+    /** Docked and folded: the head alone, the question on one line. */
+    folded?: boolean;
+    /** What the dock adds to the head's end: its fold. */
+    head?: Snippet;
     answer: QuestionAnswer | null;
     /** False on a card whose turn ended before anyone answered: nothing to press. */
     pending: boolean;
@@ -37,8 +57,10 @@
     picked?: string[];
     /** The composer holds text or files for this answer: Answer needs no option then. */
     drafted?: boolean;
-    /** The composer is this question's free field: the card says so instead of offering it. */
+    /** The composer is this question's free field and its Send the commit: the card has no Answer of its own. */
     replying?: boolean;
+    /** Another question follows this one in the dock: Answer's tooltip says it shows that one next. */
+    next?: boolean;
     /** False when the answer did not reach the core: the card is given back to answer again. */
     submit: (optionIds: string[]) => unknown;
     /** Resolve without sending an answer. A failure leaves the card usable. */
@@ -52,10 +74,81 @@
 
   let sent = $state(false);
   let open = $state(false);
+  const verdict = $derived(strings.chat.questionAnswered.split('{answer}') as [string, string?]);
   let built = $state(false);
   $effect(() => { if (open) built = true; });
 
   const ready = $derived(picked.length > 0 || drafted);
+  /** The card's own Answer: on the timeline, and docked whenever the composer does not answer this question. */
+  const answers = $derived(!docked || !replying);
+  /**
+   * Choices and nothing picked: Answer waits as an outline in the muted ink,
+   * its tooltip says what makes it act, and a press goes to the first choice.
+   * At the first pick it becomes the primary.
+   */
+  const waiting = $derived(options.length > 0 && !ready);
+
+  /**
+   * The docked choices get a room: the composer's cap on the question
+   * (`ThreadDecision`'s `--question-cap`) less what the question holds
+   * besides them, so its head and its pair always show whole. Whole rows
+   * only: when they do not all fit, the list stops under the last row that
+   * does and a line counts the rest. Settled before the card arrives, so its
+   * growth never reflows the count, and the end frame is the reduced-motion one.
+   */
+  let list = $state<HTMLDivElement | undefined>(undefined);
+  let below = $state(0);
+  /** Where each row ends, from the list's top with no scroll. */
+  function ends(): number[] {
+    if (!list) return [];
+    const top = list.getBoundingClientRect().top - list.scrollTop;
+    return Array.from(list.children).map((row) => row.getBoundingClientRect().bottom - top);
+  }
+  /** The count line and its gap, kept free in case the rows do not all fit. */
+  const MORE_LINE = 36;
+  function roomOf(node: HTMLElement): number {
+    const cap = parseFloat(getComputedStyle(node).maxHeight);
+    const card = node.closest<HTMLElement>('[data-testid=thread-decision]');
+    const total = card ? parseFloat(getComputedStyle(card).maxHeight) : NaN;
+    if (!card || !Number.isFinite(total)) return cap;
+    // scrollHeight counts the card whole while its arrival still squeezes it.
+    const around = card.scrollHeight - node.clientHeight + MORE_LINE;
+    const room = Math.max(96, total - around);
+    return Number.isFinite(cap) ? Math.min(cap, room) : room;
+  }
+  function fit(): void {
+    if (!list || !docked) return;
+    list.style.maxHeight = '';
+    const room = roomOf(list);
+    const rows = ends();
+    if (!Number.isFinite(room) || (rows.at(-1) ?? 0) <= room + 1) { below = 0; return; }
+    const whole = rows.filter((end) => end <= room + 1);
+    list.style.maxHeight = `${Math.ceil(whole.at(-1) ?? rows[0] ?? 0)}px`;
+    measure();
+  }
+  /** The rows under the list's edge, counted from where it is scrolled. */
+  function measure(): void {
+    if (!list || !list.style.maxHeight) { below = 0; return; }
+    const edge = list.scrollTop + list.clientHeight + 1;
+    below = ends().filter((end) => end > edge).length;
+  }
+  $effect(() => {
+    void options.length;
+    if (!list || !docked || typeof ResizeObserver !== 'function') return;
+    // A new width rewraps the rows; a new window height changes the cap (`svelte:window` below).
+    let width = list.clientWidth;
+    const watch = new ResizeObserver(() => {
+      if (!list || list.clientWidth === width) return;
+      width = list.clientWidth; fit();
+    });
+    watch.observe(list);
+    fit();
+    return () => watch.disconnect();
+  });
+  function more(): void {
+    const next = Array.from(list?.children ?? []).find((option) => option.getBoundingClientRect().bottom > list!.getBoundingClientRect().bottom + 1);
+    next?.scrollIntoView({ block: 'nearest', behavior: glides() ? 'smooth' : 'auto' });
+  }
 
   function toggle(id: string): void {
     if (multiple) {
@@ -65,10 +158,23 @@
     picked = picked[0] === id ? [] : [id];
   }
 
+  /** Answer always answers to a press: with nothing picked it sends nothing and points at the choices, or hands a written answer to the composer. */
   async function send(): Promise<void> {
-    if (!pending || !ready || sent) return;
+    if (!pending || sent) return;
+    if (!ready) {
+      if (options.length === 0) { onwrite?.(); return; }
+      list?.querySelector<HTMLButtonElement>('button')?.focus();
+      return;
+    }
     sent = true;
     if ((await submit(picked)) === false) sent = false;
+  }
+
+  /** The composer's 1 to 9 still pick once the focus moved onto the choices. */
+  function numbered(event: KeyboardEvent): void {
+    if (!/^[1-9]$/.test(event.key) || Number(event.key) > options.length || event.ctrlKey || event.metaKey || event.altKey) return;
+    event.preventDefault();
+    toggle(options[Number(event.key) - 1]!.id);
   }
 
   async function pass(): Promise<void> {
@@ -76,14 +182,9 @@
     sent = true;
     if ((await skip()) === false) sent = false;
   }
-  /** What the folded card says: the labels picked, then whatever was typed, else how many files went. */
+  /** What the folded card says (`lib/answer-receipt.ts`). */
   function summary(given: QuestionAnswer): string {
-    const labels = given.optionIds.map((id) => options.find((one) => one.id === id)?.label ?? id);
-    const written = given.text ?? '';
-    if (labels.length > 0 && written.length > 0) return `${labels.join(', ')}: ${written}`;
-    const said = labels.length > 0 ? labels.join(', ') : written;
-    const count = given.attachments?.length ?? 0;
-    return said.length > 0 || count === 0 ? said : fill(strings.media.answerFileCount, { count: String(count) });
+    return answerSummary(options, given.optionIds, given.text ?? '', given.attachments?.length ?? 0);
   }
 
   function fileNames(given: QuestionAnswer): string {
@@ -91,9 +192,10 @@
   }
 </script>
 
+<svelte:window onresize={fit} />
 <div
   class="question"
-  class:resolved={answer !== null}
+  class:resolved={answer !== null || (!docked && (!async || !pending))}
   class:async
   class:docked
   data-testid="question-card"
@@ -104,8 +206,8 @@
   {#if answer !== null}
     <button type="button" class="ghost answered-row" data-testid="question-toggle" aria-expanded={open} onclick={() => (open = !open)}>
       <span class="glyph"><MessageCircleQuestionMark size={15} strokeWidth={1.75} /></span>
-      <span class="verdict ui-label" data-testid="question-verdict">{strings.chat.questionAnswered}</span>
-      <span class="given ui-label" data-testid="question-answer" title={summary(answer)}>{summary(answer)}</span>
+      <!-- One sentence from one template: the answer sits inline in it, so no flex gap doubles the space. -->
+      <span class="given ui-label" data-testid="question-verdict" title={fill(strings.chat.questionAnswered, { answer: summary(answer) })}><span class="verdict">{verdict[0]}</span><span data-testid="question-answer">{summary(answer)}</span><span class="verdict">{verdict[1] ?? ''}</span></span>
       {#if answer.attachments?.length}
         <span class="given-files" data-testid="question-answer-files" title={fileNames(answer)}><Paperclip size={12} strokeWidth={2} />{answer.attachments.length}</span>
       {/if}
@@ -115,7 +217,7 @@
       <div>
         {#if built}
           <div class="answer-detail">
-            <p class="prompt" data-testid="question-text">{text}</p>
+            <p class="prompt" data-testid="question-text"><CodeText {text} /></p>
             <p>{summary(answer)}</p>
             {#if answer.attachments?.length}
               <p class="muted">{fill(strings.media.answerFiles, { names: fileNames(answer) })}</p>
@@ -124,22 +226,39 @@
         {/if}
       </div>
     </div>
+  {:else if !pending && !docked}
+    <!-- Skipped, or dropped with its turn: the receipt, one quiet line, never the card again. -->
+    <div class="answered-row cancelled-row">
+      <span class="glyph"><MessageCircleQuestionMark size={15} strokeWidth={1.75} /></span>
+      <span class="given ui-label" data-testid="question-cancelled" title={text}>{fill(strings.chat.questionCancelled, { question: text })}</span>
+    </div>
+  {:else if !docked && !async && pending}
+    <!-- The agent stopped for it: the question is written once, at the top of the composer; here a plain line and a quiet mark. -->
+    <button type="button" class="ghost answered-row waiting-row" data-testid="question-waiting" title={strings.chat.questionDocked} disabled={!onwrite} onclick={() => onwrite?.()}>
+      <span class="glyph"><MessageCircleQuestionMark size={15} strokeWidth={1.75} /></span>
+      <span class="given ui-label">{strings.chat.questionHeading}</span>
+      <span class="waiting-mark" role="img" aria-label={strings.chat.questionDocked}></span>
+    </button>
   {:else}
-  {#if !docked}
+  {#if docked}
+    <DecisionHead end={head}>
+      <span class="prompt" class:folded data-testid="question-text"><CodeText {text} /></span>
+    </DecisionHead>
+  {:else}
     <div class="head">
       <span class="glyph"><MessageCircleQuestionMark size={15} strokeWidth={1.75} /></span>
       <span class="muted ui-label">{async ? strings.chat.questionAsyncHeading : strings.chat.questionHeading}</span>
     </div>
+    <p class="prompt" data-testid="question-text"><CodeText {text} /></p>
   {/if}
-
-  <p class="prompt" data-testid="question-text">{text}</p>
+  {#if !folded}
   {#if async && answer === null && pending && !docked}
     <p class="muted description" data-testid="question-async-hint">{strings.chat.questionAsyncHint}</p>
   {/if}
 
     {#if options.length > 0}
-      <div class="options" role={multiple ? 'group' : 'radiogroup'}>
-        {#each options as option (option.id)}
+      <div class="options" class:scroll-edges={docked} class:clipped={below > 0} role={multiple ? 'group' : 'radiogroup'} bind:this={list} onscroll={measure} onkeydown={numbered}>
+        {#each options as option, index (option.id)}
           <button
             type="button"
             class="option"
@@ -152,62 +271,53 @@
             onmousedown={keepFocus}
             onclick={() => toggle(option.id)}
           >
-            <span class="box" class:round={!multiple} aria-hidden="true">
-              {#if multiple && picked.includes(option.id)}
-                <Check size={10} strokeWidth={3} />
+            <!-- Docked, the row leads with its number, the composer's 1 to 9, which turns to a check in the accent once
+                 picked. In the timeline, a ring for one choice and a square for several. -->
+            <span class="box" class:round={!multiple && !docked} class:key={docked} aria-hidden="true">
+              {#if picked.includes(option.id) && (multiple || docked)}
+                <Check size={docked ? 13 : 10} strokeWidth={3} />
+              {:else if docked}
+                <span class="ui-label">{index + 1}</span>
               {/if}
             </span>
             <span class="labels">
-              <span class="label">{option.label}</span>
+              <span class="label"><CodeText text={option.label} /></span>
               {#if option.description}
-                <span class="muted description">{option.description}</span>
+                <span class="muted description"><CodeText text={option.description} /></span>
               {/if}
             </span>
           </button>
         {/each}
       </div>
+      {#if below > 0}
+        <button type="button" class="ghost more" data-testid="question-more" onmousedown={keepFocus} onclick={more}><span class="ui-label">{below === 1 ? strings.chat.questionMoreOne : fill(strings.chat.questionMore, { count: String(below) })}</span><ChevronDown size={14} strokeWidth={2} aria-hidden="true" /></button>
+      {/if}
     {/if}
-
-    {#if pending && replying && !docked}
-      <p class="muted description" data-testid="question-reply-hint">{strings.chat.questionReplying}</p>
-    {/if}
-
-    {#if pending}
-      <div class="actions">
+    <!-- The decision's pair closes the card: Skip question, then the card's own Answer when the composer's Send is not the commit. -->
+    {#if pending && (skip || answers || page || (allowText && !replying && onwrite))}
+      <DecisionActions>
         {#if page && onopen}
           <button type="button" class="ghost" data-testid="question-open" title={page} onmousedown={keepFocus} onclick={onopen}><span class="ui-label">{strings.chat.questionOpenPage}</span></button>
-        {/if}
-        {#if skip}
-          <button type="button" class="ghost" data-testid="question-skip" disabled={sent} onmousedown={keepFocus} onclick={pass}><span class="ui-label">{strings.chat.questionSkip}</span></button>
         {/if}
         {#if allowText && !replying && onwrite}
           <button type="button" class="ghost" data-testid="question-write" disabled={sent} onclick={onwrite}><span class="ui-label">{strings.chat.questionWrite}</span></button>
         {/if}
-        {#if !docked || !replying}
-        <button
-          type="button"
-          class="primary"
-          data-testid="question-submit"
-          disabled={!ready || sent}
-          onmousedown={keepFocus}
-          onclick={send}
-        >
-          <span class="ui-label">{strings.chat.questionAnswer}</span>
-        </button>
+        {#if skip}
+          <button type="button" class="secondary" data-testid="question-skip" disabled={sent} onmousedown={keepFocus} onclick={pass}><span class="ui-label">{strings.chat.questionSkip}</span></button>
         {/if}
-      </div>
-    {:else}
-      <p class="muted description" data-testid="question-cancelled">{strings.chat.questionCancelled}</p>
+        {#if answers}
+          <button type="button" class={waiting ? 'secondary waiting' : 'primary'} data-testid="question-submit" disabled={sent} aria-disabled={waiting ? 'true' : undefined} title={waiting ? strings.chat.questionPickFirst : next ? strings.chat.questionAnswerNextHint : undefined} onmousedown={keepFocus} onclick={send}><span class="ui-label">{strings.chat.questionAnswer}</span></button>
+        {/if}
+      </DecisionActions>
     {/if}
+  {/if}
   {/if}
 </div>
 
 <style>
   .question {
-    border: 1px solid var(--color-edge);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     background: var(--color-surface);
-    box-shadow: var(--shadow-e1);
     padding: 8px 12px 10px;
     display: flex;
     flex-direction: column;
@@ -215,17 +325,70 @@
   }
 
   /* Nobody waits on it: a dashed edge instead of the live one that says the agent is stopped. */
-  .question.async {
-    border-left-style: dashed;
-  }
-
-  /* In the dock the dock is the frame. */
+  /* At the top of the composer card, on its surface (`ThreadDecision`). */
   .question.docked {
     border: none;
+    border-radius: 0;
     background: transparent;
     box-shadow: none;
-    padding: 4px 10px 8px;
+    /* The card's inset on the sides, so the question starts where the field's text does. */
+    padding: 10px var(--dock-inset, 10px);
+    gap: 8px;
   }
+  /* The choices take the room the composer's cap leaves them (`fit`), in
+     whole rows, and the rest scroll in place. The edge fades and a line counts the rest. */
+  .question.docked > :global(*) { flex: none; }
+  /* Pressed under its room, the choices alone give way and scroll: the
+     question over them and the pair under them stay whole. */
+  .question.docked { min-height: 0; }
+  .question.docked > .options { flex: 0 1 auto; min-height: calc(var(--touch-target) + 4px); overflow-y: auto; overscroll-behavior: contain; }
+  /* A question of many lines gives way after the choices: it scrolls under its first line. */
+  .question.docked > :global(.decision-head) { flex: 0 1 auto; min-height: var(--dock-row, var(--control)); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+  /* A list that runs past its edge fades it, whether the budget or a tighter cap cut it (app.css `.scroll-edges`). */
+  .docked .options { --scroll-edge-ground: var(--decision-fill, var(--color-composer-surface)); }
+  .docked .options.scroll-edges::before { margin-bottom: calc(-1 * var(--scroll-edge) - 2px); }
+  .docked .options.scroll-edges::after { margin-top: calc(-1 * var(--scroll-edge) - 2px); }
+
+  /* The question's own column beside the compact controls; folded, it holds one line. */
+  .docked .prompt { display: block; min-width: 0; padding-block: calc((var(--dock-row, var(--control)) - 20px) / 2); font-weight: inherit; }
+  .docked .prompt.folded { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  @media (max-width: 720px) {
+    .question.docked { padding: 8px var(--dock-inset, 8px); gap: 4px; }
+  }
+  /* An action, not a caption: the words in ink, underlined like a link, the chevron saying the list goes on below. */
+  .more { align-self: flex-start; gap: 4px; height: 28px; padding: 0 8px; color: var(--color-foreground); font-size: var(--text-sm); font-weight: 550; }
+  .more .ui-label { text-decoration: underline; text-decoration-color: color-mix(in oklab, currentColor 45%, transparent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  .more:hover .ui-label { text-decoration-color: currentColor; }
+  /* Answer before a pick: the family's outline in the muted ink, which reads at 4.5:1 and more on the card (lib/contrast.test.ts). */
+  .waiting { color: var(--color-muted-foreground); }
+
+  /* The choices are lines of the decision, not boxes in it: no fill and no
+     edge at rest, a fill under the pointer. Each leads with its number in a
+     keycap, the composer's 1 to 9. A row keeps its two lines when the list is
+     shorter than its rows: the list scrolls, no row squeezes. */
+  .docked .options { gap: 2px; }
+  .docked .options > .option { flex-shrink: 0; }
+  .docked .option { align-items: center; gap: 10px; padding: 6px 8px; border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; box-shadow: none; }
+  @media (hover: hover) {
+    .docked .option:hover:not(:disabled) { transform: none; background: var(--color-hover); border-color: transparent; }
+    .docked .option:hover:not(:disabled) .key { border-color: var(--color-accent); color: var(--color-accent); }
+  }
+  .docked .option:focus-visible { background: var(--color-hover); outline: 2px solid var(--color-accent); outline-offset: -1px; }
+  /* The keycap: the number in the subtle ink on a raised square; picked, the accent fills it and its number
+     turns to a check, and the row takes the accent's tint. */
+  .docked .key { width: 22px; height: 22px; margin: 0; border: 1px solid var(--color-edge); border-radius: var(--radius-sm); background: var(--color-surface-2); color: var(--color-subtle); font-size: var(--text-xs); font-weight: 600; font-variant-numeric: tabular-nums; transition: background var(--dur-2) var(--ease-out-quint), border-color var(--dur-2) var(--ease-out-quint), color var(--dur-2) var(--ease-out-quint); }
+  .docked .option.picked, .docked .option.picked:is(:hover, :focus-visible):not(:disabled) { background: var(--color-accent-soft); border-color: color-mix(in oklch, var(--color-accent) 55%, transparent); }
+  .docked .option.picked .key, .docked .option.picked:hover .key { border-color: var(--color-accent); background: var(--color-accent); color: var(--color-accent-ink); }
+  .docked .labels { flex: 1 1 auto; }
+  .docked .label { font-weight: 550; }
+
+  @media (max-width: 720px) {
+    .docked .option { min-height: var(--touch-target); padding: 3px 8px; }
+  }
+
+  .waiting-row:disabled { opacity: 1; cursor: default; }
+  /* Waiting on the owner: a small live dot, where to answer is in its tooltip. */
+  .waiting-mark { flex: none; width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--color-live); }
 
   /* Resolved questions use the same inset and touch target as tool disclosures. */
   .question.resolved {
@@ -260,8 +423,6 @@
   }
 
   .verdict {
-    flex: none;
-    font-size: var(--text-sm);
     color: var(--color-muted-foreground);
   }
 
@@ -285,6 +446,7 @@
   .answered-row { display: flex; align-items: center; justify-content: flex-start; gap: var(--activity-gap); width: 100%; height: auto; min-height: var(--control); padding: var(--activity-padding); border-radius: var(--radius-sm); font-weight: 400; text-align: left; }
   .answered-row:hover:not(:disabled) { background: var(--color-surface-2); }
   .answered-row:active:not(:disabled) { transform: none; }
+  .cancelled-row .given { color: var(--color-muted-foreground); }
   .answered-row .glyph { flex: none; width: var(--activity-glyph); justify-content: center; }
   .answer-detail { margin: 4px 0 8px calc(var(--activity-padding) + var(--activity-glyph) / 2); padding: 4px var(--activity-padding) 4px calc(var(--activity-glyph) / 2 + var(--activity-gap)); border-left: 1px solid var(--color-border); font-size: var(--text-sm); }
   .answer-detail p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -327,7 +489,6 @@
   }
 
   .option:focus-visible {
-    outline: none;
     border-color: var(--color-edge);
     background: var(--color-surface-2);
   }
@@ -380,10 +541,4 @@
   }
 
   .given-files { display: inline-flex; align-items: center; gap: 2px; flex: none; font-size: var(--text-xs); color: var(--color-muted-foreground); }
-
-  .actions {
-    display: flex;
-    gap: 6px;
-    margin-top: 2px;
-  }
 </style>

@@ -37,6 +37,13 @@
     return session.accountIds?.length ? session.accountIds : [session.accountId];
   }
 
+  /** Sessions of more than one agent in the list: each row then names its own. */
+  let mixed = $derived(new Set(held?.sessions.map((session) => session.providerId)).size > 1);
+
+  function agentLabel(session: ImportableSession): string {
+    return store.providers.find((provider) => provider.id === session.providerId)?.name ?? session.providerId;
+  }
+
   function accountLabel(accountId: AccountId): string {
     return store.accounts.find(account => account.id === accountId)?.label ?? accountId;
   }
@@ -126,6 +133,7 @@
               onclick={(event) => pick(session, event)}
             >
               <span class="title ui-label">{session.title}</span>
+              {#if mixed}<span class="agent ui-label" data-testid="import-agent">{agentLabel(session)}</span>{/if}
               <span class="account ui-label">{accounts.length > 1 ? fill(strings.imports.accounts, { count: String(accounts.length) }) : accountLabel(accounts[0]!)}</span>
               <span class="hint ui-label">{hintOf(session)}</span>
             </button>
@@ -164,10 +172,10 @@
     max-height: min(70vh, 520px);
     display: flex;
     flex-direction: column;
-    background: var(--color-surface);
-    border: 1px solid var(--color-edge);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-e3);
+    background: var(--overlay-surface);
+    border: 1px solid var(--overlay-edge);
+    border-radius: var(--radius-overlay);
+    box-shadow: var(--shadow-overlay);
     overflow: hidden;
     animation: pop var(--dur-2) var(--ease-out-quint);
   }
@@ -211,7 +219,6 @@
   .row:hover:not(:disabled),
   .row:focus-visible {
     background: var(--color-active);
-    outline: none;
   }
 
   .row:active:not(:disabled) {
@@ -231,6 +238,7 @@
     font-weight: 400;
   }
 
+  .agent,
   .account,
   .hint {
     flex: none;

@@ -491,7 +491,7 @@ export class Threads {
   #showHeld(held: Thread, navigate: boolean): Thread {
     this.#show(held, navigate);
     const shown = this.openThread;
-    if (!shown || shown === held || shown.id !== held.id) return held;
+    if (!shown || Object.is(shown, held) || shown.id !== held.id) return held; // Object.is: a proxy of `held` is another object, without `===`'s dev warning.
     this.readingThreads.replace(held.id, held, shown);
     return shown;
   }

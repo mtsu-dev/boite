@@ -1,11 +1,12 @@
 import { expect, test } from 'vitest';
-import { BLOCK_GAP, GAP, PART_GAP, gapChanged, slotGap } from './message-window';
+import { BLOCK_GAP, GAP, gapChanged, slotGap } from './message-window';
 
 test('a measured slot carries the gap its row keeps above it, and a changed seam asks for a new measure', () => {
   expect(slotGap(null, false)).toBe(GAP);
   expect(slotGap(null, true)).toBe(BLOCK_GAP);
   expect(slotGap('block', false)).toBe(BLOCK_GAP);
-  expect(slotGap('part', false)).toBe(PART_GAP);
+  // A message carrying on its turn keeps the same block gap as a cut message's rest.
+  expect(slotGap('part', false)).toBe(BLOCK_GAP);
   const node = document.createElement('article');
   // Never measured: nothing to correct yet.
   expect(gapChanged(node, 'part', false)).toBe(false);

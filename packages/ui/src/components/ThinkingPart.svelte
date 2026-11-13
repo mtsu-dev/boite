@@ -55,7 +55,7 @@
   >
     <span class="glyph"><Brain size={15} strokeWidth={1.75} /></span>
     <span class="label ui-label" data-testid="thinking-label" title={empty ? undefined : label}>{label}</span>
-    {#if took}<span class="took ui-label" data-testid="thinking-elapsed">{took}</span>{/if}
+    {#if took}<span class="took ui-label" class:settled={!live} data-testid="thinking-elapsed">{took}</span>{/if}
     {#if live}
       <span class="dot" aria-label={strings.chat.streaming}></span>
     {/if}
@@ -94,7 +94,10 @@
   }
 
   .glyph { display: inline-flex; flex: none; width: var(--activity-glyph); justify-content: center; color: var(--color-subtle); }
-  .took { flex: none; color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+  .took { flex: none; color: var(--color-muted-foreground); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+  /* A finished thought's time is read on demand, like a finished step's (ToolCard). */
+  .took.settled { opacity: 0; transition: opacity var(--dur-2); }
+  .head:hover > .took.settled, .head:focus-visible > .took.settled, .head[aria-expanded='true'] > .took.settled { opacity: 1; }
 
   .head:hover:not(:disabled) {
     color: var(--color-foreground);
@@ -110,12 +113,19 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* A phone's column cuts most titles: two lines read it whole, the glyph stays on the first. */
+  @media (max-width: 720px) {
+    .head { align-items: flex-start; }
+    .glyph, .took, .fold-caret { margin-top: 2px; }
+    .label { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; max-height: 2lh; }
+  }
 
   .dot {
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--color-live);
+    /* Thinking is working: the accent, never the amber that asks for the owner. */
+    background: var(--color-accent);
     animation: pulse 1.6s var(--loop-ease-in-out-48) infinite var(--loops);
   }
 

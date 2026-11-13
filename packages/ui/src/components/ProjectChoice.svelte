@@ -139,7 +139,7 @@
   <button
     type="button"
     class="trigger"
-    class:chip={!!selection}
+    class:ui-chip={!!selection}
     aria-haspopup="dialog"
     aria-expanded={popover.open}
     aria-label={label}
@@ -179,7 +179,7 @@
     gap: 6px;
   }
 
-  .trigger:not(.chip) {
+  .trigger:not(.ui-chip) {
     height: auto;
     padding: 2px 6px;
     gap: 4px;
@@ -191,8 +191,8 @@
     transition: background var(--dur-2) var(--ease-out-quint);
   }
 
-  .trigger:not(.chip):hover,
-  .trigger:not(.chip)[aria-expanded='true'] {
+  .trigger:not(.ui-chip):hover,
+  .trigger:not(.ui-chip)[aria-expanded='true'] {
     background: var(--color-hover);
   }
 </style>

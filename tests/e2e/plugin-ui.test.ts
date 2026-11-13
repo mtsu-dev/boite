@@ -62,8 +62,8 @@ test('the example plugin adds a header button that opens its panel tab, a messag
   await page.evaluate(`[...document.querySelectorAll('[role="menuitem"]')].find(el => el.textContent.includes('Count words')).click()`);
   await page.waitFor(`/^\\d+ words$/.test(document.querySelector('.hello-toast')?.textContent ?? '')`);
 
-  // A phone-wide window keeps the header button, the panel closed so the header shows.
-  await page.click(id('panel-toggle'));
+  // A phone-wide window keeps the header button, the panel closed so the header shows: the panel's head holds its close.
+  await page.click(`${id('right-panel')} ${id('panel-close')}`);
   await page.waitFor(`document.querySelector('${tab}') === null`);
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await page.waitFor(`document.querySelector('${button}')?.getBoundingClientRect().width > 0`);

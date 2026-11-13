@@ -20,7 +20,7 @@ for (const [name, width, height, mobile] of [['desktop', 1280, 900, false], ['ph
     const page = await BrowserPage.launch({ url, windowSize: { width, height } });
     const capture = async (state: string) => {
       await page.evaluate('document.fonts.ready');
-      await page.evaluate('Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))');
+      await page.evaluate('Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))');
       await page.screenshot(join(import.meta.dir, '.artifacts', `agent-connections-${state}-${name}.png`));
     };
     try {

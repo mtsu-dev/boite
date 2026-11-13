@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { ToolDocument } from '@boite/contracts';
   import { strings } from '../lib/strings';
-  import Deferred, { parts } from './Deferred.svelte';
+  import Deferred from './Deferred.svelte';
+  import { parts } from '../lib/deferred-parts';
   import Prose from './Prose.svelte';
   import type { Store } from '../lib/store.svelte';
 

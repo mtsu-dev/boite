@@ -462,8 +462,8 @@
     color: var(--color-muted-foreground);
   }
   .badge {
-    background: color-mix(in srgb, var(--color-accent) 16%, transparent);
-    color: var(--color-accent);
+    background: var(--color-active);
+    color: var(--color-foreground);
   }
   .join { margin-top: 16px; }
   footer {
@@ -496,7 +496,7 @@
     white-space: nowrap;
     max-width: 22ch;
   }
-  .current.chosen { color: var(--color-accent); }
+  .current.chosen { color: var(--color-foreground); }
   .leave {
     margin-left: auto;
     color: var(--color-danger);

@@ -547,31 +547,33 @@
   small, .empty { color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .state { flex: none; margin-left: 6px; font-size: var(--text-xs); color: var(--color-muted-foreground); }
-  .toggle[aria-pressed=true] { color: var(--color-accent); background: var(--color-accent-soft); }
+  .toggle[aria-pressed=true] { color: var(--color-foreground); background: var(--color-active); }
   .viewer { position: relative; flex: 1; min-height: 80px; overflow: hidden; }
   .screen-area { width: 100%; height: 100%; display: flex; background: var(--color-background); overflow: auto; }
   .zoomed .screen { touch-action: pan-x pan-y; }
-  .display-settings { position: absolute; z-index: 3; top: 6px; right: 8px; width: min(320px, calc(100% - 16px)); max-height: calc(100% - 12px); overflow: auto; padding: 12px; display: grid; gap: 8px; background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-e3); }
+  .display-settings { position: absolute; z-index: 3; top: 6px; right: 8px; width: min(320px, calc(100% - 16px)); max-height: calc(100% - 12px); overflow: auto; padding: 12px; display: grid; gap: 8px; background: var(--overlay-surface); border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); box-shadow: var(--shadow-overlay); }
   .display-settings strong { font-size: var(--text-xs); font-weight: 600; color: var(--color-muted-foreground); }
   .options { display: flex; flex-wrap: wrap; gap: 4px; }
   .display-settings label { flex: 1; min-width: 0; display: grid; gap: 2px; font-size: var(--text-xs); color: var(--color-muted-foreground); }
   .display-settings input { width: 100%; height: var(--control-sm); font-size: var(--text-sm); }
   .display-settings form { display: flex; gap: 6px; align-items: flex-end; }
   .display-settings .restore { justify-self: start; }
-  .options [aria-pressed=true] { color: var(--color-accent); border-color: var(--color-accent); background: var(--color-accent-soft); }
+  .options [aria-pressed=true] { color: var(--color-foreground); border-color: var(--color-muted-foreground); background: var(--color-active); }
   .screen { flex: none; margin: 0 auto auto; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; touch-action: none; cursor: default; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
   .screen:hover:not(:disabled) { background: transparent; }
   .screen:active:not(:disabled) { transform: none; }
   .screen:disabled { opacity: 1; } .screen.stale { opacity: .55; }
   canvas { display: block; width: 100%; height: 100%; pointer-events: none; -webkit-user-select: none; user-select: none; }
-  .picker { position: absolute; z-index: 4; overflow: auto; padding: 4px; display: flex; flex-direction: column; background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-e3); overscroll-behavior: contain; }
+  .picker { position: absolute; z-index: 4; overflow: auto; padding: 4px; display: flex; flex-direction: column; background: var(--overlay-surface); border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); box-shadow: var(--shadow-overlay); overscroll-behavior: contain;
+    /* Placed under the page's select: reduced motion's blanket transition would slide it there. */
+    transition-property: none; }
   .picker button { flex: none; justify-content: flex-start; min-height: var(--control-sm); padding: 4px 10px; border: 0; border-radius: var(--radius-sm); background: transparent; box-shadow: none; color: var(--color-foreground); font-size: var(--text-sm); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .picker button.grouped { padding-left: 20px; }
   .picker button.active:not(:disabled) { background: var(--color-surface-3); }
-  .picker button[aria-selected=true] { color: var(--color-accent); background: var(--color-accent-soft); }
+  .picker button[aria-selected=true] { color: var(--color-foreground); background: var(--color-active); }
   .picker button:disabled { color: var(--color-muted-foreground); opacity: .6; }
   .picker .group { padding: 6px 10px 2px; font-size: var(--text-xs); font-weight: 600; color: var(--color-muted-foreground); }
-  .toast { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); max-width: calc(100% - 24px); padding: 6px 12px; border-radius: var(--radius-full); background: var(--color-surface-3); color: var(--color-foreground); box-shadow: var(--shadow-e2); font-size: var(--text-xs); pointer-events: none; }
+  .toast { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); max-width: calc(100% - 24px); padding: 6px 12px; border-radius: var(--radius-full); background: var(--overlay-surface); color: var(--color-foreground); box-shadow: var(--shadow-overlay); font-size: var(--text-xs); pointer-events: none; }
   footer { padding: 6px 8px max(8px, env(safe-area-inset-bottom)); display: grid; gap: 6px; border-top: 1px solid var(--color-border); background: var(--color-surface); }
   .keys { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
   .keys::-webkit-scrollbar { display: none; }

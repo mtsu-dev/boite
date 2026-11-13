@@ -11,7 +11,7 @@ const jump = '[data-testid=jump-to-latest]';
 const artifacts = process.env.BOITE_SCROLL_CAPTURES ?? join(import.meta.dir, '.artifacts');
 
 async function settled() {
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
 }
 
 test('sending from history respects reduced motion and preserves the prompt across navigation', async () => {
@@ -168,8 +168,9 @@ for (const phone of [false, true]) {
         message.parts = [{ type: 'text', text: 'Here is the first part of the answer.\\n\\n' }];
       })()`);
       await page.waitFor(`${offset} < 2 && document.querySelector('[data-testid=prompt-room]')`);
-      // Keep the prompt inset and answer reserve in sync when the viewport changes.
-      await page.send('Emulation.setDeviceMetricsOverride', { width: phone ? 390 : 1280, height: phone ? 480 : 1300, deviceScaleFactor: 1, mobile: phone });
+      // Keep the prompt inset and answer reserve in sync when the viewport changes. A phone shrinks to 600 px: its
+      // composer card keeps its chips on two rows, and at 480 px the 172 px of timeline left had no room to reserve.
+      await page.send('Emulation.setDeviceMetricsOverride', { width: phone ? 390 : 1280, height: phone ? 600 : 1300, deviceScaleFactor: 1, mobile: phone });
       await page.waitFor(`${offset} < 2 && document.querySelector('[data-testid=prompt-room]')`);
       await page.screenshot(join(artifacts, `prompt-resized-${name}-${history}.png`));
       await page.send('Emulation.setDeviceMetricsOverride', { width: phone ? 390 : 1280, height: 844, deviceScaleFactor: 1, mobile: phone });
@@ -203,7 +204,8 @@ for (const phone of [false, true]) {
     }, 30_000);
   }
 
-  test(`the return button stays centered throughout its entrance on ${name}`, async () => {
+  // The way back rests at the right of the strip above the composer (`JumpLatest.svelte`): its entrance only rises, it never slides sideways.
+  test(`the return button keeps its place throughout its entrance on ${name}`, async () => {
     await page.send('Emulation.setDeviceMetricsOverride', { width: phone ? 390 : 1280, height: 844, deviceScaleFactor: 1, mobile: phone });
     await page.navigate(url);
     await page.waitFor(`document.querySelector('${timeline}')`);
@@ -212,10 +214,10 @@ for (const phone of [false, true]) {
     await page.waitFor(`document.querySelector('${jump}')`);
     const offsets = await page.evaluate<number[]>(`(() => {
       const button = document.querySelector('${jump}');
-      const parent = button.parentElement.getBoundingClientRect();
-      // Restart the real CSS entrance even if it finished during the CDP round trip.
+      // Restart the real CSS entrance even if it finished during the CDP round trip; with it off, the button is where it rests.
       button.style.animation = 'none';
-      void button.offsetWidth;
+      const rest = button.getBoundingClientRect();
+      const resting = rest.left + rest.width / 2;
       button.style.removeProperty('animation');
       const animations = button.getAnimations();
       if (animations.length === 0) throw new Error('The return button entrance animation is missing');
@@ -223,7 +225,7 @@ for (const phone of [false, true]) {
       return [0, 0.5, 1].map(progress => {
         animations.forEach(a => a.currentTime = Number(a.effect.getTiming().duration) * progress);
         const r = button.getBoundingClientRect();
-        return Math.abs(r.left + r.width / 2 - parent.left - parent.width / 2);
+        return Math.abs(r.left + r.width / 2 - resting);
       });
     })()`);
     await page.evaluate(`document.querySelector('${jump}').getAnimations().forEach(a => a.currentTime = Number(a.effect.getTiming().duration) / 2)`);
@@ -240,11 +242,22 @@ for (const phone of [false, true]) {
     await page.navigate(url);
     await page.waitFor(`document.querySelector('${timeline}')`);
     await settled();
+    // The activity is the composer card's head, in the flow: the timeline gives it room. It lands before the reader
+    // scrolls up, since a scroll while the timeline's height still moves reads as the layout clamping a pinned list
+    // (`MessageList` onscroll, `BottomEdge.relaid`).
     await page.evaluate(`(() => {
       const store = window.__boiteTest.workspace.active;
       store.openThread.activity = { goal: null, loop: null, tasks: Array.from({length: 8}, (_, i) => ({id: 'task-' + i, text: 'Inspect conversation interaction ' + i, status: i === 0 ? 'in_progress' : 'pending'})) };
-      document.querySelector('${timeline}').scrollTop = 0;
     })()`);
+    await page.waitFor(`document.querySelector('[data-testid=activity-tasks-toggle]')`);
+    await settled();
+    await page.evaluate(`new Promise((done) => {
+      const box = document.querySelector('${timeline}');
+      let height = -1, still = 0;
+      const frame = () => { still = box.clientHeight === height ? still + 1 : 0; height = box.clientHeight; if (still >= 10) done(); else requestAnimationFrame(frame); };
+      frame();
+    })`);
+    await page.evaluate(`document.querySelector('${timeline}').scrollTop = 0`);
     await page.waitFor(`document.querySelector('${jump}') && document.querySelector('[data-testid=activity-tasks-toggle]')`);
     await page.click('[data-testid=activity-tasks-toggle]');
     await settled();
@@ -258,7 +271,12 @@ for (const phone of [false, true]) {
     })()`);
     expect(position.clear).toBe(true);
     expect(position.reachable).toBe(true);
-    if (phone) expect(await page.evaluate(`document.querySelector('${jump}').getBoundingClientRect().height`)).toBeGreaterThanOrEqual(44);
+    // A phone draws a 40 px disc whose touch area is the platform's 44 px around it (`JumpLatest.svelte`): a finger 21.5 px
+    // off its center in any direction still lands on it.
+    if (phone) expect(await page.evaluate<boolean[]>(`(() => {
+      const button = document.querySelector('${jump}');
+      return [[0, -21.5], [0, 21.5], [-21.5, 0], [21.5, 0]].map(([dx, dy]) => button.contains(document.elementFromPoint(${position.x} + dx, ${position.y} + dy)));
+    })()`)).toEqual([true, true, true, true]);
     await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, x: position.x, y: position.y });
     await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', clickCount: 1, x: position.x, y: position.y });
     await page.waitFor(`!document.querySelector('${jump}')`);
@@ -414,6 +432,10 @@ test('a row growing above a reader just off the bottom leaves the reader there',
   // Grown below the fold with no scrollbar to redraw (edge scrollbars), headless Chrome on Windows can leave the
   // compositor its old scroll range, and the notch stopped at the old bottom. A drawn frame hands it the new one.
   await page.send('Page.captureScreenshot', { format: 'jpeg', quality: 1 });
-  await page.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: box.x, y: box.y, deltaX: 0, deltaY: 70 });
+  // The way back takes its own row over the composer while it shows (`ComposerStrip`), so the gap is larger than the
+  // notches and growth alone: the notch is sized to land 40 px from the bottom, inside the 80 px.
+  const notch = await page.evaluate<number>(gap) - 40;
+  expect(notch).toBeGreaterThan(80);
+  await page.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: box.x, y: box.y, deltaX: 0, deltaY: notch });
   await page.waitFor(`!document.querySelector('${jump}')`, 2_000);
 }, 30_000);

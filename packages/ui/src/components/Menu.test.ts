@@ -182,3 +182,111 @@ test('a second open during the close cancels it, and the late animationend is ig
   expect(document.querySelector('[data-testid=mode-menu]')).not.toBeNull();
   expect(query<HTMLElement>('[data-testid=mode-menu]').classList.contains('closing')).toBe(false);
 });
+
+test('a long list given a cap takes that height where the room exists, the default stopping at 45 % of the window', async () => {
+  const mountWith = (cap?: number) => {
+    running = mount(Menu, {
+      target: document.body,
+      props: {
+        items: ITEMS, onpick: () => {}, label: 'Panels', testid: 'panels', placement: 'bottom', cap,
+        children: createRawSnippet(() => ({ render: () => '<span>Panels</span>' }))
+      }
+    });
+    flushSync();
+    query<HTMLButtonElement>('[data-testid=panels]').click();
+  };
+  mountWith(560);
+  await settle();
+  // The panel selector's 13 rows: the default cut its last one in half at 900 px tall.
+  expect(query<HTMLElement>('[data-testid=panels-menu]').style.maxHeight).toBe('560px');
+  unmount(running!, { outro: false });
+  document.body.innerHTML = '';
+  mountWith();
+  await settle();
+  expect(query<HTMLElement>('[data-testid=panels-menu]').style.maxHeight).toBe(`${Math.min(360, window.innerHeight * .45)}px`);
+});
+
+test('a checkable row with a status dot keeps its hint on the label line', async () => {
+  running = mount(Menu, {
+    target: document.body,
+    props: {
+      items: [
+        { id: 'a.ts', label: 'a.ts', checked: true, hint: '+64 -3', status: { tone: 'success', label: 'Added' } },
+        { id: 'wrap', label: 'Wrap lines', checked: false, hint: 'Long lines fold' }
+      ],
+      onpick: () => {}, label: 'Files', testid: 'files',
+      children: createRawSnippet(() => ({ render: () => '<span>Files</span>' }))
+    }
+  });
+  flushSync();
+  query<HTMLButtonElement>('[data-testid=files]').click();
+  await settle();
+  expect(query('[data-value="a.ts"]').classList.contains('inline-hint')).toBe(true);
+  // A plain checkable row keeps its description under the label.
+  expect(query('[data-value=wrap]').classList.contains('inline-hint')).toBe(false);
+});
+
+test('a row with its own rows opens them in place, its way back and a close both return to the first level, and no pick reaches the caller', async () => {
+  const picked: string[] = [];
+  const group = [{ id: 'back', label: 'Back', back: true }, { id: 'move', label: 'Move' }];
+  running = mount(Menu, {
+    target: document.body,
+    props: {
+      items: [{ id: 'rename', label: 'Rename' }, { id: 'more', label: 'Manage', submenu: true, items: group }],
+      onpick: (id: string) => picked.push(id),
+      label: 'Thread actions',
+      testid: 'mode',
+      children: createRawSnippet(() => ({ render: () => '<span>Menu</span>' }))
+    }
+  });
+  flushSync();
+  const trigger = query<HTMLButtonElement>('[data-testid=mode]');
+  const ids = () => items().map(item => item.dataset['value']);
+  trigger.click(); await settle();
+  query<HTMLButtonElement>('[data-value=more]').click(); await settle();
+  expect(ids()).toEqual(['back', 'move']);
+  expect(document.activeElement).toBe(items()[0]);
+  // The one back row of every second level: its own form, then its rule.
+  expect(query('[data-value=back]').classList.contains('back-row')).toBe(true);
+  expect(query('[data-value=back]').nextElementSibling?.classList.contains('back-rule')).toBe(true);
+  press('ArrowLeft'); await settle();
+  expect(ids()).toEqual(['rename', 'more']);
+  // Closed on the group, the menu opens again on its first level.
+  query<HTMLButtonElement>('[data-value=more]').click(); await settle();
+  press('Escape'); await settle();
+  trigger.click(); await settle();
+  expect(ids()).toEqual(['rename', 'more']);
+  query<HTMLButtonElement>('[data-value=more]').click(); await settle();
+  query<HTMLButtonElement>('[data-value=move]').click(); await settle();
+  expect(picked).toEqual(['move']);
+});
+
+test('a menu closed from its rows\' rows leaves on them, and says it closed once it is gone, never on mount', async () => {
+  Element.prototype.getAnimations = () => [{} as Animation];
+  let closed = 0;
+  running = mount(Menu, {
+    target: document.body,
+    props: {
+      items: [{ id: 'rename', label: 'Rename' }, { id: 'more', label: 'Manage', submenu: true, items: [{ id: 'back', label: 'Back', back: true }, { id: 'move', label: 'Move' }] }],
+      onpick: () => {},
+      onclose: () => { closed += 1; },
+      label: 'Thread actions',
+      testid: 'mode',
+      children: createRawSnippet(() => ({ render: () => '<span>Menu</span>' }))
+    }
+  });
+  await settle();
+  // Never opened, so never closed.
+  expect(closed).toBe(0);
+  const ids = () => items().map(item => item.dataset['value']);
+  query<HTMLButtonElement>('[data-testid=mode]').click(); await settle();
+  query<HTMLButtonElement>('[data-value=more]').click(); await settle();
+  press('Escape'); await settle();
+  // The exit plays with the rows it closed on, not the first level swapped in under it.
+  expect(query<HTMLElement>('[data-testid=mode-menu]').classList.contains('closing')).toBe(true);
+  expect([ids(), closed]).toEqual([['back', 'move'], 0]);
+  query<HTMLElement>('[data-testid=mode-menu]').dispatchEvent(new Event('animationend')); await settle();
+  expect(closed).toBe(1);
+  query<HTMLButtonElement>('[data-testid=mode]').click(); await settle();
+  expect(ids()).toEqual(['rename', 'more']);
+});

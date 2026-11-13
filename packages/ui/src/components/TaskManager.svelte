@@ -1,7 +1,8 @@
 <script lang="ts">
+  import Notice from './Notice.svelte';
   import { isThisPC, machineName, workspace, type Machine } from '../lib/workspace.svelte';
   import { errorText } from '../lib/errors';
-  import { ArrowDown, ArrowUp, ChevronDown, Cpu, Gpu, HardDrive, MemoryStick, Network, Search } from '@lucide/svelte';
+  import { ArrowDown, ArrowUp, ChevronDown, Cpu, Gpu, HardDrive, MemoryStick, Network, Search, CircleAlert } from '@lucide/svelte';
   import type { AgentResourceSnapshot, AgentResourceUsage, MachineResourceSnapshot, ResourceByteUsage } from '@boite/contracts';
   import { RpcErrorCode } from '@boite/contracts';
   import { RpcFailure } from '../lib/client';
@@ -13,10 +14,10 @@
   import Menu from './Menu.svelte';
   import ProviderLogo from './ProviderLogo.svelte';
   import StatusMark from './StatusMark.svelte';
-  import { threadTone } from '../lib/thread-state';
+  import { threadTone } from '../lib/status-tone';
 
   let { store, onopenthread }: { store: Store; onopenthread?: () => void } = $props();
-  // This PC first. The agents listed are those of the machine picked, at first
+  // This computer first. The agents listed are those of the machine picked, at first
   // the one the page was opened for; another store prop forgets the choice.
   const machines = $derived([...workspace.machinesOr(store)].sort((a, b) => Number(isThisPC(b)) - Number(isThisPC(a))));
   let picked = $derived.by<string | null>(() => { void store; return null; });
@@ -145,7 +146,9 @@
     <Menu items={(agentGpu ? ['memory', 'cpu', 'gpu', 'disk', 'network'] as const : ['memory', 'cpu', 'disk', 'network'] as const).map(id => ({ id, label: strings.taskManager.sort[id], active: sort === id }))} onpick={id => (sort = id as typeof sort)} label={strings.taskManager.sortBy} placement="bottom" testid="task-manager-sort"><span class="ui-label">{strings.taskManager.sort[sort === 'gpu' && !agentGpu ? 'memory' : sort]}</span><ChevronDown size={13} /></Menu>
   </div>
   {#if error}
-    <div class="notice" role="status" data-testid="task-manager-error"><span class="ui-label">{error}</span><button class="quiet" onclick={() => retry++}><span class="ui-label">{strings.common.refresh}</span></button></div>
+    <div class="error-notice"><Notice icon={CircleAlert} tone="danger" testid="task-manager-error" detail={error}>
+      {#snippet actions()}<button type="button" class="small" onclick={() => retry++}><span class="ui-label">{strings.common.refresh}</span></button>{/snippet}
+    </Notice></div>
   {:else if owner.connection !== 'ready'}
     <p class="hint" role="status">{strings.taskManager.disconnected}</p>
   {:else if !snapshot}
@@ -223,6 +226,6 @@
   .transfer small { display: block; margin-top: 6px; }
   .unavailable { font-size: var(--text-xs); color: var(--color-muted-foreground); }
   .actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 14px; font-size: var(--text-sm); }
-  .notice { display: flex; align-items: center; gap: 12px; padding: 12px; margin-bottom: 16px; font-size: var(--text-sm); color: var(--color-danger); }
+  .error-notice { margin-bottom: 16px; }
   @media (max-width: 720px) { .metrics, .metrics.gpu { grid-template-columns: repeat(2, minmax(0, 1fr)); } .machines { grid-template-columns: minmax(0, 1fr); } .overview { gap: 16px; flex-wrap: wrap; } .live { width: 100%; margin-left: 0; } .status { display: none; } }
 </style>

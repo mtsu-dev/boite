@@ -47,12 +47,17 @@
  * for reading (2026-10-18): Atkinson Hyperlegible Next, IBM Plex Sans and
  * Source Sans 3 tell I, l and 1 apart and keep open shapes; Geist, Figtree and
  * DM Sans went, each a closed or geometric face that repeated another.
+ *
+ * The chrome speaks in two weights, regular and semibold. Each face is declared
+ * twice over the same file, 100 to 400 and 600 to 900, so a 500 anywhere
+ * resolves to the 400 face (CSS font matching looks down from 500 first) and
+ * no medium weight reaches the screen; bold prose still gets its 700.
  */
 
 @font-face {
   font-family: 'Inter';
   font-style: normal;
-  font-weight: 100 900;
+  font-weight: 100 400;
   font-display: swap;
   src: url('/fonts/Inter-latin.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
@@ -61,7 +66,25 @@
 @font-face {
   font-family: 'Inter';
   font-style: normal;
-  font-weight: 100 900;
+  font-weight: 600 900;
+  font-display: swap;
+  src: url('/fonts/Inter-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 400;
+  font-display: swap;
+  src: url('/fonts/Inter-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600 900;
   font-display: swap;
   src: url('/fonts/Inter-latin-ext.woff2') format('woff2');
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
@@ -70,7 +93,7 @@
 @font-face {
   font-family: 'IBM Plex Sans';
   font-style: normal;
-  font-weight: 100 900;
+  font-weight: 100 400;
   font-display: swap;
   src: url('/fonts/IBMPlexSans-latin.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
@@ -79,7 +102,25 @@
 @font-face {
   font-family: 'IBM Plex Sans';
   font-style: normal;
-  font-weight: 100 900;
+  font-weight: 600 900;
+  font-display: swap;
+  src: url('/fonts/IBMPlexSans-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 100 400;
+  font-display: swap;
+  src: url('/fonts/IBMPlexSans-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 600 900;
   font-display: swap;
   src: url('/fonts/IBMPlexSans-latin-ext.woff2') format('woff2');
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
@@ -88,7 +129,7 @@
 @font-face {
   font-family: 'Atkinson Hyperlegible Next';
   font-style: normal;
-  font-weight: 100 900;
+  font-weight: 100 400;
   font-display: swap;
   src: url('/fonts/AtkinsonHyperlegibleNext-latin.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
@@ -97,7 +138,25 @@
 @font-face {
   font-family: 'Atkinson Hyperlegible Next';
   font-style: normal;
-  font-weight: 100 900;
+  font-weight: 600 900;
+  font-display: swap;
+  src: url('/fonts/AtkinsonHyperlegibleNext-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Atkinson Hyperlegible Next';
+  font-style: normal;
+  font-weight: 100 400;
+  font-display: swap;
+  src: url('/fonts/AtkinsonHyperlegibleNext-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Atkinson Hyperlegible Next';
+  font-style: normal;
+  font-weight: 600 900;
   font-display: swap;
   src: url('/fonts/AtkinsonHyperlegibleNext-latin-ext.woff2') format('woff2');
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
@@ -106,7 +165,7 @@
 @font-face {
   font-family: 'Source Sans 3';
   font-style: normal;
-  font-weight: 100 900;
+  font-weight: 100 400;
   font-display: swap;
   src: url('/fonts/SourceSans3-latin.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
@@ -115,7 +174,25 @@
 @font-face {
   font-family: 'Source Sans 3';
   font-style: normal;
-  font-weight: 100 900;
+  font-weight: 600 900;
+  font-display: swap;
+  src: url('/fonts/SourceSans3-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Source Sans 3';
+  font-style: normal;
+  font-weight: 100 400;
+  font-display: swap;
+  src: url('/fonts/SourceSans3-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Source Sans 3';
+  font-style: normal;
+  font-weight: 600 900;
   font-display: swap;
   src: url('/fonts/SourceSans3-latin-ext.woff2') format('woff2');
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
@@ -162,47 +239,129 @@
   --ansi-bright-magenta: #d670d6;
   --ansi-bright-cyan: #29b8db;
   --ansi-bright-white: #ffffff;
-  --color-background: #101013;
-  /* The window's frame: title bar and rails on one grey, the work
-     inset in cards of the page colour with an edge that reads. */
-  --color-frame: #1a1a1d;
-  --color-frame-edge: rgba(255, 255, 255, 0.11);
-  --color-surface: #151518;
-  --color-surface-2: #1b1b1f;
-  --color-surface-3: #232327;
-  --color-border: rgba(255, 255, 255, 0.07);
-  --color-edge: rgba(255, 255, 255, 0.14);
+  /* The inset panel the work sits in. */
+  /* The ladder climbs about 4 L* a step: frame 0.9, page 5.2, card 8.9, raised 12.9,
+     so each layer reads as its own tone without glass or a glow. The pressed fill stays at 14.8, where the
+     secondary text still clears its floor on it (lib/contrast.test.ts). */
+  --color-background: #111114;
+  /* The window's chrome: the app rail, the sidebar and the top bars on one
+     near black, the work inset in panels of the page colour with a hairline. */
+  --color-frame: #030306;
+  --color-frame-edge: rgba(255, 255, 255, 0.09);
+  --color-surface: #19191c;
+  /* The two raised fills: a chip, a card, the composer; then a pressed or selected raise.
+     The first sits a clear step over the page, so a card and the composer read off the timeline. */
+  --color-surface-2: #212124;
+  --color-surface-3: #252528;
+  /* A sheet or a dialog: half a step over the raised fill, so a menu inside it still reads as raised. */
+  --color-sheet: color-mix(in oklab, var(--color-surface-2), var(--color-surface-3) 50%);
+  /* The two hairlines: a quiet separator, and an edge that must read. Both read on every ground. */
+  --color-border: rgba(255, 255, 255, 0.09);
+  --color-edge: rgba(255, 255, 255, 0.13);
   /* The lift a hovered or selected row takes: light over the ground, never a new grey. */
-  --color-hover: rgba(255, 255, 255, 0.05);
-  --color-active: rgba(255, 255, 255, 0.09);
-  --color-foreground: #ececf1;
-  /* Both text tiers clear 4.5:1 on every surface in both themes: subtle carries paths and timestamps (lib/contrast.test.ts). */
-  --color-muted-foreground: #a2a2ad;
-  --color-subtle: #8c8c96;
+  --color-hover: rgba(255, 255, 255, 0.045);
+  --color-active: rgba(255, 255, 255, 0.075);
+  --color-foreground: #ffffff;
+  /* Three text tiers a visible step apart (3 to 7 L*), the faintest still 8:1 on every surface in both
+     themes: subtle carries times, machine names and meta, which must read at a glance like any secondary
+     line (lib/contrast.test.ts). Under a white primary these sit at the 3 L* step: secondary 14.9:1 and
+     subtle 13.7:1 on the raised fill, 17.5:1 and 16.1:1 on the page. */
+  --color-muted-foreground: #f6f6f7;
+  --color-subtle: #ededef;
+  /* Below reading contrast: a disabled mark, a placeholder glyph, never words that must be read. */
+  --color-faint: #4a4a50;
+  /* A switch: off is a raised track ringed in a mid grey with a knob near the ink at the left, so it reads as
+     a control to turn on, not a dimmed one; on is the filled track of the foreground ink with the ink a primary
+     wears as the knob at the right. The rim and the knob clear 3:1 on every card surface of every palette, the
+     knob also on its track (lib/contrast.test.ts). Neutral: the accent stays for send, focus, checks and the
+     effort control; track fill, side and knob colour all say on. */
+  --switch-off: var(--color-surface-3);
+  --switch-rim: color-mix(in oklab, var(--color-foreground) 60%, var(--color-surface));
+  --switch-knob: color-mix(in oklab, var(--color-foreground) 88%, var(--color-surface));
+  --switch-on: var(--color-foreground);
+  --switch-knob-on: var(--color-on-foreground);
+  /* A chosen segment: one raise over the frame its track is drawn on, lighter than surface-3 so it
+     reads beside a hover, far under the full ink of a primary button. */
+  --segment-on: color-mix(in oklab, var(--color-surface-3), var(--color-foreground) 9%);
   --color-selection: rgba(228, 228, 231, 0.18);
-  --accent-hue: 260;
-  --color-accent: oklch(68% 0.19 var(--accent-hue));
+  --accent-hue: 295;
+  --color-accent: oklch(75.5% 0.141 var(--accent-hue));
+  /* The accent's tint under what is selected or picked: the open row, a picked
+     choice, a count. A palette may set its own. */
   --color-accent-soft: color-mix(in oklch, var(--color-accent) 18%, transparent);
-  --color-accent-ink: #101013;
+  --color-accent-ink: #15111f;
   --color-reasoning: var(--color-accent);
-  /* What the agent looking after a project sends: the accent turned away round the wheel, so its letters never read as the user's own. */
-  --color-resident: oklch(66% 0.15 calc(var(--accent-hue) + 150));
+  /* What the agent looking after a project sends: the accent turned away round the wheel (orange at the default violet), so its letters never read as the user's own. */
+  --color-resident: oklch(66% 0.15 calc(var(--accent-hue) + 115));
   --color-resident-soft: color-mix(in oklch, var(--color-resident) 14%, transparent);
-  --accent-spectrum: linear-gradient(to right, oklch(68% .19 0), oklch(68% .19 60), oklch(68% .19 120), oklch(68% .19 180), oklch(68% .19 240), oklch(68% .19 300), oklch(68% .19 360));
+  --accent-spectrum: linear-gradient(to right, oklch(75.5% .141 0), oklch(75.5% .141 60), oklch(75.5% .141 120), oklch(75.5% .141 180), oklch(75.5% .141 240), oklch(75.5% .141 300), oklch(75.5% .141 360));
   --picker-white: #ffffff;
   --picker-black: #000000;
   --picker-hues: linear-gradient(to right, hsl(0 100% 50%), hsl(60 100% 50%), hsl(120 100% 50%), hsl(180 100% 50%), hsl(240 100% 50%), hsl(300 100% 50%), hsl(360 100% 50%));
   --color-reasoning-on: #ffffff;
-  --color-live: #eab308;
-  --color-success: #4ade80;
-  --color-danger: #f0716f;
+  /* Needs you: the one warm colour, and its soft fill behind a count. */
+  --color-live: #f5b84a;
+  --color-live-soft: rgba(245, 184, 74, 0.12);
+  /* A warning that asks nothing of the user (a quota running low, a setting left open): the full ink and its own
+     glyph, never the amber, which means only that something needs the user. */
+  --color-caution: var(--color-foreground);
+  /* Code in the diff and the file viewer: keywords in the accent's hue, strings in a cool blue, a step more
+     saturated than the greys so a line's parts read apart; names keep the text colour and comments
+     the subtle tier, so the added and removed tints stay what the eye finds first. */
+  --syntax-keyword: color-mix(in oklch, var(--color-accent) 80%, var(--color-foreground));
+  --syntax-string: oklch(80% 0.1 225);
+  --syntax-comment: var(--color-subtle);
+  --color-success: #4cc38a;
+  --color-danger: #f2555a;
   --color-danger-hover: #d36060;
   --color-on-danger: #ffffff;
   /* The Windows 11 caption close, the same red in both themes: the danger
      salmon under a white cross read at 2.9:1, this one at 5.7:1. */
   --color-caption-close: #c42b1c;
   --color-scrim: rgba(6, 6, 8, 0.55);
-  --color-on-foreground: #101013;
+  /* A phone's bottom sheet keeps the screen it rose from in view: lighter than a dialog's scrim, since the
+     sheet's own edge and grabber already set it apart (the seats read 0.55 as a blackout). */
+  --sheet-scrim: rgba(6, 6, 8, 0.32);
+  --color-on-foreground: #131314;
+
+  /* Four constant roles for the neutrals, so a layer is named by what it is, never by the nearest grey:
+     the ground a screen sits on, a surface (list, card, panel), a raise (chip, composer, a pressed segment)
+     and the selection. Each stands a clear L* step from the one under it in both themes and in every
+     palette (lib/contrast.test.ts), so an active layer never differs by a near-identical grey. */
+  --role-ground: var(--color-background);
+  --role-surface: var(--color-surface);
+  --role-raised: var(--color-surface-2);
+  --role-selected: var(--color-selection);
+
+  /* The instrumental tier of a thread: tool lines, plans, timers and their meta, one consistent
+     step under the agent's words (16 px reading text at full ink). One size down, the secondary ink and
+     the body's leading, so the reply is the only full-weight layer and the decision card the only other
+     one. Text tokens: they clear the secondary floors (lib/contrast.test.ts). */
+  --instrument-ink: var(--color-muted-foreground);
+  --instrument-meta: var(--color-subtle);
+  --instrument-size: var(--text-body);
+  --instrument-meta-size: var(--text-meta);
+  --instrument-leading: 1.5;
+
+  /* A changed line in a diff: a tint of the status colour mixed into the well's own fill. The tint keeps the
+     status colour's lightness at half its chroma, so the line keeps its step off the fill while the green and
+     red stay quieter than the accent; the changed words take the full status colour, a deeper wash, and carry
+     the signal with the gutter's sign and bar. Code keeps 12:1 on a line and 9:1 on a word, its line number
+     11:1 (lib/contrast.test.ts). */
+  --diff-add-tint: #84b79a;
+  --diff-remove-tint: #c77b78;
+  --diff-add-wash: color-mix(in srgb, var(--diff-add-tint) 12%, var(--color-surface-2));
+  --diff-remove-wash: color-mix(in srgb, var(--diff-remove-tint) 12%, var(--color-surface-2));
+  --diff-add-word: color-mix(in srgb, var(--color-success) 24%, var(--color-surface-2));
+  --diff-remove-word: color-mix(in srgb, var(--color-danger) 24%, var(--color-surface-2));
+
+  /* Lucide's line set in one voice (svg.lucide below): one stroke at 14 to 17 px, a heavier one under
+     it and a lighter one over it, so every icon draws a line about 1.1 px wide whatever its size. */
+  --icon-stroke: 1.75;
+  --icon-stroke-small: 2;
+  --icon-stroke-large: 1.5;
+  /* The smallest text a user may act on or must read to decide (a time, a count, a quota): meta's 13 px. */
+  --text-min: var(--text-meta);
 
   /*
    * Chart series, one hue per provider in a fixed order: Claude, Codex,
@@ -226,30 +385,64 @@
   --radius-xl: 16px;
   --radius-full: 999px;
   /* A framed card's corner, and the frame between two cards and the window edge. */
-  --radius-frame: 10px;
+  --radius-frame: 12px;
   --frame-gap: 8px;
+  /* How far a scroll area fades its edge while content runs past it (`.scroll-edges`): under half a line, so
+     the row passing the edge keeps its glyphs readable and only its last sliver dissolves. */
+  --scroll-edge: 10px;
 
-  --shadow-e1: 0 1px 2px rgb(0 0 0 / 0.35), inset 0 1px 0 rgb(255 255 255 / 0.05);
+  /* A soft lift for raised things (cards, decisions, a chosen segment): a contact shadow and a short
+     falloff under it, a fine top light; no glass and no wide glow. */
+  --shadow-e1: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 14px -6px rgb(0 0 0 / 0.55);
   --shadow-e2: 0 8px 24px rgb(0 0 0 / 0.45), 0 0 0 1px rgb(255 255 255 / 0.05);
   --shadow-e3: 0 20px 60px rgb(0 0 0 / 0.55), 0 0 0 1px rgb(255 255 255 / 0.06);
-  --shadow-frame: 0 3px 8px rgb(0 0 0 / 0.24);
+  /* One overlay card for every menu, sheet, popover, palette and dialog: the
+     same raised fill, readable edge, corner and shadow, and one row form inside
+     (height, inset, corner). A component sizes it; it never restyles it. */
+  --overlay-surface: var(--color-surface-2);
+  /* One step over the edge, toward the text, in every theme and palette: a menu reads off the page behind it. */
+  --overlay-edge: color-mix(in srgb, var(--color-edge), var(--color-foreground) 6%);
+  --radius-overlay: var(--radius-lg);
+  /* The card's one fill (.card). */
+  --card-fill: var(--color-surface);
+  --shadow-overlay: 0 12px 36px rgb(0 0 0 / 0.5), 0 1px 2px rgb(0 0 0 / 0.4);
+  --overlay-pad: var(--space-1);
+  --overlay-row: max(32px, var(--control));
+  --overlay-row-pad: var(--space-2);
+  --radius-overlay-row: var(--radius-sm);
+  /* The panel's border draws its hairline; then a top light and a contact shadow.
+     No wide blur: 40 px of it read as a darker band on the chrome beside the card.
+     The top light is doubled, so the inset card reads as a layer over the frame (lib/contrast.test.ts). */
+  --shadow-frame: inset 0 1px 0 rgb(255 255 255 / 0.07), 0 1px 2px rgb(0 0 0 / 0.6);
   /* The left edge of a phone's screen sliding over another (`lib/screen-slide.svelte.ts`). */
   --shadow-screen: -8px 0 24px -6px rgb(0 0 0 / 0.5);
 
-  /* The composer and its activity dock share a top reflection. The dock floats over
-     the scrolling timeline, so its fill is nearly opaque: the blur only softens
-     the edge and the lines passing under it never read through its text. */
+  /* The composer: a raised neutral surface with a hairline, a brighter one on
+     focus. Its activity dock floats over the scrolling timeline, so that fill is
+     nearly opaque: the lines passing under it never read through its text. */
   --color-composer-surface: var(--color-surface-2);
   --color-activity-surface: var(--color-surface);
-  --color-composer-focus: var(--color-edge);
-  /* The focused composer's edge light: none where the browser cannot mix the accent. */
-  --composer-edge: transparent;
-  --composer-glaze: linear-gradient(145deg, rgb(255 255 255 / 0.055), rgb(255 255 255 / 0.012) 48%, transparent);
-  --shadow-composer: 0 6px 20px rgb(0 0 0 / 0.24), inset 0 1px 0 rgb(255 255 255 / 0.06);
+  --color-composer-edge: var(--color-edge);
+  --color-composer-focus: rgba(255, 255, 255, 0.2);
+  --radius-composer: 18px;
+  --composer-glaze: none;
+  /* The one soft elevation for the composer card and a sheet: a top light no stronger than the
+     hairline, a contact shadow and a short falloff pulled in under the card, so it lifts without a glow. */
+  --elevation-soft: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 1px 2px rgb(0 0 0 / 0.35), 0 12px 28px -12px rgb(0 0 0 / 0.6);
+  --shadow-composer: var(--elevation-soft);
+  /* The send button: the accent with a fine light along its top. */
+  --shadow-send: inset 0 1px 0 rgb(255 255 255 / 0.35), 0 1px 2px rgb(0 0 0 / 0.5);
   --control-glaze: var(--composer-glaze);
   --color-control-surface: var(--color-surface-2);
   --color-control-hover: var(--color-surface-3);
   --color-control-primary-hover: var(--color-accent);
+  --color-control-strong-hover: var(--color-foreground);
+  /* The one primary button form, on every page and platform: filled in the accent, like
+     the send button, so the action a view leads with is the colour on it. `button.primary`
+     wears these; a link drawn as a primary takes them too. */
+  --primary-fill: var(--color-accent);
+  --primary-ink: var(--color-accent-ink);
+  --primary-hover: var(--color-control-primary-hover);
   --shadow-control: inset 0 1px 0 rgb(255 255 255 / 0.06);
 
   --font-fallback: ui-sans-serif, system-ui, 'Segoe UI Variable Text', 'Segoe UI', sans-serif;
@@ -261,22 +454,39 @@
   --face-plex: 'IBM Plex Sans', var(--font-fallback);
   --face-atkinson: 'Atkinson Hyperlegible Next', var(--font-fallback);
   --face-source: 'Source Sans 3', var(--font-fallback);
-  --face-system: 'Segoe UI Variable Text', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* Each OS's own interface face by name, then the sans faces any Linux ships:
+     `system-ui` always matches, and a Linux without font aliases resolves it,
+     and `sans-serif`, to its first face, often a monospace one. */
+  --face-system: 'Segoe UI Variable Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Adwaita Sans', Cantarell, Ubuntu, 'Noto Sans', Roboto, 'DejaVu Sans', 'Liberation Sans', Arial, sans-serif;
   --face-mono-geist: 'Geist Mono', var(--font-mono-fallback);
   --face-mono-jetbrains: 'JetBrains Mono', var(--font-mono-fallback);
   --face-mono-system: var(--font-mono-fallback);
   --font-sans: var(--face-inter);
   --font-mono: var(--face-mono-geist);
 
-  --text-xs: 12px;
-  --text-sm: 13px;
-  --text-base: 14px;
-  --text-md: 16px;
+  /* Three sizes the chrome speaks in: a title (a card or a section), the body
+     (a row, a control, a menu) and meta (times, counts, hints, labels), meta at
+     13 px everywhere, a step over the 11 and 12 px hints it replaces. A component
+     picks one of the three; xs and sm are meta, md the title, lg only a
+     screen's own large title on a phone. Prose reads at `--text-reading`. */
+  --text-meta: 13px;
+  --text-body: 14px;
+  /* A list's own titles on the desktop (a project card's name, the list's view switch): one size over the rows
+     under them and the one weight over the body, so title, row, label and meta read as four steps. */
+  --text-head: 15px;
+  --text-title: 16px;
+  /* Weight is for titles only: a row, a label and meta stay at the body's 400. */
+  --weight-title: 600;
+  --text-xs: var(--text-meta);
+  --text-sm: var(--text-meta);
+  --text-base: var(--text-body);
+  --text-md: var(--text-title);
   --text-lg: 20px;
-  /* What a conversation is read and written in: one step above the chrome, on
-     a 24 px line. A phone reads it at the 16 px its fields already type at. */
-  --text-reading: 15px;
-  --leading-reading: 1.6;
+  /* What a conversation is read and written in: one step above the chrome,
+     16 px everywhere, so the composer types at the size the prose reads. Its
+     lines stand a notch further apart than the chrome's 1.5, so prose reads first. */
+  --text-reading: var(--text-md);
+  --leading-reading: 1.65;
 
   /*
    * The agents' robots (components/agents/RobotFace.svelte). A robot is a
@@ -314,12 +524,19 @@
   --robot-bandage: #f6d6b4;
   --robot-bandage-pad: #e7b98f;
 
-  --titlebar: 44px;
+  /* The main column's top bar, on the chrome above its panel. */
+  --titlebar: 46px;
+  /* The app rail down the window's left edge (AppRail.svelte): its width, a button's side and corner. */
+  --app-rail: 80px;
+  --rail-button: 44px;
+  --radius-rail: 14px;
   /* A caption button, Windows' own width, the bar's full height. */
   --caption: 46px;
   --sidebar: 280px;
   --panel: 360px;
-  --content: 820px;
+  /* The one column a screen reads in: the conversation's default width, Activity's and Settings'. */
+  --column: 820px;
+  --content: var(--column);
   /* The measure an answer is read at, inside the 820 px column. */
   --prose: 720px;
   --row: 34px;
@@ -327,7 +544,12 @@
   --control: 30px;
   --control-sm: 26px;
   --control-lg: 36px;
+  /* Header and panel targets (thread header, Panels door): between control and control-lg. */
+  --control-head: 32px;
   --control-touch: 40px;
+  /* The one icon button (`button.icon-button`): its drawn box and the target the pointer gets. */
+  --icon-button: var(--control);
+  --icon-button-target: 32px;
   /* Lucide's chevron-right, the one shape every disclosure turns. */
   --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E");
   --input: 34px;
@@ -351,8 +573,24 @@
   --radius-bubble: 18px;
   /* Balanced timeline margins, with room for the message outline rail. */
   --outline-room: 38px;
-  --settings-width: 880px;
-  --settings-padding: 24px;
+  /* Settings read in the conversation's column (its default width, whatever width a thread was set to). */
+  --settings-width: 920px;
+  /* The settings' list of pages: wide enough for the longest page name in every language, no wider. */
+  --settings-nav: 252px;
+  --settings-title: 28px;
+  --settings-gutter: clamp(var(--space-5), 3vw, 48px);
+  --settings-padding: var(--space-6);
+  /* The room a settings card keeps above it for its title (44 px on a phone: the title's "i" is a target). */
+  --card-head: 32px;
+  /* The one spacing scale lists, cards, sheets and Settings share: a 4 px step up to
+     16, then 20, 24 and 32. A gap, a padding or a margin picks one of these. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
 
   --dur-1: 90ms;
   --dur-2: 150ms;
@@ -360,20 +598,25 @@
   --dur-whip: 360ms;
   --dur-typing: 1100ms;
   --dur-typing-step: 140ms;
-  /* A pane that makes its room beside the chat (terminal, right panel,
-     sidebar). It starts gently and decelerates the whole way, so the chat
-     giving way reads as one movement; ease-out-quint covered 72% of the
-     terminal's height in its first 50 ms, then crawled. The exit is the same
-     curve, shorter: an accelerating one left the sidebar fading in place for
-     100 ms before it moved. */
-  --dur-slide: 300ms;
-  --dur-slide-out: 200ms;
   /* How long a Settings card a conversation pointed at stays ringed. */
   --dur-flash: 1800ms;
   /* The tour's scenes play like a GIF: reduced motion leaves these two alone. */
   --dur-demo-step: 220ms;
   --dur-demo-word: 150ms;
-  --ease-slide: cubic-bezier(0.2, 0, 0, 1);
+  /* One motion for whatever arrives and leaves: a sheet, a panel, a decision, a
+     menu, a popover, a dialog, a toast, a fold. One duration and one curve, the
+     way in and the way out: it starts at speed and settles, so a short move
+     still reads. Panes that make their room beside the chat (terminal, right
+     panel, sidebar) use it too, in and out. Write `var(--motion-duration)
+     var(--motion-curve)` after an animation's name; `--motion` scales every
+     move in their keyframes.
+     Reduced motion is a cut: every duration below drops to 0.01 ms (not 0, so
+     `animationend` still fires for `lib/closing.svelte.ts`). */
+  --motion-duration: 200ms;
+  --motion-curve: cubic-bezier(0.2, 0, 0, 1);
+  --motion: 1;
+  /* A bot's picture at rest: grey, a touch under its lit tone (lib/avatar-lit.ts). */
+  --avatar-rest: grayscale(1) brightness(0.92) contrast(0.95);
   --z-whip: 100;
   --z-window-resize: 11000;
   --window-resize-edge: 5px;
@@ -383,31 +626,52 @@
   color-scheme: dark;
 }
 
+/* A 360 px phone takes its large titles one step down, so a screen's name holds
+   on one line. Text that is typed stays at 16 px: less makes iOS zoom in. */
+@media (max-width: 380px) {
+  :root { --text-lg: 18px; }
+}
+/* A finger's icon button: a larger drawn box and the platform's 44 px target. */
+@media (max-width: 720px) {
+  :root { --icon-button: 36px; --icon-button-target: var(--touch-target); }
+}
+/* The desktop's secondary tier (times, paths, menu descriptions, timers, sublines) half a step up and the
+   instrument meta in the secondary ink, so it reads like the phone's beside 14 px rows. 14 px
+   would equal the body and flatten title, row and meta into one size; Inter ships no 450 or 500 weight. */
+@media (min-width: 721px) {
+  :root { --text-meta: 13.5px; --instrument-meta: var(--color-muted-foreground); }
+}
+
 /* Theme families own their surface hierarchy, selection, code and status colours.
  * Community palettes are adapted for Boite's panels and readable UI text.
  * Sources and redistribution notices: public/theme-licenses.txt.
  */
 :root {
-  --palette-dark-default-background: #101013;
-  --palette-dark-default-frame: #1a1a1d;
-  --palette-dark-default-surface: #1b1b1f;
-  --palette-dark-default-foreground: #ececf1;
+  --palette-dark-default-background: #111114;
+  --palette-dark-default-frame: #030306;
+  --palette-dark-default-surface: #212124;
+  --palette-dark-default-foreground: #ffffff;
   --palette-light-default-background: #f3f3f6;
-  --palette-light-default-frame: #e7e7ec;
+  --palette-light-default-frame: #dfdfe5;
   --palette-light-default-surface: #ffffff;
-  --palette-light-default-foreground: #1c1c21;
+  --palette-light-default-foreground: #0b0b0e;
   --palette-grain-theme-color: #1a1a1e;
+  /* The Default tile's status dots (ThemeColors.svelte): the app's own, kept apart from the palette roles so
+     Default gains no details of its own. */
+  --tile-default-success: #4cc38a;
+  --tile-default-live: #f5b84a;
+  --tile-default-danger: #f2555a;
 
   /* dark-oled */
   --palette-dark-oled-background: #000000;
   --palette-dark-oled-frame: #000000;
-  --palette-dark-oled-surface: #0b0b0f;
+  --palette-dark-oled-surface: #151518;
   --palette-dark-oled-foreground: #e6e7eb;
   --palette-dark-oled-accent: #8cbcff;
-  --palette-dark-oled-surface-low: #000000;
-  --palette-dark-oled-surface-high: #15151a;
-  --palette-dark-oled-muted-foreground: #adb0ba;
-  --palette-dark-oled-subtle: #878b96;
+  --palette-dark-oled-surface-low: #0d0d0d;
+  --palette-dark-oled-surface-high: #1c1c21;
+  --palette-dark-oled-muted-foreground: #bfc2cb;
+  --palette-dark-oled-subtle: #b0b2bc;
   --palette-dark-oled-border: #232329;
   --palette-dark-oled-edge: #363640;
   --palette-dark-oled-frame-edge: #232329;
@@ -423,14 +687,14 @@
 
   /* dark-catppuccin */
   --palette-dark-catppuccin-background: #1e1e2e;
-  --palette-dark-catppuccin-frame: #11111b;
-  --palette-dark-catppuccin-surface: #181825;
-  --palette-dark-catppuccin-foreground: #cdd6f4;
+  --palette-dark-catppuccin-frame: #15161f;
+  --palette-dark-catppuccin-surface: #2e2e3c;
+  --palette-dark-catppuccin-foreground: #d0d9f6;
   --palette-dark-catppuccin-accent: #cba6f7;
-  --palette-dark-catppuccin-surface-low: #181825;
-  --palette-dark-catppuccin-surface-high: #313244;
-  --palette-dark-catppuccin-muted-foreground: #bac2de;
-  --palette-dark-catppuccin-subtle: #a6adc8;
+  --palette-dark-catppuccin-surface-low: #262533;
+  --palette-dark-catppuccin-surface-high: #343548;
+  --palette-dark-catppuccin-muted-foreground: #c8d0ed;
+  --palette-dark-catppuccin-subtle: #bdc6e1;
   --palette-dark-catppuccin-border: #313244;
   --palette-dark-catppuccin-edge: #45475a;
   --palette-dark-catppuccin-frame-edge: #313244;
@@ -446,14 +710,14 @@
 
   /* light-catppuccin */
   --palette-light-catppuccin-background: #eff1f5;
-  --palette-light-catppuccin-frame: #dce0e8;
+  --palette-light-catppuccin-frame: #d9dde5;
   --palette-light-catppuccin-surface: #ffffff;
-  --palette-light-catppuccin-foreground: #4c4f69;
+  --palette-light-catppuccin-foreground: #2d2f46;
   --palette-light-catppuccin-accent: #8839ef;
-  --palette-light-catppuccin-surface-low: #e6e9ef;
-  --palette-light-catppuccin-surface-high: #ccd0da;
-  --palette-light-catppuccin-muted-foreground: #5c5f77;
-  --palette-light-catppuccin-subtle: #6c6f85;
+  --palette-light-catppuccin-surface-low: #f6f8fd;
+  --palette-light-catppuccin-surface-high: #e1e6f0;
+  --palette-light-catppuccin-muted-foreground: #35374b;
+  --palette-light-catppuccin-subtle: #3c3e50;
   --palette-light-catppuccin-border: #ccd0da;
   --palette-light-catppuccin-edge: #bcc0cc;
   --palette-light-catppuccin-frame-edge: #ccd0da;
@@ -469,20 +733,20 @@
 
   /* dark-tokyo-night */
   --palette-dark-tokyo-night-background: #1a1b26;
-  --palette-dark-tokyo-night-frame: #16161e;
-  --palette-dark-tokyo-night-surface: #1f2335;
-  --palette-dark-tokyo-night-foreground: #c0caf5;
+  --palette-dark-tokyo-night-frame: #12121a;
+  --palette-dark-tokyo-night-surface: #272a3d;
+  --palette-dark-tokyo-night-foreground: #c6d0fb;
   --palette-dark-tokyo-night-accent: #7aa2f7;
-  --palette-dark-tokyo-night-surface-low: #16161e;
-  --palette-dark-tokyo-night-surface-high: #24283b;
-  --palette-dark-tokyo-night-muted-foreground: #a9b1d6;
-  --palette-dark-tokyo-night-subtle: #737aa2;
+  --palette-dark-tokyo-night-surface-low: #22222b;
+  --palette-dark-tokyo-night-surface-high: #2e3245;
+  --palette-dark-tokyo-night-muted-foreground: #bfc7ef;
+  --palette-dark-tokyo-night-subtle: #b6bee6;
   --palette-dark-tokyo-night-border: #292e42;
   --palette-dark-tokyo-night-edge: #3b4261;
   --palette-dark-tokyo-night-frame-edge: #292e42;
   --palette-dark-tokyo-night-hover: #1f2335;
   --palette-dark-tokyo-night-active: #292e42;
-  --palette-dark-tokyo-night-selection: #283457;
+  --palette-dark-tokyo-night-selection: #343f63;
   --palette-dark-tokyo-night-accent-soft: #223251;
   --palette-dark-tokyo-night-code-background: #0c0e14;
   --palette-dark-tokyo-night-code-foreground: #c0caf5;
@@ -492,20 +756,20 @@
 
   /* light-tokyo-night */
   --palette-light-tokyo-night-background: #e1e2e7;
-  --palette-light-tokyo-night-frame: #d0d5e3;
-  --palette-light-tokyo-night-surface: #e9eaf0;
-  --palette-light-tokyo-night-foreground: #2d4f9b;
+  --palette-light-tokyo-night-frame: #c9cedc;
+  --palette-light-tokyo-night-surface: #eeeff5;
+  --palette-light-tokyo-night-foreground: #0e2b59;
   --palette-light-tokyo-night-accent: #2e7de9;
-  --palette-light-tokyo-night-surface-low: #d0d5e3;
-  --palette-light-tokyo-night-surface-high: #c4c8da;
-  --palette-light-tokyo-night-muted-foreground: #6172b0;
-  --palette-light-tokyo-night-subtle: #68709a;
+  --palette-light-tokyo-night-surface-low: #e4e9f7;
+  --palette-light-tokyo-night-surface-high: #d2d6e9;
+  --palette-light-tokyo-night-muted-foreground: #22325a;
+  --palette-light-tokyo-night-subtle: #2d3a5a;
   --palette-light-tokyo-night-border: #b4b5b9;
   --palette-light-tokyo-night-edge: #8990b3;
   --palette-light-tokyo-night-frame-edge: #b4b5b9;
   --palette-light-tokyo-night-hover: #d0d5e3;
   --palette-light-tokyo-night-active: #c4c8da;
-  --palette-light-tokyo-night-selection: #b7c1e3;
+  --palette-light-tokyo-night-selection: #afb8d9;
   --palette-light-tokyo-night-accent-soft: #cdd9ee;
   --palette-light-tokyo-night-code-background: #d0d5e3;
   --palette-light-tokyo-night-code-foreground: #3760bf;
@@ -515,20 +779,20 @@
 
   /* dark-nord */
   --palette-dark-nord-background: #2e3440;
-  --palette-dark-nord-frame: #242933;
-  --palette-dark-nord-surface: #3b4252;
-  --palette-dark-nord-foreground: #eceff4;
+  --palette-dark-nord-frame: #252a34;
+  --palette-dark-nord-surface: #3e4555;
+  --palette-dark-nord-foreground: #f9fbfc;
   --palette-dark-nord-accent: #88c0d0;
-  --palette-dark-nord-surface-low: #2e3440;
-  --palette-dark-nord-surface-high: #434c5e;
-  --palette-dark-nord-muted-foreground: #d8dee9;
-  --palette-dark-nord-subtle: #b4becf;
+  --palette-dark-nord-surface-low: #363c48;
+  --palette-dark-nord-surface-high: #444d5f;
+  --palette-dark-nord-muted-foreground: #eef2f9;
+  --palette-dark-nord-subtle: #e2e8f1;
   --palette-dark-nord-border: #434c5e;
   --palette-dark-nord-edge: #4c566a;
   --palette-dark-nord-frame-edge: #3b4252;
   --palette-dark-nord-hover: #3b4252;
   --palette-dark-nord-active: #434c5e;
-  --palette-dark-nord-selection: #4c566a;
+  --palette-dark-nord-selection: #525b6f;
   --palette-dark-nord-accent-soft: #354b58;
   --palette-dark-nord-code-background: #242933;
   --palette-dark-nord-code-foreground: #eceff4;
@@ -538,20 +802,20 @@
 
   /* light-nord */
   --palette-light-nord-background: #eceff4;
-  --palette-light-nord-frame: #d8dee9;
+  --palette-light-nord-frame: #d5dbe6;
   --palette-light-nord-surface: #ffffff;
   --palette-light-nord-foreground: #2e3440;
   --palette-light-nord-accent: #5e81ac;
-  --palette-light-nord-surface-low: #e5e9f0;
-  --palette-light-nord-surface-high: #d8dee9;
-  --palette-light-nord-muted-foreground: #434c5e;
-  --palette-light-nord-subtle: #4c566a;
+  --palette-light-nord-surface-low: #f2f6fd;
+  --palette-light-nord-surface-high: #dee4ef;
+  --palette-light-nord-muted-foreground: #343b4a;
+  --palette-light-nord-subtle: #3b4455;
   --palette-light-nord-border: #d8dee9;
   --palette-light-nord-edge: #b5bfce;
   --palette-light-nord-frame-edge: #c4cdd9;
   --palette-light-nord-hover: #e5e9f0;
   --palette-light-nord-active: #d8dee9;
-  --palette-light-nord-selection: #c0d5e1;
+  --palette-light-nord-selection: #bcd1dc;
   --palette-light-nord-accent-soft: #dce5ef;
   --palette-light-nord-code-background: #e5e9f0;
   --palette-light-nord-code-foreground: #2e3440;
@@ -561,14 +825,14 @@
 
   /* dark-gruvbox */
   --palette-dark-gruvbox-background: #282828;
-  --palette-dark-gruvbox-frame: #1d2021;
-  --palette-dark-gruvbox-surface: #32302f;
-  --palette-dark-gruvbox-foreground: #ebdbb2;
+  --palette-dark-gruvbox-frame: #1c1f20;
+  --palette-dark-gruvbox-surface: #3a3837;
+  --palette-dark-gruvbox-foreground: #f4e3ba;
   --palette-dark-gruvbox-accent: #fe8019;
-  --palette-dark-gruvbox-surface-low: #282828;
-  --palette-dark-gruvbox-surface-high: #3c3836;
-  --palette-dark-gruvbox-muted-foreground: #d5c4a1;
-  --palette-dark-gruvbox-subtle: #bdae93;
+  --palette-dark-gruvbox-surface-low: #2f2f2f;
+  --palette-dark-gruvbox-surface-high: #433f3d;
+  --palette-dark-gruvbox-muted-foreground: #ebdab5;
+  --palette-dark-gruvbox-subtle: #e0d1ae;
   --palette-dark-gruvbox-border: #3c3836;
   --palette-dark-gruvbox-edge: #504945;
   --palette-dark-gruvbox-frame-edge: #3c3836;
@@ -584,14 +848,14 @@
 
   /* light-gruvbox */
   --palette-light-gruvbox-background: #fbf1c7;
-  --palette-light-gruvbox-frame: #ebdbb2;
-  --palette-light-gruvbox-surface: #f9f5d7;
-  --palette-light-gruvbox-foreground: #3c3836;
+  --palette-light-gruvbox-frame: #ecdcb3;
+  --palette-light-gruvbox-surface: #fffef8;
+  --palette-light-gruvbox-foreground: #3a3735;
   --palette-light-gruvbox-accent: #af3a03;
-  --palette-light-gruvbox-surface-low: #f2e5bc;
-  --palette-light-gruvbox-surface-high: #ebdbb2;
-  --palette-light-gruvbox-muted-foreground: #504945;
-  --palette-light-gruvbox-subtle: #665c54;
+  --palette-light-gruvbox-surface-low: #fff7d4;
+  --palette-light-gruvbox-surface-high: #f4e4bb;
+  --palette-light-gruvbox-muted-foreground: #433e3a;
+  --palette-light-gruvbox-subtle: #4b4540;
   --palette-light-gruvbox-border: #d5c4a1;
   --palette-light-gruvbox-edge: #bdae93;
   --palette-light-gruvbox-frame-edge: #d5c4a1;
@@ -607,14 +871,14 @@
 
   /* dark-amethyst */
   --palette-dark-amethyst-background: #181223;
-  --palette-dark-amethyst-frame: #100d19;
-  --palette-dark-amethyst-surface: #261d37;
+  --palette-dark-amethyst-frame: #090713;
+  --palette-dark-amethyst-surface: #29203a;
   --palette-dark-amethyst-foreground: #eee5ff;
   --palette-dark-amethyst-accent: #bfa1ff;
-  --palette-dark-amethyst-surface-low: #1d162b;
-  --palette-dark-amethyst-surface-high: #302442;
-  --palette-dark-amethyst-muted-foreground: #c8b6e0;
-  --palette-dark-amethyst-subtle: #ab98c2;
+  --palette-dark-amethyst-surface-low: #1f182e;
+  --palette-dark-amethyst-surface-high: #322644;
+  --palette-dark-amethyst-muted-foreground: #d9caef;
+  --palette-dark-amethyst-subtle: #cab9e1;
   --palette-dark-amethyst-border: #3b2a54;
   --palette-dark-amethyst-edge: #574071;
   --palette-dark-amethyst-frame-edge: #332545;
@@ -629,15 +893,15 @@
   --palette-dark-amethyst-live: #e1c18b;
 
   /* light-amethyst */
-  --palette-light-amethyst-background: #fbf8ff;
-  --palette-light-amethyst-frame: #e8dff5;
+  --palette-light-amethyst-background: #f5f2f9;
+  --palette-light-amethyst-frame: #e5dcf2;
   --palette-light-amethyst-surface: #ffffff;
   --palette-light-amethyst-foreground: #3d2c56;
   --palette-light-amethyst-accent: #7048ad;
-  --palette-light-amethyst-surface-low: #f3edf9;
-  --palette-light-amethyst-surface-high: #ece3f5;
-  --palette-light-amethyst-muted-foreground: #635276;
-  --palette-light-amethyst-subtle: #78628c;
+  --palette-light-amethyst-surface-low: #fdfaff;
+  --palette-light-amethyst-surface-high: #eee5f7;
+  --palette-light-amethyst-muted-foreground: #46355a;
+  --palette-light-amethyst-subtle: #513f64;
   --palette-light-amethyst-border: #ded1ec;
   --palette-light-amethyst-edge: #c9b5dd;
   --palette-light-amethyst-frame-edge: #d9c9e9;
@@ -652,15 +916,6 @@
   --palette-light-amethyst-live: #866325;
 }
 
-.answer-bubble {
-  background: var(--color-surface-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-bubble);
-  border-bottom-left-radius: var(--radius-sm);
-}
-
-.answer-bubble { width: fit-content; max-width: 100%; padding: 12px 16px; }
-@media (max-width: 720px) { .answer-bubble { padding: 10px 14px; } }
 .typing { display: inline-flex; align-items: center; gap: 4px; min-height: 24px; color: var(--color-muted-foreground); }
 .typing > span { width: 5px; height: 5px; border-radius: var(--radius-full); background: currentColor; animation: typing var(--dur-typing) ease-in-out infinite var(--loops); }
 .typing > span:nth-child(2) { animation-delay: var(--dur-typing-step); }
@@ -724,18 +979,27 @@ html[data-chat-width='full'] {
 /* Light, stamped by `lib/theme.ts` and by the boot script of `index.html`; dark stamps nothing. */
 [data-theme='light'] {
   --color-background: #f3f3f6;
-  --color-frame: #e7e7ec;
-  --color-frame-edge: rgba(0, 0, 0, 0.12);
+  --card-fill: var(--color-surface-2);
+  /* The frame one step deeper (6.9 L* under the page); white is the ceiling above. */
+  --color-frame: #dfdfe5;
+  --color-frame-edge: rgba(0, 0, 0, 0.14);
   --color-surface: #fafafb;
   --color-surface-2: #ffffff;
-  --color-surface-3: #ebebef;
-  --color-border: rgba(0, 0, 0, 0.08);
-  --color-edge: rgba(0, 0, 0, 0.16);
-  --color-hover: rgba(0, 0, 0, 0.045);
-  --color-active: rgba(0, 0, 0, 0.08);
-  --color-foreground: #1c1c21;
-  --color-muted-foreground: #50505a;
-  --color-subtle: #67676f;
+  --color-surface-3: #e9e9ee;
+  /* White has no step above it: a light sheet is the raised white, set apart by its elevation. */
+  --color-sheet: var(--color-surface-2);
+  /* In light the raise is the white card over the grey frame. */
+  --segment-on: var(--color-surface-2);
+  --color-border: rgba(0, 0, 0, 0.095);
+  --color-edge: rgba(0, 0, 0, 0.19);
+  --color-hover: rgba(0, 0, 0, 0.04);
+  --color-active: rgba(0, 0, 0, 0.07);
+  --color-foreground: #0b0b0e;
+  /* As near the ink as the hierarchy allows: each tier 3 L* from the one above (secondary 13.8:1 and
+     subtle 13.1:1 on the frame). */
+  --color-muted-foreground: #141417;
+  --color-subtle: #1a1a1f;
+  --color-faint: #b4b4bb;
   --color-selection: rgba(28, 28, 33, 0.14);
   --color-terminal-background: var(--color-surface-2);
   --ansi-black: #000000;
@@ -754,12 +1018,21 @@ html[data-chat-width='full'] {
   --ansi-bright-magenta: #bc05bc;
   --ansi-bright-cyan: #0598bc;
   --ansi-bright-white: #a5a5a5;
-  --color-live: #ca8a04;
+  --color-live: #b97806;
+  --color-live-soft: rgba(185, 120, 6, 0.12);
+  --tile-default-success: #16a34a;
+  --tile-default-live: #b97806;
+  --tile-default-danger: #dc2626;
+  --syntax-keyword: color-mix(in oklch, var(--color-accent) 55%, var(--color-foreground));
+  --syntax-string: oklch(50% 0.13 240);
   --color-success: #16a34a;
   --color-danger: #dc2626;
   --color-danger-hover: #bb2020;
+  --diff-add-tint: #63976c;
+  --diff-remove-tint: #b05f56;
   --color-on-danger: #ffffff;
   --color-scrim: rgba(20, 20, 24, 0.35);
+  --sheet-scrim: rgba(20, 20, 24, 0.2);
   --color-on-foreground: #fafafb;
   --series-1: #eb6834;
   --series-2: #2a78d6;
@@ -769,13 +1042,15 @@ html[data-chat-width='full'] {
   --series-6: #e26092;
   --series-7: #008300;
   --series-8: #e34948;
-  --shadow-e1: 0 1px 2px rgb(0 0 0 / 0.08), inset 0 1px 0 rgb(255 255 255 / 0.6);
+  --shadow-e1: inset 0 1px 0 rgb(255 255 255 / 0.6), 0 1px 2px rgb(0 0 0 / 0.07), 0 6px 14px -8px rgb(0 0 0 / 0.14);
   --shadow-e2: 0 8px 24px rgb(0 0 0 / 0.12), 0 0 0 1px rgb(0 0 0 / 0.06);
   --shadow-e3: 0 20px 60px rgb(0 0 0 / 0.18), 0 0 0 1px rgb(0 0 0 / 0.08);
-  --shadow-frame: 0 2px 6px rgb(0 0 0 / 0.07);
+  --shadow-overlay: 0 12px 36px rgb(0 0 0 / 0.14), 0 1px 2px rgb(0 0 0 / 0.08);
+  --shadow-frame: inset 0 1px 0 rgb(255 255 255 / 0.9), 0 1px 2px rgb(0 0 0 / 0.09);
   --shadow-screen: -8px 0 24px -6px rgb(0 0 0 / 0.14);
-  --composer-glaze: linear-gradient(145deg, rgb(255 255 255 / 0.7), rgb(255 255 255 / 0.18) 48%, transparent);
-  --shadow-composer: 0 6px 20px rgb(0 0 0 / 0.08), inset 0 1px 0 rgb(255 255 255 / 0.8);
+  --color-composer-focus: rgba(0, 0, 0, 0.24);
+  --elevation-soft: inset 0 1px 0 rgb(255 255 255 / 0.8), 0 1px 2px rgb(0 0 0 / 0.06), 0 12px 28px -12px rgb(0 0 0 / 0.16);
+  --shadow-send: inset 0 1px 0 rgb(255 255 255 / 0.35), 0 1px 2px rgb(0 0 0 / 0.18);
   --shadow-control: inset 0 1px 0 rgb(255 255 255 / 0.7);
   color-scheme: light;
 }
@@ -783,23 +1058,11 @@ html[data-chat-width='full'] {
 /* Unsupported mixes must not invalidate a control's entire background at computed-value time. */
 @supports (color: color-mix(in oklab, white 50%, black)) {
   :root {
-    --color-composer-surface: color-mix(in oklab, var(--color-surface-2) 82%, transparent);
     --color-activity-surface: color-mix(in oklab, var(--color-surface) 94%, transparent);
-    --color-composer-focus: color-mix(in oklch, var(--color-accent) 55%, transparent);
-    /* Replaces the resting shadow on focus, slot for slot so it animates: a bloom under the box, the top
-       reflection put out (it would double the lit edge), then a blurred halo. Every layer is blurred: a
-       spread-only ring draws a second, hard outline. The halo spreads outward: a negative spread shrinks
-       its corner radius below the box's, and the corners went darker than the sides (19 against 30 of
-       luminance, 4 px out, on the dark ground at 16). The edge itself is a gradient, below. */
-    --composer-glow: 0 12px 32px -6px color-mix(in oklch, var(--color-accent) 30%, transparent), inset 0 1px 0 transparent, 0 0 14px 4px color-mix(in oklch, var(--color-accent) 13%, transparent);
-    --composer-edge: linear-gradient(to bottom, color-mix(in oklch, var(--color-accent) 85%, var(--color-foreground)), color-mix(in oklch, var(--color-accent) 50%, transparent) 45%, color-mix(in oklch, var(--color-accent) 24%, transparent));
     --color-control-surface: color-mix(in oklab, var(--color-surface-2) 82%, transparent);
     --color-control-hover: color-mix(in oklab, var(--color-surface-3) 90%, transparent);
     --color-control-primary-hover: color-mix(in oklch, var(--color-accent) 88%, var(--color-foreground));
-  }
-  /* On a light page the bloom reads stronger: half as much. */
-  [data-theme='light'] {
-    --composer-glow: 0 12px 32px -6px color-mix(in oklch, var(--color-accent) 22%, transparent), inset 0 1px 0 transparent, 0 0 14px 4px color-mix(in oklch, var(--color-accent) 9%, transparent);
+    --color-control-strong-hover: color-mix(in oklch, var(--color-foreground) 86%, var(--color-background));
   }
 }
 
@@ -807,8 +1070,9 @@ html[data-chat-width='full'] {
    its 18 percent there, and the few one-off mixes simply draw no tint. */
 @supports not (color: color-mix(in oklch, red 50%, blue)) {
   :root {
-    --color-accent-soft: oklch(68% 0.19 var(--accent-hue) / 0.18);
-    --color-resident-soft: oklch(66% 0.15 calc(var(--accent-hue) + 150) / 0.14);
+    --color-accent-soft: oklch(75.5% 0.141 var(--accent-hue) / 0.18);
+    --color-resident-soft: oklch(66% 0.15 calc(var(--accent-hue) + 115) / 0.14);
+    --overlay-edge: var(--color-edge);
   }
 }
 
@@ -817,8 +1081,9 @@ html[data-chat-width='full'] {
     --dur-1: 0.01ms;
     --dur-2: 0.01ms;
     --dur-3: 0.01ms;
-    --dur-slide: 0.01ms;
-    --dur-slide-out: 0.01ms;
+    /* A cut: nothing moves and nothing fades, so no frame ever shows two states at once. */
+    --motion: 0;
+    --motion-duration: 0.01ms;
   }
 }
 
@@ -828,9 +1093,45 @@ html[data-motion='reduced'] {
   --dur-1: 0.01ms;
   --dur-2: 0.01ms;
   --dur-3: 0.01ms;
-  --dur-slide: 0.01ms;
-  --dur-slide-out: 0.01ms;
+  --motion: 0;
+  --motion-duration: 0.01ms;
 }
+
+/* The same cut for every animation and transition a component wrote with its own
+   duration: reduced motion asked for no in-between frames, not for shorter ones.
+   The tour's pictures keep playing (they are the content, `--dur-demo-*`); loops
+   stand still through `--loops` below. */
+@media (prefers-reduced-motion: reduce) {
+  *:not([data-testid='onboarding-animation'], [data-testid='onboarding-animation'] *),
+  *:not([data-testid='onboarding-animation'] *)::before,
+  *:not([data-testid='onboarding-animation'] *)::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
+  }
+}
+html[data-motion='reduced'] *:not([data-testid='onboarding-animation'], [data-testid='onboarding-animation'] *),
+html[data-motion='reduced'] *:not([data-testid='onboarding-animation'] *)::before,
+html[data-motion='reduced'] *:not([data-testid='onboarding-animation'] *)::after {
+  animation-duration: 0.01ms !important;
+  animation-delay: 0s !important;
+  transition-duration: 0.01ms !important;
+  transition-delay: 0s !important;
+}
+/* That cut is for transitions a component wrote. An element that wrote none
+   still has `transition-property: all`, and the duration above would give it
+   a transition on every property: a width, a height or a padding set by a
+   media query or a script would land one frame late, so a layout read in the
+   same task (a notice's place, the phone's columns, the composer over the
+   keyboard) saw the old box. Windows with animation effects off reports
+   reduced motion, so its CI met it on every phone switch. The weakest
+   selectors (`:where` takes no pseudo-element, so `::before` and `::after`
+   add one type's weight): any rule that names a transition wins. */
+@media (prefers-reduced-motion: reduce) {
+  :where(*), :where(*)::before, :where(*)::after { transition-property: none; }
+}
+:where(html[data-motion='reduced'] *), :where(html[data-motion='reduced'] *)::before, :where(html[data-motion='reduced'] *)::after { transition-property: none; }
 
 /* Every endless animation but a tour picture's plays `var(--loops)`
    (render-cost.test.ts): paused while the page is hidden, another application
@@ -839,6 +1140,10 @@ html[data-motion='reduced'] {
    monitor's rate, whoever looks. */
 :root { --loops: running; }
 :root[data-at-rest] { --loops: paused; }
+/* Reduced motion holds every loop too: a spinner, a pulse or a sliding bar stands
+   still at its first frame; the word beside it carries the state. */
+@media (prefers-reduced-motion: reduce) { :root { --loops: paused; } }
+html[data-motion='reduced'] { --loops: paused; }
 
 /* A loop on screen in front of the user still draws only when it changes:
    a spinner turns in `steps()` and a pulse eases down these staircases, one
@@ -882,10 +1187,16 @@ body {
   font-family: var(--font-sans);
   font-size: var(--text-base);
   line-height: 1.5;
+  /* A touch tighter than the face's default. Tabular figures stay off the body: Inter's
+     `tnum` also widens the hyphen, which spaced "atlas-api" into "atlas - api". Counts and
+     timers that tick set it themselves, and so does every `time`. */
+  letter-spacing: -0.006em;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overflow: hidden;
 }
+
+time { font-variant-numeric: tabular-nums; }
 
 #app {
   height: 100%;
@@ -901,21 +1212,12 @@ body {
   background: var(--color-selection);
 }
 
-.code-syntax .hljs-keyword,
-.code-syntax .hljs-selector-tag,
-.code-syntax .hljs-built_in { color: var(--color-accent); }
-.code-syntax .hljs-string,
-.code-syntax .hljs-regexp,
+/* One palette for code in the diff and the file viewer (the --syntax-* tokens). */
+.code-syntax :is(.hljs-keyword, .hljs-selector-tag, .hljs-built_in) { color: var(--syntax-keyword); }
+.code-syntax :is(.hljs-title, .hljs-type, .hljs-name, .hljs-attr, .hljs-attribute) { color: var(--color-foreground); }
+.code-syntax :is(.hljs-string, .hljs-regexp, .hljs-number, .hljs-literal) { color: var(--syntax-string); }
+.code-syntax :is(.hljs-comment, .hljs-meta) { color: var(--syntax-comment); font-style: italic; }
 .code-syntax .hljs-addition { color: var(--color-success); }
-.code-syntax .hljs-number,
-.code-syntax .hljs-literal,
-.code-syntax .hljs-attr,
-.code-syntax .hljs-attribute { color: var(--color-live); }
-.code-syntax .hljs-title,
-.code-syntax .hljs-type,
-.code-syntax .hljs-name { color: var(--color-accent); }
-.code-syntax .hljs-comment,
-.code-syntax .hljs-meta { color: var(--color-muted-foreground); }
 .code-syntax .hljs-deletion { color: var(--color-danger); }
 
 /* Ctrl+F in a thread: every match, and the one the arrows are on. */
@@ -936,9 +1238,20 @@ textarea {
   letter-spacing: inherit;
 }
 
+/* The one focus ring: every focusable thing a keyboard reaches wears the accent.
+   A row inside a list, menu or sheet draws it inside its box, so a scroll edge
+   never clips it. A component only removes it where a wrapper carries the ring. */
+:root {
+  --focus-ring: 2px solid var(--color-accent);
+}
+
 :focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: var(--focus-ring);
   outline-offset: 2px;
+}
+
+:where([role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=option], [role=tab], [role=treeitem], summary, [data-mobile-sheet] button, button.row, a.row):focus-visible {
+  outline-offset: -2px;
 }
 
 h1,
@@ -969,6 +1282,9 @@ a {
 /* Controls                                                                   */
 /* ------------------------------------------------------------------------- */
 
+/* Read by a screen reader, not drawn: the full name of a control whose column head says it once. */
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
 /* Centre labels using the font's cap height and alphabetic baseline.
    Apply to the text leaf: trimming does not propagate through flex or grid.
    Padding keeps accents and descenders inside labels that truncate overflow;
@@ -989,18 +1305,32 @@ a {
   min-block-size: 1lh;
 }
 
+/*
+ * The one button family. Every button is one of these, sized by one of two
+ * heights (`--control`, or `--control-sm` with `.small`), one corner, one
+ * weight, and one glyph size per height:
+ * - secondary, the default (`button`, `.secondary`): an outline on no fill;
+ * - `.primary`: solid in the text colour, the one action a view leads with
+ *   (the accent fills only `.primary.send`);
+ * - `.ghost` (`.quiet` is the same): no frame at rest, a fill under the pointer;
+ * - `.text`: the words alone, for a way out inside a sentence or a notice;
+ * - `.icon-button`: a glyph alone in a square of the height, no frame at rest;
+ * - `.danger`: a secondary or a primary that removes something.
+ * A component places its buttons and never redraws them.
+ */
 button {
+  --button-icon: 16px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   height: var(--control);
-  padding: 0 10px;
+  padding: 0 12px;
   border: 1px solid var(--color-edge);
   border-radius: var(--radius-md);
-  background: var(--control-glaze) var(--color-control-surface);
+  background: transparent;
   color: var(--color-foreground);
-  font-weight: 500;
+  font-weight: 400;
   cursor: pointer;
   white-space: nowrap;
   transition:
@@ -1011,13 +1341,11 @@ button {
     transform var(--dur-1) var(--ease-out-quint);
 }
 
-button:hover:not(:disabled) {
-  background: var(--control-glaze) var(--color-control-hover);
-}
-
-/* Filled controls share the surface reflection without adding a blur layer per button. */
-button:is(.icon, .primary, .chip):not(.ghost):not(.quiet) {
-  box-shadow: var(--shadow-control);
+/* Hover fills only under a pointer that hovers: on a touch screen a tap left them stuck after release. */
+@media (hover: hover) {
+  button:hover:not(:disabled) {
+    background: var(--color-hover);
+  }
 }
 
 /*
@@ -1027,7 +1355,7 @@ button:is(.icon, .primary, .chip):not(.ghost):not(.quiet) {
  */
 button.icon:active:not(:disabled),
 button.primary:active:not(:disabled),
-.chip:active:not(:disabled) {
+.ui-chip:active:not(:disabled) {
   transform: scale(0.97);
 }
 
@@ -1036,14 +1364,53 @@ button:disabled {
   opacity: 0.45;
 }
 
+/* A primary that cannot act yet is drawn as an outline: a faded filled slab
+   read as heavy grey weight in the middle of a card. It keeps the disabled fade,
+   or the outline would read as an enabled secondary button. */
+button.primary:disabled {
+  background: transparent;
+  border-color: var(--color-edge);
+  color: var(--color-subtle);
+}
+
+/* A primary action is filled in the accent, as the send button is. */
 button.primary {
+  background: var(--primary-fill);
+  border-color: var(--primary-fill);
+  color: var(--primary-ink);
+  box-shadow: var(--shadow-control);
+}
+
+@media (hover: hover) {
+  button.primary:hover:not(:disabled) {
+    background: var(--primary-hover);
+  }
+}
+
+button.primary.send {
   background: var(--control-glaze) var(--color-accent);
   border-color: var(--color-accent);
   color: var(--color-accent-ink);
 }
 
-button.primary:hover:not(:disabled) {
-  background: var(--control-glaze) var(--color-control-primary-hover);
+@media (hover: hover) {
+  button.primary.send:hover:not(:disabled) {
+    background: var(--control-glaze) var(--color-control-primary-hover);
+  }
+}
+
+/* A send that cannot send yet (an empty box, a thread still loading, a
+   machine away) is a quiet disc of the same size and place: the accent
+   lights only once a press would send. */
+button.primary.send:disabled {
+  /* Where color-mix is unknown (Safari 15.4 to 16.1) the mix drops and this one holds, never the accent. */
+  background: var(--color-active);
+  background: color-mix(in oklab, var(--color-foreground) 8%, transparent);
+  border-color: transparent;
+  color: var(--color-subtle);
+  box-shadow: var(--shadow-control);
+  /* Already quiet: the disabled fade of other buttons would hide the disc. */
+  opacity: 1;
 }
 
 button.quiet,
@@ -1053,40 +1420,143 @@ button.ghost {
   color: var(--color-muted-foreground);
 }
 
-button.quiet:hover:not(:disabled),
-button.ghost:hover:not(:disabled) {
-  background: var(--color-surface-3);
-  color: var(--color-foreground);
+@media (hover: hover) {
+  button.quiet:hover:not(:disabled),
+  button.ghost:hover:not(:disabled) {
+    background: var(--color-active);
+    color: var(--color-foreground);
+  }
 }
 
-button.danger {
-  border-color: var(--color-edge);
-  color: var(--color-muted-foreground);
-}
-
-button.danger:hover:not(:disabled) {
-  border-color: var(--color-danger);
-  color: var(--color-danger);
+/* Words that act inside a line: the type and colour of what they sit in, a fill only under the pointer or while their menu is open. */
+button.text {
+  height: auto;
+  padding: 2px 6px;
+  gap: 4px;
+  border: none;
   background: transparent;
+  color: inherit;
+  font: inherit;
 }
 
+button.text[aria-expanded='true'] {
+  background: var(--color-hover);
+}
+
+/* Something that removes: a secondary in the danger ink, or a primary filled with it. */
+button.danger {
+  color: var(--color-danger);
+}
+
+@media (hover: hover) {
+  button.danger:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--color-danger) 12%, transparent);
+    border-color: color-mix(in oklab, var(--color-danger) 45%, transparent);
+  }
+}
+
+button.primary.danger {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+  color: var(--color-on-danger);
+}
+
+@media (hover: hover) {
+  button.primary.danger:hover:not(:disabled) {
+    background: var(--color-danger-hover);
+  }
+}
+
+/* A link that does a button's job (a sign-in page, an installer): the same box as a button. */
+a.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: var(--control);
+  padding: 0 12px;
+  border: 1px solid var(--color-edge);
+  border-radius: var(--radius-md);
+  color: var(--color-foreground);
+  font-weight: 400;
+  text-decoration: none;
+  white-space: nowrap;
+}
+a.button.primary { background: var(--primary-fill); border-color: var(--primary-fill); color: var(--primary-ink); box-shadow: var(--shadow-control); }
+@media (hover: hover) {
+  a.button:hover { background: var(--color-hover); }
+  a.button.primary:hover { background: var(--primary-hover); }
+}
+
+button.small {
+  --button-icon: 14px;
+  height: var(--control-sm);
+  padding: 0 10px;
+  font-size: var(--text-sm);
+}
+
+button.small.text {
+  height: auto;
+  padding: 2px 6px;
+}
+
+/* A glyph alone: a square of the height. */
 button.icon {
   width: var(--control);
   padding: 0;
 }
 
-button.small {
-  height: var(--control-sm);
-  padding: 0 8px;
-  font-size: var(--text-sm);
-}
-
-/* `button.small` comes after `button.icon` at the same specificity, so its side
-   padding won here and left a 26 px icon button 8 px for its glyph. */
 button.small.icon {
   width: var(--control-sm);
   padding: 0;
 }
+
+/* No icon button under 32 px a side on a desktop, whatever its glyph: a pointer
+   needs the room as much as a finger needs its 44 (the phone block below). The
+   glyph keeps its drawn size; only the hit area grows. Settings name theirs `icon-only`. */
+button.icon,
+button.icon-only {
+  min-width: 32px;
+  min-height: 32px;
+}
+
+/* One icon button for the thread and the composer (+, mic, copy, edit, retry, "...", info, close): one drawn box
+   and corner, no ground at rest, the raised hover ground under the pointer, the keyboard and an open menu, the one
+   focus ring. The hit area reaches `--icon-button-target` (32 px on a desktop, the platform's 44 on a phone)
+   past the drawn box, so a row keeps its height. */
+button.icon-button {
+  position: relative;
+  width: var(--icon-button);
+  height: var(--icon-button);
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  box-shadow: none;
+  color: var(--color-muted-foreground);
+}
+button.icon-button::before { content: ''; position: absolute; inset: calc((var(--icon-button) - var(--icon-button-target)) / 2); }
+button.icon-button:is(:focus-visible, [aria-haspopup][aria-expanded='true'], [aria-pressed='true']) { background: var(--color-active); color: var(--color-foreground); }
+@media (hover: hover) {
+  button.icon-button:hover:not(:disabled) { background: var(--color-active); color: var(--color-foreground); }
+}
+button.icon-button:active:not(:disabled) { transform: scale(0.94); }
+
+/* One glyph size a height: 16 px on a control, 14 on a small one, whatever size a caller drew. */
+button:is(.primary, .secondary, .small, .ghost, .quiet, .text, .danger, .icon, .icon-button):not(.row) > svg.lucide,
+a.button > svg.lucide {
+  width: var(--button-icon);
+  height: var(--button-icon);
+}
+
+/* One stroke for the line set, by optical size: an icon drawn at 1.5 to 2 (Lucide's default included)
+   takes `--icon-stroke`, heavier under 14 px and lighter from 18 px, so a 12 px glyph and a 28 px one
+   draw the same line. A width over 2 (a check, a bold mark) is a deliberate weight and keeps it. */
+svg.lucide:is([stroke-width='1.5'], [stroke-width='1.6'], [stroke-width='1.75'], [stroke-width='2']) { stroke-width: var(--icon-stroke); }
+svg.lucide:is([stroke-width='1.5'], [stroke-width='1.6'], [stroke-width='1.75'], [stroke-width='2']):is([width='10'], [width='11'], [width='12'], [width='13']) { stroke-width: var(--icon-stroke-small); }
+svg.lucide:is([stroke-width='1.5'], [stroke-width='1.6'], [stroke-width='1.75'], [stroke-width='2']):is([width='18'], [width='20'], [width='22'], [width='24'], [width='28'], [width='32'], [width='40'], [width='48']) { stroke-width: var(--icon-stroke-large); }
 
 /* A glyph keeps the size it was drawn at: a flex row too narrow for it
    overflows rather than shrinking the icon to a speck. */
@@ -1113,11 +1583,15 @@ textarea::placeholder {
   color: var(--color-subtle);
 }
 
-input:focus-visible,
+/* A text field matches :focus-visible on any focus, a tap or an autofocus
+   included, so the accent ring framed it after every touch. It brightens its
+   own edge instead, as the composer does; the caret carries the accent. Boxes
+   that are not typed into (a switch, a checkbox, a radio) keep the ring. */
+input:not([type=checkbox], [type=radio], [type=range], [type=color]):focus-visible,
 select:focus-visible,
 textarea:focus-visible {
   outline: none;
-  border-color: color-mix(in srgb, var(--color-foreground) 35%, var(--color-edge));
+  border-color: var(--color-composer-focus);
 }
 
 /* Forced colors drop the shadows and border tints that mark focus here, so every focused control gets the system's own ring. */
@@ -1166,7 +1640,7 @@ details.disclosure > summary {
   cursor: pointer;
   color: var(--color-muted-foreground);
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: 400;
   transition: color var(--dur-2) var(--ease-out-quint);
 }
 
@@ -1243,13 +1717,18 @@ details[open] > summary .fold-caret {
 .disclosure-fold {
   display: grid;
   grid-template-rows: 0fr;
+  /* As wide as its column, never its content's: an `auto` track grows to the widest unbreakable line under it (a
+     nowrap label, a long word), and that width scrolled the whole sidebar sideways. */
+  grid-template-columns: minmax(0, 1fr);
   opacity: 0;
   transition: grid-template-rows var(--dur-3) var(--ease-out-quint),
     opacity var(--dur-2) var(--ease-out-quint);
 }
 
 .disclosure-fold.open { grid-template-rows: 1fr; opacity: 1; }
-.disclosure-fold > * { min-height: 0; overflow: hidden; }
+/* `clip`, not `hidden`: the child clips its rows while the track grows but is
+   no scroll box, so a scrolling list still sees its rows' snap positions. */
+.disclosure-fold > * { min-height: 0; overflow: clip; }
 
 /* A closed body stops being styled and laid out once its close has run: a
    group opened once kept every call it built in each layout of its row. The
@@ -1313,23 +1792,32 @@ details[open] > summary .fold-caret {
   text-underline-offset: 3px;
 }
 
-/* One tracking for every uppercase label, table headers included: 0.06em. */
+/* Every section label and table header in sentence case at the body's tracking:
+   weight and the muted tier set it apart, never capitals. */
 .section-label {
   font-size: var(--text-xs);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
   color: var(--color-muted-foreground);
 }
 
+/* The one card: one radius and one fill, no hairline and no shadow. A row
+   has no frame; an overlay (menus, popovers, dialogs, sheets) has the
+   overlay's edge, fill and one elevation (--shadow-overlay). */
 .card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: var(--card-fill);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-e1);
 }
 
-.chip {
+/* The one inline error: a sentence under what failed, in the danger ink. */
+p.error {
+  color: var(--color-danger);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+/* `ui-chip`, not `chip`: a component's own `.chip` class stays its own. */
+.ui-chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -1340,12 +1828,12 @@ details[open] > summary .fold-caret {
   background: var(--color-surface-2);
   color: var(--color-muted-foreground);
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: 400;
   white-space: nowrap;
   transition: transform var(--dur-1) var(--ease-out-quint);
 }
 
-button.chip {
+button.ui-chip {
   background: var(--control-glaze) var(--color-control-surface);
 }
 
@@ -1360,10 +1848,12 @@ button.chip {
   border-bottom-width: 2px;
   border-radius: var(--radius-sm);
   background: var(--color-surface-2);
-  font-family: var(--font-mono);
+  /* A key's name is a word, not code: the sans, one step above the muted hints around it. */
+  font-family: var(--font-sans);
   font-size: var(--text-xs);
+  font-weight: 400;
   line-height: 18px;
-  color: var(--color-muted-foreground);
+  color: var(--color-foreground);
 }
 
 .empty {
@@ -1371,9 +1861,13 @@ button.chip {
   padding: 12px;
 }
 
+/* Figures line up in the value columns; the first one holds names, whose hyphens `tnum` would widen. */
 table {
   border-collapse: collapse;
   width: 100%;
+}
+
+:is(td, th):not(:first-child) {
   font-variant-numeric: tabular-nums;
 }
 
@@ -1382,8 +1876,6 @@ th {
   font-weight: 600;
   color: var(--color-muted-foreground);
   font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
   border-bottom: 1px solid var(--color-border);
   padding: 6px 10px;
   white-space: nowrap;
@@ -1418,16 +1910,16 @@ tr:last-child td {
 }
 
 .settings .page {
-  padding: 36px clamp(20px, 4vw, 64px);
+  padding: var(--space-8) var(--settings-gutter);
 }
 
-/* A page's root stands its 880 px column in the middle of a wide window rather
+/* A page's root stands its column in the middle of a wide window rather
    than against its left edge, whatever padding the page sets itself. The
    gutter is reserved on both sides, so a scrollbar does not push the column
    off centre. A narrow window keeps each page's own padding. */
 @media (min-width: 721px) {
   .settings .framed > .page {
-    padding-inline: max(clamp(20px, 4vw, 64px), calc((100% - var(--settings-width)) / 2));
+    padding-inline: max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2));
     scrollbar-gutter: stable both-edges;
   }
 }
@@ -1436,9 +1928,9 @@ tr:last-child td {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--space-4);
   max-width: var(--settings-width);
-  margin-bottom: 28px;
+  margin-bottom: var(--space-6);
 }
 
 .settings .page > header h1 {
@@ -1448,7 +1940,7 @@ tr:last-child td {
 
 .settings .page > header p {
   max-width: 680px;
-  margin-top: 6px;
+  margin-top: var(--space-1);
   color: var(--color-muted-foreground);
   font-size: var(--text-sm);
   line-height: 1.6;
@@ -1458,14 +1950,50 @@ tr:last-child td {
   flex: none;
 }
 
+/*
+ * One settings card, desktop and phone alike: its title stands above it in
+ * the one small heading style, its rows sit inside with a line between every
+ * two. The title leaves the card's flow (absolute, anchored by its foot), so
+ * the card keeps the room above it and a title that wraps grows into the
+ * gap over it, never onto its rows.
+ */
 .settings .page > .card,
 .settings .page > form > .card,
 .settings .page > .settings-stack > .card {
+  position: relative;
   max-width: var(--settings-width);
-  padding: var(--settings-padding);
-  margin-bottom: 20px;
+  padding: var(--space-1) var(--space-4);
+  margin-bottom: var(--space-6);
   box-shadow: none;
-  scroll-margin-top: 24px;
+  scroll-margin-top: calc(var(--card-head) + var(--space-6));
+}
+
+/* The card above's margin folds into this one: the title's room plus the air between two cards. */
+:is(.settings .page > .card, .settings .page > form > .card, .settings .page > .settings-stack > .card):has(> h2:first-child) {
+  margin-top: calc(var(--card-head) + var(--space-4));
+}
+
+:is(.settings .page > .card, .settings .page > form > .card, .settings .page > .settings-stack > .card) > h2:first-child {
+  position: absolute;
+  left: var(--space-4);
+  right: var(--space-4);
+  bottom: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) 6px;
+  min-height: var(--card-head);
+  margin: 0;
+  padding-bottom: 2px;
+}
+
+/* A line between every two rows of a card. What belongs to the row above (a
+   hint, an error, a status) joins it without one. */
+:is(.settings .page > .card, .settings .page > form > .card, .settings .page > .settings-stack > .card) > :not(h2, :first-child) {
+  border-top: 1px solid var(--color-border);
+}
+:is(.settings .page > .card, .settings .page > form > .card, .settings .page > .settings-stack > .card) > :is(h2 + *, .hint, [role=alert], .error, [hidden]) {
+  border-top: 0;
 }
 
 /* A card that is a list or a table runs its rows to its edges. */
@@ -1474,10 +2002,91 @@ tr:last-child td {
   overflow: hidden;
 }
 
-.settings .page .card h2 {
-  margin-bottom: 18px;
+/* One segmented control everywhere (settings, onboarding, a contact's
+   sharing): every option in one dark track, the chosen one raised a step
+   above it with a hairline edge and the text at full ink. Not full white,
+   which would outshout the accent and the primary button of the page; the
+   raise still reads as chosen at a glance in both themes
+   (lib/contrast.test.ts). Neutral, never the accent; a page sizes it with
+   its own scoped rule. */
+.segmented {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-frame);
+}
+
+.segmented button {
+  height: var(--control-sm);
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-muted-foreground);
+  font-size: var(--text-sm);
+  transition: background var(--motion-duration) var(--motion-curve), color var(--motion-duration) var(--motion-curve), border-color var(--motion-duration) var(--motion-curve);
+}
+
+@media (hover: hover) {
+  .segmented button:hover:not(.on, [aria-pressed='true'], :disabled) {
+    background: var(--color-hover);
+    color: var(--color-foreground);
+  }
+}
+
+.segmented button:is(.on, [aria-pressed='true']) {
+  background: var(--segment-on);
+  border-color: var(--color-edge);
   color: var(--color-foreground);
-  font-size: var(--text-md);
+  box-shadow: var(--shadow-e1);
+}
+
+/* One "i" a section: once its title carries the gathering one (`InfoTip` `gather`),
+   its rows' own step aside; that one says what they said. */
+.card:has(.info-tip[data-gather]) .info-tip[data-tip-text] { display: none; }
+
+/* The one heading under a screen's title, over its card: a size and the ink over the rows it leads. */
+.settings .page .card h2,
+.settings .page > .group-heading h2 {
+  margin-bottom: var(--space-3);
+  color: var(--color-foreground);
+  font-size: var(--text-head);
+  font-weight: var(--weight-title);
+  line-height: 1.4;
+}
+
+/* Where a card's rows apply, at the right of its head (CardScope.svelte): this device, a machine, an account.
+   The quiet tier and the meta size, so it informs without competing with the title. */
+.card-scope {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  min-width: 0;
+  margin-left: auto;
+  color: var(--color-subtle);
+  font-size: var(--text-meta);
+  font-weight: 400;
+}
+.card-scope > .ui-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* On a page that mixes scopes, the first machine card's phrase holds the machine picker: its name with an edge and a chevron. */
+.card-scope.picks { gap: 6px; }
+.card-scope .trigger.text { margin: -2px 0; color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge); }
+.card-scope .pick-name { overflow: hidden; max-width: 20ch; text-overflow: ellipsis; white-space: nowrap; }
+.card-scope + .save-status { margin-left: 0; }
+
+/* Where a page's settings apply, under every title: this device, every machine, a machine (its picker). */
+.settings .scope {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: var(--space-1);
+  color: var(--color-muted-foreground);
+  font-size: var(--text-meta);
 }
 
 /*
@@ -1524,13 +2133,9 @@ tr:last-child td {
   flex: none;
 }
 
-/* A hint straight under a card title belongs to it; the rows start after. */
-.settings .page .card h2:has(+ .hint) {
-  margin-bottom: 6px;
-}
-
-.settings .page .card h2 + .hint {
-  margin-bottom: 18px;
+/* A line straight under a card title opens the card; the rows start after. */
+.settings .page .card > h2 + .hint {
+  padding: var(--space-3) 0;
 }
 
 .settings .page .hint {
@@ -1539,20 +2144,22 @@ tr:last-child td {
   line-height: 1.5;
 }
 
-/* A group that is a list of cards rather than one card gets a title between
-   them, the size of a card title and the air of a new section above it. */
+/* A group that is a list of cards rather than one card gets the same title
+   over them, at a card title's inset. */
 .settings .page > .group-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--space-4);
   max-width: var(--settings-width);
-  margin: 36px 0 14px;
-  scroll-margin-top: 24px;
+  min-height: var(--card-head);
+  margin: var(--space-6) 0 0;
+  padding: 0 var(--space-4) 2px;
+  scroll-margin-top: var(--space-6);
 }
 
 .settings .page > .group-heading h2 {
-  font-size: var(--text-md);
+  margin: 0;
 }
 
 .settings .page > .group-heading p {
@@ -1565,7 +2172,7 @@ tr:last-child td {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 /* One row per setting: the words on the left, the control on the right. */
@@ -1573,26 +2180,20 @@ tr:last-child td {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  min-height: 66px;
-  padding: 16px 0;
+  gap: var(--space-5);
+  min-height: 52px;
+  padding: var(--space-2) 0;
 }
 
+/* A phone's label and value row (ChoiceSelect `row`): the value's button covers it, the label's "i" stays over it. */
+.settings .page .switch-row.value { position: relative; flex-wrap: nowrap; }
+.settings .page .switch-row.value .text { flex: none; }
+.settings .page .switch-row.value .info-tip, .settings .page .switch-row.value .policy-lock { position: relative; z-index: 1; }
+.settings .page .switch-row.value .choice-select { flex: 1; justify-content: flex-end; }
+
+/* Rows a wrapper groups inside a card keep the card's line between them. */
 .settings .page .switch-row + .switch-row {
   border-top: 1px solid var(--color-border);
-}
-
-/* The card's own padding is the air at its edges, so a row touching an edge
-   or following the title drops that side of its own. */
-.settings .page .card > .switch-row:first-child,
-.settings .page .card > h2 + .switch-row {
-  min-height: 50px;
-  padding-top: 0;
-}
-
-.settings .page .card > .switch-row:last-child {
-  min-height: 50px;
-  padding-bottom: 0;
 }
 
 .settings .page .switch-row .text {
@@ -1601,19 +2202,38 @@ tr:last-child td {
   margin: 0;
   color: var(--color-foreground);
   font-size: var(--text-base);
-  font-weight: 500;
+  font-weight: 400;
 }
 
+/* A switch's help line in the quietest ink, a step under its label's: the label leads, the line explains. */
 .settings .page .switch-row .hint {
   display: block;
-  margin-top: 4px;
+  margin-top: var(--space-1);
+  color: var(--color-subtle);
   font-weight: 400;
+}
+
+/* A window with room draws the settings a size up: a row a finger could take, its name in the
+   head size, a switch and a button one step larger than the chat's chrome. A phone has its own sizes. */
+@media (min-width: 721px) {
+  .settings .framed { --control: 36px; --control-sm: 32px; --switch-width: 48px; --switch-height: 28px; --card-head: 40px; }
+  .settings .framed .page .switch-row { min-height: 64px; padding: var(--space-3) 0; }
+  .settings .framed .page .switch-row .text { font-size: var(--text-head); font-weight: 500; }
+  .settings .framed .page .switch-row .hint { font-size: var(--text-meta); font-weight: 400; }
+  .settings .framed .page > .card,
+  .settings .framed .page > form > .card,
+  .settings .framed .page > .settings-stack > .card { padding-inline: var(--space-5); border-radius: var(--radius-lg); margin-bottom: var(--space-8); }
+  .settings .framed .page > .card.flush { padding: 0; }
+  :is(.settings .framed .page > .card, .settings .framed .page > form > .card, .settings .framed .page > .settings-stack > .card) > h2:first-child { left: var(--space-5); right: var(--space-5); }
+  .settings .framed .page .card h2,
+  .settings .framed .page > .group-heading h2 { font-size: var(--text-title); }
+  .settings .framed .segmented button { padding: 0 14px; }
 }
 
 .row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 /* A quiet thumb with a wider drag target; the track stays transparent. */
@@ -1766,6 +2386,64 @@ tr:last-child td {
     overflow: clip;
   }
 }
+
+/* ------------------------------------------------------------------------- */
+/* Soft scroll edges                                                          */
+/* ------------------------------------------------------------------------- */
+
+/*
+ * A scroll area fades its top edge only once content has scrolled under it,
+ * and its bottom edge only while more lies below, so a line or a card is never
+ * cut hard by the card's edge, and nothing fades at rest at either end. Two
+ * sticky pseudo-elements of the area's ground, their opacity driven by its
+ * scroll position: no mask, so a popover or a tooltip drawn from inside the
+ * area is never clipped by it. A sticky child stops at the area's padding, so
+ * an area with padding names it (`--scroll-edge-top`, `--scroll-edge-bottom`)
+ * and the fade sits on the real edge. A browser without scroll timelines
+ * shows no fade.
+ */
+@supports (animation-timeline: scroll()) {
+  :is(.scroll-edges, [data-scroll-root], .settings .framed, .settings .framed > .page)::before,
+  :is(.scroll-edges, [data-scroll-root], .settings .framed, .settings .framed > .page)::after {
+    content: '';
+    position: sticky;
+    z-index: 3;
+    display: block;
+    flex: none;
+    align-self: stretch;
+    height: var(--scroll-edge);
+    /* Eased, not linear: the ground closes in over the sliver at the very edge, the rest of the line stays legible. */
+    --scroll-edge-fill: var(--scroll-edge-ground, var(--color-background));
+    pointer-events: none;
+    opacity: 0;
+    animation-duration: auto;
+    animation-timing-function: linear;
+    animation-fill-mode: both;
+    animation-timeline: scroll(nearest block);
+  }
+  :is(.scroll-edges, [data-scroll-root], .settings .framed, .settings .framed > .page)::before {
+    top: calc(-1 * var(--scroll-edge-top, 0px));
+    margin-bottom: calc(-1 * var(--scroll-edge));
+    background: linear-gradient(to bottom, var(--scroll-edge-fill), color-mix(in oklab, var(--scroll-edge-fill) 45%, transparent) 50%, transparent);
+    animation-name: scroll-edge-in;
+    animation-range: var(--scroll-edge-top, 0px) calc(var(--scroll-edge-top, 0px) + var(--scroll-edge));
+  }
+  :is(.scroll-edges, [data-scroll-root], .settings .framed, .settings .framed > .page)::after {
+    bottom: calc(-1 * var(--scroll-edge-bottom, 0px));
+    margin-top: calc(-1 * var(--scroll-edge));
+    background: linear-gradient(to top, var(--scroll-edge-fill), color-mix(in oklab, var(--scroll-edge-fill) 45%, transparent) 50%, transparent);
+    animation-name: scroll-edge-out;
+    animation-range: calc(100% - var(--scroll-edge-bottom, 0px) - var(--scroll-edge)) calc(100% - var(--scroll-edge-bottom, 0px));
+  }
+  /* The timeline's own padding (MessageList.svelte). */
+  [data-scroll-root] { --scroll-edge-top: 20px; --scroll-edge-bottom: 20px; }
+  /* A settings page scrolls itself, or the card scrolls it under the machine bar. */
+  .settings .framed > .page { --scroll-edge-top: var(--space-8); --scroll-edge-bottom: var(--space-8); }
+  .settings .framed.with-bar > .page::before, .settings .framed.with-bar > .page::after { content: none; }
+}
+
+@keyframes scroll-edge-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes scroll-edge-out { from { opacity: 1; } to { opacity: 0; } }
 
 /* ------------------------------------------------------------------------- */
 /* The Grain theme, behind the `theme-grain` experiment                       */
@@ -1931,38 +2609,18 @@ html[data-glass] #app {
   }
 }
 
-/* The focused composer (Composer.svelte): the accent lights its edge, bright along the top and fading
-   down the sides, and lays a soft bloom under the box rather than a hard ring around it. Under
-   `.composer-wrap` so it outranks the component's own resting shadow whichever stylesheet loads last. */
-.composer-wrap .composer::before {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  z-index: 2;
-  padding: 1px;
-  border-radius: inherit;
-  background: var(--composer-edge);
-  -webkit-mask: linear-gradient(black, black) content-box, linear-gradient(black, black);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(black, black) content-box, linear-gradient(black, black);
-  mask-composite: exclude;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--dur-3) var(--ease-out-quint);
+/* The focused composer (Composer.svelte): only its hairline brightens, no glow and no accent. Under
+   `.composer-wrap` so it outranks the component's own resting border whichever stylesheet loads last.
+   Like its ring, a tap keeps it quiet: under a fine pointer, or once a key was pressed (`.keys`). */
+@media (hover: hover) and (pointer: fine) {
+  .composer-wrap .composer:focus-within { border-color: var(--color-composer-focus); }
 }
-.composer-wrap .composer:focus-within { border-color: var(--color-composer-focus); }
-.composer-wrap .composer:focus-within::before { opacity: 1; }
-/* The gradient draws the whole edge and the glow takes the shadow's place; without color-mix the accent hairline and resting shadow stay. */
-@supports (color: color-mix(in oklch, red 50%, blue)) { .composer-wrap .composer:focus-within { border-color: transparent; box-shadow: var(--composer-glow); } }
+.composer-wrap .composer.keys:focus-within { border-color: var(--color-composer-focus); }
 
 @supports (color: color-mix(in oklab, white 50%, black)) {
-  html[data-theme='grain'] .composer {
-    --color-composer-surface: color-mix(in oklab, var(--color-surface-2) 62%, transparent);
-  }
-
-  html[data-glass] .composer {
-    --color-composer-surface: color-mix(in oklab, var(--color-surface-2) 70%, transparent);
-  }
+  /* The translucent themes keep a see-through composer, blurred (Composer.svelte) so the timeline under it never reads. */
+  html[data-theme='grain'] .composer { --color-composer-surface: color-mix(in oklab, var(--color-surface-2) 62%, transparent); --composer-blur: blur(16px) saturate(1.2); }
+  html[data-glass] .composer { --color-composer-surface: color-mix(in oklab, var(--color-surface-2) 70%, transparent); --composer-blur: blur(16px) saturate(1.2); }
 }
 
 /* The app's body row (App.svelte): a pane sliding in from the right edge
@@ -1970,8 +2628,11 @@ html[data-glass] #app {
    row) the chat card's own left gap eases in step. */
 @media (min-width: 721px) {
   .app > .body { overflow-x: clip; }
-  .app > .body[data-rail-sliding] { transition: padding-left var(--dur-slide) var(--ease-slide); }
-  .app > .body.sidebar-folded[data-rail-sliding] { transition-duration: var(--dur-slide-out); }
+  .app > .body[data-rail-sliding] { transition: padding-left var(--motion-duration) var(--motion-curve); }
+  .app > .body.sidebar-folded[data-rail-sliding] { transition-duration: var(--motion-duration); }
+  /* The main column's bar follows the list column's fold in step (RailFrame marks it too). */
+  .app > .titlebar[data-rail-sliding] { transition: margin-left var(--motion-duration) var(--motion-curve); }
+  .app > .titlebar[data-rail-sliding='out'] { transition-duration: var(--motion-duration); }
 }
 
 /* Keyframes shared by the components. */
@@ -2010,7 +2671,7 @@ html[data-glass] #app {
 @keyframes rise {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translateY(calc(4px * var(--motion)));
   }
   to {
     opacity: 1;
@@ -2021,7 +2682,7 @@ html[data-glass] #app {
 @keyframes pop {
   from {
     opacity: 0;
-    transform: scale(0.97);
+    transform: scale(calc(1 - 0.03 * var(--motion)));
   }
   to {
     opacity: 1;
@@ -2037,7 +2698,7 @@ html[data-glass] #app {
   }
   to {
     opacity: 0;
-    transform: scale(0.97);
+    transform: scale(calc(1 - 0.03 * var(--motion)));
   }
 }
 
@@ -2080,12 +2741,13 @@ html[data-glass] #app {
 }
 
 /* A phone's bottom sheet rises from below the screen and goes back down. */
+/* Only the sheet moves: it stays opaque the whole way, so no frame shows the page through it; the scrim does the fading. */
 @keyframes sheet-up {
-  from { transform: translateY(calc(100% + 40px)); }
+  from { transform: translateY(calc((100% + 40px) * var(--motion))); }
 }
 
 @keyframes sheet-down {
-  to { transform: translateY(calc(100% + 40px)); }
+  to { transform: translateY(calc((100% + 40px) * var(--motion))); }
 }
 
 @keyframes pulse {
@@ -2131,38 +2793,46 @@ html[data-glass] #app {
   }
 }
 
-[data-accent-swatch] { --color-accent: oklch(68% 0.19 var(--accent-hue)); }
+[data-accent-swatch] { --color-accent: oklch(75.5% 0.141 var(--accent-hue)); }
 /* One switch: the native checkbox with role=switch, or the `.switch` span a menu row or a button draws (`.on` when set).
-   `--switch-width` and `--switch-height` size it; the knob keeps 3px of air inside the 1px rim. */
-input[type=checkbox][role=switch], .switch { appearance: none; position: relative; flex: 0 0 var(--switch-width, 40px); width: var(--switch-width, 40px); height: var(--switch-height, 24px); min-height: var(--switch-height, 24px); padding: 0; margin: 0; border: 1px solid var(--color-edge); border-radius: 999px; background: var(--color-surface-3); transition: background var(--dur-2), border-color var(--dur-2); }
+   `--switch-width` and `--switch-height` size it; the rim is a twelfth of the height (2px on a 24px switch) and the
+   knob keeps the same air inside it. Off is a ringed track with a grey knob, on the filled foreground track with a
+   dark knob, so the state reads without comparing greys. */
+input[type=checkbox][role=switch], .switch { appearance: none; position: relative; flex: 0 0 var(--switch-width, 40px); width: var(--switch-width, 40px); height: var(--switch-height, 24px); min-height: var(--switch-height, 24px); padding: 0; margin: 0; border: calc(var(--switch-height, 24px) / 12) solid var(--switch-rim); border-radius: 999px; background: var(--switch-off); transition: background var(--dur-2), border-color var(--dur-2); }
 input[type=checkbox][role=switch] { cursor: pointer; }
-input[type=checkbox][role=switch]::after, .switch::after { content: ''; position: absolute; width: calc(var(--switch-height, 24px) - 8px); height: calc(var(--switch-height, 24px) - 8px); top: 3px; left: 3px; border-radius: 50%; background: var(--color-muted-foreground); transition: transform var(--dur-2) var(--ease-out-quint); }
-input[type=checkbox][role=switch]:checked, .switch.on { background: var(--color-foreground); border-color: var(--color-foreground); }
-input[type=checkbox][role=switch]:checked::after, .switch.on::after { transform: translateX(calc(var(--switch-width, 40px) - var(--switch-height, 24px))); background: var(--color-background); }
-input[type=checkbox][role=switch]:focus-visible { outline: 2px solid var(--color-foreground); outline-offset: 4px; }
+input[type=checkbox][role=switch]::after, .switch::after { content: ''; position: absolute; width: calc(var(--switch-height, 24px) - 8px); height: calc(var(--switch-height, 24px) - 8px); top: calc(4px - var(--switch-height, 24px) / 12); left: calc(4px - var(--switch-height, 24px) / 12); border-radius: 50%; background: var(--switch-knob); transition: transform var(--dur-2) var(--ease-out-quint), background var(--dur-2); }
+input[type=checkbox][role=switch]:checked, .switch.on { background: var(--switch-on); border-color: transparent; }
+input[type=checkbox][role=switch]:checked::after, .switch.on::after { transform: translateX(calc(var(--switch-width, 40px) - var(--switch-height, 24px))); background: var(--switch-knob-on); }
+input[type=checkbox][role=switch]:focus-visible { outline-offset: 3px; }
 input[type=checkbox][role=switch]:disabled { opacity: .45; cursor: not-allowed; }
 /* Under a finger the outline rail is a touch target wide (MessageOutline.svelte): the text starts past it. */
 @media (pointer: coarse) { :root { --outline-room: calc(var(--touch-target) + 4px); } }
 @media (max-width: 720px) {
-  .mobile-sheet-backdrop { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: var(--color-scrim); animation: fade var(--dur-2) var(--ease-out-quint); }
-  .mobile-sheet-backdrop.closing { animation-name: fade-out; pointer-events: none; }
-  [data-mobile-sheet='true'] { position: fixed !important; max-width: none !important; box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain; border-radius: var(--radius-xl) !important; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  .mobile-sheet-backdrop { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: var(--sheet-scrim); animation: fade var(--motion-duration) var(--motion-curve); }
+  .mobile-sheet-backdrop.closing { animation: fade-out var(--motion-duration) var(--motion-curve); pointer-events: none; }
+  /* The one phone sheet (lib/floating.ts): docked to the bottom edge, rounded on top only, a grabber
+     over real top air, and the home indicator's room under its last row. The grabber sits out of the
+     flow, so a grid or flex sheet keeps its own layout. */
+  [data-mobile-sheet='true'] { position: fixed !important; max-width: none !important; box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain; border-width: 1px 0 0 !important; border-radius: var(--radius-xl) var(--radius-xl) 0 0 !important; padding-top: var(--space-6) !important; padding-bottom: max(var(--space-3), env(safe-area-inset-bottom)) !important; }
+  /* A sheet is the top of the ladder: the sheet fill and the one soft elevation. */
+  [data-mobile-sheet='true'] { background: var(--color-sheet) !important; box-shadow: var(--elevation-soft) !important; }
+  [data-mobile-sheet='true']::before { content: ''; position: absolute; top: var(--space-2); left: calc(50% - 18px); width: 36px; height: 5px; border-radius: var(--radius-full); background: var(--color-edge); pointer-events: none; }
   /* A sheet rises from the bottom edge and goes back down, where its popover pops in place (lib/floating.ts). */
-  [data-mobile-sheet='true'] { animation-name: sheet-up !important; animation-duration: var(--dur-3) !important; animation-timing-function: var(--ease-slide) !important; }
-  [data-mobile-sheet='true'].closing { animation-name: sheet-down !important; }
+  [data-mobile-sheet='true'] { animation-name: sheet-up !important; animation-duration: var(--motion-duration) !important; animation-timing-function: var(--motion-curve) !important; }
+  [data-mobile-sheet='true'].closing { animation-name: sheet-down !important; animation-duration: var(--motion-duration) !important; animation-timing-function: var(--motion-curve) !important; }
   /* No outline rail on a phone (MessageList.svelte): the timeline's left edge matches its right. */
   :root { --outline-room: 20px; }
-  :root { --text-reading: var(--text-md); --settings-padding: 18px; --control: var(--touch-target); --control-sm: var(--touch-target); --control-lg: var(--touch-target); --input: var(--touch-target); --row: var(--touch-target); }
+  :root { --settings-padding: var(--space-4); --card-head: var(--touch-target); --control: var(--touch-target); --control-sm: var(--touch-target); --control-lg: var(--touch-target); --input: var(--touch-target); --row: var(--touch-target); }
   input, textarea { font-size: var(--text-md); }
   button.icon { min-width: var(--touch-target); min-height: var(--touch-target); }
   .composer-wrap { padding-bottom: max(10px, env(safe-area-inset-bottom)); }
-  .settings .page { padding: 24px 16px; }
-  .settings .page > header { margin-bottom: 20px; }
-  .settings .page > .card, .settings .page > form > .card { padding: 18px; }
+  .settings .page { padding: var(--space-6) var(--space-4); }
+  .settings .page > header { margin-bottom: var(--space-5); }
   .settings .page > .card.flush { padding: 0; }
-  .settings .page > .group-heading { margin-top: 28px; }
   .settings .page .row { flex-wrap: wrap; }
-  .settings .page .switch-row { flex-wrap: wrap; gap: 12px; }
+  .settings .page .switch-row { flex-wrap: wrap; gap: var(--space-2) var(--space-3); min-height: 48px; padding: var(--space-2) 0; }
+  /* A phone's grouped cards sit tighter: a smaller title step and less air under it, the rows keeping 44 px targets. */
+  .settings .page > .card, .settings .page > form > .card, .settings .page > .settings-stack > .card { padding: var(--space-1) var(--space-4); margin-bottom: var(--space-4); }
   /* Buttons under the last prompt and answer, or the message tapped (lib/message-reveal.svelte.ts). A settled prompt's ticks go with them; a pending one keeps its own. */
   .message[data-reveal]:not([data-latest]):not([data-revealed]) .message-actions,
   .message[data-reveal]:not([data-latest]):not([data-revealed]) .receipts.settled { display: none; }
@@ -2170,6 +2840,13 @@ input[type=checkbox][role=switch]:disabled { opacity: .45; cursor: not-allowed; 
 
 @media (prefers-reduced-motion: reduce) {
   input[type=checkbox][role=switch], input[type=checkbox][role=switch]::after, .switch, .switch::after { transition: none; }
+}
+/* Reduced motion: the sheet is simply there and simply gone (lib/closing.svelte.ts unmounts a node with no animation). */
+@media (max-width: 720px) and (prefers-reduced-motion: reduce) {
+  [data-mobile-sheet='true'], [data-mobile-sheet='true'].closing { animation: none !important; }
+}
+@media (max-width: 720px) {
+  html[data-motion='reduced'] [data-mobile-sheet='true'], html[data-motion='reduced'] [data-mobile-sheet='true'].closing { animation: none !important; }
 }
 
 /* The page instead of the app when no catalogue could load (`lib/boot-failure.ts`). */

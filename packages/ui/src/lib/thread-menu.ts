@@ -1,8 +1,8 @@
-import { Archive, Check, Copy, FolderInput, GitPullRequest, MessageSquare, PencilLine, Pin, PinOff, Sparkles, Trash2, X } from '@lucide/svelte';
+import { Archive, ArrowRightLeft, CircleCheck, Copy, FolderInput, GitPullRequest, MessageSquare, PencilLine, Pin, PinOff, Sparkles, Trash2, X } from '@lucide/svelte';
 import type { ThreadSummary } from '@boite/contracts';
 import type { Store } from './store.svelte';
 import { separator, type MenuItem } from './menu';
-import { canMarkDone, markDone } from './recent.svelte';
+import { markDone, markDoneBlocker } from './recent.svelte';
 import { archiveThread } from './archive';
 import { canDeleteThread, deleteThread } from './thread-removal';
 import { canMove, moveItems, pickMoveItem } from './thread-move.svelte';
@@ -16,52 +16,98 @@ interface ThreadMenuOptions {
   showDone?: boolean;
   /** Omitted where pull requests have no manual refresh action. */
   prLoading?: boolean;
+  /** The view's own tools (find), first on the menu's first level. */
   tools?: MenuItem[];
-  /**
-   * A phone's menu: pin, rename, the view's tools, archive and delete. A new
-   * title by the agent, a move, the path and the pull request stay on the desktop.
-   */
+  /** The bots that hold or look after the thread (the header's), first in the named group's bot rows. */
+  lead?: MenuItem[];
+  /** What the header knows of where it lives (its branch, its pull request watches), first in the folder rows. */
+  place?: MenuItem[];
+  /** A phone's menu: the path and the pull request stay on the desktop. */
   phone?: boolean;
 }
 
-/** The same action groups in row, title and phone menus, with Archive available on every thread that can be kept. */
+/**
+ * Where the thread lives: its project, its folder, its branch's pull request.
+ * A phone keeps the move only; the path and the pull request stay on the desktop.
+ */
+function placeItems(store: Store, thread: ThreadSummary, options: ThreadMenuOptions): MenuItem[] {
+  return [
+    ...(options.place ?? []),
+    ...(canMove(thread) ? moveItems(store, thread).map(item => ({ ...item, glyph: item.id === 'move-cancel' ? X : FolderInput })) : []),
+    ...(options.phone ? [] : [
+      { id: 'copy', label: strings.sidebar.copyPath, glyph: Copy, title: thread.cwd },
+      ...(options.prLoading === undefined || !thread.branch || thread.branch === 'HEAD' ? [] : [{ id: 'pr', label: strings.machines.refreshPr, glyph: GitPullRequest, disabled: options.prLoading }])
+    ])
+  ];
+}
+
+/**
+ * The named group's rows, where the thread goes, in the order its name says
+ * them: the bot (who holds it, the hand-off), then the folder (branch, move,
+ * path, pull request). The name is built from the parts present, so it never
+ * promises a row that is not there. The new title sits by Rename instead.
+ */
+function manageParts(store: Store, thread: ThreadSummary, options: ThreadMenuOptions): { name: string; rows: MenuItem[] } {
+  const bot = [...(options.lead ?? []), ...entrustItems(store, thread)];
+  const folder = placeItems(store, thread, options);
+  // Named by what a user does there: the move only when a move row is in it, so the name never promises one.
+  const moves = folder.some(item => item.id.startsWith('move'));
+  const name = bot.length ? (moves ? strings.thread.manage : strings.thread.manageNoFolder) : moves ? strings.thread.manageNoBot : strings.thread.manageTitle;
+  return { name, rows: [...bot, ...(bot.length && folder.length ? [separator('sep-folder')] : []), ...folder] };
+}
+
+/**
+ * The named group ("Move to a project or a bot", `more`, kept for the rows that
+ * open it), under a way back to the thread's menu. Empty for a group of one,
+ * which is a row on the first level instead. A phone folds it too, in its sheet.
+ */
+export function threadToolItems(store: Store, thread: ThreadSummary, options: ThreadMenuOptions = {}): MenuItem[] {
+  const { name, rows } = manageParts(store, thread, options);
+  if (rows.filter(item => !item.separator).length < 2) return [];
+  // The way back names the level it stands on (`BackRow.svelte`), as every second level does.
+  return [{ id: 'back', label: name, title: strings.sidebar.backToThreadMenu, back: true }, ...rows];
+}
+
+function doneItem(store: Store, thread: ThreadSummary): MenuItem {
+  const why = markDoneBlocker(store, thread);
+  return { id: 'done', label: strings.sidebar.markDone, glyph: CircleCheck, disabled: why !== null, ...(why ? { hint: why, title: why } : {}) };
+}
+
+/**
+ * One menu for a thread wherever it opens (a row, its header, the phone's
+ * long press, the header's menu): a short first level of what is done most
+ * (the view's own Find, Rename and its made-again title, Pin, Mark done,
+ * Archive), one named group for where it goes (`threadToolItems`), then Delete
+ * apart. A row adds Open first. Eight rows at most. The panels have one door
+ * of their own, beside the title.
+ */
 export function threadMenuItems(store: Store, thread: ThreadSummary, options: ThreadMenuOptions = {}): MenuItem[] {
-  const retitling = store.retitling.includes(thread.id);
   // An incognito conversation lives on its own screen only: nothing pins, files
   // or moves it, and deleting it is what leaving does anyway.
   const kept = !thread.incognito;
-  if (options.phone) {
-    const items: MenuItem[] = [
-      ...(kept ? [{ id: 'pin', label: thread.pinned ? strings.sidebar.unpin : strings.sidebar.pin, glyph: thread.pinned ? PinOff : Pin }] : []),
-      { id: 'rename', label: strings.common.rename, glyph: PencilLine },
-      ...(options.tools ?? []),
-      ...entrustItems(store, thread),
-      ...(kept ? [
-        separator('sep-archive'),
-        ...(options.showDone ? [{ id: 'done', label: strings.sidebar.markDone, glyph: Check, disabled: !canMarkDone(store, thread) }] : []),
-        { id: 'archive', label: strings.sidebar.archive, glyph: Archive }
-      ] : [])
-    ];
-    if (canDeleteThread(thread)) items.push(separator('sep-delete'), { id: 'delete', label: strings.common.delete, glyph: Trash2, danger: true });
-    return items;
-  }
+  const own = options.tools ?? [];
+  const group = threadToolItems(store, thread, options);
+  const loose = group.length ? [] : manageParts(store, thread, options).rows;
+  const retitling = store.retitling.includes(thread.id);
+  const opening: MenuItem[] = options.open === undefined ? [] : [{ id: 'open', label: strings.common.open, glyph: MessageSquare, disabled: options.open }, separator('sep-open')];
   const items: MenuItem[] = [
-    ...(options.open === undefined ? [] : [{ id: 'open', label: strings.common.open, glyph: MessageSquare, disabled: options.open }]),
-    ...(kept ? [
-      { id: 'pin', label: thread.pinned ? strings.sidebar.unpin : strings.sidebar.pin, glyph: thread.pinned ? PinOff : Pin },
-      separator('sep-archive'),
-      ...(options.showDone ? [{ id: 'done', label: strings.sidebar.markDone, glyph: Check, disabled: !canMarkDone(store, thread) }] : []),
-      { id: 'archive', label: strings.sidebar.archive, glyph: Archive },
-      separator('sep-organize')
-    ] : []),
+    ...opening,
+    ...own,
+    ...(own.length ? [separator('sep-thread-tools')] : []),
     { id: 'rename', label: strings.common.rename, glyph: PencilLine },
+    // The title made again sits with the one typed: both name the thread.
     { id: 'retitle', label: retitling ? strings.sidebar.retitling : strings.sidebar.retitle, glyph: Sparkles, disabled: retitling },
-    ...(canMove(thread) ? moveItems(store, thread).map(item => ({ ...item, glyph: item.id === 'move-cancel' ? X : FolderInput })) : []),
-    ...entrustItems(store, thread),
-    separator('sep-tools'),
-    { id: 'copy', label: strings.sidebar.copyPath, glyph: Copy, title: thread.cwd },
-    ...(options.prLoading === undefined || !thread.branch || thread.branch === 'HEAD' ? [] : [{ id: 'pr', label: strings.machines.refreshPr, glyph: GitPullRequest, disabled: options.prLoading }]),
-    ...(options.tools ?? [])
+    ...(kept ? [{ id: 'pin', label: thread.pinned ? strings.sidebar.unpin : strings.sidebar.pin, glyph: thread.pinned ? PinOff : Pin }] : []),
+    ...(kept ? [
+      separator('sep-archive'),
+      // A ringed check: the bare one is every menu's selection mark, and Done is an action, not a chosen row.
+      // Off, the row says why in its hint: a disabled action that only greys out leaves the user guessing.
+      ...(options.showDone ? [doneItem(store, thread)] : []),
+      { id: 'archive', label: strings.sidebar.archive, glyph: Archive }
+    ] : []),
+    ...(group.length || loose.length ? [separator('sep-tools')] : []),
+    // A transfer sign: the group moves the thread or hands it over, it sets nothing.
+    ...(group.length ? [{ id: 'more', label: group[0]!.label, glyph: ArrowRightLeft, submenu: true, hint: '›', items: group }] : loose)
   ];
   if (canDeleteThread(thread)) items.push(separator('sep-delete'), { id: 'delete', label: strings.common.delete, glyph: Trash2, danger: true });
   return items;
@@ -76,7 +122,7 @@ export interface ThreadMenuView {
 }
 
 /**
- * Answers a pick of `threadMenuItems`' rows on the row's own store, since
+ * Answers a pick of `threadMenuItems`' and `threadToolItems`' rows on the row's own store, since
  * thread ids can collide between machines. False for a row the view added
  * through `tools`, which the view answers itself.
  */

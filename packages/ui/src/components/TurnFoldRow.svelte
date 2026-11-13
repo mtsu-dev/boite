@@ -44,9 +44,9 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    margin: 4px 0;
+    /* The slot's own gap places it on the column's scale: no margin of its own. */
     min-width: 0;
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
     color: var(--color-muted-foreground);
   }
   .rule { flex: 1; min-width: 12px; height: 1px; background: var(--color-border); }
@@ -63,7 +63,7 @@
     border-radius: var(--radius-sm);
     background: none;
     color: var(--color-muted-foreground);
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
     font-weight: 500;
     transition: color var(--dur-2) var(--ease-out-quint);
   }

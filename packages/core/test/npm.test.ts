@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { isNpmSpec, resolveNpm } from '../src/providers/npm.ts';
+import { isNpmSpec, npmRetirePath, resolveNpm } from '../src/providers/npm.ts';
 import { forgetWhich } from '../src/providers/which.ts';
 
 const windows = process.platform === 'win32';
@@ -34,6 +34,12 @@ afterEach(() => {
 });
 
 describe('npm candidates', () => {
+  test.skipIf(windows)('a path npm replaces is parked under the name arborist gives it', () => {
+    // Names arborist's `retire-path.js` (npm 11.20) gives these paths.
+    expect(npmRetirePath('/home/u/.npm-global/lib/node_modules/@opencode/cli')).toBe('/home/u/.npm-global/lib/node_modules/@opencode/.cli-dadbR8H9');
+    expect(npmRetirePath('/home/u/.npm-global/bin/opencode2')).toBe('/home/u/.npm-global/bin/.opencode2-3miIdyjT');
+  });
+
   test('a package name is accepted with an optional bin, anything path-like is not', () => {
     expect(isNpmSpec('@earendil-works/pi-coding-agent#pi')).toBe(true);
     expect(isNpmSpec('opencode-ai')).toBe(true);

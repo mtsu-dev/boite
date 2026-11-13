@@ -11,12 +11,19 @@ test('a permission left pending is read back on connect and answered from its ca
 
   query<HTMLButtonElement>('[data-thread-id="t-bench"]').click();
   await waitFor(() => store.openThread?.id === 't-bench');
-  await waitFor(() => document.querySelector('[data-testid=permission-card]') !== null);
+  // It is a card at the end of the timeline, the only card that decides it.
+  await waitFor(() => document.querySelector('[data-testid=timeline] [data-testid=permission-card]') !== null);
   expect(query('[data-testid=permission-card]').getAttribute('data-decision')).toBe('pending');
-  expect(query('[data-testid=permission-input]').textContent).toContain('run.ts');
+  expect(document.querySelectorAll('[data-testid=permission-card]')).toHaveLength(1);
+  // The technical details sit behind the "i".
+  query<HTMLButtonElement>('[data-testid=permission-input]').click();
+  await waitFor(() => document.querySelector('[data-testid=permission-input-text]') !== null);
+  expect(query('[data-testid=permission-input-text]').textContent).toContain('run.ts');
 
   query<HTMLButtonElement>('[data-testid=permission-allow]').click();
   await waitFor(() => query('[data-testid=permission-card]').getAttribute('data-decision') === 'allow');
   expect(store.pendingPermissions.some((p) => p.threadId === 't-bench')).toBe(false);
-  expect(query('[data-testid=permission-verdict]').textContent?.trim()).toBe('Allowed');
+  // The receipt: the verdict, then what was allowed, on one line.
+  expect(query('[data-testid=permission-verdict]').textContent?.trim()).toBe('Allowed:');
+  expect(query('[data-testid=permission-sentence]').textContent).toMatch(/^Allowed: \S/);
 });

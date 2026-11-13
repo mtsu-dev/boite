@@ -8,8 +8,8 @@ projectless, working in `agent-workspaces/<agent-id>/agent-<agent-id>` in the
 host's data directory. What the bot adds to that thread is a persona, a brain
 folder, a clock (routines), a desk of the threads it runs or watches, and
 wakes: turns the core starts on its thread when a routine is due or something
-happens on its desk. The page sits beside chat, behind the Bots switch in
-Settings > Experiments ([experiments](experiments.md)). Contracts:
+happens on its desk. The page sits beside chat in every build: Bots is a
+finished feature with no switch ([experiments](experiments.md)). Contracts:
 `packages/contracts/src/agents.ts`; core: `packages/core/src/agents/`.
 
 The wire keeps the old names (the `agents.*` methods, `AgentProfile`,
@@ -40,23 +40,37 @@ thread is archived too and read-only; unarchiving the bot restores it.
 
 ## The page
 
-The Bots page is the chat page with the bots in the thread list's column
-(`RailFrame` and `RailHead`, with the Threads and Bots switch). Opening a
-bot opens its thread on the store of the machine that owns it, in the
-ordinary `ChatView` with the ordinary `Composer`, so questions, the browser
-watch and `openQuestionPage` work as in any thread, and Open on a login card
-shows the browser beside the conversation. A phone shows the list, then the
-conversation full screen, with the desk and the browser in its panel.
+On a desktop, every bot of every machine is a picture in the app rail, the
+column down the window's left edge (`AppRail.svelte`), under Threads and the
+contacts; its `+` makes a bot, a team or opens the bot engine. Teams lead,
+then pinned bots, then bots by creation; a picture dragged 6 px or moved with
+the arrow keys reorders bots and teams together (`QuotaReorder`), and the order
+stays on the device under `boite.rail.order` (`lib/rail-order.svelte.ts`),
+keyed `machineId:bot:id` or `machineId:team:id`. A picture says
+how the bot stands (`railBotState`, `lib/app-rail.ts`, which the phone's bot
+list reads too): an amber count while it needs the user, a red `!` after a
+failure, a turning accent arc while it works, dimmed while paused. Clicking
+one opens the Bots page: the chat page with the bot column in the thread
+list's place (`BotColumnHead` and `BotColumn`); unlike the thread list
+beside a chat panel, the column is not lent to a docked Desk. The column's head shows the
+bot's squircle, its name and one live line (the step and a timer, what it
+waits on, an error, its next wake); its more menu holds the row menu below,
+the brain and the bot engine. Under it come Conversation, then the threads
+it handles and those it finished.
 
-The header of a bot's thread shows its robot, its name and one live line:
-the step it is on (`AgentStatus.activity`) while it works, what it waits on,
-else its next routine or Idle. A `problem` shows as a warning with its fix.
-The header menu holds Settings, Brain, Pause or Resume and Archive.
+Opening a bot opens its thread on the store of the machine that owns it, in
+the ordinary `ChatView` with the ordinary `Composer`, so questions, the
+browser watch and `openQuestionPage` work as in any thread, and Open on a
+login card shows the browser beside the conversation. The window's top bar
+names the bot and "Conversation", with its pin, info panel and more buttons
+on the right; a `problem` shows as a warning with its fix above the
+conversation. A phone shows the bot list, then the conversation full screen
+under its own header, with the info panel and the browser in its panel.
 
-In the list, a bot's row is its robot beside two lines, the messenger way:
+On a phone, a bot's row is its robot beside two lines, the messenger way:
 its name over what it does this second, with a glyph for the kind of step
 (a command, a file read or edited, a search, the web, a subagent, thinking,
-a pause). That line is in the accent while it works and the right side
+a pause). That line is muted while it works and the right side
 counts the time it has worked; it shows the question in the waiting colour
 while it needs the user, the failure in danger, Paused asleep, else the last
 thing it said, bold while unread. A driver that reports only the running
@@ -90,8 +104,8 @@ unless their own field was being edited.
 
 The ring around the robot, in the list, the header and the desk, says how the
 bot stands (`AgentMood`): an accent arc turning while it works, a dashed
-accent ring while queued, the waiting colour pulsing while it needs the user,
-danger after a failure, a full accent ring over answers not read, a dashed
+grey ring while queued, the waiting colour pulsing while it needs the user,
+danger after a failure, a full light ring over answers not read, a dashed
 grey ring asleep (paused), a hairline in the robot's own colour at rest. The
 face moves with it.
 A routine
@@ -113,23 +127,19 @@ ids per machine (`lib/agent-upkeep.ts`). The composer of a bot's thread is
 addressed to it by name and shows no model, effort or mode chips: those are
 its settings.
 
-The desk is a surface of the thread's right panel (`desk`), opened by the
-header's desk button and, the first time this device shows a bot on a wide
-window, by itself. It keeps what the bot is doing now above three tabs: Work,
-Routines and Memory. The current step and elapsed time stay visible; the
-step count unfolds the last four calls. When idle, the card shows what it
-waits on or its next wake with a countdown. Work opens by default and shows
-its followed threads as rows (a status dot that
-breathes while the thread works or waits on the user, title, time, one meta
-line with state, project, pull request and checks, how long a stalled turn has
-been silent; a needs-you row opens its question with its options to answer in
-place; a row opens its thread, its cross, shown on hover and focus, takes it
-off the desk). Routines holds scheduled work and its actions; Memory holds
-the memory preview, its last update and AGENTS.md. A failed memory update
-marks its tab, with the full error inside. Arrow keys, Home and End change
-tabs; switching tabs preserves unfinished forms. Today's spend stays in a
-summary that unfolds the turn counts and budget bar. Reaching the budget
-opens that summary so its warning stays visible.
+The info panel is a surface of the thread's right panel (`desk`), opened
+by the top bar's info button and, the first time this device shows a bot on
+a wide window, by itself. Alone in the panel it draws no tab strip; its
+close and expand buttons show on hover. It is one column: the bot's
+squircle, name and description over chips for its model, machine and age;
+then, while it is busy, a Now card with the step, a timer and a fold with
+the last steps; its routines with a `+`; and its memory, the note count and
+the first three notes, with a warning mark and the full error in its tooltip
+after a failed update. The threads it handles sit in the bot column (status,
+title, time, one meta line with state, project, pull request and checks; a
+needs-you row opens its question to answer in place; its cross, shown on
+hover and focus, takes it off the desk). The daily budget is set in the
+bot's settings.
 
 A new bot needs a name and what it does; its robot, model and projects come
 filled in. It is free to act: its permission mode starts on full access (Auto,
@@ -731,14 +741,29 @@ asking thread reads the outcome as a message. Code:
 `agents/setting-cards.ts`, shared checks in
 `packages/contracts/src/agent-setting-requests.ts`.
 
-A thread asked to set up a bot creates it itself, with no card: `boite settings
-bot create <name>`, with its role, instructions, model and projects
-([CLI](cli.md)). `agents.create` makes it exactly as the Bots page does, full
-access, its conversation and its "Just created" first turn included, and
-returns its id and conversation so the thread briefs it with `boite threads
-send`. The owner allowed this on 2026-10-24: a thread asks only when something
-about the bot is unclear. Changing the bot afterwards still goes through a
-card. Code: `agents/create.ts`, shared checks in
+A thread asked to set up a bot calls `boite settings bot create <name>`, with
+its role, instructions, model and projects ([CLI](cli.md)). What `agents.create`
+does then follows the machine setting `agentBotCreation`:
+
+- `ask`, the value of a new install: nothing is created. The core draws an
+  asynchronous card in the calling thread (`QuestionRequest.setting` of kind
+  `bot`, built by `botCard`) with the checked bot, the names of its projects
+  and its model, and returns `{ questionId, setting }`. Approve calls the
+  owner-only `agents.create.approve`, which checks the bot again (the name may
+  have been taken since), saves it and settles the card with `applied` and the
+  bot's id and conversation; Decline answers `refuse`. The thread reads the
+  outcome like a setting request's (`settingAnswerText`). A second request for
+  the same name while its card is open is refused.
+- `free`: the bot is made at once, exactly as the Bots page does, full access,
+  its conversation and its "Just created" first turn included, and the call
+  returns its id and conversation so the thread briefs it with `boite threads
+  send`.
+
+An install whose journal existed before the setting did gets `free` written
+once at its first start (`SettingsStore.seedAgentDefaults`), a new one gets
+`ask`; the stored value is never rewritten afterwards. The key is requestable
+(`boite settings request agentBotCreation free --why "<reason>"`). Changing
+the bot afterwards still goes through a card. Code: `agents/create.ts`, shared checks in
 `packages/contracts/src/agent-create.ts`.
 
 ## Routines

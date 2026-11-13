@@ -109,7 +109,9 @@ test('a machine whose link goes silent reads offline within seconds, and a conve
     await page.click(`[data-thread-id="${tb.id}"]`);
     await page.waitFor(`${server}.connection !== 'ready'`, 16_000);
     expect(Date.now() - clicked).toBeLessThan(16_000);
-    await page.waitFor(`document.querySelector('${id('composer-input')}')?.getAttribute('placeholder')?.startsWith('Server is offline')`);
+    // One notice over the box names the machine; the field says only where a message goes meanwhile.
+    await page.waitFor(`document.querySelector('${id('composer-offline')}')?.textContent?.includes('Server is offline')`);
+    await page.waitFor(`document.querySelector('${id('composer-input')}')?.getAttribute('placeholder') === 'Sends when Server is back'`);
     // Its status says it: no error shows over the window, now or in the seconds after.
     await page.evaluate(`(() => {
       globalThis.__toasts = [];

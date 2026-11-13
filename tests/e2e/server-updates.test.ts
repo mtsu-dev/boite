@@ -29,7 +29,7 @@ async function machines() {
 }
 async function capture(name: string) {
   await page.evaluate('document.fonts.ready');
-  await page.evaluate('Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))');
+  await page.evaluate('Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))');
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
   await page.screenshot(join(captureDir, `server-update-${name}.png`));
 }
@@ -56,7 +56,10 @@ test('a server release shows in the footer and in Machines, and actions target t
   await page.waitFor(`document.querySelector('${row} ${id('machine-updates-state')}')?.dataset.state === 'current'`);
   expect(await page.evaluate(`document.querySelector('${id('nav-updates')}') === null`)).toBe(true);
   expect(await builderPart()).toBe('');
-  expect(await page.text(`${row} ${id('machine-version')}`)).toBe('2.0.0-beta.1');
+  // Builder runs the version the card heads with: its row does not repeat it, the head says it once.
+  expect(await page.evaluate(`window.__boiteTest.workspace.machines.find(machine => machine.id === 'http://builder.test').store.core.version`)).toBe('2.0.0-beta.1');
+  expect(await page.text(id('updates-version'))).toContain('2.0.0-beta.1');
+  expect(await page.evaluate(`document.querySelector('${row} ${id('machine-version')}') === null`)).toBe(true);
   await capture('current-desktop');
   await page.navigate(`${base}/?fake=1&machines=1&open=recent&serverUpdate=available`);
   await page.waitFor(`document.querySelector('${id('nav-settings')}') && window.__boiteTest?.workspace.machines.length === 2`);
@@ -80,8 +83,10 @@ test('a server release shows in the footer and in Machines, and actions target t
 
 test('an Android server offers and cancels its update on desktop and phone', async () => {
   for (const [width, label] of [[1400, 'desktop'], [390, 'phone']] as const) {
-    await size(width);
+    // Load first, then resize: narrowing a page that shows Settings moves its overlay through history asynchronously,
+    // and a navigation issued meanwhile is taken back to the previous page.
     await page.navigate(`${base}/?fake=1&machines=1&open=recent&serverMode=android&serverUpdate=idle`);
+    await size(width);
     await page.waitFor(`window.__boiteTest?.workspace.machines.length === 2`);
     await page.evaluate(`window.__boiteTest.workspace.active.showSettings('machines')`);
     await page.waitFor(`document.querySelector('${id('app-updates-card')}') && document.querySelector('${row}')`);

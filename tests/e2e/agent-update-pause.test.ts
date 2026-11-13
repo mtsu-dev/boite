@@ -12,7 +12,7 @@ let threadId: string;
 let state: string;
 const selector = (name: string) => `[data-testid="${name}"]`;
 async function capture(name: string) {
-  await page!.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+  await page!.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
   await page!.screenshot(join(import.meta.dir, '.artifacts', name));
 }
 const desktop = () => page!.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });

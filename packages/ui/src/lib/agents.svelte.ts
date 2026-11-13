@@ -211,12 +211,6 @@ export function isAgentThread(thread: Pick<ThreadSummary, 'agentSessionId'> | nu
   return !!thread?.agentSessionId && experimentOn('resident-agents');
 }
 
-/**
- * The machine the agents list is narrowed to, null for every machine. It lives
- * outside the page, which is drawn again for each machine it opens on.
- */
-export const agentsFilter = $state<{ machine: string | null }>({ machine: null });
-
 export { avatarText, tintOf } from './robots';
 
 /** A message as a one-line preview: markdown marks out, every run of blanks one space. */

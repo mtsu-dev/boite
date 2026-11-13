@@ -256,3 +256,24 @@ test('a local ACP command is added from its form, a refused field is marked, and
   // A provider that ships with Boite has nothing to remove.
   expect(row('claude')?.querySelector('[data-testid="local-acp-remove"]')).toBeNull();
 });
+
+test('every account card lays out the same: name and state first with its sign-in, then Rename, Check connection, Remove last', async ({ ready }) => {
+  const { store } = await ready({ delayMs: 0 });
+  store.providers = [provider({})];
+  store.accounts = [account({}), account({ id: 'a2', label: 'Second seat', isolationDir: 'C:/seat', status: 'unauthenticated' })];
+  mounted = mount(AccountsPage, { target: document.body, props: { store } });
+  flushSync();
+  (row('claude')?.querySelector('[data-testid="provider-details-toggle"]') as HTMLButtonElement).click();
+  flushSync();
+  const cards = [...row('claude')!.querySelectorAll('[data-testid="account-row"]')];
+  expect(cards.length).toBeGreaterThan(1);
+  for (const card of cards) {
+    // One action row, in one order, whatever the account's state: a sign-in rides the state line instead.
+    const actions = [...card.querySelectorAll('.account-act > button')].map((button) => button.getAttribute('data-testid'));
+    expect(actions).toEqual(['account-rename', 'account-verify', 'account-remove']);
+    expect(card.querySelector('.account-line h3')).not.toBeNull();
+    const login = card.querySelector('[data-testid="account-login"]');
+    if (login) expect(login.closest('.account-line')).not.toBeNull();
+  }
+  expect(cards[1]!.querySelector('.account-line [data-testid="account-login"]')?.textContent).toContain('Sign in');
+});

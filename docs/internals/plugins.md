@@ -26,7 +26,7 @@ description or author) and a filter: All, On or Off.
 - The plugins on this core come first, then the recommended ones: those Boite
   ships a manifest for and that are not installed yet, in the order Boite lists
   them. Today that is [Bots](https://github.com/Skollheim/bots), the desktop
-  companion, and [Douane](https://github.com/mtsu-dev/douane), the subscription
+  companion, and [Douane](https://github.com/klNuno/douane), the subscription
   gateway. Their card carries a Recommended chip and Install instead of a switch.
 - From a URL, beside the filter, opens the form that reads any repository with
   a `boite-plugin.json` at its root and shows it before installing.
@@ -890,8 +890,7 @@ an app checks the flag before it names a machine.
 
 The desktop shell connected to the core it started on the same computer
 answers it: it unminimizes and focuses its window, then opens the thread, the
-Bots page on that bot (switching the Bots experiment on if it was
-off), or the app updates in Settings, Machines. A target with `coreId` opens on
+Bots page on that bot, or the app updates in Settings, Machines. A target with `coreId` opens on
 the window's machine whose core has that id; when the window has no such
 machine, or has it but not connected, it says so on the page it shows and opens
 nothing. Browser tabs, paired devices and windows following another machine do
@@ -904,7 +903,7 @@ refused, and neither receives it.
 ## Gateways
 
 A plugin that provides `gateway` is a subscription gateway speaking Douane's
-runtime contract, such as [Douane](https://github.com/mtsu-dev/douane). Boite
+runtime contract, such as [Douane](https://github.com/klNuno/douane). Boite
 runs it in the background; the subscription proxy's local mode points at it
 ([providers](providers.md#douane-on-this-machine)).
 

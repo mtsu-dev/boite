@@ -38,7 +38,7 @@ test('a finished agent turn folds its calls and narration away, counted for the 
   expect(folded[1]!.parts).toEqual([text('Fixed: the redirect now lands home.'), { type: 'error', message: 'one warning' }]);
   const fold = folds.folds.get(`${FOLD_PREFIX}w`)!;
   expect(fold).toMatchObject({ kind: 'worked', steps: 2, ms: 180_000, open: false });
-  expect(foldText(fold)).toBe('Worked 3 min · 2 steps');
+  expect(foldText(fold)).toBe('Worked 3m 00s · Ran 2 commands');
   // Built again on the same data, every row is the same object: nothing is measured again.
   const again = folds.build(timeline, [turn('w')], new Set());
   expect(again[1]).toBe(folded[1]);
@@ -84,7 +84,7 @@ test('a quiet wake folds whole, its opening line included, to one "Checked" row 
   expect(folded.map(m => m.id)).toEqual([`${FOLD_PREFIX}r`, 'u2']);
   const fold = folds.folds.get(`${FOLD_PREFIX}r`)!;
   expect(fold.kind).toBe('quiet');
-  expect(foldText(fold)).toBe('Checked: 4 issues, 2 pull requests · 2 steps');
+  expect(foldText(fold)).toBe('Checked: 4 issues, 2 pull requests · Ran 2 commands');
 
   const opened = folds.build(timeline, [routine('r', { quiet: true })], new Set(['r']));
   expect(opened.map(m => m.id)).toEqual([`${FOLD_PREFIX}r`, 'w1', 'a1', 'u2']);

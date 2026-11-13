@@ -16,7 +16,13 @@ afterEach(async () => {
   document.body.innerHTML = '';
 });
 
-test('a workflow without active children shows a timer and opens the team overview', async () => {
+const line = () => document.querySelector<HTMLElement>('[data-testid=agent-dock]');
+const label = () => document.querySelector('[data-testid=agent-dock-label]')?.textContent;
+/** The names the line lists, in muted ink after the counts (whole here: tests have no ResizeObserver, so word-fit never cuts). */
+const names = () => (document.querySelector('[data-testid=agent-dock-names]')?.textContent ?? '').split(', ').filter(Boolean);
+const stop = () => document.querySelector<HTMLButtonElement>('[data-testid=agent-dock-stop]');
+
+test('a running workflow puts the waiting line up by name, and Stop stops it', async () => {
   client = new FakeClient({ delayMs: 0, delegationDemo: true });
   store = new Store();
   store.attach(client);
@@ -26,27 +32,25 @@ test('a workflow without active children shows a timer and opens the team overvi
   component = mount(AgentDock, { target: document.body, props: { store, threadId: 't-native' } });
   await vi.waitFor(() => expect(store.workflowsThreadId).toBe('t-native'));
   await tick();
-  expect(document.querySelector('[data-testid=agent-dock]')).toBeNull();
+  expect(line()).toBeNull();
 
   store.workflows = [{ ...run!, rootThreadId: 't-native', status: 'running', createdAt: Date.now() - 62_000, nodes: [] }];
   await tick();
-  const button = document.querySelector<HTMLButtonElement>('[data-testid=agent-dock] button');
-  expect(button?.textContent).toContain('1 workflow');
-  expect(button?.querySelector('[data-testid=agent-elapsed]')?.textContent).toContain('1m');
-  const surface = store.panel.openWorkflow(run!.id);
-  store.panel.close(surface.id);
-  button!.click();
+  expect(line()?.dataset.runs).toBe('1');
+  expect(label()).toBe('Waiting on 1 workflow');
+  expect(names()).toEqual([run!.name]);
+  const control = vi.spyOn(store, 'controlWorkflow').mockResolvedValue(true);
+  stop()!.click();
   await tick();
-  expect(store.panel.isOpen).toBe(true);
-  expect(store.panel.active?.kind).toBe('agents');
-  expect(store.panel.active?.runId).toBeUndefined();
+  expect(control).toHaveBeenCalledWith(expect.objectContaining({ id: run!.id }), 'stop');
 
+  // Finished, it no longer holds the conversation: the line leaves at once.
   store.workflows[0]!.status = 'done';
   await tick();
-  expect(document.querySelector('[data-testid=agent-dock]')).toBeNull();
+  expect(line()).toBeNull();
 });
 
-test('a memory pass another machine names leaves this machine\'s subagent of the same id in the dock', async () => {
+test('a memory pass another machine names leaves this machine\'s subagent of the same id on the line', async () => {
   client = new FakeClient({ delayMs: 0, delegationDemo: true });
   store = new Store();
   store.attach(client);
@@ -54,8 +58,8 @@ test('a memory pass another machine names leaves this machine\'s subagent of the
   const child = store.threads.find(thread => thread.id === 't-team-running')!;
   await store.open(child.parentThreadId!);
   component = mount(AgentDock, { target: document.body, props: { store, threadId: child.parentThreadId! } });
-  const count = () => document.querySelector('[data-testid=active-subagents]')?.textContent?.match(/\d+/)?.[0];
-  // The running child and the one waiting on its background run.
+  const count = () => line()?.dataset.count;
+  // The running child and the one waiting on its background run, each counted.
   await vi.waitFor(() => expect(count()).toBe('2'));
   // Another machine's snapshot: its agent's memory pass happens to carry the same thread id.
   const snapshot = new FakeAgents(() => {}).snapshot();
@@ -65,5 +69,73 @@ test('a memory pass another machine names leaves this machine\'s subagent of the
     await view.refresh();
     await tick();
     expect(count()).toBe('2');
+    // Its two subagents, then its running workflow.
+    expect(names()).toHaveLength(3);
   } finally { view.close(); }
+});
+
+test('the work a thread waits on reads "Waiting on N" with its names, and Stop stops the subagents and the workflow', async () => {
+  client = new FakeClient({ delayMs: 0, delegationDemo: true });
+  store = new Store();
+  store.attach(client);
+  await store.connect();
+  const parent = store.threads.find(thread => thread.id === 't-team-running')!.parentThreadId!;
+  await store.open(parent);
+  const props = $state({ store, threadId: parent });
+  component = mount(AgentDock, { target: document.body, props });
+  await vi.waitFor(() => expect(line()?.dataset.count).toBe('2'));
+  // Two subagents and the workflow it started.
+  expect(line()?.dataset.runs).toBe('1');
+  expect(label()).toBe('Waiting on 3 subagents and workflows');
+  // Stop names its reach, and its tooltip that the agent itself goes on.
+  expect(stop()?.textContent?.trim()).toBe('Stop all');
+  expect(stop()?.title).toBe('Stops the subagents and workflows this conversation waits on. The agent itself is not stopped.');
+  const titles = [...store.delegation!.agents.map(agent => agent.thread.title), ...store.workflowsOf(parent).map(run => run.name)];
+  // Every one of them by name, never a count alone; its tooltip holds them whole.
+  expect(names()).toHaveLength(3);
+  for (const name of names()) expect(titles).toContain(name);
+  expect(document.querySelector<HTMLElement>('[data-testid=agent-dock-names]')?.title).toBe(names().join(', '));
+  // Without a strip to fold into, the line is the counts, the names and Stop.
+  expect(document.querySelector('[data-testid=agent-dock] [aria-expanded]')).toBeNull();
+  expect(document.querySelectorAll('[data-testid=agent-dock] button')).toHaveLength(1);
+
+  // At the root, one call stops every subagent of the team.
+  const stopAll = vi.spyOn(store, 'stopDelegatedAgent').mockResolvedValue();
+  const control = vi.spyOn(store, 'controlWorkflow').mockResolvedValue(true);
+  stop()!.click();
+  await tick();
+  expect(stopAll).toHaveBeenCalledTimes(1);
+  expect(stopAll).toHaveBeenCalledWith();
+  expect(control).toHaveBeenCalledWith(expect.objectContaining({ rootThreadId: parent }), 'stop');
+  await vi.waitFor(() => expect(stop()?.disabled).toBe(false));
+
+  // A subagent's own line counts what it sent, never itself or its siblings.
+  props.threadId = 't-team-running';
+  await vi.waitFor(() => expect(store.delegation?.rootThreadId).toBe(parent));
+  await tick();
+  expect(line()).toBeNull();
+});
+
+test('a command\'s own agent keeps the line up without a Stop that could never reach it', async () => {
+  client = new FakeClient({ delayMs: 0, delegationDemo: true });
+  store = new Store();
+  store.attach(client);
+  await store.connect();
+  await store.open('t-native');
+  component = mount(AgentDock, { target: document.body, props: { store, threadId: 't-native' } });
+  await vi.waitFor(() => expect(store.delegation?.nativeAgents.length).toBeGreaterThan(0));
+  store.delegation!.nativeAgents = [{ id: 'cli-1', toolId: 'cli-1', name: 'Count the parser lines', status: 'running', startedAt: Date.now(), source: 'process' }];
+  await tick();
+  expect(label()).toBe('Waiting on 1 subagent');
+  expect(names()).toEqual(['Count the parser lines']);
+  expect(stop()).toBeNull();
+  // A provider's own subagent runs inside the turn: Stop ends that turn.
+  store.delegation!.nativeAgents = [{ id: 'native-1', toolId: 'native-1', name: 'Review parser boundaries', status: 'running', startedAt: Date.now() }];
+  await tick();
+  // It stops the turn and what runs in it: Stop says all.
+  expect(stop()?.textContent?.trim()).toBe('Stop all');
+  const turn = vi.spyOn(store, 'stop').mockResolvedValue();
+  stop()!.click();
+  await tick();
+  expect(turn).toHaveBeenCalledTimes(1);
 });

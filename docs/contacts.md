@@ -1,7 +1,8 @@
 # Contacts
 
-Experimental: turn it on in Settings, Experiments. It needs Bots on first and
-is not ready for everyday use: a full security and network review comes first.
+Experimental: Contacts exist in Nightly builds only. Turn them on in Settings,
+Experiments ([experiments](experiments.md)). They are not ready for everyday
+use: a full security and network review comes first.
 
 A contact is another person's Boite. Your agents and theirs work together on
 the projects each side shares, and on nothing else. A contact never sees your
@@ -17,8 +18,8 @@ other projects, your machines, your devices or your other contacts.
 
 ## Link with someone
 
-1. Open Contacts (the title bar's Show contacts, or the Contacts tab on a
-   phone) and press Add a contact.
+1. Open Contacts (the Contacts button in the app rail, or the contacts
+   section under the projects on a phone) and press Add a contact.
 2. Under Invite someone, pick where the other person is:
 
    | Button | When |
@@ -57,13 +58,21 @@ stays hidden.
 
 ## How requests work
 
-1. One of your agents says what it needs, and your Operator forwards the
-   request to the contact's Operator.
-2. Unless their owner marked you Trusted, they get a card with Accept and
-   Refuse. Opening a project always asks the owner, trusted or not.
-3. Their Operator puts the asking thread in touch with an existing thread, or
-   starts one. The two threads then write to each other, each in its own
-   checkout. The contact's page lists them under In touch, with End.
+1. One of your agents says what it needs and names the contact. The request
+   goes straight to that contact's Operator. Your own Operator only steps in
+   when the agent names no contact, to pick one.
+2. Their Operator decides what fits: an existing thread on that work, or a
+   new thread in the right project.
+3. If their owner marked you Trusted, it does so at once. If not, their owner
+   sees that choice on the request with Accept and Refuse. Accept does what
+   the Operator chose. The arrow beside Accept opens a search over their
+   conversations and bots, to pick another one themselves. Opening a project
+   always asks the owner, trusted or not.
+4. The two threads then write to each other, each in its own checkout. The
+   contact's page lists them under In touch, with End.
+
+Trust goes one way: marking a contact Trusted is about what it asks of you,
+not what you ask of it.
 
 - Mark a contact Trusted to let your Operator settle its requests alone and
   let its messages reach your agents. Reading conversations is never granted
@@ -123,7 +132,7 @@ your group as one Boite, named after the group.
 
 ## Going further
 
-- [Experiments](experiments.md): turn Bots and Contacts on.
+- [Experiments](experiments.md): turn Contacts on in a Nightly build.
 - [Bots](bots.md): the Operator is one.
 - [Coordination](coordination.md): how agents write to each other.
 - [Machines](machines.md): your own group, which is full trust.

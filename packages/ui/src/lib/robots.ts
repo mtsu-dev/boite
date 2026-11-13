@@ -170,3 +170,6 @@ export function tintOf(id: string): string {
   for (const c of id) hash = (hash * 31 + c.codePointAt(0)!) | 0;
   return `var(--series-${(Math.abs(hash) % 8) + 1})`;
 }
+
+/** The house creature: a plain jelly with round eyes and a smile, no hat or gear, in its own teal. */
+export const HOUSE_BOT: Robot = { family: 'jelly', shape: 0, color: 6, eyes: 0, mouth: 1, top: 0, cheeks: 1, gear: 0 };

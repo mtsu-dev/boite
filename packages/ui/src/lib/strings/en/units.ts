@@ -7,8 +7,7 @@ export const strings = {
     gigabytes: 'GB',
     milliseconds: 'ms',
     seconds: 's',
-    minutes: 'min',
-    hours: 'h',
-    tokens: 'tokens'
+    tokens: 'tokens',
+    days: 'days'
   }
 } as const;

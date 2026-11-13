@@ -1,3 +1,4 @@
+import { flushSync } from 'svelte';
 import { expect, vi } from 'vitest';
 import { store } from '../lib/store.svelte';
 import { work } from '../lib/work-prefs.svelte';
@@ -6,6 +7,16 @@ import { sidebarRows } from '../lib/sidebar-rows.svelte';
 import { emptyCore, mountOnFake, query, test, type, unmountApp, waitFor } from '../test/app';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
+
+/** The worktree switch is an item of the composer's "+": open it, then find the switch. */
+function worktreeSwitch(): HTMLButtonElement | null {
+  if (!document.querySelector('[data-testid=composer-options-sheet]')) {
+    query<HTMLElement>('[data-testid=composer-options]').click();
+    flushSync();
+  }
+  query('[data-testid=composer-options-sheet]');
+  return document.querySelector<HTMLButtonElement>('[data-testid=composer-worktree]');
+}
 
 test('the app mounts against the fake core, lists the seeded threads and opens the latest', async ({ app: _app }) => {
   await waitFor(() => store.threads.length === 4);
@@ -158,8 +169,10 @@ test('first run opens a draft in the drafts, and the first send makes them', asy
   expect(store.draft?.projectId).toBeNull();
   expect(query('[data-testid=draft-project]').textContent).toContain('Drafts');
   // A draft in the drafts has no repository to branch.
-  expect(document.querySelector('[data-testid=composer-worktree]')).toBeNull();
+  expect(worktreeSwitch()).toBeNull();
 
+  // A prepared draft keeps the folder it was given before the prompt existed; name it from the prompt by sending without one.
+  store.core = { ...store.core!, features: { ...store.core!.features, draftPreparation: false } };
   const input = query<HTMLTextAreaElement>('[data-testid=composer-input]');
   input.value = 'Write a letter to the bank';
   input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -205,6 +218,6 @@ test('not a developer, New thread still follows the project on screen', async ({
 
 test('the title counts the threads that wait on the user or finished unread', async ({ app: _app }) => {
   await waitFor(() => /^\(\d+\) /.test(document.title));
-  const waiting = document.querySelectorAll('[data-testid=sidebar] [data-state=waiting]').length;
+  const waiting = document.querySelectorAll('[data-testid=sidebar] [data-testid=thread-state][data-state=waiting]').length;
   expect(Number(/^\((\d+)\)/.exec(document.title)?.[1])).toBeGreaterThanOrEqual(Math.max(1, waiting));
 });

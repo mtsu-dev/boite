@@ -13,7 +13,8 @@
   import { THUMB_HEIGHT } from '../lib/message-window';
   import MessageReceipts from './MessageReceipts.svelte';
   import MoveMarker from './MoveMarker.svelte';
-  import Deferred, { parts } from './Deferred.svelte';
+  import Deferred from './Deferred.svelte';
+  import { parts } from '../lib/deferred-parts';
   import { workspace } from '../lib/workspace.svelte';
 
   /**
@@ -221,31 +222,29 @@
 
 <style>
   .by-plugin { display: flex; align-items: center; gap: 5px; margin: 0 0 6px; font-size: var(--text-xs); color: var(--color-muted-foreground); }
-  .text-omitted { margin: 4px 0 0; font-size: var(--text-xs); color: var(--color-muted-foreground); }
+  .text-omitted { margin: 4px 0 0; font-size: var(--text-sm); color: var(--color-muted-foreground); }
 
   .command { color: var(--color-accent); font-weight: 600; }
 
   .bubble {
     max-width: min(85%, var(--prose));
     padding: 12px 16px;
-    background: var(--color-accent-soft);
-    border: 1px solid color-mix(in oklch, var(--color-accent) 35%, transparent);
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border);
     border-radius: var(--radius-bubble);
     border-bottom-right-radius: var(--radius-sm);
-    box-shadow: var(--shadow-e1);
   }
 
-  .bubble.agent { align-self: flex-start; }
+  /* A prompt another agent sent: outlined on the agent's side, so it never reads as the user's own bubble. */
   .bubble.agent {
-    background: var(--color-surface-2);
-    border-color: var(--color-border);
-    border-left: 2px solid var(--color-edge);
+    align-self: flex-start;
+    background: transparent;
     border-radius: var(--radius-lg);
     border-bottom-left-radius: var(--radius-sm);
   }
   .agent-from { display: flex; align-items: flex-start; gap: 9px; margin-bottom: 8px; color: var(--color-muted-foreground); }
   .agent-icon { display: flex; flex: none; margin-top: 2px; color: var(--color-foreground); }
-  .agent-source { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; font-size: var(--text-xs); }
+  .agent-source { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; font-size: var(--text-sm); }
   .agent-source strong, .agent-link { color: var(--color-foreground); font-size: var(--text-sm); font-weight: 600; overflow-wrap: anywhere; white-space: normal; text-align: left; }
   .agent-link { height: auto; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; }
   .agent-link:hover { text-decoration: underline; }
@@ -253,6 +252,7 @@
 
   @media (max-width: 720px) { .bubble { max-width: 90%; padding: 10px 14px; } }
 
+  /* A prompt reads at the answer's size (Prose). */
   .user-text {
     white-space: pre-wrap;
     word-break: break-word;
@@ -265,7 +265,7 @@
   .file-attachment:hover { background: var(--color-surface); }
   .file-attachment > span { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
   .file-attachment > span > span { overflow-wrap: anywhere; font-size: var(--text-sm); }
-  .file-attachment small { color: var(--color-muted-foreground); font-size: var(--text-xs); }
+  .file-attachment small { color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .images {
     position: relative;
     display: flex;
@@ -309,6 +309,8 @@
     color: var(--color-foreground);
     font-size: var(--text-lg);
     font-weight: 600;
+    /* Placed from script: reduced motion's blanket transition would slide it there. */
+    transition-property: none;
   }
 
   .more:hover {

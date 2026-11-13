@@ -51,6 +51,8 @@ export const strings = {
     resets: 'Resets {time}',
     /** The limit windows the core names in English: `5 hours`, `Weekly`, `Monthly`, `Credits`, alone or on one side of ` · `. */
     windowHours: '{hours} hours',
+    /** The same window before the word limit: `5-hour limit`. */
+    limitHours: '{hours}-hour',
     windowWeekly: 'Weekly',
     windowMonthly: 'Monthly',
     windowCredits: 'Credits',
@@ -69,6 +71,11 @@ export const strings = {
     refresh: 'Refresh quotas',
     /** The sidebar's gauge button and the popover it opens. */
     glance: 'Account limits',
+    /** The list column's limits line: whose limit it reads, the account named where its provider has several. */
+    lineLeft: '{percent}% of {provider}\'s {window} limit left',
+    lineLeftAccount: '{percent}% of {provider}\'s {window} limit left on {account}',
+    /** A subscription gateway's accounts of one provider, read together: what they have left on average. */
+    lineLeftPool: '{percent}% of {provider}\'s {window} limit left across {count} accounts',
     /** The popover's way to the Limits page in Settings. */
     allLimits: 'Limits page',
     /** A read of the limits failed; the core's reason follows. */

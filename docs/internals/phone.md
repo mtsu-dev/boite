@@ -10,9 +10,12 @@ the phone itself in Termux.
 
 ## Settings on a phone
 
-The bottom bar opens Conversations, Activity and Settings, with a central
-`+` for a new thread. The Bots and Contacts experiments add their own tabs.
-The list's header opens the machine's connection settings and the project
+The bottom bar opens Threads, Activity and Bots.
+Settings is a page, not a tab: the gear at the end of every list's header
+opens it, and its header's Back (or the system's back gesture) returns to the
+list it came from. With several machines, or while the link is down, the gear
+also wears the machine's dot and its name, and opens the machine settings.
+The thread list's header holds its `+` for a new thread and the project
 picker, whose last row adds a project for owner connections. A conversation
 hides the bottom bar; its header holds Back, which carries a mark while
 another thread waits on the user, the title menu and a Browser button. The thread
@@ -392,7 +395,10 @@ Activity's tab counts the conversations waiting for you; Bots counts the bots
 at work on every machine, as the desktop's switch does, in the waiting colour
 once one needs you. Conversations lists
 threads across connected machines; Activity puts waiting requests first,
-followed by running and queued turns. Each list's header shows the machine,
+followed by running and queued turns. A failure or a stop stays in Activity while its thread is
+unread, as a finish does; Mark all as read (`MarkAllRead.svelte`, desktop and
+phone) calls `threads.markRead` on each machine's core for every listed
+failure, stop and finish, and leaves questions and permissions. Each list's header shows the machine,
 which opens its connection settings, over the screen's name, and the project
 the + starts in, whose sheet also adds a project for owners. A conversation, a bot's
 page and an open keyboard hide the bar; the conversation's header shows its
@@ -431,7 +437,7 @@ shifts a quarter of the width left under it, and slides back out on the way
 back; a Settings page does the same over the Settings home. The right panel
 comes in from the right edge and leaves by it, and a bottom sheet rises from
 the bottom edge and goes back down. Only transforms move, over `--dur-3` with
-`--ease-slide`, and the conversation keeps its full height on the way, so
+`--motion-curve`, and the conversation keeps its full height on the way, so
 nothing inside it reflows. Between the bottom bar's places, from one Settings
 page to another and wider than 720 px nothing slides; under reduced motion
 nothing moves. Safari's swipe from the edge, and Chrome's where it draws one,

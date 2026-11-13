@@ -4,12 +4,16 @@
   import InfoTip from './InfoTip.svelte';
   import PolicyLock from './PolicyLock.svelte';
   import VoiceInputSettings from './VoiceInputSettings.svelte';
+  import ChoiceSelect from './ChoiceSelect.svelte';
+  import { MediaQuery } from 'svelte/reactivity';
   import { AlertTriangle, Check, Download, LoaderCircle, Trash2 } from '@lucide/svelte';
   import { RpcErrorCode, type SpeechConfig, type SpeechModel, type SpeechStatus } from '@boite/contracts';
   import { RpcFailure } from '../lib/client';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
   let { store, readOnly = false }: { store: Store; readOnly?: boolean } = $props();
+  /** A phone reads the engine as a label and its value, the row opening a sheet, as Appearance does. */
+  const phone = new MediaQuery('(max-width: 720px)');
   /** The admin policy's dictation: `local` keeps the cloud engines off, `off` every engine and download. */
   const dictation = $derived(lockedBy(store.policy, 'dictation') ? store.policy?.values.dictation ?? null : null);
   const off = $derived(dictation === 'off');
@@ -239,12 +243,18 @@
     {#if pollError && pollError !== error}<p class="error" role="alert" data-testid="voice-poll-error">{pollError}</p>{/if}
 
     <section class="card">
-      <div class="switch-row">
+      <div class="switch-row" class:value={phone.current}>
         <span class="text ui-label-box"><span class="ui-label">{strings.speech.engine}</span><InfoTip topic={strings.speech.engine} text={strings.speech.engineHint} /><PolicyLock {store} keys={['dictation']} /></span>
+        {#if phone.current}
+          <ChoiceSelect row label={strings.speech.engine} value={config.engine} testid="voice-engine-current" optionTestid={(id) => `voice-${id}`}
+            options={[{ id: 'local' as const, name: strings.speech.local, disabled: busy || off }, { id: 'api' as const, name: strings.speech.api, disabled: busy || dictation !== null }]}
+            onpick={(engine) => { if (config!.engine !== engine) void apply({ engine }); }} />
+        {:else}
         <div class="segmented" role="radiogroup" aria-label={strings.speech.engine}>
           <button type="button" role="radio" class:on={config.engine === 'local'} aria-checked={config.engine === 'local'} data-testid="voice-local" disabled={busy || off} onclick={() => { if (config!.engine !== 'local') void apply({ engine: 'local' }); }}><span class="ui-label">{strings.speech.local}</span></button>
           <button type="button" role="radio" class:on={config.engine === 'api'} aria-checked={config.engine === 'api'} data-testid="voice-api" disabled={busy || dictation !== null} onclick={() => { if (config!.engine !== 'api') void apply({ engine: 'api' }); }}><span class="ui-label">{strings.speech.api}</span></button>
         </div>
+        {/if}
       </div>
       <div class="switch-row">
         <span class="text ui-label-box" id="voice-language-label"><span class="ui-label">{strings.speech.language}</span><InfoTip topic={strings.speech.language} text={strings.speech.languageHint} /></span>
@@ -328,7 +338,7 @@
 
   /* The one line that answers "can I dictate now", with the single action that gets there. */
   .status-line { display: flex; align-items: center; gap: 12px; }
-  .status-line .text { flex: 1; min-width: 0; font-weight: 500; }
+  .status-line .text { flex: 1; min-width: 0; font-weight: 400; }
   .status-line .hint, .model .hint, .key .hint { display: block; margin-top: 2px; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 400; }
   .status-line > button { flex: none; }
   .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--color-subtle); }
@@ -339,7 +349,7 @@
   .hint.ok { color: var(--color-success); }
   .bytes { font-variant-numeric: tabular-nums; }
   progress { display: block; width: 100%; height: 4px; margin-top: 12px; accent-color: var(--color-accent); }
-  .error { max-width: var(--settings-width); margin: 0 0 16px; color: var(--color-danger); font-size: var(--text-sm); overflow-wrap: anywhere; }
+  .error { max-width: var(--settings-width); margin: 0 0 16px; }
 
   .language { width: 88px; text-align: center; }
 
@@ -347,10 +357,10 @@
   .model { gap: 12px; }
   .pick { flex: 1; min-width: 0; height: auto; display: flex; align-items: center; gap: 12px; padding: 0; text-align: left; white-space: normal; font: inherit; color: inherit; background: none; border: none; box-shadow: none; }
   .pick:disabled { opacity: 1; }
-  .pick .text { font-weight: 500; }
+  .pick .text { font-weight: 400; }
   .radio { flex: none; width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid var(--color-edge); transition: border-color var(--dur-2) var(--ease-out-quint), border-width var(--dur-2) var(--ease-out-quint); }
   .pick:hover:not(:disabled) .radio { border-color: var(--color-muted-foreground); }
-  .pick[aria-checked='true'] .radio { border: 5px solid var(--color-accent); }
+  .pick[aria-checked='true'] .radio { border: 5px solid var(--color-foreground); }
   .model :global(.spinner) { flex: none; margin: 0 8px; color: var(--color-muted-foreground); animation: spin 1s linear infinite var(--loops); }
 
   .field { display: flex; align-items: center; gap: 8px; flex: 0 1 380px; min-width: 0; }
@@ -361,11 +371,7 @@
   .paths label { display: grid; gap: 6px; font-size: var(--text-sm); color: var(--color-muted-foreground); }
   details { margin-top: 8px; }
 
-  /* The options in one track, the chosen one filled like a primary button, as on Appearance. */
-  .segmented { display: inline-flex; flex: none; gap: 2px; padding: 2px; border: 1px solid var(--color-edge); border-radius: var(--radius-md); background: var(--color-surface-2); }
-  .segmented button { height: var(--control-sm); padding: 0 12px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); font-size: var(--text-sm); box-shadow: none; }
-  .segmented button:hover:not(.on):not(:disabled) { background: var(--color-surface-3); color: var(--color-foreground); }
-  .segmented button.on { background: var(--color-foreground); border-color: var(--color-foreground); color: var(--color-on-foreground); }
+  /* The track and its lit option are app.css's settings segments, as on Appearance; a read-only one stays legible. */
   .segmented button:disabled { opacity: 1; }
 
   @media (max-width: 720px) {

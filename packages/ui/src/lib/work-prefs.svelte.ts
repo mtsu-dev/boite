@@ -21,7 +21,6 @@ export type PanelStart = 'launcher' | 'files' | 'changes';
  * opened, and whatever is open stays open.
  */
 export const CONTROL_IDS = [
-  'header.project',
   'header.branch',
   'header.context',
   'header.terminal',

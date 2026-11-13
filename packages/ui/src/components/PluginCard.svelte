@@ -49,10 +49,12 @@
     <div class="who">
       <h3>
         <span class="name">{plugin.name}</span>
-        {#if plugin.version ?? plugin.availableVersion}<span class="version">v{plugin.version ?? plugin.availableVersion}</span>{/if}
-        {#if plugin.homepage && !plugin.source}
-          <a class="home" href={plugin.homepage} target="_blank" rel="noreferrer" title={t.source} aria-label={t.source} data-testid="plugin-home"><ExternalLink size={12} /></a>
-        {/if}
+        <span class="meta">
+          {#if plugin.version ?? plugin.availableVersion}<span class="version">v{plugin.version ?? plugin.availableVersion}</span>{/if}
+          {#if plugin.homepage && !plugin.source}
+            <a class="home" href={plugin.homepage} target="_blank" rel="noreferrer" title={t.source} aria-label={t.source} data-testid="plugin-home"><ExternalLink size={12} /></a>
+          {/if}
+        </span>
       </h3>
       {#if author}<p class="author" data-testid="plugin-author">{fill(t.byAuthor, { author })}</p>{/if}
     </div>
@@ -87,7 +89,7 @@
 
   {#if chips.length > 0}
     <ul class="chips">
-      {#each chips as chip (chip.id)}<li class="chip" class:accent={chip.tone === 'accent'} class:danger={chip.tone === 'danger'} title={chip.title} data-testid={chip.testid}>{chip.label}</li>{/each}
+      {#each chips as chip (chip.id)}<li class="ui-chip" class:accent={chip.tone === 'accent'} class:danger={chip.tone === 'danger'} title={chip.title} data-testid={chip.testid}>{chip.label}</li>{/each}
     </ul>
   {/if}
 
@@ -110,21 +112,23 @@
   .plugin-card {
     display: flex; flex-direction: column; gap: 8px; min-width: 0;
     padding: 12px;
-    border: 1px solid var(--color-border); border-radius: var(--radius-lg);
-    background: var(--color-surface); box-shadow: var(--shadow-e1);
-    transition: border-color var(--dur-2) var(--ease-out-quint), opacity var(--dur-2) var(--ease-out-quint);
-    animation: rise var(--dur-3) var(--ease-out-quint);
+    /* A settings card (app.css `.card`): the card fill, no frame and no lift. */
+    border-radius: var(--radius-lg);
+    background: var(--card-fill);
+    transition: opacity var(--motion-duration) var(--motion-curve);
+    animation: rise var(--motion-duration) var(--motion-curve);
   }
-  .plugin-card:hover { border-color: var(--color-edge); }
   /* Off reads as resting, not broken: the words fade, the switch stays sharp. */
   .plugin-card.off :is(.who, .description, .chips) { opacity: .6; }
 
   header { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
-  .glyph { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--radius-md); background: var(--color-surface-2); color: var(--color-muted-foreground); }
+  .glyph { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--radius-md); background: var(--color-active); color: var(--color-muted-foreground); }
   .who { flex: 1; min-width: 0; display: grid; gap: 3px; padding-top: 1px; }
-  h3 { margin: 0; display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: var(--text-base); font-weight: 600; }
+  h3 { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 6px; min-width: 0; font-size: var(--text-base); font-weight: 600; }
   .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .version { flex: none; font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); }
+  .meta { flex: none; display: inline-flex; align-items: baseline; gap: 6px; }
+  .meta:empty { display: none; }
+  .version { font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); }
   .home { flex: none; align-self: center; display: inline-grid; place-items: center; color: var(--color-muted-foreground); border-radius: var(--radius-sm); transition: color var(--dur-1) var(--ease-out-quint); }
   .home:hover, .home:focus-visible { color: var(--color-foreground); }
   .author { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); color: var(--color-muted-foreground); }
@@ -152,9 +156,9 @@
   .alert { margin: 0; font-size: var(--text-sm); color: var(--color-danger); display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 
   .chips { margin: auto 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 4px; }
-  .chips .chip { height: auto; padding: 1px 6px; font-size: var(--text-xs); max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
-  .chips .chip.accent { border-color: transparent; background: var(--color-accent-soft); color: var(--color-accent); }
-  .chips .chip.danger { color: var(--color-danger); border-color: color-mix(in srgb, var(--color-danger) 40%, transparent); }
+  .chips .ui-chip { height: auto; padding: 1px 6px; font-size: var(--text-xs); max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .chips .ui-chip.accent { border-color: transparent; background: var(--color-accent-soft); color: var(--color-accent); }
+  .chips .ui-chip.danger { color: var(--color-danger); border-color: color-mix(in srgb, var(--color-danger) 40%, transparent); }
 
   .act { display: flex; flex-wrap: wrap; gap: 4px; }
   .act button { gap: 6px; }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Protocol, ProviderSummary } from '@boite/contracts';
-import { modeHint, modeLabel, modesFor, shownMode } from './permission-modes';
+import { modeHint, modeIcon, modeLabel, modesFor, modeWord, shownMode } from './permission-modes';
 import { defaultPrefs, PREFS_STORAGE_KEY, readPrefs, writePrefs } from './prefs';
 
 const provider = (protocol: Protocol, approvals = true) => ({
@@ -30,13 +30,31 @@ describe('permission modes', () => {
   });
 
   it('says Codex writes in the folder on its default, and the open mode reaches the whole computer', () => {
-    expect(modeLabel('default', provider('codex-appserver'))).toBe('This folder');
+    expect(modeLabel('default', provider('codex-appserver'))).toBe('Works in this folder, asks to go beyond it');
     expect(modeHint('default', provider('codex-appserver'))).toContain('in this folder without asking');
-    expect(modeLabel('default', provider('claude-sdk'))).toBe('Ask');
-    expect(modeLabel('bypassPermissions', provider('claude-sdk'))).toBe('Auto');
+    // Each line says what the agent then does, as a consequence.
+    expect(modeLabel('default', provider('claude-sdk'))).toBe('Asks before it edits a file or runs a command');
+    expect(modeLabel('acceptEdits', provider('claude-sdk'))).toBe('Edits files on its own, asks before commands');
+    expect(modeLabel('bypassPermissions', provider('claude-sdk'))).toBe('Runs everything without asking');
     expect(modeHint('bypassPermissions', null)).toContain('anywhere on this computer');
-    expect(modeLabel('yolo', provider('claude-sdk'))).toBe('YOLO');
+    // A plain name; the technical one stays in the hint.
+    expect(modeLabel('yolo', provider('claude-sdk'))).toBe('Approves every request, without exception');
+    expect(modeHint('yolo', null)).toContain('(YOLO)');
     expect(modeHint('yolo', null)).toContain('your hooks still run');
+  });
+
+  it('reads each mode at rest in the same word on every agent, Codex\'s folder in the line under it', () => {
+    expect(modesFor(provider('claude-sdk')).map((mode) => modeWord(mode, provider('claude-sdk')))).toEqual(['No limits', 'Auto', 'Edit freely', 'Ask first']);
+    expect(modesFor(provider('codex-appserver')).map((mode) => modeWord(mode, provider('codex-appserver')))).toEqual(['No limits', 'Auto', 'Ask first']);
+    expect(modeLabel('default', provider('codex-appserver'))).toBe('Works in this folder, asks to go beyond it');
+    expect(modeWord('plan', null)).toBe('Plan');
+    expect(modeWord('dontAsk', null)).toBe('Auto-deny');
+  });
+
+  it('gives each offered level its own glyph, so the chip reads without its word', () => {
+    // Auto and No limits never share a glyph.
+    const glyphs = modesFor(provider('claude-sdk')).map(modeIcon);
+    expect(new Set(glyphs).size).toBe(4);
   });
 
   it('remembers YOLO across reloads', () => {

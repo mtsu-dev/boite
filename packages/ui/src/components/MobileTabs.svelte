@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Activity, Bot, MessageSquare, Plus, Settings, Users } from '@lucide/svelte';
+  import { Bot, Contact, Inbox, MessageSquare } from '@lucide/svelte';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
   import { experimentOn } from '../lib/experiments.svelte';
@@ -9,26 +9,29 @@
   import { agentsAtWork } from '../lib/work-counts';
 
   /**
-   * The phone's places, along the bottom edge where a thumb rests: the lists
-   * and pages on either side of a new conversation. A conversation, a draft
-   * and an open keyboard hide the bar; the list's header names the machine.
+   * The phone's places, along the bottom edge where a thumb rests, the
+   * desktop rail's in the same order. A new conversation is the list header's
+   * "+". A conversation, a draft and an open keyboard hide the bar; the list's
+   * header names the machine. Three places, spread evenly: Threads, Activity
+   * and Bots. With the bots on, Contacts lives in the Bots tab, behind the
+   * two-way switch at the top of its page (MobileNavigation.svelte), so the
+   * tab stands for both. Settings is the header's gear, a page with its way
+   * back, not a place.
    */
-  let { store, screen, waiting, navigate, onnew, newDisabled = false, inert = false }: {
+  let { store, screen, waiting, navigate, inert = false }: {
     store: Store;
     screen: 'chat' | 'threads' | 'activity';
     /** Conversations waiting on the user, on every machine: Activity carries their count. */
     waiting: number;
     navigate: (screen: 'threads' | 'activity') => void;
-    onnew: () => void;
-    newDisabled?: boolean;
     /** Out of reach, to the keyboard and assistive tech too: under a conversation sliding in over it. */
     inert?: boolean;
   } = $props();
-  const current = $derived(store.page === 'settings' ? 'settings' : store.page === 'agents' ? 'agents' : store.page === 'home' ? 'contacts' : screen === 'activity' ? 'activity' : 'threads');
+  const bots = $derived(experimentOn('resident-agents'));
+  const current = $derived(store.page === 'agents' || (bots && store.page === 'home') ? 'agents' : store.page === 'home' ? 'contacts' : screen === 'activity' ? 'activity' : 'threads');
   const page = (place: string) => current === place ? 'page' as const : undefined;
 
   /** The bots at work on every machine, as the desktop's switch counts them: the waiting colour once one needs the user. */
-  const bots = $derived(experimentOn('resident-agents'));
   const stores = $derived(workspace.machines.length ? workspace.machines.map(machine => machine.store) : [store]);
   const atWork = $derived(bots ? agentsAtWork(stores) : { count: 0, waiting: false });
   followAgentDirectories(() => stores, () => bots);
@@ -36,27 +39,21 @@
 
 <nav class="mobile-tabs" data-testid="mobile-tabs" aria-label={strings.mobile.navigation} {inert}>
   <button type="button" class="tab" data-testid="mobile-conversations" aria-current={page('threads')} onclick={() => navigate('threads')}>
-    <span class="glyph"><MessageSquare size={20} /></span><span class="name ui-label">{strings.mobile.threads}</span>
+    <span class="glyph"><MessageSquare size={20} /></span><span class="name ui-label">{strings.sidebar.threads}</span>
   </button>
   <button type="button" class="tab" data-testid="mobile-activity" aria-current={page('activity')} aria-label={waiting ? `${strings.mobile.activity}, ${fill(strings.mobile.waitingElsewhere, { count: String(waiting) })}` : undefined} onclick={() => navigate('activity')}>
-    <span class="glyph"><Activity size={20} />{#if waiting}<span class="badge" data-testid="mobile-activity-waiting">{waiting > 99 ? '99+' : waiting}</span>{/if}</span><span class="name ui-label">{strings.mobile.activity}</span>
-  </button>
-  <button type="button" class="tab new" data-testid="mobile-new" aria-label={strings.sidebar.newThread} title={strings.sidebar.newThread} disabled={newDisabled} onclick={onnew}>
-    <span class="glyph"><Plus size={22} /></span>
+    <span class="glyph"><Inbox size={20} />{#if waiting}<span class="badge" data-testid="mobile-activity-waiting">{waiting > 99 ? '99+' : waiting}</span>{/if}</span><span class="name ui-label">{strings.mobile.activity}</span>
   </button>
   {#if bots}
     <button type="button" class="tab" data-testid="mobile-agents" data-preload-view="agents" aria-current={page('agents')} aria-label={atWork.count ? `${strings.agents.heading}, ${fill(atWork.waiting ? strings.sidebar.surfaceWaiting : strings.sidebar.surfaceWorking, { count: String(atWork.count) })}` : undefined} onclick={() => store.showAgents()}>
-      <span class="glyph"><Bot size={20} />{#if atWork.count}<span class="badge" class:working={!atWork.waiting} data-testid="mobile-agents-at-work" data-waiting={atWork.waiting}>{atWork.count > 99 ? '99+' : atWork.count}</span>{/if}</span><span class="name ui-label">{strings.agents.heading}</span>
+      <span class="glyph"><Bot size={20} />{#if atWork.count}<span class="dot" class:working={!atWork.waiting} data-testid="mobile-agents-at-work" data-waiting={atWork.waiting}></span>{/if}</span><span class="name ui-label">{strings.agents.heading}</span>
     </button>
   {/if}
-  {#if contactsShown(store)}
+  {#if contactsShown(store) && !bots}
     <button type="button" class="tab" data-testid="mobile-contacts" data-preload-view="home" aria-current={page('contacts')} onclick={() => store.showHome()}>
-      <span class="glyph"><Users size={20} /></span><span class="name ui-label">{strings.contacts.heading}</span>
+      <span class="glyph"><Contact size={20} /></span><span class="name ui-label">{strings.contacts.heading}</span>
     </button>
   {/if}
-  <button type="button" class="tab" data-testid="mobile-settings" data-preload-view="settings" aria-current={page('settings')} onclick={() => store.showSettings()}>
-    <span class="glyph"><Settings size={20} /></span><span class="name ui-label">{strings.settings.heading}</span>
-  </button>
 </nav>
 
 <style>
@@ -73,27 +70,30 @@
     .tab {
       display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; height: auto; min-height: 52px; padding: 2px 0 0;
       border: 0; border-radius: var(--radius-md); background: transparent; color: var(--color-muted-foreground);
-      font-size: 11px; font-weight: 500; letter-spacing: -0.2px; -webkit-tap-highlight-color: transparent;
+      font-size: var(--text-meta); font-weight: 500; letter-spacing: -0.2px; -webkit-tap-highlight-color: transparent;
     }
     .glyph {
-      position: relative; display: grid; place-items: center; width: 52px; height: 30px; border-radius: var(--radius-full);
+      position: relative; display: grid; place-items: center; width: 48px; height: 30px; border-radius: var(--radius-full);
       transition: background var(--dur-2) var(--ease-out-quint), color var(--dur-2) var(--ease-out-quint);
     }
     .name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .tab[aria-current=page] { color: var(--color-foreground); }
     .tab[aria-current=page] .glyph { background: var(--color-surface-3); }
     .tab:active .glyph { background: var(--color-surface-2); }
-    /* A new conversation, between the places: the one filled control, as primary buttons are. */
-    .new { justify-content: center; }
-    .new .glyph { width: 48px; height: 44px; border-radius: var(--radius-lg); background: var(--color-accent); color: var(--color-accent-ink); box-shadow: var(--shadow-e1); }
-    .new:active .glyph { background: var(--color-accent); filter: brightness(0.92); }
-    .new:disabled .glyph { opacity: 0.5; }
+    /* A bare amber count cut out of the bar, as the rail's (AppRail.svelte .count): amber is a dot or a count, never a
+       filled badge. 11 px, the smallest a count may read at. */
     .badge {
-      position: absolute; top: -2px; left: calc(50% + 6px); min-width: 17px; height: 17px; padding: 0 4px; box-sizing: border-box;
-      border-radius: var(--radius-full); background: var(--color-live); color: var(--color-accent-ink);
-      box-shadow: 0 0 0 2px var(--color-background); font-size: 10px; font-weight: 700; line-height: 17px; text-align: center;
+      position: absolute; top: -3px; left: calc(50% + 5px); min-width: 18px; height: 18px; padding: 0 4px; box-sizing: border-box;
+      border-radius: var(--radius-full); background: var(--color-background); color: var(--color-live);
+      font-size: 11px; font-weight: 700; line-height: 18px; text-align: center;
+      /* Two digits and "99+" on one line, at the tab's own spacing: it grows to the right, never wraps. */
+      white-space: nowrap; letter-spacing: 0; font-variant-numeric: tabular-nums;
     }
-    /* Bots at work and none asking: the accent, as the desktop's switch draws it. */
-    .badge.working { background: var(--color-accent); }
+    /* Bots: a dot, the count is Activity's alone (the number stays in the tab's name). Amber once one asks, grey while they work. */
+    .dot {
+      position: absolute; top: 1px; left: calc(50% + 8px); width: 8px; height: 8px; border-radius: var(--radius-full);
+      background: var(--color-live); box-shadow: 0 0 0 2px var(--color-background);
+    }
+    .dot.working { background: var(--color-muted-foreground); }
   }
 </style>

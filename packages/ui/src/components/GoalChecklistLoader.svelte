@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { CircleAlert } from '@lucide/svelte';
+  import Notice from './Notice.svelte';
   import type { ComponentProps } from 'svelte';
   import { strings } from '../lib/strings';
   import type GoalChecklist from './GoalChecklist.svelte';
@@ -15,12 +17,8 @@
 {#await loading then module}
   <module.default {...props} />
 {:catch}
-  <div class="notice" role="status" data-testid="goal-checklist-failed">
-    <span>{strings.activity.checklistLoadFailed}</span>
-    <button class="quiet" onclick={() => (loading = import('./GoalChecklist.svelte'))}><span class="ui-label">{strings.common.refresh}</span></button>
-  </div>
+  <Notice icon={CircleAlert} tone="danger" testid="goal-checklist-failed" detail={strings.activity.checklistLoadFailed}>
+    {#snippet actions()}<button type="button" class="small" onclick={() => (loading = import('./GoalChecklist.svelte'))}><span class="ui-label">{strings.common.refresh}</span></button>{/snippet}
+  </Notice>
 {/await}
 
-<style>
-  .notice { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 8px; font-size: var(--text-sm); color: var(--color-muted-foreground); }
-</style>

@@ -9,7 +9,7 @@ import { RpcFailure } from '../lib/client';
 import { Store, store as primary } from '../lib/store.svelte';
 import { workspace } from '../lib/workspace.svelte';
 import { confirm } from '../lib/confirm.svelte';
-import { strings } from '../lib/strings';
+import { fill, strings } from '../lib/strings';
 
 let view: ReturnType<typeof mount> | undefined;
 const stores: Store[] = [];
@@ -61,7 +61,7 @@ async function machine(id: string, offered: boolean) {
   return { store, client };
 }
 
-test('nothing folded: the version, the release found, the channel with Release closed, one check and one update', async () => {
+test('nothing folded: the version, the release found, the channel, one check and one update', async () => {
   const { updater, native } = await app(nightly('available', '2.0.0-nightly.20261022.2'));
   view = mount(UpdatesCard, { target: document.body, props: { updater, native: true } });
   flushSync();
@@ -72,12 +72,43 @@ test('nothing folded: the version, the release found, the channel with Release c
   expect(one('app-update-status')!.textContent).toContain(strings.harnessUpdates.availableShort);
   const [nightlyButton, release] = [one<HTMLButtonElement>('app-update-nightly')!, one<HTMLButtonElement>('app-update-stable')!];
   expect([nightlyButton.getAttribute('aria-pressed'), nightlyButton.disabled]).toEqual(['true', false]);
-  // No stable release exists yet: Release stays visible, closed, and says why.
-  expect([release.disabled, release.title]).toEqual([true, strings.appUpdate.noRelease]);
+  expect([release.getAttribute('aria-pressed'), release.disabled]).toEqual(['false', false]);
   expect(one<HTMLButtonElement>('updates-run-all')!.disabled).toBe(false);
   one<HTMLButtonElement>('updates-check-all')!.click();
   // The owner asked: the shell checks even right after another check (#991).
   await vi.waitFor(() => expect(native.check).toHaveBeenCalledWith('nightly', true));
+});
+
+test('Release on a nightly fetches the release at once, then one click restarts; one that cannot read the data says so', async () => {
+  const offer = (phase: UpdateSnapshot['phase']): UpdateSnapshot => ({ ...nightly(phase, '0.1.0'), channel: 'stable' });
+  let stable: UpdateSnapshot['phase'] = 'available';
+  const { updater, native, publish } = await app(nightly('current'), {
+    check: vi.fn(async (channel) => (channel === 'stable' ? offer(stable) : nightly('current'))),
+    download: vi.fn(async () => offer('ready'))
+  });
+  view = mount(UpdatesCard, { target: document.body, props: { updater, native: true } });
+  flushSync();
+  one<HTMLButtonElement>('app-update-stable')!.click();
+  await vi.waitFor(() => expect(native.download).toHaveBeenCalledOnce());
+  await updater.settled();
+  flushSync();
+  expect(native.check).toHaveBeenCalledWith('stable', true);
+  expect(one('app-update-stable')!.getAttribute('aria-pressed')).toBe('true');
+  expect(one('updates-found')!.textContent).toBe('0.1.0');
+  expect(one('updates-run-all')!.textContent).toContain(strings.updateAll.restart);
+
+  one<HTMLButtonElement>('app-update-nightly')!.click();
+  await vi.waitFor(() => expect(native.check).toHaveBeenLastCalledWith('nightly', true));
+  await updater.settled();
+  stable = 'blocked';
+  one<HTMLButtonElement>('app-update-stable')!.click();
+  await vi.waitFor(() => expect(native.check).toHaveBeenLastCalledWith('stable', true));
+  await updater.settled();
+  publish(offer('blocked'));
+  expect(one('app-update-status')!.textContent).toContain(fill(strings.appUpdate.blocked, { version: '0.1.0' }));
+  expect(one('updates-found')).toBeNull();
+  expect(one<HTMLButtonElement>('updates-run-all')?.disabled ?? true).toBe(true);
+  expect(native.download).toHaveBeenCalledOnce();
 });
 
 test('a downloaded release restarts on a confirmed click, and waiting offers a cancel that locks the channel', async () => {
@@ -116,7 +147,9 @@ test("another machine's update is listed under the app's, starts with the same b
   const row = one('updates-other')!;
   expect(row.textContent).toContain('builder');
   expect(row.textContent).toContain('2.0.0-beta.2');
-  expect(one('app-update-status')!.textContent).toContain(strings.serverUpdate.current);
+  // One state: the app is current but builder is not, so the card offers the update and never says "Up to date" beside its button.
+  expect(one('app-update-status')!.textContent).toContain(strings.harnessUpdates.availableShort);
+  expect(one('app-update-status')!.textContent).not.toContain(strings.serverUpdate.current);
   one<HTMLButtonElement>('updates-run-all')!.click();
   await vi.waitFor(() => expect(call).toHaveBeenCalledWith('core.updateEverything', expect.objectContaining({ server: '2.0.0-beta.2' })));
   expect(otherCall).not.toHaveBeenCalledWith('core.updateEverything', expect.anything());
@@ -125,13 +158,25 @@ test("another machine's update is listed under the app's, starts with the same b
   await vi.waitFor(() => expect(server.store.serverUpdater.snapshot?.phase).toBe('available'));
 });
 
+test("a failed app check keeps its error look while another machine's update is offered", async () => {
+  const { updater } = await app({ ...nightly('error'), error: 'signature mismatch' });
+  await machine('builder', true);
+  view = mount(UpdatesCard, { target: document.body, props: { updater, native: true } });
+  await vi.waitFor(() => { flushSync(); expect(one('updates-other')).not.toBeNull(); });
+  const status = one('app-update-status')!;
+  expect(status.textContent).toContain('signature mismatch');
+  // `.offer` paints the first line in the foreground color over the error's danger color.
+  expect([status.classList.contains('error'), status.classList.contains('offer')]).toEqual([true, false]);
+});
+
 test('a browser has no app updater: it shows the version of the machine it is on and no channel', async () => {
   await machine('builder', false);
   view = mount(UpdatesCard, { target: document.body, props: { native: false } });
   flushSync();
   expect(one('updates-version')!.textContent).toContain(workspace.active.core!.version);
   expect(one('app-update-nightly')).toBeNull();
-  expect(one<HTMLButtonElement>('updates-run-all')!.disabled).toBe(true);
+  // Nothing to start: no Update button at all, rather than a grey one beside "Up to date".
+  expect(one('updates-run-all')).toBeNull();
 });
 
 test('an Android controller check failure explains why and retries the check without an offered version', async () => {

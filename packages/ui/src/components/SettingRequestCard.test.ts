@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
-import type { Message, QuestionRequest, RequestableKey } from '@boite/contracts';
+import type { Message, QuestionRequest, RequestableKey, SettingAsk } from '@boite/contracts';
 import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
 import AssistantMessage from './AssistantMessage.svelte';
@@ -35,7 +35,7 @@ function card(store: Store, question: QuestionRequest): void {
     props: {
       store,
       text: question.text,
-      setting: question.setting!,
+      setting: question.setting as SettingAsk,
       answer: null,
       pending: true,
       respond: (optionId: 'refuse' | 'open') => store.answerQuestion(question.threadId, question.id, [optionId])
@@ -58,7 +58,7 @@ test('Apply writes the setting through settings.set, the card closes as applied 
     expect(query('[data-testid=setting-reason]').textContent).toBe('Builds stall under the cap');
     expect(query('[data-testid=setting-previous]').textContent).toBe('75%');
     expect(query('[data-testid=setting-proposed]').textContent).toBe('60%');
-    expect(query('[data-testid=setting-place]').textContent).toBe('Protection › Resource limits');
+    expect(query('[data-testid=setting-place]').textContent).toBe('Memory and processes › Resource limits');
 
     query<HTMLButtonElement>('[data-testid=setting-apply]').click();
     await vi.waitFor(() => expect(store.pendingQuestions.some((question) => question.id === questionId)).toBe(false));
@@ -155,11 +155,13 @@ test('the app tells its core the language and experiments it has, and an experim
   localStorage.setItem('boite.experiments', JSON.stringify(['resident-agents']));
   const { client, store } = await setup();
   try {
-    // The agent reads what the user sees: on, and named as the Experiments page names it.
+    // The agent reads what the user sees: the switches of the Experiments page, named as the page names them.
     await vi.waitFor(async () => expect((await client.call('agent.settings', { threadId: 't-trace' })).app).toEqual({ language: 'en', device: null, client: null }));
     const read = await client.call('agent.settings', { threadId: 't-trace' });
-    expect(read.settings.find((reading) => reading.key === 'experiment.resident-agents')).toMatchObject({ value: true, label: 'Bots', page: 'experiments', section: 'resident-agents' });
-    await expect(client.call('settings.request', { threadId: 't-trace', reason: 'x', key: 'experiment.resident-agents', value: true })).rejects.toThrow('already true');
+    expect(read.settings.find((reading) => reading.key === 'experiment.whip')).toMatchObject({ value: false, label: 'Whip', page: 'experiments', section: 'whip' });
+    // A finished feature is not a setting any more: it has no reading and no card.
+    expect(read.settings.find((reading) => reading.key === 'experiment.resident-agents')).toBeUndefined();
+    await expect(client.call('settings.request', { threadId: 't-trace', reason: 'x', key: 'experiment.resident-agents', value: true })).rejects.toThrow('no longer an experiment');
 
     const { questionId } = await client.call('settings.request', { threadId: 't-trace', reason: 'Try the whip', key: 'experiment.whip', value: true });
     card(store, await asked(store, questionId));

@@ -153,6 +153,9 @@ test.skipIf(process.platform !== 'win32' || !executable)('in the desktop app, th
     await command({ kind: 'evaluate', expression: 'globalThis.persistenceMarker = "same live page"' }, tabId);
     const original = await session.client.call('threads.get', { threadId: session.threadId });
     const other = await session.client.call('threads.create', { projectId: original.projectId!, providerId: original.providerId, accountId: original.accountId, title: 'Another conversation' });
+    // The docked browser panel takes the list's column on a desktop; the title bar's toggle lends it back.
+    await page.waitFor(`document.querySelector('[data-testid=sidebar-toggle]')`);
+    if (await page.evaluate<boolean>(`document.querySelector('[data-testid=sidebar-toggle]').getAttribute('aria-expanded') !== 'true'`)) await page.click('[data-testid=sidebar-toggle]');
     await page.waitFor(`document.querySelector('[data-testid=thread-row][data-thread-id="${other.id}"]')`);
     await page.click(`[data-testid=thread-row][data-thread-id="${other.id}"]`);
     await page.waitFor(`document.querySelector('[data-testid=thread-row][data-thread-id="${other.id}"]')?.closest('.thread')?.classList.contains('open')`);
@@ -161,7 +164,9 @@ test.skipIf(process.platform !== 'win32' || !executable)('in the desktop app, th
     expect(JSON.stringify(await command({ kind: 'snapshot' }, background.tabId))).toContain('ATELIER BOITE');
     await command({ kind: 'close' }, background.tabId);
     await page.click(`[data-testid=thread-row][data-thread-id="${session.threadId}"]`);
-    await page.waitFor(`document.querySelector('[data-testid=thread-row][data-thread-id="${session.threadId}"]')?.closest('.thread')?.classList.contains('open')`);
+    // Back on it, its docked browser takes the list's column again (App.svelte lends it to each panel that opens):
+    // its row is open while the list still shows, then the header names it.
+    await page.waitFor(`document.querySelector('[data-testid=thread-row][data-thread-id="${session.threadId}"]')?.closest('.thread')?.classList.contains('open') || document.querySelector('[data-testid=thread-title]')?.textContent.includes(${JSON.stringify(original.title)})`);
     expect((await command({ kind: 'evaluate', expression: 'globalThis.persistenceMarker' }, tabId)).value).toBe('same live page');
     console.log('Background open, snapshot, close and live page persistence passed');
   } catch (error) {

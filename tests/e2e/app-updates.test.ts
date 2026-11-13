@@ -11,7 +11,7 @@ const id = (name: string) => `[data-testid="${name}"]`;
 const width = (value: number) => page.send('Emulation.setDeviceMetricsOverride', { width: value, height: 1000, deviceScaleFactor: 1, mobile: value < 720 });
 async function capture(name: string) {
   await page.evaluate('document.fonts.ready');
-  await page.evaluate('Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))');
+  await page.evaluate('Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))');
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
   await page.screenshot(join(process.env.BOITE_UPDATE_CAPTURES ?? join(import.meta.dir, '.artifacts'), `app-update-${name}.png`));
 }
@@ -47,18 +47,24 @@ beforeEach(async () => { page = await BrowserPage.launch({ url: `${base}/?fake=1
 afterEach(async () => { await page?.close(); }, 15_000);
 afterAll(async () => { await server?.close(); }, 30_000);
 
-test('the footer button and Machines both reach updates, and the foot fits its controls', async () => {
+test('the rail\'s foot button and Machines both reach updates, and the foot fits its controls', async () => {
   await page.navigate(`${base}/?fake=1&open=recent&machines=1&appUpdate=ready&appUpdateChannel=nightly`);
-  await page.waitFor(`window.__boiteTest?.workspace.machines.length === 2 && ['machine-status', 'add-project', 'nav-updates', 'nav-limits', 'nav-settings'].every(name => document.querySelector('[data-testid="' + name + '"]'))`);
-  // A downloaded release is announced in the foot, bottom left, beside Settings.
+  // The limits are the list column's foot; the machines, updates and Settings the rail's.
+  const foot = ['machine-status', 'nav-updates', 'nav-settings'];
+  await page.waitFor(`window.__boiteTest?.workspace.machines.length === 2 && ${JSON.stringify(foot)}.every(name => document.querySelector('${id('app-rail')} .foot [data-testid="' + name + '"]')) && document.querySelector('${id('sidebar')} ${id('nav-limits')}')`);
+  // A downloaded release is announced in the app rail's foot, bottom left, above Settings.
   expect(await page.evaluate(`document.querySelector('${id('nav-updates')}') !== null`)).toBe(true);
-  expect((await page.text(id('add-project'))).trim()).toBe('');
-  expect((await page.text(id('panel-toggle'))).trim()).toBe('');
-  await page.evaluate('window.__boiteTest.workspace.active.setSidebarWidth(208)');
+  // The panels' door is named in words; the rail's controls stay icons.
+  expect((await page.text(id('panel-toggle'))).trim()).toBe('Panels');
+  expect(await page.evaluate(`${JSON.stringify(foot)}.every(name => document.querySelector('${id('app-rail')} .foot [data-testid="' + name + '"]').innerText.trim() === '')`)).toBe(true);
+  // Stacked in the 72 px rail, each control keeps its size and its own row.
   expect(await page.evaluate(`(() => {
-    const controls = ['machine-status', 'add-project', 'nav-updates', 'nav-limits', 'nav-settings'].map(name => document.querySelector('[data-testid="' + name + '"]').getBoundingClientRect());
-    const foot = document.querySelector('.foot').getBoundingClientRect();
-    return controls.every((box, index) => box.width >= 26 && box.right <= foot.right && (!index || box.left >= controls[index - 1].right));
+    const controls = ${JSON.stringify(foot)}.map(name => document.querySelector('${id('app-rail')} .foot [data-testid="' + name + '"]').getBoundingClientRect());
+    const rail = document.querySelector('${id('app-rail')}').getBoundingClientRect();
+    const limits = document.querySelector('${id('sidebar')} ${id('nav-limits')}').getBoundingClientRect();
+    const column = document.querySelector('${id('sidebar')}').getBoundingClientRect();
+    return controls.every((box, index) => box.width >= 26 && box.left >= rail.left && box.right <= rail.right && box.bottom <= innerHeight && (!index || box.top >= controls[index - 1].bottom))
+      && limits.height > 0 && limits.left >= column.left && limits.right <= column.right && limits.bottom <= innerHeight;
   })()`)).toBe(true);
   const active = await page.evaluate('window.__boiteTest.workspace.active.machineId');
   await page.evaluate(`document.querySelector('${id('nav-settings')}').focus()`);
@@ -116,21 +122,45 @@ test('General has no update controls or shortcut and the Machines tab opens upda
   expect(await disabled('updates-run-all')).toBe(false);
 }, 30_000);
 
-test('channel options preserve the installed channel and nightly window name, and Release waits for its first build', async () => {
-  await updates('ready', true);
+test('channel options preserve the installed channel and nightly window name, and Release is one pick then a restart', async () => {
+  await updates('available', true);
   await page.waitFor(`document.title.endsWith('boite (de nuit)')`);
   expect(await page.text(id('titlebar'))).not.toContain('boite (de nuit)');
-  // The channel is two buttons in the card, no fold: Nightly is on, Release has nothing published yet.
+  // The channel is two buttons in the card, no fold, both open: Nightly is on.
   expect(await page.evaluate(`document.querySelector('${id('app-updates-card')} details, ${id('app-updates-card')} summary') === null`)).toBe(true);
-  expect(await page.evaluate(`document.querySelector('${id('app-update-nightly')}').getAttribute('aria-pressed')`)).toBe('true');
-  expect(await disabled('app-update-nightly')).toBe(false);
-  expect(await disabled('app-update-stable')).toBe(true);
-  expect(await page.evaluate(`document.querySelector('${id('app-update-stable')}').title`)).toBe('No release yet: Boite ships nightly builds for now.');
-  await page.click(id('app-update-stable'));
-  expect(await page.evaluate(`document.querySelector('${id('app-update-stable')}').getAttribute('aria-pressed')`)).toBe('false');
-  expect(await page.text(id('updates-version'))).toContain('2.0.0-nightly.7');
+  const pressed = (name: string) => page.evaluate<string>(`document.querySelector('${id(name)}').getAttribute('aria-pressed')`);
+  expect(await pressed('app-update-nightly')).toBe('true');
+  expect([await disabled('app-update-nightly'), await disabled('app-update-stable')]).toEqual([false, false]);
   expect((await page.text(id('updates-found'))).trim()).toBe('2.0.0-nightly.8');
-  await capture('channel-options');
+  // Release checks and downloads the older stable build at once: the next click restarts into it.
+  await page.click(id('app-update-stable'));
+  await page.waitFor(`document.querySelector('${id('updates-run-all')}')?.textContent.includes('Restart')`);
+  expect(await pressed('app-update-stable')).toBe('true');
+  expect(await page.text(id('updates-version'))).toContain('2.0.0-nightly.7');
+  expect((await page.text(id('updates-found'))).trim()).toBe('2.0.0-beta.2');
+  await capture('channel-release-ready');
+}, 30_000);
+
+// A fresh page: on the Windows runner, navigating again to the address this
+// page already showed started a second navigation that never let ours commit.
+test('Release is one pick then a restart on a phone', async () => {
+  await width(390);
+  await updates('available', true);
+  await page.click(id('app-update-stable'));
+  await page.waitFor(`document.querySelector('${id('updates-run-all')}')?.textContent.includes('Restart')`);
+  await capture('channel-release-ready-phone');
+}, 30_000);
+
+test('a release that cannot read the nightly data says so and offers nothing', async () => {
+  await page.navigate(`${base}/?fake=1&appUpdate=available&appUpdateChannel=nightly&appUpdateCurrentChannel=nightly&appUpdateRelease=blocked`);
+  await page.waitFor(`document.querySelector('${id('nav-settings')}')`);
+  await machines();
+  await page.waitFor(`document.querySelector('${id('app-update-stable')}')`);
+  await page.click(id('app-update-stable'));
+  await page.waitFor(`document.querySelector('${id('app-update-status')}')?.textContent.includes('cannot read the data')`);
+  expect(await page.text(id('app-update-status'))).toContain('Boite 2.0.0-beta.2 cannot read the data of this version yet.');
+  expect(await absent('updates-found')).toBe(true);
+  await capture('channel-release-blocked');
 }, 30_000);
 
 test('download progress and retry fit a narrow desktop', async () => {
@@ -185,6 +215,9 @@ test('ordinary browsers have no native update controls in Machines, including Fr
 
 test('waiting keeps channel changes disabled and cancellation restores the download at desktop and phone widths', async () => {
   for (const viewport of [1400, 390]) {
+    // The width changes on a blank page: a phone width makes the open Machines page push its Back entry
+    // (lib/mobile-history.ts), and a navigation sent while that history step was in flight never committed.
+    await page.navigate('about:blank');
     await width(viewport);
     await updates('waiting');
     expect(await page.text(id('app-update-status'))).toContain('Waiting for work');

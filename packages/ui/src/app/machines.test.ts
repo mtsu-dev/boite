@@ -4,6 +4,7 @@ import { type RpcMethodName } from '@boite/contracts';
 import { confirm } from '../lib/confirm.svelte';
 import { store } from '../lib/store.svelte';
 import { workspace } from '../lib/workspace.svelte';
+import { machineFilter } from '../lib/machine-filter.svelte';
 import { mountOnFake, query, test, type, waitFor } from '../test/app';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
@@ -87,11 +88,11 @@ test('background compaction turns on for the machine picked above it, not the wi
   const remote = workspace.machines.find(machine => machine.store !== store)!;
   store.showSettings('experiments');
   await waitFor(() => document.querySelector('[data-testid=settings-machine]') !== null && document.querySelector('[data-testid=background-compaction-on]') !== null);
-  // This device's switches come first; the bar names the machine of the cards below it.
-  const page = query('[data-testid=experiments-page]');
+  // Experiments is a page of its own in the Advanced family: its one bar names the machine of the cards below it.
   const bar = query('[data-testid=settings-machine-bar]');
-  expect(page.contains(bar)).toBe(true);
-  expect(bar.compareDocumentPosition(query('[data-testid=experiment-theme-grain]')) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+  expect(document.querySelectorAll('[data-testid=settings-machine-bar]')).toHaveLength(1);
+  expect(document.querySelector('[data-testid=advanced-page]')).toBeNull();
+  expect(bar.compareDocumentPosition(query('[data-testid=background-compaction-on]')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   query<HTMLButtonElement>('[data-testid=settings-machine]').click();
   flushSync();
   query<HTMLElement>(`[data-testid=settings-machine-menu] [data-value="${remote.id}"]`).click();
@@ -108,8 +109,11 @@ test('machines coexist and disconnecting a remote leaves the primary connected',
   store.showSettings('machines');
   await waitFor(() => document.querySelectorAll('[data-testid=machine-card]').length === 2);
   expect(Array.from(document.querySelectorAll<HTMLInputElement>('[data-testid=machine-rename]')).map(input => input.value)).toContain('Builder');
+  // Forgetting a machine sits in its card's menu, and asks first; the answer is the in-app dialog's.
+  const remote = workspace.machines.find(machine => machine.store !== store)!;
+  query<HTMLButtonElement>(`[data-machine-id="${remote.id}"] [data-testid=machine-menu]`).click();
+  await waitFor(() => document.querySelector('[data-testid=machine-remove]') !== null);
   query<HTMLButtonElement>('[data-testid=machine-remove]').click();
-  // Forgetting a machine asks first; the answer is the in-app dialog's.
   await waitFor(() => document.querySelector('[data-testid=confirm-ok]') !== null);
   query<HTMLButtonElement>('[data-testid=confirm-ok]').click();
   await waitFor(() => document.querySelectorAll('[data-testid=machine-card]').length === 1);
@@ -121,17 +125,29 @@ test('a machine filter whose machine goes away lists the remaining machine again
   await mountOnFake('/?fake=1&machines=1');
   await waitFor(() => workspace.machines.length === 2);
   const threads = () => document.querySelectorAll('[data-thread-id]').length;
-  await waitFor(() => threads() > 0 && document.querySelector('[data-testid=machine-status]') !== null);
+  await waitFor(() => threads() > 0);
   const everything = threads();
   const remote = workspace.machines.find((machine) => machine.store !== store)!;
-  query<HTMLButtonElement>('[data-testid=machine-status]').click();
-  await waitFor(() => document.querySelector(`[data-testid=machine-status-menu] [data-value="${remote.id}"]`) !== null);
-  query<HTMLButtonElement>(`[data-testid=machine-status-menu] [data-value="${remote.id}"]`).click();
+  // The machine filter sits in the thread list's display menu.
+  query<HTMLButtonElement>('[data-testid=grouping-options]').click();
+  await waitFor(() => document.querySelector(`[data-testid=machine-filter] [data-value="machine:${remote.id}"]`) !== null);
+  query<HTMLButtonElement>(`[data-testid=machine-filter] [data-value="machine:${remote.id}"]`).click();
+  await waitFor(() => threads() < everything);
+  // The button keeps its word and a dot; the filter's value is a chip in words under the head.
+  expect(query('[data-testid=filter-name]').textContent).toBe('Filter');
+  expect(document.querySelector('[data-testid=filter-count]')).not.toBeNull();
+  expect(query('[data-testid=filter-chip]').textContent?.trim()).toBe(remote.label);
+  // The chip's press removes the filter: every machine's threads again, the dot gone.
+  query<HTMLButtonElement>('[data-testid=filter-chip]').click();
+  await waitFor(() => threads() === everything);
+  expect(document.querySelector('[data-testid=filter-count]')).toBeNull();
+  machineFilter.set(remote.id);
   await waitFor(() => threads() < everything);
   workspace.machines = workspace.machines.filter((machine) => machine !== remote);
   flushSync();
-  // One machine draws no machine button, so a filter left on the gone one could never be cleared.
-  expect(document.querySelector('[data-testid=machine-status]')).toBeNull();
+  // One machine draws no machine choice, so a filter left on the gone one could never be cleared.
+  expect(document.querySelector('[data-testid=machine-filter]')).toBeNull();
+  expect(document.querySelector('[data-testid=filter-chip]')).toBeNull();
   expect(threads()).toBeGreaterThan(0);
 });
 
@@ -179,4 +195,41 @@ test('sending waits for reconnect history to finish loading', async ({ app: _app
     await loading;
     expect(await sending).toBe(true);
   } finally { release(); spy.mockRestore(); }
+});
+
+test('a project card shows its machine\'s icon once two machines are listed', async () => {
+  await mountOnFake('/?fake=1&machines=1');
+  await waitFor(() => workspace.machines.length === 2);
+  const remote = workspace.machines.find(machine => machine.store !== store)!;
+  workspace.view = 'projects';
+  // Both machines' cards in one list: an earlier test may have left the list on one machine.
+  machineFilter.set(null);
+  const card = (machine: string) => document.querySelector<HTMLElement>(`[data-testid=project][data-machine-id="${machine}"]`);
+  const own = workspace.machines.find(machine => machine.store === store)!;
+  await waitFor(() => card(own.id) !== null && card(remote.id) !== null);
+  // Each card's head carries its machine's icon, named for screen readers and in the tooltip, never in words.
+  expect(card(own.id)!.querySelector('[data-testid=project-host]')?.getAttribute('aria-label')).toBe(own.label);
+  expect(card(remote.id)!.querySelector('[data-testid=project-host]')?.getAttribute('aria-label')).toBe(remote.label);
+  expect(card(remote.id)!.querySelector('[data-testid=project-host]')?.textContent).toBe('');
+  // Out of reach, the head says it once in a line of its own with Reconnect on it, above the rows, and the button
+  // goes once the machine answers.
+  const line = () => card(remote.id)?.querySelector<HTMLElement>('[data-testid=project-offline]') ?? null;
+  const reconnect = () => line()?.querySelector<HTMLButtonElement>('[data-testid=project-reconnect]') ?? null;
+  expect(line()).toBeNull();
+  // A machine retrying a dropped link: its icon marks it, no line, no "Connecting" banner.
+  remote.store.connection = 'connecting';
+  await waitFor(() => card(remote.id)!.querySelector('[data-testid=project-host].offline') !== null);
+  expect(line()).toBeNull();
+  expect(card(remote.id)!.textContent).not.toContain('Connecting');
+  remote.store.connection = 'closed';
+  await waitFor(() => reconnect()?.textContent === 'Reconnect');
+  expect(line()!.textContent).toContain(`${remote.label} is offline`);
+  expect(card(remote.id)!.querySelectorAll('[data-testid=project-reconnect]')).toHaveLength(1);
+  // No second Offline chip beside the name, and the line sits under the head, before any row.
+  expect(card(remote.id)!.querySelector('[data-testid=project-host]')?.classList.contains('offline')).toBe(true);
+  expect(card(remote.id)!.querySelector('[data-testid=machine-away]')).toBeNull();
+  const firstRow = card(remote.id)!.querySelector('[data-testid=thread-row]');
+  if (firstRow) expect(line()!.compareDocumentPosition(firstRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  reconnect()!.click();
+  await waitFor(() => remote.store.connection === 'ready' && reconnect() === null);
 });

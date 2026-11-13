@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { CORE_ALL, PORTABLE_ALL } from './changes.ts';
-import { compareRuleset, jobChecks, loadWorkflow, requiredChecks, type Job, type Workflow } from './required-checks.ts';
+import { ADVISORY, compareRuleset, jobChecks, loadWorkflow, requiredChecks, workflowChecks, type Job, type Workflow } from './required-checks.ts';
 
 const files = [...new Bun.Glob('*.yml').scanSync(`${import.meta.dir}/../../.github/workflows`)].sort();
 
@@ -13,7 +13,7 @@ test('a pull request reports the same fixed check names whichever jobs run', () 
     'Android / apk',
     'Android server / apk',
     'Build UI',
-    'Bundle size',
+    // Bundle size is reported but advisory (ADVISORY in required-checks.ts).
     // Written out, not derived from CORE_ALL or PORTABLE_ALL: renaming a runner
     // renames a required check too.
     'Core tests (Linux arm64)',
@@ -40,6 +40,8 @@ test('a pull request reports the same fixed check names whichever jobs run', () 
     'Type checks and UI tests',
   ].sort());
   // labeler.yml runs the base's workflow through pull_request_target.
+  // An advisory name that no job reports any more is a stale exception.
+  for (const name of ADVISORY) expect(workflowChecks('ci.yml')).toContain(name);
 });
 
 test('every job a needs chain runs through is in the list, so a skip after a failed dependency comes with a failed check', () => {

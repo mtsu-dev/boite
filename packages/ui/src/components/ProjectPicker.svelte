@@ -48,9 +48,12 @@
     const current = () => request === revision && selected === owner && client === owner.client && clientGeneration === owner.clientGeneration && store.projectPickerOpen;
     busy = true;
     error = '';
+    const asked = path;
     try {
       const result = await owner.browseProjects(target);
       if (!current()) return;
+      // A path typed while the folder loaded is the user's: the listing does not overwrite it.
+      if (path !== asked) return;
       path = result.path; parent = result.parent; directories = result.directories;
     } catch (failure) {
       if (current()) error = errorText(failure);
@@ -138,7 +141,7 @@
 <style>
   .scrim { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 16px; background: var(--color-scrim); animation: fade var(--dur-2) var(--ease-out-quint); }
   .scrim.closing { animation-name: fade-out; pointer-events: none; }
-  .dialog { width: min(480px, 100%); max-height: calc(100dvh - 32px); overflow-y: auto; background: var(--color-surface); border: 1px solid var(--color-edge); border-radius: var(--radius-lg); box-shadow: var(--shadow-e3); }
+  .dialog { width: min(480px, 100%); max-height: calc(100dvh - 32px); overflow-y: auto; background: var(--overlay-surface); border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); box-shadow: var(--shadow-overlay); }
   header, footer { display: flex; align-items: center; gap: 8px; padding: 12px 16px; }
   header { justify-content: space-between; border-bottom: 1px solid var(--color-border); }
   h2 { font-size: var(--text-md); font-weight: 600; }
@@ -152,7 +155,7 @@
   .folder { width: 100%; justify-content: flex-start; gap: 10px; height: var(--row); font-weight: 400; }
   .folder span { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .folders p { padding: 12px; font-size: var(--text-sm); }
-  .error { color: var(--color-danger); font-size: var(--text-sm); overflow-wrap: anywhere; margin-top: 12px; }
+  .error { margin-top: 12px; }
   footer { justify-content: flex-end; border-top: 1px solid var(--color-border); }
   @media (max-width: 720px) { .folders { height: 180px; } }
 </style>

@@ -5,7 +5,7 @@ import { FakeClient, type FakeClientOptions } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
 import { replyTarget } from '../lib/question-reply.svelte';
 import AssistantMessage from './AssistantMessage.svelte';
-import ThreadActivity from './ThreadActivity.svelte';
+import ThreadDecision from './ThreadDecision.svelte';
 
 let mounted: ReturnType<typeof mount> | undefined;
 let dock: ReturnType<typeof mount> | undefined;
@@ -48,7 +48,7 @@ async function asked(options: FakeClientOptions = {}, ask: { placeholder?: strin
   const message = store.openThread!.messages.find((entry) => entry.parts[0]?.type === 'secret_request');
   if (!message) throw new Error('the card was not drawn');
   mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: 't-trace', message, signedOut: null, showModel: false } });
-  dock = mount(ThreadActivity, { target: document.body, props: { store } });
+  dock = mount(ThreadDecision, { target: document.body, props: { store, threadId: 't-trace' } });
   await settle();
   return { store, client, outcome, part: () => message.parts[0] as Extract<MessagePart, { type: 'secret_request' }> };
 }
@@ -155,10 +155,10 @@ test('over a link nobody encrypts the field and Save are off, Decline still answ
   expect(query('[data-testid=secret-outcome]').textContent).toBe('OPENAI_API_KEY declined');
 });
 
-test('a pending secret stays in the question dock and leaves only a link in the timeline', async () => {
+test('a pending secret waits in the decision card and leaves only a link in its message', async () => {
   await asked();
   const field = query('[data-testid=secret-field]');
-  expect(field.closest('[data-testid=thread-activity]')).not.toBeNull();
+  expect(field.closest('[data-testid=thread-decision]')).not.toBeNull();
   expect(document.querySelectorAll('[data-testid=secret-field]')).toHaveLength(1);
   expect(query('[data-testid=secret-docked]').querySelector('input')).toBeNull();
 });
@@ -171,7 +171,7 @@ test('new requests keep each secret input isolated; the timeline link reopens it
   second.catch(() => undefined);
   await settle();
   expect(query<HTMLInputElement>('[data-testid=activity-question]:not([hidden]) [data-testid=secret-field]').value).toBe(SECRET);
-  expect(query('[data-testid=activity-question-index]').textContent).toBe('1 of 2');
+  expect(query('[data-testid=activity-question-index]').textContent).toBe('Question 1 of 2');
   query<HTMLButtonElement>('[data-testid=activity-question-next]').click();
   await settle();
   expect(query('[data-testid=activity-question]:not([hidden]) [data-testid=secret-reason]').textContent).toBe('Deploy the preview.');

@@ -9,27 +9,32 @@ export const screensSettled = `!document.getAnimations().some(animation => /^(sc
 /** From a conversation, which hides the bottom bar, Back leads to the list that shows it. */
 export async function toMobileList(page: BrowserPage): Promise<void> {
   if (await page.evaluate(`!!document.querySelector('[data-testid=mobile-tabs]')`)) return;
+  // Settings is a page over the place it was opened from (MobileNavigation.svelte leaveSettings): its arrow leads back
+  // there, to the list or to the conversation it covered, whose own arrow then leads to the list.
+  if (await page.evaluate(`!!document.querySelector('[data-testid=mobile-settings-leave]')`)) {
+    await page.click('[data-testid=mobile-settings-leave]');
+    await page.waitFor(`document.querySelector('[data-testid=mobile-tabs], [data-testid=mobile-back]')`);
+    if (await page.evaluate(`!!document.querySelector('[data-testid=mobile-tabs]')`)) return;
+  }
   await page.click('[data-testid=mobile-back]');
   await page.waitFor(`document.querySelector('[data-testid=mobile-tabs]')`);
 }
 
-/** Navigate through the phone's bottom bar, from a conversation too. */
+/** Navigate through the phone's bottom bar, from a conversation too; Settings is the list header's gear. */
 export async function mobileAction(page: BrowserPage, destination: string): Promise<void> {
   await toMobileList(page);
-  await page.click(`[data-testid=mobile-tabs] [data-testid=${destination}]`);
+  await page.click(destination === 'mobile-settings' ? '[data-testid=mobile-settings]' : `[data-testid=mobile-tabs] [data-testid=${destination}]`);
 }
 
-/** A new draft from the bottom bar's +. */
+/** A new draft from the thread list's "New" in its header. */
 export async function newMobileThread(page: BrowserPage): Promise<void> {
   await toMobileList(page);
-  await page.click('[data-testid=mobile-tabs] [data-testid=mobile-new]');
+  await page.click('[data-testid=mobile-new]');
 }
 
-/** The panel from a conversation's title menu, the one menu of its header. */
+/** The panel from the conversation header's Panels door, on a phone too. */
 export async function openMobilePanel(page: BrowserPage): Promise<void> {
-  await page.click('[data-testid=thread-menu-trigger]');
-  await page.waitFor(`document.querySelector('[data-testid=thread-menu-trigger-menu] [data-value=panel]')`);
-  await page.click('[data-testid=thread-menu-trigger-menu] [data-value=panel]');
+  await page.click('[data-testid=panel-toggle]');
   await page.waitFor(`document.querySelector('[data-testid=right-panel]')`);
 }
 

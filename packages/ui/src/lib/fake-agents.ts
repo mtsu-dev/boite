@@ -21,7 +21,7 @@ const QUIET = /^\[quiet\]/i;
  * Agent setting cards live with the threads' questions, and a thread creating a
  * bot resolves its route like a subagent's: `fake-client/agent-settings.ts` answers them.
  */
-export type AgentSettingMethod = Extract<keyof AgentsRpcMethods, `agents.settings.${string}` | 'agents.create' | 'agents.avatar.set'>;
+export type AgentSettingMethod = Extract<keyof AgentsRpcMethods, `agents.settings.${string}` | 'agents.create' | 'agents.create.approve' | 'agents.avatar.set'>;
 type AgentHandlers = {
   [M in Exclude<keyof AgentsRpcMethods, AgentSettingMethod>]: (params: RpcParams<M>) => RpcResult<M>;
 };
@@ -604,6 +604,8 @@ export class FakeAgents {
     if (p.config.addProjects !== undefined && typeof p.config.addProjects !== 'boolean') invalid('addProjects: expected true or false');
     const budget = p.config.dailyBudgetUsd;
     if (budget !== undefined && budget !== null && (typeof budget !== 'number' || !Number.isFinite(budget) || budget <= 0)) invalid('dailyBudgetUsd: expected a positive number of dollars, or null for no cap');
+    // The core reads a bot's problem from its route: a new account or provider is a new start.
+    if (p.config.defaultRoute.accountId !== agent.selection.accountId || p.config.defaultRoute.providerId !== agent.selection.providerId) this.problems.delete(agent.id);
     const saved = this.saveProfile({ id: agent.id, expectedRevision: p.expectedRevision, value: { ...agent, selection: p.config.defaultRoute } }, false);
     this.configs.set(agent.id, structuredClone({ ...p.config, eventWakes: p.config.eventWakes ?? previous.eventWakes ?? false, addProjects: p.config.addProjects ?? previous.addProjects ?? false, allowedRoutes: p.config.allowedRoutes.map(route => ({ ...route, name: route.name.trim() })) }));
     return saved;

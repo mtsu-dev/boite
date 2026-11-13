@@ -93,6 +93,6 @@
         <div class="agent-form-actions"><button class="primary" disabled={busy || !path.trim()} data-testid="agents-brain-root-save"><span class="ui-label">{labels.brainMove}</span></button></div>
       </form>
     {/if}
-    {#if refusal}<p class="agent-error" role="alert" data-testid="agents-brain-root-error">{refusal}</p>{/if}
+    {#if refusal}<p class="error" role="alert" data-testid="agents-brain-root-error">{refusal}</p>{/if}
   </section>
 {/if}

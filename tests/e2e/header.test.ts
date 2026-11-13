@@ -43,27 +43,30 @@ test('sidebar shortcuts preserve the prompt and file edits, and toggle both pane
     await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...base });
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
   };
+  // The docked file panel borrows the list's column on a desktop chat (App.svelte), so the list starts folded here.
+  await page.waitFor(`document.querySelector('${id('sidebar-toggle')}').getAttribute('aria-expanded') === 'false'`);
+  await chord();
+  await page.waitFor(`document.querySelector('${id('sidebar-toggle')}').getAttribute('aria-expanded') === 'true'`);
+  expect(await page.evaluate(`document.querySelector('${id('composer-input')}').value`)).toBe('Keep this prompt');
+  expect(await page.evaluate(`!!document.querySelector('${id('file-dirty')}')`)).toBe(true);
+  expect(await page.evaluate(`document.querySelector('${id('sidebar-toggle')}').title`)).toEndWith('(Ctrl+S)');
   await chord();
   await page.waitFor(`document.querySelector('${id('sidebar-toggle')}').getAttribute('aria-expanded') === 'false'`);
   expect(await page.evaluate(`document.querySelector('${id('composer-input')}').value`)).toBe('Keep this prompt');
   expect(await page.evaluate(`!!document.querySelector('${id('file-dirty')}')`)).toBe(true);
-  expect(await page.evaluate(`document.querySelector('${id('sidebar-toggle')}').title`)).toEndWith('(Ctrl+S)');
-  expect(await page.evaluate(`document.querySelector('${id('panel-toggle')}').title`)).toEndWith('(Ctrl+Alt+B)');
   await capture('shortcut-left-collapsed.png');
-  await chord();
-  await page.waitFor(`document.querySelector('${id('sidebar-toggle')}').getAttribute('aria-expanded') === 'true'`);
   // Saving in the file editor consumes Ctrl+S before it reaches the sidebar.
   await page.evaluate(`document.querySelector('${id('file-text')}').focus()`);
   await chord();
   await page.waitFor(`!document.querySelector('${id('file-dirty')}')`);
-  expect(await page.evaluate(`document.querySelector('${id('sidebar-toggle')}').getAttribute('aria-expanded')`)).toBe('true');
+  expect(await page.evaluate(`document.querySelector('${id('sidebar-toggle')}').getAttribute('aria-expanded')`)).toBe('false');
   // A paired device reads the file without an editor, so Ctrl+S still reaches the thread sidebar.
   await page.evaluate(`__boiteTest.workspace.active.principal = 'session'`);
   await page.waitFor(`document.querySelector('${id('file-lines')}') && !document.querySelector('${id('file-text')}')`);
   await chord();
-  await page.waitFor(`document.querySelector('${id('sidebar-toggle')}').getAttribute('aria-expanded') === 'false'`);
-  await chord();
   await page.waitFor(`document.querySelector('${id('sidebar-toggle')}').getAttribute('aria-expanded') === 'true'`);
+  await chord();
+  await page.waitFor(`document.querySelector('${id('sidebar-toggle')}').getAttribute('aria-expanded') === 'false'`);
   await page.evaluate(`__boiteTest.workspace.active.principal = 'owner'`);
   await page.evaluate(`document.querySelector('${id('composer-input')}').focus()`);
   await chord(true);
@@ -72,6 +75,8 @@ test('sidebar shortcuts preserve the prompt and file edits, and toggle both pane
   await page.waitFor(`document.querySelector('${id('composer-input')}').value === 'Keep this prompt'`);
   await chord(false, true);
   await page.waitFor(`!document.querySelector('${id('right-panel')}')`);
+  // Closed, the panel's door says its key.
+  expect(await page.evaluate(`document.querySelector('${id('panel-toggle')}').title`)).toEndWith('(Ctrl+Alt+B)');
   await capture('shortcut-right-collapsed.png');
   await chord(false, true);
   await page.waitFor(`document.querySelector('${id('file-text')}')?.value === '# Unsaved file'`);
@@ -85,20 +90,23 @@ test('sidebar shortcuts preserve the prompt and file edits, and toggle both pane
   expect(page.errors()).toEqual([]);
 }, 30_000);
 
-test('header and project layout', async () => {
+test('header layout', async () => {
   await capture(process.env.BOITE_CAPTURE_BEFORE ? 'header-before.png' : 'header-expanded.png');
   if (process.env.BOITE_CAPTURE_BEFORE) return;
   expect(await page.evaluate(`document.querySelectorAll('${id('titlebar')}').length`)).toBe(1);
   expect(await page.evaluate(`document.querySelector('${id('titlebar')}').contains(document.querySelector('${id('thread-title')}'))`)).toBe(true);
+  // The bar names the thread alone, over the main column: the project's name left it with the redesign.
+  expect(await page.evaluate(`document.querySelector('${id('header-project')}')`)).toBeNull();
   expect(await page.evaluate(`(() => {
-    const project = document.querySelector('${id('header-project')}').getBoundingClientRect();
     const title = document.querySelector('${id('thread-title')}').getBoundingClientRect();
     const sidebar = document.querySelector('${id('sidebar')}').getBoundingClientRect();
-    return project.right <= title.left && title.left >= sidebar.right;
+    return title.left >= sidebar.right;
   })()`)).toBe(true);
   await page.send('Emulation.setDeviceMetricsOverride', { width: 880, height: 820, deviceScaleFactor: 1, mobile: false });
   await page.evaluate('window.__boiteTest.workspace.active.setSidebarWidth(440)');
   await page.waitFor(`document.querySelector('${id('sidebar')}').getBoundingClientRect().width === 440`);
+  // The bar's left end eases along with the list's edge (RailFrame.svelte): measure once it rests.
+  await page.settleAnimations();
   expect(await page.evaluate(`document.querySelector('${id('thread-title')}').getBoundingClientRect().left >= document.querySelector('${id('sidebar')}').getBoundingClientRect().right`)).toBe(true);
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
   await capture('header-wide-sidebar.png');
@@ -119,7 +127,9 @@ test('header and project layout', async () => {
   await page.waitFor(`document.querySelector('${id('machine-status')}')`);
   await pointerClick(id('machine-status'));
   await page.waitFor(`document.querySelector('${id('machine-status-menu')}')`);
-  expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('machine-status-menu')} [data-row]')).slice(0,2).map(el => el.textContent.trim())`)).toEqual(['All machines', 'This PC']);
+  // This PC goes by its own name, marked as the user's.
+  const here = await page.evaluate<string>(`import('/src/lib/workspace.svelte.ts').then(({ workspace }) => workspace.active.core?.hostname ?? 'This PC')`);
+  expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('machine-status-menu')} [data-row]')).slice(0,2).map(el => el.textContent.trim())`)).toEqual(['All machines', here === 'This PC' ? here : `${here} (you)`]);
   expect(await page.evaluate(`document.querySelector('${id('machine-status-menu')} [role=separator]') !== null`)).toBe(true);
   await capture('machine-menu.png');
   await page.click(`${id('machine-status-menu')} [data-value=all]`);

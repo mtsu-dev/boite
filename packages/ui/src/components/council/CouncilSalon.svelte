@@ -14,6 +14,7 @@
   import ComposerMenu from '../ComposerMenu.svelte';
   import Prose from '../Prose.svelte';
   import CouncilAvatar from './CouncilAvatar.svelte';
+  import SurfaceHead from '../SurfaceHead.svelte';
 
   /**
    * A council's salon (`docs/internals/council.md`): who reviews; the answers round by
@@ -66,7 +67,7 @@
   }
   const excerpt = (text: string) => text.replace(/\s+/g, ' ').trim().slice(0, 140);
 
-  /** An owner's message cut where it names a member, so the names read in the accent colour. */
+  /** An owner's message cut where it names a member, so the names read at full ink. */
   function pieces(text: string): { text: string; mention: boolean }[] {
     const words = (council?.members ?? []).flatMap(member => [member.name.trim(), member.handle]).filter(Boolean)
       .sort((a, b) => b.length - a.length).map(word => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
@@ -236,7 +237,7 @@
     <p class="placeholder" data-testid="council-loading">{labels.loading}</p>
   {:else}
     <header class="head">
-      <div class="title-row">
+      <SurfaceHead><div class="title-row">
         <div class="titles">
           <h2 class="topic" title={council.request}>{council.request}</h2>
           <span class="meta" data-testid="council-round">{fill(labels.round, { round: String(Math.max(council.round, 1)) })}</span>
@@ -246,7 +247,7 @@
             <Square size={11} fill="currentColor" /><span class="ui-label">{labels.stop}</span>
           </button>
         {/if}
-      </div>
+      </div></SurfaceHead>
       <ul class="members" aria-label={labels.members}>
         {#each council.members as member, index (member.id)}
           <li class="member" data-testid="council-member" data-member-id={member.id} title={member.name}>
@@ -348,6 +349,11 @@
   /* Plain text, so a narrow panel wraps it word by word rather than leaving the dot at a line's end. */
   .meta { color: var(--color-muted-foreground); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
   .stop { flex: none; gap: 6px; }
+  /* In the panel's strip (SurfaceHead): the request on one line beside its round, the strip's size. */
+  :global(.in-strip) .title-row { flex: 1; min-width: 0; align-items: center; }
+  :global(.in-strip) .titles { flex-direction: row; align-items: baseline; gap: 8px; }
+  :global(.in-strip) .topic { font-size: var(--text-sm); -webkit-line-clamp: 1; line-clamp: 1; overflow-wrap: normal; }
+  :global(.in-strip) .meta { flex: none; }
   .members { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; list-style: none; }
   .member { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; padding: 2px 8px 2px 2px; border: 1px solid var(--color-border); border-radius: var(--radius-full); font-size: var(--text-xs); }
   .member-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -362,11 +368,11 @@
   .who b { color: var(--color-foreground); font-weight: 600; }
   .who time { margin-left: 2px; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
   .score { font-variant-numeric: tabular-nums; }
-  .to-one { align-self: flex-start; padding: 0 8px; border-radius: var(--radius-full); background: var(--color-accent-soft); color: var(--color-accent); font-size: var(--text-xs); font-weight: 500; }
+  .to-one { align-self: flex-start; padding: 0 8px; border-radius: var(--radius-full); background: var(--color-active); color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 500; }
   .reply-to { margin: 0; padding-left: 8px; border-left: 2px solid var(--color-border); color: var(--color-muted-foreground); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .text { min-width: 0; font-size: var(--text-sm); overflow-wrap: anywhere; }
   .plain { margin: 0; white-space: pre-wrap; }
-  .mention { color: var(--color-accent); font-weight: 500; }
+  .mention { color: var(--color-foreground); font-weight: 600; }
 
   .review { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); }
 

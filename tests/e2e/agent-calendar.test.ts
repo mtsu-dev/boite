@@ -4,6 +4,7 @@ import { makeAgent } from '../../packages/core/test/agent-fixture.ts';
 import { startTestCore } from '../../packages/core/test/harness.ts';
 import { BrowserPage } from './lib/cdp.ts';
 import { ensureProductionUi } from './lib/prod-ui.ts';
+import { openRailBot } from './lib/bots.ts';
 
 test('the owner creates and edits monthly, yearly and single-date reminders on desktop and phone', async () => {
   ensureProductionUi();
@@ -13,14 +14,11 @@ test('the owner creates and edits monthly, yearly and single-date reminders on d
     const owner = await h.connect();
     const accountId = (await owner.call('accounts.list', {})).find(a => a.providerId === 'echo')!.id;
     const { agent } = await makeAgent(h, owner, { name: 'Mira', instructions: '', selection: { providerId: 'echo', accountId, model: 'echo', effort: null, permissionMode: 'default' } });
-    page = await BrowserPage.launch({ url: `${h.url}/?token=${h.token}`, experiments: ['resident-agents'], windowSize: { width: 1440, height: 1000 } });
+    page = await BrowserPage.launch({ url: `${h.url}/?token=${h.token}`, windowSize: { width: 1440, height: 1000 } });
     const id = (name: string) => `[data-testid="${name}"]`;
     const artifacts = join(import.meta.dir, '.artifacts', 'agent-calendar');
     await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
-    await page.waitFor(`document.querySelector('${id('view-agents')}')`);
-    await page.click(id('view-agents'));
-    await page.waitFor(`document.querySelector('${id(`agent-entry-${agent.id}`)}')`);
-    await page.click(id(`agent-entry-${agent.id}`));
+    await openRailBot(page, agent.id);
     await page.waitFor(`document.querySelector('${id('agent-menu')}')`);
     await page.click(id('agent-menu'));
     await page.click('[data-value="settings"]');

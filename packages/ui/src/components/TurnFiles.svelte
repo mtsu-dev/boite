@@ -6,12 +6,15 @@
   // a download for the rest. "Show in folder" hands the path to the system file
   // manager, only in the shell on its own core, and never opens the file itself.
   import { errorText } from '../lib/errors';
-  import { ChevronRight, ChevronsDownUp, ChevronsUpDown, FileDiff, FilePenLine, FilePlus2, FileMinus2, Folder, FolderOpen, GitCompareArrows } from '@lucide/svelte';
+  import { ChevronRight, ChevronsDownUp, ChevronsUpDown, FileDiff, FilePenLine, FilePlus2, FileMinus2, Folder, FolderOpen, PanelRightOpen } from '@lucide/svelte';
   import { revealFile } from '../lib/links';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import { countsOf, turnFileTree, turnLineCounts, type TurnDiff, type TurnFile, type TurnFileNode } from '../lib/turn-files';
-  import Deferred, { parts } from './Deferred.svelte';
+  import Deferred from './Deferred.svelte';
+  import { parts } from '../lib/deferred-parts';
+  import ChangeCount from './ChangeCount.svelte';
+  import { changeCount, changeText } from '../lib/change-count';
   import { chatPrefs } from '../lib/chat-prefs.svelte';
 
   /**
@@ -20,18 +23,21 @@
    * Changes panel, one click away for whoever can read the repository.
    */
   type Source = { messageId: string; toolId: string };
-  let { store, files, diffs = [], cwd, deferred = [], sources = [], acquireDiff, loadDiffs }: {
+  let { store, files, diffs = [], cwd, deferred = [], sources = [], acquireDiff, loadDiffs, inline = false }: {
     store: Store; files: TurnFile[]; diffs?: TurnDiff[];
     /** The directory `files` were read against. */ cwd: string;
     deferred?: Source[]; sources?: Source[];
     acquireDiff?: (source: Source) => ToolDisclosure;
     loadDiffs?: () => Promise<void>;
+    /** On the tool line of the turn's last change (ToolGroup), which already names the files: the lines it adds, no title or card of its own. */
+    inline?: boolean;
   } = $props();
   let diffToggled = $state<boolean | null>(null);
   let showDiff = $derived(diffToggled ?? chatPrefs.expandDiffs);
   /** Folded by default: the count and the lines added and removed say enough until the list is wanted. */
   let open = $state(false);
   let lines = $derived(turnLineCounts(diffs, cwd));
+  let total = $derived(changeCount(files.length, diffs.length > 0 ? lines.total.added : null, diffs.length > 0 ? lines.total.removed : null));
   let repository = $derived(store.openProject?.repository === true);
   let tree = $derived(turnFileTree(files));
   let expanded = $state<Record<string, boolean>>({});
@@ -107,13 +113,13 @@
   }
 </script>
 
-<section class="turn-files" data-testid="turn-files" aria-label={strings.chat.turnFiles}>
+<section class="turn-files" class:inline data-testid="turn-files" aria-label={strings.chat.turnFiles}>
   <header>
-    <button type="button" class="ghost small fold" data-testid="turn-files-toggle" aria-expanded={open} onclick={() => (open = !open)}>
-      <ChevronRight size={14} class={open ? 'fold-caret open' : 'fold-caret'} />
-      <span class="ui-label">{strings.chat.turnFiles}</span>
-      <span class="count ui-label">{files.length}</span>
-      {#if diffs.length > 0}{@render counts(lines.total)}{/if}
+    <button type="button" class="ghost small fold" data-testid="turn-files-toggle" aria-expanded={open} title={`${strings.chat.turnFiles}: ${changeText(total)}`} onclick={() => (open = !open)}>
+      <!-- On the tool line the count is the opener: the run's own caret is just before it. -->
+      {#if !inline}<ChevronRight size={14} class={open ? 'fold-caret open' : 'fold-caret'} /><span class="ui-label">{strings.chat.turnFiles}</span>{/if}
+      <!-- "1 file, +7 −2": the one count of changes (lib/change-count.ts). On the tool line, whose words already count the files, the lines alone when known. -->
+      <span class="count"><ChangeCount files={inline && diffs.length > 0 ? null : files.length} added={diffs.length > 0 ? lines.total.added : null} removed={diffs.length > 0 ? lines.total.removed : null} testid="turn-lines" /></span>
     </button>
     {#if open && hasFolders}
       <button type="button" class="ghost small icon expand" data-testid="turn-files-expand"
@@ -123,17 +129,16 @@
         {#if allExpanded}<ChevronsDownUp size={14} />{:else}<ChevronsUpDown size={14} />{/if}
       </button>
     {/if}
-    <span class="tools">
-      {#if diffs.length > 0 || deferred.length > 0}
+    <!-- One action: the answer's own diff, the same rows its counts are read from. The folder's whole change set is offered under it. -->
+    {#if diffs.length > 0 || deferred.length > 0}
+      <span class="tools">
         <button type="button" class="ghost small" data-testid="turn-diff-toggle" aria-expanded={showDiff} onclick={() => { if (!showDiff) { attempt += 1; loadError = null; } diffToggled = !showDiff; }}>
           <FileDiff size={14} /><span class="ui-label">{showDiff ? strings.chat.hideTurnDiff : strings.chat.showTurnDiff}</span>
         </button>
-      {/if}
-      {#if repository}
-        <button type="button" class="ghost small icon" data-testid="turn-all-changes" title={strings.chat.allChanges} aria-label={strings.chat.allChanges}
-          onclick={() => store.panel.openChanges()}><GitCompareArrows size={14} /></button>
-      {/if}
-    </span>
+      </span>
+    {:else if repository}
+      <span class="tools">{@render allChanges()}</span>
+    {/if}
   </header>
   {#if open}<div class="tree" data-testid="turn-files-tree">{@render branch(tree, 0)}</div>{/if}
   {#if showDiff}
@@ -143,12 +148,17 @@
       {#each diffs as doc, index (index)}
         <Deferred part={parts.DiffView}>{#snippet children(DiffView)}<DiffView path={doc.path} oldText={doc.oldText} newText={doc.newText} {doc} />{/snippet}</Deferred>
       {/each}
+      {#if repository}<span class="all">{@render allChanges()}</span>{/if}
     </div>
   {/if}
 </section>
 
-{#snippet counts(value: { added: number; removed: number })}
-  <span class="lines" data-testid="turn-lines"><span class="added">+{value.added}</span><span class="removed">-{value.removed}</span></span>
+{#snippet allChanges()}
+  <!-- The working tree against its last commit, in the side panel, on this answer's first file. -->
+  <button type="button" class="ghost small" data-testid="turn-all-changes" title={strings.chat.allChanges}
+    onclick={() => store.panel.openChanges(files.find(openable)?.relative ?? undefined)}>
+    <PanelRightOpen size={14} /><span class="ui-label">{strings.chat.allChanges}</span>
+  </button>
 {/snippet}
 
 {#snippet fileIcon(file: TurnFile)}
@@ -197,7 +207,7 @@
             <span class="name ui-label">{file.name}</span>
           </span>
         {/if}
-        {#if fileLines}{@render counts(fileLines)}{/if}
+        {#if fileLines}<span class="lines"><ChangeCount added={fileLines.added} removed={fileLines.removed} /></span>{/if}
         {#if store.pickerAvailable && file.absolute !== null && file.change !== 'deleted'}
           <button
             type="button"
@@ -222,22 +232,24 @@
     flex-direction: column;
     min-width: 0;
     /* The answer's parts sit 4px in; the card lines up with them. */
-    margin: 12px 0 0 4px;
+    margin: var(--chat-block-gap) 0 0 4px;
     background: var(--color-surface);
     border-radius: var(--radius-md);
     overflow: hidden;
   }
 
+  /* One row at every width: the fold shrinks, its action stays whole. */
   header {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
     min-height: var(--row);
-    padding: 6px 12px;
+    padding: 3px 12px;
     font-size: var(--text-xs);
     font-weight: 500;
   }
+  /* A pointer gets 28 px on the head's buttons; the row keeps its height. */
+  header button.small { min-height: 28px; }
 
   .count {
     flex: none;
@@ -248,6 +260,7 @@
   }
   .fold {
     display: inline-flex;
+    flex: none;
     align-items: center;
     gap: 6px;
     margin-left: -6px;
@@ -258,20 +271,27 @@
   .lines {
     display: inline-flex;
     flex: none;
-    gap: 4px;
     font-size: var(--text-xs);
-    font-variant-numeric: tabular-nums;
     font-weight: 400;
   }
-  .added { color: var(--color-success); }
-  .removed { color: var(--color-danger); }
   .row .lines { padding-right: 6px; }
   .expand, .tools { margin-left: auto; }
   .expand ~ .tools { margin-left: 0; }
-  .tools { display: flex; align-items: center; gap: 2px; }
-  .tools button:not(.icon) { display: inline-flex; align-items: center; gap: 6px; }
+  .tools { display: flex; flex: none; align-items: center; gap: 2px; }
+  .tools button, .all button { display: inline-flex; align-items: center; gap: 6px; }
+  .all { display: flex; }
   .tree { padding: 0 6px 6px; }
   .diffs { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 12px; }
+
+  /* On the tool line: its buttons join the line's row, the list and diffs open
+     under it at full width, with no surface of their own. */
+  .inline, .inline header { display: contents; }
+  .inline .fold { margin-left: 0; }
+  /* Its own line on a phone, under the run's words rather than its glyph. */
+  @media (max-width: 720px) { .inline .fold { margin-left: calc(var(--activity-glyph) + var(--activity-gap)); } }
+  .inline .tree, .inline .diffs { flex: 1 0 100%; min-width: 0; }
+  .inline .tree { padding: 0 0 6px; }
+  .inline .diffs { padding: 4px 0 8px; }
 
   ul {
     list-style: none;

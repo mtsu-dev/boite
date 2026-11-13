@@ -64,8 +64,11 @@ the VPN or the Wi-Fi.
 
 ## Use it
 
-- The bottom bar holds Conversations, Activity, a + for a new conversation and
-  Settings, plus Bots and Contacts when those experiments are on.
+- The bottom bar holds Threads, Activity and Bots. The + for a new conversation sits in the thread list's header.
+- Mark all as read, above Activity's list, clears failures, stops and
+  finished work. Questions and permissions stay until you answer them.
+- The gear at the end of each list's header opens Settings; Back, or the
+  system's back gesture, returns to the list.
 - Slide a row left for Pin and Archive. Tap a conversation's title for its
   menu: the side panel, pin, rename, find, archive and delete.
 - Enter writes a new line and the send button sends. With a physical
@@ -129,5 +132,6 @@ computer screen.
 
 - [Machines](machines.md): groups, several computers and switching.
 - [Server](server.md): a machine without the desktop app, or on Android.
-- [Experiments](experiments.md): the Bots and Contacts tabs.
+- [Bots](bots.md): the Bots tab.
+- [Experiments](experiments.md): Contacts and the other unfinished features, in Nightly builds.
 - Technical reference: [phone](internals/phone.md), [Android](internals/android.md).

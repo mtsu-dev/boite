@@ -72,7 +72,7 @@ for (const phone of [false, true]) {
       // Let the bar move off its first slice before the capture.
       await Bun.sleep(1_200);
       const progress = await page.text('[data-testid=thread-loading-progress]');
-      await page.evaluate('Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))');
+      await page.evaluate('Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))');
       await page.screenshot(join(artifacts, `thread-open-loading-${name}.png`));
       const [received, total] = progress.split('/').map((side) => parseSize(side));
       // The total is the core's: the page it serializes, plus the response envelope.

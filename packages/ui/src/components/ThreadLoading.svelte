@@ -3,10 +3,13 @@
   import { transferBytes } from '../lib/format';
 
   /**
-   * What the chat shows between the click on a thread and its first page: a
-   * bar and how much of the page arrived against what the core said it
-   * weighs. Until the core says (a page short enough to come whole, or a core
-   * that sends answers whole) the bar runs without a number.
+   * What the chat shows between the click on a thread and its first page: the
+   * outline of a conversation in the transcript's own column, a prompt and two
+   * replies in quiet shapes, repeated down to the composer so the page reads
+   * whole rather than stopping mid-screen. Once the core
+   * says what the page weighs, a bar and the numbers count it in;
+   * before that (a page short enough to come whole, or a core that sends
+   * answers whole) the shapes say it alone.
    */
   let { progress }: { progress: { received: number; total: number } | null } = $props();
 
@@ -15,83 +18,106 @@
 </script>
 
 <div class="loading" data-testid="thread-loading" role="status" aria-live="polite">
-  <div class="stack">
-    <div class="track" role="progressbar" aria-label={strings.chat.opening}
-      aria-valuemin={0} aria-valuemax={progress?.total} aria-valuenow={progress?.received} aria-valuetext={label || undefined}>
-      {#if fraction === null}
-        <div class="bar sweep" data-testid="thread-loading-sweep"></div>
-      {:else}
+  <!-- Without a total the shapes alone say it is coming: the old sweep's id stays with them. -->
+  <div class="column shapes" aria-hidden="true" data-testid={fraction === null ? 'thread-loading-sweep' : undefined}>
+    {#each [0, 1, 2, 3] as group (group)}
+      <div class="shape prompt"></div>
+      <div class="reply"><div class="shape line"></div><div class="shape line"></div><div class="shape line short"></div></div>
+      <div class="reply"><div class="shape line"></div><div class="shape line half"></div></div>
+    {/each}
+  </div>
+  <div class="column count">
+    {#if fraction !== null}
+      <div class="track" role="progressbar" aria-label={strings.chat.opening}
+        aria-valuemin={0} aria-valuemax={progress?.total} aria-valuenow={progress?.received} aria-valuetext={label || undefined}>
         <div class="bar" data-testid="thread-loading-bar" style:transform="scaleX({fraction})"></div>
-      {/if}
-    </div>
-    <p class="caption">
-      <span>{strings.chat.opening}</span>
+      </div>
+    {/if}
+    <!-- Said in words, so the shapes read as a page on its way, not an empty thread. -->
+    <p class="caption" class:alone={!label}>
+      <span class="what">{strings.chat.opening}</span>
       {#if label}<span class="numbers" data-testid="thread-loading-progress">{label}</span>{/if}
     </p>
   </div>
 </div>
 
 <style>
+  /* The timeline's own geometry, so nothing moves when the page lands. */
   .loading {
     flex: 1;
     min-height: 0;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 24px 20px;
+    flex-direction: column;
+    gap: 28px;
+    padding: 20px var(--outline-room);
+    overflow: hidden;
     /* A fast open finishes before this shows: no flash for a short page. */
     animation: fade var(--dur-3) var(--ease-out-quint) 150ms both;
   }
 
-  .stack {
-    width: min(360px, 100%);
+  .column {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: var(--chat-message-gap, 24px);
+    width: 100%;
+    max-width: var(--content);
+    margin: 0 auto;
   }
 
+  /* Shapes in the faintest fill, breathing slowly while the page comes. */
+  .shape {
+    border-radius: var(--radius-full);
+    background: var(--color-active);
+    animation: pulse 1.8s var(--loop-ease-in-out-54) infinite var(--loops);
+  }
+  .prompt { align-self: flex-end; width: min(46%, 340px); height: 44px; border-radius: var(--radius-xl); }
+  .reply { display: flex; flex-direction: column; gap: 12px; }
+  .line { height: 12px; width: 92%; }
+  .line + .line { width: 84%; }
+  .line.short { width: 58%; }
+  .line.half { width: 40%; }
+
+  /* The shapes take the room down to the caption over the composer and fade out there, whatever the window's height. */
+  .shapes { flex: 1; min-height: 0; overflow: hidden; mask-image: linear-gradient(to bottom, var(--color-foreground) calc(100% - 96px), transparent); }
+  .shapes > * { flex: none; }
+
+  .count { flex: none; gap: 8px; }
+
   .track {
-    position: relative;
-    height: 4px;
-    border-radius: 999px;
-    background: var(--color-surface-3);
+    height: 3px;
+    border-radius: var(--radius-full);
+    background: var(--color-active);
     overflow: hidden;
   }
 
   .bar {
     height: 100%;
     width: 100%;
-    border-radius: 999px;
-    background: var(--color-accent);
+    /* The house bot's teal (lib/robots.ts' jelly 7): the mascot's colour marks the app waiting, not the accent. */
+    background: var(--jelly-7);
     transform-origin: left;
     transition: transform var(--dur-2) var(--ease-out-quint);
-  }
-
-  /* No total yet: a third of the track crossing it, by transform alone. */
-  .bar.sweep {
-    width: 33%;
-    animation: sweep 1.2s var(--loop-ease-in-out-72) infinite var(--loops);
-  }
-
-  @keyframes sweep {
-    from { transform: translateX(-100%); }
-    to { transform: translateX(300%); }
   }
 
   .caption {
     display: flex;
     justify-content: space-between;
     gap: 12px;
+    margin: 0;
     color: var(--color-muted-foreground);
     font-size: var(--text-sm);
   }
+
+  .caption.alone { justify-content: center; }
+  .what { display: inline-flex; align-items: center; gap: 8px; }
 
   .numbers {
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
 
+  :global(html[data-motion='reduced']) .shape { animation: none; }
   @media (prefers-reduced-motion: reduce) {
-    .bar.sweep { animation: none; width: 100%; opacity: 0.5; }
+    .shape { animation: none; }
   }
 </style>

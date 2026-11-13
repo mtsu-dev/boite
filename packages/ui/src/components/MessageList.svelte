@@ -1,13 +1,13 @@
 <script lang="ts">
   import { onDestroy, onMount, tick, untrack } from 'svelte';
-  import { ArrowDown } from '@lucide/svelte';
-  import { MESSAGE_PAGE, type MemoryEvent, type Message, type Turn } from '@boite/contracts';
-  import { fill, strings } from '../lib/strings';
+  import { MESSAGE_PAGE, type Message } from '@boite/contracts';
+  import { strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import MessageTurnSummary from './MessageTurnSummary.svelte';
   import TurnFiles from './TurnFilesLoader.svelte';
-  import { TurnFileCache, answersByTurn, showsTurnFiles, type TurnFilesData } from '../lib/turn-files';
-  import { chatPrefs } from '../lib/chat-prefs.svelte';
+  import { TurnChanges } from '../lib/turn-changes.svelte';
+  import { TailHeight } from '../lib/tail-height.svelte';
+  import ThreadClosing from './ThreadClosing.svelte';
   import MessageOutline from './MessageOutline.svelte';
   import AgentMessageGroup from './AgentMessageGroup.svelte';
   import TimelineCard from './TimelineCard.svelte';
@@ -19,15 +19,16 @@
   import { groupTimeline } from '../lib/timeline-group';
   import { agentMailFor } from '../lib/agent-mail';
   import { timelineCards } from '../lib/timeline-cards';
+  import { asksDocked, failureCarded } from '../lib/one-status';
   import UserMessage from './UserMessage.svelte';
-  import Deferred, { parts } from './Deferred.svelte';
-  import { provideViewerHost, type Gallery } from '../lib/media-gallery';
+  import Deferred from './Deferred.svelte';
+  import { parts } from '../lib/deferred-parts';
+  import { decisionTail } from '../lib/decision-tail.svelte';
+  import { ListViewer } from '../lib/list-viewer.svelte';
   import AssistantMessage from './AssistantMessage.svelte';
   import FailedAttempts from './FailedAttempts.svelte';
   import MoveMarker from './MoveMarker.svelte';
   import SpawnMarker from './SpawnMarker.svelte';
-  import MemoryRow from './MemoryRow.svelte';
-  import { mergeNoticeRows, placeMemoryEvents } from '../lib/memory-timeline';
   import MessageActions from './MessageActions.svelte';
   import { workspace } from '../lib/workspace.svelte';
   import { movedBy, pendingMoveOf, startedFrom, turnAnswer } from '../lib/message-display';
@@ -39,9 +40,9 @@
   import { TimelineRows, rowEstimate, rowIndexOf, seam, type TimelineRow } from '../lib/timeline-rows';
   import { GapRows, NO_GAPS, READ_AHEAD, RangeAsk, gapHeight, heldNear, loadKeepingReader, wantedRange } from '../lib/history-gaps';
   import TimelineGap from './TimelineGap.svelte';
-  import { dockRoom } from '../lib/question-dock.svelte';
+  import { latest } from '../lib/latest.svelte';
   import { glides } from '../lib/motion';
-  import { BottomEdge, BottomGlide, PointerHold, keysUp, pointedTurn, typingKey, watchWheel, wheelsUp } from '../lib/timeline-follow';
+  import { BottomEdge, BottomGlide, PointerHold, keysUp, pointedTurn, timelineEndRoom, typingKey, watchWheel, wheelsUp } from '../lib/timeline-follow';
   import { selectionClicks } from '../lib/selection-clicks';
   import { editWhole, fillShort, pullNewer, pullOlder } from '../lib/reading-window';
   import { ReadingAnchor, type RowAnchor } from '../lib/reading-anchor';
@@ -54,19 +55,9 @@
   const narrow = new MediaQuery('(max-width: 720px)');
   const reveal = new MessageReveal(() => messages, () => narrow.current);
 
-  let { store, threadId, messages }: { store: Store; threadId: string; messages: Message[] } = $props();
-  /**
-   * The open viewer belongs to the list, not to the row it was opened from: a
-   * running turn moves the window of rows, and the row leaving it must not
-   * close the viewer. Object URLs of rows gone meanwhile wait for it to close.
-   */
-  let viewing = $state<Gallery | null>(null);
-  const held = new Set<string>();
-  function releaseHeld(): void {
-    for (const url of held) if (!viewing?.items.some(item => item.src === url)) { URL.revokeObjectURL(url); held.delete(url); }
-  }
-  provideViewerHost({ open: (gallery) => { viewing = gallery; releaseHeld(); }, release: (url) => { held.add(url); releaseHeld(); } });
-  onDestroy(() => { viewing = null; releaseHeld(); });
+  /** `closing`: a finished thread's last word (`lib/closing-line.ts`), drawn under the last message and scrolling with it. */
+  let { store, threadId, messages, closing = null }: { store: Store; threadId: string; messages: Message[]; closing?: string | null } = $props();
+  const viewer = new ListViewer();
   /** The find bar is its own chunk, fetched the first time it opens. A failed fetch tries again on the next open. */
   let FindBar = $state.raw<typeof import('./FindBar.svelte').default>();
   $effect(() => {
@@ -80,11 +71,20 @@
     const account = store.accountOf(thread.accountId);
     return account?.status === 'unauthenticated' && store.usableAccountOf(account.providerId, account.id) === null ? account : null;
   });
-  /** Launches, workflow runs and contact requests, each a card where it happened (`timelineCards`). */
+  /** Launches, workflow runs and contact requests, each a card where it happened, live or ended (`timelineCards`). */
   const cards = $derived(timelineCards(store, threadId, messages));
+  /** A question at the top of the composer is the turn's status: the stream drops the running summary meanwhile, and its rows drop their own line for it. */
+  const asking = $derived(asksDocked(store, threadId));
+  /** The open thread's permissions waiting on their command rows, drawn or not: the strip's pill counts them (`DecisionPill`). */
+  const permissionsWaiting = $derived(store.openThread?.id === threadId ? store.pendingPermissions.filter((request) => request.threadId === threadId).length : 0);
+  $effect(() => {
+    if (store.openThread?.id !== threadId) return;
+    decisionTail.count = permissionsWaiting;
+    return () => { decisionTail.count = 0; };
+  });
   /** The turns of the thread this list shows, open or delegated. */
   const shownTurns = $derived(store.openThread?.id === threadId ? store.openThread.turns : store.delegationThread?.id === threadId ? store.delegationThread.turns : []);
-  const grouped = $derived.by(() => groupTimeline(messages, threadId, shownTurns, mail, cards, memoryRows));
+  const grouped = $derived.by(() => groupTimeline(messages, threadId, shownTurns, mail, cards));
   /** The pages each turn published: its answer places them, or they go after it once the turn ends (`placeViews`). */
   let shownViews: ReadonlyMap<string, Message[]> | undefined;
   const views = $derived.by(() => (shownViews = turnViews(grouped.timeline, shownViews)));
@@ -94,15 +94,13 @@
   const shaped = $derived(agentTimeline.build(quietKeepalives(placed, shownTurns), shownTurns, memoryPassOf(store, threadId)));
   const timeline = $derived(shaped.timeline);
   const days = $derived(dayBreaks(timeline)); // The messages that open a new day, a divider above each.
-  const memoryPlacement = $derived(placeMemoryEvents(messages, store.openThread?.id === threadId ? store.openThread.memoryEvents ?? [] : store.delegationThread?.id === threadId ? store.delegationThread.memoryEvents ?? [] : []));
-  const memoryRows = $derived(new Map(memoryPlacement.standalone.map((event, index) => [`memory:${event.at}:${event.kind}:${index}`, event])));
   /** What the window lists and measures: a row per message, several for the message of a long turn (lib/timeline-rows.ts). */
   const cut = new TimelineRows(), gapRows = new GapRows();
   /** Where the held messages sit in the thread, on a core that says so: each stretch missing between them is a gap row. */
   const placement = $derived(store.openThread?.id === threadId ? store.messagePlacement?.(threadId, messages) ?? null : null);
   const positional = $derived((placement?.first ?? null) !== null);
   const gapped = $derived.by(() => {
-    const placed = gapRows.place(cut.build(timeline, memoryPlacement.inline, placement?.gaps), messages, placement?.gaps ?? NO_GAPS);
+    const placed = gapRows.place(cut.build(timeline, undefined, placement?.gaps), messages, placement?.gaps ?? NO_GAPS);
     // A row that grew or was cut weighs something else until it is measured.
     if (placed.at(cut.changedFrom) < slots.dirty) slots.dirty = placed.at(cut.changedFrom);
     return placed;
@@ -125,6 +123,9 @@
     return at < 0 ? 0 : timeline.length - 1 - at;
   });
   function markSeen() { seenLast = timeline.at(-1)?.id ?? null; }
+  // The strip above the composer draws the way back (`JumpLatest.svelte`).
+  $effect(() => { latest.behind = behind; latest.unseen = unseen; });
+  onMount(() => { latest.jump = jump; return () => { if (latest.jump === jump) { latest.jump = null; latest.behind = false; latest.unseen = 0; } }; });
   let shown = savedReading ? untrack(() => threadId) : '';
 
   /** Measured slot heights by message id. What is not in here is worth its estimate. */
@@ -153,10 +154,11 @@
     if (!anchor || !viewport?.isConnected || pinned || navigationTarget || promptTarget) return;
     const delta = anchors.drift(viewport, anchor);
     if (delta === null) return;
-    if (Math.abs(delta) > 1) { viewport.scrollTop += delta; scrollTop = viewport.scrollTop; }
+    // A held row was read to the fraction: rounding to the nearest pixel leaves it at most half a pixel off.
+    if (Math.abs(delta) > (anchors.held ? 0.5 : 1)) { viewport.scrollTop += delta; scrollTop = viewport.scrollTop; }
     anchors.current = anchor;
   }
-  function releaseAnchor() { anchors.restoring = false; }
+  function releaseAnchor() { anchors.restoring = false; anchors.held = false; }
   onMount(() => {
     // Capture the settled layout before a navigation click removes this list.
     document.addEventListener('pointerdown', rememberAnchor, true);
@@ -174,6 +176,9 @@
     while (store.readingPositions.size > 32) store.readingPositions.delete(store.readingPositions.keys().next().value!);
   });
   let viewHeight = $state(savedReading?.height ?? 0);
+  /** What lies under the last row inside the viewport (`timelineEndRoom`), 20 px until read. */
+  let endRoom = $state(20);
+  const readEndRoom = (box: HTMLElement) => { endRoom = timelineEndRoom(box) ?? endRoom; };
   let navigationTarget = $state<string | null>(null);
   let failureTarget = $state<{ id: string } | null>(null);
   let promptTarget = $state<string | null>(savedReading?.followPrompt ?? null);
@@ -251,15 +256,16 @@
     return Math.max(0, promptInset - 20 - before);
   });
   // Keep the remaining screen below the sent prompt. Real response height replaces the
-  // reserved space, including in a virtualized conversation, without moving it.
+  // reserved space, including in a virtualized conversation, without moving it. A question
+  // at the composer's top gives it back: the last message then sits right over the question.
   const promptRoom = $derived.by(() => {
     void measured;
-    if (!reservePrompt) return 0;
+    if (!reservePrompt || asking) return 0;
     const at = rows.findIndex(row => row.id === reservePrompt);
     if (at < 0) return 0;
     const total = totals(rows);
     const content = (total[rows.length] ?? 0) - (total[at] ?? 0) - GAP;
-    return Math.max(0, viewHeight - promptInset - 20 - dockRoom.height - content);
+    return Math.max(0, viewHeight - promptInset - endRoom - content);
   });
 
   function promptTop(id: string): number {
@@ -331,10 +337,8 @@
   });
 
   /**
-   * The slice of messages that meets the viewport, the overscan added, and the
-   * two heights the spacers carry for everything left out. While pinned the
-   * window hangs off the end of the list instead of off `scrollTop`, so the
-   * bottom is right on the first frame rather than after a measurement.
+   * The slice of messages that meets the viewport, the overscan added, and the two heights the spacers carry for the rest.
+   * While pinned the window hangs off the end of the list, not `scrollTop`, so the bottom is right on the first frame.
    */
   let lastView: WindowView | undefined;
   const view = $derived.by(() => {
@@ -369,9 +373,8 @@
   const rendered = $derived(rows.slice(view.start, view.end));
 
   /**
-   * A rendered message's real height replaces its estimate. One that sits above
-   * what the user is reading would push the text down as it lands, so the same
-   * delta goes back into `scrollTop` and the viewport does not move.
+   * A rendered message's real height replaces its estimate. One above what the user reads would push the text down
+   * as it lands, so the same delta goes back into `scrollTop` and the viewport does not move.
    */
   function onMeasured(entries: ResizeObserverEntry[]): void {
     const box = viewport;
@@ -382,6 +385,7 @@
       const node = entry.target as HTMLElement;
       if (node === box) {
         viewHeight = node.clientHeight;
+        readEndRoom(node);
         continue;
       }
       const id = node.dataset['mid'];
@@ -400,7 +404,7 @@
       // Everything from here down is worth a different number now.
       if (at < slots.dirty) slots.dirty = at;
       if (at < view.first) shift += next - previous;
-      if (id === lastId) noteTail(next);
+      if (id === lastId) tail.note(next);
     }
     if (!moved) return;
     measured += 1;
@@ -414,32 +418,12 @@
   }
 
   /** The bottom message's height, at most ten times a second: what the pin follows. */
-  let tail = $state(0);
-  let tailAt = 0;
-  let tailTimer = 0;
-
-  function noteTail(height: number): void {
-    if (tailTimer) return;
-    const wait = TAIL_GAP_MS - (performance.now() - tailAt);
-    if (wait <= 0) {
-      tailAt = performance.now();
-      tail = height;
-      return;
-    }
-    tailTimer = window.setTimeout(() => {
-      tailTimer = 0;
-      tailAt = performance.now();
-      const last = rows.at(-1);
-      tail = last ? (heights.get(last.id) ?? slots.estimateOf(last)) : 0;
-    }, wait);
-  }
-
-  $effect(() => () => { if (tailTimer) clearTimeout(tailTimer); });
+  const tail = new TailHeight(TAIL_GAP_MS, () => { const last = rows.at(-1); return last ? (heights.get(last.id) ?? slots.estimateOf(last)) : 0; });
+  $effect(() => () => tail.stop());
 
   /**
-   * Every rendered message reports its height here and says which id it is. The
-   * rise plays once per message: a second element for the same id, minted when
-   * the window scrolled back over it, opens with the animation off.
+   * Every rendered message reports its height here and says which id it is. The rise plays once per message: a second
+   * element for the same id, minted when the window scrolled back over it, opens with the animation off.
    */
   function track(node: HTMLElement, { row }: { row: TimelineRow; joined: string | null }): { update(next: { row: TimelineRow; joined: string | null }): void; destroy(): void } {
     const id = row.id;
@@ -483,6 +467,7 @@
       }
     }
     viewHeight = box.clientHeight;
+    readEndRoom(box);
     scrollTop = box.scrollTop;
     if (typeof ResizeObserver === 'undefined') return;
     let frame = 0;
@@ -531,6 +516,7 @@
     const distance = height - box.scrollTop - box.clientHeight, closer = distance < scrolledGap - 1; scrolledGap = distance;
     // Pulled up by a finger or the scrollbar thumb, the list leaves the bottom as the wheel does.
     if (hold.held && box.scrollTop < scrollTop - 1) leftBottom = true;
+    anchors.release(box);
     const relaid = edge.relaid(box), moved = edge.moved(box);
     // `scrollTop` lags the observer's follows; the edge alone counts this list's own corrections.
     const rose = moved < -1, descended = moved > 1 && box.scrollTop > scrollTop + 1;
@@ -594,7 +580,7 @@
   $effect(() => { void [measured, store.loadingRange, rows, viewHeight, pinned, scrollTop]; asked.soon(() => { if (!gapped.gaps.length || store.loadingRange || glide.active || lifting) return null; const total = totals(rows), reach = Math.max(LOAD_AT, viewHeight * (pinned ? 1 : READ_AHEAD)), top = pinned ? (total[rows.length] ?? 0) - viewHeight : scrollTop;
     return { top, range: wantedRange(total, gapped.gaps, top - reach, top + viewHeight + reach, MESSAGE_PAGE) }; }, ({ from, limit, below }) =>
       // A page landing above the reader can weigh more than its gap: the row at the top of the view stays where it was, drawn.
-      loadKeepingReader(landing => store.loadRange(from, limit, landing, below), () => pinned ? undefined : viewport, kept => { const total = totals(rows), at = slots.indexOf(rows, kept.id); if (at >= 0) scrollTop = Math.max(0, (total[at] ?? 0) - kept.offset); }, tick, top => { scrollTop = top; })); });
+      loadKeepingReader(landing => store.loadRange(from, limit, landing, below), () => pinned ? undefined : viewport, kept => { const total = totals(rows), at = slots.indexOf(rows, kept.id); if (at >= 0) scrollTop = Math.max(0, (total[at] ?? 0) - kept.offset); anchors.hold({ ...kept, message: anchors.nodes.get(kept.id)?.dataset['message'] ?? kept.id }); }, tick, top => { scrollTop = top; })); });
   // A list too short to scroll asks for the pages beside it, again after each lands (`fillShort`).
   $effect(() => { void rows.length; void viewHeight; fillShort(viewport, store.openThread?.id === threadId, () => !!(navigationTarget || promptTarget), LOAD_AT, box => { loadAbove(box); pullNewer(store, box, LOAD_AT); }); });
 
@@ -652,7 +638,7 @@
     void timeline.length;
     // A long answer being written gains rows as it is cut: the bottom is still its last one.
     void rows.length;
-    void tail;
+    void tail.value;
     const box = viewport;
     if (!box) return;
     const opened = shown !== threadId;
@@ -674,13 +660,14 @@
     }
   });
 
-  /** Lift a pinned tail for the dock, including a short history that previously fit. */
+  /** Only once the loaded window reaches the thread's end: newer history still unread is not its last word. */
+  let closingShown = $derived(closing !== null && store.messagesAfter === null && !store.loadingNewer);
+  /** The closing line lands under a pinned list: the bottom takes it in, like a new message. */
   $effect(() => {
-    void dockRoom.height;
+    if (!closingShown) return;
     const box = viewport;
-    if (!box || !pinned) return;
-    edge.follow(box);
-    scrollTop = box.scrollTop;
+    if (!box || !untrack(following)) return;
+    void tick().then(() => { if (untrack(following)) edge.follow(box); });
   });
 
   /** The window moving under a pinned viewport changes the spacers: take the bottom again. */
@@ -699,23 +686,13 @@
   /** The last row of each turn: a later message of the same turn replaces an earlier one. */
   const lastInTurn = $derived(new Map(timeline.map((message): [string, string] => [message.turnId, message.id])));
   const firstInTurn = $derived(firstByTurn(messages));
-  /** Each turn's answers, rebuilt when a message comes or goes, never on a part or a delta. */
-  const answers = $derived(answersByTurn(messages));
-  const fileCache = new TurnFileCache();
-  /** A turn end's file summary, derived per closing row: a part on the running turn rereads no finished turn. */
-  function filesOf(turn: Turn): TurnFilesData | null {
-    const thread = store.openThread;
-    if (!thread || thread.id !== threadId || !showsTurnFiles(turn, chatPrefs.groupChanges)) return null;
-    windowStats.turnFiles += 1;
-    const data = fileCache.read(turn.id, answers.get(turn.id) ?? [], thread.cwd, turn.status === 'running');
-    return data.files.length ? data : null;
-  }
+  /** Each turn end's files and the tool line its count joins (`lib/turn-changes.svelte.ts`). */
+  const turnChanges = new TurnChanges(() => store, () => threadId, () => messages,
+    () => timeline.filter(message => !cards.has(message.id) && !grouped.groups.has(message.id) && !shaped.folds.has(message.id) && !movedBy(message) && !startedFrom(message)));
 
   /**
-   * Edit and retry go through the core's rewind, fork through its fork, and
-   * only on a thread at rest: a turn still running is stopped first (Escape).
-   * A persistent agent's thread rewinds like any other, but has no project to
-   * fork into.
+   * Edit and retry go through the core's rewind, fork through its fork, and only on a thread at rest: a turn still
+   * running is stopped first (Escape). A persistent agent's thread rewinds like any other, but has no project to fork into.
    */
   const branchable = $derived(store.openThread?.id === threadId && (!!store.openThread.agentSessionId || store.openThread.projectId !== null));
   const forkable = $derived(branchable && !store.openThread?.agentSessionId);
@@ -734,7 +711,7 @@
 
 </script>
 
-<div class="timeline-wrap" style:--dock-room="{dockRoom.height}px" style:--dock-clearance="{dockRoom.clearance}px">
+<div class="timeline-wrap">
   {#if store.findOpen && FindBar}
     <FindBar {messages} {viewport} request={store.findRequest} jump={(id, part) => jumpToMessage(id, part)}
       rowOf={(id, part) => { const row = rows[rowIndexOf(rows, id, part)]; return row?.failures ? { id: `failure:${id}`, from: 0 } : row ?? { id, from: 0 }; }} onclose={() => (store.findOpen = false)} />
@@ -743,13 +720,11 @@
     hasOlder={store.messagesBefore !== null} loading={store.loadingOlder} loadOlder={() => { if (viewport) { releaseNavigation(); viewport.scrollTop = rows[0]?.gap ? Math.max(0, (totals(rows)[1] ?? 0) - viewport.clientHeight) : 0; pinned = false; loadAbove(viewport); } }} />{/if}
   <!-- Input releases restored and navigation anchors; programmatic corrections keep them. A tap on a phone shows a message's buttons. -->
   <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
-  <div class="timeline" bind:this={viewport} use:watchWheel={onwheel} use:selectionClicks onclick={reveal.tap} {onscroll} ontouchstart={press} onpointerdown={press} onpointerover={(event) => { pointed = pointedTurn(event); }} onpointerleave={() => { pointed = null; }} onkeydown={releaseNavigation} style:padding-top="{20 + promptLead}px" style:overflow-anchor={timeline.at(-1)?.state === 'streaming' ? 'none' : undefined} data-testid="timeline" data-media-gallery data-scroll-root>
+  <div class="timeline" bind:this={viewport} use:watchWheel={onwheel} use:selectionClicks onclick={reveal.tap} {onscroll} ontouchstart={press} onpointerdown={press} onpointerover={(event) => { pointed = pointedTurn(event); }} onpointerleave={() => { pointed = null; }} onkeydown={releaseNavigation} style:padding-top="{20 + promptLead}px" style:overflow-anchor={timeline.at(-1)?.state === 'streaming' ? 'none' : undefined} class:below={!pinned} data-testid="timeline" data-media-gallery data-scroll-root>
     <div class="column" bind:this={column}>
       <!-- paging: the one line the top of the list shows while a page is in flight. -->
       {#if store.loadingOlder}<p class="loading-older" data-testid="loading-older">{strings.chat.loadingOlder}</p>{/if}
-      {#if view.above > 0}
-        <div class="spacer" data-testid="timeline-above" style="height: {view.above}px"></div>
-      {/if}
+      {#if view.above > 0}<div class="spacer" data-testid="timeline-above" style="height: {view.above}px"></div>{/if}
       {#each rendered as row, index (row.id)}
         {#if row.gap}<TimelineGap {...row.gap} />{:else}
         {@const message = row.message}
@@ -759,12 +734,18 @@
         {@const quietFold = shaped.folds.get(message.id)}
         {@const closes = row.last && !quietFold && turn !== undefined && turn.execution?.operation !== 'keepalive' && lastInTurn.get(turn.id) === message.id}
         {@const joined = seam(rows[view.start + index - 1], row)}
+        {@const host = turn ? turnChanges.hostOf(turn.id) : null}
+        <!-- The turn's change count, on the tool line of its last change (`inline`) or at its end. -->
+        {#snippet changes(inline: boolean)}
+          {@const files = turn ? turnChanges.filesOf(turn) : null}
+          {#if files}<TurnFiles {store} {...files} {inline} acquireDiff={source => store.acquireToolOutput(threadId, source.messageId, source.toolId, false)} />{/if}
+        {/snippet}
         <article
           use:track={{ row, joined }}
           class="message {message.role}"
           class:rest={!row.first} {...reveal.attrs(message)}
           data-seam={joined}
-          style:margin-top={joined && `calc(var(--chat-${joined}-gap) - var(--chat-message-gap))`}
+          style:margin-top={joined && 'calc(var(--chat-block-gap) - var(--chat-message-gap))'}
           data-testid={row.first ? 'message' : 'message-rest'}
           data-role={group ? 'agent-mail' : message.role} data-turn={message.turnId}
         >
@@ -777,9 +758,6 @@
             <TimelineCard {store} card={cards.get(message.id)!} {mail} />
           {:else if group}
             <AgentMessageGroup {store} {group} />
-          {:else if grouped.notices.has(message.id)}
-            {@const notices = grouped.notices.get(message.id)!}
-            <MemoryRow event={notices[0]!} events={notices} onconfigure={store.owner ? () => store.showSettings('resources', 'limits') : undefined} />
           {:else if movedBy(message)}
             <MoveMarker notice={movedBy(message)!} />
           {:else if startedFrom(message)}
@@ -790,47 +768,52 @@
             <UserMessage {store} {message} {turn} accepted={!!turn} responded={progress.responded(message.turnId)} edit={atRest && !isSending(message) ? () => void editMessage(message) : undefined} />
           {:else}
             <AssistantMessage {store} {threadId} {message} from={row.from} to={row.to} {signedOut} showModel={row.first && firstAssistantInTurn.get(message.turnId) === message.id}
-              latestInTurn={lastInTurn.get(message.turnId) === message.id} memoryEvents={memoryPlacement.inline.get(message.id) ?? []} views={views.get(message.turnId)} />
+              latestInTurn={lastInTurn.get(message.turnId) === message.id} views={views.get(message.turnId)}
+              changes={host?.messageId === message.id ? { at: host.index, line: changes } : undefined} />
           {/if}
           {#if turn && closes}
-            {@const files = filesOf(turn)}
-            {#if files}<TurnFiles {store} {...files} acquireDiff={source => store.acquireToolOutput(threadId, source.messageId, source.toolId, false)} />{/if}
-            <MessageTurnSummary {store} {threadId} {turn} turns={shownTurns} message={source ?? message} {messages} pointed={pointed === turn.id}
+            {#if !host}{@render changes(false)}{/if}
+            {@const carded = failureCarded(turn, messages)}<!-- A failure's card holds its cause and its one Retry: the line keeps copy, fork and the background stop; a question at the composer's top is a running turn's status. -->
+            {#if !(asking && turn.status === 'running')}
+            <MessageTurnSummary {store} {threadId} {turn} {carded} turns={shownTurns} message={source ?? message} {messages} pointed={pointed === turn.id} tucked={!reveal.shows(message)}
               {...summaryMarks(shaped, turn.id, () => store.panel.open('desk'))}>
               {#snippet actions()}
                 <MessageActions
                   text={() => turnAnswer(messages, turn.id)}
-                  retry={atRest && store.openThread?.turns.at(-1)?.id === turn.id ? () => void retry(turn.id) : undefined}
+                  retry={atRest && !carded && store.openThread?.turns.at(-1)?.id === turn.id ? () => void retry(turn.id) : undefined}
                   fork={!narrow.current && forkable && !store.openThread?.incognito && source && source.state !== 'streaming' ? (worktree) => void store.fork(source.id, { worktree }) : undefined}
                   plugin={store === workspace.primary && source ? { threadId, messageId: source.id, role: 'assistant' } : undefined}
                 />
               {/snippet}
             </MessageTurnSummary>
+            {/if}
           {/if}
         </article>
         {/if}
       {/each}
-      {#if view.below > 0}
-        <div class="spacer" data-testid="timeline-below" style="height: {view.below}px"></div>
-      {/if}
+      {#if view.below > 0}<div class="spacer" data-testid="timeline-below" style="height: {view.below}px"></div>{/if}
       {#if store.loadingNewer}<p class="loading-older" data-testid="loading-newer">{strings.chat.loadingNewer}</p>{/if}
       {#if pendingMove}<MoveMarker notice={pendingMove} pending />{/if}
+      {#if closingShown && closing}<ThreadClosing text={closing} />{/if}
     </div>
-    {#if promptRoom > 0}
-      <div class="spacer" data-testid="prompt-room" style:height="{promptRoom}px" aria-hidden="true"></div>
-    {/if}
+    {#if promptRoom > 0}<div class="spacer" data-testid="prompt-room" style:height="{promptRoom}px" aria-hidden="true"></div>{/if}
   </div>
 
-  {#if behind}
-    <button type="button" class="small jump" onclick={jump} data-testid="jump-to-latest">
-      <ArrowDown size={14} strokeWidth={2} />
-      <span class="ui-label">{unseen > 0 ? fill(unseen === 1 ? strings.chat.newMessage : strings.chat.newMessages, { count: String(unseen) }) : strings.chat.jumpToLatest}</span>
-    </button>
-  {/if}
 </div>
-{#if viewing}{@const view = viewing}<Deferred part={parts.ImageViewer} floating>{#snippet children(ImageViewer)}<ImageViewer items={view.items} index={view.index} onclose={() => { viewing = null; releaseHeld(); }} />{/snippet}</Deferred>{/if}
+{#if viewer.viewing}{@const view = viewer.viewing}<Deferred part={parts.ImageViewer} floating>{#snippet children(ImageViewer)}<ImageViewer items={view.items} index={view.index} onclose={() => viewer.close()} />{/snippet}</Deferred>{/if}
 
 <style>
+  /* Chrome on demand: under a pointer, the fold chevrons of the tool rows and
+     the transcript blocks and the turn's "i" show on the row's hover or
+     keyboard focus; the rows stay buttons and the "i" stays in the tab
+     order, so nothing is out of reach. A finger always sees them. */
+  @media (hover: hover) {
+    .timeline :global(:is(.fold-caret, .summary .info-tip)) { opacity: 0; transition: opacity var(--dur-2) var(--ease-out-quint); }
+    .timeline :global(:is(button, summary):is(:hover, :focus-visible) .fold-caret),
+    .timeline :global(.summary:is(:hover, :focus-within) .info-tip),
+    .timeline :global(.info-tip[aria-expanded='true']) { opacity: 1; }
+  }
+
   .timeline-wrap {
     position: relative;
     flex: 1;
@@ -842,20 +825,57 @@
   .timeline {
     flex: 1;
     min-height: 0;
+    /* A column for the prompt's room under it; a short thread starts at the
+       top, so a decision docking below moves none of its lines. */
+    display: flex;
+    flex-direction: column;
     overflow: auto;
     scrollbar-gutter: stable both-edges;
-    /* Balance the outline rail on both sides; keep room below for the activity overlay. */
-    padding: 20px var(--outline-room) calc(var(--dock-room, 0px) + 20px);
+    /* Balance the outline rail on both sides. The dock below is in the flow,
+       so the timeline ends where it starts and nothing runs under it; a line
+       cut by that end fades over the shared edge (app.css `--scroll-edge`,
+       `.below`). That fade takes its own room in the flow (`::after` below),
+       so at the end the last table or code row sits clear of it and of the
+       composer card. */
+    --scroll-edge-bottom: 20px;
+    padding: 20px var(--outline-room) var(--scroll-edge-bottom);
     overscroll-behavior: contain;
+    /* The toasts sit in room taken from the timeline's bottom, right above
+       the composer (notify-corner.ts and .css), so they cover no line of it. */
+    transition: margin var(--dur-2) var(--ease-out-quint);
   }
 
+  /* The bottom edge fades on the list's own state, the one that brings "Latest"
+     back: whatever lies below, the last line over the dock fades instead of
+     being cut. A state, not a scroll timeline, so a still frame shows it too;
+     two attributes outrank app.css's shared `.scroll-edges` rule. */
+  .timeline[data-scroll-root][data-testid]::after {
+    /* In the flow, not pulled over the last row: scrolled to the end, the fade
+       lies on empty room under it instead of on a table's last line. */
+    margin-top: 0;
+    animation: none;
+    opacity: 0;
+    transition: opacity var(--motion-duration) var(--motion-curve);
+  }
+  .timeline.below[data-scroll-root][data-testid]::after { opacity: 1; }
+  /* Under the header the shared edge is a line tall, not a sliver: a line scrolled under it fades out whole, never cut through its letters. */
+  @supports (animation-timeline: scroll()) {
+    .timeline[data-scroll-root][data-testid]::before { --top-edge: calc(var(--scroll-edge) * 3); height: var(--top-edge); margin-bottom: calc(-1 * var(--top-edge));
+      animation-range: var(--scroll-edge-top, 0px) calc(var(--scroll-edge-top, 0px) + var(--top-edge)); }
+  }
+  /* Where the fade exists it is the end's room, the shared edge, plus this padding. */
+  @supports (animation-timeline: scroll()) { .timeline { --scroll-edge-bottom: var(--space-2); } }
+
   .column {
+    flex: none;
     display: flex;
     flex-direction: column;
     gap: var(--chat-message-gap);
     width: 100%;
     max-width: var(--content);
     margin: 0 auto;
+    /* One reading column: bubbles, prose and cards take the dock's width. */
+    --prose: var(--content);
   }
 
   /* What a long thread's unrendered messages weigh, above and below the window. */
@@ -876,20 +896,5 @@
   .message.rest {
     margin-top: calc(var(--chat-block-gap) - var(--chat-message-gap));
     animation: none;
-  }
-
-  .jump {
-    position: absolute;
-    left: 50%;
-    bottom: calc(var(--dock-clearance, 0px) + 12px);
-    /* The entrance animates transform; centering must survive every frame. */
-    translate: -50% 0;
-    max-width: calc(100% - 24px);
-    padding: 0 10px 0 8px;
-    border-radius: 999px;
-    background: var(--color-surface-2);
-    box-shadow: var(--shadow-e2);
-    font-size: var(--text-sm);
-    animation: rise var(--dur-2) var(--ease-out-quint);
   }
 </style>

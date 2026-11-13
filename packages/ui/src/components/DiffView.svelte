@@ -1,7 +1,15 @@
+<script module lang="ts">
+  /** Under this width two columns of code are too narrow to read: one column, and no switch. A pane that draws the switch itself reads it. */
+  export const SPLIT_MIN_WIDTH = 560;
+</script>
+
 <script lang="ts">
-  import { Columns2, Space } from '@lucide/svelte';
   import { diffCounts, diffRows, diffRowsOf, splitRows, type DiffRow, type DiffSource } from '../lib/diff';
-  import { diffPrefs, setDiffPref } from '../lib/diff-prefs.svelte';
+  import { diffPrefs } from '../lib/diff-prefs.svelte';
+  import { markHtml, markText, wordMarks } from '../lib/diff-words';
+  import { breakAfterOperators, escapeCode } from '../lib/diff-breaks';
+  import DiffOptions from './DiffOptions.svelte';
+  import ChangeCount from './ChangeCount.svelte';
   import { fill, strings } from '../lib/strings';
   import { codeLanguage, codeRow, highlightCode } from '../lib/code-highlight';
   import { whenIdle } from '../lib/idle';
@@ -28,9 +36,6 @@
 
   /** Rows drawn before the show-all button: the box shows about fourteen. */
   const FIRST_ROWS = 300;
-  /** Under this width two columns of code are too narrow to read: one column, and no switch. */
-  const SPLIT_MIN_WIDTH = 560;
-
   let width = $state(0);
   let rows = $derived(doc ? diffRowsOf(doc, diffPrefs.ignoreWhitespace) : diffRows(oldText, newText, { ignoreWhitespace: diffPrefs.ignoreWhitespace }));
   let counts = $derived(diffCounts(rows));
@@ -39,6 +44,8 @@
   let splittable = $derived(width >= SPLIT_MIN_WIDTH);
   let split = $derived(splittable && diffPrefs.split);
   let pairs = $derived(split ? splitRows(shown) : []);
+  /** The changed words of the drawn rows only: a folded tail costs nothing. */
+  let words = $derived(wordMarks(shown));
   const language = $derived(codeLanguage(path));
   /** Highlighted lines, kept with the text and grammar they were read from so a changed text never shows stale colors. */
   type Coded = { text: string; grammar: string | null; lines: string[] | null };
@@ -69,6 +76,21 @@
     return row.kind === 'remove' ? oldCode?.[row.oldLine - 1] : newCode?.[row.newLine - 1];
   }
 
+  /**
+   * A line's markup: the grammar's spans, or the escaped text before it has run, the changed words marked
+   * (lib/diff-words) and a break opportunity after each operator (lib/diff-breaks), so a wrapped line
+   * breaks at a space or an operator, never inside a name. The marks and breaks add only their own tags.
+   */
+  function lineHtml(row: Exclude<DiffRow, { kind: 'gap' }>): string {
+    const html = codeOf(row);
+    const marks = words.get(row);
+    if (html !== undefined) return breakAfterOperators(marks ? markHtml(html, marks) : html);
+    // A plain row reads a CR as the grammar's rows do (lib/code-grammar `codeRow`).
+    const text = codeRow(row.text);
+    if (!marks) return breakAfterOperators(escapeCode(text));
+    return breakAfterOperators(markText(text, marks).map((part) => (part.marked ? `<mark class="word">${escapeCode(part.text)}</mark>` : escapeCode(part.text))).join(''));
+  }
+
   /** The gutter of a row: what a patch puts in its first column. */
   function sign(kind: string): string {
     if (kind === 'add') return '+';
@@ -77,27 +99,17 @@
   }
 </script>
 
-<div class="diff code-syntax" class:grow data-testid="diff-view" data-path={path} data-language={language ?? 'text'} data-layout={split ? 'split' : 'unified'} use:boxWidth={(value) => (width = value)}>
+<div class="diff code-syntax" class:grow data-testid="diff-view" data-path={path} data-language={language ?? 'text'} data-layout={split ? 'split' : diffPrefs.wrap ? 'wrapped' : 'unified'} use:boxWidth={(value) => (width = value)}>
   {#if !headless}
     <div class="head">
       <span class="path mono ui-label" title={path}>{path}</span>
-      {#if counts.added > 0}
-        <span class="count added ui-label">{fill(strings.chat.diffAdded, { count: String(counts.added) })}</span>
+      {#if counts.added > 0 || counts.removed > 0}
+        <span class="count"><ChangeCount added={counts.added} removed={counts.removed} /></span>
       {/if}
-      {#if counts.removed > 0}
-        <span class="count removed ui-label">{fill(strings.chat.diffRemoved, { count: String(counts.removed) })}</span>
-      {/if}
-      <button type="button" class="ghost small icon toggle" data-testid="diff-whitespace" aria-pressed={diffPrefs.ignoreWhitespace}
-        title={strings.chat.diffIgnoreWhitespace} aria-label={strings.chat.diffIgnoreWhitespace}
-        onclick={() => setDiffPref('ignoreWhitespace', !diffPrefs.ignoreWhitespace)}><Space size={14} /></button>
-      {#if splittable}
-        <button type="button" class="ghost small icon toggle" data-testid="diff-split" aria-pressed={diffPrefs.split}
-          title={strings.chat.diffSideBySide} aria-label={strings.chat.diffSideBySide}
-          onclick={() => setDiffPref('split', !diffPrefs.split)}><Columns2 size={14} /></button>
-      {/if}
+      <DiffOptions split={splittable} />
     </div>
   {/if}
-  <div class="rows mono">
+  <div class="well"><div class="rows mono">
     {#if rows.length === 0 && diffPrefs.ignoreWhitespace && oldText !== newText}
       <p class="same" data-testid="diff-whitespace-only">{strings.chat.diffWhitespaceOnly}</p>
     {:else if split}
@@ -129,21 +141,20 @@
         <span class="ui-label">{fill(strings.chat.diffShowAll, { count: String(rows.length) })}</span>
       </button>
     {/if}
-  </div>
+  </div></div>
 </div>
 
 {#snippet gap(hidden: number)}
   <div class="row gap" data-kind="gap">
     <span class="num"></span>
     <span class="gutter"></span>
-    <span class="text">... {fill(strings.chat.diffHidden, { count: String(hidden) })}</span>
+    <span class="text">{fill(strings.chat.diffHidden, { count: String(hidden) })}</span>
   </div>
 {/snippet}
 
 {#snippet code(row: Exclude<DiffRow, { kind: 'gap' }>)}
-  {@const html = codeOf(row)}
-  <!-- highlightCode escapes source text before adding its token spans. -->
-  {#if html !== undefined}{@html html}{:else}{codeRow(row.text)}{/if}
+  <!-- highlightCode escapes source text before adding its token spans, and lineHtml escapes a plain line. -->
+  {@html lineHtml(row)}
 {/snippet}
 
 {#snippet side(row: Exclude<DiffRow, { kind: 'gap' }> | null, which: 'old' | 'new')}
@@ -187,23 +198,14 @@
   }
 
   .count {
+    display: inline-flex;
     font-size: var(--text-xs);
-    font-variant-numeric: tabular-nums;
     flex: none;
-  }
-
-  .count.added {
-    color: var(--color-success);
-  }
-
-  .count.removed {
-    color: var(--color-danger);
   }
 
   .rows {
     max-height: 320px;
     overflow-y: auto;
-    /* Long lines wrap inside the row: the page never scrolls sideways. */
     overflow-x: hidden;
     padding: 4px 0;
   }
@@ -214,25 +216,25 @@
     overflow-y: visible;
   }
 
+  /* The whole panel is the diff: no card inside the card, the code to the edges and the bottom. */
+  .diff.grow {
+    border: none;
+    border-radius: 0;
+    flex: 1 0 auto;
+  }
+
+  /* Each row names its fill once: the fixed number column wears it too, so code scrolling under it never shows through. */
   .row {
+    --row-bg: var(--color-surface-2);
     display: flex;
     align-items: flex-start;
     gap: 0;
     line-height: 1.55;
+    background: var(--row-bg);
   }
 
   .more {
     margin: 4px 10px;
-  }
-
-  .toggle {
-    flex: none;
-    color: var(--color-subtle);
-  }
-
-  .toggle[aria-pressed='true'] {
-    color: var(--color-foreground);
-    background: var(--color-surface-2);
   }
 
   /* Two halves of one line: each keeps its own number, sign and wrap. */
@@ -246,7 +248,7 @@
   }
 
   .row.empty {
-    background: var(--color-surface-3);
+    --row-bg: var(--color-surface-3);
   }
 
   .same {
@@ -256,14 +258,16 @@
     font-size: var(--text-sm);
   }
 
+  /* The line number in the secondary ink: read beside the code, not hunted for. */
   .num {
     flex: none;
-    width: 34px;
+    width: var(--num-w);
     padding-right: 8px;
     text-align: right;
-    color: var(--color-subtle);
+    color: var(--color-muted-foreground);
     font-variant-numeric: tabular-nums;
     user-select: none;
+    background: var(--row-bg);
   }
 
   .gutter {
@@ -272,44 +276,94 @@
     text-align: center;
     color: var(--color-subtle);
     user-select: none;
+    background: var(--row-bg);
   }
 
+  /* Split halves and the wrapped layout: a line breaks at a space or after an operator first (the <wbr>
+     of lib/diff-breaks), inside a name only when it alone is wider than the column. A wrapped line
+     hangs 2ch in under its first, and only the first carries a number, so a
+     continuation never reads as a line of its own. */
   .text {
     flex: 1;
     min-width: 0;
-    padding-right: 10px;
+    padding: 0 10px 0 2ch;
+    text-indent: -2ch;
     white-space: pre-wrap;
-    word-break: break-word;
+    overflow-wrap: break-word;
   }
 
-  /* The family has no green or red surface token, so both tints are the status
-     colour mixed into the well's own fill rather than a new hex. */
+  /* A changed line keeps its code's own colours on a light tint (app.css's
+     diff washes), marked by a bar in its gutter and its sign: no saturated
+     block to read through. */
   .row.add {
-    color: var(--color-success);
-    background: color-mix(in srgb, var(--color-success) 14%, var(--color-surface-2));
-  }
-
-  .row.add .gutter {
-    color: var(--color-success);
+    --row-bg: var(--diff-add-wash);
   }
 
   .row.remove {
-    color: var(--color-danger);
-    background: color-mix(in srgb, var(--color-danger) 14%, var(--color-surface-2));
+    --row-bg: var(--diff-remove-wash);
   }
 
-  .row.remove .gutter {
-    color: var(--color-danger);
-  }
+  /* The bar rides on the number, which stays put while the code scrolls sideways. */
+  .row.add .num { box-shadow: inset 3px 0 0 var(--color-success); }
+  .row.remove .num { box-shadow: inset 3px 0 0 var(--color-danger); }
 
-  .row.add .num,
-  .row.remove .num { color: inherit; opacity: 0.75; }
-  .row.add :global(.text span),
-  .row.remove :global(.text span) { color: inherit; }
+  /* The words that changed inside a changed line: a deeper wash of the line's own status colour. */
+  .text :global(mark.word) {
+    border-radius: 2px;
+    color: inherit;
+    background: var(--diff-add-word);
+  }
+  .row.remove .text :global(mark.word) { background: var(--diff-remove-word); }
+
+  .row.add .gutter { color: var(--color-success); }
+  .row.remove .gutter { color: var(--color-danger); }
 
   .row.gap {
+    --row-bg: var(--color-surface-3);
     color: var(--color-subtle);
-    background: var(--color-surface-3);
     font-size: var(--text-sm);
+  }
+
+  .row.gap .text { text-indent: 0; }
+  /* A phone's column: a narrower number column leaves the code its width. */
+  .diff { --num-w: 34px; }
+  @media (max-width: 720px) {
+    .diff { --num-w: 28px; }
+    .num { padding-right: 6px; }
+    .gutter { width: 12px; }
+  }
+
+  /* The default reads code as code, on desktop and phone: every line whole on
+     one line, the rows scrolling sideways together under numbers that stay put,
+     so no token is ever cut. The column is as wide as the longest line, so
+     every row's fill reaches the end. "Wrap lines" and side by side wrap. */
+  [data-layout='unified'] .rows { display: grid; grid-template-columns: minmax(100%, max-content); align-content: start; overflow-x: auto; }
+  [data-layout='unified'] .text { padding-left: 0; text-indent: 0; white-space: pre; overflow-wrap: normal; }
+  /* Chrome breaks at a <wbr> even under white-space: pre; one row a line means none of them. */
+  [data-layout='unified'] .text :global(wbr) { display: none; }
+  [data-layout='unified'] .num { position: sticky; left: 0; z-index: 1; }
+  [data-layout='unified'] .gutter { position: sticky; left: var(--num-w); z-index: 1; }
+  [data-layout='unified'] .more { justify-self: start; }
+
+  /* One line a row runs past the right edge: a fade there says the line goes on, gone once scrolled to its
+     end. It follows the rows' own sideways scroll, and a diff with nothing past the edge never draws it. */
+  .well { position: relative; }
+  @supports (animation-timeline: scroll()) {
+    .well { timeline-scope: --diff-x; }
+    [data-layout='unified'] .rows { scroll-timeline: --diff-x x; }
+    [data-layout='unified'] .well::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 28px;
+      background: linear-gradient(to left, var(--color-surface-2), transparent);
+      pointer-events: none;
+      opacity: 0;
+      animation: scroll-edge-out linear both;
+      animation-timeline: --diff-x;
+      animation-range: calc(100% - 28px) 100%;
+    }
   }
 </style>

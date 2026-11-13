@@ -119,7 +119,7 @@
                 {@const granted = current.granted ?? current.permissions ?? []}
                 <div class="reach">
                   {#if granted.length > 0}
-                    <ul class="chips">{#each granted as permission (permission)}<li class="chip" class:danger={PLUGIN_PERMISSIONS[permission]?.danger === true} title={permission} data-testid="plugin-authorization" data-permission={permission}>{permissionTitle(permission)}</li>{/each}</ul>
+                    <ul class="chips">{#each granted as permission (permission)}<li class="ui-chip" class:danger={PLUGIN_PERMISSIONS[permission]?.danger === true} title={permission} data-testid="plugin-authorization" data-permission={permission}>{permissionTitle(permission)}</li>{/each}</ul>
                   {:else}<span class="hint">{t.reachesNothing}</span>{/if}
                   {#if onedit}
                     <button type="button" class="ghost small" data-testid="plugin-grants" data-plugin={current.id} disabled={working} onclick={() => onedit(current)}><ShieldCheck size={14} /><span class="ui-label">{t.authorizationsEdit}</span></button>
@@ -151,24 +151,26 @@
     display: flex; align-items: flex-start; justify-content: center;
     padding-top: min(8vh, 72px);
     background: var(--color-scrim);
-    animation: fade var(--dur-2) var(--ease-out-quint);
+    /* The one motion set (app.css): one duration and curve in and out. */
+    animation: fade var(--motion-duration) var(--motion-curve);
   }
-  .scrim.closing { animation-name: fade-out; pointer-events: none; }
+  .scrim.closing { animation: fade-out var(--motion-duration) var(--motion-curve); pointer-events: none; }
   .dialog {
     width: min(560px, calc(100vw - 32px));
     max-height: min(84vh, 720px);
     display: flex; flex-direction: column;
-    background: var(--color-surface);
-    border: 1px solid var(--color-edge);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-e3);
+    /* The overlay card every menu and sheet wears (app.css). */
+    background: var(--overlay-surface);
+    border: 1px solid var(--overlay-edge);
+    border-radius: var(--radius-overlay);
+    box-shadow: var(--shadow-overlay);
     overflow: hidden;
-    animation: pop var(--dur-2) var(--ease-out-quint);
+    animation: pop var(--motion-duration) var(--motion-curve);
   }
   .dialog:focus { outline: none; }
-  .dialog.closing { animation-name: pop-out; }
+  .dialog.closing { animation: pop-out var(--motion-duration) var(--motion-curve); }
   .head { display: flex; align-items: center; gap: 12px; padding: 14px 12px 12px 18px; border-bottom: 1px solid var(--color-border); }
-  .glyph { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: var(--radius-md); background: var(--color-surface-2); color: var(--color-muted-foreground); }
+  .glyph { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: var(--radius-md); background: var(--color-active); color: var(--color-muted-foreground); }
   .who { flex: 1; min-width: 0; display: grid; gap: 3px; }
   h2 { margin: 0; display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: var(--text-md); overflow-wrap: anywhere; }
   .version { flex: none; font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); }
@@ -185,15 +187,15 @@
   .hint { margin: 0; font-size: var(--text-sm); line-height: 1.45; color: var(--color-muted-foreground); }
   .reach { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; }
   .chips { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
-  .chips .chip { height: auto; padding: 1px 6px; font-size: var(--text-xs); }
-  .chips .chip.danger { color: var(--color-danger); border-color: color-mix(in srgb, var(--color-danger) 40%, transparent); }
+  .chips .ui-chip { height: auto; padding: 1px 6px; font-size: var(--text-xs); }
+  .chips .ui-chip.danger { color: var(--color-danger); border-color: color-mix(in srgb, var(--color-danger) 40%, transparent); }
   .details { display: grid; gap: 10px; padding-bottom: 2px; }
   .actions { display: flex; align-items: center; gap: 6px; padding: 8px 12px 10px; border-top: 1px solid var(--color-border); }
   .push { margin-left: auto; }
   .danger-text { color: var(--color-danger); }
   @media (max-width: 720px) {
     .scrim { align-items: flex-end; padding-top: 0; }
-    .dialog { width: 100vw; max-height: 90dvh; border-radius: var(--radius-xl) var(--radius-xl) 0 0; padding-bottom: env(safe-area-inset-bottom); }
+    .dialog { width: 100vw; max-height: 90dvh; border-radius: var(--radius-overlay) var(--radius-overlay) 0 0; padding-bottom: env(safe-area-inset-bottom); }
     .authorizations { grid-template-columns: minmax(0, 1fr); }
     .reach, .chips { justify-content: flex-start; }
   }

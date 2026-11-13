@@ -19,7 +19,7 @@ afterAll(async () => {
 }, 30_000);
 
 const STORE = `globalThis.__boiteTest.workspace.active`;
-const settle = `Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`;
+const settle = `Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`;
 const shot = (page: BrowserPage, name: string) => page.screenshot(join(import.meta.dir, '.artifacts', `${name}.png`));
 
 /** A spare account with one idle conversation on it, the seeded ones being busy. */
@@ -42,13 +42,14 @@ async function withSpare(size: { width: number; height: number }): Promise<Brows
  */
 async function openOrphan(page: BrowserPage, name: string): Promise<void> {
   await page.evaluate(`${STORE}.open(window.__thread)`);
-  await page.waitFor(`${STORE}.openThread?.id === window.__thread && document.querySelector('[data-testid="composer-attach"]')`);
+  // The composer is drawn: its plus, which holds Attach, is there.
+  await page.waitFor(`${STORE}.openThread?.id === window.__thread && document.querySelector('[data-testid="composer-options"]')`);
   expect(await page.evaluate(`document.querySelector('[data-testid="composer-account-removed"]') === null`)).toBe(true);
   await page.evaluate(`${STORE}.accounts.filter(account => account.providerId === 'echo').forEach(account => { account.status = 'unauthenticated'; })`);
   await page.waitFor(`document.querySelector('[data-testid="composer-account-removed"]')`);
   await page.evaluate(settle);
   await shot(page, name);
-  await page.click('[data-testid="composer-account-removed"]');
+  await page.click('[data-testid="account-gone-pick"]');
   await page.waitFor(`document.querySelector('[data-testid="composer-picker-menu"]')`);
 }
 

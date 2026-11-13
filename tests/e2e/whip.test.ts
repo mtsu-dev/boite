@@ -12,7 +12,7 @@ const toggle = '[data-testid="experiment-whip"]';
 
 async function settled() {
   await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations()
-    .filter(animation => animation.effect?.getTiming().iterations !== Infinity)
+    .filter(animation => animation.timeline === document.timeline && animation.effect?.getTiming().iterations !== Infinity)
     .map(animation => animation.finished.catch(() => {}))])`);
 }
 
@@ -247,7 +247,7 @@ test('Whip phone controls stay reachable with agents and disable mid-hit', async
   // The phone's own Experiments page, as its settings row opens it.
   await page.evaluate(`__boiteTest.workspace.active.showSettings('experiments')`);
   await page.waitFor(`document.querySelector('${toggle}')`);
-  await page.click('[data-testid=experiment-resident-agents]');
+  expect(await page.evaluate(`document.querySelector('[data-testid=experiment-resident-agents]')`)).toBeNull();
   await page.navigate(url);
   await toMobileList(page);
   await page.waitFor('document.querySelector("[data-testid=mobile-agents]")');
@@ -270,14 +270,20 @@ test('Whip phone controls stay reachable with agents and disable mid-hit', async
   await page.evaluate(`__boiteTest.workspace.active.showSettings('experiments')`);
   await page.waitFor(`document.querySelector('${toggle}')`);
   await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
-  // Switching the experiment off mid-hit stops the shake with the rope.
+  // Switching the experiment off mid-hit stops the shake with the rope. The phone's
+  // Settings is a page over the list, so the hit starts from the list's header and
+  // its Experiments page opens while the shake still runs.
   await toMobileList(page);
   expect(await page.evaluate(`(async () => {
     const running = await ${crack()};
     if (!running) return 'no shake';
+    __boiteTest.workspace.active.showSettings('experiments');
+    while (!document.querySelector('${toggle}') && running.playState === 'running') await new Promise(resolve => requestAnimationFrame(resolve));
+    if (running.playState !== 'running') return 'hit ended before the switch';
     document.querySelector('${toggle}').click();
     return 'cracked';
   })()`)).toBe('cracked');
+  await toMobileList(page);
   await page.waitFor(`document.querySelector('${button}') === null`);
   expect(await page.evaluate(`document.querySelector('[data-testid=whip-canvas]') === null`)).toBe(true);
   expect(await page.evaluate(`document.getElementById('app').getAnimations().length`)).toBe(0);

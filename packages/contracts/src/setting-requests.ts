@@ -1,5 +1,7 @@
+import type { AgentCreation } from './agent-create.ts';
 import type { QuestionAnswer, QuestionOption, Settings, ThreadId } from './index.ts';
 import { readPluginSource, sameRepository, type PluginSourceInput } from './plugin-source.ts';
+import { EXPERIMENT_IDS, experimentRefusal, isExperimentId, listedExperiments, type ExperimentId } from './experiments.ts';
 
 /*
  * An agent helping the user set Boite up: it reads the settings, then asks for
@@ -11,17 +13,6 @@ import { readPluginSource, sameRepository, type PluginSourceInput } from './plug
  * reports which are on (`client.preferences`), the card flips it there, and
  * the core settles the card on the next report. See docs/internals/cli.md.
  */
-
-/**
- * The experiments this build ships, in the order Settings lists them. Each
- * device turns them on for itself (`packages/ui/src/lib/experiments.ts`).
- */
-export const EXPERIMENT_IDS = ['theme-grain', 'session-import', 'prompt-cache', 'resident-agents', 'whip', 'recording-indicators', 'contacts', 'pinned-quotas', 'auto-goal', 'teams', 'debates'] as const;
-export type ExperimentId = (typeof EXPERIMENT_IDS)[number];
-
-export function isExperimentId(id: unknown): id is ExperimentId {
-  return typeof id === 'string' && (EXPERIMENT_IDS as readonly string[]).includes(id);
-}
 
 /** The languages the app speaks (`docs/internals/language.md`). */
 export const APP_LANGUAGES = ['en', 'fr'] as const;
@@ -100,6 +91,9 @@ export interface SettingPlace {
   sensitive: boolean;
 }
 
+/** The card of Settings > General that holds what agents may do alone. */
+export const AGENTS_ALONE_SECTION = 'agents-alone';
+
 /**
  * The settings an agent may read and ask about. Credentials, account ids and
  * browser profiles are left out: an agent has no reason to read them.
@@ -112,8 +106,8 @@ export const REQUESTABLE_SETTINGS = {
   threadDoneRetentionDays: { page: 'general', section: 'archived', sensitive: true },
   threadDeletionRetentionDays: { page: 'general', section: 'archived', sensitive: true },
   worktreeStorage: { page: 'general', section: 'worktrees', sensitive: true },
-  focusGuard: { page: 'resources', section: 'quiet', sensitive: true },
-  muteAgents: { page: 'resources', section: 'quiet', sensitive: true },
+  focusGuard: { page: 'general', section: 'quiet', sensitive: true },
+  muteAgents: { page: 'general', section: 'quiet', sensitive: true },
   agentCpuCapPercent: { page: 'resources', section: 'limits', sensitive: false },
   agentMemoryBudgetPercent: { page: 'resources', section: 'limits', sensitive: false },
   threadMemoryCapMb: { page: 'resources', section: 'limits', sensitive: false },
@@ -134,6 +128,8 @@ export const REQUESTABLE_SETTINGS = {
   deviceStream: { page: 'experiments', section: 'device-stream', sensitive: false },
   groupThreads: { page: 'machines', section: 'machines', sensitive: false },
   groupBots: { page: 'machines', section: 'machines', sensitive: false },
+  agentBotCreation: { page: 'general', section: AGENTS_ALONE_SECTION, sensitive: false },
+  coordinationReach: { page: 'general', section: AGENTS_ALONE_SECTION, sensitive: false },
 } as const satisfies Partial<Record<keyof Settings, SettingPlace>>;
 
 export type RequestableSetting = keyof typeof REQUESTABLE_SETTINGS;
@@ -234,12 +230,35 @@ export type SettingAsk =
       plugin?: PluginSourceInput;
     };
 
+/** What a question's `setting` holds: a settings card, or the card of a bot an agent asked to create. */
+export type SettingCardAsk = SettingAsk | BotAsk;
+
+/**
+ * A bot a thread's agent asked to create while `agentBotCreation` is `ask`
+ * (`agents.create`). Approve is the owner's `agents.create.approve`, which
+ * creates it as the call would have; the only option is to decline.
+ */
+export interface BotAsk {
+  kind: 'bot';
+  /** The bot as the call was checked: Approve saves it, checked again. */
+  bot: AgentCreation;
+  /** Its projects by name, in the order of `bot.projectIds`. */
+  projects: string[];
+  /** Its model as the model picker names it. */
+  model: string;
+}
+
 /**
  * How a settings card ended, the one option id its answer carries. Only
  * `refuse` and `open` are options the user answers with; the core writes
  * `applied` and `changed` itself when the setting changes.
  */
 export type SettingOutcome = 'applied' | 'changed' | 'refuse' | 'open';
+
+/** The card `agents.create` draws, with the one option the user answers with. */
+export function botCard(bot: AgentCreation, projects: string[], model: string): { text: string; setting: BotAsk; options: QuestionOption[] } {
+  return { text: `Create the bot ${JSON.stringify(bot.name)}, which runs with full access to this machine`, setting: { kind: 'bot', bot, projects, model }, options: [{ id: 'refuse', label: 'Decline' }] };
+}
 
 export const SETTING_REASON_MAX = 500;
 
@@ -265,6 +284,8 @@ const MISSING: Partial<Record<RequestableSetting, unknown>> = {
   deviceStream: false,
   groupThreads: false,
   groupBots: false,
+  agentBotCreation: 'ask',
+  coordinationReach: 'project',
   shortAnswers: true,
   toolSummaries: false,
   titleModel: null,
@@ -295,11 +316,12 @@ function experimentPlace(id: ExperimentId): SettingPlace {
 }
 
 /** Every readable setting, an app's experiments after the core's settings once an app reported them. */
-export function readSettings(settings: Settings, client: ClientPreferences | null = null): SettingReading[] {
+export function readSettings(settings: Settings, client: ClientPreferences | null = null, version?: string): SettingReading[] {
   const labelled = (key: RequestableKey): { label?: string } => (client?.labels[key] === undefined ? {} : { label: client.labels[key] });
   const core: SettingReading[] = REQUESTABLE_SETTING_KEYS.map(key => ({ key, value: effectiveSetting(settings, key), ...REQUESTABLE_SETTINGS[key], ...labelled(key) }));
   if (client === null) return core;
-  return [...core, ...EXPERIMENT_IDS.map(id => {
+  // With the build's version, only the switches that build shows: a finished feature or one a Release lacks is not a setting.
+  return [...core, ...(version === undefined ? EXPERIMENT_IDS : listedExperiments(version)).map(id => {
     const key: ExperimentSettingKey = `experiment.${id}`;
     return { key, value: client.experiments.includes(id), ...experimentPlace(id), ...labelled(key) };
   })];
@@ -334,7 +356,7 @@ export type SettingNormalizer = (patch: Partial<Settings>) => { ok: true; patch:
  * about another machine, `machine` names it and `settings` holds the value
  * that machine reported for the key.
  */
-export function checkSettingRequest(params: SettingRequestParams, settings: Settings, normalize: SettingNormalizer, open: readonly SettingAsk[], client: ClientPreferences | null = null, machine: SettingMachine | null = null): SettingRequestCheck {
+export function checkSettingRequest(params: SettingRequestParams, settings: Settings, normalize: SettingNormalizer, open: readonly SettingCardAsk[], client: ClientPreferences | null = null, machine: SettingMachine | null = null, version?: string): SettingRequestCheck {
   const reason = typeof params.reason === 'string' ? params.reason.trim() : '';
   if (reason.length === 0 || reason.length > SETTING_REASON_MAX) return { ok: false, message: `reason must hold 1 to ${SETTING_REASON_MAX} characters`, data: { field: 'reason' } };
   const hasKey = params.key !== undefined;
@@ -357,7 +379,7 @@ export function checkSettingRequest(params: SettingRequestParams, settings: Sett
   }
   const experiment = typeof key === 'string' ? experimentOf(key) : null;
   if (!isRequestableSetting(key) && experiment === null) {
-    const keys = [...REQUESTABLE_SETTING_KEYS, ...EXPERIMENT_IDS.map(id => `experiment.${id}`)];
+    const keys = [...REQUESTABLE_SETTING_KEYS, ...(version === undefined ? EXPERIMENT_IDS : listedExperiments(version)).map(id => `experiment.${id}`)];
     return { ok: false, message: `${String(key)} is not a setting an agent may ask about; the keys are ${keys.join(', ')}`, data: { field: 'key', expected: keys } };
   }
   if (value === undefined) return { ok: false, message: 'a change needs a value', data: { field: 'value' } };
@@ -365,6 +387,9 @@ export function checkSettingRequest(params: SettingRequestParams, settings: Sett
   let place: SettingPlace;
   if (experiment !== null) {
     if (typeof value !== 'boolean') return { ok: false, message: 'an experiment is true or false', data: { field: 'value', expected: 'true or false' } };
+    // The build that answers decides: a finished feature has no switch, and a Release runs no experiment.
+    const unavailable = version === undefined ? null : experimentRefusal(experiment, version);
+    if (unavailable !== null) return { ok: false, message: unavailable, data: { field: 'key', key } };
     if (client === null) return { ok: false, message: 'no Boite app has reported its experiments yet; ask the user to open the app', data: { field: 'key', key } };
     proposed = value;
     place = experimentPlace(experiment);
@@ -394,7 +419,7 @@ export function checkSettingRequest(params: SettingRequestParams, settings: Sett
  * Plugins page reads it, so a URL the page would refuse never reaches a card,
  * and one thread holds one card per repository.
  */
-function pluginCard(params: Extract<SettingRequestParams, { page: string }>, reason: string, open: readonly SettingAsk[]): SettingRequestCheck {
+function pluginCard(params: Extract<SettingRequestParams, { page: string }>, reason: string, open: readonly SettingCardAsk[]): SettingRequestCheck {
   if (params.page !== 'plugins') return { ok: false, message: 'a plugin card opens the plugins page', data: { field: 'page', expected: ['plugins'] } };
   const given = params.plugin as unknown;
   if (given === null || typeof given !== 'object' || Array.isArray(given)) return { ok: false, message: 'plugin must be { url, ref? }', data: { field: 'plugin', expected: '{ url, ref? }' } };
@@ -416,7 +441,7 @@ function pluginCard(params: Extract<SettingRequestParams, { page: string }>, rea
  * asked from. An experiment's card never settles here: a core setting moving
  * flips no switch (`settledExperiment`).
  */
-export function settledSetting(setting: SettingAsk, settings: Settings): QuestionAnswer | null {
+export function settledSetting(setting: SettingCardAsk, settings: Settings): QuestionAnswer | null {
   if (setting.kind !== 'change' || isExperimentKey(setting.key) || setting.machine !== undefined) return null;
   const now = effectiveSetting(settings, setting.key as RequestableSetting);
   if (sameSetting(now, setting.previous)) return null;
@@ -428,7 +453,7 @@ export function settledSetting(setting: SettingAsk, settings: Settings): Questio
  * said its setting changed (`value`), or null while it holds the value the
  * card was asked from, or the card is about another machine or key.
  */
-export function settledMachineSetting(setting: SettingAsk, coreId: string, key: string, value: unknown): QuestionAnswer | null {
+export function settledMachineSetting(setting: SettingCardAsk, coreId: string, key: string, value: unknown): QuestionAnswer | null {
   if (setting.kind !== 'change' || setting.machine?.coreId !== coreId || setting.key !== key) return null;
   if (sameSetting(value, setting.previous)) return null;
   return { optionIds: [sameSetting(value, setting.value) ? 'applied' : 'changed'], value };
@@ -442,7 +467,7 @@ export function settledMachineSetting(setting: SettingAsk, coreId: string, key: 
  * restart. Another app that merely had a different value, a language change
  * or a core setting moving settles nothing.
  */
-export function settledExperiment(setting: SettingAsk, report: ClientPreferences, before: readonly ExperimentId[] | null): QuestionAnswer | null {
+export function settledExperiment(setting: SettingCardAsk, report: ClientPreferences, before: readonly ExperimentId[] | null): QuestionAnswer | null {
   if (setting.kind !== 'change') return null;
   const id = experimentOf(setting.key);
   if (id === null) return null;
@@ -454,8 +479,14 @@ export function settledExperiment(setting: SettingAsk, report: ClientPreferences
 }
 
 /** What the agent reads once its card settles, under the quoted reason. */
-export function settingAnswerText(setting: SettingAsk, answer: QuestionAnswer): string {
+export function settingAnswerText(setting: SettingCardAsk, answer: QuestionAnswer): string {
   const outcome = answer.optionIds[0];
+  if (setting.kind === 'bot') {
+    const name = JSON.stringify(setting.bot.name);
+    if (outcome !== 'applied') return `declined: the user did not create the bot ${name}; nothing was created`;
+    const made = (answer.value ?? {}) as { agentId?: string; threadId?: string | null };
+    return `approved: the bot ${name} exists (${made.agentId ?? 'id unknown'})${made.threadId ? `; its conversation is ${made.threadId}, and boite threads send ${made.threadId} <text> writes to it` : ''}`;
+  }
   if (setting.kind === 'open' && setting.plugin !== undefined) {
     const source = `${setting.plugin.url}${setting.plugin.ref === null ? '' : ` at ${setting.plugin.ref}`}`;
     return outcome === 'open'

@@ -318,14 +318,14 @@
     --terminal-gap: 0px;
     height: calc(var(--terminal-height) + var(--terminal-gap));
     overflow: clip;
-    transition: height var(--dur-slide) var(--ease-slide);
+    transition: height var(--motion-duration) var(--motion-curve);
   }
 
   @starting-style {
     .drawer { height: 0; }
   }
 
-  .drawer.closing { height: 0; transition: height var(--dur-slide-out) var(--ease-slide); }
+  .drawer.closing { height: 0; transition: height var(--motion-duration) var(--motion-curve); }
   .drawer.dragging { transition: none; }
 
   /* One flat screen, header included, as a console window: no card inside the frame. */
@@ -501,7 +501,7 @@
     position: absolute;
     inset: 0;
     pointer-events: none;
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 55%, transparent);
+    box-shadow: inset 0 0 0 1px var(--color-muted-foreground);
   }
 
   /* The line between two panes; its handle (ResizeHandle) lies over it. */

@@ -11,7 +11,7 @@ const captures = process.env.BOITE_CAPTURE_DIR ?? join(import.meta.dir, '.artifa
 
 async function capture(name: string) {
   await page.evaluate(`document.querySelector('${id('worktree-storage')}').scrollIntoView({ block: 'center' })`);
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
   await page.screenshot(join(captures, name));
 }
@@ -52,20 +52,22 @@ test('owners choose storage in desktop and phone settings, with validation and e
   await page.waitFor(`document.querySelector('${id('worktree-storage-directory')}')?.value === 'D:\\\\Worktrees'`);
 
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-  await page.waitFor(`document.querySelector('${id('mobile-settings-home')}')`);
-  // The phone's settings list leaves worktrees to the desktop; the page a project's menu links to still opens.
-  expect(await page.evaluate(`document.querySelector('${id('mobile-settings-worktrees')}') === null`)).toBe(true);
-  await page.evaluate(`${state}.showSettings('general', 'worktrees')`);
-  await page.waitFor(`document.querySelector('${id('worktree-storage-directory')}')`);
+  // The phone keeps the page the desktop showed: General, a page of rows under the settings list.
+  await page.waitFor(`document.querySelector('${id('mobile-settings-general')}')`);
+  // An owner's General page lists Worktrees; the page a project's menu links to opens the same form.
+  await page.click(id('mobile-settings-worktrees'));
+  await page.waitFor(`document.querySelector('${id('worktree-storage-directory')}')?.value === 'D:\\\\Worktrees'`);
   await capture('worktree-storage-phone.png');
   await mode('project');
   await page.waitFor(`${state}.settings.worktreeStorage.mode === 'project'`);
   await capture('worktree-storage-phone-project.png');
   expect(await page.evaluate(`${state}.threads.find(t => t.id === 't-scheduler').cwd`)).toBe(schedulerCwd);
   await page.click(id('mobile-settings-back'));
-  await page.waitFor(`document.querySelector('${id('mobile-settings-home')}')`);
+  await page.waitFor(`document.querySelector('${id('mobile-settings-general')}') && !document.querySelector('${id('worktree-storage-directory')}')`);
   await page.evaluate(`${state}.principal = 'session'; ${state}.client.becomes('session')`);
+  // A paired device has no worktrees to set: no row, and the link opens no form.
+  await page.waitFor(`document.querySelector('${id('mobile-settings-general')}') && !document.querySelector('${id('mobile-settings-worktrees')}')`);
   await page.evaluate(`${state}.showSettings('general', 'worktrees')`);
-  await page.waitFor(`document.querySelector('${id('mobile-settings-home')}') && !document.querySelector('${id('worktree-storage-directory')}')`);
+  await page.waitFor(`document.querySelector('${id('mobile-settings-home')}, ${id('mobile-settings-general')}') && !document.querySelector('${id('worktree-storage-directory')}')`);
   expect(page.errors()).toEqual([]);
 }, 60_000);

@@ -1,11 +1,13 @@
 <script lang="ts">
   import { errorText } from '../lib/errors';
   import { untrack } from 'svelte';
+  import { MediaQuery } from 'svelte/reactivity';
   import { ChevronDown, RefreshCw } from '@lucide/svelte';
   import type { UsageHistory, UsageHistoryThread } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
   import { formatLocale } from '../lib/i18n.svelte';
+  import { titleSlot } from '../lib/title-slot.svelte';
   import { workspace, type Machine } from '../lib/workspace.svelte';
   import {
     dayEdges,
@@ -153,6 +155,15 @@
     void load(range);
   }
 
+  /** Wider than a phone, the band carries the page's title, so the refresh stands in the band's actions. */
+  const narrow = new MediaQuery('(max-width: 720px)');
+  const inBand = $derived(!narrow.current);
+  $effect(() => {
+    if (!inBand) return;
+    titleSlot.actions = refreshButton;
+    return () => { if (titleSlot.actions === refreshButton) titleSlot.actions = null; };
+  });
+
   function pickMachine(id: string) {
     const next = id === ALL ? ALL : id === current.id ? null : id;
     if (next === scope) return;
@@ -203,6 +214,27 @@
     return totals.priced === 0 ? strings.usage.noPrice : formatMetric('cost', totals.usage.costUsdEquivalent ?? 0);
   }
 
+  /**
+   * The turns the current measure misses: none reported tokens, or none had a price. Zero when every turn
+   * counts, and when none does, since the value then says "Not reported" or "No price" itself.
+   */
+  function gap(totals: UsageTotals): number {
+    const counted = metric === 'tokens' ? totals.reported : metric === 'cost' ? totals.priced : totals.turns;
+    return counted > 0 ? totals.turns - counted : 0;
+  }
+
+  /** The singular or plural form of a line for this count; `{count}` is the count, formatted. */
+  function counts(forms: { one: string; many: string }, count: number, values: Record<string, string>): string {
+    return fill(count === 1 ? forms.one : forms.many, { count: formatMetric('turns', count), ...values });
+  }
+
+  /** A provider's line in plain words: what was counted over the range, then what the measure misses. */
+  function counted(totals: UsageTotals): string {
+    const line = counts(strings.usage.counted, totals.turns, { turns: formatMetric('turns', totals.turns), days: String(range) });
+    const missing = gap(totals);
+    return missing > 0 && metric !== 'turns' ? `${line} · ${fill(strings.usage.gaps[metric], { count: formatMetric('turns', missing) })}` : line;
+  }
+
   function valueOf(totals: UsageTotals & { value: number }): string {
     if (metric === 'cost') return money(totals);
     if (metric === 'tokens' && totals.turns > 0 && totals.reported === 0) return strings.usage.noUsage;
@@ -235,12 +267,16 @@
   </tr>
 {/snippet}
 
+{#snippet refreshButton()}
+  <button type="button" class="quiet icon refresh" aria-label={strings.usage.refresh} title={strings.usage.refresh} data-testid="usage-refresh" onclick={refresh}>
+    <RefreshCw size={15} strokeWidth={1.75} class={loading ? 'spinning' : ''} />
+  </button>
+{/snippet}
+
 <div class="page usage" data-testid="usage-page">
   <header>
     <h1 class="ui-label-box"><span class="ui-label">{strings.usage.heading}</span><InfoTip topic={strings.usage.heading} text={`${strings.usage.intro} ${strings.usage.note}`} /></h1>
-    <button type="button" class="quiet icon refresh" aria-label={strings.usage.refresh} title={strings.usage.refresh} data-testid="usage-refresh" onclick={refresh}>
-      <RefreshCw size={15} strokeWidth={1.75} class={loading ? 'spinning' : ''} />
-    </button>
+    {#if !inBand}{@render refreshButton()}{/if}
   </header>
 
   <div class="filters">
@@ -288,10 +324,8 @@
             tokens: formatMetric('tokens', totalTokens(view.total.usage)),
             cost: money(view.total)
           }))}</small>
-          {#if view.total.turns > 0}
-            <small class="coverage" data-testid="usage-coverage">{@render pairs(fill(strings.usage.coverage, {
-              reported: formatMetric('turns', view.total.reported), priced: formatMetric('turns', view.total.priced), turns: formatMetric('turns', view.total.turns)
-            }))}</small>
+          {#if gap(view.total) > 0 && metric !== 'turns'}
+            <small class="coverage" data-testid="usage-coverage"><span data-testid={metric === 'cost' ? 'usage-partial-cost' : undefined}>{counts(strings.usage.gapsTotal[metric], gap(view.total), {})}</span></small>
           {/if}
         </div>
         {#if view.series.length > 0}
@@ -301,7 +335,7 @@
               {@const share = view.total.value > 0 ? totals.value / view.total.value : 0}
               <li data-provider={serie.key}>
                 <span class="swatch" style:background={serie.color}></span>
-                <span class="provider"><ProviderLogo providerId={serie.key} size={14} /><span>{providerName(serie.key)}{#if totals.turns > 0}<small>{@render pairs(fill(strings.usage.coverage, { reported: formatMetric('turns', totals.reported), priced: formatMetric('turns', totals.priced), turns: formatMetric('turns', totals.turns) }))}</small>{/if}</span></span>
+                <span class="provider"><ProviderLogo providerId={serie.key} size={14} /><span>{providerName(serie.key)}{#if totals.turns > 0}<small>{@render pairs(counted(totals))}</small>{/if}</span></span>
                 <span class="value" class:muted={totals.turns === 0}>{totals.turns === 0 ? strings.usage.noActivity : valueOf(totals)}</span>
                 <span class="share" title={fill(strings.usage.share, { percent: percent.format(share) })}>{totals.turns > 0 && (metric === 'turns' || (metric === 'tokens' ? totals.reported : totals.priced) > 0) ? percent.format(share) : ''}</span>
                 <span class="bar"><span style:width="{share * 100}%" style:background={serie.color}></span></span>
@@ -335,12 +369,6 @@
         {/if}
         {#if metric === 'cost' && view.unpriced.length > 0}
           <p class="aside" data-testid="usage-unpriced">{fill(strings.usage.unpriced, { providers: view.unpriced.map(providerName).join(', ') })}</p>
-        {/if}
-        {#if view.total.turns > view.total.reported}
-          <p class="aside">{fill(strings.usage.unreported, { count: formatMetric('turns', view.total.turns - view.total.reported) })}</p>
-        {/if}
-        {#if metric === 'cost' && view.total.priced > 0 && view.total.priced < view.total.turns}
-          <p class="aside" data-testid="usage-partial-cost">{fill(strings.usage.partialCost, { count: formatMetric('turns', view.total.turns - view.total.priced) })}</p>
         {/if}
       </section>
 
@@ -430,7 +458,7 @@
 {/snippet}
 
 <style>
-  /* The refresh sits on the title's line, as on Limits. */
+  /* On a phone the refresh sits on the title's line; wider, it stands in the band. */
   .usage > header { align-items: center; gap: 8px; max-width: var(--settings-width); }
   .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: var(--settings-width); margin-bottom: 20px; }
   .refresh { margin-left: auto; width: var(--control); height: var(--control); padding: 0; }
@@ -439,12 +467,6 @@
   .failure { max-width: var(--settings-width); margin: 0 0 12px; color: var(--color-danger); font-size: var(--text-sm); }
   .body { max-width: var(--settings-width); transition: opacity var(--dur-2) var(--ease-out-quint); }
   .body.stale { opacity: 0.6; }
-
-  /* The options in one track, the chosen one filled like a primary button. */
-  .segmented { display: inline-flex; flex: none; gap: 2px; padding: 2px; border: 1px solid var(--color-edge); border-radius: var(--radius-md); background: var(--color-surface-2); }
-  .segmented button { height: var(--control-sm); padding: 0 10px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); font-size: var(--text-sm); }
-  .segmented button:hover:not(.on) { background: var(--color-surface-3); color: var(--color-foreground); }
-  .segmented button.on { background: var(--color-foreground); border-color: var(--color-foreground); color: var(--color-on-foreground); }
 
   .hero { display: grid; gap: 4px; }
   .hero strong { font-size: calc(var(--text-lg) * 1.6); line-height: 1.1; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }

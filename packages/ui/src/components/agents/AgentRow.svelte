@@ -1,13 +1,16 @@
 <script lang="ts">
   import { tick, type Component, type Snippet } from 'svelte';
-  import { ArrowRightLeft, Clock3, Pin } from '@lucide/svelte';
+  import { ArrowRightLeft, Pin } from '@lucide/svelte';
   import { focusOnMount } from '../../lib/actions';
   import { longPress } from '../../lib/long-press';
   import { fill, strings } from '../../lib/strings';
-  import { ago, clockTime, elapsed, exactTime } from '../../lib/format';
+  import { ago, elapsed, exactTime } from '../../lib/format';
   import { secondClock } from '../../lib/clock.svelte';
+  import { wordFit } from '../../lib/word-fit';
   import type { Machine } from '../../lib/workspace.svelte';
   import MachineIcon from '../MachineIcon.svelte';
+  import MachinePlace from '../MachinePlace.svelte';
+  import { hostMark } from '../../lib/machine-host';
   import StatusMark from '../StatusMark.svelte';
   import BuiltinBadge from './BuiltinBadge.svelte';
 
@@ -16,10 +19,13 @@
    * ring beside two lines, its name over what it does this second while it
    * works, what it waits on, else the last thing it said. The picture spans
    * both lines, so the row holds no gap under it. On the right the time it
-   * has worked, the missed answers or the time of the last one, and the next
-   * wake as a small clock while it rests. A row with a menu opens it on a
+   * has worked, the missed answers or the time of the last one: one time per
+   * row, as in the thread lists. The next wake is in the row's tooltip and
+   * the bot's header, not a second time on the row. A row with a menu opens it on a
    * right click or a long press, and renames in place like a thread's row.
    * A move waiting for the turn's end adds a line, as on a thread's row.
+   * One signal per state: a coloured mark leads the line under the name (the
+   * thread rows' shapes, StatusMark.svelte) and the words stay neutral ink.
    */
   let { title, builtin = false, open = false, unread = 0, marked = false, away = false, at, now, detail = '', tone = 'idle', icon, since = null, wake = null, machine, testid, onclick, picture, aside, pinned = false, onmenu, renaming = false, onrename, pending = null }: {
     title: string;
@@ -35,7 +41,7 @@
     at: number;
     now: number;
     detail?: string;
-    /** How the line under the name reads: the accent while it works, the waiting colour while it waits, danger after a failure, faded asleep. */
+    /** How the line under the name reads: muted while it works, the waiting colour while it waits, danger after a failure, faded asleep. */
     tone?: 'idle' | 'working' | 'waiting' | 'error' | 'asleep';
     /** The glyph before that line: the kind of step it is on, what it waits on, a failure. */
     icon?: Component<{ size?: number; strokeWidth?: number }>;
@@ -63,9 +69,14 @@
   } = $props();
 
   const missed = $derived(fill(unread === 1 ? strings.agents.missedOne : strings.agents.missedMany, { count: String(unread) }));
-  /** The wake's hour today, its day and hour further out. */
-  const wakeText = $derived(wake ? clockTime(wake.at, now) : '');
+  /** The next wake in words, for the row's tooltip and assistive tech. */
+  const wakeText = $derived(wake ? fill(strings.agents.nextWake, { name: wake.label, when: exactTime(wake.at) }) : '');
   /** Counting time reads the second clock, only while it works: the list's clock ticks far slower. */
+  /** The one coloured mark a state wears; rest and sleep wear none. */
+  const mark = $derived(tone === 'working' ? 'running' as const : tone === 'waiting' || tone === 'error' ? tone : null);
+  const markLabel = $derived(tone === 'working' ? strings.agents.state.working : tone === 'waiting' ? strings.agents.state.waiting : strings.agents.state.error);
+  /** Its machine is out of reach and named on the row: the place stands where a time would. */
+  const placed = $derived(away && !!machine);
   const spent = $derived(tone === 'working' && since !== null ? elapsed(Math.max(secondClock.now, now) - since) : null);
 
   let row = $state<HTMLButtonElement>();
@@ -104,24 +115,27 @@
       {#if aside}{@render aside()}
       {:else}
         {#if pinned}<span class="pin" data-testid="agent-pinned"><Pin size={12} /></span>{/if}
-        {#if spent !== null}<span class="spent" data-testid="agent-row-spent">{spent}</span>
+        {#if wake}<span class="visually-hidden" data-testid="agent-row-wake">{wakeText}</span>{/if}
+        <!-- An offline machine's place replaces the times, never the missed answers: they still wait for the owner. -->
+        {#if placed && machine}<span class="offline-name" data-testid="agent-row-away"><MachinePlace host={hostMark(machine.label, machine.store.connection === 'ready' ? 'offline' : machine.store.connection)} /></span>{/if}
+        {#if !placed && spent !== null}<span class="spent" data-testid="agent-row-spent">{spent}</span>
         {:else if unread > 0}<span class="unread-count" role="img" title={missed} aria-label={missed} data-testid="agent-unread-count">{unread}</span>
-        {:else if at > 0}<time class="when" datetime={new Date(at).toISOString()} title={exactTime(at)}>{ago(at, now)}</time>{/if}
+        {:else if !placed && at > 0}<time class="when" datetime={new Date(at).toISOString()} title={exactTime(at)}>{ago(at, now)}</time>{/if}
         {#if marked}<StatusMark tone="unread" label={strings.sidebar.unread} />{/if}
       {/if}
     </span>
-    {#if detail || wake}
+    {#if detail}
       <span class="detail-line">
-        {#if icon}{@const Glyph = icon}<span class="glyph" data-testid="agent-row-glyph"><Glyph size={13} strokeWidth={2} /></span>{/if}
-        <span class="detail" data-testid="agent-row-detail">{detail}</span>
-        {#if wake}<span class="wake" title={fill(strings.agents.nextWake, { name: wake.label, when: exactTime(wake.at) })} data-testid="agent-row-wake"><Clock3 size={11} strokeWidth={2} />{wakeText}</span>{/if}
+        {#if mark}<span class="state-mark" data-testid="agent-row-mark"><StatusMark tone={mark} label={markLabel} /></span>
+        {:else if icon}{@const Glyph = icon}<span class="glyph" data-testid="agent-row-glyph"><Glyph size={13} strokeWidth={2} /></span>{/if}
+        <span class="detail" data-testid="agent-row-detail" use:wordFit={detail}></span>
       </span>
     {/if}
     {#if pending}<span class="pending" data-testid="agent-row-pending" title={pending}><ArrowRightLeft size={12} /><span class="ui-label">{pending}</span></span>{/if}
   </span>
 {/snippet}
 
-<div class="agent-row" class:open class:unread={unread > 0 || marked} class:on-machine={!!machine} data-machine-id={machine?.id} data-tone={tone}>
+<div class="agent-row" class:open class:away class:unread={unread > 0 || marked} class:on-machine={!!machine} data-machine-id={machine?.id} data-tone={tone}>
   {#if renaming}
     <div class="row">
       {#snippet field()}
@@ -136,7 +150,7 @@
       {@render body(field)}
     </div>
   {:else}
-    <button type="button" class="ghost row" bind:this={row} aria-current={open ? 'page' : undefined} title={title} {onclick} oncontextmenu={onmenu} use:press={!!onmenu} data-testid={testid} data-unread={marked ? 'true' : undefined}>
+    <button type="button" class="ghost row" bind:this={row} aria-current={open ? 'page' : undefined} title={wake ? `${title}\n${wakeText}` : title} {onclick} oncontextmenu={onmenu} use:press={!!onmenu} data-testid={testid} data-unread={marked ? 'true' : undefined}>
       {#snippet name()}
         {#if builtin}<span class="name"><span class="title">{title}</span><BuiltinBadge /></span>{:else}<span class="title">{title}</span>{/if}
       {/snippet}
@@ -149,48 +163,48 @@
   .agent-row { position: relative; border-radius: var(--radius-md); transition: background var(--dur-2) var(--ease-out-quint), box-shadow var(--dur-2) var(--ease-out-quint); }
   .agent-row:hover { background: var(--color-hover); }
   /* The open row lifts: the active fill and the card shadow. */
-  .agent-row.open { background: var(--color-active); box-shadow: var(--shadow-e1); }
+  .agent-row.open { background: var(--color-active); }
   /* The picture spans both lines, the messenger way: one row tall, nothing under it. */
   .row { display: flex; align-items: center; width: 100%; height: auto; min-height: var(--row); padding: 7px 10px 7px 8px; gap: 10px; background: transparent; text-align: left; }
   .row:hover:not(:disabled) { background: transparent; }
   .row:active:not(:disabled) { transform: none; }
   .picture { display: inline-flex; flex: none; margin: 3px; }
   .machine { display: inline-flex; align-items: center; flex: none; margin-right: -4px; color: var(--color-muted-foreground); }
-  .machine.offline { color: var(--color-danger); }
+  /* Out of reach is a state, not a fault: its machine stands as a place, "on <machine>" with its Offline chip,
+     where the time stood. The picture alone is dimmed; the words keep their ink. */
+  .agent-row.away .picture { opacity: 0.6; }
+  .offline-name { display: inline-flex; flex: 0 1 auto; min-width: 0; }
   .text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .headline { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-foreground); font-weight: 500; }
   .unread .title { font-weight: 600; }
-  .unread-count { flex: none; min-width: 18px; height: 18px; padding: 0 5px; display: grid; place-items: center; border-radius: 999px; background: var(--color-accent); color: var(--color-accent-ink); font-size: var(--text-xs); font-weight: 600; }
+  .unread-count { flex: none; min-width: 18px; height: 18px; padding: 0 5px; display: grid; place-items: center; border-radius: 999px; background: var(--color-foreground); color: var(--color-background); font-size: var(--text-xs); font-weight: 600; }
   /* A built-in bot's name keeps its badge right after it, the time still on the far right. */
   .name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
   .name .title { flex: 0 1 auto; }
-  .when { flex: none; color: var(--color-subtle); font-size: var(--text-xs); }
-  .spent { flex: none; color: var(--color-accent); font-size: var(--text-xs); font-weight: 600; font-variant-numeric: tabular-nums; }
-  .detail-line { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: var(--text-xs); color: var(--color-muted-foreground); }
+  /* Meta under and after the bot's name: a size under it, in the subtle ink, at the body's weight. */
+  .when { flex: none; color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+  .spent { flex: none; color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+  .detail-line { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: var(--text-xs); color: var(--color-subtle); }
   .glyph { display: inline-flex; flex: none; }
   .detail { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* An answer not read yet reads like an unread message, in the foreground; a state's own colour wins over it. */
   .unread[data-tone='idle'] .detail { color: var(--color-foreground); font-weight: 500; }
-  /* Hue says status: work in the accent, its glyph breathing; the user's turn in the live colour; a failure in danger. */
-  [data-tone='working'] .detail-line { color: var(--color-accent); }
-  [data-tone='working'] .detail { font-weight: 500; }
-  [data-tone='working'] .glyph { animation: pulse 1.6s var(--loop-ease-in-out-48) infinite var(--loops); }
-  [data-tone='waiting'] .detail-line { color: var(--color-live); }
-  [data-tone='waiting'] .detail { font-weight: 500; }
-  [data-tone='error'] .detail-line { color: var(--color-danger); }
+  /* The mark alone carries the hue: the words beside it stay in the line's neutral ink. */
+  .state-mark { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 13px; height: 13px; }
+  /* A failure's line says its cause and the way out: it wraps whole rather than lose the action at a phone's width. */
+  [data-tone='error'] .detail-line { align-items: flex-start; }
+  [data-tone='error'] .detail-line .state-mark { margin-top: 2px; }
+  [data-tone='error'] .detail { white-space: normal; overflow-wrap: anywhere; line-height: 1.4; }
   [data-tone='asleep'] .detail-line { color: var(--color-subtle); }
   [data-tone='asleep'] .title { color: var(--color-muted-foreground); }
-  .wake { flex: none; display: inline-flex; align-items: center; gap: 3px; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
   .pin { display: inline-flex; align-items: center; flex: none; color: var(--color-muted-foreground); }
-  /* A move waiting for the turn's end: the accent, like a thread's. */
-  .pending { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: var(--text-xs); color: var(--color-accent); }
+  /* A move waiting for the turn's end, like a thread's. */
+  .pending { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: var(--text-xs); color: var(--color-muted-foreground); }
   .pending span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pending :global(svg) { flex: none; }
   /* The name becomes its field where it stood: the row keeps its height and its picture. */
   .rename { flex: 1; min-width: 0; height: 22px; padding: 0 6px; }
   /* A long press opens the menu, not the system's link and text callout. */
   .row { -webkit-touch-callout: none; }
-  @media (prefers-reduced-motion: reduce) { [data-tone='working'] .glyph { animation: none; } }
-  :global(html[data-motion='reduced']) [data-tone='working'] .glyph { animation: none; }
 </style>

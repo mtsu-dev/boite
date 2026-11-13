@@ -42,7 +42,7 @@ function douane(version: string, bytes: Uint8Array, executable = 'douane') {
   served.set(version, bytes);
   return parseManifest({
     schema: 1, id: 'douane', name: 'Douane', version,
-    description: 'Subscription gateway.', homepage: 'https://github.com/mtsu-dev/douane', executable,
+    description: 'Subscription gateway.', homepage: 'https://github.com/klNuno/douane', executable,
     artifacts: { [platformKey()]: { url: `${ARTIFACT}/${version}`, sha256: sha256(bytes) } },
     provides: { gateway: {} },
   }, 'recommended.json[1]');
@@ -94,7 +94,7 @@ const live = () => harness!.core.procs.liveCount('plugin:douane:gateway');
 test('the recommended list ships Douane as a gateway plugin with an update source', () => {
   const shipped = recommendedPlugins().find((manifest) => manifest.id === 'douane');
   expect(shipped?.provides).toEqual({ gateway: {} });
-  expect(shipped?.homepage).toBe('https://github.com/mtsu-dev/douane');
+  expect(shipped?.homepage).toBe('https://github.com/klNuno/douane');
   expect(() => parseManifest({ ...shipped, provides: { gateway: { port: 8787 } } }, 'boite-plugin.json')).toThrow('provides.gateway.port');
 });
 

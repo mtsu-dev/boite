@@ -2,7 +2,7 @@ export const strings = {
 
   connection: {
     machine: 'Machine',
-    local: 'This PC',
+    local: 'This computer',
     current: 'Current machine',
     machines: 'machines connected',
     issues: 'need attention',
@@ -18,6 +18,11 @@ export const strings = {
     ready: 'Connected',
     closed: 'Disconnected',
     offline: 'Offline',
+    /** The remedy beside an offline machine (MachinesPage.svelte): it tries now. */
+    reconnect: 'Reconnect',
+    /** A machine named as a place, after a project or a thread (MachinePlace.svelte). */
+    onMachine: 'on {name}',
+    nameOffline: '{name} offline',
     label: 'Connection'
   }
 } as const;

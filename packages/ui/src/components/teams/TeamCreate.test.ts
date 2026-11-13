@@ -5,6 +5,7 @@ import { FakeClient } from '../../lib/fake-client';
 import { Store } from '../../lib/store.svelte';
 import { workspace } from '../../lib/workspace.svelte';
 import AgentsPage from '../agents/AgentsPage.svelte';
+import MobileNavigation from '../MobileNavigation.svelte';
 import ConfirmDialog from '../ConfirmDialog.svelte';
 import type { AgentsView } from '../../lib/agents.svelte';
 import { strings } from '../../lib/strings';
@@ -19,7 +20,6 @@ afterEach(async () => {
   for (const close of closers.splice(0)) close();
   workspace.machines = []; workspace.active = previousActive;
   setExperiment('teams', false);
-  setExperiment('resident-agents', false);
   vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear();
   document.documentElement.classList.remove('agents-detail-open');
 });
@@ -52,7 +52,6 @@ async function machine(names: string[], at: { coreId?: string; coreName?: string
 /** This computer with three bots and no team yet, the Teams experiment on in the app and on the core. */
 async function computer() {
   setExperiment('teams', true);
-  setExperiment('resident-agents', true);
   const local = await machine(['Huginn', 'Jeux', 'Muninn']);
   workspace.machines = [{ id: 'local', label: 'Local', store: local.store }]; workspace.active = local.store;
   return local;
@@ -63,8 +62,11 @@ function phone() {
     media, matches: media.includes('max-width'), onchange: null, addListener() {}, removeListener() {}
   }));
 }
+/** The Bots page as a phone draws it, under the header that holds its "+": a desktop's bots and teams are in the window's rail, the page's column is the open one's. */
 function page(store: Store) {
+  phone();
   store.showAgents();
+  mounted.push(mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } }));
   mounted.push(mount(AgentsPage, { target: document.body, props: { store } }));
   mounted.push(mount(ConfirmDialog, { target: document.body }));
   flushSync();
@@ -76,22 +78,35 @@ function type(selector: string, value: string) {
   flushSync();
 }
 const member = (botId: string) => query<HTMLButtonElement>(`[data-testid=team-dialog-member][data-bot-id="${botId}"]`);
+/** New team: in the one "+" menu the owner's phone page lends the header, or the greyed button a paired phone keeps under Teams. */
+async function newTeam(): Promise<HTMLElement> {
+  const plus = document.querySelector<HTMLButtonElement>('[data-testid=agents-create]');
+  if (plus && !document.querySelector('[data-testid=agents-new-team]')) { plus.click(); await settle(); }
+  return query('[data-testid=agents-new-team]');
+}
 async function openDialog() {
-  query<HTMLButtonElement>('[data-testid=agents-new-team]').click();
+  (await newTeam()).click();
   await settle();
   return query('[data-testid=team-dialog]');
 }
 
-test.each([false, true])('with no team yet the Bots page shows the Teams heading with New team and one line (phone: %s)', async narrow => {
+test('with no team yet the Bots list shows the bots first, then the Teams heading with New team and one line', async () => {
   const { store, bots } = await computer();
-  if (narrow) phone();
   page(store);
   await vi.waitFor(() => query(`[data-testid="agent-entry-${bots[0]!.id}"]`));
   await settle();
-  expect(all('.agents-rail .section-label').map(heading => heading.textContent)).toEqual(['Teams', 'Bots']);
-  expect(query('[data-testid=agents-new-team]').getAttribute('aria-label')).toBe('New team');
-  expect(text('[data-testid=agents-teams-empty]')).toBe('No team yet: put a few bots in one chat.');
+  // Nothing to list as a team yet: its prompt waits under the bots, which are what there is.
+  expect(all('.agents-rail .section-label').map(heading => heading.textContent)).toEqual(['Bots', 'Teams']);
+  expect(query(`[data-testid="agent-entry-${bots[0]!.id}"]`).compareDocumentPosition(query('[data-testid=agents-teams-empty]')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect((await newTeam()).textContent?.trim()).toBe('New team');
+  expect(text('[data-testid=agents-teams-empty] p')).toBe('No team yet: put a few bots in one chat.');
   expect(document.querySelector('[data-testid=agents-teams]')).toBeNull();
+  // The empty line carries its one action: New team, right under it.
+  document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();
+  const action = query<HTMLButtonElement>('[data-testid=agents-teams-empty-action]');
+  expect(action.textContent?.trim()).toBe('New team');
+  action.click(); await settle();
+  expect(document.querySelector('[data-testid=team-dialog]')).not.toBeNull();
 });
 
 test('the dialog asks for a name and a bot, then creates the team on this machine and opens its chat', async () => {
@@ -162,7 +177,6 @@ test("the bots of a machine outside the group are listed greyed with why, and ca
 
 test("a bot of another machine of the group joins from the dialog under its machine's name, and an edit keeps it one row until it is taken out", async () => {
   setExperiment('teams', true);
-  setExperiment('resident-agents', true);
   const local = await machine(['Huginn'], { coreId: 'desk', coreName: 'Desk', publicUrl: 'https://desk.test' });
   // Its second bot: no bot of this machine has that id, so nothing here can pass for it.
   const remote = await machine(['Ratatosk', 'Munin'], { coreId: 'firebat', coreName: 'Firebat', publicUrl: 'https://firebat.test' });

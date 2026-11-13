@@ -1,14 +1,15 @@
 import { expect, vi } from 'vitest';
+import type { AgentCreated } from '@boite/contracts';
 import { flushSync, mount, unmount } from 'svelte';
 import { test } from '../../test/fake-client';
 import { AgentsView, agentOfThread, agentRows, openAgent } from '../../lib/agents.svelte';
-import { setExperiment } from '../../lib/experiments';
 import { rightPanel } from '../../lib/right-panel.svelte';
 import { strings } from '../../lib/strings';
+import { newBot } from '../../lib/agents-view.svelte';
 import AgentsPage from './AgentsPage.svelte';
+import TitleBar from '../TitleBar.svelte';
 
 test('an agent named on the way in opens alone: the default agent of the visit gives way to it', async ({ ready }) => {
-  setExperiment('resident-agents', true);
   let page: ReturnType<typeof mount> | null = null;
   try {
     const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
@@ -30,13 +31,12 @@ test('an agent named on the way in opens alone: the default agent of the visit g
     expect(agentOfThread(view.snapshot, store.openThread!.id)?.id).toBe(named.id);
   } finally {
     if (page) unmount(page);
-    setExperiment('resident-agents', false);
   }
 });
 
 for (const previousBot of [false, true]) test(`a background reload preserves a pending bot selection (previous bot: ${previousBot})`, async ({ ready }) => {
-  setExperiment('resident-agents', true);
   let page: ReturnType<typeof mount> | null = null;
+  let bar: ReturnType<typeof mount> | null = null;
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });
   try {
@@ -55,6 +55,8 @@ for (const previousBot of [false, true]) test(`a background reload preserves a p
     });
     store.showAgents(named.id);
     page = mount(AgentsPage, { target: document.body, props: { store } });
+    // On a desktop the bot's name and buttons stand in the window's top bar.
+    bar = mount(TitleBar, { target: document.body, props: { store } });
     flushSync();
     await vi.waitFor(() => expect(opening).toBe(true));
     await store.reload();
@@ -66,13 +68,12 @@ for (const previousBot of [false, true]) test(`a background reload preserves a p
     expect(document.querySelector('.agents-main .agent-empty')).toBeNull();
   } finally {
     release();
+    if (bar) await unmount(bar);
     if (page) await unmount(page);
-    setExperiment('resident-agents', false);
   }
 });
 
 test('an open settings sheet stays open while the snapshot and the thread row change under it', async ({ ready }) => {
-  setExperiment('resident-agents', true);
   let page: ReturnType<typeof mount> | null = null;
   try {
     const { store } = await ready({ delayMs: 0, agentsDemo: true });
@@ -96,12 +97,10 @@ test('an open settings sheet stays open while the snapshot and the thread row ch
     expect(sheet()?.classList.contains('closing')).toBe(false);
   } finally {
     if (page) unmount(page);
-    setExperiment('resident-agents', false);
   }
 });
 
 test('a desk kept shut by an open panel opens on the next visit: the first visit is not spent', async ({ ready }) => {
-  setExperiment('resident-agents', true);
   // No desk seen and no panel left by an earlier test.
   localStorage.clear();
   rightPanel.load();
@@ -125,12 +124,10 @@ test('a desk kept shut by an open panel opens on the next visit: the first visit
     await vi.waitFor(() => expect(store.panel.surfaces.map(s => s.kind)).toEqual(['desk']));
   } finally {
     if (page) unmount(page);
-    setExperiment('resident-agents', false);
   }
 });
 
 test('a default bot that cannot be opened offers a retry instead of loading forever', async ({ ready }) => {
-  setExperiment('resident-agents', true);
   let page: ReturnType<typeof mount> | null = null;
   try {
     const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
@@ -149,6 +146,82 @@ test('a default bot that cannot be opened offers a retry instead of loading fore
     await vi.waitFor(() => expect(store.openThread?.agentSessionId).toBeTruthy());
   } finally {
     if (page) unmount(page);
-    setExperiment('resident-agents', false);
+  }
+});
+
+test("a desktop's column is the open bot's: who it is, its conversation, its threads; the rail's New bot opens the form here", async ({ ready }) => {
+  let page: ReturnType<typeof mount> | null = null;
+  let bar: ReturnType<typeof mount> | null = null;
+  try {
+    const { store } = await ready({ delayMs: 0, agentsDemo: true });
+    const view = AgentsView.of(store);
+    await view.refresh();
+    const nova = view.snapshot!.profiles.find(p => p.name === 'Nova')!;
+    store.showAgents(nova.id);
+    page = mount(AgentsPage, { target: document.body, props: { store } });
+    bar = mount(TitleBar, { target: document.body, props: { store } });
+    // The fake core seeds Nova's desk as its thread opens, without the change event the real core sends.
+    await vi.waitFor(() => expect(store.openThread?.agentSessionId).toBeTruthy());
+    await view.refresh();
+    await vi.waitFor(() => { flushSync(); expect(document.querySelector('[data-testid=bot-handling]')).not.toBeNull(); });
+
+    // Its head names it and says what it does; no list of bots, no search, no Teams or Bots heading.
+    const head = document.querySelector('[data-testid=bot-column-head]')!;
+    expect(head.textContent).toContain('Nova');
+    expect(document.querySelector('[data-testid=bot-column-live]')?.textContent).toContain('Run the UI tests');
+    expect(document.querySelector('[data-testid^="agent-entry-"]')).toBeNull();
+    expect(document.querySelector('[data-testid=agents-search-toggle]')).toBeNull();
+    expect(document.querySelectorAll('.agents-rail .section-label')).toHaveLength(0);
+    // The window's top bar carries the chat's header in a thread header's pattern: its name, its view menu, the panel's glyph.
+    expect(document.querySelector('[data-testid=titlebar] [data-testid=agent-header]')).not.toBeNull();
+    const botHead = document.querySelector('[data-testid=agent-header]')!;
+    expect(botHead.querySelector('.agent-head-name')?.textContent).toBe(nova.name);
+    expect(botHead.querySelector('[data-testid=agent-menu]')).not.toBeNull();
+    // One door: the panel glyph, its name in the tooltip, pressed while the panel is open.
+    const door = botHead.querySelector<HTMLElement>('[data-testid=agent-desk-toggle]')!;
+    expect(door.title).toContain(strings.thread.panelHint);
+    expect(door.getAttribute('aria-pressed')).toBe(String(store.panelOpen));
+    expect(door.textContent).not.toContain(strings.agents.desk);
+    expect(botHead.querySelectorAll('[data-testid=agent-desk-toggle]')).toHaveLength(1);
+    expect(document.querySelector('[data-testid=agent-live]')).toBeNull();
+    const conversation = document.querySelector<HTMLButtonElement>('[data-testid=bot-conversation]')!;
+    expect(conversation.getAttribute('aria-current')).toBe('page');
+
+    // A row opens its thread the way the desk does.
+    const row = [...document.querySelectorAll<HTMLElement>('[data-testid=desk-card]')].find(node => node.querySelector('.desk-card-title')?.textContent === 'Fix login redirect loop')!;
+    const id = row.dataset.thread!;
+    row.querySelector<HTMLButtonElement>('.desk-card-open')!.click();
+    await vi.waitFor(() => expect(store.openThread?.id).toBe(id));
+
+    // The window's rail asks for a new bot: the form opens on this page.
+    newBot(store);
+    await vi.waitFor(() => { flushSync(); expect(document.querySelector('[data-testid=agent-editor]')).not.toBeNull(); });
+    expect(store.page).toBe('agents');
+  } finally {
+    if (bar) unmount(bar);
+    if (page) unmount(page);
+    document.body.innerHTML = '';
+  }
+});
+
+test('an empty desk is one centred prompt in the column, the way into its first task', async ({ ready }) => {
+  let page: ReturnType<typeof mount> | null = null;
+  try {
+    const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
+    const view = AgentsView.of(store);
+    const { id: threadId } = await client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: 'a-echo' });
+    const { agent } = await client.call('agents.create', { threadId, name: 'Scribe' }) as AgentCreated;
+    await view.refresh();
+    store.showAgents(agent.id);
+    page = mount(AgentsPage, { target: document.body, props: { store } });
+    await vi.waitFor(() => expect(store.openThread?.agentSessionId).toBeTruthy());
+    await view.refresh();
+    // A new bot already holds its introduction: the prompt is the column's, centred, and nothing covers the chat.
+    await vi.waitFor(() => { flushSync(); expect(document.querySelector('[data-testid=desk-work].idle [data-testid=desk-work-start]')).not.toBeNull(); });
+    expect(document.querySelector('[data-testid=desk-work]')!.textContent).toContain(strings.agents.deskPanel.workEmpty);
+    expect(document.querySelectorAll('[data-testid=desk-work-start]')).toHaveLength(1);
+    expect(document.querySelector('[data-testid=bot-first-task]')).toBeNull();
+  } finally {
+    if (page) unmount(page);
   }
 });

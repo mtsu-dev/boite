@@ -160,7 +160,7 @@
   /* The frame's padding leaves room for the glow without moving the scene off the text column. */
   figure { position: relative; margin: 8px -10px 0; padding: 8px 10px 4px; border-radius: calc(var(--radius-lg) + 6px); container-type: inline-size; }
   /* An inner accent glow while the scene plays, so it reads as an animation and not a picture. */
-  figure::after { content: ''; position: absolute; inset: 0; z-index: 3; border-radius: inherit; pointer-events: none; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 55%, transparent), inset 0 0 22px color-mix(in srgb, var(--color-accent) 30%, transparent); opacity: 0; transition: opacity var(--dur-3) var(--ease-out-quint); }
+  figure::after { content: ''; position: absolute; inset: 0; z-index: 3; border-radius: inherit; pointer-events: none; box-shadow: inset 0 0 0 1px var(--color-edge); opacity: 0; transition: opacity var(--dur-3) var(--ease-out-quint); }
   /* A tour picture plays while seen, never stopped for performance (DESIGN 2026-10-16): `.playing` already needs
      the scene on screen in a shown window, so the glow ignores the idle rest of `--loops` (render-cost.test.ts). */
   figure.playing::after { opacity: 1; animation: glow calc(var(--dur-3) * 8) ease-in-out infinite alternate; }
@@ -204,13 +204,13 @@
   .pointer path { fill: var(--color-foreground); stroke: var(--color-background); stroke-width: 1.5; }
   .agent-pointer { left: 80%; top: 70%; animation: agent-point var(--demo-duration) both; }
   .scene-outcome { display: flex; justify-content: center; align-items: center; gap: 7px; position: relative; margin-top: 4px; min-height: 22px; font-weight: 500; }
-  .scene-outcome :global(svg) { color: var(--color-accent); }
+  .scene-outcome :global(svg) { color: var(--color-success); }
   .before-handoff, .after-handoff { display: flex; align-items: center; gap: 7px; }
   .before-handoff { animation: first var(--demo-duration) both; }
   .after-handoff { position: absolute; animation: second var(--demo-duration) both; }
   .voice-sequence { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 8px; }
   .voice-sequence > span { display: flex; align-items: center; gap: 7px; line-height: 1.35; }
-  .voice-sequence b { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border: 1px solid var(--color-edge); border-radius: 50%; font-size: var(--text-xs); color: var(--color-accent); }
+  .voice-sequence b { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border: 1px solid var(--color-edge); border-radius: 50%; font-size: var(--text-xs); color: var(--color-muted-foreground); }
   .recording-area { position: relative; padding: 8px 24px 0; }
   .recording-live, .recording-done { display: flex; gap: 7px; align-items: center; justify-content: center; }
   .recording-live { animation: first var(--demo-duration) both; color: var(--color-accent); }
@@ -225,7 +225,7 @@
   .caret { display: inline-block; vertical-align: middle; margin-left: 3px; height: 1.1em; border-left: 2px solid var(--color-accent); }
   .local { display: inline-flex; align-items: center; gap: 5px; color: var(--color-muted-foreground); }
   .voice-actions { display: flex; align-items: center; gap: 12px; }
-  .mic-target { position: relative; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; color: var(--color-accent); background: var(--color-accent-soft); animation: mic-active var(--demo-duration) both; }
+  .mic-target { position: relative; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; color: var(--color-foreground); background: var(--color-active); animation: mic-active var(--demo-duration) both; }
   .mic-pointer { left: 20px; top: 22px; animation: tap var(--demo-duration) both; }
   .voice-send { animation: later var(--demo-duration) both; }
   .split-view { display: grid; grid-template-columns: .85fr 1.15fr; }
@@ -253,7 +253,7 @@
   .desktop-app { display: flex; color: var(--color-muted-foreground); }
   .system-tray { display: flex; align-items: center; gap: 13px; margin-left: auto; }
   .system-tray > :global(svg:first-child) { transform: rotate(180deg); }
-  .tray-target { position: relative; display: flex; padding: 6px; border-radius: var(--radius-sm); background: var(--color-accent-soft); color: var(--color-accent); }
+  .tray-target { position: relative; display: flex; padding: 6px; border-radius: var(--radius-sm); background: var(--color-active); color: var(--color-foreground); }
   .tray-pointer { top: 17px; left: 16px; animation: hover var(--demo-duration) both; }
   .clock { font-variant-numeric: tabular-nums; }
   .tray-instruction { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin: 10px 85px 0 12px; color: var(--color-muted-foreground); }
@@ -305,7 +305,7 @@
   @keyframes pop { 0%, 8% { opacity: 0; transform: translateY(6px); } 13%, 100% { opacity: 1; transform: none; } }
   @keyframes waveform { from { transform: scaleY(.2); opacity: .6; } to { transform: scaleY(1); opacity: 1; } }
   @keyframes word { 0%, 28% { opacity: 0; } 32%, 100% { opacity: 1; } }
-  @keyframes mic-active { 0%, 12% { box-shadow: 0 0 0 0 transparent; } 20%, 45% { box-shadow: 0 0 0 5px var(--color-accent-soft); } 60%, 100% { box-shadow: 0 0 0 0 transparent; } }
+  @keyframes mic-active { 0%, 12% { box-shadow: 0 0 0 0 transparent; } 20%, 45% { box-shadow: 0 0 0 5px var(--color-active); } 60%, 100% { box-shadow: 0 0 0 0 transparent; } }
   @keyframes meter { 0%, 13% { transform: scaleX(0); transform-origin: left; } 35%, 100% { transform: scaleX(1); transform-origin: left; } }
   @keyframes sync { 0%, 32% { opacity: 0; transform: none; } 36% { opacity: 1; } 50% { opacity: 1; transform: translateX(36px); } 54%, 100% { opacity: 0; transform: translateX(36px); } }
   @keyframes rise { 0% { opacity: 0; transform: translateY(4px); } 8%, 100% { opacity: 1; transform: none; } }

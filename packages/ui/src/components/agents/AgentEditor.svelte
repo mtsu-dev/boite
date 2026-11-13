@@ -7,6 +7,7 @@
   import { agentPictures, pictureDataUrl } from '../../lib/agent-pictures.svelte';
   import { Autosave, TYPING_MS } from '../../lib/autosave.svelte';
   import { fill, strings } from '../../lib/strings';
+  import { modeLabel, modeWord } from '../../lib/permission-modes';
   import { confirmArchive } from '../../lib/agent-menu';
   import { openAgent, resetBuiltin, type AgentsView } from '../../lib/agents.svelte';
   import type { Store } from '../../lib/store.svelte';
@@ -19,6 +20,7 @@
   import SaveStatus from '../SaveStatus.svelte';
   import { encodeRobot, robotOf, seededRobot, shuffledRobot } from '../../lib/robots';
   import AgentAvatar from './AgentAvatar.svelte';
+  import { avatarLit } from '../../lib/avatar-lit';
   import RobotPicker from './RobotPicker.svelte';
   import AgentMachine from './AgentMachine.svelte';
 
@@ -84,14 +86,13 @@
 
   const labels = $derived(strings.agents);
   const creating = !initial.record;
-  const permissionLabels = $derived<Record<ExecutionSelection['permissionMode'], string>>({ default: labels.ask, acceptEdits: labels.edits, plan: labels.plan, bypassPermissions: labels.full, yolo: strings.permissionMode.yolo, dontAsk: labels.deny });
   const provider = $derived(host.providerOf(selection.providerId));
   const effort = $derived(host.modelOf(selection)?.effort);
   const hostMachine = $derived(workspace.machines.find(m => m.store === host));
   const hostItems = $derived<MenuItem[]>(workspace.machines.map(m => {
     const offline = m.store.connection !== 'ready';
     const usable = !offline && m.store.owner;
-    return { id: m.id, label: m.label, active: m.store === host, disabled: !usable, ...(usable ? {} : { hint: offline ? labels.machineOffline : labels.machineNotOwner }) };
+    return { id: m.id, label: m.label, checked: m.store === host, radio: true, disabled: !usable, ...(usable ? {} : { hint: offline ? labels.machineOffline : labels.machineNotOwner }) };
   }));
   const busy = $derived(view.pending || moving || saving || importing);
   /** The avatar the form saves: the imported picture, the robot once touched, else what the agent wears. */
@@ -303,7 +304,7 @@
     <!-- The robot and the name read as one identity: the picture beside the field that names it. -->
     <div class="agent-identity">
       <div class="agent-portrait">
-        <AgentAvatar kind="profile" id={profile?.id ?? ''} {name} avatar={avatar()} size={72} />
+        <AgentAvatar kind="profile" id={profile?.id ?? ''} {name} avatar={avatar()} size={72} lit={avatarLit({ open: true })} />
         <div class="agent-portrait-tools">
           <button type="button" class="ghost icon small" title={labels.robot.shuffle} aria-label={labels.robot.shuffle} onclick={() => wearRobot(shuffledRobot(secureId(), robot.family))} data-testid="robot-shuffle"><Dices size={15} strokeWidth={1.75} /></button>
           <button type="button" class="ghost icon small" class:active={dressing} aria-pressed={dressing} title={labels.robot.customize} aria-label={labels.robot.customize} onclick={() => { dressing = !dressing; }} data-testid="robot-customize"><Palette size={15} strokeWidth={1.75} /></button>
@@ -347,7 +348,7 @@
     </fieldset>
     {#if embedded}
       <div class="agent-field"><span>{labels.status}</span>
-        <Menu placement="bottom" label={labels.status} items={(builtin ? ['active', 'paused'] as const : ['active', 'paused', 'archived'] as const).map(id => ({ id, label: labels[id], active: status === id }))} onpick={id => void pickStatus(id as AgentProfile['status'])} testid="agent-status"><span class="ui-label">{labels[status]}</span></Menu>
+        <Menu placement="bottom" label={labels.status} items={(builtin ? ['active', 'paused'] as const : ['active', 'paused', 'archived'] as const).map(id => ({ id, label: labels[id], checked: status === id, radio: true }))} onpick={id => void pickStatus(id as AgentProfile['status'])} testid="agent-status"><span class="ui-label">{labels[status]}</span></Menu>
       </div>
       {#if profile}<AgentMachine {view} agent={stored() ?? profile} />{/if}
       {#if builtin && view.store.owner}
@@ -390,7 +391,7 @@
           <div class="agent-row-field">
             <span class="agent-row-label">{labels.permissions}</span>
             <div class="agent-row-value">
-              <Menu placement="bottom" label={labels.permissions} items={PERMISSIONS.map(id => ({ id, label: permissionLabels[id], active: selection.permissionMode === id }))} onpick={id => { selection.permissionMode = id as ExecutionSelection['permissionMode']; }}><span class="ui-label">{permissionLabels[selection.permissionMode]}</span></Menu>
+              <Menu placement="bottom" label={labels.permissions} items={PERMISSIONS.map(id => ({ id, label: modeWord(id, provider), hint: modeLabel(id, provider), checked: selection.permissionMode === id, radio: true }))} onpick={id => { selection.permissionMode = id as ExecutionSelection['permissionMode']; }}><span class="ui-label">{modeWord(selection.permissionMode, provider)}</span></Menu>
               {#if provider?.capabilities.approvals === false}<span class="hint">{labels.noApprovals}</span>{/if}
             </div>
           </div>

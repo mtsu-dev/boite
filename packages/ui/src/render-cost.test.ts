@@ -144,8 +144,9 @@ test('every endless animation pauses with the window at rest', () => {
  * refresh of the monitor, and sixteen rows out of phase leave none idle.
  */
 const WORKING_LOOPS = [
-  'components/BrowserNav.svelte', 'components/BrowserSurface.svelte', 'components/Sidebar.svelte',
-  'components/StatusMark.svelte', 'components/SurfaceSwitch.svelte', 'components/TerminalDrawer.svelte',
+  'components/AppRail.svelte', 'components/BrowserNav.svelte', 'components/BrowserSurface.svelte',
+  'components/ProjectThreadCounters.svelte', 'components/RecentGroup.svelte',
+  'components/Sidebar.svelte', 'components/StatusMark.svelte', 'components/TerminalDrawer.svelte',
   'components/TerminalView.svelte', 'components/ThinkingPart.svelte', 'components/ThreadActivity.svelte',
   'components/ThreadLoading.svelte', 'components/ThreadState.svelte', 'components/ToolCard.svelte',
   'components/ToolGroup.svelte', 'components/TurnSummary.svelte',

@@ -123,20 +123,8 @@
   .title { display: inline-flex; align-items: center; font-weight: 600; font-size: var(--text-sm); }
   .hint { margin: 0; overflow-wrap: anywhere; }
   .ok { color: var(--color-foreground); }
-  .warn { color: var(--color-live); }
+  .warn { color: var(--color-caution); }
   .error { color: var(--color-danger); }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   .danger { color: var(--color-danger); }
-  a.button {
-    display: inline-flex;
-    align-items: center;
-    height: var(--control);
-    padding: 0 14px;
-    border: 1px solid var(--color-edge);
-    border-radius: var(--radius-md);
-    font-size: var(--text-sm);
-    font-weight: 500;
-    color: var(--color-foreground);
-    text-decoration: none;
-  }
 </style>

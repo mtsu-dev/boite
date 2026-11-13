@@ -5,7 +5,9 @@
   import { GroupLinks } from '../lib/group-links.svelte';
   import InfoTip from './InfoTip.svelte';
   import PolicyLock from './PolicyLock.svelte';
-  import { ArrowUpRight, RefreshCw, Trash2, ScanLine } from '@lucide/svelte';
+  import { ArrowUpRight, Check, Ellipsis, Trash2, ScanLine } from '@lucide/svelte';
+  import Menu from './Menu.svelte';
+  import { separator, type MenuItem } from '../lib/menu';
   import { listedName, machineHealth, machineName, workspace, machineIcons, type Machine } from '../lib/workspace.svelte';
   import { store as primary } from '../lib/store.svelte';
   import { confirm } from '../lib/confirm.svelte';
@@ -17,9 +19,12 @@
   import { appUpdater, showAppUpdateUi } from '../lib/app-update.svelte';
   import { machineUpdateState, type MachineUpdateState } from '../lib/machine-updates';
   import PairMachine from './PairMachine.svelte';
+  import MachineReconnect from './MachineReconnect.svelte';
+  import WindowAllowlistCard from './WindowAllowlistCard.svelte';
+  import WindowExclusionsCard from './WindowExclusionsCard.svelte';
   import type { Store } from '../lib/store.svelte';
-  let { mobile = false, onopenthread }: { mobile?: boolean; onopenthread?: () => void } = $props();
-  const uid = $props.id();
+  /** `store`: the machine whose windows the page's last cards change, this window's own. */
+  let { mobile = false, onopenthread, store: here }: { mobile?: boolean; onopenthread?: () => void; store?: Store } = $props();
   /**
    * The switches a machine of a group holds for itself: whether the agents of
    * the other machines may start threads there (`groupThreads`), and whether
@@ -85,6 +90,8 @@
     return health === 'offline' || health === 'lost' ? health : null;
   };
 
+  const thisName = $derived.by(() => { const machine = workspace.machines.find((m) => m.store === here); return machine ? machineName(machine) : strings.connection.current; });
+
   /** Boite on that machine and its agents, as the one word its row shows. */
   function updates(machine: Machine): MachineUpdateState | null {
     const store = machine.store;
@@ -96,6 +103,8 @@
       agents: store.owner ? store.harnessUpdates : []
     });
   }
+  /** The version the updates card heads with: a row repeats it only where it differs. */
+  const headVersion = $derived(showAppUpdateUi() && appUpdater.snapshot.supported ? appUpdater.snapshot.currentVersion : workspace.active.core?.version ?? '');
   const updateLabels: Record<MachineUpdateState, string> = {
     failed: strings.machines.updateFailed,
     updating: strings.providerSettings.updating,
@@ -120,6 +129,30 @@
       await tick();
     }
     pairingForm?.startAdding();
+  }
+
+  /**
+   * A machine's row menu: the two switches it holds for the group, each named
+   * in full with its explanation under the name (a finger has no hover), then
+   * its removal. One menu per row rather than a column of unnamed switches per
+   * machine.
+   */
+  function optionsOf(machine: Machine, shared: boolean): MenuItem[] {
+    const settings = machine.store.settings;
+    const locked = lockedBy(machine.store.policy, 'network.groups') !== null;
+    const items: MenuItem[] = shared ? [
+      { id: 'threads', label: strings.machines.groupThreads, hint: strings.machines.groupThreadsHint, checked: settings?.groupThreads === true, disabled: locked, testid: 'machine-group-threads-switch' },
+      { id: 'bots', label: strings.machines.groupBots, hint: strings.machines.groupBotsHint, checked: settings?.groupBots === true, disabled: locked, testid: 'machine-group-bots-switch' }
+    ] : [];
+    if (machine.store !== primary) items.push(...(items.length ? [separator()] : []), { id: 'remove', label: strings.machines.remove, glyph: Trash2, danger: true, testid: 'machine-remove' });
+    return items;
+  }
+
+  function pickOption(machine: Machine, owner: Store, id: string) {
+    const settings = machine.store.settings;
+    if (id === 'threads') void machine.store.saveSettings({ groupThreads: settings?.groupThreads !== true });
+    else if (id === 'bots') void machine.store.saveSettings({ groupBots: settings?.groupBots !== true });
+    else if (id === 'remove') void removeMachine(machine, owner);
   }
 
   /** Removing a member ends its group membership and forgets its connection on this client. */
@@ -167,6 +200,8 @@
         {@const home = coreId !== undefined && owner.group?.settingsHome === coreId}
         {@const bots = coreId !== undefined && owner.group?.botsHome === coreId}
         {@const manual = byHand(machine)}
+        {@const shared = groupThreadsShown(machine, owner, coreId)}
+        {@const options = optionsOf(machine, shared && !gone)}
         <li data-core-id={coreId} class="machine-card" class:away={gone} class:lost={away(machine) === 'lost'} data-testid="machine-card" data-group-member={coreId && owner.group?.cores.some(core => core.coreId === coreId) ? "true" : undefined} data-machine-id={machine.id} data-away={away(machine) ?? undefined}>
           <div class="main">
             <button
@@ -187,17 +222,21 @@
               </span>
               <span class="meta" title={machine.store.localCore ? undefined : carrier !== undefined ? fill(strings.group.through, { machine: machineName(carrier) }) : machine.id}>
                 <span class="dot" class:ready={machine.store.connection === 'ready'} aria-hidden="true"></span>
-                <span class="status ui-label" class:ready={machine.store.connection === 'ready'} data-testid="machine-card-status">{machine.store.pairingRequired ? strings.mobile.pairingRequired : gone ? strings.connection.offline : carrier !== undefined && machine.store.connection === 'ready' ? fill(strings.group.relayed, { machine: machineName(carrier) }) : strings.connection[machine.store.connection]}</span>
-                {#if machine.store.connection === 'ready' && machine.store.core?.version}<span class="version" data-testid="machine-version">{machine.store.core.version}</span>{/if}
-                {#if state}<span class="updates ui-label" data-testid="machine-updates-state" data-state={state}>{updateLabels[state]}</span>{/if}
+                <span class="status ui-label" class:ready={machine.store.connection === 'ready'} data-testid="machine-card-status">{machine.store.pairingRequired ? strings.mobile.pairingRequired : gone ? fill(strings.machines.offlineLine, { machine: machineName(machine) }) : carrier !== undefined && machine.store.connection === 'ready' ? fill(strings.group.relayed, { machine: machineName(carrier) }) : strings.connection[machine.store.connection]}</span>
+                {#if machine.store.connection === 'ready' && machine.store.core?.version && machine.store.core.version !== headVersion}<span class="version" data-testid="machine-version">{machine.store.core.version}</span>{/if}
+                <!-- A current machine shows a quiet check, its words for a screen reader: the card above already says
+                     "Up to date", and a word on every row repeated it. Other states say themselves. -->
+                {#if state === 'current'}<span class="updates" data-testid="machine-updates-state" data-state={state} title={strings.serverUpdate.current}><Check size={14} aria-hidden="true" /><span class="visually-hidden">{updateLabels[state]}</span></span>
+                {:else if state}<span class="updates ui-label" data-testid="machine-updates-state" data-state={state}>{updateLabels[state]}</span>{/if}
                 {#if manual}<InfoTip topic={strings.serverUpdate.manualTitle} text={manual} />{/if}
               </span>
             </div>
             <div class="actions">
               {#if machine.store.pairingRequired}
                 <button class="ghost small" data-testid="machine-repair" onclick={() => void repair()}><ScanLine size={15} /><span class="ui-label">{strings.mobile.pairAgain}</span></button>
-              {:else if machine.store.connection === 'closed'}
-                <button class="ghost icon-only" aria-label={strings.common.refresh} title={strings.common.refresh} onclick={() => void machine.store.connect()}><RefreshCw size={15} /></button>
+              {:else if machine.store.connection === 'closed' || gone}
+                <!-- The remedy beside an offline state: a closed client opens again, one waiting out its backoff tries now; the row comes back by itself. -->
+                <MachineReconnect store={machine.store} testid="machine-reconnect" inline />
               {/if}
               <!-- The machine already open has nowhere to go, and one out of reach has nothing to open. -->
               {#if machine.store !== workspace.active && !gone}
@@ -205,25 +244,19 @@
                   ><span class="ui-label">{strings.machines.open}</span><ArrowUpRight size={13} /></button
                 >
               {/if}
-              {#if machine.store !== primary}
-                <button class="ghost icon-only remove" data-testid="machine-remove" aria-label={strings.machines.remove} title={strings.machines.remove} onclick={() => void removeMachine(machine, owner)}><Trash2 size={15} /></button>
-              {/if}
             </div>
+            <!-- The row's menu keeps the name's line on a phone too, where the actions wrap under it. -->
+            {#if shared || options.length > 0}
+              <div class="row-end">
+                {#if shared}<PolicyLock store={machine.store} keys={['network.groups']} />{/if}
+                {#if options.length > 0}
+                  <Menu items={options} onpick={(id) => pickOption(machine, owner, id)} label={fill(strings.machines.options, { machine: machineName(machine) })} heading={machineName(machine)} placement="bottom" align="end" variant="ghost" switches={shared && !gone} testid="machine-menu">
+                    <Ellipsis size={16} />
+                  </Menu>
+                {/if}
+              </div>
+            {/if}
           </div>
-          {#if groupThreadsShown(machine, owner, coreId)}
-            <label class="group-threads" for="{uid}-threads-{machine.id}" data-testid="machine-group-threads">
-              <span class="ui-label-box"><span class="ui-label" id="{uid}-threads-{machine.id}-name">{strings.machines.groupThreads}</span><InfoTip topic={strings.machines.groupThreads} text={strings.machines.groupThreadsHint} /><PolicyLock store={machine.store} keys={['network.groups']} /></span>
-              <input id="{uid}-threads-{machine.id}" aria-labelledby="{uid}-threads-{machine.id}-name" type="checkbox" role="switch" data-testid="machine-group-threads-switch"
-                checked={machine.store.settings?.groupThreads === true} disabled={lockedBy(machine.store.policy, 'network.groups') !== null}
-                onchange={async (event) => { const input = event.currentTarget; if (!(await machine.store.saveSettings({ groupThreads: input.checked }))) input.checked = machine.store.settings?.groupThreads === true; }} />
-            </label>
-            <label class="group-threads" for="{uid}-bots-{machine.id}" data-testid="machine-group-bots">
-              <span class="ui-label-box"><span class="ui-label" id="{uid}-bots-{machine.id}-name">{strings.machines.groupBots}</span><InfoTip topic={strings.machines.groupBots} text={strings.machines.groupBotsHint} /><PolicyLock store={machine.store} keys={['network.groups']} /></span>
-              <input id="{uid}-bots-{machine.id}" aria-labelledby="{uid}-bots-{machine.id}-name" type="checkbox" role="switch" data-testid="machine-group-bots-switch"
-                checked={machine.store.settings?.groupBots === true} disabled={lockedBy(machine.store.policy, 'network.groups') !== null}
-                onchange={async (event) => { const input = event.currentTarget; if (!(await machine.store.saveSettings({ groupBots: input.checked }))) input.checked = machine.store.settings?.groupBots === true; }} />
-            </label>
-          {/if}
           <div class="disclosure-fold" class:open={customizing === machine.id} inert={customizing !== machine.id}>
             <div>
               <div class="icon-choices" role="group" aria-label={strings.machines.icon}>
@@ -253,10 +286,19 @@
 
   <!-- Chosen on the device itself, a phone included: it says where that device opens. -->
   <MainMachine />
+
+  <!-- What agents may see on this window's machine, the task these cards serve . -->
+  {#if here?.owner}
+    <p class="scope cards-scope" data-testid="machines-windows-scope">{fill(strings.machines.scopeOn, { machine: thisName })}</p>
+    <WindowAllowlistCard store={here} />
+    <WindowExclusionsCard store={here} />
+  {/if}
 </div>
 
 <style>
   .machines-page > :global(*) { max-width: var(--settings-width); }
+  /* The windows cards' machine, over their first title's room. */
+  .cards-scope { display: flex; margin: var(--space-8) 0 0; }
   .connections-section { scroll-margin-top: 24px; }
   .connections-section > :global(.card) { margin-bottom: 20px; }
   .head {
@@ -283,24 +325,15 @@
     padding: 10px 0;
     border-bottom: 1px solid var(--color-border);
   }
+  /* Rules separate machines; the group card's own edge closes the list. */
+  .machine-card:last-child { border-bottom: 0; }
   .main {
     display: flex;
     align-items: center;
     gap: 12px;
     min-height: 40px;
   }
-  /* Under the machine's name, as wide as its identity column. */
-  .group-threads {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin: 6px 0 0 48px;
-    font-size: var(--text-sm);
-    color: var(--color-muted-foreground);
-    cursor: pointer;
-  }
-  .machine-card.away .group-threads { display: none; }
+  .row-end { flex: none; display: flex; align-items: center; gap: 4px; }
   .logo {
     display: grid;
     place-items: center;
@@ -359,10 +392,10 @@
     flex: none;
     padding: 1px 7px;
     border-radius: var(--radius-sm);
-    background: color-mix(in srgb, var(--color-accent) 16%, transparent);
-    color: var(--color-accent);
+    background: var(--color-active);
+    color: var(--color-foreground);
     font-size: var(--text-xs);
-    font-weight: 500;
+    font-weight: 400;
   }
   .meta {
     display: flex;
@@ -376,21 +409,21 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--color-live);
+    background: var(--color-caution);
     flex: none;
   }
   .dot.ready {
     background: var(--color-success);
   }
   .status {
-    color: var(--color-live);
+    color: var(--color-caution);
     flex: none;
   }
   .status.ready {
     color: var(--color-success);
   }
   .version {
-    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
     color: var(--color-muted-foreground);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -399,31 +432,25 @@
   }
   .version::before,
   .updates::before { content: '·'; margin-right: 6px; color: var(--color-subtle); font-family: var(--font-sans); }
-  /* Out of reach: grey, still named and still removable. */
+  /* Out of reach: still named and still removable, its state the words a project card's head says ("Builder is
+     offline", MachineOffline.svelte) after the status grammar's grey dot, Reconnect among the row's actions. */
   .away .logo { opacity: 0.5; }
   .away .machine-name { color: var(--color-muted-foreground); }
-  .away .dot { background: var(--color-subtle); }
-  .away .status { color: var(--color-subtle); }
+  .away .dot { background: var(--color-muted-foreground); }
+  .away .status { color: var(--color-muted-foreground); }
   .lost .dot { background: var(--color-danger); }
   .lost .status { color: var(--color-danger); }
   /* What the machine has to say about its updates, after its connection. */
   .updates { color: var(--color-muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: none; }
-  .updates[data-state='available'] { color: var(--color-accent); }
+  .updates[data-state='current'] { display: inline-flex; align-items: center; overflow: visible; }
+  .updates[data-state='available'] { color: var(--color-foreground); }
   .updates[data-state='failed'] { color: var(--color-danger); }
-  .remove { color: var(--color-danger); }
   .actions {
     display: flex;
     align-items: center;
     gap: 2px;
     flex: none;
   }
-  .icon-only {
-    width: var(--control);
-    padding: 0;
-    color: var(--color-muted-foreground);
-  }
-  .icon-only.remove { color: var(--color-muted-foreground); }
-  .icon-only.remove:hover { color: var(--color-danger); }
   .icon-choices {
     display: flex;
     flex-wrap: wrap;
@@ -459,11 +486,12 @@
     .main {
       flex-wrap: wrap;
     }
-    .identity { flex-basis: calc(100% - 48px); }
+    .identity { flex: 1 1 140px; }
     .meta { flex-wrap: wrap; gap: 2px 10px; }
     .version::before,
     .updates::before { content: none; }
     .actions {
+      order: 3;
       width: 100%;
       justify-content: flex-end;
     }
@@ -473,7 +501,8 @@
     .actions button {
       min-height: var(--touch-target);
     }
-    .actions .icon-only { min-width: var(--touch-target); }
+    .row-end :global(.trigger) { min-width: var(--touch-target); min-height: var(--touch-target); }
+    .row-end { order: 2; }
     .icon-choices,
     .error {
       padding-left: 0;

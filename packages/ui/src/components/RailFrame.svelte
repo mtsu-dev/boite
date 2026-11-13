@@ -1,26 +1,23 @@
 <script lang="ts">
   import { untrack, type Snippet } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
-  import { Settings } from '@lucide/svelte';
   import type { Store } from '../lib/store.svelte';
   import { clampSidebar, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN } from '../lib/prefs';
   import { strings } from '../lib/strings';
   import { experimentOn } from '../lib/experiments.svelte';
   import { pinnedQuotas } from '../lib/pinned-quotas.svelte';
-  import { work } from '../lib/work-prefs.svelte';
-  import { controlMenu } from '../lib/controls';
-  import LimitsGlance from './LimitsGlance.svelte';
-  import WhipButton from './WhipButton.svelte';
-  import Deferred, { parts } from './Deferred.svelte';
+  import Deferred from './Deferred.svelte';
+  import { parts } from '../lib/deferred-parts';
   import ResizeHandle from './ResizeHandle.svelte';
+  import QuotaLine from './QuotaLine.svelte';
 
   /**
-   * The column on the left of the window, for the thread list and the Agents
-   * list alike: one width the user drags, one fold from the title bar, the
-   * head on top, an optional subhead that stays put (the Agents search), the
-   * rows in one scroll, and one foot ending on the limits and Settings. Each
-   * list fills the head, the rows and the foot's own buttons, and may fill the
-   * subhead and the foot's lead (the thread list's machine button).
+   * The column right of the app rail, for the thread list and the Bots list
+   * alike: one width the user drags, one fold from the title bar, the head on
+   * top, an optional subhead that stays put (the Bots search) and the rows in
+   * one scroll. On a desktop it reaches the window's top, its head level with
+   * the main column's bar, and its foot holds the limits line, the same under
+   * every list; the machines and Settings live on the app rail.
    *
    * `drawer` is the thread list's phone form, a sheet over the chat; the Agents
    * list is a whole screen on a phone and stays in the flow.
@@ -31,29 +28,26 @@
     label,
     testid,
     drawer = false,
+    absent = false,
     scroller = $bindable(),
     onscroll,
     head,
     subhead,
-    children,
-    lead,
-    foot
+    children
   }: {
     store: Store;
     kind: 'sidebar' | 'agents-rail';
     label?: string;
     testid?: string;
     drawer?: boolean;
+    /** No column on a desktop: nothing to list yet (lib/list-absent.ts). */
+    absent?: boolean;
     scroller?: HTMLDivElement;
     onscroll?: () => void;
     head: Snippet;
     /** What stays put between the head and the rows, like the Agents search. */
     subhead?: Snippet;
     children: Snippet;
-    /** The foot's left end, before the gap. */
-    lead?: Snippet;
-    /** The list's own buttons, right before the limits and Settings. */
-    foot?: Snippet;
   } = $props();
 
   let rail = $state<HTMLElement | undefined>(undefined);
@@ -68,18 +62,18 @@
    */
   let wasFolded = $state(untrack(() => store.sidebarCollapsed));
   let sliding: ReturnType<typeof setTimeout> | undefined;
-  let marked: HTMLElement | undefined;
+  let marked: HTMLElement[] = [];
 
   function unmark(): void {
     clearTimeout(sliding);
-    if (marked) delete marked.dataset.railSliding;
-    marked = undefined;
+    for (const element of marked) delete element.dataset.railSliding;
+    marked = [];
   }
 
   /**
    * Marks the body row while the list folds or unfolds, so the chat card's own
-   * left gap eases in step (app.css); the boot and a page change move that gap
-   * at once. An attribute, since Svelte rewrites the row's class list. Before
+   * left gap eases in step (app.css), and the main column's bar beside it,
+   * whose left end follows; the boot and a page change move both at once. An attribute, since Svelte rewrites the row's class list. Before
    * the DOM update, so the mark and the fold reach the same style pass.
    */
   $effect.pre(() => {
@@ -91,7 +85,9 @@
     if (was === undefined || was === now || !row) return;
     unmark();
     row.dataset.railSliding = '';
-    marked = row;
+    const bar = row.parentElement?.querySelector<HTMLElement>(':scope > .titlebar');
+    if (bar) bar.dataset.railSliding = now ? 'out' : 'in';
+    marked = bar ? [row, bar] : [row];
     sliding = setTimeout(unmark, 600);
   });
 
@@ -100,6 +96,23 @@
   $effect(() => unmark);
 
   let resizeFrom = 0;
+  /** Rows scrolled under the head: it takes a hairline and the fade deepens, so no sliced row shows below it. */
+  let scrolled = $state(false);
+
+  /** At rest the foot never shows half a row: its fade ends at the top of the row the edge slices (lib/row-cut.ts). */
+  let cut = $state(0);
+  /** Rows below the foot: the limits line under the list takes a hairline, the head's mirror, so it stands on its own
+   *  ground and never reads as part of the card fading above it. */
+  let more = $state(false);
+  const measureMore = () => { const box = scroller; more = !!box && box.scrollTop + box.clientHeight < box.scrollHeight - 1; };
+  $effect(() => {
+    const box = scroller;
+    if (!box) return;
+    let stop: (() => void) | undefined;
+    let gone = false;
+    void import('../lib/row-cut').then(({ watchRowCut }) => { if (!gone) stop = watchRowCut(box, value => { cut = value; measureMore(); }); });
+    return () => { gone = true; stop?.(); };
+  });
 </script>
 
 <aside
@@ -108,39 +121,30 @@
   class:drawer
   class:open={drawer && store.sidebarOpen}
   class:collapsed={store.sidebarCollapsed}
+  class:absent
+  class:more
+  aria-hidden={absent ? 'true' : undefined}
   class:was-folded={wasFolded}
   style:--sidebar-width={`${store.sidebarWidth}px`}
   aria-label={label}
   data-testid={testid}
   data-quota-dock-target=""
 >
-  <div class="views">{@render head()}</div>
+  <div class="views" class:scrolled={scrolled && !subhead}>{@render head()}</div>
   {@render subhead?.()}
-  <div class="scroll" data-project-list={kind === 'sidebar' ? '' : undefined} bind:this={scroller} {onscroll}>
+  <div class="scroll" class:scrolled data-project-list={kind === 'sidebar' ? '' : undefined} bind:this={scroller} style:--cut={cut ? `${cut}px` : undefined}
+    onscroll={() => { scrolled = (scroller?.scrollTop ?? 0) > 0; measureMore(); onscroll?.(); }}>
     {@render children()}
   </div>
   {#if (store.page === 'chat' || store.page === 'agents') && dockVisible && experimentOn('pinned-quotas') && pinnedQuotas.current.pinned && pinnedQuotas.wantsDock(store)}
     <Deferred part={parts.PinnedQuota} quiet>{#snippet children(PinnedQuota)}<PinnedQuota {store} dock />{/snippet}</Deferred>
   {/if}
-  <div class="foot">
-    {@render lead?.()}
-    <span class="grow"></span>
-    {@render foot?.()}
-    <Deferred part={parts.UpdatesNotice} quiet>{#snippet children(UpdatesNotice)}<UpdatesNotice />{/snippet}</Deferred>
-    {#if work.shows('sidebar.limits')}
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <span class="control" oncontextmenu={(event) => controlMenu(event, store, 'sidebar.limits')}><LimitsGlance {store} /></span>
-    {/if}
-    {#if experimentOn('whip')}<WhipButton />{/if}
-    <button
-      class="ghost icon"
-      title={`${strings.sidebar.settings}${store.keyHint('settings')}`}
-      aria-label={strings.sidebar.settings}
-      data-testid="nav-settings"
-      data-preload-view="settings"
-      onclick={() => store.showSettings()}><Settings size={16} /></button
-    >
-  </div>
+  <!-- A phone reaches the limits from its Settings tab. -->
+  {#if !phone.current}<QuotaLine {store} />{/if}
+  <!-- No app rail below 720 pixels: the drawer's foot keeps the update button, and its card opens as a sheet. -->
+  {#if drawer && phone.current}
+    <div class="foot"><Deferred part={parts.UpdatesNotice} quiet>{#snippet children(UpdatesNotice)}<UpdatesNotice />{/snippet}</Deferred></div>
+  {/if}
   <div class="resize">
     <ResizeHandle
       orientation="vertical"
@@ -160,6 +164,8 @@
 </aside>
 
 <style>
+  /* Typed, so the foot's fade eases to a row's top when the list settles instead of jumping. */
+  @property --cut { syntax: '<length>'; inherits: false; initial-value: 0px; }
   /* The container name `sidebar` is also read by Sidebar.svelte's narrow-column layout. */
   .rail {
     container: sidebar / inline-size;
@@ -171,7 +177,7 @@
     min-height: 0;
   }
 
-  .views { margin: 0 10px; }
+  .views { margin: 0 10px; border-bottom: 1px solid transparent; transition: border-color var(--motion-duration) var(--motion-curve); }
   .scroll {
     flex: 1;
     min-height: 0;
@@ -180,48 +186,34 @@
        foot. The fade is exactly the padding, so at rest it covers nothing; a
        mask, not a scroll-driven animation, because tests and closing elements
        wait on every running animation and that one would never end. */
-    --fade: 10px;
+    /* Shallow at the foot, the shared edge (app.css `--scroll-edge`): the last row reads whole at the end, where the
+       fade covers only the padding; at rest it ends on a row's top (`--cut`, set by the script). */
+    --fade: var(--scroll-edge);
     /* Shorter on top: the head's tools sit right above, and a deeper fade
        there opened a wider gap under them than between them and the switch. */
-    --fade-top: 6px;
+    --fade-top: 3px;
     padding: var(--fade-top) 6px var(--fade);
+    /* A row the keyboard reaches scrolls clear of both fades, never read through one. */
+    scroll-padding-block: calc(var(--fade-top) + 4px) calc(var(--fade) + 4px);
     display: flex;
     flex-direction: column;
-    mask-image: linear-gradient(to bottom, transparent, black var(--fade-top), black calc(100% - var(--fade)), transparent);
+    --mask-top: var(--fade-top);
+    /* Eased like the shared edge: the sliver at the very edge closes, the rest of the line stays legible. */
+    mask-image: linear-gradient(to bottom, transparent, black var(--mask-top), black calc(100% - var(--fade) - var(--cut)), rgb(0 0 0 / 0.55) calc(100% - var(--fade) / 2 - var(--cut)), transparent calc(100% - var(--cut)));
+    transition: --cut var(--motion-duration) var(--motion-curve);
   }
+  /* Scrolled: the head reads as an opaque edge the rows pass under, so no sliced card title shows through the
+     3 px fade; the top fade as deep as the foot's. */
+  .scroll.scrolled { --mask-top: var(--fade); }
+  /* The project list settles on a boundary (Sidebar.svelte names them), close by only, so a long fling still ends
+     where it was thrown; a drag's own auto-scroll is never pulled back to one. */
+  .scroll[data-project-list] { scroll-snap-type: y proximity; }
+  :global(:is(html.thread-dragging, html.project-dragging)) .scroll { scroll-snap-type: none; }
   .scroll > :global(*) { flex-shrink: 0; }
-  .foot {
-    display: flex;
-    /* The machine button alone on the left, the others together on the
-       right, at the bottom: square targets as tall as the composer's, whose
-       lower edge meets the chat card's instead of floating above it. */
-    align-items: flex-end;
-    gap: 4px;
-    box-sizing: border-box;
-    margin: 0 10px;
-    padding-top: 8px;
-  }
-  .grow { flex: 1; }
-  /* Five square buttons and their gaps need 220 pixels: below that, the
-     update button's arrival closes the gaps instead of pushing Settings out. */
-  @container sidebar (max-width: 219.98px) {
-    .foot:has(:global(.update-trigger)) { gap: 0; }
-  }
-  .control {
-    display: contents;
-  }
-  .foot :global(button.icon) {
-    flex: none;
-    width: var(--control-lg);
-    height: var(--control-lg);
-  }
-  .foot :global(.machines) { min-width: var(--control-lg); }
-  .foot :global(.machines .menu),
-  .foot :global(.machines .trigger) { height: var(--control-lg); max-width: 100%; }
-  .foot :global(.machines .trigger:not(:has(.name))) { width: var(--control-lg); }
-  /* With one machine the wrapper stays, empty, for its connection state. */
-  .foot :global(.machines:not(:has(.trigger))) { display: none; }
-  .foot :global(button.icon.active) { background: var(--color-active); color: var(--color-foreground); }
+
+  /* The drawer's foot: the update button bottom left, at the composer's height. Empty with nothing to update. */
+  .foot { display: flex; align-items: flex-end; gap: 4px; margin: 0 10px; padding: 8px 0 10px; }
+  .foot:not(:has(:global(button))) { display: none; }
 
   /* The edge that drags the width, centred in the frame gap (ResizeHandle). */
   .resize { display: contents; }
@@ -230,16 +222,26 @@
        widens with it: a margin as wide as the list and its gap gives that room
        back, so the chat never jumps. App.svelte eases the card's own left gap
        in step. */
+    /* Up to the window's top (App.svelte pulls it over the bar's band), its
+       head in that band, level with the main column's title. */
+    .rail { padding-top: 6px; }
+    .views.scrolled { border-bottom-color: var(--color-border); }
+    .rail.more > :global(.quota-line) { border-top-color: var(--color-border); }
     .rail {
       --slide-room: calc(var(--sidebar-width) + var(--frame-gap));
-      transition: margin-left var(--dur-slide) var(--ease-slide), opacity var(--dur-3) var(--ease-out-quint), display var(--dur-slide) allow-discrete;
+      /* One motion with the panel that comes in on the other side: the same duration and curve for the slide and the fade. */
+      transition: margin-left var(--motion-duration) var(--motion-curve), opacity var(--motion-duration) var(--motion-curve), display var(--motion-duration) allow-discrete;
     }
+    /* No room taken, no head, no foot: the main card keeps the one frame gap of the row; a body that folds the column
+       itself (App.svelte's `sidebar-folded`) gives that gap as its padding, so then the column leaves the flow. */
+    .rail.absent { width: 0; padding: 0; overflow: hidden; visibility: hidden; transition: none; }
+    :global(.sidebar-folded) > .rail.absent { display: none; }
     .rail.collapsed {
       display: none;
       pointer-events: none;
       opacity: 0;
       margin-left: calc(-1 * var(--slide-room));
-      transition: margin-left var(--dur-slide-out) var(--ease-slide), opacity var(--dur-2) var(--ease-out-quint), display var(--dur-slide-out) allow-discrete;
+      transition: margin-left var(--motion-duration) var(--motion-curve), opacity var(--motion-duration) var(--motion-curve), display var(--motion-duration) allow-discrete;
     }
     /* Unfolding only (`wasFolded`): a list drawn open stands where it is. */
     @starting-style { .rail.was-folded:not(.collapsed) { opacity: 0; margin-left: calc(-1 * var(--slide-room)); } }
@@ -257,8 +259,8 @@
       opacity: 0;
       /* A drawer from the left edge, where its button is. */
       transform: translateX(calc(-100% - 12px));
-      transition: opacity var(--dur-3) var(--ease-out-quint), transform var(--dur-slide) var(--ease-slide), visibility var(--dur-slide);
-      box-shadow: var(--shadow-e3);
+      transition: opacity var(--dur-3) var(--ease-out-quint), transform var(--motion-duration) var(--motion-curve), visibility var(--motion-duration);
+      box-shadow: var(--shadow-overlay);
     }
     .rail.drawer.open {
       visibility: visible;
@@ -270,9 +272,6 @@
        below already leads to Settings. */
     .rail:not(.drawer) { width: auto; flex: 1; }
     .rail:not(.drawer) .views { margin: 0 12px; }
-    .rail:not(.drawer) .foot,
-    .resize {
-      display: none;
-    }
+    .resize { display: none; }
   }
 </style>

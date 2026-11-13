@@ -83,10 +83,10 @@
     align-items: center;
     gap: 2px;
     padding: 3px 3px 3px 10px;
-    border: 1px solid var(--color-edge);
-    border-radius: var(--radius-md);
-    background: var(--color-surface);
-    box-shadow: var(--shadow-e2);
+    border: 1px solid var(--overlay-edge);
+    border-radius: var(--radius-overlay);
+    background: var(--overlay-surface);
+    box-shadow: var(--shadow-overlay);
     animation: pop var(--dur-2) var(--ease-out-quint);
   }
 

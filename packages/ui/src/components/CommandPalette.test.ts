@@ -79,8 +79,9 @@ test('closed until asked, then the recents come first and the commands after the
   expect(sections.map((section) => section.querySelector('[data-testid=palette-project] .name')?.textContent ?? 'commands')).toEqual(['notes', 'boite', 'commands']);
   expect(of(sections[0]!)).toEqual(['thread:t-descriptors']);
   expect(of(sections[1]!).sort()).toEqual(['thread:t-bench', 'thread:t-scheduler', 'thread:t-trace']);
-  // A row says what its thread is doing, the way the sidebar does.
-  expect(document.querySelector('[data-palette-id="thread:t-bench"]')?.textContent).toContain('Needs you');
+  // A row says what its thread is doing, the way the sidebar does: the amber dot in the one slot, its word in its name.
+  const asks = document.querySelector('[data-palette-id="thread:t-bench"] [data-testid=thread-state]');
+  expect([asks?.getAttribute('data-state'), asks?.getAttribute('aria-label'), asks?.textContent?.trim()]).toEqual(['waiting', 'Needs you', '']);
   expect(document.body.textContent).toContain('Commands');
 });
 
@@ -264,4 +265,42 @@ test('Escape on a row closes, Tab stays in the search field, and closing gives t
   await tick();
   expect(store.paletteOpen).toBe(false);
   expect(document.activeElement).toBe(before);
+});
+
+test('a subagent row names the thread that started it, and the parent title finds it', async () => {
+  const parent = store.threads.find((thread) => !thread.parentThreadId && thread.projectId && !thread.archived)!;
+  store.threads.push({ ...parent, id: 't-sub-explore', title: 'Explore the parser', parentThreadId: parent.id, lastUserMessageAt: Date.now() });
+  store.paletteOpen = true;
+  flushSync(); await tick();
+  await type('Explore the parser');
+  const row = document.querySelector<HTMLElement>('[data-testid=palette-row][data-palette-id$="t-sub-explore"]')!;
+  expect(row.querySelector('[data-testid=palette-parent]')?.textContent).toBe(`in ${parent.title}`);
+  // A thread of its own carries no such line.
+  await type(parent.title);
+  const own = document.querySelector<HTMLElement>(`[data-testid=palette-row][data-palette-id$="${parent.id}"]`)!;
+  expect(own.querySelector('[data-testid=palette-parent]')).toBeNull();
+  // The parent's name finds its helpers too.
+  expect(rows().some((id) => id.endsWith('t-sub-explore'))).toBe(true);
+});
+
+// The keyboard's ring marked the first row after a new query or a reopen, though no key had moved there.
+test('the keyboard ring leaves with a new query and with a reopen', async () => {
+  const ringed = () => document.querySelectorAll('[data-testid=palette-row].keyed').length;
+  store.paletteOpen = true;
+  flushSync();
+  await tick();
+  key('ArrowDown');
+  expect(ringed()).toBe(1);
+  await type('trace');
+  expect(ringed()).toBe(0);
+
+  key('ArrowDown');
+  expect(ringed()).toBe(1);
+  store.paletteOpen = false;
+  flushSync();
+  await tick();
+  store.paletteOpen = true;
+  flushSync();
+  await tick();
+  expect(ringed()).toBe(0);
 });

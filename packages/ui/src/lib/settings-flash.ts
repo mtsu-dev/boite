@@ -17,3 +17,36 @@ export function revealSettingsCard(id: string, flash: boolean, behavior: ScrollB
   }
   return true;
 }
+
+/**
+ * Keeps a merged section (`settings-<id>`, the task manager under Diagnostics)
+ * at the top of its scroller while the pages settle: Diagnostics mounts and
+ * fills in (the log, the problems) after the first scroll, which left the
+ * section halfway down. Each frame it brings the section's top back to where
+ * the scroller starts, until the reader scrolls, presses or types, or `ms`
+ * pass. Returns the release.
+ */
+export function holdSettingsCard(id: string, ms = 2000): () => void {
+  const target = document.getElementById(`settings-${id}`);
+  let scroller = target?.parentElement ?? null;
+  while (scroller && !/(auto|scroll)/.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement;
+  if (!target || !scroller) return () => {};
+  const box = scroller;
+  const margin = parseFloat(getComputedStyle(target).scrollMarginTop) || 0;
+  const started = performance.now();
+  let frame = 0;
+  const pin = () => {
+    const drift = target.getBoundingClientRect().top - box.getBoundingClientRect().top - margin;
+    if (Math.abs(drift) > 1) box.scrollTop += drift;
+    frame = performance.now() - started < ms ? requestAnimationFrame(pin) : 0;
+    if (!frame) release();
+  };
+  const events = ['wheel', 'pointerdown', 'keydown', 'touchstart'] as const;
+  function release() {
+    cancelAnimationFrame(frame);
+    for (const name of events) window.removeEventListener(name, release, true);
+  }
+  for (const name of events) window.addEventListener(name, release, true);
+  frame = requestAnimationFrame(pin);
+  return release;
+}

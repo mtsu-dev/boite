@@ -12,14 +12,18 @@ export const strings = {
     /** The footer of a turn: `Working 12s`, then `Worked 4m 41s`. */
     workingFor: 'Working for {time}',
     workedFor: 'Worked for {time}',
+    /** A running turn whose machine is out of reach: how old the last word from it is (`{time}` is "28m ago"). */
+    lastUpdate: 'Last update {time}',
+    lastUpdateNow: 'Last update just now',
     compacting: 'Compacting conversation',
     compactionElapsed: 'Elapsed: {time}',
     turnOwnTime: 'This reply alone: {time}',
+    turnDetails: 'this turn',
     compactedFor: 'Compacted in {time}',
     compactionFailed: 'Compaction failed',
     compactionStopped: 'Compaction stopped',
     progress: { starting: 'Starting agent', thinking: 'Thinking', compacting: 'Compacting context', retrying: 'Retrying request', tool: 'Running tool', working: 'Receiving activity', waiting: 'Waiting for provider' },
-    providerSignal: 'Provider signal {time} ago',
+    providerSignal: 'The provider last answered {time} ago',
     noActivity: 'No new activity for {time}',
     /** The jump button once something arrived below the reader. */
     newMessage: '1 new message',
@@ -78,17 +82,25 @@ export const strings = {
     imageUnavailable: 'This picture could not be loaded. Scroll back to it to retry.',
     diffHidden: '{count} unchanged lines',
     diffIgnoreWhitespace: 'Ignore whitespace changes',
-    diffSideBySide: 'Old and new side by side',
+    /** The diff's layout menu: its trigger names the layout in use. */
+    diffView: 'View',
+    diffNoWrap: 'No wrap',
+    diffWrap: 'Wrap lines',
+    diffSplit: 'Side by side',
     /** A diff whose every change was spaces, with whitespace ignored. */
     diffWhitespaceOnly: 'Only whitespace changed.',
     diffShowAll: 'Show all {count} lines',
     diffAdded: '+{count}',
-    diffRemoved: '-{count}',
+    diffRemoved: '−{count}',
     noOutput: 'No output',
     toolExitCode: 'Exit code {code}',
+    /** A failed step's mark when no exit code says more. */
+    toolFailed: 'Failed',
     toolCommandFailed: 'No diagnostic was reported. See the full output below.',
     /** Under an expanded tool input that opened cut to six lines. */
     showAll: 'Show all',
+    /** A call last seen running on a machine out of reach: its mark is paused, its time frozen. */
+    toolPaused: 'Paused while the machine is offline',
     toolStatus: {
       running: 'running',
       done: 'done',
@@ -99,11 +111,11 @@ export const strings = {
     thinkingShow: 'Show the reasoning',
     thinkingHide: 'Hide the reasoning',
     /** The divider a compaction draws: `{pre}` and `{post}` formatted token counts. */
-    compaction: 'Context compacted, {pre} to {post} tokens',
-    compactionNoPost: 'Context compacted from {pre} tokens',
-    compactionUnknown: 'Context compacted',
+    compaction: 'Older messages summarized to make room, {pre} to {post} tokens',
+    compactionNoPost: 'Older messages summarized to make room, from {pre} tokens',
+    compactionUnknown: 'Older messages summarized to make room',
     /** On the line of the run a compaction fell in. */
-    compactedMark: 'compacted {pre} → {post}', compactedMarkBare: 'context compacted',
+    compactedMark: 'summarized {pre} → {post}', compactedMarkBare: 'older messages summarized',
     compactionManual: 'by hand',
     /** Beside a compaction a copy of the session made while the conversation went on. */
     compactionBackground: 'in the background',
@@ -120,13 +132,10 @@ export const strings = {
     /** A bot's finished turn: its steps folded above its answer, or a wake that had nothing for the user. */
     fold: {
       worked: 'Worked {time}', workedBare: 'Worked',
-      stepOne: '1 step', stepMany: '{count} steps',
-      seconds: '{count} s', minutes: '{count} min', hours: '{hours} h {minutes} min',
       quiet: 'Checked, nothing to report', quietWith: 'Checked: {reason}',
       showSteps: 'Show the steps', hideSteps: 'Hide the steps',
       showTurn: 'Show the whole turn', hideTurn: 'Fold this turn',
       memory: { running: 'Updating its memory', done: 'Memory updated', unchanged: 'Memory checked, nothing to change', error: 'Memory update failed' },
-      memoryOpen: 'See its memory on the desk',
     },
     /** At the foot of a thread the user moved: the note rides on the next prompt, not sent yet. */
     movePending: 'Moved to {project} · the agent will be told with your next message',
@@ -164,7 +173,47 @@ export const strings = {
       agent: 'Start a helper agent',
       other: 'Use its {tool} tool'
     },
-    permissionTechnical: 'Technical details',
+    /**
+     * A decision's title by what it does (`lib/decision-title.ts`): the command's
+     * verb and object, or the file an edit changes. `{ref}` a branch or tag,
+     * `{target}` a file or folder, `{host}` a web address's host, `{program}` a
+     * command's own name, `{path}` a short path.
+     */
+    decisionTitle: {
+      push: 'Push {ref}',
+      pushBranch: 'Push the branch',
+      commit: 'Commit the changes',
+      switch: 'Switch to {ref}',
+      pull: 'Pull the latest changes',
+      merge: 'Merge {ref}',
+      rebase: 'Rebase onto {ref}',
+      reset: 'Reset the branch to {ref}',
+      resetBranch: 'Reset the branch',
+      clone: 'Clone {target}',
+      stage: 'Stage {target}',
+      stageAll: 'Stage the changes',
+      tag: 'Tag {ref}',
+      stash: 'Stash the changes',
+      delete: 'Delete {target}',
+      create: 'Create {target}',
+      move: 'Move {target}',
+      copy: 'Copy {target}',
+      download: 'Download from {host}',
+      install: 'Install {target}',
+      installAll: 'Install the dependencies',
+      test: 'Run the tests',
+      build: 'Build the project',
+      script: 'Run {target}',
+      openPr: 'Open a pull request',
+      mergePr: 'Merge the pull request',
+      program: 'Run {program}',
+      edit: 'Edit {path}',
+      write: 'Create {path}'
+    },
+    /** The live dot of a decision that waits on the owner, for screen readers and on hover. */
+    permissionNeedsYou: 'Needs you',
+    /** The state line of a command row whose permission waits, beside its Deny and Allow once. */
+    permissionWaiting: 'Waiting for approval',
     turnFiles: 'Changed files',
     showTurnDiff: 'Show diff',
     hideTurnDiff: 'Hide diff',
@@ -178,29 +227,43 @@ export const strings = {
     openFile: 'Open {name}',
     revealFile: 'Show in folder',
     revealFailed: 'The folder could not be opened: {reason}',
-    allow: 'Allow',
+    /** An answer covers this one call only: the agent asks again for the next one. */
+    allowOnce: 'Allow once',
+    allowOnceKey: 'Lets this one call run (Enter)',
     deny: 'Deny',
-    allowed: 'Allowed',
-    denied: 'Denied',
+    denyKey: 'Deny (Esc)',
+    /** A decided ask with no call to carry it: one line in the run, the verdict then what it was about. */
+    allowedReceipt: 'Allowed: {subject}',
+    deniedReceipt: 'Denied: {subject}',
     /** The shield on a call's line once the user answered the agent's ask for it. */
     permissionAllowedBy: 'Allowed by you',
     permissionDeniedBy: 'Denied by you',
-    questionHeading: 'Asks you',
-    questionAsyncHeading: 'Question',
+    questionHeading: 'Needs you',
+    questionAsyncHeading: 'Needs you',
     questionAsyncHint: 'The agent keeps working. Without an answer it goes on with a default.',
     questionAnswer: 'Answer',
-    questionAnswered: 'Answered',
-    questionCancelled: 'No longer waiting for an answer',
-    questionSkip: 'Skip',
+    /** Answer's tooltip on a question another one follows: it answers this one and shows the next. */
+    questionAnswerNextHint: 'Answer and show the next question',
+    /** Answer's tooltip until it can act: the card's own with options, the composer's beside options or alone. */
+    questionPickFirst: 'Pick an option first',
+    questionPickOrType: 'Pick an option or type your answer',
+    questionTypeFirst: 'Type your answer first',
+    questionAnswered: 'You answered: {answer}',
+    /** A question skipped or dropped with its turn: one line in the run, never the card again. */
+    questionCancelled: 'Not answered: {question}',
+    questionMore: 'Show {count} more options',
+    questionMoreOne: 'Show 1 more option',
+    /** Skips the question on screen only, never the others waiting behind it. */
+    questionSkip: 'Skip question',
+    /** After the pager of several questions, where there is room: the title of the one it goes to next. */
+    questionUpNext: 'Next: {title}',
     questionOpenPage: 'Open',
-    /** The composer is the free field of the question; the card points there. */
-    questionReplying: 'Write your answer in the message box below, with any photos or files.',
     questionWrite: 'Answer in writing',
-    /** The timeline's line for a question waiting in the dock above the composer. */
-    questionDocked: 'Waiting for your answer above the message box',
+    /** The timeline's line for a question waiting in the dock at the top of the composer, where it is answered. */
+    questionDocked: 'Answer below',
     questionOpen: 'Answer it',
     streaming: 'writing',
-    jumpToLatest: 'Jump to latest',
+    jumpToLatest: 'Jump to newest',
     /** The one line at the top of the timeline while an older page is being fetched. */
     loadingOlder: 'Loading earlier messages',
     loadingNewer: 'Loading later messages',
@@ -222,8 +285,13 @@ export const strings = {
     plan: 'Plan',
     planDownload: 'Download .md',
     planSave: 'Save to folder',
+    planDownloadShort: 'Download',
+    planSaveShort: 'Save',
+    planSavedShort: 'Saved',
+    planActions: 'Plan actions',
     planSaveHint: "Write the plan as a markdown file at the root of this thread's folder",
     planSaved: 'Saved as {name}',
+    planProgress: '{done} of {total}',
     copyMessage: 'Copy message',
     /** The menu of a file, folder or thread link in an answer, opened by a right click or a long press. */
     openLink: 'Open',

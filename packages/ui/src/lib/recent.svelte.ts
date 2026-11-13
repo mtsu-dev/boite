@@ -3,6 +3,8 @@ import type { Store } from './store.svelte';
 import { hasUnsentDraft } from './composer-queue';
 import { archiveThread } from './archive';
 import { threadState } from './thread-state';
+import { rowAsks } from './status-order';
+import { strings } from './strings';
 
 export const RECENT_STORAGE_KEY = 'boite.recent.v1';
 
@@ -45,8 +47,8 @@ export function groupWorkingThread(store: Store, thread: ThreadSummary): boolean
 }
 
 /** At work, its own turn, its delegated agents', what it left running or a pull request it watches: nothing for the user to do yet. */
-export function workingThread(store: Pick<Store, 'subagents'>, thread: ThreadSummary): boolean {
-  const state = threadState(thread, store.subagents(thread.id));
+export function workingThread(store: Pick<Store, 'subagents' | 'pendingQuestions' | 'pendingPermissions'>, thread: ThreadSummary): boolean {
+  const state = threadState(thread, rowAsks(store, thread.id));
   return state === 'working' || state === 'queued' || state === 'delegating' || state === 'monitoring' || state === 'background' || state === 'watching';
 }
 
@@ -54,6 +56,14 @@ export function workingThread(store: Pick<Store, 'subagents'>, thread: ThreadSum
 export function canMarkDone(store: Store, thread: ThreadSummary): boolean {
   return !thread.archived && store.connection === 'ready' && !threadActive(thread.status)
     && !thread.backgroundWork?.kinds.length && !thread.pendingMove && !store.moveBlocked(thread.id);
+}
+
+/** Why Mark done is off for a kept thread, in a few words for its disabled row; null when it can be done. */
+export function markDoneBlocker(store: Store, thread: ThreadSummary): string | null {
+  if (canMarkDone(store, thread) || thread.archived) return null;
+  if (store.connection !== 'ready') return strings.sidebar.doneWhyOffline;
+  if (thread.pendingMove) return strings.sidebar.doneWhyMoving;
+  return strings.sidebar.doneWhyWorking;
 }
 
 export async function markDone(store: Store, thread: ThreadSummary): Promise<boolean> {

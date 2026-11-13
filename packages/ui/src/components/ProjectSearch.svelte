@@ -21,7 +21,7 @@
    *
    * The owner shows and hides `popover`: a pick and a close are only told.
    */
-  let { popover, testid, label, groups, several, byKeyboard = false, empty, footer, onpick, onclose }: {
+  let { popover, testid, label, groups, several, byKeyboard = false, empty, footer, placeholder = strings.thread.searchProjects, noMatch = strings.thread.noProjectMatch, onpick, onclose }: {
     popover: Closing;
     testid: string;
     label: string;
@@ -32,6 +32,9 @@
     byKeyboard?: boolean;
     /** What an empty list says before anything is typed. */
     empty?: string;
+    /** The field's words and the no-match line, for a list of something other than projects. */
+    placeholder?: string;
+    noMatch?: string;
     /** An action under the list that never scrolls away, the drafts' "Open a folder". */
     footer?: { id: string; label: string };
     onpick: (id: string) => void;
@@ -180,8 +183,8 @@
         autocomplete="off"
         autocapitalize="off"
         spellcheck="false"
-        placeholder={strings.thread.searchProjects}
-        aria-label={strings.thread.searchProjects}
+        {placeholder}
+        aria-label={placeholder}
         data-testid="{testid}-search"
       />
     </label>
@@ -213,7 +216,7 @@
           </button>
         {/each}
       {/each}
-      {#if none}<p class="empty" data-testid="{testid}-empty">{!typed && empty !== undefined ? empty : fill(strings.thread.noProjectMatch, { query: query.trim() })}</p>{/if}
+      {#if none}<p class="empty" data-testid="{testid}-empty">{!typed && empty !== undefined ? empty : fill(noMatch, { query: query.trim() })}</p>{/if}
     </div>
 
     {#if footer}
@@ -259,11 +262,12 @@
     max-height: min(70vh, 520px);
     display: flex;
     flex-direction: column;
-    padding: 6px;
-    background: var(--color-surface-2);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-e2);
+    padding: var(--overlay-pad);
+    /* The overlay card every menu, sheet and dialog wears (app.css). */
+    background: var(--overlay-surface);
+    border: 1px solid var(--overlay-edge);
+    border-radius: var(--radius-overlay);
+    box-shadow: var(--shadow-overlay);
     /* The list reads at the body size even under the heading's large type. */
     font-size: var(--text-base);
     font-weight: 400;
@@ -331,10 +335,11 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 8px 8px 4px;
-    color: var(--color-muted-foreground);
+    /* The overlay's head form, as Menu's headings. */
+    padding: var(--space-2) var(--overlay-row-pad) var(--space-1);
+    color: var(--color-subtle);
     font-size: var(--text-xs);
-    font-weight: 500;
+    font-weight: 600;
   }
 
   /* One line a project: its tile, its name, its folder, then the machine and the mark. */
@@ -344,20 +349,20 @@
     gap: 10px;
     width: 100%;
     height: auto;
-    min-height: var(--row);
-    padding: 4px 8px;
+    min-height: var(--overlay-row);
+    padding: var(--space-1) var(--overlay-row-pad);
     border: none;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-overlay-row);
     background: transparent;
     color: var(--color-foreground);
     text-align: left;
     cursor: pointer;
   }
 
-  /* The row Enter takes, as in the command palette: the accent's wash and a bar on its edge. */
+  /* The row Enter takes, as in the command palette: the selection wash and a bar on its edge. */
   .row.highlight {
     background: var(--color-accent-soft);
-    box-shadow: inset 2px 0 0 var(--color-accent);
+    box-shadow: inset 2px 0 0 var(--color-muted-foreground);
   }
 
   .row:active {

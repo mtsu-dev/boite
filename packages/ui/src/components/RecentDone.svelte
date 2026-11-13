@@ -5,6 +5,7 @@
   import type { Store } from '../lib/store.svelte';
   import { archivedThreads, archivedTime } from '../lib/archive';
   import { projectName } from '../lib/format';
+  import { severalConnected } from '../lib/machine-host';
   import { strings } from '../lib/strings';
   import { archiveCount, archiveKindOf, type ArchiveKind } from '../lib/project-threads.svelte';
   import RecentGroup from './RecentGroup.svelte';
@@ -43,7 +44,8 @@
     const thread = live.get(now.machine.store)?.get(entry.thread.id) ?? entry.thread;
     return [{ ...now, thread }];
   }).filter(({ thread, project, machine }) => !query || [thread.title, projectName(project), thread.branch, machine.label].some(value => value?.toLocaleLowerCase().includes(query))));
-  const multi = $derived(new Set(entries.map(entry => entry.machine.id)).size > 1);
+  /** A machine icon on a row only once two machines are connected (lib/machine-host.ts): with one, it tells nothing apart. */
+  const multi = $derived(severalConnected([...new Map(entries.map(entry => [entry.machine.id, entry.machine])).values()]));
   /** Under one project's header its name would only repeat it; the Recent list of every project names it. */
   const spans = $derived(entries.length > 1);
   $effect(() => {

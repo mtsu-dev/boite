@@ -65,7 +65,7 @@ A chord is modifiers, then one key, joined with `+`, case and spaces ignored.
 | Id | Default | What it does |
 |---|---|---|
 | `new-thread` | `mod+n` | A draft in the open project |
-| `palette` | `mod+k` | The command palette, also the command button at the foot of the sidebar |
+| `palette` | `mod+k` | The command palette, also the search button over the thread list |
 | `sidebar` | `mod+s` | Fold or unfold the thread sidebar |
 | `panel` | `mod+alt+b` | The right panel, on an open thread |
 | `browser` | `mod+shift+j` | The conversation's browser, on every client |
@@ -89,7 +89,7 @@ A chord is modifiers, then one key, joined with `+`, case and spaces ignored.
 | `pin` | none | Pin or unpin the open thread |
 | `rename` | none | Rename the open thread |
 | `retitle` | none | Ask the agent for the open thread's title again ([titles.md](titles.md)) |
-| `import-session` | none | Import a Claude Code session into the open thread's project, once that experiment is on ([imports.md](imports.md)) |
+| `import-session` | none | Import a Claude Code or Codex session into the open thread's project ([imports.md](imports.md)) |
 | `trace` | none | The trace surface |
 | `appearance` | none | The Appearance tab |
 | `providers` | none | The Providers tab |

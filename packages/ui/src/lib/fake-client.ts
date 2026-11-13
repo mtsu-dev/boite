@@ -11,6 +11,7 @@ import { holdContactMail } from './fake-client/contact-hold';
 import { seedIdle, seedWorking } from './fake-client/working-seed';
 import { sweepMergedPrFixtures, type MergedPrFixture } from './fake-client/merged-pr-archive';
 import {
+  effectiveExperiments,
   RPC_CHUNK_BYTES,
   RpcErrorCode,
   StreamGate,
@@ -52,7 +53,7 @@ import { seedAgentsDemo } from './fake-client/agents-demo';
 import { agentSettingMethods } from './fake-client/agent-settings';
 import type { AgentSettingMethod } from './fake-agents';
 import { groupMethods } from './fake-client/group';
-import { contactMethods } from './fake-client/contacts';
+import { contactMethods, contactState } from './fake-client/contacts';
 import { pairingMethods } from './fake-client/pairing';
 import { projectMethods } from './fake-client/projects';
 import { pathKey } from './fake-client/checks';
@@ -170,6 +171,10 @@ export class FakeClient implements ObservableClient {
       ctx.usage.clear();
       ctx.usageSeeded = false;
       ctx.scheduler = { ...ctx.scheduler, running: [], queued: [] };
+      // Nobody linked yet either: no request waits on a first launch.
+      const contacts = contactState(ctx);
+      contacts.contacts = [];
+      contacts.requests = [];
     }
     // Again once the seeds and a first launch have set the providers the policy marks.
     applyPolicy(ctx);
@@ -457,10 +462,10 @@ export class FakeClient implements ObservableClient {
     reconcileShared(this.#ctx);
   }
 
-  /** The desktop app on the fake machine reporting its experiments, as the core's book announces a change. */
+  /** The desktop app on the fake machine reporting its experiments, as the core's book announces a change: in force in this build, and as chosen. */
   reportDesktopExperiments(experiments: ExperimentId[]): void {
     this.#ctx.desktopExperiments = [...experiments];
-    this.#ctx.emit('client.desktopExperiments', { experiments: [...experiments] });
+    this.#ctx.emit('client.desktopExperiments', { experiments: effectiveExperiments(experiments, this.#ctx.core.version), chosen: [...experiments] });
   }
 
   /** The fake machine's addresses changing, as the core's network watch announces it to owner windows. */
@@ -473,7 +478,7 @@ export class FakeClient implements ObservableClient {
     this.#ctx.policy = structuredClone(policy);
     applyPolicy(this.#ctx);
     this.#ctx.emit('policy.changed', structuredClone(policy));
-    this.#ctx.emit('settings.updated', { ...this.#ctx.settings });
+    this.#ctx.emit('settings.updated', this.#ctx.settingsInForce());
     this.#ctx.emit('providers.updated', { loaded: structuredClone(this.#ctx.providers), rejected: [] });
   }
 

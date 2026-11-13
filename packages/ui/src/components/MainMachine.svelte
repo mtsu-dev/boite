@@ -1,5 +1,6 @@
 <script lang="ts">
   import { ChevronDown } from '@lucide/svelte';
+  import InfoTip from './InfoTip.svelte';
   import Menu from './Menu.svelte';
   import type { MenuItem } from '../lib/menu';
   import { strings } from '../lib/strings';
@@ -28,9 +29,8 @@
 {#if !insideTauri() && workspace.machines.length > 1}
   <section class="card" data-testid="main-machine">
     <div class="switch-row">
-      <span class="text">
-        <span class="ui-label">{s.main}</span>
-        <span class="hint">{chosen ? s.mainHint : s.mainLastHint}</span>
+      <span class="text ui-label-box">
+        <span class="ui-label">{s.main}</span><InfoTip topic={s.main} text={chosen ? s.mainHint : s.mainLastHint} testid="main-machine-info" />
       </span>
       <Menu {items} onpick={pick} label={s.main} placement="bottom" align="end" testid="main-machine-pick">
         <span class="current ui-label">{chosen ? listedName(chosen) : s.mainLast}</span><ChevronDown size={13} />

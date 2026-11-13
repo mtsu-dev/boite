@@ -1281,12 +1281,16 @@ off can still ask.
 
 An answer can carry files when the question has a free field, as T3 Code's
 question attachments do: a screenshot of the bug, a mockup. The card has no
-field of its own. While such a question waits, the composer is its free answer,
-as in T3 Code: its placeholder and a line above the box name the question, and
-Send takes the card's picks with the text and files
-(`lib/question-reply.svelte.ts`). Files arrive by the composer's paperclip, a
+field of its own. While such a question waits, the composer is its free answer:
+its placeholder reads "Or type your own answer", and its send control reads
+Answer and is the one commit, taking the card's picks with the text and files
+(`lib/question-reply.svelte.ts`); it stays an outline, its tooltip saying why,
+until there is a pick or text. The card then keeps its options, its pager and
+Skip question, with no Answer of its own; a card the composer does not answer
+(a subagent's question docked in its parent, a question without free text)
+keeps its own. Files arrive by the composer's paperclip, a
 paste or a drop, with its caps and image reduction, and a file alone is a valid
-answer. Ignore on that line sets the thread's questions aside, and the composer
+answer. Folding the question sets the thread's questions aside, and the composer
 sends ordinary messages again; the card's "Answer in writing" brings it back.
 A question never takes a composer the user is writing in. One that arrives
 while its thread's composer holds text or files stays out of it until that

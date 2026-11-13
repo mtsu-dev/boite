@@ -154,7 +154,7 @@ async function captureDesktop(browser: any, base: string) {
     await frame.locator('[data-testid=diff-view]').waitFor();
     await page.evaluate(() => { document.getElementById('cursor')!.style.opacity = '0'; });
     await page.mouse.move(1, height - 1);
-    await page.evaluate(() => Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))));
+    await page.evaluate(() => Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))));
     await page.screenshot({ path: join(output, 'boite-light.png') });
     await at(6);
     await frame.evaluate(async () => {

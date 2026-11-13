@@ -10,10 +10,11 @@ import { RpcFailure } from '../../lib/rpc-error';
 import { FAKE_CONTACT_INVITE } from '../../lib/fake-client/contacts';
 import { Store, store as primary } from '../../lib/store.svelte';
 import { fill, strings } from '../../lib/strings';
+import { inbox } from '../../lib/inbox.svelte';
 import { workspace } from '../../lib/workspace.svelte';
 import HomePage from './HomePage.svelte';
 import SidebarContacts from './SidebarContacts.svelte';
-import TitleBar from '../TitleBar.svelte';
+import AppRail from '../AppRail.svelte';
 
 let components: ReturnType<typeof mount>[] = [];
 let opened: Store | undefined;
@@ -56,7 +57,7 @@ async function draw(contact: string | null = null): Promise<Store> {
 const one = <T extends HTMLElement>(testid: string) => document.querySelector<T>(`[data-testid="${testid}"]`);
 const contacts = async (store: Store) => store.client!.call('contacts.get', {});
 
-test('a contact request stays visible at the top in Settings and opens the machine that received it', async () => {
+test('a contact request stays visible in the rail in Settings and opens the machine that received it', async () => {
   const remote = await connect();
   const local = new Store();
   local.machineId = 'local';
@@ -64,7 +65,7 @@ test('a contact request stays visible at the top in Settings and opens the machi
   local.page = 'settings';
   workspace.machines = [{ id: 'local', label: 'Local', store: local }, { id: 'home', label: 'Workstation', store: remote }];
   workspace.active = local;
-  components.push(mount(TitleBar, { target: document.body, props: { store: local } }));
+  components.push(mount(AppRail, { target: document.body, props: { store: local } }));
   await vi.waitFor(() => { flushSync(); expect(one('contact-request-notice')).not.toBeNull(); });
   expect(one('contact-request-notice')!.textContent).toContain('Chris');
   expect(one('contact-request-notice')!.textContent).toContain('Workstation');
@@ -75,7 +76,24 @@ test('a contact request stays visible at the top in Settings and opens the machi
   await vi.waitFor(() => { flushSync(); expect(one('contact-request-notice')).toBeNull(); });
 });
 
-test('a dismissed request keeps its header badge, which refreshes after a reconnect without an update', async () => {
+test('two asks waiting read the machine, a spaced dot and their count on the toast', async () => {
+  const store = await connect();
+  store.page = 'settings';
+  const client = store.client!;
+  const call = client.call.bind(client);
+  vi.spyOn(client, 'call').mockImplementation((async (method, params) => {
+    const value = await call(method, params);
+    if (method !== 'contacts.get') return value;
+    const state = value as Awaited<ReturnType<typeof contacts>>;
+    const pending = state.requests.find(request => request.status === 'pending' && request.direction === 'in')!;
+    return { ...state, requests: [...state.requests, { ...pending, id: 'creq-second', createdAt: pending.createdAt + 1 }] };
+  }) as typeof client.call);
+  components.push(mount(AppRail, { target: document.body, props: { store } }));
+  await vi.waitFor(() => { flushSync(); expect(one('contact-request-notice')?.querySelector('[data-testid=contact-request-meta]')?.textContent).toMatch(/ · 2$/); });
+  expect(one('contact-request-notice')!.querySelector('[data-testid=contact-request-meta]')!.textContent).toMatch(/^\S.* · 2$/);
+});
+
+test('a dismissed request still counts on the rail\'s Activity, which refreshes after a reconnect without an update', async () => {
   const store = await connect();
   store.page = 'settings';
   const client = store.client!;
@@ -87,17 +105,19 @@ test('a dismissed request keeps its header badge, which refreshes after a reconn
     const state = value as Awaited<ReturnType<typeof contacts>>;
     return { ...state, requests: state.requests.filter(request => request.status !== 'pending') };
   }) as typeof client.call);
-  components.push(mount(TitleBar, { target: document.body, props: { store } }));
+  components.push(mount(AppRail, { target: document.body, props: { store } }));
+  const waiting = () => Number(one('rail-activity-waiting')?.textContent ?? 0);
   await vi.waitFor(() => { flushSync(); expect(one('contact-request-notice')).not.toBeNull(); });
+  const before = waiting();
   one<HTMLButtonElement>('contact-request-dismiss')!.click();
   await vi.waitFor(() => { flushSync(); expect(one('contact-request-notice')).toBeNull(); });
-  expect(one('contact-request-open')).not.toBeNull();
+  expect(waiting()).toBe(before);
   store.connection = 'connecting';
   flushSync();
   decidedWhileOffline = true;
   store.connection = 'ready';
   flushSync();
-  await vi.waitFor(() => { flushSync(); expect(one('contact-request-open')).toBeNull(); });
+  await vi.waitFor(() => { flushSync(); expect(waiting()).toBeLessThan(before); });
 });
 
 test('a message from a contact outside a shared project pops up to be read: Deliver hands it to its conversation, Refuse answers the sender, Details opens the contact', async () => {
@@ -114,18 +134,16 @@ test('a message from a contact outside a shared project pops up to be read: Deli
     await client.call('contacts.decide', { id: 'creq-pending', accept: false, reason: 'Not now' });
     // The thread's request goes through the Operator, which forwards it; the answer comes back to the thread.
     const operator = (await client.call('agents.builtin.ensure', { kind: 'contacts' })).id;
-    const botThread = (await client.call('contacts.get', {})).bot!.threadId;
     expect((await client.call('contacts.get', {})).bot!.agentId).toBe(operator);
     const answered = async (text: string) => {
-      const waiting = await client.call('collaboration.ask', { threadId: 't-trace', contact: 'core-sam', text });
-      const asked = await client.call('contacts.bot.forward', { threadId: botThread, id: waiting.id, contact: 'core-sam' });
+      const asked = await client.call('collaboration.ask', { threadId: 't-trace', contact: 'core-sam', want: 'share', text });
       await sam.call('contacts.decide', { id: asked.id, accept: false, reason: `No: ${text}` });
       await vi.waitFor(() => { flushSync(); expect(one('contact-request-notice')?.dataset.kind).toBe('mail'); });
       expect(one('contact-mail-notice-text')!.textContent).toContain(`No: ${text}`);
       return (await client.call('contacts.get', {})).mail!.at(-1)!;
     };
     const status = async (id: string) => (await client.call('collaboration.get', { threadId: 't-trace' })).messages.find(letter => letter.id === id)?.status;
-    components.push(mount(TitleBar, { target: document.body, props: { store } }));
+    components.push(mount(AppRail, { target: document.body, props: { store } }));
 
     const first = await answered('Which tool schedules your posts?');
     expect(one('contact-request-notice')!.textContent).toContain(fill(strings.contacts.mail.writes, { contact: 'Sam', thread: 'Finish the trace tab' }));
@@ -165,25 +183,24 @@ test('a thread request the Operator settles waits on it, not on the owner: no no
     for (const each of [client, sam]) await each.call('contacts.settings', { settings: { minTier: 2 } });
     await client.call('agents.builtin.ensure', { kind: 'contacts' });
     await sam.call('agents.builtin.ensure', { kind: 'contacts' });
-    const samBot = (await sam.call('contacts.get', {})).bot!.threadId;
     const home = (await sam.call('contacts.get', {})).contacts.find(entry => entry.coreId !== 'core-chris')!.coreId;
     const ask = async (text: string) => {
-      const waiting = await sam.call('collaboration.ask', { threadId: 't-trace', contact: home, want: 'thread', text });
-      const asked = await sam.call('contacts.bot.forward', { threadId: samBot, id: waiting.id, contact: home });
+      const asked = await sam.call('collaboration.ask', { threadId: 't-trace', contact: home, want: 'thread', text });
       await vi.waitFor(async () => expect((await contacts(store)).requests.some(entry => entry.id === asked.id)).toBe(true));
       return asked.id;
     };
-    // Chris's request, with no bot behind it, is the owner's: the notice and its bell show, then go once it is answered.
-    components.push(mount(TitleBar, { target: document.body, props: { store } }));
+    // Chris's request, with no bot behind it, is the owner's: the notice shows and the rail's Activity counts it, then both go once it is answered.
+    components.push(mount(AppRail, { target: document.body, props: { store } }));
     await vi.waitFor(() => { flushSync(); expect(one('contact-request-notice')).not.toBeNull(); });
+    expect(inbox.contacts).toBe(1);
     await client.call('contacts.decide', { id: 'creq-pending', accept: false, reason: 'Not now' });
-    await vi.waitFor(() => { flushSync(); expect(one('contact-request-open')).toBeNull(); });
+    await vi.waitFor(() => { flushSync(); expect(inbox.contacts).toBe(0); });
 
     // Not trusted: the Operator holds it until the owner says yes; the card offers that yes, not a project.
     const held = await ask('A thread that knows the descriptor loader');
     await vi.waitFor(() => { flushSync(); expect(one(`contact-request-${held}`)).not.toBeNull(); });
     expect(one('contact-request-notice')).toBeNull();
-    expect(one('contact-request-open')).toBeNull();
+    expect(inbox.contacts).toBe(0);
     expect(one(`contact-accept-${held}`)).toBeNull();
     one<HTMLButtonElement>(`contact-approve-${held}`)!.click();
     await vi.waitFor(async () => {
@@ -192,12 +209,42 @@ test('a thread request the Operator settles waits on it, not on the owner: no no
     });
     await vi.waitFor(() => { flushSync(); expect(one(`contact-approve-${held}`)).toBeNull(); });
 
+    // The Operator shows what it will do: the owner reads the plan, and Accept runs it with no project shared.
+    const planned = await ask('A thread that knows the trace tab');
+    await client.call('contacts.bot.askOwner', { threadId: (await contacts(store)).bot!.threadId, id: planned, connect: 't-trace' });
+    await vi.waitFor(() => { flushSync(); expect(one(`contact-request-${planned}`)?.querySelector('[data-testid="contact-request-plan"]')?.textContent).toContain('Finish the trace tab'); });
+    expect(one('contact-request-notice')).not.toBeNull();
+    expect(one(`contact-accept-${planned}`)).toBeNull();
+    expect(one<HTMLButtonElement>(`contact-approve-${planned}`)!.textContent).toContain(strings.contacts.requests.accept);
+    one<HTMLButtonElement>(`contact-approve-${planned}`)!.click();
+    await vi.waitFor(async () => {
+      const request = (await contacts(store)).requests.find(entry => entry.id === planned)!;
+      expect([request.status, request.decidedBy, request.relation?.local.threadId, request.project, request.plan]).toEqual(['accepted', 'owner', 't-trace', undefined, undefined]);
+    });
+
+    // The arrow beside Accept: the owner searches their conversations and picks another than the Operator's choice.
+    const picked = await ask('Someone on the scheduler');
+    const operator = (await contacts(store)).bot!.threadId;
+    await client.call('contacts.bot.askOwner', { threadId: operator, id: picked, connect: 't-trace' });
+    await vi.waitFor(() => { flushSync(); expect(one(`contact-pick-${picked}`)).not.toBeNull(); });
+    one<HTMLButtonElement>(`contact-pick-${picked}`)!.click();
+    await vi.waitFor(() => { flushSync(); expect(one(`contact-pick-${picked}-search`)).not.toBeNull(); });
+    const rows = [...document.querySelectorAll<HTMLButtonElement>(`[data-testid="contact-pick-${picked}-list"] [data-row]`)];
+    // The Operator's own thread is no choice.
+    expect(rows.some(row => row.dataset.value === operator)).toBe(false);
+    const other = rows.find(row => row.dataset.value !== 't-trace')!;
+    other.click();
+    await vi.waitFor(async () => {
+      const request = (await contacts(store)).requests.find(entry => entry.id === picked)!;
+      expect([request.status, request.decidedBy, request.relation?.local.threadId, request.plan]).toEqual(['accepted', 'owner', other.dataset.value, undefined]);
+    });
+
     // Trusted: the Operator settles it alone, so nothing asks the owner.
     await client.call('contacts.update', { coreId: 'core-sam', trusted: true });
     const trusted = await ask('A thread that runs the fuzzer');
     await vi.waitFor(() => { flushSync(); expect(one(`contact-request-${trusted}`)).not.toBeNull(); });
     expect(one('contact-request-notice')).toBeNull();
-    expect(one('contact-request-open')).toBeNull();
+    expect(inbox.contacts).toBe(0);
     expect(one(`contact-accept-${trusted}`)).toBeNull();
     expect(one(`contact-approve-${trusted}`)).toBeNull();
     expect(one(`contact-refuse-${trusted}`)).not.toBeNull();
@@ -334,7 +381,7 @@ test("a board asked for from a contact's page stays hidden when another page is 
   expect([store.page, store.boardShown]).toEqual(['settings', false]);
 });
 
-test('accept shares the project picked in the menu; refuse waits for a reason; remove asks first and goes back to the page that adds one', async () => {
+test('accept shares the project picked in the row menu; refuse waits for a reason; remove asks first and goes back to the page that adds one', async () => {
   const store = await draw();
   expect(one('home-waiting')).not.toBeNull();
   // The decided one is folded under its count, with who decided.
@@ -347,9 +394,11 @@ test('accept shares the project picked in the menu; refuse waits for a reason; r
   // Escape leaves the reason and gives Accept back.
   one('contact-refuse-reason')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   flushSync();
-  one<HTMLButtonElement>('contact-accept-creq-pending')!.click();
-  await vi.waitFor(() => { flushSync(); expect(one('contact-accept-creq-pending-menu')).not.toBeNull(); });
-  one('contact-accept-creq-pending-menu')!.querySelector<HTMLButtonElement>('[data-value="p-notes"]')!.click();
+  // Accept is a plain button; another project is picked in the row's menu.
+  expect(one('contact-accept-creq-pending')!.getAttribute('aria-haspopup')).toBeNull();
+  one<HTMLButtonElement>('contact-accept-into-creq-pending')!.click();
+  await vi.waitFor(() => { flushSync(); expect(one('contact-accept-into-creq-pending-menu')).not.toBeNull(); });
+  one('contact-accept-into-creq-pending-menu')!.querySelector<HTMLButtonElement>('[data-value="p-notes"]')!.click();
   await vi.waitFor(async () => {
     const request = (await contacts(store)).requests.find(entry => entry.id === 'creq-pending')!;
     expect([request.status, request.project?.id]).toEqual(['accepted', 'p-notes']);
@@ -619,7 +668,6 @@ test('the Operator card links the bot, lists the threads in touch with an End th
   expect(one('home-relations')!.textContent).toContain(strings.contacts.bot.none);
 
   // The link opens the bot on the Bots page, which Contacts never goes without.
-  setExperiment('resident-agents', true);
   one<HTMLButtonElement>('home-bot-open')!.click();
   expect(store.page).toBe('agents');
 });

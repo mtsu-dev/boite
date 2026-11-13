@@ -56,8 +56,8 @@ or when the network is public and must be marked private in Windows settings.
 
 - Opening a conversation switches the chat, the composer and Settings to its
   machine. Nothing moves between machines.
-- The filter button beside Settings, at the bottom of the sidebar, narrows the
-  list from All machines to one machine.
+- The machine button at the foot of the app rail, or the display menu over
+  the thread list, narrows the list from All machines to one machine.
 - The command palette (Ctrl+K) finds conversations, projects and machine
   names. A new conversation's project picker lists every connected machine.
 - Each settings page that belongs to one machine has a machine picker on top.
@@ -75,9 +75,13 @@ They are saved on this device. A server can set its own name, see
 Its conversations stay listed, greyed, and still open with what was last
 read. A prompt you send there waits on your device and goes out once the
 machine is back; then it runs with the app closed. A machine that is off does
-not hold the others back: the window opens on one that answers. The footer
-dot turns red only when you must act, such as a machine that refused this
-device's key, which offers Add again.
+not hold the others back: the window opens on one that answers. A machine
+out of reach shows a hollow grey ring beside Offline. The machine button at
+the foot of the app rail shows a monitor with a green dot while every
+machine answers, with the ring while one is offline, and a crossed monitor
+once none answers. Its card
+also counts the machines where you must act, such as a machine that refused
+this device's key, which offers Add again.
 
 ## Group roles and switches
 

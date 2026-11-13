@@ -5,6 +5,7 @@
   import { errorText } from '../../lib/errors';
   import { sameSharedProject } from '../../lib/shared-ui';
   import { strings } from '../../lib/strings';
+  import { modeLabel, modeWord } from '../../lib/permission-modes';
   import InfoTip from '../InfoTip.svelte';
   import Menu from '../Menu.svelte';
   let { store, scope, project }: { store: Store; scope: SharedProjectScope; project: SharedProjectView } = $props();
@@ -59,7 +60,7 @@
     <div class="row"><span>{strings.shared.hostThread}</span><Menu items={parents.map(t => ({id: t.id, label: t.title}))} onpick={id => { parentId = id; }} disabled={busy || !hostLoaded || local.compute.enabled} label={strings.shared.hostThread} testid="shared-host-thread"><span>{parents.find(t => t.id === parentId)?.title ?? strings.shared.hostThread}</span></Menu></div>
     <div class="profiles"><span>{strings.shared.profiles}</span>{#each offered as profile (profile.id)}<label><input type="checkbox" checked={local.compute.profiles.includes(profile.id)} disabled={busy || !hostLoaded || (local.compute.enabled && local.compute.profiles.length === 1 && local.compute.profiles.includes(profile.id))} data-testid="shared-profile-{profile.id}"
       onchange={e => void configure({profiles: e.currentTarget.checked ? [...local.compute.profiles, profile.id] : local.compute.profiles.filter(id => id !== profile.id)})} /><span>{profile.name}</span></label>{/each}</div>
-    <div class="row"><span>{strings.shared.mode}</span><Menu items={modes.map(id => ({id, label: strings.permissionMode[id]}))} onpick={id => void configure({permissionMode: id as PermissionMode})} disabled={busy || !hostLoaded} label={strings.shared.mode} testid="shared-host-mode"><span>{strings.permissionMode[local.compute.permissionMode]}</span></Menu></div>
+    <div class="row"><span>{strings.shared.mode}</span><Menu items={modes.map(id => ({id, label: modeWord(id, null), hint: modeLabel(id, null), checked: local.compute.permissionMode === id, radio: true}))} onpick={id => void configure({permissionMode: id as PermissionMode})} disabled={busy || !hostLoaded} label={strings.shared.mode} testid="shared-host-mode"><span>{modeWord(local.compute.permissionMode, null)}</span></Menu></div>
     <label class="row"><span>{strings.shared.contribution}</span><input type="number" min="1" step="1" value={local.compute.maxConcurrent ?? ''} placeholder={strings.shared.inherited} aria-label={strings.shared.contribution} disabled={busy || !hostLoaded} data-testid="shared-contribution"
       onchange={e => { const input = e.currentTarget; if (input.validity.valid) void configure({maxConcurrent: input.value === '' ? null : input.valueAsNumber}); }} /></label>
   </details>
@@ -75,6 +76,5 @@
   .profiles { display: grid; gap: 8px; padding-block: 8px; font-size: var(--text-sm); }
   .profiles label { display: flex; gap: 8px; align-items: center; }
   .hint { margin: 0 0 8px; color: var(--color-muted-foreground); font-size: var(--text-xs); line-height: 1.5; }
-  .error { color: var(--color-danger); font-size: var(--text-sm); overflow-wrap: anywhere; }
   @media (max-width: 720px) { .profiles label, summary { min-height: var(--touch-target); } .row { flex-wrap: wrap; } }
 </style>

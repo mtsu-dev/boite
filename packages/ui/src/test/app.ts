@@ -8,7 +8,7 @@ import { type FakeClient } from '../lib/fake-client';
 import { confirm } from '../lib/confirm.svelte';
 import { store } from '../lib/store.svelte';
 import { workspace } from '../lib/workspace.svelte';
-import { setExperiment, writeExperiments } from '../lib/experiments';
+import { BUILD_STORAGE_KEY, setExperiment, writeExperiments } from '../lib/experiments';
 import { storeEndpoint, upsertEnvironment } from '../lib/endpoint';
 import { closeTour } from '../lib/onboarding.svelte';
 import { work } from '../lib/work-prefs.svelte';
@@ -35,7 +35,8 @@ afterEach(() => {
   running = null;
   document.body.innerHTML = '';
   delete document.documentElement.dataset.theme;
-  // Through the writer, so the reactive mirror hears the reset too.
+  // Through the writer, so the reactive mirror hears the reset too, the build a test named included.
+  window.localStorage.removeItem(BUILD_STORAGE_KEY);
   writeExperiments([]);
   rightPanel.floating = false;
   rightPanel.maximized = false;
@@ -87,6 +88,14 @@ export function effortDots(): (string | null)[] {
   return Array.from(document.querySelectorAll('[data-testid=composer-effort-menu] [data-dot]')).map((el) =>
     el.getAttribute('data-dot')
   );
+}
+
+/** The level the open slider's thumb stands on, or null while the agent keeps its own. */
+export function effortPicked(): string | null {
+  const menu = document.querySelector('[data-testid=composer-effort-menu]');
+  if (!menu?.querySelector('.thumb')) return null;
+  const lit = menu.querySelectorAll('[data-dot].on');
+  return lit[lit.length - 1]?.getAttribute('data-dot') ?? null;
 }
 
 /** The prefix labels the model column groups its matches under, in order. */
@@ -192,7 +201,7 @@ export async function loginLink(): Promise<HTMLAnchorElement> {
 
 /** The store is one module-level singleton: leave the next test on the chat. */
 export async function backToChat(): Promise<void> {
-  query<HTMLButtonElement>('[data-testid=settings-back]').click();
+  query<HTMLButtonElement>('[data-testid=view-threads]').click();
   await waitFor(() => document.querySelector('[data-testid=settings]') === null);
 }
 
@@ -227,14 +236,14 @@ export async function showMobileThreads(): Promise<void> {
     await waitFor(() => document.querySelector('[data-testid=mobile-tabs]') !== null);
   }
   query<HTMLButtonElement>('[data-testid=mobile-conversations]').click();
-  await waitFor(() => document.querySelector('[data-testid=mobile-project]') !== null);
+  await waitFor(() => document.querySelector('[data-testid=mobile-search-open]') !== null);
 }
 
 /** Everything owner-only on the settings nav and its Machines page. */
 export const OWNER_ONLY_IN_SETTINGS = [
   '[data-testid=settings-tab-accounts]',
   '[data-testid=settings-tab-plugins]',
-  '[data-testid=settings-tab-resources]',
+  '[data-testid=settings-tab-brain]',
   '[data-testid=group-add-device]'
 ];
 
