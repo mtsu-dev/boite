@@ -301,11 +301,10 @@
     return seat ? { providerId, accountId: seat.id } : null;
   }
 
-  /** Opened up from the composer, its start edge on the composer's; elsewhere (a setting's picker) it hangs off its own chip. */
-  const anchorBox = (): HTMLElement | null => {
-    const chip = root();
-    return chip?.closest<HTMLElement>('[data-testid=composer]') ?? chip ?? null;
-  };
+  /** It hangs off its own chip, its start edge on the chip's. In the composer it opens up over the chip, as the
+   * effort and permission menus do; elsewhere (a setting's picker) under it, room allowing. */
+  const anchorBox = (): HTMLElement | null => root() ?? null;
+  const placement = $derived(root()?.closest('[data-testid=composer]') ? 'top' as const : undefined);
 
   /** The keys of the whole picker; the chip hands its own to it. */
   const onkeydown = pickerKeydown({
@@ -334,7 +333,7 @@
   aria-label={strings.composer.picker}
   data-testid="composer-picker-menu"
   bind:this={menu}
-  use:floating={{ anchor: anchorBox, dismiss: () => popover.hide() }}
+  use:floating={{ anchor: anchorBox, placement, dismiss: () => popover.hide() }}
   use:popover.attach
   onanimationend={popover.end}
   {onkeydown}
