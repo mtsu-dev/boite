@@ -1,6 +1,6 @@
 import { archiveState, archiveStateKey } from './merged-pr-archive-state.ts';
 import { assertIdleFamily } from './threads/completion.ts';
-import { repositoryOf, type MergedPrProof } from './pull-requests.ts';
+import { AgentDoneRequests } from './threads/agent-done.ts';
 import { previewReferencesError, previewPrompt, threadActive, DEFAULT_THREAD_DELETION_RETENTION_DAYS, type AgentProfile } from '@boite/contracts';
 import type {
   Account, AccountId, Attachment,
@@ -62,7 +62,7 @@ import { eraseIncognito } from './threads/incognito.ts';
 import { AccountSessions } from './threads/account-sessions.ts';
 import { removeTranscripts, threadSessions, type NativeSession } from './threads/transcript-purge.ts';
 import { ThreadCreation } from './threads/creation.ts';
-import { accountRemoved, followAgent } from './threads/account-fallback.ts';
+import { accountRemoved, followedAgent } from './threads/account-fallback.ts';
 import { requireAgent } from './threads/agentless.ts';
 import { expandSlashPrompt } from './plugins/extensions.ts';
 
@@ -111,6 +111,8 @@ export class ThreadStore {
   readonly moves: ThreadMove;
   /** `agent.spawn`. */
   readonly spawns: ThreadSpawns;
+  /** `agent.done`: the agent's own Done, applied when its turn ends. */
+  readonly agentDone: AgentDoneRequests;
   /** The `autoCompact` setting: compactions the core opens between turns. */
   readonly autoCompact: AutoCompaction;
   /** The experimental `backgroundCompaction` setting: copies compacted ahead of the limit. */
@@ -151,6 +153,7 @@ export class ThreadStore {
     this.codeCheckpoints = new CodeCheckpoints(core);
     this.moves = new ThreadMove(core, this);
     this.spawns = new ThreadSpawns(core, this);
+    this.agentDone = new AgentDoneRequests(core, this);
     this.autoCompact = new AutoCompaction(core, this);
     this.backgroundCompact = new BackgroundCompaction(core, this);
     this.accountSessions = new AccountSessions(core);
@@ -379,28 +382,7 @@ export class ThreadStore {
 
   isRemoving(threadId: ThreadId): boolean { return this.#removing.has(threadId); }
 
-  /** Automatic Done changes visibility only, retaining the checkout and any prompt still finishing. */
-  archiveMergedPr(expected: ThreadSummary, proof: MergedPrProof, generation: number, detected = false): ThreadSummary | null {
-    const thread = this.#core.journal.getThread(expected.id);
-    const state = archiveState(this.#core.journal, expected.id);
-    const project = thread?.projectId ? this.#core.journal.getProject(thread.projectId) : null;
-    if (!thread || !project || repositoryOf(thread.cwd) !== proof.checkoutRepository || repositoryOf(project.path) !== proof.checkoutRepository) return null;
-    if ((!detected && thread.updatedAt !== expected.updatedAt) || thread.cwd !== expected.cwd || thread.branch !== expected.branch || thread.projectId !== expected.projectId || state.generation !== generation || state.dismissed?.includes(proof.url) || !this.#core.mergedPrArchive.eligible(thread, detected)) return null;
-    const archivedThread = this.#core.bus.afterCommit(() => this.#core.journal.db.transaction(() => {
-      this.#core.journal.setSetting(archiveStateKey(thread.id), { ...state, binding: proof, reason: { type: 'pr-merged', number: proof.number, url: proof.url, archivedAt: Date.now() } });
-      const now = Date.now();
-      const saved = this.#save({ ...thread, archived: true, doneAt: now, archivedAt: now }, 'thread.archived');
-      if (thread.projectId !== null) this.#core.projects.announce(thread.projectId);
-      return saved;
-    })());
-    if (archivedThread) {
-      this.autoCompact.stopIfDone(thread.id);
-      this.#core.fileTickets.forgetUnder(thread.cwd);
-    }
-    return archivedThread;
-  }
-
-  /** Turning off the project filter reveals its automatic hides without dismissing the PR. */
+  /** Turning the project's setting off reveals what older cores hid after a merge, without dismissing the PR. */
   showMergedPrThreads(projectId: ProjectId): void {
     for (const thread of this.#core.journal.listThreads(projectId)) {
       if (!thread.archived || thread.parentThreadId || this.isRemoving(thread.id) || this.#core.worktrees.reservations.holder(thread.cwd) !== null) continue;
@@ -448,6 +430,7 @@ export class ThreadStore {
     const family = this.#core.journal.db.query('WITH RECURSIVE family(id) AS (SELECT ? UNION SELECT child.id FROM threads child JOIN family ON child.parent_thread_id = family.id) SELECT id FROM family').all(threadId) as { id: ThreadId }[];
     for (const member of family) this.sideQuestions.cancel(member.id);
     this.moves.forget(threadId);
+    this.agentDone.forget(threadId);
     this.#core.delegation.stop(threadId);
     this.#core.scheduler.stop(threadId);
     this.releaseAgent(threadId);
@@ -634,6 +617,7 @@ export class ThreadStore {
     const autonomous = autonomousSource(origin);
     if (autonomous !== null) this.#core.agentRuntime.admit(thread, autonomous);
     // A signed-out or removed account hands the thread to another of its agent (`threads/account-fallback.ts`).
+    let accountLeft: ReturnType<typeof followedAgent>[1];
     if (executionChoice) {
       const provider = this.#core.providers.require(executionChoice.providerId);
       const account = this.#core.accounts.require(executionChoice.accountId);
@@ -642,7 +626,7 @@ export class ThreadStore {
       thread = { ...thread, providerId: provider.id, accountId: account.id, model,
         effort: checkEffort(provider, account.id, model, executionChoice.effort), speed: checkSpeed(provider, account.id, model, executionChoice.speed ?? null),
         ...(!sameAccount ? { sessionId: null, sessionResumeAt: null } : {}) };
-    } else thread = followAgent(this.#core, thread);
+    } else [thread, accountLeft] = followedAgent(this.#core, thread);
     this.#core.sharedCompute?.assertTurn(threadId);
     this.#core.sharedAccess?.assertTurn(threadId);
     const provider = this.#core.providers.require(thread.providerId);
@@ -694,6 +678,7 @@ export class ThreadStore {
         ...(executionChoice ? { frozenSelection: true as const } : {}),
         ...(operation ? { operation } : {}), ...(automatic ? { automatic: true as const } : {}),
         ...(originAgentWrites(origin) && threadAtRest(this.#core, thread) ? { opensRequest: true as const } : {}),
+        ...(accountLeft ? { accountLeft } : {}),
       },
     };
     const message: Message = {

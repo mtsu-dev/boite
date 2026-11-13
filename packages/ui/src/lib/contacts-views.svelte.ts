@@ -4,6 +4,7 @@
  */
 
 import { contactsShown } from './contacts-rail.svelte';
+import { contactsParts } from './contacts-entry';
 import { experimentOn } from './experiments.svelte';
 import { strings } from './strings';
 
@@ -25,12 +26,12 @@ export function contactsViews(current: () => Machine, machines: () => readonly {
   }>({ homeError: '' });
   $effect(() => {
     if (current().page !== 'home' || !experimentOn('contacts') || views.HomePage) return;
-    void import('../components/home/HomePage.svelte').then(module => { views.HomePage = module.default; })
+    void contactsParts?.HomePage().then(module => { views.HomePage = module.default; })
       .catch(() => { views.homeError = strings.contacts.loadFailed; });
   });
   $effect(() => {
     if (!contactsShown(current()) || narrow() || views.ContactsRail) return;
-    void import('../components/home/ContactsRail.svelte').then(module => { views.ContactsRail = module.default; }).catch(() => {});
+    void contactsParts?.ContactsRail().then(module => { views.ContactsRail = module.default; }).catch(() => {});
   });
   $effect(() => {
     for (const machine of machines()) if (machine.store.page === 'home' && !contactsShown(machine.store)) machine.store.showChat();

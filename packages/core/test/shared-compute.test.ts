@@ -826,3 +826,38 @@ test('a workflow can retry a local host rejection that never reserved or dispatc
   expect(a.h.core.workflows.get(a.threadId, run.id).status).toBe('done');
   expect(a.h.core.journal.listChildThreads()).toHaveLength(1);
 }, 30000);
+test('a Release host admits no job and no follow-up a contact\'s Nightly sends, and still answers a read and a cancel', async () => {
+  const {a, b, scope, baseCommit, enable} = await pair(); await enable(b);
+  const unblock = holdAccountTurns(b.h, b.accountId);
+  try {
+    const job = await a.client.call('sharedCompute.start', {...scope, requestId: 'before-release', host: b.ref, profileId: 'conversation', task: 'Started as a Nightly', baseCommit});
+    await waitFor(() => b.h.core.sharedCompute.journal.get(job.id, 'host')?.job.status === 'running');
+    const children = () => b.h.core.journal.listChildThreads().filter(t => t.parentThreadId === b.threadId).length;
+    expect(children()).toBe(1);
+    // The host's next build is a Release: the listener still runs, the gate is in the peer handlers.
+    (b.h.core as { version: string }).version = '2.0.0';
+    const refusal = 'experiment.contacts runs in Nightly and Dev builds only, and this machine runs a Release (2.0.0)';
+    const peer = a.h.core.contacts.peers().find(p => p.coreId === b.coreId)!;
+    const request = a.h.core.coordination.request.bind(a.h.core.coordination);
+    const sent: Array<{method: string; error: string | null}> = [];
+    a.h.core.coordination.request = async (to, op, payload) => {
+      const method = (payload as {method?: string}).method ?? '';
+      try { const answer = await request(to, op, payload); sent.push({method, error: null}); return answer; }
+      catch (error) { sent.push({method, error: error instanceof Error ? error.message : String(error)}); throw error; }
+    };
+    try {
+      await a.client.call('sharedCompute.start', {...scope, requestId: 'as-release', host: b.ref, profileId: 'conversation', task: 'Asked of a Release', baseCommit}).catch(() => undefined);
+      await waitFor(() => sent.some(s => s.method === 'compute.start'));
+      expect(sent.find(s => s.method === 'compute.start')!.error).toContain(refusal);
+      await a.client.call('sharedCompute.send', {...scope, jobId: job.id, text: 'Go on', requestId: 'follow-up'}).catch(() => undefined);
+      await waitFor(() => sent.some(s => s.method === 'compute.send'));
+      expect(sent.find(s => s.method === 'compute.send')!.error).toContain(refusal);
+      expect(children()).toBe(1);
+      expect(peer.coreId).toBe(b.coreId);
+      // Cleaning up what the Nightly started stays open.
+      const cancelled = await a.client.call('sharedCompute.cancel', {...scope, jobId: job.id, requestId: 'cancel-on-release'});
+      expect(cancelled.status).toBe('cancelled');
+      expect(sent.find(s => s.method === 'compute.cancel')!.error).toBeNull();
+    } finally { a.h.core.coordination.request = request; }
+  } finally { unblock(); }
+}, 30000);

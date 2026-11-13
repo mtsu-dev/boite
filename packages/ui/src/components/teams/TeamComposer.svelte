@@ -9,6 +9,7 @@
 </script>
 
 <script lang="ts">
+  import { markFeature } from '@boite/contracts';
   import { untrack } from 'svelte';
   import { ArrowUp, AtSign, Lock, LoaderCircle, UsersRound, X } from '@lucide/svelte';
   import { routeTeamPost, TEAM_OWNER, TEAM_POST_MAX, type Team, type TeamMember } from '@boite/contracts';
@@ -153,6 +154,8 @@
 
   // Answering a post brings the caret to the field.
   $effect(() => { if (reply) untrack(() => field?.focus()); });
+  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
+  markFeature('boite-feature:teams');
 </script>
 
 <div class="composer-wrap team-composer-wrap">
@@ -237,7 +240,7 @@
   .send { margin-left: auto; width: var(--control); height: var(--control); border-radius: var(--radius-full); flex: none; }
   .send:not(:disabled):active { transform: scale(.92); }
   .send :global(.spinner) { animation: spin 1s linear infinite var(--loops); }
-  .replying { display: flex; align-items: center; gap: 8px; margin: 8px 8px 0; padding: 4px 4px 4px 10px; border-left: 2px solid var(--color-edge); border-radius: var(--radius-md); background: var(--color-hover); font-size: var(--text-sm); }
+  .replying { display: flex; align-items: center; gap: 8px; margin: 8px 8px 0; padding: 4px 4px 4px 10px; border-radius: var(--radius-md); background: var(--color-hover); font-size: var(--text-sm); }
   .replying .ui-label { flex: none; font-weight: 600; }
   .excerpt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-muted-foreground); }
   .note { max-width: var(--content); margin: 6px auto 0; padding: 0 14px; color: var(--color-muted-foreground); font-size: var(--text-xs); }

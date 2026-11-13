@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { markFeature } from '@boite/contracts';
   import { ArrowLeft, Archive, ArchiveRestore, Ellipsis, Pause, PenLine, Play } from '@lucide/svelte';
   import type { AgentProfile, Team, Thread } from '@boite/contracts';
   import type { AgentsView } from '../../lib/agents.svelte';
@@ -81,6 +82,8 @@
       if (sure) await client.call('teams.archive', { teamId: current.id, archived: true });
     });
   }
+  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
+  markFeature('boite-feature:teams');
 </script>
 
 <header class="agent-head" data-testid="team-header" data-paused={team?.paused ? 'true' : undefined} data-archived={team?.archived ? 'true' : undefined}>

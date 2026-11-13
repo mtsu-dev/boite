@@ -11,7 +11,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
-import { AGENT_ENV, AGENT_PICTURE_MAX_BYTES, AGENT_SETTING_KEYS, SETTINGS_PAGES, VIEW_HELP } from '@boite/contracts';
+import { AGENT_ENV, AGENT_PICTURE_MAX_BYTES, BOT_CARD_NOTE, AGENT_SETTING_KEYS, SETTINGS_PAGES, VIEW_HELP } from '@boite/contracts';
 import { agentSettingArg, clipped, pictureDataUrl, settingsPlace, settingValue } from './cli-settings.ts';
 import { VIEW_EXAMPLE } from './view-example.ts';
 import { viewCheckCommand } from './view-cli.ts';
@@ -29,8 +29,8 @@ import { browserRecipe } from './browser-recipe.ts';
 import { deviceCommand } from './device-cli.ts';
 import { WINDOW_REQUEST_TIMEOUT_MS, windowCommand } from './window-cli.ts';
 import { secretCommand } from './secret-cli.ts';
-import { teamCommand } from './team-cli.ts';
 import { agentsCommand, AgentsUsage, WAIT_MAX_S } from './agents-cli.ts';
+import { teamCli } from './teams-entry.ts';
 import { contactsCommand } from './contacts/cli.ts';
 import type { RpcParams } from '@boite/contracts';
 import { contextRequest, parse, requiredText, Usage, type Parsed } from './cli-args.ts';
@@ -162,11 +162,12 @@ ${CONTROL_HELP}
                                  --bot <name>; a PNG, JPEG, WebP or GIF of at
                                  most ${AGENT_PICTURE_MAX_BYTES / 1024} KB, or a robot code, one or two
                                  characters, "" for the robot its id draws
-  settings bot create <name>     create the bot the user asked for, at once,
-                                 on your own route or --model <provider/model>
+  settings bot create <name>     ask for the bot the user asked for, on your
+                                 own route or --model <provider/model>
                                  (--effort, --project a,b, --domain <text>,
-                                 --instructions-file <path>); prints its id
-                                 and conversation
+                                 --instructions-file <path>): the owner reads
+                                 a card, or the bot is created at once where
+                                 the setting agentBotCreation is free
 ${PLUGIN_HELP}
   task list                      the agent's task list
   task add <text>                add a task (id t1, t2, ...)
@@ -461,7 +462,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
     window: async () => childOutput(await windowCommand(rest, io, client, threadId), parsed.json, io, print),
     desktop: async () => childOutput(await (await import('./desktop-cli.ts')).desktopCommand(rest, io, client, threadId), parsed.json, io, print),
     secret: async () => childOutput(await secretCommand(rest, io, client, threadId), parsed.json, io, print),
-    team: async () => childOutput(await teamCommand(rest, client, threadId, parsed.requestId), parsed.json, io, print),
+    team: async () => childOutput(await (await teamCli()).teamCommand(rest, client, threadId, parsed.requestId), parsed.json, io, print),
     // `boite --limit 5 logs` parsed them as globals: they come first, so the command's own flags still win.
     // A global `--level` yields to the command's own `--min-level`, which it would otherwise override.
     logs: () => logsCommand([...(parsed.limit === undefined ? [] : ['--limit', String(parsed.limit)]), ...(parsed.level === undefined || rest.some(entry => entry === '--min-level' || entry.startsWith('--min-level=')) ? [] : ['--level', parsed.level]), ...rest], client, threadId, agentCaller, io.cwd, print),
@@ -652,6 +653,16 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
             ...(parsed.effort === undefined ? {} : { effort: parsed.effort }),
             ...(parsed.project === undefined ? {} : { projects: parsed.project.split(',').map(name => name.trim()).filter(Boolean) }),
           });
+          if (!('agent' in created)) {
+            const { bot: asked } = created.setting;
+            print([
+              `asked: ${created.questionId}`,
+              `card: the owner approves or declines the bot ${asked.name} (${asked.selection.providerId}/${asked.selection.model ?? 'default'}, full access${created.setting.projects.length === 0 ? '' : `, projects ${created.setting.projects.join(', ')}`})`,
+              BOT_CARD_NOTE,
+              'Keep working. The outcome arrives as a message (approved, declined); without one, nothing was created.',
+            ], created);
+            return;
+          }
           const { agent: bot, threadId: conversation } = created;
           const { selection } = bot;
           print([

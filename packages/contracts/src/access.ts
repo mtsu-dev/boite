@@ -262,6 +262,7 @@ export const DEVICE_EVENTS: ReadonlySet<RpcEventName> = new Set<RpcEventName>([
   // The load `thread.updated` already carries to the same sockets, without the rest of the row.
   'thread.load',
   'turn.started', 'turn.finished',
+  'turn.switched', // The divider of a turn the device already reads, with what its new session was handed.
   'turn.toolCompleted',
   'message.started', 'message.delta', 'message.part', 'message.completed', 'message.truncated',
   'permission.requested', 'permission.resolved', 'question.asked', 'question.answered',
@@ -364,7 +365,7 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['threads.mergeBack', 'returning bounded conclusions only from this authenticated fork to its recorded origin, under existing coordination permissions'],
   ['collaboration.send', 'authenticated delivery as this thread to a separately authorized recipient'],
   ['collaboration.search', 'contacts it may already reach, found by their title, project, branch, model, resources or chat'],
-  ['collaboration.read', 'the conversation of a contact it may already reach, text and tool names only, and the tool output of its own conversation, which its carried history points to; the user wants agents to help with each other'],
+  ['collaboration.read', 'the conversation of a contact it may already reach, text and tool names only, and its own conversation and tool output, which its carried history points to; the user wants agents to help with each other'],
   ['collaboration.wait', 'blocks on its own inbox until a reply arrives'],
   ['collaboration.contacts', 'the contacts it may write to and the project names each opened to this core, never their keys or addresses'],
   ['collaboration.ask', 'a request as this thread to a contact, sent to the contact it names or handed to this core\'s Contacts bot to pick one; it opens nothing here'],
@@ -398,6 +399,7 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['agent.addProject', 'registering an existing folder as a project, which the owner sees appear and can remove; it opens no file access the agent\'s process lacks, and it stays within the communication settings and one agent generation, like agent.spawn; on another machine of the group, only while its owner keeps groupThreads on there, like a thread started there; a bot only while the owner keeps its addProjects setting on, which no agent method writes, for a folder of its own machine, and what it adds is entrusted to it, never a project that already existed'],
   ['agent.spawn', 'a new top-level thread in a project the owner added, on its own model, account and permission mode, within its communication settings and an hourly budget; a thread an agent started cannot start another until the user writes in it'],
   ['agent.move', 'its own thread into a project the owner already registered, applied when its turn ends; never another thread, never a folder the owner did not add'],
+  ['agent.done', 'its own thread into Done once its turn ends, as the user\'s Mark done would; never another thread, and the user can restore it'],
   ['panel.open', 'showing the user a file, a diff or a page instead of pasting it into the transcript'],
   ['browser.command', 'the headless browser its own conversation has on this machine, which it could start from its shell anyway; never another conversation\'s tabs'],
   ['devices.list', 'the simulators and emulators its SDK lists on this machine; adb and xcrun are already within its shell\'s reach'],
@@ -433,7 +435,7 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['settings.request', 'a settings card on its own thread proposing a change or pointing at a page; only the owner applies it, through settings.set'],
   ['agents.settings.read', 'the settings of one of the owner\'s agents a card may propose to change (name, domain, instructions, avatar, status, projects, model, effort, memory pass, event wakes, adding projects, subagents, daily budget), so it reads before it proposes; never their brains or conversations'],
   ['agents.settings.request', 'a card on its own thread proposing a change to one agent setting; only the owner applies it, through agents.settings.apply'],
-  ['agents.create', 'creating the bot the user asked its thread for, as the Bots page would, without a card: the owner chose to let threads set bots up on their own (2026-10-24)'],
+  ['agents.create', 'asking for the bot the user asked its thread for: with the machine setting agentBotCreation on ask (a new install) it only draws a card the owner approves through the owner-only agents.create.approve; on free (the owner\'s choice, kept on installs older than the setting) it creates the bot at once, as the Bots page would'],
   ['agents.picture.put', 'storing an image file for a bot to wear, bounded to 512 KB of PNG, JPEG, WebP or GIF whose bytes match their type; it changes no bot, and unworn pictures are swept (agents/pictures.ts)'],
   ['agents.avatar.set', 'changing the face of a bot of this machine, its own or another\'s, without a card: the owner asked that agents may dress bots themselves (2026-11-01); only the avatar changes, to a picture this machine holds or a robot, never a name, instructions or access'],
   ['artifacts.publish', 'explicitly sharing a bounded snapshot from its own working directory in its own conversation'],

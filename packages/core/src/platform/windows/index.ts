@@ -7,6 +7,7 @@ import { readGpus, releaseGpus } from './gpu.ts';
 import * as jobs from './jobs.ts';
 import * as guard from './guard.ts';
 import { findTailscaleCli } from '../tailscale.ts';
+import { windowsKeepAwake } from './keep-awake.ts';
 import { firewallAllow, firewallQuery } from './firewall.ts';
 import { WindowsExecutionBoundary } from './protected.ts';
 import { treeKill } from './tree-kill.ts';
@@ -14,6 +15,7 @@ import { treeKill } from './tree-kill.ts';
 export const platform: ProcessPlatform = {
   protectedExecution: new WindowsExecutionBoundary(),
   tailscaleCli: () => findTailscaleCli('windows'),
+  keepAwake: () => windowsKeepAwake(),
   firewall: { query: firewallQuery, allow: firewallAllow },
   // bun:ffi and the WinRT capture objects load with the first `boite window`, never at startup.
   windowCapture: async () => (await import('./window-capture.ts')).loadWindowCapture(),

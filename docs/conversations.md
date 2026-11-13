@@ -14,6 +14,9 @@ draft folder when you have no project yet.
    branch instead of the project folder.
 4. Type your request and send it.
 
+The chat shows Starting agent while the agent launches, then Working for once
+it starts working. The startup timer counts the current turn.
+
 Add a project with Add a project at the bottom of the sidebar. The sidebar
 lists threads by project or by recent activity: switch between Projects and
 Recent in Display options.
@@ -61,8 +64,10 @@ branch.
   after all its conversations are done or archived, only when its last commit
   is on another branch or in a merged pull request. Uncommitted changes always
   stay.
-- Hide merged PR conversations moves a worktree conversation to Done once its
-  branch is merged.
+- Ask to finish after merge: once every pull request of a worktree conversation
+  is merged or closed, Boite asks its agent whether the conversation is done.
+  The agent moves it to Done or keeps it open when it still has something to
+  say. Nothing goes to Done by itself.
 
 ## Titles
 
@@ -80,6 +85,12 @@ replaced.
 - Muse Code, OpenCode, Antigravity, Grok and pi keep the prompt's title under
   Automatic.
 
+## Notifications
+
+On a desktop, notifications appear in the bottom-right corner without moving
+the conversation. They stay above the message box and its controls. On a
+phone, they sit above the message box or the bottom tabs.
+
 ## Done, archived and deleted
 
 - Mark done moves a thread to the Done group. Archive puts it aside to pick up
@@ -95,8 +106,6 @@ replaced.
   its threads; the files on disk stay.
 
 ## Import a Claude Code or Codex session
-
-Experimental: turn it on in Settings, Experiments (Claude Code session import).
 
 1. Open a project's menu (right click, or the dots beside its name), then
    Manage project, Import a session.
@@ -122,7 +131,7 @@ logo, pick Refresh icon in Manage project.
 - [First steps](first-steps.md): your first project and conversation.
 - [Models](models.md): change the agent or model in a conversation.
 - [Secrets](secrets.md): give an agent a key without pasting it in the chat.
-- [Experiments](experiments.md): turn on an experimental feature.
+- [Experiments](experiments.md): unfinished features, in Nightly builds.
 - Technical reference: [drafts](internals/drafts.md),
   [titles](internals/titles.md), [imports](internals/imports.md),
   [project icons](internals/project-icons.md).

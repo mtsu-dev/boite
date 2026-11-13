@@ -10,7 +10,9 @@ import { composerMethods } from './fake-client/composer';
 import { holdContactMail } from './fake-client/contact-hold';
 import { seedIdle, seedWorking } from './fake-client/working-seed';
 import { sweepMergedPrFixtures, type MergedPrFixture } from './fake-client/merged-pr-archive';
+import { describedProject } from './fake-client/project-archive';
 import {
+  effectiveExperiments,
   RPC_CHUNK_BYTES,
   RpcErrorCode,
   StreamGate,
@@ -281,6 +283,23 @@ export class FakeClient implements ObservableClient {
     this.#ctx.mergedPrFixtures.set(threadId, fixture);
   }
 
+  /**
+   * Test fixture: a conversation an older core put in Done after its PR merged
+   * (reason `pr-merged`). This version asks the agent instead and never writes
+   * that reason; it still shows and restores what older cores wrote.
+   */
+  setMergedPrArchive(threadId: ThreadId, pr: { number: number; url: string }): void {
+    const ctx = this.#ctx, thread = ctx.thread(threadId);
+    thread.archived = true;
+    thread.doneAt = Date.now();
+    thread.archivedAt = thread.doneAt;
+    thread.archiveReason = { type: 'pr-merged', number: pr.number, url: pr.url, archivedAt: ctx.now() };
+    ctx.touch(thread);
+    const project = ctx.projects.find(project => project.id === thread.projectId);
+    if (project) ctx.emit('project.updated', describedProject(ctx, project));
+  }
+
+  /** The merged-PR pass: asks each eligible agent whether its thread is done, and answers how many were asked. */
   sweepMergedPrArchives(): Promise<number> {
     if (this.#mergedPrSweep) return this.#mergedPrSweep;
     this.#mergedPrSweep = sweepMergedPrFixtures(this.#ctx).finally(() => { this.#mergedPrSweep = null; });
@@ -461,10 +480,10 @@ export class FakeClient implements ObservableClient {
     reconcileShared(this.#ctx);
   }
 
-  /** The desktop app on the fake machine reporting its experiments, as the core's book announces a change. */
+  /** The desktop app on the fake machine reporting its experiments, as the core's book announces a change: in force in this build, and as chosen. */
   reportDesktopExperiments(experiments: ExperimentId[]): void {
     this.#ctx.desktopExperiments = [...experiments];
-    this.#ctx.emit('client.desktopExperiments', { experiments: [...experiments] });
+    this.#ctx.emit('client.desktopExperiments', { experiments: effectiveExperiments(experiments, this.#ctx.core.version), chosen: [...experiments] });
   }
 
   /** The fake machine's addresses changing, as the core's network watch announces it to owner windows. */
@@ -477,7 +496,7 @@ export class FakeClient implements ObservableClient {
     this.#ctx.policy = structuredClone(policy);
     applyPolicy(this.#ctx);
     this.#ctx.emit('policy.changed', structuredClone(policy));
-    this.#ctx.emit('settings.updated', { ...this.#ctx.settings });
+    this.#ctx.emit('settings.updated', this.#ctx.settingsInForce());
     this.#ctx.emit('providers.updated', { loaded: structuredClone(this.#ctx.providers), rejected: [] });
   }
 

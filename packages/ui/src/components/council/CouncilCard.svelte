@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { markFeature } from '@boite/contracts';
   import { MessagesSquare } from '@lucide/svelte';
   import type { MessagePart, ThreadId } from '@boite/contracts';
   import { councilStatus, councilsOf, faceOf, followCouncil } from '../../lib/council.svelte';
@@ -35,6 +36,8 @@
       tail: rest > 0 ? { kind: 'more' as const, label: `+${rest}` } : { kind: 'me' as const, label: faceOf(labels.you) },
     };
   });
+  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
+  markFeature('boite-feature:debates');
 </script>
 
 <div class="council-card" data-testid="council-card" data-council-id={councilId} data-status={council?.status} role="group" aria-label={fill(labels.title, { topic: council?.request ?? part.topic })}>

@@ -9,6 +9,7 @@
   import { errorText } from '../lib/errors';
   import { secureId } from '../lib/secure-id';
   import { sameSharedProject, sharedTodo } from '../lib/shared-ui';
+  import { contactsParts } from '../lib/contacts-entry';
   import type { Store } from '../lib/store.svelte';
   import GoalChecklist from './GoalChecklist.svelte';
   import InfoTip from './InfoTip.svelte';
@@ -288,7 +289,7 @@
   </div>
 {/if}
 
-{#if selected && scope}{#await import('./shared/SharedThreadDialog.svelte') then module}<module.default {store} {scope} target={selected} onclose={() => { selected = null; }} />{/await}{/if}
+{#if selected && scope && contactsParts}{#await contactsParts.SharedThreadDialog() then module}<module.default {store} {scope} target={selected} onclose={() => { selected = null; }} />{/await}{/if}
 
 <style>
   .sharing { display: flex; gap: 8px; align-items: center; padding: 2px 12px; font-size: var(--text-xs); color: var(--color-muted-foreground); }

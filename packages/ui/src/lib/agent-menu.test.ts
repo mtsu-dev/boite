@@ -4,7 +4,6 @@ import { agentMenuItems, pickAgentAction } from './agent-menu';
 import { AgentsView } from './agents.svelte';
 import { confirm } from './confirm.svelte';
 import { contextMenu } from './context-menu.svelte';
-import { setExperiment } from './experiments';
 import { FakeClient } from './fake-client';
 import { RpcFailure } from './rpc-error';
 import { Store, store as primary } from './store.svelte';
@@ -22,7 +21,6 @@ afterEach(() => {
   opened.length = 0;
   workspace.machines = [];
   workspace.active = primary;
-  setExperiment('resident-agents', false);
   localStorage.clear();
 });
 
@@ -136,7 +134,6 @@ async function connected(id: string, name: string): Promise<{ store: Store; clie
 }
 
 test('Move to a machine opens the group\'s machines where the menu stood, the offline one greyed, then the move\'s own dialog', async () => {
-  setExperiment('resident-agents', true);
   const first = await connected('first', 'First');
   const second = await connected('second', 'Second');
   expect(await first.store.createGroup('Home')).toBe(true);

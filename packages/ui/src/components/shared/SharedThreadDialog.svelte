@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { markFeature } from '@boite/contracts';
   import type { AgentLetter, AgentTranscript, SharedProjectScope, SharedProjectThread } from '@boite/contracts';
   import { untrack } from 'svelte';
   import type { Store } from '../../lib/store.svelte';
@@ -47,6 +48,8 @@
     } catch (e) { if (generation === epoch) error = errorText(e); }
     finally { busy = false; }
   }
+  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
+  markFeature('boite-feature:contacts');
 </script>
 
 <SharedDialog title={target.agent.title} {onclose} testid="shared-thread-dialog">
@@ -74,7 +77,7 @@
   .where { margin: 0 0 12px; overflow-wrap: anywhere; }
   .actions { display: flex; gap: 8px; }
   .transcript { display: grid; gap: 12px; max-height: 36dvh; overflow-y: auto; margin-block: 12px; }
-  article { padding: 8px 12px; border-left: 2px solid var(--color-border); }
+  article { padding: 8px 12px; border-radius: var(--radius-md); }
   article[data-role='user'] { background: var(--color-surface-2); }
   article p { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--text-sm); line-height: 1.5; }
   form { border-top: 1px solid var(--color-border); padding-top: 12px; }

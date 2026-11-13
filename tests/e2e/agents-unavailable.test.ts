@@ -33,7 +33,7 @@ for (const width of [1440, 390]) test(`a bot on a retired provider opens and its
     { ...available, id: 'available', name: 'Available' },
   ] });
   try {
-    page = await BrowserPage.launch({ url: `${harness.url}/?token=${harness.token}`, experiments: ['resident-agents'], windowSize: { width, height: 900 } });
+    page = await BrowserPage.launch({ url: `${harness.url}/?token=${harness.token}`, windowSize: { width, height: 900 } });
     await page.waitFor(`document.querySelector('[data-testid=status-connection]')?.dataset.state === 'ready'`, 30_000);
     await openBot(page, agent.id, 30_000);
     await page.waitFor(`document.querySelector('[data-testid=agent-header]')?.textContent.includes('B.O.T.S')`);

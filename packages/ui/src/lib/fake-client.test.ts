@@ -1613,18 +1613,73 @@ test('fake merged PR proof follows the checkout branch and linked PRs like the c
   const client = await createClient({ delayMs: 0 });
   const project = await client.call('projects.add', { path: '/workspace/renamed-branch-fixture' });
   await client.call('threads.focus', { threadId: null, protectedThreadIds: [], protectAllThreads: false });
-  const archiveWith = async (title: string, checkoutBranch: string, prHead: string, linked: boolean) => {
+  const askWith = async (title: string, checkoutBranch: string, prHead: string, linked: boolean) => {
     const thread = await client.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: 'a-echo', worktree: { branch: title }, title });
-    await client.call('threads.markRead', { threadId: thread.id });
+    await warmTurn(client, thread.id);
     client.setMergedPrFixture(thread.id, { repository: 'github.com/example/repo', branch: checkoutBranch, tip: 'a'.repeat(40), clean: true,
       candidates: [{ repository: 'github.com/example/repo', branch: prHead, sha: 'a'.repeat(40), number: 7, url: 'https://github.com/example/repo/pull/7', mergedAt: '2026-10-01T12:00:00Z', linked }] });
     return client.sweepMergedPrArchives();
   };
   // The agent switched its worktree to the branch its PR came from.
-  expect(await archiveWith('renamed', 'fix/renamed', 'fix/renamed', false)).toBe(1);
+  expect(await askWith('renamed', 'fix/renamed', 'fix/renamed', false)).toBe(1);
   // Pushed under another name: only a linked PR names it.
-  expect(await archiveWith('pushed', 'pushed', 'fix/elsewhere', false)).toBe(0);
-  expect(await archiveWith('linked', 'linked', 'fix/elsewhere', true)).toBe(1);
+  expect(await askWith('pushed', 'pushed', 'fix/elsewhere', false)).toBe(0);
+  expect(await askWith('linked', 'linked', 'fix/elsewhere', true)).toBe(1);
+  // Asked, never put away.
+  expect((await client.call('threads.list', {})).filter(thread => ['renamed', 'linked'].includes(thread.title) && !thread.archived)).toHaveLength(2);
+});
+
+/** A finished, read turn: the prompt cache is warm, so the merged-PR question is worth a turn. */
+async function warmTurn(client: FakeClient, threadId: string): Promise<void> {
+  const turn = await client.call('turns.start', { threadId, prompt: 'Work on the change.' });
+  await vi.waitFor(async () => expect((await client.call('threads.get', { threadId })).turns.find(row => row.id === turn.id)?.status).toBe('done'));
+  await client.call('threads.markRead', { threadId });
+}
+
+test('fake agent.done puts its own thread in Done when the turn ends, refuses a sub-thread', async ({ createClient }) => {
+  const client = await createClient({ delayMs: 5 });
+  const { id: threadId } = await newThread(client);
+  const turn = await client.call('turns.start', { threadId, prompt: 'Wrap up.' });
+  expect(await client.call('agent.done', { threadId })).toEqual({ threadId, when: 'turn-end' });
+  // Done never lands over a turn at work: the answer that asked is written first.
+  expect(await client.call('threads.get', { threadId })).toMatchObject({ archived: false, status: 'running' });
+  await vi.waitFor(async () => expect((await client.call('threads.get', { threadId })).archived).toBe(true));
+  const done = await client.call('threads.get', { threadId });
+  expect(done.turns.find(row => row.id === turn.id)?.status).toBe('done');
+  expect(done.doneAt).toEqual(expect.any(Number));
+  expect(done.messages.filter(message => message.role === 'system').flatMap(message => message.parts)).toContainEqual({ type: 'text', text: 'Put in Done by its agent.' });
+  await expect(client.call('agent.done', { threadId })).rejects.toMatchObject({ code: RpcErrorCode.Refused, message: 'this thread is already archived' });
+
+  // An idle thread goes on the spot.
+  const { id: idleId } = await newThread(client);
+  const value = { input: { text: '', attachments: [], paused: true, queued: [{ id: 'before-done', text: 'One more thing', attachments: [] }] } };
+  const queued = await client.call('composer.put', { section: 'inputs', id: idleId, expectedRevision: 0, value });
+  await expect(client.call('agent.done', { threadId: idleId })).rejects.toMatchObject({ code: RpcErrorCode.Refused, message: 'the user wrote a message that waits to be sent' });
+  expect((await client.call('threads.get', { threadId: idleId })).archived).toBe(false);
+  expect((await client.call('composer.put', { section: 'inputs', id: idleId, expectedRevision: queued.record.revision, value: null })).accepted).toBe(true);
+  await client.call('threads.focus', { threadId: null, protectedThreadIds: [idleId] });
+  await expect(client.call('agent.done', { threadId: idleId })).rejects.toMatchObject({ code: RpcErrorCode.Refused, message: 'the user has unsent input open on a device' });
+  await client.call('threads.focus', { threadId: null, protectedThreadIds: [] });
+  expect(await client.call('agent.done', { threadId: idleId })).toEqual({ threadId: idleId, when: 'done' });
+  expect((await client.call('threads.get', { threadId: idleId })).doneAt).toEqual(expect.any(Number));
+
+  // Background work the agent left running keeps it open, with a line saying why.
+  const { id: busyId } = await newThread(client);
+  const busyTurn = await client.call('turns.start', { threadId: busyId, prompt: '[background] watch CI' });
+  expect(await client.call('agent.done', { threadId: busyId })).toMatchObject({ when: 'turn-end' });
+  await vi.waitFor(async () => expect((await client.call('threads.get', { threadId: busyId })).turns.find(row => row.id === busyTurn.id)?.status).toBe('done'));
+  const kept = await client.call('threads.get', { threadId: busyId });
+  expect(kept.archived).toBe(false);
+  expect(kept.messages.filter(message => message.role === 'system').flatMap(message => message.parts)).toContainEqual({ type: 'text',
+    text: 'The agent asked to put this thread in Done; it stays open: threadId: background work is still running; expected an idle conversation family' });
+
+  // A sub-thread goes with its parent.
+  const { id: rootId } = await newThread(client);
+  const run = await client.call('workflows.start', { threadId: rootId, requestId: 'agent_done_child', plan: { name: 'Child', steps: [{ id: 'one', task: 'Look.' }] } });
+  await vi.waitFor(async () => expect((await client.call('workflows.get', { threadId: rootId, runId: run.id })).status).toBe('done'));
+  const childId = (await client.call('workflows.get', { threadId: rootId, runId: run.id })).nodes[0]!.instances[0]!.threadId!;
+  await expect(client.call('agent.done', { threadId: childId })).rejects.toMatchObject({ code: RpcErrorCode.Refused, message: 'a sub-thread is put away with its parent once its work is delivered', data: { field: 'threadId', expected: 'a top-level thread' } });
+  expect((await client.call('threads.get', { threadId: childId })).archived).toBe(false);
 });
 
 test.for([{ questionOn: 'parent', release: 'dismiss' }, { questionOn: 'child', release: 'expire' }] as const)(
@@ -1634,6 +1689,7 @@ test.for([{ questionOn: 'parent', release: 'dismiss' }, { questionOn: 'child', r
     const project = await client.call('projects.add', { path: '/workspace/side-archive-fixture' });
     const root = await client.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: 'a-echo',
       worktree: { branch: 'side-archive-fixture' }, title: 'Side question archive fixture' });
+    await warmTurn(client, root.id);
     const run = await client.call('workflows.start', { threadId: root.id, requestId: 'side_archive_family',
       plan: { name: 'Completed family', steps: [{ id: 'review', task: 'Review the merged change.' }] } });
     await vi.waitFor(async () => expect((await client.call('workflows.get', { threadId: root.id, runId: run.id })).status).toBe('done'));
@@ -1662,8 +1718,13 @@ test.for([{ questionOn: 'parent', release: 'dismiss' }, { questionOn: 'child', r
     if (scenario.release === 'dismiss') await client.call('threads.btw.cancel', { threadId, requestId });
     else await vi.advanceTimersByTimeAsync(10 * 60_000);
     expect(await client.sweepMergedPrArchives()).toBe(1);
-    expect((await client.call('threads.get', { threadId: root.id })).archiveReason).toMatchObject({ type: 'pr-merged', number: 7 });
+    // Asked, not put away: the user archives the family to reach the archived-parent rules below.
+    const asked = await client.call('threads.get', { threadId: root.id });
+    expect(asked.archived).toBe(false);
+    expect(asked.archiveReason).toBeUndefined();
+    expect(asked.turns.at(-1)?.execution?.operation).toBe('pull-request');
     expect((await client.call('threads.get', { threadId: childId })).archived).toBe(false);
+    await client.call('threads.archive', { threadId: root.id, archived: true });
     const parentRefusal = { code: RpcErrorCode.Refused, message: 'threads.btw.threadId: expected a conversation whose parent is not archived or being deleted' };
     await expect(client.call('threads.btw', { threadId: childId, requestId: 'side_late_question', question: 'Late question' })).rejects.toMatchObject(parentRefusal);
     await expect(client.call('threads.btw.fork', { threadId: childId, requestId })).rejects.toMatchObject(parentRefusal);
@@ -1709,4 +1770,59 @@ test('a paired device lists its own session, marked current, and not the owner d
   expect((await owner.call('sessions.list', {})).map(row => row.id).sort()).toEqual(['ses-laptop', 'ses-phone']);
   const phone = await createClient({ delayMs: 0, principal: 'session' });
   expect((await phone.call('sessions.list', {})).map(row => [row.id, row.current])).toEqual([['ses-phone', true]]);
+});
+
+test('a fake Release core refuses, hides and keeps the experimental settings as the real one, and starts nothing new in Contacts', async ({ createClient }) => {
+  const client = await createClient({ delayMs: 0, version: '2.0.0' });
+  const reason = 'runs in Nightly and Dev builds only, and this machine runs a Release (2.0.0)';
+  for (const patch of [{ deviceStream: true }, { backgroundCompaction: true }, { cacheKeepalive: { hours: 2 } }]) {
+    await expect(client.call('settings.set', patch)).rejects.toMatchObject({ code: RpcErrorCode.Refused, message: expect.stringContaining(reason) });
+  }
+  // No card proposes what the save would refuse.
+  await expect(client.call('settings.request', { threadId: 't-trace', reason: 'A live screen', key: 'deviceStream', value: true })).rejects.toMatchObject({ code: RpcErrorCode.Refused, message: expect.stringContaining('deviceStream is an experiment') });
+
+  // What the settings home holds is stored, read as off here, and survives a save of the values read.
+  await client.call('settings.follow', { patch: { cacheKeepalive: { hours: 2 }, compactionByType: { agent: { autoCompact: null, backgroundCompaction: true } } } });
+  const read = await client.call('settings.get', {});
+  expect(read).toMatchObject({ cacheKeepalive: null, compactionByType: { agent: { autoCompact: null, backgroundCompaction: false } } });
+  const limit = { tokens: 150_000, moments: ['turn-end' as const] };
+  const saved = await client.call('settings.set', { cacheKeepalive: read.cacheKeepalive, compactionByType: { agent: { ...read.compactionByType!.agent!, autoCompact: limit } } });
+  expect(saved).toMatchObject({ cacheKeepalive: null, compactionByType: { agent: { autoCompact: limit, backgroundCompaction: false } } });
+  expect(await client.call('settings.get', { stored: true })).toMatchObject({ cacheKeepalive: { hours: 2 }, compactionByType: { agent: { autoCompact: limit, backgroundCompaction: true } } });
+
+  await expect(client.call('contacts.invite', {})).rejects.toMatchObject({ code: RpcErrorCode.Refused, message: expect.stringContaining(`experiment.contacts ${reason}`) });
+  await expect(client.call('contacts.join', { link: 'boite://none' })).rejects.toMatchObject({ code: RpcErrorCode.Refused, message: expect.stringContaining(`experiment.contacts ${reason}`) });
+  expect((await client.call('contacts.get', {})).contacts.length).toBeGreaterThan(0);
+});
+
+test('a fake Release core accepts, activates, creates and relaunches nothing in a shared project or from the Contacts bot, and still declines, disables and removes', async ({ createClient }) => {
+  const client = await createClient({ delayMs: 0, version: '2.0.0' });
+  const gate = 'experiment.contacts runs in Nightly and Dev builds only, and this machine runs a Release (2.0.0)';
+  const scope = { threadId: 't-trace', sharedProjectId: 'shared-none' };
+  const closed: Promise<unknown>[] = [
+    client.call('sharedProjects.decide', { sharedProjectId: 'shared-none', accept: true, requestId: 'r1' }),
+    client.call('sharedProjects.configure', { sharedProjectId: 'shared-none', board: true }),
+    client.call('sharedProjects.configure', { sharedProjectId: 'shared-none', compute: { enabled: true, profiles: [], permissionMode: 'default', maxConcurrent: null } as never }),
+    client.call('sharedBoard.apply', { ...scope, command: { requestId: 'r2', cardId: 'c1', kind: 'add', text: 'New' } }),
+    client.call('sharedBoard.apply', { ...scope, command: { requestId: 'r3', cardId: 'c1', kind: 'update', text: 'Edited' } }),
+    client.call('sharedAccess.override', { sharedProjectId: 'shared-none', requestId: 'r4', override: { path: 'notes.md', actions: ['read'], jobId: null, reason: 'Needed', expiresAt: Date.now() + 60_000 } } as never),
+    client.call('sharedCompute.send', { ...scope, jobId: 'job-none', text: 'Go on', requestId: 'r5' }),
+    client.call('contacts.bot.askOwner', { threadId: 't-trace', id: 'req-none', start: { project: 'none', brief: 'Docs' } }),
+    client.call('contacts.bot.askOwner', { threadId: 't-trace', id: 'req-none', connect: 't-trace' }),
+    client.call('contacts.bot.flag', { threadId: 't-trace', id: 'cflag-none', deliver: true }),
+  ];
+  // What ends or turns off something is answered on its own terms: here the association does not exist, and no build is named.
+  const open: Promise<unknown>[] = [
+    client.call('sharedProjects.decide', { sharedProjectId: 'shared-none', accept: false, requestId: 'r6' }),
+    client.call('sharedProjects.configure', { sharedProjectId: 'shared-none', board: false }),
+    client.call('sharedProjects.revoke', { sharedProjectId: 'shared-none', requestId: 'r7' }),
+    client.call('sharedBoard.apply', { ...scope, command: { requestId: 'r8', cardId: 'c1', kind: 'remove' } }),
+    client.call('sharedAccess.revokeOverride', { sharedProjectId: 'shared-none', overrideId: 'o1', requestId: 'r9' } as never),
+    client.call('sharedCompute.cancel', { ...scope, jobId: 'job-none', requestId: 'r10' }),
+    client.call('contacts.bot.askOwner', { threadId: 't-trace', id: 'req-none', text: 'A note' }),
+    client.call('contacts.bot.flag', { threadId: 't-trace', id: 'cflag-none', deliver: false }),
+  ];
+  for (const call of [...closed, ...open]) call.catch(() => undefined);
+  for (const call of closed) await expect(call).rejects.toMatchObject({ code: RpcErrorCode.Refused, message: expect.stringContaining(gate), data: { reason: 'experiment-off' } });
+  for (const call of open) expect(String((await call.then(() => null, (error: Error) => error))?.message ?? '')).not.toContain('Nightly');
 });

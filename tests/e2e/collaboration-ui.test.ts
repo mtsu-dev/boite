@@ -34,11 +34,10 @@ async function openCoordination() {
   await page.click('[data-testid=panel-add-menu]:not(.closing) [data-value="coordination"]');
 }
 
-/** Maximize and restore are rows of the panel switcher's list. */
+/** Maximize and restore are a button of the panel's strip. */
 async function toggleMaximize() {
-  await page.click('[data-testid=panel-add]');
-  await page.waitFor(`document.querySelector('[data-testid=panel-add-menu]:not(.closing) [data-value="panel-maximize"]')`);
-  await page.click('[data-testid=panel-add-menu]:not(.closing) [data-value="panel-maximize"]');
+  await page.waitFor(`document.querySelector('[data-testid=panel-maximize]')`);
+  await page.click('[data-testid=panel-maximize]');
 }
 
 async function prepareDiscussions() {
@@ -167,7 +166,7 @@ test('the chat shows one row per discussion, and the panel lists discussions and
   await page.click('[data-testid=agent-discussion-back]');
   await page.waitFor(`document.querySelectorAll('[data-testid=agent-discussion]').length === 3`);
   await settled();
-  expect(await page.text(`[data-testid=agent-discussion][data-peer="here/${notesId}"]`)).toContain('Lancée d\'ici');
+  expect(await page.text(`[data-testid=agent-discussion][data-peer="here/${notesId}"]`)).toContain('Lancé d\'ici');
   expect(await page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')).toBe(true);
   await page.screenshot(join(import.meta.dir, '.artifacts', 'agent-discussions-list-phone-fr.png'));
   await page.evaluate(`import('/src/lib/i18n.svelte.ts').then(module => module.setLocaleSetting('en'))`);

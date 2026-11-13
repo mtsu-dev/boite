@@ -10,6 +10,7 @@ import { withLoad } from './records.ts';
 import { markRunning } from './lifecycle.ts';
 import { TurnAttempts, type TurnAttemptState } from './turn-attempts.ts';
 import { stderrTail } from '../drivers/stderr-tail.ts';
+import { turnSwitch } from './switch-notice.ts';
 
 export { STOP_DEADLINE, STOP_DEADLINE_ERROR } from './turn-attempts.ts';
 
@@ -106,6 +107,9 @@ export class TurnRunner {
       thread: { ...selected, ...queued.execution, permissionMode: selected.permissionMode },
       running: { ...queued, status: 'running', startedAt: Date.now() },
     };
+    // What changed since the transcript last stated a selection: the turn's divider (`threads/switch-notice.ts`).
+    const switched = turnSwitch(this.#core, state.running);
+    if (switched) state.running.switched = switched;
     const permissions = this.#attempts.open(state);
 
     let result: TurnResult;
@@ -202,6 +206,8 @@ export class TurnRunner {
     // A move the agent asked for during the turn happens now that no process
     // works in the old folder, before any wake or held answer starts the next.
     await this.threads.moves.applyWaiting(threadId);
+    // Done the agent asked for during the turn, now that its answer is written. A move asked in the same turn went first.
+    this.threads.agentDone.applyWaiting(threadId);
     // A thread an agent started answers it before a failure pauses its coordination.
     await this.threads.spawns.finished(finished);
     // A stopped turn pauses coordination until the user's next message. A failed one pauses nothing: another agent

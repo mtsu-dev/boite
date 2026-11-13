@@ -1,5 +1,5 @@
 /** The turn engine: start, stream and stop a turn, the way the echo driver answers. */
-import { effectiveCompaction, previewPrompt, RpcErrorCode, threadActive, turnIsNews, type AgentLetter, type Attachment, type Message, type MessagePart, type PreviewReference, type Thread, type ThreadId, type Turn, type TurnInFlightData, type Usage } from '@boite/contracts';
+import { effectiveCompaction, previewPrompt, RpcErrorCode, threadActive, turnIsNews, type AgentLetter, type Attachment, type Message, type MessagePart, type PreviewReference, type Thread, type ThreadId, type Turn, type TurnInFlightData, type TurnSwitch, type Usage, selectionDiffers, statedSelection } from '@boite/contracts';
 import { decodedBytes } from '../attachments';
 import { RpcFailure } from '../client';
 import { DIFF_NEW, DIFF_OLD, DIFF_PATH, DOC_TEXT, DOC_TITLE, IMAGE_BASE64, ASYNC_QUESTION_OPTIONS, ASYNC_QUESTION_TEXT, SETTING_MARKERS, SPAWN_MARKER, AGENT_SETTING_MARKER, AGENT_SETTING_REASON, AGENT_MODEL_MARKER, AGENT_MODEL_REASON } from './conversation';
@@ -11,6 +11,8 @@ import { askPermission, askQuestion, askAsync, requestSetting } from './requests
 import { backgroundShell, streamToolInput, runTool, documentTool, spawnProcess, toolBurst } from './turn-tools';
 import { delegationConfig, pumpDelegation } from './delegation';
 import { applyWaitingMove } from './thread-move';
+import { applyWaitingDone } from './agent-done';
+import { sweepMergedPrFixtures } from './merged-pr-archive';
 import { autoTitle } from './titles';
 import type { FakeContext } from './context';
 
@@ -71,15 +73,18 @@ export function startTurn(ctx: FakeContext, threadId: ThreadId, prompt: string, 
     id: `turn-${++ctx.seq}`, threadId, status: 'running', queuedAt: at,
     startedAt: at, finishedAt: null, usage: null, error: null, execution
   };
+  // As the core: the turn says what changed since the transcript last stated a selection (`Turn.switched`).
+  const switched = turnSwitch(ctx, thread, queuedTurn?.execution ?? execution, turn.id);
   if (queuedTurn) Object.assign(turn, { status: 'running', startedAt: at, execution: queuedTurn.execution ?? execution, queueHold: null });
   else thread.turns.push(turn);
+  if (switched) turn.switched = switched;
 
   const user: Message = {
     id: `m-${++ctx.seq}`,
     threadId,
     turnId: turn.id,
     // A compaction the fake core opened by itself is Boite's message, as the core's is.
-    role: automatic ? 'system' : 'user',
+    role: automatic || operation === 'pull-request' ? 'system' : 'user',
     // The images ride after the text, the order the core journals them in.
     parts: [
       userPart(thread, prompt, previewReferences, automatic, activityKind, moved, label),
@@ -129,7 +134,31 @@ function refuseTurn(ctx: FakeContext, thread: Thread, queuedTurn?: Turn): RpcFai
  * The operations the fake core opens by itself: a compaction, a delegated
  * child's turn, and a persistent agent's wakes, labelled in its conversation.
  */
-type FakeOperation = 'compact' | 'delegation' | 'routine' | 'event';
+type FakeOperation = 'compact' | 'delegation' | 'routine' | 'event' | 'pull-request';
+
+/**
+ * The core's `threads/switch-notice.ts`: the difference from the last turn
+ * that started, with what a new session would be handed when the account
+ * changed, here every message of the thread whole.
+ */
+function turnSwitch(ctx: FakeContext, thread: Thread, execution: NonNullable<Turn['execution']>, turnId: string): TurnSwitch | undefined {
+  if (execution.operation === 'keepalive') return undefined;
+  let before: Turn | undefined;
+  for (const turn of thread.turns) {
+    if (turn.id === turnId || turn.startedAt === null || !turn.execution || turn.execution.operation === 'keepalive') continue;
+    if (!before || turn.startedAt >= before.startedAt!) before = turn;
+  }
+  if (!before?.execution) return undefined;
+  const from = statedSelection(before.execution), to = statedSelection(execution);
+  if (!selectionDiffers(from, to)) return undefined;
+  const label = (id: string): string => ctx.accounts.find(account => account.id === id)?.label ?? '';
+  const history = thread.messages.filter(message => message.turnId !== turnId);
+  const chars = history.reduce((sum, message) => sum + message.parts.reduce((size, part) => size + (part.type === 'text' ? part.text.length : 0), 0), 0);
+  return {
+    from: { ...from, account: label(from.accountId) }, to: { ...to, account: label(to.accountId) },
+    ...(from.accountId !== to.accountId ? { handover: { session: 'fresh' as const, full: history.length, cut: 0, omitted: 0, chars } } : {}),
+  };
+}
 
 function turnExecution(thread: Thread, operation: FakeOperation | undefined, automatic: boolean): NonNullable<Turn['execution']> {
   return {
@@ -396,8 +425,12 @@ function finishTurn(ctx: FakeContext, thread: Thread, turn: Turn, message: Messa
   pushScheduler(ctx, turn, 'finished');
   // A move the agent asked for during the turn happens now, as the core's turn runner does.
   applyWaitingMove(ctx, thread.id);
+  // Then the Done its agent asked for, as the core's turn runner calls `agentDone.applyWaiting`.
+  applyWaitingDone(ctx, thread.id);
   autoCompact(ctx, thread, turn);
   finishDelegation(ctx, thread, turn, message, record);
+  // A merge seen while the thread worked is asked about once it rests (the core waits `settleMs`; the fake does not).
+  if (ctx.mergedPrAfterTurn.delete(thread.id)) queueMicrotask(() => { void sweepMergedPrFixtures(ctx, thread.id); });
 }
 
 function finishDelegation(ctx: FakeContext, thread: Thread, turn: Turn, message: Message, record: StreamRecord): void {

@@ -14,7 +14,6 @@ import { workspace } from '../lib/workspace.svelte';
 import { RightPanelStore } from '../lib/right-panel.svelte';
 import AgentMessagesSurface from './AgentMessagesSurface.svelte';
 import { AgentsView, openAgent } from '../lib/agents.svelte';
-import { setExperiment } from '../lib/experiments';
 
 /**
  * jsdom has no layout, so the three numbers the window is computed from are
@@ -269,8 +268,6 @@ test('cache pings are one quiet line between the turns they sit in, with no answ
 });
 
 test('an agent thread folds a finished turn\'s steps behind the count on its summary line and a quiet wake to one line, each opening on a click', async ({ ready }) => {
-  setExperiment('resident-agents', true);
-  onTestFinished(() => setExperiment('resident-agents', false));
   const { store: owner } = await ready({ delayMs: 0, agentsDemo: true });
   const view = AgentsView.of(owner);
   await view.refresh();
@@ -335,8 +332,6 @@ test('an agent thread folds a finished turn\'s steps behind the count on its sum
 });
 
 test('a line Boite writes on a wake turn stays a line of its own: only the prompt that opened the turn is its wake row', async ({ ready }) => {
-  setExperiment('resident-agents', true);
-  onTestFinished(() => setExperiment('resident-agents', false));
   const { store: owner } = await ready({ delayMs: 0, agentsDemo: true });
   const view = AgentsView.of(owner);
   await view.refresh();

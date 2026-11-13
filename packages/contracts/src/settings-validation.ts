@@ -1,6 +1,7 @@
 import type { GoalTrackerModel, ModelFavorite, ModelFavorites, Settings, SubscriptionProxy, TitleModel } from './index.ts';
 import { BROWSER_PROFILE_NAME_MAX, BROWSER_PROFILES_MAX, browserProfileIdError, browserProfileNameError, browserUserAgentError, DEFAULT_BROWSER_PROFILE, type BrowserProfile } from './browser';
 import { SYNC_KEY_PATTERN, SYNC_OVERRIDES_MAX } from './settings-sync';
+import { AGENT_BOT_CREATION, COORDINATION_REACH, type AgentBotCreation, type CoordinationReach } from './settings';
 
 // Both supported hosts expose URL; contracts otherwise need no DOM or Node types.
 declare const URL: new (value: string) => {
@@ -270,6 +271,8 @@ const SETTING_RULES: { readonly [K in keyof Settings]-?: FieldRule<K> } = {
   quotaOrder: list(512, id => id.trim().length > 0 && id.length <= 200, 'quotaOrder must contain at most 512 non-empty account ids of at most 200 characters') as FieldRule<'quotaOrder'>,
   syncOverrides: list(SYNC_OVERRIDES_MAX, key => SYNC_KEY_PATTERN.test(key), `syncOverrides must list at most ${SYNC_OVERRIDES_MAX} keys: a setting, keybinding:<command> or brain:<switch>`),
   windowCaptureExclusions: list(100, app => app.trim().length > 0 && app.length <= 300 && !/\p{Cc}/u.test(app), 'windowCaptureExclusions must list at most 100 executable names or paths of 1 to 300 characters', app => app.trim()),
+  agentBotCreation: value => (AGENT_BOT_CREATION as readonly unknown[]).includes(value) ? value as AgentBotCreation : refuse(`agentBotCreation must be one of ${AGENT_BOT_CREATION.join(', ')}`),
+  coordinationReach: value => (COORDINATION_REACH as readonly unknown[]).includes(value) ? value as CoordinationReach : refuse(`coordinationReach must be one of ${COORDINATION_REACH.join(', ')}`),
   worktreeStorage: worktreeStorageRule,
   publicUrl: value => {
     if (value === null) return null;
@@ -304,6 +307,7 @@ const SETTING_RULES: { readonly [K in keyof Settings]-?: FieldRule<K> } = {
   muteAgents: bool('muteAgents') as FieldRule<'muteAgents'>,
   reapOrphans: bool('reapOrphans') as FieldRule<'reapOrphans'>,
   memoryProtection: bool('memoryProtection') as FieldRule<'memoryProtection'>,
+  keepAwake: bool('keepAwake') as FieldRule<'keepAwake'>,
   autoUpdateHarnesses: bool('autoUpdateHarnesses') as FieldRule<'autoUpdateHarnesses'>,
   autoInstallUpdates: bool('autoInstallUpdates') as FieldRule<'autoInstallUpdates'>,
   asyncQuestions: bool('asyncQuestions') as FieldRule<'asyncQuestions'>,

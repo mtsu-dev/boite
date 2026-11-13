@@ -93,7 +93,7 @@
   /* What reached this agent: the user's side, its corner toward the right. */
   .discussion.in { align-self: flex-end; border-color: var(--color-edge); border-bottom-left-radius: var(--radius-lg); border-bottom-right-radius: var(--radius-sm); background: var(--color-accent-soft); }
   .discussion.in:hover { background: var(--color-hover); border-color: var(--color-muted-foreground); }
-  .discussion.resident { border-left: 2px solid var(--color-resident); }
+  .discussion.resident { border-color: color-mix(in oklch, var(--color-resident) 45%, transparent); }
   .kicker { flex: none; max-width: 40%; min-width: 0; display: inline-flex; align-items: center; align-self: center; gap: 5px; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; }
   .kicker :global(svg) { flex: none; }
   .kicker > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -111,7 +111,7 @@
   .counts { display: flex; gap: 6px; font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
   .count { display: inline-flex; align-items: center; gap: 2px; }
   .count.in { color: var(--color-foreground); }
-  .line { display: inline-flex; align-items: center; gap: 6px; height: auto; min-height: 0; padding: 4px 10px; border: 0; border-left: 2px solid var(--color-border); border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); font-size: var(--text-xs); }
+  .line { display: inline-flex; align-items: center; gap: 6px; height: auto; min-height: 0; padding: 4px 10px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); font-size: var(--text-xs); }
   .line:hover { color: var(--color-foreground); background: var(--color-hover); }
   @media (max-width: 720px) {
     .discussion { width: 100%; min-height: var(--touch-target); }

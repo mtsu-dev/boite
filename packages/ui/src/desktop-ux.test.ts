@@ -61,13 +61,15 @@ test('a maximized panel stays with its thread: the Contacts page beside the list
   }
 });
 
-test('contacts are the Bots column\'s other side: its head folds the column on the right, a row opens a contact, and with Bots off the rail keeps their place', async () => {
+test('contacts are the Bots column\'s other side: its head folds the column on the right, a row opens a contact', async () => {
   writeExperiments(['resident-agents', 'contacts']);
   await mountOnFake();
   try {
     // A first start finds the column folded, and no contacts button on the rail: Activity counts what they ask.
     // The Bots page draws no such column: read it afresh each time.
     const rail = () => query('[data-testid=contacts-rail]');
+    // The column is fetched after the shell (`lib/contacts-entry.ts`).
+    await waitFor(() => document.querySelector('[data-testid=contacts-rail]') !== null);
     expect(rail().classList.contains('collapsed')).toBe(true);
     expect(query('main').compareDocumentPosition(rail()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(document.querySelector('[data-testid=rail-contacts]')).toBeNull();
@@ -103,16 +105,6 @@ test('contacts are the Bots column\'s other side: its head folds the column on t
     query<HTMLButtonElement>('[data-testid=contacts-rail-home]').click();
     await waitFor(() => store.page === 'home');
 
-    // With Bots off there is no switch: the rail holds Contacts' place and the side's title alone leads back.
-    writeExperiments(['contacts']);
-    await waitFor(() => document.querySelector('[data-testid=rail-contacts]') !== null);
-    expect(query('[data-testid=rail-contacts]').getAttribute('aria-current')).toBe('page');
-    expect(document.querySelector('[data-testid=side-switch]')).toBeNull();
-    query<HTMLButtonElement>('[data-testid=side-back]').click();
-    flushSync();
-    expect(store.page).toBe('chat');
-    query<HTMLButtonElement>('[data-testid=rail-contacts]').click();
-    await waitFor(() => store.page === 'home');
   } finally {
     if (!contactsRail.folded) contactsRail.toggle();
     store.showChat();
@@ -124,6 +116,8 @@ test('a panel widened while the contacts column was folded gives the chat its ro
   expect(contactsRail.folded).toBe(true);
   const stored = rightPanel.width;
   rightPanel.width = 700;
+  // Wide enough that list, contacts and a docked panel all fit beside the chat.
+  window.innerWidth = 1600;
   await mountOnFake();
   try {
     if (!store.panelOpen) store.togglePanel();
@@ -141,25 +135,31 @@ test('a panel widened while the contacts column was folded gives the chat its ro
     // The width asked for stays, for the day the room comes back.
     expect(rightPanel.width).toBe(700);
   } finally {
+    window.innerWidth = 1024;
     if (!contactsRail.folded) contactsRail.toggle();
     rightPanel.width = stored;
   }
 });
 
-test('a docked side panel lends the list column: the thread list beside a chat panel, the bot column beside a Desk card, each back when it closes', async () => {
+test('a docked side panel leaves the list column alone: the thread list beside a chat panel, the bot column beside a Desk card', async () => {
   writeExperiments(['resident-agents']);
   await mountOnFake('/?fake=1&agents=1');
   const folded = () => query('.body').classList.contains('sidebar-folded');
+  const stays = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    flushSync();
+    expect(store.sidebarCollapsed).toBe(false);
+    expect(folded()).toBe(false);
+  };
   try {
     await waitFor(() => store.openThread !== null);
     expect(store.sidebarCollapsed).toBe(false);
-    // A chat: three zones, rail, chat and panel.
     store.togglePanel();
-    await waitFor(() => store.sidebarCollapsed && folded());
+    await waitFor(() => store.panelOpen);
+    await stays();
     store.togglePanel();
-    await waitFor(() => !store.sidebarCollapsed && !folded());
+    await stays();
 
-    // The Bots page: the Desk card folds the bot column the same lent way.
     workspace.showAgents(store);
     const view = AgentsView.of(store);
     await view.refresh();
@@ -167,22 +167,38 @@ test('a docked side panel lends the list column: the thread list beside a chat p
     await waitFor(() => store.page === 'agents' && !!store.openThread?.agentSessionId);
     store.panel.closeAll();
     flushSync();
-    await waitFor(() => !store.sidebarCollapsed);
     store.panel.open('desk');
-    await waitFor(() => store.sidebarCollapsed && folded());
-    // Its own button brings the column back sooner, and the open desk does not fold it again.
-    store.sidebarCollapsed = false;
-    flushSync();
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(store.sidebarCollapsed).toBe(false);
+    await waitFor(() => store.panelOpen);
+    await stays();
     store.panel.closeAll();
-    flushSync();
-    // Closing the desk gives the column back; opening it again lends it again.
-    store.panel.open('desk');
-    await waitFor(() => store.sidebarCollapsed);
-    store.panel.closeAll();
-    await waitFor(() => !store.sidebarCollapsed && !folded());
   } finally {
+    store.showChat();
+  }
+});
+
+test('the rail puts teams first, and a picture moved with the keyboard keeps its new place on this device', async () => {
+  writeExperiments(['resident-agents', 'teams']);
+  localStorage.removeItem('boite.rail.order');
+  await mountOnFake('/?fake=1&agents=1');
+  try {
+    const view = AgentsView.of(store);
+    await view.refresh();
+    const [first] = view.snapshot!.profiles;
+    await store.client!.call('teams.create', { name: 'Release crew', members: [first!.id] });
+    const order = () => [...document.querySelectorAll<HTMLElement>('.app-rail .bots > .slot')].map(slot => slot.dataset['railId']!.split(':').slice(1).join(':'));
+    await waitFor(() => order().some(key => key.startsWith('team:')) && order().filter(key => key.startsWith('bot:')).length >= 2);
+    // Untouched, the team leads.
+    expect(order()[0]).toMatch(/^team:/);
+    const bots = order().filter(key => key.startsWith('bot:'));
+    // ArrowUp on the second bot moves it above the first; the device keeps the order.
+    const second = query<HTMLButtonElement>(`[data-testid=rail-bot][data-agent-id="${bots[1]!.slice(4)}"]`);
+    second.focus();
+    second.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }));
+    await waitFor(() => order().indexOf(bots[1]!) < order().indexOf(bots[0]!));
+    const saved = JSON.parse(localStorage.getItem('boite.rail.order') ?? '[]') as string[];
+    expect(saved.map(key => key.split(':').slice(1).join(':')).slice(0, order().length)).toEqual(order());
+  } finally {
+    localStorage.removeItem('boite.rail.order');
     store.showChat();
   }
 });
@@ -453,29 +469,34 @@ test('the project cards float a thread that waits on the user, Recent keeps stri
   store.threads.find((t) => t.id === last)!.status = 'waiting';
   await waitFor(() => rowsOf()[0] === last);
   expect(document.querySelector('[data-testid=thread-project]')).toBeNull();
-  // One line per row: no provider glyph and no branch line; the branch rides in the row's tooltip.
+  // The card from before the redraw, each title led by its provider's mark: a thread without a pull request
+  // keeps one line, its branch in the row's tooltip; a thread with one shows its number and branch on a second
+  // line, no hover needed.
   const branched = store.threadsOf(project.id).find((t) => !t.pullRequest)!;
   branched.branch = 'boite/port-the-scheduler';
   const row = () => document.querySelector<HTMLElement>(`[data-testid=thread-row][data-thread-id="${branched.id}"]`)!;
   await waitFor(() => { const lines = row()?.title.split('\n') ?? []; return lines[0] === branched.title && lines.includes('boite/port-the-scheduler'); });
-  expect(document.querySelectorAll('[data-testid=thread-provider], [data-testid=thread-branch]')).toHaveLength(0);
-  expect(row().closest('.thread')!.querySelector('[data-testid=thread-pr]')).toBeNull();
-  // Only a thread with a pull request shows the mark, its number at the row's end.
-  for (const mark of document.querySelectorAll('[data-testid=thread-pr]')) expect(mark.textContent).toMatch(/^#\d+$/);
+  expect(document.querySelectorAll('[data-testid=thread-provider]')).toHaveLength(document.querySelectorAll('[data-testid=thread-row]').length);
+  expect(row().closest('.thread')!.querySelector('[data-testid=thread-branch], [data-testid=thread-pr]')).toBeNull();
+  const pulled = store.threads.find((t) => t.pullRequest && t.branch && document.querySelector(`[data-testid=thread-row][data-thread-id="${t.id}"]`))!;
+  const card = () => document.querySelector(`[data-testid=thread-row][data-thread-id="${pulled.id}"]`)!.closest('.thread')!;
+  await waitFor(() => card().querySelector('[data-testid=thread-where] [data-testid=thread-pr]')?.textContent === `#${pulled.pullRequest!.number}`);
+  expect(card().querySelector('[data-testid=thread-where] [data-testid=thread-branch]')?.textContent).toBe(pulled.branch);
 
   workspace.view = 'recent';
   // Recent is a history: under its pins, strictly newest first; the waiting thread keeps its place by
   // time and says it needs the user by its mark, so no row sits out of time order.
   const time = (id: string | null) => { const t = store.threads.find((thread) => thread.id === id)!; return t.lastUserMessageAt ?? t.createdAt; };
-  await waitFor(() => rowsOf().includes(last) && document.querySelector('[data-testid=thread-row] [data-testid=thread-where]') !== null);
+  await waitFor(() => rowsOf().includes(last) && document.querySelector('.thread.classic [data-testid=thread-where]') !== null);
   const unpinned = rowsOf().filter((id) => !store.threads.find((t) => t.id === id)?.pinned);
   expect(unpinned.map(time)).toEqual(unpinned.map(time).sort((a, b) => b - a));
-  // Recent: each row says its project once, the name in words under the title or else the tile before it, never
-  // both, with no provider glyph or branch.
-  await waitFor(() => Array.from(document.querySelectorAll('[data-testid=thread-row]')).every((row) =>
-    (row.querySelector('[data-testid=project-tile]') === null) !== (row.querySelector('[data-testid=thread-where]') === null)));
-  expect(document.querySelector('[data-testid=thread-row] [data-testid=thread-where]')).not.toBeNull();
-  expect(document.querySelectorAll('[data-testid=thread-provider], [data-testid=thread-branch]')).toHaveLength(0);
+  // Recent keeps its card from before the redraw: no tile, and under the title the project's folder and name,
+  // then the branch at the line's end.
+  const cards = () => Array.from(document.querySelectorAll('.thread.classic'));
+  await waitFor(() => cards().length > 0 && cards().every((card) => card.querySelector('[data-testid=thread-project]') !== null));
+  expect(document.querySelector('.thread.classic [data-testid=project-tile]')).toBeNull();
+  await waitFor(() => row().closest('.thread')!.querySelector('[data-testid=thread-branch]')?.textContent === 'boite/port-the-scheduler');
+  expect(document.querySelectorAll('[data-testid=thread-provider]')).toHaveLength(document.querySelectorAll('[data-testid=thread-row]').length);
   expect(document.querySelector(`[data-thread-id="${last}"] [data-testid=thread-state]`)?.getAttribute('data-state')).toBe('waiting');
 });
 
@@ -743,11 +764,12 @@ test('a page says where it applies once: one line for most of its cards, a tag o
   await mountOnFake('/?fake=1');
   await waitFor(() => workspace.machines.length === 1 && store.connection === 'ready');
   const machine = workspace.machines[0]!;
-  // General is mostly this device's switches and two machine cards: the line says "this device" once, each machine card its own.
+  // General is mostly this device's switches and three machine cards: the line says "this device" once, each machine card its own.
   store.showSettings('general');
   await waitFor(() => document.querySelector('#settings-agent-replies [data-testid=card-scope]') !== null);
   expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(strings.settings.scopeDevice);
-  expect([...document.querySelectorAll<HTMLElement>('[data-testid=card-scope]')].map((tag) => tag.dataset.kind)).toEqual(['machine', 'machine']);
+  expect([...document.querySelectorAll<HTMLElement>('[data-testid=card-scope]')].map((tag) => tag.dataset.kind)).toEqual(['machine', 'machine', 'machine']);
+  expect(query('#settings-agents-alone [data-testid=card-scope]').dataset.kind).toBe('machine');
   expect(document.body.textContent?.split(strings.settings.cardDevice)).toHaveLength(1);
   expect(query('#settings-agent-replies [data-testid=card-scope]').textContent?.trim()).toBe(fill(strings.settings.cardMachine, { machine: machineName(machine) }));
   // Browser holds this device's settings alone: its card carries no tag, the line under the title says it once.

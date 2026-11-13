@@ -37,7 +37,7 @@
   import { retryOrReload } from './lib/retry-load';
   import { experimentOn } from './lib/experiments.svelte';
   import { contactsShown, contactsViews } from './lib/contacts-views.svelte';
-  import { installWhipEscape } from './lib/whip.svelte';
+  import { whipEntry } from './lib/whip-entry.svelte';
   import { rightPanel } from './lib/right-panel.svelte';
   import { workspace } from './lib/workspace.svelte';
   import { listAbsent } from './lib/list-absent';
@@ -177,11 +177,9 @@
   });
   // With the first open thread, so the corner is there before a stop lands in it.
   $effect(() => { if (store.openThread) need('MemoryCorner'); });
-  let WhipOverlay = $state<typeof import('./components/WhipOverlay.svelte').default>();
+  // The Whip's control, then its rope, the first time its switch is on (lib/whip-entry.svelte.ts).
   $effect(() => {
-    if (!store.booted || !experimentOn('whip') || WhipOverlay) return;
-    void import('./components/WhipOverlay.svelte').then(module => { WhipOverlay = module.default; })
-      .catch(error => { store.error = String(error); });
+    if (store.booted && experimentOn('whip')) whipEntry.need(error => { store.error = String(error); });
   });
   // Browser profiles live on this computer, whichever machine is in view: they
   // are kept by the core this shell started (lib/browser-profiles.svelte.ts).
@@ -223,7 +221,6 @@
     if (tour) need('Onboarding');
   });
 
-  onMount(installWhipEscape);
 
   // This computer's own setting decides whether the window's updater installs by itself.
   $effect(() => { appUpdater.autoInstall = workspace.machines.find((machine) => machine.store.localCore)?.store.settings?.autoInstallUpdates === true; });
@@ -315,33 +312,6 @@
   $effect(() => {
     if (store.panelOpen && panelThread) panelSlot.show();
     else panelSlot.hide();
-  });
-  /**
-   * A docked side panel takes the thread list's column on a desktop chat, so
-   * the window keeps three zones (rail, chat, panel) instead of squeezing four.
-   * The fold is lent, not saved: the list comes back when the panel closes,
-   * and its own button brings it back sooner. A bot's Desk card lends the
-   * bot column the same way on the Bots page.
-   */
-  let listLentBy: typeof store | null = null;
-  $effect(() => {
-    const lends = store.page === 'chat' || (store.page === 'agents' && store.panel.active?.kind === 'desk');
-    const take = !narrow.current && lends && store.panelOpen && panelThread !== null && !rightPanel.floating;
-    untrack(() => {
-      if (listLentBy && (listLentBy !== store || !take)) {
-        if (listLentBy.sidebarCollapsed) listLentBy.sidebarCollapsed = false;
-        listLentBy = null;
-      }
-      if (take && !listLentBy && !store.sidebarCollapsed) {
-        store.sidebarCollapsed = true;
-        listLentBy = store;
-      }
-    });
-  });
-  // Unmounted with the list lent, the store would keep it folded for good.
-  $effect(() => () => {
-    if (listLentBy?.sidebarCollapsed) listLentBy.sidebarCollapsed = false;
-    listLentBy = null;
   });
   $effect(() => {
     // The drawer opens once its chunk is here, so its opening animation plays whole.
@@ -665,7 +635,7 @@
     blocked={mobileRecovery && localNetwork.state === 'denied'} onopen={() => { mobileScreen = 'chat'; }} />
   <UndoToast onerror={(error) => (store.error = errorText(error))} />
   {#if store.page === 'chat' && deferred.MemoryCorner}{@const MemoryCorner = deferred.MemoryCorner}<MemoryCorner {store} />{/if}
-  {#if store.booted && experimentOn('whip') && WhipOverlay}
+  {#if store.booted && experimentOn('whip') && whipEntry.overlay}{@const WhipOverlay = whipEntry.overlay}
     <WhipOverlay onerror={(error) => (store.error = errorText(error))} />
   {/if}
 </div>

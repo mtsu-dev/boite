@@ -7,6 +7,7 @@
  * way to another machine, is shown and cannot be picked.
  */
 
+import { markFeature } from '@boite/contracts';
 import { TEAM_BRIEF_MAX, TEAM_MEMBERS_MAX, TEAM_NAME_MAX, teamMemberKey, type AgentProfile, type Team, type TeamMember } from '@boite/contracts';
 import { botLeaving, botMoving, moveName } from './agent-move-flow';
 import type { AgentsView } from './agents.svelte';
@@ -119,3 +120,6 @@ export async function saveTeam(view: AgentsView, team: Team | null, draft: TeamD
   }
   return saved;
 }
+
+// Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
+markFeature('boite-feature:teams');

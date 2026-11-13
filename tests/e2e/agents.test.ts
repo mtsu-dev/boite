@@ -90,7 +90,7 @@ beforeAll(async () => {
   const project = await testProject(harness, owner);
   projectThread = (await owner.call('threads.create', { projectId: project.id, providerId: 'echo', accountId, title: 'Build the landing page' })).id;
   site = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response('<!doctype html><title>Dashboard</title><h1>Sign in to the dashboard</h1><form><input placeholder="Email"><button>Continue</button></form>', { headers: { 'content-type': 'text/html' } }) });
-  page = await BrowserPage.launch({ url: `${harness.url}/?token=${harness.token}`, experiments: ['resident-agents'], windowSize: { width: DESKTOP.width, height: DESKTOP.height } });
+  page = await BrowserPage.launch({ url: `${harness.url}/?token=${harness.token}`, windowSize: { width: DESKTOP.width, height: DESKTOP.height } });
   await page.send('Emulation.setDeviceMetricsOverride', DESKTOP);
   await page.waitFor(`document.querySelector('[data-testid=status-connection]')?.dataset.state === 'ready'`, 30_000);
 }, 90_000);
@@ -305,19 +305,24 @@ real('three agents in the rail; a phone shows the list, then the conversation fu
 
 // A rail with more bots than it holds pushed Settings and the machines off the window, with no scroll to reach them.
 real('a rail too short for its bots scrolls them, keeps its foot on screen and shows a name past its edge', async () => {
-  await page.send('Emulation.setDeviceMetricsOverride', { ...DESKTOP, height: 300 });
+  for (const name of ['Atlas', 'Cleo', 'Echo', 'Sage']) await agentOf(name, 'Keeps the short rail full');
+  // The shell's minimum height (window.rs). More bots overflow a usable rail;
+  // 300 px leaves no space for even one row between navigation and its foot.
+  await page.send('Emulation.setDeviceMetricsOverride', { ...DESKTOP, height: 560 });
   try {
-    await page.waitFor(`document.querySelectorAll('${id('app-rail')} ${id('rail-bot')}').length >= 3`);
+    await page.waitFor(`document.querySelectorAll('${id('app-rail')} ${id('rail-bot')}').length >= 7`);
     await page.settleAnimations();
-    const rail = await page.evaluate<{ scrolls: boolean; inside: boolean; last: { x: number; y: number } }>(`(() => {
+    const rail = await page.evaluate<{ scrolls: boolean; fits: boolean; inside: boolean; last: { x: number; y: number } }>(`(() => {
       const bots = document.querySelector('${id('app-rail')} .bots');
       bots.scrollTop = bots.scrollHeight;
       const last = [...bots.querySelectorAll('${id('rail-bot')}')].at(-1).getBoundingClientRect();
       const box = bots.getBoundingClientRect();
-      return { scrolls: bots.scrollHeight > bots.clientHeight, inside: last.top >= box.top && last.bottom <= box.bottom + 1,
+      return { scrolls: bots.scrollHeight > bots.clientHeight, fits: bots.clientHeight >= last.height,
+        inside: last.top >= box.top && last.bottom <= box.bottom + 1,
         last: { x: last.left + last.width / 2, y: last.top + last.height / 2 } };
     })()`);
     // Scrolled to its end, the last bot stands whole inside the list, not drawn over the buttons under it.
+    expect(rail.fits).toBe(true);
     expect([rail.scrolls, rail.inside]).toEqual([true, true]);
     // Every foot button whole inside the window, and the foot has some.
     const foot = await page.evaluate<{ count: number; inside: boolean }>(`(() => { const buttons = [...document.querySelectorAll('${id('app-rail')} .foot button')]; return { count: buttons.length, inside: buttons.every(b => { const r = b.getBoundingClientRect(); return r.height > 0 && r.top >= 0 && r.bottom <= innerHeight; }) }; })()`);
@@ -330,10 +335,12 @@ real('a rail too short for its bots scrolls them, keeps its foot on screen and s
     const railRight = await page.evaluate<number>(`document.querySelector('${id('app-rail')}').getBoundingClientRect().right`);
     expect(name.width).toBeGreaterThan(20);
     expect(name.left).toBeGreaterThan(railRight);
+    // Beside its button, not past the list column, where it went unseen.
+    expect(name.left - railRight).toBeLessThan(12);
     expect(Math.abs(name.middle - rail.last.y)).toBeLessThan(2);
     await capture('rail-short-desktop.png');
   } finally {
-    // A failure here must not leave the next test a 300 px window and a scrolled rail.
+    // A failure here must not leave the next test a short window and a scrolled rail.
     await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 900, y: 300 });
     await page.send('Emulation.setDeviceMetricsOverride', DESKTOP);
     await page.evaluate(`(() => { const bots = document.querySelector('${id('app-rail')} .bots'); if (bots) bots.scrollTop = 0; })()`);
@@ -370,7 +377,7 @@ test('a bot\'s menu sits in its column on a desktop and on its row\'s long press
   /** Opens the bot from its picture in the rail, then its column's menu. */
   const columnMenu = async (agentId: string) => {
     await openRailBot(page, agentId);
-    // A docked Desk takes the bot column's place (the column is lent to it); closed, the column comes back with its menu.
+    // The column stays beside a docked Desk; the desk is closed so the column's menu has the room it opens in.
     await page.evaluate(`document.querySelector('${id('right-panel')} ${id('panel-close')}')?.click()`);
     await page.waitFor(`getComputedStyle(document.querySelector('.agents-rail')).display !== 'none'`);
     await page.click(id('bot-column-menu'));

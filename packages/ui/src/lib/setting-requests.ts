@@ -5,8 +5,9 @@
  * are in `packages/contracts/src/setting-requests.ts`, the core's cards in
  * `packages/core/src/threads/cards.ts`.
  */
-import { experimentOf, type AutoCompactMoment, type ProviderSummary, type RequestableKey, type RequestableSetting, type SettingAsk, type SettingsPage } from '@boite/contracts';
+import { EXPERIMENT_STAGES, experimentOf, type AutoCompactMoment, type ProviderSummary, type RequestableKey, type RequestableSetting, type SettingAsk, type SettingCardAsk, type SettingsPage } from '@boite/contracts';
 import { experimentCopy } from './experiment-copy';
+import { experimentsShown } from './experiments.svelte';
 import { formatLocale } from './i18n.svelte';
 import { fill, strings } from './strings';
 import { formatTokens } from './format';
@@ -31,33 +32,46 @@ function graduated(key: string): { title: string; switched: boolean } | null {
   if (id === 'preview-comments') return { title: strings.features.previewComments.title, switched: true };
   if (id === 'edge-scrollbars') return { title: strings.features.edgeScrollbars.title, switched: true };
   if (id === 'press-preload') return { title: strings.settingRequest.loadOnPress, switched: false };
+  // Finished since: on in every build, with no switch (`EXPERIMENT_STAGES`).
+  if (id === 'resident-agents') return { title: strings.agents.heading, switched: false };
+  if (id === 'theme-grain') return { title: strings.settings.themeGrain, switched: false };
+  if (id === 'session-import') return { title: strings.palette.importSession, switched: false };
+  if (id === 'pinned-quotas') return { title: strings.quotas.pin, switched: false };
+  if (id === 'prompt-cache') return { title: strings.settingRequest.promptCacheTimer, switched: false };
+  if (id === 'recording-indicators') return { title: strings.settingRequest.recordingActions, switched: false };
+  const known = experimentOf(key);
+  if (known !== null && EXPERIMENT_STAGES[known] === 'release') return { title: strings.settingRequest.formerExperiment, switched: false };
   return null;
 }
 
 /** What a card about a graduated experiment says instead of offering Apply. */
 export function retiredHint(key: string): string {
-  return graduated(key)?.switched === false ? strings.settingRequest.retiredAlwaysOn : strings.settingRequest.retired;
+  const former = graduated(key);
+  // Still an experiment, on a machine whose build runs none.
+  if (former === null && experimentOf(key) !== null) return strings.settingRequest.retiredRelease;
+  return former?.switched === false ? strings.settingRequest.retiredAlwaysOn : strings.settingRequest.retired;
 }
 
 /** The card's title, in the dock's row and on the card. */
-export function settingHeading(setting: SettingAsk): string {
+export function settingHeading(setting: SettingCardAsk): string {
   const words = strings.settingRequest;
+  if (setting.kind === 'bot') return strings.botRequest.heading;
   if (setting.kind === 'open') return setting.plugin ? words.headingPlugin : words.headingOpen;
   return setting.sensitive ? words.headingSensitive : words.heading;
 }
 
 export function settingLabel(key: RequestableKey): string {
   const experiment = experimentOf(key);
-  if (experiment !== null) return experimentCopy()[experiment].title;
   const former = graduated(key);
   if (former !== null) return former.title;
+  if (experiment !== null) return experimentCopy()[experiment]?.title ?? key;
   return strings.settingRequest.keys[key as RequestableSetting] ?? key;
 }
 
 /** What the setting does, as the Settings page explains it; null where the card's name says enough. */
 export function settingHint(key: RequestableKey): string | null {
   const experiment = experimentOf(key);
-  return experiment === null ? null : experimentCopy()[experiment].hint;
+  return experiment === null ? null : experimentCopy()[experiment]?.hint ?? null;
 }
 
 /** A value as the card shows it: `60 %`, `On`, `512 MB`, `In D:/worktrees`. */
@@ -71,6 +85,8 @@ export function settingValueText(key: RequestableKey, value: unknown, providers:
     const unit = UNITS[key as RequestableSetting];
     return new Intl.NumberFormat(formatLocale(), unit ? { style: 'unit', unit: unit.unit, unitDisplay: unit.display } : {}).format(value);
   }
+  if (key === 'coordinationReach' && typeof value === 'string' && value in strings.agentsAlone.steps) return strings.agentsAlone.steps[value as keyof typeof strings.agentsAlone.steps];
+  if (key === 'agentBotCreation' && typeof value === 'string' && value in strings.agentsAlone.values) return strings.agentsAlone.values[value as keyof typeof strings.agentsAlone.values];
   if (typeof value === 'string') return value;
   if (Array.isArray(value)) return value.length === 0 ? words.none : value.map(String).join(', ');
   const object = value as Record<string, unknown>;
@@ -173,6 +189,8 @@ const PHONE_CARDS: Partial<Record<SettingsPage, readonly string[]>> = {
  */
 export function settingsReachable(setting: SettingAsk, client: { owner: boolean; phone: boolean }): boolean {
   const section = setting.section;
+  // A Release has no Experiments page.
+  if (setting.page === 'experiments' && !experimentsShown()) return false;
   if (!client.owner && (OWNER_PAGES.includes(setting.page) || (section !== null && OWNER_SECTIONS.includes(section)))) return false;
   if (!client.phone || PHONE_PAGES.includes(setting.page)) return true;
   const cards = PHONE_CARDS[setting.page];

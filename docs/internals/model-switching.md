@@ -226,6 +226,16 @@ and end preserved. Gaps are identified to the receiving agent. These are
 transport bounds, not token estimates. Some old details may be absent; the
 journal remains unchanged.
 
+A gap names what it left out. The line that counts the omitted messages lists
+the newest 20 of them by role and id, oldest first, with the command that
+reads one, `boite threads read <thread> --entry <id>`, and says that reading
+them is optional. A thread reads its own entries whatever its coordination
+settings. The line takes at most 1,600 characters, reserved out of the 64,000:
+the recent exchanges fill 62,400. On a thread of 80 messages of 3,000
+characters, the prompt goes from 73,190 characters with a bare count to 70,591
+with 20 messages named (`continuation.test.ts`, 2026-11-13). The exchanges
+after a compaction made ahead and after a switch back name theirs the same way.
+
 Tool output has its own, smaller budget so the conversation's text keeps the
 room: a call carries the head and tail of its output up to 1,000 characters,
 and one message all its calls' output up to 3,000, newest call first. A call
@@ -270,7 +280,7 @@ continuation of an image-bearing history explicitly.
 A thread that returns to an account it ran on resumes the native session it
 left there, when that session can come back: same provider, same folder, the
 turn it ended on still in the journal (an edit or rewind before it removes
-it), and the exchanges since then within the 64,000 characters of recent
+it), and the exchanges since then within the 62,400 characters of recent
 history. The next prompt carries only those exchanges, cut like the transfer
 above, then the request; once that turn is done, later prompts carry the
 request alone. The session's history counts as ending at its last answered
@@ -301,6 +311,58 @@ with 4,000-character answers and 8,000-character tool outputs: 10 turns on A
 then 3 on B went from 62,978 bytes on a fresh session to 37,629 on the resumed
 one, 30 then 1 from 62,978 to 12,813, and 10 then 8 stay at 62,978, fresh,
 since the 8 turns are past the bound.
+
+## The change in the timeline
+
+A turn that starts on another agent, account, model, effort or speed than the
+transcript last stated records it as `Turn.switched` (`TurnSwitch` in
+`packages/contracts/src/turns.ts`): the two sides, each with its account's
+label as it read then. The timeline draws one line above that turn's prompt,
+saying only what differs: `Opus 5.5 high` to `GPT 6.1 Sol medium`, or the
+shared model once and `high` to `medium` when the effort alone changed. An
+agent's mark stands before each side when the agent changed, once otherwise
+(`packages/ui/src/components/SwitchMarker.svelte`, words in
+`packages/ui/src/lib/switch-notice.ts`).
+
+The side it compares with is the last turn of the thread that started, a
+prompt-cache ping aside, at the effort and speed it started on: an effort that
+reached a running turn is kept apart as `execution.startedOn`, so the next
+turn's line still says it (`packages/core/src/threads/switch-notice.ts`). A
+selection changed and changed back between two turns leaves no line, and the
+first turn of a thread has nothing to compare with.
+
+The line is a field of the turn (`turns.switched`, schema 51), not a message.
+No agent reads it, a transfer's excerpts never hold it, message counts and
+`threads.get` paging do not move, and every client reads it with the turn:
+after a reload, a core restart and on a paired device (`turn.started`, then
+`turn.switched` when the detail below lands).
+
+When the account changed, the line says the context was handed over and
+unfolds on what went. `handover.session` is `fresh` for a new session and
+`resumed` for one left on that account; `full`, `cut` and `omitted` count the
+messages that went whole, shortened and left out of the bounds above, and
+`chars` is the size of the history placed before the request. The history
+builders return those counts (`carried` in `packages/core/src/continuation.ts`)
+and the turn records them while it still runs; a session lost on resume that
+starts fresh in the same turn overwrites them. A change inside one account
+keeps its session and says the change alone.
+
+A thread the core moved off an account that signed out or was removed
+([accounts](accounts.md)) gets the same line with the reason
+(`execution.accountLeft`, `TurnSwitch.reason`).
+
+Until a turn runs on a new selection, the client draws the same comparison
+dashed under the thread's last message (`pendingSwitch`): the thread's own
+selection against the last started turn it holds. It has no detail, goes when
+the user picks the stated selection back, and never shows on a thread that has
+run nothing. A list at its end scrolls to keep it in view.
+
+`bun run bench/switch-notice.ts [turns]` runs 20 turns, then one on another
+effort, one on another account and one back. On 2026-11-13 the three agents
+were sent the same 17, 8,076 and 777 characters with and without the lines,
+the thread kept 46 messages, `threads.get` went from 27,071 to 28,015 bytes
+and the journal's turn rows from 6,601 to 7,509: 944 and 908 bytes for three
+lines.
 
 ## Storage and concurrent changes
 
@@ -347,5 +409,12 @@ that resumes the session left with only the missed exchanges, the fallbacks
 (gap past the bound, lost session, rewind), queued execution ownership, stale selections, long history, images and schema
 migration. The UI test preserves the thread and draft across picker changes.
 `tests/e2e/model-switch.test.ts` switches Echo to a fixture ACP process through
-real WebSocket and stdio paths and captures desktop and phone layouts.
+real WebSocket and stdio paths, reads the line and its handover counts in the
+page and captures desktop and phone layouts.
+`packages/core/test/switch-notice.test.ts` covers the line a turn records: an
+effort change with no message and an unchanged prompt, the handover counts of
+a fresh and a resumed session, the reason of a signed-out account, and an
+effort changed during a turn. `packages/ui/src/switch-marker.test.ts` covers
+the dashed line and the divider over the fake client, and
+`tests/e2e/switch-marker.test.ts` captures both at desktop and phone widths.
 These tests do not use real provider accounts.

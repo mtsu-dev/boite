@@ -10,7 +10,7 @@ const id = (name: string) => `[data-testid="${name}"]`;
 beforeAll(async () => {
   const port = await freePort();
   server = await startUi(port);
-  page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&machines=1&agents=1`, experiments: ['resident-agents'], windowSize: { width: 1440, height: 1000 } });
+  page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&machines=1&agents=1`, windowSize: { width: 1440, height: 1000 } });
 }, 60_000);
 
 afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);

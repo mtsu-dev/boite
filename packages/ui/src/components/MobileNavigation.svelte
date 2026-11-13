@@ -18,7 +18,7 @@
   import type { MenuItem } from '../lib/menu';
   import type { ThreadSummary } from '@boite/contracts';
   import Menu from './Menu.svelte';
-  import WhipButton from './WhipButton.svelte';
+  import { whipEntry } from '../lib/whip-entry.svelte';
   import { experimentOn } from '../lib/experiments.svelte';
   import { mobileChrome } from '../lib/mobile-chrome.svelte';
   import { focusOnMount } from '../lib/actions';
@@ -48,14 +48,15 @@
   import { hostName } from '../lib/machine-host';
   import { activityFeed, feedGroups, storeNeeds, type FeedKind, type FeedVerb } from '../lib/activity-feed';
   import { tabHeader } from '../lib/tab-header.svelte';
-  import EmptyState, { HOUSE_BOT } from './EmptyState.svelte';
-  import RobotFace from './agents/RobotFace.svelte';
+  import EmptyState from './EmptyState.svelte';
+  import MarkAllRead from './MarkAllRead.svelte';
   import { threadsNeedingYou } from '../lib/app-rail';
   import { needsUser, projectRollup, threadState } from '../lib/thread-state';
   import { foldQuiet } from '../lib/card-fold';
   import { minuteClock } from '../lib/clock.svelte';
   import { needsAnAI } from '../lib/first-run';
   import { contactsShown } from '../lib/contacts-rail.svelte';
+  import { contactsParts } from '../lib/contacts-entry';
   import { ScreenSlide } from '../lib/screen-slide.svelte';
   import { doneFilter, feedPlace, feedThread, inbox } from '../lib/inbox.svelte';
   import { followActivityReturn, leaveForAct, restoreActivity } from '../lib/activity-return.svelte';
@@ -82,9 +83,9 @@
   let ContactInboxRows = $state<typeof import('./home/ContactInboxRows.svelte').default>();
   $effect(() => {
     if (!contactsShown(store) || SidebarContacts) return;
-    void import('./home/SidebarContacts.svelte').then(module => { SidebarContacts = module.default; }).catch(() => {});
-    void import('./home/ContactRequestNotice.svelte').then(module => { ContactRequestNotice = module.default; }).catch(() => {});
-    void import('./home/ContactInboxRows.svelte').then(module => { ContactInboxRows = module.default; }).catch(() => {});
+    void contactsParts?.SidebarContacts().then(module => { SidebarContacts = module.default; }).catch(() => {});
+    void contactsParts?.ContactRequestNotice().then(module => { ContactRequestNotice = module.default; }).catch(() => {});
+    void contactsParts?.ContactInboxRows().then(module => { ContactInboxRows = module.default; }).catch(() => {});
   });
   let search = $state('');
   const query = $derived(search.trim().toLocaleLowerCase());
@@ -325,7 +326,7 @@
   {#if threadViews}<span class="header-display"><DisplayOptions entries={groups} target={undefined} owner={store} prefix="mobile-" compact filters={filters} {atWork} onaddproject={store.addsProjects ? addProject : undefined} /></span>{/if}
   {#if searchable}<button class="ghost icon" data-testid={lent?.searchTestid ?? 'mobile-search-open'} aria-label={lent?.searchLabel ?? strings.mobile.search} title={lent?.searchLabel ?? strings.mobile.search} onclick={() => searching = true}><Search size={20} /></button>{/if}
   {/if}
-  {#if !recover && !chatting && experimentOn('whip')}<WhipButton mobile />{/if}
+  {#if !recover && !chatting && experimentOn('whip') && whipEntry.feature}{@const WhipButton = whipEntry.feature.WhipButton}<WhipButton mobile />{/if}
   {#if narrow.current && ContactRequestNotice && contactsShown(store)}<ContactRequestNotice {store} />{/if}
   <!-- One way to create per screen: a page (Bots, Contacts, Settings) owns its own. Activity answers what is
        asked, so it creates nothing; the thread list's "+" is one tab away. -->
@@ -395,7 +396,7 @@
                  A search lists every match, folded or not, as the desktop's search does: the header folds again once it is cleared. -->
             <h2><button type="button" class="ghost project-toggle" data-testid="mobile-project-toggle" aria-expanded={!folded} aria-controls="{controls}-body" disabled={!!query}
               onclick={() => projectThreadView.toggleProject(group, { working: workingRows.map(row => row.thread), attention: attentionRows.map(row => row.thread) }, drafts.length)}>
-              <ProjectTile project={group.project} store={group.machine.store} /><span class="name">{projectName(group.project)}</span><span class="fold-caret" class:open={!folded} aria-hidden="true"><ChevronRight size={16} /></span>{#if rollup && !needsYou(rollup.kind) && rollup.kind !== 'done' && workingRows.length === 0}<ProjectRollup {rollup} />{/if}{#if hostName(group.machine, machines, home?.id)}<MachinePlace host={{ ...hostName(group.machine, machines, home?.id)!, away: false }} testid="mobile-project-host" />{/if}
+              <ProjectTile project={group.project} store={group.machine.store} /><span class="name">{projectName(group.project)}</span><span class="fold-caret" class:open={!folded} aria-hidden="true"><ChevronRight size={16} /></span>{#if rollup && !needsYou(rollup.kind) && rollup.kind !== 'done' && workingRows.length === 0}<ProjectRollup {rollup} />{/if}{#if hostName(group.machine, machines, home?.id)}<MachinePlace host={{ ...hostName(group.machine, machines, home?.id)!, away: false }} dim={group.machine.store.connection !== 'ready'} testid="mobile-project-host" />{/if}
             </button></h2>
             <ProjectThreadCounters entry={group} working={group.machine.store.threadsOf(group.project.id).filter(thread => workingThread(group.machine.store, thread)).length} waiting={waitingHere} failed={needsHere.failed} listed={attentionRows.filter(row => needsYou(threadState(row.thread, rowAsks(row.machine.store, row.thread.id)))).length} {controls} collapsed={folded} searching={!!query} away={group.machine.store.connection !== 'ready'} />
             {#if projectView.order === 'manual'}
@@ -409,7 +410,7 @@
               onclick={(event) => projectMenu(event, group.machine.store, group.project, undefined, () => show('chat'), { count: archiveCount(group.project, 'archived') })}><Ellipsis size={18} /></button>
           </div>
           <!-- Out of reach, said once under the name with its next step; the rows below dim as last seen. -->
-          {#if group.machine.store.connection !== 'ready'}<div class="offline"><MachineOffline store={group.machine.store} label={group.machine.label} /></div>{/if}
+          {#if group.machine.store.connection === 'closed'}<div class="offline"><MachineOffline store={group.machine.store} label={group.machine.label} /></div>{/if}
           <!-- Folded, the project keeps its header alone: drafts, conversations and their done and archived lists wait under the fold. -->
           <div id="{controls}-body" class="disclosure-fold" class:open={!folded} inert={folded}><div>
           {#if !query}{#each drafts as draft (draft.id)}<DraftRow owner={group.machine.store} entry={draft} onopen={() => show('chat')} />{/each}{/if}
@@ -460,9 +461,13 @@
       {@const asked = ContactInboxRows && contactsShown(store) && !query}
       {@const needsCount = needs.length + (asked ? inbox.contacts : 0)}
       <!-- The section's number is the tab's badge: its top rows (a sub-agent counts on its parent) and what contacts ask. -->
-      <!-- The amber dot beside "Needs you", as on the desktop page; only updates left, the house bot says nothing waits. -->
-      {#if needsCount > 0}<h2 class="section-label feed-section" data-testid="activity-needs" data-count={needsCount}><span class="feed-dot" aria-hidden="true"></span>{strings.sidebar.state.waiting}<span class="feed-count">{count(needsCount)}</span></h2>
-      {:else if rows.length > 0}<p class="all-done" data-testid="activity-all-done"><span class="face" aria-hidden="true"><RobotFace robot={HOUSE_BOT} /></span>{strings.mobile.nothingNeedsYou}</p>{/if}
+      <!-- The amber dot beside "Needs you", as on the desktop page; only updates left, one line says nothing waits. -->
+      <!-- The first line carries Mark all as read on its right, whichever line it is, as on the desktop page. -->
+      {#if needsCount > 0 || rows.length > 0}<div class="feed-head">
+        {#if needsCount > 0}<h2 class="section-label feed-section" data-testid="activity-needs" data-count={needsCount}><span class="feed-dot" aria-hidden="true"></span>{strings.sidebar.state.waiting}<span class="feed-count">{count(needsCount)}</span></h2>
+        {:else}<p class="all-done" data-testid="activity-all-done">{strings.mobile.nothingNeedsYou}</p>{/if}
+        <MarkAllRead rows={rows.map(row => ({ machine: row.machine, thread: row.thread, kind: row.kind ?? null }))} />
+      </div>{/if}
       <div class="feed-tiles">{#if asked && ContactInboxRows}<ContactInboxRows {store} />{/if}<WindowList items={needs} keyOf={group => JSON.stringify([group.row.machine.id, group.row.thread.id])} {scrollRoot} estimate={66} measurements={measurements('activity')}>
         {#snippet row(group)}{@render threadRow(group.row, false, group.helpers)}{/snippet}
       </WindowList></div>
@@ -491,7 +496,7 @@
     {/if}
     {#if listScreen === 'activity' && rows.length === 0 && (query || inbox.contacts === 0)}
       <!-- Nothing waits: the app's one empty view, small, at the screen's optical middle as on the desktop page. -->
-      <div class="activity-empty"><EmptyState line={strings.mobile.emptyActivity} testid="activity-empty" small /></div>
+      <div class="activity-empty"><EmptyState line={strings.mobile.emptyActivity} testid="activity-empty" robot={null} small /></div>
     {:else if listScreen !== 'activity' && rows.length === 0 && (query || workspace.view === 'recent' || groups.length === 0) && !(inRecent && !query && recentGroups.some(entry => entry.project.archivedThreads))}
       <div class="empty-state">
         <span class="empty-icon"><MessageSquare size={24} /></span>
@@ -628,7 +633,10 @@
     .recent-done { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--color-border); }
     /* A section's name over its rows, from the rows' edge; the second stands off the first. */
     .feed-section { margin: 8px 12px 4px; }
-    .feed-section ~ .feed-section { margin-top: 20px; }
+    .feed-head ~ .feed-section { margin-top: 20px; }
+    /* The first line and Mark all as read on its right edge; the button keeps the line's height. */
+    .feed-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; min-height: var(--control-sm); margin: 8px 6px 4px 0; }
+    .feed-head > :is(.feed-section, .all-done) { margin-block: 0; min-width: 0; }
     /* The section's count, the tab badge's number: amber marks it, the word stays grey. */
     .feed-count { margin-left: 6px; color: var(--color-live); font-variant-numeric: tabular-nums; }
     .feed-section[data-testid=activity-needs] { display: flex; align-items: center; }
@@ -647,7 +655,5 @@
       .feed-tiles :global(.thread:hover:not(:disabled)) { background: transparent; }
     }
     .all-done { display: flex; align-items: center; gap: 10px; margin: 8px 12px 4px; font-size: var(--text-sm); font-weight: 500; color: var(--color-muted-foreground); }
-    .face { display: block; width: 24px; height: 24px; flex: none; }
-    .face :global(svg.robot) { display: block; width: 100%; height: 100%; border-radius: 50%; }
   }
 </style>

@@ -1,7 +1,10 @@
 /*
  * Finished features this device can still switch off: former experiments that
  * graduated. They are on by default and their switches live in the Settings
- * page they belong to, not on the Experiments page. Only explicit choices are
+ * page they belong to, not on the Experiments page. A finished experiment
+ * needs no switch here: it is on in every build (`normal` in contracts'
+ * `EXPERIMENT_STAGES`). It gets one only when a person would want it off.
+ * Only explicit choices are
  * stored, in `localStorage` under `boite.features` as a JSON object of ids to
  * booleans, so a feature nobody touched follows its default.
  *

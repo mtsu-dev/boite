@@ -3,6 +3,7 @@
  * the machine holding it sends a member's machine and hears back, and the
  * mirror kept there. `peers.ts` carries them.
  */
+import { markFeature } from '@boite/contracts';
 import type { Team, TeamMember, TeamParty, TeamPost } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import type { TeamPeerPost, TeamPeerReport } from './peers.ts';
@@ -165,3 +166,6 @@ export class TeamMirror {
     });
   }
 }
+
+// Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
+markFeature('boite-feature:teams');

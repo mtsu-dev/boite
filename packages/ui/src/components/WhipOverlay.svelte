@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { markFeature } from '@boite/contracts';
   import { onMount } from "svelte";
   import { whip } from '../lib/whip.svelte';
   import { playCrack, closeCrackAudio, primeCrackSound } from '../lib/whip/crack';
@@ -175,6 +176,8 @@
       ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x2, y2);
     }
   }
+  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
+  markFeature('boite-feature:whip');
 </script>
 
 <!-- Mouse clicks release the rope. Touch drags hold the handle until release. -->

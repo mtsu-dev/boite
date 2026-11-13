@@ -164,7 +164,55 @@ export const SCENARIOS: Record<string, Scenario> = {
   ...CONTACT_MAIL_SCENARIOS,
   ...CONTACTS_BOT_SCENARIOS,
   ...TEAM_SCENARIOS,
+  'where bot creation asks first, a thread gets a card: Approve creates the bot with full access, Decline creates none': async (env) => {
+    const before = await env.call('settings.get', {});
+    const setup = await echo(env);
+    const created = await thread(env, setup, 'bot card');
+    await finishedTurn(env, created.id);
+    const tag = Math.random().toString(36).slice(2, 7);
+    const named = async (name: string) => (await env.call('agents.snapshot', {})).profiles.find((profile) => profile.name === name);
+    try {
+      await env.call('settings.set', { agentBotCreation: 'ask' });
+      const asked = await env.call('agents.create', { threadId: created.id, name: `Scribe${tag}`, domain: 'Notes' });
+      check(!('agent' in asked) && asked.setting.kind === 'bot' && asked.setting.bot.name === `Scribe${tag}`, 'asking returns the card, not a bot');
+      check((await named(`Scribe${tag}`)) === undefined, 'no bot exists before the owner approves');
+      check((await env.call('questions.list', { threadId: created.id })).some((question) => question.id === asked.questionId && question.setting?.kind === 'bot'), 'the card is open in the calling thread');
+      await refusedWith(env.call('agents.create', { threadId: created.id, name: `scribe${tag}` }), RpcErrorCode.Refused, ['field']);
+      const made = await env.call('agents.create.approve', { threadId: created.id, questionId: asked.questionId });
+      check(made.agent.name === `Scribe${tag}` && made.agent.selection.permissionMode === 'bypassPermissions', 'approving creates the bot with full access');
+      check(!(await env.call('questions.list', { threadId: created.id })).some((question) => question.id === asked.questionId), 'approving settles the card');
+
+      const second = await env.call('agents.create', { threadId: created.id, name: `Herald${tag}` });
+      check(!('agent' in second), 'a second bot asks again');
+      await env.call('questions.answer', { threadId: created.id, questionId: second.questionId, optionIds: ['refuse'] });
+      check((await named(`Herald${tag}`)) === undefined, 'declining creates nothing');
+      await refusedWith(env.call('agents.create.approve', { threadId: created.id, questionId: second.questionId }), RpcErrorCode.NotFound, ['field']);
+
+      await env.call('settings.set', { agentBotCreation: 'free' });
+      const free = await env.call('agents.create', { threadId: created.id, name: `Free${tag}` });
+      check('agent' in free && free.agent.name === `Free${tag}`, 'free creates at once');
+    } finally {
+      await env.call('settings.set', { agentBotCreation: before.agentBotCreation ?? 'free' });
+      for (const name of [`Scribe${tag}`, `Free${tag}`]) {
+        const agent = await named(name);
+        if (agent) await env.call('agents.profile.save', { id: agent.id, expectedRevision: agent.revision, value: { ...agent, status: 'archived' } }).catch(() => undefined);
+      }
+    }
+  },
   ...COUNCIL_SCENARIOS,
+  'agent.done refuses another thread, puts an idle one in Done and refuses it there': async (env) => {
+    const setup = await echo(env);
+    const own = await thread(env, setup, 'own');
+    const other = await thread(env, setup, 'other');
+    await finishedTurn(env, own.id);
+    // An agent reaches only its own thread. The fake's peer holds a copy of the threads, so the owner's connection does the rest.
+    const agent = await env.peer({ agentThreadId: own.id });
+    await refusedWith(agent.call('agent.done', { threadId: other.id }), RpcErrorCode.Refused);
+    same(await env.call('agent.done', { threadId: own.id }), { threadId: own.id, when: 'done' }, 'an idle thread');
+    await until('the thread in Done', async () => { const row = await summary(env, own.id); return row.archived && typeof row.doneAt === 'number'; });
+    same((await summary(env, other.id)).archived, false, 'the other thread');
+    same((await refusedWith(env.call('agent.done', { threadId: own.id }), RpcErrorCode.Refused, ['field']))['field'], 'threadId', 'a thread already in Done');
+  },
   'artifacts.viewBlock reuses HTML and refuses empty or oversized UTF-8 input': async (env) => {
     const html = '<p>Shared view</p>';
     const { url } = await env.call('artifacts.viewBlock', { html });

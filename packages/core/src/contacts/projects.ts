@@ -5,7 +5,7 @@ import type { AgentMatch, AgentTranscript, RpcParams, SharedComputePolicy, Share
 import type { Core } from '../core.ts';
 import type { Connection } from '../router.ts';
 import { text } from '../coordination-letter.ts';
-import { checkMatchExtras, checkRemoteContact, checkTranscript, queryPayload, readTranscript, searchContacts, searchWords, transcriptQuery } from '../coordination-lookup.ts';
+import { checkMatchExtras, checkRemoteContact, remoteTranscript, queryPayload, readTranscript, searchContacts, searchWords, transcriptQuery } from '../coordination-lookup.ts';
 import { PeerRefusal } from '../coordination-wire.ts';
 import { invalidParams, refused, RpcFailure } from '../errors.ts';
 import { SharedProjectJournal, fingerprint } from './project-journal.ts';
@@ -14,6 +14,7 @@ import { SharedProjectSubscriptions } from './project-subscriptions.ts';
 import { projectContact, checkProjectRoute, projectRoute } from './project-relay.ts';
 import { redactSharedText, redactSharedContact } from './file-policy.ts';
 import { contactFace } from './face.ts';
+import { contactsGate } from './gate.ts';
 
 export interface SharedPeerContext {
   shared: SharedProject;
@@ -440,7 +441,7 @@ export class SharedProjects {
     const entry = this.localThreads(ctx).find(t => t.ref.threadId === target.threadId);
     if (!entry) throw refused('target.threadId: expected an available thread of this shared project');
     if (!entry.readThreads) throw refused('target.threadId: destination project requires readThreads');
-    return { contact: entry.agent, ...readTranscript(this.core.journal.db, target.threadId, transcriptQuery(p), id => this.core.journal.streamingMessage(id), redactSharedText) };
+    return readTranscript(this.core.journal.db, target.threadId, entry.agent, transcriptQuery(p), id => this.core.journal.streamingMessage(id), redactSharedText);
   }
   async read(p: RpcParams<'sharedProjects.read'>, connection?: Connection): Promise<AgentTranscript> {
     const ctx = this.scope(p, connection);
@@ -455,7 +456,7 @@ export class SharedProjects {
     const peer = this.core.contacts.peers().find(p => p.coreId === ctx.peerId)!;
     const contact = checkRemoteContact(raw?.contact, peer);
     if (contact.threadId !== target.address.threadId) throw refused('transcript.contact: expected the requested thread');
-    return { contact: { ...contact, sharedThread: target }, ...checkTranscript(raw, query) };
+    return remoteTranscript({ ...contact, sharedThread: target }, raw, query);
   }
   notify(id: string, kinds: ('threads' | 'board' | 'compute' | 'access')[] = ['threads', 'board', 'compute', 'access']): void {
     if (kinds.includes('access')) for (const listener of this.#policyListeners) listener(id);
@@ -469,10 +470,11 @@ export function registerSharedProjectMethods(core: Core): void {
   const service = core.sharedProjects;
   core.router.register('sharedProjects.list', (p, c) => service.list(p.threadId, c.connection));
   core.router.register('sharedProjects.get', (p, c) => service.get(p, c.connection));
-  core.router.register('sharedProjects.offer', p => service.offer(p));
-  core.router.register('sharedProjects.decide', p => service.decide(p));
+  core.router.register('sharedProjects.offer', p => { contactsGate(core); return service.offer(p); });
+  // Accepting an association and turning one of its parts on start something; declining, turning off and revoking stay open in every build.
+  core.router.register('sharedProjects.decide', p => { if (p?.accept === true) contactsGate(core); return service.decide(p); });
   core.router.register('sharedProjects.revoke', p => service.revoke(p));
-  core.router.register('sharedProjects.configure', p => service.configure(p));
+  core.router.register('sharedProjects.configure', p => { if (p?.board === true || p?.compute?.enabled === true || p?.reviewer?.enabled === true) contactsGate(core); return service.configure(p); });
   core.router.register('sharedProjects.threads', (p, c) => service.threads(p, c.connection));
   core.router.register('sharedProjects.search', (p, c) => service.search(p, c.connection));
   core.router.register('sharedProjects.read', (p, c) => service.read(p, c.connection));

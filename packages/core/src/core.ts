@@ -1,5 +1,5 @@
 import { PolicyStore, policyFileFor } from './policy.ts';
-import { MergedPrArchive } from './merged-pr-archive.ts';
+import { MergedPrAsk } from './merged-pr-ask.ts';
 import { PullRequests } from './pull-requests.ts';
 import { LinkedPullRequests } from './linked-pull-requests.ts';
 import { PullRequestWatches, type WatchTiming } from './pull-request-watch.ts';
@@ -49,6 +49,7 @@ import { AgentBrowser, BROWSER_SCOPE } from './browser.ts';
 import { MobileDevices } from './devices/control.ts';
 import { VirtualDesktops } from './desktop/service.ts';
 import { DesktopWindows } from './windows/service.ts';
+import { KeepAwake, type KeepAwakeHold } from './keep-awake.ts';
 import { LazyMcp } from './mcp/lazy.ts';
 import { QuotaStore } from './quotas.ts';
 import { dropRetiredAccounts } from './account-retirement.ts';
@@ -60,8 +61,10 @@ import { SpeechStore } from './speech.ts';
 import { Telemetry } from './telemetry.ts';
 import { HarnessUpdates } from './providers/updates.ts';
 import { Coordination } from './coordination.ts';
-import { TeamStore } from './teams/store.ts';
-import { CouncilStore } from './council/store.ts';
+import type { TeamStore } from './teams/store.ts';
+import { teamStore } from './teams-entry.ts';
+import type { CouncilStore } from './council/store.ts';
+import { councilStore } from './council-entry.ts';
 import { GroupStore, type NetworkSink } from './group.ts';
 import { ContactStore } from './contacts/store.ts';
 import { SharedProjects } from './contacts/projects.ts';
@@ -114,10 +117,14 @@ export interface CoreOptions {
   dataDirKind?: 'default' | 'custom';
   /** How often a resident core runs its retention passes; a test shortens the minute. */
   retentionPassMs?: number;
+  /** The sleep inhibitor this core holds while agents work, instead of the platform's; tests count the holds. */
+  keepAwake?: KeepAwakeHold;
   /** Legacy vault cleanup only; tests substitute it so no system store is touched. */
   secretVault?: (dir: string) => Promise<SecretVault>;
   /** The admin policy file this core reads instead of the machine's (`policy.ts`); tests point it inside their data directory. */
   policyFile?: string;
+  /** The version this core is, instead of its package's; tests name a Release to read what it holds off (`experiments.ts` in contracts). */
+  version?: string;
 }
 
 /**
@@ -153,7 +160,7 @@ export function resolveCliDir(
 }
 
 export class Core {
-  readonly version = CORE_VERSION;
+  readonly version: string;
   readonly bundleHash: string | undefined;
   readonly dataDir: string;
   readonly token: string;
@@ -167,7 +174,7 @@ export class Core {
   readonly diagnostics: Diagnostics;
   readonly pullRequests: PullRequests;
   readonly linkedPullRequests: LinkedPullRequests;
-  readonly mergedPrArchive: MergedPrArchive;
+  readonly mergedPrAsk: MergedPrAsk;
   readonly worktreeCleanup: WorktreeCleanup;
   readonly pullRequestWatches: PullRequestWatches;
   readonly journal: Journal;
@@ -239,6 +246,8 @@ export class Core {
   /** Simulators and emulators open in conversations' Device panels. */
   readonly devices = new MobileDevices(this);
   readonly windows = new DesktopWindows(this);
+  /** The machine stays awake while a turn runs or is queued (`keep-awake.ts`). */
+  readonly keepAwake: KeepAwake;
   /** Conversations' private X desktops for GUI apps (docs/internals/desktop.md). */
   readonly desktops = new VirtualDesktops(this);
   /** The user's stdio MCP servers, started when a conversation first calls one (`mcp/lazy.ts`). */
@@ -367,6 +376,7 @@ export class Core {
     this.dataDir = options.dataDir;
     this.token = options.token;
     this.channel = options.channel ?? 'stable';
+    this.version = options.version ?? CORE_VERSION;
     mkdirSync(this.dataDir, { recursive: true });
 
     this.bus = new Bus();
@@ -383,6 +393,8 @@ export class Core {
       this.logs.info(`${message} in ${Math.round(now - phaseAt)} ms`, { source: 'startup', event, durationMs: now - phaseAt, ...(data ? { data } : {}) });
       phaseAt = now;
     };
+    // Read before the journal opens and creates its file: only a data directory older than this start counts as one.
+    const journalExisted = existsSync(join(this.dataDir, 'journal.db'));
     this.journal = new Journal(join(this.dataDir, 'journal.db'), { onError: (message) => this.log('error', message) });
     const schema = this.journal.schema;
     phase('startup.journal-opened', schema.from === schema.to ? `Journal opened at schema ${schema.to}` : `Journal opened and migrated from schema ${schema.from} to ${schema.to}`,
@@ -396,9 +408,11 @@ export class Core {
     this.#stopMoves = scheduleInlineValueMoves(this.journal, (message) => this.log('error', message));
     this.router = new Router();
     this.settings = new SettingsStore(this);
+    this.settings.seedAgentDefaults(journalExisted);
     this.clients = new ClientPreferencesBook(
       (preferences, before) => this.threads.cards.settleClient(preferences, before),
-      (experiments) => this.bus.emit('client.desktopExperiments', { experiments }),
+      (moved) => this.bus.emit('client.desktopExperiments', moved),
+      this.version,
     );
     this.providers = new ProviderRegistry(this.dataDir);
     this.providers.loadSwitches(this.journal.getSetting(PROVIDER_SWITCHES));
@@ -460,8 +474,8 @@ export class Core {
     this.procs.mask = (threadId, text) => this.secrets.mask(threadId, text);
 
     this.workforce = new AgentStore(this);
-    this.teams = new TeamStore(this);
-    this.council = new CouncilStore(this);
+    this.teams = teamStore(this);
+    this.council = councilStore(this);
     this.pullRequests = new PullRequests(this);
     this.linkedPullRequests = new LinkedPullRequests(this, (threadId, url, refresh) => this.pullRequests.detail(threadId, url, refresh));
     this.pullRequestWatches = new PullRequestWatches(this, (threadId, args) => this.pullRequests.gh(threadId, args), options.pullRequestWatches);
@@ -478,6 +492,9 @@ export class Core {
       return { ok: true as const };
     });
     this.procs.applySettings(this.settings.get());
+    // `BOITE_KEEP_AWAKE=0`: tests and a host that must never be held awake by this core.
+    const platformHold = this.procs.platform.keepAwake;
+    this.keepAwake = new KeepAwake(this, options.keepAwake ?? (process.env.BOITE_KEEP_AWAKE === '0' || !platformHold ? null : onLost => platformHold(onLost)));
     dropRetiredAccounts(this);
     this.accounts.ensureDefaults();
     this.accounts.recheckSignedOut();
@@ -508,8 +525,8 @@ export class Core {
     this.agentRuntime = new AgentRuntime(this);
     queueMicrotask(() => this.composer.start());
     this.brain.start();
-    this.mergedPrArchive = new MergedPrArchive(this, this.pullRequests);
-    this.mergedPrArchive.start();
+    this.mergedPrAsk = new MergedPrAsk(this, this.pullRequests);
+    this.mergedPrAsk.start();
     this.worktreeCleanup = new WorktreeCleanup(this);
     this.worktreeCleanup.start();
     this.pullRequestWatches.start();
@@ -592,7 +609,7 @@ export class Core {
     this.council.beginClose();
     this.coordination.beginClose();
     this.teams.close();
-    void this.mergedPrArchive.close();
+    void this.mergedPrAsk.close();
     void this.worktreeCleanup.close();
     void this.pullRequestWatches.close();
     this.group.beginClose();
@@ -630,11 +647,12 @@ export class Core {
     await this.browser.close();
     this.devices.stop();
     this.windows.stop();
+    this.keepAwake.close();
     await this.desktops.stopAll();
     this.lazyMcp.close();
     this.artifactPreviews.stop();
     this.threads.sideQuestions.close();
-    await this.mergedPrArchive.close();
+    await this.mergedPrAsk.close();
     await this.worktreeCleanup.close();
     await this.pullRequestWatches.close();
     this.threads.titles.close();

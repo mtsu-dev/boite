@@ -2,7 +2,7 @@
   import { errorText } from '../lib/errors';
   import { onMount, untrack } from 'svelte';
   import { Camera, Circle, Copy, CornerDownLeft, Delete, EyeOff, Pause, Play, Plus, Power, RefreshCw, RotateCw, Send, Smartphone, Square, Triangle, X } from '@lucide/svelte';
-  import { isAdbText, MOBILE_CLIPBOARD_MAX, MOBILE_SCROLL_MAX, MOBILE_TEXT_MAX, type MobileDevice, type MobileDeviceFrame, type MobileDeviceInput, type MobileDeviceList, type MobileDeviceSession } from '@boite/contracts';
+  import { experimentsRun, isAdbText, MOBILE_CLIPBOARD_MAX, MOBILE_SCROLL_MAX, MOBILE_TEXT_MAX, type MobileDevice, type MobileDeviceFrame, type MobileDeviceInput, type MobileDeviceList, type MobileDeviceSession } from '@boite/contracts';
   import { deviceKey, devicePaste, hasKeyboard, liveInput, writeClipboardLater } from '../lib/live-input';
   import { canDecode, playDeviceStream, streamSize, type StreamFallback, type StreamPicture } from '../lib/device-stream';
   import type { Store } from '../lib/store.svelte';
@@ -242,7 +242,7 @@
     noticeTimer = setTimeout(() => { notice = ''; }, 3000);
     return text;
   }
-  const fallbackNote = (reason: StreamFallback) => reason.why === 'off' ? strings.devicePanel.streamOff
+  const fallbackNote = (reason: StreamFallback) => reason.why === 'off' ? (experimentsRun(store.core?.version) ? strings.devicePanel.streamOff : strings.devicePanel.streamOffRelease)
     : reason.why === 'decoder' ? strings.devicePanel.streamDecoder
     : reason.why === 'failed' ? fill(strings.devicePanel.streamFailed, { reason: reason.reason }).trim() : '';
 

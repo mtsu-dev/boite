@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { markFeature } from '@boite/contracts';
   import { AtSign, LoaderCircle, Square } from '@lucide/svelte';
   import { COUNCIL_AUTHOR, COUNCIL_EXPERIMENT, COUNCIL_LEGACY_SUMMARY, COUNCIL_LIMITS, COUNCIL_MENTION_END, COUNCIL_OWNER, COUNCIL_SYSTEM, councilMention, councilOver, councilScore, councilTable, type CouncilPost, type ThreadId } from '@boite/contracts';
   import { councilRoom, faceOf, followCouncil } from '../../lib/council.svelte';
@@ -226,6 +227,8 @@
     void council?.roundsDone;
     if (pinned && scroller) scroller.scrollTop = scroller.scrollHeight;
   });
+  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
+  markFeature('boite-feature:debates');
 </script>
 
 <section class="salon" data-testid="council-salon" data-council-id={councilId} data-status={council?.status}>
@@ -369,7 +372,7 @@
   .who time { margin-left: 2px; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
   .score { font-variant-numeric: tabular-nums; }
   .to-one { align-self: flex-start; padding: 0 8px; border-radius: var(--radius-full); background: var(--color-active); color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 500; }
-  .reply-to { margin: 0; padding-left: 8px; border-left: 2px solid var(--color-border); color: var(--color-muted-foreground); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .reply-to { margin: 0; color: var(--color-muted-foreground); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .text { min-width: 0; font-size: var(--text-sm); overflow-wrap: anywhere; }
   .plain { margin: 0; white-space: pre-wrap; }
   .mention { color: var(--color-foreground); font-weight: 600; }

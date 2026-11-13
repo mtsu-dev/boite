@@ -1,6 +1,6 @@
 import type { DelegationConfig, DelegationProfile, PermissionMode, RequestId } from './index';
 import type { AgentSettingApplyParams, AgentSettingAsk, AgentSettingRequestParams, AgentSettingsReading, AgentSettingsReadParams } from './agent-setting-requests';
-import type { AgentCreateParams, AgentCreateResult } from './agent-create';
+import type { AgentCreateApproveParams, AgentCreated, AgentCreateParams, AgentCreateResult } from './agent-create';
 
 /**
  * A persistent agent is a thread with an identity. Its conversation is its own
@@ -311,6 +311,8 @@ export interface AgentsRpcMethods {
    * unknown model or project, or drafts.
    */
   'agents.create': { params: AgentCreateParams; result: AgentCreateResult };
+  /** The owner approves a bot card: the bot is created as `agents.create` would have, checked again, and the card settles. Owner only. */
+  'agents.create.approve': { params: AgentCreateApproveParams; result: AgentCreated };
   /**
    * The built-in bot of `kind` on this core, created when it is missing (the
    * Contacts switch turned on): its name, robot and route come filled in, its

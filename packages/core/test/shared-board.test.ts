@@ -488,3 +488,28 @@ test('a newer revision hint waits for an older in-flight pull to catch up before
   expect(b.h.core.sharedBoard.journal.snapshot(scope.sharedProjectId).cards[0]?.text).toBe('new value');
   expect(await thrown(a.h.core.sharedProjects.request(owner, 'board.changed', {revision: updated.revision + 1}))).toThrow('announced revision');
 }, 30000);
+test('a Release authority applies no card, edit or claim a contact\'s Nightly sends, and still applies a removal', async () => {
+  const { a, b, scope } = await board(); const theirs = { ...scope, threadId: b.threadId };
+  await b.client.call('sharedBoard.apply', { ...theirs, command: command('add', 'as-nightly', 'Written while both were Nightly') });
+  expect(await cards(a.client, scope)).toHaveLength(1);
+  (a.h.core as { version: string }).version = '2.0.0';
+  const request = b.h.core.coordination.request.bind(b.h.core.coordination);
+  const sent: Array<{ kind: string; error: string | null }> = [];
+  b.h.core.coordination.request = async (to, op, payload) => {
+    const wire = payload as { method?: string; params?: { command?: { kind?: string } } };
+    if (wire.method !== 'board.apply') return request(to, op, payload);
+    const kind = wire.params?.command?.kind ?? '';
+    try { const answer = await request(to, op, payload); sent.push({ kind, error: null }); return answer; }
+    catch (error) { sent.push({ kind, error: error instanceof Error ? error.message : String(error) }); throw error; }
+  };
+  try {
+    await b.client.call('sharedBoard.apply', { ...theirs, command: command('update', 'as-release', 'Edited at a Release') }).catch(() => undefined);
+    await waitFor(() => sent.some(s => s.kind === 'update'), 10000);
+    expect(sent.find(s => s.kind === 'update')!.error).toContain('experiment.contacts runs in Nightly and Dev builds only, and this machine runs a Release (2.0.0)');
+    expect((await cards(a.client, scope))[0]!.text).toBe('Written while both were Nightly');
+    await b.client.call('sharedBoard.apply', { ...theirs, command: { kind: 'remove', requestId: 'remove-at-release', cardId: 'card_collision' } }).catch(() => undefined);
+    await waitFor(() => sent.some(s => s.kind === 'remove'), 10000);
+    expect(sent.find(s => s.kind === 'remove')!.error).toBeNull();
+    expect(await cards(a.client, scope)).toEqual([]);
+  } finally { b.h.core.coordination.request = request; }
+}, 30000);

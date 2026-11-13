@@ -11,6 +11,7 @@ import type { SharedPeerContext } from './projects.ts';
 import { accessBinding, computeBinding, type AccessBinding } from './access-scopes.ts';
 import {letterScope} from './letter-scopes.ts';
 import {SharedNativeExecution} from './native-execution.ts';
+import { contactsGate } from './gate.ts';
 
 type FileAction = 'read' | 'publish';
 interface PublicationFile {path: string; identity: string; content: SharedSecretClass | null}
@@ -281,6 +282,6 @@ export function registerSharedAccess(core: Core): void {
   core.router.register('sharedAccess.get', (p, c) => core.sharedAccess.get(p, c.connection));
   core.router.register('sharedAccess.reviewConfig', p => core.sharedReview.config(p.sharedProjectId));
   core.router.register('sharedAccess.overrides', p => core.sharedAccess.overrides(p.sharedProjectId));
-  core.router.register('sharedAccess.override', p => core.sharedAccess.override(p));
+  core.router.register('sharedAccess.override', p => { contactsGate(core); return core.sharedAccess.override(p); });
   core.router.register('sharedAccess.revokeOverride', p => core.sharedAccess.revokeOverride(p));
 }

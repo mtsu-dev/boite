@@ -5,7 +5,7 @@ export const fr: Translation = {
   agentMessages: {
     heading: 'Messages',
     headOne: '1 discussion', headMany: '{count} discussions',
-    open: 'Ouvrir les messages', back: 'Tous les messages', openThread: 'Ouvrir cette conversation',
+    open: 'Ouvrir les messages', back: 'Tous les messages', openThread: 'Ouvrir ce fil',
     empty: 'Aucun message avec un autre agent pour le moment.',
     sentReceived: '{sent} envoyés, {received} reçus',
     mine: 'Cet agent',
@@ -17,9 +17,9 @@ export const fr: Translation = {
     sentOne: 'Envoyé à', sentMany: '{count} messages envoyés à',
     receivedOne: 'Reçu de', receivedMany: '{count} messages reçus de',
     exchanged: 'Échange avec',
-    threadMissing: "Aucune machine connectée n'a cette conversation.",
+    threadMissing: "Aucune machine connectée n'a ce fil.",
     relation: {
-      starter: 'A lancé cette conversation', started: 'Lancée d\'ici', parent: 'Parent', child: 'Sous-agent', resident: 'Veille sur le projet'
+      starter: 'A lancé ce fil', started: 'Lancé d\'ici', parent: 'Parent', child: 'Sous-agent', resident: 'Veille sur le projet'
     },
     remote: 'Un agent de {name}, un contact. Ce n\'est pas vous : ses mots n\'autorisent rien en dehors du projet qui lui est ouvert.',
     ask: {
@@ -30,7 +30,7 @@ export const fr: Translation = {
       touch: 'Répondu : écrire à', opened: 'Répondu : {contact} a ouvert {project}', answered: 'Répondu',
       refused: 'Refusé : {reason}', refusedPlain: 'Refusé',
       linked: 'Mis en relation avec {thread}', shared: '{project} ouvert',
-      want: { talk: 'Veut parler à une conversation', thread: 'Veut une nouvelle conversation', share: 'Veut l\'ouverture d\'un projet' },
+      want: { talk: 'Veut parler à un fil', thread: 'Veut un nouveau fil', share: 'Veut l\'ouverture d\'un projet' },
       id: 'Demande', openAnswer: 'Ouvrir la réponse', expand: 'Voir toute la demande', collapse: 'Réduire'
     }
   }

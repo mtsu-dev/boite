@@ -19,6 +19,6 @@ export const fr: Translation = {
     io: 'E/S',
     exit: 'Sortie',
     live: 'en cours',
-    empty: "Cette conversation n'a lancé aucun processus.",
+    empty: "Ce fil n'a lancé aucun processus.",
   }
 };

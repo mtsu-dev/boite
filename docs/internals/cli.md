@@ -433,6 +433,7 @@ brains and the user's notes name them; `boite help` shows only the new ones
 boite where                      thread, title, project, cwd, branch, worktree, agent
 boite thread move <project>      move this thread to another project (name, id or
                                  folder) when this turn ends
+boite thread done                put this thread in Done when this turn ends
 boite thread new <project> <brief> [--worktree] [--title <title>] [--machine <name>] [--model <provider/model>] [--effort <level>] [--speed <tier>] [context flags]
                                  start a thread in a project, on this machine or
                                  another of the group; its first answer comes
@@ -581,6 +582,15 @@ page as a new tab of the conversation's browser instead, which becomes the
 active tab of `boite browser`. A client watching the conversation brings it
 forward; one that opens the conversation later finds it among the tabs without
 the panel opening on it.
+
+`thread done` without an id, or with the agent's own, calls `agent.done`: the
+thread goes to Done when the current turn ends, or at once when idle, through
+the same checks as the user's Mark done. A refusal that only appears at the end
+of the turn (the user wrote again, background work still runs) leaves a system
+line and the thread open. A sub-thread, a bot's thread and an archived one are
+refused; a core restart drops a waiting request. Boite asks for it once a
+thread's pull requests are merged or closed
+([merged pull requests](development.md#merged-pull-requests)).
 
 `thread move` accepts a project ID, unique name or absolute registered folder.
 Ambiguous names are refused with matching IDs. It moves only the authenticated
@@ -818,8 +828,8 @@ each: key, value as JSON, the page and card it sits on and, quoted, the name
 that app shows (`agentCpuCapPercent 75 resources#limits "Plafond CPU de tous
 les agents"`). The list is `REQUESTABLE_SETTINGS` in
 `packages/contracts/src/setting-requests.ts`, then that app's experiments as
-`experiment.<id>` (`experiment.resident-agents true experiments#resident-agents
-"Agents"`); credentials, account ids and browser profiles are not in it.
+`experiment.<id>` (`experiment.whip true experiments#whip "Whip"`), the
+experiments its build still has a switch for; credentials, account ids and browser profiles are not in it.
 
 Language, experiments and names come from the apps: each says them after every
 hello and on every change (`client.preferences`, a paired phone included), with
@@ -837,7 +847,7 @@ way `ask` draws a question: the agent keeps working and the card outlives the
 turn and a restart. The value is JSON when it parses (`60`, `false`, `null`,
 `["https://a.example"]`) and the bare word otherwise. It is refused when the
 key is not in the list (the refusal lists them), when `settings.set` would
-refuse the value, when the setting already holds it (`experiment.resident-agents
+refuse the value, when the setting already holds it (`experiment.whip
 is already true`: the agent learns the state before the user has to say it),
 when a card on that key is already open in the thread, and for an experiment
 when the value is not true or false or no app has reported yet.
@@ -942,15 +952,20 @@ is now <value>`, `changed: the user set <bot>'s <key> to <value>, not
 <proposed>` or `refused: <bot>'s <key> stays <value>`, projects by name
 (`are` and `stay` for them).
 
-`settings bot create <name>` creates a bot at once, for a thread the user told
-to set one up; no card asks the user. The bot runs on the calling thread's own
+`settings bot create <name>` creates a bot for a thread the user told to set
+one up. Where the machine setting `agentBotCreation` is `ask` (a new install),
+it draws a card in the thread instead and prints `asked: <name>`, the card's
+id and the command that asks the owner to lift the card (`boite settings
+request agentBotCreation free --why "<reason>"`); the bot exists once the
+owner approves, and the answer reaches the thread like a setting request's.
+Where it is `free`, the bot is created at once. The bot runs on the calling thread's own
 route unless `--model <provider/model>` names another (resolved as `delegate
 spawn --model` does, from every installed model), at its model's default
 effort unless `--effort` names one, with full access like a bot made on the
 Bots page. `--domain <text>` is its role, `--instructions-file <path>` its
 instructions (32,000 characters at most) and `--project a,b` the projects
 entrusted to it, by name or id. A name a live bot already has, any case, is
-refused with that bot's id, as are an unknown model or project. It prints
+refused with that bot's id, as are an unknown model or project. Created at once, it prints
 `created: <name> (<id>)`, its route, its projects and its conversation, to
 reach it with `boite threads send`; the bot then introduces itself there. The
 MCP tool `boite_bot_create` does the same.

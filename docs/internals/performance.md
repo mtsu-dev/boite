@@ -155,7 +155,7 @@ the five largest threads); a full read decompresses every value and was 2 to
 3 times slower, up to 617 ms on a 260 MiB thread.
 
 A fresh session (model switch, resume after an update) carries the opening
-12,000 and the latest 64,000 characters of the thread. `continuationInput`
+12,000 and the latest 62,400 characters of the thread. `continuationInput`
 reads only the stored parts of the rest, without their `part_blobs` values,
 to count them, then reads whole the messages it keeps and the images it
 sends. Files keep their reference line per thread, so a later fresh session
@@ -852,7 +852,7 @@ them in its cache. A link that asks to save data, or reads as 3G or slower,
 skips that prefetch and fetches each one when it opens (`lib/prefetch.ts`). The
 tour is prefetched only for a device that has not seen it.
 
-Settings, the Bots page with its first snapshot (behind its experiment) and,
+Settings, the Bots page with its first snapshot and,
 for the owner, the terminal's xterm modules are fetched in the same idle pass.
 The Bots view lives as long as its machine's store: a return visit draws the
 last snapshot at once and refreshes it, and nothing follows `agents.changed`

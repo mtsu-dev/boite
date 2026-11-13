@@ -11,6 +11,7 @@ import { saveThread, withLoad } from './records.ts';
 import { markRunning } from './lifecycle.ts';
 import { RESUME_TEXT, modeRestartPrompt } from './resume-text.ts';
 import { forgetBrainContext } from './brain-context.ts';
+import { coordinationGuideUnsent } from './coordination-context.ts';
 import type { CarriedInput } from './turn-context.ts';
 
 /** The current attempt snapshots, shared with live controls and final settlement. */
@@ -99,7 +100,8 @@ export class TurnAttempts {
     this.#livePermissions.set(threadId, permissions);
     const settings = new LiveSettings(() => ({ effort: state.thread.effort, speed: state.thread.speed ?? null }), taken => {
       state.thread = { ...state.thread, ...taken };
-      if (state.running.execution) state.running.execution = { ...state.running.execution, ...taken };
+      // The transcript stated what the turn started on: the next turn's divider starts from that.
+      if (state.running.execution) state.running.execution = { startedOn: { effort: state.running.execution.effort, speed: state.running.execution.speed ?? null }, ...state.running.execution, ...taken };
       this.#core.journal.putTurn(state.running);
     });
     this.#liveSettings.set(threadId, { state, settings });
@@ -266,6 +268,7 @@ export class TurnAttempts {
         context.attachments = [];
         // The brain this context may have taken stays out of the prompt: the next turn sends it whole.
         forgetBrainContext(this.#core, threadId);
+        coordinationGuideUnsent(this.#core, threadId);
       } else if (note) {
         // Shown once the context is built, so a fresh session's history does not carry it twice.
         this.threads.noteSystem(threadId, turnId, note.prompt, note.label, 'turn.resumedAfterUpdate');

@@ -10,29 +10,31 @@
   import { agentRows, waitingOn, type AgentRowData } from '../lib/agents.svelte';
   import { watchTeams, type TeamRow } from '../lib/teams.svelte';
   import { contactsShown } from '../lib/contacts-rail.svelte';
+  import { contactsParts } from '../lib/contacts-entry';
   import { machineFilter } from '../lib/machine-filter.svelte';
   import { projectView } from '../lib/project-view.svelte';
   import { botEngine, newBot, newTeam } from '../lib/agents-view.svelte';
   import { separator } from '../lib/menu';
   import { contextMenu } from '../lib/context-menu.svelte';
   import { dragWindow } from '../lib/window-drag';
-  import { isMac } from '../lib/keybindings';
   import { railBotState, threadsNeedingYou, type RailBotState } from '../lib/app-rail';
   import { inbox } from '../lib/inbox.svelte';
   import { followActivityReturn } from '../lib/activity-return.svelte';
   import AgentAvatar from './agents/AgentAvatar.svelte';
   import { avatarLit } from '../lib/avatar-lit';
   import MachineStatus, { type MachineLine } from './MachineStatus.svelte';
-  import WhipButton from './WhipButton.svelte';
+  import { whipEntry } from '../lib/whip-entry.svelte';
   import FailMark from './FailMark.svelte';
   import Deferred from './Deferred.svelte';
   import { parts } from '../lib/deferred-parts';
+  import { QuotaReorder } from '../lib/quota-reorder.svelte';
+  import { railOrder } from '../lib/rail-order.svelte';
 
   /**
    * The column down the window's left edge, on a desktop, the same in every
    * view: where to be (the threads, Activity with what asks), then one picture
-   * per bot of every machine and the teams, then the machines when there is
-   * more than one, and Settings. One edge pip marks the open place; a bot's
+   * per team and per bot of every machine, in the order the user dragged them, then the machines when there is
+   * more than one, and Settings. The open place is the filled tile; a bot's
    * news is a badge on its picture. Contacts is the Bots column's other side
    * (agents/SideHead.svelte), its own place only with Bots off; the limits are a line at the foot of the list column
    * (QuotaLine.svelte). It stands on the window's chrome from top to bottom;
@@ -49,7 +51,6 @@
   const botsOn = $derived(experimentOn('resident-agents'));
   const teamsOn = $derived(botsOn && experimentOn('teams'));
   const contactsOn = $derived(contactsShown(store));
-  const macShell = window.__TAURI_INTERNALS__ !== undefined && isMac();
 
   // Every machine's bots stay read while the rail is drawn, so their pictures say how each one stands.
   followAgentDirectories(() => stores, () => botsOn);
@@ -62,6 +63,20 @@
     .flatMap(machine => agentRows(agentDirectory(machine.store).snapshot).map(row => ({ machine, row })))
     .sort((a, b) => Number(b.row.profile.pinned === true) - Number(a.row.profile.pinned === true) || a.row.profile.createdAt - b.row.profile.createdAt) : []);
   const teams = $derived(teamsOn ? watchedTeams() : []);
+  /**
+   * Bots and teams in one list the user orders by dragging a picture up or down (or the arrow keys, Home and End on a focused
+   * one): a press that does not move 6 px stays a click. Untouched, the teams lead, then the bots as sorted above.
+   */
+  const reorder = new QuotaReorder({
+    order: () => railOrder.current,
+    onreorder: () => async (order: string[]) => { railOrder.save(order); return true; },
+    item: '.bots > .slot', attribute: 'railId', grip: '.bot', scroller: (root) => root
+  });
+  type RailEntry = { key: string } & ({ kind: 'team'; team: TeamRow } | { kind: 'bot'; bot: Bot });
+  const entries = $derived(reorder.sort<RailEntry>([
+    ...teams.map(team => ({ key: `${team.machine.id}:team:${team.team.id}`, kind: 'team' as const, team })),
+    ...bots.map(bot => ({ key: `${bot.machine.id}:bot:${bot.row.profile.id}`, kind: 'bot' as const, bot }))
+  ], entry => entry.key));
   /** What Activity holds for the user: the threads waiting on them and what contacts ask. */
   const waiting = $derived(threadsNeedingYou(stores) + inbox.contacts);
   const waitingLabel = $derived(waiting === 1 ? strings.app.rail.waitingOne : fill(strings.app.rail.waitingMany, { count: String(waiting) }));
@@ -160,7 +175,7 @@
   let ContactRequestNotice = $state<typeof import('./home/ContactRequestNotice.svelte').default>();
   $effect(() => {
     if (!contactsOn || ContactRequestNotice) return;
-    void import('./home/ContactRequestNotice.svelte').then(module => { ContactRequestNotice = module.default; }).catch(() => {});
+    void contactsParts?.ContactRequestNotice().then(module => { ContactRequestNotice = module.default; }).catch(() => {});
   });
 </script>
 
@@ -180,9 +195,11 @@
 {/snippet}
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<nav class="app-rail" class:mac={macShell} aria-label={strings.app.rail.label} data-testid="app-rail" onmousedown={dragWindow}>
+<nav class="app-rail" aria-label={strings.app.rail.label} data-testid="app-rail" onmousedown={dragWindow}>
+  <!-- The rail's card, under its buttons: rounded and edged like the chat card (app.css `.framed`), its top level
+       with the chat card's, so the band above stays the window's to drag (and macOS's lights). -->
+  <span class="rail-card framed" aria-hidden="true"></span>
   <div class="slot" class:selected={onThreads}>
-    <span class="pip" aria-hidden="true"></span>
     <button type="button" class="rail-button" class:on={onThreads} aria-current={onThreads ? 'page' : undefined}
       aria-label={strings.sidebar.threads}
       data-testid="view-threads" onclick={showThreads}>
@@ -191,7 +208,6 @@
     {@render railName(strings.sidebar.threads)}
   </div>
   <div class="slot" class:selected={onActivity}>
-    <span class="pip" aria-hidden="true"></span>
     <button type="button" class="rail-button" class:on={onActivity} aria-current={onActivity ? 'page' : undefined}
       aria-label={waiting ? `${strings.mobile.activity}, ${waitingLabel}` : strings.mobile.activity}
       data-testid="nav-activity" onclick={showActivity}>
@@ -205,39 +221,43 @@
 
   {#if botsOn}
     <span class="separator" aria-hidden="true"></span>
-    <div class="bots" role="list" aria-label={strings.app.rail.bots} onpointerover={(event) => placeName(slotOf(event))} onfocusin={(event) => placeName(slotOf(event))} onscroll={placeShownNames}>
-      {#each bots as bot (`${bot.machine.id}:${bot.row.profile.id}`)}
-        {@const state = stateOf(bot)}
-        {@const selected = bot.machine.store === store && openBot === bot.row.profile.id}
-        {@const unread = (bot.row.status?.unread ?? 0) > 0}
-        <div class="slot" class:selected role="listitem">
-          <span class="pip" aria-hidden="true"></span>
-          <button type="button" class="bot" class:dim={state === 'paused'} aria-label={unread && !selected ? `${labelOf(bot.row.profile.name, state)}, ${strings.app.rail.unread}` : labelOf(bot.row.profile.name, state)}
-            aria-current={selected ? 'page' : undefined} data-testid="rail-bot" data-agent-id={bot.row.profile.id} data-state={state}
-            onclick={() => workspace.showAgents(bot.machine.store, bot.row.profile.id)}>
-            <AgentAvatar kind="profile" id={bot.row.profile.id} name={bot.row.profile.name} avatar={bot.row.profile.avatar} size={44} squircle={selected}
-              lit={avatarLit({ open: selected, attention: state === 'waiting', failed: state === 'failed', unread })} />
-            <!-- One overlay, in one slot: the user's turn first, then a failure, work, news. A count is Activity's alone. -->
-            {#if state === 'waiting'}<span class="badge" aria-hidden="true"><span class="needs"></span></span>
-            {:else if state === 'failed'}<span class="badge" aria-hidden="true"><FailMark /></span>
-            {:else if state === 'working'}<span class="badge work" aria-hidden="true"><svg viewBox="0 0 14 14"><circle class="track" cx="7" cy="7" r="5" /></svg></span>
-            {:else if unread && !selected}<span class="badge" data-testid="rail-bot-unread" aria-hidden="true"><span class="news"></span></span>{/if}
-          </button>
-          {@render railName(bot.row.profile.name, null, several ? machineName(bot.machine) : null)}
-        </div>
-      {/each}
-      {#each teams as row (`${row.machine.id}:${row.team.id}`)}
-        {@const selected = row.machine.store === store && openTeam === row.team.id}
-        {@const news = !!row.chat?.unread && !selected}
-        <div class="slot" class:selected role="listitem">
-          <span class="pip" aria-hidden="true"></span>
-          <button type="button" class="bot team" aria-label={news ? `${row.team.name}, ${strings.app.rail.unread}` : row.team.name} aria-current={selected ? 'page' : undefined}
-            data-testid="rail-team" data-team-id={row.team.id} onclick={() => openTeamChat(row)}>
-            <AgentAvatar kind="team" id={row.team.id} name={row.team.name} members={pictures(row)} size={44} squircle lit={avatarLit({ open: selected, unread: news })} />
-            {#if news}<span class="badge" aria-hidden="true"><span class="news"></span></span>{/if}
-          </button>
-          {@render railName(row.team.name)}
-        </div>
+    <div class="bots" class:reordering={reorder.dragging !== null} role="list" aria-label={strings.app.rail.bots} use:reorder.track onpointerover={(event) => placeName(slotOf(event))} onfocusin={(event) => placeName(slotOf(event))} onscroll={placeShownNames}>
+      {#each entries as entry (entry.key)}
+        {#if entry.kind === 'bot'}
+          {@const bot = entry.bot}
+          {@const state = stateOf(bot)}
+          {@const selected = bot.machine.store === store && openBot === bot.row.profile.id}
+          {@const unread = (bot.row.status?.unread ?? 0) > 0}
+          <div class="slot" class:selected class:dragging={reorder.dragging === entry.key} role="listitem" data-rail-id={entry.key}>
+            <button type="button" class="bot" class:dim={state === 'paused'} aria-label={unread && !selected ? `${labelOf(bot.row.profile.name, state)}, ${strings.app.rail.unread}` : labelOf(bot.row.profile.name, state)}
+              aria-current={selected ? 'page' : undefined} aria-keyshortcuts="ArrowUp ArrowDown Home End" data-testid="rail-bot" data-agent-id={bot.row.profile.id} data-state={state}
+              onpointerdown={(event) => reorder.start(event, entry.key)} onkeydown={(event) => reorder.keyboard(event, entry.key)}
+              onclick={() => workspace.showAgents(bot.machine.store, bot.row.profile.id)}>
+              <AgentAvatar kind="profile" id={bot.row.profile.id} name={bot.row.profile.name} avatar={bot.row.profile.avatar} size={44} squircle={selected}
+                lit={avatarLit({ open: selected, attention: state === 'waiting', failed: state === 'failed', unread })} />
+              <!-- One overlay, in one slot: the user's turn first, then a failure, work, news. A count is Activity's alone. -->
+              {#if state === 'waiting'}<span class="badge" aria-hidden="true"><span class="needs"></span></span>
+              {:else if state === 'failed'}<span class="badge" aria-hidden="true"><FailMark /></span>
+              {:else if state === 'working'}<span class="badge work" aria-hidden="true"><svg viewBox="0 0 14 14"><circle class="track" cx="7" cy="7" r="5" /></svg></span>
+              {:else if unread && !selected}<span class="badge" data-testid="rail-bot-unread" aria-hidden="true"><span class="news"></span></span>{/if}
+            </button>
+            {@render railName(bot.row.profile.name, null, several ? machineName(bot.machine) : null)}
+          </div>
+        {:else}
+          {@const row = entry.team}
+          {@const selected = row.machine.store === store && openTeam === row.team.id}
+          {@const news = !!row.chat?.unread && !selected}
+          <div class="slot" class:selected class:dragging={reorder.dragging === entry.key} role="listitem" data-rail-id={entry.key}>
+            <button type="button" class="bot team" aria-label={news ? `${row.team.name}, ${strings.app.rail.unread}` : row.team.name} aria-current={selected ? 'page' : undefined}
+              aria-keyshortcuts="ArrowUp ArrowDown Home End" data-testid="rail-team" data-team-id={row.team.id}
+              onpointerdown={(event) => reorder.start(event, entry.key)} onkeydown={(event) => reorder.keyboard(event, entry.key)}
+              onclick={() => openTeamChat(row)}>
+              <AgentAvatar kind="team" id={row.team.id} name={row.team.name} members={pictures(row)} size={44} squircle lit={avatarLit({ open: selected, unread: news })} />
+              {#if news}<span class="badge" aria-hidden="true"><span class="news"></span></span>{/if}
+            </button>
+            {@render railName(row.team.name)}
+          </div>
+        {/if}
       {/each}
     </div>
     <div class="slot">
@@ -250,7 +270,6 @@
   {#if contactsAlone}
     <span class="separator" aria-hidden="true"></span>
     <div class="slot" class:selected={onContacts}>
-      <span class="pip" aria-hidden="true"></span>
       <button type="button" class="rail-button" class:on={onContacts} aria-current={onContacts ? 'page' : undefined} aria-label={strings.contacts.heading}
         data-testid="rail-contacts" data-preload-view="home" onclick={() => store.showHome()}><Contact size={19} strokeWidth={1.75} /></button>
       {@render railName(strings.contacts.heading)}
@@ -263,14 +282,12 @@
   <div class="foot">
     <!-- Lit like the buttons above while it filters the list or its menu is open. -->
     <div class="slot status" class:selected={machineFilter.shown(machines) !== null}>
-      <span class="pip" aria-hidden="true"></span>
       <MachineStatus {store} filter={machineFilter.shown(machines)} onfilter={pickMachine} card={machinesName} />
     </div>
     <!-- Each with the same name card as every rail button; a slot with no button (nothing to update) takes no room. -->
     {#if !narrow.current}<div class="slot extra"><Deferred part={parts.UpdatesNotice} quiet>{#snippet children(UpdatesNotice)}<UpdatesNotice name={statusName} />{/snippet}</Deferred></div>{/if}
-    {#if experimentOn('whip')}<div class="slot extra"><WhipButton name={statusName} /></div>{/if}
+    {#if experimentOn('whip') && whipEntry.feature}{@const WhipButton = whipEntry.feature.WhipButton}<div class="slot extra"><WhipButton name={statusName} /></div>{/if}
     <div class="slot" class:selected={store.page === 'settings'}>
-      <span class="pip" aria-hidden="true"></span>
       <button type="button" class="ghost icon" class:on={store.page === 'settings'} aria-current={store.page === 'settings' ? 'page' : undefined}
         aria-label={strings.sidebar.settings} aria-describedby={settingsKey ? 'rail-settings-key' : undefined}
         data-testid="nav-settings" data-preload-view="settings" onclick={() => store.showSettings()}><Settings size={19} strokeWidth={1.75} /></button>
@@ -290,31 +307,19 @@
     flex-direction: column;
     align-items: center;
     gap: 8px;
-    padding: 10px 0 12px;
-    background: var(--color-frame);
+    padding: calc(var(--titlebar) + 10px) 0 calc(var(--frame-gap) + 12px);
     user-select: none;
     -webkit-user-select: none;
+    /* The card's own ground: the badges and counts are cut out of it. */
+    --rail-ground: var(--color-background);
   }
-  /* macOS draws its traffic lights over the window's top left corner. */
-  .app-rail.mac { padding-top: 40px; }
+  /* A card of the frame like the chat's, inset by the frame gap on the window's side and the list's, its top on
+     the chat card's. Behind every button (z-index -1 in the rail's own stacking context). */
+  .rail-card { position: absolute; inset: var(--titlebar) var(--frame-gap) var(--frame-gap); z-index: -1; pointer-events: none; }
   .grow { flex: 1; min-height: 8px; }
 
-  /* One place per button: its pip stands in the rail's left edge. */
+  /* One place per button. */
   .slot { position: relative; display: grid; place-items: center; width: 100%; }
-  /* Inset from the chrome's edge and clear of a 44 px picture's left side (14 px in), so it never cuts one. */
-  .pip {
-    position: absolute;
-    left: 3px;
-    top: 50%;
-    width: 4px;
-    height: 0;
-    border-radius: var(--radius-full);
-    background: var(--color-foreground);
-    transform: translateY(-50%);
-    transition: height var(--dur-2) var(--ease-out-quint);
-  }
-  .slot:hover .pip { height: 18px; }
-  .slot.selected .pip { height: 36px; }
 
   .rail-button, .bot {
     position: relative;
@@ -328,7 +333,7 @@
     color: var(--color-muted-foreground);
     box-shadow: none;
   }
-  /* Where you are is the one filled tile: the others stand bare on the chrome, and the pointer lights one a step
+  /* Where you are is the one filled tile: the others stand bare on the card, and the pointer lights one a step
      under the open place's fill, so hover never reads as a second selection. */
   .rail-button { background: transparent; }
   .rail-button:hover:not(:disabled) { background: var(--color-surface-2); color: var(--color-foreground); }
@@ -345,11 +350,11 @@
 
   /* The name card right of the rail, as a menu's surface: it waits a beat under the pointer, so a sweep down the
      rail does not flash every name, and shows at once for the keyboard. */
-  /* The card opens past the list column, over the main card's edge: never over a row's words. `--bar-left` is the
-     list's width and gap (App.svelte), the frame gap alone while the list is folded. */
+  /* The card opens against its button, over the list's edge, so it reads as the button's own: placed past the list
+     column, it stood 300 px from the pointer and went unseen (2026-11-13). */
   .rail-name {
     position: absolute;
-    left: calc(100% + var(--bar-left, 0px) + 4px);
+    left: calc(100% + 4px);
     top: 50%;
     z-index: 3;
     display: flex;
@@ -391,13 +396,17 @@
   .slot:hover .rail-name.machines-name, .slot:has(:global(:focus-visible)) .rail-name.machines-name { transform: none; }
   .separator { flex: none; width: 28px; height: 1px; background: var(--color-edge); }
   .bots { display: flex; flex: 0 1 auto; flex-direction: column; align-items: center; gap: 8px; width: 100%; min-height: 0; overflow-y: auto; scrollbar-width: none; }
-  /* Fixed against the window, so the scroller does not clip it (placeName). `--bar-left` as for every other card. */
-  .bots .rail-name { position: fixed; left: calc(var(--name-x, var(--app-rail)) + var(--bar-left, 0px)); top: var(--name-y, 0px); }
+  /* A picture held to move: it dims where it will land; the name cards stay away while it moves. */
+  .slot.dragging > .bot { opacity: 0.55; }
+  .bots.reordering { cursor: grabbing; }
+  .bots.reordering .rail-name { visibility: hidden; }
+  /* Fixed against the window, so the scroller does not clip it (placeName), beside its slot as every other card. */
+  .bots .rail-name { position: fixed; left: var(--name-x, var(--app-rail)); top: var(--name-y, 0px); }
 
   /* Activity's count in a small pill on the inbox glyph's lower right corner: a neutral raised ground with the
      digit in the amber ink (amber is a dot or a count, never a filled badge), ringed in the tile's own ground so
      it reads cut out of the glyph and held to it rather than floating beside it. */
-  .rail-button { --count-ring: var(--color-frame); }
+  .rail-button { --count-ring: var(--rail-ground); }
   .count {
     position: absolute;
     left: calc(50% + 2px);
@@ -419,8 +428,8 @@
   }
   .rail-button:hover:not(:disabled) { --count-ring: var(--color-surface-2); }
   .rail-button.on, .rail-button.on:hover:not(:disabled) { --count-ring: var(--color-surface-3); }
-  /* A bot's or a team's one overlay, bottom right of its picture, cut out of the chrome: the amber dot for its turn,
-     the failure's "!", the list rows' still accent arc for work (the open thread keeps the one live spinner), a full
+  /* A bot's or a team's one overlay, bottom right of its picture, cut out of the card: the amber dot for its turn,
+     the failure's "!", the list rows' turning accent arc for work, a full
      ink dot for news. */
   .badge {
     position: absolute;
@@ -431,17 +440,16 @@
     display: grid;
     place-items: center;
     border-radius: 50%;
-    background: var(--color-frame);
+    background: var(--rail-ground);
   }
   .needs, .news { width: 10px; height: 10px; border-radius: 50%; background: var(--color-live); }
   .news { background: var(--color-foreground); }
   .work svg { width: 14px; height: 14px; overflow: visible; }
   .work circle { fill: none; stroke-width: 2; }
-  .work .track { stroke: var(--color-accent); stroke-dasharray: 23.6 31.4; transform: rotate(-45deg); transform-origin: 7px 7px; }
+  .work .track { stroke: var(--color-accent); stroke-dasharray: 23.6 31.4; transform-origin: 7px 7px; }
+  .work svg { animation: spin 0.9s steps(54) infinite var(--loops); }
 
   .foot { display: flex; flex-direction: column; align-items: center; gap: 4px; align-self: stretch; }
-  /* Settings marks itself selected like the buttons above, but its hover stays quiet like its neighbours. */
-  .foot .slot:not(.selected):hover .pip { height: 0; }
   .foot :global(button.icon.on) { background: var(--color-surface-3); color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge); border-radius: var(--radius-rail); }
   .foot :global(button.icon) { width: var(--control-touch); height: var(--control-touch); color: var(--color-subtle); }
   .foot :global(button.icon:hover:not(:disabled)) { color: var(--color-foreground); }
@@ -450,7 +458,6 @@
   .foot :global(.machines:not(:has(.trigger))) { display: none; }
   .foot .status:not(:has(:global(.trigger))) { display: none; }
   .foot .extra:not(:has(:global(button))) { display: none; }
-  .foot .status:has(:global(.trigger[aria-expanded='true'])) .pip { height: 36px; }
   .foot :global(.machines.filtered .trigger), .foot :global(.machines .trigger[aria-expanded='true']) { background: var(--color-surface-3); color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge); border-radius: var(--radius-rail); }
   /* A filter names its machine beside the button: the rail has no room, so the button alone says it, lit. */
   .foot :global(.machines .name) { display: none; }
@@ -458,4 +465,7 @@
   @media (max-width: 720px) {
     .app-rail { display: none; }
   }
+  /* Still under reduced motion, as Spinner.svelte. */
+  @media (prefers-reduced-motion: reduce) { .work svg { animation: none; } }
+  :global(html[data-motion='reduced']) .work svg { animation: none; }
 </style>

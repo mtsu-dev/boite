@@ -149,7 +149,7 @@ export class PeerDesk {
           const { threadId, ...query } = readParams(envelope.payload);
           const entry = this.#side.directory().find(a => a.threadId === threadId);
           if (!entry) throw refused('read.threadId: not a thread open to other machines');
-          result = { contact: entry, ...readTranscript(this.#core.journal.db, threadId, query, id => this.#core.journal.streamingMessage(id)) };
+          result = readTranscript(this.#core.journal.db, threadId, entry, query, id => this.#core.journal.streamingMessage(id));
         } else if (envelope.operation === 'receipt') result = this.receipt(peer.coreId, envelope.payload);
         else if (envelope.operation === 'group.sync') result = this.#core.group.receive(peer, envelope.payload);
         else if (envelope.operation === 'group.push') result = this.#core.push.relayed(peer, envelope.payload);
@@ -237,7 +237,7 @@ export class PeerDesk {
       const entry = this.#side.contactDirectory(peer.coreId).find(a => a.threadId === threadId);
       if (!entry) throw refused('read.threadId: not a thread of a project opened to you');
       if (!this.#core.contacts.reach.mayRead(peer.coreId, threadId)) throw refused('read.threadId: this owner has not let you read the conversations of that project (readThreads)');
-      return { contact: redactSharedContact(entry), ...readTranscript(this.#core.journal.db, threadId, query, id => this.#core.journal.streamingMessage(id), redactSharedText) };
+      return readTranscript(this.#core.journal.db, threadId, redactSharedContact(entry), query, id => this.#core.journal.streamingMessage(id), redactSharedText);
     }
     if (operation === 'receipt') {
       // A malformed receipt is refused here, before any member is asked.

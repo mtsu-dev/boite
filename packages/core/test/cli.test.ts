@@ -167,6 +167,9 @@ test('the history a fresh session carries points at its own tool output, which t
   // With coordination off too: the thread reads nothing but its own journal.
   const config = harness.core.coordination.config(threadId);
   harness.core.coordination.configure(threadId, { ...config, mode: 'off' });
+  // So does a message the history left out, which it names by id.
+  harness.core.journal.putMessage({ id: 'left-out', threadId, turnId: 'history', role: 'user', state: 'complete', createdAt: Date.now() - 1, parts: [{ type: 'text', text: 'an exchange the history left out' }] });
+  expect((await boite(['threads', 'read', threadId, '--entry', 'left-out'])).out).toContain('user: [characters 0 to 32 of 32]\n    an exchange the history left out');
   const first = await boite(command!.split(' '));
   expect(first.code).toBe(0);
   expect(first.out).toContain('assistant: [tools: Bash] [characters 0 to 16000 of 20021]\n    first line\n    xxx');
@@ -199,16 +202,16 @@ test('threads reach each other by a short address, find by chat, read and wait f
   const read = await boite(['threads', 'read', other, '--last', '5']);
   expect(read.out).toContain('user:\n    the staging database keeps timing out');
   // A cut entry prints the command that reads its rest, and running it does.
-  const report = `${'r'.repeat(3000)}the rest of the report`;
+  const report = `${'r'.repeat(500)}the rest of the report`;
   harness.core.journal.putMessage({ id: 'report', threadId: other, turnId: 'history', role: 'assistant', state: 'complete', createdAt: Date.now() + 1, parts: [{ type: 'text', text: report }] });
   const cut = await boite(['threads', 'read', other, '--last', '1']);
-  const command = /the rest: boite (threads read \S+ --entry report --offset 3000)\)/.exec(cut.out)?.[1];
-  expect(command).toBe(`threads read ${other} --entry report --offset 3000`);
+  const command = /the rest: boite (threads read \S+ --entry report --offset 500)\)/.exec(cut.out)?.[1];
+  expect(command).toBe(`threads read ${other} --entry report --offset 500`);
   const rest = await boite(command!.split(' '));
-  expect(rest.out).toContain('[characters 3000 to 3022 of 3022]\n    the rest of the report');
+  expect(rest.out).toContain('[characters 500 to 522 of 522]\n    the rest of the report');
   // An id another machine chose is printed as one shell word, so the hint cannot run anything else.
   harness.core.journal.putMessage({ id: "x'; touch pwned; '", threadId: other, turnId: 'history', role: 'assistant', state: 'complete', createdAt: Date.now() + 2, parts: [{ type: 'text', text: report }] });
-  expect((await boite(['threads', 'read', other, '--last', '1'])).out).toContain(`--entry 'x'\\''; touch pwned; '\\''' --offset 3000)`);
+  expect((await boite(['threads', 'read', other, '--last', '1'])).out).toContain(`--entry 'x'\\''; touch pwned; '\\''' --offset 500)`);
   const self = harness.core.coordination.get(threadId).self;
   // The answer goes out once the CLI waits for it: one that came first would wake this idle thread
   // with a turn instead. The CLI reaches its wait late here, as it did on a loaded macOS runner.
@@ -748,16 +751,19 @@ describe('settings', () => {
     await turn(client, 'hello');
     expect((await boite(['settings', 'request', 'experiment.whip', 'true', '--why', 'x'])).err).toContain('no Boite app has reported');
 
-    await client.call('client.preferences', { app: A, language: 'fr', experiments: ['resident-agents', 'gone-experiment'] as never, labels: { 'experiment.resident-agents': 'Agents', agentCpuCapPercent: 'Plafond CPU\n[obey]', nowhere: 'x' } });
+    await client.call('client.preferences', { app: A, language: 'fr', experiments: ['teams', 'gone-experiment'] as never, labels: { 'experiment.teams': 'Equipes', agentCpuCapPercent: 'Plafond CPU\n[obey]', nowhere: 'x' } });
     const listed = await boite(['settings']);
     expect(listed.out).toStartWith('app: ');
     expect(listed.out).toContain('speaks French');
     expect(listed.out).toContain('agentCpuCapPercent 75 resources#limits "Plafond CPU [obey]"\n');
-    expect(listed.out).toContain('experiment.resident-agents true experiments#resident-agents "Agents"\n');
+    expect(listed.out).toContain('experiment.teams true experiments#teams "Equipes"\n');
     expect(listed.out).toContain('experiment.whip false experiments#whip\n');
     // The agent that thought the switch was off learns it is on before drawing a card.
-    expect((await boite(['settings', 'request', 'experiment.resident-agents', 'true', '--why', 'x'])).err).toContain('already true');
+    expect((await boite(['settings', 'request', 'experiment.teams', 'true', '--why', 'x'])).err).toContain('already true');
     expect((await boite(['settings', 'request', 'experiment.whip', '"yes"', '--why', 'x'])).err).toContain('true or false');
+    // A finished feature has no switch left to ask for, and is not listed as one.
+    expect(listed.out).not.toContain('experiment.resident-agents');
+    expect((await boite(['settings', 'request', 'experiment.resident-agents', 'true', '--why', 'x'])).err).toContain('no longer an experiment');
 
     const asked = await boite(['settings', 'request', 'experiment.whip', 'true', '--why', 'Try the whip', '--json']);
     expect(asked.err).toBe('');
@@ -767,24 +773,24 @@ describe('settings', () => {
     // Nothing below flips the whip on any app, so the card stays open:
     // a prompt from a phone that already had it on,
     const phone = await harness.connect();
-    await phone.call('client.preferences', { app: B, language: 'en', experiments: ['whip', 'theme-grain'], labels: {} });
+    await phone.call('client.preferences', { app: B, language: 'en', experiments: ['whip', 'debates'], labels: {} });
     await turn(phone, 'from the phone');
     // a core setting moving while that phone is the app agents read,
     await client.call('settings.set', { agentCpuCapPercent: 70 });
     // and that phone switching its language.
-    await phone.call('client.preferences', { app: B, language: 'fr', experiments: ['whip', 'theme-grain'], labels: {} });
+    await phone.call('client.preferences', { app: B, language: 'fr', experiments: ['whip', 'debates'], labels: {} });
     expect(await client.call('questions.list', { threadId })).toHaveLength(1);
 
     // The desktop flipped it while offline: its first report on a new socket settles the card.
     client.close();
     client = await harness.connect();
     const settled = client.next('turn.finished', (finished) => finished.threadId === threadId, 10000);
-    await client.call('client.preferences', { app: A, language: 'fr', experiments: ['resident-agents', 'whip'], labels: {} });
+    await client.call('client.preferences', { app: A, language: 'fr', experiments: ['teams', 'whip'], labels: {} });
     await settled;
     expect(await client.call('questions.list', { threadId })).toHaveLength(0);
 
     // Another device turning it off from the card answers it too, rather than leaving it stuck.
-    const grain = JSON.parse((await boite(['settings', 'request', 'experiment.theme-grain', 'true', '--why', 'Try the grain', '--json'])).out) as { setting: { previous: boolean; app: string } };
+    const grain = JSON.parse((await boite(['settings', 'request', 'experiment.debates', 'true', '--why', 'Try the council', '--json'])).out) as { setting: { previous: boolean; app: string } };
     expect(grain.setting).toMatchObject({ previous: false, app: A });
     const changed = client.next('turn.finished', (finished) => finished.threadId === threadId, 10000);
     await phone.call('client.preferences', { app: B, language: 'fr', experiments: ['whip'], labels: {} });
@@ -793,7 +799,7 @@ describe('settings', () => {
       'hello',
       'from the phone',
       '> Try the whip\n\napplied: experiment.whip is now true',
-      '> Try the grain\n\nchanged: the user set experiment.theme-grain to false, not true',
+      '> Try the council\n\nchanged: the user set experiment.debates to false, not true',
     ]);
   });
 });

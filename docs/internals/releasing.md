@@ -58,6 +58,11 @@ that runs a core on a phone, comes beside it as
   Keep every emitted file together when distributing this bundle. Lazy imports
   keep the SDKs off the start path. `bun run core` and the shell both prefer this
   bundle over the sources when it is there.
+  `packages/core/bin/build.ts` runs it and passes the build's kind and its
+  features as `--define` flags, read from the version in the core's
+  `package.json`, as `vite.config.ts` does for the UI and `bin/compile.ts` for
+  the compiled core: a Release bundle holds no code of a feature tagged
+  `nightly` or `dev` ([out of the build](experiments.md#out-of-the-build)).
 - `build:core:exe` compiles `packages/core/dist/boite-core`, with `.exe` on Windows. On x64 it embeds
   Bun's baseline runtime, which needs no AVX2. That runtime, and the other
   architecture's in a cross build, is not the running Bun, and `bun build
@@ -210,6 +215,12 @@ directory. Nightly uses `icons-nightly/`, the white mark on violet and magenta, 
 displays boite (de nuit) in the window title and tray. The in-app channel selector downloads the selected
 track, including an older stable version when leaving nightly.
 [Desktop updates](updates.md) covers restart behavior and data compatibility.
+
+A Release carries a plain version (`2.0.0`); a Nightly and a build from source
+carry a prerelease one (`2.0.0-nightly.20261111.1`, `2.0.0-beta.1`). That is
+what separates them at run time: [experiments](experiments.md) do not exist in
+a Release, in the app or in the core, and nothing else has to be set when a
+version is cut.
 
 Boite Dev remains a separate development install. It uses `com.boite.two.dev`,
 the product name Boite Dev and `boite2-dev`, with no automatic app updates.

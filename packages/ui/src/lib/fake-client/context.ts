@@ -66,6 +66,13 @@ import {
   type Turn,
   type Usage,
 } from '@boite/contracts';
+import { effectiveExperiments, experimentStartRefusal, holdExperimentalSettings } from '@boite/contracts';
+import { CLOSED_AGENT_DEFAULTS, OPEN_AGENT_DEFAULTS } from '@boite/contracts';
+
+/** `?agents=closed`: the two agent settings as a new install holds them. */
+function closedAgents(): boolean {
+  return typeof location !== 'undefined' && new URLSearchParams(location.search).get('agents') === 'closed';
+}
 import { RpcFailure } from '../client';
 import { FakeAgents } from '../fake-agents';
 import { checkEffort, checkModel, defaultModel } from './checks';
@@ -102,6 +109,12 @@ import { fakeMember } from './requests';
 export type FakeMethods = { [M in Exclude<RpcMethodName, `plugins.${string}` | `agents.${string}` | `workflows.${string}` | `resident.${string}`>]: (params: RpcParams<M>) => Promise<RpcResult<M>> };
 
 export interface FakeClientOptions {
+  /**
+   * The version its core says in the hello. A plain one (`2.0.0`) is a Release,
+   * where no experiment runs; unset is a source build, `2.0.0-beta.1`.
+   * `?fake=1&version=2.0.0` names one.
+   */
+  version?: string;
   /** Explicit peer clients share one core's composer records and attachment assets. */
   composerState?: FakeComposerState;
   /** Milliseconds between two streamed chunks. Tests pass 0. */
@@ -290,6 +303,12 @@ export class FakeContext {
   readonly usage = new Map<ThreadId, Usage>();
   /** Moves asked for during a turn, applied when it ends, as the core's `ThreadMove.waiting`. Memory only. */
   readonly waitingMoves = new Map<ThreadId, { projectId: string; by: 'user' | 'agent'; stopBackground: boolean | undefined; at: number }>();
+  /** Threads whose agent asked for Done during a turn, applied when it ends, as the core's `AgentDoneRequests`. Memory only. */
+  readonly waitingDone = new Set<ThreadId>();
+  /** The user's Mark done (`threads.archive` with `onlyIfIdle`), wired by `threadMethods`. */
+  markDone: (threadId: ThreadId) => Promise<unknown> = async () => { throw new Error('the fake thread methods are not wired'); };
+  /** Threads a detected merge found at work: checked again once their turn ends, as the core's `MergedPrAsk` does. */
+  readonly mergedPrAfterTurn = new Set<ThreadId>();
   /** Turns this session finished, added to the seeded ledger `usage.history` draws. */
   readonly finished: FakeFinishedTurn[] = [];
   usageSeeded = true;
@@ -329,8 +348,27 @@ export class FakeContext {
   clientPreferences: ClientPreferences | null = null;
   /** Each app's last report by its id, as the core's book keeps them. */
   readonly clientApps = new Map<string, ClientPreferences>();
-  /** What the fake machine's desktop app has on, as `client.desktopExperiments` says; null before it reported. */
+  /** What the fake machine's desktop app chose, as `client.desktopExperiments` says in `chosen`; null before it reported. */
   desktopExperiments: ExperimentId[] | null = null;
+
+  /**
+   * The experiments in force on this fake core, as the real one gates on them:
+   * its desktop app's, else the reporting app's, read for the build it is. A
+   * finished feature is always there and a Release keeps no experiment.
+   */
+  experimentsInForce(): ExperimentId[] {
+    return effectiveExperiments(this.desktopExperiments ?? this.clientPreferences?.experiments ?? [], this.core.version);
+  }
+  /** The settings in force, as the core's `SettingsStore.get`: `settings` is what is stored, and a Release reads the ones that are experiments as off. */
+  settingsInForce(): Settings {
+    return holdExperimentalSettings({ ...this.settings }, this.core.version);
+  }
+
+  /** As the core's `contactsGate`: a Release starts nothing new in an experiment, and still reads and removes what exists. */
+  startGate(id: ExperimentId): void {
+    const refusal = experimentStartRefusal(id, this.core.version);
+    if (refusal !== null) throw new RpcFailure({ code: RpcErrorCode.Refused, message: refusal, data: { reason: 'experiment-off' } });
+  }
   speech: SpeechConfig = { engine: 'local', language: '', apiProvider: 'groq', fallback: false, executable: '', modelPath: '', model: SPEECH_DEFAULT_MODEL };
   readonly speechStatus: SpeechStatus = { revision: 'fake-voice', engine: 'local', ready: true, localReady: true, groqKeySet: false, openrouterKeySet: false, installing: false, downloadedBytes: 0, totalBytes: 0, error: null, canInstallRuntime: true, models: fakeSpeechModels(), downloading: null, runtimeOutdated: false };
   readonly speechRequests = new Map<string, symbol>();
@@ -547,7 +585,10 @@ export class FakeContext {
       focusGuard: true,
       muteAgents: true,
       reapOrphans: true,
-      autoUpdateHarnesses: false
+      autoUpdateHarnesses: false,
+      // The demo machine reads as an install older than these two settings, as the core leaves one: open.
+      // `?agents=closed` shows a new install.
+      ...(closedAgents() ? CLOSED_AGENT_DEFAULTS : OPEN_AGENT_DEFAULTS)
     };
     // `?gateway=douane` or `cliproxyapi`: a gateway the owner saved and turned off, for a paired phone to switch on.
     const gateway = typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('gateway');
@@ -558,7 +599,7 @@ export class FakeContext {
     const hostname = options.hostname === undefined ? options.coreName ?? 'studio' : options.hostname;
     this.core = {
       ...(hostname ? { hostname } : {}),
-      version: '2.0.0-beta.1',
+      version: options.version ?? '2.0.0-beta.1',
       coreId,
       protocolVersion: PROTOCOL_VERSION,
       features: { draftPreparation: true, attachmentUploads: true, threadSnapshots: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, pluginGrants: true, projectBoard: true, deviceProjects: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, sharedProjects: 1, listChanges: true },

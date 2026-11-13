@@ -5,7 +5,8 @@ member reviews alone, read-only, without seeing the others, and gives a score
 out of 10 with its remarks. Use it for a second, third and fourth opinion on
 a diff, a plan or a design choice.
 
-Experimental: turn it on in Settings, Experiments, Council.
+Experimental, in Nightly builds only: turn it on in Settings, Experiments,
+Council.
 
 Nobody debates and nobody votes. The answers go back to the conversation that
 started the council, which can ask the same members for one more round. Each

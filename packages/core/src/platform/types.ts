@@ -169,6 +169,12 @@ export interface ProcessPlatform {
   windowCapture?(): Promise<WindowCapture | { unavailable: string }>;
   /** Hidden desktops of the user's session for `boite desktop`, loaded on first call; Windows only (`windows/hidden-desktop.ts`). */
   hiddenDesktops?(): Promise<HiddenDesktops>;
+  /**
+   * Holds the OS sleep inhibitor until the returned function is called, so the
+   * machine stays awake while agents work (`keep-awake.ts`). Null when this
+   * machine has none; `onLost` hears when a hold taken ends by itself.
+   */
+  keepAwake?(onLost: (reason: string) => void): (() => void) | null;
   retain(jobs: ProcessEventSink, guards: GuardEventSink): void;
   /** Resolves once nothing native is left holding the user's state: hooks, muted sessions. */
   release(): Promise<void>;

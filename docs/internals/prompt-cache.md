@@ -1,6 +1,6 @@
 # The prompt cache timer
 
-Settings > Experiments > Prompt cache timer adds a countdown to the context
+The prompt cache timer adds a countdown to the context
 meter and a detail section with its lifetime and source. It appears only while
 the thread is idle. The timer uses provider-reported writes or documented
 retention defaults; it does not observe the upstream cache or guarantee a hit.

@@ -9,11 +9,13 @@
   import { openQuestionPage } from '../lib/question-page';
   import { settingHeading } from '../lib/setting-requests';
   import { teamHeading } from '../lib/team-requests';
+  import { teamsBuilt } from '../lib/teams-entry';
   import Deferred from './Deferred.svelte';
   import { parts } from '../lib/deferred-parts';
   import InfoTip from './InfoTip.svelte';
   import SettingRequestCard from './SettingRequestCardLoader.svelte';
   import AgentSettingCard from './AgentSettingCardLoader.svelte';
+  import BotRequestCard from './BotRequestCard.svelte';
   import SubagentQuestions from './SubagentQuestions.svelte';
 
   /*
@@ -60,7 +62,8 @@
     if (!asked.some((question) => question.id === shownId)) { shownId = asked[0]?.id ?? null; questionOpen = true; }
   });
   /** A plain question draws its own head (`QuestionCard`): the fold sits in it, the pager on its own row over it. */
-  const plain = (question: Asked) => !question.secret && !question.setting && !question.agentSetting && !question.team;
+  // A build without the Teams has no team card (lib/teams-entry.ts): a request a Nightly left is a plain question there, so it can still be answered or refused.
+  const plain = (question: Asked) => !question.secret && !question.setting && !question.agentSetting && !(question.team && teamsBuilt());
   // A card's "Answer in writing" brings that question up.
   $effect(() => {
     const chosen = repliesOf(store).chosen;
@@ -159,7 +162,7 @@
       {/if}
       {#if !plain(shown)}
       <div class="activity-row question-row">
-        {#if shown.secret}<KeyRound size={16} />{:else if shown.setting}<Settings2 size={16} />{:else if shown.agentSetting}<Bot size={16} />{:else if shown.team}<Users size={16} />{:else}<MessageCircleQuestionMark size={16} />{/if}
+        {#if shown.secret}<KeyRound size={16} />{:else if shown.setting?.kind === 'bot'}<Bot size={16} />{:else if shown.setting}<Settings2 size={16} />{:else if shown.agentSetting}<Bot size={16} />{:else if shown.team}<Users size={16} />{:else}<MessageCircleQuestionMark size={16} />{/if}
         <button type="button" class="ghost objective question-toggle" aria-expanded={questionOpen}
           title={foldTitle(shown.id)} data-testid="activity-question-toggle"
           onclick={() => toggleQuestion(shown!.id)}>
@@ -191,10 +194,13 @@
           {:else if question.agentSetting}
           <AgentSettingCard {store} threadId={question.threadId} questionId={question.id} text={question.text} setting={question.agentSetting} answer={null} pending docked
             respond={(optionId) => store.answerQuestion(question.threadId, question.id, [optionId])} />
-          {:else if question.team}
+          {:else if question.team && teamsBuilt()}
           {@const team = question.team}
           <Deferred part={parts.TeamCard}>{#snippet children(TeamCard)}<TeamCard {store} questionId={question.id} text={question.text} {team} answer={null} pending docked
             respond={(optionId) => store.answerQuestion(question.threadId, question.id, [optionId])} />{/snippet}</Deferred>
+          {:else if question.setting?.kind === 'bot'}
+          <BotRequestCard {store} threadId={question.threadId} questionId={question.id} setting={question.setting} answer={null} pending docked
+            respond={(optionId) => store.answerQuestion(question.threadId, question.id, [optionId])} />
           {:else if question.setting}
           <SettingRequestCard {store} text={question.text} setting={question.setting} answer={null} pending docked
             respond={(optionId) => store.answerQuestion(question.threadId, question.id, [optionId])} />

@@ -15,7 +15,7 @@ import { needsUser } from '../thread-state';
 import { installStatesOf } from './accounts.svelte';
 import { observable } from './connection.svelte';
 import { reportPreferences } from '../client-preferences.svelte';
-import { heardDesktop } from '../experiments';
+import { desktopHeard, heardBuild, heardDesktop } from '../experiments';
 import { lightPage } from './reading-pages.svelte';
 import type { StoreContext } from './context';
 import { probeKey } from './models.svelte';
@@ -58,6 +58,8 @@ export function listen(ctx: StoreContext, client: Client): void {
           models.effortAttempts.clear();
           s.error = null;
           s.core = client.core;
+          // The primary machine's build decides which experiments exist.
+          heardBuild(s, s.core?.version);
           ctx.connection.clockOffset = client.clockOffset ?? 0;
           if (ctx.connection.localCore) noteThisComputer(s.core?.hostname);
           undo.discardExpired(s, s.core?.startedAt);
@@ -85,7 +87,7 @@ export function listen(ctx: StoreContext, client: Client): void {
   // After the state handler above, so a reconnect has its principal and core first.
   if (observable(client) && client.onClockOffset) ctx.off.push(client.onClockOffset((offset) => { if (current()) ctx.connection.clockOffset = offset; }));
   if (observable(client)) ctx.off.push(reportPreferences(client, current, experiments => heardDesktop(s, experiments, s.core?.coreId ?? null)));
-  on('client.desktopExperiments', ({ experiments }) => heardDesktop(s, experiments, s.core?.coreId ?? null));
+  on('client.desktopExperiments', (said) => heardDesktop(s, desktopHeard(said), s.core?.coreId ?? null));
 
   on('network.changed', () => networkChanged());
   on('core.updateChanged', snapshot => ctx.serverUpdater.apply(snapshot));
@@ -188,6 +190,13 @@ export function listen(ctx: StoreContext, client: Client): void {
   });
 
   on('turn.started', (turn) => threads.upsertTurn(turn.threadId, turn));
+  // A running turn's divider gained what its new session was handed; the rest of the turn stays what this client holds.
+  on('turn.switched', ({ threadId, turnId, switched }) => {
+    for (const thread of threads.threadSnapshots(threadId)) {
+      const index = lastIndexById(thread.turns, turnId);
+      if (index >= 0) thread.turns[index] = { ...thread.turns[index]!, switched };
+    }
+  });
   // A subscription window crossed the alert set on its account.
   on('quotas.alerted', (alert) => layout.notifyLimit(alert));
   on('turn.finished', (turn) => {
