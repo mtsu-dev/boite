@@ -110,13 +110,14 @@
   @media (max-width: 720px) {
     header button { min-height: var(--touch-target); }
     /* The version stays at the end of its agent's line, in one column with the others: the
-       version's actions (Update, Skip, Run its updater) join the row and start a line of their own. */
+       version's actions join the row. One action alone (Run its updater) stays on the agent's line while it fits;
+       two of them, or an install in progress, start a line of their own. */
     .agent-row { align-items: center; }
     .name { flex: 1 1 auto; min-width: 0; }
     .agent-row :global(.update) { display: contents; }
     .agent-row :global(.update > .version) { order: 1; margin-left: auto; }
     .agent-row :global(.update > :not(.version)), .agent-row > .progress, .agent-row > button { order: 3; }
-    .agent-row:has(:global(.update > :not(.version)), > .progress, > button)::after { content: ''; order: 2; flex-basis: 100%; }
+    .agent-row:has(:global(.update > :not(.version) ~ :not(.version)), > .progress, > button)::after { content: ''; order: 2; flex-basis: 100%; }
     .auto { min-height: var(--touch-target); }
   }
 </style>

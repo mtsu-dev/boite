@@ -78,5 +78,7 @@
   .add input { flex: 1; min-width: 0; }
   .add button { flex: none; }
   .error { margin: 4px 0 0; }
+  /* A phone: the field takes the card's width so its example reads whole, Add under it. */
+  @media (max-width: 720px) { .add { flex-wrap: wrap; } .add input { flex-basis: 100%; } .add button { flex: 1; } }
   @media (pointer: coarse) { .icon { min-width: var(--touch-target); min-height: var(--touch-target); } }
 </style>

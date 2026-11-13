@@ -115,7 +115,7 @@ describe('the map of Settings', () => {
     expect(ids('input')).toEqual(['keyboard', 'keybinding-file', 'voice']);
     expect(ids('conversations')).toEqual(['thread-list', 'conversations', 'notifications', 'agent-replies', 'archived', 'worktrees']);
     expect(ids('ai')).toEqual(['providers', 'local-acp', 'secrets', 'quotas', 'limit-resume', 'subscription-proxy', 'usage']);
-    expect(ids('agents')).toEqual(['brain', 'hooks', 'plugins', 'auto-compact', 'execution']);
+    expect(ids('agents')).toEqual(['brain', 'hooks', 'plugins', 'agents-alone', 'auto-compact', 'execution']);
     expect(ids('safeguards')).toEqual(['quiet', 'windows', 'window-exclusions', 'limits', 'browser-profiles', 'privacy', 'policy']);
     expect(ids('devices')).toEqual(['app', 'main-machine', 'group', 'machines', 'phone', 'origins']);
     expect(ids('version')).toEqual(['updates', 'agent-updates', 'experiments', 'cache-keepalive', 'background-compaction', 'device-stream']);
@@ -207,7 +207,7 @@ describe('the phone, on the same map', () => {
     expect(ids('input', true)).toEqual(['voice']);
     expect(ids('conversations', true)).toEqual(['conversations', 'agent-replies', 'archived', 'worktrees']);
     expect(ids('ai', true)).toEqual(['providers', 'local-acp', 'secrets', 'quotas', 'limit-resume', 'subscription-proxy', 'usage']);
-    expect(ids('agents', true)).toEqual(['brain', 'hooks', 'plugins', 'auto-compact']);
+    expect(ids('agents', true)).toEqual(['brain', 'hooks', 'plugins', 'agents-alone', 'auto-compact']);
     expect(ids('safeguards', true)).toEqual(['quiet', 'windows', 'window-exclusions', 'limits', 'browser-profiles', 'privacy', 'policy']);
     expect(ids('devices', true)).toEqual(['main-machine', 'group', 'machines', 'phone']);
     expect(ids('version', true)).toEqual(['updates', 'agent-updates', 'experiments', 'cache-keepalive', 'background-compaction', 'device-stream']);
