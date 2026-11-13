@@ -3,7 +3,7 @@ import { Database } from 'bun:sqlite';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { BRANCH_SCHEMA, journalSchema, schemaState } from './dev-data.ts';
+import { BRANCH_SCHEMA, journalSchema, lockHolder, schemaState } from './dev-data.ts';
 import { parseArgs, statePath } from './instance.ts';
 
 const ROOT = resolve(import.meta.dir, '..', '..');
@@ -49,6 +49,7 @@ const temporaryDir = (out: string): string => /^data\s+(\S+)/m.exec(out)?.[1] ??
 afterEach(async () => {
   for (const box of boxes.splice(0)) {
     await instance(box, 'stop');
+    rmSync(statePath(box.devDir).replace(/\.json$/, '.log'), { force: true });
     rmSync(box.home, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
   // Only the processes this file spawned.
@@ -158,6 +159,39 @@ describe('bun run dev:instance', () => {
     expect(existsSync(file)).toBe(false);
     // And a start is not held back by it.
     expect((await instance(box)).code).toBe(0);
+  }, TIMEOUT);
+
+  test('the whole cycle works where the platform gives no start time (macOS): ps names the run', async () => {
+    if (process.platform === 'win32') return;
+    const box = fresh();
+    // What macOS answers: no start key and no start time from the platform.
+    box.env.BOITE_DEV_INSTANCE_IDENTITY = 'ps';
+    const started = await instance(box);
+    expect(started.code).toBe(0);
+    const state = JSON.parse(readFileSync(statePath(box.devDir), 'utf8')) as { pid: number; identity: string };
+    const lstart = Bun.spawnSync(['ps', '-o', 'lstart=', '-p', String(state.pid)], { env: { ...box.env, LC_ALL: 'C' } }).stdout.toString().trim();
+    expect(lstart).not.toBe('');
+    expect(state.identity).toBe(`ps:${lstart}`);
+    expect((await instance(box, 'status')).out).toContain(`running ${/ready (\S+)/.exec(started.out)![1]}`);
+    expect((await instance(box, 'cli', 'projects')).code).toBe(0);
+    expect((await instance(box, 'url')).code).toBe(0);
+    expect((await instance(box)).code).toBe(3);
+    const stopped = await instance(box, 'stop');
+    expect(stopped.code).toBe(0);
+    expect(stopped.out).toContain(`stopped `);
+    expect(lockHolder(box.devDir)).toBeNull();
+  }, TIMEOUT);
+
+  test('a start whose process cannot be identified is stopped at once, never announced as ready', async () => {
+    const box = fresh();
+    box.env.BOITE_DEV_INSTANCE_IDENTITY = 'none';
+    const started = await instance(box);
+    expect(started.code).toBe(1);
+    expect(started.out).not.toContain('boite-core ready');
+    expect(started.err).toContain('gave no start time for the core it just started');
+    expect(started.err).toContain('was stopped');
+    expect(existsSync(statePath(box.devDir))).toBe(false);
+    expect(lockHolder(box.devDir)).toBeNull();
   }, TIMEOUT);
 
   test('Dev data held by another core is named, left alone, and still open to --copy', async () => {

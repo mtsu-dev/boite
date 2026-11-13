@@ -146,10 +146,27 @@ function alive(pid: number): boolean {
 
 /** One run of a pid, as the OS names it: a later process wearing the same pid reads differently. */
 function processIdentity(pid: number): string | null {
-  const key = processPlatform.startKey?.(pid) ?? null;
-  if (key !== null) return key;
-  const startedAt = processPlatform.startedAt(pid);
-  return startedAt === null ? null : String(startedAt);
+  // For the tests: `ps` answers as macOS does, where the platform gives neither; `none` as a system with no answer at all.
+  const only = process.env.BOITE_DEV_INSTANCE_IDENTITY;
+  if (only === 'none') return null;
+  if (only !== 'ps') {
+    const key = processPlatform.startKey?.(pid) ?? null;
+    if (key !== null) return key;
+    const startedAt = processPlatform.startedAt(pid);
+    if (startedAt !== null) return String(startedAt);
+  }
+  if (process.platform === 'win32') return null;
+  // macOS: the platform reads no start time there. `ps` prints when the run began, in one fixed locale.
+  const ps = spawnSync('ps', ['-o', 'lstart=', '-p', String(pid)], { env: { ...process.env, LC_ALL: 'C' }, encoding: 'utf8' });
+  const lstart = ps.status === 0 ? ps.stdout.trim() : '';
+  return lstart === '' ? null : `ps:${lstart}`;
+}
+
+/** A process this call just spawned and cannot name later is not left running: nothing could stop it safely. */
+async function refuseUnidentified(child: ReturnType<typeof spawn>, what: string, exited: () => boolean, rest = ''): Promise<never> {
+  if (!exited()) child.kill();
+  await waitFor(() => (exited() ? true : null), 15_000, () => false);
+  throw new Refusal(`This system gave no start time for the ${what} it just started (pid ${child.pid}), so a later stop could not tell it from another process: it was stopped and nothing is running.${rest}`, 1);
 }
 
 /** Is `pid` still the process this script started? Unknown counts as no: nothing is signalled on a guess. */
@@ -213,6 +230,7 @@ async function startCore(options: Options, dataDir: string, temporary: boolean, 
   const pid = child.pid;
   if (pid === undefined) throw new Refusal('the core could not be started', 1);
   const identity = processIdentity(pid);
+  if (identity === null) await refuseUnidentified(child, 'core', () => exited);
   const url = await waitFor(() => READY.exec(tail(log, 200))?.[1] ?? null, options.timeoutMs, () => exited);
   if (url === null) {
     // Only the process this call spawned.
@@ -255,6 +273,7 @@ async function startShell(options: Options, devDir: string, log: string): Promis
   const shellPid = child.pid;
   if (shellPid === undefined) throw new Refusal('the shell could not be started', 1);
   const shellIdentity = processIdentity(shellPid);
+  if (shellIdentity === null) await refuseUnidentified(child, 'Boite Dev shell', () => exited);
   // The shell starts its own core, which writes `core.json` once it listens.
   const core = await waitFor(() => {
     const record = coreFile(directory);
@@ -266,7 +285,9 @@ async function startShell(options: Options, devDir: string, log: string): Promis
     throw new Refusal(`the Boite Dev shell ${exited ? 'exited' : 'was stopped'} before its core was ready. Its output (${log}):\n${tail(log)}`, 1);
   }
   child.unref();
-  return { ...core, identity: processIdentity(core.pid), shellPid, shellIdentity };
+  const identity = processIdentity(core.pid);
+  if (identity === null) await refuseUnidentified(child, 'Boite Dev shell', () => exited, ` Its core (pid ${core.pid}) gave none either and may still be running.`);
+  return { ...core, identity, shellPid, shellIdentity };
 }
 
 async function start(options: Options): Promise<void> {
@@ -357,6 +378,7 @@ async function stop(): Promise<void> {
     const reused = [state.pid, ...(state.shellPid === undefined ? [] : [state.shellPid])].filter(alive);
     removeTemporary(state);
     rmSync(statePath(devDir), { force: true });
+    rmSync(state.log, { force: true });
     say(reused.length > 0
       ? `The instance this checkout started is gone: pid ${reused.join(' and ')} ${reused.length > 1 ? 'are' : 'is'} no longer the processes this checkout started, so nothing was signalled. Its state was removed.`
       : `The instance this checkout started (pid ${state.pid}) was already gone. Its state was removed.`);
@@ -382,6 +404,7 @@ async function stop(): Promise<void> {
   }
   removeTemporary(state);
   rmSync(statePath(devDir), { force: true });
+  rmSync(state.log, { force: true });
   say(`stopped ${state.url} (pid ${state.pid})${state.mode === 'dev' ? `; the Dev data ${state.dataDir} is kept` : `; removed ${state.dataDir}`}`);
 }
 

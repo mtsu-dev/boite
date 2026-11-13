@@ -626,10 +626,13 @@ It also prints how to open, drive and stop the instance:
   `projects add` would land there. The subcommand passes none of them on and
   names the instance's data directory.
 - `stop` asks the core to shut down over `POST /shutdown`, waits for the
-  process captured at spawn and removes temporary data. The state keeps each
-  PID with the start time the OS gives that run (`startKey` on Linux): a PID
+  process captured at spawn and removes temporary data and the output
+  file. The state keeps each
+  PID with the start time the OS gives that run (`startKey` on Linux, the
+  creation time on Windows, `ps -o lstart=` on macOS): a PID
   that is now another process is never signalled, and `stop` then only clears
-  the stale state. One instance per checkout.
+  the stale state. A start whose process gives no start time is stopped at
+  once and refused. One instance per checkout.
 
 On the real Dev data the core keeps the port its last run bound, as the app
 does. Inherited `BOITE_*` variables are not passed to the core, so a run from
