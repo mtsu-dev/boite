@@ -33,8 +33,9 @@ export interface FakeArchiveState {
 const UNKNOWN_CACHE_MS = 60 * 60_000;
 
 /** The core's `warmForQuestion`: ask only while the agent's prompt cache still holds the conversation. */
-export function warmForQuestion(thread: Pick<Thread, 'promptCache'>, lastFinishedAt: number | null, now: number): boolean {
+export function warmForQuestion(thread: Pick<Thread, 'promptCache' | 'model' | 'accountId'>, lastFinishedAt: number | null, now: number): boolean {
   const cache = thread.promptCache;
+  if (cache && (cache.model !== thread.model || cache.accountId !== thread.accountId)) return false;
   if (cache) return now < cache.at + cache.ttlSeconds * 1000;
   return lastFinishedAt !== null && now - lastFinishedAt < UNKNOWN_CACHE_MS;
 }

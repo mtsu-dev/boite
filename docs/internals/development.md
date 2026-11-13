@@ -461,7 +461,8 @@ the checkout's current branch from `git status`, not the thread's recorded
 starting branch. The repository's cached fetch remotes identify origin, then
 explicitly linked URLs are read directly with `gh pr view`, even when they are
 absent from the repository's page. Every linked PR is checked before accepting
-a merge: another open linked PR holds the question. A linked merge needs the
+a merge: another open linked PR holds the question, and so does a link to
+another repository whose last read state is open. A linked merge needs the
 exact tip but may have another head name, because agents often push
 `HEAD:fix/...`. The same proof (`proveMerged`) lets the
 [settled worktree cleanup](#settled-worktree-cleanup) remove a branch, so it
@@ -504,14 +505,17 @@ rows and admitting eight idle candidates within a 30-second budget for proof and
 validation.
 
 A question costs a full turn, so it goes only while the provider's prompt cache
-still holds the conversation (`thread.promptCache`, `warmForQuestion`), or
+still holds the conversation for the thread's current model and account
+(`thread.promptCache`, `warmForQuestion`), or
 within an hour of the last turn when the provider reports no cache. A colder
 conversation is left as it is: nobody pays to reread an old history for this.
 Each PR URL is asked about once (`asked` in `merged-pr-archive:<id>`). Restore
 of a conversation the agent put in Done dismisses its PRs, so it is not asked
 again for the same work. A pull request watch whose wake reports a merge or a
 close of the last open PR carries the same question (`WATCH_DONE_HINT`) in that
-wake and marks those PRs asked, so the conversation gets one turn, not two. A
+wake and marks those PRs asked, so the conversation gets one turn, not two:
+while a watch holds a close it has not told, the sweep and detections wait for
+that wake. The hint follows the same ask-once and restore rules. A
 merge made by the agent's own account wakes no watch: the sweep asks then.
 
 `agent.done` (`threads/agent-done.ts`) puts only the caller's own top-level

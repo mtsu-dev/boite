@@ -144,7 +144,7 @@ export function doneQuestion(settled: SettledPullRequests): { text: string; labe
       'If something remains (a follow-up, a check, an open question), leave it open and carry on or end your turn.',
       'Either way, answer in one short line.',
     ].join('\n'),
-    label: `Pull requests settled (${settled.summary}): is this thread done?`,
+    label: `Is this thread done? ${settled.summary}`,
   };
 }
 

@@ -6,7 +6,7 @@ import { runCli, watchStatus } from '../src/cli.ts';
 import { connect } from '../src/client.ts';
 import { Core } from '../src/core.ts';
 import { Retirements } from '../src/delegation/retirement.ts';
-import { archiveState } from '../src/merged-pr-archive-state.ts';
+import { archiveState, archiveStateKey } from '../src/merged-pr-archive-state.ts';
 import { PullRequestWatches } from '../src/pull-request-watch.ts';
 import { evaluate, initialMemory, mergeChanges, parseDetail, parseRemarks, stillTrue, wakeMessage, type Remark, type WatchDetail } from '../src/pull-request-watch-read.ts';
 import { parseProtection, parseRules, withRequired } from '../src/pull-request-required.ts';
@@ -620,8 +620,14 @@ test('a merge or a close by someone else is told with what still waited, a faile
   expect(harness!.core.linkedPullRequests.saved(threadId)[0]?.state).toBe('MERGED');
 });
 
-for (const others of ['settled', 'open'] as const) {
-  test(`a merge by someone else ${others === 'settled' ? 'that settles every linked pull request hints at Done in the wake and counts as asked' : 'beside another open linked pull request carries no Done hint'}`, async () => {
+const hintCases = {
+  settled: 'that settles every linked pull request hints at Done in the wake and counts as asked',
+  open: 'beside another open linked pull request carries no Done hint',
+  asked: 'already asked about, then reopened and closed again, carries no Done hint',
+  restored: 'on a checkout the user restored from Done carries no Done hint',
+} as const;
+for (const others of Object.keys(hintCases) as (keyof typeof hintCases)[]) {
+  test(`a merge by someone else ${hintCases[others]}`, async () => {
     const { owner, threadId, github, drive } = await watchedThread();
     const core = harness!.core;
     // A worktree conversation: the kind Boite asks about Done.
@@ -631,6 +637,8 @@ for (const others of ['settled', 'open'] as const) {
     const [link] = core.linkedPullRequests.saved(threadId);
     const other = 'https://github.com/example/repo/pull/8';
     if (others === 'open') core.journal.setSetting(`linked-pull-requests:${threadId}`, [link!, { ...link!, url: other, number: 8, title: 'Follow-up' }]);
+    if (others === 'asked') core.mergedPrAsk.asked(threadId, [URL]);
+    if (others === 'restored') core.journal.setSetting(archiveStateKey(threadId), { generation: 1, restoredCheckout: { projectId: core.threads.require(threadId).projectId, cwd, branch: 'feature' } });
     await owner.call('threads.watchPullRequest', { threadId, url: URL });
     await drive();
     github.state = 'MERGED';
@@ -648,7 +656,7 @@ for (const others of ['settled', 'open'] as const) {
       expect(archiveState(core.journal, threadId).asked).toEqual([URL]);
     } else {
       expect(text).not.toContain(WATCH_DONE_HINT);
-      expect(archiveState(core.journal, threadId).asked ?? []).toEqual([]);
+      expect(archiveState(core.journal, threadId).asked ?? []).toEqual(others === 'asked' ? [URL] : []);
     }
     expect(core.threads.require(threadId).archived).toBe(false);
   });

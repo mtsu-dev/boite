@@ -1,4 +1,4 @@
-import { doneQuestion, settledLinks, type LinkedPullRequest, type SettledPullRequests, type ThreadSummary } from '@boite/contracts';
+import { doneQuestion, pullRequestAddress, settledLinks, type LinkedPullRequest, type SettledPullRequests, type ThreadSummary } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { messageOf } from './errors.ts';
 import { linkedPullRequestSignature } from './linked-pull-requests.ts';
@@ -20,9 +20,10 @@ const UNKNOWN_CACHE_MS = 60 * 60_000;
  * line. A thread past it stays as it is, for the user to mark done; a watch's
  * wake still carries the hint, since that turn happens anyway.
  */
-export function warmForQuestion(thread: Pick<ThreadSummary, 'promptCache'>, lastFinishedAt: number | null, now = Date.now()): boolean {
+export function warmForQuestion(thread: Pick<ThreadSummary, 'promptCache' | 'model' | 'accountId'>, lastFinishedAt: number | null, now = Date.now()): boolean {
   const cache = thread.promptCache;
-  if (cache) return now < cache.at + cache.ttlSeconds * 1000;
+  // Another model or account starts cold, as for the keepalive.
+  if (cache) return cache.model === thread.model && cache.accountId === thread.accountId && now < cache.at + cache.ttlSeconds * 1000;
   return lastFinishedAt !== null && now - lastFinishedAt < UNKNOWN_CACHE_MS;
 }
 
@@ -141,6 +142,22 @@ export class MergedPrAsk {
     if (thread.archived || thread.parentThreadId || thread.agentSessionId || !thread.projectId || !thread.branch || thread.branch === 'HEAD') return false;
     const project = this.#core.journal.getProject(thread.projectId);
     return !!project && !project.archived && project.path !== thread.cwd && this.#core.journal.getSetting(`project-auto-archive-merged-pr:${project.id}`) !== false;
+  }
+  /**
+   * The pull requests a watch's wake may ask about: every linked one settled,
+   * one at least not asked about yet, and not a checkout the user restored.
+   */
+  watchHint(thread: ThreadSummary): SettledPullRequests | null {
+    if (!this.mayAsk(thread)) return null;
+    const settled = settledLinks(this.#core.linkedPullRequests.saved(thread.id));
+    return settled && this.#fresh(thread, settled.urls) ? settled : null;
+  }
+  /** One of `urls` not asked about or dismissed yet, on a checkout the user did not restore. */
+  #fresh(thread: ThreadSummary, urls: readonly string[]): boolean {
+    const state = archiveState(this.#core.journal, thread.id);
+    const restored = state.restoredCheckout;
+    if (restored && restored.cwd === thread.cwd && restored.branch === thread.branch && restored.projectId === thread.projectId) return false;
+    return urls.some(url => !state.asked?.includes(url) && !state.dismissed?.includes(url));
   }
   /** A watch's wake already asked about these: the sweep does not ask again. */
   asked(threadId: string, urls: readonly string[]): void {
@@ -267,6 +284,9 @@ export class MergedPrAsk {
     const links = this.#core.linkedPullRequests.saved(thread.id);
     const proof = await askRead(this.#pullRequests.proveMerged(thread, signal), signal);
     if (proof) {
+      // The proof read every link of its own repository from GitHub; a link to another one, as last read, still open holds the question.
+      const home = repositoryKey(proof.url);
+      if (links.some(pr => repositoryKey(pr.url) !== home && pr.state !== 'MERGED' && pr.state !== 'CLOSED')) return null;
       const others = links.filter(pr => pr.url.toLowerCase() !== proof.url.toLowerCase() && (pr.state === 'MERGED' || pr.state === 'CLOSED'));
       return { proof, settled: { urls: [proof.url, ...others.map(pr => pr.url)], summary: [`#${proof.number} merged`, ...others.map(pr => `#${pr.number} ${pr.state.toLowerCase()}`)].join(', ') } };
     }
@@ -283,11 +303,11 @@ export class MergedPrAsk {
       const { settled, proof } = found;
       const current = this.#core.journal.getThread(thread.id);
       if (!current || (!detected && current.updatedAt !== thread.updatedAt) || !this.eligible(current, detected) || archiveState(this.#core.journal, thread.id).generation !== generation) return false;
-      const state = archiveState(this.#core.journal, thread.id);
-      const restored = state.restoredCheckout;
       // Asked once per pull request: a restored thread or one the agent kept open is not asked again for the same work.
-      const fresh = settled.urls.filter(url => !state.asked?.includes(url) && !state.dismissed?.includes(url));
-      if (fresh.length === 0 || (restored && restored.cwd === thread.cwd && restored.branch === thread.branch && restored.projectId === thread.projectId)) { this.#remember(thread, signature, detected); return false; }
+      if (!this.#fresh(thread, settled.urls)) { this.#remember(thread, signature, detected); return false; }
+      // A close the watch saw wakes the agent with the question in that turn: no second one here.
+      if (this.#core.pullRequestWatches.holdsClose(thread.id)) return false;
+      const state = archiveState(this.#core.journal, thread.id);
       if (proof) {
         this.#core.journal.setSetting(archiveStateKey(thread.id), { ...state, binding: proof });
         if (!await askRead(this.#pullRequests.validateMergedCheckout(thread, proof, signal), signal)) { this.#remember(thread, signature, detected); return false; }
@@ -313,6 +333,11 @@ export class MergedPrAsk {
     }
     return false;
   }
+}
+
+/** `host/owner/name` of a pull request URL, lowercase; null for one that names none. */
+function repositoryKey(url: string): string | null {
+  try { const address = pullRequestAddress(url); return `${address.host}/${address.repository}`.toLowerCase(); } catch { return null; }
 }
 
 /** A late provider result cannot resume a closed pass, even if it ignored cancellation. */

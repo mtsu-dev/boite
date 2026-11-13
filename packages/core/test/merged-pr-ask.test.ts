@@ -943,8 +943,11 @@ test('a thread the user restored from Done is not asked about its merged pull re
 test('a thread whose prompt cache expired, or whose last turn is over an hour old with no cache, is not asked', async () => {
   const f = await fixture();
   const original = harness.core.threads.require(f.threadId);
-  const cache = (at: number): PromptCache => ({ at, ttlSeconds: 300, source: 'reported', readTokens: 1000, model: null, accountId: original.accountId });
+  const cache = (at: number): PromptCache => ({ at, ttlSeconds: 300, source: 'reported', readTokens: 1000, model: original.model, accountId: original.accountId });
   harness.core.journal.putThread({ ...original, promptCache: cache(Date.now() - 301_000) });
+  expect(await service.sweep()).toBe(0);
+  // A live cache of the model the thread left is cold for the next turn.
+  harness.core.journal.putThread({ ...original, promptCache: { ...cache(Date.now() - 10_000), model: 'another-model' } });
   expect(await service.sweep()).toBe(0);
   const lastTurn = harness.core.journal.lastTurn(f.threadId)!.finishedAt!;
   const clock = spyOn(Date, 'now').mockReturnValue(lastTurn + 60 * 60_000 + 1);
@@ -959,3 +962,26 @@ test('a thread whose prompt cache expired, or whose last turn is over an hour ol
   await expectAsked(f.threadId);
 });
 
+
+test('a merge proof waits while a linked pull request in another repository is still open', async () => {
+  const f = await fixture();
+  harness.core.journal.setSetting(`linked-pull-requests:${f.threadId}`, [linkOf(7, 'MERGED'), { ...linkOf(9, 'OPEN'), url: 'https://github.com/example/other/pull/9', repository: 'example/other', headRepository: 'example/other' }]);
+  expect(await service.sweep()).toBe(0);
+  service.observe(f.threadId);
+  await Bun.sleep(100);
+  expectNotAsked(f.threadId);
+});
+
+test('a close a pull request watch has yet to tell is left to its wake, which asks in that turn', async () => {
+  const f = await fixture();
+  const holds = spyOn(harness.core.pullRequestWatches, 'holdsClose').mockReturnValue(true);
+  try {
+    expect(await service.sweep()).toBe(0);
+    service.observe(f.threadId);
+    await Bun.sleep(100);
+    expectNotAsked(f.threadId);
+  } finally { holds.mockRestore(); }
+  // Told, or ended without telling: the sweep asks.
+  expect(await service.sweep()).toBe(1);
+  await expectAsked(f.threadId);
+});
