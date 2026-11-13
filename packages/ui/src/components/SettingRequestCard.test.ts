@@ -58,7 +58,7 @@ test('Apply writes the setting through settings.set, the card closes as applied 
     expect(query('[data-testid=setting-reason]').textContent).toBe('Builds stall under the cap');
     expect(query('[data-testid=setting-previous]').textContent).toBe('75%');
     expect(query('[data-testid=setting-proposed]').textContent).toBe('60%');
-    expect(query('[data-testid=setting-place]').textContent).toBe('Memory and processes › Resource limits');
+    expect(query('[data-testid=setting-place]').textContent).toBe('Safeguards › Resource limits');
 
     query<HTMLButtonElement>('[data-testid=setting-apply]').click();
     await vi.waitFor(() => expect(store.pendingQuestions.some((question) => question.id === questionId)).toBe(false));
@@ -136,7 +136,7 @@ test('Show in Settings opens the card it names without answering, and Refuse tel
     query<HTMLButtonElement>('[data-testid=setting-show]').click();
     flushSync();
     expect(store.page).toBe('settings');
-    expect(store.settingsTab).toBe('resources');
+    expect(store.settingsTab).toBe('safeguards');
     expect(store.settingsSection).toMatchObject({ id: 'limits', flash: true });
     // Opening the page answers nothing: the card waits for the setting to move.
     expect(store.pendingQuestions.some((question) => question.id === questionId)).toBe(true);
@@ -158,7 +158,7 @@ test('the app tells its core the language and experiments it has, and an experim
     // The agent reads what the user sees: the switches of the Experiments page, named as the page names them.
     await vi.waitFor(async () => expect((await client.call('agent.settings', { threadId: 't-trace' })).app).toEqual({ language: 'en', device: null, client: null }));
     const read = await client.call('agent.settings', { threadId: 't-trace' });
-    expect(read.settings.find((reading) => reading.key === 'experiment.whip')).toMatchObject({ value: false, label: 'Whip', page: 'experiments', section: 'whip' });
+    expect(read.settings.find((reading) => reading.key === 'experiment.whip')).toMatchObject({ value: false, label: 'Whip', page: 'version', section: 'whip' });
     // A finished feature is not a setting any more: it has no reading and no card.
     expect(read.settings.find((reading) => reading.key === 'experiment.resident-agents')).toBeUndefined();
     await expect(client.call('settings.request', { threadId: 't-trace', reason: 'x', key: 'experiment.resident-agents', value: true })).rejects.toThrow('no longer an experiment');

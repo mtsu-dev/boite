@@ -409,7 +409,7 @@ console.log(JSON.stringify({ accounts: [{ email: [env.BOITE_PLUGIN_ID, env.BOITE
       expect({ code, err }).toEqual({ code: 0, err: '' });
       expect(out).toContain('card: Preview opens Settings > Plugins with https://github.com/example/standup at v1.2.0 read');
       const [card] = await owner.call('questions.list', { threadId });
-      expect(card).toMatchObject({ text: 'Adds a standup command', setting: { kind: 'open', page: 'plugins', plugin: { url: 'https://github.com/example/standup', ref: 'v1.2.0' } } });
+      expect(card).toMatchObject({ text: 'Adds a standup command', setting: { kind: 'open', page: 'agents', plugin: { url: 'https://github.com/example/standup', ref: 'v1.2.0' } } });
       expect(inspected).toEqual([]);
 
       // No reason, or an http source: refused before any card.

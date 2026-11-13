@@ -11,7 +11,8 @@
   import { Autosave, toggled, typed, whole } from '../lib/autosave.svelte';
   import { threadTone } from '../lib/status-tone';
 
-  let { store }: { store: Store } = $props();
+  /** `part`: one of its two cards alone, where the map of Settings places them on two pages (`SettingsShell.svelte`). */
+  let { store, part }: { store: Store; part?: 'limits' | 'tasks' } = $props();
   const uid = $props.id();
 
   let cpuCap = $state(untrack(() => store.settings?.agentCpuCapPercent ?? 75));
@@ -50,12 +51,15 @@
 </script>
 
 <div class="page" data-testid="resources-page">
+  {#if !part}
   <header>
     <div>
       <h1>{strings.settings.tabs.resources}</h1>
     </div>
   </header>
+  {/if}
 
+  {#if part !== 'tasks'}
   <section class="card" id="settings-limits">
     <h2 class="ui-label-box"><span class="ui-label">{strings.protection.limits}</span><InfoTip gather topic={strings.protection.limits} text="" testid="section-info" /><SaveStatus save={limitsSave} /></h2>
     <label for="{uid}-memory-protection" class="switch-row">
@@ -88,6 +92,8 @@
       </dl>
     {:else}<p class="hint">{strings.resources.unknown}</p>{/if}
   </section>
+  {/if}
+  {#if part !== 'limits'}
   <!-- The live list, led by the switch that closes what a closed thread left running. -->
   <section class="card" id="settings-tasks">
     <h2 class="tasks-heading"><span class="ui-label">{strings.protection.tasks}</span><span class="live-dot" aria-hidden="true"></span></h2>
@@ -139,6 +145,7 @@
       </table></div>
     </section>
   {/each}
+  {/if}
 </div>
 
 <style>

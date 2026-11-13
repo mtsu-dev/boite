@@ -28,7 +28,8 @@
    * listed at all. Under them, the switch of every account that has limits to
    * read: the one place monitoring is turned on or off.
    */
-  let { store, showTitle = true }: { store: Store; showTitle?: boolean } = $props();
+  /** `proxyCard`: the proxy's switch and its form. The map of Settings holds them once, in the proxy's own card (`SettingsShell.svelte`). */
+  let { store, showTitle = true, proxyCard = true }: { store: Store; showTitle?: boolean; proxyCard?: boolean } = $props();
   const uid = $props.id();
   /** Providers is a desktop settings page and the owner's: a phone is offered no way to it. */
   const phoneWidth = new MediaQuery('(max-width: 720px)');
@@ -128,7 +129,7 @@
       </button>
     {/if}
   </header>
-  <GatewaySwitch {store} />
+  {#if proxyCard}<GatewaySwitch {store} />{/if}
   {#if lockedBy(store.policy, 'quotaReads')}<p class="hint policy-note" data-testid="limits-policy">{strings.policy.quotasOff}</p>{/if}
   {#if proxyEnabled}<div class="actions proxy-switch">
     {#if !gatewayNative}<button type="button" class="ghost small" onclick={() => native = false} data-testid="subscription-proxy-show-dashboard"><span class="ui-label">{strings.subscriptionProxy.showDashboard}</span></button>{/if}
@@ -201,7 +202,7 @@
       </label>
     </section>
   {/if}
-  {#if store.owner}<details class="disclosure"><summary><span class="ui-label">{strings.subscriptionProxy.configure}</span></summary><SubscriptionProxySettings {store} /></details>{/if}
+  {#if store.owner && proxyCard}<details class="disclosure"><summary><span class="ui-label">{strings.subscriptionProxy.configure}</span></summary><SubscriptionProxySettings {store} /></details>{/if}
   {/if}
 </div>
 

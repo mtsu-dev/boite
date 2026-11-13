@@ -83,7 +83,7 @@
   }
 </script>
 
-<section class="card local-acp" data-testid="local-acp">
+<section class="card local-acp" id="settings-local-acp" data-testid="local-acp">
   <div class="head">
     <h2 class="ui-label-box"><span class="ui-label">{strings.localAcp.heading}</span><InfoTip topic={strings.localAcp.heading} text={strings.localAcp.hint} /></h2>
     {#if !open}

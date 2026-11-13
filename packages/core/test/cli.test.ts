@@ -680,7 +680,7 @@ describe('settings', () => {
     const { questionId } = JSON.parse(asked.out) as { questionId: string };
     const [card] = await client.call('questions.list', { threadId });
     expect(card).toMatchObject({ id: questionId, text: 'Builds stall under the cap', async: true, allowText: false, options: [{ id: 'refuse' }] });
-    expect(card?.setting).toEqual({ kind: 'change', key: 'agentCpuCapPercent', value: 60, previous: 75, page: 'resources', section: 'limits', sensitive: false });
+    expect(card?.setting).toEqual({ kind: 'change', key: 'agentCpuCapPercent', value: 60, previous: 75, page: 'safeguards', section: 'limits', sensitive: false });
     expect((await boite(['settings', 'request', 'agentCpuCapPercent', '50', '--why', 'again'])).err).toContain('already open');
     // Applied is the core's to say: an answer cannot claim it.
     expect(await thrown(client.call('questions.answer', { threadId, questionId, optionIds: ['applied'] }))).toThrow('does not offer');
@@ -765,7 +765,7 @@ describe('settings', () => {
     const asked = await boite(['settings', 'request', 'experiment.whip', 'true', '--why', 'Try the whip', '--json']);
     expect(asked.err).toBe('');
     const [card] = await client.call('questions.list', { threadId });
-    expect(card?.setting).toEqual({ kind: 'change', key: 'experiment.whip', value: true, previous: false, page: 'experiments', section: 'whip', sensitive: false, app: A });
+    expect(card?.setting).toEqual({ kind: 'change', key: 'experiment.whip', value: true, previous: false, page: 'version', section: 'whip', sensitive: false, app: A });
 
     // Nothing below flips the whip on any app, so the card stays open:
     // a prompt from a phone that already had it on,

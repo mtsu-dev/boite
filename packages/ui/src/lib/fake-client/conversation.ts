@@ -23,7 +23,7 @@ export const SETTING_MARKERS: [string, { reason: string } & ({ key: string; valu
   ['[settings]', { reason: 'Your Rust builds stall at the CPU cap. 90% leaves room for the game you are running.', key: 'agentCpuCapPercent', value: 90 }],
   ['[settings-lan]', { reason: 'To pair your phone over Wi-Fi, this computer has to be reachable on the local network.', key: 'listenOnLan', value: true }],
   ['[settings-experiment]', { reason: 'The whip only shows with the Whip experiment on.', key: 'experiment.whip', value: true }],
-  ['[settings-open]', { reason: 'Claude is not signed in yet. Sign in here, then send me a message.', page: 'accounts', section: 'provider-claude' }],
+  ['[settings-open]', { reason: 'Claude is not signed in yet. Sign in here, then send me a message.', page: 'ai', section: 'provider-claude' }],
 ];
 
 /** `[agent-settings]`: the fake agent asks to entrust a project to the first agent, the way `boite settings bot request` would. */

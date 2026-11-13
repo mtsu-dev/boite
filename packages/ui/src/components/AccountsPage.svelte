@@ -31,7 +31,8 @@
    * the row's chevron. A family (Antigravity and its CLI) is one row, each way
    * in its own block inside it with its own switch.
    */
-  let { store }: { store: Store } = $props();
+  /** `extras`: the cards under the providers. The map of Settings places each itself (`SettingsShell.svelte`). */
+  let { store, extras = true }: { store: Store; extras?: boolean } = $props();
   const uid = $props.id();
 
   /** One pending code per account, so two logins never share a field. */
@@ -718,12 +719,14 @@
       {#each groups.off as row (row.id)}{@render providerRow(row, true)}{/each}
     </div>
   {/if}
+  {#if extras}
   {#if store.owner}<LocalAcpCard {store} />{/if}
   {#if store.owner}<HarnessUpdatesCard {store} />{/if}
   {#if store.owner}<SubscriptionProxySettings {store} />{/if}
   <!-- What agents sign in with beyond a provider: the keys they ask for in a card.
        The browser's logins have their own entry (BrowserPage.svelte). -->
   <SecretsCard />
+  {/if}
 </div>
 
 <style>

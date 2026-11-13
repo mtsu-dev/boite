@@ -18,9 +18,13 @@ test('Show and Open are offered only where this client draws the target card', (
   expect(settingsReachable(open('advanced', 'origins'), { owner: true, phone: true })).toBe(false);
   expect(settingsReachable(open('machines', 'devices'), { owner: true, phone: true })).toBe(false);
   expect(settingsReachable(open('advanced', 'origins'), { owner: true, phone: false })).toBe(true);
-  // Windows and sound sit on General, the owner's only, a page of its own on a phone too.
-  expect(REQUESTABLE_SETTINGS.focusGuard).toMatchObject({ page: 'general', section: 'quiet' });
-  expect(REQUESTABLE_SETTINGS.muteAgents).toMatchObject({ page: 'general', section: 'quiet' });
+  // Windows and sound sit on Safeguards, the owner's only; a phone has them on its conversations page.
+  expect(REQUESTABLE_SETTINGS.focusGuard).toMatchObject({ page: 'safeguards', section: 'quiet' });
+  expect(REQUESTABLE_SETTINGS.muteAgents).toMatchObject({ page: 'safeguards', section: 'quiet' });
+  expect(settingsReachable(open('safeguards', 'quiet'), { owner: true, phone: true })).toBe(true);
+  expect(settingsReachable(open('safeguards', 'quiet'), { owner: false, phone: false })).toBe(false);
+  expect(settingsReachable(open('devices', 'origins'), { owner: true, phone: true })).toBe(false);
+  expect(settingsReachable(open('devices', 'origins'), { owner: true, phone: false })).toBe(true);
   expect(settingsReachable(open('general', 'quiet'), { owner: true, phone: true })).toBe(true);
   expect(settingsReachable(open('general', 'quiet'), { owner: true, phone: false })).toBe(true);
   expect(settingsReachable(open('general', 'quiet'), { owner: false, phone: false })).toBe(false);

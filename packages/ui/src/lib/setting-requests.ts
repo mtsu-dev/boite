@@ -5,7 +5,9 @@
  * are in `packages/contracts/src/setting-requests.ts`, the core's cards in
  * `packages/core/src/threads/cards.ts`.
  */
-import { EXPERIMENT_STAGES, experimentOf, type AutoCompactMoment, type ProviderSummary, type RequestableKey, type RequestableSetting, type SettingAsk, type SettingsPage } from '@boite/contracts';
+import { EXPERIMENT_STAGES, REQUESTABLE_SETTINGS, experimentOf, isRequestableSetting, type AutoCompactMoment, type ProviderSummary, type RequestableKey, type RequestableSetting, type SettingAsk, type SettingsPage, type SettingsPageName } from '@boite/contracts';
+import { cardOf, desktopHas, legacyRoute, placeOf, type LegacyTab, type SettingsCardId } from './settings-tabs';
+import { cardWords } from './settings-index';
 import { experimentCopy } from './experiment-copy';
 import { experimentsShown } from './experiments.svelte';
 import { formatLocale } from './i18n.svelte';
@@ -108,96 +110,73 @@ export function settingValueText(key: RequestableKey, value: unknown, providers:
   return JSON.stringify(value);
 }
 
-export function settingsPageLabel(page: SettingsPage): string {
-  const tabs = strings.settings.tabs;
-  const labels: Record<SettingsPage, string> = {
-    general: tabs.general,
-    appearance: tabs.appearance,
-    keyboard: tabs.keyboard,
-    voice: strings.speech.heading,
-    accounts: tabs.accounts,
-    plugins: tabs.plugins,
-    brain: strings.brain.heading,
-    usage: tabs.usage,
-    limits: strings.usage.limits,
-    'task-manager': strings.taskManager.title,
-    resources: tabs.resources,
-    machines: tabs.machines,
-    advanced: tabs.advanced,
-    experiments: tabs.experiments,
-  };
-  return labels[page];
+/**
+ * Where a card points on the map of Settings (`settings-tabs.ts`). A change
+ * names its setting, whose place this build knows whatever the core that
+ * asked said; a card that only opens Settings names a page, one of the nine
+ * or one from before them.
+ */
+export function settingPlace(setting: SettingAsk): { page: SettingsPage; section: string | null } {
+  if (setting.kind === 'change' && isRequestableSetting(setting.key)) {
+    const known = REQUESTABLE_SETTINGS[setting.key];
+    return placeOf(known.page, known.section);
+  }
+  return placeOf(setting.page, setting.section);
+}
+
+/** A page's name as the nav lists it; a page from before the map by the page its content went to. */
+export function settingsPageLabel(page: SettingsPageName): string {
+  return strings.settingsMap.pages[placeOf(page, null).page];
 }
 
 /** A card's name on its page, when the app names it; a provider's card by the provider's name. */
 export function settingsSectionLabel(section: string, providers: readonly ProviderSummary[] = []): string | null {
   if (section.startsWith('provider-')) return providers.find((provider) => provider.id === section.slice('provider-'.length))?.name ?? null;
-  const settings = strings.settings;
-  const labels: Record<string, string> = {
-    'thread-list': settings.threadList,
-    conversations: settings.inConversation,
-    notifications: settings.notificationsHeading,
-    archived: settings.archived.heading,
-    worktrees: settings.worktrees.heading,
-    app: settings.app,
-    privacy: strings.telemetry.heading,
-    theme: settings.display,
-    reading: settings.reading,
-    workspace: settings.workspace,
-    buttons: strings.controls.heading,
-    'brain-folder': strings.brain.folder,
-    hooks: strings.hooks.heading,
-    quiet: strings.protection.quiet,
-    limits: strings.protection.limits,
-    tasks: strings.protection.tasks,
-    machines: strings.machines.heading,
-    updates: strings.appUpdate.updates,
-    'agent-updates': strings.harnessUpdates.heading,
-    phone: strings.phone.heading,
-    execution: settings.execution,
-    origins: strings.machines.browserOrigins,
-    'auto-compact': settings.autoCompact,
-    'device-stream': settings.deviceStream,
-    'background-compaction': settings.backgroundCompaction,
-  };
-  return labels[section] ?? null;
+  if (section === 'brain-folder') return strings.brain.folder;
+  const card = cardOf(section);
+  return card ? cardWords()[card.id as SettingsCardId].title : null;
 }
 
-/** Pages a paired device's Settings leaves out: `OWNER_TABS` in `SettingsShell.svelte`. */
-const OWNER_PAGES: readonly SettingsPage[] = ['accounts', 'plugins', 'resources', 'brain'];
+/** The phone's pages from before the map that a paired device's Settings leaves out. */
+const OWNER_PAGES: readonly LegacyTab[] = ['accounts', 'plugins', 'resources', 'brain'];
 /** Cards of the shared pages that only the owner's Settings draws there. */
-const OWNER_SECTIONS: readonly string[] = ['quiet', 'worktrees', 'privacy', 'execution', 'origins', 'auto-compact', 'device-stream', 'background-compaction'];
+const OWNER_SECTIONS: readonly string[] = ['quiet', 'agent-replies', 'worktrees', 'privacy', 'execution', 'origins', 'auto-compact', 'device-stream', 'background-compaction'];
 /**
- * What a phone browser's Settings (`MobileSettings.svelte`) draws: the pages
- * it opens whole, then the cards it has of the others. Keep it in step with
- * that component's `page`.
+ * What a phone browser's Settings (`MobileSettings.svelte`) draws, by its
+ * pages from before the map: the pages it opens whole, then the cards it has
+ * of the others. Keep it in step with that component's `page`.
  */
-const PHONE_PAGES: readonly SettingsPage[] = ['appearance', 'accounts', 'voice', 'usage', 'limits', 'task-manager', 'experiments', 'brain'];
-const PHONE_CARDS: Partial<Record<SettingsPage, readonly string[]>> = {
+const PHONE_PAGES: readonly LegacyTab[] = ['appearance', 'accounts', 'voice', 'usage', 'limits', 'task-manager', 'experiments', 'brain'];
+const PHONE_CARDS: Partial<Record<LegacyTab, readonly string[]>> = {
   resources: ['limits', 'tasks'],
   machines: ['machines', 'group'],
-  general: ['archived', 'worktrees', 'conversations', 'quiet'],
+  general: ['archived', 'worktrees', 'conversations', 'quiet', 'agent-replies'],
   advanced: ['auto-compact'],
 };
 
 /**
  * Whether this client's Settings has the card a settings card points at. A
- * button that would land on Home instead is not offered.
+ * button that would land on another page instead is not offered.
  */
 export function settingsReachable(setting: SettingAsk, client: { owner: boolean; phone: boolean }): boolean {
-  const section = setting.section;
+  const place = settingPlace(setting);
+  if (!client.phone) return desktopHas(place.page, place.section, client.owner);
+  // The phone still lists the pages from before: the route is read back to the one that holds the card there.
+  const old = setting.kind === 'open' ? legacyRoute(setting.page, setting.section, client.owner) : legacyRoute(place.page, place.section, client.owner);
+  const section = old.section;
   // A Release has no Experiments page.
-  if (setting.page === 'experiments' && !experimentsShown()) return false;
-  if (!client.owner && (OWNER_PAGES.includes(setting.page) || (section !== null && OWNER_SECTIONS.includes(section)))) return false;
-  if (!client.phone || PHONE_PAGES.includes(setting.page)) return true;
-  const cards = PHONE_CARDS[setting.page];
+  if (old.tab === 'experiments' && !experimentsShown()) return false;
+  if (!client.owner && (OWNER_PAGES.includes(old.tab) || (section !== null && OWNER_SECTIONS.includes(section)))) return false;
+  if (PHONE_PAGES.includes(old.tab)) return true;
+  const cards = PHONE_CARDS[old.tab];
   if (cards === undefined) return false;
   // Resources and Machines open as pages of their own; General and Advanced only through one of their cards.
-  return section === null ? setting.page === 'resources' || setting.page === 'machines' : cards.includes(section);
+  return section === null ? old.tab === 'resources' || old.tab === 'machines' : cards.includes(section);
 }
 
-/** `Resources › Limits`, the trail under a card. */
+/** `Safeguards › Resource limits`, the trail under a card. */
 export function settingPlaceText(setting: SettingAsk, providers: readonly ProviderSummary[] = []): string {
-  const section = setting.section === null ? null : settingsSectionLabel(setting.section, providers);
-  return [settingsPageLabel(setting.page), section].filter((part): part is string => part !== null).join(' › ');
+  const place = settingPlace(setting);
+  const section = place.section === null ? null : settingsSectionLabel(place.section, providers);
+  return [strings.settingsMap.pages[place.page], section].filter((part): part is string => part !== null).join(' › ');
 }
