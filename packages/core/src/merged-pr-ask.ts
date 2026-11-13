@@ -316,6 +316,8 @@ export class MergedPrAsk {
       // No await between the final state check and the turn.
       const latest = this.#core.journal.getThread(thread.id);
       if (!latest || !this.eligible(latest, detected) || archiveState(this.#core.journal, thread.id).generation !== generation) return false;
+      // A close the watch received or told during the validation is its wake's to ask.
+      if (this.#core.pullRequestWatches.holdsClose(thread.id) || !this.#fresh(latest, settled.urls)) return false;
       const { text, label } = doneQuestion(settled);
       try {
         this.#core.threads.startTurn(thread.id, { prompt: text, display: label }, { kind: 'pull-request' });

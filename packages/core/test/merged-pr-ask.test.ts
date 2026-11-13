@@ -981,6 +981,14 @@ test('a close a pull request watch has yet to tell is left to its wake, which as
     await Bun.sleep(100);
     expectNotAsked(f.threadId);
   } finally { holds.mockRestore(); }
+  // A close the watch receives while the checkout is being validated is left to it too.
+  let calls = 0;
+  const late = spyOn(harness.core.pullRequestWatches, 'holdsClose').mockImplementation(() => ++calls > 1);
+  try {
+    expect(await service.sweep()).toBe(0);
+    expect(calls).toBe(2);
+    expectNotAsked(f.threadId);
+  } finally { late.mockRestore(); }
   // Told, or ended without telling: the sweep asks.
   expect(await service.sweep()).toBe(1);
   await expectAsked(f.threadId);
