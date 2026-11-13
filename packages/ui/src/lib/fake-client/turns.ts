@@ -1,5 +1,5 @@
 /** The turn engine: start, stream and stop a turn, the way the echo driver answers. */
-import { effectiveCompaction, previewPrompt, RpcErrorCode, threadActive, turnIsNews, type AgentLetter, type Attachment, type Message, type MessagePart, type PreviewReference, type Thread, type ThreadId, type Turn, type TurnInFlightData, type Usage } from '@boite/contracts';
+import { effectiveCompaction, previewPrompt, RpcErrorCode, threadActive, turnIsNews, type AgentLetter, type Attachment, type Message, type MessagePart, type PreviewReference, type Thread, type ThreadId, type Turn, type TurnInFlightData, type TurnSwitch, type Usage, selectionDiffers, statedSelection } from '@boite/contracts';
 import { decodedBytes } from '../attachments';
 import { RpcFailure } from '../client';
 import { DIFF_NEW, DIFF_OLD, DIFF_PATH, DOC_TEXT, DOC_TITLE, IMAGE_BASE64, ASYNC_QUESTION_OPTIONS, ASYNC_QUESTION_TEXT, SETTING_MARKERS, SPAWN_MARKER, AGENT_SETTING_MARKER, AGENT_SETTING_REASON, AGENT_MODEL_MARKER, AGENT_MODEL_REASON } from './conversation';
@@ -71,8 +71,11 @@ export function startTurn(ctx: FakeContext, threadId: ThreadId, prompt: string, 
     id: `turn-${++ctx.seq}`, threadId, status: 'running', queuedAt: at,
     startedAt: at, finishedAt: null, usage: null, error: null, execution
   };
+  // As the core: the turn says what changed since the transcript last stated a selection (`Turn.switched`).
+  const switched = turnSwitch(ctx, thread, queuedTurn?.execution ?? execution, turn.id);
   if (queuedTurn) Object.assign(turn, { status: 'running', startedAt: at, execution: queuedTurn.execution ?? execution, queueHold: null });
   else thread.turns.push(turn);
+  if (switched) turn.switched = switched;
 
   const user: Message = {
     id: `m-${++ctx.seq}`,
@@ -130,6 +133,30 @@ function refuseTurn(ctx: FakeContext, thread: Thread, queuedTurn?: Turn): RpcFai
  * child's turn, and a persistent agent's wakes, labelled in its conversation.
  */
 type FakeOperation = 'compact' | 'delegation' | 'routine' | 'event';
+
+/**
+ * The core's `threads/switch-notice.ts`: the difference from the last turn
+ * that started, with what a new session would be handed when the account
+ * changed, here every message of the thread whole.
+ */
+function turnSwitch(ctx: FakeContext, thread: Thread, execution: NonNullable<Turn['execution']>, turnId: string): TurnSwitch | undefined {
+  if (execution.operation === 'keepalive') return undefined;
+  let before: Turn | undefined;
+  for (const turn of thread.turns) {
+    if (turn.id === turnId || turn.startedAt === null || !turn.execution || turn.execution.operation === 'keepalive') continue;
+    if (!before || turn.startedAt >= before.startedAt!) before = turn;
+  }
+  if (!before?.execution) return undefined;
+  const from = statedSelection(before.execution), to = statedSelection(execution);
+  if (!selectionDiffers(from, to)) return undefined;
+  const label = (id: string): string => ctx.accounts.find(account => account.id === id)?.label ?? '';
+  const history = thread.messages.filter(message => message.turnId !== turnId);
+  const chars = history.reduce((sum, message) => sum + message.parts.reduce((size, part) => size + (part.type === 'text' ? part.text.length : 0), 0), 0);
+  return {
+    from: { ...from, account: label(from.accountId) }, to: { ...to, account: label(to.accountId) },
+    ...(from.accountId !== to.accountId ? { handover: { session: 'fresh' as const, full: history.length, cut: 0, omitted: 0, chars } } : {}),
+  };
+}
 
 function turnExecution(thread: Thread, operation: FakeOperation | undefined, automatic: boolean): NonNullable<Turn['execution']> {
   return {

@@ -62,16 +62,33 @@ test('the picker changes native protocols in one conversation and carries histor
   await page.click('[data-model="fake-smart"]');
   await page.waitFor(`document.querySelector('${selector('composer-picker')}')?.textContent.includes('Smart')`);
   expect((await client.call('threads.get', { threadId })).accountId).toBe(accountId);
+  // Picked, not used yet: the change stands dashed under the last message, each agent behind its mark.
+  const line = (name: string) => `Array.from(document.querySelectorAll('${selector(name)} :is(.lead, [data-testid="switch-from"], [data-testid="switch-to"], .said)'), part => part.textContent).join(' | ')`;
+  await page.waitFor(`document.querySelector('${selector('switch-pending')}')`);
+  expect(await page.evaluate(line('switch-pending'))).toBe('Echo | Smart');
+  await capture('model-switch-pending.png');
   await page.type(selector('composer-input'), 'Continue using the release code.');
   await page.click(selector('composer-send'));
   await page.waitFor(`document.querySelectorAll('[data-testid="message"][data-role="assistant"]').length === 2`);
   await page.waitFor(`Array.from(document.querySelectorAll('[data-testid="message"][data-role="assistant"]')).at(-1)?.textContent.includes('azure-42')`);
+  // The turn that first ran on it keeps the change above its prompt, with what the new session was handed.
+  await page.waitFor(`document.querySelector('${selector('switch-marker-toggle')}') && !document.querySelector('${selector('switch-pending')}')`);
+  expect(await page.evaluate(line('switch-marker'))).toBe('Echo | Smart | context handed over');
+  await page.click(selector('switch-marker-toggle'));
+  await page.waitFor(`document.querySelector('${selector('switch-marker-toggle')}').getAttribute('aria-expanded') === 'true'`);
+  expect(await page.evaluate(`document.querySelector('${selector('switch-handover')} .counts').textContent`)).toMatch(/^2 messages in full · [\d,]+ characters$/);
   const thread = await client.call('threads.get', { threadId });
+  // The divider is the turn's own record: the journal holds no message for it, and a reload reads it back.
+  expect(thread.messages).toHaveLength(4);
+  expect(thread.turns.at(-1)?.switched).toMatchObject({ from: { providerId: 'echo' }, to: { providerId: 'switch-acp', model: 'fake-smart' }, handover: { session: 'fresh', full: 2, cut: 0, omitted: 0 } });
   expect(thread.messages.filter((message) => message.role === 'user').at(-1)?.parts).toEqual([{ type: 'text', text: 'Continue using the release code.', sentFrom: { client: 'pwa', device: 'browser', language: 'en' } }]);
   expect((await client.call('threads.list', {}))).toHaveLength(1);
   await page.evaluate('document.fonts.ready');
   await capture('model-switch-conversation.png');
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  await page.waitFor(`document.querySelector('${selector('switch-marker')}')?.getBoundingClientRect().width <= 390`);
+  expect(await page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')).toBe(true);
+  await capture('model-switch-conversation-phone.png');
   await page.click(selector('composer-picker'));
   await page.waitFor(`document.querySelector('${tile}')`);
   expect(await page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')).toBe(true);

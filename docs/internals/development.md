@@ -834,6 +834,7 @@ Never terminate processes by executable name or a path pattern.
 | Chatbar alerts and subagent answer routing | `tests/e2e/subagent-questions.test.ts` |
 | Draft durability, overlays and reduced motion | `tests/e2e/drafts-overlays.test.ts` |
 | Provider transfer over fixture ACP | `tests/e2e/model-switch.test.ts` |
+| Model change line, pending and recorded | `tests/e2e/switch-marker.test.ts` |
 | Folder picker and absent project | `tests/e2e/project-picker.test.ts`, `folder-gone.test.ts` |
 | Appearance controls | `tests/e2e/theme-colors.test.ts` |
 | Composer image references and uploads | `tests/e2e/composer-images.test.ts`, `attachments.test.ts` |
