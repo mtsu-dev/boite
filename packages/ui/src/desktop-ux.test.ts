@@ -146,20 +146,25 @@ test('a panel widened while the contacts column was folded gives the chat its ro
   }
 });
 
-test('a docked side panel lends the list column: the thread list beside a chat panel, the bot column beside a Desk card, each back when it closes', async () => {
+test('a docked side panel leaves the list column alone: the thread list beside a chat panel, the bot column beside a Desk card', async () => {
   writeExperiments(['resident-agents']);
   await mountOnFake('/?fake=1&agents=1');
   const folded = () => query('.body').classList.contains('sidebar-folded');
+  const stays = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    flushSync();
+    expect(store.sidebarCollapsed).toBe(false);
+    expect(folded()).toBe(false);
+  };
   try {
     await waitFor(() => store.openThread !== null);
     expect(store.sidebarCollapsed).toBe(false);
-    // A chat: three zones, rail, chat and panel.
     store.togglePanel();
-    await waitFor(() => store.sidebarCollapsed && folded());
+    await waitFor(() => store.panelOpen);
+    await stays();
     store.togglePanel();
-    await waitFor(() => !store.sidebarCollapsed && !folded());
+    await stays();
 
-    // The Bots page: the Desk card folds the bot column the same lent way.
     workspace.showAgents(store);
     const view = AgentsView.of(store);
     await view.refresh();
@@ -167,21 +172,10 @@ test('a docked side panel lends the list column: the thread list beside a chat p
     await waitFor(() => store.page === 'agents' && !!store.openThread?.agentSessionId);
     store.panel.closeAll();
     flushSync();
-    await waitFor(() => !store.sidebarCollapsed);
     store.panel.open('desk');
-    await waitFor(() => store.sidebarCollapsed && folded());
-    // Its own button brings the column back sooner, and the open desk does not fold it again.
-    store.sidebarCollapsed = false;
-    flushSync();
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(store.sidebarCollapsed).toBe(false);
+    await waitFor(() => store.panelOpen);
+    await stays();
     store.panel.closeAll();
-    flushSync();
-    // Closing the desk gives the column back; opening it again lends it again.
-    store.panel.open('desk');
-    await waitFor(() => store.sidebarCollapsed);
-    store.panel.closeAll();
-    await waitFor(() => !store.sidebarCollapsed && !folded());
   } finally {
     store.showChat();
   }

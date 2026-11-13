@@ -316,33 +316,6 @@
     if (store.panelOpen && panelThread) panelSlot.show();
     else panelSlot.hide();
   });
-  /**
-   * A docked side panel takes the thread list's column on a desktop chat, so
-   * the window keeps three zones (rail, chat, panel) instead of squeezing four.
-   * The fold is lent, not saved: the list comes back when the panel closes,
-   * and its own button brings it back sooner. A bot's Desk card lends the
-   * bot column the same way on the Bots page.
-   */
-  let listLentBy: typeof store | null = null;
-  $effect(() => {
-    const lends = store.page === 'chat' || (store.page === 'agents' && store.panel.active?.kind === 'desk');
-    const take = !narrow.current && lends && store.panelOpen && panelThread !== null && !rightPanel.floating;
-    untrack(() => {
-      if (listLentBy && (listLentBy !== store || !take)) {
-        if (listLentBy.sidebarCollapsed) listLentBy.sidebarCollapsed = false;
-        listLentBy = null;
-      }
-      if (take && !listLentBy && !store.sidebarCollapsed) {
-        store.sidebarCollapsed = true;
-        listLentBy = store;
-      }
-    });
-  });
-  // Unmounted with the list lent, the store would keep it folded for good.
-  $effect(() => () => {
-    if (listLentBy?.sidebarCollapsed) listLentBy.sidebarCollapsed = false;
-    listLentBy = null;
-  });
   $effect(() => {
     // The drawer opens once its chunk is here, so its opening animation plays whole.
     if (terminalShown && deferred.TerminalDrawer) terminalSlot.show();
