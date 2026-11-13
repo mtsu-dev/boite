@@ -45,5 +45,5 @@
   .status[data-status='error'] { color: var(--color-danger); }
   .body { max-height: 240px; overflow-y: auto; font-size: var(--text-sm); overflow-wrap: anywhere; }
   .body p { white-space: pre-wrap; margin: 0 0 10px; }
-  .result { border-left: 2px solid var(--color-border); padding-left: 10px; }
+  .result { padding: 8px 10px; border-radius: var(--radius-md); background: var(--color-surface-2); }
 </style>

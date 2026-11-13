@@ -469,11 +469,10 @@
     background: transparent;
   }
 
-  /* The row Enter takes: the selection wash and a bar on its edge, readable in both themes. No Enter glyph: it
+  /* The row Enter takes: the selection wash, readable in both themes. No Enter glyph: it
      would push the state column off the right edge the field's Esc and every other row end on. */
   .row.selected {
     background: var(--color-accent-soft);
-    box-shadow: inset 2px 0 0 var(--color-muted-foreground);
   }
   /* The field keeps the keys, so no row is focused: the one the arrows reached draws the ring itself, inside it. */
   .row.keyed { outline: var(--focus-ring); outline-offset: -2px; }

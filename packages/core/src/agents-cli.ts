@@ -7,7 +7,7 @@
  * owners' Boites linked as contacts.
  */
 import type { AgentAddress, AgentContact, AgentLetter, AgentMatch, AgentRelation, CoordinationView } from '@boite/contracts';
-import { threadActive, COORDINATION_RECENT_COMPLETION_MS } from '@boite/contracts';
+import { threadActive, COORDINATION_RECENT_COMPLETION_MS, TRANSCRIPT_READ_BUDGET, TRANSCRIPT_READ_ENTRIES } from '@boite/contracts';
 import type { CoreClient } from './client.ts';
 
 /** What `boite threads` says when nothing is reachable. */
@@ -196,7 +196,8 @@ export async function agentsCommand(client: CoreClient, threadId: string, rest: 
     const result = await client.call('collaboration.read', { threadId, target: to, ...(options.last === undefined ? {} : { limit: options.last }), ...(options.before === undefined ? {} : { before: options.before }),
       ...(options.entry === undefined ? {} : { entry: options.entry, ...(options.offset === undefined ? {} : { offset: options.offset }), ...(options.tool === undefined ? {} : { tool: options.tool }) }) });
     const lines = [contactLine(result.contact, self.coreId)];
-    if (result.more && result.entries[0]) lines.push(`(older entries: --before ${result.entries[0].at})`);
+    // A page that stopped at the size budget holds fewer entries than asked; the same cursor continues it.
+    if (result.more && result.entries[0]) lines.push(`(${result.entries.length < (options.last ?? TRANSCRIPT_READ_ENTRIES) ? `stopped at ${TRANSCRIPT_READ_BUDGET} characters; ` : ''}older entries: --before ${result.entries[0].at})`);
     for (const entry of result.entries) {
       const tools = entry.tools.length > 0 ? ` [tools: ${entry.tools.join(', ')}]` : '';
       const span = entry.offset === undefined ? '' : ` [characters ${entry.offset} to ${entry.offset + entry.text.length} of ${entry.length}]`;
