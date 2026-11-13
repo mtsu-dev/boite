@@ -1613,18 +1613,65 @@ test('fake merged PR proof follows the checkout branch and linked PRs like the c
   const client = await createClient({ delayMs: 0 });
   const project = await client.call('projects.add', { path: '/workspace/renamed-branch-fixture' });
   await client.call('threads.focus', { threadId: null, protectedThreadIds: [], protectAllThreads: false });
-  const archiveWith = async (title: string, checkoutBranch: string, prHead: string, linked: boolean) => {
+  const askWith = async (title: string, checkoutBranch: string, prHead: string, linked: boolean) => {
     const thread = await client.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: 'a-echo', worktree: { branch: title }, title });
-    await client.call('threads.markRead', { threadId: thread.id });
+    await warmTurn(client, thread.id);
     client.setMergedPrFixture(thread.id, { repository: 'github.com/example/repo', branch: checkoutBranch, tip: 'a'.repeat(40), clean: true,
       candidates: [{ repository: 'github.com/example/repo', branch: prHead, sha: 'a'.repeat(40), number: 7, url: 'https://github.com/example/repo/pull/7', mergedAt: '2026-10-01T12:00:00Z', linked }] });
     return client.sweepMergedPrArchives();
   };
   // The agent switched its worktree to the branch its PR came from.
-  expect(await archiveWith('renamed', 'fix/renamed', 'fix/renamed', false)).toBe(1);
+  expect(await askWith('renamed', 'fix/renamed', 'fix/renamed', false)).toBe(1);
   // Pushed under another name: only a linked PR names it.
-  expect(await archiveWith('pushed', 'pushed', 'fix/elsewhere', false)).toBe(0);
-  expect(await archiveWith('linked', 'linked', 'fix/elsewhere', true)).toBe(1);
+  expect(await askWith('pushed', 'pushed', 'fix/elsewhere', false)).toBe(0);
+  expect(await askWith('linked', 'linked', 'fix/elsewhere', true)).toBe(1);
+  // Asked, never put away.
+  expect((await client.call('threads.list', {})).filter(thread => ['renamed', 'linked'].includes(thread.title) && !thread.archived)).toHaveLength(2);
+});
+
+/** A finished, read turn: the prompt cache is warm, so the merged-PR question is worth a turn. */
+async function warmTurn(client: FakeClient, threadId: string): Promise<void> {
+  const turn = await client.call('turns.start', { threadId, prompt: 'Work on the change.' });
+  await vi.waitFor(async () => expect((await client.call('threads.get', { threadId })).turns.find(row => row.id === turn.id)?.status).toBe('done'));
+  await client.call('threads.markRead', { threadId });
+}
+
+test('fake agent.done puts its own thread in Done when the turn ends, refuses a sub-thread', async ({ createClient }) => {
+  const client = await createClient({ delayMs: 5 });
+  const { id: threadId } = await newThread(client);
+  const turn = await client.call('turns.start', { threadId, prompt: 'Wrap up.' });
+  expect(await client.call('agent.done', { threadId })).toEqual({ threadId, when: 'turn-end' });
+  // Done never lands over a turn at work: the answer that asked is written first.
+  expect(await client.call('threads.get', { threadId })).toMatchObject({ archived: false, status: 'running' });
+  await vi.waitFor(async () => expect((await client.call('threads.get', { threadId })).archived).toBe(true));
+  const done = await client.call('threads.get', { threadId });
+  expect(done.turns.find(row => row.id === turn.id)?.status).toBe('done');
+  expect(done.doneAt).toEqual(expect.any(Number));
+  expect(done.messages.filter(message => message.role === 'system').flatMap(message => message.parts)).toContainEqual({ type: 'text', text: 'Put in Done by its agent.' });
+  await expect(client.call('agent.done', { threadId })).rejects.toMatchObject({ code: RpcErrorCode.Refused, message: 'this thread is already archived' });
+
+  // An idle thread goes on the spot.
+  const { id: idleId } = await newThread(client);
+  expect(await client.call('agent.done', { threadId: idleId })).toEqual({ threadId: idleId, when: 'done' });
+  expect((await client.call('threads.get', { threadId: idleId })).doneAt).toEqual(expect.any(Number));
+
+  // Background work the agent left running keeps it open, with a line saying why.
+  const { id: busyId } = await newThread(client);
+  const busyTurn = await client.call('turns.start', { threadId: busyId, prompt: '[background] watch CI' });
+  expect(await client.call('agent.done', { threadId: busyId })).toMatchObject({ when: 'turn-end' });
+  await vi.waitFor(async () => expect((await client.call('threads.get', { threadId: busyId })).turns.find(row => row.id === busyTurn.id)?.status).toBe('done'));
+  const kept = await client.call('threads.get', { threadId: busyId });
+  expect(kept.archived).toBe(false);
+  expect(kept.messages.filter(message => message.role === 'system').flatMap(message => message.parts)).toContainEqual({ type: 'text',
+    text: 'The agent asked to put this thread in Done; it stays open: threadId: background work is still running; expected an idle conversation family' });
+
+  // A sub-thread goes with its parent.
+  const { id: rootId } = await newThread(client);
+  const run = await client.call('workflows.start', { threadId: rootId, requestId: 'agent_done_child', plan: { name: 'Child', steps: [{ id: 'one', task: 'Look.' }] } });
+  await vi.waitFor(async () => expect((await client.call('workflows.get', { threadId: rootId, runId: run.id })).status).toBe('done'));
+  const childId = (await client.call('workflows.get', { threadId: rootId, runId: run.id })).nodes[0]!.instances[0]!.threadId!;
+  await expect(client.call('agent.done', { threadId: childId })).rejects.toMatchObject({ code: RpcErrorCode.Refused, message: 'a sub-thread is put away with its parent once its work is delivered', data: { field: 'threadId', expected: 'a top-level thread' } });
+  expect((await client.call('threads.get', { threadId: childId })).archived).toBe(false);
 });
 
 test.for([{ questionOn: 'parent', release: 'dismiss' }, { questionOn: 'child', release: 'expire' }] as const)(
@@ -1634,6 +1681,7 @@ test.for([{ questionOn: 'parent', release: 'dismiss' }, { questionOn: 'child', r
     const project = await client.call('projects.add', { path: '/workspace/side-archive-fixture' });
     const root = await client.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: 'a-echo',
       worktree: { branch: 'side-archive-fixture' }, title: 'Side question archive fixture' });
+    await warmTurn(client, root.id);
     const run = await client.call('workflows.start', { threadId: root.id, requestId: 'side_archive_family',
       plan: { name: 'Completed family', steps: [{ id: 'review', task: 'Review the merged change.' }] } });
     await vi.waitFor(async () => expect((await client.call('workflows.get', { threadId: root.id, runId: run.id })).status).toBe('done'));
@@ -1662,8 +1710,13 @@ test.for([{ questionOn: 'parent', release: 'dismiss' }, { questionOn: 'child', r
     if (scenario.release === 'dismiss') await client.call('threads.btw.cancel', { threadId, requestId });
     else await vi.advanceTimersByTimeAsync(10 * 60_000);
     expect(await client.sweepMergedPrArchives()).toBe(1);
-    expect((await client.call('threads.get', { threadId: root.id })).archiveReason).toMatchObject({ type: 'pr-merged', number: 7 });
+    // Asked, not put away: the user archives the family to reach the archived-parent rules below.
+    const asked = await client.call('threads.get', { threadId: root.id });
+    expect(asked.archived).toBe(false);
+    expect(asked.archiveReason).toBeUndefined();
+    expect(asked.turns.at(-1)?.execution?.operation).toBe('pull-request');
     expect((await client.call('threads.get', { threadId: childId })).archived).toBe(false);
+    await client.call('threads.archive', { threadId: root.id, archived: true });
     const parentRefusal = { code: RpcErrorCode.Refused, message: 'threads.btw.threadId: expected a conversation whose parent is not archived or being deleted' };
     await expect(client.call('threads.btw', { threadId: childId, requestId: 'side_late_question', question: 'Late question' })).rejects.toMatchObject(parentRefusal);
     await expect(client.call('threads.btw.fork', { threadId: childId, requestId })).rejects.toMatchObject(parentRefusal);

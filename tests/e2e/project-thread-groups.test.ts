@@ -84,11 +84,17 @@ for (const width of [1280, 390]) {
         await showThreadView(page, 'recent', prefix);
         await page.waitFor(`document.querySelector('${row(merged)}')`);
         await option('merged');
-        // A badge can detect the merge before the fallback sweep runs.
-        await page.evaluate(`globalThis.__boiteTest.workspace.machines[0].store.client.call('threads.pullRequest', {threadId:${JSON.stringify(merged)}})`);
-        await page.evaluate('globalThis.__boiteTest.workspace.machines[0].store.client.sweepMergedPrArchives()');
-        expect(await page.evaluate(`globalThis.__boiteTest.workspace.machines[0].store.client.call('threads.get', {threadId:${JSON.stringify(merged)}}).then(t => ({archived:t.archived, reason:t.archiveReason?.type}))`)).toEqual({archived:true, reason:'pr-merged'});
-        await page.waitFor(`!document.querySelector('${row(merged)}')`);
+        // A finished turn keeps the agent's prompt cache warm; then a badge detects the merge before the fallback sweep runs.
+        await page.evaluate(`(async () => {
+          const client = globalThis.__boiteTest.workspace.machines[0].store.client, threadId = ${JSON.stringify(merged)};
+          const turn = await client.call('turns.start', {threadId, prompt:'Finish the visibility options.'});
+          while ((await client.call('threads.get', {threadId})).turns.find(r => r.id === turn.id)?.status !== 'done') await new Promise(r => setTimeout(r, 20));
+          await client.call('threads.pullRequest', {threadId});
+        })()`);
+        expect(await page.evaluate('globalThis.__boiteTest.workspace.machines[0].store.client.sweepMergedPrArchives()')).toBe(0);
+        // The agent was asked once, nothing was put away: the row stays.
+        expect(await page.evaluate(`globalThis.__boiteTest.workspace.machines[0].store.client.call('threads.get', {threadId:${JSON.stringify(merged)}}).then(t => ({archived:t.archived, reason:t.archiveReason?.type ?? null, asked:t.turns.filter(turn => turn.execution?.operation === 'pull-request').length}))`)).toEqual({archived:false, reason:null, asked:1});
+        await page.waitFor(`document.querySelector('${row(merged)}')`);
         await openProjectFilter(page, prefix);
         await page.evaluate(`Array.from(document.querySelectorAll('${id(`${prefix}project-filter-menu`)} [data-value]')).find(e => e.dataset.value === ${builderKey('p-boite')}).click()`);
         await option('merged');

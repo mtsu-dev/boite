@@ -11,7 +11,7 @@ beforeAll(async () => { port = await freePort(); server = await startUi(port); }
 afterAll(async () => { await server?.close(); }, 30_000);
 
 for (const width of [1280, 390]) {
-  test(`a detected merge moves a running prompt to Done and retains its answer at ${width}px`, async () => {
+  test(`a merge detected during a prompt leaves it working, asks its agent once it ends, and its answer puts it in Done at ${width}px`, async () => {
     const page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&open=recent&stream=tokens`, windowSize: { width, height: width < 720 ? 844 : 900 },
       args:['--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4', '--renderer-process-limit=1', '--js-flags=--max-old-space-size=128'] });
     try {
@@ -49,14 +49,29 @@ for (const width of [1280, 390]) {
           candidates:[{repository:'github.com/example/repo', branch:thread.branch, sha:'a'.repeat(40), number:407, url:'https://github.com/example/repo/pull/407', mergedAt:'2026-10-23T12:00:00Z'}]});
         await store.client.call('threads.pullRequest', {threadId:thread.id});
       })()`);
-      // The project's Done group counts the merged thread, still at work.
+      // Nothing goes to Done by itself: the prompt finishes in its live row, then Boite asks the agent.
+      const live = `${root} [data-thread-id="${threadId}"]:not([data-testid="done-thread"])`;
+      await page.waitFor(`globalThis.__boiteTest.workspace.active.client.call('threads.get', {threadId:${JSON.stringify(threadId)}}).then(t => t.turns.some(turn => turn.execution?.operation === 'pull-request'))`, 20_000);
+      const asked = await page.evaluate<{ archived: boolean; final: boolean; asked: number }>(`globalThis.__boiteTest.workspace.active.client.call('threads.get', {threadId:${JSON.stringify(threadId)}}).then(t => ({archived:t.archived, asked:t.turns.filter(turn => turn.execution?.operation === 'pull-request').length, final:t.messages.some(m => m.role === 'assistant' && m.parts.some(p => p.type === 'text' && p.text.endsWith('Final merge report retained.')))}))`);
+      expect(asked).toEqual({ archived: false, asked: 1, final: true });
+      expect(await page.evaluate(`document.querySelector('${project} [data-testid="group-label-done"] .count')?.textContent.trim() ?? '0'`)).toBe('0');
+      await page.waitFor(`document.querySelector('${live}')`);
+      await page.screenshot(join(import.meta.dir, '.artifacts', `merged-pr-asked-${width}.png`));
+      // The agent answers with `boite thread done`. Echo reads "question" in the prompt as its cue for a card; skipping it ends the turn.
+      await page.evaluate(`(async () => {
+        const client = globalThis.__boiteTest.workspace.active.client, threadId = ${JSON.stringify(threadId)};
+        await client.call('agent.done', {threadId});
+        while (!(await client.call('threads.get', {threadId})).archived) {
+          const [question] = await client.call('questions.list', {threadId});
+          if (question) await client.call('questions.skip', {threadId, questionId: question.id});
+          await new Promise(r => setTimeout(r, 20));
+        }
+      })()`);
       await page.waitFor(`document.querySelector('${project} [data-testid="group-label-done"] .count')?.textContent.trim() === '1'`);
       const done = `${root} [data-testid="done-thread"][data-thread-id="${threadId}"]`;
-      // Put away, the row carries no live state, a turn still running included: when it was put away.
       await page.waitFor(`document.querySelector('${done} time') && !document.querySelector('${done} [data-testid="thread-state"]')`);
-      expect(await page.evaluate(`document.querySelector('${done} [data-testid="done-thread-pr"]')?.dataset.state`)).toBe('MERGED');
       await page.settleAnimations();
-      await page.screenshot(join(import.meta.dir, '.artifacts', `merged-pr-running-done-${width}.png`));
+      await page.screenshot(join(import.meta.dir, '.artifacts', `merged-pr-agent-done-${width}.png`));
       await page.evaluate(`document.querySelector('${done} [data-testid="done-thread-open"]').focus()`);
       await page.settleAnimations();
       expect(await page.evaluate(`getComputedStyle(document.querySelector('${done} time')).opacity`)).toBe('0');
@@ -82,12 +97,7 @@ for (const width of [1280, 390]) {
         await page.screenshot(join(import.meta.dir, '.artifacts', `merged-pr-running-touch-${width}.png`));
       }
       await page.evaluate('document.activeElement.blur()');
-      await page.waitFor(`globalThis.__boiteTest.workspace.active.client.call('threads.get', {threadId:${JSON.stringify(threadId)}}).then(t => t.status === 'idle')`, 20_000);
-      const saved = await page.evaluate<{ archived: boolean; final: boolean }>(`globalThis.__boiteTest.workspace.active.client.call('threads.get', {threadId:${JSON.stringify(threadId)}}).then(t => ({archived:t.archived, final:t.messages.some(m => m.role === 'assistant' && m.parts.some(p => p.type === 'text' && p.text.endsWith('Final merge report retained.')))}))`);
-      expect(saved).toEqual({ archived: true, final: true });
-      // Finished, the row stays in Done with its merge.
-      await page.waitFor(`document.querySelector('${done} [data-testid="done-thread-pr"]')?.dataset.state === 'MERGED' && !document.querySelector('${done} [data-testid="thread-state"]')`);
-      await page.screenshot(join(import.meta.dir, '.artifacts', `merged-pr-finished-done-${width}.png`));
+      expect(await page.evaluate(`globalThis.__boiteTest.workspace.active.client.call('threads.get', {threadId:${JSON.stringify(threadId)}}).then(t => t.messages.some(m => m.role === 'system' && m.parts.some(p => p.type === 'text' && p.text === 'Put in Done by its agent.')))`)).toBe(true);
     } finally { await page.close(); }
   }, 40_000);
 }

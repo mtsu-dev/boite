@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { RpcErrorCode } from '@boite/contracts';
+import { doneQuestion, RpcErrorCode, type Thread } from '@boite/contracts';
 import { FakeClient } from './fake-client';
 import { sweepMergedPrFixtures, type MergedPrFixture } from './fake-client/merged-pr-archive';
 import { FakeContext } from './fake-client/context';
@@ -16,7 +16,41 @@ async function fixture(delayMs = 0) {
   const thread = await client.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: account.id, worktree: { branch: 'topic-fixture' }, title: 'merged fixture' });
   const proof: MergedPrFixture = { repository: 'github.com/example/repo', branch: thread.branch!, tip: 'a'.repeat(40), clean: true, candidates: [{ repository: 'github.com/example/repo', branch: thread.branch!, sha: 'a'.repeat(40), number: 7, url: 'https://github.com/example/repo/pull/7', mergedAt: '2026-10-01T12:00:00Z' }] };
   client.setMergedPrFixture(thread.id, proof);
+  await warm(thread.id);
   return { project, thread, proof };
+}
+
+const QUESTION = doneQuestion({ urls: ['https://github.com/example/repo/pull/7'], summary: '#7 merged' });
+
+/** A finished turn, read: the agent's prompt cache holds the conversation, so a question is worth a turn. */
+async function warm(threadId: string) {
+  const turn = await client.call('turns.start', { threadId, prompt: 'Work on the change.' });
+  await expect.poll(async () => (await client.call('threads.get', { threadId })).turns.find(row => row.id === turn.id)?.status).toBe('done');
+  await client.call('threads.markRead', { threadId });
+}
+
+/** The turns Boite opened to ask whether the thread is done. */
+function questions(thread: Pick<Thread, 'turns'>) {
+  return thread.turns.filter(turn => turn.execution?.operation === 'pull-request');
+}
+
+/**
+ * The asked thread: its question finished, still open, Boite's line the user
+ * sees. The echo agent reads "question" in the prompt as its cue for a card,
+ * as the core's echo driver does: the card is skipped so the turn ends.
+ */
+async function answered(threadId: string) {
+  await expect.poll(async () => {
+    for (const card of await client.call('questions.list', { threadId })) await client.call('questions.skip', { threadId, questionId: card.id });
+    return questions(await client.call('threads.get', { threadId })).map(turn => turn.status);
+  }).toEqual(['done']);
+  const saved = await client.call('threads.get', { threadId });
+  expect(saved).toMatchObject({ archived: false, status: 'idle' });
+  expect(saved.doneAt ?? null).toBeNull();
+  expect(saved.archiveReason).toBeUndefined();
+  const asked = saved.messages.filter(message => message.turnId === questions(saved)[0]!.id && message.role === 'system');
+  expect(asked.flatMap(message => message.parts)).toContainEqual(expect.objectContaining({ type: 'text', text: QUESTION.text, displayText: QUESTION.label }));
+  return saved;
 }
 
 async function completedWorkflow() {
@@ -31,15 +65,21 @@ async function completedWorkflow() {
   return { ...f, child };
 }
 
-test('fake badge detection moves a running prompt to Done and retains its final answer', async () => {
+test('fake badge detection during a prompt asks once the prompt ends, and never archives', async () => {
   const { thread } = await fixture(50);
   const turn = await client.call('turns.start', { threadId: thread.id, prompt: 'Final answer after the merge.' });
   expect(await client.call('threads.pullRequest', { threadId: thread.id })).toMatchObject({ state: 'MERGED' });
-  expect(await client.call('threads.get', { threadId: thread.id })).toMatchObject({ archived: true, status: 'running', archiveReason: { type: 'pr-merged', number: 7 } });
+  const during = await client.call('threads.get', { threadId: thread.id });
+  expect(during).toMatchObject({ archived: false, status: 'running' });
+  expect(questions(during)).toEqual([]);
   await expect.poll(async () => (await client.call('threads.get', { threadId: thread.id })).turns.find(saved => saved.id === turn.id)?.status).toBe('done');
-  const saved = await client.call('threads.get', { threadId: thread.id });
-  expect(saved).toMatchObject({ archived: true, status: 'idle' });
+  const saved = await answered(thread.id);
   expect(saved.messages.flatMap(message => message.parts).some(part => part.type === 'text' && part.text.includes('Final answer after the merge.'))).toBe(true);
+  // Asked once per pull request: neither the badge nor the sweep asks again.
+  await client.call('threads.markRead', { threadId: thread.id });
+  await client.call('threads.pullRequest', { threadId: thread.id });
+  expect(await client.sweepMergedPrArchives()).toBe(0);
+  expect(questions(await client.call('threads.get', { threadId: thread.id }))).toHaveLength(1);
 });
 
 /** Legacy retained depth is seeded in the domain, without adding a client fixture API. */
@@ -52,6 +92,7 @@ async function retainedDescendants() {
     worktree: { branch: 'retained-depth-fixture' }, title: 'Retained descendants' });
   const root = ctx.thread(summary.id);
   const now = ctx.now();
+  root.turns.push({ id: 'turn-retained-root', threadId: root.id, status: 'done', queuedAt: now, startedAt: now, finishedAt: now, usage: null, error: null });
   const child = { ...structuredClone(root), id: 't-retained-child', parentThreadId: root.id,
     turns: [{ id: 'turn-retained-child', threadId: 't-retained-child', status: 'done' as const, queuedAt: now, startedAt: now, finishedAt: now, usage: null, error: null }] };
   const descendant = { ...structuredClone(child), id: 't-retained-descendant', parentThreadId: child.id,
@@ -83,7 +124,29 @@ test('fake deeper retained descendant quiescence protects the root after side st
     expect(await sweepMergedPrFixtures(ctx)).toBe(0);
     ctx.bus.protectedThreadIds.clear();
     expect(await sweepMergedPrFixtures(ctx)).toBe(1);
+    expect(root.archived).toBe(false);
+    expect(ctx.mergedPrArchive.get(root.id)?.asked).toEqual(['https://github.com/example/repo/pull/7']);
+    await ctx.stopTurn(root.id);
   } finally { closeSideQuestions(ctx); vi.useRealTimers(); }
+});
+
+test('fake asks only while the prompt cache holds the conversation', async () => {
+  const { ctx, root } = await retainedDescendants();
+  const last = root.turns.at(-1)!;
+  // No finished turn at all: nothing to keep warm, nothing asked.
+  root.turns = [];
+  expect(await sweepMergedPrFixtures(ctx)).toBe(0);
+  // No cache reported: one hour after the last turn.
+  root.turns = [{ ...last, finishedAt: ctx.now() - 61 * 60_000 }];
+  expect(await sweepMergedPrFixtures(ctx)).toBe(0);
+  // A reported cache that expired, even after a recent turn.
+  root.turns = [{ ...last, finishedAt: ctx.now() }];
+  root.promptCache = { at: ctx.now() - 10 * 60_000, ttlSeconds: 300, source: 'reported', readTokens: 1_000, model: 'echo-1', accountId: 'a-echo' };
+  expect(await sweepMergedPrFixtures(ctx)).toBe(0);
+  root.promptCache = { at: ctx.now() - 2 * 60_000, ttlSeconds: 300, source: 'reported', readTokens: 1_000, model: 'echo-1', accountId: 'a-echo' };
+  expect(await sweepMergedPrFixtures(ctx)).toBe(1);
+  expect(root.archived).toBe(false);
+  await ctx.stopTurn(root.id);
 });
 
 test.each(['pending', 'completed'] as const)('fake removal releases %s side state throughout retained descendants without deleting their history', async state => {
@@ -111,12 +174,13 @@ test.each(['pending', 'completed'] as const)('fake removal releases %s side stat
   } finally { closeSideQuestions(ctx); vi.useRealTimers(); }
 });
 
-test('fake archives a completed retained workflow family, preserving children and restore', async () => {
+test('fake asks a completed retained workflow family once, leaving children and the family open', async () => {
   const { thread, child } = await completedWorkflow();
   expect(await client.sweepMergedPrArchives()).toBe(1);
   expect((await client.call('threads.get', { threadId: child.id })).turns).toEqual(child.turns);
   expect((await client.call('threads.get', { threadId: child.id })).archived).toBe(child.archived);
-  await client.call('threads.archive', { threadId: thread.id, archived: false });
+  await answered(thread.id);
+  await client.call('threads.markRead', { threadId: thread.id });
   expect(await client.sweepMergedPrArchives()).toBe(0);
   const next = await client.call('turns.start', { threadId: child.id, prompt: 'Explicit work after restore' });
   expect(next.threadId).toBe(child.id);
@@ -134,7 +198,8 @@ test('fake retained child input, pin and late turn admission protect the family'
   await client.call('threads.focus', { threadId: null });
   proof.beforeValidate = async () => { await client.call('turns.start', { threadId: child.id, prompt: 'Late child work [permission]' }); };
   expect(await client.sweepMergedPrArchives()).toBe(0);
-  expect((await client.call('threads.get', { threadId: thread.id })).archived).toBe(false);
+  expect(await client.call('threads.get', { threadId: thread.id })).toMatchObject({ archived: false, status: 'idle' });
+  expect(questions(await client.call('threads.get', { threadId: thread.id }))).toEqual([]);
   expect((await client.call('threads.get', { threadId: child.id })).status).toBe('waiting');
 });
 
@@ -148,18 +213,27 @@ test('fake archived parent rejects late child turns, messages and new delegation
   expect((await client.call('threads.get', { threadId: child.id })).turns).toEqual(history);
 });
 
-test('fake hides only proven merged worktree, preserves reason, and restore dismisses repeated results', async () => {
-  const { project, thread } = await fixture();
-  const changed: unknown[] = [];
-  client.on('project.updated', row => changed.push(row));
+test('fake asks about a proven merged worktree once, and never about a restored checkout', async () => {
+  const { thread } = await fixture();
   expect(await client.sweepMergedPrArchives()).toBe(1);
-  expect(changed).toContainEqual(expect.objectContaining({ id: project.id, autoArchiveMergedPr: true }));
-  const archived = await client.call('threads.get', { threadId: thread.id });
-  expect(archived.archiveReason).toMatchObject({ type: 'pr-merged', number: 7 });
-  expect(archived.cwd).toBe(thread.cwd);
-  await client.call('threads.archive', { threadId: thread.id, archived: false });
+  const asked = await answered(thread.id);
+  expect(asked.cwd).toBe(thread.cwd);
+  await client.call('threads.markRead', { threadId: thread.id });
   expect(await client.sweepMergedPrArchives()).toBe(0);
-  expect((await client.call('threads.get', { threadId: thread.id })).archiveReason).toBeUndefined();
+  // The agent kept it open; the user puts it away and back: still not asked again.
+  await client.call('threads.archive', { threadId: thread.id, archived: true, onlyIfIdle: true });
+  await client.call('threads.archive', { threadId: thread.id, archived: false });
+  await client.call('threads.markRead', { threadId: thread.id });
+  expect(await client.sweepMergedPrArchives()).toBe(0);
+  expect(questions(await client.call('threads.get', { threadId: thread.id }))).toHaveLength(1);
+
+  // A checkout the user restored before any question is never asked about.
+  const restored = await fixture();
+  await client.call('threads.archive', { threadId: restored.thread.id, archived: true });
+  await client.call('threads.archive', { threadId: restored.thread.id, archived: false });
+  await client.call('threads.markRead', { threadId: restored.thread.id });
+  expect(await client.sweepMergedPrArchives()).toBe(0);
+  expect(await client.call('threads.get', { threadId: restored.thread.id })).toMatchObject({ archived: false });
 });
 
 test('fake validates proof and protects busy, viewed, pending input and paused workflow fixtures', async () => {
@@ -182,8 +256,10 @@ test('fake validates proof and protects busy, viewed, pending input and paused w
   await client.call('threads.focus', { threadId: null, protectAllThreads: true }); expect(await client.sweepMergedPrArchives()).toBe(0);
   await client.call('threads.focus', { threadId: null, protectedThreadIds: [] }); expect(await client.sweepMergedPrArchives()).toBe(0);
   await client.call('threads.focus', { threadId: null, protectAllThreads: false }); expect(await client.sweepMergedPrArchives()).toBe(1);
+  await answered(thread.id);
 
   const reconnected = await client.call('threads.create', { projectId: project.id, providerId: thread.providerId, accountId: thread.accountId, worktree: { branch: 'topic-reconnected' } });
+  await warm(reconnected.id);
   const reconnectProof: MergedPrFixture = { ...proof, branch: reconnected.branch!, candidates: proof.candidates.map(candidate => ({ ...candidate, branch: reconnected.branch! })) };
   client.setMergedPrFixture(reconnected.id, reconnectProof);
   await client.call('threads.focus', { threadId: null, protectedThreadIds: [reconnected.id] });
@@ -195,20 +271,18 @@ test('fake validates proof and protects busy, viewed, pending input and paused w
   expect(await client.sweepMergedPrArchives()).toBe(1);
 });
 
-test('fake badge detection stops a compaction when the conversation reaches Done', async () => {
-  const { thread } = await fixture();
-  const first = await client.call('turns.start', { threadId: thread.id, prompt: 'Remember the change.' });
-  await expect.poll(async () => (await client.call('threads.get', { threadId: thread.id })).turns.find(row => row.id === first.id)?.status).toBe('done');
+test('fake badge detection lets a compaction finish, then asks', async () => {
+  const { thread } = await fixture(50);
   const turn = await client.call('threads.compact', { threadId: thread.id });
   await client.call('threads.pullRequest', { threadId: thread.id });
-  await vi.waitFor(async () => {
-    const saved = await client.call('threads.get', { threadId: thread.id });
-    expect(saved).toMatchObject({ archived: true, status: 'idle', doneAt: expect.any(Number) });
-    expect(saved.turns.find(row => row.id === turn.id)?.status).toBe('stopped');
-  });
+  const during = await client.call('threads.get', { threadId: thread.id });
+  expect(during.turns.find(row => row.id === turn.id)?.status).toBe('running');
+  expect(questions(during)).toEqual([]);
+  const saved = await answered(thread.id);
+  expect(saved.turns.find(row => row.id === turn.id)?.status).toBe('done');
 });
 
-test('fake stale policy, restore and checkout evidence cannot hide conversation', async () => {
+test('fake stale policy, restore and checkout evidence ask nothing', async () => {
   const { project, thread, proof } = await fixture();
   proof.beforeValidate = async () => { await client.call('projects.setAutoArchiveMergedPr', { projectId: project.id, enabled: false }); };
   expect(await client.sweepMergedPrArchives()).toBe(0);
@@ -235,12 +309,14 @@ test('fake stale policy, restore and checkout evidence cannot hide conversation'
     expect.soft(retained.archived, change).toBe(false);
     expect.soft(retained.archiveReason, change).toBeUndefined();
     expect.soft(retained.cwd, change).toBe(next.thread.cwd);
+    expect.soft(questions(retained), change).toEqual([]);
   }
   const compatible = await fixture();
   compatible.proof.beforeValidate = async () => {
     client.setMergedPrFixture(compatible.thread.id, { ...compatible.proof });
   };
   expect(await client.sweepMergedPrArchives()).toBe(1);
+  await answered(compatible.thread.id);
 });
 
 test('fake stale move and deletion responses leave their new state intact', async () => {

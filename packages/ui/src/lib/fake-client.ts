@@ -10,6 +10,7 @@ import { composerMethods } from './fake-client/composer';
 import { holdContactMail } from './fake-client/contact-hold';
 import { seedIdle, seedWorking } from './fake-client/working-seed';
 import { sweepMergedPrFixtures, type MergedPrFixture } from './fake-client/merged-pr-archive';
+import { describedProject } from './fake-client/project-archive';
 import {
   RPC_CHUNK_BYTES,
   RpcErrorCode,
@@ -281,6 +282,23 @@ export class FakeClient implements ObservableClient {
     this.#ctx.mergedPrFixtures.set(threadId, fixture);
   }
 
+  /**
+   * Test fixture: a conversation an older core put in Done after its PR merged
+   * (reason `pr-merged`). This version asks the agent instead and never writes
+   * that reason; it still shows and restores what older cores wrote.
+   */
+  setMergedPrArchive(threadId: ThreadId, pr: { number: number; url: string }): void {
+    const ctx = this.#ctx, thread = ctx.thread(threadId);
+    thread.archived = true;
+    thread.doneAt = Date.now();
+    thread.archivedAt = thread.doneAt;
+    thread.archiveReason = { type: 'pr-merged', number: pr.number, url: pr.url, archivedAt: ctx.now() };
+    ctx.touch(thread);
+    const project = ctx.projects.find(project => project.id === thread.projectId);
+    if (project) ctx.emit('project.updated', describedProject(ctx, project));
+  }
+
+  /** The merged-PR pass: asks each eligible agent whether its thread is done, and answers how many were asked. */
   sweepMergedPrArchives(): Promise<number> {
     if (this.#mergedPrSweep) return this.#mergedPrSweep;
     this.#mergedPrSweep = sweepMergedPrFixtures(this.#ctx).finally(() => { this.#mergedPrSweep = null; });

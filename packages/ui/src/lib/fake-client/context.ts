@@ -290,6 +290,12 @@ export class FakeContext {
   readonly usage = new Map<ThreadId, Usage>();
   /** Moves asked for during a turn, applied when it ends, as the core's `ThreadMove.waiting`. Memory only. */
   readonly waitingMoves = new Map<ThreadId, { projectId: string; by: 'user' | 'agent'; stopBackground: boolean | undefined; at: number }>();
+  /** Threads whose agent asked for Done during a turn, applied when it ends, as the core's `AgentDoneRequests`. Memory only. */
+  readonly waitingDone = new Set<ThreadId>();
+  /** The user's Mark done (`threads.archive` with `onlyIfIdle`), wired by `threadMethods`. */
+  markDone: (threadId: ThreadId) => Promise<unknown> = async () => { throw new Error('the fake thread methods are not wired'); };
+  /** Threads a detected merge found at work: checked again once their turn ends, as the core's `MergedPrAsk` does. */
+  readonly mergedPrAfterTurn = new Set<ThreadId>();
   /** Turns this session finished, added to the seeded ledger `usage.history` draws. */
   readonly finished: FakeFinishedTurn[] = [];
   usageSeeded = true;
