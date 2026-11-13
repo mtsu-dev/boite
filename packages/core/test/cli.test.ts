@@ -167,6 +167,9 @@ test('the history a fresh session carries points at its own tool output, which t
   // With coordination off too: the thread reads nothing but its own journal.
   const config = harness.core.coordination.config(threadId);
   harness.core.coordination.configure(threadId, { ...config, mode: 'off' });
+  // So does a message the history left out, which it names by id.
+  harness.core.journal.putMessage({ id: 'left-out', threadId, turnId: 'history', role: 'user', state: 'complete', createdAt: Date.now() - 1, parts: [{ type: 'text', text: 'an exchange the history left out' }] });
+  expect((await boite(['threads', 'read', threadId, '--entry', 'left-out'])).out).toContain('user: [characters 0 to 32 of 32]\n    an exchange the history left out');
   const first = await boite(command!.split(' '));
   expect(first.code).toBe(0);
   expect(first.out).toContain('assistant: [tools: Bash] [characters 0 to 16000 of 20021]\n    first line\n    xxx');

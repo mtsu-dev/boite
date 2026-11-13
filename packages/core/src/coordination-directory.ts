@@ -187,9 +187,11 @@ export class CoordinationLookups {
     if (tool !== undefined) return this.ownToolOutput(threadId, to, query, tool);
     const config = this.side.config(threadId);
     const resident = to.coreId === this.side.selfId() && this.core.workforce.projects.over(threadId, to.threadId) !== null;
-    if (this.core.threads.require(threadId).archived || (config.mode === 'off' && !resident)) throw refused('coordination is disabled for this thread');
+    // Its own conversation, whatever its coordination settings: a carried history names the messages it left out.
+    const own = to.coreId === this.side.selfId() && to.threadId === threadId;
+    if (this.core.threads.require(threadId).archived || (config.mode === 'off' && !resident && !own)) throw refused('coordination is disabled for this thread');
     if (to.coreId === this.side.selfId()) {
-      const contact = (resident ? this.side.contact(to.threadId, true) : undefined) ?? this.side.localReach(threadId).find(a => same(a, to)) ?? (to.threadId === threadId ? this.side.contact(threadId) : undefined);
+      const contact = (resident || own ? this.side.contact(to.threadId, true) : undefined) ?? this.side.localReach(threadId).find(a => same(a, to)) ?? (to.threadId === threadId ? this.side.contact(threadId) : undefined);
       if (!contact) throw refused(this.outside(threadId, to.threadId) ? `target: ${reachRefusal(config.reach, 'machine')}` : `target: ${to.threadId} is not a contact this thread may reach; see boite threads`);
       return readTranscript(this.core.journal.db, to.threadId, contact, query, id => this.core.journal.streamingMessage(id));
     }
