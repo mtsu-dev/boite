@@ -361,10 +361,13 @@ test('the palette and the project menu reach the archive, its list already read'
   query<HTMLButtonElement>('[data-testid=project-menu]').click();
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=archived]') !== null);
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=archived]').click();
-  // A card's menu opens the archive on its project; All projects widens it back to every one.
-  await waitFor(() => store.page === 'settings' && document.querySelector('[data-testid=archived-focus]') !== null);
+  // A card's menu opens the archive in the list itself, on its project; All projects widens it back to every one.
+  await waitFor(() => store.page === 'chat' && document.querySelector('[data-testid=sidebar-archived] [data-testid=archived-focus]') !== null);
   query<HTMLButtonElement>('[data-testid=archived-all]').click();
-  await waitFor(() => document.querySelector('[data-testid=archived-list]')?.textContent?.includes('Finish the trace tab') === true);
+  await waitFor(() => document.querySelector('[data-testid=sidebar-archived] [data-testid=archived-list]')?.textContent?.includes('Finish the trace tab') === true);
+  // The first line gives the threads back.
+  query<HTMLButtonElement>('[data-testid=sidebar-archived-back]').click();
+  await waitFor(() => document.querySelector('[data-testid=sidebar-archived]') === null && document.querySelector('[data-testid=thread-row]') !== null);
 });
 
 test('Ctrl+Shift+T brings back the thread archived last on the machine, from this window or another, and opens it', async () => {
