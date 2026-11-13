@@ -1,5 +1,5 @@
 /** Permission requests and questions: asked by a turn, answered by the user. */
-import { RpcErrorCode, agentSettingAnswerText, checkClientPreferences, checkSettingRequest, effectiveExperiments, experimentalSettingRefusal, isMachineSetting, MACHINE_SETTINGS, settledMachineSetting, settledExperiment, type SettingMachine, type ClientPreferences, type ExperimentId, checkSettingsPatch, readSettings, settingAnswerText, settledSetting, type Message, type MessagePart, type PermissionRequest, type QuestionAnswer, type QuestionOption, type QuestionRequest, type AgentSettingAsk, type SettingAsk, type SettingRequestParams, type Settings, type TeamAsk, type Thread, type ThreadId, type Turn } from '@boite/contracts';
+import { RpcErrorCode, agentSettingAnswerText, checkClientPreferences, checkSettingRequest, effectiveExperiments, experimentalSettingRefusal, isMachineSetting, MACHINE_SETTINGS, settledMachineSetting, settledExperiment, type SettingMachine, type ClientPreferences, type ExperimentId, checkSettingsPatch, readSettings, settingAnswerText, settledSetting, type Message, type MessagePart, type PermissionRequest, type QuestionAnswer, type QuestionOption, type QuestionRequest, type AgentSettingAsk, type SettingAsk, type SettingCardAsk, type SettingRequestParams, type Settings, type TeamAsk, type Thread, type ThreadId, type Turn } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { fakeCore } from './coordination';
 import { checkAnswer, checkAsk } from './checks';
@@ -127,7 +127,7 @@ export function askAsync(ctx: FakeContext, thread: Thread, turn: Turn, running: 
 }
 
 /** The core's `requestSetting`: a settings card, drawn and answered like any card asked without stopping. */
-export function askSetting(ctx: FakeContext, thread: Thread, turn: Turn, reason: string, options: QuestionOption[], setting: SettingAsk): string {
+export function askSetting(ctx: FakeContext, thread: Thread, turn: Turn, reason: string, options: QuestionOption[], setting: SettingCardAsk): string {
   return drawAsync(ctx, thread, turn, null, { text: reason, options, allowText: false, multiple: false, setting });
 }
 
@@ -161,7 +161,7 @@ export function settleMachineSetting(ctx: FakeContext, coreId: string, key: stri
   settleWith(ctx, setting => settledMachineSetting(setting, coreId, key, value));
 }
 
-function settleWith(ctx: FakeContext, pick: (setting: SettingAsk) => QuestionAnswer | null): void {
+function settleWith(ctx: FakeContext, pick: (setting: SettingCardAsk) => QuestionAnswer | null): void {
   for (const [questionId, pending] of [...ctx.pendingQuestions]) {
     const setting = pending.request.setting;
     const answer = setting === undefined ? null : pick(setting);
@@ -216,7 +216,7 @@ function drawAsync(
   thread: Thread,
   turn: Turn,
   running: Message | null,
-  asked: { text: string; options: QuestionOption[]; allowText: boolean; multiple: boolean; setting?: SettingAsk; agentSetting?: AgentSettingAsk; team?: TeamAsk; open?: { url: string } }
+  asked: { text: string; options: QuestionOption[]; allowText: boolean; multiple: boolean; setting?: SettingCardAsk; agentSetting?: AgentSettingAsk; team?: TeamAsk; open?: { url: string } }
 ): string {
   const questionId = `qst-${++ctx.seq}`;
   const text = asked.text;

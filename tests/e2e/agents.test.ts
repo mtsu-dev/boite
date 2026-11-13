@@ -330,6 +330,8 @@ real('a rail too short for its bots scrolls them, keeps its foot on screen and s
     const railRight = await page.evaluate<number>(`document.querySelector('${id('app-rail')}').getBoundingClientRect().right`);
     expect(name.width).toBeGreaterThan(20);
     expect(name.left).toBeGreaterThan(railRight);
+    // Beside its button, not past the list column, where it went unseen.
+    expect(name.left - railRight).toBeLessThan(12);
     expect(Math.abs(name.middle - rail.last.y)).toBeLessThan(2);
     await capture('rail-short-desktop.png');
   } finally {

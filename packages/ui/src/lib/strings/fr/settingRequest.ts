@@ -1,6 +1,35 @@
 import type { Translation } from '../../i18n.svelte';
 
 export const fr: Translation = {
+  botRequest: {
+    heading: 'Bot à créer',
+    asks: 'Cette conversation demande à créer le bot {name}.',
+    name: 'Nom',
+    role: 'Rôle',
+    projects: 'Projets',
+    model: 'Modèle',
+    none: 'Aucun',
+    fullAccess: 'Ce bot fonctionne avec un accès complet à cette machine.',
+    guestHint: "Seul l'ordinateur qui fait tourner Boite peut créer ce bot.",
+    approve: 'Approuver',
+    decline: 'Refuser',
+    created: 'Bot créé',
+    declined: 'Refusé',
+    closed: 'Fermé sans réponse',
+  },
+  agentsAlone: {
+    heading: 'Ce que les agents font seuls',
+    reach: "Autres conversations qu'un agent atteint",
+    steps: { project: 'Ce projet', machine: 'Cette machine', group: 'Toutes mes machines' },
+    effects: {
+      project: 'Un agent liste, lit et écrit aux conversations de son propre projet seulement.',
+      machine: 'Un agent liste, lit et écrit aux conversations de tous les projets de cette machine.',
+      group: 'Un agent liste, lit et écrit aux conversations de tous les projets, ici et sur les machines de confiance.',
+    },
+    bots: 'Créer des bots sans demander',
+    botsEffect: 'Un bot créé ainsi a un accès complet à cette machine',
+    values: { ask: 'Demander avant', free: 'Sans demander' },
+  },
   settingRequest: {
     heading: 'Réglage suggéré',
     headingOpen: 'À voir dans les Réglages',
@@ -50,6 +79,8 @@ export const fr: Translation = {
       worktreeStorage: 'Emplacement des nouveaux worktrees',
       focusGuard: 'Garder les fenêtres des agents en arrière-plan',
       muteAgents: 'Couper le son des agents',
+      coordinationReach: "Jusqu'où une conversation atteint les autres",
+      agentBotCreation: 'Les agents créent des bots sans demander',
       agentCpuCapPercent: 'Plafond CPU de tous les agents',
       agentMemoryBudgetPercent: 'Budget mémoire de tous les agents',
       threadMemoryCapMb: 'Plafond mémoire par conversation',

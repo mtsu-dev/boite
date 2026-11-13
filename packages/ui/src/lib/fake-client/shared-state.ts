@@ -3,7 +3,7 @@ import { RpcErrorCode, type Contact, type RpcParams, type SharedProject, type Sh
 import { RpcFailure } from '../client';
 import { secureId } from '../secure-id';
 import type { FakeContext, FakeMethods } from './context';
-import { coordinationConfig, fakeCore } from './coordination';
+import { coordinationConfig, fakeCore, setSharedPartners } from './coordination';
 import { contactFor, contactState, modelTier } from './contacts';
 
 export const invalidShared = (message: string) => new RpcFailure({code: RpcErrorCode.InvalidParams, message});
@@ -50,6 +50,8 @@ export function sharedState(ctx: FakeContext): State {
   for (const event of ['contacts.updated', 'group.updated', 'project.updated', 'project.removed', 'thread.updated', 'thread.removed', 'delegation.changed'] as const) ctx.bus.observe(event, () => reconcileShared(ctx));
   return state;
 }
+// The coordination reach keeps a thread of an associated project reaching the contact it is shared with.
+setSharedPartners((ctx, projectId) => [...sharedState(ctx).projects.values()].filter(shared => shared.state === 'active' && endpoints(ctx, shared).local.projectId === projectId).map(shared => endpoints(ctx, shared).remote));
 export function onceShared<T>(ctx: FakeContext, key: string, input: unknown, run: () => T, contentRefusal = false): T {
   const state = sharedState(ctx), content = JSON.stringify(input), saved = state.receipts.get(key);
   if (saved) { if (saved.content !== content) throw (contentRefusal ? refusedShared : invalidShared)('requestId: already used for different content'); return cloneShared(saved.result as T); }

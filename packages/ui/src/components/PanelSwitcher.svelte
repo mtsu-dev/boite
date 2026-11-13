@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import { Check, ChevronDown, PanelRight, Search } from '@lucide/svelte';
+  import { Check, ChevronDown, PanelRight, Plus, Search } from '@lucide/svelte';
   import { fill, strings } from '../lib/strings';
   import { Closing } from '../lib/closing.svelte';
   import { floating } from '../lib/floating';
@@ -15,9 +15,10 @@
    * its icon, its name and one plain line saying what it holds. It comes with
    * the panel's chunk (`RightPanel.svelte` hands it over), so the entry
    * carries only the closed door, and the search and the lines load on the
-   * first open panel. The door styles the face.
+   * first open panel. The door styles the face. `add`: a desktop panel's
+   * strip draws it as the "+" after its tabs, the launcher the same.
    */
-  let { inPanel = false }: { inPanel?: boolean } = $props();
+  let { inPanel = false, add = false }: { inPanel?: boolean; add?: boolean } = $props();
   const Glyph = $derived(panelSwitch.glyph ?? PanelRight);
 
   const popover = new Closing();
@@ -101,6 +102,12 @@
 <svelte:window onpointerdown={onWindowPointerdown} />
 
 <div class="menu door-menu" bind:this={root}>
+  {#if add}
+  <button type="button" class="trigger ghost small icon" aria-haspopup="dialog" aria-expanded={popover.open} data-testid="panel-add" bind:this={trigger}
+    aria-label={strings.rightPanel.launcher} title={strings.rightPanel.launcher} onclick={toggle} onkeydown={onTriggerKey}>
+    <Plus size={14} strokeWidth={1.75} />
+  </button>
+  {:else}
   <button type="button" class="trigger ghost" aria-haspopup="dialog" aria-expanded={popover.open} data-testid="panel-add" bind:this={trigger}
     aria-label={fill(strings.thread.panelSwitch, { name: panelSwitch.title || panelSwitch.name })} title={fill(strings.thread.panelSwitch, { name: panelSwitch.title || panelSwitch.name })}
     onclick={toggle} onkeydown={onTriggerKey}>
@@ -110,6 +117,7 @@
       <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
     </span>
   </button>
+  {/if}
 
   {#if popover.shown}
     <div class="launcher" class:closing={popover.closing} role="dialog" aria-label={strings.thread.panelMenu} tabindex="-1" data-testid="panel-add-menu"

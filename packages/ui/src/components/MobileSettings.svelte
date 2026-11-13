@@ -19,6 +19,7 @@
   import QuotaMachineScope from './QuotaMachineScope.svelte';
   import ResourcesPage from './ResourcesPage.svelte';
   import QuietCard from './QuietCard.svelte';
+  import AgentsAloneCard from './AgentsAloneCard.svelte';
   import TaskManagerLoader from './TaskManagerLoader.svelte';
   import MachinesPage from './MachinesPage.svelte';
   import PhoneSettings from './PhoneSettings.svelte';
@@ -319,7 +320,7 @@
         <!-- General's Conversations card, the switches this phone keeps; the list groups from its own display options. -->
         <div class="page"><section class="card" id="settings-conversations"><h2><span class="ui-label">{strings.settings.inConversation}</span><CardScope /></h2><ConversationSwitches part="conversation" phone /></section>
           <!-- How agents answer and Quiet change one machine: the first one's scope phrase holds the picker, the bar above keeps its notes. -->
-          {#if target.owner}{#if bar}<div class="bar inline">{@render (pick && notes ? notes : bar)()}</div>{/if}<AgentRepliesSettings store={target} /><QuietCard store={target} />{/if}
+          {#if target.owner}{#if bar}<div class="bar inline">{@render (pick && notes ? notes : bar)()}</div>{/if}<AgentRepliesSettings store={target} /><QuietCard store={target} /><AgentsAloneCard store={target} />{/if}
         </div>
       {:else if shown === 'brain' && target.owner}
         <BrainPage store={target} />

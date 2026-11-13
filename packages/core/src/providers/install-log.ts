@@ -72,7 +72,7 @@ export function logUpdate(core: Core, providerId: string, step: 'waiting' | 'sta
   const outcome = data.state === 'failed' ? 'failed' : data.state === 'idle' ? 'succeeded' : `ended with state ${data.state ?? 'unknown'}`;
   const message = step === 'waiting' ? `Update of ${providerId} waits for ${data.running} threads: running turns to pause or end, background work to end`
     : step === 'started' ? `Updating ${providerId} from ${data.from ?? 'unknown'}`
-      : `Update of ${providerId} ${outcome}, now at ${data.to ?? 'unknown'}`;
+      : `Update of ${providerId} ${outcome}, now at ${data.to ?? 'unknown'}${typeof data.reason === 'string' ? `: ${data.reason}` : ''}`;
   // Called inside the update drain: a log that throws must not leave paused turns waiting forever.
   try {
     core.logs.record(step === 'finished' && data.state === 'failed' ? 'warn' : 'info', message, {

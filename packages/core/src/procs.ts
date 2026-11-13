@@ -76,7 +76,8 @@ export class ProcRegistry {
   /** A sweep waiting for the thread to stay idle, cancelled by its next turn. */
   readonly #sweepTimers = new Map<ThreadId, ReturnType<typeof setTimeout>>();
   /** Group stops still inside their grace off Windows, and taskkill fallbacks on it: what `killAll` waits for. */
-  readonly #stops = new Set<Promise<void>>();
+  /** Group stops under way, SIGKILL included, by the thread they stop when it is known. */
+  readonly #stops = new Map<Promise<void>, ThreadId | undefined>();
   readonly #childStops = new WeakMap<SpawnedChild, ManagedStop>();
   #reapOrphans = true;
   readonly #orphanGraceMs: number;
@@ -625,7 +626,7 @@ export class ProcRegistry {
       if (entry.record.pid <= 0) continue;
       // The own kill waits for the tree kill, which /T needs the root alive for; as in `managedStop`, only while held.
       const fallback = entry.running() ? this.platform.terminateUnassigned(entry.record.pid) : undefined;
-      this.#trackStop(fallback instanceof Promise ? fallback.then(() => killEntry(entry), () => killEntry(entry)) : killEntry(entry));
+      this.#trackStop(fallback instanceof Promise ? fallback.then(() => killEntry(entry), () => killEntry(entry)) : killEntry(entry), threadId);
     }
     return entries.length;
   }
@@ -638,19 +639,20 @@ export class ProcRegistry {
    */
   killAll(): Promise<void> {
     for (const threadId of [...this.#live.keys()]) this.killTree(threadId);
-    return Promise.all([...this.#stops]).then(() => undefined);
+    return Promise.all([...this.#stops.keys()]).then(() => undefined);
   }
 
-  #trackStop(stop: Promise<void> | undefined): void {
+  #trackStop(stop: Promise<void> | undefined, threadId?: ThreadId): void {
     if (stop === undefined) return;
-    this.#stops.add(stop);
+    this.#stops.set(stop, threadId);
     void stop.finally(() => this.#stops.delete(stop));
   }
 
-  /** Project removal waits for exit records; native admission also drains untraced job members when requested. */
+  /** Project removal waits for exit records; `native` drains untraced job members, `stops` the thread's group stops up to their SIGKILL. */
   async stopAndWait(threadId: ThreadId): Promise<void> { this.killTree(threadId); await this.waitForExit(threadId); }
-  async waitForExit(threadId: ThreadId, pids?: number[], options: {native?: boolean} = {}): Promise<void> {
+  async waitForExit(threadId: ThreadId, pids?: number[], options: {native?: boolean, stops?: boolean} = {}): Promise<void> {
     const deadline = Date.now() + 5000;
+    if (options.stops) await Promise.all([...this.#stops].flatMap(([stop, owner]) => (owner === threadId ? [stop] : [])));
     while ((pids ? pids.some((pid) => this.#live.get(threadId)?.has(pid)) : this.liveCount(threadId) > 0)
       || options.native && this.platform.hasProcesses?.(threadId)) {
       if (Date.now() >= deadline) throw new Error(`processes of ${threadId} did not exit within five seconds`);
@@ -879,7 +881,7 @@ export class ProcRegistry {
       if (this.capability().os === 'windows') return entry !== undefined && this.platform.terminateProcess(victim.threadId, victim.pid);
       try {
         if (entry === undefined) return this.platform.terminateProcess(victim.threadId, victim.pid);
-        this.#trackStop(entry.kill() ?? undefined);
+        this.#trackStop(entry.kill() ?? undefined, victim.threadId);
         return true;
       } catch {
         return false;
