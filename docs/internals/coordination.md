@@ -389,7 +389,7 @@ first entry it kept, and an entry keeps the names of its newest 50 tool calls
 after a count of the others. Ten entries of 40,000 characters each make a
 default read of 6,652 characters of JSON; they made 31,662 at 3,000 characters
 an entry (`coordination-read-paging.test.ts`, 2026-11-13). A page from an older
-core is fitted the same way on arrival. A cut entry carries its whole `length` and the
+core is cut to the same preview and budget on arrival. A cut entry carries its whole `length` and the
 `next` offset of the rest, and the output prints the command that reads it:
 `--entry <id> --offset <n>` returns that one entry from the offset, 16,000
 characters at a time, until it carries no `next`. `--entry <id> --tool <call-id>`

@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test';
-import { TRANSCRIPT_READ_BUDGET, type AgentAddress, type AgentTranscript, type Turn } from '@boite/contracts';
+import { fitTranscript, TRANSCRIPT_READ_BUDGET, type AgentAddress, type AgentTranscript, type Turn } from '@boite/contracts';
 import { echoThread, startTestCore, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
 import { resultPageOf } from '../src/delegation/results.ts';
@@ -92,6 +92,11 @@ test('a page stops at the size budget with its newest entries, and the cursor at
     expect(pages).toBeLessThan(20);
   }
   expect(seen).toEqual([...ids, busy]);
+  // Names that double once serialized: the newest entry alone would pass the budget, so its oldest names leave too.
+  const quoted = fitTranscript({ contact: h.core.coordination.describe(b), more: false, entries: [{ id: busy, role: 'assistant', at: 2000, text: '', tools: ['+350 earlier', ...Array.from({ length: 50 }, (_, index) => `${index}`.padEnd(200, '"'))] }] });
+  expect(JSON.stringify(quoted).length).toBeLessThanOrEqual(TRANSCRIPT_READ_BUDGET);
+  expect(quoted.entries[0]!.tools[0]).toMatch(/^\+3[6-9]\d earlier$/);
+  expect(quoted.entries[0]!.tools.at(-1)).toStartWith('49"');
 });
 
 test('a final answer cut for its reader names the command and offset that read the rest exactly', async () => {
@@ -142,8 +147,18 @@ test('a linked core pages an entry, and an older core that answers with a page i
   const page = await one.h.core.coordination.read(one.a, target);
   expect(page.entries[0]).toMatchObject({ length: text.length, next: 499 });
   expect(await whole((entry, offset) => one.h.core.coordination.read(one.a, target, undefined, undefined, entry, offset), page)).toEqual([text]);
-  // An older core reads the payload's thread, limit and before only, and sends a page.
   const request = one.h.core.coordination.request.bind(one.h.core.coordination);
+  // A core that still sends 3,000 characters an entry: the page is cut to this core's preview, and the rest reads back from there.
+  one.h.core.coordination.request = async (peer, operation, payload) => {
+    const answer = await request(peer, operation, payload) as AgentTranscript;
+    if (operation !== 'read' || (payload as { entry?: string }).entry !== undefined) return answer;
+    return { ...answer, entries: answer.entries.map(entry => ({ ...entry, text: text.slice(0, 3000), next: 3000 })) };
+  };
+  const wide = await one.h.core.coordination.read(one.a, target);
+  expect(wide.entries[0]).toMatchObject({ length: text.length, next: 499 });
+  expect(wide.entries[0]!.text).toHaveLength(499);
+  expect(await whole((entry, offset) => one.h.core.coordination.read(one.a, target, undefined, undefined, entry, offset), wide)).toEqual([text]);
+  // An older core reads the payload's thread, limit and before only, and sends a page.
   one.h.core.coordination.request = (peer, operation, payload) => {
     const { entry: _entry, offset: _offset, ...older } = payload as Record<string, unknown>;
     return request(peer, operation, operation === 'read' ? older : payload);

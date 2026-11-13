@@ -103,14 +103,27 @@ export interface AgentTranscript {
 /**
  * `page` within `TRANSCRIPT_READ_BUDGET` characters of JSON: the oldest entries
  * leave until it fits, and `more` then says so, the first entry kept being the
- * cursor of the next read. The newest entry always stays.
+ * cursor of the next read. The newest entry always stays; when it alone passes
+ * the budget, its oldest tool names leave for a `+N earlier` count.
  */
 export function fitTranscript(page: AgentTranscript): AgentTranscript {
   let size = JSON.stringify(page).length;
+  if (size <= TRANSCRIPT_READ_BUDGET) return page;
   let drop = 0;
   // An entry leaves with the comma that followed it.
   for (; size > TRANSCRIPT_READ_BUDGET && drop < page.entries.length - 1; drop += 1) size -= JSON.stringify(page.entries[drop]).length + 1;
-  return drop === 0 ? page : { ...page, entries: page.entries.slice(drop), more: true };
+  let fitted: AgentTranscript = drop === 0 ? page : { ...page, entries: page.entries.slice(drop), more: true };
+  const last = fitted.entries[0];
+  if (size <= TRANSCRIPT_READ_BUDGET || !last) return fitted;
+  const counted = /^\+(\d+) earlier$/.exec(last.tools[0] ?? '');
+  let earlier = counted ? Number(counted[1]) : 0;
+  const names = counted ? last.tools.slice(1) : [...last.tools];
+  while (names.length > 0 && JSON.stringify(fitted).length > TRANSCRIPT_READ_BUDGET) {
+    names.shift();
+    earlier += 1;
+    fitted = { ...fitted, entries: [{ ...last, tools: [`+${earlier} earlier`, ...names] }] };
+  }
+  return fitted;
 }
 export interface AgentLetter {
   /**

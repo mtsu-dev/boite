@@ -203,10 +203,20 @@ export function checkTranscript(value: unknown, entry?: { entry?: string; offset
   return { entries, more: single ? false : raw.more };
 }
 
-/** `contact`'s transcript from another core, checked, a page fitted to the read budget whatever that core sent. */
+/**
+ * `contact`'s transcript from another core, checked. A page is cut to this
+ * core's preview and read budget whatever that core sent: an entry longer
+ * than `ENTRY_TEXT` keeps its start and names the rest from there, which the
+ * sending core reads back by `entry` and `offset`.
+ */
 export function remoteTranscript(contact: AgentContact, value: unknown, entry?: { entry?: string; offset?: number }): AgentTranscript {
-  const page = { contact, ...checkTranscript(value, entry) };
-  return entry?.entry === undefined ? fitTranscript(page) : page;
+  const checked = checkTranscript(value, entry);
+  if (entry?.entry !== undefined) return { contact, ...checked };
+  const entries = checked.entries.map(item => {
+    const page = stretch(item.text, 0, TRANSCRIPT_ENTRY_TEXT);
+    return page.next === undefined ? item : { ...item, text: page.text, length: item.length ?? item.text.length, next: page.next };
+  });
+  return fitTranscript({ contact, entries, more: checked.more });
 }
 
 /** A search result from another core, checked before it reaches an agent. */
