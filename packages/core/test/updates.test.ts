@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -229,6 +229,53 @@ describe('harness updates', () => {
     await changed;
     const ran = readFileSync(calls, 'utf8').trim().split('\n').map((line) => JSON.parse(line) as { args: string[]; prefix: string });
     expect(ran).toEqual([{ args: ['install', '-g', '--allow-scripts=@boite-test/fake-agent', '@boite-test/fake-agent@1.1.0'], prefix: layout.prefix }]);
+    await waitFor(() => harness?.core.procs.liveCount('update:update-fake') === 0);
+  });
+
+  test.skipIf(process.platform === 'win32')('an npm install cut by the time limit puts back the copy npm had moved aside', async () => {
+    let layout!: ReturnType<typeof npmLayout>;
+    const { client } = await start('npm', 'update', undefined, (dataDir) => {
+      layout = npmLayout(dataDir);
+      return { kind: 'file', value: layout.link };
+    });
+    const packageDir = join(layout.scope, 'fake-agent');
+    writeFileSync(join(packageDir, 'package.json'), JSON.stringify({ name: '@boite-test/fake-agent', bin: { 'fake-agent': 'bin/agent' } }));
+    const script = readFileSync(join(packageDir, 'bin', 'agent'), 'utf8');
+    // npm as it stood when the limit cut OpenCode 2's install on 2026-11-13: the package and its link
+    // parked under arborist's names, the new release unpacked with the stub its postinstall replaces,
+    // and the unpacking still going, deaf to SIGTERM until the next step.
+    const cli = join(harness!.dataDir, 'npm-cli.js');
+    writeFileSync(cli, [
+      "const { chmodSync, mkdirSync, renameSync, symlinkSync, writeFileSync } = require('node:fs');",
+      "const { createHash } = require('node:crypto');",
+      "const { basename, dirname, join, resolve } = require('node:path');",
+      "const park = (path) => resolve(dirname(path), '.' + basename(path) + '-' + createHash('sha1').update(path).digest('base64').replace(/[^a-zA-Z0-9]+/g, '').slice(0, 8));",
+      "const prefix = process.env.npm_config_prefix;",
+      "const pkg = join(prefix, 'lib', 'node_modules', '@boite-test', 'fake-agent');",
+      "const link = join(prefix, 'bin', 'fake-agent');",
+      'renameSync(pkg, park(pkg));',
+      'renameSync(link, park(link));',
+      "mkdirSync(join(pkg, 'bin'), { recursive: true });",
+      "writeFileSync(join(pkg, 'bin', 'agent'), '#!/bin/sh\\necho \"postinstall script was not run\" >&2\\nexit 1\\n');",
+      "chmodSync(join(pkg, 'bin', 'agent'), 0o755);",
+      "symlinkSync(join(pkg, 'bin', 'agent'), link);",
+      "process.on('SIGTERM', () => {});",
+      'setInterval(() => {}, 1000);',
+    ].join('\n'));
+    harness!.core.updates.npmCli = () => ({ executable: process.execPath, script: cli });
+    harness!.core.updates.updateTimeoutMs = 1000;
+    expect(only(await client.call('providers.updates', { refresh: true }))).toMatchObject({ current: '1.0.0', latest: '1.1.0' });
+
+    const failed = client.next('providers.updatesChanged', (list) => list[0]?.state === 'failed', 20000);
+    await client.call('providers.update', { providerId: 'update-fake' });
+    const update = only(await failed);
+    expect(update.current).toBe('1.0.0');
+    expect(update.message).toMatch(/did not answer `npm install -g @boite-test\/fake-agent@1\.1\.0` within 1 s; npm stopped halfway, and the copy that ran before was put back/);
+    // The copy that ran before is back under its names, and nothing npm parked is left beside it.
+    expect(readFileSync(layout.link, 'utf8')).toBe(script);
+    expect(readdirSync(layout.scope)).toEqual(['fake-agent']);
+    expect(readdirSync(join(layout.prefix, 'bin'))).toEqual(['fake-agent']);
+    expect(only(await client.call('providers.updates', { refresh: true }))).toMatchObject({ current: '1.0.0', latest: '1.1.0', state: 'idle', pending: true });
     await waitFor(() => harness?.core.procs.liveCount('update:update-fake') === 0);
   });
 

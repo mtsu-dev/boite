@@ -9,7 +9,8 @@ import { notFound, refused } from '../errors.ts';
 import { currentOs } from '../paths.ts';
 import type { InstallOutcome } from './install.ts';
 import { npmCli, npmInstallOf, unwritableDir, type NpmCommand } from './npm.ts';
-import { profileFor, programBehindWrappers, resolveCommand, type ResolvedCommand } from './resolve.ts';
+import { npmUpdate, runNpmUpdate } from './update-npm.ts';
+import { profileFor, programBehindWrappers, resolveCommand } from './resolve.ts';
 import { BACKGROUND_LIMIT_MS, backgroundHolders, resumeCut, withCut } from './update-background.ts';
 import { readReadings, readSkips, writeReadings, writeSkips, type Entry } from './update-readings.ts';
 import { resumeAfterUpdate, resumePostponed, resumeUnwaited, type Resume } from './update-resume.ts';
@@ -156,11 +157,12 @@ export class HarnessUpdates {
   readonly #drains = new Map<ProviderId, Drain>();
   /** When the last whole check finished, kept across restarts. */
   #lastCheckAt: number | null = null;
-  /** Test seams: the registry read, npm's own CLI, the only providers a check may touch, how long a version read, a pause and background work may take. */
+  /** Test seams: the registry read, npm's own CLI, the only providers a check may touch, how long a version read, an updater, a pause and background work may take. */
   npmLatest: (name: string) => Promise<string> = npmLatest;
   npmCli: () => NpmCommand | null = npmCli;
   only: ReadonlySet<ProviderId> | null = null;
   versionTimeoutMs = VERSION_TIMEOUT_MS;
+  updateTimeoutMs = UPDATE_TIMEOUT_MS;
   readonly #apt = new AptPackages();
   pauseLimitMs = PAUSE_LIMIT_MS;
   backgroundLimitMs = BACKGROUND_LIMIT_MS;
@@ -594,13 +596,14 @@ export class HarnessUpdates {
       let said = '';
       const pkg = target.route === 'self' ? prefixPackageOf(target.program) : null;
       if (target.route === 'managed') await this.#runManaged(target);
-      else if (pkg !== null) said = await this.#apt.upgrade(pkg, target.program, this.versionTimeoutMs, UPDATE_TIMEOUT_MS, (...run) => this.#run(target, ...run));
+      else if (pkg !== null) said = await this.#apt.upgrade(pkg, target.program, this.versionTimeoutMs, this.updateTimeoutMs, (...run) => this.#run(target, ...run));
       else {
         this.#assertWritable(target);
-        const npm = this.#npmInstall(target, before);
+        const spec = target.profile.update as ProviderSelfUpdate;
+        const npm = npmUpdate(target.program, spec.latestNpm, before.latest, this.npmCli());
         said = npm === null
-          ? await this.#run(target, (target.profile.update as ProviderSelfUpdate).args, UPDATE_TIMEOUT_MS)
-          : await this.#run(target, npm.args, UPDATE_TIMEOUT_MS, npm);
+          ? await this.#run(target, spec.args, this.updateTimeoutMs)
+          : await runNpmUpdate(npm, () => this.#run(target, npm.args, this.updateTimeoutMs, npm), () => this.#core.procs.waitForExit(updateThreadId(id)));
       }
       // An updater may have moved the program on PATH.
       forgetWhich();
@@ -634,29 +637,6 @@ export class HarnessUpdates {
     }
     this.#writeReadings();
     this.#emit();
-  }
-
-  /**
-   * The npm command that installs the release the registry named, when the
-   * copy that runs is a global npm install of the very package the descriptor
-   * reads that release from. Boite already knows the version, so it does not
-   * ask the agent's updater to find it again: `claude update` gives its own
-   * `npm view` five seconds, and a cold npm on a slow laptop takes longer, so
-   * every first update failed there (2026-10-15). Null leaves the update to
-   * the agent's own updater.
-   */
-  #npmInstall(target: Target, before: Entry): { args: string[]; command: ResolvedCommand; label: string } | null {
-    const pkg = (target.profile.update as ProviderSelfUpdate).latestNpm;
-    if (pkg === undefined || before.latest === null) return null;
-    const install = npmInstallOf(target.program);
-    if (install === null || install.name !== pkg) return null;
-    const cli = this.npmCli();
-    if (cli === null) return null;
-    const spec = `${pkg}@${before.latest}`;
-    // The agent's program names the install, so the updater environment points npm at its prefix.
-    // npm 12 skips install scripts unless allowed, and Claude's copies its native binary over a stub;
-    // an older npm warns about the flag and goes on.
-    return { args: ['install', '-g', `--allow-scripts=${pkg}`, spec], command: { executable: cli.executable, prefix: [cli.script], shown: target.program, updateEnv: {} }, label: `npm install -g ${spec}` };
   }
 
   /**
@@ -784,7 +764,12 @@ export class HarnessUpdates {
     const updateAt = logUpdate(this.#core, providerId, 'started', { from: drain.before.current });
     void this.#runUpdate(drain.target, drain.before)
       // A shutdown leaves the entry mid-update: no finish happened to log.
-      .then(() => { if (this.#closed || this.#core.stopping) return; logUpdate(this.#core, providerId, 'finished', { from: drain.before.current, to: this.#entries.get(providerId)?.current ?? null, state: this.#entries.get(providerId)?.state ?? null }, updateAt); })
+      .then(() => {
+        if (this.#closed || this.#core.stopping) return;
+        const entry = this.#entries.get(providerId);
+        // A failure says why in the log too: the row's message is gone at the next check.
+        logUpdate(this.#core, providerId, 'finished', { from: drain.before.current, to: entry?.current ?? null, state: entry?.state ?? null, ...(entry?.state === 'failed' ? { reason: entry.message } : {}) }, updateAt);
+      })
       .catch((error: unknown) => {
         this.#core.log('error', `updating ${providerId}: ${error instanceof Error ? error.message : String(error)}`);
       })
