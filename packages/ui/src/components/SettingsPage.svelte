@@ -79,7 +79,8 @@
 <div class="map" class:long class:phone data-testid="settings-page" data-page={page}>
   {#each blocks as entry (entry.block)}
     {#if WHOLE.has(entry.block)}
-      <div class="block" data-block={entry.block}>
+      <!-- A headed block alone on its page drops the extra title, never the anchor a route or a search lands on. -->
+      <div class="block" data-block={entry.block} id={HEADED.has(entry.block) && blocks.length === 1 ? `settings-${entry.block}` : undefined}>
         {#if HEADED.has(entry.block) && blocks.length > 1}
           <div class="page"><div class="group-heading" id="settings-{entry.block}">
             <h2>{words[entry.cards[0]!.id as SettingsCardId].title}</h2>

@@ -90,3 +90,36 @@ test.each(['appearance', 'input', 'conversations', 'ai', 'agents', 'safeguards',
   expect([...document.querySelectorAll<HTMLElement>('[data-testid=settings-page] > [data-block]')].map((block) => block.dataset.block)).toEqual(blocksOf(page, true, true).map((entry) => entry.block));
   vi.unstubAllGlobals();
 });
+
+test('a paired phone reads its session when the phone card opens, so it is not told to pair first', async () => {
+  Element.prototype.scrollIntoView ??= vi.fn();
+  Object.defineProperty(window, 'isSecureContext', { value: true, configurable: true });
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  vi.spyOn(store, 'owner', 'get').mockReturnValue(false);
+  store.sessions = [];
+  const call = client.call.bind(client);
+  let reads = 0;
+  client.call = (async (method: string, params: unknown) => {
+    if (method === 'sessions.list') { reads++; return [{ id: 'current-session', current: true, role: 'device', name: 'Phone', createdAt: 0, lastSeenAt: 0 }]; }
+    return call(method as never, params as never);
+  }) as typeof client.call;
+  store.showSettings('devices', 'phone');
+  mounted = mount(MobileSettings, { target: document.body, props: { store } });
+  await settle(); await settle();
+  expect(document.querySelector('[data-testid=phone-settings]')).not.toBeNull();
+  expect(reads).toBeGreaterThan(0);
+  expect(document.body.textContent).not.toContain(strings.phone.pairFirst);
+  Reflect.deleteProperty(window, 'isSecureContext');
+});
+
+test('a block alone on its phone page keeps the anchor a search result scrolls to', async () => {
+  Element.prototype.scrollIntoView ??= vi.fn();
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  store.showSettings('input', 'voice', { flash: true });
+  mounted = mount(MobileSettings, { target: document.body, props: { store } });
+  await settle();
+  expect(document.querySelector('[data-testid=voice-settings]')).not.toBeNull();
+  expect(document.getElementById('settings-voice')).not.toBeNull();
+});
