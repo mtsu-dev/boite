@@ -306,7 +306,9 @@ async function start(options: Options): Promise<void> {
     throw new Refusal(`This checkout already runs a Dev instance at ${running.url} (pid ${running.pid}, data ${running.dataDir}).\nStop it first: ${RUN} stop`, 3);
   }
   // A run that died without `stop` (a crash, a reboot) left its copy or scratch behind: this start is its last reference.
-  if (running !== null && (!alive(running.pid) || processIdentity(running.pid) !== null)) removeTemporary(running);
+  // A live pid that cannot be told from that run keeps the data: a leaked directory is safe, a live run's is not.
+  const known = running?.identity !== null && running?.identity !== undefined;
+  if (running !== null && (!alive(running.pid) || (known && processIdentity(running.pid) !== null))) removeTemporary(running);
   const schema = schemaState(devDir);
   let dataDir: string | null = null;
   let mode: State['mode'] = 'dev';

@@ -300,6 +300,25 @@ describe('bun run dev:instance', () => {
     expect(existsSync(left)).toBe(false);
   }, TIMEOUT);
 
+  test('a start over a state that names no run keeps the data of a pid still alive', async () => {
+    const box = fresh();
+    const first = await instance(box, '--scratch');
+    expect(first.code).toBe(0);
+    const left = temporaryDir(first.out);
+    // A state written before runs were identified: its pid lives, and nothing says whose it is.
+    const state = JSON.parse(readFileSync(statePath(box.devDir), 'utf8')) as { pid: number; identity?: string };
+    delete state.identity;
+    writeFileSync(statePath(box.devDir), JSON.stringify(state));
+    try {
+      const next = await instance(box, '--scratch');
+      expect(next.code).toBe(0);
+      expect(existsSync(left)).toBe(true);
+    } finally {
+      process.kill(state.pid, 'SIGKILL');
+      rmSync(left, { recursive: true, force: true });
+    }
+  }, TIMEOUT);
+
   test('--copy with nothing to copy and contradictory modes are refused before anything starts', async () => {
     const box = fresh();
     const empty = await instance(box, '--copy');

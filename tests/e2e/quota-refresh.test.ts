@@ -52,7 +52,8 @@ test('limits identify the owning machine in the desktop glance and desktop and p
     await page.waitFor(`document.querySelector('${scope}')?.dataset.remote === 'true'`);
     expect((await page.text(scope)).trim()).toBe('Account limits for Builder');
     // Machine context replaces the heading instead of repeating it below. A phone's page steps its own title aside for the bar above it.
-    if (width === 1280) expect(await page.evaluate(`document.querySelectorAll('${scope}').length === 1 && !!document.querySelector('${scope}')?.closest('h1, h2')?.getClientRects().length`)).toBe(true);
+    expect(await page.evaluate(`document.querySelectorAll('${scope}').length === 1`)).toBe(true);
+    if (width === 1280) expect(await page.evaluate(`!!document.querySelector('${scope}')?.closest('h1, h2')?.getClientRects().length`)).toBe(true);
     const refresh = width === 1280 ? 'limits-glance-refresh' : 'limits-refresh';
     await page.click(`[data-testid="${refresh}"]`);
     await page.waitFor(`document.querySelector('[data-testid="${refresh}"]')?.getAttribute('aria-busy') === 'false'`);
