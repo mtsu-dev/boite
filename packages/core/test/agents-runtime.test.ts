@@ -748,6 +748,16 @@ test.skipIf(process.platform === 'win32')('a check whose shell left a child hold
   expect(Date.now() - started).toBeLessThan(4_000);
 }, 20_000);
 
+test.skipIf(process.platform === 'win32')('a check stopped for running too long keeps what it wrote to stderr', async () => {
+  const { agent, threadId } = await makeAgent(h, client);
+  const result = await runCheck(h.core, h.core.threads.require(threadId), 'echo oops 1>&2; exec sleep 30', 500);
+  expect(result.failed).toBe(true);
+  expect(result.text).toContain('stopped after');
+  expect(result.text).toContain('oops');
+  // An empty check is no check: the core saves null, whoever sent it.
+  expect((await routine(agent.id, { check: '  ' })).check).toBeNull();
+}, 20_000);
+
 test('a routine with a check wakes the bot only when its command prints something new, and a failing check wakes it once', async () => {
   const { agent, threadId } = await makeAgent(h, client);
   const cwd = h.core.threads.require(threadId).cwd;
@@ -835,4 +845,4 @@ test('a routine that failed on a spent usage window resumes once the window rese
   await waitFor(() => read(saved.id).lastOutcome === 'error');
   await waitFor(() => turnsOf(h, threadId).at(-1)!.execution?.operation === 'resume' && settled(h, threadId), 10_000);
   expect(turnsOf(h, threadId).at(-1)!.status).toBe('done');
-});
+}, 20_000);

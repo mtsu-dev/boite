@@ -66,11 +66,14 @@
 
   /** Its daily budget, read beside the snapshot: only its settings carry it. */
   let budget = $state<number | null>(null);
+  let budgetFor: string | null = null;
   const revision = $derived(view.snapshot?.revision ?? 0);
   $effect(() => {
     const id = agent?.id, client = store.client;
     void revision;
-    if (!id || !client) { budget = null; return; }
+    if (!id || !client) { budget = null; budgetFor = null; return; }
+    // Another bot's budget never stands in while this one's is read.
+    if (budgetFor !== id) { budget = null; budgetFor = id; }
     let live = true;
     untrack(() => {
       void client.call('agents.runtime.get', { agentId: id }).then(value => { if (live) budget = value.dailyBudgetUsd ?? null; }).catch(() => { if (live) budget = null; });

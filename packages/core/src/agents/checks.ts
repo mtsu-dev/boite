@@ -80,8 +80,9 @@ export async function runCheck(core: Core, thread: ThreadSummary, command: strin
     const [stdout, stderr, code] = await Promise.all([
       capped(spawned.proc.stdout as ReadableStream<Uint8Array>, closed), capped(spawned.proc.stderr as ReadableStream<Uint8Array>, closed), exited,
     ]);
-    if (timedOut) return failed(`The check was stopped after ${Math.round(timeoutMs / 1000)} seconds.`, stdout.text);
-    if (code !== 0) return failed(`The check exited with code ${code}.`, [stdout.text.trim(), stderr.text.trim()].filter(Boolean).join('\n'));
+    const both = [stdout.text.trim(), stderr.text.trim()].filter(Boolean).join('\n');
+    if (timedOut) return failed(`The check was stopped after ${Math.round(timeoutMs / 1000)} seconds.`, both);
+    if (code !== 0) return failed(`The check exited with code ${code}.`, both);
     const text = cut(stdout.text.trim());
     return { text, failed: false, print: printOf(text) };
   } catch (error) {

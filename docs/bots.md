@@ -58,7 +58,7 @@ stays readable.
   "Only when there is news" takes a command, for example
   `gh pr list --json number,title`. When the routine is due, Boite runs it in
   the bot's folder: the bot wakes only if the command prints something it did
-  not print the time before, or fails. A check that finds nothing new costs
+  not print the time before, or fails in a new way. A check that finds nothing new costs
   nothing, and the routine reads "nothing new". Run now skips the check. You
   can always set one; the bot sets its own only when it runs with full access.
 - After downtime, at most one missed occurrence of a routine runs.
