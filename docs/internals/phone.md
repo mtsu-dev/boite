@@ -45,15 +45,16 @@ choosing Answer in writing, editing a message, or opening search explicitly
 still starts typing. A terminal opens on its output and waits for a tap before
 taking the keyboard. Desktop autofocus stays available.
 
-At phone widths, Settings opens a list in two groups. This phone:
-Notifications, Appearance, Privacy, the two analytics switches, and
-Experiments, which follow the computer's desktop app until the phone flips one
-of its own: Bots on the computer brings the phone's Bots tab with it
-([experiments](experiments.md)).
-Machine: the
-machine itself with its connection, which opens Machines, then Usage, Voice,
-Archived threads and Secrets. Owner connections also show Browser profiles
-and Allowed windows. Each opens a screen of its own; the back button or browser
+At phone widths, Settings opens the desktop's families in order: App
+(General, Voice, Appearance), Agents (Providers, Plugins and Brain for an
+owner, then Limits and Usage), Connections (Browser for an owner, Machines)
+and Advanced (System for an owner, Experiments, Diagnostics for an owner or
+the task manager alone for a paired phone). General opens an index of
+Conversations, Notifications, Archived threads and, for an owner, Worktrees,
+with the Privacy and analytics switches at its foot. Experiments follow the
+computer's desktop app until the phone flips one of its own: Bots on the
+computer brings the phone's Bots tab with it ([experiments](experiments.md)).
+Each opens a screen of its own; the back button or browser
 Back returns to the list. Theme and accent belong to the current device;
 Appearance also holds the chat's files and previews switch, and leaves the
 column width, the terminal, the workspace and the header's buttons to the
@@ -82,9 +83,9 @@ Owner sessions also get Plugins, the same page as the desktop's: the grid
 takes one card per row and a card's gear opens as a bottom sheet
 ([plugins](plugins.md)).
 
-Provider accounts, keyboard shortcuts, resource limits, the brain,
-the task manager, worktrees, diagnostics, the tour and
-server configuration have no row in the phone's settings list. A link or a
+Keyboard shortcuts, the tour and server configuration have no row in the
+phone's settings list; Memory and processes and, for an owner, the task manager
+are sections of Diagnostics. A link or a
 card can still open a supported detail page, subject to its permissions;
 `MobileSettings.svelte` defines those pages. Project management is available
 from each project card's menu. This smaller phone menu also applies to owner

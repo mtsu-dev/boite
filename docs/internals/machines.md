@@ -309,13 +309,13 @@ this window, at its next connection otherwise. Only a change made on that machin
 marks it; the copy itself never does.
 
 Every settings page that belongs to one machine (General, Keyboard, Voice,
-Providers, Plugins, Brain, Limits, Task manager, Protection, Advanced and
-Diagnostics) has a machine picker above it once this window has more than one
+Providers, Plugins, Brain, Limits, System, Diagnostics and Experiments) has
+a machine picker above it once this window has more than one
 machine to pick. Picking another machine shows and
 changes that machine's settings without moving the window or its open
 conversation; Plugins opens on this PC, the others on the window's machine.
 On a machine that follows the settings machine, a note under the picker says
-so; the settings machine says it holds the role. Appearance and Experiments belong
+so; the settings machine says it holds the role. Appearance and Browser belong
 to the window, Machines to the group, and Usage keeps its own machine filter,
 which can read every machine at once.
 

@@ -96,7 +96,7 @@ The commands are agent-browser's, so an agent that knows one knows the other.
 `boite browser open http://localhost:3000` goes to the page in the current tab,
 or opens a tab in the default profile when there is none; `localhost` is the
 agent's own machine. `boite browser profiles` lists the profiles the user made
-in Settings > General > Browser profiles on that machine, and
+in Settings > Browser > Browser profiles on that machine, and
 `open <url> --profile Pro` opens a new tab in one of them, by name or id.
 `--profile private` opens a private tab that keeps nothing once the last private
 tab closes, or once the browser or Boite restarts. A second account the agent

@@ -537,8 +537,8 @@ a device can already open, and the thread titles it names are the ones
 `packages/core/src/access.ts`. A device also reads `quotas.list` and
 `subscriptionProxy.quotas` with the bars the core holds: no refresh button, no
 monitoring switch, no reset. A core older than that refuses the read, and the
-Limits tab asks to update Boite on that machine. On a phone both pages are under
-Settings > Machines, as Usage and Limits.
+Limits tab asks to update Boite on that machine. On a phone both pages are rows
+of Settings, under Agents, and the two tabs of one screen.
 
 ## The fake client
 
