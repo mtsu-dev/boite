@@ -322,9 +322,8 @@
     background-color: color-mix(in oklch, var(--color-success) 14%, transparent);
     background-clip: padding-box;
   }
+  /* Open, a count says it by its ink, as on a project card: no box stays behind once the pointer leaves. */
   .counter.active {
-    background: var(--color-active);
-    border-color: var(--color-edge);
     color: var(--color-foreground);
   }
   .history {
@@ -337,9 +336,8 @@
       padding: 0 7px;
       gap: 5px;
     }
-    /* The 44px target stays; the transparent border leaves the 22px pill drawn inside it, its open ring included. */
+    /* The 44px target stays; the transparent border leaves the 22px pill drawn inside it. */
     .counter.done { border-width: 11px 0; }
-    .counter.done.active { border-color: transparent; background-clip: padding-box; box-shadow: inset 0 0 0 1px var(--color-edge); }
   }
   /* A dragged thread can land on an idle project: same edge and neutral fill as a project section. */
   :global(html.thread-dragging) li:not(.candidate) {
