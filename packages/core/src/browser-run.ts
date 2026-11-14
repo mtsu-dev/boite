@@ -241,6 +241,8 @@ export async function runBrowserScript(script: BrowserScript, io: CliIo, client:
       const label = typed.slice(0, 2).join(' ');
       let parsed: ReturnType<typeof browserAction>;
       try { parsed = browserAction(typed); } catch (error) { throw new StepError(++steps, label, error); }
+      // A script's snapshot is whole and never the agent's view, `--full` or not: drop the CLI's view.
+      if (parsed.action.kind === 'snapshot') { const { view: _view, ...whole } = parsed.action; parsed = { ...parsed, action: whole }; }
       return step(label, () => parsed.action, parsed.output, parsed.tabId ?? current);
     },
   };

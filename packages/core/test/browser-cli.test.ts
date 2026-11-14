@@ -225,6 +225,8 @@ test('browser run sends a script\'s steps in order in one call, prints what they
       "await page.open('https://shop.test/')",
       'const tree = await page.snapshot({ interactive: true })',
       'await page.snapshot({ interactive: true })',
+      "await page.command('snapshot', '-i')",
+      "await page.command('snapshot', '--full')",
       "await page.fill('@e2', args[0])",
       "await page.click(tree.includes('Go') ? '@e1' : '@e9')",
       "console.log('clicked', { at: 1 })",
@@ -232,12 +234,14 @@ test('browser run sends a script\'s steps in order in one call, prints what they
     ].join('\n'));
     const done = await run(['flow.js', 'secret-name']);
     expect(done.code).toBe(0);
-    expect(sent.map(action => action.kind)).toEqual(['open', 'snapshot', 'snapshot', 'fill', 'click', 'evaluate']);
+    expect(sent.map(action => action.kind)).toEqual(['open', 'snapshot', 'snapshot', 'snapshot', 'snapshot', 'fill', 'click', 'evaluate']);
     expect(sent[1]).toEqual({ kind: 'snapshot', interactive: true });
-    // A script reads whole trees and leaves the agent's last view alone: it sends no view.
+    // A script reads whole trees and leaves the agent's last view alone: it sends no view, through page.command too.
     expect(sent[2]).toEqual({ kind: 'snapshot', interactive: true });
-    expect(sent[3]).toEqual({ kind: 'fill', selector: '@e2', text: 'secret-name' });
-    expect(sent[5]).toEqual({ kind: 'evaluate', expression: '((a, b) => a + b)(...[40,2])' });
+    expect(sent[3]).toEqual({ kind: 'snapshot', interactive: true });
+    expect(sent[4]).toEqual({ kind: 'snapshot' });
+    expect(sent[5]).toEqual({ kind: 'fill', selector: '@e2', text: 'secret-name' });
+    expect(sent[7]).toEqual({ kind: 'evaluate', expression: '((a, b) => a + b)(...[40,2])' });
     expect(done.out).toContain('> click @e1\n✓ Next\n  https://shop.test/next\n');
     expect(done.out).toContain('clicked {"at":1}\n');
     expect(done.out).toEndWith('{\n  "sum": 42\n}\n');
