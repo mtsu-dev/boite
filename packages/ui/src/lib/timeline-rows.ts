@@ -47,10 +47,22 @@ export interface TimelineRow {
  * whole message gets, it moves the scrollbar less as a scroll measures rows.
  */
 const PART_ESTIMATE = 11;
+/**
+ * What a paragraph and the run under it are worth at least: a session that
+ * writes a line before each call (ADEMark's 1,000 steps of a sentence and a
+ * `Read`) draws about 116 px a step, ten times its two parts at
+ * `PART_ESTIMATE`. Counted at 22 px, such a row was estimated at a fifth of
+ * its height, and the window at the bottom mounted four of them where one
+ * filled the screen.
+ */
+const PARAGRAPH_ESTIMATE = 100;
 
 /** What a row weighs before it is measured: `whole` for a message drawn as one row. */
 export function rowEstimate(row: TimelineRow, whole: number): number {
-  return row.first && row.last ? whole : Math.max(whole, (row.to - row.from) * PART_ESTIMATE);
+  if (row.first && row.last) return whole;
+  let paragraphs = 0;
+  for (let index = row.from; index < row.to; index += 1) if (row.message.parts[index]?.type === 'text') paragraphs += 1;
+  return Math.max(whole, (row.to - row.from) * PART_ESTIMATE, paragraphs * PARAGRAPH_ESTIMATE);
 }
 
 /** The text an assistant or system message shows for a part: what `AssistantMessage` draws. */

@@ -161,6 +161,11 @@ test('a part is found in the row that draws it, and a cut row is estimated by wh
   }
   expect(rowEstimate(rows[0]!, 80)).toBe(80);
   expect(rowEstimate(rows[1]!, 80)).toBeGreaterThan(80);
+  // A run of nine calls per paragraph weighs its parts; a sentence before each call, ADEMark's long session, its paragraphs.
+  expect(rowEstimate(rows[1]!, 80)).toBe((rows[1]!.to - rows[1]!.from) * 11);
+  const steps = new TimelineRows().build([message('m-steps', work(100, 1))]);
+  expect(steps.length).toBeGreaterThan(2);
+  for (const row of steps) expect(rowEstimate(row, 80)).toBe(Math.ceil((row.to - row.from) / 2) * 100);
 });
 
 test('the heavy thread is the 11.5 MiB conversation it stands for, the same at every build', () => {
