@@ -498,7 +498,6 @@
   .mobile .field { flex-wrap: wrap; }
   .mobile .field input { flex-basis: 100%; }
   .mobile button { min-height: var(--touch-target); }
-  .mobile .icon-only { min-width: var(--touch-target); }
   .mobile .field button { flex: 1; }
   /* A window with room: the inset of every other card of the page, its title with it. */
   @media (min-width: 721px) {
@@ -513,7 +512,6 @@
     .field { flex-wrap: wrap; }
     .field input { flex-basis: 100%; }
     button { min-height: var(--touch-target); }
-    .icon-only { min-width: var(--touch-target); }
     .field button { flex: 1; }
     footer { flex-direction: column; align-items: stretch; }
     .roles { flex-direction: column; align-items: stretch; }
