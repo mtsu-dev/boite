@@ -32,7 +32,7 @@ function waitFor(paths: string[]): string {
 function contender(dir: string, name: string) {
   const signal = (stage: string) => join(dir, `${name}-${stage}`);
   const script = `
-    const { existsSync, writeFileSync } = await import('node:fs');
+    const { existsSync, renameSync, writeFileSync } = await import('node:fs');
     const { takeLock } = await import(${JSON.stringify(join(import.meta.dir, '../src/data-lock.ts'))});
     const signal = (stage) => ${JSON.stringify(join(dir, name))} + '-' + stage;
     const pause = (stage) => {
@@ -49,7 +49,8 @@ function contender(dir: string, name: string) {
       });
       result = 'admitted';
     } catch (error) { result = error.message; }
-    writeFileSync(signal('result'), result);
+    writeFileSync(signal('result-pending'), result);
+    renameSync(signal('result-pending'), signal('result'));
     setInterval(() => {}, 1000);`;
   children.push(Bun.spawn([process.execPath, '-e', script], { stdout: 'ignore', stderr: 'inherit', windowsHide: true }));
   return {
