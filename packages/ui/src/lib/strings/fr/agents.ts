@@ -119,8 +119,14 @@ export const fr: Translation = {
       memoryEmpty: 'Rien de noté pour l’instant.',
     },
     waitingOn: 'Vous attend : {what}', nextWake: 'Prochain réveil : {name}, {when}',
+    today: {
+      topic: 'sa journée', none: 'Il ne s’est pas réveillé seul aujourd’hui.',
+      wakes: { one: 'Réveillé seul une fois aujourd’hui', many: 'Réveillé seul {count} fois aujourd’hui' },
+      quiet: { one: 'une fois sans rien à signaler', many: '{count} fois sans rien à signaler' },
+      cost: '{cost} dépensés aujourd’hui pour ses réveils', costOf: '{cost} dépensés sur {budget} de budget quotidien pour ses réveils',
+    },
     state: { working: 'Au travail', queued: 'En file', waiting: 'Vous attend', idle: 'Au repos', paused: 'En pause', archived: 'Archivé', error: 'Son dernier tour a échoué' },
-    outcome: { done: 'terminé', quiet: 'rien à signaler', error: 'échec', stopped: 'arrêté', skipped: 'sauté' },
+    outcome: { done: 'terminé', quiet: 'rien à signaler', error: 'échec', stopped: 'arrêté', skipped: 'sauté', nothing: 'rien de nouveau' },
     activity: {
       thinking: 'Réfléchit', compacting: 'Compacte son contexte', starting: 'Se lance', retrying: 'Relance une requête', provider: 'Attend le modèle', writing: 'Rédige sa réponse',
       tool: {
@@ -147,6 +153,9 @@ export const fr: Translation = {
       onceAt: 'Une fois, {date}', daily: 'Tous les jours à {time}', weekdays: 'Du lundi au vendredi à {time}', weekend: 'Le week-end à {time}', onDays: 'Chaque {days} à {time}',
       today: 'aujourd’hui à {time}', tomorrow: 'demain à {time}', dateAt: '{date} à {time}',
       lastRun: 'Dernière exécution {when} : {state}',
+      check: 'Seulement s’il y a du nouveau', checkPlaceholder: 'Une commande, par exemple : gh pr list --json number,title',
+      checkHint: 'Boite lance cette commande dans le dossier du bot à l’heure de la routine. Le bot ne se réveille que si la commande affiche autre chose que la fois précédente, ou si elle échoue. Une vérification sans nouveauté ne consomme aucun tour. « Lancer maintenant » la saute.',
+      checked: 'Ne se réveille que si sa vérification trouve du nouveau',
     },
   }
 };

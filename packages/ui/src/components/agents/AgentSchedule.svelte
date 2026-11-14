@@ -1,11 +1,12 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { CalendarClock } from '@lucide/svelte';
-  import { AGENT_ROUTINE_NAME_MAX, AGENT_ROUTINE_PROMPT_MAX, type AgentRoutine, type AgentSchedule } from '@boite/contracts';
+  import { AGENT_ROUTINE_CHECK_MAX, AGENT_ROUTINE_NAME_MAX, AGENT_ROUTINE_PROMPT_MAX, type AgentRoutine, type AgentSchedule } from '@boite/contracts';
   import type { AgentsView } from '../../lib/agents.svelte';
   import { dateTime, describeSchedule, INTERVALS, intervalChip, localZone, previewNext, routineName, spent, WEEK, WEEKDAYS, weekdayName } from '../../lib/schedule';
   import { fill, strings } from '../../lib/strings';
   import { formatLocale } from '../../lib/i18n.svelte';
+  import InfoTip from '../InfoTip.svelte';
   import Menu from '../Menu.svelte';
   import AgentAvatar from './AgentAvatar.svelte';
 
@@ -35,6 +36,8 @@
   let owner = $state(initial.routine?.agentId ?? initial.agentId ?? '');
   let prompt = $state(initial.routine?.prompt ?? initial.prompt);
   let name = $state(initial.routine?.name ?? '');
+  /** The command that decides whether an occurrence wakes the bot; empty wakes it every time. */
+  let check = $state(initial.routine?.check ?? '');
   let mode = $state<Mode>(from?.kind === 'daily' && from.days ? 'days' : from?.kind ?? 'daily');
   let at = $state(local(from?.kind === 'once' ? from.at : tomorrowAt9));
   let time = $state(from && 'time' in from ? from.time : '09:00');
@@ -85,7 +88,7 @@
     if (!ready || !schedule || !agent) return;
     // An edit keeps a paused routine paused; a single date that already ran is armed again by its new date.
     const enabled = initial.routine ? initial.routine.enabled || spent(initial.routine) : true;
-    const value = { agentId: agent.id, name: name.trim() || routineName(prompt), prompt: prompt.trim(), schedule, enabled, nextAt: null, lastTurnId: initial.routine?.lastTurnId ?? null, lastScheduledAt: initial.routine?.lastScheduledAt ?? null, lastOutcome: initial.routine?.lastOutcome ?? null };
+    const value = { agentId: agent.id, name: name.trim() || routineName(prompt), prompt: prompt.trim(), schedule, enabled, check: check.trim() || null, nextAt: null, lastTurnId: initial.routine?.lastTurnId ?? null, lastScheduledAt: initial.routine?.lastScheduledAt ?? null, lastOutcome: initial.routine?.lastOutcome ?? null };
     const saved = await view.call('agents.routine.save', initial.routine ? { id: initial.routine.id, expectedRevision: initial.routine.revision, value } : { value });
     if (saved) ondone(saved);
   }
@@ -160,9 +163,13 @@
     </span>
   </p>
 
-  <details class="agent-more-inline">
+  <!-- A routine that already has a check opens on it: what decides its wakes is never folded away. -->
+  <details class="agent-more-inline" open={!!initial.routine?.check}>
     <summary>{labels.advanced}</summary>
     <label class="agent-field">{t.name}<input bind:value={name} maxlength={AGENT_ROUTINE_NAME_MAX} placeholder={prompt.trim() ? routineName(prompt) : ''} data-testid="routine-name" /></label>
+    <label class="agent-field"><span class="agent-field-title">{t.check}<InfoTip text={t.checkHint} topic={t.check} testid="routine-check-info" /></span>
+      <input class="mono" bind:value={check} maxlength={AGENT_ROUTINE_CHECK_MAX} placeholder={t.checkPlaceholder} spellcheck="false" autocapitalize="off" autocomplete="off" data-testid="routine-check" />
+    </label>
   </details>
 
   <div class="agent-form-actions">

@@ -39,10 +39,11 @@ export class LimitResumes {
    */
   turnFailed(thread: ThreadSummary, turn: Turn, resetsAt: number | null): void {
     if (this.core.settings.get().autoResumeLimitedThreads !== true) return;
-    // Sub-threads answer to their parent; a compaction or a wake is not worth repeating.
+    // Sub-threads answer to their parent; a compaction or a letter is not worth repeating. A bot's wake is:
+    // its routine may not come due again for a day, and the facts an event turn carried are spent.
     if (thread.parentThreadId) return;
     const operation = turn.execution?.operation;
-    if (operation !== undefined && operation !== 'resume') return;
+    if (operation !== undefined && operation !== 'resume' && operation !== 'routine' && operation !== 'event') return;
     const accountId = turn.execution?.accountId ?? thread.accountId;
     void (async () => {
       const reset = resetsAt ?? await this.spentWindowReset(accountId);

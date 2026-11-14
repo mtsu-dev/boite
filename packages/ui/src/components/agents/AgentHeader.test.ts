@@ -31,6 +31,40 @@ test('a bot whose account is gone says it needs an account, not that its last tu
   }
 });
 
+// At rest the column's head read only the bot's role: when it would wake next and what its day cost were nowhere in the column.
+test('a bot at rest says its next wake in the column head, and its day sits behind the "i"', async ({ ready }) => {
+  let column: ReturnType<typeof mount> | null = null;
+  try {
+    const { store } = await ready({ delayMs: 0, agentsDemo: true });
+    const view = AgentsView.of(store);
+    await view.refresh();
+    const by = (name: string) => view.snapshot!.profiles.find(profile => profile.name === name)!;
+    const mira = by('Mira');
+    column = mount(BotColumnHead, { target: document.body, props: { view, agent: mira, status: statusOf(view.snapshot, mira.id), onopen: () => {}, onpane: () => {}, onengine: () => {} } });
+    flushSync();
+    const line = () => document.querySelector('[data-testid=bot-column-live] .bot-head-line')?.textContent ?? '';
+    expect(line()).toContain('Evening review');
+    expect(line()).not.toBe(mira.domain);
+    expect(document.querySelector('[data-testid=bot-column-elapsed]')).toBeNull();
+    unmount(column);
+    // Nova has a daily budget of $2 and spent $1.35 of it: the tip says both once its settings are read.
+    const nova = by('Nova');
+    column = mount(BotColumnHead, { target: document.body, props: { view, agent: nova, status: statusOf(view.snapshot, nova.id), onopen: () => {}, onpane: () => {}, onengine: () => {} } });
+    flushSync();
+    const tip = document.querySelector<HTMLButtonElement>('[data-testid=bot-column-day]')!;
+    await vi.waitFor(() => { flushSync(); expect(tip.dataset.tipText).toContain('$2.00'); });
+    expect(tip.dataset.tipText).toContain('$1.35');
+    // A paused bot has no wake to announce: its state stays the line.
+    unmount(column);
+    const pixel = by('Pixel');
+    column = mount(BotColumnHead, { target: document.body, props: { view, agent: pixel, status: statusOf(view.snapshot, pixel.id), onopen: () => {}, onpane: () => {}, onengine: () => {} } });
+    flushSync();
+    expect(line()).toBe(strings.agents.state.paused);
+  } finally {
+    if (column) unmount(column);
+  }
+});
+
 // With the bot column folded on a desktop, the header held only the name: no visible way back to the bots.
 test('a desktop header offers the way back to the bot list only while the column is folded', async ({ ready }) => {
   let head: ReturnType<typeof mount> | null = null;

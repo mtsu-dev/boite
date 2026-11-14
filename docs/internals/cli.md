@@ -559,7 +559,8 @@ commands in [workflows](workflows.md#commands).
 experiment: group or private posts, reading, and cards that ask the owner to
 create, join or leave a team ([teams](teams.md#commands)).
 
-Bots schedule work from their own conversation. `bot schedule` accepts `name`, `prompt`, and `schedule`,
+Bots schedule work from their own conversation. `bot schedule` accepts `name`, `prompt`, `schedule` and an optional `check`
+(a command; the routine wakes the bot only when it prints something new, see [routines](bots.md#routines)),
 for example `{"kind":"daily","time":"09:00","timezone":"Europe/Paris"}`.
 Other schedules use `{"kind":"interval","everyMinutes":60}` or
 `{"kind":"once","at":1790240400000}` with a Unix timestamp in milliseconds.

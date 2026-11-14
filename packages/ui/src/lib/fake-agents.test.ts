@@ -185,6 +185,8 @@ test('the demo has an agent at work on a live step, one waiting on a login and o
   expect(by('Nova')).toMatchObject({ state: 'working', activity: 'Run the UI tests' });
   expect(by('Iris').state).toBe('waiting');
   expect(by('Mira')).toMatchObject({ state: 'idle', nextWake: expect.objectContaining({ label: 'Evening review' }), unread: 1 });
+  // Nova's routine carries a check, and its last occurrence found nothing new.
+  expect(snapshot.routines.find(r => r.name === 'Release check')).toMatchObject({ check: expect.stringContaining('gh pr list'), lastOutcome: 'nothing' });
   const nova = snapshot.profiles.find(p => p.name === 'Nova')!;
   // Its desk holds every state a desk card has, the question answerable in place, and a thread of another machine.
   const desk = snapshot.watches.filter(w => w.agentId === nova.id);
@@ -215,7 +217,13 @@ test('the fake core holds an agent to 50 routines, an 80-character name and a 4,
   const routine = (name: string, prompt = 'Check the builds.') => client.call('agents.routine.save', { value: { agentId: agent.id, name, prompt, schedule: { kind: 'interval', everyMinutes: 60 }, enabled: true, nextAt: null, lastTurnId: null, lastScheduledAt: null } });
   await expect(routine('x'.repeat(81))).rejects.toThrow('name: expected 1 to 80 characters');
   await expect(routine('Long', 'x'.repeat(4001))).rejects.toThrow('prompt: expected 1 to 4000 characters');
-  for (let i = 0; i < 50; i++) await routine(`Check ${i}`);
+  // A check is a command of 2,000 characters at most, kept trimmed; an empty one removes it.
+  const checked = (check: string | null, from?: { id: string; revision: number }) => client.call('agents.routine.save', { ...(from ? { id: from.id, expectedRevision: from.revision } : {}), value: { agentId: agent.id, name: 'News', prompt: 'Triage.', schedule: { kind: 'interval', everyMinutes: 60 }, enabled: true, nextAt: null, lastTurnId: null, lastScheduledAt: null, check } });
+  await expect(checked('x'.repeat(2001))).rejects.toThrow('check: expected at most 2000 characters');
+  const news = await checked('  gh pr list  ');
+  expect(news.check).toBe('gh pr list');
+  expect((await checked('  ', news)).check).toBeNull();
+  for (let i = 0; i < 49; i++) await routine(`Check ${i}`);
   await expect(routine('One more')).rejects.toThrow('the most an agent may hold is 50');
   // An edit of one it holds is no new routine.
   const first = (await client.call('agents.snapshot', {})).routines.find(r => r.agentId === agent.id)!;

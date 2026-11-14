@@ -52,7 +52,17 @@ stays readable.
   checks start to fail.
 - A wake with nothing to report folds to one "Checked" line and sends no
   notification.
+- A routine can wake the bot only when there is news. Under More options,
+  "Only when there is news" takes a command, for example
+  `gh pr list --json number,title`. When the routine is due, Boite runs it in
+  the bot's folder: the bot wakes only if the command prints something it did
+  not print the time before, or fails. A check that finds nothing new costs
+  nothing, and the routine reads "nothing new". Run now skips the check. You
+  can always set one; the bot sets its own only when it runs with full access.
 - After downtime, at most one missed occurrence of a routine runs.
+- With "Resume threads after a usage limit" on (Settings, AI accounts,
+  Limits), a routine or event that failed on a spent limit runs again once
+  the limit resets.
 
 ## The info panel
 
@@ -62,6 +72,11 @@ model, machine and age; while it works, a Now card with the step, a timer and
 its last steps; its routines; and its memory, with the note count and the
 first three notes. A warning mark there means a memory update failed; its
 tooltip holds the error.
+
+The bot's column starts with its name and one status: the step it is on, what
+it waits for, why it failed, or, at rest, its next routine and when. The "i"
+beside its name says how often it woke on its own today and what that cost,
+against its daily budget when it has one.
 
 The threads it started, was entrusted or follows sit in the bot's column,
 with their state, pull request and checks. A Needs you row lets you answer its

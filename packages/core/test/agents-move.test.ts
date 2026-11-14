@@ -69,7 +69,7 @@ test('a move carries the bot, its memory, routines, projects and the end of its 
   await owner.call('agents.brain.save', { agentId: made.id, expectedRevision: brain.revision, instructions: '# Ada\n\nPrune on Mondays.\n', memory: 'The door is blue.\n' });
   writeFileSync(join(brain.path, MEMORY_ARCHIVE), 'An old memory.\n');
   await owner.call('agents.routine.save', { value: { agentId: made.id, name: 'Morning round', prompt: 'Check the plants.', schedule: { kind: 'interval', everyMinutes: 60 }, enabled: true, nextAt: null, lastTurnId: null, lastScheduledAt: null } });
-  await owner.call('agents.routine.save', { value: { agentId: made.id, name: 'Sunday', prompt: 'Plan the week.', schedule: { kind: 'daily', time: '09:00', timezone: 'UTC', days: [0] }, enabled: false, nextAt: null, lastTurnId: null, lastScheduledAt: null } });
+  await owner.call('agents.routine.save', { value: { agentId: made.id, name: 'Sunday', prompt: 'Plan the week.', schedule: { kind: 'daily', time: '09:00', timezone: 'UTC', days: [0] }, enabled: false, check: 'ls notes', nextAt: null, lastTurnId: null, lastScheduledAt: null } });
   desk.core.workforce.fact(made.id, { key: 'letter', text: 'A letter about the roses came.', urgent: false });
   // A setting the owner turned on goes with it.
   await owner.call('agents.runtime.configure', { agentId: made.id, expectedRevision: desk.core.workforce.records.get('profile', made.id).revision, config: { ...desk.core.workforce.resident.config(made.id), addProjects: true } });
@@ -94,6 +94,8 @@ test('a move carries the bot, its memory, routines, projects and the end of its 
   expect(readFileSync(join(theirs.path, MEMORY_ARCHIVE), 'utf8')).toBe('An old memory.\n');
   const routines = pc.core.workforce.records.list('routine').filter(r => r.agentId === agent.id);
   expect(routines.map(r => [r.name, r.prompt, r.enabled])).toEqual([['Morning round', 'Check the plants.', true], ['Sunday', 'Plan the week.', false]]);
+  // A routine's check travels with it; what it printed last on the other machine does not.
+  expect(routines.map(r => [r.check ?? null, r.checkSeen ?? null])).toEqual([[null, null], ['ls notes', null]]);
   expect(routines[0]!.nextAt).toBeGreaterThan(Date.now());
   expect(routines[1]!.nextAt).toBeNull();
   expect(pc.core.agentRuntime.facts(agent.id).map(f => [f.key, f.text])).toEqual([['letter', 'A letter about the roses came.']]);

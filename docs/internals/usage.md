@@ -508,8 +508,10 @@ neither, nothing is planned. The plan sits in the journal setting
 (`kind: 'usage-limit'`, `at`, `resetsAt`) with Do not resume.
 
 Nothing is planned for a failure whose window already reset (no retry loop),
-for a window the thread already resumed after, for a sub-thread or persistent
-agent, or for a compaction or wake turn. When the plan fires, it is dropped
+for a window the thread already resumed after, for a sub-thread, or for a
+compaction or a letter. A bot's `routine` or `event` turn does plan one: a
+daily routine would otherwise be lost until the next day, and the facts of an
+event turn are spent once it started. When the plan fires, it is dropped
 instead if the setting went off, the thread was archived, answered, stopped or
 is busy, its provider, account, model or session generation changed, a card
 waits for the user, or the user paused its team. A cache ping in the way

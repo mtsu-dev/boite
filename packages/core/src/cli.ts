@@ -195,7 +195,7 @@ ${PLUGIN_HELP}
   bot memory                     a bot's MEMORY.md and its path
   bot remember <fact>            add a dated line to MEMORY.md
   bot routines                   its routines: schedule, next run, last outcome
-  bot schedule <json>            name, prompt, schedule; optional id and enabled
+  bot schedule <json>            name, prompt, schedule; optional id, enabled and check (a command: wake only when it prints something new)
   bot unschedule <routine-id>    remove one routine
   bot watch|unwatch <thread-id>  put a thread of its projects on its desk, or
                                  take one off; <machine>/<thread-id> for a

@@ -32,13 +32,15 @@ export async function botCommand(client: CoreClient, threadId: string, args: str
     }
     case 'routines': return snapshot.routines;
     case 'schedule': {
-      const value = json<{ name: string; prompt: string; schedule: AgentSchedule; id?: string; expectedRevision?: number; enabled?: boolean }>();
+      const value = json<{ name: string; prompt: string; schedule: AgentSchedule; id?: string; expectedRevision?: number; enabled?: boolean; check?: string | null }>();
       const previous = value.id ? snapshot.routines.find(r => r.id === value.id) : undefined;
       if (value.id && !previous) throw new Error(`bot schedule: no routine ${value.id}; boite bot routines lists yours`);
       const params: RpcParams<'agents.routine.save'> = {
         threadId,
         ...(previous ? { id: previous.id, expectedRevision: value.expectedRevision ?? previous.revision } : {}),
-        value: { agentId: agent.id, name: value.name, prompt: value.prompt, schedule: value.schedule, enabled: value.enabled ?? true, nextAt: null, lastTurnId: null, lastScheduledAt: null },
+        value: { agentId: agent.id, name: value.name, prompt: value.prompt, schedule: value.schedule, enabled: value.enabled ?? true, nextAt: null, lastTurnId: null, lastScheduledAt: null,
+          // Left out, an edit keeps the check it had; null or "" removes it.
+          check: value.check === undefined ? previous?.check ?? null : value.check },
       };
       return client.call('agents.routine.save', params);
     }

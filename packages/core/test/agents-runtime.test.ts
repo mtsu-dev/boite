@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test';
 import type { AgentRoutine, Turn } from '@boite/contracts';
-import { mkdtempSync, realpathSync } from 'node:fs';
+import { mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { removeDir } from '../src/fs-retry.ts';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,8 +12,10 @@ import { agentSpend, rootThread } from '../src/agents/spend.ts';
 import { agentGuide, BOT_GUIDE, OWN_SETTINGS, TEAM_GUIDE } from '../src/agent-guide.ts';
 import { DELEGATION_WORDS } from '../src/delegation/guide.ts';
 import { agentContext } from '../src/agents/context.ts';
+import { LIMIT_RESUME } from '../src/threads/limit-resume.ts';
 import { costing, makeAgent, scripted, settled, turnsOf } from './agent-fixture.ts';
 import { startTestCore, waitFor, type TestCore } from './harness.ts';
+import { thrown } from './settle.ts';
 
 let h: TestCore;
 let client: CoreClient;
@@ -735,4 +737,93 @@ test('moving the brains sends the context block again, with the new folder', asy
   await waitFor(() => sent().length === 3 && settled(h, threadId));
   expect(sent()[2]).toContain(BLOCK);
   expect(sent()[2]).toContain(`Your brain is ${moved}.`);
+});
+
+test('a routine with a check wakes the bot only when its command prints something new, and a failing check wakes it once', async () => {
+  const { agent, threadId } = await makeAgent(h, client);
+  const cwd = h.core.threads.require(threadId).cwd;
+  const news = join(cwd, 'news.txt');
+  const command = process.platform === 'win32' ? 'if exist news.txt type news.txt' : 'if [ -f news.txt ]; then cat news.txt; fi';
+  const saved = await routine(agent.id, { check: command });
+  expect(saved.check).toBe(command);
+  const routines = () => turnsOf(h, threadId).filter(t => t.execution?.operation === 'routine');
+  const prompt = (turnId: string) => (h.core.journal.listMessages(threadId).find(m => m.turnId === turnId && m.role === 'system')!.parts[0] as { text: string }).text;
+
+  // Nothing printed: the routine moves on and no turn starts.
+  due(saved.id);
+  await waitFor(() => read(saved.id).lastOutcome === 'nothing');
+  expect(routines()).toHaveLength(0);
+  expect(read(saved.id).nextAt).toBeGreaterThan(Date.now() + 50 * 60_000);
+
+  // Something printed: one turn, which reads the output as data under the routine's prompt.
+  writeFileSync(news, 'issue 42 opened\n');
+  due(saved.id);
+  await waitFor(() => read(saved.id).lastOutcome === 'done');
+  expect(routines()).toHaveLength(1);
+  const first = prompt(read(saved.id).lastTurnId!);
+  expect(first).toStartWith('Look at the open pull requests');
+  expect(first).toContain('Output: "issue 42 opened"');
+  expect(read(saved.id).checkSeen).toBeString();
+
+  // The same output again is not news; Run now still starts a turn, without the check.
+  due(saved.id);
+  await waitFor(() => read(saved.id).lastOutcome === 'nothing');
+  expect(routines()).toHaveLength(1);
+  const ran = await client.call('agents.routine.run', { routineId: saved.id, requestId: 'by-hand' });
+  await waitFor(() => read(saved.id).lastOutcome === 'done');
+  expect(prompt(ran.turnId)).toBe('Look at the open pull requests');
+
+  // News while the thread is at work waits for it, and is delivered once.
+  writeFileSync(news, 'issue 43 opened\n');
+  const driver = scripted(ctx => ({ text: 'On it.', hold: ctx.prompt.includes('HOLD') }));
+  restore = driver.restore;
+  await client.call('turns.start', { threadId, prompt: 'HOLD please' });
+  await waitFor(() => h.core.threads.require(threadId).status === 'running');
+  due(saved.id);
+  await new Promise(resolve => setTimeout(resolve, 1500));
+  expect(routines()).toHaveLength(2);
+  driver.release();
+  await waitFor(() => routines().length === 3 && read(saved.id).lastOutcome === 'done');
+  expect(prompt(read(saved.id).lastTurnId!)).toContain('issue 43 opened');
+
+  // A check that fails wakes the bot with the failure, once: the same failure again starts nothing.
+  const current = read(saved.id);
+  const broken = await client.call('agents.routine.save', { id: saved.id, expectedRevision: current.revision, value: { ...current, check: 'exit 3' } });
+  expect(broken.checkSeen).toBeNull();
+  due(saved.id);
+  await waitFor(() => routines().length === 4 && read(saved.id).lastOutcome === 'done');
+  expect(prompt(read(saved.id).lastTurnId!)).toContain('The check exited with code 3.');
+  due(saved.id);
+  await waitFor(() => read(saved.id).lastOutcome === 'nothing');
+  expect(routines()).toHaveLength(4);
+}, 60_000);
+
+test('a bot gives a routine a check only with full access; the owner always may, and the bot keeps one it did not change', async () => {
+  const { agent, threadId } = await makeAgent(h, client);
+  const value = { agentId: agent.id, name: 'Watch', prompt: 'Triage what is new.', schedule: { kind: 'interval' as const, everyMinutes: 30 }, enabled: true, nextAt: null, lastTurnId: null, lastScheduledAt: null };
+  expect(await thrown(client.call('agents.routine.save', { threadId, value: { ...value, check: 'echo hi' } }))).toThrow('check: Ada runs in a mode that asks before a command');
+  const owned = await client.call('agents.routine.save', { value: { ...value, check: 'echo hi' } });
+  // The bot edits the prompt of a routine whose check the owner wrote.
+  const edited = await client.call('agents.routine.save', { threadId, id: owned.id, expectedRevision: owned.revision, value: { ...value, prompt: 'Triage and label.', check: 'echo hi' } });
+  expect(edited).toMatchObject({ prompt: 'Triage and label.', check: 'echo hi' });
+  expect(await thrown(client.call('agents.routine.save', { threadId, id: owned.id, expectedRevision: edited.revision, value: { ...value, check: 'echo other' } }))).toThrow('check:');
+  await client.call('threads.update', { threadId, permissionMode: 'bypassPermissions' });
+  const own = await client.call('agents.routine.save', { threadId, id: owned.id, expectedRevision: edited.revision, value: { ...value, check: 'echo other' } });
+  expect(own.check).toBe('echo other');
+  expect(agentContext(h.core, agent).text).toContain('wakes you only when its check prints something new: "echo other"');
+});
+
+test('a routine that failed on a spent usage window resumes once the window resets, when the owner turned automatic resume on', async () => {
+  await h.stop();
+  const margins = { ...LIMIT_RESUME };
+  Object.assign(LIMIT_RESUME, { marginMs: 0, startDelayMs: 0 });
+  restore = () => Object.assign(LIMIT_RESUME, margins);
+  h = await startTestCore({ settings: { autoResumeLimitedThreads: true } });
+  client = await h.connect();
+  const { agent, threadId } = await makeAgent(h, client);
+  const saved = await routine(agent.id, { prompt: '[usage-limit:400]' });
+  due(saved.id);
+  await waitFor(() => read(saved.id).lastOutcome === 'error');
+  await waitFor(() => turnsOf(h, threadId).at(-1)!.execution?.operation === 'resume' && settled(h, threadId), 10_000);
+  expect(turnsOf(h, threadId).at(-1)!.status).toBe('done');
 });

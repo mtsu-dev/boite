@@ -31,7 +31,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  AGENT_BUILTINS, AGENT_DAILY_BUDGET, AGENT_PICTURE_MAX_BYTES, isAgentPicture, AGENT_ROUTINE_NAME_MAX, AGENT_ROUTINE_PROMPT_MAX, AGENT_ROUTINES_MAX,
+  AGENT_BUILTINS, AGENT_DAILY_BUDGET, AGENT_PICTURE_MAX_BYTES, isAgentPicture, AGENT_ROUTINE_CHECK_MAX, AGENT_ROUTINE_NAME_MAX, AGENT_ROUTINE_PROMPT_MAX, AGENT_ROUTINES_MAX,
   type AgentBuiltin, type AgentMoveResult, type AgentProfile, type AgentQueuedMove, type AgentRoutine, type AgentRuntimeConfig, type AgentSchedule, type AgentSelection, type AgentSession,
   type CoordinationPeer, type Message, type MoveNotice, type RpcParams, type ThreadSummary, type Turn,
 } from '@boite/contracts';
@@ -92,7 +92,7 @@ export interface MoveHooks {
 
 /** One carried message: its excerpt, its role, the turn it belonged to (counted within the move) and when it was written. */
 interface MovedMessage { role: Message['role']; text: string; turn: number; at: number }
-interface MovedRoutine { name: string; prompt: string; schedule: AgentSchedule; enabled: boolean; spent: boolean }
+interface MovedRoutine { name: string; prompt: string; schedule: AgentSchedule; enabled: boolean; spent: boolean; check?: string }
 interface MovedSettings { autoMemory: boolean; eventWakes: boolean; addProjects: boolean; dailyBudgetUsd: number | null; subagents: { enabled: boolean; paused: boolean; anyModel: boolean } }
 /** One waiting fact: `written` orders the versions of a key on the source. */
 interface MovedFact { key: string; text: string; written: number }
@@ -375,6 +375,7 @@ export class BotMoves {
     const routines = this.#store.records.list('routine').filter(routine => routine.agentId === agent.id).map(routine => ({
       name: routine.name, prompt: routine.prompt, schedule: routine.schedule, enabled: routine.enabled,
       spent: routine.schedule.kind === 'once' && routine.lastScheduledAt !== null,
+      ...(routine.check ? { check: routine.check } : {}),
     }));
     const payload: BotMovePayload = {
       v: 1, requestId, from: { coreId: self, name },
@@ -650,6 +651,8 @@ export class BotMoves {
         agentId, name: routine.name, prompt: routine.prompt, schedule: routine.schedule, enabled,
         nextAt: !enabled ? null : routine.schedule.kind === 'once' ? routine.schedule.at : nextOccurrence(routine.schedule, now),
         lastTurnId: null, lastScheduledAt: routine.spent ? (routine.schedule as { at: number }).at : null, lastOutcome: null,
+        // Its check comes along and starts from nothing seen: the same command may print something else on this machine.
+        check: routine.check ?? null, checkSeen: null,
       });
     }
   }
@@ -788,6 +791,7 @@ function readPayload(raw: unknown): BotMovePayload {
     return {
       name: text(entry.name, `${field}.name`, AGENT_ROUTINE_NAME_MAX), prompt: text(entry.prompt, `${field}.prompt`, AGENT_ROUTINE_PROMPT_MAX),
       schedule: checkSchedule(entry.schedule as unknown as AgentSchedule), enabled: boolean(entry.enabled, `${field}.enabled`), spent: boolean(entry.spent, `${field}.spent`),
+      ...(entry.check === undefined ? {} : { check: text(entry.check, `${field}.check`, AGENT_ROUTINE_CHECK_MAX) }),
     };
   });
   object(raw.history, 'bot.move.history');
