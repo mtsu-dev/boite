@@ -25,7 +25,6 @@ export interface ContactAsk {
 }
 
 const PREFIX = 'contact-request:';
-export const isAskRow = (id: string): boolean => id.startsWith(PREFIX);
 
 export function askState(request: ContactRequest): AskState {
   if (request.status === 'accepted') return 'answered';

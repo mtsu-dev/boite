@@ -151,11 +151,6 @@ export function storeParts(db: Database, message: Pick<Message, 'id' | 'threadId
   return message.parts.map((part, index) => storePart(db, message, index, part));
 }
 
-/** True when a stored `parts` text names moved values; a plain substring test, no parse. */
-export function hasBlobs(parts: string): boolean {
-  return parts.includes(`"${MARK}"`);
-}
-
 interface BlobRow { partIndex: number; field: string; data: string | Uint8Array; digest: string; codec: number; cut: number }
 
 /**

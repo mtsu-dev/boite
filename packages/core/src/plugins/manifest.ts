@@ -490,10 +490,6 @@ export function addsOf(manifest: PluginManifest): PluginAdds {
   };
 }
 
-export function providesUi(manifest: PluginManifest): boolean {
-  return manifest.provides.ui !== undefined;
-}
-
 export function poolsOf(manifest: PluginManifest): ProviderId[] {
   return manifest.provides.accountPools?.providers ?? [];
 }
