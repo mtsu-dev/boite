@@ -19,17 +19,29 @@ function shellOf(command: string): { exe: string; args: string[] } {
   return { exe: '/bin/sh', args: ['-c', command] };
 }
 
-/** Reads a stream up to the cap, dropping the rest so the child never blocks on a full pipe. */
-async function capped(stream: ReadableStream<Uint8Array>): Promise<{ text: string; truncated: boolean }> {
+/** How long a check's output may still arrive once its shell has exited: a child it left behind can hold the pipes open for good. */
+export const CHECK_DRAIN_MS = 1_000;
+
+/**
+ * Reads a stream up to the cap, dropping the rest so the child never blocks on a full pipe.
+ * `closed` ends the read: what was read until then is the output.
+ */
+async function capped(stream: ReadableStream<Uint8Array>, closed: Promise<void>): Promise<{ text: string; truncated: boolean }> {
   const chunks: Uint8Array[] = [];
-  let size = 0, truncated = false;
-  for await (const chunk of stream) {
-    const room = CHECK_OUTPUT_BYTES - size;
-    if (room <= 0) { truncated = true; continue; }
-    chunks.push(chunk.length > room ? chunk.subarray(0, room) : chunk);
-    truncated ||= chunk.length > room;
-    size += Math.min(chunk.length, room);
-  }
+  let size = 0, truncated = false, over = false;
+  const reader = stream.getReader();
+  void closed.then(() => { if (!over) void reader.cancel().catch(() => undefined); });
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      const room = CHECK_OUTPUT_BYTES - size;
+      if (room <= 0) { truncated = true; continue; }
+      chunks.push(value.length > room ? value.subarray(0, room) : value);
+      truncated ||= value.length > room;
+      size += Math.min(value.length, room);
+    }
+  } catch { /* a cancelled or broken pipe: keep what was read */ } finally { over = true; }
   return { text: Buffer.concat(chunks).toString('utf8'), truncated };
 }
 
@@ -59,10 +71,14 @@ export async function runCheck(core: Core, thread: ThreadSummary, command: strin
   try { spawned = core.procs.spawn(thread.id, shell.exe, shell.args, { cwd: thread.cwd, agentRoot: false }); }
   catch (error) { return failed(`The check could not start: ${messageOf(error)}`); }
   let timedOut = false;
+  const pause = (ms: number) => new Promise<void>(resolve => { const timer = setTimeout(resolve, ms); (timer as { unref?: () => void }).unref?.(); });
   const timer = setTimeout(() => { timedOut = true; try { spawned.stop(); } catch { /* already gone */ } }, timeoutMs);
+  // The shell's exit decides the result. A stop that does not end it, or a child that keeps the pipes, never holds the routine.
+  const exited: Promise<number | null> = Promise.race([spawned.exited, pause(timeoutMs + 5 * CHECK_DRAIN_MS).then(() => { timedOut = true; return null; })]);
+  const closed = exited.then(() => pause(CHECK_DRAIN_MS), () => undefined);
   try {
     const [stdout, stderr, code] = await Promise.all([
-      capped(spawned.proc.stdout as ReadableStream<Uint8Array>), capped(spawned.proc.stderr as ReadableStream<Uint8Array>), spawned.exited,
+      capped(spawned.proc.stdout as ReadableStream<Uint8Array>, closed), capped(spawned.proc.stderr as ReadableStream<Uint8Array>, closed), exited,
     ]);
     if (timedOut) return failed(`The check was stopped after ${Math.round(timeoutMs / 1000)} seconds.`, stdout.text);
     if (code !== 0) return failed(`The check exited with code ${code}.`, [stdout.text.trim(), stderr.text.trim()].filter(Boolean).join('\n'));

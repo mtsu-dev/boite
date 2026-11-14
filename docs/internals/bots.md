@@ -803,7 +803,10 @@ output's hash is compared with `checkSeen`, the hash of what the bot last read:
 | prints something else | a `routine` turn whose prompt ends with the command and its output (first 8,000 characters) as data; `checkSeen` is set once the turn started |
 | exits non-zero, times out or cannot start | the same turn, saying the check failed and why, once per distinct failure |
 
-A pause and a spent budget skip the occurrence before the check runs. A
+A pause skips the occurrence before the check runs; a spent budget skips it
+after, leaving `checkSeen` as it was, so the news still counts tomorrow. Output
+that arrives more than a second after the shell exited (a child it left
+behind holding the pipes) is dropped. A
 check whose news meets a busy thread keeps its result and starts the turn
 when the thread is free, without running the command again. Run now starts
 the routine's turn without the check. Changing the command clears

@@ -12,6 +12,7 @@ import { agentSpend, rootThread } from '../src/agents/spend.ts';
 import { agentGuide, BOT_GUIDE, OWN_SETTINGS, TEAM_GUIDE } from '../src/agent-guide.ts';
 import { DELEGATION_WORDS } from '../src/delegation/guide.ts';
 import { agentContext } from '../src/agents/context.ts';
+import { runCheck } from '../src/agents/checks.ts';
 import { LIMIT_RESUME } from '../src/threads/limit-resume.ts';
 import { costing, makeAgent, scripted, settled, turnsOf } from './agent-fixture.ts';
 import { startTestCore, waitFor, type TestCore } from './harness.ts';
@@ -738,6 +739,14 @@ test('moving the brains sends the context block again, with the new folder', asy
   expect(sent()[2]).toContain(BLOCK);
   expect(sent()[2]).toContain(`Your brain is ${moved}.`);
 });
+
+test.skipIf(process.platform === 'win32')('a check whose shell left a child holding its output ends with the shell', async () => {
+  const { threadId } = await makeAgent(h, client);
+  const started = Date.now();
+  const result = await runCheck(h.core, h.core.threads.require(threadId), 'echo news; sleep 6 &');
+  expect(result).toMatchObject({ text: 'news', failed: false });
+  expect(Date.now() - started).toBeLessThan(4_000);
+}, 20_000);
 
 test('a routine with a check wakes the bot only when its command prints something new, and a failing check wakes it once', async () => {
   const { agent, threadId } = await makeAgent(h, client);
