@@ -483,7 +483,7 @@
     {#if !phone}<PanelSwitcher add />{/if}
 
     <!-- The showing surface's head goes here (SurfaceHead.svelte): one head, named on its tab. A phone's strip holds the thread and the door. -->
-    {#if phone}<span class="spacer"></span>{:else}<div class="surface-head" data-testid="panel-surface-head" bind:this={tools.slot}></div>{/if}
+    {#if phone}<span class="spacer"></span>{:else}<div class="surface-head" class:tight={tools.room > 0 && tools.room < 320} class:tighter={tools.room > 0 && tools.room < 245} class:tightest={tools.room > 0 && tools.room < 205} data-testid="panel-surface-head" bind:clientWidth={tools.room} bind:this={tools.slot}></div>{/if}
 
     {#if !phone}
       {#if rightPanel.floating}<button type="button" class="ghost small icon" data-testid="panel-dock" title={strings.browser.dock} aria-label={strings.browser.dock}
@@ -640,6 +640,7 @@
      chevrons cost, so the tabs lost less than `measure` counted and the
      chevrons went and came back on every frame at the panel's narrowest. */
   .surface-head { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; padding-left: 8px; overflow: hidden; color: var(--color-muted-foreground); font-size: var(--text-sm); }
+  .surface-head.tighter { gap: 4px; }
   /* Its actions are the strip's targets: 32 px, each named by its tooltip. */
   .surface-head :global(button.small.icon) { width: var(--control-head); height: var(--control-head); }
   .strip > :not(.tabs, .spacer, .thread-line, .surface-head) {

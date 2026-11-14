@@ -169,6 +169,15 @@ async function refuseUnidentified(child: ReturnType<typeof spawn>, what: string,
   throw new Refusal(`This system gave no start time for the ${what} it just started (pid ${child.pid}), so a later stop could not tell it from another process: it was stopped and nothing is running.${rest}`, 1);
 }
 
+/** Signals a run this script spawned; one that exited since the check is already what was asked for. */
+function signal(pid: number): void {
+  try {
+    process.kill(pid);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
+  }
+}
+
 /** Is `pid` still the process this script started? Unknown counts as no: nothing is signalled on a guess. */
 function ours(pid: number, identity: string | null | undefined): boolean {
   return identity !== null && identity !== undefined && alive(pid) && processIdentity(pid) === identity;
@@ -296,6 +305,10 @@ async function start(options: Options): Promise<void> {
   if (running !== null && ours(running.pid, running.identity)) {
     throw new Refusal(`This checkout already runs a Dev instance at ${running.url} (pid ${running.pid}, data ${running.dataDir}).\nStop it first: ${RUN} stop`, 3);
   }
+  // A run that died without `stop` (a crash, a reboot) left its copy or scratch behind: this start is its last reference.
+  // A live pid that cannot be told from that run keeps the data: a leaked directory is safe, a live run's is not.
+  const known = running?.identity !== null && running?.identity !== undefined;
+  if (running !== null && (!alive(running.pid) || (known && processIdentity(running.pid) !== null))) removeTemporary(running);
   const schema = schemaState(devDir);
   let dataDir: string | null = null;
   let mode: State['mode'] = 'dev';
@@ -370,7 +383,7 @@ async function stop(): Promise<void> {
   const coreOurs = ours(state.pid, state.identity);
   const shellOurs = state.shellPid !== undefined && ours(state.shellPid, state.shellIdentity);
   const unknown = [[state.pid, state.identity] as const, ...(state.shellPid === undefined ? [] : [[state.shellPid, state.shellIdentity] as const])]
-    .filter(([pid, identity]) => alive(pid) && (identity === null || identity === undefined)).map(([pid]) => pid);
+    .filter(([pid, identity]) => alive(pid) && (identity === null || identity === undefined || processIdentity(pid) === null)).map(([pid]) => pid);
   if (unknown.length > 0) {
     throw new Refusal(`pid ${unknown.join(' and ')} is alive, but this system gave no start time to tell it from the process this checkout started: nothing was signalled. Stop it yourself if it is the instance, then remove ${statePath(devDir)}.`, 1);
   }
@@ -385,7 +398,7 @@ async function stop(): Promise<void> {
     return;
   }
   // The shell first, or it would start its core again. Only the run captured at spawn.
-  if (shellOurs) process.kill(state.shellPid!);
+  if (shellOurs) signal(state.shellPid!);
   if (coreOurs) {
     const record = coreFile(state.dataDir);
     const stillOurs = (): true | null => (ours(state.pid, state.identity) ? null : true);
@@ -397,7 +410,7 @@ async function stop(): Promise<void> {
     let gone = await waitFor(stillOurs, record?.pid === state.pid ? 20_000 : 0, () => false);
     if (gone === null && state.shellPid === undefined && ours(state.pid, state.identity)) {
       // The run this script spawned, checked again at the moment of the signal.
-      process.kill(state.pid);
+      signal(state.pid);
       gone = await waitFor(stillOurs, 15_000, () => false);
     }
     if (gone === null) throw new Refusal(`the core (pid ${state.pid}) did not stop; its data ${state.dataDir} was kept`, 1);

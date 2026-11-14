@@ -272,7 +272,7 @@
   </section>
 {:else if children}
   <section class="card group" class:mobile data-testid="group-card" id="settings-group">
-    <h2>{strings.group.heading}</h2>
+    <header class="card-head"><h2>{strings.group.heading}</h2></header>
     {@render children()}
   </section>
 {/if}
@@ -325,8 +325,7 @@
     padding: var(--space-1) var(--space-4);
     margin-bottom: var(--space-6);
   }
-  .group > header > h2,
-  .group > h2 {
+  .group > header > h2 {
     margin: 0;
     min-width: 0;
     display: flex; align-items: center; gap: 6px;
@@ -507,7 +506,6 @@
     :global(.settings .framed) .group > :global(.card-head:first-child) { left: var(--space-5); right: var(--space-5); }
   }
   @media (max-width: 720px) {
-    .group { padding: 14px 16px; }
     .row { flex-wrap: wrap; }
     .identity { flex-basis: calc(100% - 48px); }
     .status { margin-left: 48px; flex: 1; }
