@@ -477,6 +477,9 @@ test("a tap on a project's header folds it as the sidebar does, and the fold out
     expect(body().inert).toBe(true);
     expect(body().classList.contains('open')).toBe(false);
     expect(group().querySelector('[data-testid=project-thread-count]')?.textContent).toBe(String(store.threadsOf('p-boite').length));
+    const total = group().querySelector('[data-testid=project-thread-count]');
+    expect(total?.parentElement).toBe(toggle());
+    expect(total?.previousElementSibling).toBe(toggle().querySelector('.name'));
     // Folded, the head still says what needs the user: its count of threads that need the user, with their state named.
     const waiting = group().querySelector<HTMLElement>('[data-testid=project-waiting-count]');
     expect(waiting?.dataset.state).toBeTruthy();

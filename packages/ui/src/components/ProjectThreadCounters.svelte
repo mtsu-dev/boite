@@ -37,8 +37,6 @@
   const doneOpen = $derived(!collapsed && projectThreadView.isOpen(entry, 'done'));
   const doneLabel = $derived(fill(strings.sidebar.projectDoneThreads, { count: String(done), project: projectName(entry.project) }));
   const workingLabel = $derived(fill(strings.sidebar.projectWorkingThreads, { count: String(working), project: projectName(entry.project) }));
-  const total = $derived(entry.machine.store.threadsOf(entry.project.id).length);
-  const totalLabel = $derived(fill(total === 1 ? strings.sidebar.threadCountOne : strings.sidebar.threadCountMany, { count: formatCount(total) }));
 </script>
 
 {#snippet workingCounter(fold: boolean)}
@@ -54,9 +52,6 @@
     {@render workingCounter(true)}
   {/if}
 {:else}<div class="counters">
-  {#if collapsed}
-    <span class="counter total ui-label" data-testid="project-thread-count" title={totalLabel} aria-label={totalLabel}>{formatCount(total)}</span>
-  {/if}
   {#if waiting > 0}
     <span class="counter waiting" class:failed={failOnly} data-testid="project-waiting-count" data-count={waiting} data-state={failOnly ? 'error' : 'waiting'} role="img" title={waitingLabel} aria-label={waitingLabel}><span class="mark-word">{#if failOnly}<FailMark />{:else}<span class="dot" aria-hidden="true"></span>{/if}<span class="ui-label word" class:spare={!collapsed && listed >= waiting}>{failOnly ? strings.sidebar.state.error : strings.sidebar.state.waiting}</span></span><span class="ui-label number">{formatCount(waiting)}</span></span>
   {/if}
@@ -79,7 +74,6 @@
   .counter { display: inline-flex; align-items: center; height: 22px; min-width: 0; padding: 0 6px; gap: 4px; border: none; border-radius: var(--radius-sm);
     background: transparent; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 400; font-variant-numeric: tabular-nums; }
   .counter:disabled { opacity: 1; }
-  .total { flex: none; background: var(--color-surface-3); }
   .waiting .number { margin-left: 4px; color: var(--color-live); font-weight: var(--weight-title); }
   .waiting.failed .number { color: var(--color-danger); }
   /* The word beside the mark the rows wear, so the dot is learned where it is first named. */

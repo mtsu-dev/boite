@@ -556,6 +556,8 @@ test('a folded project counts its threads and keeps their state until it unfolds
   flushSync();
   expect(counter()?.textContent).toBe(String(total));
   expect(counter()?.getAttribute('aria-label')).toBe(`${total} threads`);
+  expect(counter()?.parentElement).toBe(head());
+  expect(counter()?.previousElementSibling).toBe(head().querySelector('.name'));
   expect(head().querySelector('[data-testid=project-rollup]')).toBeNull();
   const [first, second] = store.threadsOf(project.id);
   first!.status = 'running';

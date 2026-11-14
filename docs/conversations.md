@@ -21,8 +21,8 @@ Add a project with Add a project at the bottom of the sidebar. The sidebar
 lists threads by project or by recent activity: switch between Projects and
 Recent in Display options.
 
-Fold a project to hide its threads. Its heading keeps the thread count beside
-the activity counts, on desktop and phone.
+Fold a project to hide its threads. Its heading shows the thread count just
+after the project name, on desktop and phone.
 
 ## Drafts without a project
 
