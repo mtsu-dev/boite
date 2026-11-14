@@ -8,16 +8,16 @@
   /**
    * Work the agent sent, grouped on one card of the chat where it started,
    * framed so it never reads as one more tool line: the marks, the heading
-   * over its counts, how long it has run, then a chevron. Live, its frame
-   * takes the live tint; `tone` says how it ended (`done`: a result came
-   * back, `failed`), and the frame says it too. With `children` the chevron unfolds the list
+   * over its counts, how long it has run, then a chevron. Its frame
+   * stays neutral while it runs and once a result came back; `tone` says how
+   * it ended, and only `failed` tints the frame. With `children` the chevron unfolds the list
    * under the row in place (`expanded`); without, the row opens what follows
    * it, such as a workflow's graph. The head button's own attributes pass
    * through.
    */
   let { live, tone, heading, timing, mark, progress, extra, cause, progressTestId, expanded, children, ...button }: Omit<HTMLButtonAttributes, 'children'> & {
     live: boolean;
-    /** How finished work ended: a result that came back shows in the success tint, a failure in the danger one. */
+    /** How finished work ended: a failure shows in the danger tint, a result that came back keeps the neutral frame. */
     tone?: 'done' | 'failed';
     heading: string;
     /** No start yet means no clock. */
@@ -55,11 +55,9 @@
 </div>
 
 <style>
-  /* A card of its own: a frame, the card's fill, the live or the result's tint on its edge. */
-  .group { --tint: transparent; display: flex; flex-direction: column; min-width: 0; margin-block: 4px; border: 1px solid color-mix(in oklab, var(--tint) 34%, var(--color-edge)); border-radius: var(--radius-md); background: color-mix(in oklab, var(--tint) 5%, var(--card-fill)); transition: border-color var(--motion-duration) var(--motion-curve), background var(--motion-duration) var(--motion-curve); }
-  .group.live { --tint: var(--color-live); }
-  .group[data-tone='done'] { --tint: var(--color-success); }
-  .group[data-tone='failed'] { --tint: var(--color-danger); }
+  /* A card of its own: a quiet frame and the card's fill, whatever its work does; the counts say where it stands, and only a failure tints the edge. */
+  .group { --tint: transparent; display: flex; flex-direction: column; min-width: 0; margin-block: 4px; border: 1px solid var(--color-edge); border-radius: var(--radius-md); background: var(--card-fill); transition: border-color var(--motion-duration) var(--motion-curve), background var(--motion-duration) var(--motion-curve); }
+  .group[data-tone='failed'] { --tint: var(--color-danger); border-color: color-mix(in oklab, var(--tint) 34%, var(--color-edge)); background: color-mix(in oklab, var(--tint) 5%, var(--card-fill)); }
   .activity {
     display: flex;
     align-items: center;

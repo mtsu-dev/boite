@@ -316,7 +316,9 @@ The team chat (`components/teams/TeamChat.svelte`) replaces the conversation
 view of a thread with `teamId`, in a thread's own shapes: one reading column,
 a bot's post on the page under its picture and name, the owner's a bubble on
 the right, the calendar's chip between two days (`DayDivider.svelte`) and the
-thread composer's card. The header (`components/teams/TeamHeader.svelte`)
+thread composer's card. A ping in a post, `@name` of a member, `@tous` or
+`@everyone`, reads in the accent colour (`lib/team-pings.ts`, the rule
+`teamMentions` routes by). The header (`components/teams/TeamHeader.svelte`)
 takes a bot header's two places: on a desktop the window's top bar, with the
 team's name, the chevron of its menu and "Team chat · N bots and you", or
 Paused or Archived; on a phone over the chat, with the way back and the team's

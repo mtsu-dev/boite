@@ -10,6 +10,7 @@
   import { fill, strings } from '../../lib/strings';
   import type { Store } from '../../lib/store.svelte';
   import { botIdOf, followTeams, listNames, teamsOf } from '../../lib/teams.svelte';
+  import { pings } from '../../lib/team-pings';
   import AgentAvatar from '../agents/AgentAvatar.svelte';
   import DayDivider from '../DayDivider.svelte';
   import Prose from '../Prose.svelte';
@@ -40,6 +41,8 @@
     return [];
   }));
   const byId = $derived(new Map(posts.map(post => [post.ref.id, post])));
+  /** The names a post can ping: the members', as the routing reads them. */
+  const pingNames = $derived(team?.members.map(member => member.name) ?? []);
   const loading = $derived(store.loadingThreadId === thread.id && thread.messages.length === 0);
 
   /** Posting needs the experiment and a team that still takes posts; otherwise a note stands in the composer's place. */
@@ -183,7 +186,7 @@
             </button>
           {/if}
           <div class="said">
-            <div class="body" class:bubble={own} class:answer-bubble={!own} title={own || grouped ? fullTime(post.at) : undefined}><Prose text={post.text} {store} threadId={thread.id} /></div>
+            <div class="body" class:bubble={own} class:answer-bubble={!own} use:pings={pingNames} title={own || grouped ? fullTime(post.at) : undefined}><Prose text={post.text} {store} threadId={thread.id} /></div>
             {#if !closed && team}
               <button type="button" class="ghost small icon reply" title={labels.reply} aria-label={labels.reply} onclick={() => answer(post)} data-testid="team-post-reply"><Reply size={14} /></button>
             {/if}
@@ -263,6 +266,8 @@
   .post.own .said { flex-direction: row-reverse; width: auto; max-width: min(85%, var(--prose)); }
   /* A bot's words: an answer's bubble (`.answer-bubble`, app.css), as a thread draws them; the lines around it stay outside. */
   .body { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
+  /* A ping: the accent colour on the name, nothing else. */
+  .body :global(.ping) { color: var(--color-accent); font-weight: 600; }
   /* The owner's own words: a prompt's bubble (UserMessage.svelte). */
   .bubble { padding: 12px 16px; background: var(--color-accent-soft); border: 1px solid color-mix(in oklch, var(--color-accent) 35%, transparent); border-radius: var(--radius-bubble); border-bottom-right-radius: var(--radius-sm); box-shadow: var(--shadow-e1); }
   .post.private .body { border-style: dashed; border-color: var(--color-edge); }

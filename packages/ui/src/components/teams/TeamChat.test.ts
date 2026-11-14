@@ -103,6 +103,8 @@ test("a phone's Bots list holds the teams above the bots, opens a team's chat, a
   await vi.waitFor(() => expect(store.openThread?.id).toBe(team.threadId));
   expect(store.page).toBe('agents');
   await vi.waitFor(() => query('[data-testid=team-chat]'));
+  // The header is its own chunk: it lands a moment after the chat.
+  await vi.waitFor(() => query('[data-testid=team-title]'));
   expect([query('[data-testid=team-title]').textContent, query('[data-testid=team-room]').textContent]).toEqual(['Skollheim', 'Team chat · 2 bots and you']);
   expect(query(row).getAttribute('aria-current')).toBe('page');
   await vi.waitFor(() => expect(document.querySelector(row)?.hasAttribute('data-unread')).toBe(false));
@@ -199,6 +201,9 @@ test('the team chat draws each post with its author, a private post with its rec
     [null, 'team', null, 'Woke nobody'],
   ]);
   expect(posts[1]!.textContent).toContain('The draft is up.');
+  // A ping reads in the accent colour: the name as written, `@tous` too, and nothing else of the post.
+  expect(posts.map(post => [...post.querySelectorAll('.ping')].map(ping => ping.textContent))).toEqual([['@Huginn (Réseaux)'], ['@tous'], [], [], []]);
+  expect(posts[0]!.querySelector('.body')!.textContent?.trim()).toBe('@Huginn (Réseaux) can you draft the launch post?');
   expect(all('[data-testid=team-member]').map(member => [member.textContent?.trim(), member.getAttribute('data-bot-id')])).toEqual([
     ['Huginn (Réseaux)', huginn.id], ['Jeux (Producteur)', jeux.id],
   ]);
