@@ -1814,16 +1814,17 @@ plays its twelve ranked tests on Linux: Boite as the compiled core and the
 production UI in headless Chrome, the Bare CLI as Claude Code in a
 pseudo-terminal. `run.ts` is Track A (start, new thread, first word, typing,
 a long thread, memory and CPU) on ADEMark's replay server, with no token
-spent; `tokens.ts` is Track B, live; `rank.ts` places the results in the
-published table. The Tauri shell is not measured, times are read in the page
+spent; `tokens.ts` is Track B, live; `rank.ts` places the results beside the
+published ones in the default order of ADEMark's grid, which is not a score
+and not an ADEMark result. The Tauri shell is not measured, times are read in the page
 and not on a screen recording, and a loaded machine moves every time: the
 [report of 2026-11-14](../../bench/results/2026-11-14-ademark.md) has the
 method, its limits, the numbers and what is left.
 
 Claude Code names every new session with one request on the session's model.
 The Claude driver passes the thread's title as the session's, and a fixed one
-for its one-shot title and side-question queries, so that request is never
-sent: a first `hi` went from six requests and 27,466 tokens to three and
+for a blank title and for its one-shot title and side-question queries, so a
+new session sends no such request: a first `hi` went from six requests and 27,466 tokens to three and
 22,553, live, 2026-11-14, against 20,044 for Claude Code alone.
 
 ## Benches

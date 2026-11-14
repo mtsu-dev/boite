@@ -7,10 +7,14 @@
  * request, so with `--bare` the token tests compare each app's ratio to the
  * Bare CLI measured beside it, here and in the published run.
  *
- * ADEMark ranks by the number of tests won, then by the number of places in
- * the top third; the Bare CLI is a control and is never ranked. The published
- * numbers come from a Mac mini M4 and the real apps, these from this machine:
- * a place here is an estimate, not a published result.
+ * The order is the default one of ADEMark's results grid (`Results.astro` of
+ * its site): tests led, then places in the top third behind the leader, then
+ * in the middle third. Equal medians share a rank, equal tallies a position,
+ * an app measured in fewer than 9 of the 12 tests gets no position, and the
+ * Bare CLI is a control, never ranked. ADEMark calls that order a help for
+ * scanning, not a score. The published numbers come from a Mac mini M4 and
+ * the real apps, these from this machine: a place here is an estimate, not a
+ * published result.
  */
 import { readFileSync } from 'node:fs';
 
@@ -50,11 +54,14 @@ const values = (paths: string[]): Map<string, number> => {
 const mine = values(files);
 const bare = barePath === undefined ? new Map<string, number>() : values([barePath]);
 
-const tally = new Map<string, { wins: number; thirds: number }>();
-const count = (id: string): { wins: number; thirds: number } => {
+/** Fewer measured tests than this and an app has no position: a missing test says nothing about it. */
+const MIN_MEASURED = 9;
+/** Per app: tests led, top third behind the leader, middle third, tests measured. */
+const tally = new Map<string, { led: number; top: number; middle: number; measured: number }>();
+const count = (id: string): { led: number; top: number; middle: number; measured: number } => {
   let entry = tally.get(id);
   if (entry === undefined) {
-    entry = { wins: 0, thirds: 0 };
+    entry = { led: 0, top: 0, middle: 0, measured: 0 };
     tally.set(id, entry);
   }
   return entry;
@@ -77,20 +84,32 @@ for (const test of RANKED) {
   const own = raw === undefined ? undefined : ratio ? raw / (here as number) : raw;
   if (own !== undefined) field.push({ id: 'boite', value: own });
   field.sort((a, b) => a.value - b.value);
-  const third = Math.ceil(field.length / 3);
-  field.forEach((entry, index) => {
-    if (index === 0) count(entry.id).wins += 1;
-    if (index < third) count(entry.id).thirds += 1;
-  });
-  const place = own === undefined ? 'not measured' : `${field.findIndex((entry) => entry.id === 'boite') + 1} of ${field.length}`;
-  const limit = field[third - 1]?.value;
+  // Equal values share the rank of the first of them.
+  const rankOf = (value: number): number => field.findIndex((entry) => entry.value === value) + 1;
+  const share = (rank: number): number => (field.length > 1 ? (rank - 1) / (field.length - 1) : 0);
+  for (const entry of field) {
+    const rank = rankOf(entry.value);
+    const tallied = count(entry.id);
+    tallied.measured += 1;
+    if (rank === 1) tallied.led += 1;
+    else if (share(rank) <= 1 / 3) tallied.top += 1;
+    else if (share(rank) <= 2 / 3) tallied.middle += 1;
+  }
+  const place = own === undefined ? 'not measured' : `${rankOf(own)} of ${field.length}`;
+  const limit = field.findLast((entry) => share(rankOf(entry.value)) <= 1 / 3)?.value;
   const show = (value: number | null | undefined): string => (typeof value === 'number' ? value.toFixed(2) : '');
   console.log(`| ${test}${ratio ? ', times the Bare CLI' : ''} | ${show(own)} | ${place} | ${best === undefined ? '' : `${best.id} ${show(best.value)}`} | ${show(limit)} | ${ratio ? '1.00' : show(control)} |`);
 }
 
-const order = [...tally.entries()].sort((a, b) => b[1].wins - a[1].wins || b[1].thirds - a[1].thirds);
-console.log('\n| Rank | App | Tests won | Top-third places |');
-console.log('| ---: | --- | ---: | ---: |');
-order.forEach(([id, entry], index) => {
-  if (index < 6 || id === 'boite') console.log(`| ${index + 1} | ${id} | ${entry.wins} | ${entry.thirds} |`);
-});
+const key = (entry: { led: number; top: number; middle: number }): string => `${entry.led},${entry.top},${entry.middle}`;
+const order = [...tally.entries()]
+  .filter(([, entry]) => entry.measured >= MIN_MEASURED)
+  .sort((a, b) => b[1].led - a[1].led || b[1].top - a[1].top || b[1].middle - a[1].middle || a[0].localeCompare(b[0]));
+console.log('\n| Position | App | Tests led | Top third | Middle third | Tests measured |');
+console.log('| ---: | --- | ---: | ---: | ---: | ---: |');
+for (const [id, entry] of order) {
+  const position = order.findIndex(([, other]) => key(other) === key(entry)) + 1;
+  console.log(`| ${position} | ${id} | ${entry.led} | ${entry.top} | ${entry.middle} | ${entry.measured} |`);
+}
+const partial = [...tally.entries()].filter(([, entry]) => entry.measured < MIN_MEASURED);
+if (partial.length > 0) console.log(`\nNo position, fewer than ${MIN_MEASURED} tests measured: ${partial.map(([id, entry]) => `${id} (${entry.measured})`).join(', ')}`);
