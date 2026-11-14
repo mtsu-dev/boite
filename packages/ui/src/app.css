@@ -578,7 +578,7 @@
   /* Settings read in the conversation's column (its default width, whatever width a thread was set to). */
   --settings-width: 920px;
   /* The settings' list of pages: wide enough for the longest page name in every language, no wider. */
-  --settings-nav: 252px;
+  --settings-nav: 264px;
   --settings-title: 28px;
   --settings-gutter: clamp(var(--space-5), 3vw, 48px);
   --settings-padding: var(--space-6);

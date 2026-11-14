@@ -367,8 +367,10 @@
   .bot[data-look='asleep'] { --avatar-rest: var(--avatar-asleep); }
   /* An answer not read: the picture ringed in the text's own ink, cut out of the card. */
   .bot[data-look='answered'] :global(.agent-avatar) { box-shadow: 0 0 0 2px var(--rail-ground), 0 0 0 4px var(--color-foreground); }
-  .orbit { position: absolute; inset: -4px; width: calc(100% + 8px); height: calc(100% + 8px); pointer-events: none; animation: spin 1.2s steps(72) infinite var(--loops); }
-  .orbit circle { fill: none; stroke: var(--color-accent); stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 28 72; }
+  /* The arc turns inside its drawing, which stays still: a turning square reaches past its own box at every corner,
+     and under the last picture that changed how far the list scrolls, frame after frame. */
+  .orbit { position: absolute; inset: -4px; width: calc(100% + 8px); height: calc(100% + 8px); pointer-events: none; }
+  .orbit circle { fill: none; stroke: var(--color-accent); stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 28 72; transform-box: view-box; transform-origin: center; animation: spin 1.2s steps(72) infinite var(--loops); }
   /* The "z" on the card's ground at the picture's top right, the small one rising and fading after the large. Twelve
      steps over four seconds: three frames a second, and none while the window rests (--loops). */
   .sleep { position: absolute; right: -4px; top: -4px; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; background: var(--rail-ground); pointer-events: none; }
@@ -478,8 +480,10 @@
   }
   .needs, .news { width: 10px; height: 10px; border-radius: 50%; background: var(--color-live); }
   .news { position: relative; background: var(--color-foreground); }
-  .news::after { content: ''; position: absolute; inset: 0; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--color-foreground); opacity: 0; animation: rail-ping 2.4s steps(36) infinite var(--loops); }
-  @keyframes rail-ping { 0%, 55% { opacity: 0; transform: scale(1); } 60% { opacity: 0.8; transform: scale(1); } 100% { opacity: 0; transform: scale(2.2); } }
+  /* The ring is an outline moving out, not a scaled box: a scaled box adds to what the scroller can scroll, an
+     outline is ink only. */
+  .news::after { content: ''; position: absolute; inset: 0; border-radius: 50%; outline: 1.5px solid var(--color-foreground); outline-offset: 0; opacity: 0; animation: rail-ping 2.4s steps(36) infinite var(--loops); }
+  @keyframes rail-ping { 0%, 55% { opacity: 0; outline-offset: 0; } 60% { opacity: 0.8; outline-offset: 0; } 100% { opacity: 0; outline-offset: 6px; } }
 
   .foot { display: flex; flex-direction: column; align-items: center; gap: 4px; align-self: stretch; }
   .foot :global(button.icon.on) { background: var(--color-surface-3); color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge); border-radius: var(--radius-rail); }
@@ -498,7 +502,7 @@
     .app-rail { display: none; }
   }
   /* Still under reduced motion, as Spinner.svelte. */
-  @media (prefers-reduced-motion: reduce) { .orbit, .sleep .z, .news::after { animation: none; } .sleep .z { opacity: 0.8; } }
-  :global(html[data-motion='reduced']) :is(.orbit, .sleep .z, .news::after) { animation: none; }
+  @media (prefers-reduced-motion: reduce) { .orbit circle, .sleep .z, .news::after { animation: none; } .sleep .z { opacity: 0.8; } }
+  :global(html[data-motion='reduced']) :is(.orbit circle, .sleep .z, .news::after) { animation: none; }
   :global(html[data-motion='reduced']) .sleep .z { opacity: 0.8; }
 </style>
