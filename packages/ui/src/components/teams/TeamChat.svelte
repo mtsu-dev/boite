@@ -264,7 +264,7 @@
   /* A bot's words: an answer's bubble (`.answer-bubble`, app.css), as a thread draws them; the lines around it stay outside. */
   .body { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
   /* The owner's own words: a prompt's bubble (UserMessage.svelte). */
-  .bubble { padding: 12px 16px; background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-bubble); border-bottom-right-radius: var(--radius-sm); }
+  .bubble { padding: 12px 16px; background: var(--color-accent-soft); border: 1px solid color-mix(in oklch, var(--color-accent) 35%, transparent); border-radius: var(--radius-bubble); border-bottom-right-radius: var(--radius-sm); box-shadow: var(--shadow-e1); }
   .post.private .body { border-style: dashed; border-color: var(--color-edge); }
   .reply { flex: none; opacity: 0; color: var(--color-muted-foreground); transition: opacity var(--dur-2); }
   .post.own .reply { align-self: center; }

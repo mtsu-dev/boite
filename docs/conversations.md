@@ -99,9 +99,11 @@ phone, they sit above the message box or the bottom tabs.
 
 - Mark done moves a thread to the Done group. Archive puts it aside to pick up
   later; the toast offers Undo, or press Ctrl+Z.
-- The agent of an archived thread stops. Restore it from View archived threads
-  in the project menu, or Settings, General, Archived threads. Its agent starts
+- The agent of an archived thread stops. Restore it from Archived threads in
+  the Filter menu or in a project's menu, which list them in place of the
+  thread list, or from Settings, General, Archived threads. Its agent starts
   again with your first message.
+- A project's Done list shows ten rows at a time; scroll it for the rest.
 - Delete done threads after (days) defaults to 3. Manual archives are kept.
 - A deleted conversation can be restored from Show deleted conversations in
   Settings, for the number of days set in Days before permanent deletion.
