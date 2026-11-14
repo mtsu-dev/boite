@@ -23,7 +23,7 @@ export interface Driver {
   check(target: Target): Promise<void>;
   /** `select @eN <value>`, then `snapshot -i`. */
   select(target: Target, value: string): Promise<void>;
-  /** A full `snapshot`, which carries the page's text, returned to read a value. */
+  /** A `snapshot --full`, which carries the page's text, returned to read a value. */
   read(): Promise<string>;
 }
 

@@ -3,7 +3,7 @@
  * calls, the way the CLI's help teaches an agent to work. Every action takes
  * its target as a ref read by label out of the previous snapshot's output and
  * is followed by `snapshot -i`. A ref that fails (the CLI refuses it, or the
- * label is not in the snapshot) gets one new `snapshot -i` and one retry, and
+ * label is not in the snapshot) gets one `snapshot -i --full` and one retry, and
  * both extra calls are counted.
  */
 import { mkdirSync } from 'node:fs';
