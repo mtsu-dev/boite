@@ -60,6 +60,8 @@
   // The phone app's page is no machine's: the machine it shows takes its notifications and passes on the others'.
   let ownOrigin = $derived(appPage() || !store.endpointUrl || servesThisPage(store.endpointUrl));
   let paired = $derived(store.sessions.some(session => session.current));
+  // The card reads its own pairing: whichever page holds it, an already paired phone must not be told to pair first.
+  $effect(() => { if (store.connection === 'ready') untrack(() => void store.loadSessions()); });
 
   $effect(() => {
     if (inShell || !paired || !ownOrigin || store.connection !== 'ready') return;
