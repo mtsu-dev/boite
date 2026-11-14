@@ -16,6 +16,11 @@ export function pingPattern(names: readonly string[]): RegExp {
 const SKIP = 'code, pre, a, .ping, .katex';
 
 function wrap(root: HTMLElement, pattern: RegExp): void {
+  // Each pass reads the text as written: the last pass's spans go first, so a name that left the team loses
+  // its colour and a span's edge never stands for a word boundary the text does not have.
+  const old = root.querySelectorAll('.ping');
+  for (const ping of old) ping.replaceWith(document.createTextNode(ping.textContent ?? ''));
+  if (old.length > 0) root.normalize();
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const texts: Text[] = [];
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
