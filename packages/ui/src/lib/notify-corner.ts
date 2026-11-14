@@ -55,29 +55,23 @@ function placeToasts(): HTMLElement[] {
     top = box.bottom + (parseFloat(getComputedStyle(over).marginBottom) || 0) - room;
     centre = box.left + box.width / 2;
   } else {
-    // Clear phone centring before measuring the corner after a resize.
+    // Clear phone centring and a top left by a slot before measuring the corner after a resize.
     for (const node of [...up, ...cards]) {
       delete node.dataset.slot;
       node.style.removeProperty('--toast-left');
+      node.style.removeProperty('--toast-top');
     }
     // A desktop corner starts 12 under the title bar, which holds the thread's header.
     top = phone ? innerHeight - 12 - room + 8 - cornerFloor() : (shown('[data-testid=titlebar]')?.getBoundingClientRect().bottom ?? 0) + 12;
     centre = null;
   }
-  for (const toast of up) {
-    toast.style.setProperty('--toast-top', `${Math.round(top)}px`);
-    if (centre !== null) toast.style.setProperty('--toast-left', `${Math.round(centre)}px`);
-    toast.dataset.slot = centre === null ? 'end' : 'bottom';
-    top += toast.offsetHeight + 8;
-  }
-  // A card's place is its lift from the window's bottom edge (notify-corner.css adds 12).
-  for (const card of slotted) {
-    card.style.setProperty('--corner-lift', `${Math.round(innerHeight - 12 - top - card.offsetHeight)}px`);
-    if (centre !== null) {
-      card.style.setProperty('--toast-left', `${Math.round(centre)}px`);
-      card.dataset.slot = 'bottom';
-    }
-    top += card.offsetHeight + 8;
+  // Toasts then cards, each by its top: one whose text lands after this grows down into its room, never up.
+  for (const node of [...up, ...slotted]) {
+    node.style.setProperty('--toast-top', `${Math.round(top)}px`);
+    node.style.removeProperty('--corner-lift');
+    if (centre !== null) node.style.setProperty('--toast-left', `${Math.round(centre)}px`);
+    node.dataset.slot = centre === null ? 'end' : 'bottom';
+    top += node.offsetHeight + 8;
   }
   return slotted;
 }
