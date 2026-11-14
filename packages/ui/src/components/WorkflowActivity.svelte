@@ -47,7 +47,7 @@
   /* One tick per phase, read at a glance beside the step count; the one running breathes. */
   .phases { display: inline-flex; flex: none; gap: 3px; height: 6px; }
   .phases i { width: 18px; border-radius: var(--radius-full); background: color-mix(in oklab, var(--color-foreground) 14%, transparent); }
-  .phases i.running { background: var(--color-live); animation: breathe 0.9s ease-in-out infinite alternate; }
+  .phases i.running { background: var(--color-live); animation: breathe 0.9s ease-in-out infinite alternate var(--loops); }
   .phases i.done { background: var(--color-success); }
   .phases i.failed { background: var(--color-danger); }
   .phases i.stopped { background: var(--color-muted-foreground); }

@@ -533,11 +533,9 @@
     display: grid;
     grid-template-columns: calc(var(--control-lg) + 20px) minmax(0, 1fr);
     width: min(440px, calc(100vw - 32px));
-    /* As tall as the column's head, search and models, over a floor of five rows;
-       the rail takes no part in it (.rail-cell) and scrolls when it is longer. */
-    height: auto;
-    min-height: min(calc(var(--row) * 5), 45dvh);
-    max-height: min(360px, 45dvh);
+    /* One size whichever provider is picked: a short list leaves room, a long one scrolls, and nothing
+       jumps under the pointer between two rail tiles. */
+    height: min(360px, 45dvh);
     grid-template-rows: minmax(0, 1fr);
     /* floating() puts the menu in the top layer as a [popover], whose 0.25em
        padding left the rail 7px short of its tiles. */
@@ -591,7 +589,7 @@
   .head-search :global(.search-bar) { position: static; margin: 0; padding: 0; background: none; }
   .model-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; padding: 6px; }
   /* One provider: its model list is the whole popover, the refresh sits in the list's head. */
-  .popover.single { grid-template-columns: minmax(0, 1fr); width: min(320px, calc(100vw - 32px)); }
+  .popover.single { grid-template-columns: minmax(0, 1fr); width: min(320px, calc(100vw - 32px)); height: auto; max-height: min(360px, 45dvh); }
   .single .main-models { grid-area: 1 / 1; border-left: none; }
   .single .main-models .head { padding-right: 44px; }
   .single .refresh { position: absolute; top: 4px; right: 4px; margin: 0; width: var(--control); height: var(--control); padding: 0; border: none; background: transparent; }
@@ -735,8 +733,7 @@
       grid-template-columns: minmax(0, 1fr);
       grid-template-rows: auto minmax(0, 1fr);
       width: calc(100vw - 24px);
-      /* As tall as the strip and the column's content, up to this cap. */
-      max-height: min(460px, 62dvh);
+      height: min(460px, 62dvh);
       /* The sheet runs edge to edge: the rail strip and the list keep off its sides. */
       padding-inline: var(--space-1);
     }
@@ -760,7 +757,7 @@
       border-radius: var(--radius-md);
       background: transparent;
     }
-    .popover.single { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+    .popover.single { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); height: auto; max-height: min(460px, 62dvh); }
     .single .main-models { grid-area: 1 / 1; }
     .single .main-models .head { padding-right: calc(var(--touch-target) + 8px); }
     /* Show all and Legacy models are rows a finger takes like any other. */

@@ -266,10 +266,10 @@
     container: thread-row / inline-size;
   }
   /* The title wins. At rest a row, the open one included, carries one state at most (its mark and its word,
-     ThreadState.svelte), then its time. The pin, a draft and the pull request show under the
-     pointer or the keyboard (a click's focus does not count: the row just opened would keep them), and stay in
-     the tooltip; how long work has run lives in the thread. */
-  .thread:not(:hover, :has(:focus-visible)) .row :global(.headline > :is(.draft, .pin, .pr)) { display: none; }
+     ThreadState.svelte), then its time, and the pin and an unsent draft, always there as before the redraw: a mark
+     that only shows under the pointer says nothing at a glance. The pull request shows under the pointer or the
+     keyboard (a click's focus does not count: the row just opened would keep it), and stays in the tooltip. */
+  .thread:not(:hover, :has(:focus-visible)) .row :global(.headline > .pr) { display: none; }
   /* Activity's card, one form for every entry (ActivityList.svelte draws its surface): the kind line, its glyph the
      card's one mark, then the title, two lines at most, the place line under it, where the row lives and since when;
      what is asked runs under that, the decision pair beside the title or under everything. Every line after the kind
