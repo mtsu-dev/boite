@@ -360,7 +360,7 @@ export function registerSubscriptionProxy(core: Core): void {
   core.router.register('subscriptionProxy.setEnabled', async ({ enabled }) => {
     if (typeof enabled !== 'boolean') throw invalidParams('subscriptionProxy.setEnabled enabled must be a boolean', { field: 'enabled' });
     const proxy = core.settings.get().subscriptionProxy;
-    if (!proxy?.baseUrl) throw refused('no subscription proxy is configured: the owner sets one up in Settings > Accounts', { field: 'subscriptionProxy' });
+    if (!proxy?.baseUrl) throw refused('no subscription proxy is configured: the owner sets one up in Settings > Providers > Subscription proxy', { field: 'subscriptionProxy' });
     if (proxy.enabled !== enabled) core.settings.set({ subscriptionProxy: { ...proxy, enabled } });
     await prepareLocalProxyKey(core);
     return core.settings.get();
