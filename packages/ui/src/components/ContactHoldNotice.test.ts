@@ -15,7 +15,7 @@ const notice = () => document.querySelector('[data-testid=contact-hold]');
 test('a thread held by contact mail names the contact and runs again once the owner trusts its history', async ({ ready }) => {
   const { store, client } = await ready();
   const account = (await client.call('accounts.list', {})).find(entry => entry.providerId === 'echo')!;
-  const thread = await client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: account.id, title: 'Bot rounds' });
+  const thread = await client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: account.id, title: 'Mochi rounds' });
   const other = await client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: account.id, title: 'Elsewhere' });
   // A bot works with every tool; only echo in default mode keeps a tool-free route.
   await client.call('threads.update', { threadId: thread.id, permissionMode: 'bypassPermissions' });

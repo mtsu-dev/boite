@@ -445,7 +445,7 @@ export class Coordination {
     if (letter.to.coreId !== this.#self('').coreId) throw refused('message belongs to another core');
     // Only this core marks a letter as a persistent agent's, and only while the project is entrusted to it. A remote origin is never believed.
     const resident = !peer && this.#core.workforce.projects.over(letter.from.threadId, letter.to.threadId) !== null;
-    if (!peer && letter.origin === 'resident' && !resident) throw refused('the project is no longer entrusted to this bot');
+    if (!peer && letter.origin === 'resident' && !resident) throw refused('the project is no longer entrusted to this mochi');
     // A contact reaches the projects opened to it and the threads that wrote to it, nothing else: an unknown thread reads the same.
     const contact = routed ?? (peer ? this.#core.contacts.known(peer.coreId) : undefined);
     if (contact && !routed && !this.#core.contacts.mayReach(contact.coreId, letter.to.threadId, letter.from?.threadId)) throw refused('letter.to: not a thread of a project opened to you');
@@ -511,7 +511,7 @@ export class Coordination {
   #changed(threadId: string): void { this.#core.bus.emit('collaboration.changed', { threadId }); }
 
   /** Letters a bot wrote to threads it no longer looks after go nowhere: this bot thread's, or with none those of other machines' bots (`agents/group-host.ts`). */
-  residentRevoked(agentThreadId?: string, reason = 'The project is no longer entrusted to this bot'): void {
+  residentRevoked(agentThreadId?: string, reason = 'The project is no longer entrusted to this mochi'): void {
     const pending = this.rows("status IN ('queued', 'received') AND json_extract(data, '$.origin') = 'resident'").map(row => JSON.parse(row.data) as AgentLetter);
     const self = this.#self('').coreId;
     for (const letter of pending.filter(l => (agentThreadId === undefined ? l.from.coreId !== self : l.from.threadId === agentThreadId) && this.#core.workforce.projects.mayReceive(l, l.from.coreId === self) === false)) this.update(letter, 'rejected', reason);

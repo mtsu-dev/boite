@@ -114,7 +114,7 @@ export class BuiltinBots {
       if (agent.domain === shipped.domain && agent.instructions === shipped.instructions) continue;
       const { id: _id, revision: _revision, createdAt: _createdAt, updatedAt: _updatedAt, ...value } = agent;
       this.#store.records.update('profile', agent.id, agent.revision, { ...value, domain: shipped.domain, instructions: shipped.instructions });
-      this.#core.log('info', `agent ${agent.id}: the ${agent.builtin} bot's instructions follow this version of Boite`);
+      this.#core.log('info', `agent ${agent.id}: the ${agent.builtin} mochi's instructions follow this version of Boite`);
     }
   }
 
@@ -173,7 +173,7 @@ export class BuiltinBots {
   /** The built-in bot `agentId` names, read again after the wait for its models. */
   #builtin(agentId: string): AgentProfile & { builtin: AgentBuiltin } {
     const agent = this.#store.records.get('profile', text(agentId, 'agentId', 160));
-    if (agent.builtin === undefined) throw refused(`agents.builtin.reset: ${agent.name} is no built-in bot; edit or archive it in its settings`, { field: 'agentId', expected: 'a built-in bot' });
+    if (agent.builtin === undefined) throw refused(`agents.builtin.reset: ${agent.name} is no built-in mochi; edit or archive it in its settings`, { field: 'agentId', expected: 'a built-in mochi' });
     return agent as AgentProfile & { builtin: AgentBuiltin };
   }
 
@@ -213,7 +213,7 @@ export class BuiltinBots {
    */
   #defaultSelection(kind: AgentBuiltin, method: 'ensure' | 'reset' = 'ensure'): AgentSelection {
     const account = defaultAccount(this.#core);
-    if (account === undefined) throw refused(`agents.builtin.${method}: no signed-in account on this machine can run the ${kind} bot; sign in to a provider in Settings, then turn it on again`, { field: 'selection', expected: 'a signed-in account' });
+    if (account === undefined) throw refused(`agents.builtin.${method}: no signed-in account on this machine can run the ${kind} mochi; sign in to a provider in Settings, then turn it on again`, { field: 'selection', expected: 'a signed-in account' });
     return { providerId: account.providerId, accountId: account.id, model: null, effort: null, permissionMode: 'bypassPermissions' };
   }
 }

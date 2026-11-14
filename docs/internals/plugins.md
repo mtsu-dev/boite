@@ -209,7 +209,7 @@ plugins granted that domain reach it with no change of their own.
 | `screens.read` | The devices, windows and remote browser Boite shows, their frames included. |
 | `screens.write` | Types and clicks in them, opens and closes them, reads the emulator's clipboard. |
 | `status.read` | Machine usage, quotas, providers, settings, the scheduler and key bindings, read only. |
-| `ui.reveal` | Brings a conversation, a bot or the app updates to the front of the owner's desktop window ([Showing Boite](#showing-boite)). |
+| `ui.reveal` | Brings a conversation, a mochi or the app updates to the front of the owner's desktop window ([Showing Boite](#showing-boite)). |
 | `ui` | Runs its `provides.ui` script and style inside Boite's window, on every client of this core ([Interface](#interface)). The token gains nothing, but that code can do anything you can in the app: shown in red at install. |
 
 The table is `PLUGIN_PERMISSIONS` in `packages/contracts/src/plugins.ts`, with
@@ -890,7 +890,7 @@ an app checks the flag before it names a machine.
 
 The desktop shell connected to the core it started on the same computer
 answers it: it unminimizes and focuses its window, then opens the thread, the
-Bots page on that bot, or the app updates in Settings, Machines. A target with `coreId` opens on
+Mochis page on that mochi, or the app updates in Settings, Machines. A target with `coreId` opens on
 the window's machine whose core has that id; when the window has no such
 machine, or has it but not connected, it says so on the page it shows and opens
 nothing. Browser tabs, paired devices and windows following another machine do

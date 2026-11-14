@@ -257,7 +257,7 @@ export type SettingOutcome = 'applied' | 'changed' | 'refuse' | 'open';
 
 /** The card `agents.create` draws, with the one option the user answers with. */
 export function botCard(bot: AgentCreation, projects: string[], model: string): { text: string; setting: BotAsk; options: QuestionOption[] } {
-  return { text: `Create the bot ${JSON.stringify(bot.name)}, which runs with full access to this machine`, setting: { kind: 'bot', bot, projects, model }, options: [{ id: 'refuse', label: 'Decline' }] };
+  return { text: `Create the mochi ${JSON.stringify(bot.name)}, which runs with full access to this machine`, setting: { kind: 'bot', bot, projects, model }, options: [{ id: 'refuse', label: 'Decline' }] };
 }
 
 export const SETTING_REASON_MAX = 500;
@@ -483,9 +483,9 @@ export function settingAnswerText(setting: SettingCardAsk, answer: QuestionAnswe
   const outcome = answer.optionIds[0];
   if (setting.kind === 'bot') {
     const name = JSON.stringify(setting.bot.name);
-    if (outcome !== 'applied') return `declined: the user did not create the bot ${name}; nothing was created`;
+    if (outcome !== 'applied') return `declined: the user did not create the mochi ${name}; nothing was created`;
     const made = (answer.value ?? {}) as { agentId?: string; threadId?: string | null };
-    return `approved: the bot ${name} exists (${made.agentId ?? 'id unknown'})${made.threadId ? `; its conversation is ${made.threadId}, and boite threads send ${made.threadId} <text> writes to it` : ''}`;
+    return `approved: the mochi ${name} exists (${made.agentId ?? 'id unknown'})${made.threadId ? `; its conversation is ${made.threadId}, and boite threads send ${made.threadId} <text> writes to it` : ''}`;
   }
   if (setting.kind === 'open' && setting.plugin !== undefined) {
     const source = `${setting.plugin.url}${setting.plugin.ref === null ? '' : ` at ${setting.plugin.ref}`}`;

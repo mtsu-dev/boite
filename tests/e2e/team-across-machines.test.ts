@@ -55,7 +55,7 @@ afterAll(async () => {
   for (const core of cores) await core.stop();
 }, 30_000);
 
-test('a post, an @name and a private post reach the bot of the other machine, its answers come back, a machine cut off gets them once, and the app says which machine a member runs on', async () => {
+test('a post, an @name and a private post reach the mochi of the other machine, its answers come back, a machine cut off gets them once, and the app says which machine a member runs on', async () => {
   const skoll = await started(machine('Skoll'));
   const firebat = await started(machine('Firebat'));
   const a = await owner(skoll);
@@ -79,7 +79,7 @@ test('a post, an @name and a private post reach the bot of the other machine, it
 
   // The machine by the name the group knows it by: the core id is the other way to write it.
   await until(async () => (await a.call('group.get', {}))?.cores.some(core => core.name === 'Firebat') === true, 'the name of the other machine');
-  const team = await a.call('teams.create', { name: 'Maison', brief: 'One bot per machine.', members: [huginn.id, 'Firebat/Munin'] });
+  const team = await a.call('teams.create', { name: 'Maison', brief: 'One mochi per machine.', members: [huginn.id, 'Firebat/Munin'] });
   const distant = team.members.find(member => member.botId === munin.id)!;
   expect(distant.machine).toBe('Firebat');
   const local = team.members.find(member => member.botId === huginn.id)!;

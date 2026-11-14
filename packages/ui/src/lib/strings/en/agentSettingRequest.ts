@@ -1,15 +1,15 @@
 export const strings = {
-  /** A card asking the user to change one setting of a bot (`agents.settings.request`). */
+  /** A card asking the user to change one setting of a mochi (`agents.settings.request`). */
   agentSettingRequest: {
     heading: 'Suggested change to {name}',
     apply: 'Apply',
     show: 'Open its settings',
     refuse: 'Refuse',
-    guestHint: 'Only the computer running Boite can change a bot\'s settings.',
+    guestHint: 'Only the computer running Boite can change a mochi\'s settings.',
     projectsHint: 'Untick a project to leave it out.',
     entrust: 'Entrust',
     takeBack: 'Take back',
-    loadFailed: 'This bot setting card did not load.',
+    loadFailed: 'This mochi setting card did not load.',
     to: 'to',
     applied: 'Applied',
     changed: 'Set to {value} instead',
@@ -25,7 +25,7 @@ export const strings = {
     characters: '{count} characters',
     proposedText: 'Proposed text',
     statuses: { active: 'Active', paused: 'Paused', archived: 'Archived' },
-    /** A plain question a bot asked without stopping, shown in its conversation. */
+    /** A plain question a mochi asked without stopping, shown in its conversation. */
     send: 'Send',
     keys: {
       name: 'Name',

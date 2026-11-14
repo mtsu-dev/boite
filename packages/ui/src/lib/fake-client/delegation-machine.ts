@@ -122,7 +122,7 @@ export function spawnThere(ctx: FakeContext, parent: Thread, config: DelegationC
  * and with no result mail. The run settles it on its own timer, the way it settles a local step.
  */
 export function workflowThere(ctx: FakeContext, parent: Thread, config: DelegationConfig, base: Base, step: WorkflowStepPlan, title: string, task: string) {
-  if (parent.agentSessionId) throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'delegation.spawn.machine: a bot\'s subagents run on its own machine', data: { field: 'machine' } });
+  if (parent.agentSessionId) throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'delegation.spawn.machine: a mochi\'s subagents run on its own machine', data: { field: 'machine' } });
   const machine = fakeMember(ctx, step.machine ?? '', 'delegation.spawn');
   const { there, child, worktree } = placeThere(ctx, parent, config, base, machine, { model: step.model, effort: step.effort, project: step.project, worktree: step.worktree, title }, task);
   const at = there.now();

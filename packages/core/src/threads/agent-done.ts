@@ -27,7 +27,7 @@ export class AgentDoneRequests {
     if (thread.parentThreadId) {
       throw refused('a sub-thread is put away with its parent once its work is delivered', { threadId, field: 'threadId', expected: 'a top-level thread' });
     }
-    if (thread.agentSessionId) throw refused('a bot\'s thread stays open', { threadId, field: 'threadId', expected: 'a conversation thread' });
+    if (thread.agentSessionId) throw refused('a mochi\'s thread stays open', { threadId, field: 'threadId', expected: 'a conversation thread' });
     if (thread.archived) throw refused('this thread is already archived', { threadId, field: 'threadId', expected: 'a thread that is not archived' });
     if (this.threads.isBusy(threadId)) {
       this.#waiting.add(threadId);

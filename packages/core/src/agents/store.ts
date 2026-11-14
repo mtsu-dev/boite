@@ -56,9 +56,9 @@ const UNREAD = 'agents:unread:';
 
 /** The first turn of a new agent: it introduces itself and schedules what its instructions call for. */
 export const INTRO_PROMPT = 'You were just created. Introduce yourself to the user in two sentences. Read your instructions and create the routines they call for '
-  + '(for example "check every day" means a daily routine, with `boite bot schedule`), then say what you will do and when.';
+  + '(for example "check every day" means a daily routine, with `boite mochi schedule`), then say what you will do and when.';
 /** The turn after the owner changed an agent's instructions. */
-export const INSTRUCTIONS_PROMPT = 'The user changed your instructions. Check that your routines still match them (`boite bot routines`, `boite bot schedule`, `boite bot unschedule`) '
+export const INSTRUCTIONS_PROMPT = 'The user changed your instructions. Check that your routines still match them (`boite mochi routines`, `boite mochi schedule`, `boite mochi unschedule`) '
   + 'and tell the user in one or two lines what changes for them.';
 
 interface ContextSent { hash: string; sessionGeneration: number; turnId: string }
@@ -192,7 +192,7 @@ export class AgentStore {
   /** The agent of a thread an agent calls from, or the refusal naming what was expected. */
   #callerAgent(threadId: string, method: string): AgentProfile {
     const agent = this.agentOfThread(threadId);
-    if (!agent) throw refused(`${method}: ${threadId} is no bot's thread`, { field: 'threadId', expected: 'the thread of a bot' });
+    if (!agent) throw refused(`${method}: ${threadId} is no mochi's thread`, { field: 'threadId', expected: 'the thread of a mochi' });
     return agent;
   }
   /** An agent named by the owner, or the one whose thread calls. */
@@ -281,7 +281,7 @@ export class AgentStore {
         continue;
       }
       const project = this.core.projects.require(id);
-      if (project.kind === 'drafts') throw refused('projectIds: drafts are the user\'s scratch space and cannot be entrusted to a bot');
+      if (project.kind === 'drafts') throw refused('projectIds: drafts are the user\'s scratch space and cannot be entrusted to a mochi');
     }
     // Profiles saved by older cores also carry `tools`: an edit drops it.
     // A save that omits the pin keeps it: a client that predates it never unpins a bot. Only a pinned bot carries the field.
@@ -408,7 +408,7 @@ export class AgentStore {
   }
 
   /**
-   * An event from outside Boite (`boite bot event`): an urgent fact, so it
+   * An event from outside Boite (`boite mochi event`): an urgent fact, so it
    * wakes the bot whatever `eventWakes` says, under `external:<key>`, which
    * replaces one still waiting under that key. The text is quoted as data and
    * names the caller: a paired device by its label, or the owner's token.
@@ -418,9 +418,9 @@ export class AgentStore {
     const wanted = text(params.agent, 'agent', 160);
     const live = this.records.list('profile').filter(agent => agent.status !== 'archived');
     const named = live.filter(agent => agent.id === wanted || agent.name.toLowerCase() === wanted.toLowerCase());
-    if (named.length > 1) throw refused(`agents.event.agent: ${named.length} bots are named ${quoted(wanted)}; name it by id: ${named.map(agent => agent.id).join(', ')}`, { field: 'agent' });
+    if (named.length > 1) throw refused(`agents.event.agent: ${named.length} mochis are named ${quoted(wanted)}; name it by id: ${named.map(agent => agent.id).join(', ')}`, { field: 'agent' });
     const agent = named[0];
-    if (agent === undefined) throw refused(`agents.event.agent: no bot ${quoted(wanted)}`, { field: 'agent', expected: live.map(bot => bot.name) });
+    if (agent === undefined) throw refused(`agents.event.agent: no mochi ${quoted(wanted)}`, { field: 'agent', expected: live.map(bot => bot.name) });
     const name = params.key ?? 'external';
     if (typeof name !== 'string' || !/^[A-Za-z0-9._-]{1,64}$/.test(name)) throw invalidParams('agents.event.key: expected 1 to 64 letters, digits, dots, underscores or hyphens', { field: 'key', expected: '[A-Za-z0-9._-]{1,64}' });
     const body = text(params.text, 'text', EVENT_PROMPT_MAX);

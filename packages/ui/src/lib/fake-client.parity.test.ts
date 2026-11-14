@@ -199,7 +199,7 @@ test('settings.set refuses what is not a setting before applying any of it, as r
 });
 
 
-test('a bot on another provider account refuses a turn before journalling it, as threads.ts', async () => {
+test('a mochi on another provider account refuses a turn before journalling it, as threads.ts', async () => {
   const { FakeContext } = await import('./fake-client/context');
   const { seed } = await import('./fake-client/seed');
   const { threadMethods } = await import('./fake-client/threads');

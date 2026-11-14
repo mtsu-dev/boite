@@ -71,11 +71,11 @@ others first.
 The group card also gives two roles, each None or one member. **Settings**
 is the member whose settings every other member follows; the copy itself
 runs from a window that owns both machines
-([machines](machines.md#automatic-settings-synchronization)). **Bots** is the
-member that hosts new bots and the Contacts bot, the group's one entry for
-contacts ([machines](machines.md#the-bots-machine)). Naming another Bots
-member moves the Contacts bot there first, then the contact links and their
-relations; a member without the bot asks its contacts through it
+([machines](machines.md#automatic-settings-synchronization)). **Mochis** is the
+member that hosts new mochis and the Contacts mochi, the group's one entry for
+contacts ([machines](machines.md#the-mochis-machine)). Naming another Mochis
+member moves the Contacts mochi there first, then the contact links and their
+relations; a member without the mochi asks its contacts through it
 ([contacts](contacts.md#group-to-group)). Both choices live in the
 roster, so every member shows them, and each holder carries its badge.
 
@@ -196,13 +196,13 @@ whatever network carries it: the roster, agents' messages and the join
 request are unreadable on the path, a plain LAN and the owner's app relay
 included ([sealing](#sealing)). A member refuses a readable roster, and
 refuses any readable request from a machine it trusts through the group alone.
-A bot of one member looking after projects of another
-([bots](bots.md#projects-of-the-other-machines-of-the-group)) uses these
+A mochi of one member looking after projects of another
+([mochis](mochis.md#projects-of-the-other-machines-of-the-group)) uses these
 same sealed requests: no key or token of either machine is copied to the
-other, and the member holding the projects lets bots in only while its own
+other, and the member holding the projects lets mochis in only while its own
 `groupBots` switch is on.
-A whole bot moves to another member with `agents.move`, one sealed `bot.move`
-request whatever `groupBots` says ([bots](bots.md#moving-a-bot-to-another-machine)).
+A whole mochi moves to another member with `agents.move`, one sealed `bot.move`
+request whatever `groupBots` says ([mochis](mochis.md#moving-a-mochi-to-another-machine)).
 
 What a client says to a core is not sealed. That link is as private as its
 transport: WireGuard on a tailnet, TLS on an HTTPS address. A core that listens

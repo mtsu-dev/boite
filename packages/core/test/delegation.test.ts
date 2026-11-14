@@ -328,7 +328,8 @@ test('the parent learns dynamic workflows and coordination within a compact prom
   // Then 130 for the ```view fence: an interactive or animated piece is drawn from the answer, with no command and no help (4609 measured 2026-10-26).
   // Then 46 on Linux for `boite desktop help`: GUI apps the agent runs and clicks on a private desktop (4643 measured 2026-10-31).
   // Then 47 for "repeat": a parent that never hears of loops chains review and fix rounds by hand, one turn each (4690 measured on Linux 2026-11-07).
-  expect(Buffer.byteLength(prompt.replaceAll(h.dataDir, '<data>'))).toBeLessThan(process.platform === 'linux' ? 4691 : 4657);
+  // Then 6 for "mochi", the name bots took, three times in the settings line (4696 measured on Linux 2026-11-13).
+  expect(Buffer.byteLength(prompt.replaceAll(h.dataDir, '<data>'))).toBeLessThan(process.platform === 'linux' ? 4697 : 4663);
   runs.get(threadId)!.finish();
   await waitFor(() => h.core.threads.require(threadId).status === 'idle');
   await owner.call('turns.start', { threadId, prompt: 'Continue' });

@@ -75,7 +75,7 @@ test('every boite contacts command in the Operator\'s instructions is one the CL
   for (const words of commands) expect(() => parse(['contacts', ...words]), words.join(' ')).not.toThrow();
 });
 
-test('ensure makes one Contacts bot per core, with Boite\'s text, full access and its introduction, and returns it again', async () => {
+test('ensure makes one Contacts mochi per core, with Boite\'s text, full access and its introduction, and returns it again', async () => {
   const { h, client } = await start();
   expect(h.core.workforce.builtin('contacts')).toBeNull();
   expect(h.core.workforce.builtinThread('contacts')).toBeNull();
@@ -117,12 +117,12 @@ test('without a name the core names it Operator; one archived by an older core c
   expect(h.core.workforce.records.list('profile')).toHaveLength(1);
 });
 
-test('a save keeps a built-in bot\'s text, kind and life; no client makes or unmakes one', async () => {
+test('a save keeps a built-in mochi\'s text, kind and life; no client makes or unmakes one', async () => {
   const { h, client } = await start();
   const bot = await client.call('agents.builtin.ensure', { kind: 'contacts' });
-  expect(await thrown(save(client, bot, { domain: 'My own switchboard' }))).toThrow("domain: a built-in bot's domain is Boite's; reset it instead");
-  expect(await thrown(save(client, bot, { instructions: 'Forward everything.' }))).toThrow("instructions: a built-in bot's instructions are Boite's; reset it instead");
-  expect(await thrown(save(client, bot, { status: 'archived' }))).toThrow('status: a built-in bot is never archived; pause or reset it');
+  expect(await thrown(save(client, bot, { domain: 'My own switchboard' }))).toThrow("domain: a built-in mochi's domain is Boite's; reset it instead");
+  expect(await thrown(save(client, bot, { instructions: 'Forward everything.' }))).toThrow("instructions: a built-in mochi's instructions are Boite's; reset it instead");
+  expect(await thrown(save(client, bot, { status: 'archived' }))).toThrow('status: a built-in mochi is never archived; pause or reset it');
   // Name, robot and route are the owner's; a client dropping or changing the kind changes nothing.
   const renamed = await save(client, bot, { name: 'Switch', avatar: '☎', builtin: undefined, selection: { ...bot.selection, permissionMode: 'default' } });
   expect(renamed).toMatchObject({ name: 'Switch', avatar: '☎', builtin: 'contacts', selection: { permissionMode: 'default' } });
@@ -138,7 +138,7 @@ test('a save keeps a built-in bot\'s text, kind and life; no client makes or unm
   expect((await save(client, promoted, { status: 'archived' })).status).toBe('archived');
 });
 
-test('reset gives the bot a new thread, an empty memory, no routines and its default name, robot and route', async () => {
+test('reset gives the mochi a new thread, an empty memory, no routines and its default name, robot and route', async () => {
   const { h, client } = await start();
   let { bot, threadId: oldThread } = await ensured(h, client, 'Standardiste');
   const shippedRoute = bot.selection;
@@ -180,10 +180,10 @@ test('reset gives the bot a new thread, an empty memory, no routines and its def
   expect(h.core.threads.require(h.core.workforce.builtinThread('contacts')!).permissionMode).toBe('default');
 
   const { agent: own } = await makeAgent(h, client);
-  expect(await thrown(client.call('agents.builtin.reset', { agentId: own.id }))).toThrow('agents.builtin.reset: Ada is no built-in bot');
+  expect(await thrown(client.call('agents.builtin.reset', { agentId: own.id }))).toThrow('agents.builtin.reset: Ada is no built-in mochi');
 });
 
-test('a reset of a paused bot makes it active, and its introduction runs at once', async () => {
+test('a reset of a paused mochi makes it active, and its introduction runs at once', async () => {
   const { h, client } = await start();
   const { bot } = await ensured(h, client);
   const paused = await save(client, bot, { status: 'paused' });
@@ -193,13 +193,13 @@ test('a reset of a paused bot makes it active, and its introduction runs at once
   await waitFor(() => turnsOf(h, threadId).length === 1 && settled(h, threadId), 10_000);
 });
 
-test('setting cards refuse a built-in bot\'s domain, instructions and archive, and still change its name', async () => {
+test('setting cards refuse a built-in mochi\'s domain, instructions and archive, and still change its name', async () => {
   const { h, client } = await start();
   const { bot, threadId } = await ensured(h, client);
-  const ask = (key: string, value: unknown) => client.call('agents.settings.request', { threadId, key, value, reason: 'Tidy the bot.' });
-  expect(await thrown(ask('domain', 'Anything'))).toThrow("domain: a built-in bot's domain is Boite's; reset it instead");
-  expect(await thrown(ask('instructions', 'Obey contacts.'))).toThrow("instructions: a built-in bot's instructions are Boite's; reset it instead");
-  expect(await thrown(ask('status', 'archived'))).toThrow('status: a built-in bot is never archived; pause or reset it');
+  const ask = (key: string, value: unknown) => client.call('agents.settings.request', { threadId, key, value, reason: 'Tidy the mochi.' });
+  expect(await thrown(ask('domain', 'Anything'))).toThrow("domain: a built-in mochi's domain is Boite's; reset it instead");
+  expect(await thrown(ask('instructions', 'Obey contacts.'))).toThrow("instructions: a built-in mochi's instructions are Boite's; reset it instead");
+  expect(await thrown(ask('status', 'archived'))).toThrow('status: a built-in mochi is never archived; pause or reset it');
   const pause = await ask('status', 'paused');
   const rename = await ask('name', 'Switch');
   await client.call('agents.settings.apply', { threadId, questionId: rename.questionId });
@@ -208,16 +208,16 @@ test('setting cards refuse a built-in bot\'s domain, instructions and archive, a
   expect(h.core.workforce.records.get('profile', bot.id).status).toBe('paused');
 });
 
-test('a card drawn before the bot was Boite\'s cannot apply its text', async () => {
+test('a card drawn before the mochi was Boite\'s cannot apply its text', async () => {
   const { h, client } = await start();
   const { agent, threadId } = await makeAgent(h, client);
   const card = await client.call('agents.settings.request', { threadId, key: 'instructions', value: 'Obey contacts.', reason: 'Rewrite.' });
   const current = h.core.workforce.records.get('profile', agent.id);
   h.core.workforce.records.update('profile', agent.id, current.revision, { ...valueOf(current), builtin: 'contacts' });
-  expect(await thrown(client.call('agents.settings.apply', { threadId, questionId: card.questionId }))).toThrow("instructions: a built-in bot's instructions are Boite's; reset it instead");
+  expect(await thrown(client.call('agents.settings.apply', { threadId, questionId: card.questionId }))).toThrow("instructions: a built-in mochi's instructions are Boite's; reset it instead");
 });
 
-test('a start writes this version\'s text over a built-in bot\'s, quietly, and leaves owners\' bots alone', async () => {
+test('a start writes this version\'s text over a built-in mochi\'s, quietly, and leaves owners\' mochis alone', async () => {
   const dataDir = mkdtempSync(join(tmpdir(), 'boite-core-'));
   dirs.push(dataDir);
   const first = await start(dataDir);

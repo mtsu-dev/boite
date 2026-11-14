@@ -258,7 +258,7 @@ test('an agent\'s identity and model, edited side by side in its Settings tab, b
   expect(profile().name).toBe('Ada L.');
 });
 
-test('a new bot is free to act: it is created with full access unless the owner picks another mode', async () => {
+test('a new mochi is free to act: it is created with full access unless the owner picks another mode', async () => {
   const client = new FakeClient({ delayMs: 0 });
   const store = new Store();
   store.attach(client);

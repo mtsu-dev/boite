@@ -12,7 +12,7 @@ other projects, your machines, your devices or your other contacts.
 
 - Tailscale carries the link, each owner on their own tailnet. Someone with
   no Tailscale can still join an invitation sent from a tailscale.com tailnet.
-- Turning Contacts on creates the Operator, a built-in [bot](bots.md), once
+- Turning Contacts on creates the Operator, a built-in [mochi](mochis.md), once
   for your group. Every request between your agents and a contact's goes
   through it. You can rename it and pick its model, never archive it.
 
@@ -66,7 +66,7 @@ stays hidden.
 3. If their owner marked you Trusted, it does so at once. If not, their owner
    sees that choice on the request with Accept and Refuse. Accept does what
    the Operator chose. The arrow beside Accept opens a search over their
-   conversations and bots, to pick another one themselves. Opening a project
+   conversations and mochis, to pick another one themselves. Opening a project
    always asks the owner, trusted or not.
 4. The two threads then write to each other, each in its own checkout. The
    contact's page lists them under In touch, with End.
@@ -121,7 +121,7 @@ waiting both ways and closes the link. The other side keeps its entry until
 its owner removes it too. A Tailscale share stays until you remove it in the
 Tailscale admin console.
 
-Once your group has a Bots machine ([machines](machines.md)), contacts see
+Once your group has a Mochis machine ([machines](machines.md)), contacts see
 your group as one Boite, named after the group.
 
 ## Limits
@@ -133,7 +133,7 @@ your group as one Boite, named after the group.
 ## Going further
 
 - [Experiments](experiments.md): turn Contacts on in a Nightly build.
-- [Bots](bots.md): the Operator is one.
+- [Mochis](mochis.md): the Operator is one.
 - [Coordination](coordination.md): how agents write to each other.
 - [Machines](machines.md): your own group, which is full trust.
 - Technical reference: [contacts](internals/contacts.md).

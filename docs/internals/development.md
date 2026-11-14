@@ -99,7 +99,7 @@ client. Development fixtures spend no provider tokens:
 | `?fake=1&open=recent` | Opens the latest thread instead of a new draft |
 | `?fake=1&readability=1&open=recent` | A request over three days: narration between calls, a mid-turn and an automatic compaction, pull-request and review wakes, day dividers |
 | `?fake=1&council=1` | A thread with a running and a finished council and an older debate; the cards and salon draw with the `debates` experiment on ([council](council.md)) |
-| `?fake=1&asks=1&open=recent` | The opened thread asked the Contacts bot four times: one request with the bot, one sent to Chris, one answered, one refused ([contacts](contacts.md#in-the-conversation)) |
+| `?fake=1&asks=1&open=recent` | The opened thread asked the Contacts mochi four times: one request with the mochi, one sent to Chris, one answered, one refused ([contacts](contacts.md#in-the-conversation)) |
 | `?fake=1&pluginArchive=1` | "Finish the trace tab" is done, marked by the plugin Bureau through `threads.archive`, permission `threads.write` ([plugins](plugins.md#permissions)) |
 | `?fake=1&uninstalled=1` | No connected provider |
 | `?fake=1&policy=managed` | An admin policy that locks every key a control shows; `broken` adds problems, `closed` fails closed ([enterprise](enterprise.md)) |
@@ -431,7 +431,7 @@ unreferenced Claude transcripts from accounts Boite isolated itself; the
 user's own CLI profiles and other providers' transcripts remain
 ([transcripts Boite removes](accounts.md#transcripts-boite-removes)).
 
-Archiving a bot in its Settings requires typing its existing
+Archiving a mochi in its Settings requires typing its existing
 name exactly. Cancel, Escape and Back keep it active. Archiving stops its work
 and removes it from the active list; its profile and history remain searchable.
 
@@ -519,7 +519,7 @@ that wake. The hint follows the same ask-once and restore rules. A
 merge made by the agent's own account wakes no watch: the sweep asks then.
 
 `agent.done` (`threads/agent-done.ts`) puts only the caller's own top-level
-conversation in Done; bots' threads and sub-threads are refused. While a turn
+conversation in Done; mochis' threads and sub-threads are refused. While a turn
 runs the request waits in memory and the turn runner applies it after the turn
 end is written, before any wake starts another turn. It goes through the same
 `assertIdleFamily` guard as Mark done, and also refuses while a device reports
@@ -545,7 +545,7 @@ children to another project on the same machine. Desktop drag and the desktop
 or phone menu call the same RPC. The menus' "Move to project" opens the draft's
 project search (`ProjectSearch.svelte`) over the thread's machine, with its own
 project checked; a folder there keeps its root and last two folders
-(`shortPath`). Sub-threads and bot sessions cannot
+(`shortPath`). Sub-threads and mochi sessions cannot
 move independently. Unknown, unchanged, archived or missing targets are refused.
 A target project that was archived becomes visible again.
 
@@ -1104,7 +1104,7 @@ ownership and duplication, not an automatic split.
 
 Pinned model quotas put a pin on Account limits and the Limits page. The card follows the open conversation's model provider,
 including every matching Douane account, and offers four conversation corners
-or a dock below the thread or bot list. Drag the card from outside its buttons
+or a dock below the thread or mochi list. Drag the card from outside its buttons
 to a corner or the sidebar; arrow keys move a focused card and Home docks it.
 When the reading column leaves too little margin for the card, it docks
 automatically without changing the saved corner. The dock reserves space above

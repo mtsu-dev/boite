@@ -213,8 +213,13 @@ test('the phone page fits 390 px and is reachable from the phone settings list',
   await page.click('[data-testid=usage-provider-filter-menu] [data-value=""]');
   await page.waitFor(`document.querySelector('[data-testid=usage-chart] svg path')`);
 
+  // The page just opened holds its card at the top for 2 s (holdSettingsCard) and undoes a
+  // script's scroll; a reader's wheel lets go of it, so the test scrolls the way a reader does.
+  await page.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 195, y: 422, deltaX: 0, deltaY: 1 });
   await page.evaluate(`document.querySelector('[data-testid=usage-chart]').scrollIntoView({ block: 'center' })`);
   const chart = await box('[data-testid=usage-chart]');
+  expect(chart.top).toBeGreaterThanOrEqual(0);
+  expect(chart.bottom).toBeLessThanOrEqual(844);
   await mouse(chart.left + chart.width / 2, chart.top + chart.height / 2);
   await page.waitFor(`document.querySelector('[data-testid=usage-tooltip]')`);
   const tip = await box('[data-testid=usage-tooltip]');

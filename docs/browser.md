@@ -9,6 +9,9 @@ or a phone, and you can click, type and sign in there yourself.
 ## What the agent can do
 
 - Open pages, read them, click, type, fill forms and pick options in lists.
+  It reads a page as a list of numbered elements. An element keeps its
+  number while it stays on the page, and reading the same page again shows
+  the agent only what changed, so a long page costs it less each time.
 - Work in frames from other sites, such as a payment form or an embedded
   sign-in.
 - Record a tab as a silent video. A recording still running when the turn

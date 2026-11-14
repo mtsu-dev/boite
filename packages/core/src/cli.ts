@@ -11,34 +11,22 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
-import { AGENT_ENV, AGENT_PICTURE_MAX_BYTES, BOT_CARD_NOTE, AGENT_SETTING_KEYS, SETTINGS_PAGES, VIEW_HELP } from '@boite/contracts';
-import { agentSettingArg, clipped, pictureDataUrl, settingsPlace, settingValue } from './cli-settings.ts';
-import { VIEW_EXAMPLE } from './view-example.ts';
-import { viewCheckCommand } from './view-cli.ts';
-import type { AgentTask, GitChange, PanelSurface, SettingsReading, Todo } from '@boite/contracts';
-import { connect } from './client.ts';
+// Every `boite` call evaluates what is imported here before its command runs:
+// the words, the flags and the help. Each command loads its own module, the
+// client and the contracts once it runs (scripts/architecture/cli-startup.ts).
+import { AGENT_ENV } from '../../contracts/src/agent-door.ts';
+import { AGENT_PICTURE_MAX_BYTES, AGENT_SETTING_KEYS } from '../../contracts/src/agent-setting-requests.ts';
+import { SETTINGS_PAGES } from '../../contracts/src/setting-requests.ts';
+import type { AgentTask, GitChange, PanelSurface, RpcParams, SettingsReading, Todo } from '@boite/contracts';
 import type { CoreClient } from './client.ts';
 import { CORE_VERSION } from './version.ts';
 import { resolveDataDir } from './paths.ts';
-import { botCommand } from './agents/cli.ts';
-import { workflowCommand } from './workflow-cli.ts';
-import { DELEGATE_ACTIONS, delegateCommand } from './delegate-cli.ts';
-import { browserCommand, BROWSER_HELP } from './browser-cli.ts';
-import { browserRun } from './browser-run.ts';
-import { browserRecipe } from './browser-recipe.ts';
-import { deviceCommand } from './device-cli.ts';
-import { WINDOW_REQUEST_TIMEOUT_MS, windowCommand } from './window-cli.ts';
-import { secretCommand } from './secret-cli.ts';
-import { agentsCommand, AgentsUsage, WAIT_MAX_S } from './agents-cli.ts';
-import { teamCli } from './teams-entry.ts';
-import { contactsCommand } from './contacts/cli.ts';
-import type { RpcParams } from '@boite/contracts';
 import { contextRequest, parse, requiredText, Usage, type Parsed } from './cli-args.ts';
-import { PLUGIN_COMMAND_TIMEOUT_MS, isPluginCommandWord } from './cli-commands.ts';
-import { PLUGIN_HELP, pluginAction, pluginCommand } from './plugin-cli.ts';
-import { issueCommand, logsCommand } from './logs-cli.ts';
-import { projectsCommand } from './projects-cli.ts';
-import { CONTROL_HELP, controlCommand, isControlCommand, ownerThreadNew, ownerWithoutThread, spawnedLines, type Caller } from './control-cli.ts';
+import { BOT_HELP, CONTROL_HELP, PLUGIN_COMMAND_TIMEOUT_MS, PLUGIN_HELP, isControlCommand, isPluginCommandWord, ownerWithoutThread } from './cli-commands.ts';
+import type { Caller } from './control-cli.ts';
+
+/** The command families, loaded when a command runs, never for `boite help`: one split boundary (cli-families.ts). */
+const families = () => import('./cli-families.ts');
 
 export interface CliIo {
   out(text: string): void;
@@ -65,14 +53,14 @@ export const USAGE = `usage: boite <command> [args] [--json]
                                  <tier> from boite delegate models, with the
                                  same --machine for that machine's; refused
                                  when it lacks them, never another model);
-                                 a bot names an entrusted remote project
+                                 a mochi names an entrusted remote project
                                  as <machine>/<project>
   projects                       the projects added to Boite
   projects add <folder>          add an existing folder as a project, so thread
                                  new and thread move can name it (--name <name>;
                                  --machine <name> from an agent thread: a folder
                                  of another machine of the group, its absolute
-                                 path there, once its owner allows it; a bot
+                                 path there, once its owner allows it; a mochi
                                  adds a folder of its own machine while its
                                  addProjects setting is on, and holds it at
                                  once)
@@ -143,14 +131,14 @@ ${CONTROL_HELP}
                                  a card with a button to that Settings page,
                                  for what is not one value: a provider login,
                                  a pairing (pages: ${SETTINGS_PAGES.join(', ')})
-  settings bot [key]             a bot's settings a card may change:
+  settings mochi [key]           a mochi's settings a card may change:
                                  ${AGENT_SETTING_KEYS.slice(0, 5).join(', ')},
                                  ${AGENT_SETTING_KEYS.slice(5, 9).join(', ')},
                                  ${AGENT_SETTING_KEYS.slice(9).join(', ')}
-                                 (--bot <name>; yours in your own conversation)
-  settings bot request <key> <value> --why <text>
+                                 (--mochi <name>; yours in your own conversation)
+  settings mochi request <key> <value> --why <text>
                                  a card asking the user to change one, for you
-                                 or --bot <name>: name Ada, status paused,
+                                 or --mochi <name>: name Ada, status paused,
                                  model codex/gpt-6.1-sol (<provider>/<model>,
                                  any provider), projects +boite -old
                                  (+<machine>/<name> for a project of another
@@ -158,15 +146,16 @@ ${CONTROL_HELP}
                                  --instructions-file <path>, avatar with
                                  --picture <image>; the outcome
                                  arrives as a message (applied, changed, refused)
-  settings bot picture <image>   give a bot a face at once, no card: yours, or
-                                 --bot <name>; a PNG, JPEG, WebP or GIF of at
+  settings mochi picture <image>
+                                 give a mochi a face at once, no card: yours, or
+                                 --mochi <name>; a PNG, JPEG, WebP or GIF of at
                                  most ${AGENT_PICTURE_MAX_BYTES / 1024} KB, or a robot code, one or two
                                  characters, "" for the robot its id draws
-  settings bot create <name>     ask for the bot the user asked for, on your
+  settings mochi create <name>   ask for the mochi the user asked for, on your
                                  own route or --model <provider/model>
                                  (--effort, --project a,b, --domain <text>,
                                  --instructions-file <path>): the owner reads
-                                 a card, or the bot is created at once where
+                                 a card, or the mochi is created at once where
                                  the setting agentBotCreation is free
 ${PLUGIN_HELP}
   task list                      the agent's task list
@@ -188,23 +177,12 @@ ${PLUGIN_HELP}
   threads inbox                  every exchange and its delivery state
                                  <thread>: <thread-id>, <machine>/<thread-id>
   threads contacts               other owners' Boites linked as contacts
-  threads ask <text>             ask the Contacts bot for a contact's thread
+  threads ask <text>             ask the Contacts mochi for a contact's thread
                                  (--contact <c>, --to <c>/<thread>, --new, --share);
                                  the answer names the thread to write to
-  contacts [help]                the Contacts bot's own commands
-  bot memory                     a bot's MEMORY.md and its path
-  bot remember <fact>            add a dated line to MEMORY.md
-  bot routines                   its routines: schedule, next run, last outcome
-  bot schedule <json>            name, prompt, schedule; optional id and enabled
-  bot unschedule <routine-id>    remove one routine
-  bot watch|unwatch <thread-id>  put a thread of its projects on its desk, or
-                                 take one off; <machine>/<thread-id> for a
-                                 project another machine entrusted to it
-  bot event <bot> <text>         wake a bot with an event from outside Boite
-                                 (--key <key>: a later event with the same key
-                                 replaces it while it waits); from a terminal
-                                 as the owner, or --core with a paired device
-  team <command>                 a bot's teams: post, read, propose (boite team help)
+  contacts [help]                the Contacts mochi's own commands
+${BOT_HELP}
+  team <command>                 a mochi's teams: post, read, propose (boite team help)
   --request-id <id>              reuse to retry threads send|reply or delegate spawn|send
   delegate models                models, reasoning levels and speeds a subagent can use
                                  (--machine <name>: another machine's, for
@@ -214,10 +192,10 @@ ${PLUGIN_HELP}
                                  --effort <level>, --speed <tier>, --title <title>,
                                  --profile <id>, --worktree for a git worktree of
                                  its own from your checkout's HEAD (the project's
-                                 for a bot), and a context mode: --context
+                                 for a mochi), and a context mode: --context
                                  light|neutral, --keep|--drop <parts>, --tools
                                  <Tool,...>, --rules <text>|--rules-file <path>)
-                                 --project <p> places a bot's child in an entrusted project
+                                 --project <p> places a mochi's child in an entrusted project
                                  --machine <name> runs it on another machine of the
                                  group, in its project named like yours or --project
   delegate list                  every subagent, workflow and council: state, model, time
@@ -260,9 +238,9 @@ ${PLUGIN_HELP}
 
   Outside a thread, threads, thread, questions, answer, permissions, allow,
   deny and projects need no --thread: the owner drives every thread, and a
-  message it sends is its own prompt. Inside a bot's conversation they reach
+  message it sends is its own prompt. Inside a mochi's conversation they reach
   the threads of the projects entrusted to it, and its messages reach them as
-  that bot's.
+  that mochi's.
 
   --core <url>                   another core, with its token in BOITE_TOKEN
                                  (an owner token, or a paired device's session)
@@ -403,7 +381,7 @@ function childOutput(result: { lines: string[]; value: unknown; output?: { stdou
 async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: string, print: Printer, caller: Caller): Promise<void | number> {
   const [command, ...rest] = parsed.positional;
   if (isControlCommand(parsed)) {
-    await controlCommand(client, caller, threadId, parsed, print);
+    await (await families()).controlCommand(client, caller, threadId, parsed, print);
     return;
   }
   const want = (index: number, what: string): string => {
@@ -449,24 +427,25 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
       print(result.map(pr => `${pr.state} #${pr.number} ${pr.title} (${pr.head} -> ${pr.base}) ${pr.url}${pr.error ? ` [${pr.error}]` : ''}`), result);
     },
     browser: async () => {
-      if (rest[0] === 'help') { print([BROWSER_HELP], { help: BROWSER_HELP }); return; }
+      const { BROWSER_HELP, browserCommand, browserRecipe, browserRun } = await families();
+      if (rest[0] === 'help') return print([BROWSER_HELP], { help: BROWSER_HELP });
       const result = rest[0] === 'run' ? await browserRun(rest.slice(1), io, client, threadId)
         : rest[0] === 'recipe' ? await browserRecipe(rest.slice(1), io, client, threadId)
         : await browserCommand(rest, io, client, threadId);
       print(result.lines, result.value);
     },
     device: async () => {
-      const result = await deviceCommand(rest, io, client, threadId, parsed.timeout);
+      const result = await (await families()).deviceCommand(rest, io, client, threadId, parsed.timeout);
       print(result.lines, result.value);
     },
-    window: async () => childOutput(await windowCommand(rest, io, client, threadId), parsed.json, io, print),
+    window: async () => childOutput(await (await families()).windowCommand(rest, io, client, threadId), parsed.json, io, print),
     desktop: async () => childOutput(await (await import('./desktop-cli.ts')).desktopCommand(rest, io, client, threadId), parsed.json, io, print),
-    secret: async () => childOutput(await secretCommand(rest, io, client, threadId), parsed.json, io, print),
-    team: async () => childOutput(await (await teamCli()).teamCommand(rest, client, threadId, parsed.requestId), parsed.json, io, print),
+    secret: async () => childOutput(await (await families()).secretCommand(rest, io, client, threadId), parsed.json, io, print),
+    team: async () => childOutput(await (await (await families()).teamCli()).teamCommand(rest, client, threadId, parsed.requestId), parsed.json, io, print),
     // `boite --limit 5 logs` parsed them as globals: they come first, so the command's own flags still win.
     // A global `--level` yields to the command's own `--min-level`, which it would otherwise override.
-    logs: () => logsCommand([...(parsed.limit === undefined ? [] : ['--limit', String(parsed.limit)]), ...(parsed.level === undefined || rest.some(entry => entry === '--min-level' || entry.startsWith('--min-level=')) ? [] : ['--level', parsed.level]), ...rest], client, threadId, agentCaller, io.cwd, print),
-    issue: () => issueCommand(rest, client, threadId, agentCaller, io.cwd, print),
+    logs: async () => (await families()).logsCommand([...(parsed.limit === undefined ? [] : ['--limit', String(parsed.limit)]), ...(parsed.level === undefined || rest.some(entry => entry === '--min-level' || entry.startsWith('--min-level=')) ? [] : ['--level', parsed.level]), ...rest], client, threadId, agentCaller, io.cwd, print),
+    issue: async () => (await families()).issueCommand(rest, client, threadId, agentCaller, io.cwd, print),
     server: async () => {
       const action = rest[0] ?? 'check';
       if (!['check', 'update', 'cancel'].includes(action)) throw new Usage('server expects check, update or cancel');
@@ -480,12 +459,12 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
     },
     bot: async () => {
       if (rest[0] === 'event') {
-        if (rest.length < 3) throw new Usage('bot event needs a bot and the text: boite bot event <bot> [--key <key>] <text>');
+        if (rest.length < 3) throw new Usage('mochi event needs a mochi and the text: boite mochi event <mochi> [--key <key>] <text>');
         const sent = await client.call('agents.event', { agent: rest[1]!, text: rest.slice(2).join(' '), ...(parsed.key === undefined ? {} : { key: parsed.key }) });
-        print([`event: ${sent.key} for ${sent.agentId}`, 'It wakes the bot once its thread is free; a later event with the same key replaces it until then.'], sent);
+        print([`event: ${sent.key} for ${sent.agentId}`, 'It wakes the mochi once its thread is free; a later event with the same key replaces it until then.'], sent);
         return;
       }
-      const result = await botCommand(client, threadId, rest);
+      const result = await (await families()).botCommand(client, threadId, rest);
       print([JSON.stringify(result)], result);
     },
     attach: async () => {
@@ -493,6 +472,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
       print([`attached: ${rest[0]}`, `message: ${message.id}`], message);
     },
     delegate: async () => {
+      const { DELEGATE_ACTIONS, delegateCommand } = await families();
       if (rest[0] === undefined) throw new Usage(`delegate needs ${DELEGATE_ACTIONS}`);
       await delegateCommand(client, threadId, rest, {
         ...(parsed.project === undefined ? {} : { project: parsed.project }),
@@ -506,6 +486,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
     },
     // `threads` alone or `threads list` lists (control-cli.ts); the rest talks to other threads.
     threads: async () => {
+      const { agentsCommand, AgentsUsage } = await families();
       try {
         await agentsCommand(client, threadId, rest, { ...(parsed.requestId === undefined ? {} : { requestId: parsed.requestId }), wait: parsed.wait, ...(parsed.timeout === undefined ? {} : { timeout: parsed.timeout }), ...(parsed.last === undefined ? {} : { last: parsed.last }), ...(parsed.before === undefined ? {} : { before: parsed.before }), ...(parsed.entry === undefined ? {} : { entry: parsed.entry }), ...(parsed.offset === undefined ? {} : { offset: parsed.offset }), ...(parsed.tool === undefined ? {} : { tool: parsed.tool }) }, print);
       } catch (error) {
@@ -513,8 +494,8 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
         throw error;
       }
     },
-    contacts: async () => { await contactsCommand(client, threadId, rest, { ...(parsed.project === undefined ? {} : { project: parsed.project }), ...(parsed.model === undefined ? {} : { model: parsed.model }), ...(parsed.effort === undefined ? {} : { effort: parsed.effort }), worktree: parsed.worktree }, print); },
-    workflow: async () => { await workflowCommand(client, threadId, rest, io, print, parsed.requestId); },
+    contacts: async () => { await (await families()).contactsCommand(client, threadId, rest, { ...(parsed.project === undefined ? {} : { project: parsed.project }), ...(parsed.model === undefined ? {} : { model: parsed.model }), ...(parsed.effort === undefined ? {} : { effort: parsed.effort }), worktree: parsed.worktree }, print); },
+    workflow: async () => { await (await families()).workflowCommand(client, threadId, rest, io, print, parsed.requestId); },
     where: async () => {
       const where = await client.call('agent.where', { threadId });
       print(
@@ -530,13 +511,13 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
         where,
       );
     },
-    projects: async () => { await projectsCommand(client, caller, threadId, parsed, io.cwd, print); },
+    projects: async () => { await (await families()).projectsCommand(client, caller, threadId, parsed, io.cwd, print); },
     thread: async () => {
       const action = want(0, 'move or new');
       if (action === 'new' && caller === 'owner') {
         if (parsed.machine !== undefined) throw new Usage('thread new --machine is for an agent in a thread; from a terminal, reach that machine with --core');
         // From a terminal the brief is the user's own prompt, not an agent's.
-        await ownerThreadNew(client, parsed, rest, print, contextRequest(parsed, readRules));
+        await (await families()).ownerThreadNew(client, parsed, rest, print, contextRequest(parsed, readRules));
         return;
       }
       if (action === 'new') {
@@ -552,7 +533,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
         // A bot hears of it through events on its desk, not as a message, on this machine or another.
         const persistent = await client.call('agents.snapshot', { threadId }).then(snapshot => snapshot.profiles.length > 0, () => false);
         const machine = spawned.machine ?? parsed.machine;
-        print(spawnedLines(spawned, machine, persistent), spawned);
+        print((await families()).spawnedLines(spawned, machine, persistent), spawned);
         return;
       }
       if (action !== 'move') throw new Usage(`thread: unknown action ${action}`);
@@ -583,10 +564,18 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
       } else await opened({ kind: 'browser', url: target });
     },
     view: async () => {
-      if (rest[0] === 'help' || rest[0] === undefined) { print([VIEW_HELP], { help: VIEW_HELP }); return; }
-      if (rest[0] === 'example') { print([VIEW_EXAMPLE], { example: VIEW_EXAMPLE }); return; }
+      if (rest[0] === 'help' || rest[0] === undefined) {
+        const { VIEW_HELP } = await families();
+        print([VIEW_HELP], { help: VIEW_HELP });
+        return;
+      }
+      if (rest[0] === 'example') {
+        const { VIEW_EXAMPLE } = await families();
+        print([VIEW_EXAMPLE], { example: VIEW_EXAMPLE });
+        return;
+      }
       if (rest[0] === 'check') {
-        const result = await viewCheckCommand(rest.slice(1), io.cwd, client, threadId);
+        const result = await (await families()).viewCheckCommand(rest.slice(1), io.cwd, client, threadId);
         print(result.lines, result.value);
         return result.code;
       }
@@ -622,6 +611,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
       } else throw new Usage(`open: unknown surface ${kind}`);
     },
     settings: async () => {
+      const { agentSettingArg, clipped, pictureDataUrl, settingsPlace, settingValue } = await families();
       const action = rest[0];
       if (action === 'request' || action === 'open') {
         if (parsed.why === undefined || parsed.why.trim().length === 0) throw new Usage(`settings ${action} needs --why <text>, the reason the user reads on the card`);
@@ -644,7 +634,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
       if (action === 'bot') {
         const agent = parsed.bot === undefined ? {} : { agent: parsed.bot };
         if (rest[1] === 'create') {
-          if (rest.length !== 3) throw new Usage('settings bot create takes one name; quote a name with spaces');
+          if (rest.length !== 3) throw new Usage('settings mochi create takes one name; quote a name with spaces');
           const created = await client.call('agents.create', {
             threadId, name: rest[2]!,
             ...(parsed.domain === undefined ? {} : { domain: parsed.domain }),
@@ -657,8 +647,8 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
             const { bot: asked } = created.setting;
             print([
               `asked: ${created.questionId}`,
-              `card: the owner approves or declines the bot ${asked.name} (${asked.selection.providerId}/${asked.selection.model ?? 'default'}, full access${created.setting.projects.length === 0 ? '' : `, projects ${created.setting.projects.join(', ')}`})`,
-              BOT_CARD_NOTE,
+              `card: the owner approves or declines the mochi ${asked.name} (${asked.selection.providerId}/${asked.selection.model ?? 'default'}, full access${created.setting.projects.length === 0 ? '' : `, projects ${created.setting.projects.join(', ')}`})`,
+              (await families()).BOT_CARD_NOTE,
               'Keep working. The outcome arrives as a message (approved, declined); without one, nothing was created.',
             ], created);
             return;
@@ -675,27 +665,27 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
           return;
         }
         if (rest[1] === 'picture') {
-          if (rest.length !== 3) throw new Usage('settings bot picture takes one image file, or a robot code, one or two characters or "" for the robot its id draws');
+          if (rest.length !== 3) throw new Usage('settings mochi picture takes one image file, or a robot code, one or two characters or "" for the robot its id draws');
           const wanted = rest[2]!;
           const file = absolute(io.cwd, wanted);
           const isFile = wanted.trim() !== '' && existsSync(file);
-          if (!isFile && !/^(bot|img):/.test(wanted) && /[./\\]/.test(wanted)) throw new Usage(`settings bot picture: no file at ${file}`);
+          if (!isFile && !/^(bot|img):/.test(wanted) && /[./\\]/.test(wanted)) throw new Usage(`settings mochi picture: no file at ${file}`);
           const avatar = isFile ? (await client.call('agents.picture.put', { threadId, dataUrl: pictureDataUrl(file) })).avatar : wanted;
           const saved = await client.call('agents.avatar.set', { threadId, avatar, ...agent });
           print([
             `picture: ${saved.name} (${saved.id}) now wears ${saved.avatar === '' ? 'the robot its id draws' : saved.avatar}`,
-            'The user sees it at once, in the bot list and its conversation.',
+            'The user sees it at once, in the mochi list and its conversation.',
           ], saved);
           return;
         }
         if (rest[1] === 'request') {
-          if (parsed.why === undefined || parsed.why.trim().length === 0) throw new Usage('settings bot request needs --why <text>, the reason the user reads on the card');
+          if (parsed.why === undefined || parsed.why.trim().length === 0) throw new Usage('settings mochi request needs --why <text>, the reason the user reads on the card');
           const key = want(2, `a key: ${AGENT_SETTING_KEYS.join(', ')}`);
           const fromFile = key === 'instructions' && parsed.instructionsFile !== undefined;
-          if (parsed.picture !== undefined && key !== 'avatar') throw new Usage('--picture goes with settings bot request avatar');
+          if (parsed.picture !== undefined && key !== 'avatar') throw new Usage('--picture goes with settings mochi request avatar');
           const fromPicture = parsed.picture !== undefined;
-          if (fromPicture && rest.length > 3) throw new Usage('settings bot request avatar takes a value or --picture <path>, not both');
-          if (!fromPicture && (fromFile ? rest.length > 3 : rest.length < 4)) throw new Usage(fromFile ? 'settings bot request instructions takes the text or --instructions-file <path>, not both' : 'settings bot request needs a value after the key');
+          if (fromPicture && rest.length > 3) throw new Usage('settings mochi request avatar takes a value or --picture <path>, not both');
+          if (!fromPicture && (fromFile ? rest.length > 3 : rest.length < 4)) throw new Usage(fromFile ? 'settings mochi request instructions takes the text or --instructions-file <path>, not both' : 'settings mochi request needs a value after the key');
           const value = fromPicture ? (await client.call('agents.picture.put', { threadId, dataUrl: pictureDataUrl(absolute(io.cwd, parsed.picture!)) })).avatar
             : fromFile ? readRules(parsed.instructionsFile!) : agentSettingArg(key, rest.slice(3));
           const asked = await client.call('agents.settings.request', { threadId, reason: parsed.why, key, value, ...agent });
@@ -703,26 +693,26 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
           print([
             `requested: ${asked.questionId}`,
             `change: ${setting.agentName}'s ${setting.key} ${clipped(JSON.stringify(setting.previous))} -> ${clipped(JSON.stringify(setting.value))}`,
-            'card: Apply, or the user changes it in the bot\'s settings',
+            'card: Apply, or the user changes it in the mochi\'s settings',
             'Keep working. The outcome arrives as a message quoting your reason; without one, nothing changed.',
           ], asked);
           return;
         }
-        if (rest.length > 2) throw new Usage('settings bot expects a key, request <key> <value>, picture <image> or create <name>');
+        if (rest.length > 2) throw new Usage('settings mochi expects a key, request <key> <value>, picture <image> or create <name>');
         const read = await client.call('agents.settings.read', { threadId, ...agent });
         const shown = rest[1] === undefined ? read.settings : read.settings.filter(reading => reading.key === rest[1]);
-        if (shown.length === 0) throw new Usage(`settings bot: unknown key ${rest[1]}; the keys are ${AGENT_SETTING_KEYS.join(', ')}`);
+        if (shown.length === 0) throw new Usage(`settings mochi: unknown key ${rest[1]}; the keys are ${AGENT_SETTING_KEYS.join(', ')}`);
         const named = (reading: (typeof shown)[number], value: unknown): string => {
           const text = JSON.stringify(reading.key === 'projects' && Array.isArray(value) ? value.map(id => reading.choices?.find(choice => choice.id === id)?.label ?? id) : value ?? null);
           return rest[1] === undefined ? clipped(text) : text;
         };
-        // Every provider's models make a long list: the full view cuts it, `settings bot model` shows it whole.
+        // Every provider's models make a long list: the full view cuts it, `settings mochi model` shows it whole.
         const choices = (reading: (typeof shown)[number]): string => {
           const text = (reading.choices ?? []).map(choice => choice.label === choice.id ? choice.id : `${choice.label} (${choice.id})`).join(', ');
           return rest[1] === undefined ? clipped(text, 600) : text;
         };
         print([
-          `bot: ${read.agentName} (${read.agentId})`,
+          `mochi: ${read.agentName} (${read.agentId})`,
           ...shown.map(reading => `${reading.key} ${named(reading, reading.value)}${reading.choices?.length ? `\n    choices: ${choices(reading)}` : ''}`),
         ], rest[1] === undefined ? read : shown[0]);
         return;
@@ -738,7 +728,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
       // An agent once ran `boite ask help` for this text and drew a card reading "help".
       if (rest.length === 1 && rest[0] === 'help') { print([USAGE], { help: USAGE }); return; }
       if (rest.length === 1 && rest[0] === 'list') {
-        await controlCommand(client, caller, threadId, { ...parsed, positional: ['questions', threadId] }, print);
+        await (await families()).controlCommand(client, caller, threadId, { ...parsed, positional: ['questions', threadId] }, print);
         return;
       }
       const text = want(0, 'a question');
@@ -790,7 +780,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
         print([todoRow(todo)], todo);
       } else throw new Usage(`todo: unknown action ${action}`);
     },
-    plugin: () => pluginAction(client, io, threadId, rest, print),
+    plugin: async () => (await families()).pluginAction(client, io, threadId, rest, print),
     goal: async () => {
       const action = want(0, 'track');
       if (action !== 'track') throw new Usage(`goal: unknown action ${action}`);
@@ -800,7 +790,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
     },
   };
   const handler = command !== undefined && Object.hasOwn(commands, command) ? commands[command] : undefined;
-  if (handler === undefined && isPluginCommandWord(command)) return pluginCommand(client, io, threadId, command!, rest);
+  if (handler === undefined && isPluginCommandWord(command)) return (await families()).pluginCommand(client, io, threadId, command!, rest);
   if (handler === undefined) throw new Usage(`unknown command ${command}`);
   return handler();
 }
@@ -831,14 +821,15 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
       throw new Error('boite mcp requires the thread-bound agent environment; owner credential fallback is disabled');
     }
     const target = targetOf(parsed, io.env);
+    // An agent waiting for an answer holds its call up to five minutes; a secret card or command up to an hour.
+    // A window capture may wait ten minutes for the owner's consent.
+    const waits = parsed.positional[0] === 'threads' && (parsed.wait || parsed.positional[1] === 'wait');
+    const requestTimeoutMs = waits ? ((await families()).WAIT_MAX_S + 30) * 1000
+      : isPluginCommandWord(parsed.positional[0]) ? PLUGIN_COMMAND_TIMEOUT_MS + 60_000
+      : parsed.positional[0] === 'secret' ? 3_660_000
+      : parsed.positional[0] === 'window' ? (await families()).WINDOW_REQUEST_TIMEOUT_MS : undefined;
+    const { connect } = await families();
     try {
-      // An agent waiting for an answer holds its call up to five minutes; a secret card or command up to an hour.
-      // A window capture may wait ten minutes for the owner's consent.
-      const waits = parsed.positional[0] === 'threads' && (parsed.wait || parsed.positional[1] === 'wait');
-      const requestTimeoutMs = waits ? (WAIT_MAX_S + 30) * 1000
-        : isPluginCommandWord(parsed.positional[0]) ? PLUGIN_COMMAND_TIMEOUT_MS + 60_000
-        : parsed.positional[0] === 'secret' ? 3_660_000
-        : parsed.positional[0] === 'window' ? WINDOW_REQUEST_TIMEOUT_MS : undefined;
       client = await connect(target.url, target.token, { client: { name: 'cli', version: CORE_VERSION }, ...(requestTimeoutMs === undefined ? {} : { requestTimeoutMs }) });
     } catch (error) {
       throw new Error(`no core answers at ${target.url}: ${(error as Error).message}`);

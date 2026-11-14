@@ -510,7 +510,6 @@
   .mobile .field { flex-wrap: wrap; }
   .mobile .field input { flex-basis: 100%; }
   .mobile button { min-height: var(--touch-target); }
-  .mobile .icon-only { min-width: var(--touch-target); }
   .mobile .field button { flex: 1; }
   @media (max-width: 720px) {
     .group { padding: 14px 16px; }
@@ -521,7 +520,6 @@
     .field { flex-wrap: wrap; }
     .field input { flex-basis: 100%; }
     button { min-height: var(--touch-target); }
-    .icon-only { min-width: var(--touch-target); }
     .field button { flex: 1; }
     footer { flex-direction: column; align-items: stretch; }
     .roles { flex-direction: column; align-items: stretch; }

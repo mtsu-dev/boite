@@ -10,15 +10,6 @@ import { RpcErrorCode } from '@boite/contracts';
 import type { CoreClient } from './client.ts';
 import { Usage } from './cli-args.ts';
 
-export const PLUGIN_HELP = `  plugin add <url> --why <text>  a card asking the user to preview a plugin:
-                                 a repository URL or page, owner/repo for
-                                 GitHub, --ref <branch|tag|commit>; the user
-                                 installs it in Settings, never you
-  plugin dev <folder>            run a plugin from a folder, reloaded on each
-                                 run; --remove <id> removes it (owner only)
-  <plugin-command> [args]        a command an installed plugin provides; your
-                                 guide lists them`;
-
 interface Io {
   out(text: string): void;
   err(text: string): void;

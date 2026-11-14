@@ -35,7 +35,7 @@ import { contactFace } from './face.ts';
 /** The member's first offer must come back before the caller's own request times out. */
 const OFFER_MS = 3500;
 const ID = /^[A-Za-z0-9_-]{1,100}$/;
-export const HOST_GONE = 'Not delivered: the group\'s Bots host stayed unreachable for 7 days';
+export const HOST_GONE = 'Not delivered: the group\'s Mochis host stayed unreachable for 7 days';
 
 function within<T>(job: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -88,7 +88,7 @@ export class ContactHostAsks {
     }
     const wanted = given(params.want) ? want(params.want, 'want') : threadId ? 'talk' : 'thread';
     const requests = this.#store.requests.list();
-    if (requests.filter(request => request.pendingHost !== undefined).length >= MAX_PENDING) throw refused(`at most ${MAX_PENDING} requests may wait for the group's Bots host; wait for an answer`);
+    if (requests.filter(request => request.pendingHost !== undefined).length >= MAX_PENDING) throw refused(`at most ${MAX_PENDING} requests may wait for the group's Mochis host; wait for an answer`);
     const gitRemote = gitRemoteOf(this.#core.threads.require(params.threadId).cwd) ?? undefined;
     const request: StoredRequest = {
       id: newId('creq_'), direction: 'out', coreId: '', contact: '', want: wanted, ...(threadId ? { target: { threadId } } : {}), stage: 'host',
@@ -329,7 +329,7 @@ export class ContactHostAsks {
     const p = payload as { id?: unknown; from?: unknown; coreId?: unknown; admission?: unknown; text?: unknown; want?: unknown; target?: { threadId?: unknown } | null; gitRemote?: unknown } | null;
     const id = text(p?.id, 'route.held.id', 100);
     if (!ID.test(id)) throw invalidParams('route.held.id: expected 1 to 100 letters, digits, - or _');
-    if (this.#core.group.roleOf('botsHome') !== peer.coreId) throw refused('route.held: only the group\'s Bots host sends an ask through this machine');
+    if (this.#core.group.roleOf('botsHome') !== peer.coreId) throw refused('route.held: only the group\'s Mochis host sends an ask through this machine');
     const requests = this.#store.requests.list();
     const known = requests.find(entry => entry.id === id && entry.direction === 'out');
     if (known?.askedBy === peer.coreId) return this.#store.requests.view(known);

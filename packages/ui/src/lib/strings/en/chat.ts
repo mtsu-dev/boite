@@ -129,7 +129,7 @@ export const strings = {
     wakeHide: 'Hide what the agent read',
     /** The divider where a conversation changes day. */
     day: { today: 'Today', yesterday: 'Yesterday', withYear: '{day} {year}' },
-    /** A bot's finished turn: its steps folded above its answer, or a wake that had nothing for the user. */
+    /** A mochi's finished turn: its steps folded above its answer, or a wake that had nothing for the user. */
     fold: {
       worked: 'Worked {time}', workedBare: 'Worked',
       quiet: 'Checked, nothing to report', quietWith: 'Checked: {reason}',

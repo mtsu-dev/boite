@@ -75,19 +75,19 @@ export const strings = {
       accepted: 'Shared {project}',
       refused: 'Refused',
       by: { owner: 'Owner', match: 'Match', concierge: 'Concierge', bot: 'Operator' },
-      byTip: { owner: 'Decided by the owner.', match: 'Its git remote matched exactly one project.', concierge: 'Decided by the concierge agent for a trusted contact.', bot: 'Decided by the Operator, Boite\'s built-in bot.' },
+      byTip: { owner: 'Decided by the owner.', match: 'Its git remote matched exactly one project.', concierge: 'Decided by the concierge agent for a trusted contact.', bot: 'Decided by the Operator, Boite\'s built-in mochi.' },
       /** Where a pending request stands: with the Operator, or waiting on the owner's answer to its card. */
-      stage: { bot: 'With the Operator', owner: 'Waiting for you', host: 'On its way to the Bots machine' },
+      stage: { bot: 'With the Operator', owner: 'Waiting for you', host: 'On its way to the Mochis machine' },
       /** What the Operator will do once the owner accepts a request of a contact not trusted. */
       plan: { connect: 'The Operator picks {thread}', connectIn: 'The Operator picks {thread}, in {project}', start: 'The Operator starts a new thread in {project}', acceptTip: 'Does what the Operator picked. No project is shared.' },
       /** The arrow beside Accept: the owner picks the thread themselves. */
-      pick: { label: 'Pick the conversation yourself', search: 'Search conversations and bots', empty: 'No conversation here yet', none: 'No conversation matches "{query}"' },
+      pick: { label: 'Pick the conversation yourself', search: 'Search conversations and mochis', empty: 'No conversation here yet', none: 'No conversation matches "{query}"' },
       /** A request the Operator accepted by putting two threads in touch. */
       inTouch: 'In touch with {thread}'
     },
-    /** The Contacts bot's card: the threads it put in touch and what it flagged. */
+    /** The Contacts mochi's card: the threads it put in touch and what it flagged. */
     bot: {
-      tip: 'Boite\'s built-in bot. Every request between your agents and your contacts goes through it: it finds the right thread, puts the two in touch and holds letters that look dangerous.',
+      tip: 'Boite\'s built-in mochi. Every request between your agents and your contacts goes through it: it finds the right thread, puts the two in touch and holds letters that look dangerous.',
       open: 'Open',
       openTip: 'Open {name}\'s conversation',
       none: 'No thread works with a contact yet.',

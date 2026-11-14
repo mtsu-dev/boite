@@ -91,7 +91,7 @@ export function resolveAgent(target: string, contacts: AgentContact[], selfCore:
 /** How the other end relates to this thread, in the words `boite threads` prints. */
 const RELATION: Record<AgentRelation, string> = {
   starter: 'started this thread', started: 'you started it', parent: 'your parent', child: 'your subagent',
-  resident: 'the bot your project is entrusted to', project: 'same project', 'other-project': 'other project', machine: 'other machine',
+  resident: 'the mochi your project is entrusted to', project: 'same project', 'other-project': 'other project', machine: 'other machine',
 };
 /** Past this, `send` and `reply` remind the agent that a message is read best short. */
 export const COMPACT_CHARS = 600;
@@ -248,14 +248,14 @@ export async function agentsCommand(client: CoreClient, threadId: string, rest: 
     const contacts = await client.call('collaboration.contacts', { threadId });
     const lines = contacts.map(contact => `${contact.name}  (${contact.link}${contact.projects.length ? `, opened to you: ${contact.projects.join(', ')}` : ''})`);
     if (lines.length === 0) lines.push("no contact; the user links other owners' Boites in Contacts");
-    else lines.push('Ask with boite threads ask <what you need> [--contact <name>] [--to <contact>/<thread-id>] [--new]: name the contact and it goes straight to its Contacts bot, which finds the thread or starts one, after its owner\'s Accept when they do not trust this owner; the answer names the thread to write to with threads send.');
+    else lines.push('Ask with boite threads ask <what you need> [--contact <name>] [--to <contact>/<thread-id>] [--new]: name the contact and it goes straight to its Contacts mochi, which finds the thread or starts one, after its owner\'s Accept when they do not trust this owner; the answer names the thread to write to with threads send.');
     print(lines, contacts);
   } else if (action === 'ask') {
     const { text: body, contact, target, want: wanted, wait, timeout } = askArgs(rest.slice(1));
     const request = await client.call('collaboration.ask', { threadId, text: body, ...(contact ? { contact } : {}), ...(target ? { target } : {}), ...(wanted ? { want: wanted } : {}) });
     const lines = [`request ${request.id}${request.contact ? ` for ${request.contact}` : ''}: ${request.status}${request.gitRemote ? ` (sent with your git remote ${request.gitRemote})` : ''}`,
-      request.stage === 'host' ? "The group's Bots host, where the Contacts bot lives, has not taken it yet: it waits here and is offered again for 7 days."
-        : request.stage === 'bot' ? 'It names no contact: the Contacts bot here picks one and sends it on.'
+      request.stage === 'host' ? "The group's Mochis host, where the Contacts mochi lives, has not taken it yet: it waits here and is offered again for 7 days."
+        : request.stage === 'bot' ? 'It names no contact: the Contacts mochi here picks one and sends it on.'
         : wanted === 'share' ? `Sent to ${request.contact}'s Operator, which asks its owner to open a project; opening a project always waits for their Accept.`
         : `Sent to ${request.contact}'s Operator, which finds the thread or starts one; when ${request.contact} does not trust this owner yet, it waits for their Accept.`];
     if (wait || options.wait) lines.push(...await waitFor(undefined, (await view()).self, timeout ?? options.timeout));

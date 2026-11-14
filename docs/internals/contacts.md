@@ -30,7 +30,7 @@ invites. A Headscale inviter can only invite someone on its own tailnet.
 1. The inviter's **Invite a contact** (`contacts.invite`) makes a one-time link
    valid 24 hours: `boite://contact#` then the inviter's core id, signing
    key, sealing key, machine name (the group's name once the group has a
-   Bots host, [below](#group-to-group)), tailnet URL, a one-time token and the
+   Mochis host, [below](#group-to-group)), tailnet URL, a one-time token and the
    Tailscale share link. With a Tailscale API key stored
    (`contacts.tailscaleKey`), the core creates the share itself
    (`POST /api/v2/device/{id}/device-invites`, single use); without one the
@@ -220,9 +220,9 @@ never spent, and the client joins again by itself for up to 15 minutes, with
 
 A pending incoming request the owner must answer appears as a bell in the
 app rail (a phone keeps it at the top of the app), with the contact,
-receiving machine and request text in its card: one with no Contacts bot
-behind it, or one the bot put on the owner's card (`stage: 'owner'`). A
-request with the bot (`'bot'`) or on its way to the Bots machine (`'host'`)
+receiving machine and request text in its card: one with no Contacts mochi
+behind it, or one the mochi put on the owner's card (`stage: 'owner'`). A
+request with the mochi (`'bot'`) or on its way to the Mochis machine (`'host'`)
 is not the owner's yet and only shows in the Requests card. Dismissing the
 card leaves the bell with the pending count. Either opens the request on its
 owning machine, including
@@ -302,15 +302,15 @@ Local cards stay private. The [shared board protocol](board.md#shared-board-prot
 requires both endpoint owners' board consent.
 
 Every request between this owner's agents and a contact's goes through the
-[Contacts bot](#the-contacts-bot) of each side.
+[Contacts mochi](#the-contacts-mochi) of each side.
 
 ## Group to group
 
-Once a group has a Bots host (`Group.botsHome`, [groups](groups.md)), a
+Once a group has a Mochis host (`Group.botsHome`, [groups](groups.md)), a
 contact sees the group as one Boite named after the group: the card, the sync
-(`contact.sync` carries `group`), the bot's host, the flags' owner, the
+(`contact.sync` carries `group`), the mochi's host, the flags' owner, the
 directory's machine labels and the letters' `from.machine` all read
-`Group.name`, never a member's host name (`contacts/face.ts`). The Bots host is
+`Group.name`, never a member's host name (`contacts/face.ts`). The Mochis host is
 the group's single entry: every contact link of another member moves there by
 itself, and its projects stay reachable through it, as in
 [Projects of the other machines of the group](#projects-of-the-other-machines-of-the-group).
@@ -318,10 +318,10 @@ itself, and its projects stay reachable through it, as in
 ```mermaid
 sequenceDiagram
   participant A as Member (old link)
-  participant X as Bots host
+  participant X as Mochis host
   participant C as Contact
   A->>X: contact.hand bot: is one coming, or do you hold one?
-  A->>X: agents.move of the Contacts bot, when X holds none
+  A->>X: agents.move of the Contacts mochi, when X holds none
   A->>X: contact.hand (record, grants, requests, relations), sealed, members only
   X-->>A: X's card, X's signature over the move
   A->>C: contact.move (X's card, X's signature), signed by A's key
@@ -337,45 +337,45 @@ sequenceDiagram
   A->>A: forget the contact once it accepted
 ```
 
-1. The Contacts bot goes first (`contacts/bot-home.ts`). A member that runs
-   the built-in contacts bot asks the Bots host whether it holds one
-   (`contact.hand { action: 'bot' }`); if not, it moves its bot there with
+1. The Contacts mochi goes first (`contacts/bot-home.ts`). A member that runs
+   the built-in contacts mochi asks the Mochis host whether it holds one
+   (`contact.hand { action: 'bot' }`); if not, it moves its mochi there with
    `agents.move`, under the request id `contacts-bot-<role revision>-<host
    prefix>`, so a retry or a restart sends the same move and the host takes it
-   once. Until the host answers that it holds a bot and the member finished
-   its half of the move, the member keeps its bot and its contact links, and
+   once. Until the host answers that it holds a mochi and the member finished
+   its half of the move, the member keeps its mochi and its contact links, and
    tries again 30 seconds later or when the group changes; after a lost
    answer it sends that same move again rather than asking, so it never keeps
-   a second Contacts bot. If the Bots host already runs its own, the member's
-   bot stays where it is, with no contact left to serve (the log says so), and
+   a second Contacts mochi. If the Mochis host already runs its own, the member's
+   mochi stays where it is, with no contact left to serve (the log says so), and
    the owner may archive it; the contacts go to the host as below, each with its
-   requests, which the host's bot reads from then on. If the member that
-   announced its bot leaves the group before the bot arrived, the Bots host
+   requests, which the host's mochi reads from then on. If the member that
+   announced its mochi leaves the group before the mochi arrived, the Mochis host
    starts a fresh one (`agents.builtin.ensure { kind: 'contacts' }`).
 2. Every 30 seconds, and at once when the group changes, a member that is not
-   the Bots host hands each contact whose sync announced `groupLink: 1` to the
-   Bots host (`contact.hand`, a sealed operation only a current member may
+   the Mochis host hands each contact whose sync announced `groupLink: 1` to the
+   Mochis host (`contact.hand`, a sealed operation only a current member may
    send). Its grants on its own projects become grants with `machine` set to
    the member, the requests come along, and so do its relations with the
-   contact: the Bots host keeps each one at the member thread's alias
-   `<thread>~<member prefix>`. When the role moves on, the old Bots host hands
+   contact: the Mochis host keeps each one at the member thread's alias
+   `<thread>~<member prefix>`. When the role moves on, the old Mochis host hands
    its contacts the same way: each relation, and each request's relation,
    names the machine its thread lives on (`member`, a full core id; a hand
    from an older core without it means the sender), so the next host keeps a member's thread at
    that member's alias and its own threads at their plain id. A `member`
    outside the group, or a thread id already in alias form, is refused. The
-   Bots host refuses a contact that is itself or one of the group's machines,
+   Mochis host refuses a contact that is itself or one of the group's machines,
    and any new one once it holds the 32 contacts of the [limits](#limits),
    counting those whose hello it awaits: the member then keeps the contact, its
    link and its relaying, hands it again 30 seconds later, and the host's
    Contacts page shows it under that member (`heldBy`).
-3. The Bots host keeps the record waiting for the contact's hello (one hour),
+3. The Mochis host keeps the record waiting for the contact's hello (one hour),
    and answers with its card `{coreId, publicKey, box, url, machine}` and its
    signature over `boite-contact-move\n` followed by
-   `[old core id, Bots host core id, contact core id]` as JSON. When its
+   `[old core id, Mochis host core id, contact core id]` as JSON. When its
    Funnel mounts are up already, for another contact or an invitation, the
    card also carries their origin as `internet`; nothing is mounted for a move.
-   The card also says `proof: 1`: this Bots host proves its key on a probe.
+   The card also says `proof: 1`: this Mochis host proves its key on a probe.
    A probe adds `x-boite-probe: 1` to its hello, and the dialed core's first
    frame is `{ t: 'proof', signature }`, its signature over
    `boite-contact-proof\n` followed by the hello. An older guest never asks and
@@ -383,11 +383,11 @@ sequenceDiagram
 4. The member sends `contact.move { card, signature }` to the contact, in its
    own signed envelope. The contact checks both signatures and refuses a card
    that names itself or one of its own group's machines. Then:
-   - The contact dials the member (the member hosts it): it dials the Bots
+   - The contact dials the member (the member hosts it): it dials the Mochis
      host's `url` and its `internet` origin at once, keeps the first that
-     proves the Bots host's key as the address it dials from now on, and
+     proves the Mochis host's key as the address it dials from now on, and
      switches. An origin that takes the upgrade without that proof never
-     wins. A card without `proof` or `internet` comes from an older Bots host
+     wins. A card without `proof` or `internet` comes from an older Mochis host
      or member: the first origin that opens wins, as before.
    - The member dials the contact (the member is its guest), and the contact
      announces `guestSeat: 1`: the hand carries the address the member dials
@@ -396,18 +396,18 @@ sequenceDiagram
      a hello signed by the key that signed the move. The seat belongs to the
      member's admission: if the contact removes that member, or removes and
      links it again (a new `addedAt`), the seat is gone. The member then asks the
-     Bots host to dial (`contact.hand { action: 'dial' }`); the Bots host
+     Mochis host to dial (`contact.hand { action: 'dial' }`); the Mochis host
      dials the contact at that address, the hello makes the contact
-     switch, and the contact proves its key back, keeping the Bots host as a contact that dials it. The Bots host
+     switch, and the contact proves its key back, keeping the Mochis host as a contact that dials it. The Mochis host
      keeps the contact as one it dials and keeps that link open. From its
-     first dial on, the Bots host marks the handed entry `dialed`, and keeps
+     first dial on, the Mochis host marks the handed entry `dialed`, and keeps
      it past the hour a hand waits, and across a new hand of that contact: if
      it stops after the contact switched but before it stored the contact, it
      dials that address again on each sweep after its restart, however long
      it was off, since the contact now refuses the member's next move. Such a
      dial carries `x-boite-resume: 1`: the contact takes it only if it already
-     follows the Bots host, never on a seat it still holds, so a resume never
-     moves a contact. Before each one the Bots host asks the member that
+     follows the Mochis host, never on a seat it still holds, so a resume never
+     moves a contact. Before each one the Mochis host asks the member that
      handed it (`contact.hand { action: 'pending' }`) whether it still holds
      the contact at the admission it handed (`addedAt`): a member that answers
      no ends the entry, and one that does not answer only makes it wait. A
@@ -416,84 +416,84 @@ sequenceDiagram
      as long up to 6 hours. Only the contact's own key ends a resume from the
      contact's side: a probe from a core it neither knows nor gave a seat gets
      a 403 with `x-boite-refusal`, its signature over
-     `boite-contact-refusal\n` followed by that probe's hello, and the Bots host
+     `boite-contact-refusal\n` followed by that probe's hello, and the Mochis host
      then treats the entry as an ordinary hand again, which expires. A bare
      403 (contacts off there by policy, a proxy) proves nothing and only
      waits. Removing the contact on the member (`contacts.remove`) sends every
      other machine of the group `contact.hand { action: 'cancel' }` for that
      admission, again on each sweep for a week until each one answers
      (`contacts:hand-cancels`). Each admission keeps its own cancel: a
-     contact removed, linked again and removed again before the Bots host
+     contact removed, linked again and removed again before the Mochis host
      answered leaves both, and none is capped away. The cancel drops the hand still waiting
      there, and a dial already out keeps nothing (`commit` checks the hand
-     it dialed for is still there). The Bots host remembers which member
+     it dialed for is still there). The Mochis host remembers which member
      handed each contact it took, at which admission (`contacts:handed`): a
      cancel that comes after it took the contact, on an answer to its ask
      that was already stale, removes the contact there too, with the grants
-     it came with. The contact keeps its own record of the Bots host, as
+     it came with. The contact keeps its own record of the Mochis host, as
      after any removal. A contact
      whose name does not resolve from the group (Funnel on another tailnet,
-     the group on Headscale) moves this way, since only the Bots host has to
-     reach it. An older Bots host that does not answer `seat` gets the move
+     the group on Headscale) moves this way, since only the Mochis host has to
+     reach it. An older Mochis host that does not answer `seat` gets the move
      of the first case.
    - If the dial does not open within 3.5 s, the answer is
      `unreachable: <reason>`, the member keeps the old link and tries again 10
-     minutes later, then twice as long each time up to 6 hours, until the Bots
+     minutes later, then twice as long each time up to 6 hours, until the Mochis
      host changes or the member restarts. A roster change does not cut that
      wait. A contact the member dials that does not announce `guestSeat` (an
      older Boite) can only take the first case: its reason says that it must
-     update for the Bots host to dial it. The reason rides the member's held
-     list (below), so the Bots host's Contacts bot and `boite contacts view`
+     update for the Mochis host to dial it. The reason rides the member's held
+     list (below), so the Mochis host's Contacts mochi and `boite contacts view`
      show why the link stayed; the Contacts page shows only the member
      (`heldBy`).
-5. When it can, the contact re-keys everything to the Bots host: the record
+5. When it can, the contact re-keys everything to the Mochis host: the record
    (trust, notes, grants and capabilities kept), requests, relations (the
-   member's threads read `<thread>~<member prefix>` at the Bots host, and the
-   Bots host's own threads, which the old host kept at its alias, go back to
+   member's threads read `<thread>~<member prefix>` at the Mochis host, and the
+   Mochis host's own threads, which the old host kept at its alias, go back to
    their plain id), flags,
    the 7-day reply window, revoked projects, gateway mailboxes and the letters
    it holds. Then it drops the old link. The member forgets the contact only
    after that answer, keeping its flags; its relations with that contact now
-   live on the Bots host. Its threads still reach the contact through the Bots
-   host's copy (`relay.mirror`). The Bots host tells the member which of its
+   live on the Mochis host. Its threads still reach the contact through the Mochis
+   host's copy (`relay.mirror`). The Mochis host tells the member which of its
    threads are in relation, and relays their letters both ways like a grant's
    (`relay.in`, `relay.out`).
 
 ### Contacts a member still holds
 
-A contact the move cannot hand over (it cannot reach the Bots host and the
-Bots host cannot take its guest seat), or one that never announces
+A contact the move cannot hand over (it cannot reach the Mochis host and the
+Mochis host cannot take its guest seat), or one that never announces
 `groupLink`, stays linked to its member. It still belongs to the whole group
 (`contacts/held.ts`). Each member tells every other member, with its copy of
 the contacts (`relay.mirror { contacts, held }`), the list of contacts it
 holds: up to 32 entries of name, core id, when the member linked it
-(`addedAt`), link state, trust, whether the contact has a bot, the names of
+(`addedAt`), link state, trust, whether the contact has a mochi, the names of
 the projects it opened and why its link did not move. No key, address, grant or relation leaves the member. The list is
 pushed again whenever it or the roster changes, and an entry only counts while
 its member is in the group with the same admission. A member on an older Boite
 sends no list: its contacts stay out of every other machine's asks.
 
 From any thread of the group, `boite threads ask --contact <name>` resolves
-the name among this core's own contacts first, then the held lists. The Bots
-host's Contacts bot lists a held contact with `heldBy` (the member's name) and
-`heldReason`, and its tell names the member. When the bot forwards an ask for
-it, the Bots host sends `contact.route { action: 'held-ask' }`, sealed between
+the name among this core's own contacts first, then the held lists. The Mochis
+host's Contacts mochi lists a held contact with `heldBy` (the member's name) and
+`heldReason`, and its tell names the member. When the mochi forwards an ask for
+it, the Mochis host sends `contact.route { action: 'held-ask' }`, sealed between
 members, to the holder. The ask keeps the holder's group admission and the
 contact's `addedAt` from when it was made. The holder checks that the sender
-is the current Bots host, that the contact is its own and has a bot, that
+is the current Mochis host, that the contact is its own and has a mochi, that
 `addedAt` still matches (a contact removed and linked again never reads an
 older link's ask), and that the asking thread is
 its own pending ask or a group member's thread (with that member's model
 tier). It then sends the ask as a request of its own, under the same id, as
 any request to a direct contact. The contact reads a member's thread as
 `<thread>~<member prefix>` and the holder's own threads at their plain id.
-The decision comes back to the Bots host (`contact.hand { action: 'answer' }`),
+The decision comes back to the Mochis host (`contact.hand { action: 'answer' }`),
 which passes it on to the asking member, a refusal the contact's core made
 itself (a model tier, a full queue) included. An ask the holder has not
-taken when the contact moves to the Bots host is sent from there at once,
+taken when the contact moves to the Mochis host is sent from there at once,
 whether the holder answers or not. When the holder refuses, left, or joined
 the group again, the ask is refused with the reason. A contact
-that moves to the Bots host while the holder still had to send an ask brings
+that moves to the Mochis host while the holder still had to send an ask brings
 the holder's copy of it: the host's record takes what the copy knows, still
 to send or the contact's answer. An ask whose holder stays
 unreachable is refused after 7 days with "Not delivered: <member> stayed
@@ -504,32 +504,32 @@ no held list carries is refused with "contact: <name> is linked to <member>,
 which has not told this machine about it yet". An unknown name reads
 "contact: <name> is not a contact of any machine of this group; see boite
 threads contacts". A request the contact itself sends still reaches the
-member that holds it, not the Bots host's bot.
+member that holds it, not the Mochis host's mochi.
 
 Contacts keep the names their own machines chose: the protocol carries no
 owner or display name, so two machines of one owner show as two contacts.
 
 An answer to a request a member
-had sent before the move reaches it through the Bots host
-(`contact.hand { action: 'answer' }`); the Bots host offers it again every 30
+had sent before the move reaches it through the Mochis host
+(`contact.hand { action: 'answer' }`); the Mochis host offers it again every 30
 seconds until the member took it or left the group.
 
-A member without a Contacts bot of its own asks through the Bots host
+A member without a Contacts mochi of its own asks through the Mochis host
 (`contacts/host-asks.ts`). `collaboration.ask` keeps the request on the member
-with `stage: 'host'` and offers it to the Bots host (`contact.route { action:
-'host-ask' }`, sealed between members), which files it for its bot under the
+with `stage: 'host'` and offers it to the Mochis host (`contact.route { action:
+'host-ask' }`, sealed between members), which files it for its mochi under the
 member's request id and thread. The asking thread reads the request as
 queued while the host is off; the member offers it again every 30 seconds for
-7 days, then refuses it with "Not delivered: the group's Bots host stayed
+7 days, then refuses it with "Not delivered: the group's Mochis host stayed
 unreachable for 7 days". The contact reads the asking thread as
-`<thread>~<member prefix>` at the Bots host, and the answer comes back to the
+`<thread>~<member prefix>` at the Mochis host, and the answer comes back to the
 member as above.
 
 A contact on an older Boite never announces `groupLink`: it stays linked to
 the member that invited it, served as before. Its letters keep the 15 minute
 expiry.
 
-The Bots host may be off for days. A letter to a contact that announced
+The Mochis host may be off for days. A letter to a contact that announced
 `groupLink`, sent directly or through a member, expires after 7 days instead
 of 15 minutes, and the receiver accepts that window from any contact. An ask
 or an answer to such a contact retries every 30 seconds for 7 days; then the
@@ -540,12 +540,12 @@ minutes. An agent never browses a
 contact's threads: it says what it needs and gets back the one thread to
 write to.
 
-## The Contacts bot
+## The Contacts mochi
 
-Turning on the Contacts experiment creates a built-in [bot](bots.md#built-in-bots),
+Turning on the Contacts experiment creates a built-in [mochi](mochis.md#built-in-mochis),
 named Operator in English and Standardiste in French
 (`agents.builtin.ensure { kind: 'contacts' }`), once for the group: on the
-Bots machine, or with no Bots role on the Settings machine, else on the
+Mochis machine, or with no Mochis role on the Settings machine, else on the
 window's machine ([machines](machines.md)). It is the switchboard: the
 one thread that sends, receives and settles requests. Its domain and
 instructions are Boite's; the owner renames it, picks its robot, model,
@@ -572,38 +572,38 @@ sequenceDiagram
    (`collaboration.ask`): `--to <contact>/<thread-id>` when it knows the
    thread, `--contact <name>` to name the contact, `--new` for a new thread
    on one of the contact's projects, `--share` to have a project opened to
-   it. A target thread id may be a group member's thread at its Bots host,
+   it. A target thread id may be a group member's thread at its Mochis host,
    `<thread>~<16 hex>`. A request that names its contact goes to that
-   contact at once, with no turn of this core's bot. One that names none
-   waits for this core's bot (`stage: 'bot'`), which wakes on it, picks the
-   contact and forwards it (`contacts.bot.forward`); without a Contacts bot
-   here or on the group's Bots host that ask is refused with the way to
-   create one. On a group member without a bot, the Bots host files the ask
+   contact at once, with no turn of this core's mochi. One that names none
+   waits for this core's mochi (`stage: 'bot'`), which wakes on it, picks the
+   contact and forwards it (`contacts.bot.forward`); without a Contacts mochi
+   here or on the group's Mochis host that ask is refused with the way to
+   create one. On a group member without a mochi, the Mochis host files the ask
    ([Group to group](#group-to-group)).
-2. The contact's core keeps the request for its own bot, which decides what
+2. The contact's core keeps the request for its own mochi, which decides what
    fits: an existing thread, or a new one in a project. A contact marked
-   trusted is settled by the bot alone. For one that is not, the bot shows
+   trusted is settled by the mochi alone. For one that is not, the mochi shows
    its owner that decision (`contacts.bot.askOwner` with `connect` or
    `start`): the request carries it as `plan`, the Requests card and the
-   bot's card show it with Accept and Refuse, and only the owner's Accept,
+   mochi's card show it with Accept and Refuse, and only the owner's Accept,
    never an agent's answer, runs it, as written and with no further turn of
-   the bot (`runPlan`, `decidedBy: 'owner'`). A plan that no longer holds (its
-   thread archived) goes back to the bot, approved, with the reason. Refuse
+   the mochi (`runPlan`, `decidedBy: 'owner'`). A plan that no longer holds (its
+   thread archived) goes back to the mochi, approved, with the reason. Refuse
    refuses the request. The arrow beside Accept (`ThreadChoice.svelte`, the
-   project search over this machine's threads, the bot's own left out) sends
+   project search over this machine's threads, the mochi's own left out) sends
    `contacts.decide` with `threadId`: the owner's pick is put in touch with
-   the asking thread whatever the plan says (`connectByOwner`), and the bot's
+   the asking thread whatever the plan says (`connectByOwner`), and the mochi's
    card closes. On a `talk` or `thread` request with no plan yet, Accept
-   leaves the choice to the bot: `contacts.decide`
-   then approves it for the bot (`approved: true`, back to `stage: 'bot'`),
-   closes the bot's card for it and opens no project, so the request stays
-   pending until the bot connects it. A trusted contact's request has no Accept there.
-   A core without a Contacts bot refuses a `talk` or `thread` request with the
+   leaves the choice to the mochi: `contacts.decide`
+   then approves it for the mochi (`approved: true`, back to `stage: 'bot'`),
+   closes the mochi's card for it and opens no project, so the request stays
+   pending until the mochi connects it. A trusted contact's request has no Accept there.
+   A core without a Contacts mochi refuses a `talk` or `thread` request with the
    reason: its owner could only open a project, which reaches no thread.
-   If the local bot is gone, pending incoming bot or owner requests return to
-   the owner: the client receives no bot stage, and Accept opens the chosen
-   project. Host-stage requests keep their route through the Bots host.
-3. The bot settles it: `connect` puts the asking thread in relation with an
+   If the local mochi is gone, pending incoming mochi or owner requests return to
+   the owner: the client receives no mochi stage, and Accept opens the chosen
+   project. Host-stage requests keep their route through the Mochis host.
+3. The mochi settles it: `connect` puts the asking thread in relation with an
    existing thread, `start` starts a thread on a project with a brief and puts
    it in relation, `refuse` answers with a reason. Opening a project,
    `share`, is always a card for the owner, trusted or not; their Yes grants
@@ -611,7 +611,7 @@ sequenceDiagram
 4. The answer comes back to the asking thread as a message naming the thread
    it now works with. Both threads write to each other with
    `boite threads send <contact>/<thread-id>`. An answer that opened a
-   project lists its threads; with a Contacts bot on the asking core, an
+   project lists its threads; with a Contacts mochi on the asking core, an
    ordinary thread reaches one only through a relation, so the answer tells it
    to ask for it with `boite threads ask --to <contact>/<thread-id>`.
 
@@ -619,20 +619,20 @@ sequenceDiagram
 
 Each request shows in the timeline where it happened, as a row in the style
 of the agent mail rows (`ContactAskRow.svelte`). The asking thread reads the
-Contacts bot it asked, the contact's chip once one is named, its words on one
-line and where it stands: waiting for the group's Bots machine (`stage:
-'host'`), with the bot (`'bot'`), waiting for the owner's card (`'owner'`),
+Contacts mochi it asked, the contact's chip once one is named, its words on one
+line and where it stands: waiting for the group's Mochis machine (`stage:
+'host'`), with the mochi (`'bot'`), waiting for the owner's card (`'owner'`),
 sent to the contact, answered with the `<contact>/<thread-id>` to write to,
-or refused with the reason. The bot's own thread shows a row for each request
+or refused with the reason. The mochi's own thread shows a row for each request
 it forwarded (`forwardedAt`) and each it settled. A tap opens the answer's
 discussion in the panel once a letter of it reached the thread, else unfolds
 the whole request.
 
 The rows come from `CoordinationView.requests` (`collaboration.get`, so a
-paired phone reads them too): the thread's own requests, plus on the bot's
+paired phone reads them too): the thread's own requests, plus on the mochi's
 thread its forwards and settlements, oldest first, at most 50. A change to a
-request emits `collaboration.changed` for the asking thread and the bot's.
-A member that asked through the Bots host hears the forward from it
+request emits `collaboration.changed` for the asking thread and the mochi's.
+A member that asked through the Mochis host hears the forward from it
 (`contact.hand`, action `forwarded`, best effort since the answer follows
 anyway) and reads the request sent, under the host's name for the contact.
 Renaming a contact renames its requests and its relations, which the
@@ -645,16 +645,16 @@ A relation (`ContactRelation`) joins two threads, one per side, and lets
 letters through for as long as it lasts, whatever projects are opened. It
 carries no file, read or command: each thread works in its own checkout.
 Both cores keep it in their journal, so it outlives a restart of either.
-Either bot cuts it (`contacts.bot.cut` with `relation: <id>`), and the owner ends one from the
+Either mochi cuts it (`contacts.bot.cut` with `relation: <id>`), and the owner ends one from the
 contact's page (`contacts.cutRelation`); archiving a thread or removing the
-contact ends its relations. The two bots may always write to each other: the
-sync announces each side's bot (`Contact.bot`), with the `contactsBot`
+contact ends its relations. The two mochis may always write to each other: the
+sync announces each side's mochi (`Contact.bot`), with the `contactsBot`
 capability. A contact on an older Boite gets no forwarded request: its owner
 must update.
 
 An ordinary thread reaches a contact's thread only through a relation, or
 replies within 7 days to one that wrote to it. Directory, search and reads of
-a contact's threads are the bot's. Shared projects keep their own rules
+a contact's threads are the mochi's. Shared projects keep their own rules
 ([completion protocol](#completion-protocol)).
 
 ### Antivirus
@@ -663,23 +663,23 @@ Every contact letter is scanned before it reaches an agent, by a fixed table
 of patterns in English and French (`contacts/flags.ts`, no model): a request
 for a secret, a key or a credentials file (`secret`), a destructive command
 (`destructive`) and words written to steer an agent (`injection`). A match
-holds the letter, records a `ContactFlag` and wakes the bot with the letter
+holds the letter, records a `ContactFlag` and wakes the mochi with the letter
 quoted as data. A refusal at a shared project's boundary (`boundary`) and the
 activity reviewer's doubt (`review`) wake it the same way, with nothing held.
 
-The bot reads it and decides: deliver the letter (`contacts.bot.flag` with
-`deliver`), refuse it (its sender reads the reason), write to the other bot or
+The mochi reads it and decides: deliver the letter (`contacts.bot.flag` with
+`deliver`), refuse it (its sender reads the reason), write to the other mochi or
 thread first, or cut the contact's access with `contacts.bot.cut { contact,
 reason }`: `relation: <id>` ends that relation, `project: <id or name>` closes
 that project on every machine of the group, and neither ends every relation
 and closes every project. The contact and its link stay the owner's.
-Without a bot, a flagged letter waits for the owner as held mail. A flag
+Without a mochi, a flagged letter waits for the owner as held mail. A flag
 waiting for a decision is never dropped to make room: at 200 open flags a new
 letter that would be flagged is refused, its sender reads why, and decided
 flags give way first.
 
 The decision comes back to the asking thread as a message (`origin:
-'contact'`). Bot decisions are attributed to the contact's bot; only an
+'contact'`). Mochi decisions are attributed to the contact's mochi; only an
 explicit owner decision is attributed to the owner. A request a contact's
 core refuses itself (a tier, a full queue) names the remote Boite. Contact
 mail outside a shared project or a relation, like any request answer, waits
@@ -689,10 +689,10 @@ for this owner unless the contact is trusted here
 ## What an agent knows
 
 Every turn of a thread that may reach a contact carries a short guide
-(`coordinationGuide` in `coordination-letter.ts`). With a Contacts bot on
-this core, or on the group's Bots host for a member that asks through it, the
-guide names `boite threads ask`; the bot's own thread reads `boite contacts`.
-Only a core with no Contacts bot of its own and no Bots host elsewhere in its
+(`coordinationGuide` in `coordination-letter.ts`). With a Contacts mochi on
+this core, or on the group's Mochis host for a member that asks through it, the
+guide names `boite threads ask`; the mochi's own thread reads `boite contacts`.
+Only a core with no Contacts mochi of its own and no Mochis host elsewhere in its
 group reads the older direct paths.
 
 ### Contacts through your group
@@ -772,32 +772,32 @@ names), `funnel.ts` (the routes on Tailscale Funnel), `funnel-check.ts`
 its zone), `join.ts` (both sides
 of a join), `invite.ts` (the link format), `words.ts`
 (fingerprint words), `tier.ts`, `git-remote.ts` (read from the git config
-files, no process), `bot.ts` (the Contacts bot's methods and relations),
+files, no process), `bot.ts` (the Contacts mochi's methods and relations),
 `flags.ts` (the antivirus patterns), `group-link.ts` (contacts moving to the
-Bots host), `face.ts` (the name a contact reads) and `tailscale.ts`. `contacts.*` are
+Mochis host), `face.ts` (the name a contact reads) and `tailscale.ts`. `contacts.*` are
 owner-only for administration; `contacts.sendHuman` also permits paired devices.
 Agents call `collaboration.contacts` and `collaboration.ask`; the Contacts
-bot's thread alone calls `contacts.bot.*`.
+mochi's thread alone calls `contacts.bot.*`.
 `packages/core/test/contacts.test.ts` links two cores over loopback, and
 `contacts-parts.test.ts` covers the pieces, the Tailscale client against a
 stubbed `fetch`. `contacts-group.test.ts` links a contact to one machine of a two-machine
 group and opens it a project of the other. `contacts-group-link.test.ts`
-moves a contact from one member to the Bots host and checks the forged and
+moves a contact from one member to the Mochis host and checks the forged and
 unreachable moves. `contacts-group-seat.test.ts` moves a contact that cannot
-reach the Bots host: through the guest seat, or through the Bots host's Funnel
+reach the Mochis host: through the guest seat, or through the Mochis host's Funnel
 origin, then stops the old member and runs an ask, its answer and letters both
 ways; it also checks the reason an older contact gives, that a seat dies
-with the admission that gave it, that a Bots host restarted between the
+with the admission that gave it, that a Mochis host restarted between the
 contact's switch and its own record dials the contact again, at once or two
-hours later, that removing the contact on the member cancels a seat the Bots
+hours later, that removing the contact on the member cancels a seat the Mochis
 host still dials, or one it learns about from the member after a restart,
 that a cancel slower than the member's answer still removes the contact the
-Bots host took back on it, that such a resume never takes a seat the contact
-still holds, that a contact that followed the Bots host is recovered after the
+Mochis host took back on it, that such a resume never takes a seat the contact
+still holds, that a contact that followed the Mochis host is recovered after the
 member that handed it left the group, that a second removal after the
 contact was linked again keeps the first one's cancel, that a bare 403 only delays the resume, that a refusal under the contact's
-key ends it, and that a server that takes the upgrade without the Bots host's
-key loses the move to the Bots host. `contacts-funnel.test.ts` drives the Funnel mounts through
+key ends it, and that a server that takes the upgrade without the Mochis host's
+key loses the move to the Mochis host. `contacts-funnel.test.ts` drives the Funnel mounts through
 the fake CLI (`test/fixtures/fake-tailscale.ts`) and checks their reachability
 through stubbed DNS and requests, never the internet. `contacts-link.test.ts`
 puts a TCP proxy (`test/bad-network.ts`: latency, a path gone silent, a cut, a
@@ -938,7 +938,7 @@ The owner offers one local registered project and one exact advertised remote
 endpoint with `sharedProjects.offer`. Persist a fresh association ID, both
 endpoints and the proposing project's existing execution core as immutable
 board authority. The other owner accepts or declines with
-`sharedProjects.decide`; a trusted contact or the Contacts bot cannot accept it. Each
+`sharedProjects.decide`; a trusted contact or the Contacts mochi cannot accept it. Each
 endpoint independently controls its grant revision, board consent and compute
 policy. Association does not turn on `readThreads` or compute. Both current
 project grants and explicit board consent are required for board traffic.
@@ -1161,7 +1161,7 @@ Details. `contacts.decideMail`, owner only, delivers one letter as written,
 recording a digest of its sender and content in the thread's letter scope, or
 rejects it, which its sender reads. Marking the contact trusted delivers what
 waits from it. Held mail expires like any letter: 15 minutes for agent and
-human mail (7 days from a contact whose group has a Bots host,
+human mail (7 days from a contact whose group has a Mochis host,
 [Group to group](#group-to-group)), 6 hours for a request answer. A tool-free thread (echo in default
 mode) reads it at once and takes the hold below.
 
@@ -1402,7 +1402,7 @@ fallback model. Provider/account/model/effort and `revokeOnViolation` stay
 host-local. Unsupported tool-free routes record unavailable, never start an
 ordinary turn. Claude and echo support this query path; Codex, ACP, Muse and pi
 do not. The reviewer runs through `contacts/side-inference.ts`, and a doubt
-it records wakes the Contacts bot as a `review` flag.
+it records wakes the Contacts mochi as a `review` flag.
 
 Schema 43 persists configuration revisions, admitted event work and reasoned
 verdicts. Only activity attributed to the associated remote endpoint is

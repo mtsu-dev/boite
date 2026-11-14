@@ -367,7 +367,7 @@ export class GroupBots {
     this.#reached(peer.coreId, null);
     for (const event of events) {
       try { this.#heard(peer, event as BotEvent); }
-      catch (error) { this.#core.log('warn', `group bot event from ${peer.name}: ${messageOf(error)}`); }
+      catch (error) { this.#core.log('warn', `group mochi event from ${peer.name}: ${messageOf(error)}`); }
     }
     return { ok: true };
   }
@@ -411,11 +411,11 @@ export class GroupBots {
    */
   async #ask(threadId: ThreadId, machine: string, method: string, operation: Exclude<BotOperation, 'bot.event' | 'bot.lease'>, payload: Record<string, unknown>, words?: Words): Promise<{ agent: AgentProfile; peer: CoordinationPeer; result: unknown }> {
     const agent = this.#store.projects.botOf(threadId);
-    if (agent === null) throw refused(`${method}: no project is entrusted to this conversation; the owner entrusts projects to a bot in its settings on the Bots page`, { field: 'threadId', expected: 'the thread of a bot' });
+    if (agent === null) throw refused(`${method}: no project is entrusted to this conversation; the owner entrusts projects to a mochi in its settings on the Mochis page`, { field: 'threadId', expected: 'the thread of a mochi' });
     if (typeof machine !== 'string' || machine.trim().length === 0) throw invalidParams(`${method}.machine: expected the name of a machine of the group`);
     const peer = memberNamed(this.#core, machine, method);
     const lease = this.#leaseOf(agent, peer.coreId, this.#next());
-    if (lease === null) throw refused(`${method}.machine: no project of ${peer.name} is entrusted to ${agent.name}; the owner entrusts one with boite settings request bot projects`, { field: 'machine', machine: machineArg(this.#core, peer) });
+    if (lease === null) throw refused(`${method}.machine: no project of ${peer.name} is entrusted to ${agent.name}; the owner entrusts one with boite settings mochi request projects`, { field: 'machine', machine: machineArg(this.#core, peer) });
     try {
       const result = await within(this.#core.coordination.request(peer, operation, { ...payload, lease }), REQUEST_MS, peer.name);
       this.#reached(peer.coreId, null);
@@ -525,7 +525,7 @@ export class GroupBots {
     if (projectId !== undefined) return { peer, projectId };
     const at = machineArg(this.#core, peer);
     const mine = granted.map(id => this.label(`${peer.coreId}/${id}`));
-    throw refused(`agent.spawn.project: ${name} is not a project of ${peer.name} entrusted to ${agent.name}; ${mine.length === 0 ? `no project of ${at} is` : `there it may start threads in ${mine.join(', ')}`}, and here in any project; the owner entrusts one with boite settings bot request projects +${at}/<project> --why "<what you look after there>"`,
+    throw refused(`agent.spawn.project: ${name} is not a project of ${peer.name} entrusted to ${agent.name}; ${mine.length === 0 ? `no project of ${at} is` : `there it may start threads in ${mine.join(', ')}`}, and here in any project; the owner entrusts one with boite settings mochi request projects +${at}/<project> --why "<what you look after there>"`,
       { field: 'project', machine: at, expected: mine });
   }
 
@@ -554,7 +554,7 @@ export class GroupBots {
     finally { if (this.#running.get(peer.coreId) === slot) this.#running.delete(peer.coreId); }
   }
 
-  /** `boite bot watch <machine>/<id>`: that machine checks the thread is one of the bot's projects there first. */
+  /** `boite mochi watch <machine>/<id>`: that machine checks the thread is one of the bot's projects there first. */
   async watch(agent: AgentProfile, machine: string, threadId: ThreadId, watched: boolean): Promise<AgentWatch | null> {
     const peer = memberNamed(this.#core, machine, 'agents.watch');
     if (!watched) { this.unfollow(agent.id, peer.coreId, threadId); return null; }
@@ -629,7 +629,7 @@ interface Words { old?: string; away?: string }
 /** How a bot's `thread new` there fails. */
 function startWords(peer: CoordinationPeer): Words {
   return {
-    old: `Boite on ${peer.name} is too old to start threads for a bot of another machine; the owner updates it in Settings, Machines and updates`,
+    old: `Boite on ${peer.name} is too old to start threads for a mochi of another machine; the owner updates it in Settings, Machines and updates`,
     away: 'the same --request-id later answers the thread if it started there',
   };
 }
@@ -639,9 +639,9 @@ function failure(core: Core, peer: CoordinationPeer, error: unknown, words: Word
   const machine = machineArg(core, peer);
   if (error instanceof PeerRefusal) {
     if (error.message === GROUP_BOTS_OFF) {
-      return refused(`${peer.name} does not let the bots of the other machines of its group look after its projects; propose the switch to the user with boite settings request groupBots true --machine ${machine} --why "<what you look after there>"`, { field: 'machine', machine, setting: 'groupBots' });
+      return refused(`${peer.name} does not let the mochis of the other machines of its group look after its projects; propose the switch to the user with boite settings request groupBots true --machine ${machine} --why "<what you look after there>"`, { field: 'machine', machine, setting: 'groupBots' });
     }
-    if (error.message.startsWith('operation: expected')) return refused(words.old ?? `Boite on ${peer.name} is too old to let a bot of another machine look after its projects; the owner updates it in Settings, Machines and updates`, { field: 'machine', machine });
+    if (error.message.startsWith('operation: expected')) return refused(words.old ?? `Boite on ${peer.name} is too old to let a mochi of another machine look after its projects; the owner updates it in Settings, Machines and updates`, { field: 'machine', machine });
     return refused(`${machine}: ${error.message}`, { field: 'machine', machine });
   }
   if (error instanceof PeerGone) return refused(`${peer.name} removed this machine from its group`, { field: 'machine', machine });

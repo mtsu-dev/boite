@@ -84,7 +84,7 @@ The existing Stop action cancels the maintenance turn. Paired devices may call i
 | echo | `[compact]`, a deterministic test operation; the divider it draws says `manual`, while `[compact]` inside a prompt draws an `auto` one |
 
 Claude summary instructions are optional in Settings, Advanced, Compaction.
-The common value applies to conversations, subagents and bots; a customized
+The common value applies to conversations, subagents and mochis; a customized
 category can keep its own instructions or leave them empty for the native
 summary prompt. Existing customized categories without this field also keep
 the native prompt. Token limits and idle moments are unchanged.
@@ -123,7 +123,7 @@ the default: each agent keeps its own compaction behaviour.
 
 `Settings.compactionByType` optionally overrides the complete policy for
 `agent` (regular conversation), `subagent` (a thread with `parentThreadId`)
-or `bot` (a resident thread with `agentSessionId`). A child of a bot is a
+or `bot` (a resident thread with `agentSessionId`). A child of a mochi is a
 subagent. Each override contains `{ autoCompact, backgroundCompaction }`; an
 absent target follows the current common settings, while `autoCompact: null`
 disables Boite's automatic triggers and restores the driver's native policy
@@ -199,7 +199,7 @@ it fires the core checks again and compacts only when all of this holds:
 
 - the turn ended `done`, and was not itself a compaction;
 - the thread is idle, unarchived and on a native session, whether it is a
-  regular conversation, delegated child or resident bot;
+  regular conversation, delegated child or resident mochi;
 - the token limit was reached, or a selected idle moment applies;
 - the agent can compact, as for the manual button;
 - no goal or loop is active and no wake, held answer or delegation letter
@@ -209,8 +209,8 @@ Children and workflows can keep working during an idle parent's compaction.
 Their results stay in the inbox until the compaction ends; they never steer
 its native command or enter a compaction tool hook as additional context.
 A child's internal compaction neither sends a final result to its parent nor
-replaces the last task answer. A bot's compaction does not finish routines,
-create memory passes or notify other bots as a task result.
+replaces the last task answer. A mochi's compaction does not finish routines,
+create memory passes or notify other mochis as a task result.
 
 The compaction is the turn `threads.compact` schedules, with
 `execution.automatic: true`. Its opening message is Boite's (`system`,
@@ -332,7 +332,7 @@ at a selected `turn-end` or `background` moment near it, when:
 
 At a pause, a thread that reaches the limit while a matching copy still runs
 waits for it rather than compacting. Regular conversations, delegated children
-and resident bots use the policy for their own type. Incognito threads and a
+and resident mochis use the policy for their own type. Incognito threads and a
 session waiting to resume at an entry take no copy; their token limit still
 applies.
 
@@ -365,7 +365,7 @@ submits the queued messages as a new turn, even on drivers without steering.
 Permissions and blocking questions hold it until answered.
 Send now also works during agent startup: the core retains the request and
 interrupts as soon as the native handle is available, without waiting for tool output.
-Answers to asynchronous questions and bot setting cards share the running
+Answers to asynchronous questions and mochi setting cards share the running
 turn's steering channel. Answers received while another message or memory
 notice is being delivered resume when that delivery finishes, in order. Each
 accepted answer leaves the pending queue and appears once in the transcript.

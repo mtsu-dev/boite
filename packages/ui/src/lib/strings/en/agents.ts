@@ -1,44 +1,44 @@
 export const strings = {
   agents: {
-    /** A bot Boite ships: its badge, its locked fields and its Reset. */
+    /** A mochi Boite ships: its badge, its locked fields and its Reset. */
     builtin: {
       badge: 'Built-in',
-      badgeTip: 'Boite\'s own bot. It is never archived, only reset.',
+      badgeTip: 'Boite\'s own mochi. It is never archived, only reset.',
       locked: 'Boite\'s; reset to restore',
       reset: 'Reset',
       resetHint: 'Back to how Boite ships it: a new conversation, memory and routines cleared, name, robot, model, effort and settings back to defaults.',
       resetTitle: 'Reset "{name}"?',
       resetBody: 'It starts a new conversation and the old one is archived. Its memory and routines are cleared, and its name, robot, model, effort and settings (daily budget, auto memory, subagents) go back to their defaults.',
-      /** The name each built-in bot gets, in this language. */
+      /** The name each built-in mochi gets, in this language. */
       name: { contacts: 'Operator' },
-      /** The group's Bots machine holds the built-in bot and this window does not reach it. */
+      /** The group's Mochis machine holds the built-in mochi and this window does not reach it. */
       away: '{name} is on {machine}, offline for now: none is made elsewhere meanwhile.'
     },
-    /** Moving a bot to another machine of the group, from its settings or its row's menu. */
+    /** Moving a mochi to another machine of the group, from its settings or its row's menu. */
     move: {
       label: 'Machine',
       /** The row menu's entry, which opens the machine picker. */
       menu: 'Move to a machine',
       hint: 'Where it lives. Pick another machine of the group to move it there.',
-      older: 'Update Boite on {machine} to move a bot there.',
+      older: 'Update Boite on {machine} to move a mochi there.',
       olderShort: 'Update needed',
       title: 'Move {name} to {machine}?',
       body: 'Its memory, notes, routines and the end of its conversation go to {machine}. The old conversation stays archived on {source}. With its next message, {name} reads a note about the move.',
       confirm: 'Move',
       moving: 'Moving',
       turnInFlight: '{name} is in the middle of a turn. Move it once it is done.',
-      /** The dialog's first paragraph for a bot at work: it leaves once that work ends. */
+      /** The dialog's first paragraph for a mochi at work: it leaves once that work ends. */
       later: '{name} is working: it moves to {machine} once this turn and the threads it started are done. Until then its routines and events wait.',
       confirmLater: 'Move after this turn',
-      /** Under the bot's name and on its Machine row while it waits to leave. */
+      /** Under the mochi's name and on its Machine row while it waits to leave. */
       leaving: 'Moves to {machine} after this turn',
       /** Its projects of the machine it leaves, of which the target lists none of the same name. */
       projectsAbsent: 'Not on {machine}: {projects}. These stay on {source}.',
-      /** Its projects of the machine it leaves, which the target also lists under the same name: the bot keeps the one it had. */
+      /** Its projects of the machine it leaves, which the target also lists under the same name: the mochi keeps the one it had. */
       projectsTwin: 'Also on {machine}: {projects}. {name} keeps the copy on {source}; to work in the one on {machine}, add it to its projects after the move.',
       /** Whether it reaches the projects it keeps on the machine it leaves. */
       projectsReach: 'From {machine}, {name} reaches the projects of {source} through the group.',
-      /** The same, while the machine it leaves keeps the other machines' bots out (`setting` on the page `page`). */
+      /** The same, while the machine it leaves keeps the other machines' mochis out (`setting` on the page `page`). */
       projectsReachOff: 'From {machine}, {name} cannot reach the projects of {source} until {source} turns on "{setting}" in {page}.',
       /** Projects it had on the target, which the target no longer has. */
       projectsLost: 'No longer on {machine}: {projects}. {name} leaves them.',
@@ -46,7 +46,7 @@ export const strings = {
     },
     brain: "Brain",
     defaultModel: "Default model",
-    allowedModels: "Allowed models for this bot",
+    allowedModels: "Allowed models for this mochi",
     subagents: "Subagent models",
     enableSubagents: "Allow subagents",
     addModel: "Add model",
@@ -60,54 +60,54 @@ export const strings = {
     runNow: "Run now",
     runNowBusy: "It is at work: run it again once its turn ends",
     accountAccess: "Account access",
-    accountAccessHint: 'Which bots may use each account, subagents included. Removing access stops the executions that use it.',
-    allAgents: "All bots, including future bots",
-    heading: 'Bots',
-    backToList: 'Back to the bot list',
+    accountAccessHint: 'Which mochis may use each account, subagents included. Removing access stops the executions that use it.',
+    allAgents: "All mochis, including future mochis",
+    heading: 'Mochis',
+    backToList: 'Back to the mochi list',
     needsAccount: 'Needs an account',
-    list: 'All bots', edit: 'Edit', remove: 'Remove',
+    list: 'All mochis', edit: 'Edit', remove: 'Remove',
     search: 'Search',
     name: 'Name', domain: 'Role', instructions: 'Instructions', identityHint: 'The identity and memory stay when you change its model.',
-    model: 'Model and account', noAccount: 'Add a provider account in Settings before creating a bot.', permissions: 'Permissions',
+    model: 'Model and account', noAccount: 'Add a provider account in Settings before creating a mochi.', permissions: 'Permissions',
     noApprovals: 'This provider has no interactive tool approval channel. Its launch permissions apply.',
     paused: 'Paused', pause: 'Pause', resume: 'Resume', archive: 'Archive', active: 'Active', archived: 'Archived',
-    archiveTitle: 'Archive "{name}"?', archiveBody: 'Archiving stops this bot and removes it from the list. Its conversation stays readable through search. Type its current name exactly to confirm.', archiveName: 'Bot name',
-    archivedNotice: 'This bot is archived. Its conversation stays here to read.',
+    archiveTitle: 'Archive "{name}"?', archiveBody: 'Archiving stops this mochi and removes it from the list. Its conversation stays readable through search. Type its current name exactly to confirm.', archiveName: 'Mochi name',
+    archivedNotice: 'This mochi is archived. Its conversation stays here to read.',
     done: 'Done',
-    engine: 'Background work', engineHint: 'Closing this page leaves bots working on the connected core.',
-    pauseWakes: 'Pause every bot', pauseWakesHint: 'No routine or event wakes a bot on this core. You can still write to them.',
-    openFailed: 'This bot could not be opened. Pick one in the list or try again.',
-    offline: 'Bots could not be loaded from this machine. Reconnect or update its core.', retry: 'Retry',
+    engine: 'Background work', engineHint: 'Closing this page leaves mochis working on the connected core.',
+    pauseWakes: 'Pause every mochi', pauseWakesHint: 'No routine or event wakes a mochi on this core. You can still write to them.',
+    openFailed: 'This mochi could not be opened. Pick one in the list or try again.',
+    offline: 'Mochis could not be loaded from this machine. Reconnect or update its core.', retry: 'Retry',
     stale: 'Connection lost. This is the last received state. Work may still be running on the host.',
     status: 'Status', settings: 'Settings', createAction: 'Create', rolePlaceholder: 'Research, implementation or review',
-    newAgent: 'New bot',
+    newAgent: 'New mochi',
     engineSettings: 'Engine settings',
-    advanced: 'More options', identity: 'Identity', noMembers: 'Create a bot first.',
+    advanced: 'More options', identity: 'Identity', noMembers: 'Create a mochi first.',
     brainFiles: 'Brain files', procedures: 'Ways of working', proceduresHint: 'AGENTS.md in the brain folder.', notes: 'Memory', notesHint: 'MEMORY.md in the brain folder: what it keeps between conversations. It rewrites it after a turn you saw, and notes facts as it learns them.',
-    dangerZone: 'Stop the engine', dangerHint: 'Stops every bot on this core and disconnects its clients.',
+    dangerZone: 'Stop the engine', dangerHint: 'Stops every mochi on this core and disconnects its clients.',
     stopEngine: 'Stop this core', stopEngineBody: 'Stops all work on this core and disconnects its clients. Reopen Boite on the host to start the core again.',
-    createAgent: 'Create a bot', noAgents: 'No bots yet', noAgentsOn: 'No bots on {machine} yet', more: 'More', noMatch: 'Nothing matches',
+    createAgent: 'Create a mochi', noAgents: 'No mochis yet', noAgentsOn: 'No mochis on {machine} yet', more: 'More', noMatch: 'Nothing matches',
     missedOne: '1 missed answer', missedMany: '{count} missed answers',
     backToChat: 'Back to the conversation',
     planned: 'Routines',
-    entrustTo: 'Give to a bot', entrustToName: 'Give to {name}', entrustedTo: 'Handled by {name}', takeBack: 'Take it back',
-    welcomeHint: 'A bot is a conversation that keeps its name, its memory and its routines. It works on its own and tells you what matters.',
+    entrustTo: 'Give to a mochi', entrustToName: 'Give to {name}', entrustedTo: 'Handled by {name}', takeBack: 'Take it back',
+    welcomeHint: 'A mochi is a conversation that keeps its name, its memory and its routines. It works on its own and tells you what matters.',
     runsHeading: 'Where it runs', runsHint: 'Its conversation, memory and routines stay on this machine. The models come from that machine’s accounts.',
     machine: 'Machine', modelLabel: 'Model', machineOffline: 'Offline', machineNotOwner: 'Owner access needed',
-    machineUnreachable: '{name} is not connected. Reconnect it, then create the bot again.', whatItDoesHint: 'Its standing instructions. It reads them, sets up its routines and tells you its plan right after.',
+    machineUnreachable: '{name} is not connected. Reconnect it, then create the mochi again.', whatItDoesHint: 'Its standing instructions. It reads them, sets up its routines and tells you its plan right after.',
     namePlaceholder: 'Mira, Scout, Pixel', whatItDoes: 'What it does', instructionsPlaceholder: 'For example: every morning, read the new issues and sum them up in five lines.',
     openAgent: 'Open {name}',
     projects: 'Projects', projectsHint: 'It follows their threads, starts new ones, answers their questions and tells you what matters.', noProjects: 'Open a project first.',
     projectsBotsOff: 'Enable "{setting}" in {page} on this machine to add its projects.',
     projectsOutsideGroup: 'This machine is no longer in the group.',
-    addProjects: 'Add projects', addProjectsHint: 'The bot can add a folder of this machine as a project; it is entrusted to it at once.',
+    addProjects: 'Add projects', addProjectsHint: 'The mochi can add a folder of this machine as a project; it is entrusted to it at once.',
     eventWakes: 'Automatic project and desk wakes', eventWakesHint: 'When off, only threads it started, was entrusted or watches wake it; other events wait for the next routine. Direct messages still run.',
     autoMemory: 'Update memory after each answer', autoMemoryHint: 'A small helper rewrites its memory from what you asked and what it answered.',
-    brainFolder: 'Brain folder', brainFolderHint: 'Where every bot keeps its instructions and notes on this machine. Changing it moves them all.', brainDefault: 'Default, in Boite’s data folder',
+    brainFolder: 'Brain folder', brainFolderHint: 'Where every mochi keeps its instructions and notes on this machine. Changing it moves them all.', brainDefault: 'Default, in Boite’s data folder',
     brainChange: 'Change', brainUseDefault: 'Use default', brainMove: 'Move brains here', brainPath: 'Folder on this machine', brainBrowse: 'Browse', brainParent: 'Parent folder', brainUseFolder: 'Use this folder',
     settingsOf: '{name}’s settings', brainOf: '{name}’s brain',
     desk: 'Desk', fix: 'Fix it',
-    /** The banner's remedy when a bot's account is gone: its other accounts picked in place, or Providers when it has none. */
+    /** The banner's remedy when a mochi's account is gone: its other accounts picked in place, or Providers when it has none. */
     pickAccount: 'Pick another account', addAccount: 'Add an account',
     deskPanel: {
       now: 'Now', memory: 'Memory', memoryProblem: 'Memory update failed',
@@ -131,7 +131,7 @@ export const strings = {
     waitingOn: 'Waiting for you: {what}', nextWake: 'Next: {name}, {when}',
     state: { working: 'Working', queued: 'Queued', waiting: 'Waiting for you', idle: 'Idle', paused: 'Paused', archived: 'Archived', error: 'Its last turn failed' },
     outcome: { done: 'done', quiet: 'nothing to report', error: 'failed', stopped: 'stopped', skipped: 'skipped' },
-    /** The step a bot is on, when its call has no title: by the tool's family, else by the turn's phase. */
+    /** The step a mochi is on, when its call has no title: by the tool's family, else by the turn's phase. */
     activity: {
       thinking: 'Thinking', compacting: 'Compacting its context', starting: 'Getting started', retrying: 'Retrying a request', provider: 'Waiting for the model', writing: 'Writing its answer',
       tool: {
@@ -146,7 +146,7 @@ export const strings = {
       picture: 'Use your own picture', pictureUnreadable: 'This file is not an image Boite can read. Pick a PNG, JPEG, WebP or GIF.',
     },
     when: {
-      who: 'Bot', pickAgent: 'Choose a bot', what: 'What should it do?', whatPlaceholder: 'For example: sum up the new messages and tell me what needs an answer.',
+      who: 'Mochi', pickAgent: 'Choose a mochi', what: 'What should it do?', whatPlaceholder: 'For example: sum up the new messages and tell me what needs an answer.',
       when: 'When?', modes: { once: 'Once', daily: 'Every day', days: 'Some days', monthly: 'Monthly', yearly: 'Yearly', interval: 'Repeatedly' },
       dayOfMonth: 'Day of the month', month: 'Month', missingDate: 'Months or years without this date are skipped.',
       monthly: 'Every month on day {day} at {time}', yearly: 'Every year on {date} at {time}',

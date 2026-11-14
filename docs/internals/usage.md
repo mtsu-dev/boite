@@ -352,7 +352,7 @@ is missing, since Claude Code writes for an hour. Pi passes Anthropic's
 `buckets: 1` on each turn's usage as it takes it from the driver.
 
 Every reader, `usage.get`, `usage.history`, a session's fallback total,
-delegation and workflow totals and a bot's budget, sums the turns through the
+delegation and workflow totals and a mochi's budget, sums the turns through the
 SQL groupings of `journal/usage-sums.ts` and one reading of each group
 (`groupUsage` in `usage.ts`). Marked buckets are summed as they are and never ask the
 provider's descriptor, so editing or removing a provider leaves those turns
@@ -462,9 +462,9 @@ its cost.
 On a subscription the figure is what the same tokens would cost on the API, not
 money spent.
 
-A bot's daily budget and its status's `today.costUsd` use the same rule
-(`priceGroup` in `packages/core/src/usage.ts`) over the bot's thread and the
-threads below it, subagents included ([bots](bots.md#budget-and-limits)), so
+A mochi's daily budget and its status's `today.costUsd` use the same rule
+(`priceGroup` in `packages/core/src/usage.ts`) over the mochi's thread and the
+threads below it, subagents included ([mochis](mochis.md#budget-and-limits)), so
 the budget and this page agree on what a turn cost.
 
 ## When a provider refuses a turn

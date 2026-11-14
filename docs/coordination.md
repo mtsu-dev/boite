@@ -25,7 +25,7 @@ General, What agents may do alone, under Other conversations an agent reaches:
 - The setting belongs to one machine and only its owner changes it. An agent
   that needs more asks with a card you approve or refuse.
 - It never cuts a conversation from the subagents it started, a workflow from
-  its steps, a team from its members, a bot from the projects you entrusted to
+  its steps, a team from its members, a mochi from the projects you entrusted to
   it, or a project shared with a contact from that contact.
 - A conversation's own Communication between conversations still narrows it
   further, never widens it.
@@ -61,7 +61,7 @@ to write one to three short lines, and to keep to messages tied to work.
    Failed letter shows that state; tap it for the reason.
 
 The tag says who started whom: Started this thread, Started from here, Parent,
-Subagent, or Looks after the project for the [bot](bots.md) you entrusted the
+Subagent, or Looks after the project for the [mochi](mochis.md) you entrusted the
 project to. On a phone or a narrow panel, the list and the open discussion
 swap, with a back arrow.
 
@@ -82,9 +82,9 @@ conversations.
   your next message.
 - Archived conversations are never reachable.
 - Only the owner changes these settings. A paired device can look at them.
-- A bot's thread starts with coordination on like any other. Its letters to
+- A mochi's thread starts with coordination on like any other. Its letters to
   the threads of its projects still go when those threads are Off, paused or
-  limited to their project; a Pause on the bot's own thread stops them.
+  limited to their project; a Pause on the mochi's own thread stops them.
 
 ## Other machines
 
@@ -99,7 +99,7 @@ connections stay open.
 - Threads from the other machines, in that machine's Settings, Machines and
   updates, lets agents of the other machines start conversations there. It is
   off by default.
-- Bots from the other machines lets a bot of another machine look after the
+- Mochis from the other machines lets a mochi of another machine look after the
   projects of this one that you entrusted to it. It is off by default and
   cuts them off at once when you turn it off.
 - An offline machine keeps outgoing messages queued until it is back or they
@@ -134,6 +134,6 @@ connections stay open.
 ## Going further
 
 - [Subagents](subagents.md): child conversations that report back.
-- [Bots](bots.md): agents that look after projects.
+- [Mochis](mochis.md): agents that look after projects.
 - [Machines](machines.md) and [Contacts](contacts.md).
 - Technical reference: [coordination](internals/coordination.md).

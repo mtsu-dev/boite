@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync } from 'node:fs';
+import { cliStartupViolations } from './cli-startup.ts';
 import { boundaryViolations, cycles, dependencyGraph } from './graph.ts';
 import { readInventory, ROOTS } from './inventory.ts';
 import { nestedTickViolations, readBunTestSources } from './nested-tick.ts';
@@ -25,12 +26,13 @@ const errors = [
   ...cycles(graph).map(cycle => `runtime cycle: ${cycle}`),
   ...sizeViolations(lines, budget),
   ...nestedTickViolations(readBunTestSources()),
+  ...cliStartupViolations(sources),
 ];
 if (errors.length) throw new Error(`Architecture check failed:\n${errors.join('\n')}`);
 for (const note of sizeSlack(lines, budget)) console.log(`note: ${note} (bun run check:architecture --write-size-budget)`);
 const read = [...languages].map(([language, count]) => `${count} ${language}`).join(', ');
 console.log(
-  `Architecture passed: ${graph.size} modules, no runtime cycles or forbidden imports, ` +
+  `Architecture passed: ${graph.size} modules, no runtime cycles or forbidden imports, no heavy eager import on the boite CLI path, ` +
     `no promise matcher under bun test, no source above ${budget.ceiling} lines outside the ${Object.keys(budget.allow).length} files allowed to shrink ` +
     `and the ${Object.keys(budget.exempt ?? {}).length} exempt entries. Read ${read} files under ${ROOTS.join(', ')}; ` +
     'the graph takes TypeScript, JavaScript and Svelte scripts, the size check every one',

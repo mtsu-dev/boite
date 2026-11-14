@@ -59,15 +59,15 @@ test('template invalidations from another root of the project refresh only the t
   expect(f.reads.templates).toBe(2);
 });
 
-test.each([false, true])('a bot child in an entrusted project refreshes its parent library (initially empty: %s)', async empty => {
+test.each([false, true])('a mochi child in an entrusted project refreshes its parent library (initially empty: %s)', async empty => {
   const f = fixture('entrusted', null);
   f.store.openThread.id = 'child';
   f.store.openThread.parentThreadId = 'bot';
   if (empty) f.setTemplates([]);
   await f.workflows.loadWorkflows();
-  f.setTemplates([template(null, 'Changed on another bot')]);
+  f.setTemplates([template(null, 'Changed on another mochi')]);
   f.workflows.changed({ threadId: 'other-bot', runId: '', templatesProjectId: null });
-  await vi.waitFor(() => expect(f.workflows.workflowTemplates[0]?.name).toBe('Changed on another bot'));
+  await vi.waitFor(() => expect(f.workflows.workflowTemplates[0]?.name).toBe('Changed on another mochi'));
   expect(f.reads).toMatchObject({ runs: 1, templates: 2 });
   // Once a response identifies the parent library, the child's checkout project is unrelated.
   f.workflows.changed({ threadId: 'entrusted-root', runId: '', templatesProjectId: 'entrusted' });
