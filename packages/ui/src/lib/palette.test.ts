@@ -82,8 +82,10 @@ describe('scoreFields', () => {
 });
 
 describe('threadGroup', () => {
-  test('archived wins over done, done over the state, and only a turn under way or owed counts as running', () => {
-    expect(threadGroup({ archived: true, doneAt: 5 }, 'working')).toBe('archived');
+  test('done wins over archived, archived over the state, and only a turn under way or owed counts as running', () => {
+    // The core keeps a thread marked done archived, with the date it was done (core threads.ts).
+    expect(threadGroup({ archived: true, doneAt: 5 }, 'working')).toBe('done');
+    expect(threadGroup({ archived: true, doneAt: null }, 'working')).toBe('archived');
     expect(threadGroup({ doneAt: 5 }, 'working')).toBe('done');
     for (const state of ['working', 'queued', 'waiting', 'delegating', 'monitoring', 'background', 'watching']) expect(threadGroup({}, state)).toBe('running');
     for (const state of [null, 'done', 'error', 'interrupted']) expect(threadGroup({ doneAt: null }, state)).toBe('finished');

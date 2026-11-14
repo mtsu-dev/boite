@@ -151,13 +151,14 @@ export const BOTS_SECTION = 'bots';
 export const SECTION_ORDER: readonly string[] = ['running', 'finished', 'done', 'archived', 'project', BOTS_SECTION, 'command'];
 
 /**
- * A thread's group. Archived wins over done, done over what it is doing. `state` is the row's state as every list
+ * A thread's group. Done wins over archived, since the core keeps a thread marked done among its archived ones with
+ * the date it was done; archived wins over what it is doing. `state` is the row's state as every list
  * reads it (lib/thread-state.ts): at work covers a turn under way, a queued one, one that waits for the user and work
  * left in the background; a failure and a turn that ended are finished.
  */
 export function threadGroup(thread: { archived?: boolean; doneAt?: number | null }, state: string | null): ThreadGroup {
+  if (thread.doneAt != null) return 'done';
   if (thread.archived) return 'archived';
-  if (thread.doneAt) return 'done';
   return state === null || state === 'done' || state === 'error' || state === 'interrupted' ? 'finished' : 'running';
 }
 

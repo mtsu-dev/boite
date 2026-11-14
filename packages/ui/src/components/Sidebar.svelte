@@ -50,6 +50,7 @@
   import ArchivedThreads from './ArchivedThreads.svelte';
   import InfoTip from './InfoTip.svelte';
   import { archivedView, closeArchived } from '../lib/archived-view.svelte';
+  import { archivedFocus } from '../lib/archived-focus.svelte';
   // The archive belongs to this column: a list that comes back opens on its threads.
   onDestroy(closeArchived);
   let { store }: { store: Store } = $props();
@@ -99,6 +100,8 @@
   /** The display menu and the rail's machine button set it (machine-filter.svelte.ts). */
   let shownFilter = $derived(machineFilter.shown(machines));
   let visible = $derived(machines.filter((m) => shownFilter === null || m.id === shownFilter));
+  /** The archive of one project lists its own machine only: another machine has no such project to narrow to. */
+  let archiveMachines = $derived(archivedFocus.store && archivedFocus.projectId ? machines.filter((m) => m.store === archivedFocus.store) : visible);
   let all = $derived(visible.flatMap((machine) => machine.store.projects.map((project) => ({ machine, project }))));
   /** An archived project leaves the list for the fold under it; its threads keep running. */
   let groups = $derived(projectView.sorted(all.filter(({ project }) => project.archived !== true)));
@@ -266,8 +269,8 @@
           <h3 class="ui-label">{strings.settings.archived.heading}</h3>
           <InfoTip topic={strings.settings.archived.heading} text={strings.settings.archived.intro} />
         </div>
-        {#each visible as machine (machine.id)}
-          {#if multi}<p class="archive-machine" class:offline={machine.store.connection !== 'ready'}><MachineIcon icon={machine.icon} os={machine.store.core?.os} size={14} /><span class="ui-label">{machine.label}</span></p>{/if}
+        {#each archiveMachines as machine (machine.id)}
+          {#if multi && archiveMachines.length > 1}<p class="archive-machine" class:offline={machine.store.connection !== 'ready'}><MachineIcon icon={machine.icon} os={machine.store.core?.os} size={14} /><span class="ui-label">{machine.label}</span></p>{/if}
           <ArchivedThreads store={machine.store} eager place="list" />
         {/each}
       </div>

@@ -288,23 +288,26 @@ test('a subagent row names the thread that started it, and the parent title find
 
 test('done threads follow the finished ones, archived ones answer only to a query, and a subagent stands under its own state', async () => {
   const base = store.threads.find((thread) => thread.id === 't-descriptors')!;
-  store.threads.push(
-    { ...base, id: 't-marked', title: 'Loader shipped', doneAt: Date.now() },
-    { ...base, id: 't-shelved', title: 'Loader shelved', archived: true, archivedAt: Date.now() },
-    { ...base, id: 't-helper', title: 'Loader helper', parentThreadId: base.id, status: 'running', lastUserMessageAt: Date.now() }
-  );
+  store.threads.push({ ...base, id: 't-helper', title: 'Loader helper', parentThreadId: base.id, status: 'running', lastUserMessageAt: Date.now() });
+  // Marked done and archived through the client, as the app does: neither stays in the Store's list, the palette reads them.
+  await store.archive('t-trace', true);
+  await store.archive('t-bench');
+  expect(store.threads.some((thread) => thread.id === 't-trace' || thread.id === 't-bench')).toBe(false);
   store.paletteOpen = true;
   flushSync(); await tick();
   const shape = () => Array.from(document.querySelectorAll<HTMLElement>('[data-testid=palette-section]'))
     .filter((section) => section.dataset['section'] !== 'command')
     .map((section) => [section.dataset['section'], Array.from(section.querySelectorAll('[data-testid=palette-row]')).map((row) => row.getAttribute('data-palette-id')!.slice('thread:'.length))]);
-  expect(shape().map(([id]) => id)).toEqual(['running', 'finished', 'done']);
-  expect(shape()[0]![1]).toContain('t-helper');
+  await vi.waitFor(() => { flushSync(); expect(shape().map(([id]) => id)).toContain('done'); });
+  expect(shape().map(([id]) => id)).not.toContain('archived');
+  expect(shape().find(([id]) => id === 'done')![1]).toEqual(['t-trace']);
+  expect(shape().find(([id]) => id === 'running')![1]).toContain('t-helper');
   expect(document.querySelector('[data-palette-id="thread:t-helper"]')?.classList.contains('sub')).toBe(true);
-  expect(shape()[2]![1]).toEqual(['t-marked']);
-  await type('loader');
-  // The helper's parent is at work while its helper is: it stands under Running too, after the more recent helper.
-  expect(shape()).toEqual([['running', ['t-helper', 't-descriptors']], ['done', ['t-marked']], ['archived', ['t-shelved']]]);
+  await type('bench');
+  expect(shape().find(([id]) => id === 'archived')![1]).toEqual(['t-bench']);
+  // An archived row opens its thread, though the Store never listed it.
+  document.querySelector<HTMLElement>('[data-palette-id="thread:t-bench"]')!.click();
+  await vi.waitFor(() => expect(store.openThread?.id).toBe('t-bench'));
 });
 
 // The keyboard's ring marked the first row after a new query or a reopen, though no key had moved there.

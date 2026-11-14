@@ -6,6 +6,7 @@
   import { Closing } from '../lib/closing.svelte';
   import { minuteClock } from '../lib/clock.svelte';
   import { appCommands, runCommand } from '../lib/commands.svelte';
+  import { archivedThreads } from '../lib/archive';
   import { pluginUi } from '../lib/plugin-ui.svelte';
   import { focusComposer, focusedElement, restoreFocus } from '../lib/focus';
   import { projectName } from '../lib/format';
@@ -40,6 +41,20 @@
   const inShell = window.__TAURI_INTERNALS__ !== undefined;
   const phoneWidth = new MediaQuery('(max-width: 720px)');
   const now = $derived(minuteClock.now);
+  /** Each machine's done and archived threads, read when the palette opens: a Store's list holds neither (lib/archive.ts). */
+  let shelved = $state.raw(new Map<Store, ThreadSummary[]>());
+  let reading = 0;
+
+  function readShelved() {
+    const read = ++reading;
+    for (const machine of untrack(() => machines)) {
+      const owner = machine.store;
+      // A machine that cannot answer keeps what it showed last; the rest of the list does not wait for it.
+      void archivedThreads(owner).then((threads) => {
+        if (read === reading) shelved = new Map(shelved).set(owner, threads);
+      }).catch(() => {});
+    }
+  }
 
   $effect(() => {
     if (!store.paletteOpen) {
@@ -57,6 +72,7 @@
     selected = 0;
     keyed = false;
     overlay.show();
+    readShelved();
     void tick().then(() => input?.focus({ preventScroll: true }));
   });
 
@@ -82,7 +98,8 @@
     const items: PaletteItem[] = [];
     const places = new Map<string, Place>();
     for (const machine of machines) {
-      for (const thread of machine.store.threads) {
+      const live = new Set(machine.store.threads.map(thread => thread.id));
+      for (const thread of [...machine.store.threads, ...(shelved.get(machine.store) ?? []).filter(thread => !live.has(thread.id))]) {
         if (thread.incognito) continue;
         const project = machine.store.projects.find(p => p.id === thread.projectId) ?? null;
         const id = `thread:${machine.store.threadKey(thread.id)}`;
