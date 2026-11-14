@@ -29,7 +29,7 @@ export const strings = {
     groupingOptions: 'Display options',
     /** The thread list's name, in the rail and over the list. */
     threads: 'Threads',
-    /** The phone's Bots tab, read aloud: how many work now, and whether one needs the user. */
+    /** The phone's Mochis tab, read aloud: how many work now, and whether one needs the user. */
     surfaceWorking: '{count} at work',
     surfaceWaiting: '{count} at work, something needs you',
     /** The two ways the display options can list threads. */
@@ -145,6 +145,12 @@ export const strings = {
       delegating: 'Sub-agents',
       delegatingOne: 'Waiting on 1 sub-agent',
       delegatingMany: 'Waiting on {count} sub-agents',
+      /** The chip a parent's row carries while its delegated agents work, in every state: its title. */
+      subagentsOne: '1 sub-agent at work',
+      subagentsMany: '{count} sub-agents at work',
+      /** The same chip once a sub-agent asks the user something: the parent reads Needs you. */
+      subagentsAskingOne: '1 sub-agent needs you',
+      subagentsAskingMany: '{count} sub-agents need you',
       /** The turn ended, the agent still watches something: a monitor it left going. */
       monitoring: 'Monitoring',
       monitoringFor: 'Monitoring for {elapsed}',
@@ -158,6 +164,11 @@ export const strings = {
       awaiting: 'Waiting on {what}',
       /** That work ended without waking it: the agent stopped there, its result never came. */
       interrupted: 'Stopped',
+      /** The word beside the work ring: what the agent waits on, as short as "Needs you" so the list keeps it. */
+      workWord: {
+        delegating: 'Sub-agents', monitoring: 'Monitoring', ci: 'CI running', mergeQueue: 'Merge queue',
+        shell: 'Command', agent: 'Agent', workflow: 'Workflow', other: 'Background'
+      },
       /** Its machine stopped answering while it worked: what it does now is unknown until the machine is back. */
       unreachableWas: 'Machine offline. Last known state: {state}',
       interruptedBy: '{what} ended without reporting back: {reason}',

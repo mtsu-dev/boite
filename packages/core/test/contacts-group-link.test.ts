@@ -17,7 +17,7 @@ const setup = () => groupSetup(cores);
 
 const peerOf = (harness: TestCore, coreId: string): CoordinationPeer => harness.core.contacts.peers().find(peer => peer.coreId === coreId)!;
 
-test('a Bots host takes a member\'s contact: the contact follows it with its grants and pending request, reaches the member\'s projects through it, and sees only the group\'s name', async () => {
+test('a Mochis host takes a member\'s contact: the contact follows it with its grants and pending request, reaches the member\'s projects through it, and sees only the group\'s name', async () => {
   const { a, x, c, aClient, cClient, aId, xId, cId } = await setup();
   const alpha = await project(a, aClient, 'alpha');
   const aThread = await thread(aClient, alpha.id, 'Alpha work');
@@ -110,7 +110,7 @@ test('a forged move is refused and changes nothing', async () => {
   expect(a.core.contacts.linked(cId)).toBe(true);
 }, 60000);
 
-test('a Bots host the contact cannot reach: the move answers unreachable and the member keeps the link', async () => {
+test('a Mochis host the contact cannot reach: the move answers unreachable and the member keeps the link', async () => {
   const { a, x, c, aClient, aId, xId, cId } = await setup();
   // X gives an address nothing listens on.
   x.core.contacts.selfUrl = async () => 'http://127.0.0.1:9';
@@ -131,7 +131,7 @@ test('a Bots host the contact cannot reach: the move answers unreachable and the
   expect(x.core.contacts.has(cId)).toBe(false);
 }, 60000);
 
-test('a full Bots host refuses the hand: the member keeps the contact and its link, and the host lists it under the member', async () => {
+test('a full Mochis host refuses the hand: the member keeps the contact and its link, and the host lists it under the member', async () => {
   const { a, x, c, aClient, xClient, aId, xId, cId } = await setup();
   // A project of X opened to C through A: X keeps a copy of the contact A holds.
   const xray = await project(x, xClient, 'xray');
@@ -156,7 +156,7 @@ test('a full Bots host refuses the hand: the member keeps the contact and its li
   expect((await x.core.contacts.state()).contacts.find(contact => contact.coreId === cId)).toMatchObject({ heldBy: aId });
 }, 60000);
 
-test('with no Bots host, a member keeps its contacts under its own name', async () => {
+test('with no Mochis host, a member keeps its contacts under its own name', async () => {
   const { a, x, c, aId, xId, cId } = await setup();
   a.core.contacts.groupLink.sweep(true);
   await Bun.sleep(1000);
@@ -169,7 +169,7 @@ test('with no Bots host, a member keeps its contacts under its own name', async 
 }, 60000);
 
 
-test('a member without a Contacts bot asks through the Bots host: queued while the host is silent, filed there under its thread and id, refused after 7 days, and answered back', async () => {
+test('a member without a Contacts mochi asks through the Mochis host: queued while the host is silent, filed there under its thread and id, refused after 7 days, and answered back', async () => {
   const { a, x, c, aClient, xClient, cClient, aId, xId, cId } = await setup();
   const aThread = await thread(aClient, (await project(a, aClient, 'alpha')).id, 'Alpha work');
   remoteOn(a, aThread);
@@ -197,7 +197,7 @@ test('a member without a Contacts bot asks through the Bots host: queued while t
   await waitFor(() => x.core.contacts.requests.list().some(request => request.id === queued.id), 10000);
   expect(x.core.contacts.requests.list().find(request => request.id === queued.id)!.from).toMatchObject({ coreId: aId, threadId: aThread });
   await waitFor(() => requestOn(a, stale.id)?.status === 'refused', 10000);
-  expect(requestOn(a, stale.id)!.reason).toContain('Bots host stayed unreachable for 7 days');
+  expect(requestOn(a, stale.id)!.reason).toContain('Mochis host stayed unreachable for 7 days');
   expect(x.core.contacts.requests.list().some(request => request.id === stale.id)).toBe(false);
   await waitFor(() => requestOn(a, queued.id)?.stage !== 'host', 10000);
   expect(a.core.coordination.get(aThread).requests!.find(request => request.id === queued.id)).toMatchObject({ stage: 'bot', status: 'pending' });
@@ -223,7 +223,7 @@ test('a member without a Contacts bot asks through the Bots host: queued while t
   await waitFor(() => requestOn(x, queued.id)?.pendingMember === undefined, 10000);
 }, 60000);
 
-test('a relation made before the move carries letters both ways after it, through the Bots host', async () => {
+test('a relation made before the move carries letters both ways after it, through the Mochis host', async () => {
   const { a, x, c, aClient, cClient, aId, xId, cId } = await setup();
   const aThread = await thread(aClient, (await project(a, aClient, 'alpha')).id, 'Alpha work');
   const cThread = await thread(cClient, (await project(c, cClient, 'mine')).id, 'Guest work');
@@ -251,7 +251,7 @@ test('a relation made before the move carries letters both ways after it, throug
   expect(letters(c, cThread).find(letter => letter.text === 'Back from alpha')!.from).toMatchObject({ coreId: xId, threadId: memberThreadId(aId, aThread) });
 }, 90000);
 
-test('a Bots role change moves the Contacts bot first, under one move id per role revision, and the links follow once the host holds it', async () => {
+test('a Mochis role change moves the Contacts mochi first, under one move id per role revision, and the links follow once the host holds it', async () => {
   const { a, x, c, aClient, xId, cId } = await setup();
   await contactsBotOf(a, aClient);
   const sent: string[] = [];
@@ -280,7 +280,7 @@ test('a Bots role change moves the Contacts bot first, under one move id per rol
   expect(new Set(sent)).toEqual(new Set([id]));
 }, 90000);
 
-test('a member that announced its Contacts bot leaves the group before sending it: the Bots host starts a fresh one', async () => {
+test('a member that announced its Contacts mochi leaves the group before sending it: the Mochis host starts a fresh one', async () => {
   const { a, x, aClient, aId, xId } = await setup();
   await contactsBotOf(a, aClient);
   a.core.workforce.moves.move = async () => { throw new Error('unreachable: test'); };
@@ -292,7 +292,7 @@ test('a member that announced its Contacts bot leaves the group before sending i
   expect(x.core.journal.getSetting('contacts:bot-coming')).toBeUndefined();
 }, 60000);
 
-test('the Bots role moves on, from X to a third member Y, then back to A: a relation made before the first move still carries letters both ways, and the contact names the current host', async () => {
+test('the Mochis role moves on, from X to a third member Y, then back to A: a relation made before the first move still carries letters both ways, and the contact names the current host', async () => {
   const { a, x, c, aClient, cClient, aId, xId, cId } = await setup();
   const y = await startTestCore();
   cores.push(y);

@@ -57,7 +57,7 @@ test('Send now during Codex startup stops the old turn and starts one new native
   expect(harness!.core.threads.progress.get(threadId)?.phase).toBe('starting');
   await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0, sendNow: true,
     value: { input: { text: 'still typing', attachments: [], paused: false,
-      queued: [{ id: 'codex-startup-followup', text: 'also check the bots', attachments: [] }] } } });
+      queued: [{ id: 'codex-startup-followup', text: 'also check the mochis', attachments: [] }] } } });
   await waitFor(() => harness!.core.journal.getTurn(turn.id)?.status === 'stopped');
   await waitFor(() => harness!.core.composer.storage.get('inputs', threadId).value?.input.queued.length === 0);
   await waitFor(() => fakeLog().split('\n').filter(line => line.startsWith('turn/start ')).length === 1);
@@ -65,7 +65,7 @@ test('Send now during Codex startup stops the old turn and starts one new native
   const turns = harness!.core.journal.listTurns(threadId);
   expect(turns).toHaveLength(2);
   expect(turns[1]?.status).toBe('running');
-  expect(harness!.core.journal.listMessages(threadId).filter(message => message.role === 'user').at(-1)).toMatchObject({ turnId: turns[1]!.id, parts: [{ type: 'text', text: 'also check the bots' }] });
+  expect(harness!.core.journal.listMessages(threadId).filter(message => message.role === 'user').at(-1)).toMatchObject({ turnId: turns[1]!.id, parts: [{ type: 'text', text: 'also check the mochis' }] });
   expect(harness!.core.composer.storage.get('inputs', threadId).value?.input.text).toBe('still typing');
   expect(fakeLog()).not.toContain('waiting for interrupt');
   writeFileSync(outputGate, 'ready');

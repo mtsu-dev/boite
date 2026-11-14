@@ -19,7 +19,7 @@ import { BOT_GUIDE } from '../agent-guide.ts';
 
 const AGENTS_MD_MAX = 32_000;
 const SKILLS_MAX = 50;
-/** The routine lines of the block stop here; the rest are counted, read with `boite bot routines`. */
+/** The routine lines of the block stop here; the rest are counted, read with `boite mochi routines`. */
 export const ROUTINES_TEXT_MAX = 2_000;
 /** Where `linked-pull-requests.ts` keeps a thread's links. */
 const LINKED = 'linked-pull-requests:';
@@ -156,14 +156,14 @@ function routineSection(lines: readonly string[]): string {
     size += line.length + 1;
   }
   const more = lines.length - shown.length;
-  return `Your routines:\n${shown.join('\n')}${more ? `${shown.length ? '\n' : ''}${more} more: boite bot routines` : ''}`;
+  return `Your routines:\n${shown.join('\n')}${more ? `${shown.length ? '\n' : ''}${more} more: boite mochi routines` : ''}`;
 }
 
 function render(core: Core, agent: AgentProfile, inputs: ContextInputs): string {
   const { brain, memoryPath, memory, archive, archived, skills, routineLines, projects, persona, guided } = inputs;
   const desk = deskLines(core, agent);
   const text = [
-    'Boite: who you are, as a bot. This block comes again only when it changes; your conversation so far is in this session.',
+    'Boite: who you are, as a mochi. This block comes again only when it changes; your conversation so far is in this session.',
     persona,
     `Your brain is ${brain.path}. Its AGENTS.md:\n${capped(brain.instructions.trim(), AGENTS_MD_MAX, join(brain.path, 'AGENTS.md')) || '(empty)'}`,
     `Your memory, ${memoryPath}:\n${memory || '(empty)'}`,

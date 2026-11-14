@@ -610,7 +610,7 @@ test('a link that shares the inviter, pasted without an API key, offers the shar
   expect(one('contact-join-share')).toBeNull();
 });
 
-test('with the group\'s Bots machine offline and no Operator here, the card says where it is', async () => {
+test('with the group\'s Mochis machine offline and no Operator here, the card says where it is', async () => {
   const store = await draw();
   expect((await contacts(store)).bot).toBeFalsy();
   const self = store.group?.self ?? 'core-home';
@@ -622,7 +622,7 @@ test('with the group\'s Bots machine offline and no Operator here, the card says
   await vi.waitFor(() => { flushSync(); expect(one('home-bot-away')).toBeNull(); });
 });
 
-test('the Operator card links the bot, lists the threads in touch with an End that asks first, and shows open flags read-only', async () => {
+test('the Operator card links the mochi, lists the threads in touch with an End that asks first, and shows open flags read-only', async () => {
   const store = await draw();
   await store.client!.call('agents.builtin.ensure', { kind: 'contacts', name: strings.agents.builtin.name.contacts });
   await contactsOf(store).refresh();

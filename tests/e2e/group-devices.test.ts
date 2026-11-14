@@ -220,8 +220,9 @@ test('a phone installed from one machine scans the code of another and lists and
   }
   expect(await phone.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
 
-  // Settings, Machines on the phone: the group, its two machines and this phone, in one list.
+  // Settings, Devices on the phone: the group, its two machines and this phone, in one list.
   await mobileAction(phone, 'mobile-settings');
+  await phone.waitFor(`document.querySelector('${id('settings-tab-devices')}')`);
   await phone.click(id('settings-tab-devices'));
   await phone.waitFor(`document.querySelectorAll('${id('machine-card')}').length === 2 && document.querySelector('${id('group-device')}')`);
   expect(await phone.evaluate(`document.body.textContent.includes('Phones and other devices')`)).toBe(false);

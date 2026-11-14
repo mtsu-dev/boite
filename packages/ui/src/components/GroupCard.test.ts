@@ -187,7 +187,7 @@ test('a member says how it is reached, and the default machine is picked once fo
   expect(one('group-home-older')!.textContent).toContain('Second');
 });
 
-test('the Bots machine is a second role picked the same way, shut on a core that cannot store it', async () => {
+test('the Mochis machine is a second role picked the same way, shut on a core that cannot store it', async () => {
   const first = await grouped();
   const second = await joined();
   workspace.machines = [...workspace.machines, { id: 'second', label: 'Second', store: second }];

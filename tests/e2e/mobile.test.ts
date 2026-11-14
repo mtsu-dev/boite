@@ -364,7 +364,7 @@ test('the panel sheet, Agents and Settings keep clear of a notch and the status 
     await page.waitFor(`!document.querySelector('[data-testid=right-panel]')`);
     await navigateMobile('mobile-agents');
     // The Bots screen lends its title, search and "+" to the phone header, the row nearest the notch.
-    await page.waitFor(`document.querySelector('.agents-rail') && document.querySelector('[data-testid=mobile-header] strong')?.textContent === 'Bots'`);
+    await page.waitFor(`document.querySelector('.agents-rail') && document.querySelector('[data-testid=mobile-header] strong')?.textContent === 'Mochis'`);
     expect(await top('[data-testid=mobile-header] strong')).toBeGreaterThanOrEqual(47);
     await capture('mobile-safe-agents.png');
     await navigateMobile('mobile-settings');

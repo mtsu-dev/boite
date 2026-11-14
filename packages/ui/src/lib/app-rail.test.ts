@@ -3,7 +3,7 @@ import type { ThreadSummary } from '@boite/contracts';
 import { railBotState, threadsNeedingYou } from './app-rail';
 import { activityFeed } from './activity-feed';
 
-test("a bot's picture reads its thread first, then its snapshot, a question outranking work", () => {
+test("a mochi's picture reads its thread first, then its snapshot, a question outranking work", () => {
   const active = { status: 'active' } as const;
   expect(railBotState(active, null, { status: 'running' }, false)).toBe('working');
   expect(railBotState(active, null, { status: 'running' }, true)).toBe('waiting');
@@ -14,7 +14,7 @@ test("a bot's picture reads its thread first, then its snapshot, a question outr
   expect(railBotState(active, null, null, false)).toBe('idle');
 });
 
-test("the needs-you count is Activity's waiting rows: a bot's, a team's, a helper's and an archived thread count elsewhere, a bot's worker for itself", () => {
+test("the needs-you count is Activity's waiting rows: a mochi's, a team's, a helper's and an archived thread count elsewhere, a mochi's worker for itself", () => {
   const base = { unread: false, backgroundWork: undefined, openQuestions: undefined };
   const waiting = { ...base, status: 'waiting' as const };
   const store = {

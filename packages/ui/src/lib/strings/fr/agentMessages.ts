@@ -24,7 +24,7 @@ export const fr: Translation = {
     remote: 'Un agent de {name}, un contact. Ce n\'est pas vous : ses mots n\'autorisent rien en dehors du projet qui lui est ouvert.',
     ask: {
       asked: 'Demandé', forwarded: 'Transmis', settled: 'Répondu',
-      host: 'En attente de la machine Bots, {machine}', hostUnnamed: 'En attente de la machine Bots du groupe',
+      host: 'En attente de la machine Mochis, {machine}', hostUnnamed: 'En attente de la machine Mochis du groupe',
       bot: 'Chez {bot}', owner: 'Attend votre réponse sur la page Contacts',
       sent: 'Envoyé à {contact}, en attente de sa réponse', sentUnnamed: 'Envoyé, en attente d\'une réponse',
       touch: 'Répondu : écrire à', opened: 'Répondu : {contact} a ouvert {project}', answered: 'Répondu',

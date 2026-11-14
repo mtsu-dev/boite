@@ -42,7 +42,8 @@ async function open(query: string, size: typeof DESKTOP) {
 }
 
 async function capture(name: string) {
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+  // The shared wait leaves out what is not drawn: a phone's chat under the list holds animations that never end (lib/cdp.ts).
+  await page.settleAnimations();
   await page.screenshot(join(ARTIFACTS, name));
 }
 
@@ -74,7 +75,7 @@ for (const [name, size] of [['desktop', DESKTOP], ['phone', PHONE]] as const) {
     await page.evaluate(`localStorage.removeItem('boite.experiments'); localStorage.removeItem('boite.experiments.build')`);
   }, 60000);
 
-  test(`${name}: Bots are in the ${name === 'desktop' ? 'app rail' : 'bottom bar'} on a fresh profile`, async () => {
+  test(`${name}: Mochis are in the ${name === 'desktop' ? 'app rail' : 'bottom bar'} on a fresh profile`, async () => {
     await open('&agents=1', size);
     expect(await page.evaluate(`localStorage.getItem('boite.experiments')`)).toBeNull();
     // A phone opens on the conversation: its bar is on the list.

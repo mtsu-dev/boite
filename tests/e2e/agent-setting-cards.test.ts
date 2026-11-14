@@ -112,7 +112,7 @@ test('a persistent agent\'s card stands in its conversation', async () => {
   await page.waitFor(`!document.querySelector('${card}')`);
 }, 60000);
 
-test('a bot asks to change its name, picture and instructions; Apply renames it', async () => {
+test('a mochi asks to change its name, picture and instructions; Apply renames it', async () => {
   await page.navigate(`http://127.0.0.1:${port}/?fake=1&agents=1`);
   await page.send('Emulation.setDeviceMetricsOverride', DESKTOP);
   await page.waitFor(`document.querySelector('[data-testid="rail-add"], [data-testid="mobile-agents"]')`);
@@ -172,7 +172,7 @@ test('a native event wake setting card works at desktop and phone widths', async
     const agent = await store.client.call('agents.profile.save', { value: { name: 'Scheduled scout', domain: '', instructions: '', avatar: '', status: 'active', projectIds: [], selection: { providerId: 'echo', accountId: 'a-echo', model: 'echo-1', effort: null, permissionMode: 'default' } } });
     const thread = await store.client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: 'a-echo' });
     await window.__boiteTest.workspace.select(store, thread.id);
-    await store.client.call('turns.start', { threadId: thread.id, prompt: 'Configure the bot.' });
+    await store.client.call('turns.start', { threadId: thread.id, prompt: 'Configure the mochi.' });
     await store.client.settled();
     await store.client.call('agents.settings.request', { threadId: thread.id, agent: agent.id, key: 'eventWakes', value: true, reason: 'Hear project news as it lands, not only with the routines.' });
     return agent.id;

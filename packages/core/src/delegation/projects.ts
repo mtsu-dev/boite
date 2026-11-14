@@ -14,6 +14,6 @@ export function childProject(core: Core, parent: ThreadSummary, explicit?: strin
     if (project.id !== parent.projectId) throw refused('delegation.spawn.project: ordinary conversations delegate only in their own project', { field: 'project', expected: 'the parent conversation project' });
     return parent;
   }
-  if (!entrusted.includes(project.id)) throw refused(`delegation.spawn.project: ${explicit} is not entrusted to this bot`, { field: 'project', expected: 'a live project entrusted to this bot' });
+  if (!entrusted.includes(project.id)) throw refused(`delegation.spawn.project: ${explicit} is not entrusted to this mochi`, { field: 'project', expected: 'a live project entrusted to this mochi' });
   return { projectId: project.id, cwd: project.path, branch: null };
 }

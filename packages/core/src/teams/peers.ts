@@ -75,7 +75,7 @@ function audienceOf(value: unknown, field: string): TeamAudience {
 /** A team as a batch carries it: every field checked, nothing kept that the store does not know. */
 function teamOf(value: unknown): Team {
   const raw = fields(value, 'team');
-  if (!Array.isArray(raw.members) || raw.members.length > TEAM_MEMBERS_MAX) throw invalidParams(`team.members: expected at most ${TEAM_MEMBERS_MAX} bots`);
+  if (!Array.isArray(raw.members) || raw.members.length > TEAM_MEMBERS_MAX) throw invalidParams(`team.members: expected at most ${TEAM_MEMBERS_MAX} mochis`);
   const version = count(raw.version, 'team.version');
   if (version < 1) throw invalidParams('team.version: expected 1 or more');
   return {
@@ -383,7 +383,7 @@ export class TeamPeers {
   /** The owner answered a card on a member's machine: the change happens here. Only a machine with a bot in the team asks, and it takes out only its own. */
   async #forOwner(peer: CoordinationPeer, raw: Fields): Promise<unknown> {
     const team = this.#hosted(raw.teamId);
-    if (!team.members.some(member => member.coreId === peer.coreId)) throw refused(`teamId: ${peer.name} has no bot in ${team.name}`, { field: 'teamId', reason: 'not-your-bot' });
+    if (!team.members.some(member => member.coreId === peer.coreId)) throw refused(`teamId: ${peer.name} has no mochi in ${team.name}`, { field: 'teamId', reason: 'not-your-bot' });
     this.#store.gate();
     if (raw.action === 'add') {
       const bot = await this.bot(raw.bot, 'bot');
@@ -409,9 +409,9 @@ export class TeamPeers {
     const slash = wanted.indexOf('/');
     const machine = wanted.slice(0, slash).trim();
     const name = wanted.slice(slash + 1).trim();
-    if (!machine || !name) throw invalidParams(`${field}: expected <machine>/<bot>`);
+    if (!machine || !name) throw invalidParams(`${field}: expected <machine>/<mochi>`);
     const group = this.#core.group.view('owner');
-    if (group === null) throw refused(`${field}: this machine is in no group, so ${JSON.stringify(wanted)} names no bot`, { field });
+    if (group === null) throw refused(`${field}: this machine is in no group, so ${JSON.stringify(wanted)} names no mochi`, { field });
     const peers = this.#core.group.peers();
     const named = foldMachine(machine);
     const here = group.cores.find(entry => entry.coreId === group.self)?.name;
@@ -422,7 +422,7 @@ export class TeamPeers {
       const answer = fields(await this.#core.coordination.request(peer, 'team.bot', { ref: name }), 'answer');
       return { coreId: peer.coreId, botId: text(answer.botId, 'answer.botId', 100), name: text(answer.name, 'answer.name', 200) };
     } catch (error) {
-      throw this.#failure(peer, error, 'its bots can join once it answers');
+      throw this.#failure(peer, error, 'its mochis can join once it answers');
     }
   }
 
@@ -467,7 +467,7 @@ export class TeamPeers {
     if (ask.kind === 'invite' && ask.teamId !== team.id) throw refused(`card: it asks about another team, ${ask.teamName}`, { field: 'card' });
     const ref = this.#distant(params.botId) ? params.botId : `${this.#self}/${params.botId}`;
     const done = await this.#ask(team, 'team.owner', { action: 'add', teamId: team.id, bot: ref }) as { name?: unknown };
-    this.#store.settle(card, `applied: ${typeof done?.name === 'string' ? done.name : 'the bot'} joined ${team.name}`);
+    this.#store.settle(card, `applied: ${typeof done?.name === 'string' ? done.name : 'the mochi'} joined ${team.name}`);
     return this.#store.get(team.id) ?? team;
   }
 

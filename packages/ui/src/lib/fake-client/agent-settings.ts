@@ -202,7 +202,7 @@ export function agentSettingMethods(ctx: FakeContext): Handlers {
   return {
     'agents.create': params => {
       const thread = ctx.thread(params.threadId);
-      if (thread.archived) throw refused('an archived thread cannot create a bot', { threadId: thread.id });
+      if (thread.archived) throw refused('an archived thread cannot create a mochi', { threadId: thread.id });
       const checked = checkAgentCreate(params, {
         bots: ctx.agents.liveProfiles(),
         projects: ctx.projects.filter(project => project.kind !== 'drafts').map(project => ({ id: project.id, label: project.name })),
@@ -213,7 +213,7 @@ export function agentSettingMethods(ctx: FakeContext): Handlers {
       // As the core: on `ask` nothing is created, the owner reads a card in the calling thread.
       const bot = checked.value;
       if ([...ctx.pendingQuestions.values()].some(pending => pending.request.threadId === thread.id && pending.request.setting?.kind === 'bot' && pending.request.setting.bot.name.toLowerCase() === bot.name.toLowerCase())) {
-        throw refused(`a card asking to create the bot ${JSON.stringify(bot.name)} is already open in this thread`, { field: 'name' });
+        throw refused(`a card asking to create the mochi ${JSON.stringify(bot.name)} is already open in this thread`, { field: 'name' });
       }
       const turn = thread.turns.find(entry => entry.status === 'running') ?? thread.turns.at(-1);
       if (!turn) throw refused('the thread has no turn to ask in yet', { threadId: thread.id });
@@ -225,7 +225,7 @@ export function agentSettingMethods(ctx: FakeContext): Handlers {
       const pending = ctx.pendingQuestions.get(params.questionId);
       const ask = pending?.request.setting;
       if (pending?.request.threadId !== params.threadId || ask?.kind !== 'bot') {
-        throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `agents.create.approve: ${String(params.questionId)} is no open bot card of thread ${String(params.threadId)}`, data: { field: 'questionId' } });
+        throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `agents.create.approve: ${String(params.questionId)} is no open mochi card of thread ${String(params.threadId)}`, data: { field: 'questionId' } });
       }
       const { name, domain, instructions, projectIds, selection } = ask.bot;
       // As the core: checked again, the name may have been taken since the card was drawn.
@@ -293,7 +293,7 @@ export function agentSettingMethods(ctx: FakeContext): Handlers {
     // As the core: a thread dresses a bot, itself or another, with no card.
     'agents.avatar.set': params => {
       const thread = ctx.thread(params.threadId);
-      if (thread.archived) throw refused('an archived thread cannot change a bot', { threadId: thread.id });
+      if (thread.archived) throw refused('an archived thread cannot change a mochi', { threadId: thread.id });
       const agent = agentFor(ctx, thread.id, params.agent);
       const normalized = normalizeAgentSetting('avatar', params.avatar, context(ctx, agent));
       if (!normalized.ok) throw refused(normalized.message, { field: 'avatar' });

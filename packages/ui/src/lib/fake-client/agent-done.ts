@@ -52,7 +52,7 @@ export function agentDoneMethods(ctx: FakeContext) {
       const { threadId } = params;
       const thread = ctx.thread(threadId);
       if (thread.parentThreadId) throw refusal('a sub-thread is put away with its parent once its work is delivered', { threadId, field: 'threadId', expected: 'a top-level thread' });
-      if (thread.agentSessionId) throw refusal('a bot\'s thread stays open', { threadId, field: 'threadId', expected: 'a conversation thread' });
+      if (thread.agentSessionId) throw refusal('a mochi\'s thread stays open', { threadId, field: 'threadId', expected: 'a conversation thread' });
       if (thread.archived) throw refusal('this thread is already archived', { threadId, field: 'threadId', expected: 'a thread that is not archived' });
       if (busy(ctx, thread)) {
         ctx.waitingDone.add(threadId);

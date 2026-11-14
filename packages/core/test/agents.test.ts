@@ -38,7 +38,7 @@ test('creating an agent creates its thread and starts its introduction there', a
   expect(snapshot.watches).toEqual([]);
 });
 
-test('a restart that has not read an agent\'s models yet does not report the bot\'s model as gone', async () => {
+test('a restart that has not read an agent\'s models yet does not report the mochi\'s model as gone', async () => {
   // A provider whose models only its agent lists, as Codex's are.
   const descriptor = h.core.providers.require('echo');
   descriptor.protocol = 'acp';
@@ -64,7 +64,7 @@ test('a restart that has not read an agent\'s models yet does not report the bot
   } finally { reset(); descriptor.protocol = 'echo'; }
 });
 
-test('an Antigravity bot saved on a pre-1.4 model id is not reported as gone', async () => {
+test('an Antigravity mochi saved on a pre-1.4 model id is not reported as gone', async () => {
   // Antigravity 1.4 lists `gemini-3.8-flash` and takes the level apart, yet
   // still runs the `gemini-3.8-flash-low` a bot made before it holds.
   const descriptor = h.core.providers.require('echo');
@@ -83,7 +83,7 @@ test('an Antigravity bot saved on a pre-1.4 model id is not reported as gone', a
   } finally { reset(); descriptor.protocol = 'echo'; delete descriptor.quirks; }
 });
 
-test('a pinned bot stays pinned through a save that predates the field, until it is unpinned', async () => {
+test('a pinned mochi stays pinned through a save that predates the field, until it is unpinned', async () => {
   const value = agentValue(echoAccount(h));
   const agent = await client.call('agents.profile.save', { value });
   expect(agent.pinned).toBeUndefined();
@@ -131,7 +131,7 @@ test('a user message on an agent thread is an ordinary turn: queued, steered, st
 
 test('an agent thread is never deleted; archiving the agent archives it and the agent comes back with it', async () => {
   const { agent, threadId } = await makeAgent(h, client);
-  expect(await thrown(client.call('threads.remove', { threadId }))).toThrow("a bot's thread goes when the bot is archived");
+  expect(await thrown(client.call('threads.remove', { threadId }))).toThrow("a mochi's thread goes when the mochi is archived");
   const archived = await client.call('agents.profile.save', { id: agent.id, expectedRevision: agent.revision, value: { ...agent, status: 'archived' } });
   expect(h.core.threads.require(threadId).archived).toBe(true);
   expect((await client.call('agents.snapshot', {})).status[0]!.state).toBe('archived');
@@ -139,7 +139,7 @@ test('an agent thread is never deleted; archiving the agent archives it and the 
   expect(h.core.threads.require(threadId).archived).toBe(false);
 });
 
-test('a bot thread removed with its project tells the clients, so no snapshot keeps naming it', async () => {
+test('a mochi thread removed with its project tells the clients, so no snapshot keeps naming it', async () => {
   const { threadId } = await makeAgent(h, client);
   // A bot carried over from an older core may keep its thread in a project.
   const project = await testProject(h, client);
@@ -160,7 +160,7 @@ test('a bot thread removed with its project tells the clients, so no snapshot ke
   expect(told).toMatchObject({ 'thread.updated': true, 'thread.removed': true });
 });
 
-test('renaming a bot keeps the route its thread was moved to; a new route on the bot moves it', async () => {
+test('renaming a mochi keeps the route its thread was moved to; a new route on the mochi moves it', async () => {
   const { agent, threadId } = await makeAgent(h, client);
   // The user moved the conversation itself to another mode.
   await client.call('threads.update', { threadId, permissionMode: 'plan' });
@@ -194,13 +194,13 @@ test('an agent thread reads its own snapshot and nothing of another agent; an or
   } finally { own.close(); }
   const { threadId: ordinary } = await echoThread(h, client);
   const plain = await connect(h.url, h.core.agents.tokenFor(ordinary));
-  try { expect(await thrown(plain.call('agents.snapshot', { threadId: ordinary }))).toThrow("no bot's thread"); }
+  try { expect(await thrown(plain.call('agents.snapshot', { threadId: ordinary }))).toThrow("no mochi's thread"); }
   finally { plain.close(); }
 });
 
 test('an unused provider account still belongs to its persistent profile', async () => {
   await makeAgent(h, client);
-  expect(await thrown(client.call('accounts.remove', { accountId: echoAccount(h) }))).toThrow('this account is used by a bot');
+  expect(await thrown(client.call('accounts.remove', { accountId: echoAccount(h) }))).toThrow('this account is used by a mochi');
 });
 
 test('a paired phone lists agents, opens one and talks to it with turns.start', async () => {

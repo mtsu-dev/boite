@@ -5,7 +5,7 @@ disappear, so each one has a switch in Settings, Version, Experiments.
 
 ## Where they exist
 
-Experiments exist in Nightly builds only. A Release has no Experiments card
+Experiments exist in Nightly and Dev builds only. A Release has no Experiments card
 on its Version page and runs none of them, whatever was switched on before.
 
 A few are still being built and exist only in Boite Dev, the build made from
@@ -21,7 +21,7 @@ Dev only.
 - The machine your window is connected to decides. A phone or a browser
   paired with a machine on a Release has no Experiments page either.
 - When an experiment is finished, it leaves this page and is on for everyone,
-  in a Release too. Bots, the Grain theme, Claude Code session import, the
+  in a Release too. Mochis, the Grain theme, Claude Code session import, the
   prompt cache timer, pinned model quotas and actions shown in recordings
   were experiments once: they need no switch any more.
 
@@ -45,7 +45,7 @@ Dev only.
 | Whip | An animated whip that follows your pointer or finger; flick to crack it, click or tap to drop it | This device |
 | Contacts | Link your Boite with another owner's through Tailscale | This device |
 | Automatic goals | A long prompt starts a reviewed goal with its checklist and a board card | This device |
-| Teams | Bots that work together in a shared chat | The desktop app |
+| Teams | Mochis that work together in a shared chat | The desktop app |
 | Council | Several AIs review a piece of work or a plan, each alone and read-only | The desktop app |
 | Keep the prompt cache warm | Short pings that keep the provider's cache while a conversation waits on its agents | The machine |
 | Background compaction | A copy of the session compacts at 85% of the token limit while you keep working | The machine |
@@ -53,7 +53,7 @@ Dev only.
 
 ## Notes on some experiments
 
-- Turning Contacts on creates the Operator, the built-in bot that carries
+- Turning Contacts on creates the Operator, the built-in mochi that carries
   every request.
 - Teams and Council are also read by the machine, from its desktop app's
   switches, and a phone follows the desktop app for them. Turning Council off
@@ -69,7 +69,7 @@ Dev only.
 
 - [Updates](updates.md): Release and Nightly.
 - [Contacts](contacts.md) and [council](council.md): the larger experiments.
-- [Bots](bots.md): teams.
+- [Mochis](mochis.md): teams.
 - [Goals](goals.md): reviewed goals and automatic goals.
 - [Context](context.md): compaction and the prompt cache.
 - [Devices](devices.md): the Device panel.

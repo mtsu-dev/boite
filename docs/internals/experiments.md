@@ -3,7 +3,8 @@
 An experiment is unfinished work behind a switch in Settings > Version > Experiments.
 Every feature has a tag, `release`, `nightly` or `dev`, and exists only in the
 builds at or above it: a Release has none of the unfinished ones, in its
-behaviour and in its files.
+behaviour and, the Contacts' core side aside
+([out of the build](#out-of-the-build)), in its files.
 
 ## Tags
 
@@ -12,7 +13,7 @@ Every feature has one tag, in `EXPERIMENT_STAGES`
 
 | Tag | Meaning | Ids |
 | --- | --- | --- |
-| `release` | Finished. On in every build, with no switch. | `theme-grain`, `session-import`, `prompt-cache`, `resident-agents` (Bots), `recording-indicators`, `pinned-quotas` |
+| `release` | Finished. On in every build, with no switch. | `theme-grain`, `session-import`, `prompt-cache`, `resident-agents` (Mochis), `recording-indicators`, `pinned-quotas` |
 | `nightly` | May change or go away. A switch in a Nightly and in a Dev build, absent from a Release. | `whip`, `contacts`, `auto-goal`, `teams`, `debates` (Council) |
 | `dev` | Being built. A switch in a Dev build only, absent from a Nightly and from a Release. | none today |
 
@@ -41,8 +42,8 @@ sides read: `featureRuns(id, version)`, `listedExperiments(version)` (the
 switches a build shows), `effectiveExperiments(chosen, version)` (what is on:
 every finished feature, plus the chosen ones whose tag the build reaches) and
 `experimentRefusal(id, version)` (why a build has no switch for an id). The
-refusal names the builds that have it and this one: "experiment.whip runs in Dev builds
-only, and this machine runs a Nightly (2.0.0-nightly.20261113.1)". A stored
+refusal names the builds that have it and this one: "experiment.whip runs in Nightly and Dev
+builds only, and this machine runs a Release (2.0.0)". A stored
 choice for a feature the build lacks is ignored and kept.
 `experimentsRun(version)` and `isReleaseVersion(version)` remain for the
 places that ask about the nightly tag as a whole.
@@ -86,7 +87,7 @@ run": the version in the hello (`info.version`) is enough.
   (`packages/ui/src/lib/settings-sync.ts`). The core also starts nothing new
   in Contacts on a Release (`contacts/gate.ts`, `experimentStartRefusal`):
   inviting, joining, granting, offering, asking, accepting a request or mail,
-  trusting a contact, storing a Tailscale key and the Contacts bot's
+  trusting a contact, storing a Tailscale key and the Contacts mochi's
   forwards are refused with the Nightly reason, while reading, refusing,
   revoking and removing what exists still answer. The same holds for what a
   Nightly left in the data directory: accepting an association, turning its
@@ -94,10 +95,10 @@ run": the version in the hello (`info.version`) is enough.
   (`sharedBoard.apply`, `todos.update` on a shared card), a path override and
   a follow-up to a compute job are refused, while declining, turning off,
   removing a card, releasing a claim, cancelling a job and revoking go
-  through. The Contacts bot proposes no plan (`contacts.bot.askOwner` with
+  through. The Contacts mochi proposes no plan (`contacts.bot.askOwner` with
   `connect` or `start`), and a Yes on a card drawn as a Nightly opens and
   starts nothing: the build is read when the owner answers and again when the
-  plan runs, and the request goes back to the bot. A letter the bot held as a
+  plan runs, and the request goes back to the mochi. A letter the mochi held as a
   Nightly is not delivered either (`contacts.bot.flag` with `deliver: true`):
   its flag stays open, and blocking it still answers. A workflow step meets
   the same refusal, since the compute service reads the build itself. A
@@ -164,8 +165,10 @@ to, as [chat files and previews](chat-files.md),
 
 ## Out of the build
 
-A build below a feature's tag does not ship the feature's code. Refusing at
-run time is not enough for that: the bundler has to drop the modules.
+A build below a feature's tag does not ship the feature's code, with one
+exception: the Contacts' core side stays in every build and is refused at run
+time (the table below says why). Refusing at run time is not enough for the
+rest: the bundler has to drop the modules.
 
 A packaged build knows its kind when it is compiled. `featureDefines(version)`
 turns the stamped version into `__BOITE_BUILD_KIND__`, the one constant, and
@@ -232,7 +235,7 @@ script). A call with an effect is one thing no bundler drops, where an unused
 constant goes as soon as a module is imported by name: so a module that
 reaches a bundle carries its marker there however it got in.
 `scripts/ci/feature-cut.ts` reads a bundle and fails when it holds the marker
-of a feature above its kind (a leak), or lacks the marker of a feature it
+of a feature cut from that bundle and tagged above its kind (a leak), or lacks the marker of a feature it
 must hold (the marker went, and the first check would pass on anything):
 
 ```sh
@@ -346,24 +349,24 @@ a click does nothing, and its tooltip says animations are off in the system
 settings, with the Windows path. It comes back as soon as the setting changes.
 
 
-## Bots
+## Mochis
 
-The Bots page ([bots](bots.md)) and every button that leads there: the
-bots' pictures and `+` in the app rail, the phone's Bots tab, the command
-palette row and the link from a bot's own thread. Bots are finished
+The Mochis page ([mochis](mochis.md)) and every button that leads there: the
+mochis' pictures and `+` in the app rail, the phone's Mochis tab, the command
+palette row and the link from a mochi's own thread. Mochis are finished
 (`resident-agents` is `release`): the page is there in every build, with no
 switch.
 
 ## Teams
 
-Teams of bots ([teams](teams.md)). The switch gates
+Teams of mochis ([teams](teams.md)). The switch gates
 the `teams.*` methods and `boite team` commands on the teams a machine holds,
 on the core, which reads the desktop app's experiments, and the team lines of
-the bots' guide. A machine with its switch off lets no bot of its own enter a
-team; a bot already in a team another machine holds stays in it, and that
+the mochis' guide. A machine with its switch off lets no mochi of its own enter a
+team; a mochi already in a team another machine holds stays in it, and that
 machine's switch decides ([teams](teams.md#across-machines)). Letters
-already in a bot's inbox still go out once it is off. In the app it shows the
-Teams section above the bots on the Bots page, on the desktop and on the
+already in a mochi's inbox still go out once it is off. In the app it shows the
+Teams section above the mochis on the Mochis page, on the desktop and on the
 phone, and the team chats there ([teams](teams.md#in-the-app)); a phone
 follows the desktop's switch.
 
@@ -381,10 +384,10 @@ round under way: its answers still come back.
 
 ## Contacts
 
-Turning it on creates the Contacts bot
-([contacts](contacts.md#the-contacts-bot)) on the window's machine and on
+Turning it on creates the Contacts mochi
+([contacts](contacts.md#the-contacts-mochi)) on the window's machine and on
 every connected owner machine with a contact, once; turning it off leaves the
-bot on the core, like any bot. A paired phone only flips its own switch.
+mochi on the core, like any mochi. A paired phone only flips its own switch.
 
 The contacts column and the Contacts page ([contacts](contacts.md)). On a
 desktop window the contacts stand in a column on the right edge, the thread

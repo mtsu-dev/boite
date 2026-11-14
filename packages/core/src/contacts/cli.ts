@@ -16,7 +16,7 @@ export interface ContactsOptions {
   worktree: boolean;
 }
 
-export const CONTACTS_HELP = `Contacts bot (only its own thread):
+export const CONTACTS_HELP = `Contacts mochi (only its own thread):
   contacts                       requests waiting on you, relations, open flags,
                                  contacts and the projects you may use
   contacts forward <request-id> <contact>[/<thread-id>] [text]
@@ -67,7 +67,7 @@ export function viewLines(view: ContactsBotView): string[] {
     `relations (${view.relations.length}):`, ...(view.relations.length ? view.relations.map(relationLine) : ['  none']),
     `open flags (${flags.length}):`, ...(flags.length ? flags.map(flagLine) : ['  none']),
     `contacts (${view.contacts.length}):`,
-    ...(view.contacts.length ? view.contacts.map(contact => `  ${contact.name} (${contact.link}${contact.trusted ? ', trusted' : ''}${contact.bot ? ', has a Contacts bot' : ''}${contact.heldBy ? `, linked through ${contact.heldBy}${contact.heldReason ? `: ${contact.heldReason}` : ''}` : ''}) opened to us: ${contact.offers.join(', ') || 'nothing'}; we opened: ${contact.granted.join(', ') || 'nothing'}`) : ['  none']),
+    ...(view.contacts.length ? view.contacts.map(contact => `  ${contact.name} (${contact.link}${contact.trusted ? ', trusted' : ''}${contact.bot ? ', has a Contacts mochi' : ''}${contact.heldBy ? `, linked through ${contact.heldBy}${contact.heldReason ? `: ${contact.heldReason}` : ''}` : ''}) opened to us: ${contact.offers.join(', ') || 'nothing'}; we opened: ${contact.granted.join(', ') || 'nothing'}`) : ['  none']),
     `projects here (${view.projects.length}):`,
     ...view.projects.map(project => `  ${project.name} (${project.id})${project.gitRemote ? ` ${project.gitRemote}` : ''}`),
   ];
@@ -97,7 +97,7 @@ export async function contactsCommand(client: CoreClient, threadId: string, rest
     const [contact = '', target] = want(2, 'a contact, or <contact>/<thread-id>').split('/');
     const note = rest.slice(3).join(' ').trim();
     const request = await client.call('contacts.bot.forward', { threadId, id, contact, ...(target ? { target } : {}), ...(note ? { text: note } : {}) });
-    done(request, `sent to ${request.contact}; its Contacts bot answers, and the answer reaches the asking thread`);
+    done(request, `sent to ${request.contact}; its Contacts mochi answers, and the answer reaches the asking thread`);
   } else if (action === 'connect') {
     const request = await client.call('contacts.bot.connect', { threadId, id: want(1, 'a request id'), target: want(2, 'a thread id here') });
     done(request, `relation ${request.relation?.id ?? ''} made; both threads were told how to write to each other`);

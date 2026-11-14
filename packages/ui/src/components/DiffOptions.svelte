@@ -40,11 +40,14 @@
 
 <span class="diff-options">
   <Menu {items} onpick={pick} switches placement="bottom" align="end" variant="text" label={strings.chat.diffView} testid="diff-options">
-    <WrapText size={14} strokeWidth={1.75} /><span class="ui-label" data-testid="diff-layout">{NAMES[layout]()}</span><ChevronDown size={13} strokeWidth={1.75} />
+    <WrapText size={14} strokeWidth={1.75} /><span class="ui-label" data-testid="diff-layout">{NAMES[layout]()}</span><ChevronDown class="caret" size={13} strokeWidth={1.75} />
   </Menu>
 </span>
 
 <style>
   .diff-options { display: inline-flex; flex: none; min-width: 0; color: var(--color-muted-foreground); }
   .diff-options :global(.trigger) { height: var(--control-sm); gap: 4px; }
+  /* In a panel strip short of room (RightPanel.svelte) the control stands alone: its icon, the layout ticked in its menu. */
+  :global(.surface-head.tight) .diff-options .ui-label { display: none; }
+  :global(.surface-head.tightest) .diff-options :global(.caret) { display: none; }
 </style>
