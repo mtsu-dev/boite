@@ -35,6 +35,10 @@ export function cliOptions(ctx: SessionContext, host: OptionsHost, lazyMcp: Reco
   const mode = ctx.thread.contextMode ?? null;
   return {
     resume: ctx.sessionId ?? undefined,
+    // The thread already has a name, and the core asks for a better one itself
+    // (`titles.ts`). Without this the CLI names every new session with one
+    // more request on the thread's model, for a title nothing in Boite reads.
+    ...(ctx.sessionId === null && ctx.thread.title.trim() !== '' ? { title: ctx.thread.title } : {}),
     // A rewind or a fork: the transcript up to that entry, under a new
     // session id, so the original session is never cut.
     ...(ctx.sessionId !== null && ctx.resumeAt ? { resumeSessionAt: ctx.resumeAt, forkSession: true } : {}),
