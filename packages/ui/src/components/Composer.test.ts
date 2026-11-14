@@ -2775,7 +2775,6 @@ test('a pasted copy that stays over the byte total at its smallest says to remov
 
 test('a send held by a fit is dropped when the composer moves to another thread meanwhile', async ({ app: _app }) => {
   const { copyImages } = await import('../lib/composer-clipboard');
-  const { browserCodec } = await import('../lib/image-prepare');
   const { ATTACHMENTS_TOTAL_MAX_BYTES, decodedBytes } = await import('@boite/contracts');
   const heavy = Array.from({ length: 30 }, (_, at) => ({ kind: 'image' as const, mimeType: 'image/jpeg' as const, data: Buffer.alloc(400 * 1024, at).toString('base64'), name: `shot-${at}.jpg` }));
   const decode = await slowCodec();
@@ -2807,7 +2806,6 @@ test('a send held by a fit is dropped when the composer moves to another thread 
 /** A question on t-trace the composer answers, pictures pasted over the byte total on a slow codec, and every answer recorded. */
 async function answerWhileFitting() {
   const { copyImages } = await import('../lib/composer-clipboard');
-  const { browserCodec } = await import('../lib/image-prepare');
   const { writeAnswer } = await import('../lib/question-reply.svelte');
   const heavy = Array.from({ length: 30 }, (_, at) => ({ kind: 'image' as const, mimeType: 'image/jpeg' as const, data: Buffer.alloc(400 * 1024, at).toString('base64'), name: `shot-${at}.jpg` }));
   await slowCodec();
