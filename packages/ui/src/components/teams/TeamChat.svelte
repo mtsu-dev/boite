@@ -183,7 +183,7 @@
             </button>
           {/if}
           <div class="said">
-            <div class="body" class:bubble={own} title={own || grouped ? fullTime(post.at) : undefined}><Prose text={post.text} {store} threadId={thread.id} /></div>
+            <div class="body" class:bubble={own} class:answer-bubble={!own} title={own || grouped ? fullTime(post.at) : undefined}><Prose text={post.text} {store} threadId={thread.id} /></div>
             {#if !closed && team}
               <button type="button" class="ghost small icon reply" title={labels.reply} aria-label={labels.reply} onclick={() => answer(post)} data-testid="team-post-reply"><Reply size={14} /></button>
             {/if}
@@ -231,7 +231,7 @@
   .day-slot:first-child, .about + .day-slot { margin-top: 0; }
   .day-slot + .post { margin-top: 0; }
 
-  /* One post, a thread's message: the bot's on the page under its picture and name, the owner's a bubble on the right. */
+  /* One post, a thread's message: the bot's in an answer's bubble under its picture and name, the owner's a bubble on the right. */
   /* Positioned: the owner's hidden name stays inside its post, not at the end of a scrolling ancestor. */
   .post { position: relative; display: flex; flex-direction: column; align-items: flex-start; min-width: 0; margin-top: var(--chat-message-gap); }
   .post.fresh { animation: rise var(--dur-3) var(--ease-out-quint); }
@@ -260,12 +260,12 @@
 
   /* The words and, beside them, the one action a post takes. */
   .said { display: flex; align-items: flex-start; gap: 4px; width: 100%; min-width: 0; }
-  .post:not(.own) .body { flex: 1; }
   .post.own .said { flex-direction: row-reverse; width: auto; max-width: min(85%, var(--prose)); }
-  .body { flex: 0 1 auto; min-width: 0; padding-left: var(--activity-padding); overflow-wrap: anywhere; }
+  /* A bot's words: an answer's bubble (`.answer-bubble`, app.css), as a thread draws them; the lines around it stay outside. */
+  .body { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
   /* The owner's own words: a prompt's bubble (UserMessage.svelte). */
   .bubble { padding: 12px 16px; background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-bubble); border-bottom-right-radius: var(--radius-sm); }
-  .post.own.private .bubble { border-style: dashed; border-color: var(--color-edge); }
+  .post.private .body { border-style: dashed; border-color: var(--color-edge); }
   .reply { flex: none; opacity: 0; color: var(--color-muted-foreground); transition: opacity var(--dur-2); }
   .post.own .reply { align-self: center; }
   .post:hover .reply, .post:focus-within .reply { opacity: 1; }

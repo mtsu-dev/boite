@@ -300,7 +300,7 @@
   <div class="chips">{#if target.chips}{@render target.chips()}{/if}</div>
   {:else}
   <!-- The model chip stays named while the box answers a question: the next turn runs on it. -->
-  <!-- Two lines on a phone, each control in its own place: what runs the turn (model, effort), then how it runs (permission) with the context at the end. A desktop reads them as one row. -->
+  <!-- One row on a phone as on a desktop: what runs the turn (model, effort), then how it runs (permission) with the context at the end. -->
   <div class="chips">
     <div class="line runs">
     <!-- A bot's model is its own setting: its chip names it and changes nothing here. -->
@@ -433,7 +433,7 @@
     flex-wrap: wrap;
     min-width: 0;
   }
-  /* A desktop row reads the two lines as one. */
+  /* The two groups read as one row. */
   .line { display: contents; }
   /* A desktop chip is a 32 px target, the head's control height. */
   .chips :global(.trigger) {
@@ -509,7 +509,7 @@
   /* A desktop composer under 520 px, too narrow for "Effort High" and the mode's
      words beside the model, keeps the effort and mode chips to their icons and
      tooltips: the words would wrap the row and drop send half a row below the
-     chips. A phone's chips keep their words on their own two lines. */
+     chips. A phone's chips keep their words. */
   @media (min-width: 721px) {
     @container composer (max-width: 520px) {
       .chips :global(:is(.effort, .permission) > .trigger > .ui-label) { display: none; }
@@ -571,20 +571,20 @@
     :global(.composer-wrap .composer:has(.bar .tools[data-worded][data-count='2'])) { --composer-tools: calc(10.5rem + var(--touch-target)); }
     :global(.composer-wrap .composer:has(.bar .tools[data-worded=answer][data-count='1'])) { --composer-tools: 6.5rem; }
     :global(.composer-wrap .composer:has(.bar .tools[data-worded=answer][data-count='2'])) { --composer-tools: calc(6.5rem + var(--touch-target)); }
-    /* Every value whole: a row too short for them wraps onto a second one
-       under it, each row a 44 px target (36 px chips, 8 px between rows). The
-       "+" stays on the first row, the field above never changes its place in
-       the card. */
-    .chips { flex: 1; flex-direction: column; align-items: stretch; gap: 8px; min-height: var(--touch-target); padding-block: 4px; }
+    /* One row under the field: the model, the effort and the permission beside
+       the "+", the context reading at its end when it shows. The chevrons go,
+       a chip's hairline already says it opens, and the model is the one value
+       that gives: its name ends in an ellipsis before a chip leaves the row
+       (its menu says it whole). Only what still cannot fit, a long effort
+       beside a notice, wraps onto a second row of 44 px targets. */
+    .chips { flex: 1; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px 6px; min-width: 0; min-height: var(--touch-target); padding-block: 4px; }
     .bar > :global(.options) { align-self: flex-start; }
-    /* A designed grid, not a wrap: the first line holds the model and the
-       effort beside the "+", the second the permission, the context reading
-       at its end when it shows. Each control keeps its place whether or not
-       the context is there; a line too short for its values wraps itself. */
-    .line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 6px; min-width: 0; }
-    .line.how:not(:has(*)) { display: none; }
-    .line > :global(*) { flex: none; max-width: 100%; }
-    .line.how > .context-control { margin-inline-start: auto; }
+    .chips :global(*) { max-width: 100%; }
+    .chips > .line > :global(*) { flex: none; }
+    /* Counted at its floor when the row is laid out, then grown back to its name's width. */
+    .chips > .line > :global(.picker) { flex: 1 1 0; min-width: 76px; max-width: max-content; }
+    .chips :global(:is(.picker, .effort, .permission) > .trigger > :is(.chevron, .lucide-chevron-down)) { display: none; }
+    .chips > .line > .context-control { margin-inline-start: auto; }
     /* Each setting reads as a control at rest: a quiet surface and a hairline
        around its icon, its value and its chevron, 36 px drawn in a 44 px target. */
     .bar .chips :global(:is(.picker, .effort, .permission) > .trigger) {
@@ -597,17 +597,19 @@
       background: color-mix(in oklab, var(--color-foreground) 4%, transparent);
     }
     .bar .chips :global(:is(.picker, .effort, .permission) > .trigger)::after { content: ''; position: absolute; inset: -4px 0; }
-    .chips :global(.picker > .trigger) { max-width: none; }
-    .chips :global(.picker > .trigger > .label) { max-width: none; overflow: visible; }
+    .chips :global(.picker > .trigger) { min-width: 0; max-width: 100%; }
+    .chips :global(.picker > .trigger > .label) { min-width: 0; max-width: none; }
+    .chips :global(.picker > .trigger > svg) { flex: none; }
     .bar .chips :global(.picker > .trigger.connect) { padding: 0 12px; background: var(--color-active); color: var(--color-foreground); }
   }
   /* A 360 px phone: the "+" takes a 32 px column, its 44 px target kept by
-     the icon button's hit zone, and the chips' sides close in. A value never
-     shrinks: what does not fit goes to the next row. */
+     the icon button's hit zone, and the chips' sides close in. */
   @media (max-width: 379px) {
     .bar { gap: 0; padding-inline: 4px; }
     .bar :global(.options .opener) { margin-inline: -2px; }
     .bar .chips :global(:is(.picker, .effort, .permission) > .trigger) { padding: 0 7px; gap: 4px; }
-    .line { column-gap: 4px; }
+    .chips { column-gap: 4px; }
+    /* The bolt says effort: its word goes so the model's name stays whole. */
+    .chips :global(.effort > .trigger .name) { display: none; }
   }
 </style>

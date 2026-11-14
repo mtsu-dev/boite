@@ -54,9 +54,10 @@
 <style>
   .draft { width: 100%; height: auto; min-height: var(--row); justify-content: flex-start; gap: 8px; padding: 8px 10px; font-weight: 400; -webkit-touch-callout: none; }
   .draft.active { background: var(--color-active); }
-  .draft :global(svg) { flex: none; color: var(--color-muted-foreground); }
+  /* The pencil in the accent: the user's own words, waiting to be sent. */
+  .draft :global(svg) { flex: none; color: var(--color-accent); }
   .draft[data-queued='waiting'] :global(svg) { color: var(--color-muted-foreground); }
-  .draft[data-queued='starting'] :global(svg) { color: var(--color-foreground); }
+  .draft[data-queued='starting'] :global(svg) { color: var(--color-accent); }
   .draft.failed :global(svg) { color: var(--color-danger); }
   /* No width of its own: a long draft takes what the row has left and is cut there. Sized by
      its text, it widened the whole card and pushed the rows' states past the edge. */

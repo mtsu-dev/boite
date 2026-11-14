@@ -2602,6 +2602,13 @@ html[data-glass] #app {
   background: transparent;
 }
 
+/* Menus, popovers and cards stay opaque, so a word is never read over the wallpaper, but they step
+   down toward the ground the slabs are mixed from: on the bare raised fill they read lighter than
+   the chrome the material darkens around them. */
+@supports (color: color-mix(in oklab, white 50%, black)) {
+  html[data-glass] { --overlay-surface: color-mix(in oklab, var(--color-surface-2) 55%, var(--color-background)); }
+}
+
 @media (min-width: 721px) {
   html[data-glass] .app {
     background: color-mix(in oklab, var(--color-frame) 80%, transparent);

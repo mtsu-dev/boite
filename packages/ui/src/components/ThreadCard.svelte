@@ -348,14 +348,14 @@
   .row:active:not(:disabled) {
     transform: none;
   }
-  /* A move waiting for the turn's end, like the marker the move leaves in the chat. */
+  /* A move waiting for the turn's end: the accent, like the marker the move leaves in the chat. */
   .pending {
     display: flex;
     align-items: center;
     gap: 4px;
     min-width: 0;
     font-size: var(--text-xs);
-    color: var(--color-muted-foreground);
+    color: var(--color-accent);
   }
   .pending span {
     overflow: hidden;

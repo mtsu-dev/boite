@@ -52,5 +52,5 @@
     height: auto;
   }
   button.label:hover, button.label:focus-visible { color: var(--color-foreground); }
-  .label :global(svg) { flex: none; color: var(--color-muted-foreground); }
+  .label :global(svg) { flex: none; color: var(--color-accent); }
 </style>
