@@ -4,6 +4,14 @@
  * the page as an accessibility-style tree whose elements carry `[ref=eN]`,
  * and every command takes `@eN`, a CSS selector or `text=...`.
  *
+ * An element keeps its ref for as long as it stays in its document, and a
+ * number is never given twice there. Numbers come in blocks of `BLOCK`: block
+ * `b` holds `e(b * BLOCK + 1)` to `e(b * BLOCK + BLOCK - 1)`. The top document
+ * starts in block 0, so its refs begin at `e1`; the core grants every other
+ * block, to a frame of another origin or to a document that filled its last
+ * one, and never grants one twice in a tab (`automation.ts`). A ref's block
+ * therefore names the document that holds its element.
+ *
  * The page is untrusted. The kit keeps its state on a symbol of the page's
  * window, never in the DOM, so the page's own markup and observers are left
  * alone, and returns plain data only. Native input is the caller's; the kit's
@@ -14,9 +22,11 @@
 function agentKit() {
   const KEY = Symbol.for('boite.agent.v1');
   if (window[KEY]) return window[KEY];
-  const K = { refs: new Map(), token: Math.random().toString(36).slice(2), leaving: false };
+  const K = { refs: new Map(), ids: new WeakMap(), blocks: [], used: 0, token: Math.random().toString(36).slice(2), leaving: false };
   Object.defineProperty(window, KEY, { value: K, configurable: true });
   addEventListener('beforeunload', () => { K.leaving = true; }, true);
+  const BLOCK = 1000;
+  const alive = el => el.isConnected && !!el.ownerDocument.defaultView;
 
   const IMPLICIT = { A: 'link', BUTTON: 'button', SELECT: 'combobox', TEXTAREA: 'textbox', SUMMARY: 'button', H1: 'heading', H2: 'heading', H3: 'heading', H4: 'heading', H5: 'heading', H6: 'heading', IMG: 'img', NAV: 'navigation', MAIN: 'main', FORM: 'form', UL: 'list', OL: 'list', LI: 'listitem', TABLE: 'table', TR: 'row', TD: 'cell', TH: 'columnheader', DIALOG: 'dialog', IFRAME: 'iframe', OPTION: 'option', ASIDE: 'complementary' };
   const INPUT = { checkbox: 'checkbox', radio: 'radio', button: 'button', submit: 'button', reset: 'button', image: 'button', range: 'slider', number: 'spinbutton', search: 'searchbox', file: 'button' };
@@ -93,10 +103,28 @@ function agentKit() {
     return line;
   };
 
-  // `start` numbers refs after those of the documents read before; `base` is the depth of a frame's document
-  // under its iframe. A frame of another origin is listed in `frames` for the core to read through its own context.
+  // `top` is the tab's own document, whose refs start in block 0; `grant` is the first block this document may
+  // take, and the ones after it. `base` is the depth of a frame's document under its iframe. A frame of another
+  // origin is listed in `frames` for the core to read through its own context.
   K.snapshot = (opts = {}) => {
-    K.refs = new Map(); let n = opts.start || 0;
+    // An element the page dropped for good leaves the table; its number stays spent.
+    for (const [ref, weak] of K.refs) if (!weak.deref()) K.refs.delete(ref);
+    if (opts.top && !K.blocks.length) K.blocks.push(0);
+    let n = 0, taken = 0;
+    const refOf = el => {
+      n++;
+      let ref = K.ids.get(el);
+      if (!ref) {
+        if (!K.blocks.length || K.used >= BLOCK - 1) {
+          K.blocks.push(opts.grant === undefined ? (K.blocks.length ? K.blocks[K.blocks.length - 1] + 1 : 0) : opts.grant + taken++);
+          K.used = 0;
+        }
+        ref = 'e' + (K.blocks[K.blocks.length - 1] * BLOCK + ++K.used);
+        K.ids.set(el, ref);
+      }
+      if (!K.refs.has(ref)) K.refs.set(ref, new WeakRef(el));
+      return ref;
+    };
     const out = []; const frames = []; let size = 0; const MAX = opts.maxChars || 40000; let truncated = false;
     const emit = (depth, text) => {
       if (truncated) return;
@@ -126,8 +154,7 @@ function agentKit() {
       if (isVisible || viaLabel) {
         if (r && (INTERACTIVE.has(r) || r === 'heading' || r === 'iframe' || (!opts.interactive && r === 'img'))) {
           flush();
-          const ref = INTERACTIVE.has(r) || r === 'heading' || r === 'iframe' ? 'e' + (++n) : null;
-          if (ref) K.refs.set(ref, new WeakRef(el));
+          const ref = INTERACTIVE.has(r) || r === 'heading' || r === 'iframe' ? refOf(el) : null;
           const at = out.length;
           emit(depth, describe(el, r, ref, opts));
           if (r === 'iframe') {
@@ -168,18 +195,20 @@ function agentKit() {
     flush();
     if (truncated) out.push('  '.repeat(opts.interactive ? 0 : opts.base || 0) + '- note: snapshot truncated at ' + (opts.limit || MAX) + ' characters; use snapshot -i, -s <selector> or -d <depth>');
     if (!out.length && !opts.base) out.push(document.readyState === 'loading' ? '- note: the page is still loading' : '- note: no visible content');
-    return { text: out.join('\n'), refs: n, frames };
+    return { text: out.join('\n'), refs: n, frames, truncated, blocks: K.blocks.slice(-50) };
   };
 
   K.find = target => {
     const t = String(target).trim();
     const ref = /^@?(e\d+)$/.exec(t);
     if (ref) {
-      const weak = K.refs.get(ref[1]);
-      if (!weak) throw new Error(K.refs.size ? 'unknown ref @' + ref[1] + '; take a new snapshot' : 'ref @' + ref[1] + ' belongs to an earlier page: this one has no snapshot yet; take one');
-      const el = weak.deref();
-      if (!el || !el.isConnected) throw new Error('ref @' + ref[1] + ' is stale because the page changed; take a new snapshot');
-      return el;
+      const el = K.refs.get(ref[1])?.deref();
+      if (el && alive(el)) return el;
+      // A number this document gave out names an element that left it.
+      const n = Number(ref[1].slice(1)), block = Math.floor(n / BLOCK), at = n % BLOCK;
+      const given = at > 0 && K.blocks.includes(block) && (block !== K.blocks[K.blocks.length - 1] || at <= K.used);
+      if (el || given) throw new Error('ref @' + ref[1] + ' is stale because the page changed; take a new snapshot');
+      throw new Error(K.used ? 'unknown ref @' + ref[1] + '; take a new snapshot' : 'ref @' + ref[1] + ' belongs to an earlier page: this one has no snapshot yet; take one');
     }
     if (/^text=/.test(t)) {
       const wanted = t.slice(5).replace(/^"(.*)"$/, '$1').toLowerCase();

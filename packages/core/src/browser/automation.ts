@@ -6,6 +6,7 @@
  */
 import type { BrowserAction, BrowserActionResult, BrowserDialog, BrowserReply } from '@boite/contracts';
 import { kit } from './page-kit.ts';
+import { snapshotDiff } from './snapshot-diff.ts';
 import { CdpSessionDetachedError } from './cdp.ts';
 import type { PageRuntime } from './page-runtime.ts';
 
@@ -36,9 +37,29 @@ export interface AgentPage extends FrameChannel {
   /** Downloads this tab's frames began: a navigation that turned into one ends there. */
   downloads?: number;
   frames?: PageFrames;
-  /** Refs the last snapshot found in frames of other origins, each with the iframe refs that lead to it from the top. */
-  frameRefs?: Map<string, string[]>;
+  /** What the tab's snapshots left behind: where its refs live and what the last one read. */
+  snapshots?: SnapshotState;
 }
+
+/**
+ * Refs are stable and unique across a tab's documents. The page kit numbers
+ * them in blocks of `REF_BLOCK` (`page-kit.ts`): the top document owns block 0
+ * (`e1` to `e999`), and every other block is granted here, `next` first, to a
+ * frame of another origin or to a document that filled its block. A block is
+ * never granted twice in the tab's life, so a ref names one element of one
+ * document: `routes` keeps, for each block a frame holds, the iframe refs that
+ * lead to that frame from the top, and a ref whose block has no route is the
+ * top document's.
+ */
+interface SnapshotState {
+  next: number;
+  routes: Map<number, string[]>;
+  /** The last snapshot, which the next one of the same document and options is compared with: `SNAPSHOT_CHARS` and a few notes at most. */
+  last: { token: string; key: string; lines: string[]; truncated: boolean } | null;
+}
+const REF_BLOCK = 1000;
+/** Blocks whose route is kept: a page that swaps its frames for hours forgets the oldest. */
+const ROUTES_MAX = 2000;
 
 /** The kinds this module runs; the others belong to the browser itself. */
 export const PAGE_ACTIONS = new Set<BrowserAction['kind']>(['snapshot', 'click', 'hover', 'focus', 'check', 'uncheck', 'scrollintoview', 'fill', 'type', 'select', 'press', 'scroll', 'get', 'wait', 'dialog', 'history']);
@@ -93,11 +114,11 @@ async function enter(page: AgentPage, channel: FrameChannel, ref: string): Promi
 /** A target's document, and the iframes of other origins that lead there from the top one. */
 interface Scope { channel: FrameChannel; path: Array<{ parent: FrameChannel; owner: string }> }
 
-/** Where `target` lives: a ref the last snapshot read in a frame of another origin is reached through its iframes. */
+/** Where `target` lives: a ref a snapshot read in a frame of another origin is reached through its iframes. */
 async function scopeOf(page: AgentPage, target: string | undefined): Promise<Scope> {
   const scope: Scope = { channel: page, path: [] };
   const ref = target === undefined ? undefined : /^@?(e\d+)$/.exec(target.trim())?.[1];
-  for (const owner of (ref && page.frameRefs?.get(ref)) || []) {
+  for (const owner of (ref && page.snapshots?.routes.get(Math.floor(Number(ref.slice(1)) / REF_BLOCK))) || []) {
     const child = await enter(page, scope.channel, `@${owner}`).catch(() => null);
     if (!child) throw new Error(`ref @${ref} is inside a frame that changed or is gone; take a new snapshot`);
     scope.path.push({ parent: scope.channel, owner: `@${owner}` });
@@ -111,39 +132,63 @@ const SNAPSHOT_FRAMES_MAX = 30;
 /** What a snapshot holds at most, frames included; the page kit stops there too. */
 const SNAPSHOT_CHARS = 40_000;
 
-interface SnapshotPart { text: string; refs: number; frames?: Array<{ ref: string; at: number; depth: number }> }
-interface Reading { next: number; left: number; frames: number; routes: Map<string, string[]>; options: Record<string, unknown> }
+interface SnapshotPart { text: string; refs: number; truncated: boolean; blocks: unknown; frames?: Array<{ ref: string; at: number; depth: number }> }
+interface Reading { left: number; frames: number; refs: number; truncated: boolean; state: SnapshotState; options: Record<string, unknown> }
 
 /**
  * A snapshot of the tab: the top document, then each frame of another origin
- * read in its own context and set under its iframe, its refs numbered after
- * those read before. A frame of the same origin is already in its parent's.
+ * read in its own context and set under its iframe. A frame of the same origin
+ * is already in its parent's. The same document read again with the same
+ * options answers with what changed (`snapshot-diff.ts`), unless `full` asks
+ * for everything, a snapshot was cut short or the changes are more than half
+ * the text.
  */
-async function snapshot(page: AgentPage, action: Extract<BrowserAction, { kind: 'snapshot' }>): Promise<{ text: string; refs: number; url: string; title: string }> {
+async function snapshot(page: AgentPage, action: Extract<BrowserAction, { kind: 'snapshot' }>): Promise<{ text: string; refs: number; url: string; title: string; diff?: true }> {
   const options = { interactive: action.interactive, compact: action.compact, depth: action.depth, urls: action.urls };
-  const top = await run<SnapshotPart & { url: string; title: string }>(page, `return { ...K.snapshot(${js({ ...options, selector: action.selector })}), url: location.href, title: document.title }`);
-  const reading: Reading = { next: top.refs, left: SNAPSHOT_CHARS - top.text.length, frames: 0, routes: new Map(), options };
+  const state = page.snapshots ??= { next: 1, routes: new Map(), last: null };
+  const top = await run<SnapshotPart & { url: string; title: string; token: string }>(page, `return { ...K.snapshot(${js({ ...options, selector: action.selector, top: true, grant: state.next })}), url: location.href, title: document.title, token: K.token }`);
+  // The top document's later blocks need no route: a ref without one is its own.
+  for (const block of blocksOf(top)) if (block >= state.next) state.next = block + 1;
+  const reading: Reading = { left: SNAPSHOT_CHARS - top.text.length, frames: 0, refs: top.refs, truncated: top.truncated === true, state, options };
   const lines = await withFrames(page, page, [], top, reading);
-  page.frameRefs = reading.routes;
-  return { text: lines.join('\n'), refs: reading.next, url: top.url, title: top.title };
+  const key = js({ ...options, selector: action.selector }), previous = state.last, full = lines.join('\n');
+  state.last = { token: top.token, key, lines, truncated: reading.truncated };
+  const same = !action.full && previous && previous.token === top.token && previous.key === key && !previous.truncated && !reading.truncated;
+  const diff = same ? snapshotDiff(previous.lines, lines) : null;
+  const shown = diff !== null && diff.length * 2 <= full.length;
+  return { text: shown ? diff : full, refs: reading.refs, url: top.url, title: top.title, ...(shown ? { diff: true } : {}) };
+}
+
+/** The blocks a document says it numbers its refs in; the page can write anything there. */
+function blocksOf(part: SnapshotPart): number[] {
+  return Array.isArray(part.blocks) ? part.blocks.filter((block): block is number => Number.isSafeInteger(block) && block >= 0 && block < 1e9) : [];
 }
 
 async function withFrames(page: AgentPage, channel: FrameChannel, route: string[], part: SnapshotPart, reading: Reading): Promise<string[]> {
   const lines = part.text ? part.text.split('\n') : [];
+  const { state } = reading;
   let shift = 0;
   for (const frame of part.frames ?? []) {
     const indent = '  '.repeat(reading.options.interactive ? 0 : frame.depth);
     let inner: string[];
-    if (reading.frames >= SNAPSHOT_FRAMES_MAX || reading.left <= 0) inner = [`${indent}- note: not read, the snapshot is full; snapshot -s <selector> reads a part of the page`];
+    if (reading.frames >= SNAPSHOT_FRAMES_MAX || reading.left <= 0) { reading.truncated = true; inner = [`${indent}- note: not read, the snapshot is full; snapshot -s <selector> reads a part of the page`]; }
     else {
       reading.frames++;
       const child = await enter(page, channel, frame.ref).catch(() => null);
-      const read = child && await run<SnapshotPart>(child, `return K.snapshot(${js({ ...reading.options, start: reading.next, base: frame.depth, maxChars: reading.left, limit: SNAPSHOT_CHARS })})`, 5000).catch(() => null);
+      const granted = state.next;
+      const read = child && await run<SnapshotPart>(child, `return K.snapshot(${js({ ...reading.options, grant: granted, base: frame.depth, maxChars: reading.left, limit: SNAPSHOT_CHARS })})`, 5000).catch(() => null);
       if (!child || !read) inner = [`${indent}- note: this frame could not be read`];
       else {
-        for (let n = reading.next + 1; n <= read.refs; n++) reading.routes.set(`e${n}`, [...route, frame.ref]);
-        reading.next = read.refs; reading.left -= read.text.length;
-        inner = await withFrames(page, child, [...route, frame.ref], read, reading);
+        const inside = [...route, frame.ref];
+        for (const block of blocksOf(read)) {
+          // A frame keeps the blocks it was granted, and takes new ones from `granted` on: never another document's.
+          if (block < 1 || (block < granted && state.routes.get(block)?.join(' ') !== inside.join(' '))) continue;
+          state.routes.delete(block); state.routes.set(block, inside);
+          if (block >= state.next) state.next = block + 1;
+        }
+        for (const oldest of state.routes.keys()) { if (state.routes.size <= ROUTES_MAX) break; state.routes.delete(oldest); }
+        reading.refs += read.refs; reading.left -= read.text.length; reading.truncated ||= read.truncated === true;
+        inner = await withFrames(page, child, inside, read, reading);
       }
     }
     // With -i, a frame with nothing to act on says nothing.

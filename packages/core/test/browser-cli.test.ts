@@ -110,6 +110,7 @@ test('the browser CLI reads agent-browser command lines into actions', () => {
   expect(read(['tab', 'new', 'https://example.com']).action).toEqual({ kind: 'open', url: 'https://example.com' });
   expect(read(['tab', 'browser:abc'])).toEqual({ action: { kind: 'activate' }, tabId: 'browser:abc' });
   expect(read(['snapshot', '-i', '-c', '-d', '3', '-s', '#main', '-u']).action).toEqual({ kind: 'snapshot', interactive: true, compact: true, urls: true, depth: 3, selector: '#main' });
+  expect(read(['snapshot', '--full', '-i']).action).toEqual({ kind: 'snapshot', interactive: true, full: true });
   expect(read(['dblclick', '@e2']).action).toEqual({ kind: 'click', selector: '@e2', count: 2 });
   // Unquoted words after the target are the text, as a shell splits them.
   expect(read(['fill', '@e3', 'Ada', 'Lovelace']).action).toEqual({ kind: 'fill', selector: '@e3', text: 'Ada Lovelace' });
@@ -223,6 +224,7 @@ test('browser run sends a script\'s steps in order in one call, prints what they
     writeFileSync(join(cwd, 'flow.js'), [
       "await page.open('https://shop.test/')",
       'const tree = await page.snapshot({ interactive: true })',
+      'await page.snapshot({ interactive: true, full: true })',
       "await page.fill('@e2', args[0])",
       "await page.click(tree.includes('Go') ? '@e1' : '@e9')",
       "console.log('clicked', { at: 1 })",
@@ -230,10 +232,12 @@ test('browser run sends a script\'s steps in order in one call, prints what they
     ].join('\n'));
     const done = await run(['flow.js', 'secret-name']);
     expect(done.code).toBe(0);
-    expect(sent.map(action => action.kind)).toEqual(['open', 'snapshot', 'fill', 'click', 'evaluate']);
+    expect(sent.map(action => action.kind)).toEqual(['open', 'snapshot', 'snapshot', 'fill', 'click', 'evaluate']);
     expect(sent[1]).toEqual({ kind: 'snapshot', interactive: true });
-    expect(sent[2]).toEqual({ kind: 'fill', selector: '@e2', text: 'secret-name' });
-    expect(sent[4]).toEqual({ kind: 'evaluate', expression: '((a, b) => a + b)(...[40,2])' });
+    // A script that needs the whole tree again asks for it: a repeated snapshot is a diff.
+    expect(sent[2]).toEqual({ kind: 'snapshot', interactive: true, full: true });
+    expect(sent[3]).toEqual({ kind: 'fill', selector: '@e2', text: 'secret-name' });
+    expect(sent[5]).toEqual({ kind: 'evaluate', expression: '((a, b) => a + b)(...[40,2])' });
     expect(done.out).toContain('> click @e1\n✓ Next\n  https://shop.test/next\n');
     expect(done.out).toContain('clicked {"at":1}\n');
     expect(done.out).toEndWith('{\n  "sum": 42\n}\n');
@@ -244,6 +248,8 @@ test('browser run sends a script\'s steps in order in one call, prints what they
     const stopped = await run(['-'], "await page.click('@e1')\nawait page.click('@e7')\nawait page.click('@e8')");
     expect(stopped.code).toBe(1);
     expect(sent.map(action => action.kind === 'click' ? action.selector : action.kind)).toEqual(['@e1', '@e7', 'snapshot']);
+    // The page a failed step left is printed whole, whatever the script read before.
+    expect(sent[2]).toEqual({ kind: 'snapshot', interactive: true, full: true });
     expect(stopped.out).toContain('✗ step 2, click @e7: ref @e7 is stale because the page changed; take a new snapshot\npage now: Shop  https://shop.test/\n- button "Go" [ref=e1]');
     expect(stopped.error).toContain('browser run stopped at step 2, click @e7');
 

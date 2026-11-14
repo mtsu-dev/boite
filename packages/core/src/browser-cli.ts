@@ -7,7 +7,7 @@ import { BROWSER_HEADERS } from './browser/network.ts';
 
 export const BROWSER_HELP = `boite browser <command> [args] [--tab <id>] [--json]
 The conversation's browser, with agent-browser's commands.
-Targets: @e3 (a ref from the last snapshot), a CSS selector matching one element, or text=Sign in.
+Targets: @e3 (a ref from a snapshot), a CSS selector matching one element, or text=Sign in.
 Text is the command's: after the target of fill, type and select, the answer of dialog, the
 script of run and anywhere in eval, every word is passed on as typed. Put --json before it.
 The tab is not text: --tab <id>, or without it a last word browser:<id>, names the tab
@@ -15,9 +15,10 @@ The tab is not text: --tab <id>, or without it a last word browser:<id>, names t
 
   open <url> [--profile <name>]   go to url in the current tab, or open one (--profile: a new tab
                                   in that profile; default, private or a name from profiles)
-  snapshot [-i] [-c] [-d <n>] [-s <css>] [-u]
+  snapshot [-i] [-c] [-d <n>] [-s <css>] [-u] [--full]
                                   page tree with refs: -i interactive elements only, -c no
-                                  containers, -d depth, -s scope, -u link urls
+                                  containers, -d depth, -s scope, -u link urls, --full the whole
+                                  tree where a diff would be printed
   click <target>                  click (dblclick, hover, focus, check, uncheck take a target too)
   fill <target> <text>            replace a field's text; type <target> <text> adds to it
   select <target> <value...>      choose options of a <select> by value or label
@@ -67,7 +68,10 @@ The tab is not text: --tab <id>, or without it a last word browser:<id>, names t
   recipe show <name> | recipe delete <name>
 
 Each action waits for the navigation it starts and reports where the page went and the
-dialogs it answered. Refs change after every snapshot; take a new one after the page changes.
+dialogs it answered.
+Refs are stable: an element keeps its ref while it stays on the page, so an old ref works without
+a new snapshot; a removed element's is refused as stale. A snapshot repeated on the same page with
+the same options prints only the changes (+ added, - removed, = context); --full prints it all.
 A frame from another site (a payment form, a captcha, a sign-in widget) is listed under its
 iframe; its elements have refs like any other.
 
@@ -84,7 +88,7 @@ function with page, args (the words after the script), console and sleep(ms) in 
   return page.snapshot({ interactive: true })
   EOF
 page has one method per command: open(url, { profile }), goto, snapshot({ interactive, compact,
-depth, selector, urls }) returning its text, click, dblclick, hover, focus, check, uncheck,
+depth, selector, urls, full }) returning its text (full: true where a diff would come), click, dblclick, hover, focus, check, uncheck,
 scrollIntoView, fill, type, select(target, ...values), press, scroll(direction, px),
 wait(target | ms | { text, url, fn, load, timeout }), get(what, target, attr), is(what, target),
 eval(js, or a function and its JSON arguments), back, forward, reload, screenshot(path),
@@ -177,9 +181,9 @@ function parseSnapshot(context: BrowserParseContext): BrowserAction {
   const { rest, command, none, integer } = context;
   const depth = option(rest, '-d', command) ?? option(rest, '--depth', command);
   const selector = option(rest, '-s', command) ?? option(rest, '--selector', command);
-  const interactive = flag(rest, '-i', '--interactive'), compact = flag(rest, '-c', '--compact'), urls = flag(rest, '-u', '--urls');
+  const interactive = flag(rest, '-i', '--interactive'), compact = flag(rest, '-c', '--compact'), urls = flag(rest, '-u', '--urls'), full = flag(rest, '--full');
   none();
-  const action: BrowserAction = { kind: 'snapshot', ...(interactive ? { interactive } : {}), ...(compact ? { compact } : {}), ...(urls ? { urls } : {}), ...(depth ? { depth: integer(depth, '-d') } : {}), ...(selector ? { selector } : {}) };
+  const action: BrowserAction = { kind: 'snapshot', ...(interactive ? { interactive } : {}), ...(compact ? { compact } : {}), ...(urls ? { urls } : {}), ...(depth ? { depth: integer(depth, '-d') } : {}), ...(selector ? { selector } : {}), ...(full ? { full } : {}) };
   return action;
 }
 
