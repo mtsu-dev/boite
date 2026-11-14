@@ -426,9 +426,9 @@ shellTest('close exits by default; the persisted setting hides instead; the nati
     ownCore = await waitForHealthyCore(ownDataDir, ownPid); ownPage = await attachShell(secondPort, ownDataDir, ownPid);
     await ownPage.waitFor(`document.querySelector('[data-testid="nav-settings"]')`);
     await ownPage.click('[data-testid="nav-settings"]');
-    // Settings open on Home; the window's own switches live under General.
-    await ownPage.waitFor(`document.querySelector('[data-testid="settings-tab-general"]')`);
-    await ownPage.click('[data-testid="settings-tab-general"]');
+    // The window's own switches live on the Devices page, beside this machine.
+    await ownPage.waitFor(`document.querySelector('[data-testid="settings-tab-devices"]')`);
+    await ownPage.click('[data-testid="settings-tab-devices"]');
     await ownPage.waitFor(`document.querySelector('[data-testid="close-to-tray"]') && !document.querySelector('[data-testid="close-to-tray"]').disabled`);
     await ownPage.click('[data-testid="close-to-tray"]');
     await ownPage.waitFor(`document.querySelector('[data-testid="close-to-tray"]').checked`);
