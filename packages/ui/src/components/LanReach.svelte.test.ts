@@ -32,7 +32,7 @@ function card(localCore = true) {
   let allowed = false;
   const calls: string[] = [];
   const store = $state({
-    owner: true, principal: 'owner', connection: 'ready', localCore, sessions: [],
+    owner: true, principal: 'owner', connection: 'ready', localCore, sessions: [], loadSessions: async () => {},
     deviceInvite: invite('http://127.0.0.1:7337') as DeviceInvite | null,
     settings: { listenOnLan: false, publicUrl: null },
     core: { endpoint: { host: '127.0.0.1', port: 7337 } },
@@ -85,7 +85,7 @@ test('isLoopback names the links that only reach the computer opening them', () 
 
 test('turning the network off restarts, settles on the bound address and draws the Add a device link again, even behind a public address', async () => {
   const store = $state({
-    owner: true, principal: 'owner', connection: 'ready', localCore: true, sessions: [], endpointUrl: null,
+    owner: true, principal: 'owner', connection: 'ready', localCore: true, sessions: [], loadSessions: async () => {}, endpointUrl: null,
     // A public address: the link names neither loopback nor the LAN, whatever the core listens on.
     deviceInvite: invite('https://boite.example.com') as DeviceInvite | null,
     settings: { listenOnLan: true, publicUrl: 'https://boite.example.com' },
