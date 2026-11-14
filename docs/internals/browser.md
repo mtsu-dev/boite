@@ -400,13 +400,18 @@ drawn over an iframe, is clicked through the DOM, with a note naming what
 covered it. After a navigation of the top document the iframe refs of a route
 name nothing, so an old frame ref is refused by name.
 
-The core keeps each tab's last snapshot, its lines, options and document
-(`browser/snapshot-diff.ts`), 40,000 characters at most. A snapshot of the
-same document with the same options answers with the lines added and removed
-since, each run under the last unchanged heading, landmark or iframe line.
-The whole text is sent instead for a tab's first snapshot, a new document,
-other options, `full`, a snapshot cut short on either side, or a diff longer
-than half the text.
+The core keeps, per tab, the last snapshot an agent was shown: its lines,
+options and document (`browser/snapshot-diff.ts`), 40,000 characters at most.
+Only a snapshot action with a `view` counts as shown: the CLI sends
+`view: 'diff'`, `snapshot --full` and the page a failed script step left send
+`view: 'full'`. A `diff` view of the same document with the same options
+answers with the lines added and removed since, each run under the last
+unchanged heading, landmark or iframe line. The whole text is sent instead for
+a tab's first snapshot, a new document, other options, `view: 'full'`, a
+snapshot cut short on either side, or a diff longer than half the text. A
+snapshot without a view, a script's `page.snapshot()` or a client's, is whole
+and leaves the agent's last view alone: the agent never read it, so a diff
+against it would hide lines.
 
 A snapshot reads at most 30 frames of other origins, within its 40,000
 characters; one past either is a note under its iframe. With `-i`, a frame with
@@ -819,8 +824,9 @@ It checks that the refs read in those frames keep their numbers after an
 element is added above them, stay unique on the page and still click.
 `browser.test.ts` checks, on a list of 100 rows, that a ref survives a row
 inserted above it, that a removed row's ref is stale, and that a repeated
-snapshot prints the added, removed and renamed lines alone, and the whole
-tree with `full`, other options or a new document.
+snapshot prints the added, removed and renamed lines alone, that a snapshot
+without a view is whole and does not move the base of the next diff, and the
+whole tree with `view: 'full'`, other options or a new document.
 It also clicks into a frame nested in an offset frame and into a scaled one,
 and through the DOM when a button is drawn over the frame. The desktop app's
 relay of frames is not covered.

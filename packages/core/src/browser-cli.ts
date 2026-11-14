@@ -88,7 +88,7 @@ function with page, args (the words after the script), console and sleep(ms) in 
   return page.snapshot({ interactive: true })
   EOF
 page has one method per command: open(url, { profile }), goto, snapshot({ interactive, compact,
-depth, selector, urls, full }) returning its text (full: true where a diff would come), click, dblclick, hover, focus, check, uncheck,
+depth, selector, urls }) returning its whole text, click, dblclick, hover, focus, check, uncheck,
 scrollIntoView, fill, type, select(target, ...values), press, scroll(direction, px),
 wait(target | ms | { text, url, fn, load, timeout }), get(what, target, attr), is(what, target),
 eval(js, or a function and its JSON arguments), back, forward, reload, screenshot(path),
@@ -183,7 +183,7 @@ function parseSnapshot(context: BrowserParseContext): BrowserAction {
   const selector = option(rest, '-s', command) ?? option(rest, '--selector', command);
   const interactive = flag(rest, '-i', '--interactive'), compact = flag(rest, '-c', '--compact'), urls = flag(rest, '-u', '--urls'), full = flag(rest, '--full');
   none();
-  const action: BrowserAction = { kind: 'snapshot', ...(interactive ? { interactive } : {}), ...(compact ? { compact } : {}), ...(urls ? { urls } : {}), ...(depth ? { depth: integer(depth, '-d') } : {}), ...(selector ? { selector } : {}), ...(full ? { full } : {}) };
+  const action: BrowserAction = { kind: 'snapshot', ...(interactive ? { interactive } : {}), ...(compact ? { compact } : {}), ...(urls ? { urls } : {}), ...(depth ? { depth: integer(depth, '-d') } : {}), ...(selector ? { selector } : {}), view: full ? 'full' : 'diff' };
   return action;
 }
 

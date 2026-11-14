@@ -136,7 +136,7 @@ real('a ref read in a frame of another origin keeps its number through later sna
   const first = refs(String((await command({ kind: 'snapshot', interactive: true })).text));
   // A button added above every frame, then one inside the card's frame, before its fields: no ref read before moves.
   await command({ kind: 'evaluate', expression: `document.body.insertAdjacentHTML('afterbegin', '<button>New</button>'); true` });
-  const again = String((await command({ kind: 'snapshot', interactive: true, full: true })).text);
+  const again = String((await command({ kind: 'snapshot', interactive: true, view: 'full' })).text);
   expect(again).toStartWith('- button "New" [ref=e');
   expect(refs(again)).toEqual(first);
   const all = [...again.matchAll(/\[ref=(e\d+)\]/g)].map(found => found[1]);

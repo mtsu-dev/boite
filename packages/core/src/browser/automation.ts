@@ -139,9 +139,12 @@ interface Reading { left: number; frames: number; refs: number; truncated: boole
  * A snapshot of the tab: the top document, then each frame of another origin
  * read in its own context and set under its iframe. A frame of the same origin
  * is already in its parent's. The same document read again with the same
- * options answers with what changed (`snapshot-diff.ts`), unless `full` asks
- * for everything, a snapshot was cut short or the changes are more than half
- * the text.
+ * options as the last one the agent was shown answers with what changed
+ * (`snapshot-diff.ts`) when the caller asks for `view: 'diff'`, unless a
+ * snapshot was cut short or the changes are more than half the text. Only a
+ * snapshot with a `view` is remembered as the agent's: a script's own
+ * snapshots never reach the agent, so a diff against them would hide lines it
+ * never read.
  */
 async function snapshot(page: AgentPage, action: Extract<BrowserAction, { kind: 'snapshot' }>): Promise<{ text: string; refs: number; url: string; title: string; diff?: true }> {
   const options = { interactive: action.interactive, compact: action.compact, depth: action.depth, urls: action.urls };
@@ -152,8 +155,8 @@ async function snapshot(page: AgentPage, action: Extract<BrowserAction, { kind: 
   const reading: Reading = { left: SNAPSHOT_CHARS - top.text.length, frames: 0, refs: top.refs, truncated: top.truncated === true, state, options };
   const lines = await withFrames(page, page, [], top, reading);
   const key = js({ ...options, selector: action.selector }), previous = state.last, full = lines.join('\n');
-  state.last = { token: top.token, key, lines, truncated: reading.truncated };
-  const same = !action.full && previous && previous.token === top.token && previous.key === key && !previous.truncated && !reading.truncated;
+  if (action.view !== undefined) state.last = { token: top.token, key, lines, truncated: reading.truncated };
+  const same = action.view === 'diff' && previous && previous.token === top.token && previous.key === key && !previous.truncated && !reading.truncated;
   const diff = same ? snapshotDiff(previous.lines, lines) : null;
   const shown = diff !== null && diff.length * 2 <= full.length;
   return { text: shown ? diff : full, refs: reading.refs, url: top.url, title: top.title, ...(shown ? { diff: true } : {}) };

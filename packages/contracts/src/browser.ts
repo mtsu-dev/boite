@@ -24,11 +24,14 @@ export type BrowserAction =
   | { kind: 'activate' }
   | { kind: 'history'; direction: 'back' | 'forward' | 'reload' }
   /**
-   * agent-browser's snapshot options: -i, -c, -d, -s and -u. A snapshot of the
-   * document and options the tab's last one read answers with the lines that
-   * changed since; `full` asks for the whole text.
+   * agent-browser's snapshot options: -i, -c, -d, -s and -u. `view` says the
+   * caller prints the text to the agent: `diff` answers with the lines changed
+   * since the last snapshot the agent was shown of the same document and
+   * options, `full` with the whole text. Both become what the next diff is
+   * compared with. Without `view` (a script, the panel) the text is whole and
+   * the agent's last view stays as it was, since nobody showed it this one.
    */
-  | { kind: 'snapshot'; interactive?: boolean; compact?: boolean; depth?: number; selector?: string; urls?: boolean; full?: boolean }
+  | { kind: 'snapshot'; interactive?: boolean; compact?: boolean; depth?: number; selector?: string; urls?: boolean; view?: 'diff' | 'full' }
   | { kind: 'diagnostics'; clear?: boolean }
   | { kind: 'preset'; preset: BrowserPreset; orientation?: 'portrait' | 'landscape' }
   | { kind: 'appearance'; colorScheme: 'light' | 'dark' | 'system' }
@@ -404,7 +407,8 @@ function checkNoInput(): string | null {
 function checkSnapshot(action: BrowserAction & { kind: 'snapshot' }): string | null {
   if (action.depth !== undefined && !(Number.isInteger(action.depth) && action.depth >= 1 && action.depth <= 50)) return 'snapshot depth must be an integer from 1 to 50';
   if (action.selector !== undefined && !text(action.selector, 4000)) return 'snapshot selector must contain 1 to 4000 characters';
-  return [action.interactive, action.compact, action.urls, action.full].every(flag => flag === undefined || typeof flag === 'boolean') ? null : 'snapshot flags must be booleans';
+  if (action.view !== undefined && action.view !== 'diff' && action.view !== 'full') return 'snapshot view must be diff or full';
+  return [action.interactive, action.compact, action.urls].every(flag => flag === undefined || typeof flag === 'boolean') ? null : 'snapshot flags must be booleans';
 }
 
 function checkOpenUrl(action: BrowserAction & { kind: 'open' | 'navigate' }): string | null {

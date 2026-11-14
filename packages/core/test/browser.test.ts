@@ -249,7 +249,7 @@ real('an agent drives a page with agent-browser commands: refs, forms, dialogs a
 real('an element keeps its ref from one snapshot to the next, and a repeated snapshot prints only what changed', async () => {
   const { agent, threadId } = browserFixture;
   const command = async (action: BrowserAction) => (await agent.call('browser.command', { threadId, action })).value as Record<string, unknown>;
-  const tree = async (options: { full?: boolean } = {}) => String((await command({ kind: 'snapshot', interactive: true, ...options })).text);
+  const tree = async (view: 'diff' | 'full' = 'diff') => String((await command({ kind: 'snapshot', interactive: true, view })).text);
   const diff = (unchanged: number, ...lines: string[]) =>
     [`diff since your last snapshot of this page, ${unchanged} lines unchanged (+ added, - removed, = context); snapshot --full prints everything`, '= - heading "All rows" [ref=e4] [level=2]', ...lines].join('\n');
   await command({ kind: 'open', url: url('/rows') });
@@ -267,16 +267,19 @@ real('an element keeps its ref from one snapshot to the next, and a repeated sna
   await command({ kind: 'click', selector: '@e12' });
   expect(await evaluate('document.title')).toBe('opened 4');
 
-  // A change in place is the old line and the new one, on the same ref.
+  // A change in place is the old line and the new one, on the same ref. A
+  // snapshot no agent was shown (a script's, sent without a view) is whole and
+  // leaves the agent's last view as the base of the next diff.
   await command({ kind: 'click', selector: '@e3' });
+  expect(String((await command({ kind: 'snapshot', interactive: true })).text).split('\n')).toHaveLength(206);
   expect(await tree()).toBe(diff(205, '- - button "Open 50" [ref=e104]', '+ - button "Renamed" [ref=e104]'));
   expect(await tree()).toBe('no change since your last snapshot of this page, 206 lines unchanged; snapshot --full prints everything');
 
   // --full, other options and a new document each print the whole tree.
-  const whole = await tree({ full: true });
+  const whole = await tree('full');
   expect(whole.split('\n').slice(3, 8)).toEqual(['- heading "All rows" [ref=e4] [level=2]', '- link "Item 101" [ref=e205]', '- button "Open 101" [ref=e206]', '- link "Item 1" [ref=e5]', '- button "Open 1" [ref=e6]']);
   expect(whole.split('\n')).toHaveLength(206);
-  expect(String((await command({ kind: 'snapshot' })).text)).toStartWith('- heading "Rows" [ref=e1] [level=1]\n');
+  expect(String((await command({ kind: 'snapshot', view: 'diff' })).text)).toStartWith('- heading "Rows" [ref=e1] [level=1]\n');
   expect(await tree()).toBe(whole);
 
   // A removed element's ref is refused as stale, and its number is not given again.

@@ -118,13 +118,13 @@ adds headings, text and the containers around them; `-c` drops the containers,
 document, a new element takes the next unused number, and a navigation starts
 over at `e1`: an old ref works without a new snapshot, a removed element's is
 refused as stale and a ref from an earlier page is refused by name. A
-`snapshot` of the same document with the same options as the tab's last one
-prints only what changed: a header with the count of unchanged lines, then
+`snapshot` of the same document with the same options as the last one the
+CLI printed in that tab prints only what changed: a header with the count of unchanged lines, then
 `+ ` added lines, `- ` removed lines and, above each run of them, the last
 unchanged heading, landmark or iframe line as `= `. It prints the whole tree
 on a tab's first snapshot, a new document, other options, a truncated
 snapshot, a diff longer than half the tree and `snapshot --full`
-(`page.snapshot({ full: true })` in a script). `get text|value|attr|title|url|count`, `is checked` and
+(a script's `page.snapshot()` is always whole and does not move the base of the next diff). `get text|value|attr|title|url|count`, `is checked` and
 `eval <js>` read the page. Page text and evaluation results are untrusted input,
 just like web search results. A frame from another origin, such as a payment
 form, a captcha or a sign-in widget, is listed under its iframe, and its
