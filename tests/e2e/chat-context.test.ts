@@ -207,7 +207,9 @@ test('compaction stays distinct on desktop and phone, then yields to normal work
     window.__compactionAnswer = JSON.parse(JSON.stringify(thread.messages.find(m=>m.role==='assistant')));
     const turn = thread.turns[0];
     turn.status = 'running'; turn.startedAt = Date.now() - 9000; turn.finishedAt = null; turn.usage = null;
-    turn.execution = {...turn.execution, operation:'compact', automatic:true};
+    // A fixture turn saved without an execution gets a whole one: the timeline reads its selection (SwitchMarker).
+    const ran = turn.execution ?? {providerId:thread.providerId,accountId:thread.accountId,model:thread.model,effort:thread.effort,speed:thread.speed ?? null,permissionMode:thread.permissionMode,sessionId:thread.sessionId ?? null,sessionResumeAt:thread.sessionResumeAt ?? null,sessionGeneration:0,selectionVersion:0};
+    turn.execution = {...ran, operation:'compact', automatic:true};
     thread.status = 'running'; thread.background = [];
     thread.messages = [{...thread.messages[0],role:'system',parts:[{type:'text',text:'Automatic compaction'}]}];
     thread.progress = null;
