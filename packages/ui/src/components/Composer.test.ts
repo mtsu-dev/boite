@@ -41,6 +41,23 @@ const test = fixtureTest.extend<{ app: void; queueApp: void }>({
 
 const previewReference = { id: 'composer-element', url: 'https://example.test', selector: '#save', text: 'Save', bounds: { x: 0, y: 0, width: 80, height: 30 } };
 
+test('the context ring stays clickable without a reading and below the text threshold', async ({ app: _app }) => {
+  await store.open('t-trace');
+  await waitFor(() => !store.busy);
+  for (const tokens of [null, 138_000, 140_000]) {
+    store.openThread!.context = tokens === null ? null : { tokens, window: 200_000, at: Date.now() };
+    flushSync();
+    const trigger = document.querySelector<HTMLButtonElement>('[data-testid=context-trigger]');
+    expect(trigger).not.toBeNull();
+    expect(trigger!.querySelector('.ring')).not.toBeNull();
+    expect(trigger!.querySelector('.percent')?.textContent ?? '').toBe(tokens === 140_000 ? '30% context left' : '');
+    trigger!.click();
+    await waitFor(() => document.querySelector('[data-testid=context-popup]') !== null);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    await waitFor(() => document.querySelector('[data-testid=context-popup]') === null);
+  }
+});
+
 test('preview mentions insert at the caret inside prose and keep identical labels distinct', async ({ app: _app }) => {
   await store.open('t-trace');
   await waitFor(() => !store.busy);

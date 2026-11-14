@@ -11,10 +11,10 @@
   import { cacheSpan, promptCacheState, PROMPT_CACHE_TICK_MS } from '../lib/prompt-cache';
   /**
    * The context's one form, desktop and phone: a small ring filled by what is
-   * used and the words "28% context left", a quiet item of the composer's row (drawn
-   * from its threshold, `ComposerBar`). A hover or a click opens the details.
+   * used and, from the threshold in `ComposerBar`, the words "28% context left".
+   * A hover or a click opens the details even when only the ring is shown.
    */
-  let { store }: { store: Store } = $props();
+  let { store, reading = true }: { store: Store; reading?: boolean } = $props();
   let root = $state<HTMLDivElement>();
   const popup = new Closing();
   let readingExpanded = $state(false);
@@ -78,8 +78,8 @@
   <button type="button" class="trigger ghost" data-testid="context-trigger" title={named} aria-label={[named, cacheLabel].filter(Boolean).join(', ')} aria-expanded={popup.open} aria-haspopup="dialog" onclick={show}>
     <!-- A still ring filled by the share used, grey like the words, never the accent of a spinner. -->
     <svg class="ring" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle class="track" cx="7" cy="7" r="5.25" /><circle class="used" cx="7" cy="7" r="5.25" pathLength="100" stroke-dasharray="{percent ?? 0} 100" /></svg>
-    {#if left !== null}<span class="percent ui-label" aria-hidden="true">{strings.thread.contextLeft(String(left))}</span>{/if}
-    {#if cacheNow}
+    {#if reading && left !== null}<span class="percent ui-label" aria-hidden="true">{strings.thread.contextLeft(String(left))}</span>{/if}
+    {#if reading && cacheNow}
       <span class="cache-chip num" data-testid="prompt-cache" data-state={cacheNow.kind} class:low={cacheNow.kind !== 'cold' && cacheNow.secondsLeft <= 300} aria-hidden="true">
         <Clock size={13} strokeWidth={1.75} /><span class="ui-label">{cacheNow.kind === 'cold' ? strings.thread.cacheCold : remaining(cacheNow.secondsLeft)}</span>
       </span>
@@ -96,7 +96,7 @@
   .num { font-variant-numeric: tabular-nums; }
   .context { position: relative; flex: none; color: var(--color-muted-foreground); }
   .trigger { display: flex; align-items: center; gap: 5px; height: var(--control-sm); padding: 0 8px; border-radius: var(--radius-md); color: inherit; }
-  @media (max-width: 720px) { .trigger { min-height: var(--touch-target); padding: 0 6px; } }
+  @media (max-width: 720px) { .trigger { min-width: var(--touch-target); min-height: var(--touch-target); justify-content: center; padding: 0 6px; } }
   /* The ring and the words in neutral ink, grey however full until the window
      is nearly spent (90%), then the caution ink: never the accent, never a warning early. */
   .ring { flex: none; transform: rotate(-90deg); }
