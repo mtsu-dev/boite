@@ -12,7 +12,7 @@ beforeAll(async () => {
   await page.waitFor(`document.querySelector('[data-thread-id]')`);
 }, 90000);
 afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
-test('desktop notifications stay at the right edge without moving the conversation', async () => {
+test('desktop notifications sit in the top-right corner under the title bar without moving the conversation', async () => {
   await page.evaluate(`(async () => {
     const {workspace} = await import('/src/lib/workspace.svelte.ts');
     await workspace.active.open('t-trace');
@@ -25,11 +25,9 @@ test('desktop notifications stay at the right edge without moving the conversati
   expect(await page.evaluate(`(() => {
     const toast = document.querySelector('[data-testid=error-toast]').getBoundingClientRect();
     const timeline = document.querySelector('[data-testid=timeline]').getBoundingClientRect();
-    const strip = document.querySelector('[data-testid=composer-strip]')?.getBoundingClientRect();
-    const composer = document.querySelector('[data-testid=composer]').getBoundingClientRect();
-    const floor = strip?.height ? strip : composer;
-    return {right:Math.round(innerWidth - toast.right), moved:Math.abs(timeline.bottom - window.__timelineBottom), clear:toast.right <= floor.left || toast.left >= floor.right || toast.bottom <= floor.top};
-  })()`)).toEqual({right:16,moved:0,clear:true});
+    const header = document.querySelector('[data-testid=titlebar]').getBoundingClientRect();
+    return {right:Math.round(innerWidth - toast.right), moved:Math.abs(timeline.bottom - window.__timelineBottom), under:Math.round(toast.top - header.bottom)};
+  })()`)).toEqual({right:16,moved:0,under:12});
   await page.click('[data-testid=error-toast] .dismiss');
   await page.waitFor(`!document.querySelector('[data-testid=error-toast]')`);
 });
