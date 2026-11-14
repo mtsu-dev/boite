@@ -253,39 +253,68 @@ async function compiledWithout(flags: string[], body: () => Promise<void>): Prom
   try { await body(); } finally { for (const flag of flags) delete scope[flag]; }
 }
 
+/** What a call answers: `accepted`, or the words of its refusal. */
+const answer = (owner: Awaited<ReturnType<TestCore['connect']>>, method: string) => owner.call(method as never, {} as never).then(() => 'accepted', (error: Error) => error.message);
+/** The same from the machine's desktop app, once it switched the Teams and the Council on. */
+async function switchedOn(h: TestCore, method: string): Promise<string> {
+  const shell = await desktop(h);
+  await shell.call('client.preferences', report(['teams', 'debates']));
+  try { return await answer(shell, method); } finally { shell.close(); }
+}
+
 test('a core compiled without the Teams starts, refuses every team method with the tag and the build, and keeps its other work', async () => {
+  // From source, with no flag, the real store is there, and its methods are the ones a build without it must refuse by name.
+  const dev = await core(DEV);
+  expect(dev.core.teams.constructor.name).toBe('TeamStore');
+  const methods = dev.core.router.methods().filter(method => method.startsWith('teams.'));
+  expect(methods.length).toBeGreaterThan(4);
   await compiledWithout(['__BOITE_HAS_TEAMS__'], async () => {
     const release = await core(RELEASE);
     const owner = await release.connect();
     const refusal = 'experiment.teams runs in Nightly and Dev builds only, and this machine runs a Release (2.0.0)';
-    for (const method of ['teams.list', 'teams.create', 'teams.post', 'teams.leave'] as const) {
-      expect(await owner.call(method, {} as never).then(() => 'accepted', (error: Error) => error.message), method).toContain(refusal);
-    }
+    for (const method of methods) expect(await answer(owner, method), method).toContain(refusal);
     // The stand-in answers what the rest of the core asks: a thread still opens and the core stops cleanly.
     expect(release.core.teams.machineName('none')).toBe('');
     expect(release.core.teams.snapshots.render('none', [], 'seen', false)).toEqual({ texts: new Map(), leftovers: [], channel: null });
     expect((await echoThread(release, owner)).threadId).toBeString();
     owner.close();
+    // The flag alone cuts: a version that would run the Teams gets the stand-in too.
+    const cut = await core(DEV);
+    expect(cut.core.teams.constructor.name).not.toBe('TeamStore');
+    const other = await cut.connect();
+    expect(await answer(other, 'teams.list')).toBe('Teams are not in this build');
+    other.close();
   });
-  // From source, with no flag, the real store is there.
-  const dev = await core(DEV);
-  expect(dev.core.teams.constructor.name).toBe('TeamStore');
+  // The version alone refuses: a Release from source holds the real store and starts nothing with it, whatever its desktop switched on.
+  const source = await core(RELEASE);
+  expect(source.core.teams.constructor.name).toBe('TeamStore');
+  expect(await switchedOn(source, 'teams.create')).toContain('teams need the Teams experiment, which is off');
+  expect(await switchedOn(dev, 'teams.create')).not.toContain('experiment');
 });
 
 test('a core compiled without the Council starts, refuses every council method with the tag and the build, and owns no thread', async () => {
+  const dev = await core(DEV);
+  expect(dev.core.council.constructor.name).toBe('CouncilStore');
+  const methods = dev.core.router.methods().filter(method => method.startsWith('council.'));
+  expect(methods.length).toBeGreaterThan(4);
   await compiledWithout(['__BOITE_HAS_DEBATES__'], async () => {
     const release = await core(RELEASE);
     const owner = await release.connect();
     const refusal = 'experiment.debates runs in Nightly and Dev builds only, and this machine runs a Release (2.0.0)';
-    for (const method of ['council.start', 'council.list', 'council.get', 'council.stop'] as const) {
-      expect(await owner.call(method, {} as never).then(() => 'accepted', (error: Error) => error.message), method).toContain(refusal);
-    }
+    for (const method of methods) expect(await answer(owner, method), method).toContain(refusal);
     const { threadId } = await echoThread(release, owner);
     expect([release.core.council.enabled(), release.core.council.owns(threadId), release.core.council.running(threadId), release.core.council.stopParent(threadId, 'test')]).toEqual([false, false, false, 0]);
     owner.close();
+    const cut = await core(DEV);
+    expect(cut.core.council.constructor.name).not.toBe('CouncilStore');
+    const other = await cut.connect();
+    expect(await answer(other, 'council.list')).toBe('the Council is not in this build');
+    other.close();
   });
-  const dev = await core(DEV);
-  expect(dev.core.council.constructor.name).toBe('CouncilStore');
+  const source = await core(RELEASE);
+  expect(source.core.council.constructor.name).toBe('CouncilStore');
+  expect(await switchedOn(source, 'council.start')).toContain('the council needs the Council experiment, which is off');
+  expect(await switchedOn(dev, 'council.start')).not.toContain('experiment');
 });
 
 test('a core compiled without automatic goals starts no goal from a prompt and refuses goal track with the tag and the build', async () => {

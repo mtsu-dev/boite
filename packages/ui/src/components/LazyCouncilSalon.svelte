@@ -6,7 +6,7 @@
   let { store, councilId, threadId }: { store: Store; councilId: string; threadId?: string } = $props();
   let Salon = $state.raw<typeof import('./council/CouncilSalon.svelte').default>();
   let loading: Promise<void> | undefined;
-  $effect(() => { if (!Salon) loading ??= loadCouncilSalon()?.then(module => { Salon = module.default; }).catch(() => { loading = undefined; }); });
+  $effect(() => { if (councilId && !Salon) loading ??= loadCouncilSalon()?.then(module => { Salon = module.default; }).catch(() => { loading = undefined; }); });
 </script>
 
 <!-- One salon per debate: the tab moved to another debate starts its reading afresh. -->

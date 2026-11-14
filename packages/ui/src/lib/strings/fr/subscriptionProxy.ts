@@ -32,7 +32,7 @@ export const fr: Translation = {
     localStopped: 'Le plugin Douane est arrêté.',
     localStarting: 'Le plugin Douane démarre.',
     localRunning: 'Douane {version} répond sur 127.0.0.1:{port}.',
-    openPlugins: 'Ouvrir Plugins',
+    openPlugins: 'Ouvrir Extensions',
     move: {
       open: 'Déplacer mes connexions vers Douane',
       openHint: 'Douane reprend les connexions et les clés API que cette machine a déjà : personne ne se reconnecte ni ne recolle de clé.',

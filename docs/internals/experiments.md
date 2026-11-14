@@ -3,7 +3,8 @@
 An experiment is unfinished work behind a switch in Settings > Version > Experiments.
 Every feature has a tag, `release`, `nightly` or `dev`, and exists only in the
 builds at or above it: a Release has none of the unfinished ones, in its
-behaviour and in its files.
+behaviour and, the Contacts' core side aside
+([out of the build](#out-of-the-build)), in its files.
 
 ## Tags
 
@@ -41,8 +42,8 @@ sides read: `featureRuns(id, version)`, `listedExperiments(version)` (the
 switches a build shows), `effectiveExperiments(chosen, version)` (what is on:
 every finished feature, plus the chosen ones whose tag the build reaches) and
 `experimentRefusal(id, version)` (why a build has no switch for an id). The
-refusal names the builds that have it and this one: "experiment.whip runs in Dev builds
-only, and this machine runs a Nightly (2.0.0-nightly.20261113.1)". A stored
+refusal names the builds that have it and this one: "experiment.whip runs in Nightly and Dev
+builds only, and this machine runs a Release (2.0.0)". A stored
 choice for a feature the build lacks is ignored and kept.
 `experimentsRun(version)` and `isReleaseVersion(version)` remain for the
 places that ask about the nightly tag as a whole.
@@ -164,8 +165,10 @@ to, as [chat files and previews](chat-files.md),
 
 ## Out of the build
 
-A build below a feature's tag does not ship the feature's code. Refusing at
-run time is not enough for that: the bundler has to drop the modules.
+A build below a feature's tag does not ship the feature's code, with one
+exception: the Contacts' core side stays in every build and is refused at run
+time (the table below says why). Refusing at run time is not enough for the
+rest: the bundler has to drop the modules.
 
 A packaged build knows its kind when it is compiled. `featureDefines(version)`
 turns the stamped version into `__BOITE_BUILD_KIND__`, the one constant, and
@@ -232,7 +235,7 @@ script). A call with an effect is one thing no bundler drops, where an unused
 constant goes as soon as a module is imported by name: so a module that
 reaches a bundle carries its marker there however it got in.
 `scripts/ci/feature-cut.ts` reads a bundle and fails when it holds the marker
-of a feature above its kind (a leak), or lacks the marker of a feature it
+of a feature cut from that bundle and tagged above its kind (a leak), or lacks the marker of a feature it
 must hold (the marker went, and the first check would pass on anything):
 
 ```sh
