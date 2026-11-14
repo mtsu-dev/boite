@@ -87,8 +87,14 @@
       if (event.key === 'ArrowDown') { event.preventDefault(); popover.show(); }
       return;
     }
-    // Tab moves the focus on: the list closes behind it rather than stay open out of reach.
-    if (event.key === 'Tab') { popover.hide(); return; }
+    // Tab moves the focus on: the list closes behind it rather than stay open out of reach. Its
+    // options stay in the page while it fades, so they leave the tab order first.
+    if (event.key === 'Tab') {
+      const current = document.activeElement;
+      for (const option of rows()) if (option !== current) option.tabIndex = -1;
+      popover.hide();
+      return;
+    }
     const list = rows();
     const index = list.indexOf(document.activeElement as HTMLElement);
     let next = -1;
