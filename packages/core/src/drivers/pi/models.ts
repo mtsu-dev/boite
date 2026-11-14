@@ -153,8 +153,10 @@ export async function readModels(ctx: ProbeContext): Promise<ModelInfo[]> {
       thinkingLevel: textOf(state['thinkingLevel']),
       sessionLevels: Array.isArray(levels['levels']) ? (levels['levels'] as string[]) : [],
     };
-  checkLevels(ctx, listing);
-  return modelsFrom(ctx.provider, listing);
+    return listing;
+  }, (listing) => {
+    checkLevels(ctx, listing);
+    return modelsFrom(ctx.provider, listing);
   });
 }
 

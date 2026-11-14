@@ -69,13 +69,13 @@ export class MuseTurn extends DecidedTurnParts {
     this.decided = true;
     this.wake();
     this.decide();
-    this.resolve({
+    this.resolve(this.#status, () => ({
       status: this.#status,
       sessionId: this.sessionId,
       usage: this.usage ?? this.observed,
       error: this.#error ?? undefined,
       ...(this.#diagnosticError === undefined ? {} : { diagnosticError: this.#diagnosticError }),
-    });
+    }));
   }
 
   // -- parts ----------------------------------------------------------------

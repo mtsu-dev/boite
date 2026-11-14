@@ -40,12 +40,15 @@ export class TurnParts {
     this.#wake();
   }
 
-  /** The end of `settle()`: the message closes, then `done` carries the result. */
-  protected resolve(result: TurnResult): void {
+  /**
+   * The end of `settle()`: the message closes, then `done` carries the result.
+   * The result is read after the close, which a subscriber sees synchronously.
+   */
+  protected resolve(status: TurnResult['status'], result: () => TurnResult): void {
     if (this.#messageId !== null) {
-      this.ctx.emit.complete(this.#messageId, result.status === 'error' ? 'error' : 'complete');
+      this.ctx.emit.complete(this.#messageId, status === 'error' ? 'error' : 'complete');
     }
-    this.#resolve(result);
+    this.#resolve(result());
   }
 
   // -- parts ----------------------------------------------------------------

@@ -148,7 +148,7 @@ export class CodexTurn extends DecidedTurnParts {
     this.decided = true;
     this.wake();
     this.decide();
-    this.resolve({
+    this.resolve(this.#status, () => ({
       status: this.#status,
       sessionId: this.sessionId,
       usage: this.usage,
@@ -159,7 +159,7 @@ export class CodexTurn extends DecidedTurnParts {
         ? { checkpoint: { sessionId: this.sessionId, entry: this.#completedTurnId } } : {}),
       ...(this.sessionLost ? { sessionLost: true } : {}),
       ...(this.#status === 'error' && this.#refusal ? { refusal: this.#refusal } : {}),
-    });
+    }));
   }
 
   // -- parts ----------------------------------------------------------------

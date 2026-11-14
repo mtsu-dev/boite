@@ -94,7 +94,7 @@ export class PiTurn extends DecidedTurnParts {
     this.decided = true;
     this.wake();
     this.decide();
-    this.resolve({
+    this.resolve(this.#status, () => ({
       status: this.#status,
       sessionId: this.sessionId,
       usage: this.usage,
@@ -102,7 +102,7 @@ export class PiTurn extends DecidedTurnParts {
       ...(this.#diagnosticError === undefined ? {} : { diagnosticError: this.#diagnosticError }),
       promptCache: this.cacheLife,
       ...(this.requestAt === null ? {} : { cacheAt: this.requestAt }),
-    });
+    }));
   }
 
   /** pi reports usage per assistant message, so a turn is the sum of its calls. */

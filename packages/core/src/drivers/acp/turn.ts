@@ -172,7 +172,7 @@ export class AcpTurn extends TurnParts {
     this.settled = true;
     this.wake();
     if (this.contextUse !== null) this.ctx.context(this.contextUse);
-    this.resolve({
+    this.resolve(this.#status, () => ({
       status: this.#status,
       sessionId: this.sessionId,
       usage: this.#usage,
@@ -180,7 +180,7 @@ export class AcpTurn extends TurnParts {
       ...(this.#diagnosticError === undefined ? {} : { diagnosticError: this.#diagnosticError }),
       promptCache: acpCacheLife(this.ctx.provider.id, this.ctx.thread.model),
       ...(this.sessionLost ? { sessionLost: true } : {}),
-    });
+    }));
   }
 
   /** The turn's share of the session's running cost; a total below what came before is a session that started over. */

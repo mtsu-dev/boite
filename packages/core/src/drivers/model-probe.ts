@@ -17,7 +17,14 @@ interface ModelProbe {
  * a deadline, a refusal quotes the last line the child printed, and the child
  * goes through the registry that traced it on every path.
  */
-export async function probeModels<T>(ctx: ProbeContext, child: ReturnType<ProbeContext['spawnChild']>, probe: ModelProbe, read: () => Promise<T>): Promise<T> {
+export async function probeModels<T, R = T>(
+  ctx: ProbeContext,
+  child: ReturnType<ProbeContext['spawnChild']>,
+  probe: ModelProbe,
+  read: () => Promise<T>,
+  /** Runs on the answer that won, before the child is released. */
+  accepted: (answer: T) => R = (answer) => answer as unknown as R,
+): Promise<R> {
   let lastStderr = '';
   child.stderr.setEncoding('utf8');
   child.stderr.on('data', (chunk: string) => {
@@ -46,7 +53,7 @@ export async function probeModels<T>(ctx: ProbeContext, child: ReturnType<ProbeC
       }, probe.timeoutMs);
       timer.unref?.();
     });
-    return await Promise.race([read(), died, expired]);
+    return accepted(await Promise.race([read(), died, expired]));
   } finally {
     if (timer !== null) clearTimeout(timer);
     probe.over();
