@@ -54,13 +54,8 @@
   }
   let rail = $state<HTMLElement>();
   let track = $state<HTMLElement>();
-  /**
-   * Px per entry once the rail opens: what a pointer can aim at comfortably,
-   * the 28 px of any lone control. Each entry's hit area is its slot, so the
-   * slots tile the rail: a taller area than the slot would hand a click to a
-   * neighbour.
-   */
-  const OPEN = 28;
+  /** Px per entry once the rail opens: what a pointer can aim at comfortably. */
+  const OPEN = 14;
   /**
    * The rail opens around the point it was entered at, in px from its top at
    * rest, and holds that layout until the pointer leaves: a bar never slides
@@ -237,10 +232,6 @@
 <style>
   /* With a mouse the rail stays tight and never scrolls: fourteen entries fit, and the open rail spills past its edges. */
   .outline { position: absolute; z-index: 5; left: 4px; top: 50%; transform: translateY(-50%); width: 28px; padding: 4px 0; }
-  /* At rest the rail is not drawn: a stray mark in every thread's gutter. The pointer over the
-     gutter or the keyboard on an entry brings it up, and each bar names its prompt there. */
-  .outline:not(.open):not(:focus-within):not(:hover) { opacity: 0; }
-  .outline { transition: opacity var(--dur-2) var(--ease-out-quint); }
   button { display: flex; align-items: center; width: 28px; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); }
   button:active { transform: none; }
   button.step, .track button { translate: 0 var(--offset, 0px); transition: translate var(--dur-3) var(--ease-out-quint), color var(--dur-2), background var(--dur-2); }
@@ -263,8 +254,8 @@
   .outline-group i { background: repeating-linear-gradient(to right, currentColor 0 2px, transparent 2px 4px); }
   .hot, .track button:focus-visible { color: var(--color-foreground); }
   .hot i, .track button:focus-visible i { opacity: 1; }
-  .marker.active { color: var(--color-foreground); }
-  .marker.active i { transform: scaleX(calc((16 + 6 * var(--weight, 0)) / 22)); opacity: 1; }
+  .marker.active { color: var(--color-accent); }
+  .marker.active i { transform: scaleX(calc((16 + 6 * var(--weight, 0)) / 22)); opacity: 1; box-shadow: 0 0 8px oklch(from var(--color-accent) l c h / 0.55); }
   /* The group menu is placed from script: reduced motion's blanket transition would slide it there. */
   .group-menu { position: fixed; z-index: 30; width: min(300px, calc(100vw - 70px)); max-height: 264px; overflow-y: auto; padding: 6px; border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); background: var(--overlay-surface); box-shadow: var(--shadow-overlay); animation: pop var(--dur-2); transition-property: none; }
   .group-menu.closing { animation-name: pop-out; pointer-events: none; }
@@ -272,9 +263,9 @@
   .group-menu button span:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .group-menu button:hover, .group-menu button:focus-visible { background: var(--color-hover); color: var(--color-foreground); }
   /* The user bubble of the timeline, laid on the page colour so the tint matches, its short corner toward the bar. */
-  .preview { position: fixed; z-index: 30; display: flex; align-items: baseline; gap: 10px; width: max-content; max-width: min(360px, calc(100vw - 70px)); padding: 10px 14px; border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); border-top-left-radius: var(--radius-sm); background: var(--overlay-surface); box-shadow: var(--shadow-overlay); pointer-events: none; transform-origin: 0 21px; animation: pop var(--dur-2) var(--ease-out-quint); transition: top var(--dur-2) var(--ease-out-quint); }
+  .preview { position: fixed; z-index: 30; display: flex; align-items: baseline; gap: 10px; width: max-content; max-width: min(360px, calc(100vw - 70px)); padding: 10px 14px; border: 1px solid oklch(from var(--color-accent) l c h / 0.35); border-radius: var(--radius-lg); border-top-left-radius: var(--radius-sm); background: linear-gradient(var(--color-accent-soft), var(--color-accent-soft)), var(--color-background); box-shadow: var(--shadow-e2), 0 0 28px -10px oklch(from var(--color-accent) l c h / 0.60); pointer-events: none; transform-origin: 0 21px; animation: pop var(--dur-2) var(--ease-out-quint); transition: top var(--dur-2) var(--ease-out-quint); }
   .number { flex: none; color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
-  .preview .number { color: var(--color-muted-foreground); font-family: var(--font-mono); }
+  .preview .number { color: var(--color-accent); font-family: var(--font-mono); }
   .command { color: var(--color-accent); font-weight: 600; }
   p { margin: 0; line-height: 1.5; color: var(--color-foreground); overflow-wrap: anywhere; white-space: pre-wrap; display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
   /* A finger has no hover to open the rail: wider rows, and the rail scrolls when a short timeline cannot hold it. */
@@ -282,8 +273,6 @@
     .outline { max-height: min(60%, 320px); overflow-y: auto; scrollbar-width: none; }
     /* A finger's width and height per entry, flush with the screen edge; the timeline keeps its text clear of it. */
     .outline { left: 0; width: var(--touch-target); }
-    /* A finger has no hover to bring it up. */
-    .outline:not(.open):not(:focus-within):not(:hover) { opacity: 1; }
     .outline button { width: 100%; }
     .step { height: var(--touch-target); min-height: var(--touch-target); }
     .track { --pitch: var(--touch-target); }

@@ -241,6 +241,8 @@ export async function runBrowserScript(script: BrowserScript, io: CliIo, client:
       const label = typed.slice(0, 2).join(' ');
       let parsed: ReturnType<typeof browserAction>;
       try { parsed = browserAction(typed); } catch (error) { throw new StepError(++steps, label, error); }
+      // A script's snapshot is whole and never the agent's view, `--full` or not: drop the CLI's view.
+      if (parsed.action.kind === 'snapshot') { const { view: _view, ...whole } = parsed.action; parsed = { ...parsed, action: whole }; }
       return step(label, () => parsed.action, parsed.output, parsed.tabId ?? current);
     },
   };
@@ -260,7 +262,7 @@ export async function runBrowserScript(script: BrowserScript, io: CliIo, client:
     const reason = error instanceof Error ? error.message : String(error);
     io.out(`✗ ${where}: ${reason}\n`);
     // Where the page stopped, so the next call starts from it rather than from another snapshot.
-    const now = await client.call('browser.command', { threadId, ...(current ? { tabId: current } : {}), action: { kind: 'snapshot', interactive: true } }).catch(() => null);
+    const now = await client.call('browser.command', { threadId, ...(current ? { tabId: current } : {}), action: { kind: 'snapshot', interactive: true, view: 'full' } }).catch(() => null);
     const shot = now?.value as { text?: string; url?: string; title?: string } | undefined;
     if (shot?.text !== undefined) io.out(`page now: ${shot.title || '(untitled)'}  ${shot.url ?? ''}\n${shot.text}\n`);
     throw new BrowserScriptFailure(where, reason);

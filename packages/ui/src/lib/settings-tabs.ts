@@ -1,4 +1,4 @@
-import { SETTINGS_PAGES, SETTINGS_PAGE_ALIASES, type SettingsPage, type SettingsPageAlias } from '@boite/contracts';
+import { SETTINGS_PAGES, SETTINGS_PAGE_ALIASES, isExperimentId, type SettingsPage, type SettingsPageAlias } from '@boite/contracts';
 import { experimentsShown } from './experiments.svelte';
 
 /**
@@ -186,10 +186,10 @@ const HOSTS: readonly (readonly [SettingsPage, string, SettingsCardId])[] = [
   ['agents', 'brain-', 'brain']
 ];
 
-/** The card a route's section names or sits in, on the page the route lands on. */
+/** The card a route's section names or sits in, on the page the route lands on: one experiment's switch sits in the experiments. */
 function cardAt(place: { page: SettingsPage; section: string | null }): CardDef | undefined {
   const host = place.section ? HOSTS.find(([page, prefix]) => page === place.page && place.section!.startsWith(prefix))?.[2] : undefined;
-  return cardOf(place.section) ?? cardOf(host);
+  return cardOf(place.section) ?? cardOf(host ?? (place.page === 'version' && place.section !== null && isExperimentId(place.section) ? 'experiments' : undefined));
 }
 
 /**
