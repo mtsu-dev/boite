@@ -14,7 +14,7 @@ import { toolOutputText } from '../src/drivers/acp/turn.ts';
 import { sessionNotificationOf } from '../src/drivers/acp/updates.ts';
 import { stderrLines } from '../src/drivers/lines.ts';
 import { getDriver, setDriver } from '../src/drivers/index.ts';
-import { startTestCore, waitFor } from './harness.ts';
+import { startTestCore, startTurn, waitFor } from './harness.ts';
 import type { TestCore } from './harness.ts';
 import { countLogLines, countProcesses, readScriptedLog, writeScriptedProvider } from './scripted-provider.ts';
 import { thrown } from './settle.ts';
@@ -23,12 +23,10 @@ import { thrown } from './settle.ts';
 const FAKE_AGENT = fileURLToPath(new URL('./fixtures/acp-agent.ts', import.meta.url));
 
 test('ACP named task calls reach the native team without exposing the side conversation', async () => {
-  const client = await startCore();
-  const threadId = await acpThread(client);
+  const { client, threadId } = await startThread();
   // The file's first turn starts the fake agent and the ACP driver cold: 1.3
   // to 4.1 s on passing Windows runners, past the client's 5 s default on a slow one.
-  const finished = client.next('turn.finished', turn => turn.threadId === threadId, 20000);
-  await client.call('turns.start', { threadId, prompt: '[agents]' });
+  const { finished } = await startTurn(client, threadId, '[agents]', 20000);
   expect((await finished).status).toBe('done');
   expect((await client.call('delegation.get', { threadId })).nativeAgents).toEqual([
     expect.objectContaining({ toolId: 'native-acp', name: 'reviewer', task: 'Review parser boundaries', status: 'done', result: 'Parser checked' }),
@@ -36,8 +34,7 @@ test('ACP named task calls reach the native team without exposing the side conve
 });
 
 test('ACP takes an effort change while its prompt runs, as the same config option', async () => {
-  const client = await startCore({ warmProcessMinutes: 5 });
-  const threadId = await acpThread(client, 'fake-fast');
+  const { client, threadId } = await startThread({ warmProcessMinutes: 5 }, 'fake-fast');
   const turn = await client.call('turns.start', { threadId, prompt: '[slow]' });
   await waitFor(() => fakeLog().includes('waiting for cancel'));
   await client.call('threads.update', { threadId, effort: 'high' });
@@ -50,8 +47,7 @@ test('ACP takes an effort change while its prompt runs, as the same config optio
 });
 
 test('ACP reads as waiting for the provider once its prompt is out, not as starting', async () => {
-  const client = await startCore();
-  const threadId = await acpThread(client);
+  const { client, threadId } = await startThread();
   const turn = await client.call('turns.start', { threadId, prompt: '[slow]' });
   await waitFor(() => fakeLog().includes('waiting for cancel'));
   expect(harness!.core.threads.get(threadId).progress).toMatchObject({ turnId: turn.id, phase: 'waiting' });
@@ -64,8 +60,7 @@ let logFile = '';
 let restoreDriver: (() => void) | null = null;
 
 test('ACP changes the running session mode without another prompt', async () => {
-  const client = await startCore();
-  const threadId = await acpThread(client);
+  const { client, threadId } = await startThread();
   const turn = await client.call('turns.start', { threadId, prompt: '[slow]' });
   await waitFor(() => fakeLog().includes('waiting for cancel'));
   await client.call('threads.update', { threadId, permissionMode: 'yolo' });
@@ -214,6 +209,15 @@ async function acpThread(client: CoreClient, model?: string, permissionMode?: Pe
   return thread.id;
 }
 
+/** A fresh core with one ACP thread on it, the opening of most tests here. */
+async function startThread(
+  settings?: Partial<Settings>,
+  ...thread: [model?: string, permissionMode?: PermissionMode]
+): Promise<{ client: CoreClient; threadId: string }> {
+  const client = await startCore(settings);
+  return { client, threadId: await acpThread(client, ...thread) };
+}
+
 /** Everything the core logged on this connection, as `<level> <message>` lines. */
 function collectLogs(client: CoreClient): string[] {
   const lines: string[] = [];
@@ -235,10 +239,8 @@ function configCount(pair: string): number {
 
 describe('acp driver', () => {
   test('native plan events populate thread activity tasks', async () => {
-    const client = await startCore();
-    const threadId = await acpThread(client);
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: '[tasks]' });
+    const { client, threadId } = await startThread();
+    const { finished } = await startTurn(client, threadId, '[tasks]', 20000);
     expect((await finished).status).toBe('done');
     expect((await client.call('threads.get', { threadId })).activity?.tasks).toEqual([
       { id: '0', text: 'Inspect source', status: 'completed' },
@@ -250,8 +252,7 @@ describe('acp driver', () => {
   });
 
   test('a plain prompt streams back as one text part, and the session id is kept', async () => {
-    const client = await startCore();
-    const threadId = await acpThread(client);
+    const { client, threadId } = await startThread();
 
     const deltas: string[] = [];
     client.on('message.delta', (event) => {
@@ -259,8 +260,7 @@ describe('acp driver', () => {
     });
 
     const prompt = 'the fake acp agent echoes this back';
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt });
+    const { finished } = await startTurn(client, threadId, prompt, 20000);
 
     const done = await finished;
     expect(done.error).toBeNull();
@@ -276,16 +276,14 @@ describe('acp driver', () => {
   });
 
   test('available_commands_update lists the agent commands, sent right after session/new', async () => {
-    const client = await startCore();
-    const threadId = await acpThread(client);
+    const { client, threadId } = await startThread();
 
     const listed: RpcEvents['thread.commands'][] = [];
     client.on('thread.commands', (event) => {
       if (event.threadId === threadId) listed.push(event);
     });
 
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: 'hello' });
+    const { finished } = await startTurn(client, threadId, 'hello', 20000);
     expect((await finished).status).toBe('done');
 
     const thread = await client.call('threads.get', { threadId });
@@ -304,8 +302,7 @@ describe('acp driver', () => {
     const logs = collectLogs(client);
     const threadId = await acpThread(client);
 
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: '[noise]the answer' });
+    const { finished } = await startTurn(client, threadId, '[noise]the answer', 20000);
     expect((await finished).status).toBe('done');
 
     // The sign-in link Antigravity prints in the middle of its ndjson stream.
@@ -315,11 +312,9 @@ describe('acp driver', () => {
   });
 
   test('a thought chunk becomes a thinking part ahead of the answer', async () => {
-    const client = await startCore();
-    const threadId = await acpThread(client);
+    const { client, threadId } = await startThread();
 
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: '[thought]the answer' });
+    const { finished } = await startTurn(client, threadId, '[thought]the answer', 20000);
     expect((await finished).status).toBe('done');
 
     const thread = await client.call('threads.get', { threadId });
@@ -330,16 +325,14 @@ describe('acp driver', () => {
   });
 
   test('a tool call arrives running, then done with its output', async () => {
-    const client = await startCore();
-    const threadId = await acpThread(client);
+    const { client, threadId } = await startThread();
 
     const parts: MessagePart[] = [];
     client.on('message.part', (event) => {
       if (event.threadId === threadId) parts.push(event.part);
     });
 
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: '[tool]' });
+    const { finished } = await startTurn(client, threadId, '[tool]', 20000);
     expect((await finished).status).toBe('done');
 
     const tools = parts.filter((part) => part.type === 'tool');
@@ -349,11 +342,9 @@ describe('acp driver', () => {
   });
 
   test("a tool call's content becomes the part's documents, and an update with none keeps them", async () => {
-    const client = await startCore();
-    const threadId = await acpThread(client);
+    const { client, threadId } = await startThread();
 
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: '[documents]' });
+    const { finished } = await startTurn(client, threadId, '[documents]', 20000);
     expect((await finished).status).toBe('done');
 
     const thread = await client.call('threads.get', { threadId });
@@ -377,11 +368,9 @@ describe('acp driver', () => {
   });
 
   test('an image over the 2 MB cap comes back as a line saying so, not as base64', async () => {
-    const client = await startCore();
-    const threadId = await acpThread(client);
+    const { client, threadId } = await startThread();
 
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 30000);
-    await client.call('turns.start', { threadId, prompt: '[big-image]' });
+    const { finished } = await startTurn(client, threadId, '[big-image]', 30000);
     expect((await finished).status).toBe('done');
 
     const thread = await client.call('threads.get', { threadId });
@@ -397,15 +386,13 @@ describe('acp driver', () => {
   });
 
   test('YOLO accepts an ACP permission without a card even when the agent asks anyway', async () => {
-    const client = await startCore();
-    const threadId = await acpThread(client, undefined, 'yolo');
+    const { client, threadId } = await startThread(undefined, undefined, 'yolo');
     const requested: string[] = [];
     client.on('permission.requested', request => {
       requested.push(request.id);
       void client.call('permissions.answer', { requestId: request.id, decision: 'deny' });
     });
-    const finished = client.next('turn.finished', turn => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: '[permission]' });
+    const { finished } = await startTurn(client, threadId, '[permission]', 20000);
     expect((await finished).status).toBe('done');
     const parts = (await client.call('threads.get', { threadId })).messages.flatMap(message => message.parts);
     expect(parts.filter(part => part.type === 'text').map(part => part.text).join('')).toContain('allowed');
@@ -414,8 +401,7 @@ describe('acp driver', () => {
   });
 
   test('a permission is asked, answered, and the answer reaches the agent', async () => {
-    const client = await startCore();
-    const threadId = await acpThread(client);
+    const { client, threadId } = await startThread();
 
     const allowed = await answerPermission(client, threadId, 'allow');
     expect(allowed.status).toBe('done');
@@ -434,8 +420,7 @@ describe('acp driver', () => {
     decision: 'allow' | 'deny',
   ): Promise<{ status: string; text: string; permission: MessagePart | undefined }> {
     const requested = client.next('permission.requested', (request) => request.threadId === threadId, 20000);
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: '[permission]' });
+    const { finished } = await startTurn(client, threadId, '[permission]', 20000);
 
     const request = await requested;
     expect(request.toolName).toBe('fake_tool');
@@ -455,11 +440,9 @@ describe('acp driver', () => {
   }
 
   test('the turn usage carries the agent tokens and the USD cost it reported', async () => {
-    const client = await startCore();
-    const threadId = await acpThread(client);
+    const { client, threadId } = await startThread();
 
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: '[usage]' });
+    const { finished } = await startTurn(client, threadId, '[usage]', 20000);
 
     const done = await finished;
     expect(done.status).toBe('done');
@@ -478,12 +461,10 @@ describe('acp driver', () => {
   });
 
   test("the session's running cost is split into what each turn added", async () => {
-    const client = await startCore({ warmProcessMinutes: 5 });
-    const threadId = await acpThread(client);
+    const { client, threadId } = await startThread({ warmProcessMinutes: 5 });
     const costs: number[] = [];
     for (const prompt of ['[usage]first', '[usage]second']) {
-      const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-      await client.call('turns.start', { threadId, prompt });
+      const { finished } = await startTurn(client, threadId, prompt, 20000);
       const done = await finished;
       expect(done.status).toBe('done');
       costs.push(done.usage?.costUsdEquivalent ?? Number.NaN);
@@ -497,8 +478,7 @@ describe('acp driver', () => {
   async function coldCosts(client: CoreClient, threadId: string, prompts: string[]): Promise<number[]> {
     const costs: number[] = [];
     for (const prompt of prompts) {
-      const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-      await client.call('turns.start', { threadId, prompt });
+      const { finished } = await startTurn(client, threadId, prompt, 20000);
       const done = await finished;
       expect(done.error).toBeNull();
       costs.push(done.usage?.costUsdEquivalent ?? Number.NaN);
@@ -507,8 +487,7 @@ describe('acp driver', () => {
   }
 
   test('a cold turn that loads the session is charged what it added to the restored total', async () => {
-    const client = await startCore({ warmProcessMinutes: 0 });
-    const threadId = await acpThread(client);
+    const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
     const costs = await coldCosts(client, threadId, ['[usage]one', '[usage]two', '[usage]three']);
     expect(fakeLog().split('\n').filter((line) => line.startsWith('loaded:'))).toHaveLength(2);
     // The agent reported 0.0042, 0.0084 and 0.0126 for the whole session.
@@ -532,12 +511,10 @@ describe('acp driver', () => {
   });
 
   test('an Antigravity interaction keeps the selected option id', async () => {
-    const client = await startCore();
-    const threadId = await acpThread(client);
+    const { client, threadId } = await startThread();
     harness!.core.providers.require('acp-fake').quirks = ['antigravity'];
     const requested = client.next('question.asked', (request) => request.threadId === threadId);
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: '[question]' });
+    const { finished } = await startTurn(client, threadId, '[question]', 20000);
     const request = await requested;
     expect(request.options.map((option) => option.id)).toEqual(['yes', 'no']);
     // No free field, so no file either: ACP's answer is an option id.
@@ -551,13 +528,11 @@ describe('acp driver', () => {
   });
 
   test('stopping a turn cancels the session and the agent process is gone', async () => {
-    const client = await startCore();
-    const threadId = await acpThread(client);
+    const { client, threadId } = await startThread();
 
     const started = client.next('process.started', (record) => record.threadId === threadId, 20000);
     const exited = client.next('process.exited', (record) => record.threadId === threadId, 20000);
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: '[slow]' });
+    const { finished } = await startTurn(client, threadId, '[slow]', 20000);
     const agent = await started;
 
     expect(await client.call('turns.stop', { threadId })).toEqual({ stopped: true });
@@ -577,13 +552,11 @@ describe('acp driver', () => {
   });
 
   test('a stop while the agent is still starting ends the turn at once, and the next turn runs', async () => {
-    const client = await startCore();
-    const threadId = await acpThread(client);
+    const { client, threadId } = await startThread();
     process.env['ACP_FAKE_HANG_INIT'] = '1';
 
     const started = client.next('process.started', (record) => record.threadId === threadId, 20000);
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: 'never answered' });
+    const { finished } = await startTurn(client, threadId, 'never answered', 20000);
     await started;
     await waitFor(() => initializeCount() === 1, 10000);
 
@@ -600,11 +573,9 @@ describe('acp driver', () => {
   });
 
   test('a stop on an agent that ignores session/cancel closes it past the grace', async () => {
-    const client = await startCore();
-    const threadId = await acpThread(client);
+    const { client, threadId } = await startThread();
 
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: '[deaf]' });
+    const { finished } = await startTurn(client, threadId, '[deaf]', 20000);
     await waitFor(() => fakeLog().includes('deaf'), 10000);
 
     const stoppedAt = Date.now();
@@ -619,15 +590,13 @@ describe('acp driver', () => {
   });
 
   test('a session the agent forgot is replaced in the same turn, carrying the history', async () => {
-    const client = await startCore({ warmProcessMinutes: 0 });
-    const threadId = await acpThread(client);
+    const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
     await runTurn(client, threadId, 'remember the word apricot');
     const forgotten = (await client.call('threads.get', { threadId })).sessionId ?? '';
     expect(forgotten).toMatch(/^acp-fake-/);
 
     process.env['ACP_FAKE_FORGET'] = '1';
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: 'second message' });
+    const { finished } = await startTurn(client, threadId, 'second message', 20000);
     const turn = await finished;
     // The core forgot the session and ran the turn again on a fresh one.
     expect(turn.status).toBe('done');
@@ -689,16 +658,14 @@ describe('acp driver', () => {
   });
 
   test('a load refused for want of a sign-in keeps the session, and the next turn loads it', async () => {
-    const client = await startCore({ warmProcessMinutes: 0 });
-    const threadId = await acpThread(client);
+    const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
     await runTurn(client, threadId, 'remember the word apricot');
     const kept = (await client.call('threads.get', { threadId })).sessionId ?? '';
     expect(kept).toMatch(/^acp-fake-/);
 
     process.env['ACP_FAKE_LOAD_AUTH'] = '1';
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      const failed = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-      await client.call('turns.start', { threadId, prompt: 'second message' });
+      const { finished: failed } = await startTurn(client, threadId, 'second message', 20000);
       const failure = await failed;
       expect(failure.status).toBe('error');
       expect(failure.error).toContain('Authentication required');
@@ -715,22 +682,19 @@ describe('acp driver', () => {
   });
 
   test('an internal error on load keeps the session once, and the same error twice in a row loses it', async () => {
-    const client = await startCore({ warmProcessMinutes: 0 });
-    const threadId = await acpThread(client);
+    const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
     await runTurn(client, threadId, 'remember the word apricot');
     const kept = (await client.call('threads.get', { threadId })).sessionId ?? '';
 
     process.env['ACP_FAKE_LOAD_BROKEN'] = '1';
-    const once = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: 'second message' });
+    const { finished: once } = await startTurn(client, threadId, 'second message', 20000);
     const first = await once;
     expect(first.status).toBe('error');
     expect(first.error).toContain('OpenCode service failure');
     expect(first.error).toContain('The session is kept');
     expect((await client.call('threads.get', { threadId })).sessionId).toBe(kept);
 
-    const twice = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: 'third message' });
+    const { finished: twice } = await startTurn(client, threadId, 'third message', 20000);
     const second = await twice;
     // The second refusal loses the session, and the core runs the turn again
     // on a fresh one.
@@ -742,15 +706,13 @@ describe('acp driver', () => {
   });
 
   test('an internal error on load that a good load follows is forgotten', async () => {
-    const client = await startCore({ warmProcessMinutes: 0 });
-    const threadId = await acpThread(client);
+    const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
     await runTurn(client, threadId, 'first');
     const kept = (await client.call('threads.get', { threadId })).sessionId ?? '';
 
     const refuse = async (): Promise<RpcEvents['turn.finished']> => {
       process.env['ACP_FAKE_LOAD_BROKEN'] = '1';
-      const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-      await client.call('turns.start', { threadId, prompt: 'refused' });
+      const { finished } = await startTurn(client, threadId, 'refused', 20000);
       const done = await finished;
       delete process.env['ACP_FAKE_LOAD_BROKEN'];
       return done;
@@ -826,8 +788,7 @@ describe('acp driver', () => {
   });
 
   test('a huge tool output and huge documents are cut before they are journalled', async () => {
-    const client = await startCore();
-    const threadId = await acpThread(client);
+    const { client, threadId } = await startThread();
     await runTurn(client, threadId, '[huge-tool]');
 
     const thread = await client.call('threads.get', { threadId });
@@ -846,8 +807,7 @@ describe('acp driver', () => {
   });
 
   test('a resumed session discovers the controls once, not on every cold turn', async () => {
-    const client = await startCore({ warmProcessMinutes: 0 });
-    const threadId = await acpThread(client, 'fake-smart');
+    const { client, threadId } = await startThread({ warmProcessMinutes: 0 }, 'fake-smart');
     const { forgetProbes } = await import('../src/drivers/index.ts');
     const created = (): number => fakeLog().split('\n').filter((line) => line.startsWith('new:')).length;
 
@@ -866,11 +826,9 @@ describe('acp driver', () => {
   });
 
   test('a refusal ends the turn on an error naming the stop reason', async () => {
-    const client = await startCore();
-    const threadId = await acpThread(client);
+    const { client, threadId } = await startThread();
 
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: '[refuse]' });
+    const { finished } = await startTurn(client, threadId, '[refuse]', 20000);
 
     const done = await finished;
     expect(done.status).toBe('error');
@@ -881,8 +839,7 @@ describe('acp driver', () => {
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 
   test('an image attachment reaches the agent as an image content block', async () => {
-    const client = await startCore();
-    const threadId = await acpThread(client);
+    const { client, threadId } = await startThread();
 
     const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
     await client.call('turns.start', {
@@ -915,19 +872,16 @@ describe('acp driver', () => {
   });
 
   test('an agent that dies fails the turn with its exit code and stderr, and the next turn works', async () => {
-    const client = await startCore();
-    const threadId = await acpThread(client);
+    const { client, threadId } = await startThread();
 
-    const crashed = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: '[crash]' });
+    const { finished: crashed } = await startTurn(client, threadId, '[crash]', 20000);
 
     const failure = await crashed;
     expect(failure.status).toBe('error');
     expect(failure.error).toContain('exited with code 3');
     expect(failure.error).toContain('boom');
 
-    const again = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: 'still here' });
+    const { finished: again } = await startTurn(client, threadId, 'still here', 20000);
     const done = await again;
     expect(done.error).toBeNull();
     expect(done.status).toBe('done');
@@ -955,8 +909,7 @@ describe('acp driver', () => {
   });
 
   test('the thread model becomes a config option, and a dropped session is loaded back', async () => {
-    const client = await startCore({ warmProcessMinutes: 0 });
-    const threadId = await acpThread(client, 'fake-smart');
+    const { client, threadId } = await startThread({ warmProcessMinutes: 0 }, 'fake-smart');
 
     await runTurn(client, threadId, 'first');
     const first = await client.call('threads.get', { threadId });
@@ -977,8 +930,7 @@ describe('acp driver', () => {
   });
 
   test('a warm session follows a model and an effort change without starting a second process', async () => {
-    const client = await startCore({ warmProcessMinutes: 5 });
-    const threadId = await acpThread(client, 'fake-fast');
+    const { client, threadId } = await startThread({ warmProcessMinutes: 5 }, 'fake-fast');
     const counted = countProcesses(client, threadId);
 
     await runTurn(client, threadId, 'first');
@@ -999,8 +951,7 @@ describe('acp driver', () => {
 
   test('on an agent that resets the effort with the model, the effort goes again, and none puts it back on its default', async () => {
     process.env['ACP_FAKE_OPENCODE2'] = '1';
-    const client = await startCore({ warmProcessMinutes: 5 });
-    const threadId = await acpThread(client, 'fake-fast');
+    const { client, threadId } = await startThread({ warmProcessMinutes: 5 }, 'fake-fast');
     // What the thread's own session was sent during a turn; probes reading a model's scale log too.
     const sentDuring = async (prompt: string, line: string): Promise<number> => {
       const before = configCount(line);
@@ -1028,8 +979,7 @@ describe('acp driver', () => {
 
   test('a cold resume reads the controls from session/load, and a probe deletes the session it opened', async () => {
     process.env['ACP_FAKE_OPENCODE2'] = '1';
-    const client = await startCore({ warmProcessMinutes: 0 });
-    const threadId = await acpThread(client, 'fake-smart');
+    const { client, threadId } = await startThread({ warmProcessMinutes: 0 }, 'fake-smart');
     const { forgetProbes } = await import('../src/drivers/index.ts');
     const created = (): string[] => fakeLog().split('\n').filter((line) => line.startsWith('new:'));
     const deleted = (): string[] => fakeLog().split('\n').filter((line) => line.startsWith('delete:'));
@@ -1046,18 +996,15 @@ describe('acp driver', () => {
   });
 
   test('a prompt the agent fails with only a generic message shows the reason it gave', async () => {
-    const client = await startCore();
-    const threadId = await acpThread(client);
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: '[internal]' });
+    const { client, threadId } = await startThread();
+    const { finished } = await startTurn(client, threadId, '[internal]', 20000);
     const done = await finished;
     expect(done.status).toBe('error');
     expect(done.error).toBe('no available subscription for this model');
   });
 
   test('a thread on the model "default" lets the agent keep its own', async () => {
-    const client = await startCore({ warmProcessMinutes: 0 });
-    const threadId = await acpThread(client, 'default');
+    const { client, threadId } = await startThread({ warmProcessMinutes: 0 }, 'default');
 
     await runTurn(client, threadId, 'first');
     const thread = await client.call('threads.get', { threadId });
@@ -1237,8 +1184,7 @@ describe('acp driver', () => {
   });
 
   test('the thread permission mode becomes a session mode, and the one the agent is on sends nothing', async () => {
-    const client = await startCore();
-    const threadId = await acpThread(client, undefined, 'acceptEdits');
+    const { client, threadId } = await startThread(undefined, undefined, 'acceptEdits');
 
     await runTurn(client, threadId, 'first');
     // The fake spells it `accept_edits`; the mapping is what finds it.
@@ -1256,8 +1202,7 @@ describe('acp driver', () => {
   });
 
   test.each(['bypassPermissions', 'yolo'] as const)('%s lands on the agent mode yolo', async mode => {
-    const client = await startCore();
-    const threadId = await acpThread(client, undefined, mode);
+    const { client, threadId } = await startThread(undefined, undefined, mode);
     await runTurn(client, threadId, 'first');
     await waitFor(() => setModeCount('yolo') === 1);
 
@@ -1272,8 +1217,7 @@ describe('acp driver', () => {
   });
 
   test('a warm session follows a mode change without starting a second process', async () => {
-    const client = await startCore({ warmProcessMinutes: 5 });
-    const threadId = await acpThread(client);
+    const { client, threadId } = await startThread({ warmProcessMinutes: 5 });
     const counted = countProcesses(client, threadId);
 
     await runTurn(client, threadId, 'first');
@@ -1289,8 +1233,7 @@ describe('acp driver', () => {
   });
 
   test('a session loaded back is put in the thread mode again', async () => {
-    const client = await startCore({ warmProcessMinutes: 0 });
-    const threadId = await acpThread(client, undefined, 'acceptEdits');
+    const { client, threadId } = await startThread({ warmProcessMinutes: 0 }, undefined, 'acceptEdits');
 
     await runTurn(client, threadId, 'first');
     const sessionId = (await client.call('threads.get', { threadId })).sessionId ?? '';
@@ -1305,8 +1248,7 @@ describe('acp driver', () => {
   });
 
   test('an agent that switched on its own is put back on the next turn', async () => {
-    const client = await startCore({ warmProcessMinutes: 5 });
-    const threadId = await acpThread(client);
+    const { client, threadId } = await startThread({ warmProcessMinutes: 5 });
     const logs = collectLogs(client);
 
     await runTurn(client, threadId, '[mode-switch yolo]drifting');
@@ -1402,8 +1344,7 @@ describe('acp driver', () => {
 
   test('a listed model the agent refuses on a warm session fails the turn, and the same model runs once it is taken', async () => {
     process.env['ACP_FAKE_REFUSE_SMART'] = '1';
-    const client = await startCore({ warmProcessMinutes: 5 });
-    const threadId = await acpThread(client);
+    const { client, threadId } = await startThread({ warmProcessMinutes: 5 });
     await runTurn(client, threadId, 'on the default');
 
     await client.call('threads.update', { threadId, model: 'fake-smart' });
@@ -1421,13 +1362,11 @@ describe('acp driver', () => {
 
   test('a stop while the agent has not answered a model switch ends the turn as stopped', async () => {
     process.env['ACP_FAKE_HANG_SMART'] = '1';
-    const client = await startCore({ warmProcessMinutes: 5 });
-    const threadId = await acpThread(client);
+    const { client, threadId } = await startThread({ warmProcessMinutes: 5 });
     await runTurn(client, threadId, 'on the default');
 
     await client.call('threads.update', { threadId, model: 'fake-smart' });
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: 'never switched' });
+    const { finished } = await startTurn(client, threadId, 'never switched', 20000);
     await waitFor(() => configCount('model fake-smart') === 1, 10000);
 
     expect(await client.call('turns.stop', { threadId })).toEqual({ stopped: true });
@@ -1545,14 +1484,12 @@ describe('acp driver', () => {
   }
 
   async function finishTurn(client: CoreClient, threadId: string, prompt: string): Promise<RpcEvents['turn.finished']> {
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt });
+    const { finished } = await startTurn(client, threadId, prompt, 20000);
     return finished;
   }
 
   async function runTurn(client: CoreClient, threadId: string, prompt: string): Promise<void> {
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt });
+    const { finished } = await startTurn(client, threadId, prompt, 20000);
     const done = await finished;
     expect(done.error).toBeNull();
     expect(done.status).toBe('done');
