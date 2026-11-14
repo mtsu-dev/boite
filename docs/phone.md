@@ -9,7 +9,7 @@ once and it reaches every machine of your [group](machines.md).
 | App | How to get it |
 | --- | --- |
 | Web app on iPhone | Open a machine's HTTPS address in Safari, then Share, Add to Home Screen. There is no iOS package. |
-| Web app on Android | Install Boite in the phone's Settings, Devices, Phone app, or the browser's install menu. |
+| Web app on Android | Install Boite on the phone's Settings, Notifications screen, or the browser's install menu. |
 | Android app | Download `boite-android-<version>.apk` from a nightly release on the phone, allow the browser to install unknown apps, open Boite. |
 
 The Android app opens Boite's own address, `https://boite.mtsu.dev`, in
@@ -19,7 +19,7 @@ conversations go from the phone to your machines, never to it.
 ## Make your computer reachable
 
 The phone talks to the machine directly. On the computer, open Settings,
-Devices, Phone app and pick one way. Install, notifications and opening
+Advanced, Phone app and pick one way. Install, notifications and opening
 offline need HTTPS.
 
 | Way | Setting | What you get |
@@ -37,7 +37,7 @@ offline need HTTPS.
 
 ## Add the phone
 
-1. On a computer, open Settings, Devices, Group, Add a device.
+1. On a computer, open Settings, Machines and updates, Add a device.
 2. On the phone, open the Boite app and tap Scan the code, or send it the
    copied link and tap Paste the link.
 3. The phone lists every machine of the group and opens on that computer.
@@ -67,9 +67,8 @@ the VPN or the Wi-Fi.
 - The bottom bar holds Threads, Activity and Bots. The + for a new conversation sits in the thread list's header.
 - Mark all as read, above Activity's list, clears failures, stops and
   finished work. Questions and permissions stay until you answer them.
-- The gear at the end of each list's header opens Settings, with the same
-  pages as on a computer, those the phone may open. Back, or the system's back
-  gesture, returns to the list.
+- The gear at the end of each list's header opens Settings; Back, or the
+  system's back gesture, returns to the list.
 - Slide a row left for Pin and Archive. Tap a conversation's title for its
   menu: the side panel, pin, rename, find, archive and delete.
 - Enter writes a new line and the send button sends. With a physical
@@ -102,7 +101,7 @@ tokens. Make a narrower folder the project before you add a phone.
 ## Notifications
 
 1. In an app installed from an HTTPS address (on iPhone, the Home Screen app
-   on iOS 16.4 or later), open Settings, Devices, Phone app, Enable notifications.
+   on iOS 16.4 or later), open Settings, Notifications, Enable notifications.
 2. Tap Send test notification to check the push service accepts it.
 3. Turn off the kinds you do not want: Approvals, Questions, Finished, Errors
    and Limits. The choice belongs to this device.

@@ -1,7 +1,7 @@
 # Contacts
 
 Experimental: Contacts exist in Nightly builds only. Turn them on in Settings,
-Version, Experiments ([experiments](experiments.md)). They are not ready for everyday
+Experiments ([experiments](experiments.md)). They are not ready for everyday
 use: a full security and network review comes first.
 
 A contact is another person's Boite. Your agents and theirs work together on

@@ -55,14 +55,14 @@ The bar shows the next open item and a count such as 3/5 done. On the desktop
 it opens the side panel's Tasks tab; on a paired device the list unfolds in
 the bar. Press an item to see what you wrote.
 
-Settings, Conversations, Agent replies, Checklist model picks the model. Automatic
+Settings, General, Agent replies, Checklist model picks the model. Automatic
 picks Opus at medium or Sol at high, the conversation's own agent first. Only
 the owner sees this setting.
 
 ## Automatic goals
 
-Experimental, in Nightly builds only: turn it on in Settings, Version,
-Experiments (Automatic goals).
+Experimental, in Nightly builds only: turn it on in Settings, Experiments
+(Automatic goals).
 
 A long prompt then starts a reviewed goal on itself, with its checklist and a
 card on the project board. Prompt length sets the threshold, 1500 characters

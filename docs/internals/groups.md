@@ -6,7 +6,7 @@ added on any machine is a device of the group: one key of its own opens every
 machine, with nothing to pair machine by machine. Agents on one machine find the
 agents of the others.
 
-Settings, Devices shows one group card: the machines, one row each with their
+Settings, Machines shows one group card: the machines, one row each with their
 updates and settings folded under the row
 ([machines](machines.md#the-machines-page)), then the devices. One button adds
 anything, **Add a device**. Opening Machines converts existing full-control
@@ -44,14 +44,14 @@ a machine is not: it is as private as its transport ([the network](#the-network)
 
 ## Using it
 
-On any machine, in Settings, Devices, Group, **Add a device**. A machine in no group
+On any machine, in Settings, Machines, **Add a device**. A machine in no group
 starts one named after itself first. The card shows a QR code and **Copy
 link**:
 
 - a phone scans the QR code from its Boite app, or pastes the link there when
   its camera cannot ([phone](phone.md#adding-a-phone));
 - a computer pastes the copied link under **Join** in its own Settings,
-  Devices, Group: its core joins the group. A computer alone in a group of its own,
+  Machines: its core joins the group. A computer alone in a group of its own,
   the one its phone brought, joins all the same and brings that phone along.
 
 The QR code and the link work once, for ten minutes. Whoever holds them gets
@@ -344,7 +344,7 @@ closed within fifteen seconds.
 While a member is reached through another, the client tries its own addresses
 every 30 seconds while none answers, and moves to the first that answers, so a phone back on the
 tailnet, or a desktop given an HTTPS address, stops depending on the relaying
-machine. Settings, Devices, Machines names the machine a member is reached through.
+machine. Settings, Machines names the machine a member is reached through.
 
 **What the relaying machine sees.** Everything the client and the member say
 to each other, the client's key for that member included. Every member of a

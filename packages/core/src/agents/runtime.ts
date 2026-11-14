@@ -272,7 +272,7 @@ export class AgentRuntime {
       : held === 'paused' ? (agent.status === 'paused' ? `${agent.name} is paused` : 'bots are paused')
         : `today's turns cost $${over!.spent.toFixed(2)}, past the daily budget of $${over!.budget.toFixed(2)}`;
     const after = source === 'resume' ? 'It was dropped.' : held === 'inactive' ? 'It will not run.'
-      : held === 'off' ? `It runs once ${provider} is turned on in Settings > AI accounts > Providers, or ${agent.name} moves to another model.` : over ? 'It runs tomorrow, or once the budget is raised.'
+      : held === 'off' ? `It runs once ${provider} is turned on in Settings > Providers, or ${agent.name} moves to another model.` : over ? 'It runs tomorrow, or once the budget is raised.'
       : agent.status === 'paused' ? `It runs once ${agent.name} resumes.` : 'It runs once bots resume.';
     const text = `Held ${SOURCE_TEXT[source]}: ${why}. ${after}`;
     if (!this.#told.has(key)) {

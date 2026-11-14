@@ -137,7 +137,10 @@
 {/snippet}
 
 <section class="card hooks" id="settings-hooks" data-testid="hooks-card" aria-busy={loading}>
-  <h2 class="ui-label-box"><span class="ui-label">{strings.hooks.heading}</span><InfoTip topic={strings.hooks.heading} text={strings.hooks.description} />{#if status || error}<button type="button" class="ghost icon" aria-label={strings.hooks.refresh} title={strings.hooks.refresh} disabled={loading} onclick={() => void load()} data-testid="hooks-refresh"><RefreshCw size={15} /></button>{/if}</h2>
+  <h2 class="ui-label-box"><span class="ui-label">{strings.hooks.heading}</span><InfoTip topic={strings.hooks.heading} text={strings.hooks.description} /></h2>
+  {#if status || error}
+    <button type="button" class="ghost small icon refresh" aria-label={strings.hooks.refresh} title={strings.hooks.refresh} disabled={loading} onclick={() => void load()} data-testid="hooks-refresh"><RefreshCw size={14} strokeWidth={1.75} /></button>
+  {/if}
   {#if missing}
     <p class="hint" data-testid="hooks-missing">{strings.hooks.missing}</p>
   {:else if error}
@@ -204,6 +207,7 @@
 <style>
   .hooks { position: relative; margin-top: 28px; }
   /* Beside the title, not under it: the title keeps the card grammar's own air. */
+  .refresh { position: absolute; top: calc(var(--settings-padding) + 12px - var(--control-sm) / 2); right: calc(var(--settings-padding) - 6px); }
   p { margin: 0; }
   .error { color: var(--color-danger); overflow-wrap: anywhere; }
 

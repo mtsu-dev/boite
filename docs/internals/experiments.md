@@ -1,6 +1,6 @@
 # Experiments
 
-An experiment is unfinished work behind a switch in Settings > Version > Experiments.
+An experiment is unfinished work behind a switch in Settings > Experiments.
 Every feature has a tag, `release`, `nightly` or `dev`, and exists only in the
 builds at or above it: a Release has none of the unfinished ones, in its
 behaviour and in its files.
@@ -124,7 +124,7 @@ run": the version in the hello (`info.version`) is enough.
 - Settings lists `listedExperiments(version)` and has no Experiments page when
   experiments do not run (`pageAvailable` in `lib/settings-tabs.ts`, desktop
   nav, search and phone list): a route or a card that points there lands on
-  the first page. The three machine settings and the Automatic goals threshold
+  Home, the page Settings opens on. The three machine settings and the Automatic goals threshold
   show only while the core of the machine being configured is not a Release.
   A card about an experiment without a switch in this build can only be
   refused, and says why.

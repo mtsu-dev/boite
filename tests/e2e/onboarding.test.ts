@@ -229,8 +229,8 @@ test('pending agent updates remain in Machines after the tour closes', async () 
   expect(await page.evaluate(`document.querySelector('[data-testid=harness-update-notices]') === null`)).toBe(true);
   // A phone's settings open on the machine itself, which leads to Machines.
   await mobileAction(page, 'mobile-settings');
-  await page.waitFor(`document.querySelector('[data-testid=settings-tab-version]')`);
-  await page.click('[data-testid=settings-tab-version]');
+  await page.waitFor(`document.querySelector('[data-testid=mobile-settings-connection]')`);
+  await page.click('[data-testid=mobile-settings-connection]');
   // Machines lists what the agents still offer, and Update starts them from there.
   await page.waitFor(`[...document.querySelectorAll('[data-testid=updates-other]')].map(row => row.dataset.part).sort().join() === 'claude,codex'`);
   expect(await page.evaluate(`document.querySelector('[data-testid=updates-run-all]').disabled`)).toBe(false);
@@ -255,10 +255,11 @@ test('an unavailable onboarding chunk keeps agent updates accessible in Machines
     // The tour that could not load still holds the update card back.
     expect(await offline.evaluate(`document.querySelector('[data-testid=updates-card]') === null`)).toBe(true);
     await offline.click('[data-testid=nav-settings]');
-    await offline.waitFor(`document.querySelector('[data-testid=settings-tab-version]')`);
-    await offline.click('[data-testid=settings-tab-version]');
-    await offline.waitFor(`document.querySelector('[data-testid=settings-page][data-page=version]') && [...document.querySelectorAll('[data-testid=updates-other]')].map(row => row.dataset.part).sort().join() === 'claude,codex'`);
-    // Each agent's own Update is a card of the same page.
+    await offline.waitFor(`document.querySelector('[data-testid=settings-tab-machines]')`);
+    await offline.click('[data-testid=settings-tab-machines]');
+    await offline.waitFor(`document.querySelector('[data-testid=machines-page]') && [...document.querySelectorAll('[data-testid=updates-other]')].map(row => row.dataset.part).sort().join() === 'claude,codex'`);
+    // Each agent's own Update is on Providers.
+    await offline.click('[data-testid=settings-tab-accounts]');
     await offline.waitFor(`document.querySelectorAll('[data-testid=harness-updates-card] [data-testid=harness-update-row-run]').length === 2`);
   } finally {
     await offline.close();

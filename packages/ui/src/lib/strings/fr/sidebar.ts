@@ -20,6 +20,8 @@ export const fr: Translation = {
     laterProjectsHint: 'Les fils archivés pour plus tard, dans les projets où rien d’autre n’est ouvert.',
     idleProjectsHint: 'Rien à faire ici : aucun fil ouvert ou mis de côté. Choisissez-en un pour lancer un fil.',
     filter: 'Filtrer',
+    filterDisplay: 'Affichage',
+    backToThreads: 'Retour aux fils',
     filterClear: 'Retirer le filtre {name}',
     filterWorking: 'En cours',
     groupingOptions: "Options d'affichage",
@@ -52,7 +54,7 @@ export const fr: Translation = {
     archivedByPlugin: 'Archivé par le plugin {name}',
     reopenThread: 'Remettre dans Récent',
     reopenNamedThread: 'Remettre « {title} » dans Récent',
-    doneNotice: 'Ce fil est terminé. Remettez-le dans Récent pour continuer.',
+    doneNotice: 'Ce fil est terminé',
     contactHold: {
       title: 'Courrier d’un contact : fil bloqué',
       body: 'Son historique contient des messages de {contacts}, envoyés hors d’un projet partagé. Boite ne peut pas borner ce qu’ils demandent, il refuse donc tout tour ici.',

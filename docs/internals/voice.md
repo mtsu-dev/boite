@@ -46,7 +46,7 @@ without losing the draft.
 
 ## Set it up
 
-Open Settings, Input, Voice on the machine hosting the conversation. The line at the
+Open Settings, Voice on the machine hosting the conversation. The line at the
 top says whether dictation works now and, when it does not, offers the one
 action that fixes it: Set up dictation downloads the local engine, Try again
 restarts a failed download, Save to repair rewrites an unreadable
@@ -199,7 +199,7 @@ for development. Permission is requested only after pressing Dictate or Test
 microphone. A denial explains how to retry. Silent
 or very short recordings are refused before uploading.
 
-Settings > Input > Voice also selects the microphone on the current device, including
+Settings > Voice also selects the microphone on the current device, including
 paired phones. System default follows the OS input; an explicit choice uses
 that input for dictation and the test. An unavailable selected input reports an
 error instead of silently recording a different one. The input level meter

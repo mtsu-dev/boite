@@ -27,7 +27,7 @@
 </script>
 
 {#if !insideTauri() && workspace.machines.length > 1}
-  <section class="card" id="settings-main-machine" data-testid="main-machine">
+  <section class="card" data-testid="main-machine">
     <div class="switch-row">
       <span class="text ui-label-box">
         <span class="ui-label">{s.main}</span><InfoTip topic={s.main} text={chosen ? s.mainHint : s.mainLastHint} testid="main-machine-info" />

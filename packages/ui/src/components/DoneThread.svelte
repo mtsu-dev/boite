@@ -185,7 +185,8 @@
     border-radius: var(--radius-sm);
   }
   .pr.merged { color: var(--color-success); }
-  .pr.closed { color: var(--color-danger); }
+  /* The badge's softened red (PullRequestBadge.svelte): a closed pull request is read, never shouted. */
+  .pr.closed { color: color-mix(in oklch, var(--color-danger) 60%, var(--color-muted-foreground)); }
   .pr:hover span, .pr:focus-visible span { text-decoration: underline; text-underline-offset: 3px; }
   /* Restoring takes the time's place under the pointer, the way a thread row shows its menu. */
   .restore { position: absolute; top: calc(16px - var(--control-sm) / 2); right: 3px; opacity: 0; background: var(--color-surface-2); color: var(--color-muted-foreground); }

@@ -38,13 +38,13 @@ export async function openMobilePanel(page: BrowserPage): Promise<void> {
   await page.waitFor(`document.querySelector('[data-testid=right-panel]')`);
 }
 
-/** Limits, once Settings is open: the route from before the map, which opens AI accounts on its limits, on a desktop and on a phone's list. */
+/** Limits, once Settings is open: a desktop tab, or on a phone the second tab of the Usage screen. */
 export async function openLimitsTab(page: BrowserPage): Promise<void> {
   await page.waitFor(`document.querySelector('[data-testid=mobile-settings-home], [data-testid=mobile-settings-detail], [data-testid=settings-tab-limits]')`);
-  // A phone on a page: back to its list, which holds the routes.
-  if (!await page.evaluate(`!!document.querySelector('[data-testid=settings-tab-limits]')`)) {
-    await page.click('[data-testid=mobile-settings-back]');
-    await page.waitFor(`document.querySelector('[data-testid=settings-tab-limits]')`);
+  if (await page.evaluate(`!!document.querySelector('[data-testid=settings-tab-limits]')`)) {
+    await page.click('[data-testid=settings-tab-limits]');
+    return;
   }
-  await page.click('[data-testid=settings-tab-limits]');
+  if (!await page.evaluate(`!!document.querySelector('[data-testid=mobile-usage-tab-limits]')`)) await page.click('[data-testid=settings-tab-usage]');
+  await page.click('[data-testid=mobile-usage-tab-limits]');
 }

@@ -335,10 +335,8 @@
     return () => cancelAnimationFrame(frame);
   });
 
-  /**
-   * The slice of messages that meets the viewport, the overscan added, and the two heights the spacers carry for the rest.
-   * While pinned the window hangs off the end of the list, not `scrollTop`, so the bottom is right on the first frame.
-   */
+  /** The slice of messages that meets the viewport, the overscan added, and the two heights the spacers carry for the rest.
+   * While pinned the window hangs off the end of the list, not `scrollTop`, so the bottom is right on the first frame. */
   let lastView: WindowView | undefined;
   const view = $derived.by(() => {
     void measured;
@@ -716,8 +714,9 @@
   {#if !narrow.current}<MessageOutline {messages} active={activePrompt} jump={id => void jumpToMessage(id)}
     hasOlder={store.messagesBefore !== null} loading={store.loadingOlder} loadOlder={() => { if (viewport) { releaseNavigation(); viewport.scrollTop = rows[0]?.gap ? Math.max(0, (totals(rows)[1] ?? 0) - viewport.clientHeight) : 0; pinned = false; loadAbove(viewport); } }} />{/if}
   <!-- Input releases restored and navigation anchors; programmatic corrections keep them. A tap on a phone shows a message's buttons. -->
+  <!-- The top fade is sticky inside the padding: it is told the padding a sent prompt's lead adds, or it would hang that far under the header, a dark band across the prompt's lines. -->
   <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
-  <div class="timeline" bind:this={viewport} use:watchWheel={onwheel} use:selectionClicks onclick={reveal.tap} {onscroll} ontouchstart={press} onpointerdown={press} onpointerover={(event) => { pointed = pointedTurn(event); }} onpointerleave={() => { pointed = null; }} onkeydown={releaseNavigation} style:padding-top="{20 + promptLead}px" style:overflow-anchor={timeline.at(-1)?.state === 'streaming' ? 'none' : undefined} class:below={!pinned} data-testid="timeline" data-media-gallery data-scroll-root>
+  <div class="timeline" bind:this={viewport} use:watchWheel={onwheel} use:selectionClicks onclick={reveal.tap} {onscroll} ontouchstart={press} onpointerdown={press} onpointerover={(event) => { pointed = pointedTurn(event); }} onpointerleave={() => { pointed = null; }} onkeydown={releaseNavigation} style:padding-top="{20 + promptLead}px" style:--scroll-edge-top="{20 + promptLead}px" style:overflow-anchor={timeline.at(-1)?.state === 'streaming' ? 'none' : undefined} class:below={!pinned} data-testid="timeline" data-media-gallery data-scroll-root>
     <div class="column" bind:this={column}>
       <!-- paging: the one line the top of the list shows while a page is in flight. -->
       {#if store.loadingOlder}<p class="loading-older" data-testid="loading-older">{strings.chat.loadingOlder}</p>{/if}
@@ -770,11 +769,15 @@
               changes={host?.messageId === message.id ? { at: host.index, line: changes } : undefined} />
           {/if}
           {#if turn && closes}
-            {#if !host}{@render changes(false)}{/if}
+            {@const marks = summaryMarks(shaped, turn.id, () => store.panel.open('desk'))}
+            <!-- A line that counts the turn's steps carries its changes too: one line, never a card over it. -->
+            {@const merged = !host && !!marks.steps && turn.status !== 'running'}
+            {#snippet onLine()}{@render changes(true)}{/snippet}
+            {#if !host && !merged}{@render changes(false)}{/if}
             {@const carded = failureCarded(turn, messages)}<!-- A failure's card holds its cause and its one Retry: the line keeps copy, fork and the background stop; a question at the composer's top is a running turn's status. -->
             {#if !(asking && turn.status === 'running')}
             <MessageTurnSummary {store} {threadId} {turn} {carded} turns={shownTurns} message={source ?? message} {messages} pointed={pointed === turn.id} tucked={!reveal.shows(message)}
-              {...summaryMarks(shaped, turn.id, () => store.panel.open('desk'))}>
+              {...marks} changes={merged ? onLine : undefined}>
               {#snippet actions()}
                 <MessageActions
                   text={() => turnAnswer(messages, turn.id)}

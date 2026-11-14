@@ -2,8 +2,6 @@ import { afterEach, beforeEach, expect } from 'vitest';
 import { test } from '../test/fake-client';
 import { appCommands, isAgentCommand, runCommand, slashName } from './commands.svelte';
 import { writeExperiments } from './experiments';
-import { setLocaleSetting } from './i18n.svelte';
-import { rankItems } from './palette';
 import type { Store } from './store.svelte';
 import { THEME_STORAGE_KEY } from './theme';
 import { work } from './work-prefs.svelte';
@@ -100,7 +98,7 @@ test('runCommand dispatches: the theme is stored and stamped, settings opens on 
 
   runCommand(store, 'providers', false);
   expect(store.page).toBe('settings');
-  expect(store.settingsTab).toBe('ai');
+  expect(store.settingsTab).toBe('accounts');
 
   // Every entry opens the same machine and folder picker.
   store.showChat();
@@ -131,21 +129,6 @@ test('a hidden trace card stays in the palette, while persistent agents only ope
   expect(store.page).toBe('chat');
   store.showAgents();
   expect(store.page).toBe('agents');
-});
-
-test('an old Settings page name finds the command that opens the page it moved to, in either language', async ({ store }) => {
-  const first = (query: string) => rankItems(query, appCommands(store, false))[0]?.id;
-  expect(first('providers')).toBe('providers');
-  expect(first('machines')).toBe('pair');
-  expect(first('diagnostics')).toBe('task-manager');
-  expect(first('look')).toBe('appearance');
-  await setLocaleSetting('fr');
-  try {
-    expect(first('fournisseurs')).toBe('providers');
-    expect(first('diagnostic')).toBe('task-manager');
-  } finally {
-    await setLocaleSetting('en');
-  }
 });
 
 test('slashName reads the word a row completes to', () => {

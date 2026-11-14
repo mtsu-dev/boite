@@ -1,7 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import type { Store } from '../lib/store.svelte';
-import OriginsCard from './OriginsCard.svelte';
+import AdvancedSettings from './AdvancedSettings.svelte';
 
 let mounted: ReturnType<typeof mount> | undefined;
 afterEach(async () => {
@@ -20,6 +20,7 @@ test('an origins draft survives a settings update from elsewhere, and saving it 
     client: null,
     endpointUrl: null,
     sessions: [],
+    loadSessions: vi.fn(async () => {}),
     deviceInvite: null,
     connection: 'ready',
     settings: { ...base, browserOrigins: ['https://a.test'] },
@@ -28,7 +29,7 @@ test('an origins draft survives a settings update from elsewhere, and saving it 
       return true;
     }),
   });
-  mounted = mount(OriginsCard, { target: document.body, props: { store: store as unknown as Store } });
+  mounted = mount(AdvancedSettings, { target: document.body, props: { store: store as unknown as Store } });
   await settle();
   const field = document.querySelector<HTMLTextAreaElement>('[data-testid=browser-origins] textarea')!;
   expect(field.value).toBe('https://a.test');
@@ -58,6 +59,7 @@ test('an origin being typed is not sent until it is a valid origin, and a refuse
     client: null,
     endpointUrl: null,
     sessions: [],
+    loadSessions: vi.fn(async () => {}),
     deviceInvite: null,
     connection: 'ready',
     settings: { ...base, browserOrigins: [] as string[] },
@@ -67,7 +69,7 @@ test('an origin being typed is not sent until it is a valid origin, and a refuse
       return true;
     }),
   });
-  mounted = mount(OriginsCard, { target: document.body, props: { store: store as unknown as Store } });
+  mounted = mount(AdvancedSettings, { target: document.body, props: { store: store as unknown as Store } });
   await settle();
   const field = document.querySelector<HTMLTextAreaElement>('[data-testid=browser-origins] textarea')!;
   const status = () => document.querySelector<HTMLElement>('[data-testid=browser-origins] [data-testid=save-status]');

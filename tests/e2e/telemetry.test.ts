@@ -50,8 +50,7 @@ test('owner controls consent on desktop and phone; captures both layouts', async
   await page.waitFor(`!document.querySelector('[data-testid="onboarding"]')`);
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
   await page.click('[data-testid="nav-settings"]');
-  // Privacy is a card of Safeguards.
-  await page.click('[data-testid="settings-tab-safeguards"]');
+  await page.click('[data-testid="settings-tab-general"]');
   await page.waitFor(`document.querySelector('${card} input')`);
   // The card's notice is the "i" beside its title: a click pins its text open.
   await page.click(`${card} [data-testid="telemetry-choice-notice"]`);
@@ -68,8 +67,8 @@ test('owner controls consent on desktop and phone; captures both layouts', async
   await page.evaluate(`Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`);
   await page.screenshot(join(import.meta.dir, '.artifacts/telemetry-desktop.png'));
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-  // Privacy is a card of Safeguards on a phone too, the page the desktop left open.
-  await page.waitFor(`document.querySelector('[data-testid="mobile-settings-detail"] ${card} input')`);
+  // Privacy is a card at the foot of the phone's General page, the page the desktop left open.
+  await page.waitFor(`document.querySelector('[data-testid="mobile-settings-general"] ${card} input')`);
   await page.evaluate(`document.querySelector('${card}').scrollIntoView(); document.fonts.ready`);
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
   await page.screenshot(join(import.meta.dir, '.artifacts/telemetry-phone.png'));

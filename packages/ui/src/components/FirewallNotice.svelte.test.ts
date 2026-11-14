@@ -26,10 +26,10 @@ function card(allow: () => FirewallStatus) {
     connection: 'ready',
     endpointUrl: null,
     deviceInvite: null,
-    sessions: [],
+    sessions: [], loadSessions: async () => {},
     settings: { listenOnLan: false, publicUrl: null },
     client: { call },
-    addDevice: vi.fn(async () => {}), loadSessions: vi.fn(async () => {}),
+    addDevice: vi.fn(async () => {}),
     saveSettings: vi.fn(async (patch: { listenOnLan?: boolean }) => {
       store.settings = { ...store.settings, ...patch };
       return true;
@@ -67,9 +67,9 @@ test('an unreadable firewall says so, and claims no refused change nor offers th
   const unreadable: FirewallStatus = { state: 'error', networks: [], allowed: [], blocked: [], detail: 'timeout' };
   const call = vi.fn(async (method: string) => (method === 'tailscale.status' ? tailscaleOff : unreadable));
   const store = $state({
-    owner: true, principal: 'owner', connection: 'ready', endpointUrl: null, deviceInvite: null, sessions: [],
+    owner: true, principal: 'owner', connection: 'ready', endpointUrl: null, deviceInvite: null, sessions: [], loadSessions: async () => {},
     settings: { listenOnLan: true, publicUrl: null }, client: { call },
-    addDevice: vi.fn(async () => {}), loadSessions: vi.fn(async () => {}), saveSettings: vi.fn(async () => true),
+    addDevice: vi.fn(async () => {}), saveSettings: vi.fn(async () => true),
   });
   mounted = mount(PhoneSettings, { target: document.body, props: { store: store as unknown as Store } });
   await settle();
@@ -83,9 +83,9 @@ test('a public network says how to mark it private, and offers no rule Windows w
   const onPublic: FirewallStatus = { state: 'public', networks: ['public'], allowed: [], blocked: [] };
   const call = vi.fn(async (method: string) => (method === 'tailscale.status' ? tailscaleOff : onPublic));
   const store = $state({
-    owner: true, principal: 'owner', connection: 'ready', endpointUrl: null, deviceInvite: null, sessions: [],
+    owner: true, principal: 'owner', connection: 'ready', endpointUrl: null, deviceInvite: null, sessions: [], loadSessions: async () => {},
     settings: { listenOnLan: true, publicUrl: null }, client: { call },
-    addDevice: vi.fn(async () => {}), loadSessions: vi.fn(async () => {}), saveSettings: vi.fn(async () => true),
+    addDevice: vi.fn(async () => {}), saveSettings: vi.fn(async () => true),
   });
   mounted = mount(PhoneSettings, { target: document.body, props: { store: store as unknown as Store } });
   await settle();

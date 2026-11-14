@@ -2,8 +2,6 @@ import { getContext, setContext, untrack, type Snippet } from 'svelte';
 
 /** Where a settings card's rows are saved: this device, or the machine the page changes. */
 export type ScopeKind = 'device' | 'machine';
-/** What the line under a page's title may say: one of those, or every machine of the group. */
-export type PageLine = ScopeKind | 'group';
 
 const KEY = Symbol('page-scope');
 
@@ -17,12 +15,9 @@ export class PageScope {
   #cards = $state<{ id: symbol; kind: ScopeKind }[]>([]);
   readonly #base: () => ScopeKind | null;
   readonly #picker: () => Snippet<[string]> | undefined;
-  readonly #fixed: (() => PageLine | null) | undefined;
 
   /** `base`: the page's own scope, or null for a page that saves no setting of its own; it settles a tie. `picker`: the machine picker, given the words around it. */
-  /** `fixed`: the line a page declares itself (`lib/settings-tabs.ts`), whatever its cards count to. */
-  constructor(base: () => ScopeKind | null, picker: () => Snippet<[string]> | undefined, fixed?: () => PageLine | null) {
-    this.#fixed = fixed;
+  constructor(base: () => ScopeKind | null, picker: () => Snippet<[string]> | undefined) {
     this.#base = base;
     this.#picker = picker;
   }
@@ -35,9 +30,7 @@ export class PageScope {
   }
 
   /** The scope the line under the title states: the one most cards share, else the page's own. */
-  get line(): PageLine | null {
-    const fixed = this.#fixed?.();
-    if (fixed) return fixed;
+  get line(): ScopeKind | null {
     const machines = this.#cards.filter((card) => card.kind === 'machine').length;
     const devices = this.#cards.length - machines;
     if (devices === machines) return this.#base() ?? (devices > 0 ? 'device' : null);

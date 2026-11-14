@@ -611,7 +611,7 @@ export interface DiagnosticsExport {
 
 export const ISSUE_REPOSITORY = 'mtsu-dev/boite';
 /** Why an agent's submit publishes nothing: an injected or wrong agent must not post publicly as the owner. */
-export const AGENT_SUBMIT_REFUSED = 'an agent cannot publish the issue: the user opens the prefilled link and submits it with their GitHub account, or submits it from Settings > Troubleshooting';
+export const AGENT_SUBMIT_REFUSED = 'an agent cannot publish the issue: the user opens the prefilled link and submits it with their GitHub account, or submits it from Settings > Diagnostics';
 
 export interface DiagnosticsIssueParams {
   threadId?: ThreadId;

@@ -29,7 +29,7 @@
   }
 </script>
 
-<ActivityCard live={run.status === 'running'} heading={run.name} timing={{ startedAt: run.createdAt, finishedAt: run.finishedAt, active: run.status === 'running' }} onclick={open} data-testid="workflow-activity" data-run-id={run.id} data-status={run.status} title={strings.workflow.show}
+<ActivityCard live={run.status === 'running'} tone={run.status === 'done' ? 'done' : run.status === 'failed' ? 'failed' : undefined} heading={run.name} timing={{ startedAt: run.createdAt, finishedAt: run.finishedAt, active: run.status === 'running' }} onclick={open} data-testid="workflow-activity" data-run-id={run.id} data-status={run.status} title={strings.workflow.show}
   cause={run.status === 'failed' ? workflowFailure(run) : undefined}>
   {#snippet mark()}<Workflow size={15} strokeWidth={1.75} />{/snippet}
   {#snippet progress()}
@@ -44,12 +44,14 @@
 </ActivityCard>
 
 <style>
-  /* One short tick per phase, read at a glance beside the step count. */
-  .phases { display: inline-flex; flex: none; gap: 2px; height: 4px; }
-  .phases i { width: 10px; border-radius: 2px; background: var(--color-surface-3); }
-  .phases i.running { background: var(--color-live); }
+  /* One tick per phase, read at a glance beside the step count; the one running breathes. */
+  .phases { display: inline-flex; flex: none; gap: 3px; height: 6px; }
+  .phases i { width: 18px; border-radius: var(--radius-full); background: color-mix(in oklab, var(--color-foreground) 14%, transparent); }
+  .phases i.running { background: var(--color-live); animation: breathe 0.9s ease-in-out infinite alternate var(--loops); }
   .phases i.done { background: var(--color-success); }
   .phases i.failed { background: var(--color-danger); }
   .phases i.stopped { background: var(--color-muted-foreground); }
   .phases i.skipped { background: transparent; border: 1px dashed var(--color-edge); }
+  @media (prefers-reduced-motion: reduce) { .phases i.running { animation: none; } }
+  @media (max-width: 720px) { .phases i { width: 12px; } }
 </style>

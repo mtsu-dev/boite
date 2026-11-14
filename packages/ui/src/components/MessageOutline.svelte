@@ -263,7 +263,7 @@
   .outline-group i { background: repeating-linear-gradient(to right, currentColor 0 2px, transparent 2px 4px); }
   .hot, .track button:focus-visible { color: var(--color-foreground); }
   .hot i, .track button:focus-visible i { opacity: 1; }
-  .marker.active { color: var(--color-foreground); }
+  .marker.active { color: var(--color-accent); }
   .marker.active i { transform: scaleX(calc((16 + 6 * var(--weight, 0)) / 22)); opacity: 1; }
   /* The group menu is placed from script: reduced motion's blanket transition would slide it there. */
   .group-menu { position: fixed; z-index: 30; width: min(300px, calc(100vw - 70px)); max-height: 264px; overflow-y: auto; padding: 6px; border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); background: var(--overlay-surface); box-shadow: var(--shadow-overlay); animation: pop var(--dur-2); transition-property: none; }

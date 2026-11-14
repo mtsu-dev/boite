@@ -66,6 +66,6 @@ export const strings = {
     /** A subagent started on another machine of the group: the chip's tooltip. */
     runsOn: 'Runs on {machine}',
     /** Why that subagent's row does not open: this window has no connection to its machine. */
-    machineAway: '{machine} is not connected here. Connect it in Settings, Devices, Machines to open this subagent.'
+    machineAway: '{machine} is not connected here. Connect it in Settings, Machines and updates to open this subagent.'
   }
 } as const;

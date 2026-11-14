@@ -19,7 +19,7 @@
   import type { Snippet } from 'svelte';
   import InfoTip from './InfoTip.svelte';
   import Spinner from './Spinner.svelte';
-  let { turn, workedBefore = 0, clockOffset = 0, progress, waiting = false, activeTool = false, activeContent = false, background = [], stop, pointed = false, tucked = false, steps, memory, compactions = [], actions, heard = null, carded = false }: {
+  let { turn, workedBefore = 0, clockOffset = 0, progress, waiting = false, activeTool = false, activeContent = false, background = [], stop, pointed = false, tucked = false, steps, memory, compactions = [], actions, heard = null, carded = false, changes }: {
     turn: Turn;
     /** The failure has its own card above (`failureCarded`): the card is its one mark, so the line drops its own. */
     carded?: boolean;
@@ -54,6 +54,11 @@
     memory?: SummaryMemory;
     /** The automatic compactions that went through after this turn, said on its line (`foldCompactions`). */
     compactions?: CompactionPart[];
+    /**
+     * The turn's change count and its diff, on this line when it already counts the steps that made the changes
+     * (`TurnFiles`, inline): one line says what was done and what it changed, never a card and a line.
+     */
+    changes?: Snippet;
     /** The turn's own buttons (copy, retry, fork), at the end of the line. */
     actions?: Snippet;
     /**
@@ -176,6 +181,7 @@
         {/if}
       </span>
     {/if}
+    {#if changes && steps && !running}{@render changes()}{/if}
     {#if !running}
       {#each compactions as part, at (at)}{@render metric('turn-compaction', compactionMark(part), compactionText(part), true)}{/each}
     {/if}
@@ -245,6 +251,10 @@
     /* The row starts where the answer's text does. */
     .summary.settled:not(.compacting) { margin-left: calc(-1 * var(--lead)); }
   }
+  /* The turn's changes on the line: the count right after the steps, its diff button at the line's end, the list
+     and the diff under the line at its text's start (the clip hides what starts further left). */
+  .summary :global(.turn-files.inline .fold) { margin-left: 0; }
+  .summary :global(.turn-files.inline :is(.tree, .diffs)) { flex-basis: calc(100% - var(--lead)); margin-left: var(--lead); }
   /* The step count and the memory mark: text buttons on the line, no box, the foreground on hover. */
   .mark { position: relative; display: inline-flex; align-items: center; gap: 2px; height: 18px; padding: 0 2px; margin: -2px 0; border: 0; border-radius: var(--radius-sm); background: none; color: inherit; font-size: inherit; font-variant-numeric: inherit; cursor: pointer; transition: color var(--dur-2) var(--ease-out-quint); }
   /* The line stays 18 px; the target reaches 28 px, a pointer's least, over the gap around it. */

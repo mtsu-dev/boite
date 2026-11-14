@@ -9,9 +9,6 @@ import { workspace } from '../lib/workspace.svelte';
 import TaskManager from './TaskManager.svelte';
 import MobileSettings from './MobileSettings.svelte';
 
-// jsdom has no layout: the settings page scrolls to its card when it opens.
-Element.prototype.scrollIntoView ??= vi.fn();
-
 let mounted: ReturnType<typeof mount> | undefined;
 afterEach(async () => {
   if (mounted) await unmount(mounted);

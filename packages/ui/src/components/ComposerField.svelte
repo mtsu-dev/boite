@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Attachment, PreviewReference } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
+  import { chatPrefs } from '../lib/chat-prefs.svelte';
   import ComposerImageReferences from './ComposerImageReferences.svelte';
   import PreviewReferences from './PreviewReferences.svelte';
 
@@ -49,6 +50,8 @@
     event.preventDefault();
     box.focus();
   }
+  /** With the correction turned off, the phone keyboard also stops correcting and capitalizing. Spread because the textarea's typed attributes leave `autocorrect` out. */
+  let typing = $derived<Record<string, string>>(chatPrefs.typingCorrection ? {} : { autocorrect: 'off', autocapitalize: 'off' });
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -79,7 +82,8 @@
   {placeholder}
   aria-label={placeholder}
   data-testid="composer-input"
-  spellcheck={!command}
+  spellcheck={!command && chatPrefs.typingCorrection}
+  {...typing}
 ></textarea>
 </div>
 

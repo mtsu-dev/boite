@@ -74,10 +74,13 @@ export const strings = {
     /** The list column's limits line: whose limit it reads, the account named where its provider has several. */
     lineLeft: '{percent}% of {provider}\'s {window} limit left',
     lineLeftAccount: '{percent}% of {provider}\'s {window} limit left on {account}',
-    /** A subscription gateway's accounts of one provider, read together: what they have left on average. */
-    lineLeftPool: '{percent}% of {provider}\'s {window} limit left across {count} accounts',
-    /** The popover's way to the Limits card in Settings, AI accounts. */
-    allLimits: 'Limits in Settings',
+    /** Nothing left on any account that could serve: whose limit, and when the first account is back. */
+    lineOut: '{provider}\'s {window} limit is used up',
+    lineOutUntil: '{provider}\'s {window} limit is used up, back {time}',
+    lineOutAll: 'Every {provider} account is out',
+    lineOutAllUntil: 'Every {provider} account is out, first one back {time}',
+    /** The popover's way to the Limits page in Settings. */
+    allLimits: 'Limits page',
     /** A read of the limits failed; the core's reason follows. */
     readFailed: "Couldn't read the limits: {error}",
     quit: 'Quit Boite',

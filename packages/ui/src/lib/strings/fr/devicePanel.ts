@@ -16,7 +16,7 @@ export const fr: Translation = {
     interact: "Touchez ou glissez sur l'écran de l'appareil", interactDesk: "L'écran de l'appareil : cliquez dessus, puis écrivez",
     deskHint: "Cliquez sur l'écran, puis écrivez. Glissez pour balayer, défilez à la molette, Échap revient en arrière. Coller écrit le presse-papiers ; copier depuis l'appareil n'est pas disponible.", image: 'Vue en direct de {name}', gesture: 'Touchez pour appuyer. Glissez pour balayer.',
     deskHintLive: "Cliquez sur l'écran, puis écrivez. Glissez pour balayer, défilez à la molette, Échap revient en arrière. Coller envoie le contenu de votre presse-papiers à l'appareil et le colle ; Ctrl+C copie ici la sélection de l'appareil.",
-    streamOff: "Captures d'écran : le flux en direct est désactivé dans Réglages > Version > Expérimentations.",
+    streamOff: "Captures d'écran : le flux en direct est désactivé dans Réglages > Expérimentations.",
     streamOffRelease: "Captures d'écran : le flux en direct demande une version Nightly.",
     streamDecoder: "Captures d'écran : ce navigateur ne peut pas décoder la vidéo en direct.",
     streamFailed: "Captures d'écran : le flux en direct s'est arrêté. {reason}",

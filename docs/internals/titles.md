@@ -50,7 +50,7 @@ says which providers have the hook.
 
 ## Which model writes it
 
-Settings, Conversations, Agent replies, `Title model` stores `settings.titleModel`,
+Settings, General, Conversations, `Title model` stores `settings.titleModel`,
 a provider and a model, or `null` for Automatic.
 
 - Automatic: the thread's own provider and account, on its small model

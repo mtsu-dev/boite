@@ -1,7 +1,9 @@
-/** File activity preferences belong to this device, like the conversation width. */
+/** File activity and typing preferences belong to this device, like the conversation width. */
 export interface ChatPrefs {
   groupChanges: boolean;
   expandDiffs: boolean;
+  /** The message box lets the system check spelling, correct and capitalize what is typed. Off: the text stays as typed, with no underline. */
+  typingCorrection: boolean;
 }
 
 export const CHAT_PREFS_STORAGE_KEY = 'boite.chatActivity';
@@ -9,9 +11,9 @@ export const CHAT_PREFS_STORAGE_KEY = 'boite.chatActivity';
 export function readChatPrefs(): ChatPrefs {
   try {
     const raw = JSON.parse(localStorage.getItem(CHAT_PREFS_STORAGE_KEY) ?? 'null') as Partial<ChatPrefs> | null;
-    return { groupChanges: raw?.groupChanges !== false, expandDiffs: raw?.expandDiffs === true };
+    return { groupChanges: raw?.groupChanges !== false, expandDiffs: raw?.expandDiffs === true, typingCorrection: raw?.typingCorrection !== false };
   } catch {
-    return { groupChanges: true, expandDiffs: false };
+    return { groupChanges: true, expandDiffs: false, typingCorrection: true };
   }
 }
 

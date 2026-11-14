@@ -11,7 +11,7 @@
   import RecentGroup from './RecentGroup.svelte';
   import WindowList from './WindowList.svelte';
 
-  let { entries, kind = 'done', scrollRoot, now, query = '', open = $bindable(false), header = true, onopen, onrows }: {
+  let { entries, kind = 'done', scrollRoot, now, query = '', open = $bindable(false), header = true, cap, onopen, onrows }: {
     entries: ProjectEntry[];
     /** Done threads (marked done, PR merged) or those archived by hand. */
     kind?: ArchiveKind;
@@ -20,6 +20,8 @@
     query?: string;
     open?: boolean;
     header?: boolean;
+    /** A project's own list stays short: past this many rows it scrolls in a box of its own, so 74 done threads never push the next card out of the list. */
+    cap?: number;
     onopen?: () => void;
     onrows?: (rows: { store: Store; threadId: ThreadId }[]) => void;
   } = $props();
@@ -32,6 +34,26 @@
   let retry = $state(0);
   let revision = 0;
   const measurements = new Map<string, number>();
+  /** The capped list's own scroll box: its rows are windowed against it, not against the list around it. */
+  let box = $state<HTMLDivElement>();
+  /** The height of its first `cap` rows, whatever each holds (a row with a pull request line is taller): read at the list's top, where those rows are the ones drawn. */
+  let capHeight = $state<number>();
+  $effect(() => {
+    const node = box, limit = cap;
+    if (!node || !limit) return;
+    const measure = () => {
+      if (node.scrollTop > 0) return;
+      const slots = node.querySelectorAll<HTMLElement>('[data-window-key]');
+      const first = slots[0], last = slots[limit - 1];
+      if (!first || !last || slots.length <= limit) { capHeight = undefined; return; }
+      const height = last.getBoundingClientRect().bottom - first.getBoundingClientRect().top;
+      capHeight = height > 0 ? Math.ceil(height) : undefined;
+    };
+    const resized = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    for (const child of node.children) resized?.observe(child);
+    measure();
+    return () => resized?.disconnect();
+  });
   const count = $derived(entries.reduce((total, { project }) => total + archiveCount(project, kind), 0));
   const placeOf = (machineId: string, projectId: string) => JSON.stringify([machineId, projectId]);
   /** Rows keep the entry they were read under; a project renamed since shows under its current name. */
@@ -108,7 +130,7 @@
 {#snippet completedRows()}
     {#if loading}<p class="hint" role="status"><span class="ui-label">{strings.app.loading}</span></p>{/if}
     {#if failed}<div class="hint" role="status"><span class="ui-label">{strings.sidebar.doneLoadFailed}</span><button type="button" class="ghost small" data-testid="recent-done-retry" onclick={() => retry++}><span class="ui-label">{strings.common.retry}</span></button></div>{/if}
-    <WindowList items={rows} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={44} {measurements}>
+    <WindowList items={rows} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} scrollRoot={cap ? box : scrollRoot} estimate={44} {measurements}>
       {#snippet row(entry)}{#if DoneThread}<DoneThread {entry} {now} showMachine={multi} showProject={spans} {onopen} />{/if}{/snippet}
     </WindowList>
     {#if !loading && !failed && !rows.length}<p class="hint"><span class="ui-label">{strings.sidebar.noMatch}</span></p>{/if}
@@ -116,9 +138,15 @@
 
 {#if count > 0}
   {#if header}<RecentGroup {kind} {count} bind:open>{@render completedRows()}</RecentGroup>
-  {:else if open}{@render completedRows()}{/if}
+  {:else if open}
+    {#if cap}<div class="capped scroll-edges" data-testid="done-cap" style:--cap={cap} style:--cap-height={capHeight === undefined ? undefined : `${capHeight}px`} bind:this={box}>{@render completedRows()}</div>
+    {:else}{@render completedRows()}{/if}
+  {/if}
 {/if}
 
 <style>
+  /* The height of its first rows (measured above; a done row with its place line until then), then the list scrolls
+     in place; its edges fade on the card's ground while rows run past them (app.css `.scroll-edges`). */
+  .capped { max-height: var(--cap-height, calc(var(--cap) * 54px)); overflow-y: auto; --scroll-edge: 22px; --scroll-edge-ground: var(--color-surface); }
   .hint { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0; padding: 10px; color: var(--color-subtle); font-size: var(--text-xs); }
 </style>

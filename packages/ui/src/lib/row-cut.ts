@@ -1,5 +1,5 @@
 /**
- * The rows a list's foot measures against (RailFrame.svelte, MobileNavigation.svelte): a thread on either, a project
+ * The rows a list's foot measures against (MobileNavigation.svelte): a thread on either, a project
  * head, a draft, the fold action, Reconnect, and anything else that marks itself `data-row-edge`.
  */
 const ROW_EDGES = '[data-testid=thread-row], [data-testid=mobile-row], [data-testid=project-row], [data-row-edge], [data-testid=draft-row], [data-testid=project-more], [data-testid=project-reconnect]';
@@ -42,7 +42,7 @@ export function rowCut(edge: number, height: number, rows: Iterable<CutRow>, fad
 /**
  * Keeps `set` given the list's cut while it rests: measured once it settles (a resize, new rows, the end of a
  * scroll), zero while it scrolls, so a row passing the edge is never hidden mid-motion. The fade is the box's
- * `--fade`. Loaded lazily by RailFrame.svelte, with the phone's list by MobileNavigation.svelte; returns the stop.
+ * `--fade`. Loaded lazily with the phone's list by MobileNavigation.svelte; returns the stop.
  */
 export function watchRowCut(box: HTMLElement, set: (cut: number) => void): () => void {
   let settle: ReturnType<typeof setTimeout> | undefined;

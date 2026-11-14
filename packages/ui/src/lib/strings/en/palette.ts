@@ -2,6 +2,8 @@ export const strings = {
 
   palette: {
     placeholder: 'Search threads, projects or commands',
+    /** A heading over threads in one state: at work, a turn that ended, marked done, archived. */
+    groups: { running: 'Running', finished: 'Finished', done: 'Done', archived: 'Archived' },
     projects: 'Projects',
     /** Extra words a project row answers to: picking one starts a thread there. */
     newThreadWords: 'new thread start draft',
@@ -15,8 +17,8 @@ export const strings = {
     addProject: 'Add a project',
     importSession: 'Import a session',
     settings: 'Open settings',
-    appearance: 'Appearance settings',
-    providers: 'AI accounts',
+    appearance: 'Look and language settings',
+    providers: 'Providers and accounts',
     pair: 'Add a device',
     sidebar: 'Toggle the sidebar',
     panel: 'Toggle the right panel',
@@ -33,15 +35,6 @@ export const strings = {
     archive: 'Archive this thread',
     themeDark: 'Theme: dark',
     themeLight: 'Theme: light',
-    themeSystem: 'Theme: system',
-    /** Never shown: the names of the Settings pages before the nine, so typing one finds the command that opens where it went (lib/command-table.ts). */
-    oldPages: {
-      settings: 'general system advanced plugins experiments browser updates',
-      appearance: 'look language',
-      providers: 'providers limits usage quotas',
-      pair: 'machines',
-      taskManager: 'diagnostics resources memory processes',
-      archived: 'general conversations'
-    }
+    themeSystem: 'Theme: system'
   }
 } as const;

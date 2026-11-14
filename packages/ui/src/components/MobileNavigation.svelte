@@ -127,8 +127,6 @@
    */
   let gathered = $derived(store.page === 'agents' || store.page === 'home' || (store.page === 'chat' && listScreen === 'activity'));
   let placeShown = $derived((several && !gathered) || store.connection !== 'ready' || store.pairingRequired);
-  /** With the bots on, Contacts is the Bots tab's other side (MobileTabs.svelte): its page's name is the switch between them. */
-  let botsAndContacts = $derived((store.page === 'agents' || store.page === 'home') && !recover && experimentOn('resident-agents') && contactsShown(store));
   let place = $derived(store.pairingRequired ? strings.mobile.pairingRequired : store.connection === 'ready' ? (machine ? machineName(machine) : strings.mobile.computer) : strings.connection[store.connection]);
   let project = $derived(store.openProject ?? store.projects.find(p => p.archived !== true));
   let groups = $derived(projectView.sorted(machines.flatMap(machine => machine.store.projects.filter(project => !project.archived).map(project => ({ machine, project })))));
@@ -319,8 +317,7 @@
     <!-- The first run's screen says what Boite is: the header keeps the machine alone, the way to its settings. -->
     <!-- The thread list's name is its two views, both in sight, the one on marked; the display menu sits beside the magnifier. -->
     {#if !firstRun}<strong data-testid="mobile-title">{#if threadViews}<ViewSwitch size="title" label={strings.sidebar.displayView} current={workspace.view} onpick={view => workspace.setView(view as 'projects' | 'recent')}
-      options={[{ id: 'projects', label: strings.sidebar.projectsView }, { id: 'recent', label: strings.sidebar.recentView }]} testid="mobile-view-switch" />{:else if botsAndContacts}<ViewSwitch size="title" label={strings.agents.heading} current={store.page === 'home' ? 'home' : 'agents'}
-      onpick={id => id === 'home' ? store.showHome() : store.showAgents()} options={[{ id: 'agents', label: strings.agents.heading, testid: 'mobile-bots-view', preload: 'agents' }, { id: 'home', label: strings.contacts.heading, testid: 'mobile-contacts', preload: 'home' }]} />{:else}{title}{/if}</strong>{/if}
+      options={[{ id: 'projects', label: strings.sidebar.projectsView }, { id: 'recent', label: strings.sidebar.recentView }]} testid="mobile-view-switch" />{:else}{title}{/if}</strong>{/if}
   </div>
   {#if placeShown && !firstRun && !(tabbed && !recover)}{@render connection()}{/if}
   {#if threadViews}<span class="header-display"><DisplayOptions entries={groups} target={undefined} owner={store} prefix="mobile-" compact filters={filters} {atWork} onaddproject={store.addsProjects ? addProject : undefined} /></span>{/if}
@@ -429,10 +426,10 @@
           </div>
           <div id="{controls}-done" hidden={!doneOpen} data-testid="project-done">
             {#if doneOpen}<GroupLabel kind="done" count={query ? undefined : archiveCount(group.project, 'done')} />{/if}
-            <RecentDone entries={[group]} {scrollRoot} {now} {query} open={doneOpen && !folded} header={false} onopen={() => show('chat')} />
+            <RecentDone entries={[group]} {scrollRoot} {now} {query} open={doneOpen && !folded} header={false} cap={10} onopen={() => show('chat')} />
           </div>
           <div id="{controls}-archived" hidden={!archivedOpen} data-testid="project-archived">
-            <RecentDone kind="archived" entries={[group]} {scrollRoot} {now} {query} open={archivedOpen && !folded && (!later || projectThreadView.laterOpen)} header={false} onopen={() => show('chat')} />
+            <RecentDone kind="archived" entries={[group]} {scrollRoot} {now} {query} open={archivedOpen && !folded && (!later || projectThreadView.laterOpen)} header={false} cap={10} onopen={() => show('chat')} />
           </div>
           {#if groupRows.length === 0 && !group.project.archivedThreads && drafts.length === 0}<p class="empty">{strings.sidebar.noThreads}</p>{/if}
           </div></div>

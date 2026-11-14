@@ -188,7 +188,7 @@
         {#each kept as list (list)}
           {#if projectThreadView.isOpen(entry, list)}
             <div id="{controls}-{list}" class="history" data-testid="project-{list}">
-              <RecentDone kind={list} entries={[entry]} {scrollRoot} {now} open header={false} {onopen} onrows={observer(entry, list)} />
+              <RecentDone kind={list} entries={[entry]} {scrollRoot} {now} open header={false} cap={10} {onopen} onrows={observer(entry, list)} />
             </div>
           {/if}
         {/each}
@@ -293,14 +293,14 @@
   .actions button {
     border-color: transparent;
   }
-  /* A pointer sees a row's own buttons on the row it is over; a touch screen always does. Hidden, they take no room, so the counts stay at the edge. */
+  /* A pointer sees a row's own buttons on the row it is over; a touch screen always does. Hidden, they keep their slot, so the counts beside them never move. */
   @media (hover: hover) {
     .actions {
-      display: none;
+      opacity: 0;
     }
     .row:hover .actions,
     .row:focus-within .actions {
-      display: flex;
+      opacity: 1;
     }
   }
   /* Done and archived conversations an idle project still has: always shown, they are what it holds. */
@@ -322,9 +322,8 @@
     background-color: color-mix(in oklch, var(--color-success) 14%, transparent);
     background-clip: padding-box;
   }
+  /* Open, a count says it by its ink, as on a project card: no box stays behind once the pointer leaves. */
   .counter.active {
-    background: var(--color-active);
-    border-color: var(--color-edge);
     color: var(--color-foreground);
   }
   .history {
@@ -337,9 +336,8 @@
       padding: 0 7px;
       gap: 5px;
     }
-    /* The 44px target stays; the transparent border leaves the 22px pill drawn inside it, its open ring included. */
+    /* The 44px target stays; the transparent border leaves the 22px pill drawn inside it. */
     .counter.done { border-width: 11px 0; }
-    .counter.done.active { border-color: transparent; background-clip: padding-box; box-shadow: inset 0 0 0 1px var(--color-edge); }
   }
   /* A dragged thread can land on an idle project: same edge and neutral fill as a project section. */
   :global(html.thread-dragging) li:not(.candidate) {

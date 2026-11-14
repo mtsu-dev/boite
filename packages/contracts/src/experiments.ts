@@ -91,7 +91,7 @@ export const BUILD_KIND_NAMES: Record<BuildKind, string> = { release: 'Release',
 function refusalTail(stage: FeatureStage, version: string | null | undefined): string {
   const kind = buildKindOf(version);
   const article = kind === 'release' ? 'a Release' : `a ${BUILD_KIND_NAMES[kind]}`;
-  const way = stage === 'nightly' ? 'switch the update channel to Nightly in Settings > Version > Updates to try it' : 'it is still being built and no published build has it';
+  const way = stage === 'nightly' ? 'switch the update channel to Nightly in Settings > Machines and updates to try it' : 'it is still being built and no published build has it';
   const builds = BUILD_KINDS.filter((each) => stageRuns(stage, each)).map((each) => BUILD_KIND_NAMES[each]).join(' and ');
   return `runs in ${builds} builds only, and this machine runs ${article} (${version || 'unknown version'}): ${way}`;
 }

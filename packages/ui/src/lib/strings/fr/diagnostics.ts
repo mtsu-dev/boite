@@ -68,7 +68,7 @@ export const fr: Translation = {
     close: 'Fermer',
     agentAccess: 'Les agents peuvent lire les journaux anonymisés',
     failed: "Le diagnostic n'a pas pu se charger : {reason}",
-    outdated: "Boite sur {machine} est antérieur à ce diagnostic : son journal s'affiche plus bas, mais l'état, l'export et le signalement demandent une mise à jour. Mettez-le à jour dans Réglages, Version, Mises à jour.",
-    outdatedHere: "Boite sur cette machine est antérieur à ce diagnostic : son journal s'affiche plus bas, mais l'état, l'export et le signalement demandent une mise à jour. Mettez-la à jour dans Réglages, Version, Mises à jour."
+    outdated: "Boite sur {machine} est antérieur à ce diagnostic : son journal s'affiche plus bas, mais l'état, l'export et le signalement demandent une mise à jour. Mettez-le à jour dans Réglages, Machines et mises à jour.",
+    outdatedHere: "Boite sur cette machine est antérieur à ce diagnostic : son journal s'affiche plus bas, mais l'état, l'export et le signalement demandent une mise à jour. Mettez-la à jour dans Réglages, Machines et mises à jour."
   }
 };

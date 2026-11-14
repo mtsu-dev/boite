@@ -148,7 +148,7 @@
   header.reorderable .name { touch-action: none; }
   .identity { flex: 1; min-width: 0; display: grid; gap: 3px; }
   .bell { flex: none; align-self: flex-start; color: var(--color-muted-foreground); }
-  .bell.set { color: var(--color-foreground); }
+  .bell.set { color: var(--color-accent); }
   .bell[aria-expanded='true'] { background: var(--color-active); }
   header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; font-size: var(--text-md); }
   .checked { display: flex; align-items: center; gap: 5px; }

@@ -175,10 +175,10 @@ test('the desktop still has every one of them', async ({ app: _app }) => {
   store.showSettings('advanced', 'phone');
   await waitFor(() => document.querySelector('[data-testid=phone-settings]') !== null);
   for (const selector of OWNER_ONLY_IN_ADVANCED) expect(document.querySelector(selector)).not.toBeNull();
-  // The windows-and-sound card sits on Safeguards: a link that names its first page still opens it.
+  // The windows-and-sound card moved from Resources to General: the old link still opens it.
   store.showSettings('resources', 'quiet');
   await waitFor(() => document.querySelector('[data-testid=setting-focus-guard]') !== null);
-  expect(document.querySelector('[data-testid=settings-page]')?.getAttribute('data-page')).toBe('safeguards');
+  expect(store.settingsTab).toBe('general');
   for (const id of ['setting-focus-guard', 'setting-mute-agents']) {
     const input = query(`[data-testid=${id}]`) as HTMLInputElement;
     expect(input.checked).toBe(true);
@@ -187,11 +187,11 @@ test('the desktop still has every one of them', async ({ app: _app }) => {
   }
   expect(store.settings?.focusGuard).toBe(false);
   expect(store.settings?.muteAgents).toBe(false);
-  // Another page holds neither; Safeguards keeps what was saved.
-  store.showSettings('appearance');
-  await waitFor(() => document.querySelector('[data-testid=settings-page][data-page=appearance]') !== null);
+  // Memory and processes no longer holds them; General keeps what was saved.
+  store.showSettings('resources');
+  await waitFor(() => document.querySelector('[data-testid=resources-page]') !== null);
   expect(document.querySelector('[data-testid=setting-focus-guard]')).toBeNull();
-  store.showSettings('safeguards');
+  store.showSettings('general');
   await waitFor(() => document.querySelector('[data-testid=setting-focus-guard]') !== null);
   expect((query('[data-testid=setting-focus-guard]') as HTMLInputElement).checked).toBe(false);
 

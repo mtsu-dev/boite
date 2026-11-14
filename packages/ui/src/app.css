@@ -406,9 +406,11 @@
   /* The card's one fill (.card). */
   --card-fill: var(--color-surface);
   --shadow-overlay: 0 12px 36px rgb(0 0 0 / 0.5), 0 1px 2px rgb(0 0 0 / 0.4);
-  --overlay-pad: var(--space-1);
+  /* Air on both levels: the card's own inset, then the row's, so a row's words start 18 px from the card's edge
+     and its hover fill never touches it. */
+  --overlay-pad: 6px;
   --overlay-row: max(32px, var(--control));
-  --overlay-row-pad: var(--space-2);
+  --overlay-row-pad: var(--space-3);
   --radius-overlay-row: var(--radius-sm);
   /* The panel's border draws its hairline; then a top light and a contact shadow.
      No wide blur: 40 px of it read as a darker band on the chrome beside the card.
@@ -595,6 +597,9 @@
   --dur-1: 90ms;
   --dur-2: 150ms;
   --dur-3: 220ms;
+  /* A picture taking or leaving its colours (the rail's bots), and the wait before a rail button's name shows. */
+  --dur-tint: 320ms;
+  --tip-delay: 500ms;
   --dur-whip: 360ms;
   --dur-typing: 1100ms;
   --dur-typing-step: 140ms;
@@ -617,6 +622,8 @@
   --motion: 1;
   /* A bot's picture at rest: grey, a touch under its lit tone (lib/avatar-lit.ts). */
   --avatar-rest: grayscale(1) brightness(0.92) contrast(0.95);
+  /* A sleeping bot in the rail (AppRail.svelte): its face says it sleeps, so it keeps some of its colour, dimmed. */
+  --avatar-asleep: grayscale(0.6) brightness(0.78);
   --z-whip: 100;
   --z-window-resize: 11000;
   --window-resize-edge: 5px;
@@ -916,6 +923,18 @@
   --palette-light-amethyst-live: #866325;
 }
 
+/* What the agent says to the user, in a bubble on its side: its calls, its
+   reasoning and its narration between them stay bare lines of the page. */
+.answer-bubble {
+  width: fit-content;
+  max-width: 100%;
+  padding: 12px 16px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-bubble);
+  border-bottom-left-radius: var(--radius-sm);
+}
+@media (max-width: 720px) { .answer-bubble { padding: 10px 14px; } }
 .typing { display: inline-flex; align-items: center; gap: 4px; min-height: 24px; color: var(--color-muted-foreground); }
 .typing > span { width: 5px; height: 5px; border-radius: var(--radius-full); background: currentColor; animation: typing var(--dur-typing) ease-in-out infinite var(--loops); }
 .typing > span:nth-child(2) { animation-delay: var(--dur-typing-step); }
@@ -1987,52 +2006,13 @@ tr:last-child td {
   padding-bottom: 2px;
 }
 
-/* A title that shares its line with an action (Add a device, Check for
-   updates): the whole line stands above the card, the action at its right end. */
-.settings .page .card:has(> .card-head:first-child) {
-  position: relative;
-  margin-top: calc(var(--card-head) + var(--space-4));
-}
-
-.settings .page .card > .card-head:first-child {
-  position: absolute;
-  left: var(--space-4);
-  right: var(--space-4);
-  bottom: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  min-height: var(--card-head);
-  margin: 0;
-  padding: 0 0 2px;
-  border: 0;
-}
-
-.settings .page .card > .card-head:first-child > h2 {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1) 6px;
-  min-width: 0;
-  margin: 0;
-}
-
-:is(.settings .page > .settings-stack > .card, .settings .page .card) > .card-head:first-child + * {
-  border-top: 0;
-}
-
 /* A line between every two rows of a card. What belongs to the row above (a
-   hint, an error, a status) joins it without one. A button that is a row keeps its own outline. */
-:is(.settings .page > .card, .settings .page > form > .card, .settings .page > .settings-stack > .card) > :not(h2, :first-child, button) {
+   hint, an error, a status) joins it without one. */
+:is(.settings .page > .card, .settings .page > form > .card, .settings .page > .settings-stack > .card) > :not(h2, :first-child) {
   border-top: 1px solid var(--color-border);
 }
-:is(.settings .page > .card, .settings .page > form > .card, .settings .page > .settings-stack > .card) > :is(h2 + *, .hint, [role=alert], .error, [hidden]):not(button) {
+:is(.settings .page > .card, .settings .page > form > .card, .settings .page > .settings-stack > .card) > :is(h2 + *, .hint, [role=alert], .error, [hidden]) {
   border-top: 0;
-}
-
-/* A button that is a card's whole row (Show archived threads) keeps the row's air above and under it. */
-:is(.settings .page > .card, .settings .page > form > .card, .settings .page > .settings-stack > .card) > button {
-  margin: var(--space-2) 0;
 }
 
 /* A card that is a list or a table runs its rows to its edges. */
@@ -2266,9 +2246,6 @@ tr:last-child td {
   :is(.settings .framed .page > .card, .settings .framed .page > form > .card, .settings .framed .page > .settings-stack > .card) > h2:first-child { left: var(--space-5); right: var(--space-5); }
   .settings .framed .page .card h2,
   .settings .framed .page > .group-heading h2 { font-size: var(--text-title); }
-  /* A title beside an action and a title over a list of cards stand at the card's own inset, as a card's plain title does. */
-  :is(.settings .framed .page > .card, .settings .framed .page > form > .card, .settings .framed .page > .settings-stack > .card) > .card-head:first-child { left: var(--space-5); right: var(--space-5); }
-  .settings .framed .page > .group-heading { padding-inline: var(--space-5); }
   .settings .framed .segmented button { padding: 0 14px; }
 }
 
@@ -2625,6 +2602,13 @@ html[data-glass] #app {
   background: transparent;
 }
 
+/* Menus, popovers and cards stay opaque, so a word is never read over the wallpaper, but they step
+   down toward the ground the slabs are mixed from: on the bare raised fill they read lighter than
+   the chrome the material darkens around them. */
+@supports (color: color-mix(in oklab, white 50%, black)) {
+  html[data-glass] { --overlay-surface: color-mix(in oklab, var(--color-surface-2) 55%, var(--color-background)); }
+}
+
 @media (min-width: 721px) {
   html[data-glass] .app {
     background: color-mix(in oklab, var(--color-frame) 80%, transparent);
@@ -2837,10 +2821,11 @@ html[data-glass] #app {
 
 [data-accent-swatch] { --color-accent: oklch(75.5% 0.141 var(--accent-hue)); }
 /* One switch: the native checkbox with role=switch, or the `.switch` span a menu row or a button draws (`.on` when set).
-   `--switch-width` and `--switch-height` size it; the rim is a twelfth of the height (2px on a 24px switch) and the
+   `--switch-width` and `--switch-height` size it, and nothing else may: the knob travels by them, so a track a row
+   narrowed would let it run past its end (`min-width` holds it); the rim is a twelfth of the height (2px on a 24px switch) and the
    knob keeps the same air inside it. Off is a ringed track with a grey knob, on the filled foreground track with a
    dark knob, so the state reads without comparing greys. */
-input[type=checkbox][role=switch], .switch { appearance: none; position: relative; flex: 0 0 var(--switch-width, 40px); width: var(--switch-width, 40px); height: var(--switch-height, 24px); min-height: var(--switch-height, 24px); padding: 0; margin: 0; border: calc(var(--switch-height, 24px) / 12) solid var(--switch-rim); border-radius: 999px; background: var(--switch-off); transition: background var(--dur-2), border-color var(--dur-2); }
+input[type=checkbox][role=switch], .switch { appearance: none; position: relative; flex: 0 0 var(--switch-width, 40px); width: var(--switch-width, 40px); min-width: var(--switch-width, 40px); height: var(--switch-height, 24px); min-height: var(--switch-height, 24px); padding: 0; margin: 0; border: calc(var(--switch-height, 24px) / 12) solid var(--switch-rim); border-radius: 999px; background: var(--switch-off); transition: background var(--dur-2), border-color var(--dur-2); }
 input[type=checkbox][role=switch] { cursor: pointer; }
 input[type=checkbox][role=switch]::after, .switch::after { content: ''; position: absolute; width: calc(var(--switch-height, 24px) - 8px); height: calc(var(--switch-height, 24px) - 8px); top: calc(4px - var(--switch-height, 24px) / 12); left: calc(4px - var(--switch-height, 24px) / 12); border-radius: 50%; background: var(--switch-knob); transition: transform var(--dur-2) var(--ease-out-quint), background var(--dur-2); }
 input[type=checkbox][role=switch]:checked, .switch.on { background: var(--switch-on); border-color: transparent; }

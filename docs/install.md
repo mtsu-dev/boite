@@ -63,8 +63,8 @@ absolute folder, otherwise in `~/.local/share/boite2`.
 
 ## Stable and nightly channels
 
-Boite has two channels, chosen in Settings, Version, Updates, under Release
-channel:
+Boite has two channels, chosen in Settings, Machines and updates, under
+Release channel:
 
 | Channel | What you get |
 | --- | --- |
@@ -90,7 +90,7 @@ An APK from a newer release installs over the old one.
 ## After installing
 
 1. Install and sign in to your agents, then connect them in Settings,
-   AI accounts, Providers ([supported agents](supported-agents.md)).
+   Providers ([supported agents](supported-agents.md)).
 2. Open a project, choose a model and start a conversation
    ([first steps](first-steps.md)).
 

@@ -6,7 +6,7 @@
   import { lastHeard, machineAway } from '../lib/machine-away';
   import type { CompactionPart } from '../lib/tool-groups';
 
-  let { store, threadId, turn, turns = [], message, messages, pointed = false, tucked = false, steps, memory, compactions, actions, carded = false }: {
+  let { store, threadId, turn, turns = [], message, messages, pointed = false, tucked = false, steps, memory, compactions, actions, changes, carded = false }: {
     /** The failure has its own card: the line keeps its time and buttons, not a second failure mark. */
     carded?: boolean;
     store: Store;
@@ -27,6 +27,8 @@
     /** The automatic compactions said on this turn's line. */
     compactions?: CompactionPart[];
     actions?: Snippet;
+    /** The turn's change count, when it joins this line (`TurnSummary`). */
+    changes?: Snippet;
   } = $props();
 
   const active = $derived(turn.status === 'running' ? messages.filter(current => current.turnId === turn.id && current.role === 'assistant') : []);
@@ -58,4 +60,5 @@
   {memory}
   {compactions}
   {actions}
+  {changes}
 />

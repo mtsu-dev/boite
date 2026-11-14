@@ -42,7 +42,7 @@ export const strings = {
     enable: 'Use {provider}',
     enableHint: 'Off, Boite starts nothing of this provider and no list offers it. Its accounts and conversations are kept.',
     /** A thread whose provider is off: the composer's chip and the sentence behind it. */
-    threadOff: '{provider} is turned off. Turn it on in Settings > AI accounts > Providers to continue this conversation.',
+    threadOff: '{provider} is turned off. Turn it on in Settings > Providers to continue this conversation.',
     defaultModel: 'Default model',
     autoUpdate: 'Automatic updates',
     checkUpdates: 'Check for updates',

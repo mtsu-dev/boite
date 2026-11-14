@@ -6,7 +6,7 @@
   import { experimentsListed } from '../lib/experiments.svelte';
   import { keepFocus } from '../lib/focus';
   import { desktopSettings } from '../lib/settings-tabs';
-  import { retiredHint, settingHeading, settingHint, settingLabel, settingPlace, settingPlaceText, settingsReachable, settingValueText } from '../lib/setting-requests';
+  import { retiredHint, settingHeading, settingHint, settingLabel, settingPlaceText, settingsReachable, settingValueText } from '../lib/setting-requests';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import { GroupLinks } from '../lib/group-links.svelte';
@@ -107,7 +107,7 @@
 
   function show(): void {
     if (plugin) store.showPluginPreview(plugin);
-    else { const to = settingPlace(setting); store.showSettings(to.page, to.section, { flash: true }); }
+    else store.showSettings(setting.page, setting.section, { flash: true });
   }
 
   async function answerWith(optionId: 'refuse' | 'open'): Promise<void> {

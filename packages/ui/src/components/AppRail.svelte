@@ -35,8 +35,8 @@
    * view: where to be (the threads, Activity with what asks), then one picture
    * per team and per bot of every machine, in the order the user dragged them, then the machines when there is
    * more than one, and Settings. The open place is the filled tile; a bot's
-   * news is a badge on its picture. Contacts is the Bots column's other side
-   * (agents/SideHead.svelte), its own place only with Bots off; the limits are a line at the foot of the list column
+   * picture says how it stands: asleep, at work, or with an answer not read. Contacts is a circle of its own under
+   * the bots; the limits are a line at the foot of the list column
    * (QuotaLine.svelte). It stands on the window's chrome from top to bottom;
    * a phone keeps its own navigation and never draws it.
    */
@@ -90,11 +90,9 @@
   });
   const openTeam = $derived(store.page === 'agents' ? store.openThread?.teamId ?? null : null);
   const onList = $derived(store.page === 'chat' || store.page === 'home');
-  // The Contacts page is the Bots column's other side, not the threads: neither of these is open there.
+  // The Contacts page is a place of its own, not the threads: neither of these is open there.
   const onThreads = $derived(store.page === 'chat' && !inbox.open);
   const onActivity = $derived(store.page === 'chat' && inbox.open);
-  /** With Bots off there is no Bots column to switch: Contacts keeps its own place where the bots stand. */
-  const contactsAlone = $derived(contactsOn && !botsOn);
   const onContacts = $derived(store.page === 'home');
 
   type Bot = { machine: Machine; row: AgentRowData };
@@ -105,6 +103,18 @@
     // A queued turn is work on its way: the picture draws it as work.
     return state === 'queued' ? 'working' : state;
   }
+  /**
+   * What the picture draws. A bot with nothing to do sleeps, and its face says so (eyes shut, a "z" rising beside
+   * it); at work it is awake, in its colours, an arc turning around it; an answer not read wakes it and rings it.
+   * The open bot is awake: it is the one being talked to.
+   */
+  type Look = 'asleep' | 'working' | 'answered' | 'awake';
+  function lookOf(state: RailBotState, unread: boolean, selected: boolean): Look {
+    if (state === 'working') return 'working';
+    if (state === 'waiting' || state === 'failed' || selected) return 'awake';
+    return unread ? 'answered' : 'asleep';
+  }
+  const moodOfState = (state: RailBotState, look: Look) => look === 'asleep' ? 'asleep' as const : state === 'working' ? 'working' as const : state === 'waiting' ? 'waiting' as const : state === 'failed' ? 'error' as const : 'idle' as const;
   function labelOf(name: string, state: RailBotState): string {
     if (state === 'waiting') return fill(strings.app.rail.botWaiting, { name });
     if (state === 'failed') return fill(strings.app.rail.botFailed, { name });
@@ -228,18 +238,21 @@
           {@const state = stateOf(bot)}
           {@const selected = bot.machine.store === store && openBot === bot.row.profile.id}
           {@const unread = (bot.row.status?.unread ?? 0) > 0}
+          {@const look = lookOf(state, unread, selected)}
           <div class="slot" class:selected class:dragging={reorder.dragging === entry.key} role="listitem" data-rail-id={entry.key}>
             <button type="button" class="bot" class:dim={state === 'paused'} aria-label={unread && !selected ? `${labelOf(bot.row.profile.name, state)}, ${strings.app.rail.unread}` : labelOf(bot.row.profile.name, state)}
-              aria-current={selected ? 'page' : undefined} aria-keyshortcuts="ArrowUp ArrowDown Home End" data-testid="rail-bot" data-agent-id={bot.row.profile.id} data-state={state}
+              aria-current={selected ? 'page' : undefined} aria-keyshortcuts="ArrowUp ArrowDown Home End" data-testid="rail-bot" data-agent-id={bot.row.profile.id} data-state={state} data-look={look}
               onpointerdown={(event) => reorder.start(event, entry.key)} onkeydown={(event) => reorder.keyboard(event, entry.key)}
               onclick={() => workspace.showAgents(bot.machine.store, bot.row.profile.id)}>
-              <AgentAvatar kind="profile" id={bot.row.profile.id} name={bot.row.profile.name} avatar={bot.row.profile.avatar} size={44} squircle={selected}
-                lit={avatarLit({ open: selected, attention: state === 'waiting', failed: state === 'failed', unread })} />
+              <AgentAvatar kind="profile" id={bot.row.profile.id} name={bot.row.profile.name} avatar={bot.row.profile.avatar} size={44} squircle={selected} mood={moodOfState(state, look)}
+                lit={look === 'working' || avatarLit({ open: selected, attention: state === 'waiting', failed: state === 'failed', unread })} />
+              <!-- At work: an arc of the accent turns around the whole picture. Asleep: a "z" rises beside it. -->
+              {#if look === 'working'}<svg class="orbit" viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="24.5" pathLength="100" /></svg>
+              {:else if look === 'asleep'}<span class="sleep" aria-hidden="true"><svg viewBox="0 0 16 16"><path class="z big" d="M2.5 8.5h5l-5 5.5h5" /><path class="z" d="M10 2.5h3.5L10 6.5h3.5" /></svg></span>{/if}
               <!-- One overlay, in one slot: the user's turn first, then a failure, work, news. A count is Activity's alone. -->
               {#if state === 'waiting'}<span class="badge" aria-hidden="true"><span class="needs"></span></span>
               {:else if state === 'failed'}<span class="badge" aria-hidden="true"><FailMark /></span>
-              {:else if state === 'working'}<span class="badge work" aria-hidden="true"><svg viewBox="0 0 14 14"><circle class="track" cx="7" cy="7" r="5" /></svg></span>
-              {:else if unread && !selected}<span class="badge" data-testid="rail-bot-unread" aria-hidden="true"><span class="news"></span></span>{/if}
+              {:else if look === 'answered'}<span class="badge" data-testid="rail-bot-unread" aria-hidden="true"><span class="news"></span></span>{/if}
             </button>
             {@render railName(bot.row.profile.name, null, several ? machineName(bot.machine) : null)}
           </div>
@@ -267,10 +280,11 @@
     </div>
   {/if}
 
-  {#if contactsAlone}
+  <!-- Contacts, a circle of its own under the bots: a place, never a side of the Bots column. -->
+  {#if contactsOn}
     <span class="separator" aria-hidden="true"></span>
     <div class="slot" class:selected={onContacts}>
-      <button type="button" class="rail-button" class:on={onContacts} aria-current={onContacts ? 'page' : undefined} aria-label={strings.contacts.heading}
+      <button type="button" class="rail-button round" class:on={onContacts} aria-current={onContacts ? 'page' : undefined} aria-label={strings.contacts.heading}
         data-testid="rail-contacts" data-preload-view="home" onclick={() => store.showHome()}><Contact size={19} strokeWidth={1.75} /></button>
       {@render railName(strings.contacts.heading)}
     </div>
@@ -340,11 +354,28 @@
   .rail-button.on, .rail-button.on:hover:not(:disabled) { background: var(--color-surface-3); color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge); }
   .rail-button.add { background: transparent; box-shadow: inset 0 0 0 1px var(--color-edge); border-radius: var(--radius-full); }
   .rail-button.add:hover:not(:disabled) { background: var(--color-hover); }
+  /* A circle, as the bots it stands under: ringed at rest, filled where you are. */
+  .rail-button.round { border-radius: var(--radius-full); box-shadow: inset 0 0 0 1px var(--color-edge); }
 
   .bot { background: none; border-radius: var(--radius-full); }
   .bot:hover:not(:disabled) { background: none; }
   /* Grey at rest, lit when open, under the pointer or with news: one rule for every bot picture (lib/avatar-lit.ts). */
   .bot.dim :global(.agent-avatar) { opacity: 0.55; }
+  /* Its colours come and go slowly enough to be seen: the list rows' 150 ms reads as a switch on a 44 px picture. */
+  .bot :global(.agent-avatar:not([data-ring])) { transition: filter var(--dur-tint) ease-in-out; }
+  /* Asleep is drawn (eyes shut, the "z"), so the picture keeps a little of its colour, dimmed as a room at night. */
+  .bot[data-look='asleep'] { --avatar-rest: var(--avatar-asleep); }
+  /* An answer not read: the picture ringed in the text's own ink, cut out of the card. */
+  .bot[data-look='answered'] :global(.agent-avatar) { box-shadow: 0 0 0 2px var(--rail-ground), 0 0 0 4px var(--color-foreground); }
+  .orbit { position: absolute; inset: -4px; width: calc(100% + 8px); height: calc(100% + 8px); pointer-events: none; animation: spin 1.2s steps(72) infinite var(--loops); }
+  .orbit circle { fill: none; stroke: var(--color-accent); stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 28 72; }
+  /* The "z" on the card's ground at the picture's top right, the small one rising and fading after the large. Twelve
+     steps over four seconds: three frames a second, and none while the window rests (--loops). */
+  .sleep { position: absolute; right: -4px; top: -4px; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; background: var(--rail-ground); pointer-events: none; }
+  .sleep svg { width: 14px; height: 14px; overflow: visible; }
+  .sleep .z { fill: none; stroke: var(--color-muted-foreground); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; animation: rail-doze 4s steps(12) infinite var(--loops); }
+  .sleep .z:not(.big) { animation-delay: -2s; }
+  @keyframes rail-doze { 0%, 100% { opacity: 0.35; transform: translateY(1px); } 50% { opacity: 1; transform: translateY(-1px); } }
   .bot:active:not(:disabled) { transform: translateY(1px); }
   .team :global(.agent-avatar) { background: var(--color-surface-3); }
 
@@ -390,12 +421,16 @@
   /* Out of reach: the offline ring of its list line (MachineOffline), never a filled dot that reads as on. */
   .machine-line[data-tone='offline'] .state-dot { background: transparent; box-shadow: inset 0 0 0 1.5px var(--color-muted-foreground); }
   /* Descendants: the machines button and its card sit inside MachineStatus. An open menu keeps its card away. */
-  .slot:hover .rail-name { opacity: 1; transform: translate(0, -50%); transition-delay: 400ms; }
+  /* The wait is a tooltip's, not motion: reduced motion cuts every transition's delay (app.css), which showed the
+     name the instant the pointer entered, so this one is kept against that cut. */
+  .slot:hover .rail-name { opacity: 1; transform: translate(0, -50%); transition-delay: var(--tip-delay) !important; }
   .slot:has(:global(:focus-visible)) .rail-name { opacity: 1; transform: translate(0, -50%); }
-  .slot:has(:global([aria-expanded='true'])) .rail-name { opacity: 0; transition-delay: 0ms; }
+  .slot:has(:global([aria-expanded='true'])) .rail-name { opacity: 0; transition-delay: 0ms !important; }
   .slot:hover .rail-name.machines-name, .slot:has(:global(:focus-visible)) .rail-name.machines-name { transform: none; }
   .separator { flex: none; width: 28px; height: 1px; background: var(--color-edge); }
-  .bots { display: flex; flex: 0 1 auto; flex-direction: column; align-items: center; gap: 8px; width: 100%; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+  /* 4 px of its own above and below, taken back from the rail's gaps: the scroller clips what passes its edge, and
+     the first and last pictures' rings and arcs pass theirs by that much. */
+  .bots { display: flex; flex: 0 1 auto; flex-direction: column; align-items: center; gap: 8px; width: 100%; min-height: 0; padding: 4px 0; margin: -4px 0; overflow-y: auto; scrollbar-width: none; }
   /* A picture held to move: it dims where it will land; the name cards stay away while it moves. */
   .slot.dragging > .bot { opacity: 0.55; }
   .bots.reordering { cursor: grabbing; }
@@ -429,8 +464,7 @@
   .rail-button:hover:not(:disabled) { --count-ring: var(--color-surface-2); }
   .rail-button.on, .rail-button.on:hover:not(:disabled) { --count-ring: var(--color-surface-3); }
   /* A bot's or a team's one overlay, bottom right of its picture, cut out of the card: the amber dot for its turn,
-     the failure's "!", the list rows' turning accent arc for work, a full
-     ink dot for news. */
+     the failure's "!", a full ink dot for an answer not read, a ring leaving it now and then so it is not missed. */
   .badge {
     position: absolute;
     right: -3px;
@@ -443,11 +477,9 @@
     background: var(--rail-ground);
   }
   .needs, .news { width: 10px; height: 10px; border-radius: 50%; background: var(--color-live); }
-  .news { background: var(--color-foreground); }
-  .work svg { width: 14px; height: 14px; overflow: visible; }
-  .work circle { fill: none; stroke-width: 2; }
-  .work .track { stroke: var(--color-accent); stroke-dasharray: 23.6 31.4; transform-origin: 7px 7px; }
-  .work svg { animation: spin 0.9s steps(54) infinite var(--loops); }
+  .news { position: relative; background: var(--color-foreground); }
+  .news::after { content: ''; position: absolute; inset: 0; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--color-foreground); opacity: 0; animation: rail-ping 2.4s steps(36) infinite var(--loops); }
+  @keyframes rail-ping { 0%, 55% { opacity: 0; transform: scale(1); } 60% { opacity: 0.8; transform: scale(1); } 100% { opacity: 0; transform: scale(2.2); } }
 
   .foot { display: flex; flex-direction: column; align-items: center; gap: 4px; align-self: stretch; }
   .foot :global(button.icon.on) { background: var(--color-surface-3); color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge); border-radius: var(--radius-rail); }
@@ -466,6 +498,7 @@
     .app-rail { display: none; }
   }
   /* Still under reduced motion, as Spinner.svelte. */
-  @media (prefers-reduced-motion: reduce) { .work svg { animation: none; } }
-  :global(html[data-motion='reduced']) .work svg { animation: none; }
+  @media (prefers-reduced-motion: reduce) { .orbit, .sleep .z, .news::after { animation: none; } .sleep .z { opacity: 0.8; } }
+  :global(html[data-motion='reduced']) :is(.orbit, .sleep .z, .news::after) { animation: none; }
+  :global(html[data-motion='reduced']) .sleep .z { opacity: 0.8; }
 </style>

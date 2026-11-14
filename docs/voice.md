@@ -6,7 +6,7 @@ by itself.
 
 ## Set it up
 
-1. Open Settings, Input, Voice on the machine that hosts the conversation. The line
+1. Open Settings, Voice on the machine that hosts the conversation. The line
    at the top says whether dictation works now.
 2. Press Set up dictation. Boite downloads the local engine and its model in
    one click. New setups use Local with Nemotron Streaming.
@@ -75,13 +75,13 @@ or `fr` fixes it.
 - Boite asks for permission only when you press Dictate or Test microphone.
   If you denied it, allow it in your browser or system settings, then try
   again.
-- Microphone in Settings, Input, Voice picks the input on this device, phones
+- Microphone in Settings, Voice picks the input on this device, phones
   included. System default follows the system's input.
 - Test microphone shows the input level. The test stays on your device.
 
 ## Turn it off
 
-Voice dictation in Settings, Input, Voice turns dictation off on this device. The
+Voice dictation in Settings, Voice turns dictation off on this device. The
 microphone leaves the message bar, and the installed model stays for later.
 
 ## Limits

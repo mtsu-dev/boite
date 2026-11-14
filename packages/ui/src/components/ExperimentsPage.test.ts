@@ -4,7 +4,7 @@ import { EXPERIMENT_STAGES } from '@boite/contracts';
 import ExperimentsPage from './ExperimentsPage.svelte';
 import { BUILD_STORAGE_KEY, DESKTOP_STORAGE_KEY, EXPERIMENTS_STORAGE_KEY, desktopHeard, followDesktopOf, heardBuild, heardDesktop, isExperimentEnabled, readExperiments, setExperiment, subscribeExperiments, writeExperiments } from '../lib/experiments';
 import { experimentsShown } from '../lib/experiments.svelte';
-import { cardsOf, desktopPlace, phonePlace } from '../lib/settings-tabs';
+import { navOf, desktopPage, phonePage } from '../lib/settings-tabs';
 import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
 import { strings } from '../lib/strings';
@@ -136,10 +136,10 @@ test('on a Release no experiment is on though storage holds it, Settings has no 
   expect(isExperimentEnabled('whip')).toBe(false);
   expect(isExperimentEnabled('teams')).toBe(false);
   expect(experimentsShown()).toBe(false);
-  // Version has no Experiments section, desktop and phone, and a route to it lands on Version's top.
-  expect(cardsOf('version', true).map((card) => card.id)).not.toContain('experiments');
-  expect(desktopPlace('experiments', null, true)).toEqual({ page: 'version', section: null });
-  expect(phonePlace('experiments', null, true)).toEqual({ page: 'version', section: null });
+  // The tab is absent from the nav, desktop and phone, and a route to it lands on Home.
+  expect(navOf('advanced', true)).not.toContain('experiments');
+  expect(desktopPage('experiments', true)).toBe('home');
+  expect(phonePage('experiments', null, true)).toBe('home');
   setExperiment('debates', true);
   setExperiment('whip', false);
   expect(window.localStorage.getItem(EXPERIMENTS_STORAGE_KEY)).toBe('["whip","teams"]');
@@ -155,7 +155,7 @@ test('a Release primary heard after a Nightly one turns the switches off without
   const heard: string[][] = [];
   onTestFinished(subscribeExperiments((enabled) => { heard.push(enabled); }));
   expect([isExperimentEnabled('whip'), isExperimentEnabled('debates'), experimentsShown()]).toEqual([true, true, true]);
-  expect(cardsOf('version', true).map((card) => card.id)).toContain('experiments');
+  expect(navOf('advanced', true)).toContain('experiments');
 
   // Another machine's core is not the one that decides.
   heardBuild({}, RELEASE);

@@ -15,7 +15,7 @@ checks against the SHA-256 the manifest publishes. Schema 2 is the format to
 write today ([Schema 2](#schema-2)); schema 1 manifests keep loading as they
 always did ([Schema 1 manifest](#schema-1-manifest)).
 
-Settings > Agents > Plugins is one grid of cards, with a search field (name, id,
+Settings > Plugins is one grid of cards, with a search field (name, id,
 description or author) and a filter: All, On or Off.
 
 - A card holds the name, version, author, two lines of description, small
@@ -46,7 +46,7 @@ Plugins are administration of the machine that hosts the core, so every
 calls to run a plugin's command ([Agent commands](#agent-commands)),
 `plugins.settings.get`, which a plugin calls for its own settings, and
 `plugins.ui`, which every client reads to draw the interfaces ([Interface](#interface)).
-The owner's phone lists the same page, Settings > Agents; a paired device has none.
+The owner's phone has the same page under Settings > Plugins; a paired device has none.
 
 ### Turning a plugin off
 
@@ -128,7 +128,7 @@ and the slash command `/recap`. Start from a copy of it.
 4. To publish, upload `hello.js` at the URL `artifacts.any` names, for example
    as a release asset, and push the folder to a public git repository with the
    manifest at its root. To share it, send its link or `owner/repo`: the
-   other owner pastes it in Settings > Agents > Plugins, or asks an agent to add it,
+   other owner pastes it in Settings > Plugins, or asks an agent to add it,
    and installs after reading the preview ([Install and run](#install-and-run)).
 
 ## Schema 2
@@ -289,7 +289,7 @@ A plugin's `threads.archive` is always a Mark done, whatever it passes:
 - An already archived thread is answered unchanged.
 - The row's `archiveReason` becomes `{ type: 'plugin', pluginId, pluginName,
   archivedAt }`. The app shows "Archived by plugin <name>" under the done row
-  and in Settings, Conversations, Archived threads, and the core's log records the archive.
+  and in Settings, Archived threads, and the core's log records the archive.
   An owner's restore drops it.
 - Being done, the thread counts toward Delete done threads after, as after
   the owner's Mark done.
@@ -483,7 +483,7 @@ own risk; what goes through the slots keeps working across releases.
 A script that throws while loading, or later in a function it handed Boite (a
 click, a tab's mount, an event handler, an unhandled error from its own
 module), stops that plugin only: its entries leave, its cleanups run, its
-stylesheet goes and its card in Settings > Agents > Plugins shows the error with a
+stylesheet goes and its card in Settings > Plugins shows the error with a
 Reload interface button. The same files are not run again until they change
 or that button is pressed.
 
@@ -518,7 +518,7 @@ present they are ignored.
 - Run `boite plugin dev <folder>` again to read the manifest again and restart
   the plugin's service or desktop app.
 - `boite plugin dev --remove <id>` removes it.
-- Its card in Settings > Agents > Plugins wears a Dev chip, and its gear shows the folder.
+- Its card in Settings > Plugins wears a Dev chip, and its gear shows the folder.
 
 It is the owner's (`plugins.dev`): run it from your own terminal. The core
 refuses it to an agent or a paired device.
@@ -803,7 +803,7 @@ The core starts an installed app:
 
 - when the core starts, if Start with Boite is on (`autostart`);
 - right after its install or an update finishes, if it is on (`enabled`);
-- when the owner clicks Start or Restart in Settings > Agents > Plugins
+- when the owner clicks Start or Restart in Settings > Plugins
   (`plugins.app {id, action: "start" | "stop" | "restart"}`).
 
 It runs the executable with no argument, from the plugin's directory, through
@@ -890,7 +890,7 @@ an app checks the flag before it names a machine.
 
 The desktop shell connected to the core it started on the same computer
 answers it: it unminimizes and focuses its window, then opens the thread, the
-Bots page on that bot, or the app updates in Settings, Version. A target with `coreId` opens on
+Bots page on that bot, or the app updates in Settings, Machines. A target with `coreId` opens on
 the window's machine whose core has that id; when the window has no such
 machine, or has it but not connected, it says so on the page it shows and opens
 nothing. Browser tabs, paired devices and windows following another machine do
@@ -974,7 +974,7 @@ it down with the core.
   error: string | null; startedAt: number | null; dataDir: string }
 ```
 
-Douane's gear in Settings > Agents > Plugins shows it with Start, Stop and Restart, Open
+Douane's gear in Settings > Plugins shows it with Start, Stop and Restart, Open
 Douane (its dashboard, beside the core only) and Move my connections to Douane,
 which moves this machine's sign-ins into the plugin (`subscriptionProxy.move`
 with `target: "plugin"`, [providers](providers.md#moving-connections-to-douane)).
@@ -1082,7 +1082,7 @@ When the core checks:
 - when the owner clicks Check for updates behind the plugin's gear
   (`plugins.checkUpdates {id?}`), whether it is installed or not. A check
   finished less than ten seconds before answers instead of a new read.
-- when the owner opens Settings > Agents > Plugins, for recommendations not installed
+- when the owner opens Settings > Plugins, for recommendations not installed
   yet. The list appears immediately and the available versions refresh as
   their sources answer. Their gears also offer Check for updates and their cards show
   checking or failure notes before installation.
@@ -1242,7 +1242,7 @@ steps below test the whole install, from a git URL with real downloads.
    the manifest to a branch of a public repository.
 4. Start a core on a throwaway data directory and the UI beside it:
    `bun run dev:core --data-dir <empty directory>` and `bun run dev:ui`.
-   In Settings > Agents > Plugins, paste the repository URL and the branch name, read
+   In Settings > Plugins, paste the repository URL and the branch name, read
    the manifest and install.
 
 `add`, `switch` and `remove` act on the real CLI logins of the machine

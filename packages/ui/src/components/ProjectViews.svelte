@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Plus, Search } from '@lucide/svelte';
+  import { FolderPlus, Plus, Search } from '@lucide/svelte';
   import { workspace } from '../lib/workspace.svelte';
   import { projectView, type ProjectEntry } from '../lib/project-view.svelte';
   import { machineFilter } from '../lib/machine-filter.svelte';
@@ -12,11 +12,12 @@
   import ViewSwitch from './ViewSwitch.svelte';
   import FilterChips from './FilterChips.svelte';
   import { inbox } from '../lib/inbox.svelte';
+  import { closeArchived } from '../lib/archived-view.svelte';
 
   /**
    * The thread list's head, one row: its two views, Projects and Recent, as a
    * segmented switch with the side on raised, then the display menu named
-   * "Filter", search and "+" for a new thread, its name and key in its tooltip.
+   * "Filter", search, a folder with a plus that adds a project and "+" for a new thread, its name and key in its tooltip.
    * Recent's project filter and the machine filter live in the display menu,
    * which dots its button while one of them hides threads; each one on is a
    * chip in words on the line under the head, removed with a press.
@@ -42,7 +43,7 @@
 <div class="list-head" data-testid="list-first-run" aria-hidden="true"></div>
 {:else}
 <div class="list-head">
-  <h2 class="title" data-testid="list-view-name"><ViewSwitch label={strings.sidebar.displayView} current={workspace.view} onpick={view => workspace.setView(view as 'projects' | 'recent')}
+  <h2 class="title" data-testid="list-view-name"><ViewSwitch label={strings.sidebar.displayView} current={workspace.view} onpick={view => { closeArchived(); workspace.setView(view as 'projects' | 'recent'); }}
     options={[{ id: 'projects', label: strings.sidebar.projectsView }, { id: 'recent', label: strings.sidebar.recentView }]} testid="view-switch" /></h2>
   <div class="actions">
     <!-- The buttons plugin interfaces put in the sidebar, on the machine that loaded them. -->
@@ -50,6 +51,7 @@
     <DisplayOptions {entries} {target} owner={targetOwner} {filters} word onaddproject={addProject} />
     {#if entries.length}
       <button class="ghost icon small search" title={`${strings.sidebar.search}${store.keyHint('palette')}`} aria-label={strings.sidebar.search} data-testid="sidebar-search-open" onclick={() => store.paletteOpen = true}><Search size={16} /></button>
+      {#if addProject}<button class="ghost icon small add-project" title={strings.sidebar.addProject} aria-label={strings.sidebar.addProject} data-testid="head-add-project" onclick={addProject}><FolderPlus size={16} /></button>{/if}
       <button class="ghost icon small" title={`${newLabel}${store.keyHint('new-thread')}`} aria-label={newLabel} data-testid="new-thread" onclick={create}><Plus size={16} /></button>
     {/if}
   </div>
@@ -73,16 +75,16 @@
   /* Its ring inside its own edge, as a row's: the 4 px beside the switch stay clear. */
   .actions :global(button.worded:focus-visible) { outline-offset: -2px; }
   /* Too narrow for the word: the glyph alone, the word kept for screen readers. */
-  @container sidebar (max-width: 279px) {
+  @container sidebar (max-width: 319px) {
     .actions :global(button.worded) { width: 32px; padding: 0; justify-content: center; }
     .actions :global(button.worded .word) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   }
   /* The narrowest column: the views' words keep 4 px sides and the glyphs 28 px; search leaves the head for its
-     shortcut and the palette, so Filter and New thread stay inside it at 208 px in English and French. */
+     shortcut and the palette, Add a project for the Filter menu's last row, so Filter and New thread stay inside it at 208 px in English and French. */
   @container sidebar (max-width: 239px) {
     .list-head .title :global(.side) { padding: 0 4px; }
     .actions :global(button.icon), .actions :global(button.worded) { width: 28px; height: 28px; }
-    .actions .search { display: none; }
+    .actions :is(.search, .add-project) { display: none; }
     .list-head { gap: 2px; }
     .actions { gap: 0; }
   }

@@ -61,28 +61,30 @@ test('a maximized panel stays with its thread: the Contacts page beside the list
   }
 });
 
-test('contacts are the Bots column\'s other side: its head folds the column on the right, a row opens a contact', async () => {
+test('contacts are a circle of the rail beside the bots, never a side of the Bots column: its head folds the column on the right, a row opens a contact', async () => {
   writeExperiments(['resident-agents', 'contacts']);
   await mountOnFake();
   try {
-    // A first start finds the column folded, and no contacts button on the rail: Activity counts what they ask.
+    // A first start finds the column folded; the rail keeps a Contacts circle with the bots on.
     // The Bots page draws no such column: read it afresh each time.
     const rail = () => query('[data-testid=contacts-rail]');
     // The column is fetched after the shell (`lib/contacts-entry.ts`).
     await waitFor(() => document.querySelector('[data-testid=contacts-rail]') !== null);
     expect(rail().classList.contains('collapsed')).toBe(true);
     expect(query('main').compareDocumentPosition(rail()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(document.querySelector('[data-testid=rail-contacts]')).toBeNull();
+    expect(query('[data-testid=rail-contacts]').getAttribute('aria-current')).toBeNull();
     expect(document.querySelector('[data-testid=contacts-toggle]')).toBeNull();
 
-    // The Bots column's switch turns it to Contacts, the Contacts page in the main card.
+    // The Bots column has no switch to Contacts: the rail's circle opens the Contacts page in the main card.
     workspace.showAgents(store);
-    await waitFor(() => document.querySelector('[data-testid=side-contacts]') !== null);
-    query<HTMLButtonElement>('[data-testid=side-contacts]').click();
+    await waitFor(() => document.querySelector('[data-testid=side-head]') !== null);
+    expect(document.querySelector('[data-testid=side-switch]')).toBeNull();
+    query<HTMLButtonElement>('[data-testid=rail-contacts]').click();
     await waitFor(() => document.querySelector('[data-testid=home-add]') !== null);
     expect([store.page, store.contact]).toEqual(['home', null]);
     await waitFor(() => document.querySelector('[data-testid=sidebar] [data-testid=rail-contact]') !== null);
-    expect(query('[data-testid=sidebar] [data-testid=side-switch]').dataset['view']).toBe('home');
+    expect(query('[data-testid=rail-contacts]').getAttribute('aria-current')).toBe('page');
+    expect(document.querySelector('[data-testid=side-switch]')).toBeNull();
 
     // Its head folds the right column, which is not drawn while this side lists the same rows.
     query<HTMLButtonElement>('[data-testid=contacts-toggle]').click();
@@ -361,10 +363,13 @@ test('the palette and the project menu reach the archive, its list already read'
   query<HTMLButtonElement>('[data-testid=project-menu]').click();
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=archived]') !== null);
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=archived]').click();
-  // A card's menu opens the archive on its project; All projects widens it back to every one.
-  await waitFor(() => store.page === 'settings' && document.querySelector('[data-testid=archived-focus]') !== null);
+  // A card's menu opens the archive in the list itself, on its project; All projects widens it back to every one.
+  await waitFor(() => store.page === 'chat' && document.querySelector('[data-testid=sidebar-archived] [data-testid=archived-focus]') !== null);
   query<HTMLButtonElement>('[data-testid=archived-all]').click();
-  await waitFor(() => document.querySelector('[data-testid=archived-list]')?.textContent?.includes('Finish the trace tab') === true);
+  await waitFor(() => document.querySelector('[data-testid=sidebar-archived] [data-testid=archived-list]')?.textContent?.includes('Finish the trace tab') === true);
+  // The first line gives the threads back.
+  query<HTMLButtonElement>('[data-testid=sidebar-archived-back]').click();
+  await waitFor(() => document.querySelector('[data-testid=sidebar-archived]') === null && document.querySelector('[data-testid=thread-row]') !== null);
 });
 
 test('Ctrl+Shift+T brings back the thread archived last on the machine, from this window or another, and opens it', async () => {
@@ -732,10 +737,11 @@ test('the settings bar picks the machine a page changes without moving the windo
   expect(query('[data-testid=settings-machine]').textContent).toContain(`${store.core!.hostname} (you)`);
   // The picker is the machine's name in the title's scope line.
   expect(query('[data-testid=settings-scope]').contains(query('[data-testid=settings-machine]'))).toBe(true);
-  expect(query('[data-testid=settings-scope]').textContent).toContain(strings.settingsMap.scope.machine.split('{machine}')[0]!.trim());
+  expect(query('[data-testid=settings-scope]').textContent).toContain(strings.settings.scopeMachine.split('{machine}')[0]!.trim());
   expect(document.querySelectorAll('[data-testid=settings-machine]')).toHaveLength(1);
-  // Every other page opens on the window's machine. Safeguards is the machine's: the line under its title holds the picker.
-  remote.store.showSettings('safeguards', 'quiet');
+  // Every other page opens on the window's machine. General is mostly this device's cards:
+  // the line under its title says so once, and its machine card's phrase holds the picker.
+  remote.store.showSettings('general', 'quiet');
   await waitFor(() => query('[data-testid=settings-machine]').textContent?.includes(remote.label) === true && document.querySelector('[data-testid=setting-mute-agents]') !== null);
   await remote.store.client!.call('settings.set', { muteAgents: true });
   await store.client!.call('settings.set', { muteAgents: true });
@@ -747,51 +753,40 @@ test('the settings bar picks the machine a page changes without moving the windo
   await waitFor(() => store.settings?.muteAgents === false);
   expect(remote.store.settings?.muteAgents).toBe(true);
   // The window never moved: same machine, same conversation, still on the page it showed.
-  expect([workspace.active, remote.store.openThread, remote.store.settingsTab]).toEqual([remote.store, thread, 'safeguards']);
-  expect(query('[data-testid=settings-scope]').dataset.scope).toBe('machine');
-  expect(query('[data-testid=settings-scope]').contains(query('[data-testid=settings-machine]'))).toBe(true);
-  expect(document.querySelectorAll('[data-testid=settings-machine]')).toHaveLength(1);
-  // Conversations is mostly this device's cards: the line says so once, and its first machine card's phrase holds the picker.
-  remote.store.showSettings('conversations');
-  await waitFor(() => document.querySelector('#settings-agent-replies [data-testid=card-scope]') !== null);
+  expect([workspace.active, remote.store.openThread, remote.store.settingsTab]).toEqual([remote.store, thread, 'general']);
   expect(query('[data-testid=settings-scope]').dataset.scope).toBe('device');
   expect(query('#settings-agent-replies [data-testid=card-scope]').contains(query('[data-testid=settings-machine]'))).toBe(true);
   expect(document.querySelectorAll('[data-testid=settings-machine]')).toHaveLength(1);
-  // A page of this device says so once under its title, with no picker; Devices says it holds for every machine.
+  // A page of this device says so once under its title, with no picker; the group's Machines page shows its title alone.
   remote.store.showSettings('appearance');
   await waitFor(() => remote.store.settingsTab === 'appearance' && document.querySelector('[data-testid=settings-machine]') === null);
-  expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(strings.settingsMap.scope.device);
-  remote.store.showSettings('devices');
-  await waitFor(() => document.querySelector('[data-testid=settings-scope][data-scope=group]') !== null);
-  expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(strings.settingsMap.scope.group);
+  expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(strings.settings.scopeDevice);
+  remote.store.showSettings('machines');
+  await waitFor(() => remote.store.settingsTab === 'machines' && document.querySelector('[data-testid=settings-scope]') === null);
 });
 
 test('a page says where it applies once: one line for most of its cards, a tag only on a card that differs', async () => {
   await mountOnFake('/?fake=1');
   await waitFor(() => workspace.machines.length === 1 && store.connection === 'ready');
   const machine = workspace.machines[0]!;
-  // Conversations is this device's cards first, then three of the machine: the line says "This device" once, each machine card its own.
-  store.showSettings('conversations');
+  // General is mostly this device's switches and three machine cards: the line says "this device" once, each machine card its own.
+  store.showSettings('general');
   await waitFor(() => document.querySelector('#settings-agent-replies [data-testid=card-scope]') !== null);
-  expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(strings.settingsMap.scope.device);
+  expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(strings.settings.scopeDevice);
   expect([...document.querySelectorAll<HTMLElement>('[data-testid=card-scope]')].map((tag) => tag.dataset.kind)).toEqual(['machine', 'machine', 'machine']);
+  expect(query('#settings-agents-alone [data-testid=card-scope]').dataset.kind).toBe('machine');
   expect(document.body.textContent?.split(strings.settings.cardDevice)).toHaveLength(1);
   expect(query('#settings-agent-replies [data-testid=card-scope]').textContent?.trim()).toBe(fill(strings.settings.cardMachine, { machine: machineName(machine) }));
-  // Appearance holds this device's settings alone: no card carries a tag, the line under the title says it once.
-  store.showSettings('appearance');
-  await waitFor(() => document.querySelector('[data-testid=settings-page][data-page=appearance]') !== null);
-  expect(query('[data-testid=settings-scope]').dataset.scope).toBe('device');
-  expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(strings.settingsMap.scope.device);
-  expect(document.querySelectorAll('[data-testid=card-scope]')).toHaveLength(0);
-  // Safeguards is the machine's, and its browser card alone is this device's: one tag, on that card.
+  // Browser holds this device's settings alone: its card carries no tag, the line under the title says it once.
   store.showSettings('browser');
-  await waitFor(() => document.querySelector('[data-testid=browser-profiles-card]') !== null);
-  expect(query('[data-testid=settings-scope]').dataset.scope).toBe('machine');
-  expect([...document.querySelectorAll<HTMLElement>('[data-testid=card-scope]')].map((tag) => tag.dataset.kind)).toEqual(['device']);
-  // A page of one machine: "This machine: studio", the name plain text with nothing to pick.
+  await waitFor(() => document.querySelector('[data-testid=browser-profiles-card]') !== null && document.querySelector('[data-testid=settings-scope]') !== null);
+  expect(query('[data-testid=settings-scope]').dataset.scope).toBe('device');
+  expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(strings.settings.scopeDevice);
+  expect(document.querySelectorAll('[data-testid=card-scope]')).toHaveLength(0);
+  // A page of the machine's agent settings: "Agent settings apply on studio", the name plain text with nothing to pick.
   store.showSettings('voice');
-  await waitFor(() => document.querySelector('[data-testid=settings-page][data-page=input]') !== null);
-  expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(fill(strings.settingsMap.scope.machine, { machine: machineName(machine) }));
+  await waitFor(() => document.querySelector('[data-testid=settings-scope][data-scope=machine]') !== null);
+  expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe(fill(strings.settings.scopeMachine, { machine: machineName(machine) }));
   expect(document.querySelector('[data-testid=settings-scope] [data-testid=settings-machine]')).toBeNull();
   expect(document.querySelectorAll('[data-testid=card-scope]')).toHaveLength(0);
 });
