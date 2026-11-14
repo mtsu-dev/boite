@@ -22,6 +22,7 @@ export const fr: Translation = {
       botFailed: '{name} a échoué',
       botWorking: '{name} travaille',
       botPaused: '{name} est en pause',
+      state: { waiting: 'a besoin de vous', failed: 'a échoué', working: 'travaille', paused: 'en pause' },
       unread: 'nouvelles réponses',
       /** The list foot's limits line, in its tooltip (QuotaLine.svelte): the least left, the window and the account it is on. */
       limitsLeft: '{percent} % restant : {window}, {account}',

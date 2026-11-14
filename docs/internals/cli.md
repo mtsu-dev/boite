@@ -570,7 +570,8 @@ commands in [workflows](workflows.md#commands).
 experiment: group or private posts, reading, and cards that ask the owner to
 create, join or leave a team ([teams](teams.md#commands)).
 
-Mochis schedule work from their own conversation. `mochi schedule` accepts `name`, `prompt`, and `schedule`,
+Mochis schedule work from their own conversation. `mochi schedule` accepts `name`, `prompt`, `schedule` and an optional `check`
+(a command; the routine wakes the mochi only when it prints something new, see [routines](mochis.md#routines)),
 for example `{"kind":"daily","time":"09:00","timezone":"Europe/Paris"}`.
 Other schedules use `{"kind":"interval","everyMinutes":60}` or
 `{"kind":"once","at":1790240400000}` with a Unix timestamp in milliseconds.

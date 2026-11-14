@@ -37,6 +37,11 @@ test('the owner creates and edits monthly, yearly and single-date reminders on d
           await page.click('[data-value="11"]');
         }
       }
+      // A check, typed under More options: the command that decides whether an occurrence wakes the bot.
+      if (kind === 'once') {
+        await page.evaluate(`document.querySelector('${id('agent-schedule')} details').open = true`);
+        await page.type(id('routine-check'), 'echo news');
+      }
       await page.waitFor(`document.querySelector('${id('routine-save')}')?.disabled === false`);
       if (kind === 'monthly' || kind === 'yearly') {
         await page.evaluate(`document.querySelector('${id('right-panel')} ${id('panel-close')}')?.click()`);
@@ -69,6 +74,9 @@ test('the owner creates and edits monthly, yearly and single-date reminders on d
         expect(h.core.workforce.records.get('routine', routine.id).schedule).toMatchObject({ kind, day: 15 });
       } else {
         expect(await page.evaluate(`document.querySelector('${id('schedule-at')}').value`)).toBe('2030-11-14T09:00');
+        // The real core kept the check, the row marks it, and the form reopens on it, unfolded.
+        expect(routine.check).toBe('echo news');
+        expect(await page.evaluate(`document.querySelector('${id('agent-schedule')} details').open && document.querySelector('${id('routine-check')}').value`)).toBe('echo news');
       }
     }
     console.log('[calendar] monthly, yearly and once saved and reopened; desktop and phone captures recorded');

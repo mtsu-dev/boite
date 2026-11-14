@@ -112,6 +112,11 @@
     if (state === 'paused') return fill(strings.app.rail.botPaused, { name });
     return name;
   }
+  /** What the hover name adds after a bot's name: what its badge means, in words, then its machine when there are several. */
+  function noteOf(state: RailBotState, unread: boolean, machine: string | null): string | null {
+    const words = state === 'waiting' || state === 'failed' || state === 'working' || state === 'paused' ? strings.app.rail.state[state] : unread ? strings.app.rail.unread : null;
+    return [words, machine].filter(Boolean).join(' · ') || null;
+  }
   /** The members as pictures: the bot's own when its machine's bots are read, else the robot its id picks. */
   function pictures({ machine, team }: TeamRow) {
     const profiles = agentDirectory(machine.store).snapshot?.profiles ?? [];
@@ -241,7 +246,7 @@
               {:else if state === 'working'}<span class="badge work" aria-hidden="true"><svg viewBox="0 0 14 14"><circle class="track" cx="7" cy="7" r="5" /></svg></span>
               {:else if unread && !selected}<span class="badge" data-testid="rail-bot-unread" aria-hidden="true"><span class="news"></span></span>{/if}
             </button>
-            {@render railName(bot.row.profile.name, null, several ? machineName(bot.machine) : null)}
+            {@render railName(bot.row.profile.name, null, noteOf(state, unread && !selected, several ? machineName(bot.machine) : null))}
           </div>
         {:else}
           {@const row = entry.team}

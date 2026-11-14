@@ -66,10 +66,11 @@
   .quota-line { flex: none; margin: 0 6px; padding: 4px 0 8px; border-top: 1px solid transparent; transition: border-color var(--motion-duration) var(--motion-curve); }
   /* A quiet line, the rows' grey. Running low, the line takes the full ink (amber is only for what needs the user);
      run out, its glyph turns red. */
-  .line { display: flex; align-items: center; gap: 8px; width: 100%; height: var(--control-sm); padding: 0 var(--pad-x, 8px); justify-content: flex-start;
+  /* The sentence reads whole: one line where it fits, two in a narrow column, never cut after a few words. */
+  .line { display: flex; align-items: center; gap: 8px; width: 100%; height: auto; min-height: var(--control-sm); padding: 3px var(--pad-x, 8px); justify-content: flex-start; text-align: left;
     color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 500; font-variant-numeric: tabular-nums; }
   .line:hover:not(:disabled) { color: var(--color-foreground); }
-  .line .ui-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .line .ui-label { min-width: 0; overflow: hidden; white-space: normal; line-height: 1.35; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
   .line :global(svg) { flex: none; }
   .line.low { color: var(--color-caution); }
   .line :global(svg.out) { color: var(--color-danger); }

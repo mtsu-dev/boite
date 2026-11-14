@@ -129,8 +129,14 @@ export const strings = {
       memoryEmpty: 'Nothing noted yet.',
     },
     waitingOn: 'Waiting for you: {what}', nextWake: 'Next: {name}, {when}',
+    today: {
+      topic: 'its day', none: 'It has not woken on its own today.',
+      wakes: { one: 'Woke on its own once today', many: 'Woke on its own {count} times today' },
+      quiet: { one: 'once with nothing to report', many: '{count} times with nothing to report' },
+      cost: 'Spent {cost} today', costOf: 'Spent {cost} today. Past {budget}, its own wakes wait until tomorrow',
+    },
     state: { working: 'Working', queued: 'Queued', waiting: 'Waiting for you', idle: 'Idle', paused: 'Paused', archived: 'Archived', error: 'Its last turn failed' },
-    outcome: { done: 'done', quiet: 'nothing to report', error: 'failed', stopped: 'stopped', skipped: 'skipped' },
+    outcome: { done: 'done', quiet: 'nothing to report', error: 'failed', stopped: 'stopped', skipped: 'skipped', nothing: 'nothing new' },
     /** The step a mochi is on, when its call has no title: by the tool's family, else by the turn's phase. */
     activity: {
       thinking: 'Thinking', compacting: 'Compacting its context', starting: 'Getting started', retrying: 'Retrying a request', provider: 'Waiting for the model', writing: 'Writing its answer',
@@ -158,6 +164,9 @@ export const strings = {
       onceAt: 'Once, {date}', daily: 'Every day at {time}', weekdays: 'Weekdays at {time}', weekend: 'Weekends at {time}', onDays: 'Every {days} at {time}',
       today: 'today at {time}', tomorrow: 'tomorrow at {time}', dateAt: '{date} at {time}',
       lastRun: 'Last run {when}: {state}',
+      check: 'Only when there is news', checkPlaceholder: 'A command, for example: gh pr list --json number,title',
+      checkHint: 'Boite runs this command in the mochi\'s folder when the routine is due. The mochi wakes only when the command prints something it did not print the time before, or fails. A check that finds nothing new spends no turn. Run now skips it.',
+      checked: 'Wakes only when its check finds something new',
     },
   }
 } as const;
