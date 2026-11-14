@@ -2,10 +2,13 @@
 .notify-corner {
   position: fixed;
   right: max(16px, env(safe-area-inset-right, 0px));
-  bottom: calc(12px + max(var(--corner-lift, 0px), env(safe-area-inset-bottom, 0px)));
+  /* A card in the toasts' stack has a top (a tall stack runs off the window's bottom, never over itself); one under
+     them on a phone has a lift instead. Either unset leaves its edge auto, so a card never stretches between two. */
+  top: var(--toast-top);
+  bottom: calc(12px + var(--corner-lift));
   z-index: 80;
   width: min(340px, calc(100vw - 24px));
-  transition: bottom var(--motion-duration) var(--motion-curve);
+  transition: inset var(--motion-duration) var(--motion-curve);
 }
 
 /* Held while a thread loads (notify-corner.ts): out of sight until the page lands and its slot exists. */
@@ -19,7 +22,7 @@
 [data-corner-room='bottom'] { margin-bottom: var(--corner-room); }
 [data-testid=mobile-list] { transition: margin var(--dur-2) var(--ease-out-quint); }
 
-/* Desktop toasts use the right corner; phones keep room above the composer. */
+/* Desktop toasts use the top-right corner; phones keep room above the composer. */
 .toast-slot {
   position: fixed;
   top: var(--toast-top, 12px);
@@ -31,5 +34,5 @@
 .toast-slot[data-slot='bottom'] { right: auto; left: var(--toast-left, 50%); translate: -50% 0; }
 
 @media (max-width: 720px) {
-  .notify-corner { right: 12px; }
+  .notify-corner { right: 12px; bottom: calc(12px + max(var(--corner-lift), env(safe-area-inset-bottom))); }
 }
