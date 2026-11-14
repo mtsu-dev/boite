@@ -274,7 +274,7 @@ test('in the favorites, the refresh follows their reads, not the hidden column o
   await waitFor(() => !refresh().disabled && !spins());
 });
 
-test('a provider with one model beside a long rail: the menu follows the list, the rail scrolls under a fade, the current fill spans its star', async () => {
+test('a provider with one model beside a long rail: the menu keeps one size, the rail scrolls under a fade, the current fill spans its star', async () => {
   const models: ModelInfo[] = [{ id: 'douane/opencode/solo', name: 'Solo' }];
   await mountAt('landing');
   const real = store.modelsOf.bind(store);
@@ -288,12 +288,12 @@ test('a provider with one model beside a long rail: the menu follows the list, t
   expect(current.querySelector('.mark svg')).not.toBeNull();
   expect(current.closest('.model-entry')!.classList.contains('current')).toBe(true);
   expect(document.querySelectorAll('[data-testid=composer-picker-menu] .mark svg').length).toBe(1);
-  // A fixed height left an empty band under a short list: the frame follows its content, the rail its floor.
-  expect(getComputedStyle(menu).height).not.toMatch(/px|vh/);
-  expect(getComputedStyle(menu).maxHeight).not.toBe('none');
+  // One size whichever provider is picked: a menu that follows its list jumps under the pointer between two tiles.
+  const fixed = getComputedStyle(menu).height;
+  expect(fixed).toMatch(/px|vh/);
   document.querySelector<HTMLButtonElement>('[data-testid=composer-picker-menu] [data-provider=opencode]')!.click();
   await waitFor(() => rows() === 1);
-  expect(getComputedStyle(menu).height).not.toMatch(/px|vh/);
+  expect(getComputedStyle(menu).height).toBe(fixed);
   // The rail sets no height of its own: its tiles scroll, the add tile and refresh stay pinned below them.
   const tiles = query<HTMLElement>('[data-testid=picker-rail-tiles]');
   expect(tiles.querySelectorAll('[data-provider]').length).toBeGreaterThan(5);
