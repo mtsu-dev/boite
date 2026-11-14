@@ -1806,9 +1806,30 @@ network. Measured on 2026-11-07, before against the previous
 | #621, one contracts file per domain | 44 | 413,740 B | 126,800 B | 306,462 B | 64,037 B |
 | #524, with a 51,000-line results file | 62 | 250,241 B | 131,179 B | 174,421 B | 63,469 B |
 
+## ADEMark's tests
+
+[ADEMark](https://github.com/zqkra/ademark) times agentic development
+environments against Claude Code alone in a terminal, on macOS. `bench/ademark/`
+plays its twelve ranked tests on Linux: Boite as the compiled core and the
+production UI in headless Chrome, the Bare CLI as Claude Code in a
+pseudo-terminal. `run.ts` is Track A (start, new thread, first word, typing,
+a long thread, memory and CPU) on ADEMark's replay server, with no token
+spent; `tokens.ts` is Track B, live; `rank.ts` places the results in the
+published table. The Tauri shell is not measured, times are read in the page
+and not on a screen recording, and a loaded machine moves every time: the
+[report of 2026-11-14](../../bench/results/2026-11-14-ademark.md) has the
+method, its limits, the numbers and what is left.
+
+Claude Code names every new session with one request on the session's model.
+The Claude driver passes the thread's title as the session's, and a fixed one
+for its one-shot title and side-question queries, so that request is never
+sent: a first `hi` went from six requests and 27,466 tokens to three and
+22,553, live, 2026-11-14, against 20,044 for Claude Code alone.
+
 ## Benches
 
 ```sh
+bun bench/ademark/run.ts --ade boite            # ADEMark's Track A on Linux; ADEMARK_DIR and BOITE_E2E_BROWSER set
 bun bench/remote-browser-frames.ts --rtt 0,80,200   # frames a second a viewer gets from the agent's browser
 bun run build:ui
 bun run bench/bandwidth.ts --rtt 150          # bytes and time per scenario behind a delayed relay
@@ -1873,6 +1894,7 @@ viewer; `--webgl` and `--webgl-heavy` draw the page in a shader.
 Results: [bench/results/2026-10-15-perf-runtime.md](../../bench/results/2026-10-15-perf-runtime.md),
 [bench/results/2026-10-15-perf-drivers.md](../../bench/results/2026-10-15-perf-drivers.md),
 [bench/results/2026-10-05-rpc-actions.md](../../bench/results/2026-10-05-rpc-actions.md),
+[bench/results/2026-11-14-ademark.md](../../bench/results/2026-11-14-ademark.md),
 [bench/results/2026-11-11-remote-browser-stream.md](../../bench/results/2026-11-11-remote-browser-stream.md),
 [bench/results/2026-10-05-remote-browser-frames.md](../../bench/results/2026-10-05-remote-browser-frames.md),
 [bench/results/2026-10-03-remote-browser-frames.md](../../bench/results/2026-10-03-remote-browser-frames.md),
