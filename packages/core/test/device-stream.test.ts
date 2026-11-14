@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { mkdtempSync } from 'node:fs';
+import * as fs from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AGENT_ENV, type MobileDeviceInput, type MobileDeviceStream } from '@boite/contracts';
@@ -15,6 +16,31 @@ import { thrown } from './settle.ts';
 
 const PHONE = 'R58M12345';
 const linux = (root: string): SdkEnvironment => ({ os: 'linux', env: { PATH: '', ANDROID_HOME: root }, home: mkdtempSync(join(tmpdir(), 'boite-no-sdk-')) });
+
+test('the fake SDK publishes complete state snapshots while a write is in progress', () => {
+  const sdk = fakeSdk({ physical: [{ serial: PHONE, model: 'Galaxy_S23' }] });
+  const before = sdk.state();
+  const writeFile = fs.writeFileSync;
+  let during: ReturnType<typeof sdk.state> | undefined;
+  // Pause publication after only part of the new JSON is written, exactly when another
+  // process can read it. Readers must still see the previous complete snapshot.
+  const writing = spyOn(fs, 'writeFileSync').mockImplementation((file, data, options) => {
+    if (typeof file !== 'string' || !file.startsWith(sdk.root) || typeof data !== 'string') {
+      return writeFile(file, data, options);
+    }
+    writeFile(file, data.slice(0, -1), options);
+    try { during = sdk.state(); }
+    finally { writeFile(file, data, options); }
+  });
+  try {
+    sdk.paint([10, 20, 30]);
+    expect(during).toEqual(before);
+    expect(sdk.state()).toEqual({ ...before, screen: [10, 20, 30] });
+  } finally {
+    writing.mockRestore();
+    fs.rmSync(sdk.root, { recursive: true, force: true });
+  }
+});
 
 describe('the scrcpy wire format', () => {
   test('text splits at 300 UTF-8 bytes without cutting a character; touch, scroll and clipboard carry their fields', () => {
