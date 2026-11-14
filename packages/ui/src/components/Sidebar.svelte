@@ -47,7 +47,6 @@
   import { contactsRail, contactsShown } from '../lib/contacts-rail.svelte';
   import { contactsParts } from '../lib/contacts-entry';
   import SideHead from './agents/SideHead.svelte';
-  import ArchivedThreads from './ArchivedThreads.svelte';
   import InfoTip from './InfoTip.svelte';
   import { archivedView, closeArchived } from '../lib/archived-view.svelte';
   import { archivedFocus } from '../lib/archived-focus.svelte';
@@ -83,6 +82,12 @@
    * contacts column on the right edge. Its rows load with the page.
    */
   const contactsSide = $derived(!mobile.current && store.page === 'home' && contactsShown(store));
+  /** The archive's list, fetched the first time it opens: it stays out of the app's first load. */
+  let ArchivedThreads = $state<typeof import('./ArchivedThreads.svelte').default>();
+  $effect(() => {
+    if (!archivedView.open || ArchivedThreads) return;
+    void import('./ArchivedThreads.svelte').then(module => { ArchivedThreads = module.default; }).catch(() => {});
+  });
   let ContactRows = $state<typeof import('./home/ContactRows.svelte').default>();
   $effect(() => {
     if (!contactsSide || ContactRows) return;
@@ -271,7 +276,7 @@
         </div>
         {#each archiveMachines as machine (machine.id)}
           {#if multi && archiveMachines.length > 1}<p class="archive-machine" class:offline={machine.store.connection !== 'ready'}><MachineIcon icon={machine.icon} os={machine.store.core?.os} size={14} /><span class="ui-label">{machine.label}</span></p>{/if}
-          <ArchivedThreads store={machine.store} eager place="list" />
+          {#if ArchivedThreads}<ArchivedThreads store={machine.store} eager place="list" />{/if}
         {/each}
       </div>
     {:else if showRows}
