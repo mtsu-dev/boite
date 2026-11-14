@@ -1869,7 +1869,11 @@ eight tasks, a call median of 148 ms and p95 of 508 ms; the 320-row page alone
 read 24,901 bytes in 4 calls. With [snapshot diffs](../../bench/results/2026-11-14-browser-agent-diff.md),
 on `112aa099c` under the same load: 24 of 24 again in the same 93 calls, 26,451
 bytes (about 6,613 tokens), the 320-row page 12,742 bytes; the seven small
-tasks changed by at most 6 bytes, the diff header.
+tasks changed by at most 6 bytes, the diff header. The
+[live run](../../bench/results/2026-11-14-browser-agent-live.md), Claude Opus 5.5
+at medium effort, one run per task, succeeded 8 of 8 on both sides with 33 and
+34 tool calls: totals follow the call count, since each call rereads the
+prompt, and only the 320-row task wrote fewer new tokens (27,462 then 22,051).
 
 ## Benches
 
