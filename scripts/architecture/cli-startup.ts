@@ -1,3 +1,4 @@
+import { builtinModules } from 'node:module';
 import { resolveImport, type Sources } from './graph.ts';
 
 /**
@@ -54,7 +55,7 @@ export function eagerClosure(sources: Sources, entries: readonly string[]): Map<
       const resolved = resolveImport(file, specifier, sources);
       if (resolved) visit(resolved, path);
       // A package outside the sources is still evaluated on every call: it must be listed to pass.
-      else if (!/^(?:\.|\/|node:|bun:)/.test(specifier)) reached.set(specifier, [...path, specifier]);
+      else if (!/^(?:\.|\/|node:|bun:)/.test(specifier) && !builtinModules.includes(specifier)) reached.set(specifier, [...path, specifier]);
     }
   };
   // A tree without the core has no CLI; a core without an entry renamed it, and the gate must follow.

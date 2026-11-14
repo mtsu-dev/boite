@@ -1830,7 +1830,7 @@ script of real CLI processes in that thread's environment
 (`BOITE_CORE_URL`, `BOITE_AGENT_TOKEN`, `BOITE_THREAD_ID`): `open`, then for
 each action the action on a ref read by its label out of the previous
 `snapshot -i` output, then `snapshot -i` again. A ref the CLI refuses, or a
-label missing from the snapshot, gets one more `snapshot -i` and one retry.
+label missing from the snapshot, gets one `snapshot -i --full` and one retry.
 The first `open` of each core starts the browser and is reported apart.
 `--cli` replaces `bun packages/core/src/main.ts cli` and must accept
 `browser <command>` after it.

@@ -148,6 +148,8 @@ class CliAgent implements Driver {
   async read(): Promise<string> {
     const { out, err, code } = await this.run(['snapshot', '--full'], false);
     if (code !== 0) throw new Error(`snapshot --full exited ${code}: ${(err || out).trim().slice(0, 200)}`);
+    // The core now diffs against this read: the next ref lookup uses it too.
+    this.last = out;
     return out;
   }
 }
