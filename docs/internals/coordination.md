@@ -309,7 +309,7 @@ message is not mistaken for noise: `from.thread` is the sender's conversation
 title, `from.address` what `boite threads read` takes, `from.relation` how it
 relates to the recipient ("started this thread; its request is your task", "a
 thread you started; it reports to you", "your parent", "your subagent", the
-the mochi the project is entrusted to, same project, another project or machine), `from.project`,
+mochi the project is entrusted to, same project, another project or machine), `from.project`,
 `from.machine` when it is elsewhere, `from.agent`, `from.branch`,
 `from.status` and `from.about`, what it works on. `about` is the sender's
 declared resources; a sender on the same core without any falls back to the
