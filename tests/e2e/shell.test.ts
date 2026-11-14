@@ -426,9 +426,9 @@ shellTest('close exits by default; the persisted setting hides instead; the nati
     ownCore = await waitForHealthyCore(ownDataDir, ownPid); ownPage = await attachShell(secondPort, ownDataDir, ownPid);
     await ownPage.waitFor(`document.querySelector('[data-testid="nav-settings"]')`);
     await ownPage.click('[data-testid="nav-settings"]');
-    // Settings open on Home; the window's own switches live under General.
-    await ownPage.waitFor(`document.querySelector('[data-testid="settings-tab-general"]')`);
-    await ownPage.click('[data-testid="settings-tab-general"]');
+    // The window's own switches sit on this device's card, on the Devices page.
+    await ownPage.waitFor(`document.querySelector('[data-testid="settings-tab-devices"]')`);
+    await ownPage.click('[data-testid="settings-tab-devices"]');
     await ownPage.waitFor(`document.querySelector('[data-testid="close-to-tray"]') && !document.querySelector('[data-testid="close-to-tray"]').disabled`);
     await ownPage.click('[data-testid="close-to-tray"]');
     await ownPage.waitFor(`document.querySelector('[data-testid="close-to-tray"]').checked`);
@@ -441,7 +441,9 @@ shellTest('close exits by default; the persisted setting hides instead; the nati
     await ownPage.waitFor(`document.querySelector('[data-testid="launch-at-login"]') && !document.querySelector('[data-testid="launch-at-login"]').disabled`);
     expect(await ownPage.evaluate(`document.querySelector('[data-testid="shell-settings"]').parentElement.querySelector('[role="alert"]')?.textContent ?? ''`)).toBe('');
     expect(await ownPage.evaluate(`window.__TAURI_INTERNALS__.invoke('launch_at_login', {enabled:true}).then(() => 'written', error => String(error))`)).toContain('BOITE_SHELL_HIDDEN');
-    // The tour leaves the title bar above its scrim: the window still drags and closes.
+    // The tour starts from Troubleshooting and leaves the title bar above its scrim: the window still drags and closes.
+    await ownPage.click('[data-testid="settings-tab-help"]');
+    await ownPage.waitFor(`document.querySelector('[data-testid="settings-tour"]')`);
     await ownPage.click('[data-testid="settings-tour"]');
     await ownPage.waitFor(`document.querySelector('[data-testid="onboarding-step"]')`);
     expect(await ownPage.evaluate(`(() => { const r = document.querySelector('[data-testid="titlebar"]').getBoundingClientRect(); return [0.25, 0.5, 0.75].every(at => !!document.elementFromPoint(r.left + r.width * at, r.top + r.height / 2)?.closest('[data-testid="titlebar"]')); })()`)).toBe(true);
