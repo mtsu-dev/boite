@@ -188,7 +188,15 @@ describe('the map of Settings', () => {
     expect(navOf(true)).toContain('version');
     expect(desktopPlace('experiments', null, true)).toEqual({ page: 'version', section: null });
     expect(desktopHas('experiments', 'device-stream', true)).toBe(false);
+    // One experiment's switch is an anchor inside the hidden card, not a card: it goes with it.
+    expect(desktopHas('version', 'whip', true)).toBe(false);
+    expect(settingsHas('experiments', 'whip', true, true)).toBe(false);
+    expect(desktopPlace('version', 'whip', true)).toEqual({ page: 'version', section: null });
+    expect(phonePlace('version', 'whip', true)).toEqual({ page: 'version', section: null });
     expect(phonePlace('experiments', null, true)).toEqual({ page: 'version', section: null });
+    experiments.shown = true;
+    expect(desktopHas('version', 'whip', true)).toBe(true);
+    expect(desktopPlace('version', 'whip', true)).toEqual({ page: 'version', section: 'whip' });
   });
 });
 

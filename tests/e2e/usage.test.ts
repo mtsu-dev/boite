@@ -196,7 +196,7 @@ test('the phone page fits 390 px and is reachable from the phone settings list',
   expect(await page.evaluate(`(() => {
     const info = document.querySelector('[data-testid=mobile-settings-info]').getBoundingClientRect();
     const refresh = document.querySelector('[data-testid=usage-refresh]').getBoundingClientRect();
-    return info.width > 0 && refresh.width > 0 && refresh.left >= 0 && refresh.right <= innerWidth;
+    return info.width > 0 && refresh.width > 0 && refresh.left >= 0 && refresh.right <= innerWidth && refresh.top >= info.bottom;
   })()`)).toBe(true);
   await capture('usage-phone-dark.png');
 

@@ -372,8 +372,8 @@ an element there in its own document, then moves the point out through each
 iframe around it. The browser hides the document of another origin from the
 page's script: a payment form, a captcha or an embedded sign-in would show only
 its iframe. The kit lists each such iframe that has a size, and the core reads
-its document in the frame's own context, then sets the lines under the iframe
-and numbers its refs after those read before (`browser/page-frames.ts`):
+its document in the frame's own context and sets the lines under the iframe
+(`browser/page-frames.ts`):
 
 - A frame of the same site runs in the page's renderer, in an execution context
   of its own on the tab's session; the core keeps each frame's context from the
@@ -383,15 +383,35 @@ and numbers its refs after those read before (`browser/page-frames.ts`):
   frames of the same site are listed too, and leaves it when it ends.
 - The iframe's element names its frame through `DOM.describeNode`.
 
-The kit keeps its refs in each frame's own window, and the core keeps, for each
-ref the last snapshot read in a frame, the iframe refs that lead to it. A
-command on such a ref runs in that frame's document. Native input is sent to
+Refs are stable: the kit keeps, in each document's own window, the ref of
+every element it listed, so an element has one ref for as long as it stays in
+its document and a number is never given twice there. Numbers come in blocks
+of 1000. The top document owns block 0, `e1` to `e999`; the core grants every
+other block, to a frame of another origin or to a document that filled its
+last one, and never grants one twice in a tab's life, so no two elements of a
+page share a ref. For each block a frame holds, the core keeps the iframe refs
+that lead to that frame from the top, 2000 blocks at most; a frame's claim to
+a block granted to another document is ignored. A command on such a ref runs
+in that frame's document. Native input is sent to
 the tab in the top document's coordinates: each iframe around the element is
 scrolled into its parent's view, and the point moves out through its content
 box, scaled with it. A point outside a parent's view, or where something is
 drawn over an iframe, is clicked through the DOM, with a note naming what
-covered it. A navigation of the top document forgets the frame refs, so an old
-one is refused by name.
+covered it. After a navigation of the top document the iframe refs of a route
+name nothing, so an old frame ref is refused by name.
+
+The core keeps, per tab, the last snapshot an agent was shown: its lines,
+options and document (`browser/snapshot-diff.ts`), 40,000 characters at most.
+Only a snapshot action with a `view` counts as shown: the CLI sends
+`view: 'diff'`, `snapshot --full` and the page a failed script step left send
+`view: 'full'`. A `diff` view of the same document with the same options
+answers with the lines added and removed since, each run under the last
+unchanged heading, landmark or iframe line. The whole text is sent instead for
+a tab's first snapshot, a new document, other options, `view: 'full'`, a
+snapshot cut short on either side, or a diff longer than half the text. A
+snapshot without a view, a script's `page.snapshot()` or a client's, is whole
+and leaves the agent's last view alone: the agent never read it, so a diff
+against it would hide lines.
 
 A snapshot reads at most 30 frames of other origins, within its 40,000
 characters; one past either is a note under its iframe. With `-i`, a frame with
@@ -800,6 +820,13 @@ hosted tab relays for a call; the Windows app's relay of them runs only on Windo
 page's origin, one of another site, one of another origin of the same site
 below the fold, and a frame of another site nested in the second: native clicks land in each (`isTrusted`),
 fill and get reach them, and a frame ref is refused after the page moves on.
+It checks that the refs read in those frames keep their numbers after an
+element is added above them, stay unique on the page and still click.
+`browser.test.ts` checks, on a list of 100 rows, that a ref survives a row
+inserted above it, that a removed row's ref is stale, and that a repeated
+snapshot prints the added, removed and renamed lines alone, that a snapshot
+without a view is whole and does not move the base of the next diff, and the
+whole tree with `view: 'full'`, other options or a new document.
 It also clicks into a frame nested in an offset frame and into a scaled one,
 and through the DOM when a button is drawn over the frame. The desktop app's
 relay of frames is not covered.

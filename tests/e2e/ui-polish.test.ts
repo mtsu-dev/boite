@@ -87,7 +87,8 @@ test('Windows caption buttons keep their full hit areas beside the resize handle
 test('a composer the side panel narrows keeps its send button on the row of the chips', async () => {
   await size(1024, 700);
   // The panel drawn wider than its default, as its handle does: the composer beside it falls under 480 px.
-  await onStore(`store.panel.closeAll(); store.panel.open('files'); (await import('/src/lib/right-panel.svelte.ts')).rightPanel.width = 420;`);
+  // The list is folded by hand: opening the panel no longer folds it, and beside an open list a 1024 px window lays the panel over the chat.
+  await onStore(`store.sidebarCollapsed = true; store.panel.closeAll(); store.panel.open('files'); (await import('/src/lib/right-panel.svelte.ts')).rightPanel.width = 420;`);
   await page.waitFor(`document.querySelector('${id('composer')}').getBoundingClientRect().width < 480`);
   await capture('polish-composer-narrow.png');
   const narrow = await page.evaluate<{ send: number; effort: number; label: string }>(`(() => {
@@ -103,7 +104,7 @@ test('a composer the side panel narrows keeps its send button on the row of the 
   expect(narrow.label).toBe('none');
 
   await size(1440, 900);
-  await onStore(`store.panel.closeAll(); store.panel.hide(); (await import('/src/lib/right-panel.svelte.ts')).rightPanel.width = 360;`);
+  await onStore(`store.sidebarCollapsed = false; store.panel.closeAll(); store.panel.hide(); (await import('/src/lib/right-panel.svelte.ts')).rightPanel.width = 360;`);
   await page.waitFor(`document.querySelector('${id('composer')}').getBoundingClientRect().width > 600`);
   const wide = await page.evaluate<{ picker: number; send: number; label: string }>(`(() => {
     const top = (selector) => document.querySelector(selector).getBoundingClientRect().top;

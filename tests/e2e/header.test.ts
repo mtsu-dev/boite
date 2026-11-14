@@ -43,8 +43,13 @@ test('sidebar shortcuts preserve the prompt and file edits, and toggle both pane
     await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...base });
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
   };
-  // The docked file panel borrows the list's column on a desktop chat (App.svelte), so the list starts folded here.
+  // Opening the file panel never folds the list (docs/internals/panel.md): it stays open beside it, and the shortcut folds it.
+  await page.waitFor(`document.querySelector('${id('right-panel')}')`);
+  expect(await page.evaluate(`document.querySelector('${id('sidebar-toggle')}').getAttribute('aria-expanded')`)).toBe('true');
+  await chord();
   await page.waitFor(`document.querySelector('${id('sidebar-toggle')}').getAttribute('aria-expanded') === 'false'`);
+  expect(await page.evaluate(`document.querySelector('${id('composer-input')}').value`)).toBe('Keep this prompt');
+  expect(await page.evaluate(`!!document.querySelector('${id('file-dirty')}')`)).toBe(true);
   await chord();
   await page.waitFor(`document.querySelector('${id('sidebar-toggle')}').getAttribute('aria-expanded') === 'true'`);
   expect(await page.evaluate(`document.querySelector('${id('composer-input')}').value`)).toBe('Keep this prompt');
@@ -87,6 +92,9 @@ test('sidebar shortcuts preserve the prompt and file edits, and toggle both pane
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1310, height: 820, deviceScaleFactor: 1, mobile: false });
   await chord(false, true);
   await page.type(id('composer-input'), '');
+  // Closing the panel no longer brings a folded list back: the shortcut does, for the layout test below.
+  await chord();
+  await page.waitFor(`document.querySelector('${id('sidebar-toggle')}').getAttribute('aria-expanded') === 'true'`);
   expect(page.errors()).toEqual([]);
 }, 30_000);
 

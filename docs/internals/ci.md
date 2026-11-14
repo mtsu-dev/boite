@@ -653,8 +653,10 @@ skipped because the commit's CI already ran them.
 
 Each of those jobs then runs `bun scripts/ci/feature-cut.ts` on the UI and core
 bundles it just packaged, the compiled core included: it fails when a bundle
-holds the marker of a feature tagged above the build's kind, so a Release with
-a Nightly feature's code, or a Nightly with a Dev one's, is not published.
+holds the marker of a feature cut from it (`FEATURE_CUTS`) and tagged above the
+build's kind, so a Release with a Nightly feature's code, or a Nightly with a
+Dev one's, is not published. The Contacts' core side is not in that list: it
+stays in every build and is refused at run time.
 The Linux x64 job also runs it with `--build`, which builds both bundles for
 the three kinds aside and reads them all
 ([out of the build](experiments.md#the-proof)). They are steps of the

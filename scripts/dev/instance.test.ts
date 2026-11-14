@@ -121,7 +121,7 @@ describe('bun run dev:instance', () => {
   test('the core opens the directory that was checked, whatever --env names', async () => {
     const box = fresh();
     const stable = join(box.devDir, '..', 'boite2');
-    for (const pair of [`BOITE_DATA_DIR=${stable}`, `XDG_DATA_HOME=${join(box.home, 'elsewhere')}`, `HOME=${join(box.home, 'elsewhere')}`, `LOCALAPPDATA=${join(box.home, 'elsewhere')}`]) {
+    for (const pair of [`BOITE_DATA_DIR=${stable}`, `XDG_DATA_HOME=${join(box.home, 'elsewhere')}`, `HOME=${join(box.home, 'elsewhere')}`, `USERPROFILE=${join(box.home, 'elsewhere')}`, `LOCALAPPDATA=${join(box.home, 'elsewhere')}`]) {
       const refused = await instance(box, '--env', pair);
       expect(refused.code).toBe(2);
       expect(refused.err).toContain(`--env ${pair.split('=')[0]} would choose the data directory`);
@@ -135,6 +135,7 @@ describe('bun run dev:instance', () => {
     expect(existsSync(join(box.devDir, 'journal.db'))).toBe(true);
     expect(existsSync(stable)).toBe(false);
     expect(() => parseArgs(['--shell', '--copy'])).toThrow('--shell always opens the real Dev data');
+    expect(() => parseArgs(['--shell', '--scratch'])).toThrow('--shell always opens the real Dev data');
   }, TIMEOUT);
 
   test('a state whose pids now belong to other processes is stale: nothing is signalled', async () => {
@@ -279,6 +280,43 @@ describe('bun run dev:instance', () => {
     await instance(box, 'stop');
     expect(existsSync(directory)).toBe(false);
     expect(journalSchema(box.devDir)).toBe(BRANCH_SCHEMA + 1);
+  }, TIMEOUT);
+
+  test('a start after a run that died without stop removes the temporary data that run left', async () => {
+    const box = fresh();
+    const first = await instance(box, '--scratch');
+    expect(first.code).toBe(0);
+    const left = temporaryDir(first.out);
+    expect(existsSync(left)).toBe(true);
+    // A crash: the core this run started is killed, and its state file and scratch stay.
+    const { pid } = JSON.parse(readFileSync(statePath(box.devDir), 'utf8')) as { pid: number };
+    process.kill(pid, 'SIGKILL');
+    const alive = (): boolean => { try { process.kill(pid, 0); return true; } catch { return false; } };
+    while (alive()) await Bun.sleep(50);
+
+    const next = await instance(box, '--scratch');
+    expect(next.code).toBe(0);
+    expect(temporaryDir(next.out)).not.toBe(left);
+    expect(existsSync(left)).toBe(false);
+  }, TIMEOUT);
+
+  test('a start over a state that names no run keeps the data of a pid still alive', async () => {
+    const box = fresh();
+    const first = await instance(box, '--scratch');
+    expect(first.code).toBe(0);
+    const left = temporaryDir(first.out);
+    // A state written before runs were identified: its pid lives, and nothing says whose it is.
+    const state = JSON.parse(readFileSync(statePath(box.devDir), 'utf8')) as { pid: number; identity?: string };
+    delete state.identity;
+    writeFileSync(statePath(box.devDir), JSON.stringify(state));
+    try {
+      const next = await instance(box, '--scratch');
+      expect(next.code).toBe(0);
+      expect(existsSync(left)).toBe(true);
+    } finally {
+      process.kill(state.pid, 'SIGKILL');
+      rmSync(left, { recursive: true, force: true });
+    }
   }, TIMEOUT);
 
   test('--copy with nothing to copy and contradictory modes are refused before anything starts', async () => {
