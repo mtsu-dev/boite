@@ -4,7 +4,7 @@ import type { SpawnedChild } from '../../procs.ts';
 import { profileFor, resolveExecutable } from '../../providers/resolve.ts';
 import { titleRequest } from '../../titles.ts';
 import type { TitleContext } from '../types.ts';
-import { childEnv, STDERR_MAX } from './query.ts';
+import { childEnv, ONE_SHOT_TITLE, STDERR_MAX } from './query.ts';
 import { fitImages } from './images.ts';
 import type { ClaudeDeps } from './query.ts';
 
@@ -67,6 +67,9 @@ export async function titleQuery(deps: ClaudeDeps, ctx: TitleContext): Promise<s
         strictMcpConfig: true,
         settingSources: [],
         persistSession: false,
+        // A session with a name is one the CLI does not name itself: without
+        // it the title call costs a second request, to title the title call.
+        title: ONE_SHOT_TITLE,
         includePartialMessages: false,
         pathToClaudeCodeExecutable: executable,
         abortController,
