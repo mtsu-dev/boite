@@ -37,7 +37,7 @@ test('browser screenshots accept explicit destinations, preserve existing files 
     const automatic = await run(['screenshot']);
     expect(automatic.code).toBe(0);
     expect(JSON.parse(automatic.out).path).toMatch(/boite-browser-[a-f0-9-]+\.png$/);
-    expect((await run(['help'])).out).toContain('caller owns cleanup');
+    expect((await run(['help'])).out).toContain('yours to delete');
     expect((await run(['screenshot', '--output'])).code).not.toBe(0);
   } finally { owner.close(); await harness.stop(); }
 });
@@ -114,6 +114,12 @@ test('the browser CLI reads agent-browser command lines into actions', () => {
   expect(read(['dblclick', '@e2']).action).toEqual({ kind: 'click', selector: '@e2', count: 2 });
   // Unquoted words after the target are the text, as a shell splits them.
   expect(read(['fill', '@e3', 'Ada', 'Lovelace']).action).toEqual({ kind: 'fill', selector: '@e3', text: 'Ada Lovelace' });
+  // -q leaves out the page an action prints after it: anywhere on a line, but only first in a line whose words are text.
+  expect(read(['click', '@e2', '-q'])).toEqual({ action: { kind: 'click', selector: '@e2' }, quiet: true });
+  expect(read(['click', '@e2', '--force']).action).toEqual({ kind: 'click', selector: '@e2', force: true });
+  expect(read(['check', '@e2', '--force']).action).toEqual({ kind: 'check', selector: '@e2', force: true });
+  expect(read(['fill', '-q', '@e3', 'Ada'])).toEqual({ action: { kind: 'fill', selector: '@e3', text: 'Ada' }, quiet: true });
+  expect(read(['fill', '@e3', 'say', '-q']).action).toEqual({ kind: 'fill', selector: '@e3', text: 'say -q' });
   expect(read(['select', '@e4', 'a', 'b']).action).toEqual({ kind: 'select', selector: '@e4', values: ['a', 'b'] });
   expect(read(['press', 'Control+a']).action).toEqual({ kind: 'press', key: 'Control+a' });
   expect(read(['scroll', 'down', '500']).action).toEqual({ kind: 'scroll', x: 0, y: 500 });

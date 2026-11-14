@@ -39,6 +39,10 @@ export interface AgentPage extends FrameChannel {
   frames?: PageFrames;
   /** What the tab's snapshots left behind: where its refs live and what the last one read. */
   snapshots?: SnapshotState;
+  /** The page's own calls (documents, fetch, XHR) still loading that began in the last 1.5 s (`page-events.ts`). */
+  busy?: () => number;
+  /** Where the last native pointer move left the mouse, in the top viewport. */
+  pointer?: { x: number; y: number };
 }
 
 /**
@@ -54,9 +58,14 @@ export interface AgentPage extends FrameChannel {
 interface SnapshotState {
   next: number;
   routes: Map<number, string[]>;
-  /** The last snapshot, which the next one of the same document and options is compared with: `SNAPSHOT_CHARS` and a few notes at most. */
-  last: { token: string; key: string; lines: string[]; truncated: boolean } | null;
+  /**
+   * The last snapshot of each set of options the agent was shown, newest
+   * last, which the next one of the same document and options is compared
+   * with: `SNAPSHOT_KEPT` of them, `SNAPSHOT_CHARS` and a few notes each.
+   */
+  last: Map<string, { token: string; lines: string[]; truncated: boolean }>;
 }
+const SNAPSHOT_KEPT = 4;
 const REF_BLOCK = 1000;
 /** Blocks whose route is kept: a page that swaps its frames for hours forgets the oldest. */
 const ROUTES_MAX = 2000;
@@ -133,7 +142,14 @@ const SNAPSHOT_FRAMES_MAX = 30;
 const SNAPSHOT_CHARS = 40_000;
 
 interface SnapshotPart { text: string; refs: number; truncated: boolean; blocks: unknown; frames?: Array<{ ref: string; at: number; depth: number }> }
-interface Reading { left: number; frames: number; refs: number; truncated: boolean; state: SnapshotState; options: Record<string, unknown> }
+interface Reading { left: number; max: number; frames: number; refs: number; truncated: boolean; state: SnapshotState; options: Record<string, unknown> }
+
+/** The first lines that fit in `max` characters, and a line counting the rest. */
+function shorten(lines: string[], max: number): string {
+  let size = 0, kept = 0;
+  while (kept < lines.length && size + lines[kept]!.length + 1 <= max) size += lines[kept++]!.length + 1;
+  return [...lines.slice(0, kept), `(${lines.length - kept} more lines; snapshot -i prints them all)`].join('\n');
+}
 
 /**
  * A snapshot of the tab: the top document, then each frame of another origin
@@ -146,20 +162,29 @@ interface Reading { left: number; frames: number; refs: number; truncated: boole
  * snapshots never reach the agent, so a diff against them would hide lines it
  * never read.
  */
-async function snapshot(page: AgentPage, action: Extract<BrowserAction, { kind: 'snapshot' }>): Promise<{ text: string; refs: number; url: string; title: string; diff?: true }> {
+async function snapshot(page: AgentPage, action: Extract<BrowserAction, { kind: 'snapshot' }>): Promise<{ text: string; refs: number; url: string; title: string; diff?: true; unchanged?: true }> {
   const options = { interactive: action.interactive, compact: action.compact, depth: action.depth, urls: action.urls };
-  const state = page.snapshots ??= { next: 1, routes: new Map(), last: null };
-  const top = await run<SnapshotPart & { url: string; title: string; token: string }>(page, `return { ...K.snapshot(${js({ ...options, selector: action.selector, top: true, grant: state.next })}), url: location.href, title: document.title, token: K.token }`);
+  const state = page.snapshots ??= { next: 1, routes: new Map(), last: new Map() };
+  const max = SNAPSHOT_CHARS;
+  const top = await run<SnapshotPart & { url: string; title: string; token: string }>(page, `return { ...K.snapshot(${js({ ...options, selector: action.selector, top: true, grant: state.next, maxChars: max, limit: max })}), url: location.href, title: document.title, token: K.token }`);
   // The top document's later blocks need no route: a ref without one is its own.
   for (const block of blocksOf(top)) if (block >= state.next) state.next = block + 1;
-  const reading: Reading = { left: SNAPSHOT_CHARS - top.text.length, frames: 0, refs: top.refs, truncated: top.truncated === true, state, options };
+  const reading: Reading = { left: max - top.text.length, max, frames: 0, refs: top.refs, truncated: top.truncated === true, state, options };
   const lines = await withFrames(page, page, [], top, reading);
-  const key = js({ ...options, selector: action.selector }), previous = state.last, full = lines.join('\n');
-  if (action.view !== undefined) state.last = { token: top.token, key, lines, truncated: reading.truncated };
-  const same = action.view === 'diff' && previous && previous.token === top.token && previous.key === key && !previous.truncated && !reading.truncated;
+  const key = js({ ...options, selector: action.selector }), previous = state.last.get(key), full = lines.join('\n');
+  const same = action.view === 'diff' && previous && previous.token === top.token && !previous.truncated && !reading.truncated;
   const diff = same ? snapshotDiff(previous.lines, lines) : null;
-  const shown = diff !== null && diff.length * 2 <= full.length;
-  return { text: shown ? diff : full, refs: reading.refs, url: top.url, title: top.title, ...(shown ? { diff: true } : {}) };
+  const unchanged = !!same && lines.length === previous.lines.length && lines.every((line, at) => line === previous.lines[at]);
+  // A diff longer than half the page is worse than the page, but "no change" is shorter than any page worth reading.
+  const shown = diff !== null && (unchanged || diff.length * 2 <= full.length);
+  // maxChars bounds what is printed, not what is read: the next diff still compares the whole page.
+  const cut = !shown && action.maxChars !== undefined && full.length > action.maxChars ? shorten(lines, action.maxChars) : null;
+  if (action.view !== undefined) {
+    // A view cut here is one the agent did not read whole, so no diff is taken against it.
+    state.last.delete(key); state.last.set(key, { token: top.token, lines, truncated: reading.truncated || cut !== null });
+    for (const oldest of state.last.keys()) { if (state.last.size <= SNAPSHOT_KEPT) break; state.last.delete(oldest); }
+  }
+  return { text: shown ? diff : cut ?? full, refs: reading.refs, url: top.url, title: top.title, ...(shown ? { diff: true } : {}), ...(unchanged ? { unchanged: true } : {}) };
 }
 
 /** The blocks a document says it numbers its refs in; the page can write anything there. */
@@ -179,7 +204,7 @@ async function withFrames(page: AgentPage, channel: FrameChannel, route: string[
       reading.frames++;
       const child = await enter(page, channel, frame.ref).catch(() => null);
       const granted = state.next;
-      const read = child && await run<SnapshotPart>(child, `return K.snapshot(${js({ ...reading.options, grant: granted, base: frame.depth, maxChars: reading.left, limit: SNAPSHOT_CHARS })})`, 5000).catch(() => null);
+      const read = child && await run<SnapshotPart>(child, `return K.snapshot(${js({ ...reading.options, grant: granted, base: frame.depth, maxChars: reading.left, limit: reading.max })})`, 5000).catch(() => null);
       if (!child || !read) inner = [`${indent}- note: this frame could not be read`];
       else {
         const inside = [...route, frame.ref];
@@ -201,7 +226,7 @@ async function withFrames(page: AgentPage, channel: FrameChannel, route: string[
   return lines;
 }
 
-interface PageState { url: string; title: string; ready: 'loading' | 'interactive' | 'complete'; token: string; leaving: boolean }
+interface PageState { url: string; title: string; ready: 'loading' | 'interactive' | 'complete'; token: string; leaving: boolean; quiet?: number }
 
 /** Null while the page is between documents: a navigation destroys the context mid-call. */
 async function state(page: AgentPage): Promise<PageState | null> {
@@ -239,32 +264,55 @@ export async function documentToken(page: AgentPage): Promise<string | undefined
   return (await state(page))?.token;
 }
 
+/** How long the document stays unchanged, with no fresh call loading, before an action counts as done. */
+const QUIET_MS = 100;
+/** How long an action waits at most for a page that keeps changing, such as one with an animation. */
+const SETTLE_MAX_MS = 1000;
+
 /**
- * After an action: if it started a navigation, waits for the next document's
- * DOM. A navigation shows itself within `quietMs` by the old page's
- * `beforeunload` or by a new document.
+ * After an action: waits for what it set off to end, then, if it started a
+ * navigation, for the next document's DOM. The page has settled once its
+ * document has not changed for `QUIET_MS` and no call it began in the last
+ * 1.5 s is still loading (`busy`), or after `SETTLE_MAX_MS` at most. A
+ * navigation shows itself meanwhile by the old page's `beforeunload` or by a
+ * new document. `patienceMs` waits at least that long for one, for a history
+ * step whose navigation starts late.
  */
-async function settle(page: AgentPage, before: PageState, dialogs: number, quietMs = 300, downloads = page.downloads): Promise<BrowserActionResult> {
+async function settle(page: AgentPage, before: PageState, dialogs: number, patienceMs = 0, downloads = page.downloads, land = true): Promise<BrowserActionResult> {
   let navigating = false;
-  const until = Date.now() + quietMs;
-  await sleep(40);
-  while (Date.now() < until) {
+  const start = Date.now();
+  await sleep(30);
+  for (;;) {
     const now = await state(page);
     if (!now || now.leaving || now.token !== before.token) { navigating = true; break; }
-    await sleep(40);
+    const elapsed = Date.now() - start;
+    if (elapsed >= Math.max(SETTLE_MAX_MS, patienceMs)) break;
+    if (elapsed >= Math.max(QUIET_MS, patienceMs) && (now.quiet ?? QUIET_MS) >= QUIET_MS && !page.busy?.()) break;
+    await sleep(30);
   }
-  const raised = page.dialogs.slice(dialogs);
-  const asked = raised.length ? { dialogs: raised } : {};
+  const asked = () => { const raised = page.dialogs.slice(dialogs); return raised.length ? { dialogs: raised } : {}; };
   if (!navigating) {
     const now = await state(page);
-    return { ok: true, ...(now && now.url !== before.url ? { url: now.url, title: now.title } : {}), ...asked };
+    return { ok: true, ...(now && now.url !== before.url ? { url: now.url, title: now.title } : {}), ...asked() };
   }
   const { state: after, loading } = await awaitDocument(page, before.token, undefined, downloads);
   if (after && after.token === before.token) {
     // The page began to leave and stayed: a download, a cancelled or a same-document navigation.
-    return { ok: true, ...(after.url !== before.url ? { url: after.url, title: after.title } : {}), ...(loading ? { note: 'the page started to navigate and has not changed yet' } : {}), ...asked };
+    return { ok: true, ...(after.url !== before.url ? { url: after.url, title: after.title } : {}), ...(loading ? { note: 'the page started to navigate and has not changed yet' } : {}), ...asked() };
   }
-  return { ok: true, navigated: true, url: after?.url, title: after?.title, ...(loading ? { loading: true } : {}), ...asked };
+  // The page reached is waited for as an action's is, so one that fetches its content as it loads is read with it,
+  // and a script that sends it on (a sign-in hop) is followed. `land` false leaves that to the caller.
+  const landed = land && after && !loading ? await settle(page, after, page.dialogs.length, 0, page.downloads).catch(() => null) : null;
+  return { ok: true, navigated: true, url: landed?.url ?? after?.url, title: landed?.title ?? after?.title, ...(loading || landed?.loading ? { loading: true } : {}), ...asked() };
+}
+
+/**
+ * The wait an action gets, after a navigation reached its DOM: a page that
+ * fetches its content as it loads is read with that content. Never throws.
+ */
+export async function settleLoaded(page: AgentPage): Promise<void> {
+  const before = await state(page);
+  if (before) await settle(page, before, page.dialogs.length).catch(() => {});
 }
 
 const MODIFIERS: Record<string, number> = { alt: 1, control: 2, ctrl: 2, meta: 4, cmd: 4, command: 4, shift: 8 };
@@ -302,10 +350,27 @@ export async function press(page: FrameChannel, combo: string): Promise<void> {
   await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: key.key, code: key.code, windowsVirtualKeyCode: key.keyCode, modifiers });
   for (const mod of held.reverse()) await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: mod.key, code: `${mod.key}Left`, windowsVirtualKeyCode: mod.keyCode, modifiers: 0 });
 }
-async function nativeClick(page: FrameChannel, scope: Scope, selector: string, point: { x: number; y: number }, count: 1 | 2): Promise<CdpSessionDetachedError | undefined> {
+/**
+ * Moves the mouse to `point` the way a hand does: a few steps along a slight
+ * curve from where it last was, rather than appearing on the target.
+ */
+async function approach(page: AgentPage, point: { x: number; y: number }): Promise<void> {
+  const from = page.pointer ?? { x: point.x + (Math.random() - 0.5) * 300, y: point.y + 120 + Math.random() * 120 };
+  const steps = 3 + Math.floor(Math.random() * 3), bend = (Math.random() - 0.5) * 40;
+  for (let step = 1; step < steps; step++) {
+    const t = step / steps, ease = t * t * (3 - 2 * t), arc = Math.sin(Math.PI * t) * bend;
+    const x = Math.max(0, from.x + (point.x - from.x) * ease + arc), y = Math.max(0, from.y + (point.y - from.y) * ease - arc);
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none' });
+    await sleep(8 + Math.random() * 10);
+  }
+  page.pointer = { x: point.x, y: point.y };
+}
+
+async function nativeClick(page: AgentPage, scope: Scope, selector: string, point: { x: number; y: number }, count: 1 | 2): Promise<CdpSessionDetachedError | undefined> {
   // A newly drawn cross-process frame can still route input to its iframe.
   // Confirm the native move reached the target before pressing, never retry a click.
   await run(scope.channel, `K.watchPointer(${js(selector)})`);
+  await approach(page, point);
   try {
     for (const end = Date.now() + 2000;;) {
       await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point, button: 'none' });
@@ -321,6 +386,8 @@ async function nativeClick(page: FrameChannel, scope: Scope, selector: string, p
   } finally { await run(scope.channel, 'K.stopPointer()').catch(() => {}); }
   for (let click = 1; click <= count; click++) {
     await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'left', buttons: 1, clickCount: click });
+    // A press lasts a few tens of milliseconds, never zero.
+    await sleep(30 + Math.random() * 40);
     try { await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button: 'left', clickCount: click }); }
     catch (error) {
       // A popup may close itself on release without acknowledging that input.
@@ -350,19 +417,37 @@ async function pointOf(scope: Scope, selector: string, mode: string): Promise<Po
   return point;
 }
 
-/** Clicks through native input where the element is reachable, through the DOM when something covers it. */
-async function click(page: AgentPage, scope: Scope, selector: string, count: 1 | 2): Promise<{ note?: string; closed?: CdpSessionDetachedError }> {
+/**
+ * Clicks through native input where the element is reachable. Something drawn
+ * over it (a cookie banner, a dialog) would take a person's click: the click
+ * is refused and the cover named with its controls, so the agent deals with it
+ * first, unless `force` asks for a click through the DOM, which a page can
+ * tell from a person's. A hidden tab has no native input and is always driven
+ * through the DOM.
+ */
+async function click(page: AgentPage, scope: Scope, selector: string, count: 1 | 2, force = false): Promise<{ note?: string; closed?: CdpSessionDetachedError }> {
   const point = await pointOf(scope, selector, 'click');
   if (point && !point.covered) return { closed: await nativeClick(page, scope, selector, point, count) };
+  if (point?.covered && !force) throw new Error(`${selector} is covered by ${point.covered}, which a click there would hit; nothing was clicked. Close or accept what covers it first, or click --force to click it through the DOM`);
   await run(scope.channel, `return K.dom('click', ${js(selector)}, ${count})`);
   return { note: point?.covered ? `the element was covered by ${point.covered}; it was clicked through the DOM` : undefined };
 }
+
+/** Text typed key by key, as a person does, when it is this short and plain; longer text is inserted at once. */
+const KEYED_MAX = 200;
 
 async function write(page: AgentPage, scope: Scope, kind: 'fill' | 'type', selector: string, text: string): Promise<string | undefined> {
   const before = kind === 'type' ? await run<string | null>(scope.channel, `return K.value(${js(selector)})`) ?? '' : '';
   const point = await pointOf(scope, selector, kind);
   if (point) {
-    if (text) await page.send('Input.insertText', { text });
+    if (text.length <= KEYED_MAX && /^[\x20-\x7e]+$/.test(text)) {
+      for (const char of text) {
+        const key = keyOf(char === ' ' ? 'Space' : char);
+        await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: key.key, code: key.code, windowsVirtualKeyCode: key.keyCode, text: char, unmodifiedText: char });
+        await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: key.key, code: key.code, windowsVirtualKeyCode: key.keyCode });
+      }
+    }
+    else if (text) await page.send('Input.insertText', { text });
     else if (kind === 'fill') await press(page, 'Backspace');
     const value = await run<string | null>(scope.channel, `return K.value(${js(selector)})`);
     if (value === before + text) return undefined;
@@ -372,9 +457,9 @@ async function write(page: AgentPage, scope: Scope, kind: 'fill' | 'type', selec
   return point ? 'native typing did not produce the text; the value was set through the DOM' : undefined;
 }
 
-async function check(page: AgentPage, scope: Scope, selector: string, wanted: boolean): Promise<string | undefined> {
+async function check(page: AgentPage, scope: Scope, selector: string, wanted: boolean, force = false): Promise<string | undefined> {
   if (await run<boolean>(scope.channel, `return K.checked(${js(selector)})`) === wanted) return undefined;
-  const { note, closed } = await click(page, scope, selector, 1);
+  const { note, closed } = await click(page, scope, selector, 1, force);
   if (closed) throw closed;
   await sleep(30);
   if (await run<boolean>(scope.channel, `return K.checked(${js(selector)})`) === wanted) return note;
@@ -427,23 +512,25 @@ async function act(page: AgentPage, tabId: string, action: BrowserAction): Promi
       const dialogs = page.dialogs.length, downloads = page.downloads;
       let note: string | undefined, value: unknown;
       if (action.kind === 'click') {
-        const clicked = await click(page, scope, action.selector, action.count ?? 1);
+        const clicked = await click(page, scope, action.selector, action.count ?? 1, action.force === true);
         if (clicked.closed) return reply({ ok: true });
         note = clicked.note;
       }
-      else if (action.kind === 'check' || action.kind === 'uncheck') note = await check(page, scope, action.selector, action.kind === 'check');
+      else if (action.kind === 'check' || action.kind === 'uncheck') note = await check(page, scope, action.selector, action.kind === 'check', action.force === true);
       else if (action.kind === 'select') value = await run(scope.channel, `return K.select(${js(action.selector)}, ${js(action.values)})`);
       else if (action.kind === 'fill' || action.kind === 'type') note = await write(page, scope, action.kind, action.selector, action.text);
       else if (action.kind === 'press') await press(page, action.key);
-      const result = await settle(page, before, dialogs, undefined, downloads);
+      const result = await settle(page, before, dialogs, 0, downloads);
       return reply({ ...result, ...(note ? { note } : {}), ...(value === undefined ? {} : { value }) });
     }
     case 'hover': {
       const scope = await scopeOf(page, action.selector);
+      const before = await begin(page);
       const point = await pointOf(scope, action.selector, 'hover');
-      if (point && !point.covered) await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: point.x, y: point.y, button: 'none' });
+      if (point && !point.covered) { await approach(page, point); await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: point.x, y: point.y, button: 'none' }); }
       else await run(scope.channel, `return K.dom('hover', ${js(action.selector)})`);
-      return reply({ ok: true });
+      // A menu that opens on hover is drawn before the agent looks at it.
+      return reply(await settle(page, before, page.dialogs.length, 0, page.downloads));
     }
     case 'focus': await run((await scopeOf(page, action.selector)).channel, `return K.focus(${js(action.selector)})`); return reply({ ok: true });
     case 'scrollintoview': {
@@ -454,14 +541,18 @@ async function act(page: AgentPage, tabId: string, action: BrowserAction): Promi
     }
     case 'scroll': {
       const scope = await scopeOf(page, action.selector);
-      return reply({ ok: true, value: await run(scope.channel, `return K.scroll(${action.x}, ${action.y}, ${js(action.selector ?? null)})`) });
+      const before = await begin(page), dialogs = page.dialogs.length;
+      const value = await run(scope.channel, `return K.scroll(${action.x}, ${action.y}, ${js(action.selector ?? null)})`);
+      // A list that loads more as it is scrolled answers after the scroll: the page printed next shows it.
+      return reply({ ...await settle(page, before, dialogs), value });
     }
     case 'wait': return reply(await wait(page, action));
     case 'history': {
       const before = await begin(page);
       const dialogs = page.dialogs.length, downloads = page.downloads;
       await evaluate(page, action.direction === 'back' ? 'history.back()' : action.direction === 'forward' ? 'history.forward()' : 'location.reload()');
-      return reply(await settle(page, before, dialogs, 800, downloads));
+      // A check the page lands on comes first: browser.ts waits for it, then for the page it gives way to.
+      return reply(await settle(page, before, dialogs, 800, downloads, false));
     }
     case 'dialog': {
       if (action.decision === 'status') return reply({ next: page.dialogPolicy.accept ? 'accept' : 'dismiss', recent: page.dialogs });

@@ -160,13 +160,13 @@ real('a ref read in a frame of another origin keeps its number through later sna
 real('a click in a frame lands where the frame is drawn, and goes through the DOM when something covers the frame', async () => {
   const { agent, threadId } = browserFixture;
   const command = async (action: Record<string, unknown>) => (await agent.call('browser.command', { threadId, action: action as never })).value as Record<string, unknown>;
-  const clickPay = async (path: string) => {
+  const clickPay = async (path: string, force = false) => {
     await command({ kind: 'open', url: `http://127.0.0.1:${checkout.port}${path}` });
     await command({ kind: 'wait', load: 'load' });
     const tree = String((await command({ kind: 'snapshot', interactive: true })).text);
     const pay = /button "Pay" \[ref=(e\d+)\]/.exec(tree);
     expect(pay, `Pay in\n${tree}`).not.toBeNull();
-    const clicked = await command({ kind: 'click', selector: `@${pay![1]}` });
+    const clicked = await command({ kind: 'click', selector: `@${pay![1]}`, ...(force ? { force } : {}) });
     let result: unknown;
     for (const end = Date.now() + 3000; Date.now() < end && !(result = await command({ kind: 'evaluate', expression: 'window.result ?? null' }) as unknown);) await Bun.sleep(50);
     if (!result) {
@@ -182,9 +182,11 @@ real('a click in a frame lands where the frame is drawn, and goes through the DO
   expect(await clickPay('/placed/nested')).toEqual({ note: undefined, result: 'clicked true', clicks: 1 });
   // An iframe scaled to half its size takes its points scaled too.
   expect(await clickPay('/placed/scaled')).toEqual({ note: undefined, result: 'clicked true', clicks: 1 });
-  // A button drawn over the frame would take a native click: the frame's button is clicked through the DOM instead.
+  // A button drawn over the frame would take a person's click: the click is refused and the cover named,
+  // and --force clicks the frame's button through the DOM instead.
   for (const path of ['/placed/covered', '/placed/covered-foreign']) {
-    const covered = await clickPay(path);
+    expect(await thrown(clickPay(path))).toThrow('covered by button Overlay');
+    const covered = await clickPay(path, true);
     expect(covered.result).toBe('clicked false');
     expect(covered.clicks).toBe(1);
     expect(String(covered.note)).toContain('covered by button Overlay');
