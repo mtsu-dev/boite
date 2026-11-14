@@ -148,6 +148,10 @@ or its siblings. The component is `AgentDock.svelte`.
 
 A parent's row in the sidebar, the Recent list and the phone's list carries a
 chip with the number of its subagents at work, in every state of the parent.
+While the parent only waits on them, the chip replaces the row's word. Other
+work says what it waits on instead of "Working": "CI running" or "Merge queue"
+for a watched pull request, "Command", "Workflow", "Agent" or "Background" for
+background work, "Monitoring" for a monitor (`ThreadState.svelte`).
 When a child asks the user something or waits on a permission, the chip takes
 the waiting colour and the parent reads Needs you, unless the parent itself
 failed. A child's question is the question at the top of the parent's
