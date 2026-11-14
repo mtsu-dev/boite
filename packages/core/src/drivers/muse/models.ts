@@ -1,12 +1,11 @@
-import { withLogDiagnostic } from '../../log-errors.ts';
 import type { EffortLevel, ModelInfo, ProviderDescriptor } from '@boite/contracts';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { messageOf, unavailable } from '../../errors.ts';
 import { agentEnv, profileFor } from '../../providers/resolve.ts';
 import type { ProbeContext } from '../types.ts';
+import { probeModels } from '../model-probe.ts';
 import { museExecutable, textOf } from './mapping.ts';
-import type { MuseModelList, Timer } from './protocol.ts';
+import type { MuseModelList } from './protocol.ts';
 import {
   AGENT_OWN_MODEL,
   DEFAULT_EFFORT,
@@ -127,22 +126,10 @@ export function modelsFrom(provider: ProviderDescriptor, list: MuseModelList, ef
  */
 export async function readModels(ctx: ProbeContext): Promise<ModelInfo[]> {
   const executable = museExecutable(ctx.provider);
-  let lastStderr = '';
   const child = ctx.spawnChild(executable, [...(profileFor(ctx.provider)?.launch?.args ?? []), ...PROBE_FLAGS], {
     cwd: ctx.cwd,
     env: agentEnv(ctx.provider, ctx.accountEnv),
   });
-  child.stderr.setEncoding('utf8');
-  child.stderr.on('data', (chunk: string) => {
-    for (const line of chunk.split(/\r?\n/)) {
-      const text = line.trim();
-      if (text.length > 0) lastStderr = text.slice(0, STDERR_MAX);
-    }
-  });
-
-  const say = (head: string) => withLogDiagnostic(unavailable(lastStderr.length === 0 ? head : `${head}: ${lastStderr}`, detail), head);
-  const detail = { providerId: ctx.provider.id, accountId: ctx.accountId };
-  let timer: Timer | null = null;
   const rpc = new MuseRpc(child, {
     notification: () => undefined,
     log: (level, message, context) => {
@@ -150,41 +137,13 @@ export async function readModels(ctx: ProbeContext): Promise<ModelInfo[]> {
     },
   });
 
-  try {
-    const died = new Promise<never>((_resolve, reject) => {
-      child.once('exit', (code) => {
-        reject(say(`the ${ctx.provider.id} host exited with code ${code ?? 'unknown'}`));
-      });
-      child.once('error', (error) => {
-        reject(say(`the ${ctx.provider.id} host did not start: ${messageOf(error)}`));
-      });
-    });
-    const expired = new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => {
-        reject(say(`the ${ctx.provider.id} host did not list its models in ${PROBE_TIMEOUT_MS / 1000} s`));
-      }, PROBE_TIMEOUT_MS);
-      timer.unref?.();
-    });
-
-    const read = (async (): Promise<ModelInfo[]> => {
-      const init = await handshake(rpc);
-      const list = await rpc.request<MuseModelList>('model/list', {});
-      const efforts =
-        typeof init.museHome === 'string' && list.source === 'providerCatalog'
-          ? readCatalogEfforts(init.museHome, list.profileId ?? null)
-          : new Map<string, EffortLevel[]>();
-      return modelsFrom(ctx.provider, list, efforts);
-    })();
-
-    return await Promise.race([read, died, expired]);
-  } finally {
-    if (timer !== null) clearTimeout(timer);
-    rpc.fail('the muse probe is over');
-    try {
-      child.stdin.end();
-    } catch {
-      // the pipe is already gone
-    }
-    ctx.killTree();
-  }
+  return probeModels(ctx, child, { noun: 'host', timeoutMs: PROBE_TIMEOUT_MS, stderrMax: STDERR_MAX, over: () => rpc.fail('the muse probe is over') }, async () => {
+    const init = await handshake(rpc);
+    const list = await rpc.request<MuseModelList>('model/list', {});
+    const efforts =
+      typeof init.museHome === 'string' && list.source === 'providerCatalog'
+        ? readCatalogEfforts(init.museHome, list.profileId ?? null)
+        : new Map<string, EffortLevel[]>();
+    return modelsFrom(ctx.provider, list, efforts);
+  });
 }

@@ -1,39 +1,19 @@
-import type { MessageId, MessagePart, ToolStatus, Usage } from '@boite/contracts';
+import type { Usage } from '@boite/contracts';
 import type { PromptCacheLife, TurnContext, TurnResult } from '../types.ts';
+import { DecidedTurnParts, ToolCards } from '../turn-parts.ts';
 import type { PiUsage, ToolView } from './protocol.ts';
-
-interface ToolEntry {
-  index: number;
-  name: string;
-  input: unknown;
-  output: string | null;
-  status: ToolStatus;
-}
 
 /**
  * One `prompt` command and what it wrote. The parts are drawn the way every
  * other driver draws them: one text part the deltas append to, one thinking
  * part, one part per tool call.
  */
-export class PiTurn {
-  #messageId: MessageId | null = null;
-  #nextIndex = 0;
-  #textIndex: number | null = null;
-  #thinkingIndex: number | null = null;
-  readonly #tools = new Map<string, ToolEntry>();
+export class PiTurn extends DecidedTurnParts {
+  readonly #tools = new ToolCards(this);
 
   #status: TurnResult['status'] = 'done';
   #error: string | null = null;
   #diagnosticError: string | undefined;
-  #resolve: (result: TurnResult) => void = () => undefined;
-  #decide: () => void = () => undefined;
-  #wake: () => void = () => undefined;
-
-  readonly done: Promise<TurnResult>;
-  /** Resolves the moment the outcome is known, before anything is journalled. */
-  readonly finished: Promise<void>;
-  /** Resolves on `stop()`, so anything waiting on the user can move on. */
-  readonly stopped: Promise<void>;
 
   /** The pi session id the process was launched with, kept as the thread's. */
   sessionId: string | null;
@@ -42,9 +22,6 @@ export class PiTurn {
   cacheLife: PromptCacheLife | null = null;
   /** When the last assistant message started streaming, a little after its request left (`TurnResult.cacheAt`). */
   requestAt: number | null = null;
-  decided = false;
-  isStopped = false;
-  settled = false;
   /** The error of the last assistant message, promoted only if the run settles on it. */
   pendingError: string | null = null;
   /** Set once the stop deadline runs for this turn. */
@@ -57,26 +34,13 @@ export class PiTurn {
    */
   awaitingPi = false;
 
-  constructor(readonly ctx: TurnContext) {
+  constructor(ctx: TurnContext) {
+    super(ctx);
     this.sessionId = ctx.sessionId;
-    this.done = new Promise<TurnResult>((resolve) => {
-      this.#resolve = resolve;
-    });
-    this.finished = new Promise<void>((resolve) => {
-      this.#decide = resolve;
-    });
-    this.stopped = new Promise<void>((resolve) => {
-      this.#wake = resolve;
-    });
   }
 
   noteSession(sessionId: string): void {
     this.sessionId = sessionId;
-  }
-
-  markStopped(): void {
-    this.isStopped = true;
-    this.#wake();
   }
 
   /**
@@ -103,7 +67,7 @@ export class PiTurn {
     if (this.#error !== null) this.#status = 'error';
     else if (this.isStopped) this.#status = 'stopped';
     this.decided = true;
-    this.#decide();
+    this.decide();
   }
 
   /** A stopped turn whose run never settled: it ends as one that did. */
@@ -121,19 +85,16 @@ export class PiTurn {
       this.#diagnosticError = diagnostic;
       this.part(this.takeIndex(), { type: 'error', message: reason });
     }
-    this.#decide();
+    this.decide();
   }
 
   settle(): void {
     if (this.settled) return;
     this.settled = true;
     this.decided = true;
-    this.#wake();
-    this.#decide();
-    if (this.#messageId !== null) {
-      this.ctx.emit.complete(this.#messageId, this.#status === 'error' ? 'error' : 'complete');
-    }
-    this.#resolve({
+    this.wake();
+    this.decide();
+    this.resolve(this.#status, () => ({
       status: this.#status,
       sessionId: this.sessionId,
       usage: this.usage,
@@ -141,7 +102,7 @@ export class PiTurn {
       ...(this.#diagnosticError === undefined ? {} : { diagnosticError: this.#diagnosticError }),
       promptCache: this.cacheLife,
       ...(this.requestAt === null ? {} : { cacheAt: this.requestAt }),
-    });
+    }));
   }
 
   /** pi reports usage per assistant message, so a turn is the sum of its calls. */
@@ -168,71 +129,8 @@ export class PiTurn {
     };
   }
 
-  // -- parts ----------------------------------------------------------------
-
-  #message(): MessageId {
-    if (this.#messageId === null) this.#messageId = this.ctx.emit.startMessage('assistant');
-    return this.#messageId;
-  }
-
-  part(index: number, part: MessagePart): void {
-    this.ctx.emit.part(this.#message(), index, part);
-  }
-
-  takeIndex(): number {
-    this.#textIndex = null;
-    this.#thinkingIndex = null;
-    const index = this.#nextIndex;
-    this.#nextIndex += 1;
-    return index;
-  }
-
-  writeText(text: string): void {
-    if (text.length === 0) return;
-    if (this.#textIndex === null) {
-      const index = this.#nextIndex;
-      this.#nextIndex += 1;
-      this.#textIndex = index;
-      this.#thinkingIndex = null;
-      this.part(index, { type: 'text', text: '' });
-    }
-    this.ctx.emit.delta(this.#message(), this.#textIndex, text);
-  }
-
-  /** The reasoning deltas, which the UI folds. Their own part, like the text. */
-  writeThinking(text: string): void {
-    if (text.length === 0) return;
-    if (this.#thinkingIndex === null) {
-      const index = this.#nextIndex;
-      this.#nextIndex += 1;
-      this.#thinkingIndex = index;
-      this.#textIndex = null;
-      this.part(index, { type: 'thinking', text: '' });
-    }
-    this.ctx.emit.delta(this.#message(), this.#thinkingIndex, text);
-  }
-
   /** `tool_execution_start` opens the part, `tool_execution_end` replaces it. */
   upsertTool(toolCallId: string, view: ToolView): void {
-    const entry = this.#tools.get(toolCallId) ?? {
-      index: this.takeIndex(),
-      name: view.name,
-      input: null,
-      output: null,
-      status: 'running' as ToolStatus,
-    };
-    entry.name = view.name;
-    if (view.input !== undefined) entry.input = view.input;
-    if (view.output !== null) entry.output = view.output;
-    entry.status = view.status;
-    this.#tools.set(toolCallId, entry);
-    this.part(entry.index, {
-      type: 'tool',
-      toolId: toolCallId,
-      name: entry.name,
-      input: entry.input,
-      output: entry.output,
-      status: entry.status,
-    });
+    this.#tools.upsert(toolCallId, view);
   }
 }

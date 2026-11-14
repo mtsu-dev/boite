@@ -73,7 +73,6 @@ export function protectedBridge(ctx: SessionContext, head: ProtectedHead) {
     },
   };
 }
-export type ProtectedBridge = ReturnType<typeof protectedBridge>;
 
 /** A preload can execute a model-edited project file before a native extension can gate it. */
 export function protectedControlEnvironment(ctx: SessionContext): Record<string, string | undefined> {

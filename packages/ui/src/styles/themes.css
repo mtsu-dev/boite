@@ -1,0 +1,413 @@
+/* Theme families own their surface hierarchy, selection, code and status colours.
+ * Community palettes are adapted for Boite's panels and readable UI text.
+ * Sources and redistribution notices: public/theme-licenses.txt.
+ */
+:root {
+  --palette-dark-default-background: #111114;
+  --palette-dark-default-frame: #030306;
+  --palette-dark-default-surface: #212124;
+  --palette-dark-default-foreground: #ffffff;
+  --palette-light-default-background: #f3f3f6;
+  --palette-light-default-frame: #dfdfe5;
+  --palette-light-default-surface: #ffffff;
+  --palette-light-default-foreground: #0b0b0e;
+  --palette-grain-theme-color: #1a1a1e;
+  /* The Default tile's status dots (ThemeColors.svelte): the app's own, kept apart from the palette roles so
+     Default gains no details of its own. */
+  --tile-default-success: #4cc38a;
+  --tile-default-live: #f5b84a;
+  --tile-default-danger: #f2555a;
+
+  /* dark-oled */
+  --palette-dark-oled-background: #000000;
+  --palette-dark-oled-frame: #000000;
+  --palette-dark-oled-surface: #151518;
+  --palette-dark-oled-foreground: #e6e7eb;
+  --palette-dark-oled-accent: #8cbcff;
+  --palette-dark-oled-surface-low: #0d0d0d;
+  --palette-dark-oled-surface-high: #1c1c21;
+  --palette-dark-oled-muted-foreground: #bfc2cb;
+  --palette-dark-oled-subtle: #b0b2bc;
+  --palette-dark-oled-border: #232329;
+  --palette-dark-oled-edge: #363640;
+  --palette-dark-oled-frame-edge: #232329;
+  --palette-dark-oled-hover: #16161d;
+  --palette-dark-oled-active: #232331;
+  --palette-dark-oled-selection: #26384f;
+  --palette-dark-oled-accent-soft: #15273f;
+  --palette-dark-oled-code-background: #000000;
+  --palette-dark-oled-code-foreground: #e6e7eb;
+  --palette-dark-oled-success: #8fccb0;
+  --palette-dark-oled-danger: #f09aab;
+  --palette-dark-oled-live: #e1c18b;
+
+  /* dark-catppuccin */
+  --palette-dark-catppuccin-background: #1e1e2e;
+  --palette-dark-catppuccin-frame: #15161f;
+  --palette-dark-catppuccin-surface: #2e2e3c;
+  --palette-dark-catppuccin-foreground: #d0d9f6;
+  --palette-dark-catppuccin-accent: #cba6f7;
+  --palette-dark-catppuccin-surface-low: #262533;
+  --palette-dark-catppuccin-surface-high: #343548;
+  --palette-dark-catppuccin-muted-foreground: #c8d0ed;
+  --palette-dark-catppuccin-subtle: #bdc6e1;
+  --palette-dark-catppuccin-border: #313244;
+  --palette-dark-catppuccin-edge: #45475a;
+  --palette-dark-catppuccin-frame-edge: #313244;
+  --palette-dark-catppuccin-hover: #313244;
+  --palette-dark-catppuccin-active: #45475a;
+  --palette-dark-catppuccin-selection: #45475a;
+  --palette-dark-catppuccin-accent-soft: #313047;
+  --palette-dark-catppuccin-code-background: #11111b;
+  --palette-dark-catppuccin-code-foreground: #cdd6f4;
+  --palette-dark-catppuccin-success: #a6e3a1;
+  --palette-dark-catppuccin-danger: #f38ba8;
+  --palette-dark-catppuccin-live: #f9e2af;
+
+  /* light-catppuccin */
+  --palette-light-catppuccin-background: #eff1f5;
+  --palette-light-catppuccin-frame: #d9dde5;
+  --palette-light-catppuccin-surface: #ffffff;
+  --palette-light-catppuccin-foreground: #2d2f46;
+  --palette-light-catppuccin-accent: #8839ef;
+  --palette-light-catppuccin-surface-low: #f6f8fd;
+  --palette-light-catppuccin-surface-high: #e1e6f0;
+  --palette-light-catppuccin-muted-foreground: #35374b;
+  --palette-light-catppuccin-subtle: #3c3e50;
+  --palette-light-catppuccin-border: #ccd0da;
+  --palette-light-catppuccin-edge: #bcc0cc;
+  --palette-light-catppuccin-frame-edge: #ccd0da;
+  --palette-light-catppuccin-hover: #e6e9ef;
+  --palette-light-catppuccin-active: #ccd0da;
+  --palette-light-catppuccin-selection: #bcc0cc;
+  --palette-light-catppuccin-accent-soft: #e6def5;
+  --palette-light-catppuccin-code-background: #e6e9ef;
+  --palette-light-catppuccin-code-foreground: #4c4f69;
+  --palette-light-catppuccin-success: #40a02b;
+  --palette-light-catppuccin-danger: #d20f39;
+  --palette-light-catppuccin-live: #df8e1d;
+
+  /* dark-tokyo-night */
+  --palette-dark-tokyo-night-background: #1a1b26;
+  --palette-dark-tokyo-night-frame: #12121a;
+  --palette-dark-tokyo-night-surface: #272a3d;
+  --palette-dark-tokyo-night-foreground: #c6d0fb;
+  --palette-dark-tokyo-night-accent: #7aa2f7;
+  --palette-dark-tokyo-night-surface-low: #22222b;
+  --palette-dark-tokyo-night-surface-high: #2e3245;
+  --palette-dark-tokyo-night-muted-foreground: #bfc7ef;
+  --palette-dark-tokyo-night-subtle: #b6bee6;
+  --palette-dark-tokyo-night-border: #292e42;
+  --palette-dark-tokyo-night-edge: #3b4261;
+  --palette-dark-tokyo-night-frame-edge: #292e42;
+  --palette-dark-tokyo-night-hover: #1f2335;
+  --palette-dark-tokyo-night-active: #292e42;
+  --palette-dark-tokyo-night-selection: #343f63;
+  --palette-dark-tokyo-night-accent-soft: #223251;
+  --palette-dark-tokyo-night-code-background: #0c0e14;
+  --palette-dark-tokyo-night-code-foreground: #c0caf5;
+  --palette-dark-tokyo-night-success: #9ece6a;
+  --palette-dark-tokyo-night-danger: #f7768e;
+  --palette-dark-tokyo-night-live: #e0af68;
+
+  /* light-tokyo-night */
+  --palette-light-tokyo-night-background: #e1e2e7;
+  --palette-light-tokyo-night-frame: #c9cedc;
+  --palette-light-tokyo-night-surface: #eeeff5;
+  --palette-light-tokyo-night-foreground: #0e2b59;
+  --palette-light-tokyo-night-accent: #2e7de9;
+  --palette-light-tokyo-night-surface-low: #e4e9f7;
+  --palette-light-tokyo-night-surface-high: #d2d6e9;
+  --palette-light-tokyo-night-muted-foreground: #22325a;
+  --palette-light-tokyo-night-subtle: #2d3a5a;
+  --palette-light-tokyo-night-border: #b4b5b9;
+  --palette-light-tokyo-night-edge: #8990b3;
+  --palette-light-tokyo-night-frame-edge: #b4b5b9;
+  --palette-light-tokyo-night-hover: #d0d5e3;
+  --palette-light-tokyo-night-active: #c4c8da;
+  --palette-light-tokyo-night-selection: #afb8d9;
+  --palette-light-tokyo-night-accent-soft: #cdd9ee;
+  --palette-light-tokyo-night-code-background: #d0d5e3;
+  --palette-light-tokyo-night-code-foreground: #3760bf;
+  --palette-light-tokyo-night-success: #587539;
+  --palette-light-tokyo-night-danger: #c64343;
+  --palette-light-tokyo-night-live: #8c6c3e;
+
+  /* dark-nord */
+  --palette-dark-nord-background: #2e3440;
+  --palette-dark-nord-frame: #252a34;
+  --palette-dark-nord-surface: #3e4555;
+  --palette-dark-nord-foreground: #f9fbfc;
+  --palette-dark-nord-accent: #88c0d0;
+  --palette-dark-nord-surface-low: #363c48;
+  --palette-dark-nord-surface-high: #444d5f;
+  --palette-dark-nord-muted-foreground: #eef2f9;
+  --palette-dark-nord-subtle: #e2e8f1;
+  --palette-dark-nord-border: #434c5e;
+  --palette-dark-nord-edge: #4c566a;
+  --palette-dark-nord-frame-edge: #3b4252;
+  --palette-dark-nord-hover: #3b4252;
+  --palette-dark-nord-active: #434c5e;
+  --palette-dark-nord-selection: #525b6f;
+  --palette-dark-nord-accent-soft: #354b58;
+  --palette-dark-nord-code-background: #242933;
+  --palette-dark-nord-code-foreground: #eceff4;
+  --palette-dark-nord-success: #a3be8c;
+  --palette-dark-nord-danger: #bf616a;
+  --palette-dark-nord-live: #ebcb8b;
+
+  /* light-nord */
+  --palette-light-nord-background: #eceff4;
+  --palette-light-nord-frame: #d5dbe6;
+  --palette-light-nord-surface: #ffffff;
+  --palette-light-nord-foreground: #2e3440;
+  --palette-light-nord-accent: #5e81ac;
+  --palette-light-nord-surface-low: #f2f6fd;
+  --palette-light-nord-surface-high: #dee4ef;
+  --palette-light-nord-muted-foreground: #343b4a;
+  --palette-light-nord-subtle: #3b4455;
+  --palette-light-nord-border: #d8dee9;
+  --palette-light-nord-edge: #b5bfce;
+  --palette-light-nord-frame-edge: #c4cdd9;
+  --palette-light-nord-hover: #e5e9f0;
+  --palette-light-nord-active: #d8dee9;
+  --palette-light-nord-selection: #bcd1dc;
+  --palette-light-nord-accent-soft: #dce5ef;
+  --palette-light-nord-code-background: #e5e9f0;
+  --palette-light-nord-code-foreground: #2e3440;
+  --palette-light-nord-success: #a3be8c;
+  --palette-light-nord-danger: #bf616a;
+  --palette-light-nord-live: #ebcb8b;
+
+  /* dark-gruvbox */
+  --palette-dark-gruvbox-background: #282828;
+  --palette-dark-gruvbox-frame: #1c1f20;
+  --palette-dark-gruvbox-surface: #3a3837;
+  --palette-dark-gruvbox-foreground: #f4e3ba;
+  --palette-dark-gruvbox-accent: #fe8019;
+  --palette-dark-gruvbox-surface-low: #2f2f2f;
+  --palette-dark-gruvbox-surface-high: #433f3d;
+  --palette-dark-gruvbox-muted-foreground: #ebdab5;
+  --palette-dark-gruvbox-subtle: #e0d1ae;
+  --palette-dark-gruvbox-border: #3c3836;
+  --palette-dark-gruvbox-edge: #504945;
+  --palette-dark-gruvbox-frame-edge: #3c3836;
+  --palette-dark-gruvbox-hover: #32302f;
+  --palette-dark-gruvbox-active: #504945;
+  --palette-dark-gruvbox-selection: #665c54;
+  --palette-dark-gruvbox-accent-soft: #473522;
+  --palette-dark-gruvbox-code-background: #1d2021;
+  --palette-dark-gruvbox-code-foreground: #ebdbb2;
+  --palette-dark-gruvbox-success: #b8bb26;
+  --palette-dark-gruvbox-danger: #fb4934;
+  --palette-dark-gruvbox-live: #fabd2f;
+
+  /* light-gruvbox */
+  --palette-light-gruvbox-background: #fbf1c7;
+  --palette-light-gruvbox-frame: #ecdcb3;
+  --palette-light-gruvbox-surface: #fffef8;
+  --palette-light-gruvbox-foreground: #3a3735;
+  --palette-light-gruvbox-accent: #af3a03;
+  --palette-light-gruvbox-surface-low: #fff7d4;
+  --palette-light-gruvbox-surface-high: #f4e4bb;
+  --palette-light-gruvbox-muted-foreground: #433e3a;
+  --palette-light-gruvbox-subtle: #4b4540;
+  --palette-light-gruvbox-border: #d5c4a1;
+  --palette-light-gruvbox-edge: #bdae93;
+  --palette-light-gruvbox-frame-edge: #d5c4a1;
+  --palette-light-gruvbox-hover: #f2e5bc;
+  --palette-light-gruvbox-active: #ebdbb2;
+  --palette-light-gruvbox-selection: #d5c4a1;
+  --palette-light-gruvbox-accent-soft: #f0d9b5;
+  --palette-light-gruvbox-code-background: #f2e5bc;
+  --palette-light-gruvbox-code-foreground: #3c3836;
+  --palette-light-gruvbox-success: #79740e;
+  --palette-light-gruvbox-danger: #9d0006;
+  --palette-light-gruvbox-live: #b57614;
+
+  /* dark-amethyst */
+  --palette-dark-amethyst-background: #181223;
+  --palette-dark-amethyst-frame: #090713;
+  --palette-dark-amethyst-surface: #29203a;
+  --palette-dark-amethyst-foreground: #eee5ff;
+  --palette-dark-amethyst-accent: #bfa1ff;
+  --palette-dark-amethyst-surface-low: #1f182e;
+  --palette-dark-amethyst-surface-high: #322644;
+  --palette-dark-amethyst-muted-foreground: #d9caef;
+  --palette-dark-amethyst-subtle: #cab9e1;
+  --palette-dark-amethyst-border: #3b2a54;
+  --palette-dark-amethyst-edge: #574071;
+  --palette-dark-amethyst-frame-edge: #332545;
+  --palette-dark-amethyst-hover: #2b2040;
+  --palette-dark-amethyst-active: #432761;
+  --palette-dark-amethyst-selection: #58387c;
+  --palette-dark-amethyst-accent-soft: #39254f;
+  --palette-dark-amethyst-code-background: #110e1c;
+  --palette-dark-amethyst-code-foreground: #eee5ff;
+  --palette-dark-amethyst-success: #97d9bd;
+  --palette-dark-amethyst-danger: #eda9cc;
+  --palette-dark-amethyst-live: #e1c18b;
+
+  /* light-amethyst */
+  --palette-light-amethyst-background: #f5f2f9;
+  --palette-light-amethyst-frame: #e5dcf2;
+  --palette-light-amethyst-surface: #ffffff;
+  --palette-light-amethyst-foreground: #3d2c56;
+  --palette-light-amethyst-accent: #7048ad;
+  --palette-light-amethyst-surface-low: #fdfaff;
+  --palette-light-amethyst-surface-high: #eee5f7;
+  --palette-light-amethyst-muted-foreground: #46355a;
+  --palette-light-amethyst-subtle: #513f64;
+  --palette-light-amethyst-border: #ded1ec;
+  --palette-light-amethyst-edge: #c9b5dd;
+  --palette-light-amethyst-frame-edge: #d9c9e9;
+  --palette-light-amethyst-hover: #f0e9f8;
+  --palette-light-amethyst-active: #e6d8f2;
+  --palette-light-amethyst-selection: #dac5ee;
+  --palette-light-amethyst-accent-soft: #ede2f8;
+  --palette-light-amethyst-code-background: #f2edf8;
+  --palette-light-amethyst-code-foreground: #3d2c56;
+  --palette-light-amethyst-success: #34755d;
+  --palette-light-amethyst-danger: #a14572;
+  --palette-light-amethyst-live: #866325;
+}
+
+.typing { display: inline-flex; align-items: center; gap: 4px; min-height: 24px; color: var(--color-muted-foreground); }
+.typing > span { width: 5px; height: 5px; border-radius: var(--radius-full); background: currentColor; animation: typing var(--dur-typing) ease-in-out infinite var(--loops); }
+.typing > span:nth-child(2) { animation-delay: var(--dur-typing-step); }
+.typing > span:nth-child(3) { animation-delay: calc(var(--dur-typing-step) * 2); }
+/* A Settings card a settings card in a conversation pointed at: one accent ring
+   that fades. No movement, so reduced motion keeps it. */
+.settings-flash { animation: settings-flash var(--dur-flash) var(--ease-out-quint); }
+@keyframes settings-flash { 0%, 40% { outline: 2px solid var(--color-accent); outline-offset: 3px; } 100% { outline: 2px solid transparent; outline-offset: 3px; } }
+@keyframes typing { 0%, 60%, 100% { opacity: .4; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .typing > span { animation: none; } }
+html[data-motion='reduced'] .typing > span { animation: none; }
+
+/* A diagram, a formula or a view of an answer that is not drawn yet
+   (`lib/rich-markdown.ts`) shows a quiet box where it goes, never its source
+   half drawn; so does one an answer is still writing (`.drawing-pending`,
+   Prose.svelte). Eager, because the drawing code and its styles load later.
+   A block that cannot be drawn shows its source again (`md-source`). */
+.drawing-pending,
+[data-rich-markdown] :is(.md-mermaid, .md-view):not(.md-drawn, .md-source)::after,
+[data-rich-markdown] .md-math[data-display]:not(.md-drawn, .md-source) {
+  display: block;
+  height: var(--drawing-height, 48px);
+  max-height: 70vh;
+  margin: 6px 0 10px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-code-background);
+  animation: pulse 1.6s var(--loop-ease-in-out-48) infinite var(--loops);
+}
+[data-rich-markdown] :is(.md-mermaid, .md-view):not(.md-drawn, .md-source)::after { content: ''; margin: 0; }
+[data-rich-markdown] :is(.md-mermaid, .md-view):not(.md-drawn, .md-source) > pre { display: none; }
+[data-rich-markdown] .md-math:not(.md-drawn, .md-source) { color: transparent; }
+@media (prefers-reduced-motion: reduce) {
+  .drawing-pending,
+  [data-rich-markdown] :is(.md-mermaid, .md-view):not(.md-drawn, .md-source)::after,
+  [data-rich-markdown] .md-math[data-display]:not(.md-drawn, .md-source) { animation: none; }
+}
+html[data-motion='reduced'] .drawing-pending,
+html[data-motion='reduced'] [data-rich-markdown] :is(.md-mermaid, .md-view):not(.md-drawn, .md-source)::after,
+html[data-motion='reduced'] [data-rich-markdown] .md-math[data-display]:not(.md-drawn, .md-source) { animation: none; }
+/* The conversation's width, stamped by `lib/chat-width.ts`: wider for a big
+   screen, or the whole window. The reading column stamps nothing. */
+html[data-chat-width='wide'] {
+  --content: 1180px;
+  --prose: 1040px;
+}
+html[data-chat-width='full'] {
+  --content: 100%;
+  --prose: 100%;
+}
+
+/* The face picked under Settings, Appearance (lib/fonts.ts); Inter, the default, stamps nothing. */
+[data-font='plex'] { --font-sans: var(--face-plex); }
+[data-font='atkinson'] { --font-sans: var(--face-atkinson); }
+[data-font='source'] { --font-sans: var(--face-source); }
+[data-font='system'] { --font-sans: var(--face-system); }
+[data-mono='jetbrains'] { --font-mono: var(--face-mono-jetbrains); }
+[data-mono='system'] { --font-mono: var(--face-mono-system); }
+
+/* Light, stamped by `lib/theme.ts` and by the boot script of `index.html`; dark stamps nothing. */
+[data-theme='light'] {
+  --color-background: #f3f3f6;
+  --card-fill: var(--color-surface-2);
+  /* The frame one step deeper (6.9 L* under the page); white is the ceiling above. */
+  --color-frame: #dfdfe5;
+  --color-frame-edge: rgba(0, 0, 0, 0.14);
+  --color-surface: #fafafb;
+  --color-surface-2: #ffffff;
+  --color-surface-3: #e9e9ee;
+  /* White has no step above it: a light sheet is the raised white, set apart by its elevation. */
+  --color-sheet: var(--color-surface-2);
+  /* In light the raise is the white card over the grey frame. */
+  --segment-on: var(--color-surface-2);
+  --color-border: rgba(0, 0, 0, 0.095);
+  --color-edge: rgba(0, 0, 0, 0.19);
+  --color-hover: rgba(0, 0, 0, 0.04);
+  --color-active: rgba(0, 0, 0, 0.07);
+  --color-foreground: #0b0b0e;
+  /* As near the ink as the hierarchy allows: each tier 3 L* from the one above (secondary 13.8:1 and
+     subtle 13.1:1 on the frame). */
+  --color-muted-foreground: #141417;
+  --color-subtle: #1a1a1f;
+  --color-faint: #b4b4bb;
+  --color-selection: rgba(28, 28, 33, 0.14);
+  --color-terminal-background: var(--color-surface-2);
+  --ansi-black: #000000;
+  --ansi-red: #cd3131;
+  --ansi-green: #00a100;
+  --ansi-yellow: #949800;
+  --ansi-blue: #0451a5;
+  --ansi-magenta: #bc05bc;
+  --ansi-cyan: #0598bc;
+  --ansi-white: #555555;
+  --ansi-bright-black: #666666;
+  --ansi-bright-red: #cd3131;
+  --ansi-bright-green: #14ce14;
+  --ansi-bright-yellow: #b5ba00;
+  --ansi-bright-blue: #0451a5;
+  --ansi-bright-magenta: #bc05bc;
+  --ansi-bright-cyan: #0598bc;
+  --ansi-bright-white: #a5a5a5;
+  --color-live: #b97806;
+  --color-live-soft: rgba(185, 120, 6, 0.12);
+  --tile-default-success: #16a34a;
+  --tile-default-live: #b97806;
+  --tile-default-danger: #dc2626;
+  --syntax-keyword: color-mix(in oklch, var(--color-accent) 55%, var(--color-foreground));
+  --syntax-string: oklch(50% 0.13 240);
+  --color-success: #16a34a;
+  --color-danger: #dc2626;
+  --color-danger-hover: #bb2020;
+  --diff-add-tint: #63976c;
+  --diff-remove-tint: #b05f56;
+  --color-on-danger: #ffffff;
+  --color-scrim: rgba(20, 20, 24, 0.35);
+  --sheet-scrim: rgba(20, 20, 24, 0.2);
+  --color-on-foreground: #fafafb;
+  --series-1: #eb6834;
+  --series-2: #2a78d6;
+  --series-3: #18a070;
+  --series-4: #4a3aa7;
+  --series-5: #bf8200;
+  --series-6: #e26092;
+  --series-7: #008300;
+  --series-8: #e34948;
+  --shadow-e1: inset 0 1px 0 rgb(255 255 255 / 0.6), 0 1px 2px rgb(0 0 0 / 0.07), 0 6px 14px -8px rgb(0 0 0 / 0.14);
+  --shadow-e2: 0 8px 24px rgb(0 0 0 / 0.12), 0 0 0 1px rgb(0 0 0 / 0.06);
+  --shadow-e3: 0 20px 60px rgb(0 0 0 / 0.18), 0 0 0 1px rgb(0 0 0 / 0.08);
+  --shadow-overlay: 0 12px 36px rgb(0 0 0 / 0.14), 0 1px 2px rgb(0 0 0 / 0.08);
+  --shadow-frame: inset 0 1px 0 rgb(255 255 255 / 0.9), 0 1px 2px rgb(0 0 0 / 0.09);
+  --shadow-screen: -8px 0 24px -6px rgb(0 0 0 / 0.14);
+  --color-composer-focus: rgba(0, 0, 0, 0.24);
+  --elevation-soft: inset 0 1px 0 rgb(255 255 255 / 0.8), 0 1px 2px rgb(0 0 0 / 0.06), 0 12px 28px -12px rgb(0 0 0 / 0.16);
+  --shadow-send: inset 0 1px 0 rgb(255 255 255 / 0.35), 0 1px 2px rgb(0 0 0 / 0.18);
+  --shadow-control: inset 0 1px 0 rgb(255 255 255 / 0.7);
+  color-scheme: light;
+}
+

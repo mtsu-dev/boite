@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { codeLanguage, codeRow, highlightCode, HIGHLIGHT_LIMIT } from './code-highlight';
+import { appCss } from '../test/app-css';
 
 test('file extensions and conventional names select a grammar, unknown files stay plain', () => {
   expect(codeLanguage('C:\\src\\App.SVELTE')).toBe('xml');
@@ -101,7 +102,7 @@ test('a worker that cannot start leaves every text to the page', async () => {
 test('the diff and the file viewer share one quiet syntax palette from app.css', async () => {
   const { readFileSync } = await import('node:fs');
   const { resolve } = await import('node:path');
-  const css = readFileSync(resolve('src/app.css'), 'utf8');
+  const css = appCss();
   const diff = readFileSync(resolve('src/components/DiffView.svelte'), 'utf8');
   // Names read in the text colour; keywords and strings are low-chroma mixes, not the raw accent.
   expect(css).toMatch(/\.code-syntax :is\(\.hljs-title,[^)]*\) \{ color: var\(--color-foreground\); \}/);

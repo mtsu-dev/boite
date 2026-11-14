@@ -42,8 +42,7 @@ const test = fixtureTest.extend<{ app: void; queueApp: void }>({
 const previewReference = { id: 'composer-element', url: 'https://example.test', selector: '#save', text: 'Save', bounds: { x: 0, y: 0, width: 80, height: 30 } };
 
 test('preview mentions insert at the caret inside prose and keep identical labels distinct', async ({ app: _app }) => {
-  await store.open('t-trace');
-  await waitFor(() => !store.busy);
+  await openIdle('t-trace');
   await type('Change this please');
   input().setSelectionRange(7, 11);
   input().dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -62,8 +61,7 @@ test('preview mentions insert at the caret inside prose and keep identical label
 });
 
 test('an intact preview mention never opens file completion, while editing it restores file completion', async ({ app: _app }) => {
-  await store.open('t-trace');
-  await waitFor(() => !store.busy);
+  await openIdle('t-trace');
   const call = vi.spyOn(store.client!, 'call');
   store.addPreviewReference('t-trace', previewReference);
   await waitFor(() => input().value === '@Save');
@@ -82,8 +80,7 @@ test('an intact preview mention never opens file completion, while editing it re
 });
 
 test('preview references survive queuing and a failed drain, and stashing refuses without changing the draft', async ({ queueApp: _app }) => {
-  await store.open('t-trace');
-  await waitFor(() => !store.busy);
+  await openIdle('t-trace');
   await type('Change the selected control');
   store.addPreviewReference('t-trace', previewReference);
   const reference = store.composerStates['t-trace']!.previewReferences![0]!;
@@ -110,8 +107,7 @@ test('preview references survive queuing and a failed drain, and stashing refuse
 });
 
 test('preview references remain after refused activity commands and return with recalled sent prompts', async ({ app: _app }) => {
-  await store.open('t-trace');
-  await waitFor(() => !store.busy);
+  await openIdle('t-trace');
   await type('/goal Change the control');
   store.addPreviewReference('t-trace', previewReference);
   await waitFor(() => input().value.endsWith('@Save'));
@@ -142,6 +138,31 @@ afterEach(() => {
   work.load();
   vi.restoreAllMocks();
 });
+
+/** Opens `threadId` and waits until the store is done loading it. */
+async function openIdle(threadId: string): Promise<void> {
+  await store.open(threadId);
+  await waitFor(() => !store.busy);
+}
+
+/** A touch keyboard: only `(pointer: coarse)` answers yes, until the afterEach restores the mocks. */
+function touchKeyboard(): void {
+  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
+    media, matches: media === '(pointer: coarse)', onchange: null, addListener() {}, removeListener() {},
+  }) as unknown as MediaQueryList);
+}
+
+/** A codec that takes 5 ms a picture and brings each to 100 KB; the afterEach restores it, a test may sooner. */
+async function slowCodec() {
+  const { browserCodec } = await import('../lib/image-prepare');
+  return vi.spyOn(browserCodec, 'decode').mockImplementation(async () => ({
+    width: 1170, height: 2532, hasAlpha: () => false, close() {},
+    async encode(_width, _height, mimeType) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return new Blob([new Uint8Array(100 * 1024)], { type: mimeType });
+    }
+  }));
+}
 
 async function waitFor(check: () => boolean, attempts = 400): Promise<void> {
   for (let attempt = 0; attempt < attempts; attempt++) {
@@ -349,11 +370,8 @@ test('Ctrl+Enter sends without leaving an existing thread, and opens the next dr
 });
 
 test('on a touch keyboard Enter writes a new line and only the button sends', async ({ app: _app }) => {
-  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
-    media, matches: media === '(pointer: coarse)', onchange: null, addListener() {}, removeListener() {},
-  }) as unknown as MediaQueryList);
-  await store.open('t-trace');
-  await waitFor(() => !store.busy);
+  touchKeyboard();
+  await openIdle('t-trace');
   const send = vi.spyOn(store, 'send');
   await type('first line');
   input().focus();
@@ -370,8 +388,7 @@ test('on a touch keyboard Enter writes a new line and only the button sends', as
 });
 
 test('the card the script focuses on a touch screen lights its ring only after a key, never after a tap', async ({ app: _app }) => {
-  await store.open('t-trace');
-  await waitFor(() => !store.busy);
+  await openIdle('t-trace');
   const card = query<HTMLElement>('[data-testid=composer]');
   // A tap anywhere, then the script focus a touch screen gives the card: the browser counted it as keyboard focus.
   document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
@@ -876,8 +893,7 @@ test('Escape in the box that answers a question keeps the question and its turn'
 });
 
 test('a thread of a machine that dropped still opens and queues its prompts until the machine is back', async ({ queueApp: _app }) => {
-  await store.open('t-trace');
-  await waitFor(() => !store.busy);
+  await openIdle('t-trace');
   const other = store.threads.find((t) => t.id === 't-descriptors')!;
   expect(other.status).toBe('idle');
   const fake = store.client as FakeClient;
@@ -925,8 +941,7 @@ test('a thread of a machine that dropped still opens and queues its prompts unti
 });
 
 test('an outbox prompt the core refuses shows why, holds the next one, and goes again on Send again', async ({ queueApp: _app }) => {
-  await store.open('t-descriptors');
-  await waitFor(() => !store.busy);
+  await openIdle('t-descriptors');
   const fake = store.client as FakeClient;
   const starts: { prompt: string; clientRequestId?: string }[] = [];
   const start = queueCore.start.getMockImplementation()!;
@@ -1258,8 +1273,7 @@ test('a pending send cannot duplicate a turn or erase text typed for the next pr
 });
 
 test('a prompt on its way when the app dies comes back after a restart, its images too, and reaches the thread once', async ({ app: _app }) => {
-  await store.open('t-trace');
-  await waitFor(() => !store.busy);
+  await openIdle('t-trace');
   const client = store.client!;
   const call = client.call.bind(client);
   const starts: string[] = [];
@@ -1598,8 +1612,7 @@ test('while a question takes the field during a turn, its button is Answer alone
 });
 
 test('while a turn runs, typed words take the round button for Send and the turn\'s Stop waits on the foot\'s line', async ({ app: _app }) => {
-  await store.open('t-trace');
-  await waitFor(() => !store.busy);
+  await openIdle('t-trace');
   store.openThread!.status = 'running';
   flushSync();
   // An empty field: the round button is Stop, and the foot has no line of its own.
@@ -2467,8 +2480,7 @@ test('the mention menu never opens on the project the composer just left', async
 
 
 test('/btw bypasses the queue while busy, leaves history alone and Escape only closes its answer', async ({ app: _app }) => {
-  await store.open('t-trace');
-  await waitFor(() => !store.busy);
+  await openIdle('t-trace');
   store.openThread!.status = 'running';
   const before = JSON.parse(JSON.stringify(store.openThread!.messages));
   const call = vi.spyOn(store.client!, 'call');
@@ -2487,8 +2499,7 @@ test('/btw bypasses the queue while busy, leaves history alone and Escape only c
 });
 
 test('a side answer arriving after navigation stays out of the newly opened conversation', async ({ app: _app }) => {
-  await store.open('t-trace');
-  await waitFor(() => !store.busy);
+  await openIdle('t-trace');
   const client = store.client!, original = client.call.bind(client);
   let resolve!: (value: { requestId: string }) => void;
   vi.spyOn(client, 'call').mockImplementation((method, params) => method === 'threads.btw'
@@ -2505,8 +2516,7 @@ test('a side answer arriving after navigation stays out of the newly opened conv
 
 
 test('a delivered side answer survives a late admission failure', async ({ app: _app }) => {
-  await store.open('t-trace');
-  await waitFor(() => !store.busy);
+  await openIdle('t-trace');
   const client = store.client!, original = client.call.bind(client);
   vi.spyOn(client, 'call').mockImplementation(async (method, params) => {
     const result = await original(method, params);
@@ -2524,8 +2534,7 @@ test('a delivered side answer survives a late admission failure', async ({ app: 
 });
 
 test('the side answer fork button opens a fresh conversation holding the exchange', async ({ app: _app }) => {
-  await store.open('t-trace');
-  await waitFor(() => !store.busy);
+  await openIdle('t-trace');
   const before = structuredClone(await store.client!.call('threads.get', { threadId: 't-trace' }));
   await type('/btw Which file?');
   press('Enter');
@@ -2542,8 +2551,7 @@ test('the side answer fork button opens a fresh conversation holding the exchang
 });
 
 test('a delayed side fork acknowledgement preserves navigation to another conversation', async ({ app: _app }) => {
-  await store.open('t-trace');
-  await waitFor(() => !store.busy);
+  await openIdle('t-trace');
   const client = store.client!, original = client.call.bind(client);
   let release: (() => void) | undefined;
   vi.spyOn(client, 'call').mockImplementation(async (method, params) => {
@@ -2590,8 +2598,7 @@ function clipboardEvent(type: 'copy' | 'cut' | 'paste', data: DataTransfer): Eve
 }
 
 test('Ctrl+Z after deleting everything and a stray key brings back the text and its images, and Ctrl+Y redoes', async ({ app: _app }) => {
-  await store.open('t-trace');
-  await waitFor(() => !store.busy);
+  await openIdle('t-trace');
   await type('Look at ');
   paste(pngFile('first.png'));
   await waitFor(() => input().value === 'Look at [Image 1] ');
@@ -2638,23 +2645,15 @@ test('Ctrl+Z after deleting everything and a stray key brings back the text and 
 
 test('a pasted copy over the byte total holds Send until its pictures are fitted', async ({ app: _app }) => {
   const { copyImages } = await import('../lib/composer-clipboard');
-  const { browserCodec } = await import('../lib/image-prepare');
   const { ATTACHMENTS_TOTAL_MAX_BYTES, decodedBytes } = await import('@boite/contracts');
   // Thirty pictures of 400 KB, 12 MB together; the codec takes its time and brings each to 100 KB.
   const heavy = Array.from({ length: 30 }, (_, at) => ({ kind: 'image' as const, mimeType: 'image/jpeg' as const, data: Buffer.alloc(400 * 1024, at).toString('base64'), name: `shot-${at}.jpg` }));
-  const decode = vi.spyOn(browserCodec, 'decode').mockImplementation(async () => ({
-    width: 1170, height: 2532, hasAlpha: () => false, close() {},
-    async encode(_width, _height, mimeType) {
-      await new Promise((resolve) => setTimeout(resolve, 5));
-      return new Blob([new Uint8Array(100 * 1024)], { type: mimeType });
-    }
-  }));
+  const decode = await slowCodec();
   try {
     const from = { text: heavy.map((_, at) => `[Image ${at + 1}]`).join(' '), attachments: heavy, queued: [], sending: false, paused: false };
     const copied = clipboard();
     expect(copyImages(copied, from, 0, from.text.length)).toBe(true);
-    await store.open('t-trace');
-    await waitFor(() => !store.busy);
+    await openIdle('t-trace');
     const before = store.openThread!.messages.length;
     await type('look ');
     input().focus();
@@ -2681,21 +2680,13 @@ test('a pasted copy over the byte total holds Send until its pictures are fitted
 
 test('Send pressed over the byte total goes by itself once the pictures are fitted', async ({ app: _app }) => {
   const { copyImages } = await import('../lib/composer-clipboard');
-  const { browserCodec } = await import('../lib/image-prepare');
   const heavy = Array.from({ length: 30 }, (_, at) => ({ kind: 'image' as const, mimeType: 'image/jpeg' as const, data: Buffer.alloc(400 * 1024, at).toString('base64'), name: `shot-${at}.jpg` }));
-  const decode = vi.spyOn(browserCodec, 'decode').mockImplementation(async () => ({
-    width: 1170, height: 2532, hasAlpha: () => false, close() {},
-    async encode(_width, _height, mimeType) {
-      await new Promise((resolve) => setTimeout(resolve, 5));
-      return new Blob([new Uint8Array(100 * 1024)], { type: mimeType });
-    }
-  }));
+  const decode = await slowCodec();
   try {
     const from = { text: heavy.map((_, at) => `[Image ${at + 1}]`).join(' '), attachments: heavy, queued: [], sending: false, paused: false };
     const copied = clipboard();
     expect(copyImages(copied, from, 0, from.text.length)).toBe(true);
-    await store.open('t-trace');
-    await waitFor(() => !store.busy);
+    await openIdle('t-trace');
     const before = store.openThread!.messages.length;
     await type('look ');
     input().focus();
@@ -2727,8 +2718,7 @@ test('thirty pasted screenshots over the byte total show at once, and Send press
   // jsdom's 5 MB storage cannot back up the 10 MB the box holds before its fit; a browser keeps it in its journal.
   const save = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {});
   try {
-    await store.open('t-trace');
-    await waitFor(() => !store.busy);
+    await openIdle('t-trace');
     const before = store.openThread!.messages.length;
     await type('look ');
     const files = Array.from({ length: 30 }, (_, at) => new File([new Uint8Array(1024)], `shot-${at}.jpg`, { type: 'image/jpeg' }));
@@ -2765,8 +2755,7 @@ test('a pasted copy that stays over the byte total at its smallest says to remov
     const from = { text: heavy.map((_, at) => `[Image ${at + 1}]`).join(' '), attachments: heavy, queued: [], sending: false, paused: false };
     const copied = clipboard();
     expect(copyImages(copied, from, 0, from.text.length)).toBe(true);
-    await store.open('t-trace');
-    await waitFor(() => !store.busy);
+    await openIdle('t-trace');
     input().focus();
     expect(clipboardEvent('paste', copied).defaultPrevented).toBe(true);
     const over = 'These files still weigh over 10 MB together, even with the pictures at their smallest: remove some before sending.';
@@ -2786,26 +2775,17 @@ test('a pasted copy that stays over the byte total at its smallest says to remov
 
 test('a send held by a fit is dropped when the composer moves to another thread meanwhile', async ({ app: _app }) => {
   const { copyImages } = await import('../lib/composer-clipboard');
-  const { browserCodec } = await import('../lib/image-prepare');
   const { ATTACHMENTS_TOTAL_MAX_BYTES, decodedBytes } = await import('@boite/contracts');
   const heavy = Array.from({ length: 30 }, (_, at) => ({ kind: 'image' as const, mimeType: 'image/jpeg' as const, data: Buffer.alloc(400 * 1024, at).toString('base64'), name: `shot-${at}.jpg` }));
-  const decode = vi.spyOn(browserCodec, 'decode').mockImplementation(async () => ({
-    width: 1170, height: 2532, hasAlpha: () => false, close() {},
-    async encode(_width, _height, mimeType) {
-      await new Promise((resolve) => setTimeout(resolve, 5));
-      return new Blob([new Uint8Array(100 * 1024)], { type: mimeType });
-    }
-  }));
+  const decode = await slowCodec();
   try {
-    await store.open('t-descriptors');
-    await waitFor(() => !store.busy);
+    await openIdle('t-descriptors');
     await type('a draft for later');
     const before = await store.client!.call('threads.get', { threadId: 't-descriptors' });
     const from = { text: heavy.map((_, at) => `[Image ${at + 1}]`).join(' '), attachments: heavy, queued: [], sending: false, paused: false };
     const copied = clipboard();
     expect(copyImages(copied, from, 0, from.text.length)).toBe(true);
-    await store.open('t-trace');
-    await waitFor(() => !store.busy);
+    await openIdle('t-trace');
     await type('look ');
     input().focus();
     input().setSelectionRange(5, 5);
@@ -2826,16 +2806,9 @@ test('a send held by a fit is dropped when the composer moves to another thread 
 /** A question on t-trace the composer answers, pictures pasted over the byte total on a slow codec, and every answer recorded. */
 async function answerWhileFitting() {
   const { copyImages } = await import('../lib/composer-clipboard');
-  const { browserCodec } = await import('../lib/image-prepare');
   const { writeAnswer } = await import('../lib/question-reply.svelte');
   const heavy = Array.from({ length: 30 }, (_, at) => ({ kind: 'image' as const, mimeType: 'image/jpeg' as const, data: Buffer.alloc(400 * 1024, at).toString('base64'), name: `shot-${at}.jpg` }));
-  vi.spyOn(browserCodec, 'decode').mockImplementation(async () => ({
-    width: 1170, height: 2532, hasAlpha: () => false, close() {},
-    async encode(_width, _height, mimeType) {
-      await new Promise((resolve) => setTimeout(resolve, 5));
-      return new Blob([new Uint8Array(100 * 1024)], { type: mimeType });
-    }
-  }));
+  await slowCodec();
   vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {});
   await store.open('t-trace');
   await store.send('question');
@@ -2919,9 +2892,7 @@ test('Edit on a sent message over a long unsent draft is one undo step: Ctrl+Z g
 test('on a phone, a draft emptied at once or replaced by Edit offers Undo in a toast that brings back its text and images', async ({ app: _app }) => {
   await store.open('t-trace');
   await send('the sent prompt');
-  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
-    media, matches: media === '(pointer: coarse)', onchange: null, addListener() {}, removeListener() {},
-  }) as unknown as MediaQueryList);
+  touchKeyboard();
   await type('a long prompt typed on the phone '.repeat(300));
   paste(pngFile('phone.png'));
   await waitFor(() => chips().length === 1);
@@ -2944,11 +2915,8 @@ test('on a phone, a draft emptied at once or replaced by Edit offers Undo in a t
 });
 
 test('on a phone, cutting a whole draft with its image offers Undo that brings both back', async ({ app: _app }) => {
-  await store.open('t-trace');
-  await waitFor(() => !store.busy);
-  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
-    media, matches: media === '(pointer: coarse)', onchange: null, addListener() {}, removeListener() {},
-  }) as unknown as MediaQueryList);
+  await openIdle('t-trace');
+  touchKeyboard();
   await type('a long prompt typed on the phone '.repeat(300));
   paste(pngFile('phone.png'));
   // A picture still loading is not copied: the cut waits until it is read.
@@ -2965,11 +2933,8 @@ test('on a phone, cutting a whole draft with its image offers Undo that brings b
 });
 
 test('on a phone, the Undo offer of a cleared draft ends when another conversation opens, so it never rewrites the one left behind', async ({ app: _app }) => {
-  await store.open('t-trace');
-  await waitFor(() => !store.busy);
-  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
-    media, matches: media === '(pointer: coarse)', onchange: null, addListener() {}, removeListener() {},
-  }) as unknown as MediaQueryList);
+  await openIdle('t-trace');
+  touchKeyboard();
   await type('a long prompt typed on the phone '.repeat(300));
   const full = input().value;
   input().focus();
@@ -2986,9 +2951,7 @@ test('on a phone, the Undo offer of a cleared draft ends when another conversati
 test('on a phone, the Undo offer of a cleared new conversation ends when another new conversation opens in the same box', async ({ app: _app }) => {
   store.startDraft(null, { fresh: true });
   await waitFor(() => !store.openThread && store.draft !== null && input() !== null);
-  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
-    media, matches: media === '(pointer: coarse)', onchange: null, addListener() {}, removeListener() {},
-  }) as unknown as MediaQueryList);
+  touchKeyboard();
   await type('another conversation, parked');
   const other = store.draft!.id;
   store.startDraft(null, { fresh: true });
@@ -3006,11 +2969,8 @@ test('on a phone, the Undo offer of a cleared new conversation ends when another
 });
 
 test('on a phone, a file attached after the draft was cleared ends the Undo offer, which would take the file back instead', async ({ app: _app }) => {
-  await store.open('t-trace');
-  await waitFor(() => !store.busy);
-  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
-    media, matches: media === '(pointer: coarse)', onchange: null, addListener() {}, removeListener() {},
-  }) as unknown as MediaQueryList);
+  await openIdle('t-trace');
+  touchKeyboard();
   await type('a long prompt typed on the phone '.repeat(300));
   const full = input().value;
   input().focus();
@@ -3023,11 +2983,8 @@ test('on a phone, a file attached after the draft was cleared ends the Undo offe
 });
 
 test('on a phone, removing the only file or picture of a draft offers Undo that brings it back', async ({ app: _app }) => {
-  await store.open('t-trace');
-  await waitFor(() => !store.busy);
-  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
-    media, matches: media === '(pointer: coarse)', onchange: null, addListener() {}, removeListener() {},
-  }) as unknown as MediaQueryList);
+  await openIdle('t-trace');
+  touchKeyboard();
   paste(new File(['notes'], 'notes.txt', { type: 'text/plain' }));
   await waitFor(() => chips().length === 1);
   // The chip's remove button fires no input event, yet it empties the draft as surely as select-all and delete.
@@ -3047,11 +3004,8 @@ test('on a phone, removing the only file or picture of a draft offers Undo that 
 });
 
 test('on a phone, a file that finishes reading in a conversation left behind keeps the Undo offer of the one on screen', async ({ app: _app }) => {
-  await store.open('t-trace');
-  await waitFor(() => !store.busy);
-  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
-    media, matches: media === '(pointer: coarse)', onchange: null, addListener() {}, removeListener() {},
-  }) as unknown as MediaQueryList);
+  await openIdle('t-trace');
+  touchKeyboard();
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });
   const read = FileReader.prototype.readAsDataURL;
@@ -3092,8 +3046,7 @@ test('a retry whose resend fails leaves the words typed meanwhile in the box and
 });
 
 test('a picture refused while it loads leaves no undo step naming it, and keeps the typing done meanwhile', async ({ app: _app }) => {
-  await store.open('t-trace');
-  await waitFor(() => !store.busy);
+  await openIdle('t-trace');
   await type('Look at ');
   let fail: (() => void) | undefined;
   vi.spyOn(FileReader.prototype, 'readAsDataURL').mockImplementation(function (this: FileReader) {
@@ -3120,8 +3073,7 @@ test('a picture refused while it loads leaves no undo step naming it, and keeps 
 });
 
 test('a loading tile removed before its read ends stays gone once the read lands', async ({ app: _app }) => {
-  await store.open('t-trace');
-  await waitFor(() => !store.busy);
+  await openIdle('t-trace');
   await type('Look at ');
   const original = FileReader.prototype.readAsDataURL;
   let release: (() => void) | undefined;
@@ -3144,8 +3096,7 @@ test('a loading tile removed before its read ends stays gone once the read lands
 });
 
 test('copying an image reference carries its picture to another composer, and stays text in its own', async ({ app: _app }) => {
-  await store.open('t-trace');
-  await waitFor(() => !store.busy);
+  await openIdle('t-trace');
   await type('A ');
   paste(pngFile('first.png'));
   await waitFor(() => input().value === 'A [Image 1] ');

@@ -50,10 +50,6 @@ export function robotColor(robot: Pick<Robot, 'color'>): string {
 const LETTER: Record<RobotFamily, string> = { bubble: 'a', capsule: 'b', retro: 'c', jelly: 'd' };
 const PREFIX = 'bot:';
 
-export function isRobotCode(avatar: string): boolean {
-  return avatar.trim().startsWith(PREFIX);
-}
-
 /*
  * Codes written before parts were shared: `bot:<family>.<shape>.<color>.<face>.<top>`,
  * each number an index into that family's own lists. They keep their look:

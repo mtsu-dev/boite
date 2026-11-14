@@ -1,12 +1,11 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { applyColors, COLORS_KEY, colorsBootScript, PALETTES, presetPalette, readPalette, resetAccentColor, resetColors, setPalette, startColors } from './theme-colors';
 import { contrast, editPalette, improvePaletteContrast, mixColor, paletteTokens } from './color-math';
+import { appCss } from '../test/app-css';
 
 beforeEach(() => {
   // Install the real palette tokens, which jsdom cannot load from app.css.
-  const css = readFileSync(resolve('src/app.css'), 'utf8');
+  const css = appCss();
   for (const match of css.matchAll(/(--palette-[\w-]+):\s*(#[0-9a-f]{6});/gi)) {
     // Production CSS minification shortens repeated hex pairs, including OLED black.
     const compact = match[2]!.replace(/^#(.)\1(.)\2(.)\3$/i, '#$1$2$3');

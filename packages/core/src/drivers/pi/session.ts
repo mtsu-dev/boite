@@ -5,7 +5,8 @@ import { messageOf, unavailable } from '../../errors.ts';
 import type { SpawnedChild } from '../../procs.ts';
 import { profileFor, resolveLaunch } from '../../providers/resolve.ts';
 import type { LiveTurnSettings, SessionContext, TurnContext } from '../types.ts';
-import { exitWithin } from '../exit.ts';
+import { exitSentence, exitWithin } from '../exit.ts';
+import { IdleTimer } from '../idle-timer.ts';
 import { stderrLines } from '../lines.ts';
 import {
   agentEnv,
@@ -72,7 +73,7 @@ export class PiSession {
   #exitCode: number | null = null;
   #exited: Promise<number | null> | null = null;
   #processClosed: Promise<void> = Promise.resolve();
-  #idle: Timer | null = null;
+  readonly #idle = new IdleTimer(() => this.#drop());
   readonly #retention = new SessionRetention();
   /** The turn whose `prompt` is in flight; events outside one are dropped. */
   #current: PiTurn | null = null;
@@ -108,13 +109,13 @@ export class PiSession {
 
   setViewed(viewed: boolean): void {
     this.#retention.setViewed(viewed);
-    this.#clearIdle();
+    this.#idle.clear();
     if (!viewed && !this.busy() && !this.#ended) this.#armIdle();
   }
 
   async prepare(ctx: SessionContext, forTurn = false): Promise<void> {
     this.#retention.prepare(forTurn);
-    this.#clearIdle();
+    this.#idle.clear();
     try { await this.#start(ctx); }
     catch (error) { this.#drop(); throw error; }
     finally {
@@ -131,7 +132,7 @@ export class PiSession {
     this.warmMs = warmMs;
     this.#retention.beginTurn();
     this.#running += 1;
-    this.#clearIdle();
+    this.#idle.clear();
     this.#queue = this.#queue.then(async () => {
       try {
         await this.#runTurn(turn);
@@ -576,8 +577,7 @@ export class PiSession {
   }
 
   #exitSentence(code: number | null, diagnostic = false): string {
-    const head = `the pi agent exited with code ${code === null ? 'unknown' : code}`;
-    return diagnostic || this.#lastStderr.length === 0 ? head : `${head}: ${this.#lastStderr}`;
+    return exitSentence('pi agent', code, this.#lastStderr, diagnostic);
   }
 
   /**
@@ -592,7 +592,7 @@ export class PiSession {
     this.#closing = true;
     this.#protection?.close(this.#exited ?? this.#processClosed);
     this.#protection = null;
-    this.#clearIdle();
+    this.#idle.clear();
     const turn = this.#current;
     this.#current = null;
     endOnClose(turn, 'the pi session was closed');
@@ -608,18 +608,7 @@ export class PiSession {
   }
 
   #armIdle(): void {
-    this.#clearIdle();
-    this.#idle = setTimeout(() => {
-      this.#idle = null;
-      this.#drop();
-    }, this.#retention.idleMs(this.warmMs));
-    this.#idle?.unref?.();
-  }
-
-  #clearIdle(): void {
-    if (this.#idle === null) return;
-    clearTimeout(this.#idle);
-    this.#idle = null;
+    this.#idle.arm(this.#retention.idleMs(this.warmMs));
   }
 
   // -- what the agent sends -------------------------------------------------

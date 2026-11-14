@@ -8,182 +8,175 @@ import AssistantMessage from './AssistantMessage.svelte';
 
 let mounted: ReturnType<typeof mount> | undefined;
 afterEach(async () => { if (mounted) await unmount(mounted); mounted = undefined; document.body.innerHTML = ''; });
+let live: { client: FakeClient; store: Store } | undefined;
+// Registered after the unmount above, so it runs before it, where each test's finally used to.
+afterEach(() => {
+  if (live) {
+    live.store.detach();
+    live.client.close();
+    live = undefined;
+  }
+});
+
+/** A store on a fake client, opened on `t-trace`; the afterEach above detaches and closes both, failed or not. */
+async function openTrace(): Promise<{ client: FakeClient; store: Store }> {
+  const client = new FakeClient({ delayMs: 0 });
+  const store = new Store();
+  store.attach(client);
+  live = { client, store };
+  await store.connect();
+  await store.open('t-trace');
+  return live;
+}
+
+/** Mounts `message` the way the list draws it, then flushes. */
+function show(store: Store, message: Message): void {
+  mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false } });
+  flushSync();
+}
 
 test('live paragraphs update without rebuilding completed prose when tools and reasoning arrive', async () => {
-  const client = new FakeClient({ delayMs: 0 });
-  const store = new Store(); store.attach(client);
-  try {
-    await store.connect(); await store.open('t-trace');
-    const message = store.openThread!.messages.at(-1)!;
-    message.state = 'streaming';
-    message.parts = [
-      { type: 'text', text: 'A complete paragraph.\n\nStill writing' },
-      { type: 'tool', toolId: 'read', name: 'Read', input: {}, output: null, status: 'running' },
-      { type: 'thinking', text: 'Checking files' }
-    ];
-    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false } });
-    flushSync();
-    expect(document.querySelectorAll('[data-testid=paragraph]')).toHaveLength(1);
-    expect(document.querySelector('[data-testid=paragraph-pending]')?.textContent).toBe('Still writing');
-    const first = document.querySelector('[data-testid=paragraph]');
-    if (message.parts[0]?.type !== 'text') throw new Error('missing text');
-    message.parts[0].text += ' this paragraph';
-    flushSync();
-    expect(document.querySelector('[data-testid=paragraph-pending]')?.textContent).toBe('Still writing this paragraph');
-    message.parts[0].text += '.\n\n';
-    flushSync();
-    expect(document.querySelectorAll('[data-testid=paragraph]')).toHaveLength(2);
-    expect(document.querySelector('[data-testid=paragraph]')).toBe(first);
-  } finally { store.detach(); client.close(); }
+  const { store } = await openTrace();
+  const message = store.openThread!.messages.at(-1)!;
+  message.state = 'streaming';
+  message.parts = [
+    { type: 'text', text: 'A complete paragraph.\n\nStill writing' },
+    { type: 'tool', toolId: 'read', name: 'Read', input: {}, output: null, status: 'running' },
+    { type: 'thinking', text: 'Checking files' }
+  ];
+  show(store, message);
+  expect(document.querySelectorAll('[data-testid=paragraph]')).toHaveLength(1);
+  expect(document.querySelector('[data-testid=paragraph-pending]')?.textContent).toBe('Still writing');
+  const first = document.querySelector('[data-testid=paragraph]');
+  if (message.parts[0]?.type !== 'text') throw new Error('missing text');
+  message.parts[0].text += ' this paragraph';
+  flushSync();
+  expect(document.querySelector('[data-testid=paragraph-pending]')?.textContent).toBe('Still writing this paragraph');
+  message.parts[0].text += '.\n\n';
+  flushSync();
+  expect(document.querySelectorAll('[data-testid=paragraph]')).toHaveLength(2);
+  expect(document.querySelector('[data-testid=paragraph]')).toBe(first);
 });
 
 test('a view block being written shows a placeholder, never its half-written HTML, until it closes', async () => {
-  const client = new FakeClient({ delayMs: 0 });
-  const store = new Store(); store.attach(client);
-  try {
-    await store.connect(); await store.open('t-trace');
-    const message = store.openThread!.messages.at(-1)!;
-    message.state = 'streaming';
-    message.parts = [{ type: 'text', text: 'Here it is.\n\nA card:\n```view\n<svg width="40" height="40"><circle' }];
-    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false } });
-    flushSync();
-    const part = () => document.querySelector('[data-testid=text-part]')!;
-    expect(document.querySelectorAll('[data-testid=paragraph]')).toHaveLength(1);
-    expect(document.querySelector('[data-testid=paragraph-pending]')?.textContent).toBe('A card:');
-    expect(document.querySelector('[data-testid=drawing-pending]')).not.toBeNull();
-    expect(part().textContent).not.toContain('<svg');
-    if (message.parts[0]?.type !== 'text') throw new Error('missing text');
-    message.parts[0].text += ' r="20"/></svg>\n```\n\nDone';
-    flushSync();
-    expect(document.querySelector('[data-testid=drawing-pending]')).toBeNull();
-    expect(document.querySelector<HTMLElement>('.md-view')?.dataset.source).toBe('<svg width="40" height="40"><circle r="20"/></svg>');
-    expect(document.querySelector('[data-testid=paragraph-pending]')?.textContent).toBe('Done');
-  } finally { store.detach(); client.close(); }
+  const { store } = await openTrace();
+  const message = store.openThread!.messages.at(-1)!;
+  message.state = 'streaming';
+  message.parts = [{ type: 'text', text: 'Here it is.\n\nA card:\n```view\n<svg width="40" height="40"><circle' }];
+  show(store, message);
+  const part = () => document.querySelector('[data-testid=text-part]')!;
+  expect(document.querySelectorAll('[data-testid=paragraph]')).toHaveLength(1);
+  expect(document.querySelector('[data-testid=paragraph-pending]')?.textContent).toBe('A card:');
+  expect(document.querySelector('[data-testid=drawing-pending]')).not.toBeNull();
+  expect(part().textContent).not.toContain('<svg');
+  if (message.parts[0]?.type !== 'text') throw new Error('missing text');
+  message.parts[0].text += ' r="20"/></svg>\n```\n\nDone';
+  flushSync();
+  expect(document.querySelector('[data-testid=drawing-pending]')).toBeNull();
+  expect(document.querySelector<HTMLElement>('.md-view')?.dataset.source).toBe('<svg width="40" height="40"><circle r="20"/></svg>');
+  expect(document.querySelector('[data-testid=paragraph-pending]')?.textContent).toBe('Done');
 });
 
 test('a compaction a background copy made says so beside its counts', async () => {
-  const client = new FakeClient({ delayMs: 0 });
-  const store = new Store(); store.attach(client);
-  try {
-    await store.connect(); await store.open('t-trace');
-    const last = store.openThread!.messages.at(-1)!;
-    const message: Message = { ...last, id: 'm-background', role: 'system', parts: [{ type: 'compaction', trigger: 'auto', preTokens: 184_000, postTokens: 31_000, background: true }] };
-    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false } });
-    flushSync();
-    expect(document.querySelector('[data-testid=compaction-part]')?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Older messages summarized to make room, 184K to 31K tokens (in the background)');
-  } finally { store.detach(); client.close(); }
+  const { store } = await openTrace();
+  const last = store.openThread!.messages.at(-1)!;
+  const message: Message = { ...last, id: 'm-background', role: 'system', parts: [{ type: 'compaction', trigger: 'auto', preTokens: 184_000, postTokens: 31_000, background: true }] };
+  show(store, message);
+  expect(document.querySelector('[data-testid=compaction-part]')?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Older messages summarized to make room, 184K to 31K tokens (in the background)');
 });
 
 test('a line naming a page the turn published cuts the answer there, without drawing again what is above it', async () => {
-  const client = new FakeClient({ delayMs: 0 });
-  const store = new Store(); store.attach(client);
-  try {
-    await store.connect(); await store.open('t-trace');
-    const message = store.openThread!.messages.at(-1)!;
-    const view: Message = { id: 'm-orbit', threadId: message.threadId, turnId: message.turnId, role: 'assistant', state: 'complete', createdAt: message.createdAt, parts: [
-      { type: 'artifact', id: 'a-orbit', name: 'orbit.html', mimeType: 'text/html', bytes: 10, view: { title: 'Orbit', height: 300, source: '.boite/views/orbit.html' } },
-    ] };
-    message.state = 'streaming';
-    message.parts = [{ type: 'text', text: 'The orbit first.\n\n![Orbit](.boite/views/orbit.html)' }];
-    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false, views: [view] } });
-    flushSync();
-    const order = () => Array.from(document.querySelectorAll('[data-testid=text-run], [data-testid=inline-view], [data-testid=chat-file]')).map(node => node.getAttribute('data-testid') === 'text-run' ? 'text' : 'page');
-    // The line being written is not shown as a raw link: the page takes its place once the line is complete.
-    expect(document.querySelector('[data-testid=paragraph-pending]')).toBeNull();
-    expect(order()).toEqual(['text']);
-    const first = document.querySelector('[data-testid=paragraph]');
-    if (message.parts[0]?.type !== 'text') throw new Error('missing text');
-    message.parts[0].text += '\n\nThen the bars.';
-    flushSync();
-    expect(order()).toEqual(['text', 'page', 'text']);
-    expect(document.querySelector('[data-testid=paragraph]')).toBe(first);
-    expect(document.querySelector('[data-testid=paragraph-pending]')?.textContent).toBe('Then the bars.');
-    expect(document.querySelector('[data-testid=text-part]')!.textContent).not.toContain('orbit.html');
-    // A line naming no page of the turn stays text where it is.
-    message.parts[0].text += '\n\n![Gone](gone.html)\n\nThe end.';
-    message.state = 'complete';
-    flushSync();
-    expect(order()).toEqual(['text', 'page', 'text']);
-    expect(document.querySelector('[data-testid=text-part]')!.textContent).toContain('GoneThe end.');
-  } finally { store.detach(); client.close(); }
+  const { store } = await openTrace();
+  const message = store.openThread!.messages.at(-1)!;
+  const view: Message = { id: 'm-orbit', threadId: message.threadId, turnId: message.turnId, role: 'assistant', state: 'complete', createdAt: message.createdAt, parts: [
+    { type: 'artifact', id: 'a-orbit', name: 'orbit.html', mimeType: 'text/html', bytes: 10, view: { title: 'Orbit', height: 300, source: '.boite/views/orbit.html' } },
+  ] };
+  message.state = 'streaming';
+  message.parts = [{ type: 'text', text: 'The orbit first.\n\n![Orbit](.boite/views/orbit.html)' }];
+  mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false, views: [view] } });
+  flushSync();
+  const order = () => Array.from(document.querySelectorAll('[data-testid=text-run], [data-testid=inline-view], [data-testid=chat-file]')).map(node => node.getAttribute('data-testid') === 'text-run' ? 'text' : 'page');
+  // The line being written is not shown as a raw link: the page takes its place once the line is complete.
+  expect(document.querySelector('[data-testid=paragraph-pending]')).toBeNull();
+  expect(order()).toEqual(['text']);
+  const first = document.querySelector('[data-testid=paragraph]');
+  if (message.parts[0]?.type !== 'text') throw new Error('missing text');
+  message.parts[0].text += '\n\nThen the bars.';
+  flushSync();
+  expect(order()).toEqual(['text', 'page', 'text']);
+  expect(document.querySelector('[data-testid=paragraph]')).toBe(first);
+  expect(document.querySelector('[data-testid=paragraph-pending]')?.textContent).toBe('Then the bars.');
+  expect(document.querySelector('[data-testid=text-part]')!.textContent).not.toContain('orbit.html');
+  // A line naming no page of the turn stays text where it is.
+  message.parts[0].text += '\n\n![Gone](gone.html)\n\nThe end.';
+  message.state = 'complete';
+  flushSync();
+  expect(order()).toEqual(['text', 'page', 'text']);
+  expect(document.querySelector('[data-testid=text-part]')!.textContent).toContain('GoneThe end.');
 });
 
 test('reasoning folds with the calls into one line and empty reasoning under a second is not drawn', async () => {
-  const client = new FakeClient({ delayMs: 0 });
-  const store = new Store(); store.attach(client);
-  try {
-    await store.connect(); await store.open('t-trace');
-    const message = store.openThread!.messages.at(-1)!;
-    message.state = 'streaming';
-    message.parts = [{ type: 'thinking', text: '' }];
-    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false } });
-    flushSync();
-    expect(document.querySelector('[data-testid=thinking-part]')).not.toBeNull();
-    message.parts.push({ type: 'tool', toolId: 'read', name: 'Read', input: {}, output: null, status: 'running' });
-    flushSync();
-    expect(document.querySelector('[data-testid=thinking-part]')).toBeNull();
-    expect(document.querySelector('[data-kind=thinking]')).toBeNull();
-    message.parts[0] = { type: 'thinking', text: '', startedAt: 1000, finishedAt: 1400 };
-    flushSync();
-    expect(document.querySelector('[data-testid=thinking-part]')).toBeNull();
-    expect(document.querySelector('[data-testid=tool-group]')).toBeNull();
-    message.parts[0] = { type: 'thinking', text: '', startedAt: 1000, finishedAt: 4500 };
-    message.parts[1] = { type: 'tool', toolId: 'read', name: 'Read', input: {}, output: '', status: 'done', startedAt: 4600, finishedAt: 9000 };
-    message.state = 'complete';
-    flushSync();
-    expect(document.querySelectorAll('.parts > .part')).toHaveLength(1);
-    expect(document.querySelector('[data-testid=tool-group-elapsed]')?.textContent).toBe('8s');
-    expect(document.querySelector('[data-testid=thinking-part]')).toBeNull();
-    document.querySelector<HTMLButtonElement>('[data-testid=tool-group-toggle]')!.click();
-    flushSync();
-    expect(document.querySelector('[data-testid=thinking-elapsed]')?.textContent).toBe('3s');
-    expect(document.querySelector('[data-testid=thinking-toggle] .caret')).toBeNull();
-  } finally { store.detach(); client.close(); }
+  const { store } = await openTrace();
+  const message = store.openThread!.messages.at(-1)!;
+  message.state = 'streaming';
+  message.parts = [{ type: 'thinking', text: '' }];
+  show(store, message);
+  expect(document.querySelector('[data-testid=thinking-part]')).not.toBeNull();
+  message.parts.push({ type: 'tool', toolId: 'read', name: 'Read', input: {}, output: null, status: 'running' });
+  flushSync();
+  expect(document.querySelector('[data-testid=thinking-part]')).toBeNull();
+  expect(document.querySelector('[data-kind=thinking]')).toBeNull();
+  message.parts[0] = { type: 'thinking', text: '', startedAt: 1000, finishedAt: 1400 };
+  flushSync();
+  expect(document.querySelector('[data-testid=thinking-part]')).toBeNull();
+  expect(document.querySelector('[data-testid=tool-group]')).toBeNull();
+  message.parts[0] = { type: 'thinking', text: '', startedAt: 1000, finishedAt: 4500 };
+  message.parts[1] = { type: 'tool', toolId: 'read', name: 'Read', input: {}, output: '', status: 'done', startedAt: 4600, finishedAt: 9000 };
+  message.state = 'complete';
+  flushSync();
+  expect(document.querySelectorAll('.parts > .part')).toHaveLength(1);
+  expect(document.querySelector('[data-testid=tool-group-elapsed]')?.textContent).toBe('8s');
+  expect(document.querySelector('[data-testid=thinking-part]')).toBeNull();
+  document.querySelector<HTMLButtonElement>('[data-testid=tool-group-toggle]')!.click();
+  flushSync();
+  expect(document.querySelector('[data-testid=thinking-elapsed]')?.textContent).toBe('3s');
+  expect(document.querySelector('[data-testid=thinking-toggle] .caret')).toBeNull();
 });
 
 test('a running tool in an earlier message suppresses typing on the latest text', async () => {
-  const client = new FakeClient({ delayMs: 0 });
-  const store = new Store(); store.attach(client);
-  try {
-    await store.connect(); await store.open('t-trace');
-    const thread = store.openThread!;
-    const previous = thread.messages.at(-1)!;
-    previous.parts = [{ type: 'tool', toolId: 'read', name: 'Read', input: {}, output: null, status: 'running' }];
-    thread.status = 'running';
-    thread.messages.push({ ...previous, id: 'latest-text', state: 'streaming', parts: [{ type: 'text', text: 'Checking the result' }] });
-    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: thread.id,
-      message: thread.messages.at(-1)!, signedOut: null, showModel: false, latestInTurn: true } });
-    flushSync();
-    expect(document.querySelector('[data-testid=paragraph-pending]')?.textContent).toBe('Checking the result');
-    expect(document.querySelector('[data-testid=typing-indicator]')).toBeNull();
-    if (previous.parts[0]?.type !== 'tool') throw new Error('missing tool');
-    previous.parts[0].status = 'done';
-    flushSync();
-    expect(document.querySelector('[data-testid=typing-indicator]')).not.toBeNull();
-  } finally { store.detach(); client.close(); }
+  const { store } = await openTrace();
+  const thread = store.openThread!;
+  const previous = thread.messages.at(-1)!;
+  previous.parts = [{ type: 'tool', toolId: 'read', name: 'Read', input: {}, output: null, status: 'running' }];
+  thread.status = 'running';
+  thread.messages.push({ ...previous, id: 'latest-text', state: 'streaming', parts: [{ type: 'text', text: 'Checking the result' }] });
+  mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: thread.id,
+    message: thread.messages.at(-1)!, signedOut: null, showModel: false, latestInTurn: true } });
+  flushSync();
+  expect(document.querySelector('[data-testid=paragraph-pending]')?.textContent).toBe('Checking the result');
+  expect(document.querySelector('[data-testid=typing-indicator]')).toBeNull();
+  if (previous.parts[0]?.type !== 'tool') throw new Error('missing tool');
+  previous.parts[0].status = 'done';
+  flushSync();
+  expect(document.querySelector('[data-testid=typing-indicator]')).not.toBeNull();
 });
 
 test('hidden protocol text reserves no row and gains its row when visible text arrives', async () => {
-  const client = new FakeClient({ delayMs: 0 });
-  const store = new Store(); store.attach(client);
-  try {
-    await store.connect(); await store.open('t-trace');
-    const message = store.openThread!.messages.at(-1)!;
-    message.state = 'complete';
-    message.parts = [
-      { type: 'thinking', text: '', startedAt: 1000, finishedAt: 2000 },
-      { type: 'text', text: '[BOITE_GOAL_COMPLETE]' },
-      { type: 'tool', toolId: 'read', name: 'Read', input: {}, output: '', status: 'done' }
-    ];
-    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false } });
-    flushSync();
-    expect(document.querySelectorAll('.parts > .part')).toHaveLength(2);
-    expect(document.querySelector('[data-kind=text]')).toBeNull();
-    message.parts[1] = { type: 'text', text: 'Found the file.' };
-    flushSync();
-    expect(document.querySelectorAll('.parts > .part')).toHaveLength(3);
-    expect(document.querySelector('[data-kind=text]')?.textContent).toContain('Found the file.');
-  } finally { store.detach(); client.close(); }
+  const { store } = await openTrace();
+  const message = store.openThread!.messages.at(-1)!;
+  message.state = 'complete';
+  message.parts = [
+    { type: 'thinking', text: '', startedAt: 1000, finishedAt: 2000 },
+    { type: 'text', text: '[BOITE_GOAL_COMPLETE]' },
+    { type: 'tool', toolId: 'read', name: 'Read', input: {}, output: '', status: 'done' }
+  ];
+  show(store, message);
+  expect(document.querySelectorAll('.parts > .part')).toHaveLength(2);
+  expect(document.querySelector('[data-kind=text]')).toBeNull();
+  message.parts[1] = { type: 'text', text: 'Found the file.' };
+  flushSync();
+  expect(document.querySelectorAll('.parts > .part')).toHaveLength(3);
+  expect(document.querySelector('[data-kind=text]')?.textContent).toContain('Found the file.');
 });
 
 test('a thread link in reasoning or a tool document starts from the machine and thread of the message, not the page hash', async () => {
@@ -215,150 +208,115 @@ test('a thread link in reasoning or a tool document starts from the machine and 
 });
 
 test('a permission is one element with its call: the card stands for the call while it waits, a shield on its line once answered', async () => {
-  const client = new FakeClient({ delayMs: 0 });
-  const store = new Store(); store.attach(client);
-  try {
-    await store.connect(); await store.open('t-trace');
-    const message = store.openThread!.messages.at(-1)!;
-    message.state = 'streaming';
-    message.parts = [
-      { type: 'tool', toolId: 'ls', name: 'Bash', input: { command: 'ls -la' }, output: null, status: 'running', startedAt: 1000 },
-      { type: 'permission', requestId: 'req-ls', toolName: 'Bash', decision: null }
-    ];
-    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false } });
-    flushSync();
-    expect(document.querySelectorAll('.parts > .part')).toHaveLength(1);
-    expect(document.querySelector('[data-testid=permission-card]')?.getAttribute('data-decision')).toBe('pending');
-    expect(document.querySelector('[data-testid=tool-card]')).toBeNull();
+  const { store } = await openTrace();
+  const message = store.openThread!.messages.at(-1)!;
+  message.state = 'streaming';
+  message.parts = [
+    { type: 'tool', toolId: 'ls', name: 'Bash', input: { command: 'ls -la' }, output: null, status: 'running', startedAt: 1000 },
+    { type: 'permission', requestId: 'req-ls', toolName: 'Bash', decision: null }
+  ];
+  show(store, message);
+  expect(document.querySelectorAll('.parts > .part')).toHaveLength(1);
+  expect(document.querySelector('[data-testid=permission-card]')?.getAttribute('data-decision')).toBe('pending');
+  expect(document.querySelector('[data-testid=tool-card]')).toBeNull();
 
-    message.parts = [
-      { type: 'tool', toolId: 'ls', name: 'Bash', input: { command: 'ls -la' }, output: 'total 0', status: 'done', startedAt: 1000, finishedAt: 7000 },
-      { type: 'permission', requestId: 'req-ls', toolName: 'Bash', decision: 'allow' }
-    ];
-    flushSync();
-    expect(document.querySelectorAll('.parts > .part')).toHaveLength(1);
-    expect(document.querySelector('[data-testid=permission-card]')).toBeNull();
-    expect(document.querySelectorAll('[data-testid=tool-card]')).toHaveLength(1);
-    const shield = document.querySelector('[data-testid=tool-card] [data-testid=tool-permission]');
-    expect(shield?.getAttribute('data-decision')).toBe('allow');
-    expect(shield?.getAttribute('title')).toBe('Allowed by you');
-    // The verdict reads in words beside the shield, as the receipt line words it.
-    expect(shield?.textContent?.trim()).toBe('Allowed');
-  } finally { store.detach(); client.close(); }
+  message.parts = [
+    { type: 'tool', toolId: 'ls', name: 'Bash', input: { command: 'ls -la' }, output: 'total 0', status: 'done', startedAt: 1000, finishedAt: 7000 },
+    { type: 'permission', requestId: 'req-ls', toolName: 'Bash', decision: 'allow' }
+  ];
+  flushSync();
+  expect(document.querySelectorAll('.parts > .part')).toHaveLength(1);
+  expect(document.querySelector('[data-testid=permission-card]')).toBeNull();
+  expect(document.querySelectorAll('[data-testid=tool-card]')).toHaveLength(1);
+  const shield = document.querySelector('[data-testid=tool-card] [data-testid=tool-permission]');
+  expect(shield?.getAttribute('data-decision')).toBe('allow');
+  expect(shield?.getAttribute('title')).toBe('Allowed by you');
+  // The verdict reads in words beside the shield, as the receipt line words it.
+  expect(shield?.textContent?.trim()).toBe('Allowed');
 });
 
 test('a permission with no call of its name stays its own line inside the run', async () => {
-  const client = new FakeClient({ delayMs: 0 });
-  const store = new Store(); store.attach(client);
-  try {
-    await store.connect(); await store.open('t-trace');
-    const message = store.openThread!.messages.at(-1)!;
-    message.state = 'complete';
-    message.parts = [
-      { type: 'tool', toolId: 'read', name: 'Read', input: { file_path: 'a.ts' }, output: '', status: 'done' },
-      { type: 'permission', requestId: 'req-x', toolName: 'fake_tool', decision: 'deny' }
-    ];
-    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false } });
-    flushSync();
-    expect(document.querySelectorAll('.parts > .part')).toHaveLength(1);
-    document.querySelector<HTMLButtonElement>('[data-testid=tool-group-toggle]')!.click();
-    flushSync();
-    expect(document.querySelector('[data-testid=permission-card]')?.getAttribute('data-decision')).toBe('deny');
-    expect(document.querySelector('[data-testid=tool-permission]')).toBeNull();
-  } finally { store.detach(); client.close(); }
+  const { store } = await openTrace();
+  const message = store.openThread!.messages.at(-1)!;
+  message.state = 'complete';
+  message.parts = [
+    { type: 'tool', toolId: 'read', name: 'Read', input: { file_path: 'a.ts' }, output: '', status: 'done' },
+    { type: 'permission', requestId: 'req-x', toolName: 'fake_tool', decision: 'deny' }
+  ];
+  show(store, message);
+  expect(document.querySelectorAll('.parts > .part')).toHaveLength(1);
+  document.querySelector<HTMLButtonElement>('[data-testid=tool-group-toggle]')!.click();
+  flushSync();
+  expect(document.querySelector('[data-testid=permission-card]')?.getAttribute('data-decision')).toBe('deny');
+  expect(document.querySelector('[data-testid=tool-permission]')).toBeNull();
 });
 
 test('a compaction between calls rides on their line instead of taking a row', async () => {
-  const client = new FakeClient({ delayMs: 0 });
-  const store = new Store(); store.attach(client);
-  try {
-    await store.connect(); await store.open('t-trace');
-    const last = store.openThread!.messages.at(-1)!;
-    const call = (id: string) => ({ type: 'tool' as const, toolId: id, name: 'Bash', input: { command: `echo ${id}` }, output: 'ok', status: 'done' as const });
-    const message: Message = { ...last, id: 'm-mid-compaction', role: 'assistant', state: 'complete', parts: [call('a'), { type: 'compaction', trigger: 'auto', preTokens: 201_200, postTokens: 13_400 }, call('b'), { type: 'text', text: 'Done.' }] };
-    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false } });
-    flushSync();
-    expect(document.querySelector('[data-testid=compaction-part]')).toBeNull();
-    expect(document.querySelectorAll('[data-testid=tool-group]')).toHaveLength(1);
-    const mark = document.querySelector('[data-testid=tool-group-compaction]');
-    expect(mark?.textContent?.trim()).toBe('summarized 201.2K → 13.4K');
-    expect(mark?.getAttribute('title')).toBe('Older messages summarized to make room, 201.2K to 13.4K tokens');
-  } finally { store.detach(); client.close(); }
+  const { store } = await openTrace();
+  const last = store.openThread!.messages.at(-1)!;
+  const call = (id: string) => ({ type: 'tool' as const, toolId: id, name: 'Bash', input: { command: `echo ${id}` }, output: 'ok', status: 'done' as const });
+  const message: Message = { ...last, id: 'm-mid-compaction', role: 'assistant', state: 'complete', parts: [call('a'), { type: 'compaction', trigger: 'auto', preTokens: 201_200, postTokens: 13_400 }, call('b'), { type: 'text', text: 'Done.' }] };
+  show(store, message);
+  expect(document.querySelector('[data-testid=compaction-part]')).toBeNull();
+  expect(document.querySelectorAll('[data-testid=tool-group]')).toHaveLength(1);
+  const mark = document.querySelector('[data-testid=tool-group-compaction]');
+  expect(mark?.textContent?.trim()).toBe('summarized 201.2K → 13.4K');
+  expect(mark?.getAttribute('title')).toBe('Older messages summarized to make room, 201.2K to 13.4K tokens');
 });
 
 test('a short text between calls reads as narration, what follows the last call as the answer', async () => {
-  const client = new FakeClient({ delayMs: 0 });
-  const store = new Store(); store.attach(client);
-  try {
-    await store.connect(); await store.open('t-trace');
-    const last = store.openThread!.messages.at(-1)!;
-    const call = (id: string) => ({ type: 'tool' as const, toolId: id, name: 'Bash', input: { command: `echo ${id}` }, output: 'ok', status: 'done' as const });
-    const report = 'A long report the agent wrote before going on. '.repeat(10);
-    const message: Message = { ...last, id: 'm-narration', role: 'assistant', state: 'complete', parts: [{ type: 'text', text: 'Now the tests.' }, call('a'), { type: 'text', text: report }, call('b'), { type: 'text', text: 'Fixed.' }] };
-    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false } });
-    flushSync();
-    expect([...document.querySelectorAll('[data-testid=narration]')].map(node => node.textContent?.trim())).toEqual(['Now the tests.']);
-    // Only the user's messages are bubbles: the answers are free text in full ink.
-    expect(document.querySelector('.answer-bubble')).toBeNull();
-    expect([...document.querySelectorAll('[data-kind=text]:not([data-testid=narration])')].map(node => node.textContent?.trim().slice(0, 6))).toEqual(['A long', 'Fixed.']);
-  } finally { store.detach(); client.close(); }
+  const { store } = await openTrace();
+  const last = store.openThread!.messages.at(-1)!;
+  const call = (id: string) => ({ type: 'tool' as const, toolId: id, name: 'Bash', input: { command: `echo ${id}` }, output: 'ok', status: 'done' as const });
+  const report = 'A long report the agent wrote before going on. '.repeat(10);
+  const message: Message = { ...last, id: 'm-narration', role: 'assistant', state: 'complete', parts: [{ type: 'text', text: 'Now the tests.' }, call('a'), { type: 'text', text: report }, call('b'), { type: 'text', text: 'Fixed.' }] };
+  show(store, message);
+  expect([...document.querySelectorAll('[data-testid=narration]')].map(node => node.textContent?.trim())).toEqual(['Now the tests.']);
+  // Only the user's messages are bubbles: the answers are free text in full ink.
+  expect(document.querySelector('.answer-bubble')).toBeNull();
+  expect([...document.querySelectorAll('[data-kind=text]:not([data-testid=narration])')].map(node => node.textContent?.trim().slice(0, 6))).toEqual(['A long', 'Fixed.']);
 });
 
 test('a paragraph still being written shows its closed code spans as code, never raw backticks', async () => {
-  const client = new FakeClient({ delayMs: 0 });
-  const store = new Store(); store.attach(client);
-  try {
-    await store.connect(); await store.open('t-trace');
-    const message = store.openThread!.messages.at(-1)!;
-    message.state = 'streaming';
-    message.parts = [{ type: 'text', text: 'Reading `src/app.ts` then `lib' }];
-    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false } });
-    flushSync();
-    const pending = document.querySelector('[data-testid=paragraph-pending]')!;
-    expect(pending.querySelector('code')?.textContent).toBe('src/app.ts');
-    expect(pending.textContent).toBe('Reading src/app.ts then `lib');
-  } finally { store.detach(); client.close(); }
+  const { store } = await openTrace();
+  const message = store.openThread!.messages.at(-1)!;
+  message.state = 'streaming';
+  message.parts = [{ type: 'text', text: 'Reading `src/app.ts` then `lib' }];
+  show(store, message);
+  const pending = document.querySelector('[data-testid=paragraph-pending]')!;
+  expect(pending.querySelector('code')?.textContent).toBe('src/app.ts');
+  expect(pending.textContent).toBe('Reading src/app.ts then `lib');
 });
 
 test('a run that stopped on a failed command says the stop once: the exit code sits in the error card fold, not on the call', async () => {
-  const client = new FakeClient({ delayMs: 0 });
-  const store = new Store(); store.attach(client);
-  try {
-    await store.connect(); await store.open('t-trace');
-    const message = store.openThread!.messages.at(-1)!;
-    const turn = store.openThread!.turns.find((entry) => entry.id === message.turnId)!;
-    turn.status = 'error';
-    message.parts = [
-      { type: 'tool', toolId: 'ok', name: 'Bash', input: { command: 'ls' }, output: 'a', status: 'done', exitCode: 0 },
-      { type: 'tool', toolId: 'stop', name: 'Bash', input: { command: 'bun test' }, output: 'boom', status: 'error', exitCode: 2 },
-      { type: 'error', message: 'Stopped: the tests failed.' }
-    ];
-    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false } });
-    flushSync();
-    expect(document.querySelector('[data-testid=tool-exit-code]')).toBeNull();
-    expect(document.querySelector('[data-testid=tool-group-issues]')).toBeNull();
-    expect(document.querySelector('[data-testid=error-diagnostic]')?.textContent).toContain('Exit code 2\nboom');
-  } finally { store.detach(); client.close(); }
+  const { store } = await openTrace();
+  const message = store.openThread!.messages.at(-1)!;
+  const turn = store.openThread!.turns.find((entry) => entry.id === message.turnId)!;
+  turn.status = 'error';
+  message.parts = [
+    { type: 'tool', toolId: 'ok', name: 'Bash', input: { command: 'ls' }, output: 'a', status: 'done', exitCode: 0 },
+    { type: 'tool', toolId: 'stop', name: 'Bash', input: { command: 'bun test' }, output: 'boom', status: 'error', exitCode: 2 },
+    { type: 'error', message: 'Stopped: the tests failed.' }
+  ];
+  show(store, message);
+  expect(document.querySelector('[data-testid=tool-exit-code]')).toBeNull();
+  expect(document.querySelector('[data-testid=tool-group-issues]')).toBeNull();
+  expect(document.querySelector('[data-testid=error-diagnostic]')?.textContent).toContain('Exit code 2\nboom');
 });
 
 test('a running turn on a machine out of reach marks its words stale; back in reach they read as the answer again', async () => {
-  const client = new FakeClient({ delayMs: 0 });
-  const store = new Store(); store.attach(client);
-  try {
-    await store.connect(); await store.open('t-trace');
-    const message = store.openThread!.messages.at(-1)!;
-    const turn = store.openThread!.turns.find((entry) => entry.id === message.turnId)!;
-    turn.status = 'running';
-    message.parts = [{ type: 'text', text: 'Frames 1 to 1312 are done. About 40 minutes left.' }];
-    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false } });
-    flushSync();
-    const parts = () => document.querySelector<HTMLElement>('.parts')!;
-    expect(parts().dataset.stale).toBeUndefined();
-    store.connection = 'closed';
-    flushSync();
-    expect(parts().dataset.stale).toBe('true');
-    store.connection = 'ready';
-    flushSync();
-    expect(parts().dataset.stale).toBeUndefined();
-  } finally { store.detach(); client.close(); }
+  const { store } = await openTrace();
+  const message = store.openThread!.messages.at(-1)!;
+  const turn = store.openThread!.turns.find((entry) => entry.id === message.turnId)!;
+  turn.status = 'running';
+  message.parts = [{ type: 'text', text: 'Frames 1 to 1312 are done. About 40 minutes left.' }];
+  show(store, message);
+  const parts = () => document.querySelector<HTMLElement>('.parts')!;
+  expect(parts().dataset.stale).toBeUndefined();
+  store.connection = 'closed';
+  flushSync();
+  expect(parts().dataset.stale).toBe('true');
+  store.connection = 'ready';
+  flushSync();
+  expect(parts().dataset.stale).toBeUndefined();
 });
