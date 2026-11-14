@@ -53,6 +53,8 @@ export function eagerClosure(sources: Sources, entries: readonly string[]): Map<
       if (COSTLY_BUILTINS.has(specifier)) { reached.set(specifier, [...path, specifier]); continue; }
       const resolved = resolveImport(file, specifier, sources);
       if (resolved) visit(resolved, path);
+      // A package outside the sources is still evaluated on every call: it must be listed to pass.
+      else if (!/^(?:\.|\/|node:|bun:)/.test(specifier)) reached.set(specifier, [...path, specifier]);
     }
   };
   // A tree without the core has no CLI; a core without an entry renamed it, and the gate must follow.

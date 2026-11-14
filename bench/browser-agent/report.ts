@@ -130,7 +130,7 @@ export function replayMarkdown(report: ReplayReport, command: string): string {
     lines.push(`| ${t.task}: ${t.title} | ${t.successes}/${t.runs} | ${t.calls} | ${t.refRetries} | ${t.bytes} | ~${t.estimatedTokens} | ${t.callMsMedian} ms | ${t.callMsP95} ms | ${t.taskMsMedian} ms |`);
   }
   const s = report.totals;
-  lines.push(`| all 8, per repeat | ${s.successes}/${s.runs} | ${s.calls} | | ${s.bytes} | ~${s.estimatedTokens} | ${s.callMsMedian} ms | ${s.callMsP95} ms | |`);
+  lines.push(`| all ${report.tasks.length}, per repeat | ${s.successes}/${s.runs} | ${s.calls} | | ${s.bytes} | ~${s.estimatedTokens} | ${s.callMsMedian} ms | ${s.callMsP95} ms | |`);
   lines.push('', '## Per command', '', '| command | calls | median | p95 | median bytes |', '| --- | --- | --- | --- | --- |');
   for (const c of report.commands) lines.push(`| ${c.command} | ${c.calls} | ${c.msMedian} ms | ${c.msP95} ms | ${c.bytesMedian} |`);
   lines.push('', `The first \`open\` of each core, which starts the browser, is not counted: ${report.warmupMs.map((ms) => `${round(ms)} ms`).join(', ')}.`);

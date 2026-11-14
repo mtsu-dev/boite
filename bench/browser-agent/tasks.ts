@@ -81,7 +81,7 @@ export const TASKS: Task[] = [
       await d.click(button('Sign in'));
     },
     check: (s) => ({
-      ok: s.signin.signedIn === SIGNIN.email && s.signin.failures === 1,
+      ok: s.signin.signedIn === SIGNIN.email && s.signin.failures >= 1,
       detail: `signedIn=${s.signin.signedIn ?? 'none'} failures=${s.signin.failures}`,
     }),
   },

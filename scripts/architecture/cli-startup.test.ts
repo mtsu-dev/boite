@@ -33,3 +33,9 @@ test('a costly builtin imported eagerly fails, a light one does not', () => {
     expect.stringContaining('packages/core/src/cli.ts -> node:crypto: every boite call would evaluate node:crypto'),
   ]);
 });
+
+test('a package from outside the sources imported eagerly fails', () => {
+  expect(cliStartupViolations(tree("import { z } from 'zod'; import { join } from 'node:path';"))).toEqual([
+    expect.stringContaining('packages/core/src/cli.ts -> zod: every boite call would evaluate zod'),
+  ]);
+});

@@ -97,9 +97,11 @@ class CliAgent implements Driver {
     return { out: decoder.decode(outBytes), err: decoder.decode(errBytes), code };
   }
 
+  /** A retry reads the whole tree: a diff leaves out the unchanged line the missing ref may be on. */
   private async snapshot(retry = false): Promise<void> {
-    const { out, err, code } = await this.run(['snapshot', '-i'], retry);
-    if (code !== 0) throw new Error(`snapshot -i exited ${code}: ${(err || out).trim().slice(0, 200)}`);
+    const words = retry ? ['snapshot', '-i', '--full'] : ['snapshot', '-i'];
+    const { out, err, code } = await this.run(words, retry);
+    if (code !== 0) throw new Error(`${words.join(' ')} exited ${code}: ${(err || out).trim().slice(0, 200)}`);
     this.last = out;
   }
 
@@ -144,8 +146,8 @@ class CliAgent implements Driver {
     return this.act('select', target, value);
   }
   async read(): Promise<string> {
-    const { out, err, code } = await this.run(['snapshot'], false);
-    if (code !== 0) throw new Error(`snapshot exited ${code}: ${(err || out).trim().slice(0, 200)}`);
+    const { out, err, code } = await this.run(['snapshot', '--full'], false);
+    if (code !== 0) throw new Error(`snapshot --full exited ${code}: ${(err || out).trim().slice(0, 200)}`);
     return out;
   }
 }
