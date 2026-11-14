@@ -17,7 +17,7 @@ beforeAll(async () => {
 }, 90_000);
 afterAll(async () => { await page?.close(); await harness?.stop(); }, 30_000);
 
-for (const width of [1440, 390]) test(`a bot on a retired provider opens and its default model can be repaired at ${width}px`, async () => {
+for (const width of [1440, 390]) test(`a mochi on a retired provider opens and its default model can be repaired at ${width}px`, async () => {
   // A profile left by an older core: no thread yet and no remaining provider or account.
   const agent = harness.core.workforce.records.create('profile', {
     name: 'B.O.T.S', domain: '', instructions: '', avatar: '', status: 'paused', projectIds: [],

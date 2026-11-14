@@ -2146,7 +2146,7 @@ test('a phone shows the model, effort and permission chips in one row, the permi
   } finally { restore(); }
 });
 
-test("a bot's composer shows the same three chips as a thread, each reading its value and opening nothing", async ({ app: _app }) => {
+test("a mochi's composer shows the same three chips as a thread, each reading its value and opening nothing", async ({ app: _app }) => {
   const selection = { providerId: 'echo', accountId: 'a-echo', model: 'echo-1', effort: 'low', permissionMode: 'bypassPermissions' as const };
   const agent = await store.client!.call('agents.profile.save', { value: { name: 'Ada', domain: '', instructions: '', avatar: '', selection, status: 'active' } });
   const { threadId } = await store.client!.call('agents.open', { agentId: agent.id });

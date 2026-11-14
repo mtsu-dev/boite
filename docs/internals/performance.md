@@ -65,7 +65,7 @@ Streaming paragraph and drawing scans reuse completed lines and record append
 provenance locally, resetting for replacements. Windowed lists share one scroll
 listener and root geometry read per frame, while each list keeps measuring its
 own position. Workflow run updates reuse the conversation's template library,
-including a parent bot's library when a child uses a different project.
+including a parent mochi's library when a child uses a different project.
 Template writes invalidate the owning library across conversations, and
 reconnects revalidate it. A child's empty library revalidates on template
 writes until its owning project is known. Older cores' root-scoped
@@ -852,13 +852,13 @@ them in its cache. A link that asks to save data, or reads as 3G or slower,
 skips that prefetch and fetches each one when it opens (`lib/prefetch.ts`). The
 tour is prefetched only for a device that has not seen it.
 
-Settings, the Bots page with its first snapshot and,
+Settings, the Mochis page with its first snapshot and,
 for the owner, the terminal's xterm modules are fetched in the same idle pass.
-The Bots view lives as long as its machine's store: a return visit draws the
+The Mochis view lives as long as its machine's store: a return visit draws the
 last snapshot at once and refreshes it, and nothing follows `agents.changed`
 while the page is away. `bun run bench/agents-page.ts` measures a click on
-Bots until its first bot row, behind an emulated 40 ms, 4 Mbit/s
-link, on a temporary core with twelve bots. On 2026-10-11 in this Linux
+Mochis until its first mochi row, behind an emulated 40 ms, 4 Mbit/s
+link, on a temporary core with twelve mochis. On 2026-10-11 in this Linux
 container, medians of five against `origin/main` at `4762402b`: first visit
 164 ms before and 110 ms after, return visit 55 ms and 32 ms. The rest of a
 first visit is rendering.

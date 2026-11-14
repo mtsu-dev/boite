@@ -48,7 +48,7 @@ Without it, each agent keeps its own behaviour.
   waits on background work wait until 85% of it, and at least 64,000 tokens.
   Before the prompt cache expires does not depend on the limit.
 - Compaction defaults by agent type keeps separate settings for
-  Conversations, Subagents and Bots. Each uses Common until you pick Customize
+  Conversations, Subagents and Mochis. Each uses Common until you pick Customize
   this type.
 - Claude summary instructions replaces the summary prompt of Claude.
   `/compact` followed by your own instructions wins over it.

@@ -96,7 +96,7 @@ export const strings = {
     compactionCommon: 'Common',
     compactionAgent: 'Conversations',
     compactionSubagent: 'Subagents',
-    compactionBot: 'Bots',
+    compactionBot: 'Mochis',
     compactionCustomize: 'Customize this type',
     compactionInherited: 'Uses the common settings.',
     compactionInheritanceHintRelease: 'Each type inherits the common settings until customized. Customizing copies all current compaction parameters. Background compaction needs a Nightly build. Turn this off to restore inheritance.',

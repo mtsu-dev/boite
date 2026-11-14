@@ -49,7 +49,7 @@ test('a delayed reminder never selects the second instance of a repeated local t
   for (const [schedule, expected] of schedules) expect(nextOccurrence(schedule, after)).toBe(Date.parse(expected));
 });
 
-test('the owner assigns calendar reminders and a bot saves them through its CLI', async () => {
+test('the owner assigns calendar reminders and a mochi saves them through its CLI', async () => {
   const h = await startTestCore();
   try {
     const owner = await h.connect();

@@ -39,7 +39,7 @@ type Pass = NonNullable<AgentStatus['memory']>;
 export const MEMORY_PASS_MAX_MS = 10 * 60_000;
 const ASKED_MAX = 6_000;
 const ANSWERED_MAX = 8_000;
-/** What one `boite bot remember` line may hold. */
+/** What one `boite mochi remember` line may hold. */
 export const NOTE_MAX = 1_000;
 /** What a pass aims under: room for the next exchanges before the file meets `AGENT_MEMORY_MAX`. */
 export const MEMORY_TARGET = Math.floor(AGENT_MEMORY_MAX * 0.75);
@@ -65,7 +65,7 @@ function cut(text: string, max: number, fromEnd = false): string {
 
 export function memoryPrompt(agent: Pick<AgentProfile, 'name'>, memory: string, asked: string, answered: string, today: string): string {
   return [
-    `You keep the long-term memory of ${agent.name}, a bot (a persistent agent) who works for the user. ${agent.name} stays on for weeks and months, across many conversations. You are not ${agent.name} and you do not continue its work: you only maintain its MEMORY.md, the notes it reads at the start of every conversation.`,
+    `You keep the long-term memory of ${agent.name}, a mochi (a persistent agent) who works for the user. ${agent.name} stays on for weeks and months, across many conversations. You are not ${agent.name} and you do not continue its work: you only maintain its MEMORY.md, the notes it reads at the start of every conversation.`,
     `MEMORY.md is ${agent.name}'s map: it says where things are so ${agent.name} can find them again, rather than holding them. Rewrite it from the exchange below:
 - where things are: the projects, folders, files, documents, URLs, threads and accounts the work uses or produced, each with its path, address or id, a few words on what it holds and where it stands;
 - durable facts: who the user is, their preferences and corrections, the people they named, decisions taken, promises and follow-ups still open, each with the date it was learned (YYYY-MM-DD);
@@ -302,7 +302,7 @@ export class MemoryKeeper {
   }
 
   /**
-   * `boite bot remember`: a dated line at the end of MEMORY.md. Refused
+   * `boite mochi remember`: a dated line at the end of MEMORY.md. Refused
    * once the file would pass `AGENT_MEMORY_MAX`, so nothing is written that a
    * turn would not read.
    */

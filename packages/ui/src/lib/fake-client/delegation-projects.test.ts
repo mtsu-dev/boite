@@ -2,7 +2,7 @@ import { expect, vi } from 'vitest';
 import { test } from '../../test/fake-client';
 import { archivedThreads } from '../archive';
 
-test('fake bot delegation runs in its sole entrusted project and accepts an explicit project among several', async ({ createClient }) => {
+test('fake mochi delegation runs in its sole entrusted project and accepts an explicit project among several', async ({ createClient }) => {
   const client = await createClient({ delayMs: 0 });
   let bot = await client.call('agents.profile.save', { value: {
     name: 'Scout', domain: '', instructions: '', avatar: '', status: 'active', projectIds: ['p-boite'],
@@ -27,7 +27,7 @@ test('fake bot delegation runs in its sole entrusted project and accepts an expl
   await expect(spawn('withdrawn', 'notes')).rejects.toThrow('entrusted');
 });
 
-test('a bot project worker remains in Done and project counts after its bot is archived', async ({ ready }) => {
+test('a mochi project worker remains in Done and project counts after its mochi is archived', async ({ ready }) => {
   const { client, store } = await ready({ delayMs: 0 });
   const bot = await client.call('agents.profile.save', { value: {
     name: 'Scout', domain: '', instructions: '', avatar: '', status: 'active', projectIds: ['p-boite'],

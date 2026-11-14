@@ -12,7 +12,7 @@ afterEach(async () => {
   for (const core of cores.splice(0)) await core.stop();
 });
 
-test('the answer of the Contacts bot move is lost: the handoff waits, the next sweep finishes the same move, and one bot is left', async () => {
+test('the answer of the Contacts mochi move is lost: the handoff waits, the next sweep finishes the same move, and one mochi is left', async () => {
   const a = await startTestCore(), x = await startTestCore();
   cores.push(a, x);
   const aClient = await a.connect();

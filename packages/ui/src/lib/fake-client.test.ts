@@ -1795,7 +1795,7 @@ test('a fake Release core refuses, hides and keeps the experimental settings as 
   expect((await client.call('contacts.get', {})).contacts.length).toBeGreaterThan(0);
 });
 
-test('a fake Release core accepts, activates, creates and relaunches nothing in a shared project or from the Contacts bot, and still declines, disables and removes', async ({ createClient }) => {
+test('a fake Release core accepts, activates, creates and relaunches nothing in a shared project or from the Contacts mochi, and still declines, disables and removes', async ({ createClient }) => {
   const client = await createClient({ delayMs: 0, version: '2.0.0' });
   const gate = 'experiment.contacts runs in Nightly and Dev builds only, and this machine runs a Release (2.0.0)';
   const scope = { threadId: 't-trace', sharedProjectId: 'shared-none' };

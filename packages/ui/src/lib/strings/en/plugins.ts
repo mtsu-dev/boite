@@ -3,9 +3,9 @@ export const strings = {
     heading: 'Plugins',
     /** The machine whose plugins the page shows. */
     machine: 'Machine',
-    /** A desktop app asked to show a thread or a bot on a machine this window does not have. */
-    revealUnknownMachine: 'The thread or bot an app asked to show is on a machine this window is not connected to. Add it in Settings, Devices, Machines.',
-    revealMachineOffline: 'The thread or bot an app asked to show is on {machine}, which is not connected right now.',
+    /** A desktop app asked to show a thread or a mochi on a machine this window does not have. */
+    revealUnknownMachine: 'The thread or mochi an app asked to show is on a machine this window is not connected to. Add it in Settings, Devices, Machines.',
+    revealMachineOffline: 'The thread or mochi an app asked to show is on {machine}, which is not connected right now.',
     intro: 'Plugins add agent commands, skills, slash commands, desktop apps and gateways. The switch on a card turns one off without uninstalling it; the gear holds its settings and details. A program a plugin downloads is checked against the SHA-256 its manifest publishes.',
     installedHeading: 'Installed',
     recommendedHeading: 'Recommended',
@@ -77,14 +77,14 @@ export const strings = {
       'projects.write': { title: 'Manage your projects', line: 'Add, rename or archive a project.' },
       'todos.read': { title: 'Read your boards', line: 'The cards of every project board.' },
       'todos.write': { title: 'Change your boards', line: 'Add, edit, move and remove cards.' },
-      'agents.read': { title: 'See your agents', line: 'Bots, delegated work, workflows and teams.' },
-      'agents.write': { title: 'Direct your agents', line: 'Wake a bot, write to a child or a team, stop their work.' },
+      'agents.read': { title: 'See your agents', line: 'Mochis, delegated work, workflows and teams.' },
+      'agents.write': { title: 'Direct your agents', line: 'Wake a mochi, write to a child or a team, stop their work.' },
       'files.read': { title: 'Read your files', line: 'Any file of your projects, their changes and this machine\'s folders.' },
       'questions.write': { title: 'Answer for you', line: 'Approves the tools and answers the questions agents ask you.' },
       'screens.read': { title: 'See your screens', line: 'What an agent\'s browser, an emulator or a window shows.' },
       'screens.write': { title: 'Use your screens', line: 'Taps, types and opens there.' },
       'status.read': { title: 'Read this machine\'s state', line: 'Load, usage, quotas, agents and settings.' },
-      'ui.reveal': { title: 'Show a thread', line: 'Brings a thread or a bot to the front in the app.' },
+      'ui.reveal': { title: 'Show a thread', line: 'Brings a thread or a mochi to the front in the app.' },
       ui: { title: 'Change Boite\'s interface', line: 'Its code runs in the app: it can do anything you do.' },
     },
     /** The dialog that asks the owner what a plugin may reach, before an install or an update, and later from its row. */

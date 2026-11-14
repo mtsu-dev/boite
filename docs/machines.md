@@ -89,9 +89,9 @@ this device's key, which offers Add again.
 | Setting | Where | What it does |
 | --- | --- | --- |
 | Settings | Group card | Every other machine follows this one's settings. A setting changed on a follower stays there with a star; click the star to follow again. |
-| Bots | Group card | Hosts new bots and the Contacts bot. |
+| Mochis | Group card | Hosts new mochis and the Contacts mochi. |
 | Threads from the other machines | A machine's row | Agents on other machines may start threads in this machine's projects and add its folders. Off by default. |
-| Bots from the other machines | A machine's row | A bot of another machine may look after this machine's projects entrusted to it. Off by default. |
+| Mochis from the other machines | A machine's row | A mochi of another machine may look after this machine's projects entrusted to it. Off by default. |
 
 The settings copy runs from a window connected to both machines, while it is
 open. It covers conversation options such as short answers and automatic

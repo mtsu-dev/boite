@@ -8,7 +8,7 @@ function machine(self: string, group: { settingsHome?: string; botsHome?: string
   return { owner: true, connection: connected ? 'ready' : 'closed', client: { call: vi.fn(async (method: string) => call(method)) }, group: { id: 'grp', self, cores, ...group } } as unknown as Store;
 }
 
-test('the Operator goes to the Bots machine and only there, else the Settings machine, else this window', () => {
+test('the Operator goes to the Mochis machine and only there, else the Settings machine, else this window', () => {
   const roles = { settingsHome: 'core-b', botsHome: 'core-c' };
   const [a, b, c] = [machine('core-a', roles), machine('core-b', roles), machine('core-c', roles)];
   expect(operatorHost(a, [b, c])).toBe(c);
@@ -28,7 +28,7 @@ test('the Operator goes to the Bots machine and only there, else the Settings ma
   expect(botsHostAway(here, [])).toBeNull();
 });
 
-test('turning Contacts on while the Bots machine is offline makes no Operator anywhere', async () => {
+test('turning Contacts on while the Mochis machine is offline makes no Operator anywhere', async () => {
   const roles = { settingsHome: 'core-b', botsHome: 'core-c' };
   const none = (method: string) => method === 'contacts.get' ? { bot: null } : {};
   const [a, b] = [machine('core-a', roles, true, none), machine('core-b', roles, true, none)];

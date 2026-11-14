@@ -25,7 +25,7 @@ export interface AgentRuntimeConfig {
   autoMemory?: boolean;
   /**
    * Every project and desk fact wakes this bot. Default false: then only facts
-   * about threads it started, was entrusted or watches (`boite bot watch`), and
+   * about threads it started, was entrusted or watches (`boite mochi watch`), and
    * outside events (`agents.event`), wake it; the rest wait for its next routine.
    */
   eventWakes?: boolean;
@@ -296,7 +296,7 @@ export interface AgentsRpcMethods {
   /** The bytes of an imported picture as a `data:` URL, for the client that draws it. */
   'agents.picture.get': { params: { avatar: string }; result: { dataUrl: string } };
   /**
-   * A thread dresses a bot at once, with no card (`boite settings bot picture`):
+   * A thread dresses a bot at once, with no card (`boite settings mochi picture`):
    * the bot whose conversation it is, or `agent` by id or name. `avatar` is
    * what `agents.settings.request` takes for the key `avatar`: an `img:` picture
    * this machine holds, a robot code, one or two characters, or "" for the
@@ -304,7 +304,7 @@ export interface AgentsRpcMethods {
    */
   'agents.avatar.set': { params: { threadId: string; agent?: string; avatar: string }; result: AgentProfile };
   /**
-   * A thread creates a bot the user asked for (`boite settings bot create`),
+   * A thread creates a bot the user asked for (`boite settings mochi create`),
    * as `agents.profile.save` creates one from the Bots page, with full access.
    * The model resolves as for `boite delegate`; omitted, the bot runs on the
    * calling thread's own route. Refused for a name a bot already holds, an
@@ -367,7 +367,7 @@ export interface AgentsRpcMethods {
   'agents.runtime.get': { params: { agentId: string }; result: AgentRuntimeConfig };
   'agents.runtime.configure': { params: { agentId: string; expectedRevision: number; config: AgentRuntimeConfig }; result: AgentProfile };
   'agents.accounts.set': { params: { grants: AgentAccountGrant[] }; result: AgentAccountGrant[] };
-  /** `threadId`: an agent reads its own brain from its thread (`boite bot memory`). */
+  /** `threadId`: an agent reads its own brain from its thread (`boite mochi memory`). */
   'agents.brain.get': { params: { agentId: string; threadId?: string }; result: AgentBrain };
   'agents.brain.save': { params: { agentId: string; expectedRevision: string; instructions: string; memory: string }; result: AgentBrain };
   /**
@@ -376,7 +376,7 @@ export interface AgentsRpcMethods {
    * holds files refuses the whole change before anything moves. Owner only.
    */
   'agents.brain.root': { params: { path: string | null }; result: AgentBrainRoot };
-  /** Adds a line to the agent's MEMORY.md, from its own thread (`boite bot remember`) or the owner. */
+  /** Adds a line to the agent's MEMORY.md, from its own thread (`boite mochi remember`) or the owner. */
   'agents.memory.note': { params: { threadId?: string; agentId?: string; text: string }; result: AgentBrain };
   'agents.routine.save': { params: AgentSave<AgentRoutine> & { threadId?: string }; result: AgentRoutine };
   'agents.routine.remove': { params: { routineId: string; threadId?: string }; result: { removed: true } };
@@ -401,7 +401,7 @@ export interface AgentsRpcMethods {
   'agents.entrust': { params: { threadId: string; agentId: string | null; objective?: string }; result: AgentEntrustment | null };
   /**
    * An agent's settings a card may propose a change to, with their values and
-   * choices (`boite settings bot`). Any thread reads them; a persistent
+   * choices (`boite settings mochi`). Any thread reads them; a persistent
    * agent's thread reads its own without naming it.
    */
   'agents.settings.read': { params: AgentSettingsReadParams; result: AgentSettingsReading };

@@ -206,7 +206,7 @@ function agentName(raw: unknown, ctx: AgentSettingContext): Checked<string> {
   const name = typeof raw === 'string' ? raw.trim() : '';
   if (name.length === 0 || name.length > AGENT_NAME_MAX) return { ok: false, message: `name: expected text of 1 to ${AGENT_NAME_MAX} characters` };
   const taken = ctx.bots.find(bot => bot.id !== ctx.profile.id && bot.name.trim().toLowerCase() === name.toLowerCase());
-  return taken === undefined ? { ok: true, value: name } : { ok: false, message: `name: another bot is named ${JSON.stringify(taken.name)} (${taken.id})` };
+  return taken === undefined ? { ok: true, value: name } : { ok: false, message: `name: another mochi is named ${JSON.stringify(taken.name)} (${taken.id})` };
 }
 
 function agentText(raw: unknown, key: 'domain' | 'instructions', max: number): Checked<string> {
@@ -219,7 +219,7 @@ function agentAvatar(raw: unknown, ctx: AgentSettingContext): Checked<string> {
   const value = typeof raw === 'string' ? raw.trim() : undefined;
   // A picture the bot wears already stays held: an unchanged avatar never fails on it.
   if (value !== undefined && AGENT_PICTURE_CODE.test(value) && value !== ctx.profile.avatar.trim() && !ctx.picture(value)) {
-    return { ok: false, message: `avatar: ${value} is no picture this machine holds; import the image first (boite settings bot picture <file>)` };
+    return { ok: false, message: `avatar: ${value} is no picture this machine holds; import the image first (boite settings mochi picture <file>)` };
   }
   const short = value !== undefined && value.length <= AGENT_AVATAR_MAX && [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(value)].length <= 2;
   return value !== undefined && (short || ROBOT_CODE.test(value) || AGENT_PICTURE_CODE.test(value)) ? { ok: true, value } : { ok: false, message: 'avatar: expected one or two characters (an emoji, letters), a robot code such as bot:d.1.2.3.4.1.1.0, an imported picture (img:<16 hex digits>), or "" for the robot its id draws' };
@@ -255,9 +255,9 @@ export function normalizeAgentSetting(key: AgentSettingKey, raw: unknown, ctx: A
  */
 export function builtinSettingRefusal(profile: Pick<AgentProfile, 'builtin'>, key: AgentSettingKey, value: unknown): string | null {
   if (profile.builtin === undefined) return null;
-  if (key === 'domain') return 'domain: a built-in bot\'s domain is Boite\'s; reset it instead';
-  if (key === 'instructions') return 'instructions: a built-in bot\'s instructions are Boite\'s; reset it instead';
-  if (key === 'status' && value === 'archived') return 'status: a built-in bot is never archived; pause or reset it';
+  if (key === 'domain') return 'domain: a built-in mochi\'s domain is Boite\'s; reset it instead';
+  if (key === 'instructions') return 'instructions: a built-in mochi\'s instructions are Boite\'s; reset it instead';
+  if (key === 'status' && value === 'archived') return 'status: a built-in mochi is never archived; pause or reset it';
   return null;
 }
 

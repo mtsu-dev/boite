@@ -78,10 +78,10 @@ describe('manifest schema 2', () => {
     const keys = [...table.slice(0, table.indexOf('\n  };\n')).matchAll(/^ {4}'?([a-z][a-z-]*)'?: /gm)].map((match) => match[1]);
     const control = [...readFileSync(join(import.meta.dir, '../src/control-cli.ts'), 'utf8').matchAll(/^ {4}case '([a-z-]+)':/gm)].map((match) => match[1]);
     expect(keys.length).toBeGreaterThan(20);
-    expect([...BUILTIN_COMMANDS].sort()).toEqual([...new Set([...keys, ...control, 'help', 'mcp', 'agent', 'agents'])].sort() as string[]);
+    expect([...BUILTIN_COMMANDS].sort()).toEqual([...new Set([...keys, ...control, 'help', 'mcp', 'mochi', 'agent', 'agents'])].sort() as string[]);
     // A built-in missing from the list would be offered to plugins and never reached; the reverse would refuse a free name.
     for (const word of BUILTIN_COMMANDS) {
-      if (word === 'help' || word === 'agent' || word === 'agents') continue;
+      if (word === 'help' || word === 'mochi' || word === 'agent' || word === 'agents') continue;
       expect(parse([word]).positional[0]).toBe(word);
     }
     expect(USAGE).toContain('plugin dev <folder>');

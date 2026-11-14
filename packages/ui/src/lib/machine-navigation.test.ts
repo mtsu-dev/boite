@@ -375,7 +375,7 @@ test('a local palette target exits settings without reloading the previous chat'
   expect(gets[0]![1]).toMatchObject({ threadId: 't-descriptors' });
 });
 
-test('a bot on another machine opens straight on its Agents page, never through that machine\'s chat', async () => {
+test('a mochi on another machine opens straight on its Agents page, never through that machine\'s chat', async () => {
   const { a, b, cb } = await setup();
   await b.open('t-trace');
   const call = cb.call.bind(cb);
@@ -396,7 +396,7 @@ test('a bot on another machine opens straight on its Agents page, never through 
   expect(asked).not.toContain('threads.get');
 });
 
-test('back on a machine whose bot was open, its conversation listens again', async () => {
+test('back on a machine whose mochi was open, its conversation listens again', async () => {
   const { a, b } = await setup();
   const cb = new FakeClient({ delayMs: 0, coreId: 'c'.repeat(64), agentsDemo: true });
   b.attach(cb);

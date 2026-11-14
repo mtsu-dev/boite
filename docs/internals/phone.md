@@ -10,7 +10,7 @@ the phone itself in Termux.
 
 ## Settings on a phone
 
-The bottom bar opens Threads, Activity and Bots.
+The bottom bar opens Threads, Activity and Mochis.
 Settings is a page, not a tab: the gear at the end of every list's header
 opens it, and its header's Back (or the system's back gesture) returns to the
 list it came from. With several machines, or while the link is down, the gear
@@ -49,7 +49,7 @@ At phone widths, Settings lists the same pages as the desktop
 (`SETTINGS_PAGES`), those the phone may open.
 Each opens as a screen of its own; the back button or browser Back returns to
 the list. The phone's experiments follow the computer's desktop app until the
-phone flips one of its own: Bots on the computer brings the phone's Bots tab
+phone flips one of its own: Mochis on the computer brings the phone's Mochis tab
 with it ([experiments](experiments.md)).
 
 A phone that reaches no machine shows **Scan the code** and **Paste the link**
@@ -363,8 +363,8 @@ link scanned or pasted in the app asks nothing either: the owner just showed it.
 
 The browser uses mobile navigation at 720 px and below. A bar along the bottom edge
 (`MobileTabs.svelte`) holds the places: Conversations, Activity, a filled +
-that starts a thread, Bots and Contacts when they are on, and Settings.
-Activity's tab counts the conversations waiting for you; Bots counts the bots
+that starts a thread, Mochis and Contacts when they are on, and Settings.
+Activity's tab counts the conversations waiting for you; Mochis counts the mochis
 at work on every machine, as the desktop's switch does, in the waiting colour
 once one needs you. Conversations lists
 threads across connected machines; Activity puts waiting requests first,
@@ -373,11 +373,11 @@ unread, as a finish does; Mark all as read (`MarkAllRead.svelte`, desktop and
 phone) calls `threads.markRead` on each machine's core for every listed
 failure, stop and finish, and leaves questions and permissions. Each list's header shows the machine,
 which opens its connection settings, over the screen's name, and the project
-the + starts in, whose sheet also adds a project for owners. A conversation, a bot's
+the + starts in, whose sheet also adds a project for owners. A conversation, a mochi's
 page and an open keyboard hide the bar; the conversation's header shows its
 title over its project, and its machine once there are two.
 
-Each row in the list leads with who runs the thread, the bot's picture or the
+Each row in the list leads with who runs the thread, the mochi's picture or the
 provider's logo. A finger that slides a row left uncovers Pin and Archive
 (`lib/swipe-row.ts`); a vertical drag stays the list's scroll and one row is
 open at a time. A phone has no right-click, so the actions a desktop finds
@@ -439,7 +439,7 @@ the bottom navigation hides. Closing the keyboard restores the mode's height;
 a shorter viewport reported during an iPhone app launch does not leave a gap
 below the navigation.
 Safe-area insets keep controls clear of the home indicator and screen cutouts:
-the chat header, the full-screen right panel, and the Bots and Settings pages
+the chat header, the full-screen right panel, and the Mochis and Settings pages
 all start below the status bar of an installed app on a notched iPhone.
 
 Draft text stays with its conversation. Four recent timelines are retained in
@@ -652,14 +652,14 @@ operate only on the authenticated pairing. Subscription URLs and encryption
 keys are not placed in events or logs. The encryption library loads on demand.
 
 Finished turns, errors, permission requests and questions trigger notifications
-through the shared core event bus, and so does a bot's private post to the
+through the shared core event bus, and so does a mochi's private post to the
 owner in a team chat ([teams](teams.md)), as a Finished notification whose
-body is `<bot>: <text>`. Stopped turns do not, and neither do the
+body is `<mochi>: <text>`. Stopped turns do not, and neither do the
 turns under a thread that are not news of their own: a delegated agent's turns
 (its parent's next turn reports the result), a parent's turn that ends while
-its agents still work, a bot's quiet wake (a routine or event turn
+its agents still work, a mochi's quiet wake (a routine or event turn
 whose final text block opens with `[quiet]` or ends on a `[quiet]` line,
-[bots](bots.md#quiet-turns)) and a context compaction. Permission
+[mochis](mochis.md#quiet-turns)) and a context compaction. Permission
 requests and questions notify whichever thread asks. A desktop toast follows
 the same rule, from `notifiesOnFinish` in the contracts. A click opens the
 conversation, preserving an existing page and its drafts. With no page open,

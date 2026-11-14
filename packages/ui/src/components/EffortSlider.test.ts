@@ -203,7 +203,7 @@ test('the chip names what it sets then the level, with no step meter; a speed al
   expect(query('[data-testid=composer-effort]').textContent?.trim()).toBe('Standard speed');
 });
 
-test("a bot's effort chip names its level and opens nothing", () => {
+test("a mochi's effort chip names its level and opens nothing", () => {
   mounted = mount(EffortSlider, { target: document.body, props: { levels: LEVELS, active: 'high', onpick() {}, readonly: true, readonlyHint: "Set in Ada's settings" } });
   flushSync();
   const chip = query<HTMLElement>('[data-testid=composer-effort]');

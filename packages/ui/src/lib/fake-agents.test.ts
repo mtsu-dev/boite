@@ -50,7 +50,7 @@ test('changed instructions wake the agent once; a rename does not', async ({ rea
   expect(thread.turns.map(t => promptOf(thread.messages, t.id)?.displayText)).toEqual(['Just created', 'Instructions changed']);
 });
 
-test('an outside event wakes the bot in the fake as in the core, quoted as data under its key', async ({ ready }) => {
+test('an outside event wakes the mochi in the fake as in the core, quoted as data under its key', async ({ ready }) => {
   const { client } = await ready({ delayMs: 0 });
   const agent = await client.call('agents.profile.save', { value: { name: 'Scout', domain: '', instructions: '', avatar: '', selection, status: 'active' } });
   const { threadId } = await client.call('agents.open', { agentId: agent.id });
@@ -68,7 +68,7 @@ test('an outside event wakes the bot in the fake as in the core, quoted as data 
   expect(JSON.parse(/you: ("(?:[^"\\]|\\.)*")/.exec(text)![1]!)).toMatch(/^"done"\n\u0001+$/);
   expect(text).toMatch(/ of 15007 characters\)$/);
   await client.call('agents.profile.save', { value: { name: 'scout', domain: '', instructions: '', avatar: '', selection, status: 'active' } });
-  await expect(client.call('agents.event', { agent: 'Scout', text: 'x' })).rejects.toThrow('2 bots are named');
+  await expect(client.call('agents.event', { agent: 'Scout', text: 'x' })).rejects.toThrow('2 mochis are named');
 });
 
 test('a routine run is a routine turn on the agent\'s thread, and a quiet answer sets its outcome and leaves nothing unread', async ({ ready }) => {
@@ -125,7 +125,7 @@ test('the fake keeps MEMORY.md under its cap on remember too, as the core does',
   expect((await client.call('agents.brain.get', { agentId: agent.id })).memory).toHaveLength(AGENT_MEMORY_MAX - 10);
 });
 
-test('entrusting a thread keeps the other bots\' desks; archiving it ends the entrustment, as in the core', async ({ ready }) => {
+test('entrusting a thread keeps the other mochis\' desks; archiving it ends the entrustment, as in the core', async ({ ready }) => {
   const { client } = await ready({ delayMs: 0 });
   const save = (name: string) => client.call('agents.profile.save', { value: { name, domain: '', instructions: '', avatar: '', selection, status: 'active' } });
   const ada = await save('Ada'), bob = await save('Bob');
@@ -137,7 +137,7 @@ test('entrusting a thread keeps the other bots\' desks; archiving it ends the en
   expect((await client.call('agents.snapshot', {})).entrusted).toEqual([]);
 });
 
-test('taking a thread back takes the grant in the fake as in the core: the watch stays only where the bot reaches the thread another way', async ({ ready }) => {
+test('taking a thread back takes the grant in the fake as in the core: the watch stays only where the mochi reaches the thread another way', async ({ ready }) => {
   const { client } = await ready({ delayMs: 0 });
   const ada = await client.call('agents.profile.save', { value: { name: 'Ada', domain: '', instructions: '', avatar: '', selection, status: 'active' } });
   const desk = async () => (await client.call('agents.snapshot', {})).watches.find(w => w.agentId === ada.id && w.threadId === 't-trace')?.origin ?? null;
@@ -153,7 +153,7 @@ test('taking a thread back takes the grant in the fake as in the core: the watch
   expect(await desk()).toBe('followed');
 });
 
-test('in the fake as in the core, a watch the bot had before an entrustment survives its end, and an archive ends it like a take-back', async ({ ready }) => {
+test('in the fake as in the core, a watch the mochi had before an entrustment survives its end, and an archive ends it like a take-back', async ({ ready }) => {
   const { client } = await ready({ delayMs: 0 });
   const ada = await client.call('agents.profile.save', { value: { name: 'Ada', domain: '', instructions: '', avatar: '', selection, status: 'active' } });
   const desk = async () => (await client.call('agents.snapshot', {})).watches.find(w => w.agentId === ada.id && w.threadId === 't-trace')?.origin ?? null;

@@ -62,7 +62,7 @@ async function timeline(store: Store, questionId: string): Promise<void> {
   await vi.waitFor(() => expect(document.querySelector(`[data-testid=team-card][data-state=answered]`)).not.toBeNull());
 }
 
-test('a bot\'s team proposal offers Create the team, which creates it with the proposed bots and settles the card', async () => {
+test('a mochi\'s team proposal offers Create the team, which creates it with the proposed mochis and settles the card', async () => {
   const { client, store, huginn, jeux, ask, question } = await proposed();
   const { questionId } = await ask('Skollheim');
   const asked = await question(questionId);

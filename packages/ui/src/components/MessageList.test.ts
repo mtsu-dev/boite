@@ -495,7 +495,7 @@ test('a contact request sits where the thread asked, and a letter only sent to a
   thread.turns = [turn];
   thread.memoryEvents = [];
   thread.messages = [
-    { id: 'msg-before-ask', threadId: thread.id, turnId: turn.id, role: 'assistant', state: 'complete', createdAt: 10, parts: [{ type: 'text', text: 'Asking the Contacts bot' }] },
+    { id: 'msg-before-ask', threadId: thread.id, turnId: turn.id, role: 'assistant', state: 'complete', createdAt: 10, parts: [{ type: 'text', text: 'Asking the Contacts mochi' }] },
     { id: 'msg-after-ask', threadId: thread.id, turnId: turn.id, role: 'assistant', state: 'complete', createdAt: 40, parts: [{ type: 'text', text: 'Wrote to the thread it named' }] }
   ];
   const self = { coreId: 'core-local', threadId: thread.id };

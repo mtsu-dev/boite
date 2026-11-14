@@ -246,7 +246,7 @@ agent gets the continuation `boite delegate resume` sends, unless its owner
 paused the team; its parent still hears the interruption. A conversation of
 the user's own resumes like background work that ended without waking it
 ([auto-continue](restart-handoff.md#turns-that-stop-before-their-answer)). A
-turn paused for the update reads it in its resume note. A bot's
+turn paused for the update reads it in its resume note. A mochi's
 thread resumes like a conversation of the user's.
 
 ## Restarts
