@@ -3,8 +3,10 @@ import { resolveImport, type Sources } from './graph.ts';
 /**
  * Every `boite` call an agent makes is `boite-core cli`: main.ts, then cli.ts,
  * evaluate their static imports before the command runs, in the compiled core
- * and in the bundle the Windows runtime loads. A command's own module, the
- * client and the contracts barrel load inside the command (`await import`).
+ * and in the bundle the Windows runtime loads. The commands' modules, the
+ * client and the contracts barrel load inside the command, through one
+ * `await import` of cli-families.ts: one import per family split the core
+ * bundle into 33 more chunks, 15.7 KB of chunk headers (2026-11-14).
  * Measured on Linux on 2026-11-14 with Bun 1.4.4: importing the contracts
  * barrel, `node:crypto` or `node:zlib` each costs a fresh Bun process 6 to 8 ms
  * of CPU, and `boite cli help` evaluated 104 modules before it printed, 11 once

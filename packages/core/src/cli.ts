@@ -25,6 +25,9 @@ import { contextRequest, parse, requiredText, Usage, type Parsed } from './cli-a
 import { CONTROL_HELP, PLUGIN_COMMAND_TIMEOUT_MS, PLUGIN_HELP, isControlCommand, isPluginCommandWord, ownerWithoutThread } from './cli-commands.ts';
 import type { Caller } from './control-cli.ts';
 
+/** The command families, loaded when a command runs, never for `boite help`: one split boundary (cli-families.ts). */
+const families = () => import('./cli-families.ts');
+
 export interface CliIo {
   out(text: string): void;
   err(text: string): void;
@@ -388,7 +391,7 @@ function childOutput(result: { lines: string[]; value: unknown; output?: { stdou
 async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: string, print: Printer, caller: Caller): Promise<void | number> {
   const [command, ...rest] = parsed.positional;
   if (isControlCommand(parsed)) {
-    await (await import('./control-cli.ts')).controlCommand(client, caller, threadId, parsed, print);
+    await (await families()).controlCommand(client, caller, threadId, parsed, print);
     return;
   }
   const want = (index: number, what: string): string => {
@@ -434,28 +437,25 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
       print(result.map(pr => `${pr.state} #${pr.number} ${pr.title} (${pr.head} -> ${pr.base}) ${pr.url}${pr.error ? ` [${pr.error}]` : ''}`), result);
     },
     browser: async () => {
-      if (rest[0] === 'help') {
-        const { BROWSER_HELP } = await import('./browser-cli.ts');
-        print([BROWSER_HELP], { help: BROWSER_HELP });
-        return;
-      }
-      const result = rest[0] === 'run' ? await (await import('./browser-run.ts')).browserRun(rest.slice(1), io, client, threadId)
-        : rest[0] === 'recipe' ? await (await import('./browser-recipe.ts')).browserRecipe(rest.slice(1), io, client, threadId)
-        : await (await import('./browser-cli.ts')).browserCommand(rest, io, client, threadId);
+      const { BROWSER_HELP, browserCommand, browserRecipe, browserRun } = await families();
+      if (rest[0] === 'help') return print([BROWSER_HELP], { help: BROWSER_HELP });
+      const result = rest[0] === 'run' ? await browserRun(rest.slice(1), io, client, threadId)
+        : rest[0] === 'recipe' ? await browserRecipe(rest.slice(1), io, client, threadId)
+        : await browserCommand(rest, io, client, threadId);
       print(result.lines, result.value);
     },
     device: async () => {
-      const result = await (await import('./device-cli.ts')).deviceCommand(rest, io, client, threadId, parsed.timeout);
+      const result = await (await families()).deviceCommand(rest, io, client, threadId, parsed.timeout);
       print(result.lines, result.value);
     },
-    window: async () => childOutput(await (await import('./window-cli.ts')).windowCommand(rest, io, client, threadId), parsed.json, io, print),
+    window: async () => childOutput(await (await families()).windowCommand(rest, io, client, threadId), parsed.json, io, print),
     desktop: async () => childOutput(await (await import('./desktop-cli.ts')).desktopCommand(rest, io, client, threadId), parsed.json, io, print),
-    secret: async () => childOutput(await (await import('./secret-cli.ts')).secretCommand(rest, io, client, threadId), parsed.json, io, print),
-    team: async () => childOutput(await (await (await import('./teams-entry.ts')).teamCli()).teamCommand(rest, client, threadId, parsed.requestId), parsed.json, io, print),
+    secret: async () => childOutput(await (await families()).secretCommand(rest, io, client, threadId), parsed.json, io, print),
+    team: async () => childOutput(await (await (await families()).teamCli()).teamCommand(rest, client, threadId, parsed.requestId), parsed.json, io, print),
     // `boite --limit 5 logs` parsed them as globals: they come first, so the command's own flags still win.
     // A global `--level` yields to the command's own `--min-level`, which it would otherwise override.
-    logs: async () => (await import('./logs-cli.ts')).logsCommand([...(parsed.limit === undefined ? [] : ['--limit', String(parsed.limit)]), ...(parsed.level === undefined || rest.some(entry => entry === '--min-level' || entry.startsWith('--min-level=')) ? [] : ['--level', parsed.level]), ...rest], client, threadId, agentCaller, io.cwd, print),
-    issue: async () => (await import('./logs-cli.ts')).issueCommand(rest, client, threadId, agentCaller, io.cwd, print),
+    logs: async () => (await families()).logsCommand([...(parsed.limit === undefined ? [] : ['--limit', String(parsed.limit)]), ...(parsed.level === undefined || rest.some(entry => entry === '--min-level' || entry.startsWith('--min-level=')) ? [] : ['--level', parsed.level]), ...rest], client, threadId, agentCaller, io.cwd, print),
+    issue: async () => (await families()).issueCommand(rest, client, threadId, agentCaller, io.cwd, print),
     server: async () => {
       const action = rest[0] ?? 'check';
       if (!['check', 'update', 'cancel'].includes(action)) throw new Usage('server expects check, update or cancel');
@@ -474,7 +474,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
         print([`event: ${sent.key} for ${sent.agentId}`, 'It wakes the bot once its thread is free; a later event with the same key replaces it until then.'], sent);
         return;
       }
-      const result = await (await import('./agents/cli.ts')).botCommand(client, threadId, rest);
+      const result = await (await families()).botCommand(client, threadId, rest);
       print([JSON.stringify(result)], result);
     },
     attach: async () => {
@@ -482,7 +482,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
       print([`attached: ${rest[0]}`, `message: ${message.id}`], message);
     },
     delegate: async () => {
-      const { DELEGATE_ACTIONS, delegateCommand } = await import('./delegate-cli.ts');
+      const { DELEGATE_ACTIONS, delegateCommand } = await families();
       if (rest[0] === undefined) throw new Usage(`delegate needs ${DELEGATE_ACTIONS}`);
       await delegateCommand(client, threadId, rest, {
         ...(parsed.project === undefined ? {} : { project: parsed.project }),
@@ -496,7 +496,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
     },
     // `threads` alone or `threads list` lists (control-cli.ts); the rest talks to other threads.
     threads: async () => {
-      const { agentsCommand, AgentsUsage } = await import('./agents-cli.ts');
+      const { agentsCommand, AgentsUsage } = await families();
       try {
         await agentsCommand(client, threadId, rest, { ...(parsed.requestId === undefined ? {} : { requestId: parsed.requestId }), wait: parsed.wait, ...(parsed.timeout === undefined ? {} : { timeout: parsed.timeout }), ...(parsed.last === undefined ? {} : { last: parsed.last }), ...(parsed.before === undefined ? {} : { before: parsed.before }), ...(parsed.entry === undefined ? {} : { entry: parsed.entry }), ...(parsed.offset === undefined ? {} : { offset: parsed.offset }), ...(parsed.tool === undefined ? {} : { tool: parsed.tool }) }, print);
       } catch (error) {
@@ -504,8 +504,8 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
         throw error;
       }
     },
-    contacts: async () => { await (await import('./contacts/cli.ts')).contactsCommand(client, threadId, rest, { ...(parsed.project === undefined ? {} : { project: parsed.project }), ...(parsed.model === undefined ? {} : { model: parsed.model }), ...(parsed.effort === undefined ? {} : { effort: parsed.effort }), worktree: parsed.worktree }, print); },
-    workflow: async () => { await (await import('./workflow-cli.ts')).workflowCommand(client, threadId, rest, io, print, parsed.requestId); },
+    contacts: async () => { await (await families()).contactsCommand(client, threadId, rest, { ...(parsed.project === undefined ? {} : { project: parsed.project }), ...(parsed.model === undefined ? {} : { model: parsed.model }), ...(parsed.effort === undefined ? {} : { effort: parsed.effort }), worktree: parsed.worktree }, print); },
+    workflow: async () => { await (await families()).workflowCommand(client, threadId, rest, io, print, parsed.requestId); },
     where: async () => {
       const where = await client.call('agent.where', { threadId });
       print(
@@ -521,13 +521,13 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
         where,
       );
     },
-    projects: async () => { await (await import('./projects-cli.ts')).projectsCommand(client, caller, threadId, parsed, io.cwd, print); },
+    projects: async () => { await (await families()).projectsCommand(client, caller, threadId, parsed, io.cwd, print); },
     thread: async () => {
       const action = want(0, 'move or new');
       if (action === 'new' && caller === 'owner') {
         if (parsed.machine !== undefined) throw new Usage('thread new --machine is for an agent in a thread; from a terminal, reach that machine with --core');
         // From a terminal the brief is the user's own prompt, not an agent's.
-        await (await import('./control-cli.ts')).ownerThreadNew(client, parsed, rest, print, contextRequest(parsed, readRules));
+        await (await families()).ownerThreadNew(client, parsed, rest, print, contextRequest(parsed, readRules));
         return;
       }
       if (action === 'new') {
@@ -543,7 +543,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
         // A bot hears of it through events on its desk, not as a message, on this machine or another.
         const persistent = await client.call('agents.snapshot', { threadId }).then(snapshot => snapshot.profiles.length > 0, () => false);
         const machine = spawned.machine ?? parsed.machine;
-        print((await import('./control-cli.ts')).spawnedLines(spawned, machine, persistent), spawned);
+        print((await families()).spawnedLines(spawned, machine, persistent), spawned);
         return;
       }
       if (action !== 'move') throw new Usage(`thread: unknown action ${action}`);
@@ -575,17 +575,17 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
     },
     view: async () => {
       if (rest[0] === 'help' || rest[0] === undefined) {
-        const { VIEW_HELP } = await import('@boite/contracts');
+        const { VIEW_HELP } = await families();
         print([VIEW_HELP], { help: VIEW_HELP });
         return;
       }
       if (rest[0] === 'example') {
-        const { VIEW_EXAMPLE } = await import('./view-example.ts');
+        const { VIEW_EXAMPLE } = await families();
         print([VIEW_EXAMPLE], { example: VIEW_EXAMPLE });
         return;
       }
       if (rest[0] === 'check') {
-        const result = await (await import('./view-cli.ts')).viewCheckCommand(rest.slice(1), io.cwd, client, threadId);
+        const result = await (await families()).viewCheckCommand(rest.slice(1), io.cwd, client, threadId);
         print(result.lines, result.value);
         return result.code;
       }
@@ -621,7 +621,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
       } else throw new Usage(`open: unknown surface ${kind}`);
     },
     settings: async () => {
-      const { agentSettingArg, clipped, pictureDataUrl, settingsPlace, settingValue } = await import('./cli-settings.ts');
+      const { agentSettingArg, clipped, pictureDataUrl, settingsPlace, settingValue } = await families();
       const action = rest[0];
       if (action === 'request' || action === 'open') {
         if (parsed.why === undefined || parsed.why.trim().length === 0) throw new Usage(`settings ${action} needs --why <text>, the reason the user reads on the card`);
@@ -658,7 +658,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
             print([
               `asked: ${created.questionId}`,
               `card: the owner approves or declines the bot ${asked.name} (${asked.selection.providerId}/${asked.selection.model ?? 'default'}, full access${created.setting.projects.length === 0 ? '' : `, projects ${created.setting.projects.join(', ')}`})`,
-              (await import('@boite/contracts')).BOT_CARD_NOTE,
+              (await families()).BOT_CARD_NOTE,
               'Keep working. The outcome arrives as a message (approved, declined); without one, nothing was created.',
             ], created);
             return;
@@ -738,7 +738,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
       // An agent once ran `boite ask help` for this text and drew a card reading "help".
       if (rest.length === 1 && rest[0] === 'help') { print([USAGE], { help: USAGE }); return; }
       if (rest.length === 1 && rest[0] === 'list') {
-        await (await import('./control-cli.ts')).controlCommand(client, caller, threadId, { ...parsed, positional: ['questions', threadId] }, print);
+        await (await families()).controlCommand(client, caller, threadId, { ...parsed, positional: ['questions', threadId] }, print);
         return;
       }
       const text = want(0, 'a question');
@@ -790,7 +790,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
         print([todoRow(todo)], todo);
       } else throw new Usage(`todo: unknown action ${action}`);
     },
-    plugin: async () => (await import('./plugin-cli.ts')).pluginAction(client, io, threadId, rest, print),
+    plugin: async () => (await families()).pluginAction(client, io, threadId, rest, print),
     goal: async () => {
       const action = want(0, 'track');
       if (action !== 'track') throw new Usage(`goal: unknown action ${action}`);
@@ -800,7 +800,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
     },
   };
   const handler = command !== undefined && Object.hasOwn(commands, command) ? commands[command] : undefined;
-  if (handler === undefined && isPluginCommandWord(command)) return (await import('./plugin-cli.ts')).pluginCommand(client, io, threadId, command!, rest);
+  if (handler === undefined && isPluginCommandWord(command)) return (await families()).pluginCommand(client, io, threadId, command!, rest);
   if (handler === undefined) throw new Usage(`unknown command ${command}`);
   return handler();
 }
@@ -834,11 +834,11 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
     // An agent waiting for an answer holds its call up to five minutes; a secret card or command up to an hour.
     // A window capture may wait ten minutes for the owner's consent.
     const waits = parsed.positional[0] === 'threads' && (parsed.wait || parsed.positional[1] === 'wait');
-    const requestTimeoutMs = waits ? ((await import('./agents-cli.ts')).WAIT_MAX_S + 30) * 1000
+    const requestTimeoutMs = waits ? ((await families()).WAIT_MAX_S + 30) * 1000
       : isPluginCommandWord(parsed.positional[0]) ? PLUGIN_COMMAND_TIMEOUT_MS + 60_000
       : parsed.positional[0] === 'secret' ? 3_660_000
-      : parsed.positional[0] === 'window' ? (await import('./window-cli.ts')).WINDOW_REQUEST_TIMEOUT_MS : undefined;
-    const { connect } = await import('./client.ts');
+      : parsed.positional[0] === 'window' ? (await families()).WINDOW_REQUEST_TIMEOUT_MS : undefined;
+    const { connect } = await families();
     try {
       client = await connect(target.url, target.token, { client: { name: 'cli', version: CORE_VERSION }, ...(requestTimeoutMs === undefined ? {} : { requestTimeoutMs }) });
     } catch (error) {
