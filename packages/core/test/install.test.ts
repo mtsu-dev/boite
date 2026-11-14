@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { zipSync } from 'fflate';
 import { tarball } from './fixtures/tarball.ts';
 import type { HarnessUpdate, ProviderInstall, ProviderInstallState } from '@boite/contracts';
+import type { CoreClient } from '../src/client.ts';
 import { Core } from '../src/core.ts';
 import { newToken } from '../src/ids.ts';
 import { resolveLatestInstall } from '../src/providers/install-latest.ts';
@@ -177,6 +178,15 @@ async function loadDescriptor(install: Record<string, unknown>, executablePath =
   const client = await harness.connect();
   const { rejected } = await client.call('providers.reload', {});
   expect(rejected).toEqual([]);
+}
+
+/** Starts an install on a new client that records every state the install reports. */
+async function installing(providerId: string): Promise<{ client: CoreClient; states: ProviderInstallState[] }> {
+  const client = await harness.connect();
+  const states: ProviderInstallState[] = [];
+  client.on('providers.installProgress', (event) => states.push(event));
+  await client.call('providers.install', { providerId });
+  return { client, states };
 }
 
 function agentDir(...parts: string[]): string {
@@ -450,11 +460,7 @@ describe('managed installs', () => {
 
   test('an installed release names the version on offer, and an update replaces the old one', async () => {
     await loadDescriptor(goodInstall());
-    const client = await harness.connect();
-
-    const states: ProviderInstallState[] = [];
-    client.on('providers.installProgress', (event) => states.push(event));
-    await client.call('providers.install', { providerId: 'managed' });
+    const { client, states } = await installing('managed');
     await waitFor(() => states.some((state) => state.state === 'installed'));
 
     // Up to date: the version on disk and the one the descriptor offers are one.
@@ -500,10 +506,7 @@ describe('managed installs', () => {
   // Root ignores the read-only directory that makes the old release impossible to remove.
   test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)('an update whose previous release cannot be removed yet still runs the new one', async () => {
     await loadDescriptor(goodInstall());
-    const client = await harness.connect();
-    const states: ProviderInstallState[] = [];
-    client.on('providers.installProgress', (event) => states.push(event));
-    await client.call('providers.install', { providerId: 'managed' });
+    const { client, states } = await installing('managed');
     await waitFor(() => states.some((state) => state.state === 'installed'));
     // The layout of an account that may not make links: the release itself sits at `current`, with a part it cannot delete.
     rmSync(agentDir('current'));
@@ -529,10 +532,7 @@ describe('managed installs', () => {
 
   test('an old release a process still runs out of stays until that process ends', async () => {
     await loadDescriptor(goodInstall());
-    const client = await harness.connect();
-    const states: ProviderInstallState[] = [];
-    client.on('providers.installProgress', (event) => states.push(event));
-    await client.call('providers.install', { providerId: 'managed' });
+    const { client, states } = await installing('managed');
     await waitFor(() => states.some((state) => state.state === 'installed'));
 
     const installs = harness.core.providers.installs;
@@ -550,10 +550,7 @@ describe('managed installs', () => {
 
   test('a core that starts removes releases and downloads nothing points at any more', async () => {
     await loadDescriptor(goodInstall());
-    const client = await harness.connect();
-    const states: ProviderInstallState[] = [];
-    client.on('providers.installProgress', (event) => states.push(event));
-    await client.call('providers.install', { providerId: 'managed' });
+    const { client, states } = await installing('managed');
     await waitFor(() => states.some((state) => state.state === 'installed'));
     mkdirSync(agentDir('releases', '0.9.0'), { recursive: true });
     writeFileSync(agentDir('releases', '0.9.0', 'left.txt'), 'an older release');
@@ -593,11 +590,7 @@ describe('managed installs', () => {
 
   test('installing the version already on disk is refused as up to date', async () => {
     await loadDescriptor(goodInstall());
-    const client = await harness.connect();
-
-    const states: ProviderInstallState[] = [];
-    client.on('providers.installProgress', (event) => states.push(event));
-    await client.call('providers.install', { providerId: 'managed' });
+    const { client, states } = await installing('managed');
     await waitFor(() => states.some((state) => state.state === 'installed'));
 
     let refusal = '';
@@ -612,11 +605,7 @@ describe('managed installs', () => {
 
   test('a digest that does not match is refused with both hashes and leaves nothing behind', async () => {
     await loadDescriptor({ ...goodInstall(), url: url('/tampered.zip') });
-    const client = await harness.connect();
-
-    const states: ProviderInstallState[] = [];
-    client.on('providers.installProgress', (event) => states.push(event));
-    await client.call('providers.install', { providerId: 'managed' });
+    const { client, states } = await installing('managed');
     await waitFor(() => states.some((state) => state.state === 'failed'));
 
     const failed = states.find((state) => state.state === 'failed');
@@ -633,11 +622,7 @@ describe('managed installs', () => {
 
   test('an archive of the wrong length is refused before it is even hashed', async () => {
     await loadDescriptor({ ...goodInstall(), url: url('/short.zip') });
-    const client = await harness.connect();
-
-    const states: ProviderInstallState[] = [];
-    client.on('providers.installProgress', (event) => states.push(event));
-    await client.call('providers.install', { providerId: 'managed' });
+    const { client, states } = await installing('managed');
     await waitFor(() => states.some((state) => state.state === 'failed'));
 
     const failed = states.find((state) => state.state === 'failed');
@@ -654,11 +639,7 @@ describe('managed installs', () => {
       sha256: sha256(ESCAPING),
       archiveBytes: ESCAPING.byteLength,
     });
-    const client = await harness.connect();
-
-    const states: ProviderInstallState[] = [];
-    client.on('providers.installProgress', (event) => states.push(event));
-    await client.call('providers.install', { providerId: 'managed' });
+    const { client, states } = await installing('managed');
     await waitFor(() => states.some((state) => state.state === 'failed'));
 
     const failed = states.find((state) => state.state === 'failed');
@@ -720,11 +701,7 @@ describe('managed installs', () => {
 
   test('uninstall is refused while a lease is held and removes everything once it is released', async () => {
     await loadDescriptor(goodInstall());
-    const client = await harness.connect();
-
-    const states: ProviderInstallState[] = [];
-    client.on('providers.installProgress', (event) => states.push(event));
-    await client.call('providers.install', { providerId: 'managed' });
+    const { client, states } = await installing('managed');
     await waitFor(() => states.some((state) => state.state === 'installed'));
 
     const installs = harness.core.providers.installs;
@@ -794,11 +771,7 @@ describe('managed installs', () => {
 
   test('a core starting on the same data directory reads the install back off disk', async () => {
     await loadDescriptor(goodInstall());
-    const client = await harness.connect();
-
-    const states: ProviderInstallState[] = [];
-    client.on('providers.installProgress', (event) => states.push(event));
-    await client.call('providers.install', { providerId: 'managed' });
+    const { client, states } = await installing('managed');
     await waitFor(() => states.some((state) => state.state === 'installed'));
 
     const second = new Core({ dataDir: harness.dataDir, token: newToken() });
@@ -817,10 +790,7 @@ describe('managed updates', () => {
   /** 1.0.0 on disk, 1.1.0 on offer from `path`, and the update list read once. */
   async function behind(path: string): Promise<{ client: Awaited<ReturnType<TestCore['connect']>>; states: ProviderInstallState[]; updates: HarnessUpdate[][] }> {
     await loadDescriptor(goodInstall());
-    const client = await harness.connect();
-    const states: ProviderInstallState[] = [];
-    client.on('providers.installProgress', (event) => states.push(event));
-    await client.call('providers.install', { providerId: 'managed' });
+    const { client, states } = await installing('managed');
     await waitFor(() => states.some((state) => state.state === 'installed'));
     await loadDescriptor({ ...nextInstall(), url: url(path) });
     harness.core.updates.only = new Set(['managed']);
@@ -854,10 +824,7 @@ describe('managed updates', () => {
 
   test('a restart on a build that pins a newer release offers it at once, and forgets a row whose agent is gone', async () => {
     await loadDescriptor(goodInstall());
-    const client = await harness.connect();
-    const states: ProviderInstallState[] = [];
-    client.on('providers.installProgress', (event) => states.push(event));
-    await client.call('providers.install', { providerId: 'managed' });
+    const { client, states } = await installing('managed');
     await waitFor(() => states.some((state) => state.state === 'installed'));
     harness.core.updates.only = new Set(['managed']);
     const [current] = await client.call('providers.updates', { refresh: true });
@@ -1022,10 +989,7 @@ describe('managed installs on a bad connection', () => {
   /** Installs from `path` and waits for the run to settle, installed or failed. */
   async function installFrom(path: string): Promise<ProviderInstallState[]> {
     await loadDescriptor(bigInstall(path));
-    const client = await harness.connect();
-    const states: ProviderInstallState[] = [];
-    client.on('providers.installProgress', (event) => states.push(event));
-    await client.call('providers.install', { providerId: 'managed' });
+    const { client, states } = await installing('managed');
     await waitFor(() => states.some((state) => state.state === 'installed' || state.state === 'failed'), 10_000);
     return states;
   }

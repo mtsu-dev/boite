@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { OPEN_AGENT_DEFAULTS, isReleaseVersion, type Settings } from '@boite/contracts';
+import { OPEN_AGENT_DEFAULTS, isReleaseVersion, type RpcEvents, type Settings } from '@boite/contracts';
 import { connect } from '../src/client.ts';
 import type { CoreClient } from '../src/client.ts';
 import { Core, CORE_VERSION, type CoreOptions } from '../src/core.ts';
@@ -173,6 +173,30 @@ export async function echoThread(
     title,
   });
   return { threadId: thread.id, accountId: account.id };
+}
+
+/** A new client on an echo thread it already follows, the opening of many echo tests. */
+export async function openEchoThread(harness: TestCore): Promise<{ client: CoreClient; threadId: string }> {
+  const client = await harness.connect();
+  const { threadId } = await echoThread(harness, client);
+  await client.call('threads.subscribe', { threadId });
+  return { client, threadId };
+}
+
+/**
+ * Starts a turn with the wait for its end already listening, so a fast turn
+ * cannot finish unseen. The end comes back unawaited: the test awaits it where
+ * it asserts on it.
+ */
+export async function startTurn(
+  client: CoreClient,
+  threadId: string,
+  prompt: string,
+  timeoutMs?: number,
+): Promise<{ finished: Promise<RpcEvents['turn.finished']> }> {
+  const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, timeoutMs);
+  await client.call('turns.start', { threadId, prompt });
+  return { finished };
 }
 
 /** How many test cores have stopped. A wait that outlives a stop was abandoned by its test. */
