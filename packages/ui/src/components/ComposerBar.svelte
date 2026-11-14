@@ -576,8 +576,10 @@
        a chip's hairline already says it opens, and the model is the one value
        that gives: its name ends in an ellipsis before a chip leaves the row
        (its menu says it whole). Only what still cannot fit, a long effort
-       beside a notice, wraps onto a second row of 44 px targets. */
-    .chips { flex: 1; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px 6px; min-width: 0; min-height: var(--touch-target); padding-block: 4px; }
+       beside a notice, wraps onto a second row of 44 px targets. The row
+       starts 8 px down: a chip now sits under the field's microphone and
+       send, and their 44 px targets must not meet. */
+    .chips { flex: 1; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px 6px; min-width: 0; min-height: var(--touch-target); padding-block: 8px 4px; }
     .bar > :global(.options) { align-self: flex-start; }
     .chips :global(*) { max-width: 100%; }
     .chips > .line > :global(*) { flex: none; }

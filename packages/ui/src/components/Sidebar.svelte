@@ -630,6 +630,10 @@
   .head:focus-within .project-actions {
     opacity: 1;
   }
+  /* A list narrowed to its floor has no slot to spare: the name takes it and the menu shows over the counts. */
+  @container sidebar (max-width: 239px) {
+    .project-actions { position: absolute; right: 2px; top: 6px; margin-right: 0; background: var(--color-surface); }
+  }
   .none {
     padding: 4px 10px;
     color: var(--color-muted-foreground);
