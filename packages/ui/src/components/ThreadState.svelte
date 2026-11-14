@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CloudOff, Square } from '@lucide/svelte';
+  import { Bot, CloudOff, Square } from '@lucide/svelte';
   import { pullRequestWatchWaits, type ThreadSummary } from '@boite/contracts';
   import { backgroundLabel } from '../lib/background';
   import { secondClock } from '../lib/clock.svelte';
@@ -12,8 +12,12 @@
 
   /**
    * `subagents`: the thread's delegated agents at work or asking, from its
-   * store. They decide the state (delegating, or waiting once one asks); their
-   * count stays in the tooltip, the thread view shows them.
+   * store, with the thread's own ask folded in (`rowAsks`). They decide the state
+   * (delegating, or waiting once one asks).
+   * `team`: the same children alone, without the thread's own ask. Their count
+   * rides a chip after the word, in every state, on a computer and a phone alike,
+   * so a parent says how many agents it has at work. Lists that hold the mark
+   * only (`mark`) leave it out.
    * `away`: its machine is not connected, so a turn it last saw at work may have
    * ended long ago. The row says so instead of spinning and counting time.
    * One grammar in every list (rows, Recent, the palette, the phone,
@@ -32,7 +36,7 @@
    * palette). In both, the word stays in the tooltip and the accessible name.
    * An archived thread carries no live state: its time alone.
    */
-  let { thread, now, subagents = null, away = false, mark = false, fit = false }: { thread: Pick<ThreadSummary, 'status' | 'unread' | 'runningSince' | 'requestSince' | 'backgroundWork' | 'openQuestions' | 'lastUserMessageAt' | 'createdAt'> & Partial<Pick<ThreadSummary, 'backgroundWait' | 'pullRequestWatches' | 'archived'>>; now: number; subagents?: WorkingChildren | null; away?: boolean; mark?: boolean; fit?: boolean } = $props();
+  let { thread, now, subagents = null, team = null, away = false, mark = false, fit = false }: { thread: Pick<ThreadSummary, 'status' | 'unread' | 'runningSince' | 'requestSince' | 'backgroundWork' | 'openQuestions' | 'lastUserMessageAt' | 'createdAt'> & Partial<Pick<ThreadSummary, 'backgroundWait' | 'pullRequestWatches' | 'archived'>>; now: number; subagents?: WorkingChildren | null; team?: WorkingChildren | null; away?: boolean; mark?: boolean; fit?: boolean } = $props();
 
   function earliest(a: number | null | undefined, b: number | null | undefined): number | null {
     return a == null ? b ?? null : b == null ? a : Math.min(a, b);
@@ -63,8 +67,24 @@
     : live ? thread.backgroundWork?.since ?? (wait?.state === 'waiting' ? wait.since : null) : null);
   /** Counting time reads the second clock, only while the agent works: the list's clock ticks far slower. */
   let spent = $derived(since === null ? null : elapsed(Math.max(secondClock.now, now) - since));
-  /** The word beside the mark: work of every kind reads "Working", its kind in the tooltip; an unreached machine "Offline". */
-  let word = $derived(stale ? strings.connection.offline : kind === null ? null : form === 'work' && kind !== 'queued' ? strings.sidebar.state.working : strings.sidebar.state[kind]);
+  /**
+   * The word beside the mark: what the work waits on, so a list tells a CI run from a command or a workflow
+   * without a hover ("CI running", "Command", "Sub-agents"); the turn itself reads "Working", an unreached
+   * machine "Offline". Mixed background work names the heaviest: a workflow, an agent, then a shell.
+   */
+  let word = $derived.by(() => {
+    if (stale) return strings.connection.offline;
+    if (kind === null) return null;
+    const words = strings.sidebar.state.workWord;
+    if (kind === 'delegating' || kind === 'monitoring') return words[kind];
+    if (kind === 'watching') return watches.length > 0 && watches.every(watch => watch.seen?.queue && watch.seen.checks.running === 0) ? words.mergeQueue : words.ci;
+    if (kind === 'background') {
+      const kinds = thread.backgroundWork?.kinds ?? [];
+      const heaviest = (['workflow', 'agent', 'shell'] as const).find(each => kinds.includes(each));
+      return words[heaviest ?? 'other'];
+    }
+    return strings.sidebar.state[kind];
+  });
   let label = $derived.by(() => {
     if (kind === null) return null;
     if (kind === 'working') return spent === null ? strings.sidebar.state.working : fill(strings.sidebar.state.workingFor, { elapsed: spent });
@@ -88,13 +108,23 @@
     }
     return strings.sidebar.state[kind];
   });
+  /** The sub-agents chip: how many work, or, when none does, how many still ask; a child asking turns it amber. */
+  let chip = $derived.by(() => {
+    const count = team?.count ?? 0, asking = team?.asking ?? 0;
+    if (mark || stale || (count === 0 && asking === 0)) return null;
+    const many = (one: string, other: string, n: number) => n === 1 ? one : fill(other, { count: String(n) });
+    const atWork = count > 0 ? many(strings.sidebar.state.subagentsOne, strings.sidebar.state.subagentsMany, count) : null;
+    const asks = asking > 0 ? many(strings.sidebar.state.subagentsAskingOne, strings.sidebar.state.subagentsAskingMany, asking) : null;
+    const shown = count > 0 ? count : asking;
+    return { shown, asking: asking > 0, label: [atWork, asks].filter(Boolean).join('\n') };
+  });
 </script>
 
 {#if form === null && !stale}
   <!-- News marks nothing: the title's full ink says it, the time stays. -->
   <span class="when" data-testid={kind === 'done' ? 'thread-state' : undefined} data-state={kind ?? undefined} title={kind === 'done' ? `${strings.sidebar.state.done}\n${exactTime(thread.lastUserMessageAt ?? thread.createdAt)}` : exactTime(thread.lastUserMessageAt ?? thread.createdAt)}>{ago(thread.lastUserMessageAt ?? thread.createdAt, now)}</span>
 {:else if kind !== null}
-  {@const name = stale ? fill(strings.sidebar.state.unreachableWas, { state: strings.sidebar.state[kind] }) : label}
+  {@const name = stale ? fill(strings.sidebar.state.unreachableWas, { state: strings.sidebar.state[kind] }) : chip ? `${label}\n${chip.label}` : label}
   <!-- The mark and its word read as one image named by the state: the word may give way to the title (`fit`). -->
   <span class="when state {stale ? 'unreachable' : kind}" class:fit data-testid="thread-state" data-state={stale ? 'unreachable' : kind} title={name} aria-label={name} role="img">
     {#if stale}<CloudOff size={11} aria-hidden="true" />
@@ -102,7 +132,9 @@
     {:else if kind === 'error'}<FailMark />
     {:else if kind === 'interrupted'}<Square size={9} fill="currentColor" aria-hidden="true" />
     {:else}<span class="dot" class:needs-dot={kind === 'waiting'} aria-hidden="true"></span>{/if}
-    {#if !mark}<span class="word ui-label" aria-hidden="true">{word}</span>{/if}
+    <!-- Waiting on sub-agents, the chip is the word: the robot and their count, no "Sub-agents" before it. -->
+    {#if !mark && !(kind === 'delegating' && chip && !stale)}<span class="word ui-label" aria-hidden="true">{word}</span>{/if}
+    {#if chip}<span class="agents" class:asking={chip.asking} data-testid="thread-subagents" data-count={chip.shown} aria-hidden="true"><Bot size={10} /><span class="ui-label">{chip.shown}</span></span>{/if}
   </span>
 {/if}
 
@@ -136,6 +168,10 @@
   @container thread-row (max-width: 217.98px) {
     :global(html:lang(fr)) .fit .word { display: none; }
   }
+  /* The sub-agents chip: the robot and the number on a faint wash of the state's hue, amber once a child asks.
+     It stays when a narrow list drops the word: the count is the row's only sign of its children. */
+  .agents { display: inline-flex; align-items: center; gap: 3px; height: 16px; padding: 0 5px; margin-left: 2px; border-radius: var(--radius-sm); background: color-mix(in srgb, currentColor 14%, transparent); font-weight: 600; }
+  .agents.asking { color: var(--color-live); }
   /* Every mark is 8 px. Work, of any kind: an accent arc that turns (still while queued), so it never reads as an
      idle ring or as the amber of the user's turn; which work it is lives in the tooltip. Its loop steps on the
      shared 60 Hz grid and stops with the window at rest (app.css `--loops`). */
