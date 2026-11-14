@@ -9,7 +9,7 @@ import { profileFor, resolveExecutable } from '../../providers/resolve.ts';
 import { subscriptionProxyCodexArgs } from '../../subscription-proxy.ts';
 import type { LiveTurnSettings, ProbeContext, QuestionAsk, SessionContext, TurnContext } from '../types.ts';
 import { preparedModels } from './models.ts';
-import { exitWithin } from '../exit.ts';
+import { exitSentence, exitWithin } from '../exit.ts';
 import {
   addCounts,
   answerTextOf,
@@ -527,8 +527,7 @@ export class CodexSession {
   }
 
   #exitSentence(code: number | null, diagnostic = false): string {
-    const head = `the codex agent exited with code ${code === null ? 'unknown' : code}`;
-    return diagnostic || this.#lastStderr.length === 0 ? head : `${head}: ${this.#lastStderr}`;
+    return exitSentence('codex agent', code, this.#lastStderr, diagnostic);
   }
 
   /**
