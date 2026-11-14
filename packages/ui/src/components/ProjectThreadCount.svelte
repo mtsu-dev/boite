@@ -8,8 +8,4 @@
   const label = $derived(fill(total === 1 ? strings.sidebar.threadCountOne : strings.sidebar.threadCountMany, { count: count(total) }));
 </script>
 
-<span class="total ui-label" data-testid="project-thread-count" title={label} aria-label={label}>{count(total)}</span>
-
-<style>
-  .total { flex: none; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 400; font-variant-numeric: tabular-nums; }
-</style>
+<span class="fold-count ui-label" style="color:var(--color-muted-foreground)" data-testid="project-thread-count" title={label} aria-label={label}>{count(total)}</span>
