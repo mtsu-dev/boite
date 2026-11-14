@@ -69,6 +69,7 @@ test('an old card about a finished experiment reads as words, never as its key',
 // The owner's two conversation cards and the auto-resume card had no name and the wrong reach.
 test('the owner-only conversation cards are named, and offered to the owner alone, phone included', () => {
   expect(settingsSectionLabel('agents-alone')).toBe(strings.agentsAlone.heading);
+  expect(settingsSectionLabel('agent-replies')).toBe(strings.settings.agentReplies);
   expect(settingsSectionLabel('limit-resume')).toBe(strings.quotas.autoResume);
   for (const section of ['agents-alone', 'agent-replies']) {
     expect(settingsReachable(open('general', section), { owner: false, phone: false })).toBe(false);

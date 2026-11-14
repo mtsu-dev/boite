@@ -67,11 +67,11 @@ The first capture of an app in a project asks you in the chat:
 Every capture leaves a small picture of it in the conversation. On a phone you
 get a notification for the request.
 
-Settings, General has two lists:
+Settings, Machines and updates has two lists:
 
-- Allowed windows: the apps each project may capture without asking. Remove
+- Windows agents may see: the apps each project may capture without asking. Remove
   one and the next capture asks again.
-- Never capture: names or paths no agent may capture, even with your
+- Windows agents never see: names or paths no agent may capture, even with your
   permission. Password managers and the Windows sign-in and lock screens are
   always on it.
 

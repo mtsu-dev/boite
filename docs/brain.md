@@ -68,7 +68,7 @@ Boite does not clone a repository or commit your edits.
 
 Separate from your brain, Boite gives every agent session a short guide to its
 own commands and panel, about 300 tokens. The Boite guide switch on this page
-turns it off. Short answers, in Settings, General, on by default, adds one
+turns it off. Short answers, in Settings, General, Agent replies, on by default, adds one
 paragraph to each turn asking for brief, plain answers; turning the Boite
 guide off removes it too.
 

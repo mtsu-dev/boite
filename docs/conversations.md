@@ -84,7 +84,7 @@ replaced.
 - Rename a thread with Rename in its thread menu, or in the header.
 - Regenerate title, in the thread menu or the title menu, asks again. The item
   reads Writing a title while it works.
-- Settings, General, Conversations, Title model picks the model. Automatic
+- Settings, General, Agent replies, Title model picks the model. Automatic
   uses the thread's own agent on its small model.
 - Muse Code, OpenCode, Antigravity, Grok and pi keep the prompt's title under
   Automatic.
@@ -106,7 +106,8 @@ phone, they sit above the message box or the bottom tabs.
 - A project's Done list shows ten rows at a time; scroll it for the rest.
 - Delete done threads after (days) defaults to 3. Manual archives are kept.
 - A deleted conversation can be restored from Show deleted conversations in
-  Settings, for the number of days set in Days before permanent deletion.
+  Settings, General, Archived threads, for the number of days set in Keep
+  deleted conversations for.
 - Archive project takes a project out of the list. Its threads keep running,
   and a new thread brings it back. Remove from Boite removes the project and
   its threads; the files on disk stay.

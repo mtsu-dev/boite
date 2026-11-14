@@ -55,7 +55,7 @@ The bar shows the next open item and a count such as 3/5 done. On the desktop
 it opens the side panel's Tasks tab; on a paired device the list unfolds in
 the bar. Press an item to see what you wrote.
 
-Settings, General, Conversations, Checklist model picks the model. Automatic
+Settings, General, Agent replies, Checklist model picks the model. Automatic
 picks Opus at medium or Sol at high, the conversation's own agent first. Only
 the owner sees this setting.
 

@@ -1,6 +1,6 @@
 # Chat files and previews
 
-On by default. Settings > General > Conversations has the **Chat files and
+On by default. Settings > General > In the conversation has the **Chat files and
 previews** switch, and the phone's settings show the same row; each device
 keeps its own choice under `boite.features` in local storage
 (`packages/ui/src/lib/features.ts`). Off, file links stay plain text and PDFs
@@ -70,7 +70,7 @@ text. A page runs only as an inline view, below.
 
 ## Open chat links in their apps
 
-Settings, General, **Open chat links in their apps** is off by default and
+Settings, General, In the conversation, **Open chat links in their apps** is off by default and
 shown only in the desktop app. A device that had turned on the
 `open-chat-links` experiment keeps it on. It enables the same link parsing as
 Chat files and previews: Markdown file links, bare web URLs, absolute paths,

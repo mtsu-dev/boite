@@ -155,6 +155,7 @@ export function settingsSectionLabel(section: string, providers: readonly Provid
     tasks: strings.protection.tasks,
     'limit-resume': strings.quotas.autoResume,
     'agents-alone': strings.agentsAlone.heading,
+    'agent-replies': strings.settings.agentReplies,
     machines: strings.machines.heading,
     updates: strings.appUpdate.updates,
     'agent-updates': strings.harnessUpdates.heading,
