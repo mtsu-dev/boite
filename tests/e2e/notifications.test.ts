@@ -12,7 +12,7 @@ beforeAll(async () => {
   await page.waitFor(`document.querySelector('[data-thread-id]')`);
 }, 90000);
 afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
-test('desktop notifications sit in the top-right corner under the header without moving the conversation', async () => {
+test('desktop notifications sit in the top-right corner under the title bar without moving the conversation', async () => {
   await page.evaluate(`(async () => {
     const {workspace} = await import('/src/lib/workspace.svelte.ts');
     await workspace.active.open('t-trace');
@@ -25,7 +25,7 @@ test('desktop notifications sit in the top-right corner under the header without
   expect(await page.evaluate(`(() => {
     const toast = document.querySelector('[data-testid=error-toast]').getBoundingClientRect();
     const timeline = document.querySelector('[data-testid=timeline]').getBoundingClientRect();
-    const header = document.querySelector('[data-testid=thread-header]').getBoundingClientRect();
+    const header = document.querySelector('[data-testid=titlebar]').getBoundingClientRect();
     return {right:Math.round(innerWidth - toast.right), moved:Math.abs(timeline.bottom - window.__timelineBottom), under:Math.round(toast.top - header.bottom)};
   })()`)).toEqual({right:16,moved:0,under:12});
   await page.click('[data-testid=error-toast] .dismiss');

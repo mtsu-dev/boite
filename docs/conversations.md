@@ -87,8 +87,8 @@ replaced.
 
 ## Notifications
 
-On a desktop, notifications appear in the top-right corner, under the top bar
-and the thread's header, without moving the conversation. On a phone, they sit
+On a desktop, notifications appear in the top-right corner, under the top bar,
+without moving the conversation. On a phone, they sit
 above the message box or the bottom tabs.
 
 ## Done, archived and deleted
