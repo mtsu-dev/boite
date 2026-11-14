@@ -55,20 +55,27 @@ export function dependencyGraph(sources: Sources): Graph {
   for (const [file, source] of sources) {
     const dependencies: string[] = [];
     for (const specifier of runtimeImports(file, source)) {
-      if (specifier.startsWith('@boite/') && !aliases.has(specifier)) {
-        throw new Error(`${file}: unmapped workspace import ${specifier}; add its source to the architecture aliases`);
-      }
-      const path = aliases.get(specifier) ?? (specifier.startsWith('.') ? posix.normalize(`${posix.dirname(file)}/${specifier}`) : null);
-      if (path === null) continue;
-      const resolved = [path, `${path}.ts`, `${path}.js`, `${path}/index.ts`].find(candidate => sources.has(candidate));
+      const resolved = resolveImport(file, specifier, sources);
       if (resolved) dependencies.push(resolved);
-      else if (/\.(?:[cm]?[jt]sx?|svelte)$/.test(path) || !posix.extname(path)) {
-        throw new Error(`${file}: cannot resolve runtime import ${specifier}`);
-      }
     }
     graph.set(file, [...new Set(dependencies)].sort());
   }
   return graph;
+}
+
+/** The source a workspace import names, or null for a package, a builtin or a file the graph does not read (JSON). */
+export function resolveImport(file: string, specifier: string, sources: Sources): string | null {
+  if (specifier.startsWith('@boite/') && !aliases.has(specifier)) {
+    throw new Error(`${file}: unmapped workspace import ${specifier}; add its source to the architecture aliases`);
+  }
+  const path = aliases.get(specifier) ?? (specifier.startsWith('.') ? posix.normalize(`${posix.dirname(file)}/${specifier}`) : null);
+  if (path === null) return null;
+  const resolved = [path, `${path}.ts`, `${path}.js`, `${path}/index.ts`].find(candidate => sources.has(candidate));
+  if (resolved) return resolved;
+  if (/\.(?:[cm]?[jt]sx?|svelte)$/.test(path) || !posix.extname(path)) {
+    throw new Error(`${file}: cannot resolve runtime import ${specifier}`);
+  }
+  return null;
 }
 
 /** Reports each back edge with its complete cycle, including lazy imports. */
