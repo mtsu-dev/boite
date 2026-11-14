@@ -8,7 +8,9 @@ chat.
 On the desktop, each bot shows as a picture in the app rail, the column down
 the window's left edge, and the phone shows a Bots tab in its bottom bar.
 Teams come first; drag a picture up or down to put bots and teams in your own
-order, which this device keeps.
+order, which this device keeps. A small mark on a picture says the bot needs
+you, failed, is at work or has a new answer; point at the picture to read it
+in words beside the bot's name.
 
 ## Create a bot
 
