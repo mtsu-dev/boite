@@ -255,7 +255,7 @@
   .hot, .track button:focus-visible { color: var(--color-foreground); }
   .hot i, .track button:focus-visible i { opacity: 1; }
   .marker.active { color: var(--color-accent); }
-  .marker.active i { transform: scaleX(calc((16 + 6 * var(--weight, 0)) / 22)); opacity: 1; box-shadow: 0 0 8px color-mix(in oklch, var(--color-accent) 55%, transparent); }
+  .marker.active i { transform: scaleX(calc((16 + 6 * var(--weight, 0)) / 22)); opacity: 1; box-shadow: 0 0 8px oklch(from var(--color-accent) l c h / 0.55); }
   /* The group menu is placed from script: reduced motion's blanket transition would slide it there. */
   .group-menu { position: fixed; z-index: 30; width: min(300px, calc(100vw - 70px)); max-height: 264px; overflow-y: auto; padding: 6px; border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); background: var(--overlay-surface); box-shadow: var(--shadow-overlay); animation: pop var(--dur-2); transition-property: none; }
   .group-menu.closing { animation-name: pop-out; pointer-events: none; }
@@ -263,7 +263,7 @@
   .group-menu button span:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .group-menu button:hover, .group-menu button:focus-visible { background: var(--color-hover); color: var(--color-foreground); }
   /* The user bubble of the timeline, laid on the page colour so the tint matches, its short corner toward the bar. */
-  .preview { position: fixed; z-index: 30; display: flex; align-items: baseline; gap: 10px; width: max-content; max-width: min(360px, calc(100vw - 70px)); padding: 10px 14px; border: 1px solid color-mix(in oklch, var(--color-accent) 35%, transparent); border-radius: var(--radius-lg); border-top-left-radius: var(--radius-sm); background: linear-gradient(var(--color-accent-soft), var(--color-accent-soft)), var(--color-background); box-shadow: var(--shadow-e2), 0 0 28px -10px color-mix(in oklch, var(--color-accent) 60%, transparent); pointer-events: none; transform-origin: 0 21px; animation: pop var(--dur-2) var(--ease-out-quint); transition: top var(--dur-2) var(--ease-out-quint); }
+  .preview { position: fixed; z-index: 30; display: flex; align-items: baseline; gap: 10px; width: max-content; max-width: min(360px, calc(100vw - 70px)); padding: 10px 14px; border: 1px solid oklch(from var(--color-accent) l c h / 0.35); border-radius: var(--radius-lg); border-top-left-radius: var(--radius-sm); background: linear-gradient(var(--color-accent-soft), var(--color-accent-soft)), var(--color-background); box-shadow: var(--shadow-e2), 0 0 28px -10px oklch(from var(--color-accent) l c h / 0.60); pointer-events: none; transform-origin: 0 21px; animation: pop var(--dur-2) var(--ease-out-quint); transition: top var(--dur-2) var(--ease-out-quint); }
   .number { flex: none; color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
   .preview .number { color: var(--color-accent); font-family: var(--font-mono); }
   .command { color: var(--color-accent); font-weight: 600; }
