@@ -23,8 +23,12 @@ export type BrowserAction =
   /** Makes the command's tab the active one. */
   | { kind: 'activate' }
   | { kind: 'history'; direction: 'back' | 'forward' | 'reload' }
-  /** agent-browser's snapshot options: -i, -c, -d, -s and -u. */
-  | { kind: 'snapshot'; interactive?: boolean; compact?: boolean; depth?: number; selector?: string; urls?: boolean }
+  /**
+   * agent-browser's snapshot options: -i, -c, -d, -s and -u. A snapshot of the
+   * document and options the tab's last one read answers with the lines that
+   * changed since; `full` asks for the whole text.
+   */
+  | { kind: 'snapshot'; interactive?: boolean; compact?: boolean; depth?: number; selector?: string; urls?: boolean; full?: boolean }
   | { kind: 'diagnostics'; clear?: boolean }
   | { kind: 'preset'; preset: BrowserPreset; orientation?: 'portrait' | 'landscape' }
   | { kind: 'appearance'; colorScheme: 'light' | 'dark' | 'system' }
@@ -60,7 +64,7 @@ export type BrowserAction =
   /** How a run of the recipe ended: `error` names the step and why it failed. */
   | { kind: 'recipe-result'; name: string; ok: boolean; error?: string }
   /**
-   * `selector` is an `@eN` ref from the last snapshot, a CSS selector matching
+   * `selector` is an `@eN` ref from a snapshot of the page, a CSS selector matching
    * one element, or `text=...`. `count: 2` double-clicks.
    */
   | { kind: 'click'; selector: string; count?: 1 | 2 }
@@ -400,7 +404,7 @@ function checkNoInput(): string | null {
 function checkSnapshot(action: BrowserAction & { kind: 'snapshot' }): string | null {
   if (action.depth !== undefined && !(Number.isInteger(action.depth) && action.depth >= 1 && action.depth <= 50)) return 'snapshot depth must be an integer from 1 to 50';
   if (action.selector !== undefined && !text(action.selector, 4000)) return 'snapshot selector must contain 1 to 4000 characters';
-  return [action.interactive, action.compact, action.urls].every(flag => flag === undefined || typeof flag === 'boolean') ? null : 'snapshot flags must be booleans';
+  return [action.interactive, action.compact, action.urls, action.full].every(flag => flag === undefined || typeof flag === 'boolean') ? null : 'snapshot flags must be booleans';
 }
 
 function checkOpenUrl(action: BrowserAction & { kind: 'open' | 'navigate' }): string | null {

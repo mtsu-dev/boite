@@ -33,6 +33,19 @@ const SHOP = `<!doctype html><title>Shop</title>
 const APP = `<!doctype html><title>App</title>
 <button id="load" onclick="fetch('/api/items?page=2&token=abc123', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer s3cret-value' }, body: JSON.stringify({ query: 'shoes', password: 'hunter2' }) }).then(r => r.json()).then(d => document.title = 'loaded ' + d.items.length)">Load</button>`;
 
+// A list an agent works through: 100 rows of a link and a button, one button that adds a row above them, one that renames a row where it is.
+const ROWS = `<!doctype html><title>Rows</title>
+<h1>Rows</h1>
+<button id="add" onclick="rows.insertAdjacentHTML('afterbegin', row(++made))">Add row</button>
+<button id="rename" onclick="document.querySelector('#row-50 button').textContent = 'Renamed'">Rename</button>
+<h2>All rows</h2>
+<ul id="rows"></ul>
+<script>
+const row = n => '<li id="row-' + n + '"><a href="#item-' + n + '">Item ' + n + '</a> <button onclick="document.title = \\'opened ' + n + '\\'">Open ' + n + '</button></li>';
+let made = 100;
+for (let n = 1; n <= made; n++) rows.insertAdjacentHTML('beforeend', row(n));
+</script>`;
+
 /**
  * How long a sleeping tab's step that missed its time is still listened to
  * (`LATE_MS` in `browser/sleep.ts`): its late answer, or the timeout that says
@@ -114,6 +127,7 @@ export function createBrowserFixture() {
       agents.set(path, request.headers.get('user-agent'));
       if (path === '/') return new Response(PAGE, { headers: { 'content-type': 'text/html' } });
       if (path === '/shop') return new Response(SHOP, { headers: { 'content-type': 'text/html' } });
+      if (path === '/rows') return new Response(ROWS, { headers: { 'content-type': 'text/html' } });
       if (path === '/app') return new Response(APP, { headers: { 'content-type': 'text/html' } });
       if (path === '/api/items') return (request.method === 'POST' ? request.json() as Promise<{ query?: string }> : Promise.resolve({ query: undefined }))
         .then(body => Response.json({ items: ['red', 'blue'], query: body.query ?? null, next: 'cursor-2', sessionToken: 'tok-999' }));

@@ -180,10 +180,10 @@ export async function runBrowserScript(script: BrowserScript, io: CliIo, client:
       return { tabId: reply.tabId, url: reply.url, title: reply.title };
     },
     goto: (url: string) => valueOf(`goto ${url}`, () => ({ kind: 'navigate', url })),
-    snapshot: async (options: { interactive?: boolean; compact?: boolean; depth?: number; selector?: string; urls?: boolean } = {}) => {
+    snapshot: async (options: { interactive?: boolean; compact?: boolean; depth?: number; selector?: string; urls?: boolean; full?: boolean } = {}) => {
       const reply = await step('snapshot', () => ({
         kind: 'snapshot', ...(options.interactive ? { interactive: true } : {}), ...(options.compact ? { compact: true } : {}), ...(options.urls ? { urls: true } : {}),
-        ...(options.depth !== undefined ? { depth: options.depth } : {}), ...(options.selector !== undefined ? { selector: options.selector } : {}),
+        ...(options.depth !== undefined ? { depth: options.depth } : {}), ...(options.selector !== undefined ? { selector: options.selector } : {}), ...(options.full ? { full: true } : {}),
       })) as BrowserReply;
       return (reply.value as { text: string }).text;
     },
@@ -260,7 +260,7 @@ export async function runBrowserScript(script: BrowserScript, io: CliIo, client:
     const reason = error instanceof Error ? error.message : String(error);
     io.out(`✗ ${where}: ${reason}\n`);
     // Where the page stopped, so the next call starts from it rather than from another snapshot.
-    const now = await client.call('browser.command', { threadId, ...(current ? { tabId: current } : {}), action: { kind: 'snapshot', interactive: true } }).catch(() => null);
+    const now = await client.call('browser.command', { threadId, ...(current ? { tabId: current } : {}), action: { kind: 'snapshot', interactive: true, full: true } }).catch(() => null);
     const shot = now?.value as { text?: string; url?: string; title?: string } | undefined;
     if (shot?.text !== undefined) io.out(`page now: ${shot.title || '(untitled)'}  ${shot.url ?? ''}\n${shot.text}\n`);
     throw new BrowserScriptFailure(where, reason);

@@ -246,6 +246,49 @@ real('an agent drives a page with agent-browser commands: refs, forms, dialogs a
 }), 150_000);
 
 // Trace click 1 opens #pop; click 2 closes #shut. Keep the native click and popup lifecycle visible on failure.
+real('an element keeps its ref from one snapshot to the next, and a repeated snapshot prints only what changed', async () => {
+  const { agent, threadId } = browserFixture;
+  const command = async (action: BrowserAction) => (await agent.call('browser.command', { threadId, action })).value as Record<string, unknown>;
+  const tree = async (options: { full?: boolean } = {}) => String((await command({ kind: 'snapshot', interactive: true, ...options })).text);
+  const diff = (unchanged: number, ...lines: string[]) =>
+    [`diff since your last snapshot of this page, ${unchanged} lines unchanged (+ added, - removed, = context); snapshot --full prints everything`, '= - heading "All rows" [ref=e4] [level=2]', ...lines].join('\n');
+  await command({ kind: 'open', url: url('/rows') });
+  const first = await tree();
+  expect(first.split('\n').slice(0, 6)).toEqual(['- heading "Rows" [ref=e1] [level=1]', '- button "Add row" [ref=e2]', '- button "Rename" [ref=e3]', '- heading "All rows" [ref=e4] [level=2]', '- link "Item 1" [ref=e5]', '- button "Open 1" [ref=e6]']);
+  expect(first.split('\n')).toHaveLength(204);
+  expect(first).toContain('- button "Open 3" [ref=e10]');
+
+  // A row inserted above every other: the refs read before it still name their elements, with no new snapshot.
+  await command({ kind: 'click', selector: '@e2' });
+  await command({ kind: 'click', selector: '@e10' });
+  expect(await evaluate('document.title')).toBe('opened 3');
+  // The next snapshot lists the new row alone, under the heading it follows, with numbers nothing had yet.
+  expect(await tree()).toBe(diff(204, '+ - link "Item 101" [ref=e205]', '+ - button "Open 101" [ref=e206]'));
+  await command({ kind: 'click', selector: '@e12' });
+  expect(await evaluate('document.title')).toBe('opened 4');
+
+  // A change in place is the old line and the new one, on the same ref.
+  await command({ kind: 'click', selector: '@e3' });
+  expect(await tree()).toBe(diff(205, '- - button "Open 50" [ref=e104]', '+ - button "Renamed" [ref=e104]'));
+  expect(await tree()).toBe('no change since your last snapshot of this page, 206 lines unchanged; snapshot --full prints everything');
+
+  // --full, other options and a new document each print the whole tree.
+  const whole = await tree({ full: true });
+  expect(whole.split('\n').slice(3, 8)).toEqual(['- heading "All rows" [ref=e4] [level=2]', '- link "Item 101" [ref=e205]', '- button "Open 101" [ref=e206]', '- link "Item 1" [ref=e5]', '- button "Open 1" [ref=e6]']);
+  expect(whole.split('\n')).toHaveLength(206);
+  expect(String((await command({ kind: 'snapshot' })).text)).toStartWith('- heading "Rows" [ref=e1] [level=1]\n');
+  expect(await tree()).toBe(whole);
+
+  // A removed element's ref is refused as stale, and its number is not given again.
+  await evaluate('document.querySelector("#row-3").remove()');
+  expect(await thrown(command({ kind: 'click', selector: '@e10' }))).toThrow('ref @e10 is stale because the page changed; take a new snapshot');
+  await command({ kind: 'click', selector: '@e2' });
+  expect(await tree()).toBe(diff(204, '+ - link "Item 102" [ref=e207]', '+ - button "Open 102" [ref=e208]', '- - link "Item 3" [ref=e9]', '- - button "Open 3" [ref=e10]'));
+
+  await command({ kind: 'open', url: url('/rows?again') });
+  expect(await tree()).toBe(first);
+}, 150_000);
+
 real('a window a page opens joins the conversation as a tab of its own', () => traceBrowserCommands(async () => {
   const { agent, threadId } = browserFixture;
   await agent.call('browser.command', { threadId, action: { kind: 'open', url: url() } });
