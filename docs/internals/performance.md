@@ -1866,7 +1866,10 @@ git ignores. The [2026-11-14 baseline](../../bench/results/2026-11-14-browser-ag
 on `5975582c5` with a load average near 50 on 16 threads: 24 of 24 runs
 succeeded, 93 calls and 38,601 bytes (about 9,650 estimated tokens) for the
 eight tasks, a call median of 148 ms and p95 of 508 ms; the 320-row page alone
-read 24,901 bytes in 4 calls.
+read 24,901 bytes in 4 calls. With [snapshot diffs](../../bench/results/2026-11-14-browser-agent-diff.md),
+on `112aa099c` under the same load: 24 of 24 again in the same 93 calls, 26,451
+bytes (about 6,613 tokens), the 320-row page 12,742 bytes; the seven small
+tasks changed by at most 6 bytes, the diff header.
 
 ## Benches
 

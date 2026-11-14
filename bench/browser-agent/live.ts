@@ -30,6 +30,22 @@ function browserCommands(input: unknown): number {
   return (text.match(/\bboite browser\b/g) ?? []).length;
 }
 
+/**
+ * A core that just started may still be discovering the account's models and
+ * refuses a thread or a turn until it settles ("refresh models"): that call is
+ * retried, any other failure is not.
+ */
+async function settled<T>(call: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await call();
+    } catch (error) {
+      if (attempt >= 3 || !(error instanceof Error) || !error.message.includes('refresh models')) throw error;
+      await Bun.sleep(2_000);
+    }
+  }
+}
+
 export function prompt(task: Task, base: string): string {
   return [
     `Open ${base}${task.path} with the \`boite browser\` command and do this task on that site.`,
@@ -58,7 +74,7 @@ export async function runLive(tasks: Task[], site: FixtureSite, options: LiveOpt
         const workspace = join(harness.dataDir, 'live', `${task.id}-${run}`);
         mkdirSync(workspace, { recursive: true });
         const project = await client.call('projects.add', { path: workspace, name: `${task.id}-${run}` });
-        const thread = await client.call('threads.create', {
+        const thread = await settled(() => client.call('threads.create', {
           projectId: project.id,
           providerId: 'claude',
           accountId: account.id,
@@ -67,13 +83,13 @@ export async function runLive(tasks: Task[], site: FixtureSite, options: LiveOpt
           effort: options.effort,
           permissionMode: 'bypassPermissions',
           title: `browser bench ${task.id}`,
-        });
+        }));
         await client.call('threads.subscribe', { threadId: thread.id });
         site.reset(task.id);
         log(`[live] ${task.id} run ${run}`);
         const finished = client.next('turn.finished', (turn) => turn.threadId === thread.id, options.timeoutMs);
         const started = performance.now();
-        await client.call('turns.start', { threadId: thread.id, prompt: prompt(task, site.url) });
+        await settled(() => client.call('turns.start', { threadId: thread.id, prompt: prompt(task, site.url) }));
         let turn: RpcEvents['turn.finished'] | null = null;
         let error: string | null = null;
         try {
