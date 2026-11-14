@@ -49,7 +49,7 @@
       <!-- What it did last time, whatever came of it: the desk reads as the bot's recent work, not only its plans. -->
       {#if outcome && routine.lastScheduledAt}<span class="desk-routine-last agent-state" data-status={outcome}>{fill(t.lastRun, { state: labels.outcome[outcome], when: dateTime(routine.lastScheduledAt) })}</span>{/if}
     </div>
-    <span class="desk-routine-when routine-state" data-state={standing.kind} title={describeSchedule(routine.schedule)}>{standing.kind === 'next' ? dateTime(routine.nextAt!) : standing.text}</span>
+    <span class="desk-routine-when routine-state" data-state={standing.kind} title={describeSchedule(routine.schedule)}>{standing.text}</span>
     {#if view.store.owner}
       <div class="desk-routine-actions">
         <button type="button" class="ghost small icon" disabled={view.pending || busy || agent?.status === 'archived'} title={busy ? labels.runNowBusy : labels.runNow} aria-label={labels.runNow} onclick={() => void runNow()} data-testid="routine-run"><Play size={13} strokeWidth={1.75} /></button>
