@@ -40,11 +40,6 @@ export interface PushOptions { maxWidth: number; quality: number }
 /** Runs a capture in the tab's turn (`takeTurn`), so it never overlaps a size change. */
 type Capture = <T>(run: () => Promise<T>) => Promise<T>;
 
-const sleepUntil = (at: number) => new Promise<void>(resolve => {
-  const timer = setTimeout(resolve, Math.max(0, at - Date.now()));
-  (timer as { unref?: () => void }).unref?.();
-});
-
 /** One viewer's screencast of one tab: T3 Code's `attachViewer`. */
 export class PushStream {
   #session: string | null = null;
@@ -58,6 +53,9 @@ export class PushStream {
   #scale = 1;
   #settle?: ReturnType<typeof setTimeout>;
   #refresh?: ReturnType<typeof setTimeout>;
+  /** Acknowledgements waiting for their pace, in the order their pictures came. One timer sends them, so they never overtake each other. */
+  #acks: { due: number; sessionId: unknown; session: string }[] = [];
+  #ackTimer?: ReturnType<typeof setTimeout>;
   #started = false;
   #output: Picture[] = [];
   #take: ((picture: Picture) => void) | null = null;
@@ -147,12 +145,36 @@ export class PushStream {
       ack: () => {
         if (acked) return;
         acked = true;
-        void sleepUntil(arrivedAt + SCREENCAST_ACK_PACE_MS).then(() => {
-          this.#framesInFlight -= 1;
-          return this.cdp.send('Page.screencastFrameAck', { sessionId: frame.sessionId }, session).catch(() => {});
-        });
+        this.#acknowledge(arrivedAt + SCREENCAST_ACK_PACE_MS, frame.sessionId, session);
       },
     });
+  }
+
+  /** Queues Chromium's acknowledgement for `due`, behind any due no later. */
+  #acknowledge(due: number, sessionId: unknown, session: string): void {
+    let at = this.#acks.length;
+    while (at > 0 && this.#acks[at - 1]!.due > due) at--;
+    this.#acks.splice(at, 0, { due, sessionId, session });
+    this.#armAcks();
+  }
+
+  #armAcks(): void {
+    clearTimeout(this.#ackTimer);
+    this.#ackTimer = undefined;
+    const next = this.#acks[0];
+    if (!next) return;
+    this.#ackTimer = setTimeout(() => this.#sendDueAcks(), Math.max(0, next.due - Date.now()));
+    (this.#ackTimer as { unref?: () => void }).unref?.();
+  }
+
+  #sendDueAcks(): void {
+    const now = Date.now();
+    while (this.#acks.length > 0 && this.#acks[0]!.due <= now) {
+      const { sessionId, session } = this.#acks.shift()!;
+      this.#framesInFlight -= 1;
+      void this.cdp.send('Page.screencastFrameAck', { sessionId }, session).catch(() => {});
+    }
+    this.#armAcks();
   }
 
   /**
