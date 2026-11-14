@@ -23,8 +23,15 @@ export type BrowserAction =
   /** Makes the command's tab the active one. */
   | { kind: 'activate' }
   | { kind: 'history'; direction: 'back' | 'forward' | 'reload' }
-  /** agent-browser's snapshot options: -i, -c, -d, -s and -u. */
-  | { kind: 'snapshot'; interactive?: boolean; compact?: boolean; depth?: number; selector?: string; urls?: boolean }
+  /**
+   * agent-browser's snapshot options: -i, -c, -d, -s and -u. `view` says the
+   * caller prints the text to the agent: `diff` answers with the lines changed
+   * since the last snapshot the agent was shown of the same document and
+   * options, `full` with the whole text. Both become what the next diff is
+   * compared with. Without `view` (a script, the panel) the text is whole and
+   * the agent's last view stays as it was, since nobody showed it this one.
+   */
+  | { kind: 'snapshot'; interactive?: boolean; compact?: boolean; depth?: number; selector?: string; urls?: boolean; view?: 'diff' | 'full' }
   | { kind: 'diagnostics'; clear?: boolean }
   | { kind: 'preset'; preset: BrowserPreset; orientation?: 'portrait' | 'landscape' }
   | { kind: 'appearance'; colorScheme: 'light' | 'dark' | 'system' }
@@ -60,7 +67,7 @@ export type BrowserAction =
   /** How a run of the recipe ended: `error` names the step and why it failed. */
   | { kind: 'recipe-result'; name: string; ok: boolean; error?: string }
   /**
-   * `selector` is an `@eN` ref from the last snapshot, a CSS selector matching
+   * `selector` is an `@eN` ref from a snapshot of the page, a CSS selector matching
    * one element, or `text=...`. `count: 2` double-clicks.
    */
   | { kind: 'click'; selector: string; count?: 1 | 2 }
@@ -400,6 +407,7 @@ function checkNoInput(): string | null {
 function checkSnapshot(action: BrowserAction & { kind: 'snapshot' }): string | null {
   if (action.depth !== undefined && !(Number.isInteger(action.depth) && action.depth >= 1 && action.depth <= 50)) return 'snapshot depth must be an integer from 1 to 50';
   if (action.selector !== undefined && !text(action.selector, 4000)) return 'snapshot selector must contain 1 to 4000 characters';
+  if (action.view !== undefined && action.view !== 'diff' && action.view !== 'full') return 'snapshot view must be diff or full';
   return [action.interactive, action.compact, action.urls].every(flag => flag === undefined || typeof flag === 'boolean') ? null : 'snapshot flags must be booleans';
 }
 
