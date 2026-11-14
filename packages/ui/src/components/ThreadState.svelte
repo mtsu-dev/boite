@@ -170,7 +170,7 @@
   }
   /* The sub-agents chip: the robot and the number on a faint wash of the state's hue, amber once a child asks.
      It stays when a narrow list drops the word: the count is the row's only sign of its children. */
-  .agents { display: inline-flex; align-items: center; gap: 3px; height: 16px; padding: 0 5px; margin-left: 2px; border-radius: var(--radius-sm); background: color-mix(in srgb, currentColor 14%, transparent); font-weight: 600; }
+  .agents { display: inline-flex; align-items: center; gap: 3px; height: 16px; padding: 0 5px; margin-left: 2px; border-radius: var(--radius-sm); background: color-mix(in srgb, currentColor 14%, transparent); font-weight: 600; color: var(--color-accent); }
   .agents.asking { color: var(--color-live); }
   /* Every mark is 8 px. Work, of any kind: an accent arc that turns (still while queued), so it never reads as an
      idle ring or as the amber of the user's turn; which work it is lives in the tooltip. Its loop steps on the
