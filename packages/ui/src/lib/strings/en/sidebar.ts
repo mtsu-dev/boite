@@ -96,6 +96,8 @@ export const strings = {
     addProject: 'Add a project',
     noProjects: 'No project yet.',
     noThreads: 'No thread yet.',
+    threadCountOne: '{count} thread',
+    threadCountMany: '{count} threads',
     noMatch: 'Nothing matches.',
     unread: 'Unread',
     collapse: 'Hide sidebar',

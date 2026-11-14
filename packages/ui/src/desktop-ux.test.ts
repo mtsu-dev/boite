@@ -539,16 +539,23 @@ test('a thread left with words in its box carries a draft mark on its row, the o
   await waitFor(() => rowOf(first).querySelector('[data-testid=thread-draft]') === null);
 });
 
-test('a folded project keeps saying what its hidden threads do, and the mark goes when it unfolds', async () => {
+test('a folded project counts its threads and keeps their state until it unfolds', async () => {
   await mountOnFake();
   workspace.view = 'projects';
   const project = store.projects.find((p) => store.threadsOf(p.id).length >= 2)!;
   for (const thread of store.threadsOf(project.id)) { thread.status = 'idle'; thread.unread = false; }
   quiet(project.id);
   const head = () => query(`[data-testid=project-row][data-project-id="${project.id}"]`);
+  const counter = () => head().parentElement!.querySelector('[data-testid=project-thread-count]');
   await waitFor(() => document.querySelector(`[data-testid=project-row][data-project-id="${project.id}"]`) !== null);
+  if (store.isCollapsed(project.id)) store.toggleProject(project.id);
+  flushSync();
+  expect(counter()).toBeNull();
+  const total = store.threadsOf(project.id).length;
   if (!store.isCollapsed(project.id)) store.toggleProject(project.id);
   flushSync();
+  expect(counter()?.textContent).toBe(String(total));
+  expect(counter()?.getAttribute('aria-label')).toBe(`${total} threads`);
   expect(head().querySelector('[data-testid=project-rollup]')).toBeNull();
   const [first, second] = store.threadsOf(project.id);
   first!.status = 'running';
@@ -574,6 +581,22 @@ test('a folded project keeps saying what its hidden threads do, and the mark goe
   expect(head().parentElement!.querySelector('[data-testid=project-working-toggle]')).toBeNull();
   // Open, the row that needs the user says it: the head keeps its dot and count, the words only in its name.
   expect(head().parentElement!.querySelector('[data-testid=project-waiting-count] .word')!.classList.contains('spare')).toBe(true);
+  expect(counter()).toBeNull();
+  // An unsent draft keeps even an empty project open, without adding to its count.
+  store.startDraft(project.id);
+  store.toggleProject(project.id);
+  store.threads = [...store.threads,
+    { ...first!, id: 'archived-count-fixture', archived: true },
+    { ...first!, id: 'child-count-fixture', parentThreadId: first!.id }
+  ];
+  flushSync();
+  expect(counter()?.textContent).toBe(String(total));
+  for (const thread of store.threadsOf(project.id)) thread.archived = true;
+  flushSync();
+  expect(counter()?.textContent).toBe('0');
+  first!.archived = false;
+  flushSync();
+  expect(counter()?.getAttribute('aria-label')).toBe('1 thread');
 });
 
 async function openIdleThread(): Promise<string> {
