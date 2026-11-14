@@ -49,7 +49,9 @@
 .bot-work.idle { flex: 1; justify-content: center; align-items: center; gap: 10px; padding: 0 12px 15%; text-align: center; }
 .bot-work-face { display: block; }
 .bot-work-empty { margin: 0; font-size: var(--text-sm); line-height: 1.5; color: var(--color-muted-foreground); }
-.agent-desk .bot-section { padding: 6px 0 4px; }
+.agent-desk .bot-section { display: flex; align-items: center; gap: 6px; padding: 6px 0 4px; }
+.agent-desk .bot-section > svg { flex: none; }
+.agent-desk .bot-section-count { margin-left: 0; }
 /* The Desk's sections share one inset, the body's: headings, labels and the rows' marks start on one edge, and a
    row's hover ground bleeds out past it (Handling and Done sat 8 px in). */
 .agent-desk .desk-row { margin-inline: -10px; }
