@@ -87,6 +87,8 @@
       if (event.key === 'ArrowDown') { event.preventDefault(); popover.show(); }
       return;
     }
+    // Tab moves the focus on: the list closes behind it rather than stay open out of reach.
+    if (event.key === 'Tab') { popover.hide(); return; }
     const list = rows();
     const index = list.indexOf(document.activeElement as HTMLElement);
     let next = -1;

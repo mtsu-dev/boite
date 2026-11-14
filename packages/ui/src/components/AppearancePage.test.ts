@@ -159,6 +159,23 @@ test('picking a face from its list applies it, names it in the row and gives the
   expect(document.activeElement).toBe(head);
 });
 
+test('Tab out of an open face list closes it: the focus moves on, the list does not stay open behind it', async () => {
+  running = mount(AppearancePage, { target: document.body, props: { store: { owner: true } as Store } });
+  flushSync();
+  const head = document.querySelector<HTMLButtonElement>('[data-testid=font-current]')!;
+  head.click();
+  flushSync();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const row = document.activeElement as HTMLElement;
+  expect(row.dataset['testid']).toBe('font-inter');
+  const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+  row.dispatchEvent(tab);
+  flushSync();
+  expect(head.getAttribute('aria-expanded')).toBe('false');
+  // The browser still moves the focus: Tab is not swallowed.
+  expect(tab.defaultPrevented).toBe(false);
+});
+
 test('a phone shows each short choice in place as a desktop does: every option of language and theme in sight, the palettes as pictures, the one in use checked; only a face opens a list', () => {
   const restore = phoneWidth();
   try {
