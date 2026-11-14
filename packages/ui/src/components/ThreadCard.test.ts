@@ -372,7 +372,7 @@ test('an unreachable machine is said once: by the card head above, by its place,
   const project = store.projects.find(project => project.id === thread.projectId)!;
   store.connection = 'closed';
   const machine = { id: 'laptop', label: 'Laptop', store };
-  const show = async (props: Record<string, unknown>) => {
+  const showRow = async (props: Record<string, unknown>) => {
     if (mounted) await unmount(mounted);
     document.body.innerHTML = '';
     mounted = mount(ThreadCard, { target: document.body, props: { machine, project, thread, now: Date.now(), ...props } });
@@ -386,13 +386,13 @@ test('an unreachable machine is said once: by the card head above, by its place,
     };
   };
   // Under a card head that names the machine and says Offline: the row only mutes its title.
-  expect(await show({ placed: true })).toMatchObject({ muted: true, chips: 0, places: 0 });
+  expect(await showRow({ placed: true })).toMatchObject({ muted: true, chips: 0, places: 0 });
   // A row with no head above (a flat list): one chip, on the place line, never beside the title.
-  const flat = await show({});
+  const flat = await showRow({});
   expect(flat).toMatchObject({ muted: true, chips: 1 });
   expect(flat.title).not.toContain('Offline');
   expect(document.querySelector('[data-testid=thread-where] [data-testid=thread-offline]')).not.toBeNull();
   // Recent names the machine as a place, with its state: no second chip.
   const host = hostMark(machine.label, 'offline');
-  expect(await show({ where: { project: project.name, host, text: `${project.name} ${host.text}` } })).toMatchObject({ chips: 0, places: 1 });
+  expect(await showRow({ where: { project: project.name, host, text: `${project.name} ${host.text}` } })).toMatchObject({ chips: 0, places: 1 });
 });

@@ -7,8 +7,6 @@ import type { Store } from '../lib/store.svelte';
 import { chatPrefs, readChatPrefs } from '../lib/chat-prefs.svelte';
 import { phoneWidth } from '../test/phone-width';
 import { setLocaleSetting } from '../lib/i18n.svelte';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { presetPalette, setPalette } from '../lib/theme-colors';
 import { appCss } from '../test/app-css';
 

@@ -1,6 +1,4 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { applyColors, COLORS_KEY, colorsBootScript, PALETTES, presetPalette, readPalette, resetAccentColor, resetColors, setPalette, startColors } from './theme-colors';
 import { contrast, editPalette, improvePaletteContrast, mixColor, paletteTokens } from './color-math';
 import { appCss } from '../test/app-css';
