@@ -58,3 +58,8 @@ test('an account that keeps serving on credits is not out', () => {
   const paid = { ...row('Home', ['Weekly', 100]), credits: { kind: 'balance', enabled: true, remaining: 12, limit: null, unlimited: false } } as unknown as AccountQuota;
   expect(limitsNotice([paid])).toBeNull();
 });
+
+// A daily window bounds the whole account like a weekly one: it read as one model's.
+test('a daily window is the account\'s, not a model\'s', () => {
+  expect(limitsNotice([row('Home', ['Daily', 100, 5000])])).toMatchObject({ kind: 'out', window: 'Daily', scoped: false });
+});

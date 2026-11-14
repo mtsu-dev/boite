@@ -289,6 +289,8 @@ test('a subagent row names the thread that started it, and the parent title find
 test('done threads follow the finished ones, archived ones answer only to a query, and a subagent stands under its own state', async () => {
   const base = store.threads.find((thread) => thread.id === 't-descriptors')!;
   store.threads.push({ ...base, id: 't-helper', title: 'Loader helper', parentThreadId: base.id, status: 'running', lastUserMessageAt: Date.now() });
+  const shelvedParent = store.threads.find((thread) => thread.id === 't-trace')!.title;
+  store.threads.push({ ...base, id: 't-orphan', title: 'Trace helper', parentThreadId: 't-trace', status: 'running', lastUserMessageAt: Date.now() });
   // Marked done and archived through the client, as the app does: neither stays in the Store's list, the palette reads them.
   await store.archive('t-trace', true);
   await store.archive('t-bench');
@@ -300,9 +302,15 @@ test('done threads follow the finished ones, archived ones answer only to a quer
     .map((section) => [section.dataset['section'], Array.from(section.querySelectorAll('[data-testid=palette-row]')).map((row) => row.getAttribute('data-palette-id')!.slice('thread:'.length))]);
   await vi.waitFor(() => { flushSync(); expect(shape().map(([id]) => id)).toContain('done'); });
   expect(shape().map(([id]) => id)).not.toContain('archived');
+  const order = shape().map(([id]) => id);
+  // Done closes the list: after what runs and what finished.
+  expect(order.at(-1)).toBe('done');
+  expect(order[0]).toBe('running');
   expect(shape().find(([id]) => id === 'done')![1]).toEqual(['t-trace']);
   expect(shape().find(([id]) => id === 'running')![1]).toContain('t-helper');
   expect(document.querySelector('[data-palette-id="thread:t-helper"]')?.classList.contains('sub')).toBe(true);
+  // A helper names its parent though the parent left the Store's list.
+  expect(document.querySelector('[data-palette-id="thread:t-orphan"] [data-testid=palette-parent]')?.textContent).toBe(`in ${shelvedParent}`);
   await type('bench');
   expect(shape().find(([id]) => id === 'archived')![1]).toEqual(['t-bench']);
   // An archived row opens its thread, though the Store never listed it.

@@ -26,7 +26,7 @@ export interface LimitsNotice {
 
 /** A window that bounds the whole account: a bare period, no model or group named. */
 function general(label: string): boolean {
-  return label.split(' · ').every((part) => /^(\d+(\.\d+)? hours|Weekly|Monthly|Credits|Quota)$/.test(part));
+  return label.split(' · ').every((part) => /^(\d+(\.\d+)? hours|Daily|Weekly|Monthly|Credits|Quota)$/.test(part));
 }
 
 /** What one account can still give to a scope (a model's window, or everything), and the window that says so. */

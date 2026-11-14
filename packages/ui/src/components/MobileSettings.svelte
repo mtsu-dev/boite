@@ -230,9 +230,9 @@
       <section class="family" aria-labelledby="mobile-family-agents" data-testid="settings-family" data-family="agents">
         <h2 class="family-head ui-label" id="mobile-family-agents">{strings.settings.families.agents}</h2>
         <div class="rows">
-          {#if store.owner}{@render row('settings-tab-accounts', strings.settings.tabs.accounts, () => store.showSettings('accounts'), 'accounts')}{/if}
-          {#if store.owner}{@render row('settings-tab-plugins', strings.settings.tabs.plugins, () => store.showSettings('plugins'), 'plugins')}{/if}
-          {#if store.owner}{@render row('settings-tab-brain', strings.brain.heading, () => store.showSettings('brain'), 'brain')}{/if}
+          {#if target.owner}{@render row('settings-tab-accounts', strings.settings.tabs.accounts, () => store.showSettings('accounts'), 'accounts')}{/if}
+          {#if target.owner}{@render row('settings-tab-plugins', strings.settings.tabs.plugins, () => store.showSettings('plugins'), 'plugins')}{/if}
+          {#if target.owner}{@render row('settings-tab-brain', strings.brain.heading, () => store.showSettings('brain'), 'brain')}{/if}
           <!-- Limits and Usage are peers, as on the desktop; their screen keeps both as two tabs. -->
           {@render row('settings-tab-limits', strings.usage.limits, () => store.showSettings('limits'), 'limits')}
           {@render row('settings-tab-usage', strings.usage.heading, () => store.showSettings('usage'), 'usage')}
@@ -257,7 +257,7 @@
           <!-- The phone follows the desktop app's experiments until it flips one here, and can follow it again from this page. -->
           {#if experimentsShown()}{@render row('settings-tab-experiments', strings.settings.tabs.experiments, () => store.showSettings('experiments'), 'experiments')}{/if}
           <!-- The task manager is Diagnostics' last section (lib/settings-tabs.ts); a paired phone, without the logs, opens it alone. -->
-          {#if store.owner}{@render row('settings-tab-diagnostics', strings.diagnostics.heading, () => store.showSettings('diagnostics'), 'diagnostics')}
+          {#if target.owner}{@render row('settings-tab-diagnostics', strings.diagnostics.heading, () => store.showSettings('diagnostics'), 'diagnostics')}
           {:else}{@render row('settings-tab-task-manager', strings.taskManager.title, () => store.showSettings('task-manager'), 'task-manager')}{/if}
         </div>
       </section>

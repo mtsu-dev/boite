@@ -152,6 +152,7 @@
       { id: 'usage-breakdown', label: strings.usage.breakdown },
       { id: 'usage-threads', label: strings.usage.threads }
     ],
+    limits: [{ id: 'limit-resume', label: strings.quotas.autoResume }],
     resources: [
       { id: 'limits', label: strings.protection.limits },
       { id: 'tasks', label: strings.protection.tasks }
@@ -546,7 +547,7 @@
       {:else if page === 'limits'}
         <LimitsPage store={target} />
       {:else if page === 'task-manager'}
-        <TaskManagerLoader {store} {onopenthread} />
+        <TaskManagerLoader store={page === tab ? store : target} {onopenthread} />
       {:else if page === 'plugins'}
         <PluginsPage store={target} />
       {:else if page === 'experiments'}

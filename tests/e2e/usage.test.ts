@@ -193,7 +193,7 @@ test('the phone page fits 390 px and is reachable from the phone settings list',
   expect(await page.evaluate(`(() => {
     const info = document.querySelector('[data-testid=mobile-settings-info]').getBoundingClientRect();
     const refresh = document.querySelector('[data-testid=usage-refresh]').getBoundingClientRect();
-    return refresh.top < info.bottom && refresh.bottom > info.top && refresh.right <= innerWidth;
+    return info.width > 0 && refresh.width > 0 && refresh.height > 0 && refresh.left >= 0 && refresh.right <= innerWidth && refresh.top < info.bottom && refresh.bottom > info.top;
   })()`)).toBe(true);
   await capture('usage-phone-dark.png');
 
@@ -256,6 +256,7 @@ test('the limits tab is its own page, one card per account, no scrolling through
   await page.waitFor(`document.querySelectorAll('[data-testid=usage-limit-account]').length >= 3`);
   // The limits answer the first screen: nothing of the history is loaded beside them.
   expect(await count('[data-testid=usage-chart]')).toBe(0);
+  await page.waitFor(`document.querySelector('[data-testid=limits-page]').getBoundingClientRect().top < innerHeight / 2`);
   expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
   await capture('limits-desktop-dark.png');
   await scheme('light');

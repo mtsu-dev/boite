@@ -271,7 +271,7 @@
 
   /* Who the post wakes, where a thread's composer keeps its hint: beside send, in the subtle ink. */
   .wakes { flex: 1 1 0; align-self: center; min-width: 0; text-align: right; overflow: hidden; color: var(--color-subtle); font-size: var(--text-sm); text-overflow: ellipsis; white-space: nowrap; }
-  .send { flex: none; width: 32px; height: 32px; border-radius: var(--radius-full); box-shadow: var(--shadow-send); transition: background var(--dur-2) var(--ease-out-quint), opacity var(--dur-2) var(--ease-out-quint), transform var(--motion-duration) var(--motion-curve); }
+  .send { flex: none; margin-left: auto; width: 32px; height: 32px; border-radius: var(--radius-full); box-shadow: var(--shadow-send); transition: background var(--dur-2) var(--ease-out-quint), opacity var(--dur-2) var(--ease-out-quint), transform var(--motion-duration) var(--motion-curve); }
   .send :global(.spinner) { animation: spin 1s linear infinite var(--loops); }
 
   .replying { display: flex; align-items: center; gap: 8px; margin: 8px 8px 0; padding: 2px 4px 2px 10px; border-radius: var(--radius-md); background: var(--color-hover); color: var(--color-muted-foreground); font-size: var(--text-sm); }

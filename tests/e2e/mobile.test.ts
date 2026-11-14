@@ -66,7 +66,7 @@ test('phone settings expose browser profiles and allowed windows only to owners 
   await page.waitFor(`__boiteTest.workspace.active.owner === false`);
   expect(await page.evaluate<string[]>(rows)).toEqual([...expected.filter(row => !ownerOnly.includes(row)), 'settings-tab-task-manager']);
   await page.click('[data-testid=mobile-settings-connection]');
-  await page.waitFor(`document.querySelector('[data-testid=mobile-settings-detail]')`);
+  await page.waitFor(`document.querySelector('[data-testid=mobile-settings-detail]') && document.querySelector('[data-testid=group-card]')`);
   expect(await page.evaluate(`document.querySelector('[data-testid=machines-windows-scope]') === null`)).toBe(true);
   await page.click('[data-testid=mobile-settings-back]');
   await page.waitFor(`document.querySelector('[data-testid=mobile-settings-home]')`);
@@ -237,6 +237,7 @@ test('model sheets stay on screen and browser Back closes the sheet without losi
   expect(await page.evaluate(`document.querySelector('[data-testid=composer-input]').value`)).toBe('Keep this draft');
   await navigateMobile('mobile-settings');
   await page.click('[data-testid=settings-tab-general]');
+  await page.waitFor(`document.querySelector('[data-testid=mobile-settings-general]')`);
   await page.click('[data-testid=mobile-settings-phone]');
   await page.waitFor(`document.querySelector('[data-testid=phone-settings]')`);
   await capture('mobile-installation.png');

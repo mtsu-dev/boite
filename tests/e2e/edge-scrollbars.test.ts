@@ -53,7 +53,7 @@ async function setSwitch(on: boolean) {
   await page.click('[data-testid=nav-settings]');
   // The switch is a detail of Advanced, beside the terminal's cursor.
   await page.click('[data-testid=settings-tab-advanced]');
-  expect(await page.evaluate(`!!document.querySelector('${toggle}')`)).toBe(true);
+  await page.waitFor(`!!document.querySelector('${toggle}')`);
   const checked = await page.evaluate<boolean>(`document.querySelector('${toggle}').getAttribute('aria-checked') === 'true' || document.querySelector('${toggle}').checked === true`);
   if (checked !== on) await page.click(toggle);
   await page.click('[data-testid=settings-back]');

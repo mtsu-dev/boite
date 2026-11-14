@@ -99,14 +99,15 @@
     const places = new Map<string, Place>();
     for (const machine of machines) {
       const live = new Set(machine.store.threads.map(thread => thread.id));
-      for (const thread of [...machine.store.threads, ...(shelved.get(machine.store) ?? []).filter(thread => !live.has(thread.id))]) {
+      const every = [...machine.store.threads, ...(shelved.get(machine.store) ?? []).filter(thread => !live.has(thread.id))];
+      for (const thread of every) {
         if (thread.incognito) continue;
         const project = machine.store.projects.find(p => p.id === thread.projectId) ?? null;
         const id = `thread:${machine.store.threadKey(thread.id)}`;
         const bot = project ? null : agentDirectory(machine.store).ownerOf(thread);
         const botThread = !project && (bot !== null || !!thread.agentSessionId || !!thread.teamId);
         const section = botThread ? BOTS_SECTION : threadGroup(thread, threadState(thread, rowAsks(machine.store, thread.id)));
-        const parent = thread.parentThreadId ? machine.store.threads.find(one => one.id === thread.parentThreadId)?.title ?? null : null;
+        const parent = thread.parentThreadId ? every.find(one => one.id === thread.parentThreadId)?.title ?? null : null;
         places.set(id, { machine, project, thread, bot, parent });
         if (botThread && thread.archived) continue;
         items.push({

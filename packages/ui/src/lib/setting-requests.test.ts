@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest';
 import { REQUESTABLE_SETTINGS, readSettings, settledSetting, type RequestableKey, type Settings, type SettingAsk } from '@boite/contracts';
-import { retiredHint, settingLabel, settingsReachable, settingValueText } from './setting-requests';
+import { retiredHint, settingLabel, settingsReachable, settingsSectionLabel, settingValueText } from './setting-requests';
+import { strings } from './strings';
 
 const open = (page: SettingAsk['page'], section: string | null): SettingAsk => ({ kind: 'open', page, section });
 
@@ -62,5 +63,15 @@ test('an old card about a finished experiment reads as words, never as its key',
   expect(settingLabel('experiment.recording-indicators' as RequestableKey)).toBe('Show actions in recordings');
   for (const id of ['prompt-cache', 'recording-indicators']) {
     expect(retiredHint(`experiment.${id}`)).toBe('This is now on in every build.');
+  }
+});
+
+// The owner's two conversation cards and the auto-resume card had no name and the wrong reach.
+test('the owner-only conversation cards are named, and offered to the owner alone, phone included', () => {
+  expect(settingsSectionLabel('agents-alone')).toBe(strings.agentsAlone.heading);
+  expect(settingsSectionLabel('limit-resume')).toBe(strings.quotas.autoResume);
+  for (const section of ['agents-alone', 'agent-replies']) {
+    expect(settingsReachable(open('general', section), { owner: false, phone: false })).toBe(false);
+    expect(settingsReachable(open('general', section), { owner: true, phone: true })).toBe(true);
   }
 });

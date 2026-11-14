@@ -115,7 +115,7 @@ test('installation confirms in both languages and cancelling keeps the downloade
 test('General has no update controls or shortcut and the Machines tab opens updates', async () => {
   await updates('ready');
   await page.click(id('settings-tab-general'));
-  await page.waitFor(`document.querySelector('${id('settings-page')}')`);
+  await page.waitFor(`document.querySelector('${id('settings-page')}') && document.querySelector('${id('machines-page')}') === null`);
   for (const name of ['app-updates-card', 'updates-run-all', 'updates-check-all', 'app-update-status']) expect(await absent(name)).toBe(true);
   await page.click(id('settings-tab-machines'));
   await page.waitFor(`document.querySelector('${id('machines-page')}') && document.querySelector('${id('app-updates-card')} ${id('updates-run-all')}')`);

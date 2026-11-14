@@ -153,6 +153,8 @@ export function settingsSectionLabel(section: string, providers: readonly Provid
     quiet: strings.protection.quiet,
     limits: strings.protection.limits,
     tasks: strings.protection.tasks,
+    'limit-resume': strings.quotas.autoResume,
+    'agents-alone': strings.agentsAlone.heading,
     machines: strings.machines.heading,
     updates: strings.appUpdate.updates,
     'agent-updates': strings.harnessUpdates.heading,
@@ -169,7 +171,7 @@ export function settingsSectionLabel(section: string, providers: readonly Provid
 /** Pages a paired device's Settings leaves out: `OWNER_TABS` in `SettingsShell.svelte`. */
 const OWNER_PAGES: readonly SettingsPage[] = ['accounts', 'plugins', 'resources', 'brain'];
 /** Cards of the shared pages that only the owner's Settings draws there. */
-const OWNER_SECTIONS: readonly string[] = ['quiet', 'worktrees', 'privacy', 'execution', 'origins', 'auto-compact', 'device-stream', 'background-compaction'];
+const OWNER_SECTIONS: readonly string[] = ['quiet', 'agents-alone', 'agent-replies', 'worktrees', 'privacy', 'execution', 'origins', 'auto-compact', 'device-stream', 'background-compaction'];
 /**
  * What a phone browser's Settings (`MobileSettings.svelte`) draws: the pages
  * it opens whole, then the cards it has of the others. Keep it in step with
@@ -179,7 +181,7 @@ const PHONE_PAGES: readonly SettingsPage[] = ['appearance', 'accounts', 'voice',
 const PHONE_CARDS: Partial<Record<SettingsPage, readonly string[]>> = {
   resources: ['limits', 'tasks'],
   machines: ['machines', 'group'],
-  general: ['archived', 'worktrees', 'conversations', 'quiet'],
+  general: ['archived', 'worktrees', 'conversations', 'quiet', 'agents-alone', 'agent-replies'],
   advanced: ['auto-compact'],
 };
 

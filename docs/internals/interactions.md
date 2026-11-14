@@ -5,7 +5,8 @@ Both left the Experiments page on 2026-10-24.
 
 ## Edge scrollbars
 
-Settings, Appearance, **Edge scrollbars** is on by default on a desktop.
+Settings, System, Terminal and scrollbars, **Hide scrollbars until the pointer is
+near** is on by default on a desktop.
 
 Native scrollbars take no room, and gutters reserved for them collapse, so
 the width they held goes back to the content. One overlay draws a thumb for each scroll
