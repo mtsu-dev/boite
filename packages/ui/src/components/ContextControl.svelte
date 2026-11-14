@@ -11,10 +11,10 @@
   import { cacheSpan, promptCacheState, PROMPT_CACHE_TICK_MS } from '../lib/prompt-cache';
   /**
    * The context's one form, desktop and phone: a small ring filled by what is
-   * used and, from the threshold in `ComposerBar`, the words "28% context left".
+   * used and, from 70% used, the words "28% context left".
    * A hover or a click opens the details even when only the ring is shown.
    */
-  let { store, reading = true }: { store: Store; reading?: boolean } = $props();
+  let { store }: { store: Store } = $props();
   let root = $state<HTMLDivElement>();
   const popup = new Closing();
   let readingExpanded = $state(false);
@@ -78,11 +78,13 @@
   <button type="button" class="trigger ghost" data-testid="context-trigger" title={named} aria-label={[named, cacheLabel].filter(Boolean).join(', ')} aria-expanded={popup.open} aria-haspopup="dialog" onclick={show}>
     <!-- A still ring filled by the share used, grey like the words, never the accent of a spinner. -->
     <svg class="ring" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle class="track" cx="7" cy="7" r="5.25" /><circle class="used" cx="7" cy="7" r="5.25" pathLength="100" stroke-dasharray="{percent ?? 0} 100" /></svg>
-    {#if reading && left !== null}<span class="percent ui-label" aria-hidden="true">{strings.thread.contextLeft(String(left))}</span>{/if}
-    {#if reading && cacheNow}
+    {#if left !== null && left <= 30}
+    <span class="percent ui-label" aria-hidden="true">{strings.thread.contextLeft(String(left))}</span>
+    {#if cacheNow}
       <span class="cache-chip num" data-testid="prompt-cache" data-state={cacheNow.kind} class:low={cacheNow.kind !== 'cold' && cacheNow.secondsLeft <= 300} aria-hidden="true">
         <Clock size={13} strokeWidth={1.75} /><span class="ui-label">{cacheNow.kind === 'cold' ? strings.thread.cacheCold : remaining(cacheNow.secondsLeft)}</span>
       </span>
+    {/if}
     {/if}
   </button>
   {#if popup.shown && contextPopup.current}

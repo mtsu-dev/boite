@@ -27,8 +27,6 @@
   import { machineAway } from '../lib/machine-away';
   import { declineHint } from '../lib/composer-placeholder';
   import { repliesOf } from '../lib/question-reply.svelte';
-  /** The context's reading shows in the row from this percent used. */
-  const CONTEXT_SHOWN_FROM = 70;
   import { workspace } from '../lib/workspace.svelte';
   import PluginSlotButtons from './PluginSlotButtons.svelte';
 
@@ -328,7 +326,7 @@
     {#if bound && showContext}
       <!-- The context is its own quiet item of the row, after the chips that set something. -->
       <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div class="context-control" oncontextmenu={(event) => controlMenu(event, store, 'header.context')}><ContextControl {store} reading={contextUsed !== null && contextUsed >= CONTEXT_SHOWN_FROM} /></div>
+      <div class="context-control" oncontextmenu={(event) => controlMenu(event, store, 'header.context')}><ContextControl {store} /></div>
     {/if}
     </div>
     <!-- Outside desktop-options: a phone keeps a plugin's buttons. -->

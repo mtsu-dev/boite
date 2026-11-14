@@ -5,13 +5,15 @@ import { query, test, waitFor } from '../test/app';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 
-test('the composer wears the context meter from its threshold, a compaction is a divider, and a turn moves the meter', async ({ app: _app }) => {
+test('the composer keeps the context ring and adds its reading from the threshold, a compaction is a divider, and a turn moves the meter', async ({ app: _app }) => {
   await waitFor(() => store.openThread?.id === 't-descriptors');
 
-  // 31k of 200k, just compacted: under the threshold the row draws no reading, and the "+" holds actions only.
+  // 31k of 200k, just compacted: under the threshold the row keeps only the ring, and the "+" holds actions only.
   const bar = () => document.querySelector<HTMLElement>('[data-testid=composer] .bar [data-testid=context-meter]');
   await waitFor(() => document.querySelector('[data-testid=composer-options]') !== null);
-  expect(bar()).toBeNull();
+  expect(bar()?.dataset.percent).toBe('16');
+  expect(bar()!.textContent?.trim()).toBe('');
+  expect(bar()!.querySelector('[data-testid=context-trigger] svg.ring')).not.toBeNull();
   query<HTMLButtonElement>('[data-testid=composer-options]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-options-sheet]') !== null);
   expect(document.querySelector('[data-testid=composer-context]')).toBeNull();
@@ -23,8 +25,9 @@ test('the composer wears the context meter from its threshold, a compaction is a
   await waitFor(() => !query<HTMLButtonElement>('[data-testid=composer-send]').disabled);
   query<HTMLButtonElement>('[data-testid=composer-send]').click();
   await waitFor(() => store.openThread?.status === 'idle' && (store.openThread?.context?.tokens ?? 0) > 31_000);
-  // 31_000 + 600 + 13 * 4 = 31_652 of 200_000: still 16 percent, still nothing in the row.
-  expect(bar()).toBeNull();
+  // 31_000 + 600 + 13 * 4 = 31_652 of 200_000: still 16 percent, still only the ring in the row.
+  expect(bar()?.dataset.percent).toBe('16');
+  expect(bar()!.textContent?.trim()).toBe('');
 
   // From 70 percent the reading stands in the row as its own item: a still ring and what is left, in words.
   store.openThread!.context = { ...store.openThread!.context!, tokens: 140_000, window: 200_000 };
@@ -42,9 +45,11 @@ test('the composer wears the context meter from its threshold, a compaction is a
     'Older messages summarized to make room, 184K to 31K tokens'
   );
 
-  // At 69 the row shows nothing there.
+  // At 69 the reading hides and the ring stays.
   store.openThread!.context = { ...store.openThread!.context!, tokens: 138_000, window: 200_000 };
-  await waitFor(() => bar() === null);
+  await waitFor(() => bar()?.dataset.percent === '69');
+  expect(bar()!.querySelector('[data-testid=context-trigger]')!.textContent?.trim()).toBe('');
+  expect(bar()!.querySelector('[data-testid=context-trigger] svg.ring')).not.toBeNull();
 
   // A thread with a pending permission keeps the chip named: the row is the same in every state.
   query<HTMLButtonElement>('[data-thread-id="t-bench"]').click();
