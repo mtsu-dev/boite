@@ -24,12 +24,24 @@ afterEach(async () => {
   vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear();
 });
 
-test('a phone row shows its linked pull request under its title, a link outside the row\'s button', async () => {
+/** A phone: every media query answers yes. `vi.restoreAllMocks` in the afterEach puts the window back. */
+function everyQueryMatches(): void {
   vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
     media, matches: true, onchange: null, addListener() {}, removeListener() {}
   }));
+}
+
+/** A phone, then `store` connected to a fresh fake `client`; the afterEach detaches and closes them. */
+async function onPhone(): Promise<void> {
+  everyQueryMatches();
   client = new FakeClient({ delayMs: 0 });
-  store = new Store(); store.attach(client); await store.connect();
+  store = new Store();
+  store.attach(client);
+  await store.connect();
+}
+
+test('a phone row shows its linked pull request under its title, a link outside the row\'s button', async () => {
+  await onPhone();
   const thread = store.threads.find(t => !t.parentThreadId && !t.archived && t.projectId !== null)!;
   thread.branch = null;
   const url = 'https://github.com/example/repo/pull/9951';
@@ -47,11 +59,7 @@ test('a phone row shows its linked pull request under its title, a link outside 
 });
 
 test('Activity gives each row its reason and its time, a sub-agent under its parent', async () => {
-  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
-    media, matches: true, onchange: null, addListener() {}, removeListener() {}
-  }));
-  client = new FakeClient({ delayMs: 0 });
-  store = new Store(); store.attach(client); await store.connect();
+  await onPhone();
   workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
   // A sub-agent that asks, under a top thread.
   const parent = store.threads.find(thread => !thread.parentThreadId && thread.projectId && thread.id !== store.openThread?.id)!;
@@ -106,9 +114,7 @@ test('Activity gives each row its reason and its time, a sub-agent under its par
 });
 
 test('selecting a conversation beyond the first mobile window finishes loading its history', async () => {
-  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
-    media, matches: true, onchange: null, addListener() {}, removeListener() {}
-  }));
+  everyQueryMatches();
   vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(400);
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
     const root = document.querySelector<HTMLElement>('[data-testid=mobile-list]');
@@ -148,11 +154,7 @@ test('selecting a conversation beyond the first mobile window finishes loading i
 });
 
 test('the header holds the search, opened in place, the new thread and the Settings gear; the bar goes back to the threads', async () => {
-  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
-    media, matches: true, onchange: null, addListener() {}, removeListener() {}
-  }));
-  client = new FakeClient({ delayMs: 0 });
-  store = new Store(); store.attach(client); await store.connect();
+  await onPhone();
   workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
   mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'activity' } });
   await settle();
@@ -231,11 +233,7 @@ test('the header holds the search, opened in place, the new thread and the Setti
 });
 
 test('a parent on another machine shows its working sub-agents, counted, and Recent filters what is at work', async () => {
-  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
-    media, matches: true, onchange: null, addListener() {}, removeListener() {}
-  }));
-  client = new FakeClient({ delayMs: 0 });
-  store = new Store(); store.attach(client); await store.connect();
+  await onPhone();
   // The phone's own core is not the one the parent runs on: a second machine, not the active one.
   const remoteClient = new FakeClient({ delayMs: 0, coreId: 'fake-builder', coreName: 'Builder' });
   const remote = new Store(); remote.machineId = 'http://builder.test'; remote.visible = false;
@@ -312,9 +310,7 @@ test('a parent on another machine shows its working sub-agents, counted, and Rec
 });
 
 test("a contact's page opened from the list leaves for the board on the chat screen, and Back returns to the list", async () => {
-  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
-    media, matches: true, onchange: null, addListener() {}, removeListener() {}
-  }));
+  everyQueryMatches();
   setExperiment('contacts', true);
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
@@ -333,11 +329,7 @@ test("a contact's page opened from the list leaves for the board on the chat scr
 });
 
 test("a project header's menu starts a thread there and leaves the list for its composer", async () => {
-  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
-    media, matches: true, onchange: null, addListener() {}, removeListener() {}
-  }));
-  client = new FakeClient({ delayMs: 0 });
-  store = new Store(); store.attach(client); await store.connect();
+  await onPhone();
   workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
   workspace.setView('projects');
   mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } });
@@ -353,11 +345,7 @@ test("a project header's menu starts a thread there and leaves the list for its 
 });
 
 test("with two machines the gear names the machine on the threads list only: Activity gathers every machine", async () => {
-  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
-    media, matches: true, onchange: null, addListener() {}, removeListener() {}
-  }));
-  client = new FakeClient({ delayMs: 0 });
-  store = new Store(); store.attach(client); await store.connect();
+  await onPhone();
   workspace.machines = [{ id: 'local', label: 'Local', store }, { id: 'pc', label: 'PC', store: new Store() }]; workspace.active = store;
   mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } });
   await settle();
@@ -375,11 +363,7 @@ test("with two machines the gear names the machine on the threads list only: Act
 });
 
 test("a project header names another machine as a place once two are connected, and an unreachable one's state once, in a line with Reconnect", async () => {
-  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
-    media, matches: true, onchange: null, addListener() {}, removeListener() {}
-  }));
-  client = new FakeClient({ delayMs: 0 });
-  store = new Store(); store.attach(client); await store.connect();
+  await onPhone();
   const remoteClient = new FakeClient({ delayMs: 0, coreId: 'fake-builder', coreName: 'Builder' });
   const remote = new Store(); remote.machineId = 'http://builder.test'; remote.visible = false;
   remote.attach(remoteClient); await remote.connect();
@@ -420,11 +404,7 @@ test("a project header names another machine as a place once two are connected, 
 });
 
 test("a subagent's conversation on a phone has one back arrow, and it returns to the thread that started it", async () => {
-  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
-    media, matches: true, onchange: null, addListener() {}, removeListener() {}
-  }));
-  client = new FakeClient({ delayMs: 0 });
-  store = new Store(); store.attach(client); await store.connect();
+  await onPhone();
   const parent = store.threads.find(t => !t.parentThreadId && !t.archived && t.projectId !== null && t.status === 'idle')!;
   const child = (await client.call('delegation.spawn', { threadId: parent.id, task: 'Audit the edge cases', requestId: 'phone-back' })).thread;
   await vi.waitFor(() => expect(store.threads.some(t => t.id === child.id)).toBe(true));
@@ -444,9 +424,7 @@ test("a subagent's conversation on a phone has one back arrow, and it returns to
 });
 
 test("a tap on a project's header folds it as the sidebar does, and the fold outlives a restart", async () => {
-  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
-    media, matches: true, onchange: null, addListener() {}, removeListener() {}
-  }));
+  everyQueryMatches();
   const { projectView } = await import('../lib/project-view.svelte');
   const { contextMenu } = await import('../lib/context-menu.svelte');
   const order = projectView.order;
@@ -515,11 +493,7 @@ test("a tap on a project's header folds it as the sidebar does, and the fold out
 });
 
 test('a machine out of reach keeps its projects\' count of what needs the user, the count Activity\'s tab shows', async () => {
-  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
-    media, matches: true, onchange: null, addListener() {}, removeListener() {}
-  }));
-  client = new FakeClient({ delayMs: 0 });
-  store = new Store(); store.attach(client); await store.connect();
+  await onPhone();
   const thread = store.threadsOf('p-boite').find(t => !t.parentThreadId)!;
   store.threads = store.threads.map(t => t.id === thread.id ? { ...t, status: 'error' } : t);
   workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
@@ -539,11 +513,7 @@ test('a machine out of reach keeps its projects\' count of what needs the user, 
 });
 
 test('the Bots search lent to the header carries no thread display options, though the thread list was the last screen', async () => {
-  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
-    media, matches: true, onchange: null, addListener() {}, removeListener() {}
-  }));
-  client = new FakeClient({ delayMs: 0 });
-  store = new Store(); store.attach(client); await store.connect();
+  await onPhone();
   workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
   store.page = 'agents';
   const release = tabHeader.lend({ searchLabel: 'Search bots', searchTestid: 'agents-search-toggle', create: null });
