@@ -118,8 +118,10 @@ export class BareCli {
     // Claude Code echoes a key as that one character at the cursor, or redraws the prompt line with what was typed so far.
     const line = `❯${tab.typed.slice(-12)}`;
     let shown: number | null = null;
+    // The terminal may cut one redraw in two reads, so the line is looked for in everything drawn since the key.
+    const from = tab.drawn.length;
     tab.listen = (chunk, at) => {
-      if (shown === null && (chunk === key || chunk.includes(line))) shown = at;
+      if (shown === null && (chunk === key || tab.drawn.slice(Math.max(0, from - line.length)).includes(line))) shown = at;
     };
     const sent = now();
     this.#terminal(tab).write(key);

@@ -194,7 +194,6 @@ export class BoiteApp {
     return this.page.evaluate<boolean>(`(${TIMELINE_TEXT}).includes(${JSON.stringify(marker)})`);
   }
 
-  /** Puts `text` in the composer, untimed. */
   /** Types `text` into the composer key by key, each held 10 ms as ADEMark's native keys are. */
   async fill(text: string): Promise<void> {
     for (const character of text) {

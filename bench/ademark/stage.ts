@@ -78,6 +78,7 @@ export function freshArena(to: string): string {
   };
   git('init', '--quiet', '--initial-branch=main');
   git('add', '-A');
-  git('commit', '--quiet', '-m', 'arena');
+  // The arena's commit must not depend on the machine having a git identity.
+  git('-c', 'user.name=ademark', '-c', 'user.email=ademark@example.invalid', 'commit', '--quiet', '-m', 'arena');
   return to;
 }

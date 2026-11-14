@@ -52,6 +52,7 @@ const flag = (name: string, fallback: string): string => {
   return at === -1 ? fallback : (process.argv[at + 1] ?? fallback);
 };
 const ade = flag('ade', 'boite');
+if (ade !== 'boite' && ade !== 'bare-cli') throw new Error(`--ade ${ade}: expected boite or bare-cli`);
 const tests = flag('tests', 'B1,B3').split(',').filter((test): test is keyof typeof PROMPTS => test in PROMPTS);
 const out = flag('out', mkdtempSync(join(tmpdir(), 'boite-ademark-tokens-')));
 
@@ -82,7 +83,7 @@ function summed(lines: CaptureLine[]): Run {
 async function one(stage: Stage, dir: string, prompt: string): Promise<Run> {
   const arena = freshArena(join(dir, 'arena'));
   const before = stage.capture().length;
-  const mainSeen = (): boolean => stage.capture().slice(before).some((line) => Array.isArray((line.body as { tools?: unknown[] } | null)?.tools) && line.usage !== null);
+  const mainSeen = (): boolean => stage.capture().slice(before).some((line) => ((line.body as { tools?: unknown[] } | null)?.tools?.length ?? 0) > 0 && line.usage !== null);
   const settled = async (): Promise<void> => {
     if (!(await until(() => mainSeen() && stage.quietMs() >= AFTER_MS, 900_000, 500))) throw new Error(`the requests of "${prompt}" never went quiet`);
   };

@@ -190,15 +190,21 @@ export function startProxy(options: { port: number; upstream: string; log: strin
       const source = answer.body.getReader();
       const stream = new ReadableStream<Uint8Array>({
         async pull(controller) {
-          const chunk = await source.read();
-          if (chunk.done) {
+          try {
+            const chunk = await source.read();
+            if (chunk.done) {
+              record();
+              controller.close();
+              return;
+            }
+            firstByteMs ??= performance.now() - started;
+            reader.feed(decoder.decode(chunk.value, { stream: true }));
+            controller.enqueue(chunk.value);
+          } catch (error) {
+            // An upstream that breaks mid-answer still ends the request: it is logged, and the client sees the error.
             record();
-            controller.close();
-            return;
+            throw error;
           }
-          firstByteMs ??= performance.now() - started;
-          reader.feed(decoder.decode(chunk.value, { stream: true }));
-          controller.enqueue(chunk.value);
         },
         async cancel() {
           await source.cancel().catch(() => undefined);
