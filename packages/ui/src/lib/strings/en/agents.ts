@@ -133,7 +133,7 @@ export const strings = {
       topic: 'its day', none: 'It has not woken on its own today.',
       wakes: { one: 'Woke on its own once today', many: 'Woke on its own {count} times today' },
       quiet: { one: 'once with nothing to report', many: '{count} times with nothing to report' },
-      cost: 'Spent {cost} today on its own wakes', costOf: 'Spent {cost} of its {budget} daily budget on its own wakes',
+      cost: 'Spent {cost} today', costOf: 'Spent {cost} today. Past {budget}, its own wakes wait until tomorrow',
     },
     state: { working: 'Working', queued: 'Queued', waiting: 'Waiting for you', idle: 'Idle', paused: 'Paused', archived: 'Archived', error: 'Its last turn failed' },
     outcome: { done: 'done', quiet: 'nothing to report', error: 'failed', stopped: 'stopped', skipped: 'skipped', nothing: 'nothing new' },

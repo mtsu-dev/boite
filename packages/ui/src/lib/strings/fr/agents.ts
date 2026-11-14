@@ -123,7 +123,7 @@ export const fr: Translation = {
       topic: 'sa journée', none: 'Il ne s’est pas réveillé seul aujourd’hui.',
       wakes: { one: 'Réveillé seul une fois aujourd’hui', many: 'Réveillé seul {count} fois aujourd’hui' },
       quiet: { one: 'une fois sans rien à signaler', many: '{count} fois sans rien à signaler' },
-      cost: '{cost} dépensés aujourd’hui pour ses réveils', costOf: '{cost} dépensés sur {budget} de budget quotidien pour ses réveils',
+      cost: '{cost} dépensés aujourd’hui', costOf: '{cost} dépensés aujourd’hui. Au-delà de {budget}, ses réveils attendent demain',
     },
     state: { working: 'Au travail', queued: 'En file', waiting: 'Vous attend', idle: 'Au repos', paused: 'En pause', archived: 'Archivé', error: 'Son dernier tour a échoué' },
     outcome: { done: 'terminé', quiet: 'rien à signaler', error: 'échec', stopped: 'arrêté', skipped: 'sauté', nothing: 'rien de nouveau' },

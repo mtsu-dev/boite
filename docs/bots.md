@@ -75,8 +75,8 @@ tooltip holds the error.
 
 The bot's column starts with its name and one status: the step it is on, what
 it waits for, why it failed, or, at rest, its next routine and when. The "i"
-beside its name says how often it woke on its own today and what that cost,
-against its daily budget when it has one.
+beside its name says how often it woke on its own today and what it spent
+today in all, your messages included, beside its daily budget when it has one.
 
 The threads it started, was entrusted or follows sit in the bot's column,
 with their state, pull request and checks. A Needs you row lets you answer its
