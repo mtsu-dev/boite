@@ -31,7 +31,7 @@ test('the composer keeps the context ring and adds its reading from the threshol
 
   // From 70 percent the reading stands in the row as its own item: a still ring and what is left, in words.
   store.openThread!.context = { ...store.openThread!.context!, tokens: 140_000, window: 200_000 };
-  await waitFor(() => bar() !== null);
+  await waitFor(() => bar()?.dataset.percent === '70');
   expect(bar()!.dataset.percent).toBe('70');
   expect(bar()!.textContent?.trim()).toBe('30% context left');
   expect(bar()!.querySelector('[data-testid=context-trigger] svg.ring')).not.toBeNull();
