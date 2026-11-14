@@ -2,6 +2,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import type { QuestionAnswer } from '@boite/contracts';
 import QuestionCard from './QuestionCard.svelte';
+import { appCss } from '../test/app-css';
 
 let running: Record<string, unknown> | null = null;
 
@@ -104,7 +105,7 @@ test('a waiting Answer reads: the muted ink on its outline, its tooltip saying a
   const source = readFileSync(`${import.meta.dirname}/QuestionCard.svelte`, 'utf8').replace(/<script lang="ts">[\s\S]*?<\/script>/, '<script></script>');
   const css = compile(source, { filename: 'QuestionCard.svelte', cssHash: () => 'c' }).css?.code ?? '';
   expect(css.match(/\.waiting\.c \{([^}]*)\}/)?.[1]).toContain('color: var(--color-muted-foreground)');
-  expect(readFileSync(`${import.meta.dirname}/../app.css`, 'utf8')).not.toContain("button.primary[aria-disabled='true']");
+  expect(appCss()).not.toContain("button.primary[aria-disabled='true']");
   options()[1]!.click();
   flushSync();
   expect(submit().classList.contains('primary')).toBe(true);

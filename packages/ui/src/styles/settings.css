@@ -1,0 +1,511 @@
+/* ------------------------------------------------------------------------- */
+/* Settings pages                                                             */
+/* ------------------------------------------------------------------------- */
+
+/*
+ * Every settings category speaks one grammar, desktop and phone alike: the
+ * page scrolls on its own; its header carries the title and the page's one
+ * action; a card holds a title, then its rows. What a page, a card or a row
+ * is for sits behind an "i" beside its title (`InfoTip.svelte`), so the
+ * page reads as a list of settings. A `.hint` line in view is for a state or
+ * an answer: an error, a count, what to do because something is missing. A
+ * page keeps in its own style only what no other page has.
+ */
+.page {
+  height: 100%;
+  overflow: auto;
+}
+
+.settings .page {
+  padding: var(--space-8) var(--settings-gutter);
+}
+
+/* A page's root stands its column in the middle of a wide window rather
+   than against its left edge, whatever padding the page sets itself. The
+   gutter is reserved on both sides, so a scrollbar does not push the column
+   off centre. A narrow window keeps each page's own padding. */
+@media (min-width: 721px) {
+  .settings .framed > .page {
+    padding-inline: max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2));
+    scrollbar-gutter: stable both-edges;
+  }
+}
+
+.settings .page > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  max-width: var(--settings-width);
+  margin-bottom: var(--space-6);
+}
+
+.settings .page > header h1 {
+  font-size: var(--text-lg);
+  line-height: 1.3;
+}
+
+.settings .page > header p {
+  max-width: 680px;
+  margin-top: var(--space-1);
+  color: var(--color-muted-foreground);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.settings .page > header > button {
+  flex: none;
+}
+
+/*
+ * One settings card, desktop and phone alike: its title stands above it in
+ * the one small heading style, its rows sit inside with a line between every
+ * two. The title leaves the card's flow (absolute, anchored by its foot), so
+ * the card keeps the room above it and a title that wraps grows into the
+ * gap over it, never onto its rows.
+ */
+.settings .page > .card,
+.settings .page > form > .card,
+.settings .page > .settings-stack > .card {
+  position: relative;
+  max-width: var(--settings-width);
+  padding: var(--space-1) var(--space-4);
+  margin-bottom: var(--space-6);
+  box-shadow: none;
+  scroll-margin-top: calc(var(--card-head) + var(--space-6));
+}
+
+/* The card above's margin folds into this one: the title's room plus the air between two cards. */
+:is(.settings .page > .card, .settings .page > form > .card, .settings .page > .settings-stack > .card):has(> h2:first-child) {
+  margin-top: calc(var(--card-head) + var(--space-4));
+}
+
+:is(.settings .page > .card, .settings .page > form > .card, .settings .page > .settings-stack > .card) > h2:first-child {
+  position: absolute;
+  left: var(--space-4);
+  right: var(--space-4);
+  bottom: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) 6px;
+  min-height: var(--card-head);
+  margin: 0;
+  padding-bottom: 2px;
+}
+
+/* A title that shares its line with an action (Add a device, Check for
+   updates): the whole line stands above the card, the action at its right end. */
+.settings .page .card:has(> .card-head:first-child) {
+  position: relative;
+  margin-top: calc(var(--card-head) + var(--space-4));
+}
+
+.settings .page .card > .card-head:first-child {
+  position: absolute;
+  left: var(--space-4);
+  right: var(--space-4);
+  bottom: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: var(--card-head);
+  margin: 0;
+  padding: 0 0 2px;
+  border: 0;
+}
+
+.settings .page .card > .card-head:first-child > h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1) 6px;
+  min-width: 0;
+  margin: 0;
+}
+
+:is(.settings .page > .settings-stack > .card, .settings .page .card) > .card-head:first-child + * {
+  border-top: 0;
+}
+
+/* A line between every two rows of a card. What belongs to the row above (a
+   hint, an error, a status) joins it without one. A button that is a row keeps its own outline. */
+:is(.settings .page > .card, .settings .page > form > .card, .settings .page > .settings-stack > .card) > :not(h2, :first-child, button) {
+  border-top: 1px solid var(--color-border);
+}
+:is(.settings .page > .card, .settings .page > form > .card, .settings .page > .settings-stack > .card) > :is(h2 + *, .hint, [role=alert], .error, [hidden]):not(button) {
+  border-top: 0;
+}
+
+/* A button that is a card's whole row (Show archived threads) keeps the row's air above and under it. */
+:is(.settings .page > .card, .settings .page > form > .card, .settings .page > .settings-stack > .card) > button {
+  margin: var(--space-2) 0;
+}
+
+/* A card that is a list or a table runs its rows to its edges. */
+.settings .page > .card.flush {
+  padding: 0;
+  overflow: hidden;
+}
+
+/* One segmented control everywhere (settings, onboarding, a contact's
+   sharing): every option in one dark track, the chosen one raised a step
+   above it with a hairline edge and the text at full ink. Not full white,
+   which would outshout the accent and the primary button of the page; the
+   raise still reads as chosen at a glance in both themes
+   (lib/contrast.test.ts). Neutral, never the accent; a page sizes it with
+   its own scoped rule. */
+.segmented {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-frame);
+}
+
+.segmented button {
+  height: var(--control-sm);
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-muted-foreground);
+  font-size: var(--text-sm);
+  transition: background var(--motion-duration) var(--motion-curve), color var(--motion-duration) var(--motion-curve), border-color var(--motion-duration) var(--motion-curve);
+}
+
+@media (hover: hover) {
+  .segmented button:hover:not(.on, [aria-pressed='true'], :disabled) {
+    background: var(--color-hover);
+    color: var(--color-foreground);
+  }
+}
+
+.segmented button:is(.on, [aria-pressed='true']) {
+  background: var(--segment-on);
+  border-color: var(--color-edge);
+  color: var(--color-foreground);
+  box-shadow: var(--shadow-e1);
+}
+
+/* One "i" a section: once its title carries the gathering one (`InfoTip` `gather`),
+   its rows' own step aside; that one says what they said. */
+.card:has(.info-tip[data-gather]) .info-tip[data-tip-text] { display: none; }
+
+/* The one heading under a screen's title, over its card: a size and the ink over the rows it leads. */
+.settings .page .card h2,
+.settings .page > .group-heading h2 {
+  margin-bottom: var(--space-3);
+  color: var(--color-foreground);
+  font-size: var(--text-head);
+  font-weight: var(--weight-title);
+  line-height: 1.4;
+}
+
+/* Where a card's rows apply, at the right of its head (CardScope.svelte): this device, a machine, an account.
+   The quiet tier and the meta size, so it informs without competing with the title. */
+.card-scope {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  min-width: 0;
+  margin-left: auto;
+  color: var(--color-subtle);
+  font-size: var(--text-meta);
+  font-weight: 400;
+}
+.card-scope > .ui-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* On a page that mixes scopes, the first machine card's phrase holds the machine picker: its name with an edge and a chevron. */
+.card-scope.picks { gap: 6px; }
+.card-scope .trigger.text { margin: -2px 0; color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge); }
+.card-scope .pick-name { overflow: hidden; max-width: 20ch; text-overflow: ellipsis; white-space: nowrap; }
+.card-scope + .save-status { margin-left: 0; }
+
+/* Where a page's settings apply, under every title: this device, every machine, a machine (its picker). */
+.settings .scope {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: var(--space-1);
+  color: var(--color-muted-foreground);
+  font-size: var(--text-meta);
+}
+
+/*
+ * A form that saves by itself says what became of its last change at the
+ * right of the card title (`SaveStatus.svelte`), on agents' cards too.
+ */
+/* A status too long for the title's line, an error on a phone, takes the next line whole. */
+.card h2:has(> .save-status) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  min-width: 0;
+}
+
+.save-status {
+  display: inline-flex;
+  flex: none;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-left: auto;
+  color: var(--color-muted-foreground);
+  font-size: var(--text-xs);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.save-status[data-state='saved'] :is(svg) {
+  color: var(--color-success);
+}
+
+.save-status:is([data-state='error'], [data-state='invalid']) {
+  color: var(--color-danger);
+}
+
+.save-status .reason {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.save-status button {
+  flex: none;
+}
+
+/* A line straight under a card title opens the card; the rows start after. */
+.settings .page .card > h2 + .hint {
+  padding: var(--space-3) 0;
+}
+
+.settings .page .hint {
+  color: var(--color-muted-foreground);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+/* A group that is a list of cards rather than one card gets the same title
+   over them, at a card title's inset. */
+.settings .page > .group-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  max-width: var(--settings-width);
+  min-height: var(--card-head);
+  margin: var(--space-6) 0 0;
+  padding: 0 var(--space-4) 2px;
+  scroll-margin-top: var(--space-6);
+}
+
+.settings .page > .group-heading h2 {
+  margin: 0;
+}
+
+.settings .page > .group-heading p {
+  color: var(--color-muted-foreground);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.settings .page .actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* One row per setting: the words on the left, the control on the right. */
+.settings .page .switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  min-height: 52px;
+  padding: var(--space-2) 0;
+}
+
+/* A phone's label and value row (ChoiceSelect `row`): the value's button covers it, the label's "i" stays over it. */
+.settings .page .switch-row.value { position: relative; flex-wrap: nowrap; }
+.settings .page .switch-row.value .text { flex: none; }
+.settings .page .switch-row.value .info-tip, .settings .page .switch-row.value .policy-lock { position: relative; z-index: 1; }
+.settings .page .switch-row.value .choice-select { flex: 1; justify-content: flex-end; }
+
+/* Rows a wrapper groups inside a card keep the card's line between them. */
+.settings .page .switch-row + .switch-row {
+  border-top: 1px solid var(--color-border);
+}
+
+.settings .page .switch-row .text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  color: var(--color-foreground);
+  font-size: var(--text-base);
+  font-weight: 400;
+}
+
+/* A switch's help line in the quietest ink, a step under its label's: the label leads, the line explains. */
+.settings .page .switch-row .hint {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--color-subtle);
+  font-weight: 400;
+}
+
+/* A window with room draws the settings a size up: a row a finger could take, its name in the
+   head size, a switch and a button one step larger than the chat's chrome. A phone has its own sizes. */
+@media (min-width: 721px) {
+  .settings .framed { --control: 36px; --control-sm: 32px; --switch-width: 48px; --switch-height: 28px; --card-head: 40px; }
+  .settings .framed .page .switch-row { min-height: 64px; padding: var(--space-3) 0; }
+  .settings .framed .page .switch-row .text { font-size: var(--text-head); font-weight: 500; }
+  .settings .framed .page .switch-row .hint { font-size: var(--text-meta); font-weight: 400; }
+  .settings .framed .page > .card,
+  .settings .framed .page > form > .card,
+  .settings .framed .page > .settings-stack > .card { padding-inline: var(--space-5); border-radius: var(--radius-lg); margin-bottom: var(--space-8); }
+  .settings .framed .page > .card.flush { padding: 0; }
+  :is(.settings .framed .page > .card, .settings .framed .page > form > .card, .settings .framed .page > .settings-stack > .card) > h2:first-child { left: var(--space-5); right: var(--space-5); }
+  .settings .framed .page .card h2,
+  .settings .framed .page > .group-heading h2 { font-size: var(--text-title); }
+  /* A title beside an action and a title over a list of cards stand at the card's own inset, as a card's plain title does. */
+  :is(.settings .framed .page > .card, .settings .framed .page > form > .card, .settings .framed .page > .settings-stack > .card) > .card-head:first-child { left: var(--space-5); right: var(--space-5); }
+  .settings .framed .page > .group-heading { padding-inline: var(--space-5); }
+  .settings .framed .segmented button { padding: 0 14px; }
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* A quiet thumb with a wider drag target; the track stays transparent. */
+:root {
+  --color-scrollbar: color-mix(in srgb, var(--color-foreground) 22%, transparent);
+  --color-scrollbar-hover: color-mix(in srgb, var(--color-foreground) 36%, transparent);
+  --color-scrollbar-active: color-mix(in srgb, var(--color-foreground) 50%, transparent);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-scrollbar) transparent;
+}
+
+/* Some Firefox versions recognize the track selector without thumb styling. */
+@supports selector(::-webkit-scrollbar-thumb) {
+  @media (forced-colors: none) {
+    /* Standard non-auto values override the custom thumb in Chromium. */
+    * {
+      scrollbar-width: auto;
+      scrollbar-color: auto;
+    }
+
+    ::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      min-height: 32px;
+      min-width: 32px;
+      background: var(--color-scrollbar);
+      border-radius: var(--radius-sm);
+      border: 3px solid transparent;
+      background-clip: padding-box;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background-color: var(--color-scrollbar-hover);
+      border-width: 2px;
+    }
+
+    ::-webkit-scrollbar-thumb:active {
+      background-color: var(--color-scrollbar-active);
+    }
+
+    ::-webkit-scrollbar-track,
+    ::-webkit-scrollbar-corner {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-button {
+      display: none;
+      width: 0;
+      height: 0;
+    }
+  }
+}
+
+@media (forced-colors: active) {
+  * {
+    scrollbar-color: auto;
+  }
+}
+
+/* The edge-scrollbars feature (lib/edge-scrollbars.ts): native bars take no
+   room and an overlay thumb fades in as the mouse nears a container's edge.
+   The script sets the class only for a fine pointer without forced colors, and
+   these selectors outrank the `*` rules above. */
+:root.edge-scrollbars,
+:root.edge-scrollbars * {
+  scrollbar-width: none;
+}
+
+:root.edge-scrollbars::-webkit-scrollbar,
+:root.edge-scrollbars ::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* A manual popover in the top layer, so thumbs also draw over open menus. */
+.edge-scrollbar-layer {
+  position: fixed;
+  inset: 0;
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  background: transparent;
+  pointer-events: none;
+  contain: strict;
+  z-index: 2147483647;
+}
+
+.edge-scrollbar-thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  border: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--color-scrollbar);
+  background-clip: padding-box;
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+  transition: background-color var(--dur-2) var(--ease-out-quint), border-width var(--dur-1) var(--ease-out-quint);
+}
+
+.edge-scrollbar-thumb[data-live] {
+  pointer-events: auto;
+}
+
+.edge-scrollbar-thumb[data-live]:hover {
+  background-color: var(--color-scrollbar-hover);
+  border-width: 1px;
+}
+
+.edge-scrollbar-thumb[data-active] {
+  background-color: var(--color-scrollbar-active);
+  border-width: 1px;
+}
+

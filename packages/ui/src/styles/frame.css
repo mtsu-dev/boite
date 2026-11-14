@@ -1,0 +1,85 @@
+/* ------------------------------------------------------------------------- */
+/* The frame                                                                  */
+/* ------------------------------------------------------------------------- */
+
+/*
+ * Since 2026-09-28 the window is a frame around its work: the title bar and the
+ * rails (sidebar, settings nav, agents rail) stand on one grey with no line
+ * between them, and each working surface (the chat, the right panel, a
+ * settings page, an agent) is a card of the page colour inset `--frame-gap`
+ * from the window edge and from its neighbour, rounded, its 1 px edge strong
+ * enough to read as the outline. The phone keeps a flat page: 8 px of frame
+ * around a 375 px screen is room taken from the text.
+ */
+@media (min-width: 721px) {
+  .app {
+    background: var(--color-frame);
+  }
+
+  .framed {
+    background: var(--color-background);
+    border: 1px solid var(--color-frame-edge);
+    border-radius: var(--radius-frame);
+    box-shadow: var(--shadow-frame);
+    overflow: clip;
+  }
+}
+
+/* ------------------------------------------------------------------------- */
+/* Soft scroll edges                                                          */
+/* ------------------------------------------------------------------------- */
+
+/*
+ * A scroll area fades its top edge only once content has scrolled under it,
+ * and its bottom edge only while more lies below, so a line or a card is never
+ * cut hard by the card's edge, and nothing fades at rest at either end. Two
+ * sticky pseudo-elements of the area's ground, their opacity driven by its
+ * scroll position: no mask, so a popover or a tooltip drawn from inside the
+ * area is never clipped by it. A sticky child stops at the area's padding, so
+ * an area with padding names it (`--scroll-edge-top`, `--scroll-edge-bottom`)
+ * and the fade sits on the real edge. A browser without scroll timelines
+ * shows no fade.
+ */
+@supports (animation-timeline: scroll()) {
+  :is(.scroll-edges, [data-scroll-root], .settings .framed, .settings .framed > .page)::before,
+  :is(.scroll-edges, [data-scroll-root], .settings .framed, .settings .framed > .page)::after {
+    content: '';
+    position: sticky;
+    z-index: 3;
+    display: block;
+    flex: none;
+    align-self: stretch;
+    height: var(--scroll-edge);
+    /* Eased, not linear: the ground closes in over the sliver at the very edge, the rest of the line stays legible. */
+    --scroll-edge-fill: var(--scroll-edge-ground, var(--color-background));
+    pointer-events: none;
+    opacity: 0;
+    animation-duration: auto;
+    animation-timing-function: linear;
+    animation-fill-mode: both;
+    animation-timeline: scroll(nearest block);
+  }
+  :is(.scroll-edges, [data-scroll-root], .settings .framed, .settings .framed > .page)::before {
+    top: calc(-1 * var(--scroll-edge-top, 0px));
+    margin-bottom: calc(-1 * var(--scroll-edge));
+    background: linear-gradient(to bottom, var(--scroll-edge-fill), color-mix(in oklab, var(--scroll-edge-fill) 45%, transparent) 50%, transparent);
+    animation-name: scroll-edge-in;
+    animation-range: var(--scroll-edge-top, 0px) calc(var(--scroll-edge-top, 0px) + var(--scroll-edge));
+  }
+  :is(.scroll-edges, [data-scroll-root], .settings .framed, .settings .framed > .page)::after {
+    bottom: calc(-1 * var(--scroll-edge-bottom, 0px));
+    margin-top: calc(-1 * var(--scroll-edge));
+    background: linear-gradient(to top, var(--scroll-edge-fill), color-mix(in oklab, var(--scroll-edge-fill) 45%, transparent) 50%, transparent);
+    animation-name: scroll-edge-out;
+    animation-range: calc(100% - var(--scroll-edge-bottom, 0px) - var(--scroll-edge)) calc(100% - var(--scroll-edge-bottom, 0px));
+  }
+  /* The timeline's own padding (MessageList.svelte). */
+  [data-scroll-root] { --scroll-edge-top: 20px; --scroll-edge-bottom: 20px; }
+  /* A settings page scrolls itself, or the card scrolls it under the machine bar. */
+  .settings .framed > .page { --scroll-edge-top: var(--space-8); --scroll-edge-bottom: var(--space-8); }
+  .settings .framed.with-bar > .page::before, .settings .framed.with-bar > .page::after { content: none; }
+}
+
+@keyframes scroll-edge-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes scroll-edge-out { from { opacity: 1; } to { opacity: 0; } }
+

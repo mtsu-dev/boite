@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { expect, test } from 'vitest';
+import { appCss } from './test/app-css';
 
 /**
  * Two costs a frame pays for as long as they are on screen, found the hard
@@ -83,7 +84,7 @@ function keyframes(css: string): Map<string, Set<string>> {
 }
 
 test('an endless animation moves only what the compositor moves, or is a stated exception', () => {
-  const global = keyframes(readFileSync(join(SRC, 'app.css'), 'utf8'));
+  const global = keyframes(appCss());
   const painted: string[] = [];
   for (const path of sources(SRC)) {
     const css = styleOf(path);
@@ -120,7 +121,7 @@ test('an endless animation moves only what the compositor moves, or is a stated 
 const SEEN_LOOPS = new Map([['components/OnboardingScene.svelte', new Set(['glow'])]]);
 
 test('every endless animation pauses with the window at rest', () => {
-  const css = readFileSync(join(SRC, 'app.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = appCss().replace(/\/\*[\s\S]*?\*\//g, '');
   expect(css).toMatch(/:root\s*\{\s*--loops\s*:\s*running\s*;\s*\}/);
   expect(css).toMatch(/:root\[data-at-rest\]\s*\{\s*--loops\s*:\s*paused\s*;\s*\}/);
   const running: string[] = [];
@@ -173,7 +174,7 @@ function intervals(css: string, name: string): number[] {
  * refresh of a 144 Hz monitor.
  */
 test('a loop on screen while agents work changes on the shared 60 Hz grid', () => {
-  const app = readFileSync(join(SRC, 'app.css'), 'utf8');
+  const app = appCss();
   const stairs = new Map([...app.matchAll(/--loop-([\w-]+)-(\d+)\s*:\s*linear\(([^)]*)\)/g)].map((match) => [`${match[1]}-${match[2]}`, Number(match[2])]));
   for (const [token, steps] of stairs) {
     const points = app.match(new RegExp(`--loop-${token}\\s*:\\s*linear\\(([^)]*)\\)`))![1]!.split(',');
@@ -236,7 +237,7 @@ test('the outline rail eases its prompt bars without laying the page out', () =>
  * a frame.
  */
 test('a closed fold skips its body once the close has run, and an open one shows it at once', () => {
-  const css = readFileSync(join(SRC, 'app.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = appCss().replace(/\/\*[\s\S]*?\*\//g, '');
   const closed = /@supports\s*\(transition-behavior:\s*allow-discrete\)\s*\{\s*\.disclosure-fold:not\(\.open\)\s*>\s*\*\s*\{([^{}]*)\}/.exec(css)?.[1] ?? '';
   expect(closed).toMatch(/content-visibility\s*:\s*hidden/);
   expect(closed).toMatch(/transition\s*:\s*content-visibility\s+var\(--dur-3\)\s+allow-discrete/);

@@ -1,0 +1,292 @@
+/* ------------------------------------------------------------------------- */
+/* The window material                                                        */
+/* ------------------------------------------------------------------------- */
+
+/*
+ * Stamped by `lib/glass.ts` on `<html>`, and only in the Tauri shell: the
+ * compositor draws acrylic or mica behind the window, and the page has to stop
+ * painting its own ground over it. The ground and the chrome slabs go
+ * translucent, the chat keeps a nearly opaque sheet so an answer is read on a
+ * surface and not on the wallpaper, and the composer is the one piece of real
+ * glass. Everything a word is read inside stays exactly as it was: menus,
+ * dialogs, code wells, the textarea fill, tables and the browser slot. Only
+ * surfaces move here, never a text colour, and the light palette needs no rule
+ * of its own because every value below is a token light redefines.
+ */
+
+html[data-glass],
+html[data-glass] body,
+html[data-glass] #app {
+  background: transparent;
+}
+
+@media (min-width: 721px) {
+  html[data-glass] .app {
+    background: color-mix(in oklab, var(--color-frame) 80%, transparent);
+  }
+
+  html[data-glass] .framed {
+    background: color-mix(in oklab, var(--color-background) 90%, transparent);
+  }
+}
+
+@media (max-width: 720px) {
+  html[data-glass] .titlebar {
+    background: color-mix(in oklab, var(--color-frame) 80%, transparent);
+  }
+
+  html[data-glass] .sidebar,
+  html[data-glass] .panel,
+  html[data-glass] .settings nav {
+    background: color-mix(in oklab, var(--color-surface) 80%, transparent);
+  }
+
+  html[data-glass] .chat {
+    background: color-mix(in oklab, var(--color-background) 90%, transparent);
+  }
+}
+
+/* The focused composer (Composer.svelte): only its hairline brightens, no glow and no accent. Under
+   `.composer-wrap` so it outranks the component's own resting border whichever stylesheet loads last.
+   Like its ring, a tap keeps it quiet: under a fine pointer, or once a key was pressed (`.keys`). */
+@media (hover: hover) and (pointer: fine) {
+  .composer-wrap .composer:focus-within { border-color: var(--color-composer-focus); }
+}
+.composer-wrap .composer.keys:focus-within { border-color: var(--color-composer-focus); }
+
+@supports (color: color-mix(in oklab, white 50%, black)) {
+  /* The translucent themes keep a see-through composer, blurred (Composer.svelte) so the timeline under it never reads. */
+  html[data-theme='grain'] .composer { --color-composer-surface: color-mix(in oklab, var(--color-surface-2) 62%, transparent); --composer-blur: blur(16px) saturate(1.2); }
+  html[data-glass] .composer { --color-composer-surface: color-mix(in oklab, var(--color-surface-2) 70%, transparent); --composer-blur: blur(16px) saturate(1.2); }
+}
+
+/* The app's body row (App.svelte): a pane sliding in from the right edge
+   comes from past it, and while the sidebar folds (RailFrame.svelte marks the
+   row) the chat card's own left gap eases in step. */
+@media (min-width: 721px) {
+  .app > .body { overflow-x: clip; }
+  .app > .body[data-rail-sliding] { transition: padding-left var(--motion-duration) var(--motion-curve); }
+  .app > .body.sidebar-folded[data-rail-sliding] { transition-duration: var(--motion-duration); }
+  /* The main column's bar follows the list column's fold in step (RailFrame marks it too). */
+  .app > .titlebar[data-rail-sliding] { transition: margin-left var(--motion-duration) var(--motion-curve); }
+  .app > .titlebar[data-rail-sliding='out'] { transition-duration: var(--motion-duration); }
+}
+
+/* Keyframes shared by the components. */
+
+/* A pane that makes its own room, the way the terminal grows its slot: a
+   negative margin as large as the pane and its gap gives the room back to the
+   chat, so the chat narrows with the pane instead of jumping in one frame,
+   and the pane keeps its final size the whole way (no rewrap inside).
+   `--slide-room` is that size. The fade is over early; the movement carries
+   the rest. */
+@keyframes slide-left {
+  from { margin-right: calc(-1 * var(--slide-room)); opacity: 0; }
+  40% { opacity: 1; }
+  to { margin-right: 0; opacity: 1; }
+}
+
+@keyframes slide-right-out {
+  from { margin-right: 0; opacity: 1; }
+  60% { opacity: 1; }
+  to { margin-right: calc(-1 * var(--slide-room)); opacity: 0; }
+}
+
+/* The same over the chat, where the pane floats and takes no room. */
+@keyframes slide-over-left {
+  from { transform: translateX(var(--slide-room)); opacity: 0; }
+  40% { opacity: 1; }
+  to { transform: none; opacity: 1; }
+}
+
+@keyframes slide-over-right-out {
+  from { transform: none; opacity: 1; }
+  60% { opacity: 1; }
+  to { transform: translateX(var(--slide-room)); opacity: 0; }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(calc(4px * var(--motion)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(calc(1 - 0.03 * var(--motion)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Exits, each the reverse of an entrance, played by `lib/closing.svelte.ts`. */
+@keyframes pop-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: scale(calc(1 - 0.03 * var(--motion)));
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* A phone's screens (`lib/screen-slide.svelte.ts`): the one on top comes in
+   from the right edge and leaves by it, opaque all the way; the one under it
+   moves a quarter of the width the other way, as a native stack does. Only
+   transforms move, so nothing is laid out again on the way. */
+@keyframes screen-in {
+  from { transform: translateX(100%); }
+}
+
+@keyframes screen-out {
+  to { transform: translateX(100%); }
+}
+
+@keyframes screen-under-in {
+  from { transform: translateX(-25%); }
+}
+
+@keyframes screen-under-out {
+  to { transform: translateX(-25%); }
+}
+
+/* A phone's bottom sheet rises from below the screen and goes back down. */
+/* Only the sheet moves: it stays opaque the whole way, so no frame shows the page through it; the scrim does the fading. */
+@keyframes sheet-up {
+  from { transform: translateY(calc((100% + 40px) * var(--motion))); }
+}
+
+@keyframes sheet-down {
+  to { transform: translateY(calc((100% + 40px) * var(--motion))); }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+/* The loops components share: a spinner, a loading bar's fade and an
+   indeterminate bar. Each component stops its own loop under reduced motion. */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes breathe {
+  to {
+    opacity: 0.45;
+  }
+}
+
+@keyframes loading-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(260%);
+  }
+}
+
+[data-accent-swatch] { --color-accent: oklch(75.5% 0.141 var(--accent-hue)); }
+/* One switch: the native checkbox with role=switch, or the `.switch` span a menu row or a button draws (`.on` when set).
+   `--switch-width` and `--switch-height` size it; the rim is a twelfth of the height (2px on a 24px switch) and the
+   knob keeps the same air inside it. Off is a ringed track with a grey knob, on the filled foreground track with a
+   dark knob, so the state reads without comparing greys. */
+input[type=checkbox][role=switch], .switch { appearance: none; position: relative; flex: 0 0 var(--switch-width, 40px); width: var(--switch-width, 40px); height: var(--switch-height, 24px); min-height: var(--switch-height, 24px); padding: 0; margin: 0; border: calc(var(--switch-height, 24px) / 12) solid var(--switch-rim); border-radius: 999px; background: var(--switch-off); transition: background var(--dur-2), border-color var(--dur-2); }
+input[type=checkbox][role=switch] { cursor: pointer; }
+input[type=checkbox][role=switch]::after, .switch::after { content: ''; position: absolute; width: calc(var(--switch-height, 24px) - 8px); height: calc(var(--switch-height, 24px) - 8px); top: calc(4px - var(--switch-height, 24px) / 12); left: calc(4px - var(--switch-height, 24px) / 12); border-radius: 50%; background: var(--switch-knob); transition: transform var(--dur-2) var(--ease-out-quint), background var(--dur-2); }
+input[type=checkbox][role=switch]:checked, .switch.on { background: var(--switch-on); border-color: transparent; }
+input[type=checkbox][role=switch]:checked::after, .switch.on::after { transform: translateX(calc(var(--switch-width, 40px) - var(--switch-height, 24px))); background: var(--switch-knob-on); }
+input[type=checkbox][role=switch]:focus-visible { outline-offset: 3px; }
+input[type=checkbox][role=switch]:disabled { opacity: .45; cursor: not-allowed; }
+/* Under a finger the outline rail is a touch target wide (MessageOutline.svelte): the text starts past it. */
+@media (pointer: coarse) { :root { --outline-room: calc(var(--touch-target) + 4px); } }
+@media (max-width: 720px) {
+  .mobile-sheet-backdrop { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: var(--sheet-scrim); animation: fade var(--motion-duration) var(--motion-curve); }
+  .mobile-sheet-backdrop.closing { animation: fade-out var(--motion-duration) var(--motion-curve); pointer-events: none; }
+  /* The one phone sheet (lib/floating.ts): docked to the bottom edge, rounded on top only, a grabber
+     over real top air, and the home indicator's room under its last row. The grabber sits out of the
+     flow, so a grid or flex sheet keeps its own layout. */
+  [data-mobile-sheet='true'] { position: fixed !important; max-width: none !important; box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain; border-width: 1px 0 0 !important; border-radius: var(--radius-xl) var(--radius-xl) 0 0 !important; padding-top: var(--space-6) !important; padding-bottom: max(var(--space-3), env(safe-area-inset-bottom)) !important; }
+  /* A sheet is the top of the ladder: the sheet fill and the one soft elevation. */
+  [data-mobile-sheet='true'] { background: var(--color-sheet) !important; box-shadow: var(--elevation-soft) !important; }
+  [data-mobile-sheet='true']::before { content: ''; position: absolute; top: var(--space-2); left: calc(50% - 18px); width: 36px; height: 5px; border-radius: var(--radius-full); background: var(--color-edge); pointer-events: none; }
+  /* A sheet rises from the bottom edge and goes back down, where its popover pops in place (lib/floating.ts). */
+  [data-mobile-sheet='true'] { animation-name: sheet-up !important; animation-duration: var(--motion-duration) !important; animation-timing-function: var(--motion-curve) !important; }
+  [data-mobile-sheet='true'].closing { animation-name: sheet-down !important; animation-duration: var(--motion-duration) !important; animation-timing-function: var(--motion-curve) !important; }
+  /* No outline rail on a phone (MessageList.svelte): the timeline's left edge matches its right. */
+  :root { --outline-room: 20px; }
+  :root { --settings-padding: var(--space-4); --card-head: var(--touch-target); --control: var(--touch-target); --control-sm: var(--touch-target); --control-lg: var(--touch-target); --input: var(--touch-target); --row: var(--touch-target); }
+  input, textarea { font-size: var(--text-md); }
+  button.icon { min-width: var(--touch-target); min-height: var(--touch-target); }
+  .composer-wrap { padding-bottom: max(10px, env(safe-area-inset-bottom)); }
+  .settings .page { padding: var(--space-6) var(--space-4); }
+  .settings .page > header { margin-bottom: var(--space-5); }
+  .settings .page > .card.flush { padding: 0; }
+  .settings .page .row { flex-wrap: wrap; }
+  .settings .page .switch-row { flex-wrap: wrap; gap: var(--space-2) var(--space-3); min-height: 48px; padding: var(--space-2) 0; }
+  /* A phone's grouped cards sit tighter: a smaller title step and less air under it, the rows keeping 44 px targets. */
+  .settings .page > .card, .settings .page > form > .card, .settings .page > .settings-stack > .card { padding: var(--space-1) var(--space-4); margin-bottom: var(--space-4); }
+  /* Buttons under the last prompt and answer, or the message tapped (lib/message-reveal.svelte.ts). A settled prompt's ticks go with them; a pending one keeps its own. */
+  .message[data-reveal]:not([data-latest]):not([data-revealed]) .message-actions,
+  .message[data-reveal]:not([data-latest]):not([data-revealed]) .receipts.settled { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  input[type=checkbox][role=switch], input[type=checkbox][role=switch]::after, .switch, .switch::after { transition: none; }
+}
+/* Reduced motion: the sheet is simply there and simply gone (lib/closing.svelte.ts unmounts a node with no animation). */
+@media (max-width: 720px) and (prefers-reduced-motion: reduce) {
+  [data-mobile-sheet='true'], [data-mobile-sheet='true'].closing { animation: none !important; }
+}
+@media (max-width: 720px) {
+  html[data-motion='reduced'] [data-mobile-sheet='true'], html[data-motion='reduced'] [data-mobile-sheet='true'].closing { animation: none !important; }
+}
+
+/* The page instead of the app when no catalogue could load (`lib/boot-failure.ts`). */
+.boot-failure { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; max-width: 520px; padding: 32px 24px; color: var(--color-foreground); }
+.boot-failure p { margin: 0; line-height: 1.5; }
+.boot-failure button { min-height: var(--control); padding: 0 14px; border-radius: var(--radius-md); }
