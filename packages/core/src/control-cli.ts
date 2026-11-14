@@ -19,6 +19,7 @@ import type { AgentSpawn, AgentWatch, PermissionRequest, Project, ProjectThreadD
 import type { CoreClient } from './client.ts';
 import { contactLine, NO_CONTACT } from './agents-cli.ts';
 import { requiredText, Usage, type Parsed } from './cli-args.ts';
+import { THREAD_ACTIONS } from './cli-commands.ts';
 
 type Printer = (lines: string[], value: unknown) => void;
 export type Caller = 'owner' | 'agent';
@@ -37,34 +38,6 @@ export function spawnedLines(spawned: AgentSpawn, machine: string | undefined, p
       : 'Its first answer comes back to you as a message; do not poll. boite threads send <address> <text> steers it.',
   ];
 }
-
-/** Commands this file answers, with the words that follow them. */
-export const CONTROL_COMMANDS = ['threads', 'thread', 'questions', 'answer', 'permissions', 'allow', 'deny'] as const;
-/** `thread` actions this file answers; `new` and `move <project>` without a target stay with the agent's own commands. */
-const THREAD_ACTIONS = ['show', 'send', 'stop', 'done', 'archive', 'unarchive', 'remove', 'rename'] as const;
-
-export const CONTROL_HELP = `  threads [list] [--project <p>] [--archived]
-                                 the threads you may see and their machine:
-                                 every one here as the owner, those of your
-                                 projects and your desk as a mochi, the ones that
-                                 let you reach them here and on linked machines
-                                 from any other thread. A mochi also lists the
-                                 projects other machines of the group entrusted
-                                 to it, as <machine>/<id>, and names a machine
-                                 it cannot reach (--project <machine>/<name>)
-  thread show <id>               state, pending questions and permissions, last answer
-  thread send <id> <text>        the owner's prompt, or the agent's message
-  thread done <id>               put a thread that is not at work in Done
-                                 (without <id>: this one, once this turn ends)
-  thread stop|archive|unarchive|remove <id>   (remove: owner only)
-  thread rename <id> <title>
-  thread move <project> <id>     move another thread (without <id>: this one)
-  questions [<id>]               pending questions
-  answer <id> <question-id> <option|text ...> (--skip)
-  permissions [<id>]             pending tool permissions
-  allow|deny <id> <request-id>   (owner only, threads of this machine)
-  A mochi's <id> may be <machine>/<thread-id>: a thread of a project of that
-  machine entrusted to it, which that machine lets mochis of the group drive`;
 
 /** What an agent's own `thread done` prints. */
 export function doneLine(done: { when: 'turn-end' | 'done' }): string {
@@ -100,29 +73,6 @@ function awayNamed(entry: { id: string; name: string; machine?: string }, query:
   const coreId = entry.id.slice(0, entry.id.indexOf('/'));
   const projectName = (entry.name.startsWith(`${entry.machine}/`) ? entry.name.slice(entry.machine.length + 1) : entry.name).toLowerCase();
   return name === projectName && (fold(machine) === fold(entry.machine) || (/^[0-9a-f]{6,}$/.test(machine) && coreId.startsWith(machine)));
-}
-
-export function isControlCommand(parsed: Parsed): boolean {
-  const [command, action] = parsed.positional;
-  if (command === 'thread') {
-    if (THREAD_ACTIONS.includes(action as typeof THREAD_ACTIONS[number])) return true;
-    // `thread move <project> <thr_id>` names another thread; `thread move <project words>` stays the caller's own move.
-    return action === 'move' && parsed.positional.length === 4 && /^(?:[^/\s]+\/)?thr_[0-9a-z]+$/.test(parsed.positional[3] ?? '');
-  }
-  if (command === 'projects') return ['archive', 'unarchive', 'remove'].includes(action ?? '');
-  // `threads find|read|send|...` talk to other threads (agents-cli.ts); only the listing is here.
-  if (command === 'threads') return action === undefined || action === 'list';
-  return (CONTROL_COMMANDS as readonly string[]).includes(command ?? '');
-}
-
-/** Commands an owner may run without naming a thread of its own. */
-export function ownerWithoutThread(parsed: Parsed): boolean {
-  const [command, action] = parsed.positional;
-  if (isControlCommand(parsed)) return true;
-  if (command === 'projects') return true;
-  // An outside event names its bot: the owner's terminal or a paired device sends it with no thread.
-  if (command === 'bot' && action === 'event') return true;
-  return command === 'thread' && action === 'new';
 }
 
 function statusOf(row: { status: string; archived: boolean; done?: true }): string {

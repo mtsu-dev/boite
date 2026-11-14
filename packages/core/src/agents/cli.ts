@@ -4,19 +4,6 @@ import { targetOf } from '../control-cli.ts';
 
 export const BOT_ACTIONS = 'memory, remember, routines, schedule, unschedule, watch or unwatch';
 
-export const BOT_HELP = `  mochi memory                   a mochi's MEMORY.md and its path
-  mochi remember <fact>          add a dated line to MEMORY.md
-  mochi routines                 its routines: schedule, next run, last outcome
-  mochi schedule <json>          name, prompt, schedule; optional id and enabled
-  mochi unschedule <routine-id>  remove one routine
-  mochi watch|unwatch <thread-id>
-                                 put a thread of its projects on its desk, or
-                                 take one off; <machine>/<thread-id> for a
-                                 project another machine entrusted to it
-  mochi event <mochi> <text>     wake a mochi with an event from outside Boite
-                                 (--key <key>: a later event with the same key
-                                 replaces it while it waits); from a terminal
-                                 as the owner, or --core with a paired device`;
 
 /** `boite mochi ...` (`boite agent` before) from a bot's own thread. Authentication stays in the existing boite CLI. */
 export async function botCommand(client: CoreClient, threadId: string, args: string[]): Promise<unknown> {

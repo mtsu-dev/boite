@@ -62,7 +62,8 @@ that runs a core on a phone, comes beside it as
   features as `--define` flags, read from the version in the core's
   `package.json`, as `vite.config.ts` does for the UI and `bin/compile.ts` for
   the compiled core: a Release bundle holds no code of a feature tagged
-  `nightly` or `dev` ([out of the build](experiments.md#out-of-the-build)).
+  `nightly` or `dev`, the Contacts' core side aside
+  ([out of the build](experiments.md#out-of-the-build)).
 - `build:core:exe` compiles `packages/core/dist/boite-core`, with `.exe` on Windows. On x64 it embeds
   Bun's baseline runtime, which needs no AVX2. That runtime, and the other
   architecture's in a cross build, is not the running Bun, and `bun build

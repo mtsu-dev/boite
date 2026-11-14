@@ -283,14 +283,14 @@ export class AgentBrowser {
       page: {
         session: sessionId,
         send: (method, params = {}, timeoutMs) => engine.cdp.send(method, params, sessionId, timeoutMs),
-        dialogs: [], dialogPolicy: { accept: true, text: null }, downloads: 0, frameRefs: new Map(),
+        dialogs: [], dialogPolicy: { accept: true, text: null }, downloads: 0,
       },
     };
     const on = (method: string, listener: (params: Record<string, unknown>) => void) =>
       tab.off.push(engine.cdp.on(method, (params, session) => { if (session === sessionId || (session && session === frames.runtime?.session)) listener(params); }));
     const frames = tab.page.frames = pageFrames(engine.cdp, sessionId, on, engine.hosted ? null : targetId);
     watchPage(tab, on, (accept, promptText) => void engine.cdp.send('Page.handleJavaScriptDialog', { accept, ...(promptText === undefined ? {} : { promptText }) }, sessionId).catch(() => {}),
-      url => { tab.url = url; tab.page.frameRefs?.clear(); this.#remote.stale(tab); this.#changed(threadId); this.#engines.saveCookiesSoon(engine); });
+      url => { tab.url = url; this.#remote.stale(tab); this.#changed(threadId); this.#engines.saveCookiesSoon(engine); });
     watchNetwork(() => tab.network, on);
     on('Page.frameAttached', params => { if (tab.frames.size < 500) tab.frames.add(String(params.frameId)); });
     on('Page.frameNavigated', params => { const frame = params.frame as { id: string }; if (tab.frames.size < 500) tab.frames.add(String(frame.id)); });

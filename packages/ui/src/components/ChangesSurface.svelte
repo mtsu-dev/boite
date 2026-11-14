@@ -268,7 +268,7 @@
       <span class="picker">
         <Menu items={files} onpick={pickPath} placement="bottom" variant="text" label={strings.changes.fileList} testid="changes-pager">
           <span class="total" data-testid="changes-count"><ChangeCount files={changes.length} added={total.added} removed={total.removed} /></span>
-          <ChevronDown size={13} strokeWidth={1.75} />
+          <ChevronDown class="caret" size={13} strokeWidth={1.75} />
         </Menu>
       </span>
     {:else if status}
@@ -371,7 +371,8 @@
 
   .picker { flex: 0 1 auto; display: flex; min-width: 0; color: var(--color-foreground); }
   .picker :global(.menu), .picker :global(.trigger) { min-width: 0; max-width: 100%; }
-  .picker :global(.trigger) { height: var(--control-sm); gap: 4px; }
+  .picker :global(.trigger) { height: var(--control-sm); gap: 4px; overflow: hidden; justify-content: flex-start; }
+  :global(.surface-head.tightest) .picker :global(.caret) { display: none; }
 
   /* One scroll for every file, to the panel's edges and bottom; the last file's end is the document's. */
   .detail {
