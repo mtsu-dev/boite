@@ -51,8 +51,9 @@ test('limits identify the owning machine in the desktop glance and desktop and p
     }
     await page.waitFor(`document.querySelector('${scope}')?.dataset.remote === 'true'`);
     expect((await page.text(scope)).trim()).toBe('Account limits for Builder');
-    // Machine context replaces the heading instead of repeating it below.
-    expect(await page.evaluate(`document.querySelectorAll('${scope}').length === 1 && !!document.querySelector('${scope}')?.closest('h1, h2')?.getClientRects().length`)).toBe(true);
+    // Machine context replaces the heading instead of repeating it below. A phone's page steps its own title aside for the bar above it.
+    expect(await page.evaluate(`document.querySelectorAll('${scope}').length === 1`)).toBe(true);
+    if (width === 1280) expect(await page.evaluate(`!!document.querySelector('${scope}')?.closest('h1, h2')?.getClientRects().length`)).toBe(true);
     const refresh = width === 1280 ? 'limits-glance-refresh' : 'limits-refresh';
     await page.click(`[data-testid="${refresh}"]`);
     await page.waitFor(`document.querySelector('[data-testid="${refresh}"]')?.getAttribute('aria-busy') === 'false'`);
@@ -62,13 +63,11 @@ test('limits identify the owning machine in the desktop glance and desktop and p
       await page.click('[data-testid="limits-glance-page"]');
     }
     await page.waitFor(`document.querySelector('[data-testid="limits-page"]')`);
-    // On the desktop the settings bar carries the page's title and, under it, the
-    // machine its settings apply on; the page's own heading steps aside.
-    const heading = width === 1280 ? '[data-testid="settings-scope"]' : '[data-testid="mobile-settings-header"] h1';
-    if (width === 1280) {
-      expect((await page.text('[data-testid="settings-crumb"] h1')).trim()).toBe('AI accounts');
-      expect((await page.text(heading)).trim()).toBe('This machine: Builder');
-    } else expect((await page.text(heading)).trim()).toBe('Account limits for Builder');
+    // The settings bar carries the page's title and, under it, the machine its settings
+    // apply on, on a desktop and on a phone; the page's own heading steps aside.
+    const heading = width === 1280 ? '[data-testid="settings-scope"]' : '[data-testid="mobile-settings-page-scope"]';
+    expect((await page.text(width === 1280 ? '[data-testid="settings-crumb"] h1' : '[data-testid="mobile-settings-header"] h1')).trim()).toBe('AI accounts');
+    expect((await page.text(heading)).trim()).toBe('This machine: Builder');
     expect(await page.evaluate(`document.querySelector('${heading}')?.getClientRects().length > 0`)).toBe(true);
     // A renamed machine remains identifiable even on a narrow phone.
     await page.evaluate(`globalThis.__boiteTest.workspace.customize('http://builder.test', 'Build server for shared development projects')`);

@@ -6,17 +6,16 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
-import { createHash } from 'node:crypto';
 import type { Channel, Group, PairingGrant, PairingRole, Settings, TailscaleStatus } from '@boite/contracts';
-import { connect } from './client.ts';
+import type { connect } from './client.ts';
 import type { Core } from './core.ts';
 import { CORE_VERSION } from './version.ts';
-import { messageOf } from './errors.ts';
 import { newToken } from './ids.ts';
 import { resolveDataDir } from './paths.ts';
-import { lockDataDir } from './data-lock.ts';
-import { openDataDir } from './server-update/restore.ts';
-import { processPlatform } from './platform/index.ts';
+
+// Only what `boite-core cli` needs is imported above: every `boite` call an agent
+// makes starts here. The client, the contracts, the platform and the data lock
+// load in the branches that use them (scripts/architecture/cli-startup.ts).
 
 const CHANNELS: readonly Channel[] = ['stable', 'dev'];
 
@@ -132,8 +131,6 @@ export function prepareDataDir(dataDir: string): void {
   mkdirSync(dataDir, { recursive: true, mode: 0o700 });
   if (process.platform !== 'win32') chmodSync(dataDir, 0o700);
 }
-
-export { lockDataDir };
 
 /**
  * `boite-core pair [--owner]`: a one-time pairing link from the core already
@@ -266,6 +263,7 @@ export async function ownerClient(argv: string[]): Promise<Awaited<ReturnType<ty
   const bound = state.host ?? '127.0.0.1';
   const host = bound === '0.0.0.0' || bound === '::' ? '127.0.0.1' : bound;
   const url = `http://${host.includes(':') ? `[${host}]` : host}:${state.port}`;
+  const { connect } = await import('./client.ts');
   try {
     return await connect(url, state.token, { client: { name: 'cli', version: CORE_VERSION } });
   } catch (error) {
@@ -279,7 +277,7 @@ export async function ownerClient(argv: string[]): Promise<Awaited<ReturnType<ty
  * everything the core wrote before it died.
  */
 function refuseToStart(error: unknown): never {
-  process.stderr.write(`boite-core: ${messageOf(error)}\n`);
+  process.stderr.write(`boite-core: ${error instanceof Error ? error.message : String(error)}\n`);
   process.exit(1);
 }
 
@@ -319,10 +317,11 @@ export function main(argv: string[]): void {
   if (argv[0] === 'update-apply' || argv[0] === 'update-recover') {
     const command = argv[0];
     void (async () => {
+      const { processPlatform } = await import('./platform/index.ts');
       if (!processPlatform.serverUpdates || !argv[1]) throw new Error(`${command} expects a private server update plan on Linux`);
       const { applyServerUpdate, recoverServerUpdate } = await import('./server-update/apply.ts');
       await (command === 'update-apply' ? applyServerUpdate : recoverServerUpdate)(argv[1], processPlatform.serverUpdates);
-    })().catch(error => { process.stderr.write(`boite-core update: ${messageOf(error)}\n`); process.exitCode = 1; });
+    })().catch(error => { process.stderr.write(`boite-core update: ${error instanceof Error ? error.message : String(error)}\n`); process.exitCode = 1; });
     return;
   }
   // `boite-core cli ...` is the `boite` command an agent runs, behind its shim.
@@ -358,7 +357,7 @@ export function main(argv: string[]): void {
   }
   if (argv[0] === 'accounts') {
     import('./accounts-command.ts').then(({ runAccounts }) => runAccounts(argv.slice(1), ownerClient))
-      .catch(error => { process.stderr.write(`boite-core accounts: ${messageOf(error)}\n`); process.exit(1); });
+      .catch(error => { process.stderr.write(`boite-core accounts: ${error instanceof Error ? error.message : String(error)}\n`); process.exit(1); });
     return;
   }
   if (argv[0] === 'group') {
@@ -389,7 +388,11 @@ export function main(argv: string[]): void {
   }
 
   // Commands do not need the server graph. Finish imports before taking its data lock.
-  void Promise.all([import('./core.ts'), import('./server.ts'), import('./journal/vacuum.ts'), import('./listen-host.ts')]).then(([{ Core }, { PREFERRED_PORTS, startServerOnStickyPort }, { vacuumAtStart, VACUUM_WHEN }, { listenHost }]) => {
+  void Promise.all([
+    import('./core.ts'), import('./server.ts'), import('./journal/vacuum.ts'), import('./listen-host.ts'), import('./errors.ts'),
+    import('./platform/index.ts'), import('./server-update/restore.ts'), import('./data-lock.ts'), import('node:crypto'),
+  ]).then(([{ Core }, { PREFERRED_PORTS, startServerOnStickyPort }, { vacuumAtStart, VACUUM_WHEN }, { listenHost }, { messageOf },
+    { processPlatform }, { openDataDir }, { lockDataDir }, { createHash }]) => {
     let flags: Flags;
     let dataDir: string;
     let unlock: () => void;

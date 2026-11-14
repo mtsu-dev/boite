@@ -123,6 +123,40 @@ return page.get('text', '#status')`;
   expect(out).toEndWith('card 1111 true\n');
 }, 120_000);
 
+real('a ref read in a frame of another origin keeps its number through later snapshots, and no two elements of the page share one', async () => {
+  const { agent, threadId } = browserFixture;
+  const command = async (action: Record<string, unknown>) => (await agent.call('browser.command', { threadId, action: action as never })).value as Record<string, unknown>;
+  await command({ kind: 'open', url: `http://127.0.0.1:${checkout.port}/` });
+  await command({ kind: 'wait', load: 'load' });
+  const refs = (text: string) => [
+    /iframe "Card" \[ref=e\d+\]\n- textbox "Card number" \[ref=(e\d+)\]/, /iframe "Card"[^]*?button "Pay" \[ref=(e\d+)\]/,
+    /iframe "Verify" \[ref=e\d+\]\n- textbox "Card number" \[ref=(e\d+)\]/, /iframe "Verify"[^]*?button "Pay" \[ref=(e\d+)\]/,
+    /iframe "Billing"[^]*?button "Pay" \[ref=(e\d+)\]/,
+  ].map(line => { const found = line.exec(text); expect(found, `${line} in\n${text}`).not.toBeNull(); return `@${found![1]}`; });
+  const first = refs(String((await command({ kind: 'snapshot', interactive: true })).text));
+  // A button added above every frame: no ref read before moves.
+  await command({ kind: 'evaluate', expression: `document.body.insertAdjacentHTML('afterbegin', '<button>New</button>'); true` });
+  const again = String((await command({ kind: 'snapshot', interactive: true, view: 'full' })).text);
+  expect(again).toStartWith('- button "New" [ref=e');
+  expect(refs(again)).toEqual(first);
+  const all = [...again.matchAll(/\[ref=(e\d+)\]/g)].map(found => found[1]);
+  expect(all.length).toBeGreaterThanOrEqual(13);
+  expect(new Set(all).size).toBe(all.length);
+
+  const [card, pay, verify, verifyPay] = first as [string, string, string, string, string];
+  const status = async () => String(await command({ kind: 'evaluate', expression: 'document.querySelector("#status").textContent' }) ?? '');
+  const settled = async (wanted: string) => {
+    for (const end = Date.now() + 5000; Date.now() < end && await status() !== wanted;) await Bun.sleep(50);
+    return status();
+  };
+  await command({ kind: 'fill', selector: card, text: '4242' });
+  expect((await command({ kind: 'click', selector: pay })).note).toBeUndefined();
+  expect(await settled('card 4242 true')).toBe('card 4242 true');
+  await command({ kind: 'fill', selector: verify, text: '123' });
+  expect((await command({ kind: 'click', selector: verifyPay })).note).toBeUndefined();
+  expect(await settled('verify 123 true')).toBe('verify 123 true');
+}, 120_000);
+
 real('a click in a frame lands where the frame is drawn, and goes through the DOM when something covers the frame', async () => {
   const { agent, threadId } = browserFixture;
   const command = async (action: Record<string, unknown>) => (await agent.call('browser.command', { threadId, action: action as never })).value as Record<string, unknown>;

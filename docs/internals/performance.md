@@ -1806,10 +1806,80 @@ network. Measured on 2026-11-07, before against the previous
 | #621, one contracts file per domain | 44 | 413,740 B | 126,800 B | 306,462 B | 64,037 B |
 | #524, with a 51,000-line results file | 62 | 250,241 B | 131,179 B | 174,421 B | 63,469 B |
 
+## A browser agent on eight tasks
+
+`bench/browser-agent.ts` measures what `boite browser` costs an agent on
+eight tasks against a local fixture site (`bench/browser-agent/site.ts`,
+Bun.serve on a free loopback port): a sign-in with a refused password then the
+right one, a search narrowed by a category, a value read on page 3 of an
+invoice table, a draft deleted through a confirmation modal, a 3-step
+checkout, a field behind a tab and a closed accordion, a todo list changed in
+place (add 3, remove 1) and one row of a 320-row inventory. The site keeps
+each app's state, so a task succeeds only when the server's checker says so.
+
+```sh
+bun bench/browser-agent.ts                         # replay: 3 repeats, the CLI from the sources
+bun bench/browser-agent.ts --repeat 5 --cli "<path>/boite"   # a compiled CLI, or another checkout's
+bun bench/browser-agent.ts --tasks long,todo       # some tasks only
+bun bench/browser-agent.ts --live --tasks signin,todo --effort low   # real Claude turns; spends tokens
+```
+
+Replay, the default, spends no tokens. Each repeat starts a fresh core on a
+temporary data directory with one echo thread and runs every task as a fixed
+script of real CLI processes in that thread's environment
+(`BOITE_CORE_URL`, `BOITE_AGENT_TOKEN`, `BOITE_THREAD_ID`): `open`, then for
+each action the action on a ref read by its label out of the previous
+`snapshot -i` output, then `snapshot -i` again. A ref the CLI refuses, or a
+label missing from the snapshot, gets one `snapshot -i --full` and one retry.
+The first `open` of each core starts the browser and is reported apart.
+`--cli` replaces `bun packages/core/src/main.ts cli` and must accept
+`browser <command>` after it.
+
+| Replay number | Meaning |
+| --- | --- |
+| calls | CLI processes of one run of the task, retries included; median over repeats |
+| ref retries | refs that failed and were retried |
+| bytes read | stdout plus stderr of every call: what the agent reads |
+| est. tokens | bytes / 4, an estimate, not a tokenizer count |
+| call median, p95 | wall time of one CLI process, spawn to exit, over every call of every repeat |
+| task wall | the whole script of one run |
+
+The per-command table splits call times by subcommand: a `snapshot -i` is
+mostly CLI startup, a `click` or `fill` also waits for what the page does next.
+Comparing two branches means running the same command in each checkout on the
+same machine; the report records the commit, the CLI and the load average at
+the start, because a loaded machine stretches every call.
+
+Live, opt-in with `--live`, sends each task's goal in words as one turn to a
+new Claude thread (`--model`, default `claude-opus-5-5`, `--effort`, default
+`medium`, `--runs`, `--timeout` in seconds, default 300) on a fresh core with
+the Boite guide on. It reaches the login the way `test/claude.live.test.ts`
+does: the bench's opt-in `BOITE_BENCH_CLAUDE=1` lets the test harness use the
+host's agents, and the thread runs on the machine's Default Claude account.
+It reports the checker's verdict, the tool calls and the `boite browser`
+commands inside them, the turn's usage as the core stored it (input, cache
+read, cache write and output tokens, disjoint) and the wall time.
+
+Results go to `bench/results/<date>-browser-agent.md` and
+`-browser-agent-live.md`, with the raw runs in the `.json` beside them, which
+git ignores. The [2026-11-14 baseline](../../bench/results/2026-11-14-browser-agent.md),
+on `5975582c5` with a load average near 50 on 16 threads: 24 of 24 runs
+succeeded, 93 calls and 38,601 bytes (about 9,650 estimated tokens) for the
+eight tasks, a call median of 148 ms and p95 of 508 ms; the 320-row page alone
+read 24,901 bytes in 4 calls. With [snapshot diffs](../../bench/results/2026-11-14-browser-agent-diff.md),
+on `112aa099c` under the same load: 24 of 24 again in the same 93 calls, 26,451
+bytes (about 6,613 tokens), the 320-row page 12,742 bytes; the seven small
+tasks changed by at most 6 bytes, the diff header. The
+[live run](../../bench/results/2026-11-14-browser-agent-live.md), Claude Opus 5.5
+at medium effort, one run per task, succeeded 8 of 8 on both sides with 33 and
+34 tool calls: totals follow the call count, since each call rereads the
+prompt, and only the 320-row task wrote fewer new tokens (27,462 then 22,051).
+
 ## Benches
 
 ```sh
 bun bench/remote-browser-frames.ts --rtt 0,80,200   # frames a second a viewer gets from the agent's browser
+bun bench/browser-agent.ts --repeat 3             # CLI calls, bytes and call times of eight scripted browser tasks
 bun run build:ui
 bun run bench/bandwidth.ts --rtt 150          # bytes and time per scenario behind a delayed relay
 bun run bench/bandwidth.ts --core <other checkout>/packages/core/src/main.ts --sequence sequential

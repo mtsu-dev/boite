@@ -11,7 +11,7 @@ import { linuxServerUpdates, unitWord } from '../src/platform/linux-server-updat
 import { openDataDir, restoreSnapshot, type FileLock, type RestoreMoves } from '../src/server-update/restore.ts';
 import type { ServerUpdatePlan, ServerUpdatePlatform } from '../src/server-update/types.ts';
 import { echoThread, holdAccountTurns, startTestCore, waitFor } from './harness.ts';
-import { lockDataDir } from '../src/main.ts';
+import { lockDataDir } from '../src/data-lock.ts';
 import { thrown } from './settle.ts';
 
 /** A publisher key and a Minisign packet over `bytes`, in the shape Tauri publishes. */
