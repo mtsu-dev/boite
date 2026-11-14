@@ -178,7 +178,7 @@ test('forwarding a mailbox backlog bounds deserialization and retries older fail
   }
 }, 30000);
 
-test('a routed ask waits for the gateway\'s Contacts bot, and the contact\'s answer returns to the initiating thread', async () => {
+test('a routed ask waits for the gateway\'s Contacts mochi, and the contact\'s answer returns to the initiating thread', async () => {
   const { a, b, c, ai, bi, ci, ac, source, recipient } = await routed();
   // Without a Contacts bot, an ask that names no contact is refused with what to turn on.
   expect(await thrown(ac.call('collaboration.ask', { threadId: source, text: 'An agent on the opened project' }))).toThrow('Settings > Version > Experiments');

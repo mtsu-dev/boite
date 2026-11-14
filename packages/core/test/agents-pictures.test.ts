@@ -24,7 +24,7 @@ const refusal = async (call: Promise<unknown>) => ((await rejection(call)).reaso
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
 const GIF = 'data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==';
 
-test('an imported picture is stored once by its bytes, worn by a saved bot and served back; anything else is refused with its field', async () => {
+test('an imported picture is stored once by its bytes, worn by a saved mochi and served back; anything else is refused with its field', async () => {
   const h = await startTestCore();
   cores.push(h);
   const owner = await h.connect();
@@ -53,7 +53,7 @@ test('an imported picture is stored once by its bytes, worn by a saved bot and s
   expect(await refusal(owner.call('agents.picture.get', { avatar: '../journal.db' }))).toMatchObject({ data: { field: 'avatar' } });
 }, 30_000);
 
-test('a picture no bot wears is removed a day after it was stored; a worn one stays', async () => {
+test('a picture no mochi wears is removed a day after it was stored; a worn one stays', async () => {
   const h = await startTestCore();
   cores.push(h);
   const owner = await h.connect();

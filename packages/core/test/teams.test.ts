@@ -90,7 +90,7 @@ const holdDelivery = (h: TestCore) => {
   return () => spy.mockRestore();
 };
 
-test('teams stay closed while the experiment is off, and a machine in no group names no bot of another', async () => {
+test('teams stay closed while the experiment is off, and a machine in no group names no mochi of another', async () => {
   const { h, owner, bots, team } = await setup();
   await experiment(owner, false);
   const off = await failure(() => owner.call('teams.list', {}));
@@ -106,7 +106,7 @@ test('teams stay closed while the experiment is off, and a machine in no group n
   expect(team.members[0]).toMatchObject({ botId: bots[0]!.agent.id, joinedSeq: 0 });
 }, 30_000);
 
-test('one owner post in a team of one bot gives one wake and one answer post, then nothing', async () => {
+test('one owner post in a team of one mochi gives one wake and one answer post, then nothing', async () => {
   const { h, bots: [ada], team, key, post } = await setup();
   const driver = teamDriver(() => ({ text: 'Release shipped.' }));
   const sent = post('Ship the release');
@@ -144,7 +144,7 @@ test('the author is never a recipient, whatever it names', async () => {
   expect(teamLetters(h, ada!.threadId)).toHaveLength(0);
 }, 30_000);
 
-test('an owner post that names nobody wakes every member; mentions, replies, private posts and bot posts keep their rule', () => {
+test('an owner post that names nobody wakes every member; mentions, replies, private posts and mochi posts keep their rule', () => {
   // Ada and Bob on this machine, Cy on another one of the group.
   const member = (key: string, name: string) => ({ key, name }) as Team['members'][number];
   const [ada, bob, cy] = ['here/ada', 'here/bob', 'firebat/cy'] as const;
@@ -286,7 +286,7 @@ for (const order of ['steer first', 'wake first'] as const) test(`a steer during
   expect(wakes(h, ada!.threadId)).toHaveLength(1);
 }, 30_000);
 
-test('a private post to one bot never pins a third bot\'s cursor', async () => {
+test('a private post to one mochi never pins a third mochi\'s cursor', async () => {
   const { h, team, bots: [ada, bob, cy], key, post } = await setup(['Ada', 'Bob', 'Cy']);
   teamDriver();
   post('Between us', { audience: 'private', to: [bob!.agent.id] });
@@ -425,7 +425,7 @@ test('the reply envelope is fixed at the wake: a steer does not move it, and a m
   expect(posts(h, team).map(entry => entry.text)).not.toContain('Mixed answer');
 }, 30_000);
 
-test('past the daily budget a bot\'s post waits through admit, and the owner\'s post still wakes', async () => {
+test('past the daily budget a mochi\'s post waits through admit, and the owner\'s post still wakes', async () => {
   const { h, owner, bots: [ada, bob], post } = await setup(['Ada', 'Bob']);
   const driver = teamDriver(() => ({ text: '[quiet]', usage: costing(0.5) }));
   const runtime = await owner.call('agents.runtime.get', { agentId: ada!.agent.id });
@@ -433,7 +433,7 @@ test('past the daily budget a bot\'s post waits through admit, and the owner\'s 
   // A spent turn of Ada's today.
   h.core.threads.startTurn(ada!.threadId, 'Spend');
   await waitFor(() => turnsOf(h, ada!.threadId).every(turn => turn.status === 'done') && driver.of(ada!.threadId).length === 1);
-  h.core.teams.say({ threadId: bob!.threadId, team: 'Crew', text: '@Ada from a bot' });
+  h.core.teams.say({ threadId: bob!.threadId, team: 'Crew', text: '@Ada from a mochi' });
   await deliver(h, ada!.threadId);
   await Bun.sleep(100);
   expect(wakes(h, ada!.threadId)).toHaveLength(0);
@@ -441,7 +441,7 @@ test('past the daily budget a bot\'s post waits through admit, and the owner\'s 
   post('@Ada from the owner');
   await waitFor(() => wakes(h, ada!.threadId).length === 1 && settledWakes(h, ada!.threadId));
   const prompt = driver.of(ada!.threadId).at(-1)!;
-  expect(prompt).toContain('from a bot');
+  expect(prompt).toContain('from a mochi');
   expect(prompt).toContain('from the owner');
 }, 30_000);
 
@@ -468,7 +468,7 @@ async function boiteAs(h: TestCore, threadId: string, args: string[]) {
   return { code, out, err };
 }
 
-test('boite team: a bot lists, posts, reads and asks for cards; the experiment and other machines refuse', async () => {
+test('boite team: a mochi lists, posts, reads and asks for cards; the experiment and other machines refuse', async () => {
   const { h, owner, bots: [ada, bob], team, key } = await setup(['Ada', 'Bob']);
   teamDriver();
   expect((await boiteAs(h, ada!.threadId, ['team', 'list'])).out).toContain('Crew: Ada, Bob');
@@ -495,7 +495,7 @@ test('boite team: a bot lists, posts, reads and asks for cards; the experiment a
   expect(team.members).toHaveLength(2);
 }, 30_000);
 
-test('a bot\'s team card drawn before a restart is applied after it: the team exists, the card closes and the bot reads the outcome', async () => {
+test('a mochi\'s team card drawn before a restart is applied after it: the team exists, the card closes and the mochi reads the outcome', async () => {
   const dataDir = mkdtempSync(join(tmpdir(), 'boite-teams-'));
   try {
     const { h, bots: [ada, bob], key } = await setup(['Ada', 'Bob'], dataDir);
@@ -656,7 +656,7 @@ test('an answer the core did not publish before it stopped is posted once at the
   } finally { await removeDir(dataDir); }
 }, 30_000);
 
-test('turning a bot\'s coordination off leaves its team letters, waiting or queued, to the team', async () => {
+test('turning a mochi\'s coordination off leaves its team letters, waiting or queued, to the team', async () => {
   const { h, team, bots: [ada, bob], post } = await setup(['Ada', 'Bob']);
   const driver = teamDriver();
   const off: CoordinationConfig = { mode: 'off', resources: '', remote: true, paused: false };
@@ -703,7 +703,7 @@ test('a team chat refuses what would reach a provider: turns, retitle, compact, 
   expect(h.core.threads.require(threadId)).toMatchObject({ title: 'Crew', projectId: null });
 }, 30_000);
 
-test('a bot\'s post marks the team chat unread; a private post to the owner notifies the owner, group and owner posts do not', async () => {
+test('a mochi\'s post marks the team chat unread; a private post to the owner notifies the owner, group and owner posts do not', async () => {
   const { h, team, bots: [ada], post } = await setup();
   teamDriver();
   const notify = spyOn(h.core.push as unknown as { notify(threadId: string, text: { body: string }, tag: string): void }, 'notify').mockImplementation(() => undefined);

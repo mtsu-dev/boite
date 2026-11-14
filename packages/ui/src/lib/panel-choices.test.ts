@@ -61,7 +61,7 @@ test('one list holds every panel once in named groups, the showing panel checked
   expect(named['customize']).toMatchObject({ label: 'Customize', title: 'Formerly Choose the buttons' });
 });
 
-test('a phone, a bot or a team thread lists what it can open, and an unreachable kind says why', () => {
+test('a phone, a mochi or a team thread lists what it can open, and an unreachable kind says why', () => {
   // A phone runs no terminal; a bot's thread has its desk first and no coordination.
   const bot = ids(panelChoices(stub(), thread({ agentSessionId: 's1' }), { phone: true, available: () => true }));
   expect(bot).toContain('desk');

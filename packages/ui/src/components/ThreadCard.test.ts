@@ -344,7 +344,7 @@ test('a list row ends its title line with its mark, then its one time, the way a
   expect(headline().querySelectorAll('time')).toHaveLength(1);
 });
 
-test('a thread a bot started shows that bot\'s face before its title, grey at rest; one it only follows shows none', async () => {
+test('a thread a mochi started shows that mochi\'s face before its title, grey at rest; one it only follows shows none', async () => {
   await connect();
   const [started, followed] = store.threads.filter(row => !row.parentThreadId && row.projectId);
   const project = store.projects.find(row => row.id === started!.projectId)!;

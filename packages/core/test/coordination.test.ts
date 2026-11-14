@@ -91,7 +91,7 @@ test('agents communicate by default, respect explicit restrictions and cannot ch
   } finally { agent.close(); }
 });
 
-test('default discovery excludes archived threads and reaches a bot\'s thread like any other', async () => {
+test('default discovery excludes archived threads and reaches a mochi\'s thread like any other', async () => {
   const { h, owner, a, b } = await setup();
   h.core.threads.archive(b, true);
   const projectId = h.core.threads.require(b).projectId!;

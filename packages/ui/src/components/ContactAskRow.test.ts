@@ -60,7 +60,7 @@ test('each state of an asked request reads who has it, with the contact chip onc
     return out;
   });
   expect(seen).toEqual([
-    { state: 'host', title: 'Operator', status: 'Waiting for the Bots machine, Server', chip: null },
+    { state: 'host', title: 'Operator', status: 'Waiting for the Mochis machine, Server', chip: null },
     { state: 'bot', title: 'Operator', status: 'With Operator', chip: null },
     { state: 'sent', title: 'Operator', status: 'Sent to Chris, waiting for its answer', chip: 'Chris' },
     { state: 'answered', title: 'Operator', status: 'Answered: write to Chris/chris-loader', chip: 'Chris' },
@@ -90,7 +90,7 @@ test('a tap opens the answer in the panel once it reached the thread, else unfol
   expect(opened).toHaveBeenCalledTimes(1);
 });
 
-test('the Contacts bot thread shows what it forwarded and what it settled, under the asking thread\'s title', async ({ createStore }) => {
+test('the Contacts mochi thread shows what it forwarded and what it settled, under the asking thread\'s title', async ({ createStore }) => {
   const { store, client } = createStore({ delayMs: 0 });
   store.attach(client); await store.connect(); await store.open('t-trace');
   const settled: ContactRequest = { ...requests.answered!, direction: 'in', from: { ...from, coreId: 'core-chris', threadId: 'chris-asker', title: 'Fix the login redirect' } };

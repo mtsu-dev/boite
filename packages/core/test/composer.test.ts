@@ -203,11 +203,11 @@ test.each(['preparing', 'native'] as const)('Send now during %s startup stops th
     else await waitFor(() => h.core.threads.runner.handles.has(threadId));
     expect(h.core.threads.progress.get(threadId)?.phase).toBe('starting');
     await owner.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0, sendNow: true,
-      value: { input: { ...value('').input, queued: [{ id: 'startup-followup', text: 'also check the bots', attachments: [] }] } } });
+      value: { input: { ...value('').input, queued: [{ id: 'startup-followup', text: 'also check the mochis', attachments: [] }] } } });
     expect(inputs).toEqual([]);
     release.resolve();
     await waitFor(() => h.core.journal.listTurns(threadId).length === 2 && h.core.threads.runner.handles.has(threadId));
-    expect(driver.context().prompt).toContain('also check the bots');
+    expect(driver.context().prompt).toContain('also check the mochis');
     expect(inputs).toEqual([]);
     await waitFor(() => h.core.composer.storage.get('inputs', threadId).value?.input.queued.length === 0);
     expect(h.core.journal.listTurns(threadId)).toHaveLength(2);
@@ -514,7 +514,7 @@ test('queued input reaches a projectless persistent agent thread', async () => {
   const { threadId } = await makeAgent(h, a);
   expect(h.core.threads.require(threadId).projectId).toBeNull();
   const before = h.core.journal.listTurns(threadId).length;
-  await a.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0, value: { input: { ...value().input, queued: [{ id: 'projectless-input', text: 'user input for the bot', attachments: [] }] } } });
+  await a.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0, value: { input: { ...value().input, queued: [{ id: 'projectless-input', text: 'user input for the mochi', attachments: [] }] } } });
   await waitFor(() => h.core.journal.listTurns(threadId).length > before || h.core.composer.storage.get('inputs', threadId).value?.input.paused === true);
   expect(h.core.journal.listTurns(threadId)).toHaveLength(before + 1);
   await waitFor(() => h.core.journal.listTurns(threadId).at(-1)?.status === 'done');

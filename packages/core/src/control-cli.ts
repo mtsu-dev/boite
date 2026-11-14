@@ -274,7 +274,7 @@ export async function controlCommand(client: CoreClient, caller: Caller, threadI
         print([...(lines.length === 0 ? ['threads: none'] : lines), ...listed.unavailable.map(reason => `unavailable: ${reason}`)], listed);
         return;
       }
-      if (parsed.archived) throw new Error('threads --archived lists archived threads for the owner and for bots; another thread sees the open ones it may reach');
+      if (parsed.archived) throw new Error('threads --archived lists archived threads for the owner and for mochis; another thread sees the open ones it may reach');
       const [{ self }, result] = await Promise.all([client.call('collaboration.get', { threadId }), client.call('collaboration.directory', { threadId })]);
       const shown = project === undefined ? result.agents : result.agents.filter(contact => contact.project?.toLowerCase() === project.toLowerCase());
       const lines = shown.map(contact => contactLine(contact, self.coreId));

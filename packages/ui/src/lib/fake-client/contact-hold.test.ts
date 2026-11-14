@@ -2,7 +2,7 @@ import { expect, vi } from 'vitest';
 import type { ThreadSummary } from '@boite/contracts';
 import { test } from '../../test/fake-client';
 
-test('trusting a held bot frees its sub-agent as the core does, and a sub-agent keeps the hold of its own mail', async ({ createClient }) => {
+test('trusting a held mochi frees its sub-agent as the core does, and a sub-agent keeps the hold of its own mail', async ({ createClient }) => {
   const client = await createClient({ delayMs: 0 });
   const bot = await client.call('agents.profile.save', { value: {
     name: 'Scout', domain: '', instructions: '', avatar: '', status: 'active', projectIds: ['p-boite'],

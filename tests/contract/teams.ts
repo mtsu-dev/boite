@@ -18,7 +18,7 @@ const experiments = (env: ContractEnv, on: boolean) =>
   env.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: on ? ['teams'] : [], labels: {} });
 
 export const TEAM_SCENARIOS: Record<string, Scenario> = {
-  'teams wait for their experiment; posts route by name, bots read only what they may see, and a machine outside the group names no bot': async (env: ContractEnv) => {
+  'teams wait for their experiment; posts route by name, mochis read only what they may see, and a machine outside the group names no mochi': async (env: ContractEnv) => {
     await experiments(env, false);
     same((await refused(env.call('teams.list', {}), RpcErrorCode.Refused)).reason, 'experiment-off', 'the refusal with the experiment off');
     await experiments(env, true);
@@ -53,7 +53,7 @@ export const TEAM_SCENARIOS: Record<string, Scenario> = {
       same((await refused(env.call('teams.members.add', { teamId: team.id, botId: bob.agent.id }), RpcErrorCode.Refused)).field, 'botId', 'adding a member twice');
 
       const first = await env.call('teams.post', { teamId: team.id, id: `p1-${tag}`, text: `@Ada${tag} check the build` });
-      same([first.seq, first.author, first.to, first.routedBy], [1, 'owner', [adaKey], 'mention'], 'a post naming a bot');
+      same([first.seq, first.author, first.to, first.routedBy], [1, 'owner', [adaKey], 'mention'], 'a post naming a mochi');
       same((await env.call('teams.post', { teamId: team.id, id: `p1-${tag}`, text: `@Ada${tag} check the build` })).seq, 1, 'a retried post');
       same((await refused(env.call('teams.post', { teamId: team.id, id: `p1-${tag}`, text: 'other' }), RpcErrorCode.Refused)).field, 'id', 'a reused id with other text');
       // A post that names nobody wakes the whole team, as @tous would.
@@ -61,15 +61,15 @@ export const TEAM_SCENARIOS: Record<string, Scenario> = {
       same([unnamed.routedBy, unnamed.to.toSorted(), unnamed.notice], ['everyone', [adaKey, bobKey].toSorted(), undefined], 'an owner post naming nobody');
 
       // A bot's methods name its thread: the owner may call them for it, an agent token only for its own.
-      same((await env.call('teams.list', { threadId: ada.threadId })).teams.map(entry => entry.id), [team.id], 'a bot\'s teams');
+      same((await env.call('teams.list', { threadId: ada.threadId })).teams.map(entry => entry.id), [team.id], 'a mochi\'s teams');
       // The team chat runs no agent: what would reach a provider refuses there.
       for (const call of [() => env.call('turns.start', { threadId: team.threadId, prompt: 'hello', clientRequestId: `team-turn-${tag}` }), () => env.call('threads.retitle', { threadId: team.threadId })]) {
         check(String((await refused(call(), RpcErrorCode.Refused)).threadId) === team.threadId, 'a team chat ran an agent call');
       }
       check(!(await env.call('threads.get', { threadId: team.threadId })).unread, 'the owner\'s own posts marked the team chat unread');
       const everyone = await env.call('teams.say', { threadId: ada.threadId, team: team.name, text: '@tous done', id: `s1-${tag}` });
-      same([everyone.author, everyone.to, everyone.routedBy], [adaKey, [bobKey], 'everyone'], 'a bot\'s post to everyone leaves out its author');
-      check((await env.call('threads.get', { threadId: team.threadId })).unread, 'a bot\'s post left the team chat read');
+      same([everyone.author, everyone.to, everyone.routedBy], [adaKey, [bobKey], 'everyone'], 'a mochi\'s post to everyone leaves out its author');
+      check((await env.call('threads.get', { threadId: team.threadId })).unread, 'a mochi\'s post left the team chat read');
       const answer = await env.call('teams.say', { threadId: ada.threadId, team: team.id, text: 'on it', inReplyTo: first.id });
       same([answer.to, answer.routedBy], [['owner'], 'reply'], 'a reply');
       const secret = await env.call('teams.dm', { threadId: ada.threadId, team: team.name, to: 'owner', text: 'between us', id: `d1-${tag}` });
@@ -81,19 +81,19 @@ export const TEAM_SCENARIOS: Record<string, Scenario> = {
       agent.disconnect();
 
       const bobReads = await env.call('teams.read', { threadId: bob.threadId, team: team.id });
-      check(!bobReads.posts.some(post => post.id === secret.id) && bobReads.deliveries.length === 0, 'a bot read another\'s private post or the deliveries');
+      check(!bobReads.posts.some(post => post.id === secret.id) && bobReads.deliveries.length === 0, 'a mochi read another\'s private post or the deliveries');
       const ownerReads = await env.call('teams.read', { team: team.id, limit: 2 });
       same([ownerReads.posts.map(post => post.seq), ownerReads.more], [[4, 5], true], 'the owner\'s newest page');
       check((await env.call('teams.read', { team: team.id })).deliveries.some(entry => entry.postId === first.id && entry.member === adaKey), 'the owner reads no delivery of the first post');
 
-      same((await refused(env.call('teams.invite', { threadId: ada.threadId, team: team.id, bot: 'pc/Cy' }), RpcErrorCode.Refused)).field, 'bot', 'inviting a bot of another machine');
+      same((await refused(env.call('teams.invite', { threadId: ada.threadId, team: team.id, bot: 'pc/Cy' }), RpcErrorCode.Refused)).field, 'bot', 'inviting a mochi of another machine');
       await refused(env.call('teams.propose', { threadId: ada.threadId, name: `Solo ${tag}`, members: [ada.agent.id] }), RpcErrorCode.InvalidParams);
       same((await refused(env.call('teams.leave', { threadId: ada.threadId, team: `none ${tag}` }), RpcErrorCode.Refused)).field, 'team', 'leaving a team it is not in');
 
       same((await env.call('teams.pause', { teamId: team.id, paused: true })).paused, true, 'a paused team');
       same((await env.call('teams.pause', { teamId: team.id, paused: false })).paused, false, 'a resumed team');
       same((await env.call('teams.members.remove', { teamId: team.id, botId: bob.agent.id })).members.map(member => member.key), [adaKey], 'members after a removal');
-      same((await refused(env.call('teams.read', { threadId: bob.threadId, team: team.id }), RpcErrorCode.Refused)).field, 'team', 'a removed bot reading');
+      same((await refused(env.call('teams.read', { threadId: bob.threadId, team: team.id }), RpcErrorCode.Refused)).field, 'team', 'a removed mochi reading');
       same((await env.call('teams.archive', { teamId: team.id, archived: true })).archived, true, 'an archived team');
       same((await refused(env.call('teams.post', { teamId: team.id, id: `p9-${tag}`, text: 'late' }), RpcErrorCode.Refused)).field, 'team', 'a post to an archived team');
       check(!(await env.call('teams.list', {})).teams.some(entry => entry.id === team.id), 'an archived team is listed');

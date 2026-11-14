@@ -21,7 +21,7 @@ const posts = `[...document.querySelectorAll('[data-testid=team-post]')].map(pos
   post.querySelector('[data-testid=team-post-author]')?.textContent ?? null, post.dataset.audience,
   post.querySelector('[data-testid=team-post-private]')?.textContent ?? null, post.querySelector('[data-testid=team-post-woke]')?.textContent ?? null])`;
 
-test('the owner finds a team on the Bots page on a desktop and a phone, reads its posts in French and posts to it with a mention and in private', async () => {
+test('the owner finds a team on the Mochis page on a desktop and a phone, reads its posts in French and posts to it with a mention and in private', async () => {
   ensureProductionUi();
   const restore = setDriver('echo', { protocol: 'echo', startTurn(ctx) {
     const id = ctx.emit.startMessage('assistant');
@@ -75,7 +75,7 @@ test('the owner finds a team on the Bots page on a desktop and a phone, reads it
       ['Huginn (Réseaux)', 'team', null, 'A réveillé toute l\'équipe'],
       ['Jeux (Producteur)', 'private', 'Privé pour vous', null],
     ]);
-    expect([await page.text('[data-testid=team-title]'), await page.text('[data-testid=team-room]')]).toEqual(['Skollheim', 'Salon d\'équipe · 2 bots et vous']);
+    expect([await page.text('[data-testid=team-title]'), await page.text('[data-testid=team-room]')]).toEqual(['Skollheim', 'Salon d\'équipe · 2 mochis et vous']);
     // Opened, the chat reads as read, and its picture in the rail is the open one.
     await page.waitFor(`${unread} === false`);
     expect(await page.evaluate(`[document.querySelector('${pin}').getAttribute('aria-current'), document.querySelector('${pin}').getAttribute('aria-label')]`)).toEqual(['page', 'Skollheim']);
@@ -111,7 +111,7 @@ test('the owner finds a team on the Bots page on a desktop and a phone, reads it
     await page.click('[data-testid=agent-back]');
     await page.waitFor(shown(row));
     expect(await page.evaluate(shown('[data-testid=team-chat]'))).toBe(false);
-    expect(await page.evaluate(`[...document.querySelectorAll('.agents-rail .section-label')].map(heading => heading.textContent)`)).toEqual(['Équipes', 'Bots']);
+    expect(await page.evaluate(`[...document.querySelectorAll('.agents-rail .section-label')].map(heading => heading.textContent)`)).toEqual(['Équipes', 'Mochis']);
     expect(await page.text(row)).toContain('Skollheim');
     expect(await page.text(row)).toContain('Huginn (Réseaux) et Jeux (Producteur)');
     await page.settleAnimations();

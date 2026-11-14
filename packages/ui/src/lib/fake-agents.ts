@@ -401,11 +401,11 @@ export class FakeAgents {
     if (!found) this.refuse('agents.move.machine: this machine is in no group; --machine names another machine of its group');
     if ('refused' in found) this.refuse(found.refused);
     if (agent.status === 'archived') this.refuse(`agents.move: ${agent.name} is archived; restore it before moving it`);
-    if (!found.botMove || !found.agents) this.refuse(`agents.move: update Boite on ${found.name}; it cannot take a bot from another machine yet`);
+    if (!found.botMove || !found.agents) this.refuse(`agents.move: update Boite on ${found.name}; it cannot take a mochi from another machine yet`);
     // Every thread the move archives must be idle, not only the first.
     const busy = this.busyThread(agent.id);
     if (busy) {
-      throw new RpcFailure({ code: RpcErrorCode.Refused, message: `agents.move: ${agent.name} has a turn running or queued; stop it or let it end before moving the bot`, data: { field: 'agentId', reason: 'turn-in-flight', status: busy.status } });
+      throw new RpcFailure({ code: RpcErrorCode.Refused, message: `agents.move: ${agent.name} has a turn running or queued; stop it or let it end before moving the mochi`, data: { field: 'agentId', reason: 'turn-in-flight', status: busy.status } });
     }
     const parcel: BotParcel = {
       profile: structuredClone(agent),
@@ -437,8 +437,8 @@ export class FakeAgents {
     const moved = parcel.profile;
     const again = this.movedIn.get(`${parcel.from}:${parcel.requestId}`);
     if (again && this.profiles.has(moved.id)) return again;
-    if (this.profiles.has(moved.id)) this.refuse(`agents.move: ${here} already holds a bot ${moved.id}; it came by another move or was never removed there`);
-    if (moved.builtin && this.builtin(moved.builtin)) this.refuse(`agents.move: ${here} already has its own ${moved.builtin} bot; reset or pause one of them, a machine runs one of each built-in bot`);
+    if (this.profiles.has(moved.id)) this.refuse(`agents.move: ${here} already holds a mochi ${moved.id}; it came by another move or was never removed there`);
+    if (moved.builtin && this.builtin(moved.builtin)) this.refuse(`agents.move: ${here} already has its own ${moved.builtin} mochi; reset or pause one of them, a machine runs one of each built-in mochi`);
     let selection = moved.selection;
     try { this.runner?.checkRoute?.(selection); } catch {
       const route = this.runner?.defaultRoute?.();
@@ -549,7 +549,7 @@ export class FakeAgents {
   /** The core's `reset`: Boite's name, robot, texts and default route, default runtime settings, empty memory, no routines and a new thread, the old one archived. */
   private resetBuiltin(p: RpcParams<'agents.builtin.reset'>): AgentProfile {
     const previous = this.profile(p.agentId);
-    if (!previous.builtin) this.refuse(`agentId: ${previous.name} is not a built-in bot; only a built-in bot is reset`);
+    if (!previous.builtin) this.refuse(`agentId: ${previous.name} is not a built-in mochi; only a built-in mochi is reset`);
     const shipped = BUILTIN_BOTS[previous.builtin];
     const name = this.builtinName(p.name, shipped.name);
     // Its default settings come back too: the machine's default route, unless the client named one.
@@ -581,7 +581,7 @@ export class FakeAgents {
   private builtinRoute(given: AgentSelection | undefined, previous?: AgentSelection): AgentSelection {
     if (given) { this.runner?.checkRoute?.(given, previous); return structuredClone(given); }
     const route = this.runner?.defaultRoute?.();
-    if (!route) this.refuse('selection: no signed-in account on this machine to run the bot; sign in to a provider first');
+    if (!route) this.refuse('selection: no signed-in account on this machine to run the mochi; sign in to a provider first');
     return { ...route, permissionMode: 'bypassPermissions' };
   }
   private openAgent(agentId: string): RpcResult<'agents.open'> {
@@ -657,7 +657,7 @@ export class FakeAgents {
     this.brains.set(p.agentId, saved);
     return structuredClone(saved);
   }
-  /** `boite bot remember`: a dated line at the end of MEMORY.md. */
+  /** `boite mochi remember`: a dated line at the end of MEMORY.md. */
   private note(p: RpcParams<'agents.memory.note'>): RpcResult<'agents.memory.note'> {
     const agentId = p.agentId ?? (p.threadId ? this.ownerOf(p.threadId) : null);
     if (!agentId) this.refuse('agentId: expected an agent, or the thread of one');
@@ -712,9 +712,9 @@ export class FakeAgents {
   private outsideEvent(p: RpcParams<'agents.event'>): RpcResult<'agents.event'> {
     const wanted = typeof p.agent === 'string' ? p.agent.toLowerCase() : '';
     const named = [...this.profiles.values()].filter(a => a.status !== 'archived' && (a.id === p.agent || a.name.toLowerCase() === wanted));
-    if (named.length > 1) this.refuse(`agent: ${named.length} bots are named ${JSON.stringify(p.agent)}; name it by id`);
+    if (named.length > 1) this.refuse(`agent: ${named.length} mochis are named ${JSON.stringify(p.agent)}; name it by id`);
     const agent = named[0];
-    if (!agent) this.refuse(`agent: unknown bot ${p.agent}`);
+    if (!agent) this.refuse(`agent: unknown mochi ${p.agent}`);
     const invalid = (message: string): never => { throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message }); };
     const key = p.key ?? 'external';
     if (typeof key !== 'string' || !/^[A-Za-z0-9._-]{1,64}$/.test(key)) invalid('key: expected [A-Za-z0-9._-]{1,64}');

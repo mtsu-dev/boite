@@ -38,19 +38,19 @@ export interface Parsed {
   skip: boolean;
   /** `settings request|open --why <text>`: the reason the card shows the user. */
   why?: string;
-  /** `settings bot --bot <name>`: the bot, by name or id; omitted, the one whose conversation this is. */
+  /** `settings mochi --mochi <name>`: the mochi, by name or id; omitted, the one whose conversation this is. */
   bot?: string;
-  /** `settings bot create --domain <text>`: what the new bot looks after, in a line. */
+  /** `settings mochi create --domain <text>`: what the new mochi looks after, in a line. */
   domain?: string;
-  /** `settings bot create --instructions-file <path>`: its instructions, read from a file. */
+  /** `settings mochi create --instructions-file <path>`: its instructions, read from a file. */
   instructionsFile?: string;
-  /** `settings bot request avatar --picture <path>`: an image file the bot wears in place of its robot. */
+  /** `settings mochi request avatar --picture <path>`: an image file the mochi wears in place of its robot. */
   picture?: string;
   /** Another core's address; its token comes from BOITE_TOKEN, never the command line. */
   core?: string;
   /** `thread new --machine <name>`, `settings request --machine <name>`: another machine of the group. */
   machine?: string;
-  /** `bot event --key <key>`: the outside event a later one with the same key replaces. */
+  /** `mochi event --key <key>`: the outside event a later one with the same key replaces. */
   key?: string;
   /** `--context`, `--keep`, `--drop`, `--tools`, `--rules`, `--rules-file`, as typed: `contextRequest` reads them. */
   context?: { preset?: string; keep?: string; drop?: string; tools?: string; rules?: string; rulesFile?: string };
@@ -162,14 +162,15 @@ export function parse(argv: string[]): Parsed {
     else if (arg === '--name') parsed.name = next();
     else if (arg === '--project') parsed.project = next();
     else if (arg === '--why') parsed.why = next();
-    // `--agent` is the old spelling, still read.
-    else if (arg === '--bot' || arg === '--agent') parsed.bot = next();
+    // `--bot` and `--agent` are the old spellings, still read.
+    else if (arg === '--mochi' || arg === '--bot' || arg === '--agent') parsed.bot = next();
     else if (arg === '--domain') parsed.domain = next();
     else if (arg === '--instructions-file') parsed.instructionsFile = next();
     else if (arg === '--picture') parsed.picture = next();
     else if (arg === '--core') parsed.core = next();
     else if (arg === '--machine') parsed.machine = next();
-    else if (arg === '--key' && parsed.positional[0] === 'bot') parsed.key = next();
+    // The first word is still as typed here: `mochi`, or the older `bot` and `agent`.
+    else if (arg === '--key' && MOCHI_WORDS.has(parsed.positional[0] ?? '')) parsed.key = next();
     else if (arg === '--entry') parsed.entry = next();
     // `agents` is the older name of `threads`, normalised after parsing.
     else if (arg === '--tool' && (parsed.positional[0] === 'threads' || parsed.positional[0] === 'agents')) parsed.tool = next();
@@ -206,16 +207,21 @@ export function parse(argv: string[]): Parsed {
   return parsed;
 }
 
+/** The words a mochi's commands answer to: `mochi`, the one help shows, and the older `bot` and `agent`. */
+const MOCHI_WORDS: ReadonlySet<string> = new Set(['mochi', 'bot', 'agent']);
+
 /**
- * The old spellings as the commands they became: `agent <x>` is `bot <x>`,
- * `agents <x>` is `threads <x>` and `settings agent` is `settings bot`.
- * Bots' brains and the user's notes still name them; help shows only the new.
+ * Every spelling as the one command the CLI runs. A person types
+ * `boite mochi <x>` and `boite settings mochi`; the older `bot` and `agent`
+ * mean the same, and `agents <x>` is `threads <x>`. Mochis' brains and the
+ * user's notes still name the old ones; help shows only the new. The code
+ * keeps `bot` as the command's name, so that is what all three become.
  */
 export function canonicalCommand(positional: string[]): string[] {
   const [command, action] = positional;
-  if (command === 'agent') return ['bot', ...positional.slice(1)];
+  if (command !== undefined && MOCHI_WORDS.has(command)) return ['bot', ...positional.slice(1)];
   if (command === 'agents') return ['threads', ...positional.slice(1)];
-  if (command === 'settings' && action === 'agent') return ['settings', 'bot', ...positional.slice(2)];
+  if (command === 'settings' && action !== undefined && MOCHI_WORDS.has(action)) return ['settings', 'bot', ...positional.slice(2)];
   return positional;
 }
 

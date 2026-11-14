@@ -52,15 +52,15 @@ export class AgentSettingCards {
     if (name === undefined || name.trim() === '') {
       const own = this.#store.resident.ownerOf(threadId);
       if (own !== null) return this.#store.records.get('profile', own);
-      throw refused(`agent: this thread is no bot's conversation; name one: ${live.map(agent => agent.name).join(', ') || 'there are no bots yet'}`, { field: 'agent' });
+      throw refused(`agent: this thread is no mochi's conversation; name one: ${live.map(agent => agent.name).join(', ') || 'there are no mochis yet'}`, { field: 'agent' });
     }
     const wanted = name.trim();
     const byId = live.find(agent => agent.id === wanted);
     if (byId !== undefined) return byId;
     const named = live.filter(agent => agent.name.toLowerCase() === wanted.toLowerCase());
     if (named.length === 1) return named[0]!;
-    if (named.length > 1) throw refused(`agent: ${named.length} bots are named ${JSON.stringify(wanted)}; name it by id: ${named.map(agent => agent.id).join(', ')}`, { field: 'agent' });
-    throw refused(`agent: no bot ${JSON.stringify(wanted)}; the bots are ${live.map(agent => agent.name).join(', ') || 'none yet'}`, { field: 'agent', expected: live.map(agent => agent.name) });
+    if (named.length > 1) throw refused(`agent: ${named.length} mochis are named ${JSON.stringify(wanted)}; name it by id: ${named.map(agent => agent.id).join(', ')}`, { field: 'agent' });
+    throw refused(`agent: no mochi ${JSON.stringify(wanted)}; the mochis are ${live.map(agent => agent.name).join(', ') || 'none yet'}`, { field: 'agent', expected: live.map(agent => agent.name) });
   }
 
   /** `refs`: a model is read as `<provider>/<model>` only, as a card holds it on Apply. */
@@ -215,7 +215,7 @@ export class AgentSettingCards {
    */
   setAvatar(params: { threadId: string; agent?: string; avatar: string }): AgentProfile {
     const thread = this.#core.threads.require(params.threadId);
-    if (thread.archived) throw refused('an archived thread cannot change a bot', { threadId: thread.id });
+    if (thread.archived) throw refused('an archived thread cannot change a mochi', { threadId: thread.id });
     const agent = this.#agentFor(thread.id, params.agent);
     const ctx = this.#context(agent);
     const normalized = normalizeAgentSetting('avatar', params.avatar, ctx);
@@ -228,7 +228,7 @@ export class AgentSettingCards {
   /** Why the bot can hold no project more, or null: asked before a folder is added for it (`agent.addProject`). */
   entrustRefusal(agent: AgentProfile): string | null {
     return new Set(agent.projectIds ?? []).size >= AGENT_PROJECTS_MAX
-      ? `projects: ${agent.name} holds ${AGENT_PROJECTS_MAX} projects already, the most an agent holds; ask for one to be taken away with boite settings bot request projects -<name> --why <reason>` : null;
+      ? `projects: ${agent.name} holds ${AGENT_PROJECTS_MAX} projects already, the most an agent holds; ask for one to be taken away with boite settings mochi request projects -<name> --why <reason>` : null;
   }
 
   /**

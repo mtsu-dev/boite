@@ -512,11 +512,11 @@ test('a machine out of reach keeps its projects\' count of what needs the user, 
   expect(counts()).toEqual(reached);
 });
 
-test('the Bots search lent to the header carries no thread display options, though the thread list was the last screen', async () => {
+test('the Mochis search lent to the header carries no thread display options, though the thread list was the last screen', async () => {
   await onPhone();
   workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
   store.page = 'agents';
-  const release = tabHeader.lend({ searchLabel: 'Search bots', searchTestid: 'agents-search-toggle', create: null });
+  const release = tabHeader.lend({ searchLabel: 'Search mochis', searchTestid: 'agents-search-toggle', create: null });
   try {
     mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } });
     await settle();

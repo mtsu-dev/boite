@@ -26,7 +26,7 @@ export const fr: Translation = {
     files: 'Afficher les fichiers',
     tasks: 'Afficher les tâches',
     subagents: 'Afficher les sous-agents',
-    agents: 'Ouvrir les bots',
+    agents: 'Ouvrir les mochis',
     pin: 'Épingler ce fil',
     unpin: 'Désépingler ce fil',
     rename: 'Renommer ce fil',

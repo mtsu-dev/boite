@@ -23,7 +23,7 @@ export const CLI_STARTUP: ReadonlySet<string> = new Set([
   'packages/core/src/ids.ts',
   'packages/core/src/paths.ts',
   'packages/core/src/version.ts',
-  // USAGE prints the settings pages and the bot keys; AGENT_ENV finds the thread.
+  // USAGE prints the settings pages and the mochi keys; AGENT_ENV finds the thread.
   'packages/contracts/src/agent-door.ts',
   'packages/contracts/src/agent-setting-requests.ts',
   'packages/contracts/src/setting-requests.ts',

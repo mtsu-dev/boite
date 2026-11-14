@@ -269,11 +269,11 @@ export class AgentRuntime {
     const provider = this.#core.providers.get(thread.providerId)?.name ?? thread.providerId;
     const why = held === 'inactive' ? `${agent.name} is archived`
       : held === 'off' ? `${provider} is turned off on this machine`
-      : held === 'paused' ? (agent.status === 'paused' ? `${agent.name} is paused` : 'bots are paused')
+      : held === 'paused' ? (agent.status === 'paused' ? `${agent.name} is paused` : 'mochis are paused')
         : `today's turns cost $${over!.spent.toFixed(2)}, past the daily budget of $${over!.budget.toFixed(2)}`;
     const after = source === 'resume' ? 'It was dropped.' : held === 'inactive' ? 'It will not run.'
       : held === 'off' ? `It runs once ${provider} is turned on in Settings > AI accounts > Providers, or ${agent.name} moves to another model.` : over ? 'It runs tomorrow, or once the budget is raised.'
-      : agent.status === 'paused' ? `It runs once ${agent.name} resumes.` : 'It runs once bots resume.';
+      : agent.status === 'paused' ? `It runs once ${agent.name} resumes.` : 'It runs once mochis resume.';
     const text = `Held ${SOURCE_TEXT[source]}: ${why}. ${after}`;
     if (!this.#told.has(key)) {
       this.#told.add(key);

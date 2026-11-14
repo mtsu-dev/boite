@@ -9,7 +9,7 @@ function holding(id: string, group: { id: string; self: string; botsHome?: strin
   } as unknown as MachineContacts;
 }
 
-test('a contact two machines of one group hold is listed once, on the Bots machine when it holds it, with what waits on both', () => {
+test('a contact two machines of one group hold is listed once, on the Mochis machine when it holds it, with what waits on both', () => {
   const group = { id: 'grp' };
   const rows = contactRows([
     holding('pc', { ...group, self: 'core-pc', botsHome: 'core-srv' }, ['alice', 'bob'], ['alice']),

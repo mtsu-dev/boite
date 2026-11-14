@@ -17,7 +17,7 @@ async function boiteAs(harness: TestCore, threadId: string, args: string[]) {
   return { code, out, err };
 }
 
-test('a bot\'s boite team propose card offers Create the team in French, and accepting it creates the team on desktop and phone', async () => {
+test('a mochi\'s boite team propose card offers Create the team in French, and accepting it creates the team on desktop and phone', async () => {
   ensureProductionUi();
   const restore = setDriver('echo', { protocol: 'echo', startTurn(ctx) {
     const id = ctx.emit.startMessage('assistant');

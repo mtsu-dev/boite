@@ -21,9 +21,9 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function draw(thread: Partial<Shown>, subagents: WorkingChildren | null = null): HTMLElement {
+function draw(thread: Partial<Shown>, subagents: WorkingChildren | null = null, more: { team?: WorkingChildren | null; mark?: boolean } = {}): HTMLElement {
   const shown: Shown = { status: 'idle', unread: false, runningSince: null, backgroundWork: null, lastUserMessageAt: NOW - 120_000, createdAt: NOW - 600_000, ...thread };
-  running = mount(ThreadState, { target: document.body, props: { thread: shown, now: NOW, subagents } });
+  running = mount(ThreadState, { target: document.body, props: { thread: shown, now: NOW, subagents, ...more } });
   flushSync();
   return document.body.firstElementChild as HTMLElement;
 }
@@ -43,10 +43,10 @@ test('a parent whose turn ended waits on its working sub-agents, their count in 
 
   const state = draw({ status: 'idle', unread: true, backgroundWork: { kinds: ['shell'], since: NOW } }, working.get('parent' as ThreadId)!);
   expect(state.dataset['state']).toBe('delegating');
-  // Work of any kind is the turning ring and the one word "Working", never a clock: the count and the time stay in the tooltip.
+  // Work of any kind is the turning ring, never a clock; its word says what it waits on, the time stays in the tooltip.
   expect(state.querySelector('.work-ring.turning')).not.toBeNull();
   expect(state.querySelector('.dot')).toBeNull();
-  expect(state.textContent?.trim()).toBe('Working');
+  expect(state.textContent?.trim()).toBe('Sub-agents');
   expect(state.getAttribute('role')).toBe('img');
   expect(state.getAttribute('title')).toBe('Waiting on 2 sub-agents\n1m 30s');
   // Its own turn or a question for the user still come first.
@@ -82,12 +82,73 @@ test('a finished turn whose agent still runs something is not at rest, read or n
   expect(threadState({ status: 'running', unread: false, backgroundWork: monitor })).toBe('working');
 });
 
+test('a parent row shows how many sub-agents it has at work, in every state, and only its children ask in the chip', () => {
+  vi.useFakeTimers({ now: NOW });
+  const two: WorkingChildren = { count: 2, since: NOW - 90_000, asking: 0 };
+  // Idle, waiting on them: the chip after the word, the robot and the number, the sentence in the tooltip.
+  let state = draw({ status: 'idle' }, two, { team: two });
+  let chip = state.querySelector<HTMLElement>('[data-testid="thread-subagents"]');
+  expect(chip?.dataset['count']).toBe('2');
+  expect(chip?.textContent?.trim()).toBe('2');
+  // The chip stands for the word: no "Sub-agents" beside the robot.
+  expect(state.querySelector('.word')).toBeNull();
+  expect(state.getAttribute('title')).toBe('Waiting on 2 sub-agents\n1m 30s\n2 sub-agents at work');
+  // Its own turn running beside them still counts them.
+  unmount(running!, { outro: false });
+  document.body.innerHTML = '';
+  state = draw({ status: 'running', runningSince: NOW - 5_000 }, two, { team: two });
+  expect(state.dataset['state']).toBe('working');
+  expect(state.querySelector('[data-testid="thread-subagents"]')?.getAttribute('data-count')).toBe('2');
+  // The thread's own question is folded into `subagents` (rowAsks), never into the chip: it counts its children only.
+  unmount(running!, { outro: false });
+  document.body.innerHTML = '';
+  state = draw({ status: 'idle' }, { ...two, asking: 1 }, { team: two });
+  chip = state.querySelector<HTMLElement>('[data-testid="thread-subagents"]');
+  expect(state.dataset['state']).toBe('waiting');
+  expect(chip?.classList.contains('asking')).toBe(false);
+  // A child that asks turns the chip amber; with none at work it counts the askers.
+  unmount(running!, { outro: false });
+  document.body.innerHTML = '';
+  const asks: WorkingChildren = { count: 0, since: null, asking: 1 };
+  state = draw({ status: 'idle' }, asks, { team: asks });
+  chip = state.querySelector<HTMLElement>('[data-testid="thread-subagents"]');
+  expect(chip?.dataset['count']).toBe('1');
+  expect(chip?.classList.contains('asking')).toBe(true);
+  // A list that holds the mark alone (Activity, the palette) leaves the chip out.
+  unmount(running!, { outro: false });
+  document.body.innerHTML = '';
+  state = draw({ status: 'idle' }, two, { team: two, mark: true });
+  expect(state.querySelector('[data-testid="thread-subagents"]')).toBeNull();
+});
+
+test('work names what it waits on: the heaviest background task, CI or the merge queue, never a bare Working', () => {
+  vi.useFakeTimers({ now: NOW });
+  const word = (thread: Partial<Shown> & Record<string, unknown>) => {
+    const state = draw(thread as Partial<Shown>);
+    const text = state.querySelector('.word')?.textContent;
+    unmount(running!, { outro: false });
+    running = null;
+    document.body.innerHTML = '';
+    return text;
+  };
+  expect(word({ status: 'running', runningSince: NOW - 5_000 })).toBe('Working');
+  expect(word({ status: 'queued' })).toBe('Queued');
+  expect(word({ backgroundWork: { kinds: ['shell', 'monitor'], since: NOW } })).toBe('Command');
+  expect(word({ backgroundWork: { kinds: ['shell', 'workflow'], since: NOW } })).toBe('Workflow');
+  expect(word({ backgroundWork: { kinds: ['agent'], since: NOW } })).toBe('Agent');
+  expect(word({ backgroundWork: { kinds: ['other'], since: NOW } })).toBe('Background');
+  const seen = { checkedAt: NOW, head: 'abc1234', base: 'def5678', checks: { total: 3, running: 0, failed: 0 }, conflicting: false, queue: { position: 2 } };
+  const watch = { url: 'https://github.com/example/repo/pull/7', repository: 'example/repo', number: 7, since: NOW - 300_000, seen, paused: null };
+  expect(word({ requestSince: NOW - 60_000, pullRequestWatches: [watch] })).toBe('Merge queue');
+  expect(word({ requestSince: NOW - 60_000, pullRequestWatches: [{ ...watch, seen: { ...seen, checks: { total: 3, running: 1, failed: 0 }, queue: undefined } }] })).toBe('CI running');
+});
+
 test('a delegated agent waiting on its own background work says what and since when; work that never woke it reads interrupted', () => {
   vi.useFakeTimers({ now: NOW });
   const since = NOW - 12 * 60_000;
   const waiting = draw({ backgroundWork: { kinds: ['shell'], since }, backgroundWait: { state: 'waiting', for: 'test_emotes', since, until: null } });
   expect(waiting.dataset['state']).toBe('background');
-  expect(waiting.textContent?.trim()).toBe('Working');
+  expect(waiting.textContent?.trim()).toBe('Command');
   expect(waiting.getAttribute('title')).toBe('In background for 12m 00s\nWaiting on test_emotes');
   // The task just ended and the wake turn has not started: still at work, not done.
   expect(threadState({ status: 'idle', unread: true, backgroundWait: { state: 'waiting', for: 'test_emotes', since, until: NOW + 30_000 } })).toBe('background');
@@ -144,9 +205,9 @@ test('a monitoring thread counts from its oldest task and says what still runs',
   const state = draw({ status: 'idle', unread: true, backgroundWork: { kinds: ['monitor', 'monitor'], since: NOW - 125_000 } });
   expect(state.dataset['state']).toBe('monitoring');
   expect(state.classList.contains('monitoring')).toBe(true);
-  // One shape for every kind of work: the turning arc; which work it is, the tooltip says.
+  // One shape for every kind of work: the turning arc; its word names which work it is.
   expect(state.querySelector('.work-ring')).not.toBeNull();
-  expect(state.textContent?.trim()).toBe('Working');
+  expect(state.textContent?.trim()).toBe('Monitoring');
   expect(state.getAttribute('title')).toBe('Monitoring for 2m 05s\n2 monitors still running');
 
   vi.advanceTimersByTime(1_000);
@@ -328,7 +389,7 @@ test('a thread at rest watching pull requests counts its time until their checks
   expect(state.dataset['state']).toBe('watching');
   // The row counts from the request, like a monitor; the numbers stay in the tooltip, the card's own line links the PR.
   expect(state.querySelector('.work-ring')).not.toBeNull();
-  expect(state.textContent?.trim()).toBe('Working');
+  expect(state.textContent?.trim()).toBe('CI running');
   expect(state.getAttribute('title')).toBe('Watching 2 PRs\n#7, #9\n10m 00s');
   // Its own turn still comes first; a finished watch leaves the thread done.
   expect(threadState({ status: 'running', unread: false, pullRequestWatches: [watch] })).toBe('working');

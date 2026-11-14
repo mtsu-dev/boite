@@ -164,26 +164,26 @@ export const SCENARIOS: Record<string, Scenario> = {
   ...CONTACT_MAIL_SCENARIOS,
   ...CONTACTS_BOT_SCENARIOS,
   ...TEAM_SCENARIOS,
-  'where bot creation asks first, a thread gets a card: Approve creates the bot with full access, Decline creates none': async (env) => {
+  'where mochi creation asks first, a thread gets a card: Approve creates the mochi with full access, Decline creates none': async (env) => {
     const before = await env.call('settings.get', {});
     const setup = await echo(env);
-    const created = await thread(env, setup, 'bot card');
+    const created = await thread(env, setup, 'mochi card');
     await finishedTurn(env, created.id);
     const tag = Math.random().toString(36).slice(2, 7);
     const named = async (name: string) => (await env.call('agents.snapshot', {})).profiles.find((profile) => profile.name === name);
     try {
       await env.call('settings.set', { agentBotCreation: 'ask' });
       const asked = await env.call('agents.create', { threadId: created.id, name: `Scribe${tag}`, domain: 'Notes' });
-      check(!('agent' in asked) && asked.setting.kind === 'bot' && asked.setting.bot.name === `Scribe${tag}`, 'asking returns the card, not a bot');
-      check((await named(`Scribe${tag}`)) === undefined, 'no bot exists before the owner approves');
+      check(!('agent' in asked) && asked.setting.kind === 'bot' && asked.setting.bot.name === `Scribe${tag}`, 'asking returns the card, not a mochi');
+      check((await named(`Scribe${tag}`)) === undefined, 'no mochi exists before the owner approves');
       check((await env.call('questions.list', { threadId: created.id })).some((question) => question.id === asked.questionId && question.setting?.kind === 'bot'), 'the card is open in the calling thread');
       await refusedWith(env.call('agents.create', { threadId: created.id, name: `scribe${tag}` }), RpcErrorCode.Refused, ['field']);
       const made = await env.call('agents.create.approve', { threadId: created.id, questionId: asked.questionId });
-      check(made.agent.name === `Scribe${tag}` && made.agent.selection.permissionMode === 'bypassPermissions', 'approving creates the bot with full access');
+      check(made.agent.name === `Scribe${tag}` && made.agent.selection.permissionMode === 'bypassPermissions', 'approving creates the mochi with full access');
       check(!(await env.call('questions.list', { threadId: created.id })).some((question) => question.id === asked.questionId), 'approving settles the card');
 
       const second = await env.call('agents.create', { threadId: created.id, name: `Herald${tag}` });
-      check(!('agent' in second), 'a second bot asks again');
+      check(!('agent' in second), 'a second mochi asks again');
       await env.call('questions.answer', { threadId: created.id, questionId: second.questionId, optionIds: ['refuse'] });
       check((await named(`Herald${tag}`)) === undefined, 'declining creates nothing');
       await refusedWith(env.call('agents.create.approve', { threadId: created.id, questionId: second.questionId }), RpcErrorCode.NotFound, ['field']);
@@ -276,14 +276,14 @@ export const SCENARIOS: Record<string, Scenario> = {
     await env.call('agents.profile.save', { id: agent.id, expectedRevision: saved.revision, value: { ...saved, selection: { ...saved.selection, effort: low } } });
     same((await env.call('agents.runtime.get', { agentId: agent.id })).defaultRoute.effort, low, 'effort after a profile save');
   },
-  'agents.avatar.set dresses a bot from its thread at once in a picture this machine holds, and refuses one it does not': async (env) => {
+  'agents.avatar.set dresses a mochi from its thread at once in a picture this machine holds, and refuses one it does not': async (env) => {
     const setup = await echo(env);
     const selection = { providerId: setup.provider.id, accountId: setup.account.id, model: setup.model, effort: null, permissionMode: 'default' as const };
     const agent = await env.call('agents.profile.save', { value: { name: 'Dressed', domain: '', instructions: '', avatar: '', selection, status: 'active' } });
     const { threadId } = await env.call('agents.open', { agentId: agent.id });
     const { avatar } = await env.call('agents.picture.put', { dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=' });
     const dressed = await env.call('agents.avatar.set', { threadId, avatar });
-    same([dressed.id, dressed.avatar], [agent.id, avatar], 'the bot wears the picture');
+    same([dressed.id, dressed.avatar], [agent.id, avatar], 'the mochi wears the picture');
     same((await env.call('agents.snapshot', {})).profiles.find(entry => entry.id === agent.id)?.avatar, avatar, 'the picture read back');
     same((await refusedWith(env.call('agents.avatar.set', { threadId, avatar: 'img:0123456789abcdef' }), RpcErrorCode.Refused))['field'], 'avatar', 'a picture this machine never stored');
     same((await env.call('agents.avatar.set', { threadId, avatar: '' })).avatar, '', 'back to the robot');

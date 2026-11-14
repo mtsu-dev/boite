@@ -263,7 +263,7 @@ test('dock reserves rail space above the foot and leaves the final thread reacha
   expect(page.errors()).toEqual([]);
 }, 60_000);
 
-test('a saved dock preference uses the bot sidebar and reserves space in a phone conversation', async () => {
+test('a saved dock preference uses the mochi sidebar and reserves space in a phone conversation', async () => {
   await boot(1440, false, true);
   await enableAndPin();
   await move('dock');

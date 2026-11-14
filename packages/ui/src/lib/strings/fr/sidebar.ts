@@ -126,6 +126,10 @@ export const fr: Translation = {
       delegating: 'Sous-agents',
       delegatingOne: 'Attend 1 sous-agent',
       delegatingMany: 'Attend {count} sous-agents',
+      subagentsOne: '1 sous-agent au travail',
+      subagentsMany: '{count} sous-agents au travail',
+      subagentsAskingOne: '1 sous-agent vous attend',
+      subagentsAskingMany: '{count} sous-agents vous attendent',
       monitoring: 'Surveille',
       monitoringFor: 'Surveille depuis {elapsed}',
       background: 'En arrière-plan',
@@ -134,6 +138,10 @@ export const fr: Translation = {
       watchingMany: 'Surveille {count} PR',
       awaiting: 'Attend : {what}',
       interrupted: 'Arrêté',
+      workWord: {
+        delegating: 'Sous-agents', monitoring: 'Surveille', ci: 'CI en cours', mergeQueue: 'File de merge',
+        shell: 'Commande', agent: 'Agent', workflow: 'Workflow', other: 'Arrière-plan'
+      },
       unreachableWas: 'Machine hors ligne. Dernier état connu : {state}',
       interruptedBy: '{what} s’est terminé sans rendre de résultat : {reason}',
       interruption: {
