@@ -66,10 +66,9 @@
   <!-- With words the visible text is its name; the tooltip says what it opens. -->
   <button type="button" class="ghost trigger small" class:icon={!spoken} class:worded={!!spoken} class:filtered={filters > 0} bind:this={trigger} aria-haspopup="dialog" aria-expanded={popover.open}
     aria-label={spoken ? undefined : strings.sidebar.groupingOptions} title={strings.sidebar.groupingOptions} data-testid={`${prefix}grouping-options`} data-view={workspace.view} data-filters={filters} onclick={toggle}>
-    <ListFilter size={16} />
+    <!-- A filter on: a dot on the glyph's corner, wherever the glyph sits; the line under the head names it. -->
+    <span class="glyph"><ListFilter size={16} />{#if filters > 0}<span class="dot" aria-hidden="true" data-testid={`${prefix}filter-count`}></span>{/if}</span>
     {#if spoken}<span class="word ui-label" data-testid={`${prefix}filter-name`}>{spoken}</span>{/if}
-    <!-- A filter on: a dot on the glyph's corner; the line under the head names it. -->
-    {#if filters > 0}<span class="dot" aria-hidden="true" data-testid={`${prefix}filter-count`}></span>{/if}
   </button>
   {#if popover.shown && Panel}
     <Panel {popover} anchor={() => trigger ?? null} onclose={close} {entries} {target} {owner} {prefix} {compact} {atWork} {onaddproject} />
@@ -83,6 +82,7 @@
   .trigger[aria-expanded='true'] { background: var(--color-surface-3); color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge); }
   .word { white-space: nowrap; }
   /* A filter on: the selected thing's ink, small on the glyph's corner, ringed off the ground. */
-  .dot { position: absolute; top: 4px; left: 18px; width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--color-foreground); box-shadow: 0 0 0 2px var(--color-background); pointer-events: none; }
-  .trigger.icon .dot { top: calc(50% - 12px); left: calc(50% + 5px); }
+  /* The dot hangs on the glyph itself, so it stays on the corner when the word hides (a narrow head, a phone) and the glyph centres. */
+  .glyph { position: relative; display: inline-flex; flex: none; }
+  .dot { position: absolute; top: -4px; left: 13px; width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--color-foreground); box-shadow: 0 0 0 2px var(--color-background); pointer-events: none; }
 </style>
