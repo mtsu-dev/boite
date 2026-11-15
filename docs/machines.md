@@ -60,7 +60,7 @@ or when the network is public and must be marked private in Windows settings.
   the thread list, narrows the list from All machines to one machine.
 - The command palette (Ctrl+K) finds conversations, projects and machine
   names. It lists conversations by state: Running, Finished, Done, then
-  Archived once you type, each most recent first, before projects, bots and
+  Archived once you type, each most recent first, before projects, mochis and
   commands. A new conversation's project picker lists every connected machine.
 - Each settings page that belongs to one machine has a machine picker on top.
   Appearance and Experiments belong to the window.

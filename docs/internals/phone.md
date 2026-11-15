@@ -77,7 +77,7 @@ CLIProxyAPI gateway on or off
 ([providers](providers.md#switching-the-gateway-from-limits)).
 
 Owner sessions have an Automatic compaction row with common defaults and
-independent settings for conversations, subagents and bots.
+independent settings for conversations, subagents and mochis.
 
 Owner sessions also get Plugins, the same page as the desktop's: the grid
 takes one card per row and a card's gear opens as a bottom sheet
