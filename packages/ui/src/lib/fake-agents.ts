@@ -309,7 +309,7 @@ export class FakeAgents {
     const question = state === 'needs-you' ? this.runner?.question?.(watch.threadId) ?? null : null;
     // A stall holds while the turn runs; the core clears it when the turn speaks again or ends.
     const stalledSince = state === 'working' ? watch.stalledSince : null;
-    return { ...structuredClone(watch), title: thread.title, projectId: thread.projectId, state, question, stalledSince, lastActivityAt: thread.updatedAt ?? watch.lastActivityAt };
+    return { ...structuredClone(watch), title: thread.title, projectId: thread.projectId, createdAt: thread.createdAt, state, question, stalledSince, lastActivityAt: thread.updatedAt ?? watch.lastActivityAt };
   }
   /** `desk` narrows the watches as the core does: one agent's, none with null, all when absent; an agent's own thread reads its own. */
   snapshot(threadId?: string, desk?: string | null): AgentsSnapshot {
