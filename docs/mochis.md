@@ -82,7 +82,8 @@ today in all, your messages included, beside its daily budget when it has one.
 
 The threads it started, was entrusted or follows sit in the mochi's column,
 with their state, pull request and checks. A Needs you row lets you answer its
-question in place.
+question in place. Each section lists its threads in the order they were
+started, first on top; a row moves only when it changes section.
 
 You set its daily budget in the mochi's settings.
 

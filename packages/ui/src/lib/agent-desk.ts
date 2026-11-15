@@ -40,10 +40,16 @@ export function deskTone(state: DeskState): 'accent' | 'live' | 'danger' | 'succ
   return 'muted';
 }
 
-/** Cards that need the user first, then the ones at work, then the rest by their last activity. */
+/**
+ * The desk in the order its threads were launched, first launched on top: the
+ * thread's creation, else (another machine's thread, an older core) when it came
+ * onto the desk, then its machine and id so equal dates hold still. Neither its
+ * state nor its activity moves a card; its chip says those.
+ */
 export function deskOrder(watches: readonly AgentWatch[]): AgentWatch[] {
-  const rank: Record<DeskState, number> = { 'needs-you': 0, stalled: 1, failed: 2, working: 3, queued: 3, review: 4, merged: 5, idle: 6, done: 7, archived: 8 };
-  return [...watches].sort((a, b) => rank[deskState(a)] - rank[deskState(b)] || b.lastActivityAt - a.lastActivityAt);
+  const launched = (watch: AgentWatch) => watch.createdAt ?? watch.since;
+  const key = (watch: AgentWatch) => `${watch.coreId ?? ''}/${watch.threadId}`;
+  return [...watches].sort((a, b) => launched(a) - launched(b) || (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
 }
 
 export type ToolStep = Extract<MessagePart, { type: 'tool' }>;
@@ -69,7 +75,7 @@ export function deskDone(watch: Pick<AgentWatch, 'state' | 'stalledSince' | 'pul
   return state === 'merged' || state === 'done' || state === 'archived';
 }
 
-/** The desk in the column's two sections, each in the desk's order. */
+/** The desk in the column's two sections, each in launch order: a card moves only when it changes section. */
 export function splitDesk(watches: readonly AgentWatch[]): { handling: AgentWatch[]; done: AgentWatch[] } {
   const ordered = deskOrder(watches);
   return { handling: ordered.filter(watch => !deskDone(watch)), done: ordered.filter(deskDone) };

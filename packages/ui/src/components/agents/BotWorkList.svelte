@@ -15,8 +15,8 @@
 
   /**
    * The threads a bot started, was handed or follows, from its desk: Working on,
-   * the ones still open with what needs the user first, then Done, the ones
-   * finished, merged or archived, dimmer. A row opens its thread on the
+   * the ones still open, then Done, the ones finished, merged or archived,
+   * dimmer, each in the order the threads were launched. A row opens its thread on the
    * machine that holds it, answers its question in place, and its cross takes
    * it off the desk. The snapshot carries the open bot's desk only.
    */

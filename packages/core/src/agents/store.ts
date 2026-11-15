@@ -452,7 +452,7 @@ export class AgentStore {
       const state = deskState(this.core, thread);
       const ask = this.core.threads.listQuestions(thread.id)[0];
       return {
-        agentId, threadId, title: thread.title, projectId: thread.projectId, origin, since,
+        agentId, threadId, title: thread.title, projectId: thread.projectId, origin, since, createdAt: thread.createdAt,
         state: state === 'needs the user' ? 'needs-you' : state as AgentWatch['state'],
         stalledSince: this.projects.stalledSince(thread.id),
         lastActivityAt: Math.max(thread.updatedAt, this.projects.lastHeard(thread.id) ?? 0),

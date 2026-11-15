@@ -216,7 +216,13 @@ export interface AgentWatch {
   title: string;
   projectId: string | null;
   origin: 'started' | 'entrusted' | 'followed' | 'touched';
+  /** When the follow was last recorded: a local thread's moves each time the bot touches it again. */
   since: number;
+  /**
+   * When the thread was created, the order the desk lists its threads in. Absent
+   * for a thread of another machine and on older cores, which fall back to `since`.
+   */
+  createdAt?: number;
   /** Read from the thread itself, never from what the agent said. */
   state: 'working' | 'queued' | 'needs-you' | 'failed' | 'idle' | 'done' | 'archived';
   /** Since when a running turn has produced nothing; set past the stall delay, when the agent was woken about it. */

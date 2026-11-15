@@ -82,7 +82,7 @@ test('Nova\'s desk is one column: who it is, its routines and its notes, its liv
   }
 });
 
-test('Nova\'s threads: what it handles, needs-you first, then what it is done with; a question answered in place, a thread dropped', async ({ ready }) => {
+test('Nova\'s threads: what it handles in launch order, then what it is done with; a question answered in place, a thread dropped', async ({ ready }) => {
   let list: ReturnType<typeof mount> | null = null;
   try {
     const { store } = await ready({ delayMs: 0, agentsDemo: true });
@@ -95,9 +95,8 @@ test('Nova\'s threads: what it handles, needs-you first, then what it is done wi
     await vi.waitFor(() => expect(document.querySelectorAll('[data-testid=desk-card]').length).toBeGreaterThan(5));
     flushSync();
 
-    // Working on: what needs the user first, the silent turn, the work, the open pull request, the other machine's quiet thread; Done: the merged one.
-    expect(titles('handling')[0]).toBe('Pick the release icon set');
-    expect(titles('handling')).toEqual(expect.arrayContaining(['Migrate the settings store', 'Fix login redirect loop', 'Fix the save migration']));
+    // Working on, first launched on top whatever its state: the open pull request, the work, the other machine's quiet thread (dated by its arrival), the silent turn, what needs the user; Done: the merged one.
+    expect(titles('handling')).toEqual(['Fix login redirect loop', 'Flaky upload test', 'Fix the save migration', 'Migrate the settings store', 'Pick the release icon set']);
     expect(titles('done')).toEqual(['Release notes 2.0.4']);
     expect(card('Release notes 2.0.4')?.classList.contains('done')).toBe(true);
     // The state in the lists' one slot after the title: an amber dot named in its tooltip, no word beside it.
