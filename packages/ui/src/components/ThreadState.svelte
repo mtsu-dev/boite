@@ -25,8 +25,9 @@
    * its "!" disc, a stop the grey square a stopped subagent wears in the thread
    * (DelegationActivity.svelte), work a turning accent arc, an unreached machine
    * its cloud; each mark is followed by its word ("Needs you", "Failed",
-   * "Stopped", "Working", "Queued", "Offline") in the row's neutral ink, the hue staying on the mark. News and
-   * rest show the time. Work turns, as it does in the thread; a queued turn's
+   * "Stopped", "Working", "Queued", "Offline") in the row's neutral ink, the hue staying on the mark. News (a
+   * turn that ended unread) says "Done" in the success ink, with no mark, before the row's time; rest shows the
+   * time alone. Work turns, as it does in the thread; a queued turn's
    * arc waits, still. Work also counts its time, second by second: the turn's
    * clock stands for "Working", the other kinds keep their word and add the
    * clock after it at a lighter weight, sub-agents put it before their chip.
@@ -123,8 +124,11 @@
   });
 </script>
 
-{#if form === null && !stale}
-  <!-- News marks nothing: the title's full ink says it, the time stays. -->
+{#if kind === 'done' && !mark}
+  <!-- A turn that ended unread says "Done" in the success ink, with no mark; the row's time follows it (ThreadHeadline.svelte). -->
+  <span class="when state done" data-testid="thread-state" data-state="done" title={`${strings.sidebar.state.done}\n${exactTime(thread.lastUserMessageAt ?? thread.createdAt)}`} aria-label={strings.sidebar.state.done} role="img"><span class="word ui-label" aria-hidden="true">{strings.sidebar.state.done}</span></span>
+{:else if form === null && !stale}
+  <!-- Rest, and news in a mark column, show the time. -->
   <span class="when" data-testid={kind === 'done' ? 'thread-state' : undefined} data-state={kind ?? undefined} title={kind === 'done' ? `${strings.sidebar.state.done}\n${exactTime(thread.lastUserMessageAt ?? thread.createdAt)}` : exactTime(thread.lastUserMessageAt ?? thread.createdAt)}>{ago(thread.lastUserMessageAt ?? thread.createdAt, now)}</span>
 {:else if kind !== null}
   {@const name = stale ? fill(strings.sidebar.state.unreachableWas, { state: strings.sidebar.state[kind] }) : chip ? `${label}\n${chip.label}` : label}
@@ -163,6 +167,7 @@
   .state.waiting { color: var(--color-live); }
   .state:is(.working, .queued, .delegating, .monitoring, .background, .watching) { color: var(--color-accent); }
   .state.error { color: var(--color-danger); }
+  .state.done { color: var(--color-success); }
   /* The desktop list's word goes only where the title beside it would keep under about 12 characters a line:
      measured on the seeded titles beside the widest word, a 198 px row of text in English ("Needs you"), 218 px in
      French ("Vous attend"), a 236 or 256 px list. */

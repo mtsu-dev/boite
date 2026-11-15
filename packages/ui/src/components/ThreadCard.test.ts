@@ -342,6 +342,13 @@ test('a list row ends its title line with its mark, then its one time, the way a
   expect(state.getAttribute('data-state')).toBe('waiting');
   expect(state.nextElementSibling?.matches('time.at')).toBe(true);
   expect(headline().querySelectorAll('time')).toHaveLength(1);
+  // A turn that ended unread says "Done" in words, then the same time.
+  store.pendingQuestions = []; thread.unread = true;
+  await settle();
+  const done = headline().querySelector('[data-testid=thread-state]')!;
+  expect([done.getAttribute('data-state'), done.textContent?.trim()]).toEqual(['done', 'Done']);
+  expect(done.nextElementSibling?.matches('time.at')).toBe(true);
+  expect(headline().querySelectorAll('time')).toHaveLength(1);
 });
 
 test('a thread a mochi started shows that mochi\'s face before its title, grey at rest; one it only follows shows none', async () => {
