@@ -6,13 +6,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { connect, type CoreClient } from '../src/client.ts';
 import { runCli } from '../src/cli.ts';
-import { notifiesOnFinish } from '@boite/contracts';
+import { AGENT_ONCE_KEPT_MS, notifiesOnFinish } from '@boite/contracts';
 import { AgentRuntime, EVENT_PROMPT_MAX, eventPrompt, isAgentHeld, NOTICES_PER_HOUR } from '../src/agents/runtime.ts';
 import { agentSpend, rootThread } from '../src/agents/spend.ts';
 import { agentGuide, BOT_GUIDE, OWN_SETTINGS, TEAM_GUIDE } from '../src/agent-guide.ts';
 import { DELEGATION_WORDS } from '../src/delegation/guide.ts';
 import { agentContext } from '../src/agents/context.ts';
 import { runCheck } from '../src/agents/checks.ts';
+import { botCommand } from '../src/agents/cli.ts';
 import { LIMIT_RESUME } from '../src/threads/limit-resume.ts';
 import { costing, makeAgent, scripted, settled, turnsOf } from './agent-fixture.ts';
 import { startTestCore, waitFor, type TestCore } from './harness.ts';
@@ -848,3 +849,87 @@ test('a routine that failed on a spent usage window resumes once the window rese
   await waitFor(() => turnsOf(h, threadId).at(-1)!.execution?.operation === 'resume' && settled(h, threadId), 10_000);
   expect(turnsOf(h, threadId).at(-1)!.status).toBe('done');
 }, 20_000);
+
+test('a single-date routine coming due sends no block again; spent, it leaves the block, stays listed seven days, then goes', async () => {
+  const driver = scripted(() => ({ text: 'Done.' })); restore = driver.restore;
+  const { agent, threadId } = await makeAgent(h, client);
+  const sent = () => driver.prompts.get(threadId) ?? [];
+  const daily = await routine(agent.id, { name: 'Daily review' });
+  const once = await routine(agent.id, { name: 'Post the devlog', prompt: 'Post it once', schedule: { kind: 'once', at: Date.now() + 3_600_000 } });
+  await waitFor(() => settled(h, threadId));
+  await client.call('turns.start', { threadId, prompt: 'Carry the block.' });
+  await waitFor(() => settled(h, threadId) && sent().at(-1)!.includes('Carry the block.'));
+  expect(sent().at(-1)).toContain(BLOCK);
+  expect(sent().at(-1)).toContain('"Post the devlog"');
+
+  // Coming due flips it off and leaves the list: the routine's own turn carries no block.
+  due(once.id);
+  await waitFor(() => read(once.id).lastOutcome === 'done' && settled(h, threadId));
+  expect(sent().at(-1)).toStartWith('Post it once');
+  expect(sent().at(-1)).not.toContain(BLOCK);
+  const block = agentContext(h.core, agent).text;
+  expect(block).toContain('"Daily review"');
+  expect(block).not.toContain('"Post the devlog"');
+
+  // `boite mochi routines` still lists it until seven days after it ran; then the core removes it, and only it.
+  const own = await connect(h.url, h.core.agents.tokenFor(threadId));
+  try {
+    const listed = async () => ((await botCommand(own, threadId, ['routines'])) as AgentRoutine[]).map(r => r.id);
+    const ranAt = read(once.id).lastScheduledAt!;
+    h.core.workforce.routines.tick(ranAt + AGENT_ONCE_KEPT_MS - 1000);
+    expect(await listed()).toEqual([daily.id, once.id]);
+    h.core.workforce.routines.tick(ranAt + AGENT_ONCE_KEPT_MS + 1);
+    expect(await listed()).toEqual([daily.id]);
+  } finally { own.close(); }
+  await client.call('turns.start', { threadId, prompt: 'After the sweep.' });
+  await waitFor(() => settled(h, threadId) && sent().at(-1)!.includes('After the sweep.'));
+  expect(sent().at(-1)).not.toContain(BLOCK);
+}, 20_000);
+
+test('three [quiet] occurrences in a row tell the bot to give the routine a check, until it speaks or takes one', async () => {
+  let answer = '[quiet] nothing new';
+  const driver = scripted(() => ({ text: answer })); restore = driver.restore;
+  const { agent, threadId } = await makeAgent(h, client);
+  await waitFor(() => settled(h, threadId));
+  await client.call('threads.update', { threadId, permissionMode: 'bypassPermissions' });
+  const saved = await routine(agent.id);
+  const occur = async (outcome: 'quiet' | 'done'): Promise<string> => {
+    const before = read(saved.id).lastTurnId;
+    due(saved.id);
+    await waitFor(() => read(saved.id).lastTurnId !== before && read(saved.id).lastOutcome === outcome && settled(h, threadId));
+    return sent().at(-1)!;
+  };
+  const sent = () => driver.prompts.get(threadId) ?? [];
+  const hint = 'ended in [quiet] its last';
+  for (let i = 1; i <= 3; i++) {
+    expect(await occur('quiet')).not.toContain(hint);
+    expect(read(saved.id).quietRun).toBe(i);
+  }
+  const fourth = await occur('quiet');
+  expect(fourth).toContain('this routine ended in [quiet] its last 3 times');
+  expect(fourth).toContain(`boite mochi schedule {"id":"${saved.id}","check":"<command>"}`);
+  // A turn that speaks ends the run.
+  answer = 'Two pull requests need you.';
+  expect(await occur('done')).toContain('its last 4 times');
+  expect(read(saved.id).quietRun).toBe(0);
+  answer = '[quiet] nothing new';
+  expect(await occur('quiet')).not.toContain(hint);
+
+  // The command the hint gives adds the check and keeps the rest; the run starts over.
+  const record = read(saved.id);
+  h.core.workforce.records.update('routine', record.id, record.revision, { ...record, quietRun: 3 });
+  const own = await connect(h.url, h.core.agents.tokenFor(threadId));
+  try { await botCommand(own, threadId, ['schedule', JSON.stringify({ id: saved.id, check: 'echo news' })]); } finally { own.close(); }
+  expect(read(saved.id)).toMatchObject({ name: 'Check the PRs', prompt: 'Look at the open pull requests', schedule: { kind: 'interval', everyMinutes: 60 }, check: 'echo news', quietRun: 0 });
+  const checked = await occur('quiet');
+  expect(checked).toContain('Output: "news"');
+  expect(checked).not.toContain(hint);
+
+  // Without full access the hint sends the bot to the user instead.
+  await client.call('threads.update', { threadId, permissionMode: 'default' });
+  const plain = await routine(agent.id, { name: 'Plain' });
+  const p = read(plain.id);
+  h.core.workforce.records.update('routine', p.id, p.revision, { ...p, quietRun: 3, nextAt: Date.now() - 1000 });
+  await waitFor(() => read(plain.id).lastTurnId !== null && settled(h, threadId));
+  expect(sent().at(-1)).toContain('ask the user to add one in the routine\'s editor');
+}, 30_000);

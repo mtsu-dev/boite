@@ -33,13 +33,15 @@ export async function botCommand(client: CoreClient, threadId: string, args: str
     }
     case 'routines': return snapshot.routines;
     case 'schedule': {
-      const value = json<{ name: string; prompt: string; schedule: AgentSchedule; id?: string; expectedRevision?: number; enabled?: boolean; check?: string | null }>();
+      const value = json<{ name?: string; prompt?: string; schedule?: AgentSchedule; id?: string; expectedRevision?: number; enabled?: boolean; check?: string | null }>();
       const previous = value.id ? snapshot.routines.find(r => r.id === value.id) : undefined;
       if (value.id && !previous) throw new Error(`mochi schedule: no routine ${value.id}; boite mochi routines lists yours`);
       const params: RpcParams<'agents.routine.save'> = {
         threadId,
         ...(previous ? { id: previous.id, expectedRevision: value.expectedRevision ?? previous.revision } : {}),
-        value: { agentId: agent.id, name: value.name, prompt: value.prompt, schedule: value.schedule, enabled: value.enabled ?? true, nextAt: null, lastTurnId: null, lastScheduledAt: null,
+        // An edit keeps the name, prompt and schedule it leaves out, so {"id":…,"check":…} only adds a check.
+        value: { agentId: agent.id, name: value.name ?? previous?.name as string, prompt: value.prompt ?? previous?.prompt as string, schedule: value.schedule ?? previous?.schedule as AgentSchedule,
+          enabled: value.enabled ?? true, nextAt: null, lastTurnId: null, lastScheduledAt: null,
           // Left out, an edit keeps the check it had; null or "" removes it.
           check: value.check === undefined ? previous?.check ?? null : value.check },
       };

@@ -1,4 +1,4 @@
-import { AGENT_ROUTINE_CHECK_MAX, AGENT_ROUTINE_NAME_MAX, AGENT_ROUTINE_PROMPT_MAX, AGENT_ROUTINES_MAX, nextAgentOccurrence } from '@boite/contracts';
+import { AGENT_ONCE_KEPT_MS, AGENT_ROUTINE_CHECK_MAX, AGENT_ROUTINE_NAME_MAX, AGENT_ROUTINE_PROMPT_MAX, AGENT_ROUTINES_MAX, nextAgentOccurrence, spentAgentRoutine } from '@boite/contracts';
 import type { AgentRoutine, AgentSchedule, RpcParams, Turn } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { refused } from '../errors.ts';
@@ -42,6 +42,21 @@ export function scheduleText(schedule: AgentSchedule): string {
   return `daily at ${schedule.time} ${schedule.timezone}${schedule.days ? ` on ${schedule.days.map(day => DAYS[day]).join(', ')}` : ''}`;
 }
 
+/** Occurrences in a row ending in `[quiet]` after which a routine without a check is told it could take one. */
+export const QUIET_RUN_HINT = 3;
+/** How often the scheduler looks for spent single-date routines to remove. */
+const SWEEP_MS = 3_600_000;
+
+/**
+ * What a due occurrence of a routine without a check adds to its prompt once
+ * its last `QUIET_RUN_HINT` ended in `[quiet]`: a check would have spared them.
+ */
+export function quietRunHint(routine: AgentRoutine, fullAccess: boolean): string {
+  const command = `boite mochi schedule {"id":${JSON.stringify(routine.id)},"check":"<command>"}`;
+  return `Boite: this routine ended in [quiet] its last ${routine.quietRun} times. If it only watches for something, give it a check: a command that prints only what should wake you and nothing when all is as before, so a time with nothing new costs no turn. `
+    + (fullAccess ? `Add one with ${command}; the rest of the routine stays as it is.` : 'Your thread asks before commands, so ask the user to add one in the routine\'s editor.');
+}
+
 /** A routine's check as saved: trimmed, null when there is none. */
 function checkOf(value: unknown): string | null {
   if (value === undefined || value === null) return null;
@@ -65,6 +80,9 @@ function outcomeOf(turn: Turn): NonNullable<AgentRoutine['lastOutcome']> {
  * starts no turn; something new, or a new failure, starts the turn with what
  * the command printed. What the agent last read is kept (`checkSeen`) once its
  * turn starts, so a restart, a busy thread or a spent budget loses no news.
+ * A routine without a check whose last `QUIET_RUN_HINT` occurrences ended in
+ * `[quiet]` says so in its next prompt, with the command to add one. A
+ * single-date routine whose date passed is removed `AGENT_ONCE_KEPT_MS` later.
  */
 export class AgentRoutines {
   readonly #core: Core;
@@ -83,7 +101,7 @@ export class AgentRoutines {
     const previous=params.id?this.#r.get('routine',params.id):null;
     if(previous&&previous.agentId!==agent.id)throw refused('agentId: a routine cannot change owner');
     if(!previous){
-      const held=this.#r.list('routine').filter(r=>r.agentId===agent.id).length;
+      const held=this.#r.list('routine').filter(r=>r.agentId===agent.id&&!spentAgentRoutine(r)).length;
       if(held>=AGENT_ROUTINES_MAX)throw refused(`routine: ${agent.name} already has ${held} routines, the most an agent may hold is ${AGENT_ROUTINES_MAX}; remove one before adding another`,{field:'agentId',count:held,max:AGENT_ROUTINES_MAX});
     }
     const schedule=checkSchedule(v.schedule),enabled=boolean(v.enabled,'enabled');
@@ -99,7 +117,7 @@ export class AgentRoutines {
     const spent=schedule.kind==='once'&&!changed&&previous?.lastScheduledAt!=null;
     const nextAt=!enabled||spent?null:previous?.enabled&&!changed?previous.nextAt:schedule.kind==='once'?schedule.at:nextOccurrence(schedule,Date.now());
     const lastScheduledAt=schedule.kind==='once'&&changed?null:previous?.lastScheduledAt??null;
-    const value:Omit<AgentRoutine,'id'|'revision'|'createdAt'|'updatedAt'>={agentId:agent.id,name:text(v.name,'name',AGENT_ROUTINE_NAME_MAX),prompt:text(v.prompt,'prompt',AGENT_ROUTINE_PROMPT_MAX),schedule,enabled,nextAt,lastTurnId:previous?.lastTurnId??null,lastScheduledAt,lastOutcome:previous?.lastOutcome??null,check,checkSeen:check!==null&&check===kept?previous?.checkSeen??null:null};
+    const value:Omit<AgentRoutine,'id'|'revision'|'createdAt'|'updatedAt'>={agentId:agent.id,name:text(v.name,'name',AGENT_ROUTINE_NAME_MAX),prompt:text(v.prompt,'prompt',AGENT_ROUTINE_PROMPT_MAX),schedule,enabled,nextAt,lastTurnId:previous?.lastTurnId??null,lastScheduledAt,lastOutcome:previous?.lastOutcome??null,check,checkSeen:check!==null&&check===kept?previous?.checkSeen??null:null,quietRun:check===kept?previous?.quietRun??0:0};
     const result=params.id?this.#r.update('routine',params.id,integer(params.expectedRevision,'expectedRevision',1,Number.MAX_SAFE_INTEGER),value):this.#r.create('routine',value);
     this.#core.workforce.changed();return result;
   }
@@ -178,12 +196,29 @@ export class AgentRoutines {
     this.#core.workforce.changed();
   }
 
+  /** Removes the single-date routines spent more than `AGENT_ONCE_KEPT_MS` ago, and says when the next one is due to go. */
+  #sweep(now:number):void {
+    let removed=false,next=now+SWEEP_MS;
+    for(const routine of this.#r.list('routine')){
+      if(!spentAgentRoutine(routine))continue;
+      const at=routine.lastScheduledAt!+AGENT_ONCE_KEPT_MS;
+      if(at>now){next=Math.min(next,at);continue;}
+      this.#r.remove('routine',routine.id);this.#found.delete(routine.id);removed=true;
+    }
+    // One spent after this sweep goes a week later at the earliest, past the next sweep.
+    this.#sweepAt=next;
+    if(removed)this.#core.workforce.changed();
+  }
+
   /** The routine whose last occurrence this turn was, with its outcome. */
   finished(turn:Turn):void {
     if(turn.execution?.operation!=='routine')return;
     const routine=this.#r.list('routine').find(r=>r.lastTurnId===turn.id);
     if(!routine)return;
-    this.#r.update('routine',routine.id,routine.revision,{...routine,lastOutcome:outcomeOf(turn)});
+    const outcome=outcomeOf(turn);
+    // Only an answer or another [quiet] moves the run; a failed or stopped turn says nothing about the routine.
+    const quietRun=outcome==='quiet'?(routine.quietRun??0)+1:outcome==='done'?0:routine.quietRun??0;
+    this.#r.update('routine',routine.id,routine.revision,{...routine,lastOutcome:outcome,quietRun});
     this.#core.workforce.changed();
   }
 
@@ -193,8 +228,11 @@ export class AgentRoutines {
    * thread keeps the next tick reading.
    */
   #next:{writes:number;at:number|null}|null=null;
+  /** When the scheduler next looks for spent single-date routines. */
+  #sweepAt=0;
   tick(now=Date.now()):void {
     if(this.#core.stopping)return;
+    if(now>=this.#sweepAt)this.#sweep(now);
     const writes=this.#r.writes;
     if(this.#next&&this.#next.writes===writes&&(this.#next.at===null||this.#next.at>now))return;
     let at:number|null=null,held=false;
@@ -219,6 +257,9 @@ export class AgentRoutines {
         const {result}=found;
         if(result.print===null||result.print===(routine.checkSeen??null)){this.#found.delete(routine.id);this.#nothing(routine,result.print);continue;}
         prompt=checkPrompt(routine.prompt,command,result);seen=result.print;
+      }else if(routine.schedule.kind!=='once'&&(routine.quietRun??0)>=QUIET_RUN_HINT){
+        const mode=this.#core.journal.getThread(this.#core.workforce.open(agent.id).threadId)?.permissionMode;
+        prompt=`${prompt}\n\n${quietRunHint(routine,mode==='bypassPermissions'||mode==='yolo')}`;
       }
       const attempt=this.#core.agentRuntime.attempt(agent,{kind:'routine',label:`Routine · ${routine.name}`,prompt,requestId:`due-${routine.id}-${routine.nextAt}`});
       if(attempt.held==='busy'){held=true;continue;}

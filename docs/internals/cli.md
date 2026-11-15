@@ -588,7 +588,8 @@ experiment: group or private posts, reading, and cards that ask the owner to
 create, join or leave a team ([teams](teams.md#commands)).
 
 Mochis schedule work from their own conversation. `mochi schedule` accepts `name`, `prompt`, `schedule` and an optional `check`
-(a command; the routine wakes the mochi only when it prints something new, see [routines](mochis.md#routines)),
+(a command; the routine wakes the mochi only when it prints something new, see [routines](mochis.md#routines)).
+With `id`, an edit keeps the name, prompt and schedule it leaves out: `{"id":"<routine-id>","check":"<command>"}` only adds a check. A schedule is,
 for example `{"kind":"daily","time":"09:00","timezone":"Europe/Paris"}`.
 Other schedules use `{"kind":"interval","everyMinutes":60}` or
 `{"kind":"once","at":1790240400000}` with a Unix timestamp in milliseconds.
@@ -1024,7 +1025,7 @@ The `mochi` commands belong to [mochis](mochis.md), not ordinary thread
 coordination, and work only from a mochi's own thread. `mochi memory` prints
 MEMORY.md and its path; `mochi remember <fact>` adds a dated line to it. `mochi
 routines` lists its routines, `mochi schedule <json>` saves one (`name`,
-`prompt`, `schedule`, with `id` to edit one and `enabled`), `mochi unschedule
+`prompt`, `schedule`, with `id` to edit one, keeping what the edit leaves out, and `enabled`), `mochi unschedule
 <routine-id>` removes one. `mochi watch|unwatch <thread-id>` puts a thread of
 its projects on its desk or takes one off; a watched thread wakes the mochi at
 once, one it only wrote to waits for its routines. Use `--json` to

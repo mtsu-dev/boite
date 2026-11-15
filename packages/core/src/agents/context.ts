@@ -11,8 +11,8 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { AGENT_MEMORY_MAX } from '@boite/contracts';
-import type { AgentBrain, AgentProfile, AgentWatchPullRequest, LinkedPullRequest, ThreadSummary } from '@boite/contracts';
+import { AGENT_MEMORY_MAX, spentAgentRoutine } from '@boite/contracts';
+import type { AgentBrain, AgentProfile, AgentRoutine, AgentWatchPullRequest, LinkedPullRequest, ThreadSummary } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { scheduleText } from './routines.ts';
 import { BOT_GUIDE } from '../agent-guide.ts';
@@ -119,11 +119,27 @@ function contextInputs(core: Core, agent: AgentProfile, guided: boolean): Contex
   const routines = store.records.list('routine').filter(r => r.agentId === agent.id);
   const projects = store.projects.instructions(agent);
   const persona = [`You are ${agent.name}${agent.domain.trim() ? `, ${agent.domain.trim()}` : ''}.`, agent.instructions.trim()].filter(Boolean).join('\n');
-  const routineLines = routines.map(r => `- ${JSON.stringify(r.name)} (${r.id}): ${scheduleText(r.schedule)}${r.enabled ? r.nextAt !== null ? `, next ${new Date(r.nextAt).toISOString()}` : ', done' : ', off'}${r.check ? `, wakes you only when its check prints something new: ${JSON.stringify(r.check)}` : ''}`);
+  const { routineLines, routinesHashed } = routineBlock(routines);
   const hash = createHash('sha256').update(JSON.stringify([
-    brain.path, persona, brain.instructions, memory, archived, skills, routines.map(r => [r.id, r.name, r.schedule, r.enabled, r.check ?? null]), projects, guided ? null : BOT_GUIDE,
+    brain.path, persona, brain.instructions, memory, archived, skills, routinesHashed, projects, guided ? null : BOT_GUIDE,
   ])).digest('hex');
   return { brain, memoryPath, memory, archive, archived, skills, routineLines, projects, persona, guided, hash };
+}
+
+/**
+ * The routine lines of the block and what of them the hash covers. A
+ * single-date routine whose date passed is left out (`spentAgentRoutine`;
+ * `boite mochi routines` still lists it until the core removes it). Single-date
+ * routines stay out of the hash: one coming due, then leaving the list and
+ * later the records, must not send the whole block again. The mochi reads its
+ * prompt when it comes due, and the block lists it whenever it goes out.
+ */
+export function routineBlock(routines: readonly AgentRoutine[]): { routineLines: string[]; routinesHashed: unknown[] } {
+  const coming = routines.filter(r => !spentAgentRoutine(r));
+  return {
+    routineLines: coming.map(r => `- ${JSON.stringify(r.name)} (${r.id}): ${scheduleText(r.schedule)}${r.enabled ? r.nextAt !== null ? `, next ${new Date(r.nextAt).toISOString()}` : ', done' : ', off'}${r.check ? `, wakes you only when its check prints something new: ${JSON.stringify(r.check)}` : ''}`),
+    routinesHashed: coming.filter(r => r.schedule.kind !== 'once').map(r => [r.id, r.name, r.schedule, r.enabled, r.check ?? null]),
+  };
 }
 
 /** The desk lines of the block: the first 30 watches, their threads and pull requests read in one pass each. */
