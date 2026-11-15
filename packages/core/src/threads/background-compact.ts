@@ -1,5 +1,5 @@
 import { effectiveCompaction } from '@boite/contracts';
-import type { Account, ContextUse, Message, MessagePart, ProviderDescriptor, ThreadId, ThreadSummary, Turn, TurnId } from '@boite/contracts';
+import type { Account, AgentTotals, ContextUse, Message, MessagePart, ProviderDescriptor, ThreadId, ThreadSummary, Turn, TurnId } from '@boite/contracts';
 import { stepTail, type PartPlace, type TailAnchor } from '../continuation.ts';
 import type { Core } from '../core.ts';
 import { getDriver, releaseThread } from '../drivers/index.ts';
@@ -8,6 +8,7 @@ import { messageOf } from '../errors.ts';
 import { newId } from '../ids.ts';
 import type { ThreadStore } from '../threads.ts';
 import { backgroundWaitOf, saveThread, withLoad } from './records.ts';
+import { SWAPPED_TOTALS_PREFIX, type SwappedTotals } from '../usage.ts';
 import { removeTranscripts } from './transcript-purge.ts';
 
 /**
@@ -78,7 +79,7 @@ interface Copy {
   /** Set when the copy is no longer wanted; a running one is stopped. */
   dropped: boolean;
   /** The compacted session, once the copy finished. */
-  ready: { sessionId: string; postTokens: number | null; window: number | null } | null;
+  ready: { sessionId: string; postTokens: number | null; window: number | null; totals: AgentTotals | null } | null;
   /** Settles once the copy's run ended, whatever it gave. */
   settled: Promise<void>;
   /** Settles once the copy is dropped, so a step waiting for it goes on at once. */
@@ -110,7 +111,8 @@ interface Boundary { turnId: TurnId; generation: number; tokens: number; at: num
  * Only drivers that can fork a session at a checkpoint take part: Claude
  * (resume at the checkpoint, forked), Codex (`forkSession`) and echo.
  * Copies are held in memory: a restart forgets them. The copy runs outside the
- * scheduler's account slots and its usage is recorded on no turn.
+ * scheduler's account slots and its usage is recorded on no turn; the running
+ * totals it ends on go with the swap, for the agent that resumes its session.
  */
 export class BackgroundCompaction {
   readonly #copies = new Map<ThreadId, Copy>();
@@ -506,7 +508,8 @@ export class BackgroundCompaction {
     const reading = seen.use;
     // A reading of the compaction request itself is the old context, not the new one.
     const postTokens = done.postTokens ?? (reading !== null && reading.tokens < copy.source.tokens ? reading.tokens : null);
-    copy.ready = { sessionId: made, postTokens, window: reading?.window ?? null };
+    // The compacted session's transcript ends on these totals, which an agent resuming it restores.
+    copy.ready = { sessionId: made, postTokens, window: reading?.window ?? null, totals: result.agentTotals ?? null };
     copy.handle = null;
     const current = this.#core.journal.getThread(thread.id);
     const limit = current === null ? null : this.limit(current);
@@ -606,6 +609,7 @@ export class BackgroundCompaction {
       this.#core.journal.putThread(next);
       this.#core.journal.putMessage(divider);
       this.#core.journal.setSetting(`${COMPACTION_TAIL_PREFIX}${thread.id}`, tail);
+      this.#noteTotals(thread.id, generation, ready);
     });
     this.#announce(next, divider);
     this.#core.log('info', `thread ${thread.id}: swapped to a session compacted in the background`, { source: thread.providerId, threadId: thread.id });
@@ -637,6 +641,8 @@ export class BackgroundCompaction {
       this.#core.journal.putMessage(divider);
       // The tail goes with the swap: an older marker has nothing left to carry.
       this.#core.journal.deleteSetting(`${COMPACTION_TAIL_PREFIX}${thread.id}`);
+      // Read only when the turn ends with no totals of the compacted session.
+      this.#noteTotals(thread.id, generation, ready);
     });
     this.#carrying.delete(thread.id);
     this.#boundaries.delete(thread.id);
@@ -644,7 +650,18 @@ export class BackgroundCompaction {
     // The answer goes on in a new message after the divider.
     this.threads.runner.answerAfter.set(turn.id, Math.max(divider.createdAt, this.threads.runner.answerAfter.get(turn.id) ?? 0));
     this.#core.log('info', `thread ${thread.id}: swapped to a session compacted in the background, inside turn ${turn.id}`, { source: thread.providerId, threadId: thread.id, turnId: turn.id });
-    return { swap: { sessionId: ready.sessionId, tail, postTokens: ready.postTokens } };
+    return { swap: { sessionId: ready.sessionId, tail, postTokens: ready.postTokens, ...(ready.totals ? { totals: ready.totals } : {}) } };
+  }
+
+  /**
+   * What the compacted session already counts, for the turns of its generation
+   * until one records totals of its own (`sessionUsage`): no turn recorded the
+   * copy's, and an agent that restores its totals resumes from them.
+   */
+  #noteTotals(threadId: ThreadId, generation: number, ready: NonNullable<Copy['ready']>): void {
+    const key = `${SWAPPED_TOTALS_PREFIX}${threadId}`;
+    if (ready.totals === null) this.#core.journal.deleteSetting(key);
+    else this.#core.journal.setSetting(key, { generation, totals: ready.totals } satisfies SwappedTotals);
   }
 
   /** The thread on the compacted session, a generation on. */

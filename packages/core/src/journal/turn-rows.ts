@@ -69,12 +69,14 @@ export function pageTurns(db: Database, threadId: string, turnIds: Iterable<stri
 /**
  * What an agent session used before `exceptTurnId`: the turns of `generation`,
  * or of each listed one for a session that ran on several (a session a switch
- * back resumed, `threads/account-sessions.ts`).
+ * back resumed, `threads/account-sessions.ts`). Totals a turn reported on the
+ * generation it moved to (`AgentTotals.sessionGeneration`) count for that one.
  */
 export function sumSessionUsage(db: Database, threadId: string, generation: number | readonly number[], exceptTurnId: string): SessionUsage {
   const generations = JSON.stringify(typeof generation === 'number' ? [generation] : generation);
   const reported = db.query(`SELECT id, agent_totals FROM turns WHERE thread_id = ? AND id <> ? AND agent_totals IS NOT NULL
-    AND json_extract(execution, '$.sessionGeneration') IN (SELECT value FROM json_each(?)) ORDER BY rowid DESC LIMIT 1`)
+    AND COALESCE(json_extract(agent_totals, '$.sessionGeneration'), json_extract(execution, '$.sessionGeneration')) IN (SELECT value FROM json_each(?))
+    ORDER BY rowid DESC LIMIT 1`)
     .get(threadId, exceptTurnId, generations) as { id: string; agent_totals: string } | null;
   if (reported !== null) return { reported: parseJson<AgentTotals>(reported.agent_totals, `turns.agent_totals of ${reported.id}`), groups: [] };
   return { reported: null, groups: usageGroups(db, { where: "t.thread_id = ? AND t.id <> ? AND json_extract(t.execution, '$.sessionGeneration') IN (SELECT value FROM json_each(?))" }, threadId, exceptTurnId, generations) };

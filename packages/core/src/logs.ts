@@ -6,6 +6,7 @@ import {
 } from '@boite/contracts';
 import type { Bus, EventPayload } from './bus.ts';
 import { invalidParams } from './errors.ts';
+import { costOrRates } from './usage.ts';
 
 export const LOG_FILE_BYTES = 2 * 1024 * 1024;
 export const LOG_FILE_COUNT = 8;
@@ -333,7 +334,10 @@ export class DiagnosticLogs {
     if (turn.usage) {
       data.inputTokens = turn.usage.inputTokens; data.outputTokens = turn.usage.outputTokens;
       data.cacheReadTokens = turn.usage.cacheReadTokens; data.cacheWriteTokens = turn.usage.cacheWriteTokens;
-      if (turn.usage.costUsdEquivalent !== null) data.costUsdEquivalent = turn.usage.costUsdEquivalent;
+      // A turn whose agent reported no cost, or one the core found implausible (`implausibleCost`), is priced at rates.
+      const cost = costOrRates(turn.execution?.model ?? null, turn.usage);
+      if (cost !== null) data.costUsdEquivalent = cost;
+      if (cost !== null && turn.usage.costUsdEquivalent === null) data.costAtRates = true;
     }
     if (turn.execution?.effort) data.effort = turn.execution.effort;
     if (turn.execution?.permissionMode) data.permissionMode = turn.execution.permissionMode;

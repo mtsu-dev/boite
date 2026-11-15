@@ -5,6 +5,7 @@ import type { Options } from '@anthropic-ai/claude-agent-sdk';
 import type { Turn } from '@boite/contracts';
 import { connect } from '../src/client.ts';
 import { restoredCost } from '../src/drivers/claude/mapping.ts';
+import { priceUsage } from '../src/pricing/index.ts';
 import { startTurn, waitFor } from './harness.ts';
 import {
   answerEach,
@@ -300,6 +301,25 @@ describe('claude driver', () => {
     expect(costs[5]).toBeCloseTo(0, 10);
     expect(costs[6]).toBeCloseTo(0.02, 10);
     expect(costs[7]).toBeNull();
+  });
+
+  test('a cost far above the turn\'s tokens at rates is recorded as unknown, and its log prices the tokens', async () => {
+    const { client, threadId } = await openClaudeThread();
+    // A running total charged again: $40 for 26 tokens, which rates price under a cent.
+    scripted(() => undefined, (fake) => {
+      fake.emit(init('sess-implausible'));
+      fake.emit(sdk({ ...(success('sess-implausible') as object), total_cost_usd: 40 }));
+    });
+    const { finished } = await startTurn(client, threadId, 'first', 10000);
+    const turn = await finished;
+    expect(turn.usage).toMatchObject({ inputTokens: 11, costUsdEquivalent: null });
+    const rates = priceUsage(turn.execution!.model, turn.usage!)!.cost;
+    expect(rates).toBeGreaterThan(0);
+    const [warned] = await harness.core.logs.select(record => record.event === 'turn.cost.implausible', 1);
+    expect(warned).toMatchObject({ level: 'warn', turnId: turn.id, data: { reportedUsd: 40, ratesUsd: rates } });
+    // The core logs the turn's end before its clients hear of it.
+    const [logged] = await harness.core.logs.select(record => record.event === 'turn.finished' && record.turnId === turn.id, 1);
+    expect(logged!.data).toMatchObject({ costUsdEquivalent: rates, costAtRates: true });
   });
 
   for (const warmProcessMinutes of [0, 5]) test(`a compaction records the tokens and cache lifetimes its running totals grew by, which its own usage leaves at zero (warm ${warmProcessMinutes} min)`, async () => {

@@ -814,6 +814,12 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
     io.out((parsed.json ? JSON.stringify(value) : lines.join('\n')) + '\n');
   };
 
+  // `boite mochi help` reads no mochi: any thread, a delegated child included, gets it without the core.
+  if (parsed.positional[0] === 'bot' && (parsed.positional.length === 1 || (parsed.positional.length === 2 && parsed.positional[1] === 'help'))) {
+    print([BOT_HELP], { help: BOT_HELP });
+    return 0;
+  }
+
   let client: CoreClient | null = null;
   try {
     if (parsed.positional[0] === 'journal-check' && (io.env[AGENT_ENV.coreUrl] || io.env[AGENT_ENV.token] || io.env[AGENT_ENV.threadId])) throw new Error('boite journal-check is owner-only outside the agent environment');

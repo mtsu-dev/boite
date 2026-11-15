@@ -49,6 +49,12 @@ export interface AgentTotals {
    * compaction, reads as restored only from a process of that version.
    */
   restores?: string;
+  /**
+   * The thread's session generation these totals belong to, when it is not
+   * the one the turn started on: a turn that took a session compacted in the
+   * background ends on the next generation, which resumes from its totals.
+   */
+  sessionGeneration?: number;
 }
 
 /** Public API prices in US dollars per million tokens. */

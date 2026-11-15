@@ -17,7 +17,9 @@ The wire keeps the old names (the `agents.*` methods, `AgentProfile`,
 talk to each other across machines. The code also keeps `bot`, the word people
 read before mochi, in its identifiers, its files, the `bot:` avatar codes and
 the `bot.*` operations between machines. `boite mochi` is the command help
-shows; `boite bot` and `boite agent` still run it ([CLI](cli.md)).
+shows; `boite bot` and `boite agent` still run it ([CLI](cli.md)). `boite mochi
+help`, or `boite mochi` alone, prints the list from any thread without asking
+the core; every other action reads the mochi of the thread it runs in.
 
 ## The mochi's thread
 
