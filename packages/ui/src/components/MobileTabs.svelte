@@ -13,7 +13,7 @@
    * desktop rail's in the same order. A new conversation is the list header's
    * "+". A conversation, a draft and an open keyboard hide the bar; the list's
    * header names the machine. Up to four places, spread evenly: Threads, Activity,
-   * Bots and Contacts, each a tab of its own as each is a place of the
+   * Contacts and Bots, each a tab of its own as each is a place of the
    * desktop rail. Settings is the header's gear, a page with its way
    * back, not a place.
    */
@@ -43,14 +43,14 @@
   <button type="button" class="tab" data-testid="mobile-activity" aria-current={page('activity')} aria-label={waiting ? `${strings.mobile.activity}, ${fill(strings.mobile.waitingElsewhere, { count: String(waiting) })}` : undefined} onclick={() => navigate('activity')}>
     <span class="glyph"><Inbox size={20} />{#if waiting}<span class="badge" data-testid="mobile-activity-waiting">{waiting > 99 ? '99+' : waiting}</span>{/if}</span><span class="name ui-label">{strings.mobile.activity}</span>
   </button>
-  {#if bots}
-    <button type="button" class="tab" data-testid="mobile-agents" data-preload-view="agents" aria-current={page('agents')} aria-label={atWork.count ? `${strings.agents.heading}, ${fill(atWork.waiting ? strings.sidebar.surfaceWaiting : strings.sidebar.surfaceWorking, { count: String(atWork.count) })}` : undefined} onclick={() => store.showAgents()}>
-      <span class="glyph"><Bot size={20} />{#if atWork.count}<span class="dot" class:working={!atWork.waiting} data-testid="mobile-agents-at-work" data-waiting={atWork.waiting}></span>{/if}</span><span class="name ui-label">{strings.agents.heading}</span>
-    </button>
-  {/if}
   {#if contactsShown(store)}
     <button type="button" class="tab" data-testid="mobile-contacts" data-preload-view="home" aria-current={page('contacts')} onclick={() => store.showHome()}>
       <span class="glyph"><UsersRound size={20} /></span><span class="name ui-label">{strings.contacts.heading}</span>
+    </button>
+  {/if}
+  {#if bots}
+    <button type="button" class="tab" data-testid="mobile-agents" data-preload-view="agents" aria-current={page('agents')} aria-label={atWork.count ? `${strings.agents.heading}, ${fill(atWork.waiting ? strings.sidebar.surfaceWaiting : strings.sidebar.surfaceWorking, { count: String(atWork.count) })}` : undefined} onclick={() => store.showAgents()}>
+      <span class="glyph"><Bot size={20} />{#if atWork.count}<span class="dot" class:working={!atWork.waiting} data-testid="mobile-agents-at-work" data-waiting={atWork.waiting}></span>{/if}</span><span class="name ui-label">{strings.agents.heading}</span>
     </button>
   {/if}
 </nav>
