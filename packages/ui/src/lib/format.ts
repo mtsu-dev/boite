@@ -34,21 +34,23 @@ function formatters(): Formatters {
   const tag = formatLocale();
   const known = sets.get(tag);
   if (known) return known;
+  const date = (options: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat(tag, options);
+  const number = (options: Intl.NumberFormatOptions = {}) => new Intl.NumberFormat(tag, options);
   const made: Formatters = {
-    clock: new Intl.DateTimeFormat(tag, { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-    dayClock: new Intl.DateTimeFormat(tag, { hour: '2-digit', minute: '2-digit' }),
-    calendar: new Intl.DateTimeFormat(tag, { day: 'numeric', month: 'short' }),
-    longDay: new Intl.DateTimeFormat(tag, { weekday: 'long', day: 'numeric', month: 'long' }),
-    counter: new Intl.NumberFormat(tag, { notation: 'compact', maximumFractionDigits: 1 }),
-    plain: new Intl.NumberFormat(tag),
-    tenths: new Intl.NumberFormat(tag, { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
-    whole: new Intl.NumberFormat(tag, { maximumFractionDigits: 0 }),
-    credits: new Intl.NumberFormat(tag, { maximumSignificantDigits: 6 }),
-    weekday: new Intl.DateTimeFormat(tag, { weekday: 'short', hour: '2-digit', minute: '2-digit' }),
-    quotaDay: new Intl.DateTimeFormat(tag, { weekday: 'long' }),
-    quotaYear: new Intl.DateTimeFormat(tag, { year: 'numeric', month: 'short', day: 'numeric' }),
-    exact: new Intl.DateTimeFormat(tag, { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' }),
-    full: new Intl.DateTimeFormat(tag, { dateStyle: 'full', timeStyle: 'medium' })
+    clock: date({ hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+    dayClock: date({ hour: '2-digit', minute: '2-digit' }),
+    calendar: date({ day: 'numeric', month: 'short' }),
+    longDay: date({ weekday: 'long', day: 'numeric', month: 'long' }),
+    counter: number({ notation: 'compact', maximumFractionDigits: 1 }),
+    plain: number(),
+    tenths: number({ minimumFractionDigits: 1, maximumFractionDigits: 1 }),
+    whole: number({ maximumFractionDigits: 0 }),
+    credits: number({ maximumSignificantDigits: 6 }),
+    weekday: date({ weekday: 'short', hour: '2-digit', minute: '2-digit' }),
+    quotaDay: date({ weekday: 'long' }),
+    quotaYear: date({ year: 'numeric', month: 'short', day: 'numeric' }),
+    exact: date({ year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' }),
+    full: date({ dateStyle: 'full', timeStyle: 'medium' })
   };
   sets.set(tag, made);
   return made;
@@ -188,7 +190,10 @@ export function elapsed(ms: number): string {
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m ${String(seconds % 60).padStart(2, '0')}s`;
-  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ${String(minutes % 60).padStart(2, '0')}m`;
+  // A day of work reads in days: `70d 16h`, never `1696h 04m`.
+  return `${Math.floor(hours / 24)}${strings.units.day} ${String(hours % 24).padStart(2, '0')}h`;
 }
 
 /** A day and an hour: what a quota window's reset reads as. */

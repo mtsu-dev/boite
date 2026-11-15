@@ -156,6 +156,8 @@
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
+  /* Only an elapsed clock replaces the last message's age; work with no known start keeps that age. */
+  .headline:has(:global(.state > .time)) > .at { display: none; }
   .headline.unread .title,
   .headline.hot .title {
     color: var(--color-foreground);
