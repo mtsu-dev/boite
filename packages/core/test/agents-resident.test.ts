@@ -231,4 +231,13 @@ test('spent single-date routines leave the count and the block: a live routine s
   expect(block).toContain(`"Live review" (${live.id})`);
   expect(block).not.toContain('more: boite mochi routines');
   expect(block).not.toContain('RRRR');
+
+  // Re-arming a spent routine takes a slot, just like adding one; an edit that leaves it spent takes none.
+  for (let i = 1; i < AGENT_ROUTINES_MAX; i++) await client.call('agents.routine.save', { value: routineValue({ name: `Live ${i}` }) });
+  const spent = h.core.workforce.records.list('routine').find(r => r.lastScheduledAt === ranAt)!;
+  const kept = await client.call('agents.routine.save', { id: spent.id, expectedRevision: spent.revision, value: { ...spent, name: 'Still done' } });
+  const rearm = () => client.call('agents.routine.save', { id: kept.id, expectedRevision: kept.revision, value: { ...kept, schedule: { kind: 'once', at: Date.now() + 3_600_000 } } });
+  expect(await thrown(rearm())).toThrow(`already has ${AGENT_ROUTINES_MAX} routines`);
+  await client.call('agents.routine.remove', { routineId: live.id });
+  expect(await rearm()).toMatchObject({ lastScheduledAt: null });
 });

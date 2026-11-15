@@ -598,7 +598,8 @@ Yearly reminders use `{"kind":"yearly","month":11,"day":14,"time":"09:00","timez
 Dates absent from a month or year are skipped, including February 29 in non-leap years.
 For a one-time request such as November 14, use `once` with the timestamp for
 that date, year and time in the user's timezone. Save it before confirming it.
-To edit or pause a routine, include its `id`, `expectedRevision` and `enabled`.
+To edit a routine, include its `id` and the fields to change; the command uses
+its current revision unless `expectedRevision` is given. To pause it, set `enabled` to `false`.
 The host enqueues occurrences even when clients are closed. An unfinished
 occurrence blocks overlap and missed intervals never create a catch-up burst.
 

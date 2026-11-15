@@ -907,7 +907,7 @@ test('three [quiet] occurrences in a row tell the bot to give the routine a chec
   }
   const fourth = await occur('quiet');
   expect(fourth).toContain('this routine ended in [quiet] its last 3 times');
-  expect(fourth).toContain(`boite mochi schedule {"id":"${saved.id}","check":"<command>"}`);
+  expect(fourth).toContain(`boite mochi schedule '{"id":"${saved.id}","check":"<command>"}'`);
   // A turn that speaks ends the run.
   answer = 'Two pull requests need you.';
   expect(await occur('done')).toContain('its last 4 times');
@@ -917,10 +917,14 @@ test('three [quiet] occurrences in a row tell the bot to give the routine a chec
 
   // The command the hint gives adds the check and keeps the rest; the run starts over.
   const record = read(saved.id);
-  h.core.workforce.records.update('routine', record.id, record.revision, { ...record, quietRun: 3 });
+  h.core.workforce.records.update('routine', record.id, record.revision, { ...record, quietRun: 3, enabled: false, nextAt: null });
   const own = await connect(h.url, h.core.agents.tokenFor(threadId));
-  try { await botCommand(own, threadId, ['schedule', JSON.stringify({ id: saved.id, check: 'echo news' })]); } finally { own.close(); }
-  expect(read(saved.id)).toMatchObject({ name: 'Check the PRs', prompt: 'Look at the open pull requests', schedule: { kind: 'interval', everyMinutes: 60 }, check: 'echo news', quietRun: 0 });
+  try {
+    await botCommand(own, threadId, ['schedule', JSON.stringify({ id: saved.id, check: 'echo news' })]);
+    expect(read(saved.id)).toMatchObject({ name: 'Check the PRs', prompt: 'Look at the open pull requests', schedule: { kind: 'interval', everyMinutes: 60 }, check: 'echo news', quietRun: 0, enabled: false, nextAt: null });
+    await botCommand(own, threadId, ['schedule', JSON.stringify({ id: saved.id, enabled: true })]);
+    expect(read(saved.id)).toMatchObject({ enabled: true, check: 'echo news' });
+  } finally { own.close(); }
   const checked = await occur('quiet');
   expect(checked).toContain('Output: "news"');
   expect(checked).not.toContain(hint);

@@ -41,7 +41,7 @@ export async function botCommand(client: CoreClient, threadId: string, args: str
         ...(previous ? { id: previous.id, expectedRevision: value.expectedRevision ?? previous.revision } : {}),
         // An edit keeps the name, prompt and schedule it leaves out, so {"id":…,"check":…} only adds a check.
         value: { agentId: agent.id, name: value.name ?? previous?.name as string, prompt: value.prompt ?? previous?.prompt as string, schedule: value.schedule ?? previous?.schedule as AgentSchedule,
-          enabled: value.enabled ?? true, nextAt: null, lastTurnId: null, lastScheduledAt: null,
+          enabled: value.enabled ?? previous?.enabled ?? true, nextAt: null, lastTurnId: null, lastScheduledAt: null,
           // Left out, an edit keeps the check it had; null or "" removes it.
           check: value.check === undefined ? previous?.check ?? null : value.check },
       };

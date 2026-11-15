@@ -52,7 +52,7 @@ const SWEEP_MS = 3_600_000;
  * its last `QUIET_RUN_HINT` ended in `[quiet]`: a check would have spared them.
  */
 export function quietRunHint(routine: AgentRoutine, fullAccess: boolean): string {
-  const command = `boite mochi schedule {"id":${JSON.stringify(routine.id)},"check":"<command>"}`;
+  const command = `boite mochi schedule '{"id":${JSON.stringify(routine.id)},"check":"<command>"}'`;
   return `Boite: this routine ended in [quiet] its last ${routine.quietRun} times. If it only watches for something, give it a check: a command that prints only what should wake you and nothing when all is as before, so a time with nothing new costs no turn. `
     + (fullAccess ? `Add one with ${command}; the rest of the routine stays as it is.` : 'Your thread asks before commands, so ask the user to add one in the routine\'s editor.');
 }
@@ -100,10 +100,6 @@ export class AgentRoutines {
     if(params.threadId!==undefined&&this.#core.workforce.agentOfThread(params.threadId)?.id!==agent.id)throw refused('routine: an agent schedules its own routines from its own thread',{field:'agentId'});
     const previous=params.id?this.#r.get('routine',params.id):null;
     if(previous&&previous.agentId!==agent.id)throw refused('agentId: a routine cannot change owner');
-    if(!previous){
-      const held=this.#r.list('routine').filter(r=>r.agentId===agent.id&&!spentAgentRoutine(r)).length;
-      if(held>=AGENT_ROUTINES_MAX)throw refused(`routine: ${agent.name} already has ${held} routines, the most an agent may hold is ${AGENT_ROUTINES_MAX}; remove one before adding another`,{field:'agentId',count:held,max:AGENT_ROUTINES_MAX});
-    }
     const schedule=checkSchedule(v.schedule),enabled=boolean(v.enabled,'enabled');
     const check=checkOf(v.check),kept=previous?.check??null;
     // The command runs without a permission card: an agent sets or changes one only while its own thread asks for none.
@@ -115,6 +111,10 @@ export class AgentRoutines {
     // A once routine that already ran is done: resuming it must not fire it again at its past date.
     // A new date re-arms it, even saved while paused, so that run no longer counts.
     const spent=schedule.kind==='once'&&!changed&&previous?.lastScheduledAt!=null;
+    if(!previous||(spentAgentRoutine(previous)&&!spent)){
+      const held=this.#r.list('routine').filter(r=>r.agentId===agent.id&&!spentAgentRoutine(r)).length;
+      if(held>=AGENT_ROUTINES_MAX)throw refused(`routine: ${agent.name} already has ${held} routines, the most an agent may hold is ${AGENT_ROUTINES_MAX}; remove one before adding another`,{field:'agentId',count:held,max:AGENT_ROUTINES_MAX});
+    }
     const nextAt=!enabled||spent?null:previous?.enabled&&!changed?previous.nextAt:schedule.kind==='once'?schedule.at:nextOccurrence(schedule,Date.now());
     const lastScheduledAt=schedule.kind==='once'&&changed?null:previous?.lastScheduledAt??null;
     const value:Omit<AgentRoutine,'id'|'revision'|'createdAt'|'updatedAt'>={agentId:agent.id,name:text(v.name,'name',AGENT_ROUTINE_NAME_MAX),prompt:text(v.prompt,'prompt',AGENT_ROUTINE_PROMPT_MAX),schedule,enabled,nextAt,lastTurnId:previous?.lastTurnId??null,lastScheduledAt,lastOutcome:previous?.lastOutcome??null,check,checkSeen:check!==null&&check===kept?previous?.checkSeen??null:null,quietRun:check===kept?previous?.quietRun??0:0};
