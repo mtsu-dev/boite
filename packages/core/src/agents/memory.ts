@@ -20,8 +20,8 @@
  * policy allows it, else on the agent's own model.
  */
 import { join } from 'node:path';
-import { AGENT_MEMORY_MAX, CONTEXT_TRIMMABLE_PROTOCOLS, defaultTitleModel, TOOL_FREE_CONTEXT } from '@boite/contracts';
-import type { AgentBrain, AgentProfile, AgentStatus, Turn } from '@boite/contracts';
+import { AGENT_MEMORY_MAX, CONTEXT_TRIMMABLE_PROTOCOLS, defaultTitleModel, placeMemoryNote, TOOL_FREE_CONTEXT } from '@boite/contracts';
+import type { AgentBrain, AgentProfile, AgentStatus, MemoryPlacement, Turn } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import type { ChildRoute } from '../delegation/routes.ts';
 import { assertDriverRunnable } from '../drivers/index.ts';
@@ -302,19 +302,27 @@ export class MemoryKeeper {
   }
 
   /**
-   * `boite mochi remember`: a dated line at the end of MEMORY.md. Refused
-   * once the file would pass `AGENT_MEMORY_MAX`, so nothing is written that a
-   * turn would not read.
+   * `boite mochi remember`: a dated line at the end of MEMORY.md, or with
+   * `placement` under a heading or in place of the one line that starts a
+   * given way (`placeMemoryNote`). Refused once the file would pass
+   * `AGENT_MEMORY_MAX`, so nothing is written that a turn would not read.
    */
-  note(agent: AgentProfile, raw: unknown): AgentBrain {
+  note(agent: AgentProfile, raw: unknown, placement: MemoryPlacement = {}): AgentBrain {
     const line = checkedText(raw, 'text', NOTE_MAX).replace(/\s*\n\s*/g, ' ');
     const brain = this.#store.resident.brain(agent.id);
-    const entry = `- ${new Date().toISOString().slice(0, 10)} ${line}\n`;
-    const separator = brain.memory.length === 0 || brain.memory.endsWith('\n') ? '' : '\n';
-    if (brain.memory.length + separator.length + entry.length > AGENT_MEMORY_MAX) {
-      throw refused(`MEMORY.md holds ${brain.memory.length} of ${AGENT_MEMORY_MAX} characters; rewrite ${join(brain.path, 'MEMORY.md')} shorter before adding to it`, { field: 'text', path: join(brain.path, 'MEMORY.md') });
+    const path = join(brain.path, 'MEMORY.md');
+    const entry = `- ${new Date().toISOString().slice(0, 10)} ${line}`;
+    const full = () => refused(`MEMORY.md holds ${brain.memory.length} of ${AGENT_MEMORY_MAX} characters; rewrite ${path} shorter before adding to it`, { field: 'text', path });
+    if (placement.replace === undefined && placement.section === undefined) {
+      const separator = brain.memory.length === 0 || brain.memory.endsWith('\n') ? '' : '\n';
+      if (brain.memory.length + separator.length + entry.length + 1 > AGENT_MEMORY_MAX) throw full();
+      appendBrainFile(this.#store.resident.brainRoot().path, path, `${separator}${entry}\n`);
+    } else {
+      const placed = placeMemoryNote(brain.memory, entry, placement);
+      if ('refused' in placed) throw refused(placed.refused, { field: placed.field, path });
+      if (placed.memory.length > AGENT_MEMORY_MAX) throw full();
+      rewriteBrainFile(this.#store.resident.brainRoot().path, path, placed.memory);
     }
-    appendBrainFile(this.#store.resident.brainRoot().path, join(brain.path, 'MEMORY.md'), separator + entry);
     this.#store.changed();
     return this.#store.resident.brain(agent.id);
   }

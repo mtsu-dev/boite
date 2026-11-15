@@ -5,8 +5,10 @@
  * same for all and ends its Boite guide (`agent-guide.ts`); the block carries
  * it only while that guide is off. `turn-context.ts` sends it in full on a
  * fresh native session and whenever its hash moved since the last turn that
- * carried it; otherwise nothing, since the session already holds it. The desk
- * is shown but not hashed: event turns say what changed there.
+ * carried it. MEMORY.md is not hashed: when it alone changed, the turn carries
+ * the lines added and removed (`memory-change.ts`), or the block when that note
+ * would be longer. Otherwise nothing, since the session already holds it. The
+ * desk is shown but not hashed: event turns say what changed there.
  */
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, statSync } from 'node:fs';
@@ -16,6 +18,7 @@ import type { AgentBrain, AgentProfile, AgentWatchPullRequest, LinkedPullRequest
 import type { Core } from '../core.ts';
 import { scheduleText } from './routines.ts';
 import { BOT_GUIDE } from '../agent-guide.ts';
+import { memoryChangeText } from './memory-change.ts';
 
 const AGENTS_MD_MAX = 32_000;
 const SKILLS_MAX = 50;
@@ -121,7 +124,7 @@ function contextInputs(core: Core, agent: AgentProfile, guided: boolean): Contex
   const persona = [`You are ${agent.name}${agent.domain.trim() ? `, ${agent.domain.trim()}` : ''}.`, agent.instructions.trim()].filter(Boolean).join('\n');
   const routineLines = routines.map(r => `- ${JSON.stringify(r.name)} (${r.id}): ${scheduleText(r.schedule)}${r.enabled ? r.nextAt !== null ? `, next ${new Date(r.nextAt).toISOString()}` : ', done' : ', off'}${r.check ? `, wakes you only when its check prints something new: ${JSON.stringify(r.check)}` : ''}`);
   const hash = createHash('sha256').update(JSON.stringify([
-    brain.path, persona, brain.instructions, memory, archived, skills, routines.map(r => [r.id, r.name, r.schedule, r.enabled, r.check ?? null]), projects, guided ? null : BOT_GUIDE,
+    brain.path, persona, brain.instructions, archived, skills, routines.map(r => [r.id, r.name, r.schedule, r.enabled, r.check ?? null]), projects, guided ? null : BOT_GUIDE,
   ])).digest('hex');
   return { brain, memoryPath, memory, archive, archived, skills, routineLines, projects, persona, guided, hash };
 }
@@ -163,7 +166,7 @@ function render(core: Core, agent: AgentProfile, inputs: ContextInputs): string 
   const { brain, memoryPath, memory, archive, archived, skills, routineLines, projects, persona, guided } = inputs;
   const desk = deskLines(core, agent);
   const text = [
-    'Boite: who you are, as a mochi. This block comes again only when it changes; your conversation so far is in this session.',
+    'Boite: who you are, as a mochi. This block comes again only when it changes, and a change to your memory alone as the lines added and removed; your conversation so far is in this session.',
     persona,
     `Your brain is ${brain.path}. Its AGENTS.md:\n${capped(brain.instructions.trim(), AGENTS_MD_MAX, join(brain.path, 'AGENTS.md')) || '(empty)'}`,
     `Your memory, ${memoryPath}:\n${memory || '(empty)'}`,
@@ -188,11 +191,26 @@ export function agentContext(core: Core, agent: AgentProfile, guided = true): { 
   return { text: render(core, agent, inputs), hash: inputs.hash };
 }
 
+/** What one turn of a bot's thread carries: the block, or the note of a memory that alone changed. */
+export interface ContextSend { text: string; hash: string; memory: string; kind: 'block' | 'memory' }
+
 /**
- * The block for one turn: built only when `send` accepts its hash, so a turn
- * that carries nothing never reads the desk.
+ * The block for one turn, given what the session last read (`last`; null
+ * when it must hear the block whole). The block when its hash moved; the
+ * memory's added and removed lines when only MEMORY.md changed, unless that
+ * note is longer than the block; null when nothing changed. A turn that
+ * carries nothing never reads the desk.
  */
-export function agentContextIf(core: Core, agent: AgentProfile, send: (hash: string) => boolean, guided = true): { text: string; hash: string } | null {
+export function agentContextIf(core: Core, agent: AgentProfile, last: { hash: string; memory: string } | null, guided = true): ContextSend | null {
   const inputs = contextInputs(core, agent, guided);
-  return send(inputs.hash) ? { text: render(core, agent, inputs), hash: inputs.hash } : null;
+  const block = (): ContextSend => ({ text: render(core, agent, inputs), hash: inputs.hash, memory: inputs.memory, kind: 'block' });
+  if (last === null || last.hash !== inputs.hash) return block();
+  if (last.memory === inputs.memory) return null;
+  const note = memoryChangeText(inputs.memoryPath, last.memory, inputs.memory);
+  // The block holds the whole memory, so a note no longer than the memory is shorter than the block; a longer one is measured against it.
+  if (note.length > inputs.memory.length) {
+    const whole = block();
+    if (whole.text.length <= note.length) return whole;
+  }
+  return { text: note, hash: inputs.hash, memory: inputs.memory, kind: 'memory' };
 }

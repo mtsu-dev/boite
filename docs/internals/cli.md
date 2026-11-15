@@ -516,7 +516,7 @@ boite threads contacts
 boite threads ask [--to <contact>/<thread-id>] [--contact <name>] [--new] [--share] [--wait] [--timeout <s>] [--] <text>
 boite contacts [view]|forward|connect|start|share|ask-owner|refuse|cut|deliver|block
 boite mochi memory
-boite mochi remember <fact>
+boite mochi remember [--section <title>] [--replace <start>] <fact>
 boite mochi routines
 boite mochi schedule <json>
 boite mochi unschedule <routine-id>
@@ -1022,7 +1022,10 @@ authenticated sender identity.
 
 The `mochi` commands belong to [mochis](mochis.md), not ordinary thread
 coordination, and work only from a mochi's own thread. `mochi memory` prints
-MEMORY.md and its path; `mochi remember <fact>` adds a dated line to it. `mochi
+MEMORY.md and its path; `mochi remember <fact>` adds a dated line to it, at the
+end, under `## <title>` with `--section <title>` (at the end when no heading
+has that title), or in place of the one line that starts with `<start>` with
+`--replace <start>`: none or several such lines refuse it and name them. `mochi
 routines` lists its routines, `mochi schedule <json>` saves one (`name`,
 `prompt`, `schedule`, with `id` to edit one and `enabled`), `mochi unschedule
 <routine-id>` removes one. `mochi watch|unwatch <thread-id>` puts a thread of

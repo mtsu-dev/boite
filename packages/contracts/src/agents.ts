@@ -397,8 +397,12 @@ export interface AgentsRpcMethods {
    * holds files refuses the whole change before anything moves. Owner only.
    */
   'agents.brain.root': { params: { path: string | null }; result: AgentBrainRoot };
-  /** Adds a line to the agent's MEMORY.md, from its own thread (`boite mochi remember`) or the owner. */
-  'agents.memory.note': { params: { threadId?: string; agentId?: string; text: string }; result: AgentBrain };
+  /**
+   * Adds a line to the agent's MEMORY.md, from its own thread (`boite mochi remember`) or the owner:
+   * at the end, under the heading `section` names, or in place of the one line that starts with `replace`
+   * (`placeMemoryNote`).
+   */
+  'agents.memory.note': { params: { threadId?: string; agentId?: string; text: string; replace?: string; section?: string }; result: AgentBrain };
   'agents.routine.save': { params: AgentSave<AgentRoutine> & { threadId?: string }; result: AgentRoutine };
   'agents.routine.remove': { params: { routineId: string; threadId?: string }; result: { removed: true } };
   /** Runs a routine now, as a turn on the agent's thread. Refused while that thread has a turn in flight. */

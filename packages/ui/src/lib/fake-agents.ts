@@ -1,4 +1,4 @@
-import { nextAgentOccurrence, RpcErrorCode, AGENT_MEMORY_MAX, AGENT_PICTURE_CODE, AGENT_PICTURE_MAX_BYTES, AGENT_PICTURE_TYPES, isAgentPicture, AGENT_ROUTINE_CHECK_MAX, AGENT_ROUTINE_NAME_MAX, AGENT_ROUTINE_PROMPT_MAX, AGENT_ROUTINES_MAX } from '@boite/contracts';
+import { nextAgentOccurrence, placeMemoryNote, RpcErrorCode, AGENT_MEMORY_MAX, AGENT_PICTURE_CODE, AGENT_PICTURE_MAX_BYTES, AGENT_PICTURE_TYPES, isAgentPicture, AGENT_ROUTINE_CHECK_MAX, AGENT_ROUTINE_NAME_MAX, AGENT_ROUTINE_PROMPT_MAX, AGENT_ROUTINES_MAX } from '@boite/contracts';
 import { BUILTIN_BOTS, BUILTIN_LOCKED, BUILTIN_NEVER_ARCHIVED } from './fake-client/builtin-bots';
 import type {
   AgentAccountGrant, AgentBuiltin, AgentBrain, AgentBrainRoot, AgentEntrustment, AgentProfile, AgentQueuedMove, AgentRecord, AgentRoutine, AgentRuntimeConfig, AgentSchedule,
@@ -671,14 +671,20 @@ export class FakeAgents {
     this.brains.set(p.agentId, saved);
     return structuredClone(saved);
   }
-  /** `boite mochi remember`: a dated line at the end of MEMORY.md. */
+  /** `boite mochi remember`: a dated line at the end of MEMORY.md, or under a heading or in place of one line (`placeMemoryNote`). */
   private note(p: RpcParams<'agents.memory.note'>): RpcResult<'agents.memory.note'> {
     const agentId = p.agentId ?? (p.threadId ? this.ownerOf(p.threadId) : null);
     if (!agentId) this.refuse('agentId: expected an agent, or the thread of one');
     if (!p.text.trim()) this.refuse('text: expected nonempty text');
     const brain = this.getBrain(agentId);
     const line = `- ${new Date().toISOString().slice(0, 10)}: ${p.text.trim()}`;
-    const saved = { ...brain, memory: brain.memory ? `${brain.memory.trimEnd()}\n${line}` : line, revision: String(Number(brain.revision) + 1) };
+    let memory = brain.memory ? `${brain.memory.trimEnd()}\n${line}` : line;
+    if (p.replace !== undefined || p.section !== undefined) {
+      const placed = placeMemoryNote(brain.memory, line, { ...(p.replace === undefined ? {} : { replace: p.replace }), ...(p.section === undefined ? {} : { section: p.section }) });
+      if ('refused' in placed) this.refuse(`${placed.field}: ${placed.refused}`);
+      memory = placed.memory;
+    }
+    const saved = { ...brain, memory, revision: String(Number(brain.revision) + 1) };
     if (saved.memory.length > AGENT_MEMORY_MAX) this.refuse(`text: MEMORY.md holds ${brain.memory.length} of ${AGENT_MEMORY_MAX} characters; rewrite it shorter before adding to it`);
     this.brains.set(agentId, saved);
     this.bump();

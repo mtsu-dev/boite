@@ -428,11 +428,20 @@ from other threads), and its projects with the commands that reach them.
 The block goes whole on a fresh native session (no session id, after a
 compaction or an account switch) and whenever its hash moved since the last
 turn that carried it; otherwise nothing, since the session already holds it.
-The hash covers the persona, AGENTS.md, MEMORY.md, the skills, the routines,
-the projects and whether the block carries the mochi section, not the desk:
-event turns say what changed there. The core keeps `{ hash,
-sessionGeneration, turnId }` per thread (`agents:context:<thread>`) and clears
-it after a failed turn that carried the block or a compaction.
+The hash covers the persona, AGENTS.md, the skills, the routines, the projects
+and whether the block carries the mochi section, not the desk (event turns say
+what changed there) nor MEMORY.md. When MEMORY.md alone changed, after a
+memory pass or a `remember`, the turn carries a note instead: the lines removed,
+then the lines added under the heading they sit under (`agents/memory-change.ts`,
+by content, so a line that only moved is neither). A note longer than the file
+itself, a rewrite that changed every line, gives way to the whole block when
+that is shorter. The core keeps `{ hash, sessionGeneration, turnId, memory }`,
+the MEMORY.md the session last read, per thread (`agents:context:<thread>`)
+and clears it after a failed turn that carried the block or the note, or a
+compaction; a record from before `memory` existed gets the block once. Each turn
+that carries either appends an `agent.context.sent` event to its thread
+(`turnId`, `kind` `block` or `memory`, `characters`, `hash`), in the same
+transaction as the record, so the size sent is measured, not guessed.
 
 ## Free to act
 
@@ -484,7 +493,14 @@ unpredictable name, created exclusively, then renamed over the file.
 MEMORY.md is the one memory store. `boite mochi remember <fact>`
 (`agents.memory.note`) appends a dated line `- YYYY-MM-DD <fact>`, at most
 1,000 characters, refused once the file would pass `AGENT_MEMORY_MAX` (16,000)
-with the file's path. After a non-quiet turn whose answer the user sees, a
+with the file's path. `--section <title>` puts the line after the last line under
+the first heading with that title (any level, case aside), before the next
+heading of its level or above, and at the end when there is none.
+`--replace <start>` writes it in place of the one line that starts with
+`<start>`, read with or without its bullet and date; no such line, or several,
+refuse it and write nothing, the second naming the lines (`placeMemoryNote` in
+`@boite/contracts`, shared with the in-memory client). With both, the old line
+leaves and the new one goes under the heading. After a non-quiet turn whose answer the user sees, a
 memory pass rewrites the file (`agents/memory.ts`). It is a subagent of the
 mochi's thread that the core owns, like a goal reviewer: it reads the current
 file, what was asked and what the mochi answered, and returns the whole file

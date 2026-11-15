@@ -309,7 +309,7 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   // A persistent agent's own records, from its own thread only (agents/store.ts refuses any other agent's).
   ['agents.snapshot', 'its own identity, routines, desk and status; no other agent, grant or entrustment'],
   ['agents.brain.get', 'its own AGENTS.md and MEMORY.md, which its context block already carries'],
-  ['agents.memory.note', 'a dated line at the end of its own MEMORY.md, refused past the size every turn reads'],
+  ['agents.memory.note', 'a dated line in its own MEMORY.md, at the end, under a heading or in place of one line, refused past the size every turn reads'],
   ['agents.routine.save', 'its own routines, the clock its wakes run on; the owner pauses it or caps its daily spend'],
   ['agents.routine.remove', 'removing one of its own routines'],
   ['agents.watch', 'putting a thread of its projects on its own desk, or taking one off; it reads nothing it could not already read through resident.thread'],

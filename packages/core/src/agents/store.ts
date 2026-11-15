@@ -19,7 +19,7 @@ import { AgentProjects } from './projects.ts';
 import { GroupBots, remoteGrant } from './group-bots.ts';
 import { GroupBotHost } from './group-host.ts';
 import { AgentSettingCards, registerAgentSettingMethods } from './setting-cards.ts';
-import { MemoryKeeper } from './memory.ts';
+import { MemoryKeeper, NOTE_MAX } from './memory.ts';
 import { agentContextIf, deskPullRequest, deskState, linkedPullRequests } from './context.ts';
 import { EVENT_PROMPT_MAX, eventPrompt, finalText, midnight, type AgentFact, type AgentWake } from './runtime.ts';
 import { agentSpend, rootThread } from './spend.ts';
@@ -61,7 +61,8 @@ export const INTRO_PROMPT = 'You were just created. Introduce yourself to the us
 export const INSTRUCTIONS_PROMPT = 'The user changed your instructions. Check that your routines still match them (`boite mochi routines`, `boite mochi schedule`, `boite mochi unschedule`) '
   + 'and tell the user in one or two lines what changes for them.';
 
-interface ContextSent { hash: string; sessionGeneration: number; turnId: string }
+/** `memory`: the MEMORY.md the session last read, which the next change is told against. */
+interface ContextSent { hash: string; sessionGeneration: number; turnId: string; memory?: string }
 
 export class AgentStore {
   readonly resident: ResidentAgents;
@@ -344,7 +345,9 @@ export class AgentStore {
   /**
    * The context block a turn of an agent's thread starts with: whole on a
    * fresh native session or when its hash moved since the last turn that
-   * carried it, else nothing.
+   * carried it, the memory's added and removed lines when only MEMORY.md
+   * changed, else nothing. What went out is recorded on the thread's events
+   * (`agent.context.sent`: the turn, block or memory, its size and hash).
    */
   contextFor(thread: ThreadSummary, sessionId: string | null, turnId: string): string {
     const agent = this.agentOfThread(thread.id);
@@ -354,9 +357,17 @@ export class AgentStore {
     const generation = thread.sessionGeneration ?? 0;
     // The bot section of the Boite guide (`agent-guide.ts`) comes in the block while that guide is off.
     const guided = (thread.contextMode == null || thread.contextMode.guides) && this.core.brain.config().boiteGuide !== false;
-    const block = agentContextIf(this.core, agent, hash => sessionId === null || !sent || sent.hash !== hash || sent.sessionGeneration !== generation, guided);
+    // A record from before the memory was kept beside the hash hears the block whole once.
+    const held = sessionId !== null && sent && sent.sessionGeneration === generation && typeof sent.memory === 'string' ? { hash: sent.hash, memory: sent.memory } : null;
+    const block = agentContextIf(this.core, agent, held, guided);
     if (!block) return '';
-    this.core.journal.setSetting(key, { hash: block.hash, sessionGeneration: generation, turnId } satisfies ContextSent);
+    const record = { hash: block.hash, sessionGeneration: generation, turnId, memory: block.memory } satisfies ContextSent;
+    // Only blank lines moved: the session's copy is current, and this turn carries nothing a failure would lose.
+    if (!block.text) { this.core.journal.setSetting(key, { ...record, turnId: sent?.turnId ?? turnId }); return ''; }
+    this.core.journal.append({
+      type: 'agent.context.sent', threadId: thread.id, version: 1,
+      payload: { turnId, kind: block.kind, characters: block.text.length, hash: block.hash },
+    }, () => this.core.journal.setSetting(key, record));
     return block.text;
   }
   /**
@@ -381,7 +392,11 @@ export class AgentStore {
 
   noteMemory(params: RpcParams<'agents.memory.note'>): AgentBrain {
     object(params, 'params');
-    return this.memory.note(this.#named(params, 'agents.memory.note'), params.text);
+    const placement = {
+      ...(params.replace === undefined ? {} : { replace: text(params.replace, 'replace', NOTE_MAX) }),
+      ...(params.section === undefined ? {} : { section: text(params.section, 'section', 200) }),
+    };
+    return this.memory.note(this.#named(params, 'agents.memory.note'), params.text, placement);
   }
 
   // -- the desk ---------------------------------------------------------------

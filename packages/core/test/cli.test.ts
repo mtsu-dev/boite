@@ -267,6 +267,15 @@ test('a mochi reads its memory, notes facts, keeps its routines and its desk fro
   // The old spellings, as mochis' brains still write them.
   expect(JSON.parse((await boite(['bot', 'memory', '--json'])).out).text).toContain('Keep prototypes small.');
   expect(JSON.parse((await boite(['agent', 'memory', '--json'])).out).text).toContain('Keep prototypes small.');
+  // --replace and --section are remember's own, wherever they stand, under every name.
+  const replaced = await boite(['mochi', 'remember', '--replace', 'Keep prototypes', 'Keep', 'prototypes', 'tiny.', '--json']);
+  expect(JSON.parse(replaced.out)).toMatchObject({ noted: 'Keep prototypes tiny.', replaced: 'Keep prototypes' });
+  expect(JSON.parse((await boite(['bot', 'remember', 'Lone', 'fact', '--section', 'People', '--json'])).out)).toMatchObject({ section: 'no heading "People": noted at the end' });
+  const missing = await boite(['agent', 'remember', '--replace', 'Nobody', 'x']);
+  expect(missing.code).not.toBe(0);
+  expect(missing.err).toContain('no line of MEMORY.md starts with "Nobody"');
+  expect((await boite(['mochi', 'remember', 'x', '--section'])).err).toContain('--section needs a value');
+  expect(JSON.parse((await boite(['mochi', 'memory', '--json'])).out).text).toMatch(/^- \d{4}-\d{2}-\d{2} Keep prototypes tiny\.\n- \d{4}-\d{2}-\d{2} Lone fact\n$/);
 
   const scheduled = await boite(['bot', 'schedule', JSON.stringify({ name: 'Morning', prompt: 'Read the news', schedule: { kind: 'interval', everyMinutes: 60 } }), '--json']);
   expect(scheduled.code).toBe(0);

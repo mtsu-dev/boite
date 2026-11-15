@@ -1,4 +1,5 @@
 import type { AgentSchedule, RpcParams } from '@boite/contracts';
+import { memoryHeading } from '@boite/contracts';
 import type { CoreClient } from '../client.ts';
 import { targetOf } from '../control-cli.ts';
 
@@ -26,10 +27,24 @@ export async function botCommand(client: CoreClient, threadId: string, args: str
       return { memory: `${brain.path}/MEMORY.md`, text: brain.memory };
     }
     case 'remember': {
-      const text = rest.join(' ').trim();
+      // --replace "<start of a line>" and --section "<heading>", anywhere among the words of the fact.
+      const words: string[] = [];
+      const placement: { replace?: string; section?: string } = {};
+      for (let index = 0; index < rest.length; index += 1) {
+        const word = rest[index]!;
+        if (word !== '--replace' && word !== '--section') { words.push(word); continue; }
+        const value = rest[index + 1];
+        if (value === undefined || value.startsWith('--') || !value.trim()) throw new Error(`mochi remember ${word} needs a value: ${word === '--replace' ? 'the start of the line to replace' : 'the title of a heading'}`);
+        placement[word === '--replace' ? 'replace' : 'section'] = value;
+        index += 1;
+      }
+      const text = words.join(' ').trim();
       if (!text) throw new Error('mochi remember needs the fact to note');
-      const brain = await client.call('agents.memory.note', { threadId, text });
-      return { noted: text, memory: `${brain.path}/MEMORY.md`, characters: brain.memory.length };
+      const brain = await client.call('agents.memory.note', { threadId, text, ...placement });
+      // A heading the file does not have: the core put the fact at the end, and says so here.
+      const section = placement.section === undefined ? {}
+        : { section: memoryHeading(brain.memory.split('\n'), placement.section) >= 0 ? placement.section : `no heading ${JSON.stringify(placement.section)}: noted at the end` };
+      return { noted: text, ...(placement.replace === undefined ? {} : { replaced: placement.replace }), ...section, memory: `${brain.path}/MEMORY.md`, characters: brain.memory.length };
     }
     case 'routines': return snapshot.routines;
     case 'schedule': {
