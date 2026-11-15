@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, sy
 import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { slugOf, worktreeRoot } from '../src/worktree.ts';
+import { worktreeRemovalKey } from '../src/worktree-cleanup-state.ts';
 import { echoDriver } from '../src/drivers/echo.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import { startTestCore, waitFor } from './harness.ts';
@@ -252,6 +253,12 @@ describe('a thread in its own worktree', () => {
     const sent = await client.call('turns.start', { threadId: thread.id, prompt: 'still there?' });
     await waitFor(() => harness.core.journal.getTurn(sent.id)?.status === 'done');
     expect(git(thread.cwd, 'rev-parse', 'HEAD')).toBe(head);
+
+    // A removal the core's cleanup recorded keeps its notice: the folder is not made again.
+    git(project.path, 'worktree', 'remove', thread.cwd);
+    harness.core.journal.setSetting(worktreeRemovalKey(thread.id), { path: thread.cwd, branch: thread.branch, branchDeleted: false, reason: 'clean', removedAt: Date.now() });
+    expect((await rejection(client.call('turns.start', { threadId: thread.id, prompt: 'and now?' }))).reason).toMatchObject({ rpc: { data: { field: 'cwd', cwd: thread.cwd } } });
+    expect(existsSync(thread.cwd)).toBe(false);
   });
 
   test('workspace recovery reattaches a surviving legacy long branch after its directory was removed', async () => {

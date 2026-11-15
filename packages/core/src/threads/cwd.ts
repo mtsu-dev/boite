@@ -3,8 +3,7 @@ import { stat } from 'node:fs/promises';
 import { RpcErrorCode, type Project, type ThreadId, type ThreadSummary } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { messageOf, RpcFailure } from '../errors.ts';
-import { worktreeRemovalKey } from '../worktree-cleanup-state.ts';
-import { withLoad } from './records.ts';
+import { worktreeRemovalOf } from '../worktree-cleanup-state.ts';
 
 /**
  * A thread whose folder is gone: its worktree was removed under it, or the
@@ -35,14 +34,17 @@ export async function requireThreadCwd(threadId: ThreadId, cwd: string): Promise
  * (`git worktree remove` from a script, a deleted folder): the branch is
  * checked out there again before the turn, as a subagent's is, with every
  * commit it had. Uncommitted work that went with the folder is not back. A
- * thread in its project folder, an archived one or a deleted branch is left
- * as is, and a checkout git refuses is logged: the turn then fails by folder.
+ * thread in its project folder, an archived one, a deleted branch or a
+ * worktree the core's own cleanup removed (`worktreeRemoved`, whose notice
+ * replaces the composer) is left as is, and a checkout git refuses is logged:
+ * the turn then fails by folder.
  * Null, at once, when there is nothing to do, as `ChildWorktrees.enter`: a
  * turn starts its agent in the same tick as before.
  */
 export function restoreThreadCwd(core: Core, thread: ThreadSummary): Promise<void> | null {
   const { branch, projectId } = thread;
   if (branch === null || projectId === null || thread.archived || existsSync(thread.cwd)) return null;
+  if (worktreeRemovalOf(core.journal, thread) !== null) return null;
   const project = core.journal.getProject(projectId);
   return project ? recover(core, thread, project, branch) : null;
 }
@@ -56,8 +58,4 @@ async function recover(core: Core, thread: ThreadSummary, project: Project, bran
     return;
   }
   core.log('info', `checked ${branch} out again in ${thread.cwd}: the folder of its thread was gone`, { ...context, event: 'worktrees.restored' });
-  // A removal the core recorded no longer describes this folder.
-  if (core.journal.getSetting(worktreeRemovalKey(thread.id)) !== undefined) core.journal.deleteSetting(worktreeRemovalKey(thread.id));
-  const current = core.journal.getThread(thread.id);
-  if (current) core.bus.emit('thread.updated', withLoad(core, current));
 }

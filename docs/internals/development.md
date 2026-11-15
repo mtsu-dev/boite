@@ -237,11 +237,11 @@ a branch or worktree. Restoring a thread whose worktree was removed retains its
 `cwd`. A turn in a thread whose worktree folder is gone, from `turns.start` or
 one the core starts itself (a subagent's result, a resume, a pull-request wake),
 first checks the thread's branch out there again when the branch still exists
-(`restoreThreadCwd` in `threads/cwd.ts`, `Worktrees.recover`), and clears
-the thread's `worktreeRemoved`. A deleted branch is never made again from HEAD:
-`turns.start` then refuses the missing folder, and an automatic turn fails with
-that sentence instead of the agent's own error (Claude Code blames its native
-binary) and plans no resume.
+(`restoreThreadCwd` in `threads/cwd.ts`, `Worktrees.recover`), unless the
+core's own cleanup removed it (`worktreeRemoved`, below). A deleted branch is
+never made again from HEAD: `turns.start` then refuses the missing folder, and
+an automatic turn fails with that sentence instead of the agent's own error
+(Claude Code blames its native binary) and plans no resume.
 
 ### Settled worktree cleanup
 
@@ -284,9 +284,8 @@ soon as its HEAD moves.
 Each thread that stood there gets `worktreeRemoved` on its summary: the path,
 branch, whether the branch went, the reason (`pr-merged` or `clean`) and the
 pull request. The done notice and, after Move to Recent, the composer show it:
-the thread can be read; its next turn checks a kept branch out again, and is
-refused because the folder is gone when the branch went too. The field
-disappears once the thread moves to another folder or its folder is back.
+the thread can be read but a turn is refused because the folder is gone. The
+field disappears once the thread moves to another folder.
 
 Owners turn this off per project through `projects.setAutoRemoveWorktrees`
 (owner only), shown as Remove settled worktrees beside Ask to finish
