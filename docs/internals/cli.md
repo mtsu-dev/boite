@@ -588,7 +588,8 @@ experiment: group or private posts, reading, and cards that ask the owner to
 create, join or leave a team ([teams](teams.md#commands)).
 
 Mochis schedule work from their own conversation. `mochi schedule` accepts `name`, `prompt`, `schedule` and an optional `check`
-(a command; the routine wakes the mochi only when it prints something new, see [routines](mochis.md#routines)),
+(a command; the routine wakes the mochi only when it prints something new, see [routines](mochis.md#routines)).
+With `id`, an edit keeps the name, prompt and schedule it leaves out: `{"id":"<routine-id>","check":"<command>"}` only adds a check. A schedule is,
 for example `{"kind":"daily","time":"09:00","timezone":"Europe/Paris"}`.
 Other schedules use `{"kind":"interval","everyMinutes":60}` or
 `{"kind":"once","at":1790240400000}` with a Unix timestamp in milliseconds.
@@ -597,7 +598,8 @@ Yearly reminders use `{"kind":"yearly","month":11,"day":14,"time":"09:00","timez
 Dates absent from a month or year are skipped, including February 29 in non-leap years.
 For a one-time request such as November 14, use `once` with the timestamp for
 that date, year and time in the user's timezone. Save it before confirming it.
-To edit or pause a routine, include its `id`, `expectedRevision` and `enabled`.
+To edit a routine, include its `id` and the fields to change; the command uses
+its current revision unless `expectedRevision` is given. To pause it, set `enabled` to `false`.
 The host enqueues occurrences even when clients are closed. An unfinished
 occurrence blocks overlap and missed intervals never create a catch-up burst.
 
@@ -1027,7 +1029,7 @@ end, under `## <title>` with `--section <title>` (at the end when no heading
 has that title), or in place of the one line that starts with `<start>` with
 `--replace <start>`: none or several such lines refuse it and name them. `mochi
 routines` lists its routines, `mochi schedule <json>` saves one (`name`,
-`prompt`, `schedule`, with `id` to edit one and `enabled`), `mochi unschedule
+`prompt`, `schedule`, with `id` to edit one, keeping what the edit leaves out, and `enabled`), `mochi unschedule
 <routine-id>` removes one. `mochi watch|unwatch <thread-id>` puts a thread of
 its projects on its desk or takes one off; a watched thread wakes the mochi at
 once, one it only wrote to waits for its routines. Use `--json` to

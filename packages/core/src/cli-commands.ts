@@ -92,7 +92,7 @@ export const BOT_HELP = `  mochi memory                   a mochi's MEMORY.md an
                                  the end; --replace <start>: in place of the one
                                  line that starts so, refused on none or several)
   mochi routines                 its routines: schedule, next run, last outcome
-  mochi schedule <json>          name, prompt, schedule; optional id, enabled and check (a command: wake only when it prints something new)
+  mochi schedule <json>          name, prompt, schedule; optional id (an edit keeps what it leaves out), enabled and check (a command: wake only when it prints something new)
   mochi unschedule <routine-id>  remove one routine
   mochi watch|unwatch <thread-id>
                                  put a thread of its projects on its desk, or

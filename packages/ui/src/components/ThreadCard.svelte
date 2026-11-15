@@ -192,8 +192,9 @@
     <!-- The classic card: the line under the title, over the row's bottom padding so the whole card stays one target. -->
     {#if meta}
       <div class="metadata" data-testid="thread-where" title={where?.text}>
-        {#if where?.host}<span class="machine" class:away={where.host.away} title={where.host.text} aria-label={where.host.text}><MachineIcon icon={machine.icon} os={owner.core?.os} size={12} /></span>{/if}
+        <!-- The project first, at the same place on every row; its machine after it, as on the other place lines. -->
         {#if where?.project}<span class="project-name" data-testid="thread-project" title={project?.path}><Folder size={12} /><span class="ui-label">{where.project}</span></span>{/if}
+        {#if where?.host}<span class="machine" class:away={where.host.away} title={where.host.text} aria-label={where.host.text}><MachineIcon icon={machine.icon} os={owner.core?.os} size={12} /></span>{/if}
         {#if chip}<span class="away" data-testid="thread-offline">{strings.connection.offline}</span>{/if}
         {#if pullRequest}<PullRequestBadge {pullRequest} />{/if}
         {#if thread.branch}<span class="branch" data-testid="thread-branch" title={thread.branch}><GitBranch size={12} /><span class="ui-label">{thread.branch}</span></span>{/if}
@@ -408,8 +409,8 @@
   .metadata .machine.away { color: var(--color-danger); }
   .metadata .away:not(.machine) { flex: none; padding: 0 6px; border: 1px solid var(--color-edge); border-radius: var(--radius-sm); }
   .project-name { flex: 1; }
-  /* Beside a branch, the project keeps its length up to half the line and the branch takes the rest. */
-  .project-name:has(~ .branch) { flex: 0 0 auto; max-width: 50%; }
+  /* Beside a branch or its machine, the project keeps its length up to half the line and the branch takes the rest. */
+  .project-name:has(~ :is(.branch, .machine)) { flex: 0 0 auto; max-width: 50%; }
   .metadata .branch { flex: 0 1 auto; margin-left: auto; }
   .rename {
     width: 100%;

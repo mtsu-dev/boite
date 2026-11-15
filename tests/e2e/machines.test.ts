@@ -91,6 +91,29 @@ test('project and recent cards show both hosts, PRs and user-message ordering on
   expect(await page.evaluate(`document.querySelectorAll('[data-testid="machine-icon-rack"]')[1].getAttribute('aria-pressed')`)).toBe('true');
 }, 30_000);
 
+test('an offline machine moves no glyph: the project head keeps its places and Recent its folder', async () => {
+  const away = await BrowserPage.launch({ url: `${url}/?fake=1&machines=1&remote=away` });
+  try {
+    await away.waitFor(`document.querySelector('${id('sidebar')} .machine-offline') && document.querySelectorAll('${id('project-host')}').length > 1`);
+    // Each head: the machine icon 14 px square, on the tile's centre line, the name at one place whatever the state.
+    const heads = await away.evaluate<{ host: number[]; tile: number; name: number }[]>(`[...document.querySelectorAll('${id('project-row')}')].map(row => {
+      const box = selector => row.querySelector(selector).getBoundingClientRect();
+      const host = box('${id('project-host')}');
+      return { host: [host.width, host.height, Math.round(host.top + host.height / 2)], tile: Math.round(box('${id('project-tile')}').top + 9), name: Math.round(box('.name').left - box('${id('project-tile')}').left) };
+    })`);
+    expect(heads.length).toBeGreaterThan(1);
+    for (const head of heads) expect(head).toEqual({ host: [14, 14, head.tile], tile: head.tile, name: heads[0]!.name });
+    // Recent: the project's folder at the same place on every row, the out-of-reach machine's mark after it.
+    await showThreadView(away, 'recent');
+    await away.waitFor(`document.querySelector('${id('thread-where')} .machine.away')`);
+    const folders = await away.evaluate<number[]>(`[...document.querySelectorAll('${id('thread-project')}')].map(e => Math.round(e.getBoundingClientRect().left))`);
+    expect(folders.length).toBeGreaterThan(1);
+    expect(new Set(folders).size).toBe(1);
+  } finally {
+    await away.close();
+  }
+}, 30_000);
+
 test('two real cores pair, route turns independently, reconnect and survive a reload', async () => {
   const first = await startCore(),
     second = await startCore();

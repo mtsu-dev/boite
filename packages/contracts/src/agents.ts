@@ -102,6 +102,22 @@ export interface AgentRoutine extends AgentRecord {
   check?: string | null;
   /** A print of what the check last showed the agent, so the same output does not wake it twice; null once it printed nothing. */
   checkSeen?: string | null;
+  /**
+   * How many occurrences in a row ended in `[quiet]`; a turn that spoke sets it
+   * back to 0, and so does a new check. Missing on routines saved before it.
+   */
+  quietRun?: number;
+}
+
+/** How long a single-date routine stays listed once it ran, then the core removes it. */
+export const AGENT_ONCE_KEPT_MS = 7 * 86_400_000;
+/**
+ * A single-date routine whose date passed: it ran, was skipped or its check
+ * found nothing. It leaves the mochi's context block and the routine count,
+ * and goes `AGENT_ONCE_KEPT_MS` after `lastScheduledAt`.
+ */
+export function spentAgentRoutine(routine: Pick<AgentRoutine, 'schedule' | 'nextAt' | 'lastScheduledAt'>): boolean {
+  return routine.schedule.kind === 'once' && routine.nextAt === null && routine.lastScheduledAt !== null;
 }
 
 /** Stable identities are independent of provider processes and native sessions. */

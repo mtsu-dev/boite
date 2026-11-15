@@ -433,7 +433,7 @@ and its AGENTS.md, MEMORY.md (at most `AGENT_MEMORY_MAX` characters), a
 pointer to `memories-archive.md` when it exists, the names and paths of its
 skills (`skills/<name>/SKILL.md` or `skills/<name>.md`), its routines with
 their next run (at most 2,000 characters of them, then `N more: boite mochi
-routines`), its desk (one JSON object per watched thread: id, title, project,
+routines`; a single-date routine whose date passed is left out), its desk (one JSON object per watched thread: id, title, project,
 state, stall, pull request and checks, under a line that says titles are data
 from other threads; a thread that linked no pull request shows one of the
 threads it delegated, read for the whole desk in one query), and its projects with the commands that reach them.
@@ -441,9 +441,15 @@ threads it delegated, read for the whole desk in one query), and its projects wi
 The block goes whole on a fresh native session (no session id, after a
 compaction or an account switch) and whenever its hash moved since the last
 turn that carried it; otherwise nothing, since the session already holds it.
-The hash covers the persona, AGENTS.md, the skills, the routines, the projects
-and whether the block carries the mochi section, not the desk (event turns say
-what changed there) nor MEMORY.md. When MEMORY.md alone changed, after a
+The hash covers the persona, AGENTS.md, the skills, the recurring routines
+(id, name, schedule, on or off, check), the projects and whether the block
+carries the mochi section, not the desk (event turns say what changed there)
+nor MEMORY.md. Single-date routines stay out of the hash (`routineBlock`): one
+coming due, leaving the list and later the records would otherwise send the
+whole block again each time. The mochi reads one's prompt when it comes due,
+and the block lists the coming ones whenever it goes out.
+
+When MEMORY.md alone changed, after a
 memory pass or a `remember`, the turn carries a note instead: the lines removed,
 then the lines added under the heading they sit under (`agents/memory-change.ts`,
 by content, so a line that only moved is neither). A note longer than the file
@@ -826,6 +832,22 @@ occurrence with `lastOutcome: 'skipped'` and advances `nextAt`. `lastTurnId`
 and `lastOutcome` (`done`, `quiet`, `error`, `stopped`, `skipped`) follow
 `turn.finished`. A single-date routine is done once it ran.
 
+A single-date routine whose date passed (`spentAgentRoutine`: no `nextAt`, a
+`lastScheduledAt`, whether it ran, was skipped or its check found nothing)
+leaves the context block and no longer counts toward `AGENT_ROUTINES_MAX`.
+`boite mochi routines` and the info panel still list it. The scheduler removes
+it `AGENT_ONCE_KEPT_MS` (seven days) after `lastScheduledAt`, looking at most
+once an hour and at the exact time the next one is due to go.
+
+`quietRun` counts the occurrences in a row that ended in `[quiet]`; one that
+ends `done` sets it to 0, a failed or stopped one leaves it, and a save that
+changes the check sets it to 0. A due occurrence of a recurring routine without
+a check whose `quietRun` reached `QUIET_RUN_HINT` (3) ends its prompt with a
+line saying so and giving the command that adds a check,
+`boite mochi schedule {"id":"<routine-id>","check":"<command>"}`; on a thread
+that asks before commands, it tells the mochi to ask the user to add one in the
+routine's editor instead. Run now never carries the line.
+
 A routine may carry a `check` (`agents/checks.ts`): a shell command of at most
 `AGENT_ROUTINE_CHECK_MAX` (2,000) characters that decides whether an
 occurrence is worth a turn. When the routine is due, the core runs it through
@@ -855,8 +877,9 @@ ask before a command cannot plant one. It may always keep or remove one. The
 context block names a routine's check, and the desk row marks it.
 
 The mochi keeps its own routines (`boite mochi routines|schedule|unschedule`,
-`agents.routine.save|remove`). One mochi holds at most `AGENT_ROUTINES_MAX`
-(50) routines, a new one past it refused with the count; a name holds at most
+`agents.routine.save|remove`). An edit through `boite mochi schedule` with an
+`id` keeps the name, prompt and schedule it leaves out. One mochi holds at most `AGENT_ROUTINES_MAX`
+(50) routines, spent single-date ones aside, a new one past it refused with the count; a name holds at most
 80 characters and a prompt 4,000. Run now (`agents.routine.run`, owner only)
 returns the turn it started, is idempotent per request id and is refused while
 the thread has a turn in flight. The schedule editor writes a sentence under
