@@ -65,7 +65,8 @@ test('ten [quiet] turns of a followed thread wake its mochi once per step, one f
   expect(wakes()).toHaveLength(before + 5);
   // A wake that speaks: the thread's next turn waits the first step again.
   state.speak = true;
-  await run('Build more');
+  const more = await run('Build more');
+  await waitFor(() => turnFacts().some(fact => fact.key === `turn:${more.id}`));
   hurry();
   await waitFor(() => wakes().length === before + 6 && settled(h, self));
   expect(wakes().at(-1)!.quiet).toBeFalsy();
