@@ -408,7 +408,8 @@
     pointer-events: none;
     -webkit-mask: linear-gradient(var(--color-foreground) 0 0) content-box, linear-gradient(var(--color-foreground) 0 0);
     -webkit-mask-composite: xor;
-    mask: linear-gradient(var(--color-foreground) 0 0) content-box exclude, linear-gradient(var(--color-foreground) 0 0);
+    mask: linear-gradient(var(--color-foreground) 0 0) content-box, linear-gradient(var(--color-foreground) 0 0);
+    mask-composite: exclude;
   }
   .orbit::before {
     content: '';
