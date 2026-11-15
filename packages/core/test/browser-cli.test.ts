@@ -119,6 +119,7 @@ test('the browser CLI reads agent-browser command lines into actions', () => {
   expect(read(['click', '@e2', '--force']).action).toEqual({ kind: 'click', selector: '@e2', force: true });
   expect(read(['check', '@e2', '--force']).action).toEqual({ kind: 'check', selector: '@e2', force: true });
   expect(read(['fill', '-q', '@e3', 'Ada'])).toEqual({ action: { kind: 'fill', selector: '@e3', text: 'Ada' }, quiet: true });
+  expect(read(['fill', '--tab', 'browser:t1', '-q', '@e3', 'Ada'])).toEqual({ action: { kind: 'fill', selector: '@e3', text: 'Ada' }, tabId: 'browser:t1', quiet: true });
   expect(read(['fill', '@e3', 'say', '-q']).action).toEqual({ kind: 'fill', selector: '@e3', text: 'say -q' });
   expect(read(['select', '@e4', 'a', 'b']).action).toEqual({ kind: 'select', selector: '@e4', values: ['a', 'b'] });
   expect(read(['press', 'Control+a']).action).toEqual({ kind: 'press', key: 'Control+a' });

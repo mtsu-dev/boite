@@ -69,6 +69,7 @@ test('a native click whose own page detaches on release stops before another cli
       .toMatchObject({ tabId: 'popup-tab', value: { ok: true } });
     // The pointer travels in a few moves, then one press and one release: no second click.
     expect(fixture.input.filter(type => type !== 'mouseMoved')).toEqual(['mousePressed', 'mouseReleased']);
+    expect(fixture.input.indexOf('mouseMoved')).toBe(0);
     expect(fixture.readsAfterDetach()).toBe(0);
     expect(fixture.released()).toBe(1);
   } finally { fixture.relay.cdp.close(); }

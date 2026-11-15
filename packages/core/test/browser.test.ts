@@ -343,6 +343,8 @@ real('each action prints the page it leaves: div buttons get refs, a click waits
   const tabs = ((await agent.call('browser.command', { threadId, action: { kind: 'status' } })).value as { tabs: Array<{ url: string; active: boolean }> }).tabs;
   expect(tabs.find(tab => tab.active)?.url).toBe(url('/popup'));
   await cli('click', '-q', '#shut');
+  // The popup closes after the click returns: the next test starts with one tab.
+  for (let i = 0; i < 50 && ((await agent.call('browser.command', { threadId, action: { kind: 'status' } })).value as { tabs: unknown[] }).tabs.length > 1; i++) await Bun.sleep(100);
 }, 60_000);
 
 real('a window a page opens joins the conversation as a tab of its own', () => traceBrowserCommands(async () => {

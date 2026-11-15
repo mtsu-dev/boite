@@ -425,10 +425,10 @@ async function pointOf(scope: Scope, selector: string, mode: string): Promise<Po
  * tell from a person's. A hidden tab has no native input and is always driven
  * through the DOM.
  */
-async function click(page: AgentPage, scope: Scope, selector: string, count: 1 | 2, force = false): Promise<{ note?: string; closed?: CdpSessionDetachedError }> {
+async function click(page: AgentPage, scope: Scope, selector: string, count: 1 | 2, force = false, command = 'click'): Promise<{ note?: string; closed?: CdpSessionDetachedError }> {
   const point = await pointOf(scope, selector, 'click');
   if (point && !point.covered) return { closed: await nativeClick(page, scope, selector, point, count) };
-  if (point?.covered && !force) throw new Error(`${selector} is covered by ${point.covered}, which a click there would hit; nothing was clicked. Close or accept what covers it first, or click --force to click it through the DOM`);
+  if (point?.covered && !force) throw new Error(`${selector} is covered by ${point.covered}, which a click there would hit; nothing was clicked. Close or accept what covers it first, or ${command} --force to click it through the DOM`);
   await run(scope.channel, `return K.dom('click', ${js(selector)}, ${count})`);
   return { note: point?.covered ? `the element was covered by ${point.covered}; it was clicked through the DOM` : undefined };
 }
@@ -459,7 +459,7 @@ async function write(page: AgentPage, scope: Scope, kind: 'fill' | 'type', selec
 
 async function check(page: AgentPage, scope: Scope, selector: string, wanted: boolean, force = false): Promise<string | undefined> {
   if (await run<boolean>(scope.channel, `return K.checked(${js(selector)})`) === wanted) return undefined;
-  const { note, closed } = await click(page, scope, selector, 1, force);
+  const { note, closed } = await click(page, scope, selector, 1, force, wanted ? 'check' : 'uncheck');
   if (closed) throw closed;
   await sleep(30);
   if (await run<boolean>(scope.channel, `return K.checked(${js(selector)})`) === wanted) return note;
@@ -526,11 +526,12 @@ async function act(page: AgentPage, tabId: string, action: BrowserAction): Promi
     case 'hover': {
       const scope = await scopeOf(page, action.selector);
       const before = await begin(page);
+      const dialogs = page.dialogs.length, downloads = page.downloads;
       const point = await pointOf(scope, action.selector, 'hover');
       if (point && !point.covered) { await approach(page, point); await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: point.x, y: point.y, button: 'none' }); }
       else await run(scope.channel, `return K.dom('hover', ${js(action.selector)})`);
       // A menu that opens on hover is drawn before the agent looks at it.
-      return reply(await settle(page, before, page.dialogs.length, 0, page.downloads));
+      return reply(await settle(page, before, dialogs, 0, downloads));
     }
     case 'focus': await run((await scopeOf(page, action.selector)).channel, `return K.focus(${js(action.selector)})`); return reply({ ok: true });
     case 'scrollintoview': {
@@ -541,10 +542,10 @@ async function act(page: AgentPage, tabId: string, action: BrowserAction): Promi
     }
     case 'scroll': {
       const scope = await scopeOf(page, action.selector);
-      const before = await begin(page), dialogs = page.dialogs.length;
+      const before = await begin(page), dialogs = page.dialogs.length, downloads = page.downloads;
       const value = await run(scope.channel, `return K.scroll(${action.x}, ${action.y}, ${js(action.selector ?? null)})`);
       // A list that loads more as it is scrolled answers after the scroll: the page printed next shows it.
-      return reply({ ...await settle(page, before, dialogs), value });
+      return reply({ ...await settle(page, before, dialogs, 0, downloads), value });
     }
     case 'wait': return reply(await wait(page, action));
     case 'history': {

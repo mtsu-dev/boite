@@ -365,8 +365,9 @@ const TEXT_COMMANDS = new Set(['fill', 'type', 'select', 'eval', 'evaluate', 'di
 export function browserAction(args: string[]): { action: BrowserAction; tabId?: string; output?: string; quiet?: boolean } {
   const rest = [...args];
   let command = rest.shift() ?? 'status';
-  const quiet = TEXT_COMMANDS.has(command) ? ['-q', '--quiet'].includes(rest[0] ?? '') && !!rest.shift() : flag(rest, '-q', '--quiet');
+  // --tab comes out first: in a line whose words are text, -q counts only as the first word left.
   let tabId = option(rest, '--tab', command);
+  const quiet = TEXT_COMMANDS.has(command) ? ['-q', '--quiet'].includes(rest[0] ?? '') && !!rest.shift() : flag(rest, '-q', '--quiet');
   // Before --tab, a tab id came after the command's arguments.
   const legacy = tabId || command === 'tab' ? -1 : rest.findLastIndex(arg => /^browser:[\w-]+$/.test(arg));
   if (legacy !== -1) tabId = rest.splice(legacy, 1)[0];

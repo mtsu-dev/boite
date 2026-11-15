@@ -71,13 +71,13 @@ afterAll(async () => {
 
 type Value = { url: string; title: string; note?: string };
 async function go(path: string): Promise<Value & { ms: number }> {
-  clicks = [];
   const at = performance.now();
   const reply = await agent.call('browser.command', { threadId, tabId, action: { kind: 'navigate', url: url(path) } });
   return { ...reply.value as Value, ms: performance.now() - at };
 }
 
 real('a page with no check gets no note and no wait, a widget inside a form included', async () => {
+  clicks = [];
   const plain = await go('/plain');
   expect(plain.note).toBeUndefined();
   expect(plain.ms).toBeLessThan(1500);
@@ -87,6 +87,7 @@ real('a page with no check gets no note and no wait, a widget inside a form incl
 }, 60_000);
 
 real('a check that clears by itself is waited for, and the reply names the page it gave way to', async () => {
+  clicks = [];
   const cloudflare = await go('/cf-auto');
   expect(cloudflare.note).toMatch(/^passed a Cloudflare check in \d\.\d s$/);
   expect(cloudflare).toMatchObject({ url: url('/done'), title: 'Shop' });
@@ -95,22 +96,25 @@ real('a check that clears by itself is waited for, and the reply names the page 
 }, 60_000);
 
 real('a checkbox is clicked once with a pointer that moved to it, below the fold too', async () => {
+  clicks = [];
   const turnstile = await go('/cf-box');
   expect(turnstile.note).toMatch(/^passed a Cloudflare check in \d\.\d s \(its checkbox was clicked\)$/);
   expect(turnstile.url).toBe(url('/done'));
   expect(clicks).toHaveLength(1);
   expect(clicks[0]).toBeGreaterThanOrEqual(3);
   expect((await go('/recaptcha')).note).toMatch(/^passed a reCAPTCHA check in \d\.\d s \(its checkbox was clicked\)$/);
-  expect(clicks).toHaveLength(1);
+  expect(clicks).toHaveLength(2);
   expect((await go('/hcaptcha')).note).toMatch(/^passed an hCaptcha check in \d\.\d s \(its checkbox was clicked\)$/);
-  expect(clicks).toHaveLength(1);
+  expect(clicks).toHaveLength(3);
   // A box something covers is not clicked: the click would land on the cover.
   unrelated = 0;
+  clicks = [];
   expect((await go('/recaptcha?covered')).note).toMatch(/^still on a reCAPTCHA check after 12 s \(something covers its checkbox, so nothing was clicked\)/);
   expect([clicks, unrelated]).toEqual([[], 0]);
 }, 60_000);
 
 real('a check that needs more than a click is named at once for the agent to try', async () => {
+  clicks = [];
   const puzzle = await go('/recaptcha?puzzle');
   expect(puzzle.note).toBe('on a reCAPTCHA image puzzle (its checkbox was clicked), which does not clear by itself; take a screenshot, act on the page, or ask the user to take over in the panel');
   expect(clicks).toHaveLength(1);
@@ -119,7 +123,8 @@ real('a check that needs more than a click is named at once for the agent to try
     expect(reply.note).toMatch(note);
     expect(reply.ms).toBeLessThan(2500);
   }
-  expect(clicks).toEqual([]);
+  // The puzzle's checkbox is the only click: none of the pages after it was clicked.
+  expect(clicks).toHaveLength(1);
 }, 60_000);
 
 real('a reload that lands on a check passes it too', async () => {

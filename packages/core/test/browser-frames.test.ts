@@ -186,6 +186,8 @@ real('a click in a frame lands where the frame is drawn, and goes through the DO
   // and --force clicks the frame's button through the DOM instead.
   for (const path of ['/placed/covered', '/placed/covered-foreign']) {
     expect(await thrown(clickPay(path))).toThrow('covered by button Overlay');
+    // Refused means nothing reached the frame's button.
+    expect(await command({ kind: 'evaluate', expression: '[window.clicks ?? 0, window.result ?? null]' }) as unknown).toEqual([0, null]);
     const covered = await clickPay(path, true);
     expect(covered.result).toBe('clicked false');
     expect(covered.clicks).toBe(1);
