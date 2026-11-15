@@ -780,7 +780,7 @@
           {:else if message.role === 'user'}
             <UserMessage {store} {message} {turn} accepted={!!turn} responded={progress.responded(message.turnId)} edit={atRest && !isSending(message) ? () => void editMessage(message) : undefined} />
           {:else}
-            <AssistantMessage {store} {threadId} {message} from={row.from} to={row.to} {signedOut} showModel={row.first && firstAssistantInTurn.get(message.turnId) === message.id}
+            <AssistantMessage {store} {threadId} {message} from={row.from} to={row.to} slice={row.text} {signedOut} showModel={row.first && firstAssistantInTurn.get(message.turnId) === message.id}
               latestInTurn={lastInTurn.get(message.turnId) === message.id} views={views.get(message.turnId)}
               changes={host?.messageId === message.id ? { at: host.index, line: changes } : undefined} />
           {/if}

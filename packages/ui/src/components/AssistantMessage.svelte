@@ -44,7 +44,8 @@
    * then every part it carries, its calls and reasoning folded into activity runs.
    * `signedOut` is the thread's account when it is signed out, so an error can
    * carry the way back in. `from` and `to` name the parts to draw when the
-   * timeline cut a long message in several rows (lib/timeline-rows.ts).
+   * timeline cut a long message in several rows (lib/timeline-rows.ts), and
+   * `slice` the characters of part `from`'s text a row of a long answer draws.
    * `views` are the pages its turn published, for its answer to place.
    * `changes` is its turn's change count, drawn on the line of the run that
    * holds part `at`.
@@ -55,6 +56,7 @@
     message,
     from = 0,
     to,
+    slice,
     signedOut,
     showModel,
     latestInTurn = true,
@@ -66,6 +68,7 @@
     message: Message;
     from?: number;
     to?: number;
+    slice?: { start: number; end?: number };
     signedOut: Account | null;
     showModel: boolean;
     latestInTurn?: boolean;
@@ -182,7 +185,9 @@
     {:else if message.parts[run.index]}
     {@const index = run.index}
     {@const part = message.parts[run.index]!}
-    {@const shownText = part.type === 'text' ? shownTextOf(message, part) : ''}
+    {@const sliced = slice && index === from ? slice : undefined}
+    {@const shownText = part.type === 'text' ? (sliced ? shownTextOf(message, part).slice(sliced.start, sliced.end) : shownTextOf(message, part)) : ''}
+    {@const open = !sliced || sliced.end === undefined}
     {@const narrated = part.type === 'text' && message.role === 'assistant' && narrates(index, shownText.trim())}
     {#if (part.type !== 'text' || shownText.trim().length > 0) && ((part.type !== 'council' && part.type !== 'debate') || experimentOn(COUNCIL_EXPERIMENT)) && !(asking && part.type === 'question' && questionDocked(store, part))}
     <!-- Narration is a class, not another branch: the paragraphs already drawn stay the same nodes when a step arrives after them. -->
@@ -196,8 +201,9 @@
         {:else if writtenPlan(shownText) && !(index === caretAt && part.complete !== true)}
           {@render plan(shownText)}
         {:else}
-        <Prose text={shownText} revision={textRevision(part)} live={index === caretAt && part.complete !== true} bubble={message.role === 'assistant' && !narrated}
-          typing={!compacting && latestInTurn && !toolRunning && message.role === 'assistant' && store.connection === 'ready' && store.openThread?.status === 'running' && index === message.parts.length - 1 && index === caretAt && part.complete !== true} {store} {threadId}
+        <Prose text={shownText} revision={textRevision(part)} live={open && index === caretAt && part.complete !== true} bubble={message.role === 'assistant' && !narrated}
+          joined={sliced ? { above: sliced.start > 0, below: sliced.end !== undefined } : undefined}
+          typing={open && !compacting && latestInTurn && !toolRunning && message.role === 'assistant' && store.connection === 'ready' && store.openThread?.status === 'running' && index === message.parts.length - 1 && index === caretAt && part.complete !== true} {store} {threadId}
           views={message.role === 'assistant' ? views : undefined} />
         {/if}
         {#if part.omitted}<p class="omitted" data-testid="text-omitted">{fill(strings.chat.textOmitted, { count: count(part.omitted) })}</p>{/if}

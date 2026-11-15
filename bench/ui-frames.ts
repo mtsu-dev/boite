@@ -337,7 +337,8 @@ async function main(): Promise<void> {
       'heavy answers scroll': async () => {
         await open('open=recent&markdown=1');
         await page.evaluate(`globalThis.__bench.store.open('t-markdown')`);
-        await page.waitFor(`globalThis.__bench.store.openThread?.id === 't-markdown' && document.querySelector('[data-testid=message]')`);
+        // The rows at the bottom may all be slices of the last answer, `message-rest`.
+        await page.waitFor(`globalThis.__bench.store.openThread?.id === 't-markdown' && document.querySelector('[data-testid^=message]')`);
         await Bun.sleep(1200);
         wheel();
       },

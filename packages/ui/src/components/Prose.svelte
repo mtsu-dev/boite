@@ -28,8 +28,10 @@
    * of the answer that names one (`answerPieces`) draws it there, and the
    * text around it becomes a bubble above it and another under it.
    */
-  let { text, live = false, typing = false, bubble = false, store, threadId, views, revision }: {
+  let { text, live = false, typing = false, bubble = false, joined, store, threadId, views, revision }: {
     text: string; live?: boolean; typing?: boolean; bubble?: boolean; store?: Store; threadId?: string; views?: readonly Message[]; revision?: object;
+    /** Set on one slice of a long answer cut in rows: its bubble continues the row above, the row below, or both. */
+    joined?: { above: boolean; below: boolean };
   } = $props();
   let selected = $state<{ path: string; line?: number } | null>(null);
   const directLinks = $derived(featureOn('open-chat-links'));
@@ -243,7 +245,7 @@
   </div>
 {:else}
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-  <div class="prose" class:live class:answer-bubble={bubble && (blocks.length > 0 || hasPending)} data-testid="text-part" bind:this={host} use:selectionClicks use:longPress={hasMenu} use:richMarkdown={drawing} onclick={follow} oncontextmenu={linkMenu}>
+  <div class="prose" class:live class:answer-bubble={bubble && (blocks.length > 0 || hasPending)} class:joined-above={joined?.above} class:joined-below={joined?.below} data-testid="text-part" bind:this={host} use:selectionClicks use:longPress={hasMenu} use:richMarkdown={drawing} onclick={follow} oncontextmenu={linkMenu}>
     {#each blocks as block, index (index)}
       <!-- Completed Markdown blocks stay mounted while the pending paragraph changes. -->
       <div class="paragraph" data-testid="paragraph">{@html renderBlock(block, rich)}</div>
@@ -477,6 +479,22 @@
   }
 
   .paragraph + .paragraph { margin-top: var(--chat-block-gap); }
+  /* A long answer cut in rows (lib/timeline-rows.ts) stays one bubble: a slice
+     drops the edge it shares with the next one and reaches up through the
+     block gap between their rows, where the paragraph gap would have been. */
+  .answer-bubble.joined-above {
+    margin-top: calc(-1 * var(--chat-block-gap));
+    padding-top: var(--chat-block-gap);
+    border-top: 0;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+  }
+  .answer-bubble.joined-below {
+    padding-bottom: 0;
+    border-bottom: 0;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
   /* Only a paragraph the answer is writing now eases in. One mounted from the
      history, as a scroll brings its message back into the window, is already
      there: animating it made every scroll restyle each paragraph it reached. */
