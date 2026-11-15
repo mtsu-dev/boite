@@ -32,13 +32,15 @@
   import SwitchMarker from './SwitchMarker.svelte';
   import MessageActions from './MessageActions.svelte';
   import { workspace } from '../lib/workspace.svelte';
-  import { movedBy, startedFrom, turnAnswer } from '../lib/message-display';
+  import { answerText, movedBy, paragraphBlocks, startedFrom, turnAnswer } from '../lib/message-display';
+  import { prepareBlocks } from '../lib/markdown';
+  import { featureOn } from '../lib/features.svelte';
   import { focusComposer } from '../lib/focus';
   import { isSending } from '../lib/composer-queue';
   import { retryTurn } from '../lib/composer-edit';
   import { TurnProgress } from '../lib/turn-progress.svelte';
   import { ESTIMATE, GAP, OVERSCAN, SlotTotals, WINDOW_FROM, atOrBefore, estimateSlot, gapChanged, slotClasses, keepOnly, measurable, overscanAbove, reaches, sameView, slotGap, windowStats, type WindowView } from '../lib/message-window';
-  import { TimelineRows, rowEstimate, rowIndexOf, seam, type TimelineRow } from '../lib/timeline-rows';
+  import { TimelineRows, rowEstimate, rowIndexOf, seam, shownText, type TimelineRow } from '../lib/timeline-rows';
   import { GapRows, NO_GAPS, READ_AHEAD, RangeAsk, gapHeight, heldNear, loadKeepingReader, wantedRange } from '../lib/history-gaps';
   import TimelineGap from './TimelineGap.svelte';
   import { latest } from '../lib/latest.svelte';
@@ -381,6 +383,41 @@
   });
 
   const rendered = $derived(rows.slice(view.start, view.end));
+
+  /**
+   * A page of history renders its Markdown in a worker (`prepareBlocks`): the
+   * finished answers of the rows the window has not drawn are split into the
+   * blocks `Prose` draws and sent once, and a row scrolled to later inserts
+   * their HTML from the cache. The rows on screen render here as before, and
+   * so does any row when the worker is missing or slower than 50 ms. Under
+   * `PREPARE_FROM` characters a page is cheap enough here; the message still
+   * streaming is never sent.
+   */
+  const PREPARE_FROM = 16_384;
+  const sent = new WeakSet<TimelineRow>();
+  $effect(() => {
+    const all = rows;
+    const { start, end } = view;
+    const rich = featureOn('chat-artifacts') || featureOn('open-chat-links');
+    untrack(() => {
+      const blocks: string[] = [];
+      let chars = 0;
+      all.forEach((row, index) => {
+        const message = row.message;
+        if (sent.has(row) || (index >= start && index < end) || row.gap || message.role !== 'assistant' || message.state !== 'complete') return;
+        sent.add(row);
+        for (let at = row.from; at < row.to; at += 1) {
+          const part = message.parts[at];
+          if (part?.type !== 'text') continue;
+          const shown = shownText(message, part);
+          const text = row.text && at === row.from ? shown.slice(row.text.start, row.text.end) : shown;
+          chars += text.length;
+          blocks.push(...paragraphBlocks(answerText(text, false), false));
+        }
+      });
+      if (chars >= PREPARE_FROM) void prepareBlocks(blocks, rich);
+    });
+  });
 
   /**
    * A rendered message's real height replaces its estimate. One above what the user reads would push the text down
