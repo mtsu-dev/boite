@@ -76,8 +76,9 @@ export interface AgentFact {
  * `written`: when this version was filed, rising with every write on this core, so a key
  * set back to an earlier text still reads as newer (`bot.move` files the latest per key).
  * One saved by an older core has none: its `at` stands for it.
+ * `from`: the wake that failed with it and gave it back; a resume of that wake carries it instead.
  */
-interface HeldFact { key: string; text: string; at: number; notBefore: number; written?: number; threadIds?: string[]; deferred?: boolean; urgent?: true; paced?: string; tries?: number }
+interface HeldFact { key: string; text: string; at: number; notBefore: number; written?: number; threadIds?: string[]; deferred?: boolean; urgent?: true; paced?: string; tries?: number; from?: { thread: string; turn: string } }
 interface HeldEvent { key: string; label: string; prompt: string; at: number }
 /** What waits for the agent's thread to be free, kept across restarts. */
 interface Pending { facts: HeldFact[]; events: HeldEvent[] }
@@ -196,7 +197,10 @@ export class AgentRuntime {
       if (this.#closed || core.journal.isClosed()) return;
       try {
         if (name === 'turn.finished') this.#finished(payload as Turn);
-        else if (name === 'turn.started' && this.#store.agentOfThread((payload as Turn).threadId)) this.#store.changed();
+        else if (name === 'turn.started' && this.#store.agentOfThread((payload as Turn).threadId)) {
+          this.#resumed(payload as Turn);
+          this.#store.changed();
+        }
       } catch (error) { core.log('warn', `agent runtime after ${name}: ${messageOf(error)}`); }
     });
     this.#timer = setInterval(() => {
@@ -562,7 +566,8 @@ export class AgentRuntime {
       // With event wakes off only urgent facts wake the agent; the others wait for its next routine.
       // A thread's finished turn waits while that thread is at work again: the turn it stops on replaces it.
       const eventWakes = this.#store.resident.config(agentId).eventWakes === true;
-      const wakes = (f: HeldFact) => (eventWakes || f.urgent) && !(f.paced && this.#core.threads.isBusy(f.paced));
+      // Facts a failed wake gave back wait while the core plans to resume that wake: the resume carries them.
+      const wakes = (f: HeldFact) => (eventWakes || f.urgent) && !(f.paced && this.#core.threads.isBusy(f.paced)) && !this.#awaitsResume(f);
       const waking = pending.facts.filter(f => (eventWakes || f.urgent) && f.notBefore <= now);
       if (waking.length === 0 || !waking.some(wakes)) continue;
       // What the agent may hear is read again now: a project taken back since a fact arrived takes the fact with it.
@@ -606,13 +611,37 @@ export class AgentRuntime {
    * those that came since, unless a newer one of the same key or thread took
    * their place. Each failure makes them wait a step longer (`RETRY_PACE_MS`).
    */
-  #giveBack(agentId: string, facts: readonly HeldFact[]): void {
+  #giveBack(agentId: string, facts: readonly HeldFact[], turn: Turn): void {
     const pending = this.#held(agentId);
     const now = Date.now();
-    const back = facts.filter(fact => !pending.facts.some(f => f.key === fact.key || (fact.paced && f.paced === fact.paced))).map(fact => retried(fact, now));
+    const from = { thread: turn.threadId, turn: turn.id };
+    const back = facts.filter(fact => !pending.facts.some(f => f.key === fact.key || (fact.paced && f.paced === fact.paced))).map(fact => ({ ...retried(fact, now), from }));
     if (back.length === 0) return;
     this.#core.log('info', `agent ${agentId}: its wake failed before it answered; ${back.length} events wait for the next one`);
     this.#save(agentId, { ...pending, facts: [...back, ...pending.facts] });
+  }
+
+  /** A resume of the wake that gave this fact back is planned (`threads/resume.ts`). */
+  #awaitsResume(fact: HeldFact): boolean {
+    return fact.from !== undefined && this.#core.threads.resumes.entry(fact.from.thread)?.plan?.turnId === fact.from.turn;
+  }
+
+  /**
+   * A resume started on an agent's thread. The agent reads again the prompt of
+   * the turn it resumes, so the facts that turn gave back are spent with it
+   * rather than told a second time by the next wake, and come back if it fails too.
+   */
+  #resumed(turn: Turn): void {
+    if (turn.execution?.operation !== 'resume') return;
+    const agent = this.#store.agentOfThread(turn.threadId);
+    if (!agent) return;
+    const previous = this.#core.journal.db.query('SELECT id FROM turns WHERE thread_id = ? AND id != ? AND queued_at <= ? ORDER BY queued_at DESC LIMIT 1').get(turn.threadId, turn.id, turn.queuedAt) as { id: string } | null;
+    if (!previous) return;
+    const pending = this.#held(agent.id);
+    const taken = pending.facts.filter(fact => fact.from?.turn === previous.id);
+    if (taken.length === 0) return;
+    this.#pace.carried(agent.id, turn.id, taken);
+    this.#save(agent.id, { ...pending, facts: pending.facts.filter(fact => !taken.includes(fact)) });
   }
 
   /** A turn of an agent's thread ended: its routine's outcome, the memory pass, the status. */
@@ -623,9 +652,9 @@ export class AgentRuntime {
     this.#store.contextEnded(turn);
     this.#store.countUnread(turn);
     const operation = turn.execution?.operation;
-    if (operation === 'routine' || operation === 'event') {
+    if (operation === 'routine' || operation === 'event' || operation === 'resume') {
       const back = this.#pace.finished(agent.id, turn, turn.status === 'error' && finalText(this.#core, turn) !== '');
-      if (back.length) this.#giveBack(agent.id, back);
+      if (back.length) this.#giveBack(agent.id, back, turn);
     }
     if (turn.status === 'done' && !turn.quiet && operation !== 'compact' && operation !== 'keepalive') this.#store.memory.after(agent, turn);
     this.#store.changed();

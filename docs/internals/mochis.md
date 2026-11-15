@@ -375,7 +375,12 @@ spent subscription, an account unavailable, a core that stopped) gives them
 back the same way, ahead of those that came since, unless a newer fact of the
 same key or thread took their place; its retry has a receipt of its own. A
 wake that failed after its agent answered, or that the user stopped, spends
-them.
+them. When the core resumes the failed wake by itself (an error's carry-on
+resume, a usage limit's resume, `threads/resume.ts`), the agent reads its
+prompt again: the given-back facts (`HeldFact.from`) wake nothing while that
+resume is planned, and the resume spends them when it starts, giving them back
+in turn if it fails before answering. A resume cancelled or given up frees
+them for the next wake.
 
 A routine carries the waiting facts the mochi may still hear under the cap of
 an event wake (16,000 characters): one per thread, the latest (an urgent fact
