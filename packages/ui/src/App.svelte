@@ -59,6 +59,7 @@
   import { watchRest } from './lib/at-rest';
   import { watchLoopPhase } from './lib/loop-phase';
   import { WsClient } from './lib/client';
+  import { watchWake } from './lib/ws-client-utils';
   import { listenForInstall } from './lib/pwa';
   import { appPage } from './lib/app-origin';
   import { localNetwork } from './lib/local-network.svelte';
@@ -236,25 +237,34 @@
     // Another machine of the group reads this computer's app updates from its core.
     const stopDesktopReport = reportDesktopUpdates(() => workspace.machines.map((machine) => machine.store));
     const stopUpdates = watchUpdates(() => workspace.machines.map((machine) => machine.store));
-    let hidden = document.hidden;
-    const resume = () => {
+    // When the page went out of sight: how long it stayed away tells `resume()` whether to open a new socket at once.
+    let hiddenAt: number | null = document.hidden ? Date.now() : null;
+    /** `away`: how long the page was gone, in ms; `remoteOnly`: the shell's own core and a page on its machine are left alone. */
+    const resume = (away = 0, remoteOnly = false) => {
       if (document.hidden) return;
       for (const machine of workspace.machines) {
         const client = machine.store.client;
-        if (client instanceof WsClient) void client.resume().catch(() => undefined);
+        if (client instanceof WsClient && (!remoteOnly || client.remote)) void client.resume(away).catch(() => undefined);
       }
     };
     const visibility = () => {
       documentVisible = !document.hidden;
-      if (document.hidden) hidden = true;
-      else if (hidden) { hidden = false; resume(); }
+      if (document.hidden) hiddenAt ??= Date.now();
+      else if (hiddenAt !== null) {
+        const away = Date.now() - hiddenAt;
+        hiddenAt = null;
+        resume(away);
+      }
     };
-    const pageshow = (event: PageTransitionEvent) => { if (event.persisted) resume(); };
+    const pageshow = (event: PageTransitionEvent) => { if (event.persisted) resume(hiddenAt === null ? 0 : Date.now() - hiddenAt); };
+    const online = () => resume();
+    // The system slept with the page in sight, a laptop closed on the app: every remote socket is checked as after that long away.
+    const stopWake = watchWake((slept) => resume(slept, true));
     const offline = () => { for (const machine of workspace.machines) if (machine.store.client instanceof WsClient) machine.store.client.offline(); };
     // The app's page is public and every machine is on a private address: Chrome lets its sockets through once "Local network" is allowed.
-    const stopLocalNetwork = appPage() ? localNetwork.start(resume) : () => undefined;
+    const stopLocalNetwork = appPage() ? localNetwork.start(() => resume()) : () => undefined;
     document.addEventListener('visibilitychange', visibility);
-    window.addEventListener('online', resume);
+    window.addEventListener('online', online);
     window.addEventListener('offline', offline);
     window.addEventListener('pageshow', pageshow);
     const notification = (event: MessageEvent) => { if (workspace.workerMessage(event.data)) mobileScreen = 'chat'; };
@@ -268,8 +278,9 @@
       stopInstall();
       stopUpdates();
       stopLocalNetwork();
+      stopWake();
       document.removeEventListener('visibilitychange', visibility);
-      window.removeEventListener('online', resume);
+      window.removeEventListener('online', online);
       window.removeEventListener('offline', offline);
       window.removeEventListener('pageshow', pageshow);
       navigator.serviceWorker?.removeEventListener('message', notification);
