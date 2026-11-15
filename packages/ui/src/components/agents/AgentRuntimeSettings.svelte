@@ -79,7 +79,7 @@
       const known = base;
       if (!config || !known || revision === known.revision || revision === synced || state === 'waiting' || state === 'saving') return;
       void view.store.client?.call('agents.runtime.get', { agentId: agent.id }).then(stored => {
-        if (base !== known || !config || save.state === 'waiting' || save.state === 'saving') return;
+        if (base !== known || !config || save.state === 'waiting' || save.state === 'saving' || revision <= synced) return;
         synced = revision;
         const shown = config as unknown as Record<string, unknown>, was = known.config as unknown as Record<string, unknown>;
         const [mine, from] = [shape($state.snapshot(config) as AgentRuntimeConfig), shape(known.config)];

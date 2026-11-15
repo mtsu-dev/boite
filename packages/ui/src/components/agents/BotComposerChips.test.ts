@@ -1,7 +1,10 @@
 import { expect, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
+import type { AgentRuntimeConfig } from '@boite/contracts';
 import { test } from '../../test/fake-client';
 import { AgentsView } from '../../lib/agents.svelte';
+import { routeCatalog, withDefaultRoute } from '../../lib/agent-route';
+import { levelName } from '../../lib/format';
 import { fill, strings } from '../../lib/strings';
 import AgentsPage from './AgentsPage.svelte';
 
@@ -84,6 +87,45 @@ test("a mochi's chips open their menus, and each pick saves its settings and mov
     });
     expect(profile().selection).toMatchObject({ model, effort: level });
     await vi.waitFor(() => expect(inSettings('composer-effort')!.textContent).toContain(store.modelOf(profile().selection)?.effort?.levels.find(entry => entry.id === level)?.label ?? ''));
+
+    // Two route changes can finish their settings reads in reverse order.
+    // Hold the replies after they observed each route, without holding writes.
+    const real = client.call.bind(client);
+    const held: { effort: string | null | undefined; release: () => void; delivered: Promise<unknown> }[] = [];
+    const call = vi.spyOn(client, 'call').mockImplementation(((method: string, params: never) => {
+      const delivered = real(method as never, params).then(value => {
+        if (method !== 'agents.runtime.get') return value;
+        return new Promise<typeof value>(resolve => { held.push({ effort: (value as AgentRuntimeConfig).defaultRoute.effort, release: () => resolve(value), delivered }); });
+      });
+      return delivered;
+    }) as typeof client.call);
+    try {
+      const levels = store.modelOf(profile().selection)!.effort!.levels;
+      const newer = levels.at(-1)!;
+      for (const effort of [levels[0]!, newer]) {
+        const config = await real('agents.runtime.get', { agentId: pixel.id });
+        await real('agents.runtime.configure', {
+          agentId: pixel.id, expectedRevision: profile().revision,
+          config: withDefaultRoute(config, { effort: effort.id }, routeCatalog(store))
+        });
+        await view.refresh();
+        await vi.waitFor(() => expect(held.some(read => read.effort === effort.id)).toBe(true));
+      }
+      const fresh = held.filter(read => read.effort === newer.id);
+      const stale = held.filter(read => read.effort === levels[0]!.id);
+      for (const read of fresh) read.release();
+      await Promise.all(fresh.map(read => read.delivered));
+      flushSync();
+      expect(inSettings('composer-effort')!.textContent).toContain(levelName(newer));
+      for (const read of stale) read.release();
+      await Promise.all(stale.map(read => read.delivered));
+      flushSync();
+      expect(inSettings('composer-effort')!.textContent).toContain(levelName(newer));
+      expect(profile().selection.effort).toBe(newer.id);
+    } finally {
+      call.mockRestore();
+      for (const read of held) read.release();
+    }
   } finally {
     if (page) unmount(page);
   }
