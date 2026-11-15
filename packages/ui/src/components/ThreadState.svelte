@@ -48,7 +48,7 @@
   /** A delegated agent's wait on its own background work: what it waits for, or what ended without waking it. */
   let wait = $derived(thread.backgroundWait ?? null);
   /** The states that count time: the turn, its sub-agents, or the work it left running. */
-  let live = $derived(kind === 'working' || kind === 'delegating' || kind === 'monitoring' || kind === 'background' || kind === 'watching');
+  let live = $derived(form === 'work' && kind !== 'queued');
   /** The pull requests the row still waits on: their checks run. */
   let watches = $derived((thread.pullRequestWatches ?? []).filter(pullRequestWatchWaits));
   /** What was under way when the machine went away is only its last known state. */
@@ -88,27 +88,28 @@
     return strings.sidebar.state[kind];
   });
   let label = $derived.by(() => {
+    const state = strings.sidebar.state;
     if (kind === null) return null;
-    if (kind === 'working') return spent === null ? strings.sidebar.state.working : fill(strings.sidebar.state.workingFor, { elapsed: spent });
+    if (kind === 'working') return spent === null ? state.working : fill(state.workingFor, { elapsed: spent });
     if (kind === 'delegating') {
       const count = subagents?.count ?? 0;
-      const head = count === 1 ? strings.sidebar.state.delegatingOne : fill(strings.sidebar.state.delegatingMany, { count: String(count) });
+      const head = count === 1 ? state.delegatingOne : fill(state.delegatingMany, { count: String(count) });
       return spent === null ? head : `${head}\n${spent}`;
     }
     if (kind === 'monitoring' || kind === 'background') {
-      const head = spent === null ? strings.sidebar.state[kind] : fill(kind === 'monitoring' ? strings.sidebar.state.monitoringFor : strings.sidebar.state.backgroundFor, { elapsed: spent });
-      const what = wait?.state === 'waiting' ? fill(strings.sidebar.state.awaiting, { what: wait.for }) : backgroundLabel(thread.backgroundWork?.kinds ?? []);
+      const head = spent === null ? state[kind] : fill(kind === 'monitoring' ? state.monitoringFor : state.backgroundFor, { elapsed: spent });
+      const what = wait?.state === 'waiting' ? fill(state.awaiting, { what: wait.for }) : backgroundLabel(thread.backgroundWork?.kinds ?? []);
       return `${head}\n${what}`;
     }
     if (kind === 'watching') {
-      const head = watches.length === 1 ? strings.sidebar.state.watching : fill(strings.sidebar.state.watchingMany, { count: String(watches.length) });
+      const head = watches.length === 1 ? state.watching : fill(state.watchingMany, { count: String(watches.length) });
       const queued = (watch: (typeof watches)[number]) => watch.seen?.queue ? ` (${fill(strings.tasks.watchQueued, { position: String(watch.seen.queue.position) })})` : '';
       return `${head}\n${watches.map(watch => `#${watch.number}${queued(watch)}`).join(', ')}${spent === null ? '' : `\n${spent}`}`;
     }
     if (kind === 'interrupted' && wait?.state === 'interrupted') {
-      return `${strings.sidebar.state.interrupted}\n${fill(strings.sidebar.state.interruptedBy, { what: wait.for, reason: strings.sidebar.state.interruption[wait.reason] })}`;
+      return `${state.interrupted}\n${fill(state.interruptedBy, { what: wait.for, reason: state.interruption[wait.reason] })}`;
     }
-    return strings.sidebar.state[kind];
+    return state[kind];
   });
   /** The sub-agents chip: how many work, or, when none does, how many still ask; a child asking turns it amber. */
   let chip = $derived.by(() => {
@@ -157,12 +158,7 @@
     gap: 4px;
     color: var(--color-muted-foreground);
   }
-  /* The word takes its mark's hue, so a list says at a glance who waits on the user, what runs and what failed:
-     amber for the user's turn, the accent for work, red for a failure. A stop stays neutral. */
-  .word { font-weight: 500; }
-  /* The clock after a word keeps its hue at the body's weight, so the word says what runs and the time how long;
-     alone, it is the word. */
-  .time { font-weight: 500; }
+  /* The word and a lone clock inherit the row's weight. A clock after a word stays lighter in the same hue. */
   .word + .time { font-weight: 400; }
   .state.waiting { color: var(--color-live); }
   .state:is(.working, .queued, .delegating, .monitoring, .background, .watching) { color: var(--color-accent); }
