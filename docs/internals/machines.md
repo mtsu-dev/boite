@@ -118,7 +118,8 @@ one guess for another, while a clock set right still shows. An older core
 sends no clock and the offset stays zero.
 
 The client detects silent remote sockets (`packages/ui/src/lib/ws-client.ts`).
-On a remote host, 25 seconds without any frame sends a `hello`, which the core
+On a remote host, 12 seconds without any frame while the page is in sight
+sends a `hello` (25 seconds until 2026-11-15), which the core
 answers on an open connection with its info and nothing else, ahead of that
 connection's eight request slots: queued behind its own slow calls (pull
 request reads of 1 to 5 seconds), it read as a dead socket. That `hello`
@@ -145,10 +146,24 @@ greyed rows and the composer already say it, and a conversation opened as the
 link went shows offline until the reconnect opens it again. Returning to the page, an `online` event or
 a page restored from the back/forward cache also send the `hello` first, and
 replace the socket only if it stays silent for 4 seconds, so a tab switch no
-longer drops a healthy connection or reloads the lists. An `offline` event asks
-a remote socket the same way and drops it after 4 silent seconds without
-reconnecting, so the header stops saying Connected while the network is gone.
-A hidden page is not checked.
+longer drops a healthy connection or reloads the lists. After 8 seconds or more
+out of sight, a remote socket is not waited on: `App.svelte` passes how long the
+page was hidden to `WsClient.resume`, which opens a new socket at once beside
+the `hello` of the old one. The first to prove alive is kept. An answer on the
+old socket closes the new one quietly and nothing changes; the new socket's
+hello first replaces the old one as any reconnect does (its calls fail as
+dropped, the threads are subscribed again, the clock offset comes from the new
+hello, the lists reload). A phone back after 30 seconds on a dead socket is
+ready in one handshake instead of 4 seconds plus one. There is never more than
+one such socket at a time, and a client still exchanging a one-time grant or
+ticket, or a loopback core, only gets the `hello`. An `offline` event asks
+a remote socket the same way and drops it after 4 silent seconds, so the
+header stops saying Connected while the network is gone. A hidden page is not
+checked. With the page in sight, one timer for the whole app compares how far
+`Date.now()` and `performance.now()` moved every second; a gap over 5 seconds
+means the system slept, a laptop closed on the app, and every remote client is
+resumed as after that long away (`watchWake` in `ws-client-utils.ts`). The
+timer stops while the page is hidden.
 
 A prompt whose socket went while it was being sent is not reported as an
 error at once. The failure carries `data.transport: 'dropped'`, the store waits
@@ -161,11 +176,19 @@ into the thread's outbox (below) under that same `clientRequestId`, so the core
 can still take it only once.
 
 Retries wait 1, 2, 4, 8, then 10 seconds, each 20 % longer or shorter at random
-so the clients of a restarted core do not all return at once. An attempt gets
+so the clients of a restarted core do not all return at once. The first retry
+after losing a socket that was ready waits 125 to 250 ms at random instead of
+1 second, and the one after a `hello` that went unanswered goes at once, since
+the probe already waited its deadline. That attempt counts: if it fails, the
+next waits 2 seconds. A socket that closes within 10 seconds of its hello is a
+host dropping in a loop, and its first retry waits the backoff again, 1 second,
+then 2, longer at each such drop in a row. An attempt gets
 10 seconds to open and say hello, the next one 20, then 30, so a slow, lossy
-link is not cut off every time. While the browser reports itself offline, a
-remote host is not retried at all: the `online` event starts the next attempt.
-A loopback core is retried regardless, since it is on the same machine.
+link is not cut off every time. The retries go on with their backoff while the
+browser reports itself offline, which it often does wrongly; the `online` event
+still starts the next attempt at once. Until 2026-11-15 an offline browser
+parked a remote host's retries until that event, and a phone could stay
+offline for minutes after its network had come back.
 
 A change of network retries every machine that is waiting out its backoff at
 once, and the group's members too (`GroupLinks.retry`). A machine whose
@@ -173,7 +196,9 @@ handshake is under way keeps that socket (`WsClient.wake`): signals every few
 seconds would otherwise restart a slow handshake before it could finish. Four signals count as one: the `network.changed` event of
 any connected core, the browser's `online` event, a `change` of
 `navigator.connection`, and a machine of the window reconnecting by itself
-after failed attempts. Signals that arrive together give one retry at once and
+after failed attempts. A machine of the window that is ready again after losing
+its link, by any path, also retries every other machine waiting out its backoff
+(`GroupLinks.start`, through `Workspace.resumeMachines`). Signals that arrive together give one retry at once and
 at most one more a second later. A core sends `network.changed` to its owner
 connections when the set of its non-internal interface addresses changes, so
 Tailscale coming up or the computer joining another Wi-Fi is seen within about
