@@ -937,3 +937,33 @@ test('three [quiet] occurrences in a row tell the bot to give the routine a chec
   await waitFor(() => read(plain.id).lastTurnId !== null && settled(h, threadId));
   expect(sent().at(-1)).toContain('ask the user to add one in the routine\'s editor');
 }, 30_000);
+
+test('the mochi CLI re-arms a spent once routine with a new schedule, unless the edit explicitly pauses it', async () => {
+  const driver = scripted(() => ({ text: 'Done.' })); restore = driver.restore;
+  const { agent, threadId } = await makeAgent(h, client);
+  const saved = await routine(agent.id, { schedule: { kind: 'once', at: Date.now() + 3_600_000 } });
+  due(saved.id);
+  await waitFor(() => read(saved.id).lastOutcome === 'done' && settled(h, threadId));
+  expect(read(saved.id)).toMatchObject({ enabled: false, nextAt: null });
+  const firstTurn = read(saved.id).lastTurnId;
+  const own = await connect(h.url, h.core.agents.tokenFor(threadId));
+  try {
+    // Editing only its text keeps a spent routine disabled.
+    await botCommand(own, threadId, ['schedule', JSON.stringify({ id: saved.id, prompt: 'Check again.' })]);
+    expect(read(saved.id)).toMatchObject({ enabled: false, nextAt: null });
+
+    const at = Date.now() + 7_200_000;
+    await botCommand(own, threadId, ['schedule', JSON.stringify({ id: saved.id, schedule: { kind: 'once', at } })]);
+    expect(read(saved.id)).toMatchObject({ enabled: true, nextAt: at, lastScheduledAt: null, prompt: 'Check again.' });
+    due(saved.id);
+    await waitFor(() => read(saved.id).lastTurnId !== firstTurn && read(saved.id).lastOutcome === 'done' && settled(h, threadId));
+    expect(turnsOf(h, threadId).filter(t => t.execution?.operation === 'routine')).toHaveLength(2);
+    expect(read(saved.id)).toMatchObject({ enabled: false, nextAt: null });
+
+    await botCommand(own, threadId, ['schedule', JSON.stringify({ id: saved.id, schedule: { kind: 'once', at: at + 3_600_000 }, enabled: false })]);
+    expect(read(saved.id)).toMatchObject({ enabled: false, nextAt: null, lastScheduledAt: null });
+    // A later schedule edit still keeps that explicit pause.
+    await botCommand(own, threadId, ['schedule', JSON.stringify({ id: saved.id, schedule: { kind: 'once', at: at + 7_200_000 } })]);
+    expect(read(saved.id)).toMatchObject({ enabled: false, nextAt: null });
+  } finally { own.close(); }
+});
