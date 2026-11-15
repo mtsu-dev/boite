@@ -163,7 +163,8 @@ window, so a changed limit reopens the session between turns. Its summary
 context-control request is local and makes no provider token-count call.
 
 `cache-expiry` is independent of this limit: it can compact a smaller context
-before the cache lapses. Without a limit, the optional `turn-end` and
+before the cache lapses. A mochi's own thread takes that moment even when it is
+not selected, from 60 000 tokens ([A mochi's cold wake](#a-mochis-cold-wake)). Without a limit, the optional `turn-end` and
 `background` moments compact at each selected moment. With one, they apply
 once the context nears it, from the size where a
 [background copy](#background-compaction) would start: 85% of the limit and at
@@ -239,6 +240,63 @@ When a conversation lands in Done while a compaction runs, the compaction turn
 is stopped. If the provider announces native compaction after Done, that turn
 is stopped too. The history already written is kept. A merged PR no longer puts
 a conversation in Done: its agent is asked instead and answers after its turn.
+
+### A mochi's cold wake
+
+A mochi often sleeps longer than its prompt cache lives: a routine every few
+hours, an event in the night. The wake that follows writes the whole
+conversation into the cache again, at the cache-write rate, before it reads the
+event. Compacting at that point would not help: the compaction would read the
+same cold conversation first. Compacting while the cache is still warm does,
+since the compaction reads the conversation at the cache-read rate and the
+wake then writes only the summary.
+
+So a mochi's own thread (`agentSessionId`, no `parentThreadId`) compacts at the
+`cache-expiry` moment even when the owner's rule does not select it, under
+three conditions held in `COLD_WAKE` (`threads/auto-compact.ts`), constants with
+no setting:
+
+| Constant | Value | Why |
+|---|---|---|
+| `minTokens` | 60 000 | below it the summary saves too little to pay for itself |
+| `minCacheMs` | 1 hour | a 5 minute cache would compact after every short pause |
+
+The thread's effective rule must exist: `autoCompact` set to off, for every
+thread or for `bot` in `compactionByType`, leaves a mochi alone. Everything else
+is the `cache-expiry` moment as above: one timer armed by a finished turn, 60 s
+before the cache lapses, disarmed by any turn that opens, checked again when it
+fires (idle, no handle, no wake, held answer, letter, goal or loop waiting), and
+never after another compaction. A delegated child and an ordinary conversation
+keep the owner's moments only. `CacheKeepalive` steps aside for the planned
+compaction, as for a selected `cache-expiry`.
+
+One trial on 2026-11-15 (`test/cold-wake.live.test.ts`, Opus 5.5 at high effort
+behind Douane, a mochi with a 101 000 token context, the event an hour and two
+minutes after its last turn) ran the same wake twice:
+
+| | Compaction | Wake | Total |
+|---|---|---|---|
+| No compaction | none | 90 305 written, 11 086 read: $0.725 | $0.725 |
+| Compacted a minute before the lapse | 101 241 read, 9 written, 3 250 out: $0.094 | 10 457 written, 11 086 read: $0.086 | $0.180 (−75 %) |
+
+The compacted thread went from 101 245 to 21 545 tokens. With those figures, a
+3 250 token summary and 21 545 tokens after compaction, the copy of the owner's
+journal (155 cold wakes of the mochis, routines and events after more than an
+hour idle, 2026-10-04 to 2026-11-15, Opus prices) gives:
+
+| Threshold | Wakes compacted | Real cost | Estimated, compaction included | Of which compaction | Net gain |
+|---|---|---|---|---|---|
+| 40 000 | 142 | $145.39 | $65.93 | $11.97 | $79.46 (55 %) |
+| 60 000 | 126 | $136.30 | $60.11 | $10.75 | $76.18 (56 %) |
+| 80 000 | 99 | $113.96 | $47.70 | $8.63 | $66.25 (58 %) |
+
+The estimate prices the compaction as one cache read of the conversation plus
+the summary as output, and the wake as the same turn with the removed tokens no
+longer written; it stays below the trial because a real wake does more work
+than one event. 60 000 keeps most of the gain of 40 000 while leaving the
+smaller contexts, where a fixed summary weighs most, alone. A wake within the
+hour opens before the timer fires and disarms it; what a compacted mochi loses
+is the detail its summary drops.
 
 ### Background compaction
 

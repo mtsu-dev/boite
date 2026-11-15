@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { checkSettingsPatch, DEFAULT_DELEGATION_CONFIG, effectiveCompaction, followedPatch, effectiveSetting, type CompactionPolicy } from '@boite/contracts';
 import type { CoreClient } from '../src/client.ts';
 import { echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';
-import { AUTO_COMPACT } from '../src/threads/auto-compact.ts';
+import { AUTO_COMPACT, COLD_WAKE } from '../src/threads/auto-compact.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import { echoDriver } from '../src/drivers/echo.ts';
 import { makeAgent, settled } from './agent-fixture.ts';
@@ -217,6 +217,55 @@ describe('automatic compaction', () => {
     expect(compaction.queuedAt).toBeGreaterThanOrEqual(hello.finishedAt! + 300_000 - AUTO_COMPACT.cacheMarginMs);
     client.close();
   });
+
+  test('a mochi idle until its cache lapses compacts from 60 000 tokens without the cache-expiry moment, never during a turn', async () => {
+    // 155 cold wakes of the real mochis wrote 103 000 tokens each into the cache, 156 $ over six weeks (C5).
+    let reading = 0;
+    const restore = setDriver('echo', { ...echoDriver, startTurn(ctx) {
+      if (ctx.prompt === '[compact]') return echoDriver.startTurn(ctx);
+      return echoDriver.startTurn({ ...ctx, context: use => ctx.context({ ...use, tokens: reading }) });
+    } });
+    const cold = { ...COLD_WAKE };
+    const client = await h.connect();
+    try {
+      // The policy of the real mochis: a token limit, no idle moment.
+      await client.call('settings.set', { autoCompact: { tokens: 160_000, moments: [] } });
+      const { threadId: conversation } = await quiet(client);
+      const { threadId: mochi } = await makeAgent(h, client);
+      // Echo's cache lives 300 s: taken as long enough here, its last minute 200 ms after a turn.
+      COLD_WAKE.minCacheMs = 300_000;
+      AUTO_COMPACT.cacheMarginMs = 300_000 - 200;
+
+      reading = COLD_WAKE.minTokens - 1;
+      await turn(client, mochi, 'below the threshold');
+      reading = COLD_WAKE.minTokens;
+      await turn(client, conversation, 'not a mochi');
+      await pause(500);
+      expect(await compactions(client, mochi)).toEqual([]);
+      expect(await compactions(client, conversation)).toEqual([]);
+
+      // A turn that opens before the moment disarms it; the compaction follows that turn, not during it.
+      let held: Promise<unknown> | undefined;
+      onceArmed(mochi, () => { held = client.call('turns.start', { threadId: mochi, prompt: '[sleep:600] still at work' }); });
+      const compacted = client.next('turn.finished', t => t.threadId === mochi && t.execution?.operation === 'compact');
+      await turn(client, mochi, 'above the threshold');
+      await held;
+      const compaction = await compacted;
+      expect(compaction.execution?.automatic).toBe(true);
+      const work = h.core.journal.listTurns(mochi).find(t => t.status === 'done' && t.execution?.operation !== 'compact' && t.queuedAt < compaction.queuedAt && t.finishedAt! - t.startedAt! >= 500)!;
+      expect(work).toBeDefined();
+      expect(compaction.queuedAt).toBeGreaterThanOrEqual(work.finishedAt! + 300_000 - AUTO_COMPACT.cacheMarginMs);
+
+      // A cache shorter than an hour, or automatic compaction off, leaves the mochi alone.
+      COLD_WAKE.minCacheMs = cold.minCacheMs;
+      await turn(client, mochi, 'a five minute cache');
+      await client.call('settings.set', { autoCompact: null });
+      COLD_WAKE.minCacheMs = 300_000;
+      await turn(client, mochi, 'compaction off');
+      await pause(500);
+      expect(await compactions(client, mochi)).toHaveLength(1);
+    } finally { Object.assign(COLD_WAKE, cold); restore(); client.close(); }
+  }, 20_000);
 
   test('a thread read before its compaction or a stop stays read: neither is news', async () => {
     // Read bots lit up again an hour later, when their prompt cache lapsed and the core compacted them.

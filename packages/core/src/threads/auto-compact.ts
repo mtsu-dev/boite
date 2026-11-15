@@ -20,6 +20,19 @@ export const AUTO_COMPACT = { settleMs: 2_000, cacheMarginMs: 60_000 };
  * Mutable so a test can shorten them.
  */
 export const CACHE_KEEPALIVE = { marginMs: 120_000, retryMs: 5_000 };
+/**
+ * A mochi's cold wake (`docs/internals/context.md`, "A mochi's cold wake").
+ * A mochi left idle until its prompt cache is about to lapse compacts at the
+ * `cache-expiry` moment even when the owner did not pick it, so its next wake
+ * writes the summary into the cache instead of the whole conversation.
+ * `minTokens`: the context it takes, below which the summary saves too little.
+ * `minCacheMs`: the shortest cache lifetime it waits for; a 5 minute cache
+ * would compact after every short pause, which costs more than it saves.
+ * Measured on 155 cold wakes of the real mochis, 2026-10-04 to 2026-11-15, and
+ * one trial behind Douane (`test/cold-wake.live.test.ts`). Mutable so a test
+ * can lower them.
+ */
+export const COLD_WAKE = { minTokens: 60_000, minCacheMs: 3_600_000 };
 /** What the opening message of an automatic compaction is labelled. */
 export const AUTO_COMPACT_LABEL = 'Automatic compaction';
 
@@ -131,7 +144,7 @@ export class AutoCompaction {
    * With a token limit, `turn-end` and `background` wait for the context to
    * near it (`nearLimit`), where a background copy would start.
    */
-  private due(thread: ThreadSummary, rule: AutoCompact): { moment: AutoCompactMoment | 'tokens' | 'copy'; delay: number } | null {
+  private due(thread: ThreadSummary, rule: AutoCompact): { moment: AutoCompactMoment | 'tokens' | 'copy' | 'cold-wake'; delay: number } | null {
     const reached = rule.tokens !== null && (thread.context?.tokens ?? -1) >= rule.tokens;
     const settled = Math.max(0, thread.updatedAt + AUTO_COMPACT.settleMs - Date.now());
     // Native drivers enforce this inside a turn where supported. An idle
@@ -146,10 +159,12 @@ export class AutoCompaction {
     const near = rule.tokens === null || (tokens !== null && nearLimit(tokens, rule.tokens));
     if (near && rule.moments.includes(moment)) return { moment, delay: settled };
     const cache = thread.promptCache ?? null;
-    if (!rule.moments.includes('cache-expiry') || cache === null) return null;
+    if (cache === null) return null;
+    const expiry = rule.moments.includes('cache-expiry') ? 'cache-expiry' : coldWake(thread, cache) ? 'cold-wake' : null;
+    if (expiry === null) return null;
     // Another model or account starts cold: there is no cached reading left to save.
     if (cache.model !== thread.model || cache.accountId !== thread.accountId) return null;
-    return { moment: 'cache-expiry', delay: Math.max(0, cache.at + cache.ttlSeconds * 1000 - AUTO_COMPACT.cacheMarginMs - Date.now()) };
+    return { moment: expiry, delay: Math.max(0, cache.at + cache.ttlSeconds * 1000 - AUTO_COMPACT.cacheMarginMs - Date.now()) };
   }
 
   /** Why this thread is not compacted now, or null. */
@@ -207,4 +222,16 @@ export class AutoCompaction {
     }
     return false;
   }
+}
+
+/**
+ * Whether a mochi's own thread compacts at its cache's last minute without the
+ * `cache-expiry` moment (`COLD_WAKE`): a delegated child answers its parent and
+ * an ordinary conversation is the user's, so only the mochi's thread, with a
+ * context of `minTokens` or more and a cache that lives `minCacheMs` or longer.
+ */
+export function coldWake(thread: Pick<ThreadSummary, 'agentSessionId' | 'parentThreadId' | 'context'>, cache: { ttlSeconds: number }): boolean {
+  if (!thread.agentSessionId || thread.parentThreadId) return false;
+  if ((thread.context?.tokens ?? 0) < COLD_WAKE.minTokens) return false;
+  return cache.ttlSeconds * 1000 >= COLD_WAKE.minCacheMs;
 }
