@@ -47,7 +47,8 @@ stays readable.
 - Add a routine with the `+` beside its routines in the info panel, or ask
   the mochi to plan one. A routine runs Once, Every day, Some days, Monthly,
   Yearly or Repeatedly. Run now starts one at once. A mochi holds up to 50
-  routines.
+  routines. A Once routine stays in the list for seven days after it ran,
+  then goes; it no longer counts toward the 50.
 - A mochi also wakes on its own when a turn ends in a thread on its desk, when
   that thread fails, asks you something, waits on a permission or stays
   silent for 20 minutes, and when a pull request there is merged or its
@@ -62,6 +63,16 @@ stays readable.
   not print the time before, or fails in a new way. A check that finds nothing new costs
   nothing, and the routine reads "nothing new". Run now skips the check. You
   can always set one; the mochi sets its own only when it runs with full access.
+- Give a check to a routine that only watches for something: new issues or
+  pull requests, a build that fails, a price, a reply, a file that changes. A
+  routine that does work each time (a report, a post, a weekly review) needs
+  none. The command prints only what should wake the mochi and nothing when all
+  is as before. For example, a routine "New issues", every 30 minutes, with the
+  check `gh issue list --repo owner/repo --state open --json number,title`
+  wakes the mochi only when the list of open issues changes.
+- When a routine without a check ends in "Checked" three times in a row, its
+  next run tells the mochi so, with the command that adds a check. The count
+  starts over when the mochi has something to say or the routine gets a check.
 - After downtime, at most one missed occurrence of a routine runs.
 - With "Resume threads after a usage limit" on (Settings, AI accounts,
   Limits), a routine or event that failed on a spent limit runs again once

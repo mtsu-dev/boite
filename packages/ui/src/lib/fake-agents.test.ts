@@ -1,5 +1,5 @@
 import { expect, vi } from 'vitest';
-import { AGENT_MEMORY_MAX, nextAgentOccurrence, type AgentProfile, type AgentSchedule, type Message } from '@boite/contracts';
+import { AGENT_MEMORY_MAX, nextAgentOccurrence, type AgentProfile, type AgentRoutine, type AgentSchedule, type Message } from '@boite/contracts';
 import { test } from '../test/fake-client';
 import { deskState } from './agent-desk';
 import { FakeAgents } from './fake-agents';
@@ -223,9 +223,31 @@ test('the fake core holds an agent to 50 routines, an 80-character name and a 4,
   const news = await checked('  gh pr list  ');
   expect(news.check).toBe('gh pr list');
   expect((await checked('  ', news)).check).toBeNull();
+  const once = await client.call('agents.routine.save', { value: { ...news, name: 'Once', schedule: { kind: 'once', at: Date.now() + 3_600_000 } } });
+  await client.call('agents.routine.run', { routineId: once.id, requestId: 'spent-for-cap' });
+  await vi.waitFor(async () => expect((await client.call('agents.snapshot', {})).routines.find(r => r.id === once.id)?.lastOutcome).toBe('done'));
   for (let i = 0; i < 49; i++) await routine(`Check ${i}`);
   await expect(routine('One more')).rejects.toThrow('the most an agent may hold is 50');
   // An edit of one it holds is no new routine.
   const first = (await client.call('agents.snapshot', {})).routines.find(r => r.agentId === agent.id)!;
   await expect(client.call('agents.routine.save', { id: first.id, expectedRevision: first.revision, value: { ...first, name: 'Renamed' } })).resolves.toMatchObject({ name: 'Renamed' });
+  const spent = (await client.call('agents.snapshot', {})).routines.find(r => r.id === once.id)!;
+  const kept = await client.call('agents.routine.save', { id: spent.id, expectedRevision: spent.revision, value: { ...spent, name: 'Still done' } });
+  const rearm = () => client.call('agents.routine.save', { id: kept.id, expectedRevision: kept.revision, value: { ...kept, schedule: { kind: 'once', at: Date.now() + 7_200_000 } } });
+  await expect(rearm()).rejects.toThrow('the most an agent may hold is 50');
+  await client.call('agents.routine.remove', { routineId: first.id });
+  await expect(rearm()).resolves.toMatchObject({ lastScheduledAt: null });
+});
+
+test('the fake preserves a quiet streak on edits, ignores a supplied count and resets it when the check changes', () => {
+  const agents = new FakeAgents(() => {}, { create: (agent: AgentProfile) => `t-${agent.name}`, wake: () => { throw new Error('no wakes here'); } });
+  const { agent } = agents.seedAgent({ name: 'Scout', domain: '', instructions: '', avatar: '', selection, status: 'active' }, 1);
+  const value = { agentId: agent.id, name: 'Inbox', prompt: 'Check the inbox', schedule: { kind: 'interval' as const, everyMinutes: 60 }, enabled: true, nextAt: null, lastTurnId: null, lastScheduledAt: null };
+  const created = agents.call('agents.routine.save', { value: { ...value, quietRun: 99 } }) as AgentRoutine;
+  expect(created.quietRun).toBe(0);
+  const quiet = agents.seedRoutine({ ...value, quietRun: 3 });
+  const edited = agents.call('agents.routine.save', { id: quiet.id, expectedRevision: quiet.revision, value: { ...quiet, quietRun: 99, name: 'Renamed' } }) as AgentRoutine;
+  expect(edited.quietRun).toBe(3);
+  const checked = agents.call('agents.routine.save', { id: edited.id, expectedRevision: edited.revision, value: { ...edited, check: 'echo news' } }) as AgentRoutine;
+  expect(checked.quietRun).toBe(0);
 });

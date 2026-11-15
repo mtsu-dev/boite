@@ -220,3 +220,24 @@ test('schema 14 from the earlier persistent branch upgrades without losing the a
     expect(next.journal.db.query('PRAGMA user_version').get()).toEqual({ user_version: SCHEMA_VERSION });
   } finally { await next.close(); }
 });
+
+test('spent single-date routines leave the count and the block: a live routine still fits and is listed', async () => {
+  const ranAt = Date.now() - 86_400_000;
+  for (let i = 0; i < AGENT_ROUTINES_MAX; i++) {
+    h.core.workforce.records.create('routine', { ...routineValue({ name: `${i}:${'R'.repeat(70)}`, schedule: { kind: 'once', at: ranAt } }), enabled: false, nextAt: null, lastScheduledAt: ranAt, lastOutcome: 'quiet' });
+  }
+  const live = await client.call('agents.routine.save', { value: routineValue({ name: 'Live review' }) });
+  const block = agentContext(h.core, current()).text;
+  expect(block).toContain(`"Live review" (${live.id})`);
+  expect(block).not.toContain('more: boite mochi routines');
+  expect(block).not.toContain('RRRR');
+
+  // Re-arming a spent routine takes a slot, just like adding one; an edit that leaves it spent takes none.
+  for (let i = 1; i < AGENT_ROUTINES_MAX; i++) await client.call('agents.routine.save', { value: routineValue({ name: `Live ${i}` }) });
+  const spent = h.core.workforce.records.list('routine').find(r => r.lastScheduledAt === ranAt)!;
+  const kept = await client.call('agents.routine.save', { id: spent.id, expectedRevision: spent.revision, value: { ...spent, name: 'Still done' } });
+  const rearm = () => client.call('agents.routine.save', { id: kept.id, expectedRevision: kept.revision, value: { ...kept, schedule: { kind: 'once', at: Date.now() + 3_600_000 } } });
+  expect(await thrown(rearm())).toThrow(`already has ${AGENT_ROUTINES_MAX} routines`);
+  await client.call('agents.routine.remove', { routineId: live.id });
+  expect(await rearm()).toMatchObject({ lastScheduledAt: null });
+});
