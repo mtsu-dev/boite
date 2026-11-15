@@ -153,6 +153,8 @@ test.each(['glass', 'grain'])('pointer clicks open and select models with %s', a
   await page.evaluate(material === 'glass' ? `document.documentElement.dataset.glass = 'acrylic'` : `document.documentElement.dataset.theme = 'grain'`);
   async function pointerClick(selector: string) {
     await page.waitFor(`document.querySelector(${JSON.stringify(selector)})`);
+    // A model row can be clipped by the list's scrollport despite existing in the DOM.
+    await page.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'nearest',inline:'nearest'})`);
     await page.settleAnimations();
     const point = await page.evaluate<{ x: number; y: number }>(`(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return {x:r.left+r.width/2,y:r.top+r.height/2}; })()`);
     await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'left', clickCount: 1 });
@@ -225,17 +227,21 @@ test('favorites survive reload, reasoning has discrete stops, and the context ri
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   await page.navigate(url);
   await page.waitFor(`document.querySelector('[data-testid=composer-picker]')`);
-  // The row draws the meter once the context matters (from 70% used): this thread's is made 75% used.
+  // At 75% used the ring also shows the percentage left.
   await page.evaluate(`globalThis.__boiteTest.workspace.active.openThread.context = { tokens: 150000, window: 200000, at: Date.now() }`);
-  await page.waitFor(`document.querySelector('[data-testid=context-trigger]')`);
+  await page.waitFor(`document.querySelector('[data-testid=context-meter]')?.dataset.percent === '75'`);
   await page.click('[data-testid=context-trigger]');
   await page.waitFor(`document.querySelector('[data-testid=context-compact]') && !document.querySelector('[data-testid=context-compact]').disabled`);
   await capture('context-compact-before.png');
   await page.click('[data-testid=context-compact]');
   await page.waitFor(`document.querySelector('[data-testid=compaction-part][data-trigger=manual]')`);
-  // The compacted context is a few percent used, under the threshold: the meter leaves the row.
-  await page.waitFor(`(() => { const c = globalThis.__boiteTest.workspace.active.openThread.context; return c && c.tokens / c.window < 0.1 && !document.querySelector('[data-testid=context-meter]'); })()`);
+  // Compaction leaves a few percent used: the bare ring still opens its details.
+  await page.waitFor(`(() => { const c = globalThis.__boiteTest.workspace.active.openThread.context; const meter = document.querySelector('[data-testid=context-meter]'); return c && c.tokens / c.window < 0.1 && meter && Number(meter.dataset.percent) < 10 && !meter.querySelector('.percent'); })()`);
+  await page.click('[data-testid=context-trigger]');
+  await page.waitFor(`document.querySelector('[data-testid=context-popup]')`);
   await capture('context-compact-after.png');
+  await page.send('Input.dispatchKeyEvent', {type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+  await page.waitFor(`!document.querySelector('[data-testid=context-popup]')`);
   await page.click('[data-testid=composer-picker]');
   await page.waitFor(`document.querySelector('[data-testid=favorite-model]')`);
   await page.click('[aria-label="Remove from favorites"]');
