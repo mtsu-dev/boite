@@ -57,7 +57,7 @@ test('a phone row that needs you says it beside its dot, and an Activity row rea
   expect([deny.dataset['verb'], deny.classList.contains('secondary'), deny.parentElement!.classList.contains('decision-actions')]).toEqual(['deny', true, true]);
 });
 
-test('a phone list row says its state in a word after its mark, before its time: Needs you, Working, Failed', async () => {
+test('a phone list row says its state in a word after its mark, before its time: Needs you, Failed; work counts its own time', async () => {
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
   const thread = store.threads.find(row => !row.parentThreadId && row.projectId && row.id !== store.openThread?.id)!;
@@ -74,8 +74,17 @@ test('a phone list row says its state in a word after its mark, before its time:
     // The phone has the room: the word always shows, never the desktop's narrow rule.
     expect(shown.classList.contains('fit')).toBe(false);
     const parts = [...shown.parentElement!.children];
-    const at = shown.parentElement!.querySelector('.at')!;
     expect(shown.querySelector(mark)).not.toBeNull();
+    if (state === 'working') {
+      // Work: the clock since the turn began stands for the word, and the last message's age gives way to it.
+      expect(shown.querySelector('.word')).toBeNull();
+      expect(shown.querySelector('[data-testid=thread-elapsed]')?.textContent).toMatch(/^1m 0\ds$/);
+      expect(shown.parentElement!.querySelector('.at')).toBeNull();
+      await unmount(mounted);
+      mounted = undefined;
+      continue;
+    }
+    const at = shown.parentElement!.querySelector('.at')!;
     expect(shown.querySelector('.word')?.textContent).toBe(word);
     // Mark, word, then the time, on the title's line.
     expect(parts.indexOf(at)).toBe(parts.indexOf(shown) + 1);

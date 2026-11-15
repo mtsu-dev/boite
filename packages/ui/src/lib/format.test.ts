@@ -8,6 +8,8 @@ test('elapsed reads like a stopwatch', () => {
   expect(elapsed(281_000)).toBe('4m 41s');
   expect(elapsed(65_000)).toBe('1m 05s');
   expect(elapsed(3_720_000)).toBe('1h 02m');
+  expect(elapsed(86_399_000)).toBe('23h 59m');
+  expect(elapsed((70 * 24 + 16) * 3_600_000 + 4 * 60_000)).toBe('70d 16h');
   expect(elapsed(-5)).toBe('0s');
 });
 

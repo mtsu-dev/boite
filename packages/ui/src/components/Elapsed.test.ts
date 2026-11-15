@@ -39,8 +39,12 @@ test('a settled duration stays frozen and an unknown finish is not fabricated', 
   expect(document.querySelector('[data-testid=agent-elapsed]')).toBeNull();
 });
 
-test('a run past an hour reads in hours and minutes, not thousands of minutes', async () => {
+test('a run past an hour reads in hours and minutes, past a day in days and hours', async () => {
+  component = mount(Elapsed, { target: document.body, props: { startedAt: 0, finishedAt: (5 * 60 + 16) * 60_000 + 29_000, active: false } });
+  flushSync();
+  expect(document.body.textContent?.trim()).toBe('5h 16m');
+  await unmount(component);
   component = mount(Elapsed, { target: document.body, props: { startedAt: 0, finishedAt: (32 * 60 + 16) * 60_000 + 29_000, active: false } });
   flushSync();
-  expect(document.body.textContent?.trim()).toBe('32h 16m');
+  expect(document.body.textContent?.trim()).toBe('1d 08h');
 });

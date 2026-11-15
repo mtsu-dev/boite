@@ -27,11 +27,13 @@
    * its cloud; each mark is followed by its word ("Needs you", "Failed",
    * "Stopped", "Working", "Queued", "Offline") in the row's neutral ink, the hue staying on the mark. News and
    * rest show the time. Work turns, as it does in the thread; a queued turn's
-   * arc waits, still. How long work has run lives in the thread and the tooltip.
+   * arc waits, still. Work also counts its time, second by second: the turn's
+   * clock stands for "Working", the other kinds keep their word and add the
+   * clock after it at a lighter weight, sub-agents put it before their chip.
    * `fit`: the desktop list, where the word stays at every width a user gets by
    * default and the title gives way first (two lines, cut at a word); the word
    * goes only where the title would keep under about 12 characters a line (the
-   * `thread-row` container, ThreadCard.svelte), and the mark stands alone.
+   * `thread-row` container, ThreadCard.svelte), and the mark keeps its clock.
    * `mark`: a column that holds the mark only (Activity's mark column, the
    * palette). In both, the word stays in the tooltip and the accessible name.
    * An archived thread carries no live state: its time alone.
@@ -132,8 +134,10 @@
     {:else if kind === 'error'}<FailMark />
     {:else if kind === 'interrupted'}<Square size={9} fill="currentColor" aria-hidden="true" />
     {:else}<span class="dot" class:needs-dot={kind === 'waiting'} aria-hidden="true"></span>{/if}
-    <!-- Waiting on sub-agents, the chip is the word: the robot and their count, no "Sub-agents" before it. -->
-    {#if !mark && !(kind === 'delegating' && chip && !stale)}<span class="word ui-label" aria-hidden="true">{word}</span>{/if}
+    <!-- Waiting on sub-agents, the chip is the word: the robot and their count, no "Sub-agents" before it.
+         The turn's clock is its word: a ring that turns beside a time can only be the agent at work. -->
+    {#if !mark && !(kind === 'delegating' && chip && !stale) && !(kind === 'working' && spent !== null)}<span class="word ui-label" aria-hidden="true">{word}</span>{/if}
+    {#if !mark && spent !== null}<span class="time ui-label" data-testid="thread-elapsed" aria-hidden="true">{spent}</span>{/if}
     {#if chip}<span class="agents" class:asking={chip.asking} data-testid="thread-subagents" data-count={chip.shown} aria-hidden="true"><Bot size={10} /><span class="ui-label">{chip.shown}</span></span>{/if}
   </span>
 {/if}
@@ -156,6 +160,10 @@
   /* The word takes its mark's hue, so a list says at a glance who waits on the user, what runs and what failed:
      amber for the user's turn, the accent for work, red for a failure. A stop stays neutral. */
   .word { font-weight: 500; }
+  /* The clock after a word keeps its hue at the body's weight, so the word says what runs and the time how long;
+     alone, it is the word. */
+  .time { font-weight: 500; }
+  .word + .time { font-weight: 400; }
   .state.waiting { color: var(--color-live); }
   .state:is(.working, .queued, .delegating, .monitoring, .background, .watching) { color: var(--color-accent); }
   .state.error { color: var(--color-danger); }

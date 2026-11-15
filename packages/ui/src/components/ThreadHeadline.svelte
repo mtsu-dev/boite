@@ -73,6 +73,8 @@
     offline?: boolean;
   } = $props();
   const kind = $derived(threadState(thread, rowAsks(owner, thread.id)));
+  /** Work under way counts its own time beside its mark (ThreadState.svelte): the last message's age would be a second clock. */
+  const counting = $derived(!offline && !thread.archived && stateForm(kind) === 'work' && kind !== 'queued');
   let draft = $derived(!open && hasUnsentDraft(owner.composerStates[thread.id]));
   const prLabel = $derived(pullRequest && pullRequestLabel(pullRequest));
   /** The bot whose work the thread is (its session, its parent's, an entrustment, or a thread on its desk it started
@@ -109,7 +111,7 @@
     </span>
   {/if}
   {#if now !== undefined && (at === undefined || stateForm(thread.archived ? null : kind) !== null)}<ThreadState {thread} {now} subagents={rowAsks(owner, thread.id)} team={owner.subagents(thread.id)} away={owner.connection !== 'ready'} {fit} />{/if}
-  {#if now !== undefined && at !== undefined}<time class="at" title={exactTime(at)}>{ago(at, now)}</time>{/if}
+  {#if now !== undefined && at !== undefined && !counting}<time class="at" title={exactTime(at)}>{ago(at, now)}</time>{/if}
 </span>
 
 <style>
