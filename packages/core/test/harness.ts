@@ -276,3 +276,26 @@ export async function quietAgent(client: { call: Awaited<ReturnType<TestCore['co
   const runtime = await client.call('agents.runtime.get', { agentId: agent.id });
   return client.call('agents.runtime.configure', { agentId: agent.id, expectedRevision: agent.revision, config: { ...runtime, subagents: { ...runtime.subagents, enabled: false }, autoMemory: false } });
 }
+
+/**
+ * Records every query of `h`'s journal that reads `messages` by a full scan (EXPLAIN QUERY PLAN
+ * says SCAN messages): one runs on the event loop and blocks the core for seconds on a large
+ * journal. Returns the SQL seen so far; the wrapper is undone with the core.
+ */
+export function messageScans(h: TestCore): () => string[] {
+  const db = h.core.journal.db;
+  const query = db.query.bind(db);
+  const scans = new Set<string>();
+  db.query = ((sql: string) => {
+    if (/\bmessages\b/.test(sql) && !/^\s*EXPLAIN/i.test(sql)) {
+      const params = Array<string>(sql.split('?').length - 1).fill('x');
+      let plan: string[] = [];
+      // Its own statement, finalized at once: a cached one left open fails the caller's savepoint.
+      const explain = db.prepare(`EXPLAIN QUERY PLAN ${sql}`);
+      try { plan = (explain.all(...params) as { detail: string }[]).map(row => row.detail); } catch { /* named parameters: not judged */ } finally { explain.finalize(); }
+      if (plan.some(detail => /^SCAN messages\b/.test(detail))) scans.add(sql.replace(/\s+/g, ' ').trim());
+    }
+    return query(sql);
+  }) as typeof db.query;
+  return () => [...scans];
+}

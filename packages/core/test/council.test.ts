@@ -13,7 +13,7 @@ import { readOnlyWarning } from '../src/council/store.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnContext, TurnResult } from '../src/drivers/types.ts';
 import { subagentGuide } from '../src/delegation/guide.ts';
-import { echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';
+import { echoThread, messageScans, startTestCore, waitFor, type TestCore } from './harness.ts';
 
 const cores: TestCore[] = [];
 const restores: (() => void)[] = [];
@@ -148,6 +148,7 @@ test('boite delegate debate starts nothing and points to the council, with the e
 test('each member reviews alone, in parallel; the parent gets one message; again starts a fresh round on the same threads', async () => {
   const d = driver();
   const { h, owner, threadId, read } = await setup();
+  const scans = messageScans(h);
   h.core.threads.startTurn(threadId, 'Ask a council about the cache plan');
   await waitFor(() => d.runs.some(run => run.threadId === threadId));
   const cli = await boite(h, threadId, ['delegate', 'council', REQUEST, '--models', 'twin/alpha,twin/beta,twin/gamma']);
@@ -251,6 +252,7 @@ test('each member reviews alone, in parallel; the parent gets one message; again
   expect(d.delivered()).toHaveLength(2);
   expect(await failure(() => owner.call('council.again', { councilId, threadId, changes: 'More' }))).toHaveProperty('message', expect.stringContaining('is over'));
   expect((await boite(h, threadId, ['delegate', 'council', 'table', councilId])).out.trim()).toBe(longer);
+  expect(scans()).toEqual([]);
   expect(h.core.delegation.instructions(threadId, 'ask the council about it')).toContain('delegate council');
 }, 20_000);
 
