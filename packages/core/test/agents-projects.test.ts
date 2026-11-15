@@ -251,8 +251,10 @@ test('a mochi with default settings wakes for a thread it started or watches, an
   expect((await cli(['bot', 'watch', worker])).err).toBe('');
   expect((await owner.call('agents.snapshot', {})).watches.find(w => w.threadId === worker)?.origin).toBe('followed');
   const held = facts().length;
+  const waiting = facts().find(f => f.key.startsWith('turn:') && f.text.includes(worker))!.key;
   await owner.call('turns.start', { threadId: worker, prompt: 'Again B' });
-  await waitFor(() => facts().length === held + 1 && settled(h, worker));
+  // The thread's new turn takes the place of the one that waited for the routine.
+  await waitFor(() => facts().length === held && !facts().some(f => f.key === waiting) && settled(h, worker));
   hurry();
   await waitFor(() => events().length === before + 2 && settled(h, self));
   expect(prompts.get(self)!.at(-1)!).toContain(`Turn done in thread ${worker}`);

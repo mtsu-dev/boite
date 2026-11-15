@@ -197,6 +197,7 @@ test('a machine that does not answer is named unreachable, and its events reach 
   await cli(['thread', 'send', ref, 'Draft it', '--request-id', 'draft-1']);
   const turnFacts = () => facts().filter(fact => fact.key.startsWith(`remote:${pcId}:turn:`));
   await waitFor(() => turnFacts().length === 1);
+  const first = turnFacts()[0]!.key;
 
   // The bot's machine goes away while pc has an event for it: the event waits there.
   const real = pc.core.coordination.request.bind(pc.core.coordination);
@@ -211,9 +212,10 @@ test('a machine that does not answer is named unreachable, and its events reach 
   expect(turnFacts()).toHaveLength(1);
 
   // It is back: its next request tells pc so, and what waited goes at once rather than after the 5 s retry.
+  // The thread's new turn takes the place of the one still waiting (`wake-pace.ts`).
   away = false;
   await cli(['threads']);
-  await waitFor(() => turnFacts().length === 2, 3_000);
+  await waitFor(() => turnFacts().length === 1 && turnFacts()[0]!.key !== first, 3_000);
   await waitFor(() => pc.core.workforce.groupHost.outbox(deskId).length === 0);
 
   // pc stops answering at all: the bot reads its name and why, never a silent empty list.

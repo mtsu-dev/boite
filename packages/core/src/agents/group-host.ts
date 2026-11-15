@@ -25,6 +25,7 @@ import { MAX_BODY, PeerRefusal, type BotOperation } from '../coordination-wire.t
 import { invalidParams, messageOf, refused } from '../errors.ts';
 import { checkStartFields } from '../threads/group-spawn.ts';
 import type { Steward } from './projects.ts';
+import { answersMochi, restartsAlone } from './wake-pace.ts';
 
 /** What this machine answers while its owner has not let the bots of the group look after its projects. */
 export const GROUP_BOTS_OFF = 'groupBots is off on this machine';
@@ -68,6 +69,8 @@ export interface BotEvent {
   started?: true;
   status?: Turn['status'];
   answer?: string | null;
+  /** The turn answered a letter from the bot itself: it is told after the first step of its pace, not the thread's (`wake-pace.ts`). */
+  mochi?: true;
   question?: { id: string; text: string; options: { id: string; label: string }[] };
   permission?: { tool: string; description: string | null };
 }
@@ -417,12 +420,21 @@ export class GroupBotHost {
     if (turn.status === 'queued' || turn.status === 'running') return;
     const thread = this.#core.journal.getThread(turn.threadId);
     if (thread === null || thread.archived) return;
-    for (const { coreId, lease, follows, started } of this.#concerned(thread)) {
-      // As on its own machine: a followed thread reports every turn, the others only when they fail.
-      if (!follows && turn.status !== 'error') continue;
-      const answer = this.#core.delegation.result(turn);
-      this.#push(coreId, { agentId: lease.agentId, kind: 'turn', key: `turn:${turn.id}`, row: this.#core.workforce.projects.row(thread), status: turn.status, answer: answer === null ? null : cut(answer, TEXT_MAX), ...(started ? { started: true as const } : {}) });
-    }
+    // As on its own machine: a followed thread reports every turn, the others only when they fail.
+    const concerned = this.#concerned(thread).filter(({ follows }) => follows || turn.status === 'error');
+    if (concerned.length === 0) return;
+    // Read once every listener of `turn.finished` ran, and not at all when the thread goes on by itself (`restartsAlone`).
+    queueMicrotask(() => {
+      if (this.#closed || this.#core.journal.isClosed()) return;
+      try {
+        if (restartsAlone(this.#core, turn)) return;
+        const answer = this.#core.delegation.result(turn);
+        const mochi = answersMochi(this.#core, turn);
+        for (const { coreId, lease, started } of concerned) {
+          this.#push(coreId, { agentId: lease.agentId, kind: 'turn', key: `turn:${turn.id}`, row: this.#core.workforce.projects.row(thread), status: turn.status, answer: answer === null ? null : cut(answer, TEXT_MAX), ...(started ? { started: true as const } : {}), ...(mochi ? { mochi: true as const } : {}) });
+        }
+      } catch (error) { this.#core.log('warn', `group bot turn event ${turn.id}: ${messageOf(error)}`); }
+    });
   }
 
   #onQuestion(question: QuestionRequest): void {

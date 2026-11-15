@@ -36,6 +36,7 @@ import { DESCENDANTS_DEPTH, deskLinks, deskPullRequest, descendantLinks } from '
 import { NOTICE_BATCH_MS } from './runtime.ts';
 import type { AgentStore } from './store.ts';
 import { quoted } from './validation.ts';
+import { answersMochi, cutAnswer, restartsAlone } from './wake-pace.ts';
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -733,12 +734,14 @@ export class AgentProjects {
   /**
    * A fact for the agent's next event turn (`AgentRuntime.fact`), about the
    * threads it names: `threadIds`, else the ids in its text. It is urgent when
-   * one of them is on the desk as started, entrusted or watched.
+   * one of them is on the desk as started, entrusted or watched. `turn`: a
+   * thread's finished turn, one per thread, with the shorter text it carries
+   * when it waits for a routine; `paced` waits that thread's step (`wake-pace.ts`).
    */
-  notify(agent: AgentProfile, key: string, text: string, delay = NOTICE_BATCH_MS, threadIds?: ThreadId[]): boolean {
+  notify(agent: AgentProfile, key: string, text: string, delay: number | 'paced' = NOTICE_BATCH_MS, threadIds?: ThreadId[], turn?: { paced: string; brief: string }): boolean {
     if (this.#closed) return false;
     const urgent = this.#core.agentRuntime.factThreads({ text, threadIds }).some(id => this.urgent(agent.id, id));
-    return this.#core.agentRuntime.fact(agent.id, { key, text: trimmed(text, NOTICE_TEXT + 500), delay, threadIds, urgent });
+    return this.#core.agentRuntime.fact(agent.id, { key, text: trimmed(text, NOTICE_TEXT + 500), ...(delay === 'paced' ? {} : { delay }), threadIds, urgent, ...(turn ? { paced: turn.paced, brief: trimmed(turn.brief, NOTICE_TEXT + 500) } : {}) });
   }
 
   /**
@@ -770,13 +773,31 @@ export class AgentProjects {
     if (turn.status === 'queued' || turn.status === 'running') return;
     const thread = this.#core.journal.getThread(turn.threadId);
     if (!this.#watched(thread)) return;
-    for (const agent of this.#concerned(thread)) {
-      // Threads it follows report every turn; the others only when they fail.
-      if (!this.follows(agent.id, thread.id) && turn.status !== 'error') continue;
-      const answer = this.#core.delegation.result(turn);
-      const pr = thread.pullRequest ? `\nPull request #${thread.pullRequest.number} ${thread.pullRequest.state}: ${quoted(thread.pullRequest.url)}` : '';
-      this.notify(agent, `turn:${turn.id}`, `Turn ${turn.status} in thread ${thread.id}, titled ${quoted(thread.title)}.${pr}\n${answer === null ? 'No text answer.' : `Its final answer: ${quoted(trimmed(answer, NOTICE_TEXT))}`}`, NOTICE_BATCH_MS, [thread.id]);
-    }
+    const concerned = this.#concerned(thread).filter(agent => this.follows(agent.id, thread.id) || turn.status === 'error');
+    if (concerned.length === 0) return;
+    // Read once every listener of `turn.finished` ran: a goal's end or the next turn already queued.
+    queueMicrotask(() => {
+      if (this.#closed || this.#core.journal.isClosed()) return;
+      try { this.#tellTurn(turn, thread, concerned); }
+      catch (error) { this.#core.log('warn', `mochi turn event ${turn.id}: ${messageOf(error)}`); }
+    });
+  }
+
+  /**
+   * A followed thread's turn reaches its mochis, a failure any mochi of its
+   * project; none when the thread goes on by itself (`restartsAlone`). A
+   * failure waits the usual batch delay, a finished turn the thread's pace,
+   * but the answer to the mochi's own letter only the first step.
+   */
+  #tellTurn(turn: Turn, thread: ThreadSummary, concerned: readonly AgentProfile[]): void {
+    if (restartsAlone(this.#core, turn)) return;
+    const answer = this.#core.delegation.result(turn);
+    const pr = thread.pullRequest ? `\nPull request #${thread.pullRequest.number} ${thread.pullRequest.state}: ${quoted(thread.pullRequest.url)}` : '';
+    const head = `Turn ${turn.status} in thread ${thread.id}, titled ${quoted(thread.title)}.${pr}\n`;
+    const text = `${head}${answer === null ? 'No text answer.' : `Its final answer: ${quoted(trimmed(answer, NOTICE_TEXT))}`}`;
+    const paced = turn.status === 'error' ? undefined : { paced: thread.id, brief: `${head}${answer === null ? 'No text answer.' : `Its final answer: ${quoted(cutAnswer(answer, thread.id))}`}` };
+    const delay = paced && !answersMochi(this.#core, turn) ? 'paced' as const : NOTICE_BATCH_MS;
+    for (const agent of concerned) this.notify(agent, `turn:${turn.id}`, text, delay, [thread.id], paced);
   }
 
   #noticeQuestion(question: QuestionRequest): void {

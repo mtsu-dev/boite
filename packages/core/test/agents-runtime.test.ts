@@ -15,6 +15,7 @@ import { agentContext } from '../src/agents/context.ts';
 import { runCheck } from '../src/agents/checks.ts';
 import { botCommand } from '../src/agents/cli.ts';
 import { LIMIT_RESUME } from '../src/threads/limit-resume.ts';
+import { AUTO_CONTINUE } from '../src/threads/auto-continue.ts';
 import { costing, makeAgent, scripted, settled, turnsOf } from './agent-fixture.ts';
 import { startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
@@ -520,8 +521,12 @@ test('scheduled-only mochis retain facts across runtime restart and failed admis
   await waitFor(() => read(saved.id).lastOutcome === 'done');
   const message = h.core.journal.listMessages(threadId).find(m => m.turnId === read(saved.id).lastTurnId && m.role === 'system')!;
   const text = message.parts[0]?.type === 'text' ? message.parts[0].text : '';
-  expect(text).toContain('MARKER_0');
+  // Newest first under the cap of an event wake; the facts left out are counted, and spent with the rest.
+  expect(text.slice(text.indexOf('Events from Boite')).length).toBeLessThanOrEqual(EVENT_PROMPT_MAX);
   expect(text).toContain('MARKER_64');
+  expect(text).not.toContain('MARKER_1 ');
+  const listed = (text.match(/MARKER_\d+/g) ?? []).length;
+  expect(text).toContain(`${65 - listed} other threads changed too and are not listed here`);
   expect(text).not.toContain('REVOKED_FACT');
   expect(runtime().facts(agent.id)).toHaveLength(0);
   const next = runtime().attempt(agent, wake).turn!;
@@ -648,30 +653,97 @@ test('routine fact consumption rolls back before any driver starts and commits b
   expect(turnsOf(h, threadId)).toHaveLength(before + 1);
 });
 
-test('urgent facts still spend facts skipped for budget or failed admission, without a later retry', async () => {
-  const driver = scripted(() => ({ text: 'Seen.', usage: costing(0.5) })); restore = driver.restore;
+test('facts a wake did not deliver wait for the next one: skipped for the budget, refused admission, or failed before its agent answered', async () => {
+  let failing = true;
+  const driver = scripted(ctx => ctx.prompt.includes('FAILS_ONCE') && failing ? { status: 'error', usage: costing(0.5) } : { text: '[quiet] seen', usage: costing(0.5) }); restore = driver.restore;
   const { agent, threadId } = await makeAgent(h, client);
   const config = await client.call('agents.runtime.get', { agentId: agent.id });
   const save = (dailyBudgetUsd: number | null) => client.call('agents.runtime.configure', { agentId: agent.id, expectedRevision: h.core.workforce.records.get('profile', agent.id).revision, config: { ...config, dailyBudgetUsd } });
   const tick = () => (h.core.agentRuntime as unknown as { tick(): void }).tick();
-  const before = turnsOf(h, threadId).length;
+  const held = () => (h.core.agentRuntime as unknown as { pending: Map<string, { facts: { key: string; notBefore: number; tries?: number }[] }> }).pending.get(agent.id)?.facts ?? [];
+  const hurry = () => { for (const fact of held()) fact.notBefore = 0; tick(); };
+  const events = () => turnsOf(h, threadId).filter(t => t.execution?.operation === 'event');
+  const prompts = () => driver.prompts.get(threadId) ?? [];
+  const before = events().length;
   await save(0.4);
-  h.core.agentRuntime.fact(agent.id, { urgent: true, key: 'budget', text: 'Over budget.', delay: 0, threadIds: [] });
+  // Today's turns already passed the budget: the wake is skipped and its fact waits, a minute first.
+  await client.call('turns.start', { threadId, prompt: 'Spend.' });
+  await waitFor(() => settled(h, threadId));
+  h.core.agentRuntime.fact(agent.id, { urgent: true, key: 'budget', text: 'OVER_BUDGET', delay: 0, threadIds: [] });
+  const skipped = Date.now();
   tick();
-  expect(h.core.agentRuntime.facts(agent.id)).toHaveLength(0);
+  expect(held()).toEqual([expect.objectContaining({ key: 'budget', tries: 1 })]);
+  expect(held()[0]!.notBefore).toBeGreaterThanOrEqual(skipped + 60_000);
+  expect(events()).toHaveLength(before);
+  // Admission refused: it stays too, a step later.
   await save(null);
-  tick();
-  expect(turnsOf(h, threadId)).toHaveLength(before);
   const begin = h.core.threads.startTurn;
   h.core.threads.startTurn = () => { throw new Error('Admission unavailable'); };
-  try {
-    h.core.agentRuntime.fact(agent.id, { urgent: true, key: 'failed', text: 'Failed admission.', delay: 0, threadIds: [] });
-    tick();
-    expect(h.core.agentRuntime.facts(agent.id)).toHaveLength(0);
-  } finally { h.core.threads.startTurn = begin; }
+  try { hurry(); } finally { h.core.threads.startTurn = begin; }
+  expect(held()).toEqual([expect.objectContaining({ key: 'budget', tries: 2 })]);
+  expect(events()).toHaveLength(before);
+  // The next wake carries it.
+  hurry();
+  await waitFor(() => events().length === before + 1 && settled(h, threadId));
+  expect(prompts().at(-1)).toContain('OVER_BUDGET');
+  expect(held()).toEqual([]);
+  // A wake that started but failed before its agent answered gives its facts back; the next one delivers them once.
+  // No resume follows here (the carry-on resumes are spent), so they wait for the next wake.
+  const delays = AUTO_CONTINUE.delaysMs;
+  AUTO_CONTINUE.delaysMs = [];
+  const previous = restore;
+  restore = () => { AUTO_CONTINUE.delaysMs = delays; previous?.(); };
+  h.core.agentRuntime.fact(agent.id, { urgent: true, key: 'failed', text: 'FAILS_ONCE', delay: 0, threadIds: [] });
   tick();
-  expect(turnsOf(h, threadId)).toHaveLength(before);
-});
+  await waitFor(() => events().length === before + 2 && settled(h, threadId));
+  expect(events().at(-1)!.status).toBe('error');
+  await waitFor(() => held().length === 1);
+  expect(held()[0]).toMatchObject({ key: 'failed', tries: 1 });
+  failing = false;
+  hurry();
+  await waitFor(() => events().length === before + 3 && settled(h, threadId));
+  expect(events().at(-1)!.status).toBe('done');
+  expect(prompts().at(-1)).toContain('FAILS_ONCE');
+  expect(held()).toEqual([]);
+  tick();
+  expect(events()).toHaveLength(before + 3);
+}, 15_000);
+
+test('a failed wake the core resumes by itself delivers its facts once: they wait for the resume, which spends them', async () => {
+  const delays = AUTO_CONTINUE.delaysMs;
+  const startDelay = AUTO_CONTINUE.startDelayMs;
+  AUTO_CONTINUE.delaysMs = [1_500, 1_500];
+  AUTO_CONTINUE.startDelayMs = 0;
+  let failing = true;
+  const driver = scripted(ctx => ctx.prompt.includes('FAILS_ONCE') && failing ? { status: 'error' } : { text: '[quiet] seen' });
+  restore = () => { AUTO_CONTINUE.delaysMs = delays; AUTO_CONTINUE.startDelayMs = startDelay; driver.restore(); };
+  const { agent, threadId } = await makeAgent(h, client);
+  const tick = () => (h.core.agentRuntime as unknown as { tick(): void }).tick();
+  const held = () => (h.core.agentRuntime as unknown as { pending: Map<string, { facts: { key: string; notBefore: number }[] }> }).pending.get(agent.id)?.facts ?? [];
+  const hurry = () => { for (const fact of held()) fact.notBefore = 0; tick(); };
+  const events = () => turnsOf(h, threadId).filter(t => t.execution?.operation === 'event');
+  const told = () => (driver.prompts.get(threadId) ?? []).filter(prompt => prompt.includes('FAILS_ONCE')).length;
+  await waitFor(() => settled(h, threadId));
+  const before = events().length;
+  h.core.agentRuntime.fact(agent.id, { urgent: true, key: 'failed', text: 'FAILS_ONCE', delay: 0, threadIds: [] });
+  tick();
+  // The wake fails before its agent answers: its fact comes back, and the core plans to resume the wake.
+  await waitFor(() => events().length === before + 1 && settled(h, threadId) && held().length === 1 && h.core.threads.resumes.planned(threadId));
+  expect(events().at(-1)!.status).toBe('error');
+  failing = false;
+  // While that resume stands, the fact does not start a wake of its own.
+  hurry();
+  await Bun.sleep(300);
+  expect(events()).toHaveLength(before + 1);
+  // The resume reads the failed prompt again and spends the fact with it; no later wake tells it again.
+  await waitFor(() => turnsOf(h, threadId).at(-1)!.execution?.operation === 'resume' && settled(h, threadId), 10_000);
+  expect(turnsOf(h, threadId).at(-1)!.status).toBe('done');
+  expect(held()).toEqual([]);
+  hurry();
+  await Bun.sleep(700);
+  expect(events()).toHaveLength(before + 1);
+  expect(told()).toBe(1);
+}, 20_000);
 
 test('a mochi whose provider is turned off keeps its facts and letters, names the fix in its status, and runs them once the provider is back', async () => {
   const driver = scripted(() => ({ text: 'Seen.' })); restore = driver.restore;
