@@ -388,9 +388,9 @@
       const id = node.dataset['mid'];
       if (!id) continue;
       // The box is measured already: `offsetHeight` would lay out, mid-scroll, what the window just mounted. Fractions
-      // stay (rounded, each row above the reader left it up to half a pixel off); a continued message sits a gap under.
+      // stay (rounded, each row above the reader left it up to half a pixel off); a continued message sits a gap under,
+      // written only when it changed: the same value again is still a DOM mutation, one per row after every open.
       const gap = slotGap(node.dataset['seam'], node.dataset['rest'] !== undefined);
-      // Written only when it changed: the same value again is still a DOM mutation, one per row after every open.
       if (node.dataset['gap'] !== String(gap)) node.dataset['gap'] = String(gap);
       const next = (entry.borderBoxSize?.[0]?.blockSize ?? node.offsetHeight) + gap;
       const at = slots.indexOf(rows, id);
@@ -429,11 +429,9 @@
     // The gap its slot will be measured with, set with the row: the first measure then changes nothing on the page.
     node.dataset['gap'] = String(slotGap(joined, !row.first));
     if (!row.first) { node.dataset['rest'] = ''; node.dataset['message'] = row.message.id; }
-    // A message rises as it arrives at the bottom being watched. One that a
-    // scroll up the history brings into the window is already there: rising
-    // then animated every message a fast scroll crossed.
-    // The core's copy of a prompt sent from here replaces the row already on
-    // screen: same height, and it does not rise a second time.
+    // A message rises as it arrives at the bottom being watched. One that a scroll up the history brings into the window
+    // is already there: rising then animated every message a fast scroll crossed. The core's copy of a prompt sent from
+    // here replaces the row already on screen: same height, and it does not rise a second time.
     const local = row.first ? store.landedFrom?.(id) : undefined;
     if (local !== undefined && risen.has(local)) {
       risen.add(id);
