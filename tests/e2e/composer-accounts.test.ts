@@ -29,6 +29,8 @@ test('queued prompts keep their thread, and browser project and account actions 
     const firstDone = client.next('turn.finished', (turn) => { if (turn.threadId !== a.id) return false; firstTurn ??= turn.id; return true; }, 60_000);
     const queuedDone = client.next('turn.finished', (turn) => turn.threadId === a.id && firstTurn !== undefined && turn.id !== firstTurn, 60_000);
     await page.type(selector('composer-input'), 'hold here [sleep:15000]');
+    // The title comes from the sidebar's row at once; Send stays disabled until the thread's first page is read, and a click on it then does nothing.
+    await page.waitFor('document.querySelector("[data-testid=composer-send]")?.disabled === false');
     await page.click(selector('composer-send'));
     await page.waitFor('document.querySelector("[data-testid=thread-header][data-status]")?.dataset.status === "running"');
     await page.type(selector('composer-input'), 'queued only for A');

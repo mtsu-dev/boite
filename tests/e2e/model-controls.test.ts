@@ -153,12 +153,17 @@ test.each(['glass', 'grain'])('pointer clicks open and select models with %s', a
   await page.evaluate(material === 'glass' ? `document.documentElement.dataset.glass = 'acrylic'` : `document.documentElement.dataset.theme = 'grain'`);
   async function pointerClick(selector: string) {
     await page.waitFor(`document.querySelector(${JSON.stringify(selector)})`);
+    // The picker opens upward here and says "reading models" under its rows while it asks the agent again:
+    // when that line leaves, every row moves down by its height, away from a point measured before.
+    await page.waitFor(`!document.querySelector('[data-testid=picker-probing]')`);
     await page.settleAnimations();
     const point = await page.evaluate<{ x: number; y: number }>(`(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return {x:r.left+r.width/2,y:r.top+r.height/2}; })()`);
     await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'left', clickCount: 1 });
     await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button: 'left', clickCount: 1 });
   }
   await pointerClick('[data-testid=composer-picker]');
+  // The menu is a chunk of its own, fetched by the first open after a load: it draws once that lands.
+  await page.waitFor(`document.querySelector('[data-testid=composer-picker-menu]')`);
   await capture(`picker-pointer-${material}.png`);
   const bounds = await page.evaluate<any>(`(() => { const r=document.querySelector('[data-testid=composer-picker-menu]').getBoundingClientRect(); return {top:r.top,bottom:r.bottom,height:innerHeight}; })()`);
   expect(bounds.top).toBeGreaterThanOrEqual(0);
