@@ -50,9 +50,9 @@
     {#if store === workspace.primary}<PluginSlotButtons slot="sidebar" threadId={store.openThread?.id ?? null} compact />{/if}
     <DisplayOptions {entries} {target} owner={targetOwner} {filters} word onaddproject={addProject} />
     {#if entries.length}
-      <button class="ghost icon small search" title={`${strings.sidebar.search}${store.keyHint('palette')}`} aria-label={strings.sidebar.search} data-testid="sidebar-search-open" onclick={() => store.paletteOpen = true}><Search size={16} /></button>
-      {#if addProject}<button class="ghost icon small add-project" title={strings.sidebar.addProject} aria-label={strings.sidebar.addProject} data-testid="head-add-project" onclick={addProject}><FolderPlus size={16} /></button>{/if}
-      <button class="ghost icon small" title={`${newLabel}${store.keyHint('new-thread')}`} aria-label={newLabel} data-testid="new-thread" onclick={create}><Plus size={16} /></button>
+      <button class="ghost icon search" title={`${strings.sidebar.search}${store.keyHint('palette')}`} aria-label={strings.sidebar.search} data-testid="sidebar-search-open" onclick={() => store.paletteOpen = true}><Search size={16} /></button>
+      {#if addProject}<button class="ghost icon add-project" title={strings.sidebar.addProject} aria-label={strings.sidebar.addProject} data-testid="head-add-project" onclick={addProject}><FolderPlus size={16} /></button>{/if}
+      <button class="ghost icon" title={`${newLabel}${store.keyHint('new-thread')}`} aria-label={newLabel} data-testid="new-thread" onclick={create}><Plus size={16} /></button>
     {/if}
   </div>
 </div>
@@ -64,14 +64,12 @@
   /* The switch keeps its width and 4 px clear of Filter: shrunk, its segment ran under Filter's focus ring. */
   .list-head { display: flex; align-items: center; gap: 4px; min-width: 0; height: 36px; margin-top: 10px; padding: 0; }
   .title { display: flex; flex: 1 0 auto; min-width: 0; margin: 0; font-size: var(--text-sm); font-weight: 500; color: var(--color-foreground); }
-  /* The bar's glyph size: 16 px as the sidebar fold and the panel door across the bar, not `button.small`'s 14. */
   .actions { display: flex; align-items: center; gap: 2px; flex: none; }
-  .actions :global(button) { --button-icon: 16px; }
   /* A pointer's full 32 px target each. */
   .actions :global(button.icon) { flex: none; width: 32px; height: 32px; border-radius: var(--radius-md); color: var(--color-muted-foreground); }
   .actions :global(button.icon:hover) { color: var(--color-foreground); }
   /* Filter: its glyph and its word, 32 px high as the glyphs beside it. */
-  .actions :global(button.worded) { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 32px; padding: 0 8px 0 6px; border-radius: var(--radius-md);
+  .actions :global(button.worded) { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 32px; padding: 0 7px; border-radius: var(--radius-md);
     font-size: var(--text-sm); font-weight: 500; color: var(--color-muted-foreground); white-space: nowrap; }
   .actions :global(button.worded:hover) { color: var(--color-foreground); }
   /* Its ring inside its own edge, as a row's: the 4 px beside the switch stay clear. */
@@ -98,10 +96,5 @@
   @media (max-width: 720px) {
     /* `button.icon` grows to the touch target on a phone. */
     .actions :global(button.icon) { width: var(--touch-target); height: var(--touch-target); }
-    /* Four 44 px targets and the switch overran the 319 px drawer and clipped New thread: Filter keeps its glyph,
-       its word for screen readers, and the targets touch, their glyphs still 28 px apart. */
-    .actions { gap: 0; }
-    .actions :global(button.worded) { width: var(--touch-target); height: var(--touch-target); padding: 0; justify-content: center; }
-    .actions :global(button.worded .word) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   }
 </style>
