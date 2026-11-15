@@ -52,26 +52,36 @@ export function trackThreadPullRequest(input: () => { owner: Store; thread: Thre
     }
   }
 
+  // Primitives only: a summary or a full conversation replacing the object with the same
+  // checkout must not reset the badge and ask the core again.
+  const checkoutKey = $derived.by(() => {
+    const { owner, thread } = input();
+    return owner.threadKey(thread.id) + JSON.stringify([thread.cwd, thread.branch]);
+  });
+  const ready = $derived.by(() => {
+    const { owner, hidden } = input();
+    return owner.connection === 'ready' && !hidden;
+  });
+  const active = $derived(threadActive(input().thread.status));
+  const client = $derived(input().owner.client);
   $effect(() => {
-    const { owner, thread, hidden } = input();
-    const identity = { client: owner.client, id: thread.id, cwd: thread.cwd, branch: thread.branch };
-    const ready = owner.connection === 'ready' && !hidden;
-    const key = owner.threadKey(identity.id) + JSON.stringify([identity.cwd, identity.branch]);
+    const key = checkoutKey;
+    const live = ready;
+    const connected = client;
     untrack(() => {
       value = knownPullRequest(key);
       loading = false;
       links = [];
       linkSignature = undefined;
       recheck = false;
-      if (ready && identity.client) void refresh();
+      if (live && connected) void refresh();
     });
     return () => { revision++; };
   });
   $effect(() => {
-    const { owner, thread, hidden } = input();
-    const client = owner.client;
-    if (!client || owner.connection !== 'ready' || hidden) return;
-    return watchPullRequests(client, () => void refresh(), threadActive(thread.status) ? WORKING_PULL_REQUEST_POLL_MS : PULL_REQUEST_POLL_MS);
+    const connected = client;
+    if (!connected || !ready) return;
+    return watchPullRequests(connected, () => void refresh(), active ? WORKING_PULL_REQUEST_POLL_MS : PULL_REQUEST_POLL_MS);
   });
   $effect(() => {
     const { owner, thread, hidden } = input();
@@ -94,9 +104,15 @@ export function trackThreadPullRequest(input: () => { owner: Store; thread: Thre
       else if (!links.length) void refresh();
     });
   });
+  // A turn that ended may have opened a pull request; one that starts has not yet, and the
+  // working cadence asks while it runs.
+  let wasActive: boolean | undefined;
   $effect(() => {
-    const status = input().thread.status;
-    untrack(() => { void status; void refresh(); });
+    const now = active;
+    untrack(() => {
+      if (wasActive === true && !now) void refresh();
+      wasActive = now;
+    });
   });
   return { get value() { return value; }, get loading() { return loading; }, refresh };
 }

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import ContextModeBadge from './ContextModeBadge.svelte';
   import MachineIcon from './MachineIcon.svelte';
   import { Pause, Play, Plus, RotateCcw, Settings, Square, Trash2, Workflow } from '@lucide/svelte';
@@ -57,9 +58,13 @@
   $effect(() => {
     const threadId = openThreadId;
     settings = false;
-    if (!threadId) return;
-    void store.loadDelegation(threadId);
-    void store.loadWorkflows(threadId);
+    // Loaded again when the machine is back. The loads read the open conversation itself: tracked, its
+    // full copy replacing the row a click drew would ask for both a second time.
+    if (!threadId || store.connection !== 'ready') return;
+    untrack(() => {
+      void store.loadDelegation(threadId, { join: true });
+      void store.loadWorkflows(threadId, { join: true });
+    });
   });
 
   function showRun(runId: string | undefined): void {

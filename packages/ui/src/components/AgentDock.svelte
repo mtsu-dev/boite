@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { ChevronDown, Workflow } from '@lucide/svelte';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
@@ -35,8 +36,19 @@
   let native = $derived(root ? (store.delegation?.nativeAgents ?? []).filter(agent => agent.status === 'running') : []);
   let runs = $derived(store.workflowsOf(threadId).filter(run => run.status === 'running' && run.rootThreadId === threadId));
 
-  $effect(() => { void store.loadDelegation(threadId); });
-  $effect(() => { void store.loadWorkflows(threadId); });
+  // Once this conversation is the open one, and again when the machine is back; the full
+  // conversation replacing the row a click drew is no reason to ask.
+  // `threadId` is read through the parent's conversation object: the derived compares the id alone.
+  let id = $derived(threadId);
+  let opened = $derived(store.openThread?.id === id);
+  $effect(() => {
+    const target = id;
+    if (!opened || store.connection !== 'ready') return;
+    untrack(() => {
+      void store.loadDelegation(target, { join: true });
+      void store.loadWorkflows(target, { join: true });
+    });
+  });
 
   let agents = $derived(active.length + native.length);
   let count = $derived(agents + runs.length);

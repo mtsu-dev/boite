@@ -22,7 +22,7 @@ import type { EventFrames, SocketData } from './server/connection.ts';
 import { OUTBOUND_MAX_BUFFERED_BYTES, ServerConnection } from './server/connection.ts';
 import { loadRowSender } from './server/load-rows.ts';
 import { clientField, logConnectionClosed } from './server/connection-log.ts';
-import { handleFrame, refuseFrame } from './server/frame.ts';
+import { handleFrame, isLivenessHello, refuseFrame } from './server/frame.ts';
 import { authenticateToken } from './server/hello.ts';
 import { FrameQueue } from './server/frame-queue.ts';
 import { NetworkWatch, ownerPresent } from './network-watch.ts';
@@ -678,8 +678,8 @@ export function startServer(options: ServerOptions): RunningServer {
           return;
         }
         const text = typeof raw === 'string' ? raw : raw.toString();
-        // Hello remains immediate and bounded by the pre-auth frame limit.
-        const frame = connection.authenticated ? incoming.enqueue(connection, text) : handleFrame(core, connection, text);
+        // Hello remains immediate and bounded by the pre-auth frame limit, the liveness probe too.
+        const frame = connection.authenticated && !isLivenessHello(text) ? incoming.enqueue(connection, text) : handleFrame(core, connection, text);
         frames.add(frame);
         void frame.catch((error: unknown) => core.log('error', messageOf(error))).finally(() => frames.delete(frame));
       },
