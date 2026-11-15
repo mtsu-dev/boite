@@ -47,9 +47,9 @@ test('Providers keeps installation details and updates the managed copy that run
   store.draft = null;
   await mountOnFake();
   query<HTMLButtonElement>('[data-testid=nav-settings]').click();
-  await waitFor(() => document.querySelector('[data-testid=settings-tab-ai]') !== null);
-  // The nav entry is named after what the page is about; the name from before still opens it.
-  expect(query('[data-testid=settings-tab-ai]').textContent?.trim()).toBe('AI accounts');
+  await waitFor(() => document.querySelector('[data-testid=settings-tab-accounts]') !== null);
+  // The nav entry is named after what the page is now about.
+  expect(query('[data-testid=settings-tab-accounts]').textContent?.trim()).toBe('Providers');
 
   query<HTMLButtonElement>('[data-testid=settings-tab-accounts]').click();
   // One Antigravity row, the download Boite manages.
@@ -68,24 +68,18 @@ test('Providers keeps installation details and updates the managed copy that run
   await waitFor(() => store.harnessUpdates.some((update) => update.providerId === 'opencode'));
   expect(store.harnessUpdates.find((update) => update.providerId === 'opencode')?.route).toBe('self');
   expect(document.querySelector(`${behind} [data-testid=install-update]`)).toBeNull();
-  // The agents' versions sit on the Version page, beside the app's own.
-  expect(document.querySelector('[data-testid=machine-agent-update]')).toBeNull();
-  query<HTMLButtonElement>('[data-testid=settings-tab-version]').click();
   await waitFor(() => document.querySelector('[data-testid=machine-agent-update][data-provider-id=opencode]') !== null);
   expect(document.querySelector('[data-testid=machine-agent-update][data-provider-id=opencode] [data-testid=install-update]')).toBeNull();
   expect(query('[data-testid=machine-agent-update][data-provider-id=opencode] .version').textContent).toBe('1.18.31');
 
-  // The provider's row says whose copy runs; its version and its update sit in Version's agent card.
+  // The provider's row says whose copy runs; its version and its update sit in the page's agent card.
   store.harnessUpdates = store.harnessUpdates.filter((update) => update.providerId !== 'opencode');
-  query<HTMLButtonElement>('[data-testid=settings-tab-accounts]').click();
-  await waitFor(() => document.querySelector(behind) !== null);
   await openProviderDetails('opencode');
   expect(query(`${behind} [data-testid=install-status]`).textContent?.trim()).toBe('Installed by Boite');
   expect(document.querySelector(`${behind} [data-testid=install-remove]`)).not.toBeNull();
   expect(document.querySelector(`${behind} [data-testid=install-update]`)).toBeNull();
 
   const update = '[data-testid=machine-agent-update][data-provider-id=opencode]';
-  query<HTMLButtonElement>('[data-testid=settings-tab-version]').click();
   await waitFor(() => document.querySelector(`${update} [data-testid=install-update]`) !== null);
   expect(query(`${update} [data-testid=install-update]`).textContent?.trim()).toBe('Update');
   expect(query(update).textContent).toContain('0.4.12 → 0.5.0');

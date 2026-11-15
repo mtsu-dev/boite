@@ -57,12 +57,12 @@ export const strings = {
     panelMenu: 'Panels',
     /** The open door, which names the panel and switches it. */
     panelSwitch: '{name}: switch or close the panel',
-    /** A thread menu's second level, named by what a user does there: the bot rows, then the folder (branch, move, path, pull request). The new title sits by Rename. */
-    manage: 'Move to a project or a bot',
-    /** The same with no bot row (bots off, none to give it to). */
+    /** A thread menu's second level, named by what a user does there: the mochi rows, then the folder (branch, move, path, pull request). The new title sits by Rename. */
+    manage: 'Move to a project or a mochi',
+    /** The same with no mochi row (mochis off, none to give it to). */
     manageNoBot: 'Move to a project',
     /** The same with no move row (a phone that cannot move it, a thread that cannot move). */
-    manageNoFolder: 'Give to a bot',
+    manageNoFolder: 'Give to a mochi',
     /** The same with neither: the folder's branch, path and pull request. */
     manageTitle: 'Folder and branch',
     /** A desktop header's project crumb: back to the thread list, at this thread. */

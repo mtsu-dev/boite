@@ -8,7 +8,7 @@ import type { CoreClient } from '../src/client.ts';
 import { getDriver } from '../src/drivers/index.ts';
 import { choiceFor, mintUuidV7, museExecutable, museHostArgs } from '../src/drivers/muse.ts';
 import { setMuseStartupDeadlineForTests } from '../src/drivers/muse/session.ts';
-import { startTestCore, waitFor } from './harness.ts';
+import { startTestCore, startTurn, waitFor } from './harness.ts';
 import type { TestCore } from './harness.ts';
 import { countLogLines, countProcesses, readScriptedLog, writeScriptedProvider } from './scripted-provider.ts';
 
@@ -17,8 +17,7 @@ const FAKE_SERVER = fileURLToPath(new URL('./fixtures/muse-server.ts', import.me
 const PROVIDER = 'muse-fake';
 
 test('Muse subagent snapshots reach the native team', async () => {
-  const client = await startCore();
-  const threadId = await museThread(client);
+  const { client, threadId } = await startThread();
   expect((await runTurn(client, threadId, '[agents]')).status).toBe('done');
   expect((await client.call('delegation.get', { threadId })).nativeAgents).toEqual([
     expect.objectContaining({ toolId: 'native-muse', name: 'reviewer', task: 'Review parser boundaries', status: 'done', result: 'Parser checked' }),
@@ -26,8 +25,7 @@ test('Muse subagent snapshots reach the native team', async () => {
 });
 
 test('Muse quotas come only from observed host notifications, never a probe or an extra turn', async () => {
-  const client = await startCore();
-  const threadId = await museThread(client);
+  const { client, threadId } = await startThread();
   const thread = await client.call('threads.get', { threadId });
   const quota = async () => (await client.call('quotas.list', { refresh: true })).find((row) => row.accountId === thread.accountId)!;
   const before = fakeLog();
@@ -163,9 +161,17 @@ async function museThread(
   return thread.id;
 }
 
+/** A fresh core with one Muse thread on it, the opening of most tests here. */
+async function startThread(
+  settings?: Partial<Settings>,
+  options?: Parameters<typeof museThread>[1],
+): Promise<{ client: CoreClient; threadId: string }> {
+  const client = await startCore(settings);
+  return { client, threadId: await museThread(client, options) };
+}
+
 async function runTurn(client: CoreClient, threadId: string, prompt: string): Promise<RpcEvents['turn.finished']> {
-  const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-  await client.call('turns.start', { threadId, prompt });
+  const { finished } = await startTurn(client, threadId, prompt, 20000);
   return finished;
 }
 
@@ -184,8 +190,7 @@ describe('muse driver', () => {
   });
 
   test('a plain prompt streams back once, over snapshots and deltas, and the session id is kept', async () => {
-    const client = await startCore();
-    const threadId = await museThread(client, { effort: 'high' });
+    const { client, threadId } = await startThread(undefined, { effort: 'high' });
 
     const deltas: string[] = [];
     client.on('message.delta', (event) => {
@@ -212,8 +217,7 @@ describe('muse driver', () => {
   });
 
   test('an image attachment rides turn/start as base64 with its media type', async () => {
-    const client = await startCore();
-    const threadId = await museThread(client);
+    const { client, threadId } = await startThread();
     const PNG =
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
     const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
@@ -227,8 +231,7 @@ describe('muse driver', () => {
   });
 
   test('reasoning becomes a thinking part ahead of the answer', async () => {
-    const client = await startCore();
-    const threadId = await museThread(client);
+    const { client, threadId } = await startThread();
     expect((await runTurn(client, threadId, '[thought]the answer')).status).toBe('done');
     expect(await lastParts(client, threadId)).toEqual([
       { type: 'thinking', text: 'thinking about it', startedAt: expect.any(Number), finishedAt: expect.any(Number) },
@@ -237,15 +240,13 @@ describe('muse driver', () => {
   });
 
   test("another turn's message streaming during this one stays out of its card", async () => {
-    const client = await startCore();
-    const threadId = await museThread(client);
+    const { client, threadId } = await startThread();
     expect((await runTurn(client, threadId, '[foreign]the answer')).status).toBe('done');
     expect(await lastParts(client, threadId)).toEqual([{ type: 'text', text: 'the answer' }]);
   });
 
   test('a shell tool call is one card, running then done with its output', async () => {
-    const client = await startCore();
-    const threadId = await museThread(client);
+    const { client, threadId } = await startThread();
     const parts: MessagePart[] = [];
     client.on('message.part', (event) => {
       if (event.threadId === threadId) parts.push(event.part);
@@ -258,15 +259,13 @@ describe('muse driver', () => {
   });
 
   test('YOLO accepts a remaining approval without a permission card', async () => {
-    const client = await startCore();
-    const threadId = await museThread(client, { permissionMode: 'yolo' });
+    const { client, threadId } = await startThread(undefined, { permissionMode: 'yolo' });
     const requested: string[] = [];
     client.on('permission.requested', request => {
       requested.push(request.id);
       void client.call('permissions.answer', { requestId: request.id, decision: 'deny' });
     });
-    const finished = client.next('turn.finished', turn => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: '[approve]' });
+    const { finished } = await startTurn(client, threadId, '[approve]', 20000);
     expect((await finished).status).toBe('done');
     const parts = await lastParts(client, threadId);
     expect(textsOf(parts)).toEqual(['allowed']);
@@ -275,13 +274,11 @@ describe('muse driver', () => {
   });
 
   test('an approval is asked, and allow and deny pick the matching choice', async () => {
-    const client = await startCore();
-    const threadId = await museThread(client);
+    const { client, threadId } = await startThread();
 
     for (const decision of ['allow', 'deny'] as const) {
       const requested = client.next('permission.requested', (request) => request.threadId === threadId, 20000);
-      const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-      await client.call('turns.start', { threadId, prompt: '[approve]' });
+      const { finished } = await startTurn(client, threadId, '[approve]', 20000);
       const request = await requested;
       expect(request.toolName).toBe('Bash');
       expect(request.input).toMatchObject({ kind: 'shell', command: 'echo hello' });
@@ -302,8 +299,7 @@ describe('muse driver', () => {
   });
 
   test('acceptEdits approves a write inside the folder and asks for one outside it, through a link too', async () => {
-    const client = await startCore();
-    const threadId = await museThread(client, { permissionMode: 'acceptEdits' });
+    const { client, threadId } = await startThread(undefined, { permissionMode: 'acceptEdits' });
     const asked: string[] = [];
     client.on('permission.requested', (request) => {
       if (request.threadId === threadId) asked.push(request.id);
@@ -316,8 +312,7 @@ describe('muse driver', () => {
     expect(countLines('approval/decide c-once stage=0')).toBe(1);
 
     const requested = client.next('permission.requested', (request) => request.threadId === threadId, 20000);
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: '[edit-out]' });
+    const { finished } = await startTurn(client, threadId, '[edit-out]', 20000);
     const request = await requested;
     expect(request.input).toMatchObject({ kind: 'fileAccess', access: 'write', path: '../outside.md' });
     await client.call('permissions.answer', { requestId: request.id, decision: 'deny' });
@@ -329,8 +324,7 @@ describe('muse driver', () => {
     try {
       symlinkSync(outside, join(harness?.dataDir ?? '', 'out-link'), 'junction');
       const linked = client.next('permission.requested', (request) => request.threadId === threadId, 20000);
-      const linkedDone = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-      await client.call('turns.start', { threadId, prompt: '[edit-link]' });
+      const { finished: linkedDone } = await startTurn(client, threadId, '[edit-link]', 20000);
       const linkRequest = await linked;
       expect(linkRequest.input).toMatchObject({ kind: 'fileAccess', access: 'write', path: 'out-link/notes.md' });
       await client.call('permissions.answer', { requestId: linkRequest.id, decision: 'deny' });
@@ -342,11 +336,9 @@ describe('muse driver', () => {
   });
 
   test('a question draws a card, and the picked label reaches the host', async () => {
-    const client = await startCore();
-    const threadId = await museThread(client);
+    const { client, threadId } = await startThread();
     const asked = client.next('question.asked', (request) => request.threadId === threadId, 20000);
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: '[input]' });
+    const { finished } = await startTurn(client, threadId, '[input]', 20000);
 
     const question = await asked;
     expect(question.text).toBe('Pick: which one?');
@@ -366,12 +358,10 @@ describe('muse driver', () => {
   });
 
   test('stopping a turn interrupts it, cancels nothing else, and the process goes', async () => {
-    const client = await startCore({ warmProcessMinutes: 0 });
-    const threadId = await museThread(client);
+    const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
     const started = client.next('process.started', (record) => record.threadId === threadId, 20000);
     const exited = client.next('process.exited', (record) => record.threadId === threadId, 20000);
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: '[slow]' });
+    const { finished } = await startTurn(client, threadId, '[slow]', 20000);
     await started;
     await waitFor(() => fakeLog().includes('turn/start'));
 
@@ -383,10 +373,8 @@ describe('muse driver', () => {
   });
 
   test('an async answer reaches the running turn through turn/steer, not at its end', async () => {
-    const client = await startCore();
-    const threadId = await museThread(client);
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: 'working [steer]' });
+    const { client, threadId } = await startThread();
+    const { finished } = await startTurn(client, threadId, 'working [steer]', 20000);
     // The host acks `turn/start` before its run exists: a steer sent earlier is refused.
     await waitFor(() => fakeLog().includes('steer waiting'));
 
@@ -409,8 +397,7 @@ describe('muse driver', () => {
   });
 
   test('a steer the host refuses keeps the answer for the turn after', async () => {
-    const client = await startCore();
-    const threadId = await museThread(client);
+    const { client, threadId } = await startThread();
     await client.call('turns.start', { threadId, prompt: '[slow]' });
     await waitFor(() => fakeLog().includes('turn/start'));
 
@@ -425,10 +412,8 @@ describe('muse driver', () => {
 
   test('a stop while the host never answers initialize ends the turn stopped and closes the host', async () => {
     process.env['MUSE_FAKE_INIT'] = 'never';
-    const client = await startCore({ warmProcessMinutes: 5 });
-    const threadId = await museThread(client);
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: 'hello' });
+    const { client, threadId } = await startThread({ warmProcessMinutes: 5 });
+    const { finished } = await startTurn(client, threadId, 'hello', 20000);
     await waitFor(() => fakeLog().includes('initialize '));
 
     const stoppedAt = Date.now();
@@ -443,10 +428,8 @@ describe('muse driver', () => {
 
   test('a stop during a slow initialize sends no turn to the model', async () => {
     process.env['MUSE_FAKE_INIT'] = '800';
-    const client = await startCore({ warmProcessMinutes: 5 });
-    const threadId = await museThread(client);
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: 'hello' });
+    const { client, threadId } = await startThread({ warmProcessMinutes: 5 });
+    const { finished } = await startTurn(client, threadId, 'hello', 20000);
     await waitFor(() => fakeLog().includes('initialize '));
     await client.call('turns.stop', { threadId });
     expect((await finished).status).toBe('stopped');
@@ -460,8 +443,7 @@ describe('muse driver', () => {
   test('a host that never finishes its startup fails the turn with the step it hung on', async () => {
     process.env['MUSE_FAKE_INIT'] = 'never';
     setMuseStartupDeadlineForTests(300);
-    const client = await startCore({ warmProcessMinutes: 5 });
-    const threadId = await museThread(client);
+    const { client, threadId } = await startThread({ warmProcessMinutes: 5 });
     const failed = await runTurn(client, threadId, 'hello');
     expect(failed.status).toBe('error');
     expect(failed.error).toContain('did not answer initialize within');
@@ -469,8 +451,7 @@ describe('muse driver', () => {
   });
 
   test('a session the host closed while idle is resumed on a fresh host by the next turn', async () => {
-    const client = await startCore({ warmProcessMinutes: 5 });
-    const threadId = await museThread(client);
+    const { client, threadId } = await startThread({ warmProcessMinutes: 5 });
     const counted = countProcesses(client, threadId);
     expect((await runTurn(client, threadId, 'first [close-idle]')).status).toBe('done');
     // The idle close retires the warm host at once.
@@ -485,8 +466,7 @@ describe('muse driver', () => {
   });
 
   test('a host that dies fails the turn with its exit code and stderr, and the next turn resumes', async () => {
-    const client = await startCore();
-    const threadId = await museThread(client);
+    const { client, threadId } = await startThread();
     const failure = await runTurn(client, threadId, '[crash]');
     expect(failure.status).toBe('error');
     expect(failure.error).toContain('exited with code 3');
@@ -500,23 +480,20 @@ describe('muse driver', () => {
   });
 
   test('a missing login fails the turn with the sentence that fixes it', async () => {
-    const client = await startCore();
-    const threadId = await museThread(client);
+    const { client, threadId } = await startThread();
     const failed = await runTurn(client, threadId, '[auth]');
     expect(failed.status).toBe('error');
     expect(failed.error).toContain('Muse Code is not signed in');
   });
 
   test('a server request is declined: approvals are answered through their notification', async () => {
-    const client = await startCore();
-    const threadId = await museThread(client);
+    const { client, threadId } = await startThread();
     expect((await runTurn(client, threadId, '[server-request]')).status).toBe('done');
     expect(fakeLog()).toContain('approval/request refused');
   });
 
   test('the todo list becomes the thread tasks, cancelled items left out', async () => {
-    const client = await startCore();
-    const threadId = await museThread(client);
+    const { client, threadId } = await startThread();
     expect((await runTurn(client, threadId, '[tasks]')).status).toBe('done');
     expect((await client.call('threads.get', { threadId })).activity?.tasks).toEqual([
       { id: '0', text: 'Inspect source', status: 'completed' },
@@ -525,8 +502,7 @@ describe('muse driver', () => {
   });
 
   test('the turn usage and the context meter carry what the host reported', async () => {
-    const client = await startCore();
-    const threadId = await museThread(client);
+    const { client, threadId } = await startThread();
     const done = await runTurn(client, threadId, '[usage]');
     expect(done.usage).toEqual({
       inputTokens: 8,
@@ -542,8 +518,7 @@ describe('muse driver', () => {
   });
 
   test('manual compaction goes through session/compact and draws its part', async () => {
-    const client = await startCore();
-    const threadId = await museThread(client);
+    const { client, threadId } = await startThread();
     await runTurn(client, threadId, 'remember this');
     const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
     const turn = await client.call('threads.compact', { threadId });
@@ -601,16 +576,14 @@ describe('muse driver', () => {
   });
 
   test('plan mode starts a host that cannot write or run a shell, and denies the rest', async () => {
-    const client = await startCore();
-    const threadId = await museThread(client, { permissionMode: 'plan' });
+    const { client, threadId } = await startThread(undefined, { permissionMode: 'plan' });
     expect((await runTurn(client, threadId, 'first')).status).toBe('done');
     expect(fakeLog()).toContain('flags=--disable-write --disable-shell');
     expect(fakeLog()).toContain('approvalMode=denyUnmatched');
   });
 
   test('a cold thread resumes its session on a new host', async () => {
-    const client = await startCore({ warmProcessMinutes: 0 });
-    const threadId = await museThread(client);
+    const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
     await runTurn(client, threadId, 'first');
     const sessionId = (await client.call('threads.get', { threadId })).sessionId ?? '';
     expect(sessionId).not.toBe('');
@@ -621,8 +594,7 @@ describe('muse driver', () => {
   });
 
   test('the model "default" puts no model on the wire', async () => {
-    const client = await startCore();
-    const threadId = await museThread(client, { model: 'default' });
+    const { client, threadId } = await startThread(undefined, { model: 'default' });
     await runTurn(client, threadId, 'first');
     expect(fakeLog()).toContain('session/start uuid=true approvalMode=promptUnmatched model= provider=\n');
     expect(fakeLog()).not.toContain('session/setModel');

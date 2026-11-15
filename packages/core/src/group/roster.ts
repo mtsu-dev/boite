@@ -418,7 +418,7 @@ export function withRole(roster: Roster, role: GroupRole, coreId: unknown): Rost
   if ((roster[role] ?? null) === coreId) return roster;
   const revKey = role === 'settingsHome' ? 'settingsHomeRev' : 'botsHomeRev';
   const rev = roster[revKey] ?? 0;
-  if (rev >= Number.MAX_SAFE_INTEGER) throw refused(`coreId: the ${role === 'settingsHome' ? 'settings home' : 'bots host'} revision has reached its limit`, { field: 'coreId' });
+  if (rev >= Number.MAX_SAFE_INTEGER) throw refused(`coreId: the ${role === 'settingsHome' ? 'settings home' : 'mochis host'} revision has reached its limit`, { field: 'coreId' });
   return { ...roster, [role]: coreId, [revKey]: rev + 1 };
 }
 

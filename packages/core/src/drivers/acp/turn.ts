@@ -13,8 +13,6 @@ import type {
 import type {
   AgentCommand,
   ImageAttachment,
-  MessageId,
-  MessagePart,
   ToolDocument,
   ToolStatus,
   Usage,
@@ -25,6 +23,7 @@ import { antigravitySubagentBatch, normalizeAntigravityTool } from '../antigravi
 import { imageDocument } from '../documents.ts';
 import type { PromptCacheLife, TurnContext, TurnResult } from '../types.ts';
 import { stringify } from '../tool-text.ts';
+import { TurnParts } from '../turn-parts.ts';
 
 /**
  * The prompt cache lifetime of an ACP agent's turn, from the thread's model.
@@ -113,23 +112,13 @@ export function commandsOf(list: AvailableCommand[]): AgentCommand[] {
  * other driver draws them: one text part the chunks append to, one part per
  * tool call, one part per permission question.
  */
-export class AcpTurn {
-  #messageId: MessageId | null = null;
-  #nextIndex = 0;
-  #textIndex: number | null = null;
-  #thinkingIndex: number | null = null;
+export class AcpTurn extends TurnParts {
   readonly #tools = new Map<string, ToolEntry>();
 
   #status: TurnResult['status'] = 'done';
   #error: string | null = null;
   #diagnosticError: string | undefined;
   #usage: Usage | null = null;
-  #resolve: (result: TurnResult) => void = () => undefined;
-  #wake: () => void = () => undefined;
-
-  readonly done: Promise<TurnResult>;
-  /** Resolves on `stop()`, so a permission still waiting can answer "cancelled". */
-  readonly stopped: Promise<void>;
 
   sessionId: string | null;
   /**
@@ -148,30 +137,18 @@ export class AcpTurn {
    * conversation so far in its prompt.
    */
   sessionLost = false;
-  isStopped = false;
-  settled = false;
 
   /** This agent's dialect fixes, read once from the descriptor. */
   readonly antigravity: boolean;
 
-  constructor(readonly ctx: TurnContext) {
+  constructor(ctx: TurnContext) {
+    super(ctx);
     this.antigravity = ctx.provider.quirks?.includes('antigravity') === true;
     this.sessionId = ctx.sessionId;
-    this.done = new Promise<TurnResult>((resolve) => {
-      this.#resolve = resolve;
-    });
-    this.stopped = new Promise<void>((resolve) => {
-      this.#wake = resolve;
-    });
   }
 
   noteSession(sessionId: string): void {
     this.sessionId = sessionId;
-  }
-
-  markStopped(): void {
-    this.isStopped = true;
-    this.#wake();
   }
 
   /**
@@ -193,12 +170,9 @@ export class AcpTurn {
   settle(): void {
     if (this.settled) return;
     this.settled = true;
-    this.#wake();
+    this.wake();
     if (this.contextUse !== null) this.ctx.context(this.contextUse);
-    if (this.#messageId !== null) {
-      this.ctx.emit.complete(this.#messageId, this.#status === 'error' ? 'error' : 'complete');
-    }
-    this.#resolve({
+    this.resolve(this.#status, () => ({
       status: this.#status,
       sessionId: this.sessionId,
       usage: this.#usage,
@@ -206,7 +180,7 @@ export class AcpTurn {
       ...(this.#diagnosticError === undefined ? {} : { diagnosticError: this.#diagnosticError }),
       promptCache: acpCacheLife(this.ctx.provider.id, this.ctx.thread.model),
       ...(this.sessionLost ? { sessionLost: true } : {}),
-    });
+    }));
   }
 
   /** The turn's share of the session's running cost; a total below what came before is a session that started over. */
@@ -251,49 +225,6 @@ export class AcpTurn {
   }
 
   // -- parts ----------------------------------------------------------------
-
-  #message(): MessageId {
-    if (this.#messageId === null) this.#messageId = this.ctx.emit.startMessage('assistant');
-    return this.#messageId;
-  }
-
-  part(index: number, part: MessagePart): void {
-    this.ctx.emit.part(this.#message(), index, part);
-  }
-
-  takeIndex(): number {
-    this.#textIndex = null;
-    this.#thinkingIndex = null;
-    const index = this.#nextIndex;
-    this.#nextIndex += 1;
-    return index;
-  }
-
-  writeText(text: string): void {
-    if (text.length === 0) return;
-    if (this.#textIndex === null) {
-      const index = this.#nextIndex;
-      this.#nextIndex += 1;
-      this.#textIndex = index;
-      // A text chunk after a thought chunk answers in its own part.
-      this.#thinkingIndex = null;
-      this.part(index, { type: 'text', text: '' });
-    }
-    this.ctx.emit.delta(this.#message(), this.#textIndex, text);
-  }
-
-  /** `agent_thought_chunk`, the reasoning the UI folds. Its own part, like the text. */
-  writeThinking(text: string): void {
-    if (text.length === 0) return;
-    if (this.#thinkingIndex === null) {
-      const index = this.#nextIndex;
-      this.#nextIndex += 1;
-      this.#thinkingIndex = index;
-      this.#textIndex = null;
-      this.part(index, { type: 'thinking', text: '' });
-    }
-    this.ctx.emit.delta(this.#message(), this.#thinkingIndex, text);
-  }
 
   /**
    * `tool_call` opens the part, `tool_call_update` replaces the same one by id.

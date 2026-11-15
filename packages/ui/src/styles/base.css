@@ -1,0 +1,117 @@
+/* ------------------------------------------------------------------------- */
+/* Base                                                                       */
+/* ------------------------------------------------------------------------- */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+/* A tap shows the control's own pressed state, never the browser's grey box. */
+html {
+  -webkit-tap-highlight-color: transparent;
+  --safe-area-top: env(safe-area-inset-top, 0px);
+}
+
+body {
+  margin: 0;
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  /* A touch tighter than the face's default. Tabular figures stay off the body: Inter's
+     `tnum` also widens the hyphen, which spaced "atlas-api" into "atlas - api". Counts and
+     timers that tick set it themselves, and so does every `time`. */
+  letter-spacing: -0.006em;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+
+time { font-variant-numeric: tabular-nums; }
+
+#app {
+  height: 100%;
+}
+
+@media (max-width: 720px) {
+  /* Keep the containing blocks as tall as the mobile app. A percentage height
+     can still use WebKit's shorter initial viewport in an installed app. */
+  html, body, #app { height: var(--app-height, 100dvh); }
+}
+
+::selection {
+  background: var(--color-selection);
+}
+
+/* One palette for code in the diff and the file viewer (the --syntax-* tokens). */
+.code-syntax :is(.hljs-keyword, .hljs-selector-tag, .hljs-built_in) { color: var(--syntax-keyword); }
+.code-syntax :is(.hljs-title, .hljs-type, .hljs-name, .hljs-attr, .hljs-attribute) { color: var(--color-foreground); }
+.code-syntax :is(.hljs-string, .hljs-regexp, .hljs-number, .hljs-literal) { color: var(--syntax-string); }
+.code-syntax :is(.hljs-comment, .hljs-meta) { color: var(--syntax-comment); font-style: italic; }
+.code-syntax .hljs-addition { color: var(--color-success); }
+.code-syntax .hljs-deletion { color: var(--color-danger); }
+
+/* Ctrl+F in a thread: every match, and the one the arrows are on. */
+::highlight(boite-find) {
+  background: color-mix(in oklch, var(--color-live) 35%, transparent);
+}
+::highlight(boite-find-current) {
+  background: var(--color-live);
+  color: var(--color-accent-ink);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+}
+
+/* The one focus ring: every focusable thing a keyboard reaches wears the accent.
+   A row inside a list, menu or sheet draws it inside its box, so a scroll edge
+   never clips it. A component only removes it where a wrapper carries the ring. */
+:root {
+  --focus-ring: 2px solid var(--color-accent);
+}
+
+:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 2px;
+}
+
+:where([role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=option], [role=tab], [role=treeitem], summary, [data-mobile-sheet] button, button.row, a.row):focus-visible {
+  outline-offset: -2px;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 600;
+  text-wrap: balance;
+}
+
+h1 {
+  font-size: var(--text-md);
+}
+
+h2 {
+  font-size: var(--text-base);
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--color-accent);
+}
+

@@ -1,4 +1,4 @@
-import { nextAgentOccurrence, RpcErrorCode, AGENT_MEMORY_MAX, AGENT_PICTURE_CODE, AGENT_PICTURE_MAX_BYTES, AGENT_PICTURE_TYPES, isAgentPicture, AGENT_ROUTINE_NAME_MAX, AGENT_ROUTINE_PROMPT_MAX, AGENT_ROUTINES_MAX } from '@boite/contracts';
+import { nextAgentOccurrence, RpcErrorCode, AGENT_MEMORY_MAX, AGENT_PICTURE_CODE, AGENT_PICTURE_MAX_BYTES, AGENT_PICTURE_TYPES, isAgentPicture, AGENT_ROUTINE_CHECK_MAX, AGENT_ROUTINE_NAME_MAX, AGENT_ROUTINE_PROMPT_MAX, AGENT_ROUTINES_MAX } from '@boite/contracts';
 import { BUILTIN_BOTS, BUILTIN_LOCKED, BUILTIN_NEVER_ARCHIVED } from './fake-client/builtin-bots';
 import type {
   AgentAccountGrant, AgentBuiltin, AgentBrain, AgentBrainRoot, AgentEntrustment, AgentProfile, AgentQueuedMove, AgentRecord, AgentRoutine, AgentRuntimeConfig, AgentSchedule,
@@ -309,7 +309,7 @@ export class FakeAgents {
     const question = state === 'needs-you' ? this.runner?.question?.(watch.threadId) ?? null : null;
     // A stall holds while the turn runs; the core clears it when the turn speaks again or ends.
     const stalledSince = state === 'working' ? watch.stalledSince : null;
-    return { ...structuredClone(watch), title: thread.title, projectId: thread.projectId, state, question, stalledSince, lastActivityAt: thread.updatedAt ?? watch.lastActivityAt };
+    return { ...structuredClone(watch), title: thread.title, projectId: thread.projectId, createdAt: thread.createdAt, state, question, stalledSince, lastActivityAt: thread.updatedAt ?? watch.lastActivityAt };
   }
   /** `desk` narrows the watches as the core does: one agent's, none with null, all when absent; an agent's own thread reads its own. */
   snapshot(threadId?: string, desk?: string | null): AgentsSnapshot {
@@ -401,11 +401,11 @@ export class FakeAgents {
     if (!found) this.refuse('agents.move.machine: this machine is in no group; --machine names another machine of its group');
     if ('refused' in found) this.refuse(found.refused);
     if (agent.status === 'archived') this.refuse(`agents.move: ${agent.name} is archived; restore it before moving it`);
-    if (!found.botMove || !found.agents) this.refuse(`agents.move: update Boite on ${found.name}; it cannot take a bot from another machine yet`);
+    if (!found.botMove || !found.agents) this.refuse(`agents.move: update Boite on ${found.name}; it cannot take a mochi from another machine yet`);
     // Every thread the move archives must be idle, not only the first.
     const busy = this.busyThread(agent.id);
     if (busy) {
-      throw new RpcFailure({ code: RpcErrorCode.Refused, message: `agents.move: ${agent.name} has a turn running or queued; stop it or let it end before moving the bot`, data: { field: 'agentId', reason: 'turn-in-flight', status: busy.status } });
+      throw new RpcFailure({ code: RpcErrorCode.Refused, message: `agents.move: ${agent.name} has a turn running or queued; stop it or let it end before moving the mochi`, data: { field: 'agentId', reason: 'turn-in-flight', status: busy.status } });
     }
     const parcel: BotParcel = {
       profile: structuredClone(agent),
@@ -437,8 +437,8 @@ export class FakeAgents {
     const moved = parcel.profile;
     const again = this.movedIn.get(`${parcel.from}:${parcel.requestId}`);
     if (again && this.profiles.has(moved.id)) return again;
-    if (this.profiles.has(moved.id)) this.refuse(`agents.move: ${here} already holds a bot ${moved.id}; it came by another move or was never removed there`);
-    if (moved.builtin && this.builtin(moved.builtin)) this.refuse(`agents.move: ${here} already has its own ${moved.builtin} bot; reset or pause one of them, a machine runs one of each built-in bot`);
+    if (this.profiles.has(moved.id)) this.refuse(`agents.move: ${here} already holds a mochi ${moved.id}; it came by another move or was never removed there`);
+    if (moved.builtin && this.builtin(moved.builtin)) this.refuse(`agents.move: ${here} already has its own ${moved.builtin} mochi; reset or pause one of them, a machine runs one of each built-in mochi`);
     let selection = moved.selection;
     try { this.runner?.checkRoute?.(selection); } catch {
       const route = this.runner?.defaultRoute?.();
@@ -549,7 +549,7 @@ export class FakeAgents {
   /** The core's `reset`: Boite's name, robot, texts and default route, default runtime settings, empty memory, no routines and a new thread, the old one archived. */
   private resetBuiltin(p: RpcParams<'agents.builtin.reset'>): AgentProfile {
     const previous = this.profile(p.agentId);
-    if (!previous.builtin) this.refuse(`agentId: ${previous.name} is not a built-in bot; only a built-in bot is reset`);
+    if (!previous.builtin) this.refuse(`agentId: ${previous.name} is not a built-in mochi; only a built-in mochi is reset`);
     const shipped = BUILTIN_BOTS[previous.builtin];
     const name = this.builtinName(p.name, shipped.name);
     // Its default settings come back too: the machine's default route, unless the client named one.
@@ -581,7 +581,7 @@ export class FakeAgents {
   private builtinRoute(given: AgentSelection | undefined, previous?: AgentSelection): AgentSelection {
     if (given) { this.runner?.checkRoute?.(given, previous); return structuredClone(given); }
     const route = this.runner?.defaultRoute?.();
-    if (!route) this.refuse('selection: no signed-in account on this machine to run the bot; sign in to a provider first');
+    if (!route) this.refuse('selection: no signed-in account on this machine to run the mochi; sign in to a provider first');
     return { ...route, permissionMode: 'bypassPermissions' };
   }
   private openAgent(agentId: string): RpcResult<'agents.open'> {
@@ -657,7 +657,7 @@ export class FakeAgents {
     this.brains.set(p.agentId, saved);
     return structuredClone(saved);
   }
-  /** `boite bot remember`: a dated line at the end of MEMORY.md. */
+  /** `boite mochi remember`: a dated line at the end of MEMORY.md. */
   private note(p: RpcParams<'agents.memory.note'>): RpcResult<'agents.memory.note'> {
     const agentId = p.agentId ?? (p.threadId ? this.ownerOf(p.threadId) : null);
     if (!agentId) this.refuse('agentId: expected an agent, or the thread of one');
@@ -680,12 +680,16 @@ export class FakeAgents {
     if (!previous && held >= AGENT_ROUTINES_MAX) this.refuse(`routine: ${agent.name} already has ${held} routines, the most an agent may hold is ${AGENT_ROUTINES_MAX}; remove one before adding another`);
     if (p.value.name.length > AGENT_ROUTINE_NAME_MAX || !p.value.name.trim()) this.refuse(`name: expected 1 to ${AGENT_ROUTINE_NAME_MAX} characters`);
     if (p.value.prompt.length > AGENT_ROUTINE_PROMPT_MAX || !p.value.prompt.trim()) this.refuse(`prompt: expected 1 to ${AGENT_ROUTINE_PROMPT_MAX} characters`);
+    // The core's check: a command of 2,000 characters at most; one that changed forgets what it printed last.
+    const check = p.value.check?.trim() || null;
+    if (check && check.length > AGENT_ROUTINE_CHECK_MAX) this.refuse(`check: expected at most ${AGENT_ROUTINE_CHECK_MAX} characters`);
+    const checkSeen = check && check === (previous?.check ?? null) ? previous?.checkSeen ?? null : null;
     const s = p.value.schedule, changed = JSON.stringify(previous?.schedule) !== JSON.stringify(s);
     const spent = s.kind === 'once' && !changed && previous?.lastScheduledAt != null;
     // The core's save: run bookkeeping comes from the record, and a new once date clears the run it replaces.
     const lastScheduledAt = s.kind === 'once' && changed ? null : previous?.lastScheduledAt ?? null;
     const nextAt = !p.value.enabled || spent ? null : previous?.enabled && !changed ? previous.nextAt : s.kind === 'once' ? s.at : nextOccurrence(s, Date.now());
-    const routine = this.stamp({ ...p.value, nextAt, lastTurnId: previous?.lastTurnId ?? null, lastOutcome: previous?.lastOutcome ?? null, lastScheduledAt }, previous, 'routine') as AgentRoutine;
+    const routine = this.stamp({ ...p.value, check, checkSeen, nextAt, lastTurnId: previous?.lastTurnId ?? null, lastOutcome: previous?.lastOutcome ?? null, lastScheduledAt }, previous, 'routine') as AgentRoutine;
     this.routines.set(routine.id, routine);
     this.bump();
     return structuredClone(routine);
@@ -712,9 +716,9 @@ export class FakeAgents {
   private outsideEvent(p: RpcParams<'agents.event'>): RpcResult<'agents.event'> {
     const wanted = typeof p.agent === 'string' ? p.agent.toLowerCase() : '';
     const named = [...this.profiles.values()].filter(a => a.status !== 'archived' && (a.id === p.agent || a.name.toLowerCase() === wanted));
-    if (named.length > 1) this.refuse(`agent: ${named.length} bots are named ${JSON.stringify(p.agent)}; name it by id`);
+    if (named.length > 1) this.refuse(`agent: ${named.length} mochis are named ${JSON.stringify(p.agent)}; name it by id`);
     const agent = named[0];
-    if (!agent) this.refuse(`agent: unknown bot ${p.agent}`);
+    if (!agent) this.refuse(`agent: unknown mochi ${p.agent}`);
     const invalid = (message: string): never => { throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message }); };
     const key = p.key ?? 'external';
     if (typeof key !== 'string' || !/^[A-Za-z0-9._-]{1,64}$/.test(key)) invalid('key: expected [A-Za-z0-9._-]{1,64}');

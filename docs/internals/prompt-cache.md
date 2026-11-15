@@ -108,7 +108,7 @@ transforms](https://github.com/anomalyco/opencode/blob/2406400f0aeb07b36d0495af4
 
 ## Keeping the cache warm
 
-Settings > Version > Keep the prompt cache warm is off by default. Turned on, it
+Settings > Experiments > Keep the prompt cache warm is off by default. Turned on, it
 stores `cacheKeepalive: { hours }` in the core settings, `hours` being a whole
 number from 1 to 24 (default 12, `CACHE_KEEPALIVE_HOURS` in
 `packages/contracts/src/settings-validation.ts`); null turns it off.
@@ -125,7 +125,7 @@ A wait starts when a real turn of the thread ends `done`. Each ping is planned
 from the thread's `promptCache` and checked again when its timer fires. A ping
 goes when all of these hold:
 
-- the thread is the user's conversation, a bot's included: not
+- the thread is the user's conversation, a mochi's included: not
   archived, not a delegated agent, and it has a session to resume;
 - no automatic compaction is planned: compaction takes precedence over a ping
   so refreshing the cache cannot postpone it indefinitely;

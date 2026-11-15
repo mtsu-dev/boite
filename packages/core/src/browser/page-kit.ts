@@ -22,15 +22,39 @@
 function agentKit() {
   const KEY = Symbol.for('boite.agent.v1');
   if (window[KEY]) return window[KEY];
-  const K = { refs: new Map(), ids: new WeakMap(), blocks: [], used: 0, token: Math.random().toString(36).slice(2), leaving: false };
+  const K = { refs: new Map(), ids: new WeakMap(), blocks: [], used: 0, token: Math.random().toString(36).slice(2), leaving: false, changedAt: 0 };
   Object.defineProperty(window, KEY, { value: K, configurable: true });
   addEventListener('beforeunload', () => { K.leaving = true; }, true);
+  // When the document last changed: an action settles once it has been quiet a moment (`settle` in automation.ts).
+  try {
+    new MutationObserver(() => { K.changedAt = performance.now(); })
+      .observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
+  } catch {}
   const BLOCK = 1000;
   const alive = el => el.isConnected && !!el.ownerDocument.defaultView;
 
   const IMPLICIT = { A: 'link', BUTTON: 'button', SELECT: 'combobox', TEXTAREA: 'textbox', SUMMARY: 'button', H1: 'heading', H2: 'heading', H3: 'heading', H4: 'heading', H5: 'heading', H6: 'heading', IMG: 'img', NAV: 'navigation', MAIN: 'main', FORM: 'form', UL: 'list', OL: 'list', LI: 'listitem', TABLE: 'table', TR: 'row', TD: 'cell', TH: 'columnheader', DIALOG: 'dialog', IFRAME: 'iframe', OPTION: 'option', ASIDE: 'complementary' };
   const INPUT = { checkbox: 'checkbox', radio: 'radio', button: 'button', submit: 'button', reset: 'button', image: 'button', range: 'slider', number: 'spinbutton', search: 'searchbox', file: 'button' };
-  const INTERACTIVE = new Set(['link', 'button', 'textbox', 'searchbox', 'checkbox', 'radio', 'combobox', 'listbox', 'option', 'slider', 'spinbutton', 'switch', 'tab', 'menuitem', 'menuitemcheckbox', 'menuitemradio', 'treeitem']);
+  const INTERACTIVE = new Set(['link', 'button', 'textbox', 'searchbox', 'checkbox', 'radio', 'combobox', 'listbox', 'option', 'slider', 'spinbutton', 'switch', 'tab', 'menuitem', 'menuitemcheckbox', 'menuitemradio', 'treeitem', 'clickable']);
+  // Tags a page makes clickable with a script instead of a link or a button: custom menus, cards, date cells.
+  const PLAIN = new Set(['DIV', 'SPAN', 'LI', 'TD', 'I', 'IMG', 'P', 'SECTION', 'ARTICLE']);
+  const CONTROLS = 'a[href],button,input,select,textarea,[role=button],[role=link],[role=checkbox],[role=menuitem],[role=option],[role=tab]';
+  /**
+   * An element without a role that a script made clickable: an onclick
+   * handler, a tab stop, or the pointer cursor where its parent has another
+   * one. The cursor is inherited, so only the element that set it counts, and
+   * one holding real controls leaves them their own refs.
+   */
+  const clickable = el => {
+    if (!PLAIN.has(el.tagName)) return false;
+    const tab = el.getAttribute('tabindex');
+    if (!(el.hasAttribute('onclick') || typeof el.onclick === 'function' || (tab !== null && Number(tab) >= 0))) {
+      if (getComputedStyle(el).cursor !== 'pointer') return false;
+      const parent = el.parentElement;
+      if (parent && getComputedStyle(parent).cursor === 'pointer') return false;
+    }
+    return !el.querySelector(CONTROLS) && boxed(el);
+  };
   const STRUCTURE = new Set(['navigation', 'main', 'form', 'list', 'listitem', 'table', 'row', 'cell', 'columnheader', 'dialog', 'complementary', 'region', 'banner', 'contentinfo', 'group', 'tablist', 'menu', 'menubar', 'tree', 'grid']);
   const SKIP = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'HEAD', 'META', 'LINK', 'svg', 'SVG']);
   const clip = (s, n) => { s = String(s ?? '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 3) + '...' : s; };
@@ -61,7 +85,7 @@ function agentKit() {
     if (ids) { const text = ids.split(/\s+/).map(id => el.ownerDocument.getElementById(id)?.innerText ?? '').join(' ').trim(); if (text) return text; }
     return '';
   };
-  const name = (el, r) => {
+  const name = (el, r, opts = {}) => {
     const aria = el.getAttribute('aria-label') || labelled(el);
     if (aria) return clip(aria, 100);
     if (el.tagName === 'IMG' || (el.tagName === 'INPUT' && el.type === 'image')) return clip(el.getAttribute('alt'), 100);
@@ -73,16 +97,18 @@ function agentKit() {
     }
     if (r === 'iframe') return clip(el.getAttribute('title') || el.getAttribute('name') || el.getAttribute('src'), 100);
     // A container's text is listed under it; repeating it as a name doubles the snapshot.
-    if (STRUCTURE.has(r) && r !== 'columnheader') return clip(el.getAttribute('title'), 100);
+    if ((STRUCTURE.has(r) && r !== 'columnheader') || (r === 'clickable' && !opts.interactive && long(el))) return clip(el.getAttribute('title'), 100);
     const text = clip(el.innerText || el.textContent, 100);
     if (text) return text;
     // An icon link or button: the image's alt or the SVG's title says what it is.
     const inner = el.querySelector('img[alt],[aria-label],svg title');
     return clip(inner?.getAttribute('alt') || inner?.getAttribute('aria-label') || inner?.textContent || el.getAttribute('title'), 100);
   };
+  // A clickable card whose text is too long for a name has it listed under it instead.
+  const long = el => (el.innerText ?? '').replace(/\s+/g, ' ').trim().length > 100;
   const checked = el => el.tagName === 'INPUT' ? el.checked : el.getAttribute('aria-checked') === 'true';
   const describe = (el, r, ref, opts) => {
-    const n = name(el, r);
+    const n = name(el, r, opts);
     let line = r + (n ? ' ' + JSON.stringify(n) : '');
     if (ref) line += ' [ref=' + ref + ']';
     if (r === 'heading') line += ' [level=' + (Number(el.getAttribute('aria-level')) || Number(el.tagName.slice(1)) || 2) + ']';
@@ -146,8 +172,8 @@ function agentKit() {
       if (node.nodeType === 11) { for (const child of node.childNodes) walk(child, depth); return; }
       const el = node;
       if (SKIP.has(el.tagName) || el.getAttribute('aria-hidden') === 'true') return;
-      const r = role(el);
       const isVisible = visible(el);
+      const r = role(el) ?? (isVisible && clickable(el) ? 'clickable' : null);
       // A checkbox or radio styled away behind its label stays reachable through it.
       const viaLabel = !isVisible && (r === 'checkbox' || r === 'radio') && Array.from(el.labels ?? []).some(visible);
       if (!isVisible && !viaLabel && (!el.children.length || getComputedStyle(el).display === 'none')) return;
@@ -167,6 +193,8 @@ function agentKit() {
             // With -i, a frame with nothing to act on says nothing; the core reads one of another origin.
             if (opts.interactive && !foreign && out.length === at + 1) { size -= out[at].length + 1; out.splice(at, 1); }
           }
+          // A clickable container keeps its text in a full snapshot.
+          if (r === 'clickable') { if (!opts.interactive && long(el)) for (const child of el.childNodes) walk(child, depth + 1); return; }
           // Links and buttons can wrap headings or fields; those stay reachable.
           if (r === 'link' || r === 'button' || r === 'listitem' || r === 'option' || r === 'tab' || r === 'menuitem' || r === 'treeitem') {
             for (const child of el.querySelectorAll('input,select,textarea,h1,h2,h3,h4,h5,h6,[role=checkbox],[role=textbox]')) walk(child, depth + 1);
@@ -224,7 +252,43 @@ function agentKit() {
     return nodes[0];
   };
 
-  K.state = () => ({ url: location.href, title: document.title, ready: document.readyState, token: K.token, leaving: K.leaving });
+  // `quiet`: milliseconds since the document last changed.
+  K.state = () => ({ url: location.href, title: document.title, ready: document.readyState, token: K.token, leaving: K.leaving, quiet: K.changedAt ? Math.round(performance.now() - K.changedAt) : 1e9 });
+
+  /**
+   * A ref given outside a snapshot, to name what covers an element: only from
+   * a block this document already holds, or block 0 for the top document, so
+   * the core's routes to frames stay right. Null when the block is full.
+   */
+  const refFor = el => {
+    let ref = K.ids.get(el);
+    if (!ref) {
+      if (!K.blocks.length && window === window.top) K.blocks.push(0);
+      if (!K.blocks.length || K.used >= BLOCK - 1) return null;
+      ref = 'e' + (K.blocks[K.blocks.length - 1] * BLOCK + ++K.used);
+      K.ids.set(el, ref);
+    }
+    if (!K.refs.has(ref)) K.refs.set(ref, new WeakRef(el));
+    return ref;
+  };
+  /**
+   * What covers `target` at the point native input would reach: the element
+   * hit, then the controls of the banner or dialog it belongs to (its highest
+   * fixed or sticky ancestor that does not hold the target), with refs, so the
+   * agent can close or accept it in its next command.
+   */
+  const cover = (hit, target) => {
+    let box = hit;
+    for (let at = hit; at && at.nodeType === 1 && at !== at.ownerDocument.body && !at.contains(target); at = at.parentElement) {
+      const position = getComputedStyle(at).position;
+      if (position === 'fixed' || position === 'sticky' || at.matches('dialog,[role=dialog],[role=alertdialog],[aria-modal=true]')) box = at;
+    }
+    const ref = refFor(hit);
+    const controls = Array.from(box.querySelectorAll(CONTROLS)).filter(el => el !== hit && visible(el) && boxed(el)).slice(0, 5);
+    const listed = controls.map(el => describe(el, role(el) ?? 'button', refFor(el), {}));
+    if (role(hit) && INTERACTIVE.has(role(hit))) listed.unshift(describe(hit, role(hit), ref, {}));
+    return named(hit) + (ref ? ' [ref=' + ref + ']' : '') + (listed.length ? '; controls there: ' + listed.join(', ') : '');
+  };
 
   // Where to send native input, or null when the page must be driven through the DOM.
   K.point = async (target, mode) => {
@@ -242,8 +306,16 @@ function agentKit() {
     if (!r.width || !r.height || !visible(el)) throw new Error('element is not visible');
     // An element in a frame of this origin is measured and hit in its own document.
     const doc = el.ownerDocument, view = doc.defaultView ?? window;
-    const x = Math.max(0, Math.min(view.innerWidth - 1, r.left + r.width / 2));
-    const y = Math.max(0, Math.min(view.innerHeight - 1, r.top + r.height / 2));
+    let x = Math.max(0, Math.min(view.innerWidth - 1, r.left + r.width / 2));
+    let y = Math.max(0, Math.min(view.innerHeight - 1, r.top + r.height / 2));
+    // A person never hits the exact centre: a point in the middle of the box that still reaches the element.
+    if (!typing) {
+      for (let i = 0; i < 4; i++) {
+        const px = Math.max(0, Math.min(view.innerWidth - 1, r.left + r.width * (0.3 + 0.4 * Math.random())));
+        const py = Math.max(0, Math.min(view.innerHeight - 1, r.top + r.height * (0.3 + 0.4 * Math.random())));
+        if (hits(el, doc.elementFromPoint(px, py))) { x = px; y = py; break; }
+      }
+    }
     const hit = doc.elementFromPoint(x, y);
     const reached = hits(el, hit);
     if (typing) {
@@ -254,9 +326,9 @@ function agentKit() {
     }
     // Then the point moves out through each iframe around it to this window's viewport.
     const out = outward(view, x, y);
-    // A covered element is driven through the DOM rather than clicking what covers it.
+    // A covered element is named with what covers it: the core refuses the click or, when forced, sends it through the DOM.
     if (typing) return { x: out.x, y: out.y };
-    const covered = !reached ? (hit ? named(hit) : 'nothing at its center') : out.covered;
+    const covered = !reached ? (hit ? cover(hit, el) : 'nothing at its center') : out.covered;
     return covered ? { x: out.x, y: out.y, covered } : { x: out.x, y: out.y };
   };
 

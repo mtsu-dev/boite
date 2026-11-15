@@ -16,7 +16,8 @@ import { agentEnv, profileFor, resolveLaunch } from '../../providers/resolve.ts'
 import { launchTemp } from '../launch-temp.ts';
 import { grokLaunchArgs } from '../grok.ts';
 import { stderrLines } from '../lines.ts';
-import { exitWithin } from '../exit.ts';
+import { exitSentence, exitWithin } from '../exit.ts';
+import { IdleTimer } from '../idle-timer.ts';
 import type { LiveTurnSettings, ProbeContext, ProbeFilter, SessionContext } from '../types.ts';
 import { OpenCommands } from './commands.ts';
 import { ModelRefused, SessionControls } from './controls.ts';
@@ -114,7 +115,7 @@ export class AcpSession {
   readonly #controls = new SessionControls(() => ({ agent: this.#agent, sessionId: this.#sessionId }));
   #lastStderr = '';
   #exited: Promise<number | null> | null = null;
-  #idle: Timer | null = null;
+  readonly #idle = new IdleTimer(() => this.#drop());
   readonly #retention = new SessionRetention();
   /** The turn whose `session/prompt` is in flight; updates outside one are dropped. */
   #current: AcpTurn | null = null;
@@ -230,13 +231,13 @@ export class AcpSession {
 
   setViewed(viewed: boolean): void {
     this.#retention.setViewed(viewed);
-    this.#clearIdle();
+    this.#idle.clear();
     if (!viewed && !this.busy() && !this.#ended) this.#armIdle();
   }
 
   async prepare(ctx: SessionContext, forTurn = false): Promise<void> {
     this.#retention.prepare(forTurn);
-    this.#clearIdle();
+    this.#idle.clear();
     try { await this.#start(ctx); }
     catch (error) { this.#drop(); throw error; }
     finally {
@@ -272,7 +273,7 @@ export class AcpSession {
     this.#warmMs = warmMs;
     this.#retention.beginTurn();
     this.#running += 1;
-    this.#clearIdle();
+    this.#idle.clear();
     this.#queue = this.#queue.then(async () => {
       try {
         await this.#runTurn(turn);
@@ -756,8 +757,7 @@ export class AcpSession {
   }
 
   #exitSentence(code: number | null, diagnostic = false): string {
-    const head = `the acp agent exited with code ${code === null ? 'unknown' : code}`;
-    return diagnostic || this.#lastStderr.length === 0 ? head : `${head}: ${this.#lastStderr}`;
+    return exitSentence('acp agent', code, this.#lastStderr, diagnostic);
   }
 
   /** The turn settles before its connection and child go through the registry. */
@@ -774,7 +774,7 @@ export class AcpSession {
     }
     this.#protection?.close(this.#exited ?? Promise.resolve());
     this.#protection = null;
-    this.#clearIdle();
+    this.#idle.clear();
     this.#commands.clear();
     const connection = this.#connection;
     this.#connection = null;
@@ -791,20 +791,10 @@ export class AcpSession {
   }
 
   #armIdle(): void {
-    this.#clearIdle();
+    this.#idle.clear();
     // The window starts once the last command that outlived its turn ended.
     if (this.#commands.outlived()) return;
-    this.#idle = setTimeout(() => {
-      this.#idle = null;
-      this.#drop();
-    }, this.#retention.idleMs(this.#warmMs));
-    this.#idle?.unref?.();
-  }
-
-  #clearIdle(): void {
-    if (this.#idle === null) return;
-    clearTimeout(this.#idle);
-    this.#idle = null;
+    this.#idle.arm(this.#retention.idleMs(this.#warmMs));
   }
 
   // -- what the agent sends -------------------------------------------------

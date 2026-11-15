@@ -37,7 +37,7 @@ test('Activity carries the count of conversations waiting on the user, capped so
   expect(tab('mobile-activity')!.getAttribute('aria-label')).toContain('140');
 });
 
-test('Bots carries a dot while bots work, in the waiting colour once one asks the user; the count is in its name only', async () => {
+test('Mochis carries a dot while mochis work, in the waiting colour once one asks the user; the count is in its name only', async () => {
   const { agentDirectory } = await import('../lib/agent-directory.svelte');
   app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate: () => {} } }); await settle();
   const rest = { status: 'idle', openQuestions: 0, backgroundWork: null, unread: false } as const;
@@ -48,32 +48,22 @@ test('Bots carries a dot while bots work, in the waiting colour once one asks th
   store.threads = store.threads.map(thread => thread.id === 't-trace' ? { ...thread, status: 'running' } : thread); await settle();
   // A dot, no number: the count on the bar is Activity's alone.
   expect(tab('mobile-agents-at-work')!.textContent).toBe('');
-  expect(tab('mobile-agents')!.getAttribute('aria-label')).toBe('Bots, 1 at work');
+  expect(tab('mobile-agents')!.getAttribute('aria-label')).toBe('Mochis, 1 at work');
   expect(tab('mobile-agents-at-work')!.dataset.waiting).toBe('false');
   store.threads = store.threads.map(thread => thread.id === 't-trace' ? { ...thread, status: 'idle', openQuestions: 1 } : thread); await settle();
   expect(tab('mobile-agents-at-work')!.dataset.waiting).toBe('true');
-  expect(tab('mobile-agents')!.getAttribute('aria-label')).toBe('Bots, 1 at work, something needs you');
+  expect(tab('mobile-agents')!.getAttribute('aria-label')).toBe('Mochis, 1 at work, something needs you');
 });
 
-test('Contacts has no tab of its own for anyone: the Bots tab, always there, holds its side', async () => {
-  setExperiment('contacts', true);
-  app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate: () => {} } }); await settle();
-  expect(tab('mobile-contacts')).toBeNull();
-  await unmount(app); app = undefined; store.detach(); client.close();
-
-  client = new FakeClient({ delayMs: 0 }); store = new Store(); store.attach(client); await store.connect();
-  app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate: () => {} } }); await settle();
-  expect(tab('mobile-contacts')).toBeNull();
-  expect(tab('mobile-agents')).not.toBeNull();
-});
-
-test('with the bots on, the bar keeps three places: Contacts is the Bots tab\'s other side, which stays marked on it', async () => {
+test('Contacts keeps a tab of its own beside Mochis, marked on its page: no switch hides it behind the Mochis tab', async () => {
   setExperiment('contacts', true);
   client.close(); store.detach();
   client = new FakeClient({ delayMs: 0 }); store = new Store(); store.attach(client); await store.connect();
   app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate: () => {} } }); await settle();
-  expect(document.querySelectorAll('.mobile-tabs .tab')).toHaveLength(3);
-  expect(tab('mobile-contacts')).toBeNull();
-  store.showHome(); await settle();
-  expect(tab('mobile-agents')!.getAttribute('aria-current')).toBe('page');
+  expect(document.querySelectorAll('.mobile-tabs .tab')).toHaveLength(4);
+  expect(tab('mobile-agents')).not.toBeNull();
+  tab('mobile-contacts')!.click(); await settle();
+  expect(store.page).toBe('home');
+  expect(tab('mobile-contacts')!.getAttribute('aria-current')).toBe('page');
+  expect(tab('mobile-agents')!.getAttribute('aria-current')).toBeNull();
 });

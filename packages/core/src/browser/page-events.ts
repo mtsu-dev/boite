@@ -12,6 +12,24 @@ export interface WatchedPage {
   diagnostics: BrowserDiagnostic[];
   dropped: number;
   requests: Map<string, string>;
+  /** The page's own calls still loading, by request id: when each began. */
+  loading: Map<string, number>;
+}
+
+/** The calls an action waits for: what a page fetches or navigates to, not images, scripts or a stream it keeps open. */
+const AWAITED = new Set(['Document', 'Fetch', 'XHR']);
+/** A call still loading after this long is a long poll or a stuck server: an action no longer waits for it. */
+const FRESH_MS = 1500;
+const LOADING_MAX = 200;
+
+/** How many of `loading` began within `FRESH_MS` of `now`; older ones are forgotten. */
+export function freshCalls(loading: Map<string, number>, now = Date.now()): number {
+  let count = 0;
+  for (const [id, began] of loading) {
+    if (now - began < FRESH_MS) count++;
+    else loading.delete(id);
+  }
+  return count;
 }
 
 /** Credentials, query and fragment never enter diagnostics: they can carry tokens. */
@@ -68,12 +86,18 @@ export function watchPage(
     if (url.startsWith('data:') || url.startsWith('blob:')) return;
     tab.requests.set(String(params.requestId), bareUrl(url));
     if (tab.requests.size > 500) tab.requests.delete(tab.requests.keys().next().value!);
+    if (AWAITED.has(String(params.type))) {
+      tab.loading.set(String(params.requestId), Date.now());
+      if (tab.loading.size > LOADING_MAX) tab.loading.delete(tab.loading.keys().next().value!);
+    }
   });
+  on('Network.loadingFinished', params => { tab.loading.delete(String(params.requestId)); });
   on('Network.responseReceived', params => {
     const response = params.response as { status: number; statusText?: string; url: string };
     if (response.status >= 400) note({ kind: 'network', level: 'error', text: `HTTP ${response.status} ${response.statusText ?? ''}`.trim(), url: bareUrl(response.url) });
   });
   on('Network.loadingFailed', params => {
+    tab.loading.delete(String(params.requestId));
     if (params.canceled) return;
     const url = tab.requests.get(String(params.requestId));
     note({ kind: 'network', level: 'error', text: String(params.errorText ?? 'request failed'), ...(url ? { url } : {}) });

@@ -15,7 +15,7 @@ let restore: (() => void) | undefined;
 beforeAll(() => ensureProductionUi(), 120_000);
 afterAll(async () => { await page?.close(); await harness?.stop(); restore?.(); }, 30_000);
 
-real('a bot project worker appears live in the project and opens as a conversation on desktop and phone', async () => {
+real('a mochi project worker appears live in the project and opens as a conversation on desktop and phone', async () => {
   harness = await startTestCore();
   const owner = await harness.connect();
   const project = await owner.call('projects.add', { path: harness.dataDir, name: 'Worker project' });
@@ -63,7 +63,7 @@ real('a bot project worker appears live in the project and opens as a conversati
   await page.settleAnimations();
   await page.screenshot(join(ARTIFACTS, 'archive-desktop.png'));
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-  await page.click('[data-testid="archived-show"]');
+  await page.click('[data-testid="mobile-settings-archived"]');
   await page.waitFor(`document.querySelector(${JSON.stringify(archivedBot)}) && document.querySelector(${JSON.stringify(archivedWorker)})`);
   await page.settleAnimations();
   await page.screenshot(join(ARTIFACTS, 'archive-phone.png'));

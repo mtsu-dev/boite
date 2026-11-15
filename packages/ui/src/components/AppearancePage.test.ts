@@ -7,9 +7,8 @@ import type { Store } from '../lib/store.svelte';
 import { chatPrefs, readChatPrefs } from '../lib/chat-prefs.svelte';
 import { phoneWidth } from '../test/phone-width';
 import { setLocaleSetting } from '../lib/i18n.svelte';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { presetPalette, setPalette } from '../lib/theme-colors';
+import { appCss } from '../test/app-css';
 
 let running: Record<string, unknown> | null = null;
 
@@ -98,7 +97,7 @@ for (const phone of [false, true]) {
 
 test('with the palette in use past the first row, "All themes" focuses the first palette it revealed', async () => {
   // The real palette tokens, which jsdom cannot load from app.css, so each preset is its own colors.
-  for (const match of readFileSync(resolve('src/app.css'), 'utf8').matchAll(/(--palette-[\w-]+):\s*(#[0-9a-f]{6});/gi)) {
+  for (const match of appCss().matchAll(/(--palette-[\w-]+):\s*(#[0-9a-f]{6});/gi)) {
     document.documentElement.style.setProperty(match[1]!, match[2]!.replace(/^#(.)\1(.)\2(.)\3$/i, '#$1$2$3'));
   }
   try {

@@ -99,7 +99,7 @@ export const PANEL_STORAGE_KEY = 'boite:right-panel:v1';
 export const PANEL_WIDTH_KEY = 'boite:right-panel-width';
 export const PANEL_VERSION = 1;
 
-export const PANEL_DEFAULT = 360;
+export const PANEL_DEFAULT = 420;
 export const PANEL_MIN = 300;
 /** The chat column never drops under this, whatever the drag asks for. */
 export const SIBLING_MIN = 360;

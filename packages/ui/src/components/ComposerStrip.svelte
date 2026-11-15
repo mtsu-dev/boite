@@ -2,9 +2,10 @@
   import JumpLatest from './JumpLatest.svelte';
 
   /**
-   * The slot above the composer's foot, in the flow so it never covers a line
-   * of the timeline: at its right the way back to the latest message, drawn
-   * only while the reader is scrolled up. Empty, it takes no room. What waits
+   * The slot above the composer's foot. It has no height of its own: the way
+   * back to the latest message floats from it, centred over the timeline's
+   * last lines, drawn only while the reader is scrolled up, so no band opens
+   * between the last message and the composer. What waits
    * (a decision out of view, the subagents, the queued messages) is the foot
    * under it (`ComposerFoot`); toasts have their own slot above it (`toastSlot`).
    */
@@ -16,12 +17,10 @@
 
 <style>
   .strip {
-    display: flex;
-    justify-content: flex-end;
+    position: relative;
+    height: 0;
     width: 100%;
     max-width: var(--content);
     margin: 0 auto;
   }
-
-  .strip:has(> :global(*)) { padding-bottom: 8px; }
 </style>

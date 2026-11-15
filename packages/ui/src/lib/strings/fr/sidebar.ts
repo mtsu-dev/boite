@@ -20,6 +20,8 @@ export const fr: Translation = {
     laterProjectsHint: 'Les fils archivés pour plus tard, dans les projets où rien d’autre n’est ouvert.',
     idleProjectsHint: 'Rien à faire ici : aucun fil ouvert ou mis de côté. Choisissez-en un pour lancer un fil.',
     filter: 'Filtrer',
+    filterDisplay: 'Affichage',
+    backToThreads: 'Retour aux fils',
     filterClear: 'Retirer le filtre {name}',
     filterWorking: 'En cours',
     groupingOptions: "Options d'affichage",
@@ -52,7 +54,7 @@ export const fr: Translation = {
     archivedByPlugin: 'Archivé par le plugin {name}',
     reopenThread: 'Remettre dans Récent',
     reopenNamedThread: 'Remettre « {title} » dans Récent',
-    doneNotice: 'Ce fil est terminé. Remettez-le dans Récent pour continuer.',
+    doneNotice: 'Ce fil est terminé',
     contactHold: {
       title: 'Courrier d’un contact : fil bloqué',
       body: 'Son historique contient des messages de {contacts}, envoyés hors d’un projet partagé. Boite ne peut pas borner ce qu’ils demandent, il refuse donc tout tour ici.',
@@ -82,6 +84,8 @@ export const fr: Translation = {
     addProject: 'Ajouter un projet',
     noProjects: 'Aucun projet pour le moment.',
     noThreads: 'Aucun fil pour le moment.',
+    threadCountOne: '{count} fil',
+    threadCountMany: '{count} fils',
     noMatch: 'Rien ne correspond.',
     unread: 'Non lu',
     collapse: 'Masquer la barre latérale',
@@ -126,6 +130,10 @@ export const fr: Translation = {
       delegating: 'Sous-agents',
       delegatingOne: 'Attend 1 sous-agent',
       delegatingMany: 'Attend {count} sous-agents',
+      subagentsOne: '1 sous-agent au travail',
+      subagentsMany: '{count} sous-agents au travail',
+      subagentsAskingOne: '1 sous-agent vous attend',
+      subagentsAskingMany: '{count} sous-agents vous attendent',
       monitoring: 'Surveille',
       monitoringFor: 'Surveille depuis {elapsed}',
       background: 'En arrière-plan',
@@ -134,6 +142,10 @@ export const fr: Translation = {
       watchingMany: 'Surveille {count} PR',
       awaiting: 'Attend : {what}',
       interrupted: 'Arrêté',
+      workWord: {
+        delegating: 'Sous-agents', monitoring: 'Surveille', ci: 'CI en cours', mergeQueue: 'File de merge',
+        shell: 'Commande', agent: 'Agent', workflow: 'Workflow', other: 'Arrière-plan'
+      },
       unreachableWas: 'Machine hors ligne. Dernier état connu : {state}',
       interruptedBy: '{what} s’est terminé sans rendre de résultat : {reason}',
       interruption: {

@@ -51,10 +51,9 @@ function thumb() {
 
 async function setSwitch(on: boolean) {
   await page.click('[data-testid=nav-settings]');
-  // The switch is a detail of Appearance, beside the terminal's cursor.
-  await page.click('[data-testid=settings-tab-appearance]');
+  // The switch is a detail of Advanced, beside the terminal's cursor.
+  await page.click('[data-testid=settings-tab-advanced]');
   await page.waitFor(`!!document.querySelector('${toggle}')`);
-  expect(await page.evaluate(`!!document.querySelector('${toggle}')`)).toBe(true);
   const checked = await page.evaluate<boolean>(`document.querySelector('${toggle}').getAttribute('aria-checked') === 'true' || document.querySelector('${toggle}').checked === true`);
   if (checked !== on) await page.click(toggle);
   await page.click('[data-testid=settings-back]');
@@ -82,7 +81,7 @@ beforeAll(async () => {
   server = await startUi(port);
   page = await BrowserPage.launch({ url: 'about:blank', windowSize: { width: 1280, height: 900 } });
   await page.send('Page.addScriptToEvaluateOnNewDocument', { source: MOUSE });
-  // On by default: the test starts from native bars and turns them on in Settings, Appearance.
+  // On by default: the test starts from native bars and turns them on in Settings, Advanced.
   await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `try { localStorage.setItem('boite.features', '{"edge-scrollbars":false}'); } catch {}` });
   await page.navigate(`http://127.0.0.1:${port}/?fake=1&open=recent&long=1`);
   await page.waitFor(`document.querySelector('${timeline}') && document.querySelector('${timeline}').scrollHeight > document.querySelector('${timeline}').clientHeight`);

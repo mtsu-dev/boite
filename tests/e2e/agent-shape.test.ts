@@ -35,7 +35,9 @@ test('a Claude thread shows what its last request carried, at desktop and phone 
     window.__shapeThread = thread.id;
   })()`);
   await page.waitFor(`document.querySelector('[data-thread-id="' + window.__shapeThread + '"]')`);
-  await page.waitFor(`(async () => { const { workspace } = await import('/src/lib/workspace.svelte.ts'); return workspace.active.openThread?.status === 'idle'; })()`);
+  // The fake core names the thread 200 ms after its first turn starts, often after the turn has ended, and that
+  // summary carries the core's own context: set before it lands, the 75% below is replaced and the meter leaves the row.
+  await page.waitFor(`(async () => { const { workspace } = await import('/src/lib/workspace.svelte.ts'); const thread = workspace.active.openThread; return thread?.status === 'idle' && thread.titleSource === 'agent'; })()`);
   // The row draws the meter once the context matters (from 70% used): this thread's is made 75% used.
   await page.evaluate(`(async () => { const { workspace } = await import('/src/lib/workspace.svelte.ts'); workspace.active.openThread.context = { tokens: 150000, window: 200000, at: Date.now() }; })()`);
   await page.waitFor(`document.querySelector('[data-testid="context-trigger"]')`);

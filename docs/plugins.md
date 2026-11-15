@@ -11,7 +11,7 @@ it: install one only if you trust whoever publishes it.
 
 ## Install a plugin
 
-Settings, Agents, Plugins is a grid of cards: your installed plugins first, then the
+Settings, Plugins is a grid of cards: your installed plugins first, then the
 recommended ones. Search plugins finds one by name or author, and Show narrows
 the grid to All, On or Off.
 
@@ -46,14 +46,14 @@ the plugin should not get, then press Allow.
 | Manage your projects | Add, rename or archive a project |
 | Read your boards | The cards of every project board |
 | Change your boards | Add, edit, move and remove cards |
-| See your agents | Bots, delegated work, workflows and teams |
-| Direct your agents | Wake a bot, write to a child or a team, stop their work |
+| See your agents | Mochis, delegated work, workflows and teams |
+| Direct your agents | Wake a mochi, write to a child or a team, stop their work |
 | Read your files | Any file of your projects, their changes and this machine's folders |
 | Answer for you | Approves the tools and answers the questions agents ask you. Shown in red |
 | See your screens | What an agent's browser, an emulator or a window shows |
 | Use your screens | Taps, types and opens there |
 | Read this machine's state | Load, usage, quotas, agents and settings |
-| Show a thread | Brings a thread or a bot to the front in the app |
+| Show a thread | Brings a thread or a mochi to the front in the app |
 | Change Boite's interface | Its code runs in the app: it can do anything you do. Shown in red |
 
 - A plugin with a program also shows Runs a program on this machine, which
@@ -125,8 +125,7 @@ Some plugins keep several logins of an agent's command-line tool, under
 Account pools behind their gear. Save current CLI login stores the login the tool
 uses now, Use this account makes a saved one its default again, and Forget
 account removes it. This changes the tool's default login, outside Boite too.
-Boite's own accounts in Settings, AI accounts, Providers keep their own
-login.
+Boite's own accounts in Settings, Providers keep their own login.
 
 ## Remove a plugin
 

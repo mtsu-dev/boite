@@ -11,8 +11,7 @@
   import { Autosave, toggled, typed, whole } from '../lib/autosave.svelte';
   import { threadTone } from '../lib/status-tone';
 
-  /** `part`: one of its two cards alone, where the map of Settings places them on two pages (`SettingsShell.svelte`). */
-  let { store, part }: { store: Store; part?: 'limits' | 'tasks' } = $props();
+  let { store }: { store: Store } = $props();
   const uid = $props.id();
 
   let cpuCap = $state(untrack(() => store.settings?.agentCpuCapPercent ?? 75));
@@ -51,15 +50,12 @@
 </script>
 
 <div class="page" data-testid="resources-page">
-  {#if !part}
   <header>
     <div>
       <h1>{strings.settings.tabs.resources}</h1>
     </div>
   </header>
-  {/if}
 
-  {#if part !== 'tasks'}
   <section class="card" id="settings-limits">
     <h2 class="ui-label-box"><span class="ui-label">{strings.protection.limits}</span><InfoTip gather topic={strings.protection.limits} text="" testid="section-info" /><SaveStatus save={limitsSave} /></h2>
     <label for="{uid}-memory-protection" class="switch-row">
@@ -92,8 +88,6 @@
       </dl>
     {:else}<p class="hint">{strings.resources.unknown}</p>{/if}
   </section>
-  {/if}
-  {#if part !== 'limits'}
   <!-- The live list, led by the switch that closes what a closed thread left running. -->
   <section class="card" id="settings-tasks">
     <h2 class="tasks-heading"><span class="ui-label">{strings.protection.tasks}</span><span class="live-dot" aria-hidden="true"></span></h2>
@@ -105,10 +99,11 @@
       <span class="text"><span class="ui-label-box"><span class="ui-label" id="{uid}-keep-awake-name">{strings.settings.keepAwake}</span><InfoTip topic={strings.settings.keepAwake} text={strings.settings.keepAwakeHint} /></span><span class="hint" id="{uid}-keep-awake-effect">{strings.settings.effects.keepAwake}</span></span>
       <input id="{uid}-keep-awake" aria-labelledby="{uid}-keep-awake-name" aria-describedby="{uid}-keep-awake-effect" type="checkbox" role="switch" data-testid="setting-keep-awake" checked={store.settings?.keepAwake ?? true} onchange={(event) => void toggled(event.currentTarget, keepAwake => store.saveSettings({ keepAwake }))} />
     </label>
-    {#if store.resources.length === 0}
-      <p class="idle" data-testid="resources-empty">{strings.resources.empty}</p>
-    {/if}
   </section>
+
+  {#if store.resources.length === 0}
+    <p class="empty" data-testid="resources-empty">{strings.resources.empty}</p>
+  {/if}
 
   {#each resources as entry (entry.threadId)}
     <section class="card flush" data-testid="resource-row" data-thread-id={entry.threadId}>
@@ -148,11 +143,9 @@
       </table></div>
     </section>
   {/each}
-  {/if}
 </div>
 
 <style>
-  .idle { margin: 0; padding: var(--space-3) 0; color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .memory-reading { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px 32px; margin: 0; padding: var(--space-3) 0; font-size: var(--text-sm); }
   dt { color: var(--color-muted-foreground); }
   dd { margin: 6px 0 0; font-variant-numeric: tabular-nums; }

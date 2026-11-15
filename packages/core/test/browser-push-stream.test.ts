@@ -135,10 +135,21 @@ test('pictures wait for a viewer up to the limit; one past it is dropped and ack
   const chromium = fakeCdp();
   const stream = new PushStream(chromium.cdp, 'target', { maxWidth: 1280, quality: 70 }, run => run());
   await stream.start();
-  for (let i = 0; i < VIEWER_OUTPUT_LIMIT + 1; i++) chromium.draw();
+  // The clock's millisecond turns while the last picture is handled: its acknowledgement still follows the one before it.
+  const clock = Date.now, at = clock();
+  let reads = 0;
+  try {
+    Date.now = () => at;
+    for (let i = 0; i < VIEWER_OUTPUT_LIMIT; i++) chromium.draw();
+    Date.now = () => (reads++ === 0 ? at : at + 1);
+    chromium.draw();
+  } finally {
+    Date.now = clock;
+  }
   await Bun.sleep(SCREENCAST_ACK_PACE_MS + 30);
-  // The still took one place, so two pictures found the queue full.
-  expect(chromium.of('Page.screencastFrameAck').map(one => one.params)).toEqual([{ sessionId: VIEWER_OUTPUT_LIMIT }, { sessionId: VIEWER_OUTPUT_LIMIT + 1 }]);
+  // The still took one place, so two pictures found the queue full; their timers may fire in either order.
+  const acknowledged = chromium.of('Page.screencastFrameAck').map(one => one.params);
+  expect(acknowledged.sort((a, b) => Number(a.sessionId) - Number(b.sessionId))).toEqual([{ sessionId: VIEWER_OUTPUT_LIMIT }, { sessionId: VIEWER_OUTPUT_LIMIT + 1 }]);
   const taken: Picture[] = [];
   stream.attach(picture => taken.push(picture));
   expect(taken).toHaveLength(VIEWER_OUTPUT_LIMIT);

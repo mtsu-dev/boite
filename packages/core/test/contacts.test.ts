@@ -171,7 +171,7 @@ test('model tiers: a sender below its own owner\'s tier cannot write, and a lett
   expect(await thrown(hostClient.call('contacts.settings', { settings: { minTier: 4 as 1 } }))).toThrow('settings.minTier: expected 1, 2 or 3');
 }, 30000);
 
-test('an ask for a project goes straight to the contact it names, a core without a Contacts bot, whose owner opens a project; the asking thread hears the answer from the contact', async () => {
+test('an ask for a project goes straight to the contact it names, a core without a Contacts mochi, whose owner opens a project; the asking thread hears the answer from the contact', async () => {
   const { host, guest, hostClient, guestClient, hostId, guestId } = await linked();
   const open = await project(host, hostClient, 'alpha');
   const hostThread = await thread(hostClient, open.id, 'Alpha work');
@@ -230,14 +230,14 @@ test('contact request answers resume automatic pauses while preserving Stop and 
   }
 }, 40000);
 
-test('without a Contacts bot nothing is decided for the owner: a trusted contact whose git remote matches one project still waits, and the remote leaves without its credentials', async () => {
+test('without a Contacts mochi nothing is decided for the owner: a trusted contact whose git remote matches one project still waits, and the remote leaves without its credentials', async () => {
   const { host, guest, hostClient, guestClient, hostId, guestId } = await linked();
   await project(host, hostClient, 'app', 'git@github.com:Acme/App.git');
   const mine = await project(guest, guestClient, 'mine', 'https://user:secret@github.com/acme/app');
   const guestThread = await thread(guestClient, mine.id, 'Guest work');
   await hostClient.call('contacts.update', { coreId: guestId, trusted: true });
   // An ask that names no contact needs this core's bot to pick one: without it, refused with what to turn on.
-  expect(await thrown(guestClient.call('collaboration.ask', { threadId: guestThread, text: 'help on the app' }))).toThrow('Settings > Version > Experiments');
+  expect(await thrown(guestClient.call('collaboration.ask', { threadId: guestThread, text: 'help on the app' }))).toThrow('Settings > Experiments');
   await contactsBotOf(guest, guestClient);
   await waitFor(() => guest.core.contacts.find(hostId)?.capabilities?.contactsBot === 1, 10000);
   const matched = await guestClient.call('collaboration.ask', { threadId: guestThread, contact: hostId, want: 'share', text: 'help on the app' });

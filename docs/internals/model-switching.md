@@ -68,7 +68,7 @@ another account of the agent is signed in
 
 ## Provider defaults
 
-Settings > AI accounts > Providers stores a default model and effort per provider on this
+Settings > Providers stores a default model and effort per provider on this
 device. New threads use those defaults; Ctrl+Enter preserves an explicit choice.
 Existing threads keep their selection. A first send probes when needed and
 refuses a preset unavailable on that account by name. Presets live in client

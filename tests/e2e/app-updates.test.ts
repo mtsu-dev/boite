@@ -15,29 +15,28 @@ async function capture(name: string) {
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
   await page.screenshot(join(process.env.BOITE_UPDATE_CAPTURES ?? join(import.meta.dir, '.artifacts'), `app-update-${name}.png`));
 }
-const version = '[data-testid="settings-page"][data-page="version"]';
-async function openVersion() {
-  // A phone's Settings open on the list of pages, a desktop's on a page with the list beside it.
+async function machines() {
+  // A phone's settings open on the machine itself, which leads to Machines.
   const phone = await page.evaluate<boolean>('innerWidth <= 720');
   if (phone) await mobileAction(page, 'mobile-settings');
   else await page.click(id('nav-settings'));
-  await page.waitFor(`document.querySelector('${id('settings-tab-version')}')`);
-  await page.click(id('settings-tab-version'));
-  // The app's updates are a card of Version, on a desktop and on a phone.
-  await page.waitFor(`document.querySelector('${version}')`);
+  const entry = phone ? 'mobile-settings-connection' : 'settings-tab-machines';
+  await page.waitFor(`document.querySelector('${id(entry)}')`);
+  await page.click(id(entry));
+  await page.waitFor(`document.querySelector('${id('machines-page')}')`);
 }
 async function updates(phase: string, nightly = false) {
   await page.navigate(`${base}/?fake=1&appUpdate=${phase}${nightly ? '&appUpdateChannel=nightly&appUpdateCurrentChannel=nightly' : ''}`);
   await page.waitFor(`document.querySelector('${id('nav-settings')}')`);
-  await openVersion();
-  await page.waitFor(`document.querySelector('${version} ${id('app-updates-card')}')`);
+  await machines();
+  await page.waitFor(`document.querySelector('${id('app-updates-card')}')`);
 }
 async function pickLocale(locale: 'en' | 'fr') {
   await page.click(id('settings-tab-appearance'));
   await page.waitFor(`document.querySelector('${id(`locale-${locale}`)}')`);
   await page.click(id(`locale-${locale}`));
   await page.waitFor(`document.documentElement.lang === '${locale}'`);
-  await page.click(id('settings-tab-version'));
+  await page.click(id('settings-tab-machines'));
   await page.waitFor(`document.querySelector('${id('app-updates-card')}')`);
 }
 const disabled = (name: string) => page.evaluate<boolean>(`document.querySelector('${id(name)}').disabled`);
@@ -48,7 +47,7 @@ beforeEach(async () => { page = await BrowserPage.launch({ url: `${base}/?fake=1
 afterEach(async () => { await page?.close(); }, 15_000);
 afterAll(async () => { await server?.close(); }, 30_000);
 
-test('the rail\'s foot button and Version both reach updates, and the foot fits its controls', async () => {
+test('the rail\'s foot button and Machines both reach updates, and the foot fits its controls', async () => {
   await page.navigate(`${base}/?fake=1&open=recent&machines=1&appUpdate=ready&appUpdateChannel=nightly`);
   // The limits are the list column's foot; the machines, updates and Settings the rail's.
   const foot = ['machine-status', 'nav-updates', 'nav-settings'];
@@ -72,9 +71,9 @@ test('the rail\'s foot button and Version both reach updates, and the foot fits 
   expect(await page.evaluate(`document.activeElement === document.querySelector('${id('nav-settings')}')`)).toBe(true);
   await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', text: '\r', windowsVirtualKeyCode: 13 });
   await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
-  await page.waitFor(`document.querySelector('${id('settings-tab-version')}')`);
-  await page.click(id('settings-tab-version'));
-  await page.waitFor(`document.querySelector('${version}') && document.querySelector('${version} ${id('app-updates-card')}')`);
+  await page.waitFor(`document.querySelector('${id('settings-tab-machines')}')`);
+  await page.click(id('settings-tab-machines'));
+  await page.waitFor(`document.querySelector('${id('machines-page')}') && document.querySelector('${id('app-updates-card')}')`);
   expect(await page.evaluate('window.__boiteTest.workspace.active.machineId')).toBe(active);
   // The card opens on the installed version and the release found, nothing folded.
   expect(await page.text(id('updates-version'))).toContain('Boite');
@@ -113,13 +112,13 @@ test('installation confirms in both languages and cancelling keeps the downloade
   expect(await disabled('updates-run-all')).toBe(true);
 }, 30_000);
 
-test('Devices has no update controls or shortcut and the Version page opens updates', async () => {
+test('General has no update controls or shortcut and the Machines tab opens updates', async () => {
   await updates('ready');
-  await page.click(id('settings-tab-devices'));
-  await page.waitFor(`document.querySelector('${id('settings-page')}[data-page="devices"] ${id('machines-page')}')`);
+  await page.click(id('settings-tab-general'));
+  await page.waitFor(`document.querySelector('${id('settings-page')}') && document.querySelector('${id('machines-page')}') === null`);
   for (const name of ['app-updates-card', 'updates-run-all', 'updates-check-all', 'app-update-status']) expect(await absent(name)).toBe(true);
-  await page.click(id('settings-tab-version'));
-  await page.waitFor(`document.querySelector('${version}') && document.querySelector('${version} ${id('app-updates-card')} ${id('updates-run-all')}')`);
+  await page.click(id('settings-tab-machines'));
+  await page.waitFor(`document.querySelector('${id('machines-page')}') && document.querySelector('${id('app-updates-card')} ${id('updates-run-all')}')`);
   expect(await disabled('updates-run-all')).toBe(false);
 }, 30_000);
 
@@ -155,7 +154,7 @@ test('Release is one pick then a restart on a phone', async () => {
 test('a release that cannot read the nightly data says so and offers nothing', async () => {
   await page.navigate(`${base}/?fake=1&appUpdate=available&appUpdateChannel=nightly&appUpdateCurrentChannel=nightly&appUpdateRelease=blocked`);
   await page.waitFor(`document.querySelector('${id('nav-settings')}')`);
-  await openVersion();
+  await machines();
   await page.waitFor(`document.querySelector('${id('app-update-stable')}')`);
   await page.click(id('app-update-stable'));
   await page.waitFor(`document.querySelector('${id('app-update-status')}')?.textContent.includes('cannot read the data')`);
@@ -182,7 +181,7 @@ test('download progress and retry fit a narrow desktop', async () => {
   expect(await absent('updates-found')).toBe(true);
 }, 30_000);
 
-test('a running check remains visible and disabled in Version', async () => {
+test('a running check remains visible and disabled in Machines', async () => {
   await updates('checking', true);
   expect(await page.text(id('app-update-status'))).toContain('Checking for updates');
   expect(await disabled('updates-check-all')).toBe(true);
@@ -192,11 +191,11 @@ test('a running check remains visible and disabled in Version', async () => {
   await width(880); await capture('checking-narrow');
 }, 30_000);
 
-test('ordinary browsers have no native update controls in Version, including French phone settings', async () => {
+test('ordinary browsers have no native update controls in Machines, including French phone settings', async () => {
   await width(390);
   await page.navigate(`${base}/?fake=1`);
   await page.waitFor(`document.querySelector('${id('nav-settings')}')`);
-  await openVersion();
+  await machines();
   // A browser has no updater of its own: the card names the machine's Boite, without channels or a cancel.
   await page.waitFor(`document.querySelector('${id('app-updates-card')}')`);
   const core = await page.evaluate<string>('window.__boiteTest.workspace.active.core?.version ?? ""');
@@ -207,22 +206,16 @@ test('ordinary browsers have no native update controls in Version, including Fre
   await page.evaluate(`localStorage.setItem('boite.locale', 'fr')`);
   await page.reload();
   await page.waitFor(`document.documentElement.lang === 'fr' && document.querySelector('${id('nav-settings')}')`);
-  await openVersion();
+  await machines();
   await page.waitFor(`document.querySelector('${id('app-updates-card')}')`);
   expect(await absent('app-update-nightly')).toBe(true);
   await capture('phone-fr');
-  expect((await page.text('[data-testid=mobile-settings-header] h1')).trim()).toBe('Version');
-  // Devices, where the machines are, has no update control either.
-  await page.click(id('mobile-settings-back'));
-  await page.waitFor(`document.querySelector('${id('mobile-settings-home')}')`);
-  await page.click(id('settings-tab-devices'));
-  await page.waitFor(`document.querySelector('${id('settings-page')}[data-page="devices"] ${id('machines-page')}')`);
-  for (const name of ['app-updates-card', 'updates-run-all', 'updates-check-all', 'app-update-status', 'app-update-nightly']) expect(await absent(name)).toBe(true);
+  expect((await page.text('[data-testid=mobile-settings-header] h1')).trim()).toBe('Machines et mises à jour');
 }, 30_000);
 
 test('waiting keeps channel changes disabled and cancellation restores the download at desktop and phone widths', async () => {
   for (const viewport of [1400, 390]) {
-    // The width changes on a blank page: a phone width makes the open Version page push its Back entry
+    // The width changes on a blank page: a phone width makes the open Machines page push its Back entry
     // (lib/mobile-history.ts), and a navigation sent while that history step was in flight never committed.
     await page.navigate('about:blank');
     await width(viewport);

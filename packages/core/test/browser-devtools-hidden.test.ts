@@ -102,8 +102,9 @@ real('a public page cannot tell DevTools drives it, and a page of this machine k
   // The agent's own work, served from this machine, in the same tab: its console is read, so it can see it.
   await command({ kind: 'open', url: `http://127.0.0.1:${site.port}/`, reuse: true });
   await command({ kind: 'wait', load: 'load' });
-  expect(await evaluate('probe()')).toBe(true);
-  expect(await consoleSaid()).toContain('shop ready');
+  // The periodic probe can evict the startup line from the bounded diagnostics: check a fresh message.
+  expect(await evaluate("console.info('local console ready'); probe()")).toBe(true);
+  expect(await consoleSaid()).toContain('local console ready');
 
   // Back to the public page: it loads again rather than resuming from the back-forward
   // cache, so the runtime is off before its scripts run.

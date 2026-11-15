@@ -68,7 +68,7 @@ export const strings = {
     close: 'Close',
     agentAccess: 'Agents can read anonymized logs',
     failed: 'Diagnostics did not load: {reason}',
-    outdated: 'Boite on {machine} is older than these diagnostics: its log shows below, but the status, the export and the report need an update. Update it in Settings, Version, Updates.',
-    outdatedHere: 'Boite on this machine is older than these diagnostics: its log shows below, but the status, the export and the report need an update. Update it in Settings, Version, Updates.'
+    outdated: 'Boite on {machine} is older than these diagnostics: its log shows below, but the status, the export and the report need an update. Update it in Settings, Machines and updates.',
+    outdatedHere: 'Boite on this machine is older than these diagnostics: its log shows below, but the status, the export and the report need an update. Update it in Settings, Machines and updates.'
   }
 } as const;

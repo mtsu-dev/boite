@@ -1,10 +1,12 @@
 /**
  * Replay mode: each task as a fixed scripted run of real `boite browser`
  * calls, the way the CLI's help teaches an agent to work. Every action takes
- * its target as a ref read by label out of the previous snapshot's output and
- * is followed by `snapshot -i`. A ref that fails (the CLI refuses it, or the
- * label is not in the snapshot) gets one `snapshot -i --full` and one retry, and
- * both extra calls are counted.
+ * its target as a ref read by label out of the page the agent last saw, and
+ * prints the page it leaves: a whole list, a diff the agent applies to what it
+ * saw, or a line saying nothing changed. Only an action whose output carries
+ * no page is followed by `snapshot -i`. A ref that fails (the CLI refuses it,
+ * or the label is not on the page) gets one `snapshot -i --full` and one
+ * retry, and both extra calls are counted.
  */
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -71,7 +73,8 @@ class RefMissing extends Error {}
 class CliAgent implements Driver {
   readonly calls: Call[] = [];
   refRetries = 0;
-  private last = '';
+  /** The page as the agent knows it: the last whole list with every diff since applied. */
+  private view: string[] = [];
 
   constructor(
     private readonly cli: string[],
@@ -102,7 +105,29 @@ class CliAgent implements Driver {
     const words = retry ? ['snapshot', '-i', '--full'] : ['snapshot', '-i'];
     const { out, err, code } = await this.run(words, retry);
     if (code !== 0) throw new Error(`${words.join(' ')} exited ${code}: ${(err || out).trim().slice(0, 200)}`);
-    this.last = out;
+    if (!this.absorb(out)) this.view = out.split('\n');
+  }
+
+  /**
+   * Reads the page an output ends with into the view: a whole list replaces
+   * it, a diff's `+ ` and `- ` lines are added and removed, and "did not
+   * change" or "no change" leaves it. False when the output shows no page.
+   */
+  private absorb(out: string): boolean {
+    const lines = out.replace(/\n$/, '').split('\n');
+    if (lines.some(line => line === '  the page did not change' || line.startsWith('no change since your last snapshot'))) return true;
+    const whole = lines.indexOf('page (snapshot -i):');
+    if (whole >= 0) { this.view = lines.slice(whole + 1); return true; }
+    const head = lines.findIndex(line => line.startsWith('diff since your last snapshot'));
+    if (head < 0) return false;
+    for (const line of lines.slice(head + 1)) {
+      if (line.startsWith('+ ')) this.view.push(line.slice(2));
+      else if (line.startsWith('- ')) {
+        const at = this.view.indexOf(line.slice(2));
+        if (at >= 0) this.view.splice(at, 1);
+      }
+    }
+    return true;
   }
 
   /** Resolves the target in the last snapshot, runs the action, and on a ref failure re-snapshots once and retries. */
@@ -110,15 +135,15 @@ class CliAgent implements Driver {
     for (let attempt = 0; attempt < 2; attempt++) {
       const retry = attempt === 1;
       try {
-        const ref = refOf(this.last, target);
-        if (ref === null) throw new RefMissing(`no ${target.role} "${target.name}" in the last snapshot`);
+        const ref = refOf(this.view.join('\n'), target);
+        if (ref === null) throw new RefMissing(`no ${target.role} "${target.name}" on the page last seen`);
         const { out, err, code } = await this.run([command, `@${ref}`, ...text], retry);
         if (code !== 0) {
           const said = (err || out).trim();
           if (REF_FAILURE.test(said)) throw new RefMissing(said);
           throw new Error(`${command} @${ref} exited ${code}: ${said.slice(0, 200)}`);
         }
-        await this.snapshot();
+        if (!this.absorb(out)) await this.snapshot();
         return;
       } catch (error) {
         if (!(error instanceof RefMissing) || retry) throw error;
@@ -131,7 +156,7 @@ class CliAgent implements Driver {
   async open(path: string): Promise<void> {
     const { out, err, code } = await this.run(['open', `${this.base}${path}`], false);
     if (code !== 0) throw new Error(`open exited ${code}: ${(err || out).trim().slice(0, 200)}`);
-    await this.snapshot();
+    if (!this.absorb(out)) await this.snapshot();
   }
   click(target: Target): Promise<void> {
     return this.act('click', target);
@@ -148,8 +173,7 @@ class CliAgent implements Driver {
   async read(): Promise<string> {
     const { out, err, code } = await this.run(['snapshot', '--full'], false);
     if (code !== 0) throw new Error(`snapshot --full exited ${code}: ${(err || out).trim().slice(0, 200)}`);
-    // The core now diffs against this read: the next ref lookup uses it too.
-    this.last = out;
+    // A full read without -i is another view: the core keeps the -i one, and so does the agent.
     return out;
   }
 }

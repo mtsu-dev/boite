@@ -258,6 +258,8 @@ export class FakeContext {
   worktrees: FakeWorktree[] = [];
   /** The `pathKey` of each worktree `worktrees.remove` took, so a thread left in one is refused a turn. */
   readonly removedWorktrees = new Set<string>();
+  /** The `pathKey` of each removed worktree whose branch `worktrees.remove` deleted too. */
+  readonly deletedBranches = new Set<string>();
   /** The `pathKey` of each folder `FakeClient.loseFolder` took: the fake's stand-in for a deleted repository. */
   readonly goneFolders = new Set<string>();
   /** The sessions Claude Code kept, each tagged with the project whose folder it sits under. */
@@ -503,7 +505,7 @@ export class FakeContext {
         if (!provider || provider.enabled !== false) return null;
         return provider.policy
           ? `${provider.name} is blocked by your organization's policy; choose another model for ${agent.name} in its settings.`
-          : `${provider.name} is turned off on this machine; turn it on in Settings > AI accounts > Providers, or choose another model for ${agent.name} in its settings.`;
+          : `${provider.name} is turned off on this machine; turn it on in Settings > Providers, or choose another model for ${agent.name} in its settings.`;
       },
       // A project's folder holds files: a brain root refuses it.
       occupied: path => this.projects.some(p => p.path.replace(/[\\/]+$/, '') === path),

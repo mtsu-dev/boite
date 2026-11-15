@@ -1,7 +1,8 @@
-import { AGENT_ROUTINE_NAME_MAX, AGENT_ROUTINE_PROMPT_MAX, AGENT_ROUTINES_MAX, nextAgentOccurrence } from '@boite/contracts';
+import { AGENT_ROUTINE_CHECK_MAX, AGENT_ROUTINE_NAME_MAX, AGENT_ROUTINE_PROMPT_MAX, AGENT_ROUTINES_MAX, nextAgentOccurrence } from '@boite/contracts';
 import type { AgentRoutine, AgentSchedule, RpcParams, Turn } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { refused } from '../errors.ts';
+import { checkPrompt, runCheck, type CheckResult } from './checks.ts';
 import { boolean, integer, object, text } from './validation.ts';
 
 export function checkSchedule(value:AgentSchedule):AgentSchedule {
@@ -41,6 +42,12 @@ export function scheduleText(schedule: AgentSchedule): string {
   return `daily at ${schedule.time} ${schedule.timezone}${schedule.days ? ` on ${schedule.days.map(day => DAYS[day]).join(', ')}` : ''}`;
 }
 
+/** A routine's check as saved: trimmed, null when there is none. */
+function checkOf(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  return text(value, 'check', AGENT_ROUTINE_CHECK_MAX, true) || null;
+}
+
 /** The outcome a finished occurrence leaves on its routine. */
 function outcomeOf(turn: Turn): NonNullable<AgentRoutine['lastOutcome']> {
   if (turn.status === 'done') return turn.quiet ? 'quiet' : 'done';
@@ -53,10 +60,18 @@ function outcomeOf(turn: Turn): NonNullable<AgentRoutine['lastOutcome']> {
  * `nextAt`; one that failed, stopped or had nothing to say never blocks. A
  * paused agent, a paused core or a spent daily budget skips the occurrence
  * (`lastOutcome: 'skipped'`); the agent's thread busy with something else
- * holds it until that turn ends.
+ * holds it until that turn ends. A routine with a check runs its command
+ * first (`checks.ts`): nothing new moves the routine on with `nothing` and
+ * starts no turn; something new, or a new failure, starts the turn with what
+ * the command printed. What the agent last read is kept (`checkSeen`) once its
+ * turn starts, so a restart, a busy thread or a spent budget loses no news.
  */
 export class AgentRoutines {
   readonly #core: Core;
+  /** Routines whose check runs now. */
+  readonly #checking = new Set<string>();
+  /** What a check found for the occurrence due at `nextAt`, until that occurrence is settled. */
+  readonly #found = new Map<string, { nextAt: number; command: string; result: CheckResult }>();
   constructor(core:Core) {
     this.#core = core;
   }
@@ -72,13 +87,19 @@ export class AgentRoutines {
       if(held>=AGENT_ROUTINES_MAX)throw refused(`routine: ${agent.name} already has ${held} routines, the most an agent may hold is ${AGENT_ROUTINES_MAX}; remove one before adding another`,{field:'agentId',count:held,max:AGENT_ROUTINES_MAX});
     }
     const schedule=checkSchedule(v.schedule),enabled=boolean(v.enabled,'enabled');
+    const check=checkOf(v.check),kept=previous?.check??null;
+    // The command runs without a permission card: an agent sets or changes one only while its own thread asks for none.
+    if(params.threadId!==undefined&&check!==null&&check!==kept){
+      const mode=this.#core.threads.require(params.threadId).permissionMode;
+      if(mode!=='bypassPermissions'&&mode!=='yolo')throw refused(`check: ${agent.name} runs in a mode that asks before a command, so it cannot give a routine one that runs by itself; the owner adds it in the routine's editor, or gives ${agent.name} full access`,{field:'check',expected:'a thread with full access, or the owner'});
+    }
     const changed=JSON.stringify(previous?.schedule)!==JSON.stringify(schedule);
     // A once routine that already ran is done: resuming it must not fire it again at its past date.
     // A new date re-arms it, even saved while paused, so that run no longer counts.
     const spent=schedule.kind==='once'&&!changed&&previous?.lastScheduledAt!=null;
     const nextAt=!enabled||spent?null:previous?.enabled&&!changed?previous.nextAt:schedule.kind==='once'?schedule.at:nextOccurrence(schedule,Date.now());
     const lastScheduledAt=schedule.kind==='once'&&changed?null:previous?.lastScheduledAt??null;
-    const value:Omit<AgentRoutine,'id'|'revision'|'createdAt'|'updatedAt'>={agentId:agent.id,name:text(v.name,'name',AGENT_ROUTINE_NAME_MAX),prompt:text(v.prompt,'prompt',AGENT_ROUTINE_PROMPT_MAX),schedule,enabled,nextAt,lastTurnId:previous?.lastTurnId??null,lastScheduledAt,lastOutcome:previous?.lastOutcome??null};
+    const value:Omit<AgentRoutine,'id'|'revision'|'createdAt'|'updatedAt'>={agentId:agent.id,name:text(v.name,'name',AGENT_ROUTINE_NAME_MAX),prompt:text(v.prompt,'prompt',AGENT_ROUTINE_PROMPT_MAX),schedule,enabled,nextAt,lastTurnId:previous?.lastTurnId??null,lastScheduledAt,lastOutcome:previous?.lastOutcome??null,check,checkSeen:check!==null&&check===kept?previous?.checkSeen??null:null};
     const result=params.id?this.#r.update('routine',params.id,integer(params.expectedRevision,'expectedRevision',1,Number.MAX_SAFE_INTEGER),value):this.#r.create('routine',value);
     this.#core.workforce.changed();return result;
   }
@@ -87,6 +108,7 @@ export class AgentRoutines {
     const routine=this.#r.get('routine',text(params.routineId,'routineId',160));
     if(params.threadId!==undefined&&this.#core.workforce.agentOfThread(params.threadId)?.id!==routine.agentId)throw refused('routine: an agent removes only its own routines',{field:'routineId'});
     this.#r.remove('routine',routine.id);
+    this.#found.delete(routine.id);
     this.#core.workforce.changed();
     return {removed:true};
   }
@@ -105,16 +127,47 @@ export class AgentRoutines {
     return {turnId:turn.id};
   }
 
-  /** Writes an occurrence that started, or one that was skipped, and moves the routine to its next time. */
-  #occurred(routine:AgentRoutine,turnId:string|null,due:boolean):void {
+  /**
+   * Writes an occurrence that started, or one that was skipped, and moves the routine to its next time.
+   * `seen` is the print of the check output the started turn carries.
+   */
+  #occurred(routine:AgentRoutine,turnId:string|null,due:boolean,seen?:string|null):void {
     const now=Date.now();
     const current=this.#r.get('routine',routine.id);
     const once=current.schedule.kind==='once';
     // Run now leaves the schedule as it was; a due occurrence moves it on.
     const next=due?{nextAt:current.enabled&&!once?nextOccurrence(current.schedule,now):null,enabled:current.enabled&&!once}:{};
     this.#r.update('routine',current.id,current.revision,{...current,...next,lastScheduledAt:now,
-      ...(turnId===null?{lastOutcome:'skipped' as const}:{lastTurnId:turnId,lastOutcome:null})});
+      ...(turnId===null?{lastOutcome:'skipped' as const}:{lastTurnId:turnId,lastOutcome:null,...(seen===undefined?{}:{checkSeen:seen})})});
     this.#core.workforce.changed();
+  }
+
+  /** A due occurrence whose check had nothing new: no turn, the routine moves on. Empty output forgets what was seen, so the same news later counts again. */
+  #nothing(routine:AgentRoutine,print:string|null):void {
+    const now=Date.now();
+    const current=this.#r.get('routine',routine.id);
+    const once=current.schedule.kind==='once';
+    this.#r.update('routine',current.id,current.revision,{...current,nextAt:current.enabled&&!once?nextOccurrence(current.schedule,now):null,enabled:current.enabled&&!once,
+      lastScheduledAt:now,lastOutcome:'nothing',checkSeen:print});
+    this.#core.workforce.changed();
+  }
+
+  /** Starts the check of a due occurrence; its result waits in `#found` for the next tick. */
+  #check(agentId:string,routine:AgentRoutine,command:string):void {
+    const nextAt=routine.nextAt!;
+    this.#checking.add(routine.id);
+    void (async():Promise<CheckResult>=>{
+      const thread=this.#core.threads.require(this.#core.workforce.open(agentId).threadId);
+      return runCheck(this.#core,thread,command);
+    })().catch((error):CheckResult=>{
+      const text=`The check could not start: ${error instanceof Error?error.message:String(error)}`;
+      return{text,failed:true,print:text};
+    }).then(result=>{
+      this.#checking.delete(routine.id);
+      if(this.#core.stopping||!this.#r.find('routine',routine.id))return;
+      this.#found.set(routine.id,{nextAt,command,result});
+      this.#next=null;
+    });
   }
 
   /** A due occurrence whose previous one still runs only moves on. */
@@ -154,9 +207,23 @@ export class AgentRoutines {
       const last=routine.lastTurnId?this.#core.journal.getTurn(routine.lastTurnId):null;
       if(last&&(last.status==='queued'||last.status==='running')){this.#advance(routine);continue;}
       if(paused||agent.status==='paused'){this.#occurred(routine,null,true);continue;}
-      const attempt=this.#core.agentRuntime.attempt(agent,{kind:'routine',label:`Routine · ${routine.name}`,prompt:routine.prompt,requestId:`due-${routine.id}-${routine.nextAt}`});
+      let prompt=routine.prompt,seen:string|null|undefined;
+      const command=routine.check?.trim();
+      if(command){
+        const found=this.#found.get(routine.id);
+        if(!found||found.nextAt!==routine.nextAt||found.command!==command){
+          this.#found.delete(routine.id);
+          if(!this.#checking.has(routine.id))this.#check(agent.id,routine,command);
+          held=true;continue;
+        }
+        const {result}=found;
+        if(result.print===null||result.print===(routine.checkSeen??null)){this.#found.delete(routine.id);this.#nothing(routine,result.print);continue;}
+        prompt=checkPrompt(routine.prompt,command,result);seen=result.print;
+      }
+      const attempt=this.#core.agentRuntime.attempt(agent,{kind:'routine',label:`Routine · ${routine.name}`,prompt,requestId:`due-${routine.id}-${routine.nextAt}`});
       if(attempt.held==='busy'){held=true;continue;}
-      this.#occurred(routine,attempt.turn?.id??null,true);
+      this.#found.delete(routine.id);
+      this.#occurred(routine,attempt.turn?.id??null,true,attempt.turn?seen:undefined);
     }
     // A skipped or started occurrence moved its own `nextAt`: the earliest is read again after them.
     if(!held)for(const routine of this.#r.list('routine'))if(routine.enabled&&routine.nextAt!==null&&routine.nextAt>now)at=at===null?routine.nextAt:Math.min(at,routine.nextAt);

@@ -119,7 +119,7 @@ export function replayMarkdown(report: ReplayReport, command: string): string {
     `Command: \`${command}\``,
     '',
     'Each task is a fixed script of real `boite browser` calls against a fresh core with an echo thread: `open`,',
-    'then for each action the action on a ref read by label from the previous output, followed by `snapshot -i`.',
+    'then for each action the action on a ref read by label from the page last seen; each action prints the page it leaves, so `snapshot -i` runs only after an output without one or before a retry.',
     'Calls, bytes and tokens are medians over the repeats of one run of the task; call times pool every call of',
     'every repeat. Tokens are bytes / 4, an estimate, not a tokenizer count.',
     '',

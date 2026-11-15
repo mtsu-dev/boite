@@ -231,6 +231,18 @@ test('a workflow the thread started is one grouped row from its start, that says
   } finally { window.localStorage.clear(); }
 });
 
+test('the top fade is told the padding a sent prompt gets, so it stays at the header instead of crossing the prompt', () => {
+  stubLayout(400);
+  const messages: Message[] = [{ id: 'm-prompt', threadId: 't-short', turnId: 'turn-prompt', role: 'user', state: 'complete', createdAt: 1, parts: [{ type: 'text', text: 'A long first prompt' }] }];
+  const focused = { ...store, providerOf: () => undefined, promptFocus: { threadId: 't-short', turnId: 'turn-prompt', after: null } } as unknown as Store;
+  running = mount(MessageList, { target: document.body, props: { store: focused, threadId: 't-short', messages } });
+  flushSync();
+  const timeline = document.querySelector<HTMLElement>('[data-testid=timeline]')!;
+  // A sent prompt is led down from the header by padding: the sticky fade stops at that padding and must be told the same number.
+  expect(timeline.style.paddingTop).not.toBe('');
+  expect(timeline.style.getPropertyValue('--scroll-edge-top')).toBe(timeline.style.paddingTop);
+});
+
 test('system coordination messages show their display text outside the user bubble', () => {
   stubLayout(200);
   const messages: Message[] = [{
@@ -495,7 +507,7 @@ test('a contact request sits where the thread asked, and a letter only sent to a
   thread.turns = [turn];
   thread.memoryEvents = [];
   thread.messages = [
-    { id: 'msg-before-ask', threadId: thread.id, turnId: turn.id, role: 'assistant', state: 'complete', createdAt: 10, parts: [{ type: 'text', text: 'Asking the Contacts bot' }] },
+    { id: 'msg-before-ask', threadId: thread.id, turnId: turn.id, role: 'assistant', state: 'complete', createdAt: 10, parts: [{ type: 'text', text: 'Asking the Contacts mochi' }] },
     { id: 'msg-after-ask', threadId: thread.id, turnId: turn.id, role: 'assistant', state: 'complete', createdAt: 40, parts: [{ type: 'text', text: 'Wrote to the thread it named' }] }
   ];
   const self = { coreId: 'core-local', threadId: thread.id };

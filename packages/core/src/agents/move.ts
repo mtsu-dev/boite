@@ -31,7 +31,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  AGENT_BUILTINS, AGENT_DAILY_BUDGET, AGENT_PICTURE_MAX_BYTES, isAgentPicture, AGENT_ROUTINE_NAME_MAX, AGENT_ROUTINE_PROMPT_MAX, AGENT_ROUTINES_MAX,
+  AGENT_BUILTINS, AGENT_DAILY_BUDGET, AGENT_PICTURE_MAX_BYTES, isAgentPicture, AGENT_ROUTINE_CHECK_MAX, AGENT_ROUTINE_NAME_MAX, AGENT_ROUTINE_PROMPT_MAX, AGENT_ROUTINES_MAX,
   type AgentBuiltin, type AgentMoveResult, type AgentProfile, type AgentQueuedMove, type AgentRoutine, type AgentRuntimeConfig, type AgentSchedule, type AgentSelection, type AgentSession,
   type CoordinationPeer, type Message, type MoveNotice, type RpcParams, type ThreadSummary, type Turn,
 } from '@boite/contracts';
@@ -92,7 +92,7 @@ export interface MoveHooks {
 
 /** One carried message: its excerpt, its role, the turn it belonged to (counted within the move) and when it was written. */
 interface MovedMessage { role: Message['role']; text: string; turn: number; at: number }
-interface MovedRoutine { name: string; prompt: string; schedule: AgentSchedule; enabled: boolean; spent: boolean }
+interface MovedRoutine { name: string; prompt: string; schedule: AgentSchedule; enabled: boolean; spent: boolean; check?: string }
 interface MovedSettings { autoMemory: boolean; eventWakes: boolean; addProjects: boolean; dailyBudgetUsd: number | null; subagents: { enabled: boolean; paused: boolean; anyModel: boolean } }
 /** One waiting fact: `written` orders the versions of a key on the source. */
 interface MovedFact { key: string; text: string; written: number }
@@ -199,7 +199,7 @@ export class BotMoves {
 
   /** What refuses a move before anything is read or sent, now or once the bot's turn ends. */
   #movable(agent: AgentProfile): void {
-    if (agent.status === 'archived') throw refused(`agents.move: ${agent.name} is archived; restore it before moving it`, { field: 'agentId', expected: 'an active or paused bot' });
+    if (agent.status === 'archived') throw refused(`agents.move: ${agent.name} is archived; restore it before moving it`, { field: 'agentId', expected: 'an active or paused mochi' });
     if (this.#moving.has(agent.id)) throw refused(`agents.move: ${agent.name} is already moving to another machine`, { field: 'agentId', reason: 'moving' });
   }
 
@@ -299,16 +299,16 @@ export class BotMoves {
       }
       const receipt = answer as Partial<Receipt> | null;
       if (receipt?.agentId !== agent.id || typeof receipt.threadId !== 'string' || !Array.isArray(receipt.projectIds) || !Array.isArray(receipt.groupProjects)) {
-        throw refused(`agents.move: ${peer.name} gave an answer this machine does not read; update Boite on both machines, then move the bot again with the same requestId`, { field: 'machine', requestId: payload.requestId, reason: 'unread-answer' });
+        throw refused(`agents.move: ${peer.name} gave an answer this machine does not read; update Boite on both machines, then move the mochi again with the same requestId`, { field: 'machine', requestId: payload.requestId, reason: 'unread-answer' });
       }
       let now: BotMovePayload;
       try { now = { ...this.#payload(this.#store.records.get('profile', agent.id), null, peer, payload.requestId), history: payload.history }; }
       catch (error) {
-        throw refused(`agents.move: ${agent.name} changed while it moved: ${error instanceof Error ? error.message : String(error)}; the bot stays here, and the same requestId finishes the move once that is fixed`, { field: 'agentId', requestId: payload.requestId, reason: 'facts-arriving' });
+        throw refused(`agents.move: ${agent.name} changed while it moved: ${error instanceof Error ? error.message : String(error)}; the mochi stays here, and the same requestId finishes the move once that is fixed`, { field: 'agentId', requestId: payload.requestId, reason: 'facts-arriving' });
       }
       if (print(now) === print(sent)) return receipt as Receipt;
       if (round + 1 >= MOVE_FACT_ROUNDS) {
-        throw refused(`agents.move: ${agent.name} kept changing while it moved (facts, settings, brain or routines); the bot stays here, and the same requestId tries again without moving it twice`, { field: 'agentId', requestId: payload.requestId, reason: 'facts-arriving' });
+        throw refused(`agents.move: ${agent.name} kept changing while it moved (facts, settings, brain or routines); the mochi stays here, and the same requestId tries again without moving it twice`, { field: 'agentId', requestId: payload.requestId, reason: 'facts-arriving' });
       }
       sent = now;
     }
@@ -318,7 +318,7 @@ export class BotMoves {
   #facts(agentId: string): BotMovePayload['facts'] {
     const facts = this.#core.agentRuntime.facts(agentId);
     // The source forgets every one of them once the bot leaves: none may stay behind.
-    if (facts.length > MOVE_FACTS_MAX) throw refused(`agents.move: ${facts.length} facts wait for the bot, more than the ${MOVE_FACTS_MAX} a move carries; let it run once first`, { field: 'agentId', count: facts.length, max: MOVE_FACTS_MAX });
+    if (facts.length > MOVE_FACTS_MAX) throw refused(`agents.move: ${facts.length} facts wait for the mochi, more than the ${MOVE_FACTS_MAX} a move carries; let it run once first`, { field: 'agentId', count: facts.length, max: MOVE_FACTS_MAX });
     return facts.map(fact => ({ key: fact.key, text: fact.text, written: fact.written ?? fact.at }));
   }
 
@@ -338,10 +338,10 @@ export class BotMoves {
     const busy = this.#busy(thread);
     if (busy === undefined) return;
     const message = busy.id === thread.id
-      ? `agents.move: ${agent.name} has a turn running or queued; stop it or let it end before moving the bot`
-      : `agents.move: ${agent.name}'s sub-thread ${busy.id} has a turn running or queued; stop it before moving the bot`;
-    throw refused(sent === undefined ? message : `${message}; the bot stays here, and the same requestId (${sent}) finishes the move once it ends`, {
-      field: 'agentId', threadId: thread.id, busyThreadId: busy.id, reason: 'turn-in-flight', status: busy.status, expected: 'an idle bot', ...(sent === undefined ? {} : { requestId: sent }),
+      ? `agents.move: ${agent.name} has a turn running or queued; stop it or let it end before moving the mochi`
+      : `agents.move: ${agent.name}'s sub-thread ${busy.id} has a turn running or queued; stop it before moving the mochi`;
+    throw refused(sent === undefined ? message : `${message}; the mochi stays here, and the same requestId (${sent}) finishes the move once it ends`, {
+      field: 'agentId', threadId: thread.id, busyThreadId: busy.id, reason: 'turn-in-flight', status: busy.status, expected: 'an idle mochi', ...(sent === undefined ? {} : { requestId: sent }),
     });
   }
 
@@ -375,6 +375,7 @@ export class BotMoves {
     const routines = this.#store.records.list('routine').filter(routine => routine.agentId === agent.id).map(routine => ({
       name: routine.name, prompt: routine.prompt, schedule: routine.schedule, enabled: routine.enabled,
       spent: routine.schedule.kind === 'once' && routine.lastScheduledAt !== null,
+      ...(routine.check ? { check: routine.check } : {}),
     }));
     const payload: BotMovePayload = {
       v: 1, requestId, from: { coreId: self, name },
@@ -425,11 +426,11 @@ export class BotMoves {
     const machine = machineArg(this.#core, peer);
     if (error instanceof RpcFailure) return error;
     if (error instanceof PeerRefusal) {
-      if (error.message.startsWith(OLD_CORE)) return refused(`agents.move: update Boite on ${peer.name}; it cannot take a bot from another machine yet`, { field: 'machine', machine, expected: 'features.botMove' });
+      if (error.message.startsWith(OLD_CORE)) return refused(`agents.move: update Boite on ${peer.name}; it cannot take a mochi from another machine yet`, { field: 'machine', machine, expected: 'features.botMove' });
       return refused(error.message, { field: 'machine', machine });
     }
     if (error instanceof PeerGone) return refused(`agents.move: ${peer.name} removed this machine from its group`, { field: 'machine', machine });
-    return refused(`agents.move: ${peer.name} did not answer (${error instanceof Error ? error.message : String(error)}); the bot stays here, and the same requestId tries again without moving it twice`, { field: 'machine', machine, reason: 'unreachable' });
+    return refused(`agents.move: ${peer.name} did not answer (${error instanceof Error ? error.message : String(error)}); the mochi stays here, and the same requestId tries again without moving it twice`, { field: 'machine', machine, reason: 'unreachable' });
   }
 
   /** The target holds the bot: this machine keeps its thread, archived with a line, and nothing else of it. */
@@ -471,7 +472,7 @@ export class BotMoves {
    */
   receive(peer: CoordinationPeer, raw: unknown): Receipt {
     const payload = readPayload(raw);
-    if (payload.from.coreId !== peer.coreId) throw refused('bot.move.from.coreId: a machine moves only its own bots', { field: 'from.coreId', expected: peer.coreId });
+    if (payload.from.coreId !== peer.coreId) throw refused('bot.move.from.coreId: a machine moves only its own mochis', { field: 'from.coreId', expected: peer.coreId });
     const key = `${MOVED_IN}${peer.coreId}:${payload.requestId}`;
     const done = this.#core.journal.getSetting(key) as Receipt | undefined;
     const self = this.#core.group.selfId();
@@ -483,10 +484,10 @@ export class BotMoves {
     }
     const moved = payload.profile;
     if (this.#store.records.find('profile', moved.id) !== null) {
-      throw refused(`agents.move: ${here} already holds a bot ${moved.id}; it came by another move or was never removed there`, { field: 'agentId' });
+      throw refused(`agents.move: ${here} already holds a mochi ${moved.id}; it came by another move or was never removed there`, { field: 'agentId' });
     }
     if (moved.builtin !== undefined && this.#store.builtins.live(moved.builtin) !== null) {
-      throw refused(`agents.move: ${here} already has its own ${moved.builtin} bot; reset or pause one of them, a machine runs one of each built-in bot`, { field: 'agentId', builtin: moved.builtin });
+      throw refused(`agents.move: ${here} already has its own ${moved.builtin} mochi; reset or pause one of them, a machine runs one of each built-in mochi`, { field: 'agentId', builtin: moved.builtin });
     }
     const selection = this.#route(moved.selection, moved.name, here);
     const placed = this.#place(peer, moved);
@@ -650,6 +651,8 @@ export class BotMoves {
         agentId, name: routine.name, prompt: routine.prompt, schedule: routine.schedule, enabled,
         nextAt: !enabled ? null : routine.schedule.kind === 'once' ? routine.schedule.at : nextOccurrence(routine.schedule, now),
         lastTurnId: null, lastScheduledAt: routine.spent ? (routine.schedule as { at: number }).at : null, lastOutcome: null,
+        // Its check comes along and starts from nothing seen: the same command may print something else on this machine.
+        check: routine.check ?? null, checkSeen: null,
       });
     }
   }
@@ -702,7 +705,7 @@ export class BotMoves {
       messages.push({ id: newId('msg_'), threadId, turnId: turn.id, role: moved.role, parts: [{ type: 'text', text: moved.text }], state: 'complete', createdAt: moved.at });
     }
     if (history.omitted > 0 && messages.length > 0) {
-      messages.unshift({ id: newId('msg_'), threadId, turnId: messages[0]!.turnId, role: 'system', parts: [{ type: 'text', text: `${history.omitted} older messages stayed on the machine this bot came from.` }], state: 'complete', createdAt: messages[0]!.createdAt });
+      messages.unshift({ id: newId('msg_'), threadId, turnId: messages[0]!.turnId, role: 'system', parts: [{ type: 'text', text: `${history.omitted} older messages stayed on the machine this mochi came from.` }], state: 'complete', createdAt: messages[0]!.createdAt });
     }
     // Generation 1 with no session: the first turn carries this history to a fresh session, as a fork does.
     const next: ThreadSummary = { ...thread, sessionId: null, sessionGeneration: 1, updatedAt: Date.now() };
@@ -788,6 +791,7 @@ function readPayload(raw: unknown): BotMovePayload {
     return {
       name: text(entry.name, `${field}.name`, AGENT_ROUTINE_NAME_MAX), prompt: text(entry.prompt, `${field}.prompt`, AGENT_ROUTINE_PROMPT_MAX),
       schedule: checkSchedule(entry.schedule as unknown as AgentSchedule), enabled: boolean(entry.enabled, `${field}.enabled`), spent: boolean(entry.spent, `${field}.spent`),
+      ...(entry.check === undefined ? {} : { check: text(entry.check, `${field}.check`, AGENT_ROUTINE_CHECK_MAX) }),
     };
   });
   object(raw.history, 'bot.move.history');

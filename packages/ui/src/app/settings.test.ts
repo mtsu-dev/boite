@@ -146,33 +146,43 @@ test('the checklist model sits with how agents answer on General, with no experi
   await waitFor(() => document.querySelector('[data-testid=settings]') === null);
 });
 
-test('a desktop has two levels: the gear opens the nav, its search and the first page, a typed word lists its results in the page and Enter opens one', async ({ app: _app }) => {
+test('the gear opens Settings on its home: a tile per page under its family, the search in the nav, a typed word lists its results in the page and Enter opens one', async ({ app: _app }) => {
   query<HTMLButtonElement>('[data-testid=nav-settings]').click();
   await waitFor(() => document.querySelector('[data-testid=settings-search]') !== null);
-  // No grid of tiles between the nav and a page: the gear shows Appearance beside the nav, the search heads the nav.
+  // Home is the page Settings opens on: the nav's first entry lights, no page's does, and the search heads the nav.
   expect(query('[data-testid=settings-home]').closest('nav')).not.toBeNull();
-  expect(document.querySelector('[data-testid^=settings-home-]')).toBeNull();
-  await waitFor(() => document.querySelector('[data-testid=settings-tab-appearance]')?.getAttribute('aria-current') === 'page');
-  expect(query('[data-testid=settings-crumb] h1').textContent?.trim()).toBe('Appearance');
-  expect(query('[data-testid=settings-scope]').textContent?.trim()).toBe('This device');
-  // Nine entries in one list, no family head over them.
-  expect(document.querySelector('nav [data-testid=settings-family]')).toBeNull();
-  expect([...document.querySelectorAll<HTMLElement>('nav .tab:not([hidden])')].map((entry) => entry.textContent?.trim())).toEqual([
-    'Appearance', 'Input', 'Conversations', 'AI accounts', 'Agents', 'Safeguards', 'Devices', 'Version', 'Troubleshooting'
+  await waitFor(() => document.querySelector('[data-testid=settings-tab-home]')?.getAttribute('aria-current') === 'page');
+  expect(query('[data-testid=settings-crumb] h1').textContent?.trim()).toBe('Home');
+  expect(document.querySelector('[data-testid=settings-tab-general]')?.getAttribute('aria-current')).toBeNull();
+  // One tile per page under the nav's four families; a page merged into Diagnostics keeps a tile under its own name.
+  const tiles = (family: string) => [...document.querySelectorAll<HTMLElement>(`[data-testid=settings-home-family][data-family=${family}] .tile`)].map((tile) => tile.dataset.testid?.replace('settings-home-', ''));
+  expect(tiles('app')).toEqual(['general', 'keyboard', 'voice', 'appearance']);
+  expect(tiles('agents')).toEqual(['accounts', 'plugins', 'brain', 'limits', 'usage']);
+  expect(tiles('connections')).toEqual(['browser', 'machines']);
+  expect(tiles('advanced')).toEqual(['advanced', 'experiments', 'diagnostics', 'resources', 'task-manager']);
+  // A tile says its page's state where there is one to read.
+  expect(query('[data-testid=settings-home-appearance-status]').textContent).toBe('System · English');
+  expect(query('[data-testid=settings-home-accounts-status]').textContent).toMatch(/connected|Connect a provider/);
+  // A merged page's tile opens its host at its section, and the nav's Home entry leads back.
+  query<HTMLButtonElement>('[data-testid=settings-home-resources]').click();
+  await waitFor(() => document.querySelector('#settings-resources [data-testid=resources-page]') !== null);
+  expect(query('[data-testid=settings-tab-diagnostics]').getAttribute('aria-current')).toBe('page');
+  query<HTMLButtonElement>('[data-testid=settings-tab-home]').click();
+  await waitFor(() => document.querySelector('[data-testid=settings-home-page]') !== null);
+  // A tile opens its page.
+  query<HTMLButtonElement>('[data-testid=settings-home-general]').click();
+  await waitFor(() => document.querySelector('[data-testid=settings-tab-general]')?.getAttribute('aria-current') === 'page');
+  expect(query('[data-testid=settings-crumb] h1').textContent?.trim()).toBe('General');
+  expect(document.querySelector('[data-testid=settings-home-page]')).toBeNull();
+  // The entries stand under four family heads, Advanced named like the others.
+  expect([...document.querySelectorAll<HTMLElement>('nav [data-testid=settings-family]')].map((family) => [family.dataset.family, family.querySelector('.family-head')?.textContent ?? null])).toEqual([
+    ['app', 'App'], ['agents', 'Agents'], ['connections', 'Connections'], ['advanced', 'Advanced']
   ]);
-  // A page from before the map is still a route, never drawn: its name opens where its content went.
-  expect(query<HTMLButtonElement>('nav [data-testid=settings-tab-browser]').hidden).toBe(true);
-  // Only a long page lists its sections under its entry, and only while it is open.
-  expect(document.querySelector('nav [data-testid=settings-sections]')).toBeNull();
-  query<HTMLButtonElement>('[data-testid=settings-tab-ai]').click();
-  await waitFor(() => document.querySelector('nav [data-testid=settings-sections]') !== null);
-  expect([...document.querySelectorAll<HTMLElement>('nav [data-testid=settings-sections] .sub')].map((entry) => entry.dataset.testid)).toEqual([
-    'settings-section-providers', 'settings-section-local-acp', 'settings-section-secrets', 'settings-section-quotas', 'settings-section-subscription-proxy', 'settings-section-usage'
-  ]);
-  // The subscription proxy is one card on the page.
-  await waitFor(() => document.querySelector('[data-testid=subscription-proxy-settings]') !== null);
-  expect(document.querySelectorAll('[data-testid=subscription-proxy-settings]')).toHaveLength(1);
-  expect(query('[data-testid=settings-scope]').dataset.scope).toBe('machine');
+  expect(query('[data-family=connections] [data-testid=settings-tab-browser]')).toBeTruthy();
+  // Every page is a peer in its family, none indented under another: Keyboard is one click from anywhere.
+  expect(query('[data-family=app] [data-testid=settings-tab-keyboard]')).toBeTruthy();
+  expect(document.querySelector('nav [data-testid^=settings-tab-].sub')).toBeNull();
+  expect(document.querySelector('[data-testid=settings-pages]')).toBeNull();
 
   const field = query<HTMLInputElement>('[data-testid=settings-search]');
   // A word that is also its section's name lists once: "updates" broke the list with two results of one key.
@@ -181,18 +191,10 @@ test('a desktop has two levels: the gear opens the nav, its search and the first
   await waitFor(() => document.querySelector('[data-testid=settings-search-results]') !== null);
   const updates = [...document.querySelectorAll('[data-testid=settings-search-result] .label')].map((label) => label.textContent).filter((label) => label === 'Updates');
   expect(updates).toHaveLength(1);
-  // A word no title holds finds its card, and the result names the card's page.
-  field.value = 'cookies';
+  // A family's name finds its entries: "connections" lists the browser's page.
+  field.value = 'connections';
   field.dispatchEvent(new Event('input', { bubbles: true }));
-  await waitFor(() => [...document.querySelectorAll('[data-testid=settings-search-result]')].some((result) => result.textContent?.includes('Built-in browser') && result.querySelector('.trail')?.textContent === 'Safeguards'));
-  // A result opens its page on its card and rings it.
-  field.value = 'compaction';
-  field.dispatchEvent(new Event('input', { bubbles: true }));
-  await waitFor(() => document.querySelector<HTMLElement>('[data-testid=settings-search-result]')?.dataset.section === 'auto-compact');
-  field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
-  await waitFor(() => store.settingsTab === 'agents' && document.querySelector('#settings-auto-compact') !== null);
-  expect(store.settingsSection).toMatchObject({ id: 'auto-compact', flash: true });
-  await waitFor(() => document.querySelector('#settings-auto-compact')?.classList.contains('settings-flash') === true);
+  await waitFor(() => [...document.querySelectorAll('[data-testid=settings-search-result]')].some((result) => result.textContent?.includes('Browser profiles')));
   field.value = 'font';
   field.dispatchEvent(new Event('input', { bubbles: true }));
   await waitFor(() => document.querySelector('[data-testid=settings-search-results]') !== null);
@@ -207,18 +209,17 @@ test('a desktop has two levels: the gear opens the nav, its search and the first
   await waitFor(() => document.querySelector('[data-testid=settings]') === null);
 });
 
-test('Voice is a section of Input on a desktop: the page holds the keyboard and the voice, and the old route lands on it', async ({ app: _app }) => {
+test('Voice is a peer of General in the App family on a desktop: its nav entry opens its own page and lights', async ({ app: _app }) => {
   query<HTMLButtonElement>('[data-testid=nav-settings]').click();
   await waitFor(() => document.querySelector('[data-testid=settings-tab-voice]') !== null);
+  expect(query('[data-family=app] [data-testid=settings-tab-voice]')).toBeTruthy();
   query<HTMLButtonElement>('[data-testid=settings-tab-voice]').click();
   await waitFor(() => document.querySelector('[data-testid=voice-settings]') !== null);
-  // Input's page: the crumb names it, the shortcuts stand over the voice, the conversations' cards stay on their page.
-  expect(query('[data-testid=settings-crumb] h1').textContent?.trim()).toBe('Input');
-  expect(query('#settings-voice h2').textContent).toBe('Voice');
-  expect(document.querySelector('[data-testid=keyboard-page]')).not.toBeNull();
+  // Its own page: the crumb names it, General's cards stay on General.
+  expect(query('[data-testid=settings-crumb] h1').textContent?.trim()).toBe('Voice');
   expect(document.querySelector('#settings-conversations')).toBeNull();
-  expect(query('[data-testid=settings-tab-input]').getAttribute('aria-current')).toBe('page');
-  expect(query('[data-testid=settings-tab-conversations]').getAttribute('aria-current')).toBeNull();
+  expect(query('[data-testid=settings-tab-voice]').getAttribute('aria-current')).toBe('page');
+  expect(query('[data-testid=settings-tab-general]').getAttribute('aria-current')).toBeNull();
   query<HTMLButtonElement>('[data-testid=settings-back]').click();
   await waitFor(() => document.querySelector('[data-testid=settings]') === null);
 });

@@ -11,7 +11,15 @@ or a phone, and you can click, type and sign in there yourself.
 - Open pages, read them, click, type, fill forms and pick options in lists.
   It reads a page as a list of numbered elements. An element keeps its
   number while it stays on the page, and reading the same page again shows
-  the agent only what changed, so a long page costs it less each time.
+  the agent only what changed, so a long page costs it less each time. Each
+  click or keystroke shows it the page that results, so it needs no extra
+  step to look.
+- Close a cookie banner or a dialog that covers a button before clicking the
+  button, the way a person would.
+- Get past a site's bot check, such as Cloudflare's "Just a moment" page,
+  the way you would: it waits for the check and ticks its box once. It
+  solves no puzzle and pays no service; when a check stays, the agent tells
+  you, and you can take over the page in the panel.
 - Work in frames from other sites, such as a payment form or an embedded
   sign-in.
 - Record a tab as a silent video. A recording still running when the turn
@@ -32,7 +40,10 @@ turned on.
 Boite uses a Chromium-based browser already installed on that machine: Chrome,
 Edge, Chromium or Brave. Edge ships with Windows 10 and 11, so a Windows
 machine always has one. Boite installs nothing. A machine without any says so
-in the panel.
+in the panel. Google Chrome comes first when it is installed: sites that check
+for bots trust a regular Chrome release more than Chromium or Chrome for
+Testing. The browser draws on the machine's graphics card when it can, as
+Chrome with a window does.
 
 To use a specific browser, set `BOITE_BROWSER` to its executable in the
 environment Boite starts with.
@@ -80,7 +91,7 @@ To sign the agent in to a site:
 When an agent meets a sign-in page, it may ask you in the chat. The question
 card's Open button opens the page in the conversation's browser.
 
-Settings, Safeguards, Built-in browser, Browser profiles lists the profiles:
+Settings, Browser, Browser profiles lists the profiles:
 
 - Add profile creates one. Open new tabs here picks the profile new tabs use.
 - User-Agent, on a profile you created, appends a marker to the browser's

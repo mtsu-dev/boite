@@ -72,7 +72,7 @@ test('an async question answer is visible while steering and becomes one user me
   expect(await thrown(owner.call('questions.answer', { threadId, questionId, optionIds: ['1'] }))).toThrow('unknown question');
 });
 
-test.each(['answer', 'user', 'coordination', 'memory', 'refused-memory'] as const)('a bot setting answer queued during %s steering reaches the same running turn', async source => {
+test.each(['answer', 'user', 'coordination', 'memory', 'refused-memory'] as const)('a mochi setting answer queued during %s steering reaches the same running turn', async source => {
   const { owner, threadId, turn, inputs } = await running();
   h.core.workforce.setLimits({ paused: true });
   const agent = await owner.call('agents.profile.save', { value: agentValue(h.core.threads.require(threadId).accountId) });

@@ -4,7 +4,25 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { processTreeFixture } from './lib/process-tree-fixture.ts';
 import { rejection } from '../../packages/core/test/settle.ts';
-import { windowsProcessTree } from './lib/process-tree.ts';
+import { selectProcessTree, type TreeProcess, windowsProcessTree } from './lib/process-tree.ts';
+
+test('a recycled parent PID and unreadable creation times cannot invent descendants', () => {
+  const row = (pid: number, parent: number): TreeProcess => ({ ProcessId: pid, ParentProcessId: parent, Name: 'bun.exe', CommandLine: null });
+  // The runner's original parent exited. Its retained PPID is now the fixture's
+  // root PID, making a cycle that a walk using only PID/PPID accepts.
+  const all = [row(400, 300), row(100, 200), row(200, 100), row(300, 200), row(500, 200), row(600, 500), row(700, 300), row(800, 100)];
+  // Real FILETIMEs exceed Number's exact range: adjacent ticks must stay distinct.
+  const tick = 133_000_000_000_000_000n;
+  const times = new Map<number, bigint | null>([[100, tick + 1n], [200, tick + 2n], [300, tick + 3n], [400, tick + 3n], [500, null], [600, tick + 4n], [700, tick + 2n], [800, tick + 4n]]);
+  const reads: number[] = [];
+  const createdAt = (pid: number) => { reads.push(pid); return times.get(pid) ?? null; };
+  expect(selectProcessTree(all, 200, createdAt).map(entry => entry.ProcessId)).toEqual([400, 200, 300]);
+  expect(new Set(reads).size).toBe(reads.length);
+  // An unreadable root still appears, but cannot establish any child links.
+  times.set(200, null);
+  expect(selectProcessTree(all, 200, pid => times.get(pid) ?? null)).toEqual([all[2]!]);
+  expect(selectProcessTree(all, 999, pid => times.get(pid) ?? null)).toEqual([]);
+});
 
 // A shell's diagnosis lists WebView2's processes under it with their `--type`.
 // The PowerShell and WMI listing it replaces gave nothing within 10 s on a

@@ -27,7 +27,7 @@ test('Send now during OpenCode startup stops the old turn and delivers a new one
     const turn = await owner.call('turns.start', { threadId: thread.id, prompt: '[slow]' });
     await waitFor(() => harness!.core.threads.runner.handles.has(thread.id));
     await owner.call('composer.put', { section: 'inputs', id: thread.id, expectedRevision: 0, sendNow: true,
-      value: { input: { text: '', attachments: [], paused: false, queued: [{ id: 'opencode-startup-followup', text: 'Also check the bots', attachments: [] }] } } });
+      value: { input: { text: '', attachments: [], paused: false, queued: [{ id: 'opencode-startup-followup', text: 'Also check the mochis', attachments: [] }] } } });
     await waitFor(() => harness!.core.composer.storage.get('inputs', thread.id).value?.input.queued.length === 0, 20000);
     const current = await owner.call('threads.get', { threadId: thread.id });
     expect(current.turns).toHaveLength(2);
@@ -35,7 +35,7 @@ test('Send now during OpenCode startup stops the old turn and delivers a new one
     expect(current.turns[1]?.status).toBe('running');
     expect(current.status).toBe('running');
     expect(current.messages.filter(message => message.role === 'user')).toHaveLength(2);
-    await waitFor(() => harness!.core.journal.listMessages(thread.id).some(message => message.role === 'assistant' && message.parts.some(part => part.type === 'text' && part.text.includes('Also check the bots'))));
+    await waitFor(() => harness!.core.journal.listMessages(thread.id).some(message => message.role === 'assistant' && message.parts.some(part => part.type === 'text' && part.text.includes('Also check the mochis'))));
     expect(harness.core.journal.listMessages(thread.id).filter(message => message.role === 'user').at(-1)).toMatchObject({ turnId: current.turns[1]!.id });
     expect(current.messages.flatMap(message => message.parts).some(part => part.type === 'tool')).toBe(false);
   } finally { delete process.env['OPENCODE_FIXTURE_TOOL_GATE']; }

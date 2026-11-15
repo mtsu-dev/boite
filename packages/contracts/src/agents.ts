@@ -25,7 +25,7 @@ export interface AgentRuntimeConfig {
   autoMemory?: boolean;
   /**
    * Every project and desk fact wakes this bot. Default false: then only facts
-   * about threads it started, was entrusted or watches (`boite bot watch`), and
+   * about threads it started, was entrusted or watches (`boite mochi watch`), and
    * outside events (`agents.event`), wake it; the rest wait for its next routine.
    */
   eventWakes?: boolean;
@@ -59,6 +59,8 @@ export const AGENT_ROUTINES_MAX = 50;
 /** A routine's name and prompt, in characters. */
 export const AGENT_ROUTINE_NAME_MAX = 80;
 export const AGENT_ROUTINE_PROMPT_MAX = 4000;
+/** A routine's check command, in characters. */
+export const AGENT_ROUTINE_CHECK_MAX = 2000;
 /**
  * A daily schedule with `days` runs only on those weekdays, numbered 0 (Sunday) to 6 in
  * its timezone. Absent means every day; the core drops a list of all seven.
@@ -83,10 +85,23 @@ export interface AgentRoutine extends AgentRecord {
   lastScheduledAt: number | null;
   /**
    * How the last occurrence ended: `quiet` when it had nothing for the user,
-   * `skipped` when the budget or a pause held it. A failed occurrence never
+   * `skipped` when the budget or a pause held it, `nothing` when its check
+   * printed nothing new and no turn started. A failed occurrence never
    * blocks the next one; only one still queued or running does.
    */
-  lastOutcome?: 'done' | 'quiet' | 'error' | 'stopped' | 'skipped' | null;
+  lastOutcome?: 'done' | 'quiet' | 'error' | 'stopped' | 'skipped' | 'nothing' | null;
+  /**
+   * A shell command the core runs in the agent's folder each time the routine
+   * comes due, before any turn: the agent wakes only when it prints something
+   * it did not print the time before, or fails in a new way, and reads that
+   * output with the prompt. An occurrence with nothing new costs no turn. Run
+   * now skips it. The owner sets it; the agent itself only while its thread
+   * runs with full access, since the command runs without a permission card.
+   * Null or missing: every occurrence wakes the agent.
+   */
+  check?: string | null;
+  /** A print of what the check last showed the agent, so the same output does not wake it twice; null once it printed nothing. */
+  checkSeen?: string | null;
 }
 
 /** Stable identities are independent of provider processes and native sessions. */
@@ -201,7 +216,13 @@ export interface AgentWatch {
   title: string;
   projectId: string | null;
   origin: 'started' | 'entrusted' | 'followed' | 'touched';
+  /** When the follow was last recorded: a local thread's moves each time the bot touches it again. */
   since: number;
+  /**
+   * When the thread was created, the order the desk lists its threads in. Absent
+   * for a thread of another machine and on older cores, which fall back to `since`.
+   */
+  createdAt?: number;
   /** Read from the thread itself, never from what the agent said. */
   state: 'working' | 'queued' | 'needs-you' | 'failed' | 'idle' | 'done' | 'archived';
   /** Since when a running turn has produced nothing; set past the stall delay, when the agent was woken about it. */
@@ -296,7 +317,7 @@ export interface AgentsRpcMethods {
   /** The bytes of an imported picture as a `data:` URL, for the client that draws it. */
   'agents.picture.get': { params: { avatar: string }; result: { dataUrl: string } };
   /**
-   * A thread dresses a bot at once, with no card (`boite settings bot picture`):
+   * A thread dresses a bot at once, with no card (`boite settings mochi picture`):
    * the bot whose conversation it is, or `agent` by id or name. `avatar` is
    * what `agents.settings.request` takes for the key `avatar`: an `img:` picture
    * this machine holds, a robot code, one or two characters, or "" for the
@@ -304,7 +325,7 @@ export interface AgentsRpcMethods {
    */
   'agents.avatar.set': { params: { threadId: string; agent?: string; avatar: string }; result: AgentProfile };
   /**
-   * A thread creates a bot the user asked for (`boite settings bot create`),
+   * A thread creates a bot the user asked for (`boite settings mochi create`),
    * as `agents.profile.save` creates one from the Bots page, with full access.
    * The model resolves as for `boite delegate`; omitted, the bot runs on the
    * calling thread's own route. Refused for a name a bot already holds, an
@@ -367,7 +388,7 @@ export interface AgentsRpcMethods {
   'agents.runtime.get': { params: { agentId: string }; result: AgentRuntimeConfig };
   'agents.runtime.configure': { params: { agentId: string; expectedRevision: number; config: AgentRuntimeConfig }; result: AgentProfile };
   'agents.accounts.set': { params: { grants: AgentAccountGrant[] }; result: AgentAccountGrant[] };
-  /** `threadId`: an agent reads its own brain from its thread (`boite bot memory`). */
+  /** `threadId`: an agent reads its own brain from its thread (`boite mochi memory`). */
   'agents.brain.get': { params: { agentId: string; threadId?: string }; result: AgentBrain };
   'agents.brain.save': { params: { agentId: string; expectedRevision: string; instructions: string; memory: string }; result: AgentBrain };
   /**
@@ -376,7 +397,7 @@ export interface AgentsRpcMethods {
    * holds files refuses the whole change before anything moves. Owner only.
    */
   'agents.brain.root': { params: { path: string | null }; result: AgentBrainRoot };
-  /** Adds a line to the agent's MEMORY.md, from its own thread (`boite bot remember`) or the owner. */
+  /** Adds a line to the agent's MEMORY.md, from its own thread (`boite mochi remember`) or the owner. */
   'agents.memory.note': { params: { threadId?: string; agentId?: string; text: string }; result: AgentBrain };
   'agents.routine.save': { params: AgentSave<AgentRoutine> & { threadId?: string }; result: AgentRoutine };
   'agents.routine.remove': { params: { routineId: string; threadId?: string }; result: { removed: true } };
@@ -401,7 +422,7 @@ export interface AgentsRpcMethods {
   'agents.entrust': { params: { threadId: string; agentId: string | null; objective?: string }; result: AgentEntrustment | null };
   /**
    * An agent's settings a card may propose a change to, with their values and
-   * choices (`boite settings bot`). Any thread reads them; a persistent
+   * choices (`boite settings mochi`). Any thread reads them; a persistent
    * agent's thread reads its own without naming it.
    */
   'agents.settings.read': { params: AgentSettingsReadParams; result: AgentSettingsReading };

@@ -35,7 +35,7 @@ Keep your projects, conversations and agents together, across your computers and
 - Isolate tasks in Git worktrees, delegate to subagents and run workflows.
 - Follow the same work from your desktop, a paired phone or the Android app.
 - Connect machines and headless servers; each runs agents beside its own projects.
-- Give ongoing work, scheduled routines and project monitoring to bots.
+- Give ongoing work, scheduled routines and project monitoring to mochis.
 
 ## Get started
 
@@ -48,7 +48,7 @@ New release notes put the download links under each platform, above the changelo
 > bugs or unfinished changes. Back up your Boite data before installing or switching channels.
 
 1. Open the [download page](https://github.com/mtsu-dev/boite/releases) and choose your system and processor.
-2. Install and sign in to your agents, then connect them in Settings, AI accounts, Providers.
+2. Install and sign in to your agents, then connect them in Settings, Providers.
 3. Open a project, choose a model and start a conversation.
 
 See [installation](docs/install.md), [first steps](docs/first-steps.md),
@@ -59,7 +59,7 @@ another machine, use the [server guide](docs/server.md).
 
 The [user guide](docs/README.md) has one short page per feature. Start with
 [supported agents](docs/supported-agents.md), [accounts](docs/accounts.md),
-[machines](docs/machines.md) or [bots](docs/bots.md). The
+[machines](docs/machines.md) or [mochis](docs/mochis.md). The
 [technical reference](docs/internals/README.md) covers the implementation.
 
 ## Development

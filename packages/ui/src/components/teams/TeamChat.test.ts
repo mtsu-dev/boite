@@ -86,7 +86,7 @@ function search(text: string) {
   flushSync();
 }
 
-test("a phone's Bots list holds the teams above the bots, opens a team's chat, and its search finds teams by name", async () => {
+test("a phone's Mochis list holds the teams above the mochis, opens a team's chat, and its search finds teams by name", async () => {
   const { store, team, huginn, say } = await skollheim();
   await say(huginn.id, 'The draft is up. @tous have a look.');
   botsPage(store, true);
@@ -95,7 +95,7 @@ test("a phone's Bots list holds the teams above the bots, opens a team's chat, a
   const bot = `[data-testid="agent-entry-${huginn.id}"]`;
   await vi.waitFor(() => expect(document.querySelector(row)?.getAttribute('data-unread')).toBe('true'));
   await vi.waitFor(() => query(bot));
-  expect(all('.agents-rail .section-label').map(heading => heading.textContent)).toEqual(['Teams', 'Bots']);
+  expect(all('.agents-rail .section-label').map(heading => heading.textContent)).toEqual(['Teams', 'Mochis']);
   expect(query(row).textContent).toContain('Skollheim');
   expect(query(row).textContent).toContain('Huginn (Réseaux) and Jeux (Producteur)');
 
@@ -103,7 +103,9 @@ test("a phone's Bots list holds the teams above the bots, opens a team's chat, a
   await vi.waitFor(() => expect(store.openThread?.id).toBe(team.threadId));
   expect(store.page).toBe('agents');
   await vi.waitFor(() => query('[data-testid=team-chat]'));
-  expect([query('[data-testid=team-title]').textContent, query('[data-testid=team-room]').textContent]).toEqual(['Skollheim', 'Team chat · 2 bots and you']);
+  // The header is its own chunk: it lands a moment after the chat.
+  await vi.waitFor(() => query('[data-testid=team-title]'));
+  expect([query('[data-testid=team-title]').textContent, query('[data-testid=team-room]').textContent]).toEqual(['Skollheim', 'Team chat · 2 mochis and you']);
   expect(query(row).getAttribute('aria-current')).toBe('page');
   await vi.waitFor(() => expect(document.querySelector(row)?.hasAttribute('data-unread')).toBe(false));
 
@@ -116,7 +118,7 @@ test("a phone's Bots list holds the teams above the bots, opens a team's chat, a
   expect(all('.agents-rail .section-label')).toHaveLength(0);
 });
 
-test("a desktop's column shows the open team: its picture, its name, who is in it, its chat, and its members open their bot", async () => {
+test("a desktop's column shows the open team: its picture, its name, who is in it, its chat, and its members open their mochi", async () => {
   const { store, team, huginn } = await skollheim();
   botsPage(store, false);
   // The desktop's default bot is open first; the rail then opens the team.
@@ -137,7 +139,7 @@ test("a desktop's column shows the open team: its picture, its name, who is in i
   await vi.waitFor(() => expect(query('[data-testid=bot-column-head]').textContent).toContain(huginn.name));
 });
 
-test("a phone's Bots list holds the teams, a team's chat opens full screen over it and goes back to it, and no thread row lists the chat", async () => {
+test("a phone's Mochis list holds the teams, a team's chat opens full screen over it and goes back to it, and no thread row lists the chat", async () => {
   const { store, team } = await skollheim();
   phone();
   const threads = mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } });
@@ -162,7 +164,7 @@ test("a phone's Bots list holds the teams, a team's chat opens full screen over 
   expect(store.openThread?.id).toBe(team.threadId);
 });
 
-test('with Teams off the Bots page lists the bots alone, and a team chat opens in the chat', async () => {
+test('with Teams off the Mochis page lists the mochis alone, and a team chat opens in the chat', async () => {
   const { store, team, huginn } = await skollheim();
   setExperiment('teams', false);
   botsPage(store, true);
@@ -182,7 +184,7 @@ test('the team chat draws each post with its author, a private post with its rec
   await client.call('teams.post', { teamId: team.id, id: 'owner-thanks', text: 'Thanks' });
   // An owner post from before a post naming nobody woke the whole team keeps the routing it recorded.
   await client.call('teams.post', { teamId: team.id, id: 'owner-before', text: 'Anyone?' });
-  client.recordTeamRouting(team.threadId, 'owner-before', { to: [], routedBy: 'none', notice: 'Nobody was pinged: name a bot with @name, or everyone with @tous.' });
+  client.recordTeamRouting(team.threadId, 'owner-before', { to: [], routedBy: 'none', notice: 'Nobody was pinged: name a mochi with @name, or everyone with @tous.' });
   await store.open(team.threadId);
   mounted.push(mount(TeamChat, { target: document.body, props: { store, thread: store.openThread! } }));
 
@@ -199,6 +201,9 @@ test('the team chat draws each post with its author, a private post with its rec
     [null, 'team', null, 'Woke nobody'],
   ]);
   expect(posts[1]!.textContent).toContain('The draft is up.');
+  // A ping reads in the accent colour: the name as written, `@tous` too, and nothing else of the post.
+  expect(posts.map(post => [...post.querySelectorAll('.ping')].map(ping => ping.textContent))).toEqual([['@Huginn (Réseaux)'], ['@tous'], [], [], []]);
+  expect(posts[0]!.querySelector('.body')!.textContent?.trim()).toBe('@Huginn (Réseaux) can you draft the launch post?');
   expect(all('[data-testid=team-member]').map(member => [member.textContent?.trim(), member.getAttribute('data-bot-id')])).toEqual([
     ['Huginn (Réseaux)', huginn.id], ['Jeux (Producteur)', jeux.id],
   ]);

@@ -480,7 +480,7 @@ describe('background compaction', () => {
     } finally { client.close(); }
   });
 
-  test('per-type background switches cover real children and bots, and a policy change cancels the old copy', async () => {
+  test('per-type background switches cover real children and mochis, and a policy change cancels the old copy', async () => {
     const copies: TurnContext[] = [];
     let stops = 0;
     const restore = setDriver('echo', { ...echoDriver, startTurn(ctx) {

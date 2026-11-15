@@ -18,7 +18,7 @@ async function machine(id: string, name: string): Promise<FakeClient> {
 const bot = (client: FakeClient, name: string) => client.call('agents.profile.save', { value: { name, domain: '', instructions: '', avatar: '', status: 'active', projectIds: [],
   selection: { providerId: 'echo', accountId: 'a-echo', model: 'echo-1', effort: null, permissionMode: 'default' } } });
 
-test('the bots, teams and automatic posts of two machines counting alike keep apart', async () => {
+test('the mochis, teams and automatic posts of two machines counting alike keep apart', async () => {
   const desk = await machine('desk', 'Desk'), pc = await machine('pc', 'Pc');
   await desk.call('group.create', { name: 'Home' });
   await pc.call('group.join', { invite: (await desk.call('group.invite', {})).invite });
@@ -52,7 +52,7 @@ test('the bots, teams and automatic posts of two machines counting alike keep ap
   expect(read.posts.map(post => post.text)).toEqual(['From here.', 'From there.']);
 });
 
-test('a bot in a team of one name on each of two machines is told to name one by id', async () => {
+test('a mochi in a team of one name on each of two machines is told to name one by id', async () => {
   const desk = await machine('desk', 'Desk'), pc = await machine('pc', 'Pc');
   await desk.call('group.create', { name: 'Home' });
   await pc.call('group.join', { invite: (await desk.call('group.invite', {})).invite });

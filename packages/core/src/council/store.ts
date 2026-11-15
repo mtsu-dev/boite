@@ -139,7 +139,7 @@ export class CouncilStore {
     return experiments.includes(COUNCIL_EXPERIMENT);
   }
   gate(): void {
-    if (!this.enabled()) throw refused('the council needs the Council experiment, which is off in the desktop app (Settings, Version, Experiments)', { reason: 'experiment-off' });
+    if (!this.enabled()) throw refused('the council needs the Council experiment, which is off in the desktop app (Settings, Experiments)', { reason: 'experiment-off' });
   }
   /** A member's thread. */
   owns(threadId: string): boolean { return this.#children.has(threadId); }
@@ -340,7 +340,7 @@ export class CouncilStore {
       }
       const owner = this.#core.workforce.resident.ownerOf(parent.id);
       const permissionMode = readOnlyOf(this.#core, resolved.providerId) === 'native' ? 'plan' as const : 'default' as const;
-      if (owner && !this.#core.workforce.resident.allowed(owner, { ...resolved, permissionMode }, true)) throw refused(`${what}: account/model access was withdrawn from this bot`, { field: 'models' });
+      if (owner && !this.#core.workforce.resident.allowed(owner, { ...resolved, permissionMode }, true)) throw refused(`${what}: account/model access was withdrawn from this mochi`, { field: 'models' });
       return resolved;
     };
     const routes = models.map(route);

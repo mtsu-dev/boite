@@ -54,7 +54,7 @@ export const CONTACT_MAIL_SCENARIOS: Record<string, Scenario> = {
     await until(async () => await status(second.id) === 'delivered', 'a delivered letter never reached the agent');
     check(!(await held()).some(letter => letter.id === second.id), 'a delivered letter still waits');
   },
-  'a request may name a group member\'s thread at its Bots host, <thread>~<16 hex>, and nothing looser': async (env: ContractEnv) => {
+  'a request may name a group member\'s thread at its Mochis host, <thread>~<16 hex>, and nothing looser': async (env: ContractEnv) => {
     const contact = await env.newContact();
     await contact.call('contacts.join', { link: (await env.call('contacts.invite', { share: false })).link });
     for (const side of [env, contact]) await side.call('contacts.settings', { settings: { minTier: 2 } });

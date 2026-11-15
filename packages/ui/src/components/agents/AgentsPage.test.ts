@@ -34,7 +34,7 @@ test('an agent named on the way in opens alone: the default agent of the visit g
   }
 });
 
-for (const previousBot of [false, true]) test(`a background reload preserves a pending bot selection (previous bot: ${previousBot})`, async ({ ready }) => {
+for (const previousBot of [false, true]) test(`a background reload preserves a pending mochi selection (previous mochi: ${previousBot})`, async ({ ready }) => {
   let page: ReturnType<typeof mount> | null = null;
   let bar: ReturnType<typeof mount> | null = null;
   let release!: () => void;
@@ -127,7 +127,7 @@ test('a desk kept shut by an open panel opens on the next visit: the first visit
   }
 });
 
-test('a default bot that cannot be opened offers a retry instead of loading forever', async ({ ready }) => {
+test('a default mochi that cannot be opened offers a retry instead of loading forever', async ({ ready }) => {
   let page: ReturnType<typeof mount> | null = null;
   try {
     const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
@@ -149,7 +149,7 @@ test('a default bot that cannot be opened offers a retry instead of loading fore
   }
 });
 
-test("a desktop's column is the open bot's: who it is, its conversation, its threads; the rail's New bot opens the form here", async ({ ready }) => {
+test("a desktop's column is the open mochi's: who it is, its conversation, its threads; the rail's New mochi opens the form here", async ({ ready }) => {
   let page: ReturnType<typeof mount> | null = null;
   let bar: ReturnType<typeof mount> | null = null;
   try {

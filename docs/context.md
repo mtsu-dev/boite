@@ -6,8 +6,10 @@ you keep writing while the agent works.
 
 ## Read the context meter
 
-The ring beside the send button fills as the conversation grows. Hover it,
-focus it or tap it to see the exact counts:
+The ring at the right of the message bar fills as the conversation grows.
+It stays clickable before the first measurement and below 70% used. From 70%,
+it also shows the percentage of context left. Hover it, focus it or tap it to
+see the exact counts:
 
 - Used, and the tokens available before the model's limit, or before
   auto-compaction when you set a token limit.
@@ -33,8 +35,7 @@ the chat with the token counts before and after.
 
 ### Automatic compaction
 
-Settings, Agents, Compaction defaults by agent type, Automatic compaction sets
-when Boite compacts for you.
+Settings, Advanced, Automatic compaction sets when Boite compacts for you.
 Without it, each agent keeps its own behaviour.
 
 | Setting | What it does |
@@ -48,15 +49,16 @@ Without it, each agent keeps its own behaviour.
   waits on background work wait until 85% of it, and at least 64,000 tokens.
   Before the prompt cache expires does not depend on the limit.
 - Compaction defaults by agent type keeps separate settings for
-  Conversations, Subagents and Bots. Each uses Common until you pick Customize
+  Conversations, Subagents and Mochis. Each uses Common until you pick Customize
   this type.
 - Claude summary instructions replaces the summary prompt of Claude.
   `/compact` followed by your own instructions wins over it.
 - Automatic compactions wait while a goal or a loop is active.
-- On a phone connected as the owner, the same card is on the same page.
+- On a phone connected as the owner, Automatic compaction is a row in the
+  machine's settings.
 
 Experimental, in Nightly builds only: Background compaction, in Settings,
-Version, Experiments. With a token
+Experiments. With a token
 limit, a copy of the session compacts once the conversation reaches 85% of it,
 while you keep working. It works with Claude and Codex; OpenCode 2 uses its
 own. Copies spend the same account and are not counted in usage.

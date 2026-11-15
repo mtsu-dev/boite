@@ -87,6 +87,14 @@ test('a thread restored after its worktree was removed is refused a turn by its 
   });
 });
 
+test('a live thread whose worktree folder is deleted while its branch stays gets it back on its next turn', async () => {
+  const client = await fake();
+  const thread = await client.call('threads.create', { projectId: 'p-notes', providerId: 'echo', accountId: 'a-echo', title: 'Removed under it', worktree: {} });
+  client.loseFolder(thread.cwd);
+  await client.call('turns.start', { threadId: thread.id, prompt: 'still there?' });
+  expect(await client.call('worktrees.list', { projectId: 'p-notes' })).toContainEqual(expect.objectContaining({ path: thread.cwd, threadId: thread.id }));
+});
+
 test('a thread started in a worktree adds it to the list, and both methods are for the owner only', async () => {
   const client = await fake();
   const thread = await client.call('threads.create', { projectId: 'p-notes', providerId: 'echo', accountId: 'a-echo', title: 'Tidy the index', worktree: {} });

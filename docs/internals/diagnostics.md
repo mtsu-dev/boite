@@ -31,10 +31,9 @@ URL hosts. `xxxx` is a hash salted per installation, so one project keeps the
 same placeholder across exports of a machine. Thread, turn and run ids stay,
 so one conversation can be followed through the whole timeline.
 
-## Settings > Troubleshooting
+## Settings > Diagnostics
 
-The page's diagnostics cards (Status, Problems, Log, Agents can read anonymized
-logs) are for the owner, on the desktop and on a phone connected as owner
+The page is for the owner, on the desktop and on a phone connected as owner
 ([`DiagnosticsPage.svelte`](../../packages/ui/src/components/DiagnosticsPage.svelte)).
 
 - Status: Boite's version and channel, the system, how long the core has run,

@@ -22,6 +22,10 @@ export const strings = {
     laterProjectsHint: 'Conversations you archived to pick up later, in projects with nothing else open.',
     idleProjectsHint: 'Nothing to do here: no open or set-aside conversation. Choose one to start a thread.',
     filter: 'Filter',
+    /** The Filter menu's group of switches: what the list folds away or shows. */
+    filterDisplay: 'Display',
+    /** The archive in the list column: the way back to the threads. */
+    backToThreads: 'Back to the threads',
     /** A filter on, as a chip under the list's head (FilterChips.svelte): its press removes it. */
     filterClear: 'Remove the {name} filter',
     /** Recent's filter on the rows still at work, named on its chip. */
@@ -29,7 +33,7 @@ export const strings = {
     groupingOptions: 'Display options',
     /** The thread list's name, in the rail and over the list. */
     threads: 'Threads',
-    /** The phone's Bots tab, read aloud: how many work now, and whether one needs the user. */
+    /** The phone's Mochis tab, read aloud: how many work now, and whether one needs the user. */
     surfaceWorking: '{count} at work',
     surfaceWaiting: '{count} at work, something needs you',
     /** The two ways the display options can list threads. */
@@ -64,7 +68,7 @@ export const strings = {
     archivedByPlugin: 'Archived by plugin {name}',
     reopenThread: 'Move to Recent',
     reopenNamedThread: 'Move "{title}" to Recent',
-    doneNotice: 'This thread is done. Move it to Recent to continue.',
+    doneNotice: 'This thread is done',
     /** Above the composer, or the done notice, of a thread whose worktree Boite removed. */
     contactHold: {
       title: 'Contact mail holds this thread',
@@ -96,6 +100,8 @@ export const strings = {
     addProject: 'Add a project',
     noProjects: 'No project yet.',
     noThreads: 'No thread yet.',
+    threadCountOne: '{count} thread',
+    threadCountMany: '{count} threads',
     noMatch: 'Nothing matches.',
     unread: 'Unread',
     collapse: 'Hide sidebar',
@@ -145,6 +151,12 @@ export const strings = {
       delegating: 'Sub-agents',
       delegatingOne: 'Waiting on 1 sub-agent',
       delegatingMany: 'Waiting on {count} sub-agents',
+      /** The chip a parent's row carries while its delegated agents work, in every state: its title. */
+      subagentsOne: '1 sub-agent at work',
+      subagentsMany: '{count} sub-agents at work',
+      /** The same chip once a sub-agent asks the user something: the parent reads Needs you. */
+      subagentsAskingOne: '1 sub-agent needs you',
+      subagentsAskingMany: '{count} sub-agents need you',
       /** The turn ended, the agent still watches something: a monitor it left going. */
       monitoring: 'Monitoring',
       monitoringFor: 'Monitoring for {elapsed}',
@@ -158,6 +170,11 @@ export const strings = {
       awaiting: 'Waiting on {what}',
       /** That work ended without waking it: the agent stopped there, its result never came. */
       interrupted: 'Stopped',
+      /** The word beside the work ring: what the agent waits on, as short as "Needs you" so the list keeps it. */
+      workWord: {
+        delegating: 'Sub-agents', monitoring: 'Monitoring', ci: 'CI running', mergeQueue: 'Merge queue',
+        shell: 'Command', agent: 'Agent', workflow: 'Workflow', other: 'Background'
+      },
       /** Its machine stopped answering while it worked: what it does now is unknown until the machine is back. */
       unreachableWas: 'Machine offline. Last known state: {state}',
       interruptedBy: '{what} ended without reporting back: {reason}',

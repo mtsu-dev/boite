@@ -94,8 +94,8 @@ test('an agent reads and drives only the threads of the projects entrusted to it
   expect(rowsOut[1]).toBe(`${outside} idle "Outside" desk=followed machine=here`);
   expect((await cli(['threads', '--project', 'Notes'])).out.trim()).toBe(rowsOut[1]!);
   h.core.workforce.watch({ agentId: agent().id, watchThreadId: outside, watched: false });
-  expect((await cli(['thread', 'show', outside])).err).toContain('is not a thread of the projects entrusted to this bot');
-  expect((await cli(['thread', 'show', self])).err).toContain('is not a thread of the projects entrusted to this bot');
+  expect((await cli(['thread', 'show', outside])).err).toContain('is not a thread of the projects entrusted to this mochi');
+  expect((await cli(['thread', 'show', self])).err).toContain('is not a thread of the projects entrusted to this mochi');
 
   expect((await cli(['thread', 'archive', worker])).code).toBe(0);
   expect(h.core.threads.require(worker).archived).toBe(true);
@@ -105,8 +105,8 @@ test('an agent reads and drives only the threads of the projects entrusted to it
   expect(h.core.threads.require(worker).title).toBe('Ship the release');
   expect((await cli(['thread', 'move', 'Other', worker])).code).toBe(0);
   await waitFor(() => h.core.journal.getProject(h.core.threads.require(worker).projectId!)?.name === 'Other');
-  expect((await cli(['thread', 'move', 'Notes', worker])).err).toContain('Notes is not entrusted to this bot');
-  expect(lines(worker, h).some(text => text === 'Archived by Ada, the bot the user entrusted this project to.')).toBe(true);
+  expect((await cli(['thread', 'move', 'Notes', worker])).err).toContain('Notes is not entrusted to this mochi');
+  expect(lines(worker, h).some(text => text === 'Archived by Ada, the mochi the user entrusted this project to.')).toBe(true);
   expect(lines(worker, h).some(text => text.startsWith('Renamed "Ship the release" by Ada'))).toBe(true);
 
   expect((await cli(['thread', 'remove', worker])).err).toContain("deleting a thread is the owner's");
@@ -124,7 +124,7 @@ test('an agent reads and drives only the threads of the projects entrusted to it
   const reached = await cli(['threads'], outside);
   expect([reached.code, reached.err]).toEqual([0, '']);
   expect(reached.out).toContain(`${self}  "Ada"`);
-  expect((await cli(['threads', '--archived'], outside)).err).toContain('threads --archived lists archived threads for the owner and for bots');
+  expect((await cli(['threads', '--archived'], outside)).err).toContain('threads --archived lists archived threads for the owner and for mochis');
   expect(notes.name).toBe('Notes');
 });
 
@@ -142,7 +142,7 @@ test('its messages reach a thread as the agent\'s whatever that thread\'s settin
 
   await waitFor(() => (prompts.get(worker) ?? []).some(p => p.includes('Finish, verify and open the pull request')));
   const prompt = prompts.get(worker)!.find(p => p.includes('Finish, verify'))!;
-  expect(prompt).toContain("a bot of the user's that looks after this thread");
+  expect(prompt).toContain("a mochi of the user's that looks after this thread");
   expect(prompt).toContain('It is NOT the user');
   expect(prompt).not.toContain('messages from OTHER AGENTS');
   expect(h.core.journal.listMessages(worker).filter(m => m.role === 'user')).toHaveLength(0);
@@ -161,7 +161,7 @@ test('its messages reach a thread as the agent\'s whatever that thread\'s settin
   expect(facts()).toEqual([]);
 });
 
-test('a held backlog never hides the bot\'s letter behind it, and revoking the project keeps that letter away', async () => {
+test('a held backlog never hides the mochi\'s letter behind it, and revoking the project keeps that letter away', async () => {
   const prompts = answering(); const { h, owner, self, worker, project, thread, entrust } = await setup();
   const peer = (await thread('Peer', project)).id;
   await owner.call('collaboration.configure', { threadId: worker, config: { ...h.core.coordination.config(worker), paused: true } });
@@ -170,9 +170,9 @@ test('a held backlog never hides the bot\'s letter behind it, and revoking the p
   // More ordinary letters than one delivery batch, all held by the pause.
   const held = [];
   for (let n = 0; n < 5; n++) held.push(await h.core.coordination.send({ threadId: peer, to, text: `Ordinary letter ${n}`, requestId: `ordinary-${n}` }));
-  const resident = await h.core.coordination.send({ threadId: self, to, text: 'Entrusted bot instruction', requestId: 'resident' });
+  const resident = await h.core.coordination.send({ threadId: self, to, text: 'Entrusted mochi instruction', requestId: 'resident' });
   expect(resident.origin).toBe('resident');
-  await waitFor(() => (prompts.get(worker) ?? []).some(prompt => prompt.includes('Entrusted bot instruction')));
+  await waitFor(() => (prompts.get(worker) ?? []).some(prompt => prompt.includes('Entrusted mochi instruction')));
   await waitFor(() => status(resident.id) === 'delivered');
   expect(held.map(letter => status(letter.id))).toEqual(held.map(() => 'received'));
   expect(prompts.get(worker)!.some(prompt => prompt.includes('Ordinary letter'))).toBe(false);
@@ -219,7 +219,7 @@ test('events: failures and asks from any thread, finished turns only from follow
   } finally { asker.close(); }
 });
 
-test('a bot with default settings wakes for a thread it started or watches, and holds the turns of a thread it only wrote to', async () => {
+test('a mochi with default settings wakes for a thread it started or watches, and holds the turns of a thread it only wrote to', async () => {
   const prompts = answering(); const { h, owner, self, worker, cli, facts, hurry, events } = await setup(['test']);
   // B: the bot answers a question of a thread of its project, which puts it on its desk.
   await owner.call('turns.start', { threadId: worker, prompt: 'Start B' });
@@ -266,20 +266,20 @@ test('it starts threads in its projects, and the thread\'s first answer comes ba
   const id = /thread: (\S+)/.exec(started.out)![1]!;
   expect(h.core.threads.require(id).projectId).toBe(other.id);
   await waitFor(() => (prompts.get(id) ?? []).length > 0);
-  expect(prompts.get(id)![0]).toContain('started by Ada, a bot of the user\'s');
+  expect(prompts.get(id)![0]).toContain('started by Ada, a mochi of the user\'s');
   expect(h.core.workforce.projects.follows(agent().id, id)).toBe(true);
   expect((await owner.call('agents.snapshot', {})).watches.find(w => w.threadId === id)).toMatchObject({ origin: 'started', projectId: other.id });
   await waitFor(() => facts().some(f => f.text.includes(id)));
 });
 
-test('a bot starts a thread in any project and drives what it started; threads it did not start stay out of reach outside its projects', async () => {
+test('a mochi starts a thread in any project and drives what it started; threads it did not start stay out of reach outside its projects', async () => {
   const prompts = answering(); const { h, owner, notes, outside, cli, entrust, agent } = await setup(['Other']);
   const started = await cli(['thread', 'new', 'Notes', 'Write the notes']);
   expect(started.err).toBe('');
   const id = /thread: (\S+)/.exec(started.out)![1]!;
   expect(h.core.threads.require(id).projectId).toBe(notes.id);
   await waitFor(() => (prompts.get(id) ?? []).length > 0);
-  expect(prompts.get(id)![0]).toContain('started by Ada, a bot of the user\'s');
+  expect(prompts.get(id)![0]).toContain('started by Ada, a mochi of the user\'s');
   expect((await owner.call('agents.snapshot', {})).watches.find(w => w.threadId === id)).toMatchObject({ origin: 'started', projectId: notes.id });
   await waitFor(() => h.core.threads.require(id).status === 'idle');
   // Full control follows the thread it started, outside its projects.
@@ -292,7 +292,7 @@ test('a bot starts a thread in any project and drives what it started; threads i
   expect((await cli(['thread', 'rename', id, 'Notes, written'])).err).toBe('');
   expect((await cli(['threads'])).out).toContain(`${id} idle "Notes, written" desk=started machine=here`);
   // A thread of the same project it did not start stays the owner's.
-  expect((await cli(['thread', 'show', outside])).err).toContain('is not a thread of the projects entrusted to this bot');
+  expect((await cli(['thread', 'show', outside])).err).toContain('is not a thread of the projects entrusted to this mochi');
   // With no project at all it still starts threads, and keeps what it started.
   await entrust([]);
   const again = await cli(['thread', 'new', 'Notes', 'Write more notes']);
@@ -313,7 +313,7 @@ test('the agent wakes a thread whose turn failed and puts it in Done once it is'
   expect(done.err).toBe('');
   expect(done.out).toContain(`${worker} idle,done`);
   expect(h.core.threads.require(worker).doneAt).toBeNumber();
-  expect(lines(worker, h)).toContain('Marked done by Ada, the bot the user entrusted this project to.');
+  expect(lines(worker, h)).toContain('Marked done by Ada, the mochi the user entrusted this project to.');
   // The owner's terminal marks done too; a plain archive stays out of the Done list.
   await terminal(['thread', 'unarchive', worker]);
   await terminal(['thread', 'archive', worker]);

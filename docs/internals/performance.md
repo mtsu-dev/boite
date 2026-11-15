@@ -65,7 +65,7 @@ Streaming paragraph and drawing scans reuse completed lines and record append
 provenance locally, resetting for replacements. Windowed lists share one scroll
 listener and root geometry read per frame, while each list keeps measuring its
 own position. Workflow run updates reuse the conversation's template library,
-including a parent bot's library when a child uses a different project.
+including a parent mochi's library when a child uses a different project.
 Template writes invalidate the owning library across conversations, and
 reconnects revalidate it. A child's empty library revalidates on template
 writes until its owning project is known. Older cores' root-scoped
@@ -852,13 +852,13 @@ them in its cache. A link that asks to save data, or reads as 3G or slower,
 skips that prefetch and fetches each one when it opens (`lib/prefetch.ts`). The
 tour is prefetched only for a device that has not seen it.
 
-Settings, the Bots page with its first snapshot and,
+Settings, the Mochis page with its first snapshot and,
 for the owner, the terminal's xterm modules are fetched in the same idle pass.
-The Bots view lives as long as its machine's store: a return visit draws the
+The Mochis view lives as long as its machine's store: a return visit draws the
 last snapshot at once and refreshes it, and nothing follows `agents.changed`
 while the page is away. `bun run bench/agents-page.ts` measures a click on
-Bots until its first bot row, behind an emulated 40 ms, 4 Mbit/s
-link, on a temporary core with twelve bots. On 2026-10-11 in this Linux
+Mochis until its first mochi row, behind an emulated 40 ms, 4 Mbit/s
+link, on a temporary core with twelve mochis. On 2026-10-11 in this Linux
 container, medians of five against `origin/main` at `4762402b`: first visit
 164 ms before and 110 ms after, return visit 55 ms and 32 ms. The rest of a
 first visit is rendering.
@@ -1608,7 +1608,10 @@ pictures a second and 386 ms to 22.6 pushed and 71 ms, for 118 % of a core in
 Chrome instead of 21 %, and its own animation from 60 to 23 frames a second.
 WebGL runs on SwiftShader there: 26 % to 351 % of a core and 60 to 16 frames a
 second in the page for the simple shader, 25 % to 814 % and 60 to 8 for the
-heavy one, which the viewer then sees at 8 pictures a second.
+heavy one, which the viewer then sees at 8 pictures a second. These WebGL figures predate the GPU: since 2026-11-14 the browser
+draws WebGL on the machine's GPU where it has one and has no software WebGL
+otherwise ([which browser](browser.md#which-browser)); they were not measured
+again.
 
 ## Browser tabs nobody uses
 
@@ -1850,6 +1853,27 @@ network. Measured on 2026-11-07, before against the previous
 | #621, one contracts file per domain | 44 | 413,740 B | 126,800 B | 306,462 B | 64,037 B |
 | #524, with a 51,000-line results file | 62 | 250,241 B | 131,179 B | 174,421 B | 63,469 B |
 
+## ADEMark's tests
+
+[ADEMark](https://github.com/zqkra/ademark) times agentic development
+environments against Claude Code alone in a terminal, on macOS. `bench/ademark/`
+plays its twelve ranked tests on Linux: Boite as the compiled core and the
+production UI in headless Chrome, the Bare CLI as Claude Code in a
+pseudo-terminal. `run.ts` is Track A (start, new thread, first word, typing,
+a long thread, memory and CPU) on ADEMark's replay server, with no token
+spent; `tokens.ts` is Track B, live; `rank.ts` places the results beside the
+published ones in the default order of ADEMark's grid, which is not a score
+and not an ADEMark result. The Tauri shell is not measured, times are read in the page
+and not on a screen recording, and a loaded machine moves every time: the
+[report of 2026-11-14](../../bench/results/2026-11-14-ademark.md) has the
+method, its limits, the numbers and what is left.
+
+Claude Code names every new session with one request on the session's model.
+The Claude driver passes the thread's title as the session's, and a fixed one
+for a blank title and for its one-shot title and side-question queries, so a
+new session sends no such request: a first `hi` went from six requests and 27,466 tokens to three and
+22,553, live, 2026-11-14, against 20,044 for Claude Code alone.
+
 ## A browser agent on eight tasks
 
 `bench/browser-agent.ts` measures what `boite browser` costs an agent on
@@ -1872,9 +1896,11 @@ Replay, the default, spends no tokens. Each repeat starts a fresh core on a
 temporary data directory with one echo thread and runs every task as a fixed
 script of real CLI processes in that thread's environment
 (`BOITE_CORE_URL`, `BOITE_AGENT_TOKEN`, `BOITE_THREAD_ID`): `open`, then for
-each action the action on a ref read by its label out of the previous
-`snapshot -i` output, then `snapshot -i` again. A ref the CLI refuses, or a
-label missing from the snapshot, gets one `snapshot -i --full` and one retry.
+each action the action on a ref read by its label out of the page the script
+last saw. Each action prints the page it leaves, a whole list, a diff the
+script applies or a line saying nothing changed, and `snapshot -i` runs only
+after an output without one. A ref the CLI refuses, or a label missing from
+the page, gets one `snapshot -i --full` and one retry.
 The first `open` of each core starts the browser and is reported apart.
 `--cli` replaces `bun packages/core/src/main.ts cli` and must accept
 `browser <command>` after it.
@@ -1913,7 +1939,18 @@ eight tasks, a call median of 148 ms and p95 of 508 ms; the 320-row page alone
 read 24,901 bytes in 4 calls. With [snapshot diffs](../../bench/results/2026-11-14-browser-agent-diff.md),
 on `112aa099c` under the same load: 24 of 24 again in the same 93 calls, 26,451
 bytes (about 6,613 tokens), the 320-row page 12,742 bytes; the seven small
-tasks changed by at most 6 bytes, the diff header. The
+tasks changed by at most 6 bytes, the diff header. With
+[the page printed after each action](../../bench/results/2026-11-14-browser-agent-observe.md),
+on `a4e651969` with the change uncommitted and a load average near 23: 24 of
+24 in 48 calls instead of 93, since no action needs a `snapshot -i` of its
+own, and 35,366 bytes. The seven small tasks read 14,589 bytes against 13,709
+with diffs alone; the 320-row page read 20,777 bytes in 3 calls, because `open` prints
+its first 8,000 characters and the row is further down, so the script reads
+the whole list once more. A [live run](../../bench/results/2026-11-14-browser-agent-live-observe.md)
+of the same change, Claude Opus 5.5 at medium effort, three runs per task,
+succeeded 24 of 24. Its first runs, the ones comparable with the single runs
+above, made 29 tool calls and 62 `boite browser` commands against 34 and 79
+with diffs alone, and read 984,667 cache tokens against 1,143,695. The
 [live run](../../bench/results/2026-11-14-browser-agent-live.md), Claude Opus 5.5
 at medium effort, one run per task, succeeded 8 of 8 on both sides with 33 and
 34 tool calls: totals follow the call count, since each call rereads the
@@ -1922,6 +1959,7 @@ prompt, and only the 320-row task wrote fewer new tokens (27,462 then 22,051).
 ## Benches
 
 ```sh
+bun bench/ademark/run.ts --ade boite            # ADEMark's Track A on Linux; ADEMARK_DIR and BOITE_E2E_BROWSER set
 bun bench/remote-browser-frames.ts --rtt 0,80,200   # frames a second a viewer gets from the agent's browser
 bun bench/browser-agent.ts --repeat 3             # CLI calls, bytes and call times of eight scripted browser tasks
 bun run build:ui
@@ -1987,6 +2025,7 @@ viewer; `--webgl` and `--webgl-heavy` draw the page in a shader.
 Results: [bench/results/2026-10-15-perf-runtime.md](../../bench/results/2026-10-15-perf-runtime.md),
 [bench/results/2026-10-15-perf-drivers.md](../../bench/results/2026-10-15-perf-drivers.md),
 [bench/results/2026-10-05-rpc-actions.md](../../bench/results/2026-10-05-rpc-actions.md),
+[bench/results/2026-11-14-ademark.md](../../bench/results/2026-11-14-ademark.md),
 [bench/results/2026-11-11-remote-browser-stream.md](../../bench/results/2026-11-11-remote-browser-stream.md),
 [bench/results/2026-10-05-remote-browser-frames.md](../../bench/results/2026-10-05-remote-browser-frames.md),
 [bench/results/2026-10-03-remote-browser-frames.md](../../bench/results/2026-10-03-remote-browser-frames.md),

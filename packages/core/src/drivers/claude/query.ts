@@ -5,6 +5,12 @@ import { fitImages } from './images.ts';
 import { CONTEXT_ENV, CONTEXT_GUIDES_ENV } from '../../context-mode.ts';
 
 export const STDERR_MAX = 400;
+/**
+ * The name a one-shot query gives its session (a title, a side question).
+ * Nothing keeps that session, and a session that has a name is one the CLI
+ * does not spend a request naming.
+ */
+export const ONE_SHOT_TITLE = 'Boite';
 
 /** The effort levels the SDK takes as an option; see `Options['effort']`. */
 const SDK_EFFORTS: readonly string[] = ['low', 'medium', 'high', 'xhigh', 'max'];

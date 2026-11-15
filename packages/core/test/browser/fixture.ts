@@ -106,6 +106,31 @@ export class CoreFailures {
 export const DOWNLOAD_SCRIPT = '#!/bin/sh\necho downloaded\n';
 export const DOWNLOAD_PROGRAM = Buffer.concat([Buffer.from('MZ'), Buffer.alloc(126)]);
 
+/**
+ * A page built from divs, as many sites are: a card that is clickable only
+ * by its handler and pointer, a button whose answer arrives by fetch, a field
+ * that counts the keys typed in it, and a cookie banner over a button.
+ */
+const WIDGETS = `<!doctype html><title>Widgets</title>
+<div id=card style="cursor:pointer;width:200px;padding:8px" onclick="document.title='card opened'">Open card</div>
+<button id=load onclick="fetch('/slow').then(r => r.text()).then(t => { result.textContent = t })">Load</button>
+<p id=result></p>
+<input id=word aria-label=Word onkeydown="keys.textContent = Number(keys.textContent) + 1"><span id=keys>0</span>
+<button id=buy style="position:fixed;left:20px;bottom:50px">Buy</button>
+<div id=banner style="position:fixed;left:0;right:0;bottom:0;height:200px;z-index:10;background:#eee">We use cookies <button onclick="banner.remove()">Accept</button><button>Settings</button></div>
+`;
+
+/** A page that fetches its content once loaded, and loads more when it is scrolled, each answer 500 ms late. */
+const LATE = `<!doctype html><title>Late</title>
+<a id=again href="/late?again">Again</a>
+<div id=list style="height:3000px"></div>
+<script>
+const add = name => fetch('/slow').then(() => { const b = document.createElement('button'); b.textContent = name; list.prepend(b); });
+add('Loaded');
+let more = false;
+addEventListener('scroll', () => { if (!more && scrollY > 500) { more = true; add('More'); } });
+</script>`;
+
 /** Register an independent loopback site and fresh core hooks for each browser test file. */
 export function createBrowserFixture() {
   const real = findChromium().path ? test : test.skip;
@@ -129,6 +154,10 @@ export function createBrowserFixture() {
       if (path === '/shop') return new Response(SHOP, { headers: { 'content-type': 'text/html' } });
       if (path === '/rows') return new Response(ROWS, { headers: { 'content-type': 'text/html' } });
       if (path === '/app') return new Response(APP, { headers: { 'content-type': 'text/html' } });
+      if (path === '/widgets') return new Response(WIDGETS, { headers: { 'content-type': 'text/html' } });
+      if (path === '/late') return new Response(LATE, { headers: { 'content-type': 'text/html' } });
+      // An answer that takes longer than a fixed pause after a click would wait.
+      if (path === '/slow') return Bun.sleep(500).then(() => new Response('loaded'));
       if (path === '/api/items') return (request.method === 'POST' ? request.json() as Promise<{ query?: string }> : Promise.resolve({ query: undefined }))
         .then(body => Response.json({ items: ['red', 'blue'], query: body.query ?? null, next: 'cursor-2', sessionToken: 'tok-999' }));
       if (path === '/go') return Response.redirect(`http://127.0.0.1:${site.port}/shop`, 302);

@@ -1,12 +1,12 @@
 # Pointer interactions
 
 Two interactions that `lib/interactions.ts` starts once the app has mounted.
-Both left the experiments on 2026-10-24.
+Both left the Experiments page on 2026-10-24.
 
 ## Edge scrollbars
 
-Settings, Appearance, Terminal and scrollbars, **Hide scrollbars until the
-pointer is near** is on by default on a desktop.
+Settings, System, Terminal and scrollbars, **Hide scrollbars until the pointer is
+near** is on by default on a desktop.
 
 Native scrollbars take no room, and gutters reserved for them collapse, so
 the width they held goes back to the content. One overlay draws a thumb for each scroll
@@ -56,7 +56,7 @@ release elsewhere after a 400 ms grace, a scroll that takes over the finger
 (`pointercancel`), or a hold longer than eight seconds. A newer press releases
 the older one. Pressing the thread already on screen asks for nothing, and a
 subscription held by the open thread or the agents panel is never given back
-by a press. Settings and the Bots page load their code on the press.
+by a press. Settings and the Mochis page load their code on the press.
 
 Elements opt in with `data-preload-thread="<thread id>"` or
 `data-preload-view="settings" | "agents"`; one capture listener on the window

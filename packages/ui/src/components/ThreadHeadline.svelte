@@ -108,7 +108,7 @@
       {#if pullRequest.state === 'MERGED'}<GitMerge size={12} aria-hidden="true" />{:else if pullRequest.state === 'CLOSED'}<GitPullRequestClosed size={12} aria-hidden="true" />{:else}<GitPullRequest size={12} aria-hidden="true" />{/if}<span class="ui-label">#{pullRequest.number}</span>
     </span>
   {/if}
-  {#if now !== undefined && (at === undefined || stateForm(thread.archived ? null : kind) !== null)}<ThreadState {thread} {now} subagents={rowAsks(owner, thread.id)} away={owner.connection !== 'ready'} {fit} />{/if}
+  {#if now !== undefined && (at === undefined || stateForm(thread.archived ? null : kind) !== null)}<ThreadState {thread} {now} subagents={rowAsks(owner, thread.id)} team={owner.subagents(thread.id)} away={owner.connection !== 'ready'} {fit} />{/if}
   {#if now !== undefined && at !== undefined}<time class="at" title={exactTime(at)}>{ago(at, now)}</time>{/if}
 </span>
 
@@ -156,6 +156,8 @@
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
+  /* Only an elapsed clock replaces the last message's age; work with no known start keeps that age. */
+  .headline:has(:global(.state > .time)) > .at { display: none; }
   .headline.unread .title,
   .headline.hot .title {
     color: var(--color-foreground);
@@ -176,9 +178,9 @@
   .pin {
     color: var(--color-muted-foreground);
   }
-  /* A draft left in the box: full ink, the user's own work waiting. */
+  /* A draft left in the box: the accent, so it reads as the user's own work waiting. */
   .draft {
-    color: var(--color-foreground);
+    color: var(--color-accent);
   }
   /* The pull request: its number in the row's quiet ink, its state in the glyph's tone only. */
   .pr {

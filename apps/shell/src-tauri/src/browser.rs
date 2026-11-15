@@ -20,15 +20,16 @@
 #[cfg(windows)]
 mod adopted;
 mod popups;
+mod surfaces;
 
 use popups::{close_popups, follow_surface, new_window};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
+use surfaces::{bounds_of, off_screen, surfaces, Placement, AGENT_SIZE};
 use tauri::webview::{PageLoadEvent, WebviewBuilder};
 use tauri::{
-    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, PhysicalPosition, Position, Rect, Runtime, Size, Url,
-    Webview, WebviewUrl,
+    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, PhysicalPosition, Runtime, Url, Webview, WebviewUrl,
 };
 
 /// The webview the Boite UI runs in, and the only caller any command answers.
@@ -222,24 +223,6 @@ pub fn only_main(webview: &Webview) -> Result<(), String> {
     ))
 }
 
-/// Which surfaces the UI wants on screen, and whether the window is parked.
-/// WebView2 does not notice a hidden or minimized host window by itself: its
-/// page keeps painting and its timers keep running until the host says so. The
-/// shell says so by hiding every webview of a parked window, and has to
-/// remember which surfaces to bring back, because the UI does not send a rect
-/// again when it did not change.
-#[derive(Default)]
-struct Surfaces {
-    shown: HashSet<String>,
-    parked: bool,
-    /// The last rectangle the UI gave each agent surface, which comes back
-    /// when the surface does and sizes it while it waits off screen.
-    rects: HashMap<String, SurfaceRect>,
-    /// Pages the user browses that were hidden and put to sleep, so the next
-    /// show gives each its normal memory level back once.
-    asleep: HashSet<String>,
-}
-
 /// An agent surface: the core's agent browser drives it through the UI, and
 /// screenshots and records it while nobody looks at it.
 fn is_agent_label(label: &str) -> bool {
@@ -256,114 +239,10 @@ pub(crate) fn muted(label: &str) -> bool {
     is_agent_label(label) || popups::popup_surface(label).is_some_and(crate::browser_control::is_agent_surface)
 }
 
-/// The viewport an agent surface works in before the UI ever measured a slot for it.
-const AGENT_SIZE: (f64, f64) = (1280.0, 800.0);
-
 /// Where an agent surface waits while it is not on screen, in physical pixels
 /// left of the window: far past any client area, and within the 16-bit range
 /// some window coordinates still go through.
 const OFF_SCREEN_X: i32 = -32000;
-
-/// What `reconcile` does to one webview.
-#[derive(Debug, PartialEq)]
-enum Placement {
-    Show,
-    Hide,
-    /// An agent surface on screen, at the slot the UI gave it.
-    At(SurfaceRect),
-    /// An agent surface out of sight: shown, off screen, at this logical size.
-    OffScreen(f64, f64),
-}
-
-impl Surfaces {
-    /// Records that the UI wants `label` shown or not. `visible` says whether
-    /// it is shown now: never while the window is parked.
-    fn want(&mut self, label: &str, shown: bool) {
-        if shown { self.shown.insert(label.to_owned()); } else { self.shown.remove(label); }
-    }
-
-    /// True when this call parked the window, false when it already was.
-    fn park(&mut self) -> bool {
-        !std::mem::replace(&mut self.parked, true)
-    }
-
-    /// The surfaces to show again, or `None` when the window was not parked.
-    fn unpark(&mut self) -> Option<Vec<String>> {
-        std::mem::replace(&mut self.parked, false).then(|| self.shown.iter().cloned().collect())
-    }
-
-    /// Whether the webview `label` belongs on screen now: the UI's page while
-    /// the window is not parked, a surface while the UI also wants it.
-    fn visible(&self, label: &str) -> bool {
-        !self.parked && (label == MAIN_LABEL || self.shown.contains(label))
-    }
-
-    /// Records the slot the UI gave an agent surface.
-    fn place(&mut self, label: &str, rect: SurfaceRect) {
-        if is_agent_label(label) { self.rects.insert(label.to_owned(), rect); }
-    }
-
-    /// A destroyed surface's last slot goes with it.
-    fn forget(&mut self, label: &str) {
-        self.shown.remove(label);
-        self.rects.remove(label);
-        self.asleep.remove(label);
-    }
-
-    /// True when hiding `label` should put its page to sleep now: a page the
-    /// user browses, not asleep already. The UI's own page keeps running in
-    /// the tray for its toasts and its connection, and an agent surface is
-    /// never hidden: the core puts its page to sleep instead.
-    fn sleep(&mut self, label: &str) -> bool {
-        label != MAIN_LABEL && !is_agent_label(label) && self.asleep.insert(label.to_owned())
-    }
-
-    /// True when `label` slept and is shown now: its memory level goes back to normal.
-    fn wake(&mut self, label: &str) -> bool {
-        self.asleep.remove(label)
-    }
-
-    /// How the webview `label` is placed now. Hiding a WebView2 stops its page
-    /// painting, which is the point for a surface the user browses, but an
-    /// agent screenshots and records its surface while the user looks at
-    /// another conversation, the tray, or a minimized window: a hidden one
-    /// returns blank frames or none. An agent surface out of sight therefore
-    /// stays shown, moved outside the window's client area at its last size.
-    fn placement(&self, label: &str) -> Placement {
-        let visible = self.visible(label);
-        if !is_agent_label(label) {
-            return if visible { Placement::Show } else { Placement::Hide };
-        }
-        let rect = self.rects.get(label);
-        match (visible, rect) {
-            (true, Some(rect)) => Placement::At(rect.clone()),
-            (true, None) => Placement::Show,
-            (false, Some(rect)) => Placement::OffScreen(rect.width, rect.height),
-            (false, None) => Placement::OffScreen(AGENT_SIZE.0, AGENT_SIZE.1),
-        }
-    }
-}
-
-/// An agent surface's bounds out of sight: off screen, at `width` by `height`.
-fn off_screen(width: f64, height: f64) -> Rect {
-    Rect {
-        position: Position::Physical(PhysicalPosition::new(OFF_SCREEN_X, 0)),
-        size: Size::Logical(LogicalSize::new(width, height)),
-    }
-}
-
-fn bounds_of(rect: &SurfaceRect) -> Rect {
-    Rect {
-        position: Position::Logical(LogicalPosition::new(rect.x, rect.y)),
-        size: Size::Logical(LogicalSize::new(rect.width, rect.height)),
-    }
-}
-
-static SURFACES: LazyLock<Mutex<Surfaces>> = LazyLock::new(Mutex::default);
-
-fn surfaces() -> std::sync::MutexGuard<'static, Surfaces> {
-    SURFACES.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
-}
 
 /// Shows or hides each of `labels` as `Surfaces` says it should be when the
 /// call runs, not when it was asked for. `browser_set_bounds` runs on a worker,
@@ -1004,226 +883,4 @@ pub async fn browser_destroy(app: AppHandle, webview: Webview, id: String) -> Re
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{checked_url, label_of, muted, profile_of, read_selection, webview2_profile, Placement, Profile, SurfaceRect, Surfaces, LABEL_PREFIX, MAIN_LABEL, MAX_SELECTION_CALLBACK_BYTES, PICKS};
-
-    /// A page an agent opened played its sound in the user's headset
-    /// (2026-10-25): its surface and its popups start muted, the user's do not.
-    #[test]
-    fn agent_surfaces_and_their_popups_are_muted_and_the_users_pages_are_not() {
-        assert!(muted(&label_of("agent-1").unwrap()));
-        assert!(muted("boite-popup:4:agent-1"));
-        assert!(!muted(&label_of("t1").unwrap()));
-        assert!(!muted(&label_of("browser:agent-1").unwrap()));
-        assert!(!muted("boite-popup:5:t1"));
-        assert!(!muted(MAIN_LABEL));
-    }
-
-    #[test]
-    fn an_agent_surface_out_of_sight_stays_shown_off_screen_at_its_last_size() {
-        let mut surfaces = Surfaces::default();
-        let agent = "boite-browser:agent-1";
-        // Never measured: off screen at the default viewport, never hidden.
-        assert_eq!(surfaces.placement(agent), Placement::OffScreen(1280.0, 800.0));
-        let rect = SurfaceRect { x: 10.0, y: 20.0, width: 900.0, height: 600.0 };
-        surfaces.place(agent, rect.clone());
-        surfaces.want(agent, true);
-        assert_eq!(surfaces.placement(agent), Placement::At(rect.clone()));
-        // The UI parks it: it keeps its size, off screen.
-        surfaces.want(agent, false);
-        assert_eq!(surfaces.placement(agent), Placement::OffScreen(900.0, 600.0));
-        // The window parks: the same, and its slot comes back with the window.
-        surfaces.want(agent, true);
-        surfaces.park();
-        assert_eq!(surfaces.placement(agent), Placement::OffScreen(900.0, 600.0));
-        assert_eq!(surfaces.unpark().unwrap(), [agent]);
-        assert_eq!(surfaces.placement(agent), Placement::At(rect));
-        surfaces.forget(agent);
-        assert_eq!(surfaces.placement(agent), Placement::OffScreen(1280.0, 800.0));
-    }
-
-    #[test]
-    fn a_user_surface_is_still_hidden_when_out_of_sight() {
-        let mut surfaces = Surfaces::default();
-        let user = "boite-browser:browser:1";
-        let rect = SurfaceRect { x: 0.0, y: 0.0, width: 10.0, height: 10.0 };
-        surfaces.place(user, rect);
-        assert!(surfaces.rects.is_empty());
-        assert_eq!(surfaces.placement(user), Placement::Hide);
-        surfaces.want(user, true);
-        assert_eq!(surfaces.placement(user), Placement::Show);
-        surfaces.park();
-        assert_eq!(surfaces.placement(user), Placement::Hide);
-        assert_eq!(surfaces.placement(MAIN_LABEL), Placement::Hide);
-        // A surface id that merely contains "agent-" is not an agent surface.
-        assert_eq!(surfaces.placement("boite-browser:browser:agent-1"), Placement::Hide);
-    }
-
-    // A page the user left in a hidden tab ran 30 minutes at 1.5 cores and
-    // grew to 14 GB (2026-10-17): hidden, a WebView2 still runs its scripts.
-    #[test]
-    fn a_hidden_user_page_sleeps_once_and_wakes_once_while_the_ui_and_agent_pages_never_sleep() {
-        let mut surfaces = Surfaces::default();
-        let user = "boite-browser:browser:1";
-        assert!(surfaces.sleep(user));
-        // A second hide, one per resize of a parked window, does not ask again.
-        assert!(!surfaces.sleep(user));
-        assert!(surfaces.wake(user));
-        assert!(!surfaces.wake(user));
-        assert!(surfaces.sleep(user));
-        surfaces.forget(user);
-        assert!(!surfaces.wake(user));
-        // The UI's page hides with a parked window and keeps running; an agent page sleeps through the core.
-        assert!(!surfaces.sleep(MAIN_LABEL));
-        assert!(!surfaces.sleep("boite-browser:agent-1"));
-    }
-
-    #[test]
-    fn a_profile_is_the_default_the_private_session_or_a_safe_folder_name() {
-        assert_eq!(profile_of("a", None), Ok(Profile::Default));
-        assert_eq!(profile_of("a", Some("default")), Ok(Profile::Default));
-        assert_eq!(profile_of("a", Some("private")), Ok(Profile::Private));
-        assert_eq!(profile_of("a", Some("p-1a2b")), Ok(Profile::Named("p-1a2b".into())));
-        for bad in ["", "-p", "P-1", "p_1", "p/1", "../x", "p 1", &"p".repeat(41)] {
-            let error = profile_of("a", Some(bad)).unwrap_err();
-            assert!(error.contains("lowercase letters"), "{bad:?}: {error}");
-        }
-    }
-
-    #[test]
-    fn a_private_surface_runs_in_a_webview2_profile_of_its_own() {
-        // A Gmail tab of the default profile was found signed out right after
-        // a private tab, InPrivate on that same profile, opened beside it (2026-10-22).
-        let private = webview2_profile(&Profile::Private).expect("a private surface names its own WebView2 profile");
-        assert_ne!(Some(private), webview2_profile(&Profile::Default));
-        // No profile id the UI or an agent can make is that name.
-        assert!(profile_of("a", Some(private)).is_err(), "{private:?} is a valid profile id");
-        assert_eq!(webview2_profile(&Profile::Default), None);
-        assert_eq!(webview2_profile(&Profile::Named("p-1a2b".into())), Some("p-1a2b"));
-    }
-
-    #[test]
-    fn a_parked_window_shows_nothing_and_brings_back_only_the_surfaces_the_ui_wanted() {
-        let mut surfaces = Surfaces::default();
-        assert!(surfaces.visible(MAIN_LABEL));
-        surfaces.want("boite-browser:a", true);
-        surfaces.want("boite-browser:b", true);
-        assert!(surfaces.visible("boite-browser:a") && surfaces.visible("boite-browser:b"));
-        assert!(surfaces.park());
-        // A minimized window sends resize events over and over: one park.
-        assert!(!surfaces.park());
-        assert!(!surfaces.visible(MAIN_LABEL) && !surfaces.visible("boite-browser:a"));
-        // The UI keeps working while the window is in the tray.
-        surfaces.want("boite-browser:c", true);
-        assert!(!surfaces.visible("boite-browser:c"));
-        surfaces.want("boite-browser:b", false);
-        let mut back = surfaces.unpark().unwrap();
-        back.sort();
-        assert_eq!(back, ["boite-browser:a", "boite-browser:c"]);
-        assert!(surfaces.unpark().is_none());
-        assert!(!surfaces.visible("boite-browser:b"));
-        surfaces.want("boite-browser:b", true);
-        assert!(surfaces.visible("boite-browser:b") && surfaces.visible(MAIN_LABEL));
-    }
-
-    /// The two interleavings the review found, replayed in the order the
-    /// threads ran them. Each `visible` is what `reconcile` reads on the main
-    /// thread when the queued call runs, after every change made before it.
-    #[test]
-    fn a_late_show_or_hide_follows_the_state_it_finds_not_the_one_it_was_asked_in() {
-        // (a) unpark lists b, the UI parks b, then the unpark's call runs: b
-        // stays hidden.
-        let mut surfaces = Surfaces::default();
-        surfaces.want("boite-browser:b", true);
-        surfaces.park();
-        let listed = surfaces.unpark().unwrap();
-        surfaces.want("boite-browser:b", false);
-        assert_eq!(listed, ["boite-browser:b"]);
-        assert!(!surfaces.visible("boite-browser:b"), "a surface the UI parked came back over it");
-        // (b) the UI shows b, the window parks, then the show runs: b stays
-        // hidden until the window comes back.
-        let mut surfaces = Surfaces::default();
-        surfaces.want("boite-browser:b", true);
-        surfaces.park();
-        assert!(!surfaces.visible("boite-browser:b"), "a surface painted in a parked window");
-        surfaces.unpark();
-        assert!(surfaces.visible("boite-browser:b"));
-    }
-
-    #[test]
-    fn preview_selection_is_bound_to_one_surface_and_consumed_once() {
-        let id = "preview-test-one";
-        PICKS.lock().unwrap().insert(id.into(), "request-1".into());
-        let mut url = tauri::Url::parse("boite-preview://selection/").unwrap();
-        url.query_pairs_mut().append_pair("request", "request-1").append_pair("data", r#"{"url":"https://example.test","selector":"button","text":"Save","bounds":{"x":1,"y":2,"width":30,"height":40}}"#);
-        assert!(read_selection("different-view", &url).is_none());
-        let selected = read_selection(id, &url).unwrap();
-        assert_eq!(selected.0, "request-1");
-        assert_eq!(selected.1.unwrap().text, "Save");
-        assert!(read_selection(id, &url).is_none());
-    }
-
-    #[test]
-    fn preview_rejects_wrong_requests_and_invalid_content() {
-        let id = "preview-test-invalid";
-        PICKS.lock().unwrap().insert(id.into(), "expected".into());
-        let wrong =
-            tauri::Url::parse("boite-preview://selection/?request=wrong&data=null").unwrap();
-        assert!(read_selection(id, &wrong).is_none());
-        let mut invalid = tauri::Url::parse("boite-preview://selection/").unwrap();
-        invalid.query_pairs_mut().append_pair("request", "expected").append_pair("data", r#"{"url":"file:///private","selector":"button","text":"Save","bounds":{"x":1,"y":2,"width":30,"height":40}}"#);
-        assert!(read_selection(id, &invalid).unwrap().1.is_none());
-        assert!(!PICKS.lock().unwrap().contains_key(id));
-        PICKS.lock().unwrap().insert(id.into(), "expected".into());
-        let cancel =
-            tauri::Url::parse("boite-preview://selection/?request=expected&data=null").unwrap();
-        assert!(read_selection(id, &cancel).unwrap().1.is_none());
-    }
-
-    #[test]
-    fn percent_encoded_selection_fits_and_oversized_callbacks_settle_once() {
-        let id = "preview-test-encoding";
-        let payload = serde_json::json!({
-            "url": format!("https://example.test/{}", "é".repeat(8000)),
-            "selector": format!("#{}", "é".repeat(1999)),
-            "shadowPath": vec!["\u{0001}".repeat(4000); 8],
-            "text": "é".repeat(2000),
-            "bounds": { "x": 0, "y": 0, "width": 10, "height": 10 }
-        });
-        PICKS.lock().unwrap().insert(id.into(), "encoded".into());
-        let mut url = tauri::Url::parse("boite-preview://selection/").unwrap();
-        url.query_pairs_mut().append_pair("request", "encoded").append_pair("data", &payload.to_string());
-        assert!(url.as_str().len() > 65536);
-        assert!(url.as_str().len() < MAX_SELECTION_CALLBACK_BYTES);
-        assert!(read_selection(id, &url).unwrap().1.is_some());
-        PICKS.lock().unwrap().insert(id.into(), "oversized".into());
-        url.set_query(None);
-        url.query_pairs_mut().append_pair("request", "oversized").append_pair("data", &"x".repeat(MAX_SELECTION_CALLBACK_BYTES));
-        assert!(read_selection(id, &url).unwrap().1.is_none());
-        assert!(read_selection(id, &url).is_none());
-    }
-
-    #[test]
-    fn a_surface_id_becomes_a_label() {
-        assert_eq!(
-            label_of("browser:9f1c-2").unwrap(),
-            format!("{LABEL_PREFIX}browser:9f1c-2")
-        );
-    }
-
-    #[test]
-    fn an_id_a_label_cannot_carry_is_refused_by_character() {
-        let error = label_of("browser:a b").unwrap_err();
-        assert!(error.contains("' '"), "{error}");
-        assert!(label_of("").unwrap_err().contains("empty"));
-    }
-
-    #[test]
-    fn only_http_https_and_about_are_loaded() {
-        assert_eq!(checked_url("t1", "").unwrap().as_str(), "about:blank");
-        assert!(checked_url("t1", "https://example.invalid/").is_ok());
-        let error = checked_url("t1", "file:///C:/secret.txt").unwrap_err();
-        assert!(error.contains("\"file\""), "{error}");
-        assert!(error.contains("t1"), "{error}");
-    }
-}
+mod tests;

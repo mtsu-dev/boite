@@ -19,7 +19,7 @@ import { BOT_GUIDE } from '../agent-guide.ts';
 
 const AGENTS_MD_MAX = 32_000;
 const SKILLS_MAX = 50;
-/** The routine lines of the block stop here; the rest are counted, read with `boite bot routines`. */
+/** The routine lines of the block stop here; the rest are counted, read with `boite mochi routines`. */
 export const ROUTINES_TEXT_MAX = 2_000;
 /** Where `linked-pull-requests.ts` keeps a thread's links. */
 const LINKED = 'linked-pull-requests:';
@@ -119,9 +119,9 @@ function contextInputs(core: Core, agent: AgentProfile, guided: boolean): Contex
   const routines = store.records.list('routine').filter(r => r.agentId === agent.id);
   const projects = store.projects.instructions(agent);
   const persona = [`You are ${agent.name}${agent.domain.trim() ? `, ${agent.domain.trim()}` : ''}.`, agent.instructions.trim()].filter(Boolean).join('\n');
-  const routineLines = routines.map(r => `- ${JSON.stringify(r.name)} (${r.id}): ${scheduleText(r.schedule)}${r.enabled ? r.nextAt !== null ? `, next ${new Date(r.nextAt).toISOString()}` : ', done' : ', off'}`);
+  const routineLines = routines.map(r => `- ${JSON.stringify(r.name)} (${r.id}): ${scheduleText(r.schedule)}${r.enabled ? r.nextAt !== null ? `, next ${new Date(r.nextAt).toISOString()}` : ', done' : ', off'}${r.check ? `, wakes you only when its check prints something new: ${JSON.stringify(r.check)}` : ''}`);
   const hash = createHash('sha256').update(JSON.stringify([
-    brain.path, persona, brain.instructions, memory, archived, skills, routines.map(r => [r.id, r.name, r.schedule, r.enabled]), projects, guided ? null : BOT_GUIDE,
+    brain.path, persona, brain.instructions, memory, archived, skills, routines.map(r => [r.id, r.name, r.schedule, r.enabled, r.check ?? null]), projects, guided ? null : BOT_GUIDE,
   ])).digest('hex');
   return { brain, memoryPath, memory, archive, archived, skills, routineLines, projects, persona, guided, hash };
 }
@@ -156,14 +156,14 @@ function routineSection(lines: readonly string[]): string {
     size += line.length + 1;
   }
   const more = lines.length - shown.length;
-  return `Your routines:\n${shown.join('\n')}${more ? `${shown.length ? '\n' : ''}${more} more: boite bot routines` : ''}`;
+  return `Your routines:\n${shown.join('\n')}${more ? `${shown.length ? '\n' : ''}${more} more: boite mochi routines` : ''}`;
 }
 
 function render(core: Core, agent: AgentProfile, inputs: ContextInputs): string {
   const { brain, memoryPath, memory, archive, archived, skills, routineLines, projects, persona, guided } = inputs;
   const desk = deskLines(core, agent);
   const text = [
-    'Boite: who you are, as a bot. This block comes again only when it changes; your conversation so far is in this session.',
+    'Boite: who you are, as a mochi. This block comes again only when it changes; your conversation so far is in this session.',
     persona,
     `Your brain is ${brain.path}. Its AGENTS.md:\n${capped(brain.instructions.trim(), AGENTS_MD_MAX, join(brain.path, 'AGENTS.md')) || '(empty)'}`,
     `Your memory, ${memoryPath}:\n${memory || '(empty)'}`,

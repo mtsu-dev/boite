@@ -11,20 +11,22 @@ export const strings = {
     compacting: 'Freeing disk space in the history. This happens once and can take a few minutes.',
     noEndpointTitle: 'No core to connect to',
     noEndpointBody:
-      'On one of your machines, open Settings, Devices, Group, Add a device, and scan or type its code here.',
+      'On one of your machines, open Settings, Machines, Add a device, and scan or type its code here.',
     openSettings: 'Open settings',
     /** The column of buttons down the window's left edge (AppRail.svelte). */
     rail: {
       label: 'Boite',
       waitingOne: '1 needs you',
       waitingMany: '{count} need you',
-      bots: 'Bots',
-      add: 'New bot or team',
+      bots: 'Mochis',
+      add: 'New mochi or team',
       botWaiting: '{name} needs you',
       botFailed: '{name} failed',
       botWorking: '{name} is at work',
       botPaused: '{name} is paused',
-      /** A bot or team with replies not read yet: its picture's badge, in words. */
+      /** The same states as the two words beside a mochi's name when the pointer is on its picture. */
+      state: { waiting: 'needs you', failed: 'failed', working: 'at work', paused: 'paused' },
+      /** A mochi or team with replies not read yet: its picture's badge, in words. */
       unread: 'new replies',
       /** The list foot's limits line, in its tooltip (QuotaLine.svelte): the least left, the window and the account it is on. */
       limitsLeft: '{percent}% left: {window}, {account}',

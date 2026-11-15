@@ -6,7 +6,7 @@ import { AgentsView, agentRows } from '../../lib/agents.svelte';
 import { workspace } from '../../lib/workspace.svelte';
 import AgentsRail from './AgentsRail.svelte';
 
-test("a bot row's picture is grey at rest and lit while the bot needs the owner", async ({ ready }) => {
+test("a mochi row's picture is grey at rest and lit while the mochi needs the owner", async ({ ready }) => {
   const restore = phoneWidth();
   let rail: ReturnType<typeof mount> | null = null;
   try {
@@ -32,7 +32,7 @@ test("a bot row's picture is grey at rest and lit while the bot needs the owner"
   }
 });
 
-test("an offline machine's bot keeps its missed answers count beside the machine's place", async ({ ready }) => {
+test("an offline machine's mochi keeps its missed answers count beside the machine's place", async ({ ready }) => {
   const restore = phoneWidth();
   let rail: ReturnType<typeof mount> | null = null;
   try {

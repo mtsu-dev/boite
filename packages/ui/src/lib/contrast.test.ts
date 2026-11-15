@@ -1,8 +1,9 @@
 import { describe, expect, test } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
+import { appCss } from '../test/app-css';
 
-const css = readFileSync(resolve('src/app.css'), 'utf8');
+const css = appCss();
 
 /**
  * The text tiers of `app.css` against every ground they sit on, in both

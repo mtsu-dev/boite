@@ -59,6 +59,21 @@ async function join(a: TestCore, b: TestCore): Promise<void> {
   await b.core.group.join(invite);
 }
 
+/** Two fresh machines, `a` first. */
+async function pair(): Promise<{ a: TestCore; b: TestCore }> {
+  const a = await machine();
+  const b = await machine();
+  return { a, b };
+}
+
+/** Two machines in one group: `a` creates it under `name` and `b` joins. */
+async function joinedPair(name: string): Promise<{ a: TestCore; b: TestCore }> {
+  const { a, b } = await pair();
+  await a.core.group.create(name);
+  await join(a, b);
+  return { a, b };
+}
+
 function members(h: TestCore): string[] {
   return (h.core.group.view('owner')?.cores ?? []).map((core) => core.coreId).sort();
 }
@@ -172,8 +187,7 @@ test('the settings home converges by revision then id, and a roster without it k
 });
 
 test('the owner renames a group on either member, and the name survives synchronization and restart', async () => {
-  const a = await machine();
-  const b = await machine();
+  const { a, b } = await pair();
   a.core.coordination.trust({ ...b.core.coordination.card(), name: 'B', url: b.url });
   b.core.coordination.trust({ ...a.core.coordination.card(), name: 'A', url: a.url });
   await a.core.group.create('Home');
@@ -224,8 +238,7 @@ test('the owner renames a group on either member, and the name survives synchron
 });
 
 test('migration preserves granted transcript reads only for the current group admission', async () => {
-  const a = await machine();
-  const b = await machine();
+  const { a, b } = await pair();
   const ownerA = await a.connect();
   const ownerB = await b.connect();
   const ta = (await echoThread(a, ownerA, 'Reader')).threadId;
@@ -302,8 +315,7 @@ test('the tailnet address and name come first, then the LAN, and loopback only w
 });
 
 test('an invitation makes two machines members of one group, and a third joins through either', async () => {
-  const a = await machine();
-  const b = await machine();
+  const { a, b } = await pair();
   const c = await machine();
   expect(a.core.group.view('owner')).toBeNull();
   const group = await a.core.group.create('  Home  ');
@@ -334,8 +346,7 @@ test('an invitation makes two machines members of one group, and a third joins t
 });
 
 test('BOITE_MACHINE_NAME names the machine in its info and on the roster the other members hold', async () => {
-  const a = await machine();
-  const b = await machine();
+  const { a, b } = await pair();
   await a.core.group.create('Home');
   const before = process.env.BOITE_MACHINE_NAME;
   // Android tells every app its host is `localhost`: the phone's server names the phone itself.
@@ -352,8 +363,7 @@ test('BOITE_MACHINE_NAME names the machine in its info and on the roster the oth
 });
 
 test('an invitation is refused when it is malformed, unknown, or answered by another key', async () => {
-  const a = await machine();
-  const b = await machine();
+  const { a, b } = await pair();
   const stranger = await machine();
   await a.core.group.create('Home');
   expect(await thrown(b.core.group.join('http://host/?grant=abc'))).toThrow(GROUP_INVITE_PREFIX);
@@ -375,10 +385,7 @@ test('an invitation is refused when it is malformed, unknown, or answered by ano
 });
 
 test('the shell of one member is handed an owner key by another, once per ticket', async () => {
-  const a = await machine();
-  const b = await machine();
-  await a.core.group.create('Home');
-  await join(a, b);
+  const { a, b } = await joinedPair('Home');
   const shell = await a.connect();
   const ticket = await shell.call('group.ticket', { coreId: id(b) });
   expect(ticket).toMatchObject({ coreId: id(b), addresses: [b.url] });
@@ -402,10 +409,7 @@ test('the shell of one member is handed an owner key by another, once per ticket
 });
 
 test('a ticket opens only at the address it names, and the key it becomes dies when the machine stops giving that address', async () => {
-  const a = await machine();
-  const b = await machine();
-  await a.core.group.create('Home');
-  await join(a, b);
+  const { a, b } = await joinedPair('Home');
   await waitFor(() => members(b).length === 2);
   const shell = await a.connect();
   // Asked for an address b does not have: a vouches for none.
@@ -462,8 +466,7 @@ test('a ticket opens only at the address it names, and the key it becomes dies w
 });
 
 test('a ticket is refused when forged, expired, for another machine or from outside the group', async () => {
-  const a = await machine();
-  const b = await machine();
+  const { a, b } = await pair();
   const c = await machine();
   const outsider = await machine();
   await a.core.group.create('Home');
@@ -493,10 +496,7 @@ test('a ticket is refused when forged, expired, for another machine or from outs
 });
 
 test('a phone paired with one member reaches the others as a device, and one revoke takes it off all of them', async () => {
-  const a = await machine();
-  const b = await machine();
-  await a.core.group.create('Home');
-  await join(a, b);
+  const { a, b } = await joinedPair('Home');
   const grant = a.core.sessions.grant();
   const phone = await connect(a.url, '', { grant: grant.grant, client: { name: 'pwa', version: '1' } });
   expect(phone.principal).toBe('session');
@@ -530,10 +530,7 @@ test('a phone paired with one member reaches the others as a device, and one rev
 });
 
 test('revoking a device on another member reaches its home machine, even before that member heard of the device', async () => {
-  const a = await machine();
-  const b = await machine();
-  await a.core.group.create('Home');
-  await join(a, b);
+  const { a, b } = await joinedPair('Home');
   const phone = await connect(a.url, '', { grant: a.core.sessions.grant().grant });
   const onB = await connect(b.url, '', { ticket: (await phone.call('group.ticket', { coreId: id(b) })).ticket });
   // The ticket may have reached b before the roster that lists the device: b forgets the entry, as if it had.
@@ -547,8 +544,7 @@ test('revoking a device on another member reaches its home machine, even before 
 });
 
 test('a removed machine is told, leaves, and its keys die on the members that stay', async () => {
-  const a = await machine();
-  const b = await machine();
+  const { a, b } = await pair();
   const c = await machine();
   await a.core.group.create('Home');
   await join(a, b);
@@ -578,10 +574,7 @@ test('a removed machine is told, leaves, and its keys die on the members that st
 });
 
 test('a machine removed while it was unreachable learns it from the first member it asks', async () => {
-  const a = await machine();
-  const b = await machine();
-  await a.core.group.create('Home');
-  await join(a, b);
+  const { a, b } = await joinedPair('Home');
   const roster = a.core.journal.getSetting('group') as Roster;
   // a removes b without b hearing: the roster is written as a removal would leave it.
   const removed = { ...roster, cores: roster.cores.map((core) => (core.coreId === id(b) ? { ...core, rev: 99, removed: true as const } : core)) };
@@ -594,10 +587,7 @@ test('a machine removed while it was unreachable learns it from the first member
 });
 
 test('a member that stops answering waits longer each time, unless the roster changes or it is heard from', async () => {
-  const a = await machine();
-  const b = await machine();
-  await a.core.group.create('Home');
-  await join(a, b);
+  const { a, b } = await joinedPair('Home');
   type Store = { syncPending(): Promise<void>; pending: Set<Promise<unknown>> };
   const store = a.core.group as unknown as Store;
   // A change is offered from a microtask: let it start, then wait for every exchange in flight on both sides.
@@ -659,10 +649,7 @@ test('a member that stops answering waits longer each time, unless the roster ch
 });
 
 test('an offer that fails after the member was heard from does not make it wait', async () => {
-  const a = await machine();
-  const b = await machine();
-  await a.core.group.create('Home');
-  await join(a, b);
+  const { a, b } = await joinedPair('Home');
   type Store = { syncPending(): Promise<void>; pending: Set<Promise<unknown>> };
   const store = a.core.group as unknown as Store;
   const settle = async () => {
@@ -704,10 +691,7 @@ test('an offer that fails after the member was heard from does not make it wait'
 });
 
 test('leaving tells the others first, and the last member leaving ends the group', async () => {
-  const a = await machine();
-  const b = await machine();
-  await a.core.group.create('Home');
-  await join(a, b);
+  const { a, b } = await joinedPair('Home');
   await a.connect().then((client) => client.call('group.leave', {}));
   expect(a.core.group.view('owner')).toBeNull();
   expect(members(b)).toEqual([id(b)]);
@@ -719,8 +703,7 @@ test('leaving tells the others first, and the last member leaving ends the group
 });
 
 test('members reach each other for agent messages and browser origins without a link made by hand', async () => {
-  const a = await machine();
-  const b = await machine();
+  const { a, b } = await pair();
   const ownerA = await a.connect();
   const ownerB = await b.connect();
   const brief: CoordinationConfig = { mode: 'brief', resources: 'shared VM', remote: true, paused: false };
@@ -746,8 +729,7 @@ test('members reach each other for agent messages and browser origins without a 
 });
 
 test('the owner\'s app carries what two members cannot send each other directly, still sealed', async () => {
-  const a = await machine();
-  const b = await machine();
+  const { a, b } = await pair();
   const ownerA = await a.connect();
   const ownerB = await b.connect();
   const brief: CoordinationConfig = { mode: 'brief', resources: 'shared VM', remote: true, paused: false };
@@ -801,10 +783,7 @@ test('a member is asked on the address that answered last, and on the others onl
 
   // Two addresses that lead to the same core, as a tailnet name and its address do: the copy a second
   // one would carry is a replay there, refused and counted against the sender. It is never sent.
-  const a = await machine();
-  const b = await machine();
-  await a.core.group.create('Home');
-  await join(a, b);
+  const { a, b } = await joinedPair('Home');
   await waitFor(() => members(b).length === 2);
   const held = b.core.group as unknown as { roster: Roster };
   const twice = [a.url, a.url.replace('127.0.0.1', 'localhost')];
@@ -827,10 +806,7 @@ test('a member is asked on the address that answered last, and on the others onl
 });
 
 test('a request begun for a member is never sent readable once this machine has left the group', async () => {
-  const a = await machine();
-  const b = await machine();
-  await a.core.group.create('Home');
-  await join(a, b);
+  const { a, b } = await joinedPair('Home');
   await waitFor(() => members(b).length === 2);
   const held = a.core.group as unknown as { roster: Roster | null };
   const dead = 'http://127.0.0.1:1';
@@ -914,8 +890,7 @@ test('a sealed message opens only for the machine it was sealed to, from the mac
 });
 
 test('nothing a member sends another is readable on the wire, and a readable roster is refused', async () => {
-  const a = await machine();
-  const b = await machine();
+  const { a, b } = await pair();
   await a.core.group.create('Maison-du-test');
   const real = globalThis.fetch;
   const wire: { url: string; signature: string; body: string; status: number; answer: string }[] = [];
@@ -969,8 +944,7 @@ test('nothing a member sends another is readable on the wire, and a readable ros
 });
 
 test('a used invitation welcomes its machine again without writing, and never after that machine was removed', async () => {
-  const a = await machine();
-  const b = await machine();
+  const { a, b } = await pair();
   await a.core.group.create('Home');
   const { invite } = await a.core.group.invite();
   await b.core.group.join(invite);
@@ -1008,10 +982,7 @@ test('a used invitation welcomes its machine again without writing, and never af
 });
 
 test('a ticket stays spent across a restart of the machine it was used on', async () => {
-  const a = await machine();
-  const b = await machine();
-  await a.core.group.create('Home');
-  await join(a, b);
+  const { a, b } = await joinedPair('Home');
   const ticket = a.core.group.clients.ticket(id(b), { principal: 'owner', sessionId: null, threadId: null }).ticket;
   const first = b.core.group.clients.admit(ticket, { name: 'shell', version: '1' });
   expect(first.role).toBe('owner');
@@ -1023,10 +994,7 @@ test('a ticket stays spent across a restart of the machine it was used on', asyn
 });
 
 test('keys die with what they stood for even when the core stopped between the removal and the cleanup', async () => {
-  const a = await machine();
-  const b = await machine();
-  await a.core.group.create('Home');
-  await join(a, b);
+  const { a, b } = await joinedPair('Home');
   const key = b.core.group.clients.admit(a.core.group.clients.ticket(id(b), { principal: 'owner', sessionId: null, threadId: null }).ticket, { name: 'shell', version: '1' });
   const roster = b.core.journal.getSetting('group') as Roster;
   // The removal of `a` reached the journal, the session it vouched for was not dropped yet: the core died there.
@@ -1046,10 +1014,7 @@ test('keys die with what they stood for even when the core stopped between the r
 });
 
 test('an answer that arrives after its sender was removed changes nothing', async () => {
-  const a = await machine();
-  const b = await machine();
-  await a.core.group.create('Home');
-  await join(a, b);
+  const { a, b } = await joinedPair('Home');
   const coordination = a.core.coordination;
   const real = coordination.request.bind(coordination);
   let removedDuring = false;
@@ -1070,10 +1035,7 @@ test('an answer that arrives after its sender was removed changes nothing', asyn
 });
 
 test('"you were removed" counts only signed inside a sealed answer, never from a status line', async () => {
-  const a = await machine();
-  const b = await machine();
-  await a.core.group.create('Home');
-  await join(a, b);
+  const { a, b } = await joinedPair('Home');
   const nonce = 'n-1';
   const sign = (body: string) => b.core.coordination.signature(Buffer.from(body)).toString('base64');
   const key = b.core.coordination.card().publicKey;
@@ -1098,8 +1060,7 @@ test('"you were removed" counts only signed inside a sealed answer, never from a
 });
 
 test('only a holder of the invitation spends the join allowance, and a pairing link never names a machine by a plain-HTTP name', async () => {
-  const a = await machine();
-  const b = await machine();
+  const { a, b } = await pair();
   await a.core.group.create('Home');
   const { invite } = await a.core.group.invite();
   const inviteId = createHash('sha256').update(`boite-group-invite-id\n${parseInvite(invite).t}`).digest('hex');
@@ -1169,10 +1130,7 @@ test('only a holder of the invitation spends the join allowance, and a pairing l
 });
 
 test('a recorded request sent again and again never spends the member\'s allowance', async () => {
-  const a = await machine();
-  const b = await machine();
-  await a.core.group.create('Home');
-  await join(a, b);
+  const { a, b } = await joinedPair('Home');
   await waitFor(() => members(b).length === 2);
   const body = JSON.stringify({ from: id(b), to: id(a), at: Date.now(), nonce: crypto.randomUUID(), operation: 'directory', payload: {} });
   const sealed = b.core.group.sealFor(id(a), pack(body, b.core.coordination.signature(Buffer.from(body)).toString('base64')))!;
@@ -1282,10 +1240,7 @@ test('requests are counted against the address they come from as they arrive, an
 });
 
 test('a removal needs no admission behind it, and the invitation is never a command-line argument', async () => {
-  const a = await machine();
-  const b = await machine();
-  await a.core.group.create('Home');
-  await join(a, b);
+  const { a, b } = await joinedPair('Home');
   const roster = a.core.journal.getSetting('group') as Roster;
   const other = roster.cores.find((core) => core.coreId === id(b))!;
   // A machine admitted by one this core never accepted, and since removed: kept as a removal, readable back.

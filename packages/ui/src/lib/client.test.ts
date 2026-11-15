@@ -62,6 +62,35 @@ function take(sockets: FakeSocket[], index: number): FakeSocket {
   return socket;
 }
 
+/** A socket factory that keeps every socket it makes in `sockets`, oldest first. */
+function collect(sockets: FakeSocket[]): () => FakeSocket {
+  return () => {
+    const socket = new FakeSocket();
+    sockets.push(socket);
+    return socket;
+  };
+}
+
+/** A client whose sockets land in `sockets`, oldest first; `backoff` left out keeps the default. */
+function withSockets(url: string, token: string, backoff?: number): { client: WsClient; sockets: FakeSocket[] } {
+  const sockets: FakeSocket[] = [];
+  const socketFactory = collect(sockets);
+  const client = backoff === undefined
+    ? new WsClient({ url, token, socketFactory })
+    : new WsClient({ url, token, backoff: () => backoff, socketFactory });
+  return { client, sockets };
+}
+
+/** Connects `client` through its first socket, the core answering the hello as `principal`. */
+async function handshake(client: WsClient, sockets: FakeSocket[], principal: string, core = CORE): Promise<FakeSocket> {
+  void client.connect();
+  const first = take(sockets, 0);
+  first.open();
+  first.receive({ id: first.frame(0).id, result: { core, principal } });
+  await client.connect();
+  return first;
+}
+
 function connected(): { client: WsClient; socket: FakeSocket; urls: string[] } {
   const sockets: FakeSocket[] = [];
   const urls: string[] = [];
@@ -90,10 +119,7 @@ describe('reconnect timing', () => {
   test('an attempt gets 10 s, then 20 s, then 30 s to answer, and a return to the page starts again at 10 s', async () => {
     expect([0, 1, 2, 5].map(openDeadline)).toEqual([10_000, 20_000, 30_000, 30_000]);
     vi.useFakeTimers();
-    const sockets: FakeSocket[] = [];
-    const client = new WsClient({ url: 'https://core.test', token: 'secret', backoff: () => 0, socketFactory: () => {
-      const socket = new FakeSocket(); sockets.push(socket); return socket;
-    } });
+    const { client, sockets } = withSockets('https://core.test', 'secret', 0);
     try {
       const first = client.connect().catch((error: Error) => error.message);
       await vi.advanceTimersByTimeAsync(10_000);
@@ -121,10 +147,7 @@ describe('reconnect timing', () => {
   test('offline, a remote client waits for the online event instead of retrying', async () => {
     vi.useFakeTimers();
     const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
-    const sockets: FakeSocket[] = [];
-    const client = new WsClient({ url: 'https://core.test', token: 'secret', backoff: () => 1_000, socketFactory: () => {
-      const socket = new FakeSocket(); sockets.push(socket); return socket;
-    } });
+    const { client, sockets } = withSockets('https://core.test', 'secret', 1_000);
     try {
       void client.connect().catch(() => undefined);
       take(sockets, 0).close();
@@ -141,10 +164,7 @@ describe('reconnect timing', () => {
   test('offline, a loopback client keeps retrying: its core is on this machine', async () => {
     vi.useFakeTimers();
     const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
-    const sockets: FakeSocket[] = [];
-    const client = new WsClient({ url: 'http://127.0.0.1:8777', token: 'secret', backoff: () => 1_000, socketFactory: () => {
-      const socket = new FakeSocket(); sockets.push(socket); return socket;
-    } });
+    const { client, sockets } = withSockets('http://127.0.0.1:8777', 'secret', 1_000);
     try {
       void client.connect().catch(() => undefined);
       take(sockets, 0).close();
@@ -303,16 +323,9 @@ describe('WsClient', () => {
 
   test('a call that times out on a dead socket replaces the socket', async () => {
     vi.useFakeTimers();
-    const sockets: FakeSocket[] = [];
-    const client = new WsClient({ url: 'http://127.0.0.1:8777', token: 'secret', backoff: () => 0, socketFactory: () => {
-      const socket = new FakeSocket(); sockets.push(socket); return socket;
-    } });
+    const { client, sockets } = withSockets('http://127.0.0.1:8777', 'secret', 0);
     try {
-      void client.connect();
-      const first = take(sockets, 0);
-      first.open();
-      first.receive({ id: first.frame(0).id, result: { core: CORE, principal: 'owner' } });
-      await client.connect();
+      const first = await handshake(client, sockets, 'owner');
       const pending = client.call('turns.start', { threadId: 'thread', prompt: 'once' }).catch((error: Error) => error.message);
       await vi.advanceTimersByTimeAsync(120_000 + 15_000);
       expect(await pending).toContain('timed out');
@@ -325,18 +338,11 @@ describe('WsClient', () => {
 
   test('a remote socket that goes silent is probed, then replaced when nothing comes back', async () => {
     vi.useFakeTimers();
-    const sockets: FakeSocket[] = [];
+    const { client, sockets } = withSockets('https://core.test', 'session', 1_000);
     const states: string[] = [];
-    const client = new WsClient({ url: 'https://core.test', token: 'session', backoff: () => 1_000, socketFactory: () => {
-      const socket = new FakeSocket(); sockets.push(socket); return socket;
-    } });
     client.onState((state) => states.push(state));
     try {
-      void client.connect();
-      const first = take(sockets, 0);
-      first.open();
-      first.receive({ id: first.frame(0).id, result: { core: CORE, principal: 'session' } });
-      await client.connect();
+      const first = await handshake(client, sockets, 'session');
 
       await vi.advanceTimersByTimeAsync(25_000);
       expect(first.sent.map(raw => JSON.parse(raw).method)).toEqual(['hello', 'hello']);
@@ -352,15 +358,8 @@ describe('WsClient', () => {
   });
 
   test('a call the socket lost is marked dropped, and one the app closed is not', async () => {
-    const sockets: FakeSocket[] = [];
-    const client = new WsClient({ url: 'https://core.test', token: 'session', backoff: () => 60_000, socketFactory: () => {
-      const socket = new FakeSocket(); sockets.push(socket); return socket;
-    } });
-    void client.connect();
-    const first = take(sockets, 0);
-    first.open();
-    first.receive({ id: first.frame(0).id, result: { core: CORE, principal: 'session' } });
-    await client.connect();
+    const { client, sockets } = withSockets('https://core.test', 'session', 60_000);
+    const first = await handshake(client, sockets, 'session');
     const lost = client.call('threads.list', {}).catch((error: unknown) => error);
     first.close();
     expect(wasDropped(await lost)).toBe(true);
@@ -381,16 +380,9 @@ describe('WsClient', () => {
   test('going offline asks a remote socket at once and stops saying connected when it stays silent', async () => {
     vi.useFakeTimers();
     const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
-    const sockets: FakeSocket[] = [];
-    const client = new WsClient({ url: 'https://core.test', token: 'session', backoff: () => 1_000, socketFactory: () => {
-      const socket = new FakeSocket(); sockets.push(socket); return socket;
-    } });
+    const { client, sockets } = withSockets('https://core.test', 'session', 1_000);
     try {
-      void client.connect();
-      const first = take(sockets, 0);
-      first.open();
-      first.receive({ id: first.frame(0).id, result: { core: CORE, principal: 'session' } });
-      await client.connect();
+      const first = await handshake(client, sockets, 'session');
 
       online.mockReturnValue(false);
       client.offline();
@@ -419,16 +411,9 @@ describe('WsClient', () => {
 
   test('a remote call asks for its answer in slices, and slices arriving for 45 s keep the socket', async () => {
     vi.useFakeTimers();
-    const sockets: FakeSocket[] = [];
-    const client = new WsClient({ url: 'https://core.test', token: 'session', backoff: () => 1_000, socketFactory: () => {
-      const socket = new FakeSocket(); sockets.push(socket); return socket;
-    } });
+    const { client, sockets } = withSockets('https://core.test', 'session', 1_000);
     try {
-      void client.connect();
-      const socket = take(sockets, 0);
-      socket.open();
-      socket.receive({ id: socket.frame(0).id, result: { core: SLICING, principal: 'session' } });
-      await client.connect();
+      const socket = await handshake(client, sockets, 'session', SLICING);
       let outcome = '';
       void client.call('threads.list', {}).then(() => { outcome = 'answered'; }, (error: Error) => { outcome = error.message; });
       const request = JSON.parse(socket.sent[1]!) as { id: number; progress?: boolean };
@@ -452,16 +437,9 @@ describe('WsClient', () => {
 
   test('a half-open remote socket carrying a call is replaced 35 s after its last frame, not after the call times out', async () => {
     vi.useFakeTimers();
-    const sockets: FakeSocket[] = [];
-    const client = new WsClient({ url: 'https://core.test', token: 'session', backoff: () => 1_000, socketFactory: () => {
-      const socket = new FakeSocket(); sockets.push(socket); return socket;
-    } });
+    const { client, sockets } = withSockets('https://core.test', 'session', 1_000);
     try {
-      void client.connect();
-      const first = take(sockets, 0);
-      first.open();
-      first.receive({ id: first.frame(0).id, result: { core: SLICING, principal: 'session' } });
-      await client.connect();
+      const first = await handshake(client, sockets, 'session', SLICING);
       let failure: unknown = null;
       void client.call('threads.list', {}).catch((error: unknown) => { failure = error; });
       // An event a second later: the socket was heard after the call, which waits on.
@@ -485,16 +463,9 @@ describe('WsClient', () => {
 
   test('a call sent in the millisecond of the last frame still probes a socket that then stays silent', async () => {
     vi.useFakeTimers();
-    const sockets: FakeSocket[] = [];
-    const client = new WsClient({ url: 'https://core.test', token: 'session', backoff: () => 1_000, socketFactory: () => {
-      const socket = new FakeSocket(); sockets.push(socket); return socket;
-    } });
+    const { client, sockets } = withSockets('https://core.test', 'session', 1_000);
     try {
-      void client.connect();
-      const first = take(sockets, 0);
-      first.open();
-      first.receive({ id: first.frame(0).id, result: { core: SLICING, principal: 'session' } });
-      await client.connect();
+      const first = await handshake(client, sockets, 'session', SLICING);
       // Same instant as the hello's answer: the clock cannot tell them apart, the frame count can.
       void client.call('threads.list', {}).catch(() => undefined);
       await vi.advanceTimersByTimeAsync(3_000);
@@ -506,16 +477,9 @@ describe('WsClient', () => {
 
   test('a probe waits behind a large upload at 32 KiB/s, and an answer that lands meanwhile keeps the socket', async () => {
     vi.useFakeTimers();
-    const sockets: FakeSocket[] = [];
-    const client = new WsClient({ url: 'https://core.test', token: 'session', backoff: () => 1_000, socketFactory: () => {
-      const socket = new FakeSocket(); sockets.push(socket); return socket;
-    } });
+    const { client, sockets } = withSockets('https://core.test', 'session', 1_000);
     try {
-      void client.connect();
-      const first = take(sockets, 0);
-      first.open();
-      first.receive({ id: first.frame(0).id, result: { core: SLICING, principal: 'session' } });
-      await client.connect();
+      const first = await handshake(client, sockets, 'session', SLICING);
       await vi.advanceTimersByTimeAsync(1_000);
       // A prompt with 2 MiB of picture on a slow uplink: the core reads its hello only after it.
       let outcome = '';
@@ -536,16 +500,9 @@ describe('WsClient', () => {
 
   test('a call that hears nothing for 3 s on a remote socket probes it, so a dead link shows within 13 s', async () => {
     vi.useFakeTimers();
-    const sockets: FakeSocket[] = [];
-    const client = new WsClient({ url: 'https://core.test', token: 'session', backoff: () => 1_000, socketFactory: () => {
-      const socket = new FakeSocket(); sockets.push(socket); return socket;
-    } });
+    const { client, sockets } = withSockets('https://core.test', 'session', 1_000);
     try {
-      void client.connect();
-      const first = take(sockets, 0);
-      first.open();
-      first.receive({ id: first.frame(0).id, result: { core: SLICING, principal: 'session' } });
-      await client.connect();
+      const first = await handshake(client, sockets, 'session', SLICING);
       // Busy a moment ago: a call goes alone.
       const quick = client.call('threads.list', {});
       first.receive({ id: first.frame(1).id, result: [] });
@@ -572,16 +529,9 @@ describe('WsClient', () => {
 
   test('a core that answers in one frame: a call whose answer takes 45 s to arrive keeps its socket and resolves', async () => {
     vi.useFakeTimers();
-    const sockets: FakeSocket[] = [];
-    const client = new WsClient({ url: 'https://core.test', token: 'session', backoff: () => 1_000, socketFactory: () => {
-      const socket = new FakeSocket(); sockets.push(socket); return socket;
-    } });
+    const { client, sockets } = withSockets('https://core.test', 'session', 1_000);
     try {
-      void client.connect();
-      const socket = take(sockets, 0);
-      socket.open();
-      socket.receive({ id: socket.frame(0).id, result: { core: CORE, principal: 'session' } });
-      await client.connect();
+      const socket = await handshake(client, sockets, 'session');
       let outcome = '';
       void client.call('threads.list', {}).then(() => { outcome = 'answered'; }, (error: Error) => { outcome = error.message; });
 
@@ -603,16 +553,9 @@ describe('WsClient', () => {
 
   test('a core that answers in one frame: a half-open socket carrying a call is replaced once that call times out', async () => {
     vi.useFakeTimers();
-    const sockets: FakeSocket[] = [];
-    const client = new WsClient({ url: 'https://core.test', token: 'session', backoff: () => 1_000, socketFactory: () => {
-      const socket = new FakeSocket(); sockets.push(socket); return socket;
-    } });
+    const { client, sockets } = withSockets('https://core.test', 'session', 1_000);
     try {
-      void client.connect();
-      const first = take(sockets, 0);
-      first.open();
-      first.receive({ id: first.frame(0).id, result: { core: CORE, principal: 'session' } });
-      await client.connect();
+      const first = await handshake(client, sockets, 'session');
       let failure = '';
       void client.call('threads.list', {}).catch((error: Error) => { failure = error.message; });
 
@@ -633,15 +576,8 @@ describe('WsClient', () => {
   test('a remote socket that keeps receiving is never probed, and a loopback one never at all', async () => {
     vi.useFakeTimers();
     const run = async (url: string, chatty: boolean): Promise<string[]> => {
-      const sockets: FakeSocket[] = [];
-      const client = new WsClient({ url, token: 'secret', socketFactory: () => {
-        const socket = new FakeSocket(); sockets.push(socket); return socket;
-      } });
-      void client.connect();
-      const socket = take(sockets, 0);
-      socket.open();
-      socket.receive({ id: socket.frame(0).id, result: { core: CORE, principal: 'owner' } });
-      await client.connect();
+      const { client, sockets } = withSockets(url, 'secret');
+      const socket = await handshake(client, sockets, 'owner');
       for (let second = 0; second < 120; second += 1) {
         if (chatty && second % 10 === 0) socket.receive({ method: 'core.log', params: { level: 'info', message: 'tick', at: second } });
         await vi.advanceTimersByTimeAsync(1_000);
@@ -704,10 +640,7 @@ describe('WsClient', () => {
 
   test('resuming replaces a half-open socket without replaying a pending prompt', async () => {
     vi.useFakeTimers();
-    const sockets: FakeSocket[] = [];
-    const client = new WsClient({ url: 'https://core.test', token: 'session', socketFactory: () => {
-      const socket = new FakeSocket(); sockets.push(socket); return socket;
-    } });
+    const { client, sockets } = withSockets('https://core.test', 'session');
     try {
       const connecting = client.connect();
       const first = take(sockets, 0);
@@ -733,11 +666,8 @@ describe('WsClient', () => {
   });
 
   test('resuming on a socket that answers keeps it, and the call it carries', async () => {
-    const sockets: FakeSocket[] = [];
+    const { client, sockets } = withSockets('https://core.test', 'session');
     const states: string[] = [];
-    const client = new WsClient({ url: 'https://core.test', token: 'session', socketFactory: () => {
-      const socket = new FakeSocket(); sockets.push(socket); return socket;
-    } });
     client.onState((state) => states.push(state));
     const connecting = client.connect();
     const first = take(sockets, 0);
@@ -763,11 +693,7 @@ describe('WsClient', () => {
       clientName: 'shell',
       version: '2.0.0-beta.1',
       device: () => 'office-pc',
-      socketFactory: () => {
-        const socket = new FakeSocket();
-        sockets.push(socket);
-        return socket;
-      },
+      socketFactory: collect(sockets),
       reconnect: false
     });
     const connecting = client.connect();
@@ -804,11 +730,7 @@ describe('WsClient', () => {
       const client = new Fresh({
         url: 'http://127.0.0.1:8777',
         token: 'secret',
-        socketFactory: () => {
-          const socket = new FakeSocket();
-          sockets.push(socket);
-          return socket;
-        },
+        socketFactory: collect(sockets),
         reconnect: false
       });
       void client.connect().catch(() => {});
@@ -831,11 +753,7 @@ describe('WsClient', () => {
       token: '',
       grant: 'one-time',
       onSession: (session) => stored.push(session),
-      socketFactory: () => {
-        const socket = new FakeSocket();
-        sockets.push(socket);
-        return socket;
-      },
+      socketFactory: collect(sockets),
       backoff: () => 0
     });
     void client.connect().catch(() => undefined);
@@ -869,11 +787,7 @@ describe('WsClient', () => {
       url: 'http://192.0.2.1:8777',
       token: 'held',
       onSession: (session) => stored.push(session),
-      socketFactory: () => {
-        const socket = new FakeSocket();
-        sockets.push(socket);
-        return socket;
-      },
+      socketFactory: collect(sockets),
       reconnect: false
     });
     const connecting = client.connect();
@@ -944,11 +858,7 @@ describe('WsClient', () => {
       ticket: 'one-time',
       // The machine was dropped by its group while this ticket was being exchanged.
       onSession: () => false,
-      socketFactory: () => {
-        const socket = new FakeSocket();
-        sockets.push(socket);
-        return socket;
-      }
+      socketFactory: collect(sockets)
     });
     const connecting = client.connect();
     const socket = take(sockets, 0);
@@ -968,11 +878,7 @@ describe('WsClient', () => {
       token: '',
       grant: 'one-time',
       onSession: (session) => stored.push(session),
-      socketFactory: () => {
-        const socket = new FakeSocket();
-        sockets.push(socket);
-        return socket;
-      },
+      socketFactory: collect(sockets),
       backoff: () => 0
     });
     void client.connect().catch(() => undefined);
@@ -1010,11 +916,7 @@ describe('WsClient', () => {
       },
       onUnauthorized: unauthorized,
       backoff: () => 0,
-      socketFactory: () => {
-        const socket = new FakeSocket();
-        sockets.push(socket);
-        return socket;
-      }
+      socketFactory: collect(sockets)
     });
     void client.connect().catch(() => undefined);
     const first = take(sockets, 0);
@@ -1044,11 +946,7 @@ describe('WsClient', () => {
         url,
         token: '',
         backoff: () => 0,
-        socketFactory: () => {
-          const socket = new FakeSocket();
-          sockets.push(socket);
-          return socket;
-        }
+        socketFactory: collect(sockets)
       });
       void client.connect().catch(() => undefined);
       const first = take(sockets, 0);
@@ -1076,11 +974,7 @@ describe('WsClient', () => {
         revoked += 1;
       },
       backoff: () => 0,
-      socketFactory: () => {
-        const socket = new FakeSocket();
-        sockets.push(socket);
-        return socket;
-      }
+      socketFactory: collect(sockets)
     });
     void client.connect().catch(() => undefined);
     const first = take(sockets, 0);
@@ -1108,11 +1002,7 @@ describe('WsClient', () => {
       grant: 'spent',
       onUnauthorized: unauthorized,
       backoff: () => 0,
-      socketFactory: () => {
-        const socket = new FakeSocket();
-        sockets.push(socket);
-        return socket;
-      }
+      socketFactory: collect(sockets)
     });
     const connecting = client.connect();
     const rejection = expect(connecting).rejects.toThrow('already used');
@@ -1227,11 +1117,7 @@ describe('WsClient', () => {
     const client = new WsClient({
       url: 'http://127.0.0.1:8777',
       token: 'secret',
-      socketFactory: () => {
-        const socket = new FakeSocket();
-        sockets.push(socket);
-        return socket;
-      },
+      socketFactory: collect(sockets),
       backoff: () => 0
     });
     void client.connect().catch(() => undefined);
@@ -1264,11 +1150,7 @@ test('a permanent protocol rejection closes the client without reconnecting', as
   const sockets: FakeSocket[] = [];
   const client = new WsClient({
     url: 'http://127.0.0.1:8777', token: 'secret', backoff: () => 1,
-    socketFactory: () => {
-      const socket = new FakeSocket();
-      sockets.push(socket);
-      return socket;
-    }
+    socketFactory: collect(sockets)
   });
   try {
     const connecting = client.connect();

@@ -43,7 +43,7 @@ import { machineName } from './paths.ts';
 import { findChromium, RENDER_SCALE } from './browser/chromium.ts';
 import { PageProbes, PROBE_TIMEOUT_MS, type PageProbe, type ViewCheckOptions } from './browser/probe.ts';
 import { TabRecorder } from './browser/recorder.ts';
-import { watchPage } from './browser/page-events.ts';
+import { freshCalls, watchPage } from './browser/page-events.ts';
 import { BrowserHost } from './browser/host.ts';
 import { BrowserEngines } from './browser/engines.ts';
 import { RemoteDrive, type StreamHandle, type StreamPeer } from './browser/remote-drive.ts';
@@ -51,11 +51,12 @@ import { shrunkScreenshot } from './browser/shrink.ts';
 import type { Engine, Tab } from './browser/types.ts';
 import { SETTLED_VIEWPORT_SCRIPT } from './browser/scripts.ts';
 import { screenTurns, takeTurn } from './browser/frames.ts';
-import { automate, awaitDocument, documentToken, PAGE_ACTIONS } from './browser/automation.ts';
+import { automate, awaitDocument, documentToken, PAGE_ACTIONS, settleLoaded } from './browser/automation.ts';
 import { pageFrames } from './browser/page-frames.ts';
 import { sleepState, TabSleep } from './browser/sleep.ts';
 import { BrowserDownloads } from './browser/downloads.ts';
 import { BrowserRecipes } from './browser/recipes.ts';
+import { historyChallenge, settleChallenge } from './browser/challenge.ts';
 import { networkCapture, networkCalls, networkDetail, NETWORK_BUFFERS, NO_NETWORK_BUFFERS, watchNetwork } from './browser/network.ts';
 
 /** The process scope of the agent browser's own processes, in the trace and the registry. */
@@ -278,12 +279,13 @@ export class AgentBrowser {
     const { sessionId } = await engine.cdp.send<{ sessionId: string }>('Target.attachToTarget', { targetId, flatten: true });
     const tab: Tab = {
       id: `browser:${crypto.randomUUID()}`, threadId, engine, targetId, sessionId, url, title: '',
-      preset: null, orientation: 'portrait', colorScheme: 'system', diagnostics: [], dropped: 0, history: [], requests: new Map(), network: null,
+      preset: null, orientation: 'portrait', colorScheme: 'system', diagnostics: [], dropped: 0, history: [], requests: new Map(), loading: new Map(), network: null,
       recorder: null, discarded: false, frame: null, screen: screenTurns(), off: [], frames: new Set(), acting: false, actor: null, stuck: null, sleep: sleepState(!engine.hosted),
       page: {
         session: sessionId,
         send: (method, params = {}, timeoutMs) => engine.cdp.send(method, params, sessionId, timeoutMs),
         dialogs: [], dialogPolicy: { accept: true, text: null }, downloads: 0,
+        busy: () => freshCalls(tab.loading),
       },
     };
     const on = (method: string, listener: (params: Record<string, unknown>) => void) =>
@@ -420,8 +422,9 @@ export class AgentBrowser {
     if (state) { tab.url = state.url; tab.title = state.title.slice(0, 200); }
     // Viewers hear the page before the agent's answer: a cover never names the blank page it started on.
     this.#changed(tab.threadId, true);
-    const at = tab.url || url;
-    return { tabId: tab.id, url: at, title: tab.title, value: { ok: true, navigated: true, url: at, title: tab.title, ...(loading ? { loading: true, note: 'the page is still loading; use snapshot to inspect its state' } : {}) } };
+    // A site's bot check is waited for, its checkbox clicked once (`browser/challenge.ts`); a page still loading has no DOM to look at yet.
+    const noted = loading ? { loading: true, note: 'the page is still loading; use snapshot to inspect its state' } : await settleChallenge(tab, (expression, ms) => this.#evaluate(tab, expression, ms), () => this.#changed(tab.threadId, true), this.#core.logs).then(async noted => { await settleLoaded(tab.page); return noted; });
+    return { tabId: tab.id, url: tab.url || url, title: tab.title, value: { ok: true, navigated: true, url: tab.url || url, title: tab.title, ...noted } };
   }
 
   // ---------- agent commands ----------
@@ -672,7 +675,8 @@ export class AgentBrowser {
     const done = (value: unknown = { ok: true }): BrowserReply => ({ tabId: tab.id, value });
     if ((action.kind === 'recording-stop' || action.kind === 'recording-read') && tab.discarded) throw refused(DISCARDED_RECORDING_ERROR);
     if (PAGE_ACTIONS.has(action.kind)) {
-      try { return await automate(tab.page, tab.id, action); }
+      // Back, forward and reload end on a page as a navigation does, bot check included.
+      try { return historyChallenge(await automate(tab.page, tab.id, action), action.kind === 'history' ? await settleChallenge(tab, (expression, ms) => this.#evaluate(tab, expression, ms), () => this.#changed(tab.threadId, true), this.#core.logs).then(async noted => { await settleLoaded(tab.page); return noted; }) : {}, tab); }
       catch (error) { throw refused(error instanceof Error ? error.message : String(error)); }
     }
     switch (action.kind) {

@@ -1,8 +1,8 @@
 # Usage
 
-Settings > AI accounts > Usage shows what the agents spent through Boite:
-tokens, the API equivalent cost and turns, per day, provider, model and
-thread. Limits sits above it on the same page, holding the subscription windows each provider
+Settings > Usage shows what the agents spent through Boite: tokens, the API
+equivalent cost and turns, per day, provider, model and thread. Settings >
+Limits is its own tab beside it, holding the subscription windows each provider
 last reported. Everything on the usage page comes from turns the core already
 recorded in its journal. Boite never estimates a token count; it prices the
 reported tokens at each model's public API rates ([The API
@@ -111,7 +111,7 @@ an alert is set, and its tooltip lists them.
   `5-hour limit: 8% left` in the body, labelled `limitFiveHour` or
   `limitWeekly` with `values.percent`, which the phone's words fill in its
   language. A desktop shows a toast whatever is on screen; a click opens
-  Settings, AI accounts, Limits, on the machine that sent it. A tapped push, or a page's
+  Settings, Limits, on the machine that sent it. A tapped push, or a page's
   notice through the service worker, opens Limits the same way
   (`?limits=1&member=<core id>` with no window open).
 
@@ -155,7 +155,7 @@ failure. It never quotes the body, which can echo a credential.
 
 ## Quota sources and freshness
 
-Settings > AI accounts > Limits and the tray show monitored, signed-in accounts. Providers
+Settings > Limits and the tray show monitored, signed-in accounts. Providers
 contains setup and account controls without usage. With no signed-in account,
 Limits and the tray offer connection. Monitoring switches are under Tracked
 accounts in Limits; the tray has no switch. [Accounts](accounts.md) owns login
@@ -352,7 +352,7 @@ is missing, since Claude Code writes for an hour. Pi passes Anthropic's
 `buckets: 1` on each turn's usage as it takes it from the driver.
 
 Every reader, `usage.get`, `usage.history`, a session's fallback total,
-delegation and workflow totals and a bot's budget, sums the turns through the
+delegation and workflow totals and a mochi's budget, sums the turns through the
 SQL groupings of `journal/usage-sums.ts` and one reading of each group
 (`groupUsage` in `usage.ts`). Marked buckets are summed as they are and never ask the
 provider's descriptor, so editing or removing a provider leaves those turns
@@ -462,9 +462,9 @@ its cost.
 On a subscription the figure is what the same tokens would cost on the API, not
 money spent.
 
-A bot's daily budget and its status's `today.costUsd` use the same rule
-(`priceGroup` in `packages/core/src/usage.ts`) over the bot's thread and the
-threads below it, subagents included ([bots](bots.md#budget-and-limits)), so
+A mochi's daily budget and its status's `today.costUsd` use the same rule
+(`priceGroup` in `packages/core/src/usage.ts`) over the mochi's thread and the
+threads below it, subagents included ([mochis](mochis.md#budget-and-limits)), so
 the budget and this page agree on what a turn cost.
 
 ## When a provider refuses a turn
@@ -498,7 +498,7 @@ during a wait fails the turn the usual way.
 
 ### Usage limit
 
-Settings > AI accounts > Limits has "Resume threads after a usage limit"
+Settings > Limits has "Resume threads after a usage limit"
 (`autoResumeLimitedThreads`, off by default). With it on, a turn that failed
 on a usage limit plans one resume a minute after the window resets
 (`threads/limit-resume.ts`). The reset is the one the agent reported, else the
@@ -508,8 +508,10 @@ neither, nothing is planned. The plan sits in the journal setting
 (`kind: 'usage-limit'`, `at`, `resetsAt`) with Do not resume.
 
 Nothing is planned for a failure whose window already reset (no retry loop),
-for a window the thread already resumed after, for a sub-thread or persistent
-agent, or for a compaction or wake turn. When the plan fires, it is dropped
+for a window the thread already resumed after, for a sub-thread, or for a
+compaction or a letter. A mochi's `routine` or `event` turn does plan one: a
+daily routine would otherwise be lost until the next day, and the facts of an
+event turn are spent once it started. When the plan fires, it is dropped
 instead if the setting went off, the thread was archived, answered, stopped or
 is busy, its provider, account, model or session generation changed, a card
 waits for the user, or the user paused its team. A cache ping in the way
@@ -537,7 +539,8 @@ a device can already open, and the thread titles it names are the ones
 `packages/core/src/access.ts`. A device also reads `quotas.list` and
 `subscriptionProxy.quotas` with the bars the core holds: no refresh button, no
 monitoring switch, no reset. A core older than that refuses the read, and the
-Limits tab asks to update Boite on that machine. A phone lists the same page.
+Limits tab asks to update Boite on that machine. On a phone both pages are rows
+of Settings, under Agents, and the two tabs of one screen.
 
 ## The fake client
 

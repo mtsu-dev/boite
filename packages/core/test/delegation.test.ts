@@ -308,6 +308,7 @@ test('the parent learns dynamic workflows and coordination within a compact prom
   // 2600 before the line that names `boite view`, about 220 bytes, then 80 for `[--speed <tier>]` and its default,
   // then about 100 for the `boite settings` line.
   expect(prompt).toContain('standard speed without --speed (tiers: boite delegate models)');
+  expect(prompt).toContain('browser actions print the page they leave');
   // Then about 130 for the line naming `boite logs problems` and the built-in skill's path. The
   // path starts with the data directory, whose length is the runner's, so it counts as `<data>`.
   // Then 26 for `[--context light|neutral]`; `boite help` holds the rest of the context flags.
@@ -328,7 +329,9 @@ test('the parent learns dynamic workflows and coordination within a compact prom
   // Then 130 for the ```view fence: an interactive or animated piece is drawn from the answer, with no command and no help (4609 measured 2026-10-26).
   // Then 46 on Linux for `boite desktop help`: GUI apps the agent runs and clicks on a private desktop (4643 measured 2026-10-31).
   // Then 47 for "repeat": a parent that never hears of loops chains review and fix rounds by hand, one turn each (4690 measured on Linux 2026-11-07).
-  expect(Buffer.byteLength(prompt.replaceAll(h.dataDir, '<data>'))).toBeLessThan(process.platform === 'linux' ? 4691 : 4657);
+  // Then 6 for "mochi", the name bots took, three times in the settings line (4696 measured on Linux 2026-11-13).
+  // Then 35 for the page printed after each browser action (4731 measured on Linux 2026-11-14).
+  expect(Buffer.byteLength(prompt.replaceAll(h.dataDir, '<data>'))).toBeLessThan(process.platform === 'linux' ? 4732 : 4698);
   runs.get(threadId)!.finish();
   await waitFor(() => h.core.threads.require(threadId).status === 'idle');
   await owner.call('turns.start', { threadId, prompt: 'Continue' });

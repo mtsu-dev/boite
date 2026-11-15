@@ -14,14 +14,14 @@ that runs it.
    opens a surface too: B the Browser, D the Device panel, M Discussions.
 3. Press **+** in the tab strip to open another surface beside the first.
 4. Drag the panel's left edge to resize it. A double click on the edge, or
-   Home, restores the default width, and Escape cancels a drag.
+   Home, restores the default width (420 px), and Escape cancels a drag.
 
 The conversation list stays open beside the panel. In a narrow window, where
 the list and the panel would leave the conversation too little room, the panel
 lies over the conversation instead; click outside it to hide it.
 
 Tabs are kept per conversation. The width is shared by every conversation on
-this device. Settings, Input, Keyboard lists the shortcuts that open the panel and
+this device. Settings, Keyboard lists the shortcuts that open the panel and
 each surface.
 
 ## What each surface shows
@@ -76,8 +76,7 @@ The Tasks tab has four sections:
 
 ## Point the agent at a page element
 
-Preview comments is on by default, in Settings, Conversations, In the
-conversation.
+Preview comments is on by default, in Settings, General.
 
 1. Open a Browser tab and choose Reference an element.
 2. Click an element. A mention is added to your message at the cursor.

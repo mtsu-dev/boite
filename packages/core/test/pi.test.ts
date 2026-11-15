@@ -8,7 +8,7 @@ import type { CoreClient } from '../src/client.ts';
 import { getDriver } from '../src/drivers/index.ts';
 import { setPiStopDeadlineForTests } from '../src/drivers/pi/session.ts';
 import { BACKGROUND_COMPACT } from '../src/threads/background-compact.ts';
-import { startTestCore, waitFor } from './harness.ts';
+import { startTestCore, startTurn, waitFor } from './harness.ts';
 import type { TestCore } from './harness.ts';
 import { countLogLines, countProcesses, readScriptedLog, writeScriptedProvider } from './scripted-provider.ts';
 
@@ -16,16 +16,13 @@ import { countLogLines, countProcesses, readScriptedLog, writeScriptedProvider }
 const FAKE_AGENT = fileURLToPath(new URL('./fixtures/pi-agent.ts', import.meta.url));
 
 test('pi subagent extension calls reach the native team through the real protocol', async () => {
-  const client = await startCore();
-  const threadId = await piThread(client);
-  const finished = client.next('turn.finished', turn => turn.threadId === threadId);
-  await client.call('turns.start', { threadId, prompt: '[agents]' });
+  const { client, threadId } = await startThread();
+  const { finished } = await startTurn(client, threadId, '[agents]');
   expect((await finished).status).toBe('done');
   expect((await client.call('delegation.get', { threadId })).nativeAgents).toEqual([
     expect.objectContaining({ toolId: 'native-pi', name: 'reviewer', task: 'Review parser boundaries', status: 'done', result: 'Parser checked' }),
   ]);
-  const second = client.next('turn.finished', turn => turn.threadId === threadId);
-  await client.call('turns.start', { threadId, prompt: '[agents]' });
+  const { finished: second } = await startTurn(client, threadId, '[agents]');
   expect((await second).status).toBe('done');
   const agents = (await client.call('delegation.get', { threadId })).nativeAgents;
   expect(agents).toHaveLength(2);
@@ -34,8 +31,7 @@ test('pi subagent extension calls reach the native team through the real protoco
 });
 
 test('coordination steers a running pi turn over its RPC connection', async () => {
-  const client = await startCore();
-  const threadId = await piThread(client);
+  const { client, threadId } = await startThread();
   await client.call('turns.start', { threadId, prompt: '[slow] Deploy' });
   await waitFor(() => fakeLog().includes('waiting for abort'));
   await waitFor(() => harness!.core.journal.listMessages(threadId).some(m => m.role === 'assistant'));
@@ -252,6 +248,15 @@ async function piThread(client: CoreClient, model?: string, effort?: string): Pr
   return thread.id;
 }
 
+/** A fresh core with one Pi thread on it, the opening of most tests here. */
+async function startThread(
+  settings?: Partial<Settings>,
+  ...thread: [model?: string, effort?: string]
+): Promise<{ client: CoreClient; threadId: string }> {
+  const client = await startCore(settings);
+  return { client, threadId: await piThread(client, ...thread) };
+}
+
 test('pi takes a thinking level while its turn runs', async () => {
   const client = await startCore({ warmProcessMinutes: 5 });
   const { projectId, accountId } = await piAccount(client);
@@ -270,8 +275,7 @@ test('pi takes a thinking level while its turn runs', async () => {
 });
 
 test('manual compaction uses the compact RPC response without sending a prompt', async () => {
-  const client = await startCore();
-  const threadId = await piThread(client);
+  const { client, threadId } = await startThread();
   let finished = client.next('turn.finished', (turn) => turn.threadId === threadId);
   await client.call('turns.start', { threadId, prompt: 'remember this' });
   await finished;
@@ -313,8 +317,7 @@ describe('pi driver', () => {
   });
 
   test('a plain prompt streams back as one text part, and the session id is kept', async () => {
-    const client = await startCore();
-    const threadId = await piThread(client);
+    const { client, threadId } = await startThread();
 
     const deltas: string[] = [];
     client.on('message.delta', (event) => {
@@ -322,8 +325,7 @@ describe('pi driver', () => {
     });
 
     const prompt = 'the fake pi agent echoes this back';
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt });
+    const { finished } = await startTurn(client, threadId, prompt, 20000);
 
     const done = await finished;
     expect(done.error).toBeNull();
@@ -341,11 +343,9 @@ describe('pi driver', () => {
   });
 
   test('get_commands lists the agent commands once the process is up', async () => {
-    const client = await startCore();
-    const threadId = await piThread(client);
+    const { client, threadId } = await startThread();
 
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: 'hello' });
+    const { finished } = await startTurn(client, threadId, 'hello', 20000);
     expect((await finished).status).toBe('done');
 
     const thread = await client.call('threads.get', { threadId });
@@ -357,8 +357,7 @@ describe('pi driver', () => {
   });
 
   test('an image attachment rides the prompt command as an images entry', async () => {
-    const client = await startCore();
-    const threadId = await piThread(client);
+    const { client, threadId } = await startThread();
 
     const PNG =
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
@@ -378,8 +377,7 @@ describe('pi driver', () => {
   });
 
   test('the session directory is the thread s own, under the account s location', async () => {
-    const client = await startCore();
-    const threadId = await piThread(client);
+    const { client, threadId } = await startThread();
     await runTurn(client, threadId, 'first');
 
     // The account is on the provider's own location, so the transcript lives
@@ -390,8 +388,7 @@ describe('pi driver', () => {
   });
 
   test('the model and the effort ride on the command line, as pi takes them', async () => {
-    const client = await startCore();
-    const threadId = await piThread(client, 'anthropic/claude-sonnet-5', 'high');
+    const { client, threadId } = await startThread(undefined, 'anthropic/claude-sonnet-5', 'high');
     await runTurn(client, threadId, 'first');
     expect(argvLines()[0]).toContain('model=anthropic/claude-sonnet-5:high');
   });
@@ -412,11 +409,9 @@ describe('pi driver', () => {
   });
 
   test('a thinking delta becomes a thinking part ahead of the answer', async () => {
-    const client = await startCore();
-    const threadId = await piThread(client);
+    const { client, threadId } = await startThread();
 
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: '[thought]the answer' });
+    const { finished } = await startTurn(client, threadId, '[thought]the answer', 20000);
     expect((await finished).status).toBe('done');
 
     const thread = await client.call('threads.get', { threadId });
@@ -427,16 +422,14 @@ describe('pi driver', () => {
   });
 
   test('a tool execution arrives running, then done with its output', async () => {
-    const client = await startCore();
-    const threadId = await piThread(client);
+    const { client, threadId } = await startThread();
 
     const parts: MessagePart[] = [];
     client.on('message.part', (event) => {
       if (event.threadId === threadId) parts.push(event.part);
     });
 
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: '[tool]' });
+    const { finished } = await startTurn(client, threadId, '[tool]', 20000);
     expect((await finished).status).toBe('done');
 
     const tools = parts.filter((part) => part.type === 'tool');
@@ -447,11 +440,9 @@ describe('pi driver', () => {
   });
 
   test('the turn usage carries the tokens and the price the agent reported', async () => {
-    const client = await startCore();
-    const threadId = await piThread(client);
+    const { client, threadId } = await startThread();
 
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: '[usage]' });
+    const { finished } = await startTurn(client, threadId, '[usage]', 20000);
 
     const done = await finished;
     expect(done.status).toBe('done');
@@ -466,13 +457,11 @@ describe('pi driver', () => {
   });
 
   test('stopping a turn aborts it and the agent process is gone', async () => {
-    const client = await startCore();
-    const threadId = await piThread(client);
+    const { client, threadId } = await startThread();
 
     const started = client.next('process.started', (record) => record.threadId === threadId, 20000);
     const exited = client.next('process.exited', (record) => record.threadId === threadId, 20000);
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: '[slow]' });
+    const { finished } = await startTurn(client, threadId, '[slow]', 20000);
     await started;
     await waitFor(() => fakeLog().includes('waiting for abort'));
 
@@ -488,41 +477,34 @@ describe('pi driver', () => {
   });
 
   test('an agent that dies fails the turn with its exit code and stderr, and the next turn works', async () => {
-    const client = await startCore();
-    const threadId = await piThread(client);
+    const { client, threadId } = await startThread();
 
-    const crashed = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: '[crash]' });
+    const { finished: crashed } = await startTurn(client, threadId, '[crash]', 20000);
 
     const failure = await crashed;
     expect(failure.status).toBe('error');
     expect(failure.error).toContain('exited with code 3');
     expect(failure.error).toContain('boom');
 
-    const again = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: 'still here' });
+    const { finished: again } = await startTurn(client, threadId, 'still here', 20000);
     const done = await again;
     expect(done.error).toBeNull();
     expect(done.status).toBe('done');
   });
 
   test('a stderr line that comes in two chunks is quoted whole when the agent dies', async () => {
-    const client = await startCore();
-    const threadId = await piThread(client);
-    const crashed = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: '[splitcrash]' });
+    const { client, threadId } = await startThread();
+    const { finished: crashed } = await startTurn(client, threadId, '[splitcrash]', 20000);
     const failure = await crashed;
     expect(failure.status).toBe('error');
     expect(failure.error).toContain('half of a line');
   });
 
   test('an extension dialog draws a question and returns the answer', async () => {
-    const client = await startCore();
-    const threadId = await piThread(client);
+    const { client, threadId } = await startThread();
     const requested = client.next('question.asked', (request) => request.threadId === threadId);
 
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: '[ask]' });
+    const { finished } = await startTurn(client, threadId, '[ask]', 20000);
     const request = await requested;
     await client.call('questions.answer', { threadId, questionId: request.id, optionIds: ['yes'] });
     const done = await finished;
@@ -535,11 +517,9 @@ describe('pi driver', () => {
 
   for (const method of ['select', 'input', 'editor']) {
     test(`the ${method} dialog returns the value pi expects`, async () => {
-      const client = await startCore();
-      const threadId = await piThread(client);
+      const { client, threadId } = await startThread();
       const asked = client.next('question.asked', (request) => request.threadId === threadId);
-      const finished = client.next('turn.finished', (turn) => turn.threadId === threadId);
-      await client.call('turns.start', { threadId, prompt: `[${method}]` });
+      const { finished } = await startTurn(client, threadId, `[${method}]`);
       const request = await asked;
       const value = method === 'select' ? 'Second choice' : 'replacement text';
       await client.call('questions.answer', { threadId, questionId: request.id,
@@ -551,8 +531,7 @@ describe('pi driver', () => {
   }
 
   test('a question on a warm session is filed under the turn that asked it', async () => {
-    const client = await startCore({ warmProcessMinutes: 5 });
-    const threadId = await piThread(client);
+    const { client, threadId } = await startThread({ warmProcessMinutes: 5 });
 
     const turnIds: string[] = [];
     client.on('turn.started', (turn) => {
@@ -562,8 +541,7 @@ describe('pi driver', () => {
     await runTurn(client, threadId, 'first');
 
     const asked = client.next('question.asked', (request) => request.threadId === threadId, 20000);
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: '[ask]' });
+    const { finished } = await startTurn(client, threadId, '[ask]', 20000);
     const request = await asked;
     await client.call('questions.answer', { threadId, questionId: request.id, optionIds: ['yes'] });
     expect((await finished).status).toBe('done');
@@ -596,11 +574,9 @@ describe('pi driver', () => {
   });
 
   test('stopping while a dialog waits cancels it and clears the question', async () => {
-    const client = await startCore();
-    const threadId = await piThread(client);
+    const { client, threadId } = await startThread();
     const asked = client.next('question.asked', (request) => request.threadId === threadId);
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId);
-    await client.call('turns.start', { threadId, prompt: '[ask]' });
+    const { finished } = await startTurn(client, threadId, '[ask]');
     await asked;
     await client.call('turns.stop', { threadId });
     expect((await finished).status).toBe('stopped');
@@ -630,8 +606,7 @@ describe('pi driver', () => {
   });
 
   test('a dropped session is reopened on the id and the directory the first turn used', async () => {
-    const client = await startCore({ warmProcessMinutes: 0 });
-    const threadId = await piThread(client);
+    const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
 
     await runTurn(client, threadId, 'first');
     const sessionId = (await client.call('threads.get', { threadId })).sessionId ?? '';
@@ -736,8 +711,7 @@ describe('pi driver', () => {
   });
 
   test('a 529 that pi retried by itself ends the turn done, with no error card', async () => {
-    const client = await startCore();
-    const threadId = await piThread(client);
+    const { client, threadId } = await startThread();
     const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
     const progress = client.next('thread.updated', thread => thread.id === threadId && thread.progress?.phase === 'retrying');
     await client.call('turns.start', { threadId, prompt: '[retry]' });
@@ -753,10 +727,8 @@ describe('pi driver', () => {
   });
 
   test('a 529 pi gave up on after its retries fails the turn with one error card', async () => {
-    const client = await startCore();
-    const threadId = await piThread(client);
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: '[giveup]' });
+    const { client, threadId } = await startThread();
+    const { finished } = await startTurn(client, threadId, '[giveup]', 20000);
     const done = await finished;
     expect(done.status).toBe('error');
     expect(done.error).toBe('529 overloaded after 3 attempts');
@@ -766,10 +738,8 @@ describe('pi driver', () => {
   });
 
   test('an extension command that starts no run ends the turn, and the process stays warm', async () => {
-    const client = await startCore({ warmProcessMinutes: 5 });
-    const threadId = await piThread(client);
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
-    await client.call('turns.start', { threadId, prompt: '/fake-report' });
+    const { client, threadId } = await startThread({ warmProcessMinutes: 5 });
+    const { finished } = await startTurn(client, threadId, '/fake-report', 10000);
     const done = await finished;
     expect(done.status).toBe('done');
     expect(fakeLog()).toContain('extension command handled');
@@ -782,10 +752,8 @@ describe('pi driver', () => {
   test('a stop that pi never answers ends the turn stopped at the deadline, and the process is gone', async () => {
     setPiStopDeadlineForTests(300);
     try {
-      const client = await startCore();
-      const threadId = await piThread(client);
-      const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
-      await client.call('turns.start', { threadId, prompt: '[deaf]' });
+      const { client, threadId } = await startThread();
+      const { finished } = await startTurn(client, threadId, '[deaf]', 10000);
       await waitFor(() => fakeLog().includes('waiting forever'));
       await client.call('turns.stop', { threadId });
       expect((await finished).status).toBe('stopped');
@@ -799,10 +767,8 @@ describe('pi driver', () => {
   test('a stop while pi never answers the prompt ends the turn stopped at the deadline', async () => {
     setPiStopDeadlineForTests(300);
     try {
-      const client = await startCore();
-      const threadId = await piThread(client);
-      const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
-      await client.call('turns.start', { threadId, prompt: '[preflight]' });
+      const { client, threadId } = await startThread();
+      const { finished } = await startTurn(client, threadId, '[preflight]', 10000);
       await waitFor(() => fakeLog().includes('preflight never ends'));
       await client.call('turns.stop', { threadId });
       expect((await finished).status).toBe('stopped');
@@ -814,10 +780,8 @@ describe('pi driver', () => {
   });
 
   test('a refused clear_queue after a steer still ends the turn stopped', async () => {
-    const client = await startCore();
-    const threadId = await piThread(client);
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
-    await client.call('turns.start', { threadId, prompt: '[slow][noclear] Deploy' });
+    const { client, threadId } = await startThread();
+    const { finished } = await startTurn(client, threadId, '[slow][noclear] Deploy', 10000);
     await waitFor(() => fakeLog().includes('waiting for abort'));
     await waitFor(() => harness!.core.journal.listMessages(threadId).some((m) => m.role === 'assistant'));
     expect(await harness!.core.threads.steer(threadId, 'Boite agent coordination. Wait.')).toBe(true);
@@ -827,11 +791,9 @@ describe('pi driver', () => {
   });
 
   test('a notify is drawn in the turn and no fire-and-forget method gets an answer', async () => {
-    const client = await startCore();
-    const threadId = await piThread(client);
+    const { client, threadId } = await startThread();
     const logs = collectLogs(client);
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: '[notify]' });
+    const { finished } = await startTurn(client, threadId, '[notify]', 20000);
     const done = await finished;
     expect(done.status).toBe('done');
     const thread = await client.call('threads.get', { threadId });
@@ -843,12 +805,10 @@ describe('pi driver', () => {
   });
 
   test('a dialog pi gave up on after its timeout takes its card away while the turn runs', async () => {
-    const client = await startCore();
-    const threadId = await piThread(client);
+    const { client, threadId } = await startThread();
     const asked = client.next('question.asked', (request) => request.threadId === threadId, 20000);
     const withdrawn = client.next('question.answered', (event) => event.threadId === threadId, 20000);
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt: '[timeout][slow]' });
+    const { finished } = await startTurn(client, threadId, '[timeout][slow]', 20000);
     const request = await asked;
     const answered = await withdrawn;
     expect(answered.questionId).toBe(request.id);
@@ -862,8 +822,7 @@ describe('pi driver', () => {
   });
 
   test('an automatic compaction draws its divider and the turn reports the context pi counts', async () => {
-    const client = await startCore();
-    const threadId = await piThread(client);
+    const { client, threadId } = await startThread();
     const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
     const progress = client.next('thread.updated', thread => thread.id === threadId && thread.progress?.phase === 'compacting');
     await client.call('turns.start', { threadId, prompt: '[compacted] go on' });
@@ -877,8 +836,7 @@ describe('pi driver', () => {
   });
 
   test('with background compaction on, pi loads Boite\'s extension with the thread\'s setting, and a changed setting restarts it at the next turn', async () => {
-    const client = await startCore({ warmProcessMinutes: 5, autoCompact: { tokens: 100000, moments: [] }, backgroundCompaction: true });
-    const threadId = await piThread(client);
+    const { client, threadId } = await startThread({ warmProcessMinutes: 5, autoCompact: { tokens: 100000, moments: [] }, backgroundCompaction: true });
     await runTurn(client, threadId, 'first');
     await runTurn(client, threadId, 'second');
     // One process for both turns, launched with the extension and the setting it reads.
@@ -902,8 +860,7 @@ describe('pi driver', () => {
   });
 
   test('the copy Boite\'s extension hands pi draws a background divider, at a turn end or at pi\'s threshold', async () => {
-    const client = await startCore();
-    const threadId = await piThread(client);
+    const { client, threadId } = await startThread();
     await runTurn(client, threadId, '[swapped] [taken] go on');
     const parts = (await client.call('threads.get', { threadId })).messages.flatMap((message) => message.parts).filter(part => part.type === 'compaction');
     expect(parts).toEqual([
@@ -939,8 +896,7 @@ describe('pi driver', () => {
   });
 
   test('core shutdown during a turn pi never settles ends it before the journal closes', async () => {
-    const client = await startCore();
-    const threadId = await piThread(client);
+    const { client, threadId } = await startThread();
     const finished: { status: string; error: string | null }[] = [];
     const logs: string[] = [];
     harness!.core.bus.onAny((name, payload) => {
@@ -973,8 +929,7 @@ describe('pi driver', () => {
   }, 20000);
 
   test('core shutdown before the stop deadline keeps a stopped pi turn stopped', async () => {
-    const client = await startCore();
-    const threadId = await piThread(client);
+    const { client, threadId } = await startThread();
     const statuses: string[] = [];
     harness!.core.bus.onAny((name, payload) => {
       if (name !== 'turn.finished') return;
@@ -991,8 +946,7 @@ describe('pi driver', () => {
   }, 20000);
 
   async function runTurn(client: CoreClient, threadId: string, prompt: string): Promise<void> {
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20000);
-    await client.call('turns.start', { threadId, prompt });
+    const { finished } = await startTurn(client, threadId, prompt, 20000);
     const done = await finished;
     expect(done.error).toBeNull();
     expect(done.status).toBe('done');
