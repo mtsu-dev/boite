@@ -48,6 +48,4 @@
   .master .words { display: grid; gap: 6px; flex: 1; min-width: 0; }
   .effect { color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 1.5; }
   .master .words h2 { margin: 0; }
-  /* Its own card pads the switch like a settings row; embedded, the card around it does. */
-  .card > .master { padding: var(--space-3) 0; }
 </style>
