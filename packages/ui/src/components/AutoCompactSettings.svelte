@@ -194,7 +194,7 @@
   .master { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; cursor: pointer; }
   .master .words { display: grid; gap: 6px; flex: 1; min-width: 0; }
   .effect { color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 1.5; }
-  .master h2 { margin: 0; }
+  .master .words h2 { margin: 0; }
   h3 { margin: var(--space-6) 0 var(--space-2); color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; }
   .options { display: grid; gap: 8px; }
   /* Icon, name, help and switch share the first line. */

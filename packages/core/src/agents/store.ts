@@ -20,7 +20,7 @@ import { GroupBots, remoteGrant } from './group-bots.ts';
 import { GroupBotHost } from './group-host.ts';
 import { AgentSettingCards, registerAgentSettingMethods } from './setting-cards.ts';
 import { MemoryKeeper, NOTE_MAX } from './memory.ts';
-import { agentContextIf, deskPullRequest, deskState, linkedPullRequests } from './context.ts';
+import { agentContextIf, deskPullRequest, deskState, descendantLinks, linkedPullRequests } from './context.ts';
 import { EVENT_PROMPT_MAX, eventPrompt, finalText, midnight, type AgentFact, type AgentWake } from './runtime.ts';
 import { agentSpend, rootThread } from './spend.ts';
 import { migrateAgents } from './migration.ts';
@@ -462,6 +462,8 @@ export class AgentStore {
   #watchesOf(agentId: string): AgentWatch[] {
     const watches = this.projects.watchesOf(agentId);
     const linked = linkedPullRequests(this.core, watches.map(w => w.threadId));
+    // Only a thread that linked none shows what the threads it delegated linked.
+    const below = descendantLinks(this.core, watches.filter(w => !linked.has(w.threadId)).map(w => w.threadId));
     const agent = this.records.find('profile', agentId);
     return [...watches.map(({ threadId, origin, since, thread }) => {
       const state = deskState(this.core, thread);
@@ -471,7 +473,7 @@ export class AgentStore {
         state: state === 'needs the user' ? 'needs-you' : state as AgentWatch['state'],
         stalledSince: this.projects.stalledSince(thread.id),
         lastActivityAt: Math.max(thread.updatedAt, this.projects.lastHeard(thread.id) ?? 0),
-        pullRequest: deskPullRequest(this.core, thread, linked.get(thread.id) ?? null),
+        pullRequest: deskPullRequest(this.core, thread, linked.get(thread.id) ?? null, below.get(thread.id)),
         question: ask ? { id: ask.id, text: ask.text, options: ask.options.map(o => o.label) } : null,
       } satisfies AgentWatch;
     }), ...(agent ? this.group.desk(agent) : [])];

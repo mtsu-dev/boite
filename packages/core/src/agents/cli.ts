@@ -68,6 +68,6 @@ export async function botCommand(client: CoreClient, threadId: string, args: str
       const watched = await client.call('agents.watch', { threadId, watchThreadId: target, watched: action === 'watch', ...(machine === undefined ? {} : { machine }) });
       return watched ?? { unwatched: rest[0] };
     }
-    default: throw new Error(`mochi expects ${BOT_ACTIONS}`);
+    default: throw new Error(`mochi expects ${BOT_ACTIONS}; boite mochi help lists them`);
   }
 }

@@ -299,6 +299,13 @@ test('a mochi reads its memory, notes facts, keeps its routines and its desk fro
   // An ordinary thread is no agent's.
   threadId = worker;
   expect((await boite(['bot', 'routines'])).err).toContain("no mochi's thread");
+  // Its help reads no mochi: an ordinary thread, a delegated child, reads it too.
+  for (const args of [['mochi', 'help'], ['bot', 'help'], ['mochi']]) {
+    const help = await boite(args);
+    expect([help.code, help.err]).toEqual([0, '']);
+    expect(help.out).toContain('mochi remember <fact>');
+  }
+  expect(JSON.parse((await boite(['mochi', 'help', '--json'])).out).help).toContain('mochi routines');
 });
 
 test('a mochi is free to act from its own thread: it reaches threads, asks, draws, attaches, delegates and plans like any thread', async () => {

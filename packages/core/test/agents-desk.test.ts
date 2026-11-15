@@ -310,6 +310,100 @@ test('a thread put on the desk with an open pull request already linked tells it
   expect(facts().map(f => f.key)).toEqual([`pr-merged:${url}`]);
 });
 
+const linkOf = (url: string, number: number): LinkedPullRequest => ({ url, repository: 'acme/app', number, title: 'Fix', state: 'OPEN', draft: false, head: `fix-${number}`, base: 'main', headRepository: 'acme/app', checkedAt: Date.now() });
+/** A thread `parent` delegated, as `boite delegate spawn` records it. */
+const delegated = (parent: string, id: string, title: string): string => {
+  h.core.journal.putThread({ ...h.core.threads.require(worker), id, title, parentThreadId: parent, createdAt: Date.now() });
+  return id;
+};
+/** The thread links a pull request, as `boite pr link` saves it after reading GitHub. */
+const link = (threadId: string, pr: LinkedPullRequest) => {
+  const list = [...(h.core.journal.getSetting(`linked-pull-requests:${threadId}`) as LinkedPullRequest[] | undefined) ?? [], pr];
+  h.core.journal.setSetting(`linked-pull-requests:${threadId}`, list);
+  h.core.bus.emit('threads.pullRequestsChanged', { threadId, pullRequests: list });
+};
+
+test('a pull request a delegated thread opened, then merged once archived, wakes the agent through the desk thread above it (#1034)', async () => {
+  h.core.workforce.setLimits({ paused: true });
+  h.core.workforce.projects.follow(agent.id, worker, 'started');
+  const child = delegated(worker, 'thr_child1034', 'Ship the fix');
+  const url = 'https://github.com/acme/app/pull/1034';
+  link(child, linkOf(url, 1034));
+  // The desk thread linked none: its row and its line show the child's.
+  expect(watchOf(worker)!.pullRequest).toEqual({ number: 1034, url, state: 'open', checks: null });
+  expect(agentContext(h.core, agent).text).toContain(`{"thread":"${worker}","title":"Worker","project":"test","state":"idle","pullRequest":"PR #1034 open"}`);
+  expect(facts()).toEqual([]);
+
+  // The child is archived at the merge; its watch ends without a turn.
+  h.core.threads.archive(child, true, true);
+  await h.core.linkedPullRequests.observe(child, url, 'MERGED');
+  expect(facts().map(f => [f.key, f.threadIds])).toEqual([[`pr-merged:${url}`, [worker]]]);
+  expect(facts()[0]!.text).toContain(`Pull request #1034 of thread ${child}, titled "Ship the fix", delegated from thread ${worker}, titled "Worker", was merged: "${url}".`);
+  expect(watchOf(worker)!.pullRequest).toEqual({ number: 1034, url, state: 'merged', checks: null });
+  // Heard again, the merge is no news.
+  h.core.agentRuntime.filterFacts(agent.id, () => false);
+  h.core.bus.emit('threads.pullRequestsChanged', { threadId: child, pullRequests: h.core.journal.getSetting(`linked-pull-requests:${child}`) as LinkedPullRequest[] });
+  expect(facts()).toEqual([]);
+});
+
+test('a desk thread whose last pull request was unlinked shows a delegated thread\'s pull request', async () => {
+  h.core.workforce.setLimits({ paused: true });
+  h.core.workforce.projects.follow(agent.id, worker, 'started');
+  const own = 'https://github.com/acme/app/pull/23';
+  link(worker, linkOf(own, 23));
+  expect(watchOf(worker)!.pullRequest?.url).toBe(own);
+  await h.core.linkedPullRequests.unlink(worker, own);
+  expect(h.core.linkedPullRequests.saved(worker)).toEqual([]);
+
+  const child = delegated(worker, 'thr_after_unlink', 'Ship after unlink');
+  const url = 'https://github.com/acme/app/pull/24';
+  link(child, linkOf(url, 24));
+  expect(watchOf(worker)!.pullRequest).toEqual({ number: 24, url, state: 'open', checks: null });
+  expect(agentContext(h.core, agent).text).toContain(`{"thread":"${worker}","title":"Worker","project":"test","state":"idle","pullRequest":"PR #24 open"}`);
+});
+
+test('a grandchild\'s failing checks and merge reach the desk once each, whichever of it and the desk thread tells first', async () => {
+  h.core.workforce.setLimits({ paused: true });
+  h.core.workforce.projects.follow(agent.id, worker, 'started');
+  const grandchild = delegated(delegated(worker, 'thr_plan', 'Plan'), 'thr_build', 'Build');
+  const first = 'https://github.com/acme/app/pull/21';
+  const second = 'https://github.com/acme/app/pull/22';
+  link(grandchild, linkOf(first, 21));
+  link(worker, linkOf(first, 21));
+  expect(facts()).toEqual([]);
+
+  const watches = h.core.pullRequestWatches as unknown as { of: (threadId: string) => PullRequestWatch[] };
+  const of = watches.of.bind(watches);
+  const failing = (threadId: string) => { watches.of = id => id !== threadId ? of(id) : [{ url: first, repository: 'acme/app', number: 21, since: Date.now(), paused: null, seen: { checkedAt: Date.now(), head: 'abc1234', base: 'main', checks: { total: 2, running: 0, failed: 1 }, conflicting: false } }]; };
+  try {
+    failing(grandchild);
+    h.core.bus.emit('threads.pullRequestsChanged', { threadId: grandchild, pullRequests: [] });
+    expect(facts().map(f => f.key)).toEqual([`pr-checks:${first}:abc1234`]);
+    expect(facts()[0]!.text).toContain(`Checks fail on pull request #21 of thread ${grandchild}, titled "Build", delegated from thread ${worker}, titled "Worker" (1 of 2 failed on abc1234)`);
+    h.core.agentRuntime.filterFacts(agent.id, () => false);
+    // The desk thread's own watch then reads the same failure: already told.
+    failing(worker);
+    h.core.bus.emit('thread.updated', h.core.threads.require(worker));
+    expect(facts()).toEqual([]);
+  } finally { watches.of = of; }
+
+  // The grandchild tells of the merge first, then the desk thread.
+  await h.core.linkedPullRequests.observe(grandchild, first, 'MERGED');
+  expect(facts().map(f => f.key)).toEqual([`pr-merged:${first}`]);
+  h.core.agentRuntime.filterFacts(agent.id, () => false);
+  await h.core.linkedPullRequests.observe(worker, first, 'MERGED');
+  expect(facts()).toEqual([]);
+
+  // The desk thread tells first, then the grandchild.
+  link(grandchild, linkOf(second, 22));
+  link(worker, linkOf(second, 22));
+  await h.core.linkedPullRequests.observe(worker, second, 'MERGED');
+  expect(facts().map(f => f.key)).toEqual([`pr-merged:${second}`]);
+  h.core.agentRuntime.filterFacts(agent.id, () => false);
+  await h.core.linkedPullRequests.observe(grandchild, second, 'MERGED');
+  expect(facts()).toEqual([]);
+});
+
 test('the last answer stays on the agent\'s row after many quiet wakes', async () => {
   await owner.call('turns.start', { threadId: self, prompt: 'Run the checks' });
   await waitFor(() => settled(h, self) && h.core.workforce.snapshot().status[0]!.last?.text === 'Tests pass.');

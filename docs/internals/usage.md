@@ -447,6 +447,15 @@ difference only on a whole restore its CLI version already showed, and is
 never read as a fresh start: any other case records no cost. A result
 with zeroed totals, as a startup error reports, records none. Turns recorded
 before `agentTotals` fall back to the sum of the session's turns.
+A session compacted in the background ([context](context.md#background-compaction))
+is a copy whose CLI counted the whole session again, and the CLI that resumes
+it restores the copy's totals. The swap keeps them: a turn that goes on on
+the copy measures from them (`StepDecision.swap.totals`), and the totals it ends
+on are filed under the generation it moved to (`AgentTotals.sessionGeneration`).
+After a swap between turns, the first turn of the new generation reads them
+from the `session-totals:<thread>` setting, written at the swap. Before
+2026-11-15 each of these turns was charged the copy's whole restored total: in
+a real journal, 226 mochi turns carried $28,467 for $240 of tokens at rates.
 The ACP `usage_update` cost is the session's running total in the same way,
 and each turn is charged what it added. The driver measures from the last
 total the same process reported, in an earlier turn, between turns or while a
@@ -459,6 +468,15 @@ the total, and the driver takes that agent to count every process from zero:
 its later cold turns are charged their whole total until the core restarts or
 the provider is reloaded. A `usage_update` with no token counts still records
 its cost.
+A cost that still comes in far above the turn's tokens at rates (more than
+three times plus $0.25, `COST_GUARD` in `packages/core/src/usage.ts`) reads as a
+running total charged again: the turn records no cost and a
+`turn.cost.implausible` warning gives both figures. The usage page then prices
+its tokens, and a reader of one turn, such as the `turn.finished` log, takes
+them at rates too and marks them `costAtRates`. The 95th percentile of the
+ratio in a real journal is 2.6. ACP is left out, because its next cold turn
+measures from the sum of the reported costs; a model without rates is not
+judged.
 On a subscription the figure is what the same tokens would cost on the API, not
 money spent.
 
