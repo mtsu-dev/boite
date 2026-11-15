@@ -107,14 +107,15 @@ export type ThreadArchiveReason =
 /**
  * The core removed the worktree this thread worked in while it was archived.
  * `cwd` still names the folder, which no longer exists: the thread can be read
- * and restored but not continued there.
+ * and restored. Its next turn checks a kept branch out there again and clears
+ * this; with the branch deleted too, it cannot continue there.
  */
 export interface ThreadWorktreeRemoval {
   /** The folder that was removed, the thread's `cwd` at the time. */
   path: string;
   /** The branch checked out there, null on a detached HEAD. */
   branch: string | null;
-  /** The local branch went too. A kept branch can be checked out again by hand. */
+  /** The local branch went too. A kept branch is checked out again by the thread's next turn. */
   branchDeleted: boolean;
   /** `pr-merged`: the checkout's exact tip was a merged PR's head. `clean`: no change and no commit missing from every other branch. */
   reason: 'pr-merged' | 'clean';

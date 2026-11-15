@@ -189,6 +189,18 @@ export class Worktrees {
     return this.add(threadId, project, branch, path);
   }
 
+  /**
+   * A checkout removed under its thread while its branch stayed: checked out
+   * again at `path`, as it was. False when the branch went too, never a new
+   * branch in its place; refused like `ensure` when the branch is checked out
+   * elsewhere or `path` exists.
+   */
+  async recover(threadId: ThreadId, project: Project, branch: string, path: string): Promise<boolean> {
+    if (!(await this.#branchExists(threadId, project.path, branch))) return false;
+    await this.ensure(threadId, project, branch, path);
+    return true;
+  }
+
   /** Finish only a pending checkout whose ref was atomically reserved by this thread. */
   async resumePreparation(threadId: ThreadId, project: Project, branch: string, path: string, base: string, assertActive: () => void): Promise<void> {
     assertActive();

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, setSystemTime, test } from 'bun:test';
 import { Database } from 'bun:sqlite';
+import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Message, Turn } from '@boite/contracts';
 import { Core } from '../src/core.ts';
@@ -156,6 +157,29 @@ test('a stopped turn, an answered turn and a spent usage window resume nothing',
     await Bun.sleep(150);
     expect(asked).toHaveLength(3);
     expect(turns(h, threadId)).toHaveLength(3);
+  } finally { await h.stop(); }
+});
+
+test('a turn Boite starts in a folder that is gone fails naming the folder, and resumes nothing', async () => {
+  const h = await startTestCore();
+  // What Claude Code says when it is spawned in a folder that does not exist.
+  const asked = scripted(failed('Claude Code native binary at /usr/lib/claude exists but failed to launch.'));
+  try {
+    const client = await h.connect();
+    const folder = join(h.dataDir, 'removed-worktree');
+    mkdirSync(folder);
+    const project = await client.call('projects.add', { path: folder, name: 'gone' });
+    const account = (await client.call('accounts.list', {})).find(entry => entry.providerId === 'echo')!;
+    const { id: threadId } = await client.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: account.id, title: 'orchestrator' });
+    rmSync(folder, { recursive: true });
+    // A subagent's result reaches its parent without `turns.start`, which would refuse it.
+    h.core.threads.startTurn(threadId, 'Boite delegation messages: your subagent is done', { kind: 'delegation' });
+    await waitFor(() => turns(h, threadId)[0]?.status === 'error');
+    await Bun.sleep(150);
+    expect(asked).toHaveLength(1);
+    expect(turns(h, threadId)).toHaveLength(1);
+    expect(turns(h, threadId)[0]!.error).toBe(`the folder ${folder} this thread works in does not exist any more: its worktree was removed or the folder moved`);
+    expect((await client.call('threads.get', { threadId })).retry).toBeNull();
   } finally { await h.stop(); }
 });
 

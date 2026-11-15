@@ -361,6 +361,11 @@ export interface TurnResult {
    * (`threads/retries.ts`); a driver that cannot tell leaves it out.
    */
   refusal?: TurnRefusal;
+  /**
+   * Set by the core, never a driver: the turn failed and the thread's folder
+   * is gone. A resume would fail the same way.
+   */
+  cwdGone?: true;
 }
 
 export type TurnRefusal = { kind: 'capacity' } | { kind: 'usage-limit'; resetsAt: number | null };

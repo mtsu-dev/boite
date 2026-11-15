@@ -63,6 +63,11 @@ branch.
 - A worktree stays on disk after its thread is archived. Show worktrees lists
   them; Remove deletes the folder and its branch, and Remove the clean ones
   clears those with nothing to lose.
+- When a worktree's folder is deleted while its branch stays, the next message
+  to its conversation, yours or one Boite sends, checks the branch out there
+  again with all its commits. Changes that were never committed are gone with
+  the folder. When the branch is gone too, the conversation says which folder
+  is missing.
 - Remove settled worktrees, in Manage project, deletes a worktree an hour
   after all its conversations are done or archived, only when its last commit
   is on another branch or in a merged pull request. Uncommitted changes always
