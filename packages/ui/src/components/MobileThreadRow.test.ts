@@ -63,9 +63,10 @@ test('a phone list row says its state in a word after its mark, before its time:
   const thread = store.threads.find(row => !row.parentThreadId && row.projectId && row.id !== store.openThread?.id)!;
   const project = store.projects.find(row => row.id === thread.projectId);
   const machine = { id: 'local', label: 'Local', store };
-  for (const [status, state, word, mark] of [['waiting', 'waiting', 'Needs you', '.dot'], ['running', 'working', 'Working', '.work-ring'], ['error', 'error', 'Failed', '.fail']] as const) {
+  for (const [status, state, word, mark, start] of [['waiting', 'waiting', 'Needs you', '.dot', false], ['running', 'working', 'Working', '.work-ring', true], ['running', 'working', 'Working', '.work-ring', false], ['error', 'error', 'Failed', '.fail', false]] as const) {
     thread.status = status;
-    thread.runningSince = status === 'running' ? Date.now() - 60_000 : null;
+    thread.runningSince = start ? Date.now() - 60_000 : null;
+    thread.requestSince = null;
     thread.archived = false;
     mounted = mount(MobileThreadRow, { target: document.body, props: { machine, thread, project, now: Date.now(), items: [], onopen: () => {}, onaction: () => {} } });
     flushSync();
@@ -75,16 +76,17 @@ test('a phone list row says its state in a word after its mark, before its time:
     expect(shown.classList.contains('fit')).toBe(false);
     const parts = [...shown.parentElement!.children];
     expect(shown.querySelector(mark)).not.toBeNull();
-    if (state === 'working') {
+    if (start) {
       // Work: the clock since the turn began stands for the word, and the last message's age gives way to it.
       expect(shown.querySelector('.word')).toBeNull();
       expect(shown.querySelector('[data-testid=thread-elapsed]')?.textContent).toMatch(/^1m 0\ds$/);
-      expect(shown.parentElement!.querySelector('.at')).toBeNull();
       await unmount(mounted);
       mounted = undefined;
       continue;
     }
     const at = shown.parentElement!.querySelector('.at')!;
+    expect(at).not.toBeNull();
+    expect(shown.querySelector('[data-testid=thread-elapsed]')).toBeNull();
     expect(shown.querySelector('.word')?.textContent).toBe(word);
     // Mark, word, then the time, on the title's line.
     expect(parts.indexOf(at)).toBe(parts.indexOf(shown) + 1);
