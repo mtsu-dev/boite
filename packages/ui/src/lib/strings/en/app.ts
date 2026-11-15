@@ -18,6 +18,9 @@ export const strings = {
       label: 'Boite',
       waitingOne: '1 needs you',
       waitingMany: '{count} need you',
+      /** The threads at work on every machine: the Threads button's count, in words. */
+      workingOne: '1 at work',
+      workingMany: '{count} at work',
       bots: 'Mochis',
       add: 'New mochi or team',
       botWaiting: '{name} needs you',
@@ -28,6 +31,9 @@ export const strings = {
       state: { waiting: 'needs you', failed: 'failed', working: 'at work', paused: 'paused' },
       /** A mochi or team with replies not read yet: its picture's badge, in words. */
       unread: 'new replies',
+      /** The same with how many: the count on a mochi's picture. */
+      unreadOne: '1 new reply',
+      unreadMany: '{count} new replies',
       /** The list foot's limits line, in its tooltip (QuotaLine.svelte): the least left, the window and the account it is on. */
       limitsLeft: '{percent}% left: {window}, {account}',
     }

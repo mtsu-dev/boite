@@ -14,6 +14,7 @@ import { fill, strings } from './lib/strings';
 import { clampPanel, rightPanel } from './lib/right-panel.svelte';
 import { contactsRail } from './lib/contacts-rail.svelte';
 import { AgentsView, openAgent } from './lib/agents.svelte';
+import { threadsAtWork } from './lib/work-counts';
 
 /**
  * The desktop behaviours the UX audit found broken, on the whole app over the
@@ -205,6 +206,35 @@ test('the rail puts teams first, and a picture moved with the keyboard keeps its
     expect(saved.map(key => key.split(':').slice(1).join(':')).slice(0, order().length)).toEqual(order());
   } finally {
     localStorage.removeItem('boite.rail.order');
+    store.showChat();
+  }
+});
+
+test("the rail counts the threads at work and a mochi's unread replies, and the open mochi's working arc follows its squircle", async () => {
+  writeExperiments(['resident-agents']);
+  await mountOnFake('/?fake=1&agents=1&working=3');
+  try {
+    // The Threads button: how many conversations work, as the projects' Working counts read them.
+    const working = threadsAtWork([store]);
+    expect(working).toBeGreaterThan(0);
+    await waitFor(() => document.querySelector('[data-testid=rail-threads-working]')?.textContent === String(working));
+    expect(query('[data-testid=view-threads]').getAttribute('aria-label')).toBe(`${strings.sidebar.threads}, ${fill(strings.app.rail.workingMany, { count: String(working) })}`);
+    // A mochi with replies not read: their number on its picture, where a bare dot stood.
+    await waitFor(() => !!document.querySelector('[data-testid=rail-bot-unread]'));
+    const unread = query('[data-testid=rail-bot-unread]');
+    const count = Number(unread.dataset['count']);
+    expect(count).toBeGreaterThan(0);
+    expect(unread.textContent).toBe(String(count));
+    expect(unread.closest('[data-testid=rail-bot]')!.getAttribute('aria-label')).toContain(count === 1 ? strings.app.rail.unreadOne : fill(strings.app.rail.unreadMany, { count: String(count) }));
+    // At work, the arc is a circle around the disc; opened, the picture turns squircle and the arc follows its corners.
+    const worker = query<HTMLButtonElement>('[data-testid=rail-bot][data-state=working]');
+    const arc = () => worker.querySelector('[data-testid=rail-bot-orbit] rect')!;
+    expect(arc().getAttribute('rx')).toBe('24.5');
+    worker.click();
+    await waitFor(() => worker.getAttribute('aria-current') === 'page');
+    expect(arc().getAttribute('rx')).toBe(String(Math.round(44 * 0.32) + 2.5));
+    expect(worker.querySelector('.agent-avatar.squircle')).not.toBeNull();
+  } finally {
     store.showChat();
   }
 });

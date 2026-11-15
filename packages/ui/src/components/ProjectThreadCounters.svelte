@@ -63,7 +63,7 @@
     <button type="button" class="ghost counter done" class:active={doneOpen} data-testid="project-done-toggle" data-count={done}
       title={doneLabel} aria-label={doneLabel} aria-expanded={doneOpen} aria-controls="{controls}-done"
       onclick={() => projectThreadView.toggle(entry, 'done', collapsed)}>
-      <CheckCheck size={13} aria-hidden="true" /><span class="ui-label">{formatCount(done)}</span>
+      <CheckCheck size={14} aria-hidden="true" /><span class="ui-label">{formatCount(done)}</span>
     </button>
   {/if}
 </div>{/if}
@@ -71,8 +71,10 @@
 <style>
   .counters { display: flex; flex: none; align-items: center; gap: 2px; }
   /* The card's tag: a count, the details in the tooltip. The user's turn takes the rows' amber, the one mark of
-     what needs the user, its word before it in the header's grey. A label, so regular weight; the count a step up. */
-  .counter { display: inline-flex; align-items: center; height: 22px; min-width: 0; padding: 0 6px; gap: 4px; border: none; border-radius: var(--radius-sm);
+     what needs the user, its word before it in the header's grey. A label, so regular weight; the count a step up.
+     The box of the project's "..." beside it, a small ghost icon button grown to the 32 px floor of every icon button
+     (controls.css): its height, corner and hover ground. */
+  .counter { display: inline-flex; align-items: center; height: 32px; min-width: 0; padding: 0 8px; gap: 5px; border: none; border-radius: var(--radius-md);
     background: transparent; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 400; font-variant-numeric: tabular-nums; }
   .counter:disabled { opacity: 1; }
   .waiting .number { margin-left: 4px; color: var(--color-live); font-weight: var(--weight-title); }
@@ -87,8 +89,8 @@
      name keeps priority). The mark and the word share one wrapping line, its end against the number: short of room,
      the word wraps under a zero-width strut, out of sight, and the mark stays beside the number. */
   .waiting { display: inline-grid; grid-template-columns: auto auto; gap: 0; }
-  .mark-word { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; min-width: 12px; height: 22px; overflow: hidden; }
-  .mark-word::before { content: ''; width: 0; height: 22px; }
+  .mark-word { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; min-width: 12px; height: 32px; overflow: hidden; }
+  .mark-word::before { content: ''; width: 0; height: 32px; }
   .waiting .word { margin: 0 2px 0 4px; }
   .spare { display: none; }
   /* Working keeps its word whole and cannot fold it under a strut as above: pressed, its ground would stay as wide as
@@ -102,7 +104,7 @@
     :global(html:lang(fr)) .working .word { display: none; }
   }
   /* Work: the rows' turning accent arc (ThreadState.svelte), on the same loop. */
-  .work-ring { box-sizing: border-box; width: 9px; height: 9px; border: 1.5px solid var(--color-accent); border-top-color: transparent; border-radius: var(--radius-full); animation: spin 0.9s steps(54) infinite var(--loops); }
+  .work-ring { box-sizing: border-box; width: 10px; height: 10px; border: 1.5px solid var(--color-accent); border-top-color: transparent; border-radius: var(--radius-full); animation: spin 0.9s steps(54) infinite var(--loops); }
   /* Offline: the last known count, not live work, so its ring takes the header's grey and stands still. */
   .away .work-ring { border-color: var(--color-muted-foreground); border-top-color: transparent; animation: none; transform: rotate(45deg); }
   .counter:hover:not(:disabled) { background: var(--color-hover); color: var(--color-foreground); }

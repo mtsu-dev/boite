@@ -30,6 +30,7 @@
   import { parts } from '../lib/deferred-parts';
   import { QuotaReorder } from '../lib/quota-reorder.svelte';
   import { railOrder } from '../lib/rail-order.svelte';
+  import { threadsAtWork } from '../lib/work-counts';
 
   /**
    * The column down the window's left edge, on a desktop, the same in every
@@ -81,6 +82,19 @@
   /** What Activity holds for the user: the threads waiting on them and what contacts ask. */
   const waiting = $derived(threadsNeedingYou(stores) + inbox.contacts);
   const waitingLabel = $derived(waiting === 1 ? strings.app.rail.waitingOne : fill(strings.app.rail.waitingMany, { count: String(waiting) }));
+  /** The conversations at work on every machine, as the projects' Working counts read them: the Threads button's count. */
+  const working = $derived(threadsAtWork(stores));
+  const workingLabel = $derived(working === 1 ? strings.app.rail.workingOne : fill(strings.app.rail.workingMany, { count: String(working) }));
+  const tally = (value: number) => value > 99 ? '99+' : count(value);
+  const unreadLabel = (value: number) => value === 1 ? strings.app.rail.unreadOne : fill(strings.app.rail.unreadMany, { count: String(value) });
+  /**
+   * The working arc follows the picture's outline, a disc or the open bot's squircle (AgentAvatar.svelte: a third of
+   * the side), 2.5 px outside it: drawn as a rounded square whose corners make it a circle, so it never cuts across
+   * the squircle's corners.
+   */
+  const AVATAR = 44;
+  const ORBIT_GAP = 2.5;
+  const orbitRadius = (squircle: boolean) => (squircle ? Math.round(AVATAR * 0.32) : AVATAR / 2) + ORBIT_GAP;
 
   /** The bot whose conversation the Bots page shows, on the window's machine. */
   const openBot = $derived.by(() => {
@@ -126,8 +140,8 @@
     return name;
   }
   /** What the hover name adds after a bot's name: what its badge means, in words, then its machine when there are several. */
-  function noteOf(state: RailBotState, unread: boolean, machine: string | null): string | null {
-    const words = state === 'waiting' || state === 'failed' || state === 'working' || state === 'paused' ? strings.app.rail.state[state] : unread ? strings.app.rail.unread : null;
+  function noteOf(state: RailBotState, unread: number, machine: string | null): string | null {
+    const words = state === 'waiting' || state === 'failed' || state === 'working' || state === 'paused' ? strings.app.rail.state[state] : unread ? unreadLabel(unread) : null;
     return [words, machine].filter(Boolean).join(' · ') || null;
   }
   /** The members as pictures: the bot's own when its machine's bots are read, else the robot its id picks. */
@@ -220,18 +234,19 @@
   <span class="rail-card framed" aria-hidden="true"></span>
   <div class="slot" class:selected={onThreads}>
     <button type="button" class="rail-button" class:on={onThreads} aria-current={onThreads ? 'page' : undefined}
-      aria-label={strings.sidebar.threads}
+      aria-label={working ? `${strings.sidebar.threads}, ${workingLabel}` : strings.sidebar.threads}
       data-testid="view-threads" onclick={showThreads}>
       <MessageSquare size={19} strokeWidth={1.75} />
+      {#if working}<span class="count work" data-testid="rail-threads-working">{tally(working)}</span>{/if}
     </button>
-    {@render railName(strings.sidebar.threads)}
+    {@render railName(strings.sidebar.threads, null, working ? workingLabel : null)}
   </div>
   <div class="slot" class:selected={onActivity}>
     <button type="button" class="rail-button" class:on={onActivity} aria-current={onActivity ? 'page' : undefined}
       aria-label={waiting ? `${strings.mobile.activity}, ${waitingLabel}` : strings.mobile.activity}
       data-testid="nav-activity" onclick={showActivity}>
       <Inbox size={19} strokeWidth={1.75} />
-      {#if waiting}<span class="count" data-testid="rail-activity-waiting">{waiting > 99 ? '99+' : count(waiting)}</span>{/if}
+      {#if waiting}<span class="count" data-testid="rail-activity-waiting">{tally(waiting)}</span>{/if}
     </button>
     {@render railName(strings.mobile.activity, null, waiting ? waitingLabel : null)}
   </div>
@@ -246,24 +261,25 @@
           {@const bot = entry.bot}
           {@const state = stateOf(bot)}
           {@const selected = bot.machine.store === store && openBot === bot.row.profile.id}
-          {@const unread = (bot.row.status?.unread ?? 0) > 0}
+          {@const unreadCount = bot.row.status?.unread ?? 0}
+          {@const unread = unreadCount > 0}
           {@const look = lookOf(state, unread, selected)}
           <div class="slot" class:selected class:dragging={reorder.dragging === entry.key} role="listitem" data-rail-id={entry.key}>
-            <button type="button" class="bot" class:dim={state === 'paused'} aria-label={unread && !selected ? `${labelOf(bot.row.profile.name, state)}, ${strings.app.rail.unread}` : labelOf(bot.row.profile.name, state)}
+            <button type="button" class="bot" class:dim={state === 'paused'} aria-label={unread && !selected ? `${labelOf(bot.row.profile.name, state)}, ${unreadLabel(unreadCount)}` : labelOf(bot.row.profile.name, state)}
               aria-current={selected ? 'page' : undefined} aria-keyshortcuts="ArrowUp ArrowDown Home End" data-testid="rail-bot" data-agent-id={bot.row.profile.id} data-state={state} data-look={look}
               onpointerdown={(event) => reorder.start(event, entry.key)} onkeydown={(event) => reorder.keyboard(event, entry.key)}
               onclick={() => workspace.showAgents(bot.machine.store, bot.row.profile.id)}>
               <AgentAvatar kind="profile" id={bot.row.profile.id} name={bot.row.profile.name} avatar={bot.row.profile.avatar} size={44} squircle={selected} mood={moodOfState(state, look)}
                 lit={look === 'working' || avatarLit({ open: selected, attention: state === 'waiting', failed: state === 'failed', unread })} />
-              <!-- At work: an arc of the accent turns around the whole picture. Asleep: a "z" rises beside it. -->
-              {#if look === 'working'}<svg class="orbit" viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="24.5" pathLength="100" /></svg>
+              <!-- At work: an arc of the accent runs around the whole picture, its disc or its squircle. Asleep: a "z" rises beside it. -->
+              {#if look === 'working'}<svg class="orbit" viewBox="0 0 52 52" aria-hidden="true" data-testid="rail-bot-orbit"><rect x="1.5" y="1.5" width="49" height="49" rx={orbitRadius(selected)} pathLength="100" /></svg>
               {:else if look === 'asleep'}<span class="sleep" aria-hidden="true"><svg viewBox="0 0 16 16"><path class="z big" d="M2.5 8.5h5l-5 5.5h5" /><path class="z" d="M10 2.5h3.5L10 6.5h3.5" /></svg></span>{/if}
-              <!-- One overlay, in one slot: the user's turn first, then a failure, work, news. A count is Activity's alone. -->
+              <!-- One overlay, in one slot: the user's turn first, then a failure, work, then how many replies wait unread. -->
               {#if state === 'waiting'}<span class="badge" aria-hidden="true"><span class="needs"></span></span>
               {:else if state === 'failed'}<span class="badge" aria-hidden="true"><FailMark /></span>
-              {:else if look === 'answered'}<span class="badge" data-testid="rail-bot-unread" aria-hidden="true"><span class="news"></span></span>{/if}
+              {:else if look === 'answered'}<span class="unread" data-testid="rail-bot-unread" data-count={unreadCount} aria-hidden="true">{tally(unreadCount)}</span>{/if}
             </button>
-            {@render railName(bot.row.profile.name, null, noteOf(state, unread && !selected, several ? machineName(bot.machine) : null))}
+            {@render railName(bot.row.profile.name, null, noteOf(state, selected ? 0 : unreadCount, several ? machineName(bot.machine) : null))}
           </div>
         {:else}
           {@const row = entry.team}
@@ -379,10 +395,12 @@
   .bot[data-look='asleep'] { --avatar-rest: var(--avatar-asleep); }
   /* An answer not read: the picture ringed in the text's own ink, cut out of the card. */
   .bot[data-look='answered'] :global(.agent-avatar) { box-shadow: 0 0 0 2px var(--rail-ground), 0 0 0 4px var(--color-foreground); }
-  /* The arc turns inside its drawing, which stays still: a turning square reaches past its own box at every corner,
-     and under the last picture that changed how far the list scrolls, frame after frame. */
+  /* The arc runs along its outline by its dash offset, and the drawing stays still: a turning square reaches past its
+     own box at every corner, and under the last picture that changed how far the list scrolls, frame after frame.
+     Running along the outline also keeps it on the open bot's squircle, where a turning circle cut its corners. */
   .orbit { position: absolute; inset: -4px; width: calc(100% + 8px); height: calc(100% + 8px); pointer-events: none; }
-  .orbit circle { fill: none; stroke: var(--color-accent); stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 28 72; transform-box: view-box; transform-origin: center; animation: spin 1.2s steps(72) infinite var(--loops); }
+  .orbit rect { fill: none; stroke: var(--color-accent); stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 28 72; animation: rail-orbit 1.2s steps(72) infinite var(--loops); }
+  @keyframes rail-orbit { to { stroke-dashoffset: -100; } }
   /* The "z" on the card's ground at the picture's top right, the small one rising and fading after the large. Twelve
      steps over four seconds: three frames a second, and none while the window rests (--loops). */
   .sleep { position: absolute; right: -4px; top: -4px; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; background: var(--rail-ground); pointer-events: none; }
@@ -475,6 +493,8 @@
     line-height: 1;
     font-variant-numeric: tabular-nums;
   }
+  /* The threads at work: the same pill, the digit in the accent the working rows' arc wears. */
+  .count.work { color: var(--color-accent); }
   .rail-button:hover:not(:disabled) { --count-ring: var(--color-surface-2); }
   .rail-button.on, .rail-button.on:hover:not(:disabled) { --count-ring: var(--color-surface-3); }
   /* A bot's or a team's one overlay, bottom right of its picture, cut out of the card: the amber dot for its turn,
@@ -492,15 +512,39 @@
   }
   .needs, .news { width: 10px; height: 10px; border-radius: 50%; background: var(--color-live); }
   .news { position: relative; background: var(--color-foreground); }
+  /* A mochi's replies not read: how many, in the ink of its ring, on a pill cut out of the card where the dot stood. */
+  .unread {
+    position: absolute;
+    right: -4px;
+    bottom: -4px;
+    min-width: 18px;
+    height: 18px;
+    box-sizing: border-box;
+    padding: 0 5px;
+    display: grid;
+    place-items: center;
+    border-radius: var(--radius-full);
+    background: var(--color-foreground);
+    box-shadow: 0 0 0 2px var(--rail-ground);
+    color: var(--rail-ground);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
   /* The ring grows by a transform, and a transformed box adds to what a scroller can scroll: under the last picture
-     it would move the end of the list at every beat. The dot contains its layout, so the ring is ink only. */
-  .news { contain: layout; }
-  .news::after { content: ''; position: absolute; inset: 0; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--color-foreground); opacity: 0; animation: rail-ping 2.4s steps(36) infinite var(--loops); }
+     it would move the end of the list at every beat. The mark contains its layout, so the ring is ink only. */
+  .news, .unread { contain: layout; }
+  .news::after, .unread::after { content: ''; position: absolute; inset: 0; border-radius: inherit; box-shadow: 0 0 0 1.5px var(--color-foreground); opacity: 0; animation: rail-ping 2.4s steps(36) infinite var(--loops); }
   @keyframes rail-ping { 0%, 55% { opacity: 0; transform: scale(1); } 60% { opacity: 0.8; transform: scale(1); } 100% { opacity: 0; transform: scale(2.2); } }
+  /* The count's pill is wider than the dot: its ring leaves it by less, so it stays a ring around the number. */
+  .unread::after { animation-name: rail-ping-count; }
+  @keyframes rail-ping-count { 0%, 55% { opacity: 0; transform: scale(1); } 60% { opacity: 0.8; transform: scale(1); } 100% { opacity: 0; transform: scale(1.6); } }
 
   .foot { display: flex; flex-direction: column; align-items: center; gap: 4px; align-self: stretch; }
   .foot :global(button.icon.on) { background: var(--color-surface-3); color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge); border-radius: var(--radius-rail); }
-  .foot :global(button.icon) { width: var(--control-touch); height: var(--control-touch); color: var(--color-subtle); }
+  /* The rail's glyph size, as the buttons above draw theirs: a ghost button alone drew its glyph at 16 px. */
+  .foot :global(button.icon) { --button-icon: 19px; width: var(--control-touch); height: var(--control-touch); color: var(--color-subtle); }
   .foot :global(button.icon:hover:not(:disabled)) { color: var(--color-foreground); }
   .foot :global(.machines .trigger) { width: var(--control-touch); height: var(--control-touch); }
   /* One machine says nothing: the wrapper stays, empty, for its connection state. */
@@ -515,7 +559,7 @@
     .app-rail { display: none; }
   }
   /* Still under reduced motion, as Spinner.svelte. */
-  @media (prefers-reduced-motion: reduce) { .orbit circle, .sleep .z, .news::after { animation: none; } .sleep .z { opacity: 0.8; } }
-  :global(html[data-motion='reduced']) :is(.orbit circle, .sleep .z, .news::after) { animation: none; }
+  @media (prefers-reduced-motion: reduce) { .orbit rect, .sleep .z, .news::after, .unread::after { animation: none; } .sleep .z { opacity: 0.8; } }
+  :global(html[data-motion='reduced']) :is(.orbit rect, .sleep .z, .news::after, .unread::after) { animation: none; }
   :global(html[data-motion='reduced']) .sleep .z { opacity: 0.8; }
 </style>
