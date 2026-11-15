@@ -1,6 +1,6 @@
 <script lang="ts">
   import { MediaQuery } from 'svelte/reactivity';
-  import { Contact, Inbox, MessageSquare, Plus, Settings } from '@lucide/svelte';
+  import { Inbox, MessageSquare, Plus, Settings, UsersRound } from '@lucide/svelte';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
   import { count } from '../lib/format';
@@ -32,11 +32,11 @@
 
   /**
    * The column down the window's left edge, on a desktop, the same in every
-   * view: where to be (the threads, Activity with what asks), then one picture
+   * view: where to be (the threads, Activity with what asks, Contacts), then one picture
    * per team and per bot of every machine, in the order the user dragged them, then the machines when there is
    * more than one, and Settings. The open place is the filled tile; a bot's
-   * picture says how it stands: asleep, at work, or with an answer not read. Contacts is a circle of its own under
-   * the bots; the limits are a line at the foot of the list column
+   * picture says how it stands: asleep, at work, or with an answer not read. The limits are a line at the foot of
+   * the list column
    * (QuotaLine.svelte). It stands on the window's chrome from top to bottom;
    * a phone keeps its own navigation and never draws it.
    */
@@ -231,6 +231,14 @@
     </button>
     {@render railName(strings.mobile.activity, null, waiting ? waitingLabel : null)}
   </div>
+  <!-- Contacts, a place beside the threads and Activity, never a side of the Bots column. -->
+  {#if contactsOn}
+    <div class="slot" class:selected={onContacts}>
+      <button type="button" class="rail-button" class:on={onContacts} aria-current={onContacts ? 'page' : undefined} aria-label={strings.contacts.heading}
+        data-testid="rail-contacts" data-preload-view="home" onclick={() => store.showHome()}><UsersRound size={19} strokeWidth={1.75} /></button>
+      {@render railName(strings.contacts.heading)}
+    </div>
+  {/if}
   <!-- What contacts ask arrives as a toast; Activity lists it, the Bots list's Contacts side holds the rest. -->
   {#if contactsOn && ContactRequestNotice}<ContactRequestNotice {store} />{/if}
 
@@ -282,16 +290,6 @@
       <button type="button" class="rail-button add" aria-label={strings.app.rail.add} aria-haspopup="menu"
         data-testid="rail-add" onclick={(event) => addMenu(event.currentTarget)}><Plus size={19} strokeWidth={1.75} /></button>
       {@render railName(strings.app.rail.add)}
-    </div>
-  {/if}
-
-  <!-- Contacts, a circle of its own under the bots: a place, never a side of the Bots column. -->
-  {#if contactsOn}
-    <span class="separator" aria-hidden="true"></span>
-    <div class="slot" class:selected={onContacts}>
-      <button type="button" class="rail-button round" class:on={onContacts} aria-current={onContacts ? 'page' : undefined} aria-label={strings.contacts.heading}
-        data-testid="rail-contacts" data-preload-view="home" onclick={() => store.showHome()}><Contact size={19} strokeWidth={1.75} /></button>
-      {@render railName(strings.contacts.heading)}
     </div>
   {/if}
 
@@ -360,7 +358,6 @@
   .rail-button.add { background: transparent; box-shadow: inset 0 0 0 1px var(--color-edge); border-radius: var(--radius-full); }
   .rail-button.add:hover:not(:disabled) { background: var(--color-hover); }
   /* A circle, as the bots it stands under: ringed at rest, filled where you are. */
-  .rail-button.round { border-radius: var(--radius-full); box-shadow: inset 0 0 0 1px var(--color-edge); }
 
   .bot { background: none; border-radius: var(--radius-full); }
   .bot:hover:not(:disabled) { background: none; }

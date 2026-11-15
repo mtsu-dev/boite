@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Bot, Contact, Inbox, MessageSquare } from '@lucide/svelte';
+  import { Bot, Inbox, MessageSquare, UsersRound } from '@lucide/svelte';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
   import { experimentOn } from '../lib/experiments.svelte';
@@ -50,7 +50,7 @@
   {/if}
   {#if contactsShown(store)}
     <button type="button" class="tab" data-testid="mobile-contacts" data-preload-view="home" aria-current={page('contacts')} onclick={() => store.showHome()}>
-      <span class="glyph"><Contact size={20} /></span><span class="name ui-label">{strings.contacts.heading}</span>
+      <span class="glyph"><UsersRound size={20} /></span><span class="name ui-label">{strings.contacts.heading}</span>
     </button>
   {/if}
 </nav>
