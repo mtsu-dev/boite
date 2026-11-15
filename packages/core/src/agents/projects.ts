@@ -23,7 +23,7 @@
  * stays: that is the owner's own grant. Besides their turns,
  * questions and permissions, the desk reports a running turn silent for
  * `STALL_MS` (once per turn), a pull request merged and checks that start to
- * fail.
+ * fail, its own or one of a thread it delegated, at any depth.
  */
 import type {
   AgentLetter, AgentProfile, AgentWatch, AgentWatchPullRequest, Message, MessagePart, PermissionRequest, ProjectId, ProjectThreadDetail, ProjectThreadRow, QuestionRequest,
@@ -32,7 +32,7 @@ import type {
 import type { Core } from '../core.ts';
 import { invalidParams, messageOf, refused } from '../errors.ts';
 import { newId } from '../ids.ts';
-import { deskPullRequest } from './context.ts';
+import { DESCENDANTS_DEPTH, deskLinks, deskPullRequest, descendantLinks } from './context.ts';
 import { NOTICE_BATCH_MS } from './runtime.ts';
 import type { AgentStore } from './store.ts';
 import { quoted } from './validation.ts';
@@ -52,6 +52,8 @@ export const STALL_MS = 20 * 60_000;
 /** How often desk threads are checked for a stall. */
 const STALL_CHECK_MS = 10_000;
 const NOTICE_TEXT = 1_500;
+/** The delegated pull requests one follow remembers; the oldest leave first. */
+const BELOW_MAX = 50;
 const FOLLOW = 'resident-follow:';
 /** The turn a desk thread stalled on, and since when it is silent (null once it spoke again). */
 const STALL = 'agents:stall:';
@@ -63,8 +65,11 @@ const ACTIONS: readonly ResidentThreadAction[] = ['archive', 'done', 'unarchive'
  * wake it once. `owner`: the owner put it there, so it holds whatever the
  * agent's projects (an entrusted thread is one too).
  */
-/** `lent`: the `owner` flag came with an entrustment of a thread the bot already followed, and leaves with it. */
-type Follow = { at: number; origin: AgentWatch['origin']; pr?: AgentWatchPullRequest | null; owner?: true; lent?: true };
+/**
+ * `lent`: the `owner` flag came with an entrustment of a thread the bot already followed, and leaves with it.
+ * `below`: the pull requests of the threads it delegated, by lowercase URL, as the agent was last told of them.
+ */
+type Follow = { at: number; origin: AgentWatch['origin']; pr?: AgentWatchPullRequest | null; below?: Record<string, AgentWatchPullRequest>; owner?: true; lent?: true };
 interface Stall { turnId: string; since: number | null }
 
 /**
@@ -244,7 +249,8 @@ export class AgentProjects {
     const follows = Object.fromEntries(Object.entries(saved).filter(([id]) => kept.has(id)));
     // A new follow records the pull request as it stands, so its merge or failing checks are news.
     const thread = previous ? null : threads.get(threadId) ?? null;
-    const pr = thread ? { pr: deskPullRequest(this.#core, thread) } : {};
+    const below = thread ? descendantLinks(this.#core, [threadId]).get(threadId) ?? [] : [];
+    const pr = thread ? { pr: deskPullRequest(this.#core, thread), ...(below.length ? { below: Object.fromEntries(below.slice(-BELOW_MAX).map(({ pr }) => [pr.url.toLowerCase(), pr])) } : {}) } : {};
     const granted = owner || origin === 'entrusted' || previous?.owner === true ? { owner: true as const } : {};
     // A follow the bot had before an entrustment keeps what it was: only the grant the entrustment adds is lent.
     const lent = !owner && (previous?.lent === true || (origin === 'entrusted' && previous !== undefined && previous.owner !== true));
@@ -377,7 +383,9 @@ export class AgentProjects {
    */
   #onDesk(name: string, payload: unknown): void {
     const threadId = name === 'thread.updated' ? (payload as { id?: unknown }).id : (payload as { threadId?: unknown } | null)?.threadId;
-    if (typeof threadId !== 'string' || !this.#deskIndex().has(threadId)) return;
+    if (typeof threadId !== 'string') return;
+    if (name === 'threads.pullRequestsChanged') this.#compareBelow(threadId);
+    if (!this.#deskIndex().has(threadId)) return;
     if (name === 'message.delta' || name === 'message.part' || name === 'message.started' || name === 'message.completed') {
       this.#heard.set(threadId, Date.now());
       const stall = this.#stalls.get(threadId);
@@ -458,14 +466,97 @@ export class AgentProjects {
       const agent = this.#store.records.find('profile', agentId);
       if (now === null || was === null || agent?.status !== 'active' || !this.follows(agentId, threadId)) continue;
       const same = was.url === now.url;
+      // A thread it delegated linked the same pull request and already told of it.
+      const told = follow.below?.[now.url.toLowerCase()];
       if (now.state === 'merged' && (!same || was.state !== 'merged')) {
+        if (told?.state === 'merged') continue;
         this.notify(agent, `pr-merged:${now.url}`, `Pull request #${now.number} of thread ${thread.id}, titled ${quoted(thread.title)}, was merged: ${quoted(now.url)}. `
           + `Mark the thread done (boite thread done ${thread.id}) once nothing is left in it.`, NOTICE_BATCH_MS, [thread.id]);
       } else if (now.checks === 'failing' && (!same || was.checks !== 'failing')) {
+        if (told?.checks === 'failing') continue;
         const seen = this.#core.pullRequestWatches.of(threadId).find(w => w.url.toLowerCase() === now.url.toLowerCase())?.seen;
         const counts = seen ? ` (${seen.checks.failed} of ${seen.checks.total} failed on ${seen.head})` : '';
         this.notify(agent, `pr-checks:${now.url}:${seen?.head ?? Date.now()}`, `Checks fail on pull request #${now.number} of thread ${thread.id}, titled ${quoted(thread.title)}${counts}: ${quoted(now.url)}. `
           + `Its thread is ${thread.status}; steer it with boite thread send ${thread.id} if it is not fixing them.`, NOTICE_BATCH_MS, [thread.id]);
+      }
+    }
+  }
+
+  /**
+   * A thread delegated below a desk thread, at any depth, changed its pull
+   * requests: the desk thread nearest to it on each agent's desk tells of
+   * them as of its own. The child is often archived by then, and its parent
+   * never linked the pull request. An agent whose desk holds the child itself
+   * hears of it there instead.
+   */
+  #compareBelow(threadId: ThreadId): void {
+    const thread = this.#core.journal.getThread(threadId);
+    if (!thread?.parentThreadId) return;
+    const desk = this.#deskIndex();
+    if (desk.size === 0) return;
+    const ancestors: ThreadSummary[] = [];
+    const seen = new Set<ThreadId>([thread.id]);
+    for (let id: ThreadId | null | undefined = thread.parentThreadId; id && !seen.has(id) && seen.size <= DESCENDANTS_DEPTH;) {
+      seen.add(id);
+      const parent = this.#core.journal.getThread(id);
+      if (parent === null) break;
+      if (desk.has(id)) ancestors.push(parent);
+      id = parent.parentThreadId;
+    }
+    if (ancestors.length === 0) return;
+    const links = deskLinks(this.#core, thread.id).map(link => link.pr);
+    const heard = new Set(desk.get(thread.id) ?? []);
+    for (const ancestor of ancestors) {
+      for (const agentId of desk.get(ancestor.id) ?? []) {
+        if (heard.has(agentId)) continue;
+        heard.add(agentId);
+        this.#compareDelegated(agentId, ancestor, thread, links);
+      }
+    }
+    // The desk row of the ancestor shows the child's pull request when it has none.
+    this.#store.changed();
+  }
+
+  /** The pull requests of `child`, delegated below the desk thread `desk`, against what the agent was last told of them. */
+  #compareDelegated(agentId: string, desk: ThreadSummary, child: ThreadSummary, links: readonly AgentWatchPullRequest[]): void {
+    const saved = this.#saved(agentId);
+    const follow = saved[desk.id];
+    if (!follow) return;
+    const below = { ...follow.below };
+    const changes: { was: AgentWatchPullRequest; now: AgentWatchPullRequest }[] = [];
+    let moved = false;
+    for (const now of links) {
+      const key = now.url.toLowerCase();
+      const was = below[key] ?? null;
+      if (JSON.stringify(was) === JSON.stringify(now)) continue;
+      moved = true;
+      // Last written is newest: the cap drops the pull request heard of longest ago.
+      delete below[key];
+      below[key] = now;
+      // The first sight of a pull request is only recorded, as on the desk thread itself.
+      if (was !== null) changes.push({ was, now });
+    }
+    if (!moved) return;
+    const keys = Object.keys(below);
+    for (const key of keys.slice(0, Math.max(0, keys.length - BELOW_MAX))) delete below[key];
+    this.#core.journal.setSetting(`${FOLLOW}${agentId}`, { ...saved, [desk.id]: { ...follow, below } });
+    const agent = this.#store.records.find('profile', agentId);
+    if (agent?.status !== 'active' || !this.follows(agentId, desk.id)) return;
+    const own = follow.pr?.url.toLowerCase();
+    const of = `thread ${child.id}, titled ${quoted(child.title)}, delegated from thread ${desk.id}, titled ${quoted(desk.title)}`;
+    for (const { was, now } of changes) {
+      // The desk thread linked the same pull request and already told of it.
+      const same = own === now.url.toLowerCase();
+      if (now.state === 'merged' && was.state !== 'merged') {
+        if (same && follow.pr?.state === 'merged') continue;
+        this.notify(agent, `pr-merged:${now.url}`, `Pull request #${now.number} of ${of}, was merged: ${quoted(now.url)}. `
+          + `Mark the thread done (boite thread done ${desk.id}) once nothing is left in it.`, NOTICE_BATCH_MS, [desk.id]);
+      } else if (now.checks === 'failing' && was.checks !== 'failing') {
+        if (same && follow.pr?.checks === 'failing') continue;
+        const seen = this.#core.pullRequestWatches.of(child.id).find(w => w.url.toLowerCase() === now.url.toLowerCase())?.seen;
+        const counts = seen ? ` (${seen.checks.failed} of ${seen.checks.total} failed on ${seen.head})` : '';
+        this.notify(agent, `pr-checks:${now.url}:${seen?.head ?? Date.now()}`, `Checks fail on pull request #${now.number} of ${of}${counts}: ${quoted(now.url)}. `
+          + `Thread ${child.id} is ${child.status}; steer its parent with boite thread send ${desk.id} if it is not fixing them.`, NOTICE_BATCH_MS, [desk.id]);
       }
     }
   }

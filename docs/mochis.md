@@ -51,7 +51,8 @@ stays readable.
 - A mochi also wakes on its own when a turn ends in a thread on its desk, when
   that thread fails, asks you something, waits on a permission or stays
   silent for 20 minutes, and when a pull request there is merged or its
-  checks start to fail.
+  checks start to fail. That includes a pull request opened by a subagent of
+  one of those threads, even after the subagent is archived.
 - A thread that carries on by itself, with its next message already sent, a
   goal or loop still running or its pull request being watched, wakes the
   mochi only once it stops. While the mochi's wakes about a thread find
@@ -92,7 +93,8 @@ beside its name says how often it woke on its own today and what it spent
 today in all, your messages included, beside its daily budget when it has one.
 
 The threads it started, was entrusted or follows sit in the mochi's column,
-with their state, pull request and checks. A Needs you row lets you answer its
+with their state, pull request and checks. A thread with no pull request of
+its own shows the one its subagents opened. A Needs you row lets you answer its
 question in place. Each section lists its threads in the order they were
 started, first on top; a row moves only when it changes section.
 

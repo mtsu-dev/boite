@@ -4,7 +4,7 @@ import { assertDriverRunnable, releaseThread } from '../drivers/index.ts';
 import type { Driver, StepDecision, TurnContext, TurnHandle, TurnResult } from '../drivers/types.ts';
 import type { Resume } from '../providers/update-resume.ts';
 import type { ThreadStore } from '../threads.ts';
-import { sumUsage, totalTokens } from '../usage.ts';
+import { costOrRates, implausibleCost, sumUsage, totalTokens } from '../usage.ts';
 import { LivePermissions } from './live-permissions.ts';
 import { LiveSettings } from './live-settings.ts';
 import { saveThread, withLoad } from './records.ts';
@@ -276,7 +276,7 @@ export class TurnAttempts {
         context.prompt = modeRestartPrompt(permissions.mode, context.prompt);
       }
       // A later attempt resumes a session that already holds the earlier ones, refused or not.
-      if (attempt > 1 && state.thread.sessionId !== null) context.sessionBefore = sessionAfter(context.sessionBefore, usage, totals);
+      if (attempt > 1 && state.thread.sessionId !== null) context.sessionBefore = sessionAfter(context.sessionBefore, usage, totals, state.running.execution?.model ?? null);
       if (state.running.execution) state.running.execution = { ...state.running.execution, permissionMode: permissions.mode };
       this.#core.journal.putTurn(state.running);
       const attemptAt = performance.now();
@@ -389,7 +389,7 @@ export class TurnAttempts {
       because = 'after a permission mode change';
     }
     // The drivers hand over canonical buckets: the turn records that it holds them.
-    const spent = sumAttempts(usage, result.usage);
+    const spent = guardCost(this.#core, threadId, turnId, provider.protocol, state.running.execution?.model ?? null, sumAttempts(usage, result.usage));
     result = { ...result, usage: spent === null ? null : { ...spent, buckets: 1 }, ...(totals ? { agentTotals: totals } : {}) };
     if (state.running.execution) state.running.execution = { ...state.running.execution, permissionMode: state.thread.permissionMode };
     return result;
@@ -670,12 +670,31 @@ function quiet(write: () => void): void {
 /**
  * What the session holds once an earlier attempt of the same turn ended. An
  * agent that restores its own totals resumes from the ones that attempt
- * reported; otherwise its usage adds to what the earlier turns used.
+ * reported; otherwise its usage adds to what the earlier turns used, at rates
+ * when it reported no cost.
  */
-function sessionAfter(before: TurnContext['sessionBefore'], usage: Usage | null, totals: TurnResult['agentTotals']): TurnContext['sessionBefore'] {
+function sessionAfter(before: TurnContext['sessionBefore'], usage: Usage | null, totals: TurnResult['agentTotals'], model: string | null): TurnContext['sessionBefore'] {
   if (totals) return totals;
   if (!usage) return before;
-  return { costUsd: (before?.costUsd ?? 0) + (usage.costUsdEquivalent ?? 0), tokens: (before?.tokens ?? 0) + totalTokens(usage) };
+  return { costUsd: (before?.costUsd ?? 0) + (costOrRates(model, usage) ?? 0), tokens: (before?.tokens ?? 0) + totalTokens(usage) };
+}
+
+/**
+ * The turn's usage with a reported cost far above its tokens at rates dropped
+ * (`implausibleCost`): such a cost is an agent's running total charged again,
+ * and a reader of the turn prices its tokens instead. ACP is left alone: its
+ * driver takes a session's cost apart with the sum of the turns' own
+ * (`sessionUsage`), so a cost dropped there would land on the next turn.
+ */
+function guardCost(core: Core, threadId: ThreadId, turnId: TurnId, protocol: ProviderDescriptor['protocol'], model: string | null, usage: Usage | null): Usage | null {
+  if (usage === null || protocol === 'acp') return usage;
+  const atRates = implausibleCost(model, usage);
+  if (atRates === null) return usage;
+  quiet(() => core.logs.warn(`Reported cost $${usage.costUsdEquivalent!.toFixed(2)} is far above the turn's tokens at rates ($${atRates.toFixed(2)}): recorded as unknown`, {
+    source: 'turns', event: 'turn.cost.implausible', threadId, turnId, ...(model ? { model } : {}),
+    data: { reportedUsd: usage.costUsdEquivalent, ratesUsd: atRates },
+  }));
+  return { ...usage, costUsdEquivalent: null };
 }
 
 /** Native attempts belong to one visible turn, including their reported usage. */

@@ -382,12 +382,15 @@ describe('background compaction', () => {
     let release: () => void = () => undefined;
     const gate = new Promise<void>(resolve => { release = resolve; });
     const prompts: string[] = [];
+    const before: TurnContext['sessionBefore'][] = [];
+    // What the copy's agent counted by its end, which the compacted session resumes with.
+    const copyTotals = { costUsd: 55.632, tokens: 50_782_400 };
     // A driver that cannot swap inside a turn takes its copy at the pause.
     const restore = setDriver('echo', { ...echoDriver, capabilities: {}, startTurn(ctx) {
-      if (!isCopy(ctx)) { prompts.push(ctx.prompt); return echoDriver.startTurn({ ...ctx, step: undefined }); }
+      if (!isCopy(ctx)) { prompts.push(ctx.prompt); before.push(ctx.sessionBefore); return echoDriver.startTurn({ ...ctx, step: undefined }); }
       // The copy waits until the conversation went on without it.
       let stopped = false;
-      const done = gate.then(() => stopped ? { status: 'stopped' as const, sessionId: ctx.sessionId, usage: null } : echoDriver.startTurn(ctx).done);
+      const done = gate.then(async () => stopped ? { status: 'stopped' as const, sessionId: ctx.sessionId, usage: null } : { ...await echoDriver.startTurn(ctx).done, agentTotals: copyTotals });
       return { done, stop: () => { stopped = true; release(); } };
     } });
     const client = await h.connect();
@@ -416,6 +419,8 @@ describe('background compaction', () => {
       expect(carried).toContain('meanwhile');
       expect(carried).not.toContain('x'.repeat(760));
       expect(carried.endsWith('Current user request:\nnext request')).toBe(true);
+      // The first turn on the compacted session starts from the copy's totals, which no turn of its own recorded.
+      expect(before.at(-1)).toEqual(copyTotals);
       // Once carried, the tail is not sent again.
       await turn(client, threadId, 'after that');
       expect(prompts.at(-1)).toBe('after that');

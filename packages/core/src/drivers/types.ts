@@ -110,6 +110,12 @@ export interface StepDecision {
     tail: string;
     /** The context the compacted session holds, when the copy reported it. */
     postTokens: number | null;
+    /**
+     * The copy's running totals as its compaction left them, which an agent
+     * resuming the compacted session restores (`TurnContext.sessionBefore`).
+     * Absent when the copy reported none.
+     */
+    totals?: AgentTotals;
   };
 }
 

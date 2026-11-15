@@ -88,12 +88,52 @@ export function usageTotal(core: Core, groups: readonly UsageGroup[]): Usage {
   return total;
 }
 
-/** What an agent session already used: its last reported totals, else its turns (`Journal.sessionUsage`). */
+/**
+ * The journal setting holding the running totals a session compacted in the
+ * background starts with (`SwappedTotals`), written at the swap.
+ */
+export const SWAPPED_TOTALS_PREFIX = 'session-totals:';
+
+/** The copy's totals, which an agent resuming the compacted session of `generation` restores. */
+export interface SwappedTotals { generation: number; totals: AgentTotals }
+
+/**
+ * What an agent session already used: its last reported totals, else those a
+ * swapped-in compacted session started with, else its turns (`Journal.sessionUsage`).
+ */
 export function sessionUsage(core: Core, threadId: ThreadId, generation: number | readonly number[], exceptTurnId: string): AgentTotals {
   const { reported, groups } = core.journal.sessionUsage(threadId, generation, exceptTurnId);
   if (reported !== null) return reported;
+  const swapped = core.journal.getSetting(`${SWAPPED_TOTALS_PREFIX}${threadId}`) as SwappedTotals | undefined;
+  if (swapped !== undefined && (typeof generation === 'number' ? [generation] : generation).includes(swapped.generation)) return swapped.totals;
   const usage = usageTotal(core, groups);
   return { costUsd: usage.costUsdEquivalent ?? 0, tokens: totalTokens(usage) };
+}
+
+/**
+ * How far a turn's reported cost may exceed its tokens at public rates before
+ * it reads as an agent's running total charged again rather than the turn's
+ * own share. Set from the 7 201 priced turns of a real journal (2026-11-15):
+ * the ratio's 95th percentile is 2.6, and the 357 turns above 3 all charged a
+ * session's earlier turns again, most after a background compaction's swap.
+ */
+export const COST_GUARD = { ratio: 3, marginUsd: 0.25 };
+
+/**
+ * What the turn's tokens cost at rates when its reported cost is implausible
+ * by `COST_GUARD`, else null: the cost stands, or no rate or token can judge it.
+ */
+export function implausibleCost(model: string | null, usage: Usage): number | null {
+  const reported = usage.costUsdEquivalent;
+  if (reported === null || totalTokens(usage) === 0) return null;
+  const quote = priceUsage(model, usage);
+  return quote !== null && reported > quote.cost * COST_GUARD.ratio + COST_GUARD.marginUsd ? quote.cost : null;
+}
+
+/** A turn's cost for a reader of one turn: the reported cost, else its tokens at rates, else null. */
+export function costOrRates(model: string | null, usage: Usage): number | null {
+  if (usage.costUsdEquivalent !== null) return usage.costUsdEquivalent;
+  return totalTokens(usage) === 0 ? null : priceUsage(model, usage)?.cost ?? null;
 }
 
 export function usageOf(core: Core, threadId?: ThreadId): { byThread: Record<ThreadId, Usage>; total: Usage } {
