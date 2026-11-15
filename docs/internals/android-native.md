@@ -31,6 +31,9 @@ package is `com.boite.app`. No workflow builds or publishes it yet.
 - The mobile build ships no service worker and no web manifest
   (`dropWorker` in `packages/ui/vite.config.ts`): the files are already in the
   APK, compressed by Tauri. Without a service worker there is no Web Push.
+- The content security policy matches the phone web app's needs: plugin
+  scripts run as `blob:` modules, and HTML views frame a core's `/view/`
+  pages. The opener plugin may open `http` and `https` URLs only.
 - `MainActivity` exposes `BoiteAndroid.ready()`. The UI calls it two frames
   after its first mount, which calls `reportFullyDrawn()`: that is the time
   `am start -W` and Play vitals report as fully drawn.
@@ -57,8 +60,9 @@ ignores:
 
 ```properties
 storeFile=/absolute/path/to/release.jks
-password=...
+storePassword=...
 keyAlias=...
+keyPassword=...
 ```
 
 Without that file the release APK is unsigned.

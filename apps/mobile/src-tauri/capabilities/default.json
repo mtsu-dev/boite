@@ -3,5 +3,8 @@
   "identifier": "default",
   "description": "The page may open web links in the system browser, nothing else.",
   "windows": ["main"],
-  "permissions": ["core:event:default", "opener:allow-open-url"]
+  "permissions": [
+    "core:event:default",
+    { "identifier": "opener:allow-open-url", "allow": [{ "url": "http://*" }, { "url": "https://*" }] }
+  ]
 }
