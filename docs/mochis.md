@@ -157,6 +157,10 @@ after it.
 The budget counts its subagents and workflow steps, priced at the models'
 public rates. A model with no known price that reports no cost adds nothing.
 
+A mochi with a long conversation that stays idle for about an hour compacts it
+just before its next wake would have to read it all again, unless automatic
+compaction is off. The divider in its thread says `auto`.
+
 ## Move it to another machine
 
 On the desktop, pick Move to a machine in the more menu at the head of its

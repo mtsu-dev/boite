@@ -950,7 +950,10 @@ Monday and Friday at 6:00 PM" (`schedule.ts`).
 ## Budget and limits
 
 A mochi has no run cap: a wake runs as long as any turn, and the thread's own
-auto-compaction (the user's compaction size setting) applies. `dailyBudgetUsd`
+auto-compaction (the user's compaction size setting) applies. Its own thread
+also compacts a minute before a one-hour prompt cache lapses, from 60 000
+tokens, so the next wake writes a summary instead of the whole conversation
+([A mochi's cold wake](context.md#a-mochis-cold-wake)). `dailyBudgetUsd`
 in its runtime config (null by default) caps what the mochi spends from local
 midnight: the turns started on its thread and on every thread below it, its
 subagents at any depth (`parent_thread_id`), the steps of workflow runs rooted
