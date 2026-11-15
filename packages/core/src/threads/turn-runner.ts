@@ -11,6 +11,7 @@ import { markRunning } from './lifecycle.ts';
 import { TurnAttempts, type TurnAttemptState } from './turn-attempts.ts';
 import { stderrTail } from '../drivers/stderr-tail.ts';
 import { turnSwitch } from './switch-notice.ts';
+import { folderPresent, restoreThreadCwd, ThreadCwdGone } from './cwd.ts';
 
 export { STOP_DEADLINE, STOP_DEADLINE_ERROR } from './turn-attempts.ts';
 
@@ -130,6 +131,11 @@ export class TurnRunner {
         if (this.#attempts.preparationStopped(threadId)) throw refused('worktree preparation was stopped');
       });
       if (entering) await entering;
+      // Turns Boite starts by itself (a subagent's result, a resume) skip `turns.start`, which does this too.
+      else {
+        const restoring = restoreThreadCwd(this.#core, state.thread);
+        if (restoring) await restoring;
+      }
       // Any conversation in a checkout under its project's .boite, perhaps made by an older core, gets the marker.
       const project = state.thread.projectId === null ? null : this.#core.journal.getProject(state.thread.projectId);
       if (project !== null) this.#core.worktrees.markReused(project, state.thread.cwd);
@@ -148,6 +154,12 @@ export class TurnRunner {
       try { this.#attempts.close(threadId); }
       catch (error) { reportSettlementError(this.#core, threadId, turnId, 'attempt cleanup', error); }
       this.answerAfter.delete(turnId);
+    }
+
+    // Read after the failure, so a turn that starts well never waits on the disk.
+    if (result.status === 'error' && !result.refusal && !(await folderPresent(state.thread.cwd))) {
+      const gone = new ThreadCwdGone(threadId, state.thread.cwd);
+      result = { ...result, error: gone.message, diagnosticError: `${gone.message}; the agent said: ${result.diagnosticError ?? result.error ?? 'nothing'}`, cwdGone: true };
     }
 
     const { thread, running } = state;

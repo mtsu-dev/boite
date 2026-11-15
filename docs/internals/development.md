@@ -234,7 +234,14 @@ Settings > Worktrees and Manage project offer the same controls. Removing clean
 worktrees requires no force; ignored dependencies and build output leave with
 the directory. Dirty or unmerged removal asks first. Archive alone never removes
 a branch or worktree. Restoring a thread whose worktree was removed retains its
-`cwd`; sending or compacting refuses the missing folder instead of recreating it.
+`cwd`. A turn in a thread whose worktree folder is gone, from `turns.start` or
+one the core starts itself (a subagent's result, a resume, a pull-request wake),
+first checks the thread's branch out there again when the branch still exists
+(`restoreThreadCwd` in `threads/cwd.ts`, `Worktrees.recover`), unless the
+core's own cleanup removed it (`worktreeRemoved`, below). A deleted branch is
+never made again from HEAD: `turns.start` then refuses the missing folder, and
+an automatic turn fails with that sentence instead of the agent's own error
+(Claude Code blames its native binary) and plans no resume.
 
 ### Settled worktree cleanup
 
