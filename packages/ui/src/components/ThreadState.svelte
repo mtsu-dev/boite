@@ -81,12 +81,9 @@
     if (kind === 'delegating' || kind === 'monitoring') return words[kind];
     if (kind === 'watching') return watches.length > 0 && watches.every(watch => watch.seen?.queue && watch.seen.checks.running === 0) ? words.mergeQueue : words.ci;
     if (kind === 'background') {
-      const kinds = thread.backgroundWork?.kinds ?? [];
-      const heaviest = (['workflow', 'agent', 'shell'] as const).find(each => kinds.includes(each));
-      return words[heaviest ?? 'other'];
+      return words[(['workflow', 'agent', 'shell'] as const).find(each => thread.backgroundWork?.kinds.includes(each)) ?? 'other'];
     }
-    if (kind === 'working') return spent ?? strings.sidebar.state.working;
-    return strings.sidebar.state[kind];
+    return (kind === 'working' ? spent : null) ?? strings.sidebar.state[kind];
   });
   let label = $derived.by(() => {
     if (kind === null) return null;
