@@ -276,7 +276,7 @@
           <InfoTip topic={strings.settings.archived.heading} text={strings.settings.archived.intro} />
         </div>
         {#each archiveMachines as machine (machine.id)}
-          {#if multi && archiveMachines.length > 1}<p class="archive-machine" class:offline={machine.store.connection !== 'ready'}><MachineIcon icon={machine.icon} os={machine.store.core?.os} size={14} /><span class="ui-label">{machine.label}</span></p>{/if}
+          {#if multi && archiveMachines.length > 1}<p class="archive-machine" class:away={machine.store.connection !== 'ready'}><MachineIcon icon={machine.icon} os={machine.store.core?.os} size={14} /><span class="ui-label">{machine.label}</span></p>{/if}
           {#if ArchivedThreads}<ArchivedThreads store={machine.store} eager place="list" />{/if}
         {/each}
       </div>
@@ -374,7 +374,7 @@
               onclick={() => projectThreadView.toggleProject(entry, lists, draftsHere.length)}
             >
               {#if projectView.order === 'manual'}<GripVertical size={12} />{/if}<span class="mark"><ProjectTile {project} store={owner} size={18} /><span class="fold-caret" class:open={!collapsed} aria-hidden="true"><ChevronRight size={16} /></span></span
-              >{#if multi}<span class="host" data-testid="project-host" class:offline={owner.connection !== 'ready'}
+              >{#if multi}<span class="host" data-testid="project-host" class:away={owner.connection !== 'ready'}
                 title={`${machine.label} · ${strings.connection[owner.connection]}`} aria-label={machine.label}><MachineIcon icon={machine.icon} os={owner.core?.os} size={14} /></span>{/if}<span class="name project-title ui-label" class:gone={project.missing === true}>{projectName(project)}</span
               >{#if collapsed}<ProjectThreadCount {entry} />{/if}{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup && !needsYou(rollup.kind) && rollup.kind !== 'done' && lists.working.length === 0}<ProjectRollup {rollup} />{/if}
             </button>
@@ -450,7 +450,7 @@
   .archive-head { display: flex; align-items: center; gap: 6px; height: 38px; padding: 0 4px 0 2px; }
   .archive-head h3 { flex: 0 1 auto; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-title); font-weight: var(--weight-title); letter-spacing: -0.01em; }
   .archive-machine { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; padding: 0 10px; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; }
-  .archive-machine.offline { color: var(--color-subtle); }
+  .archive-machine.away { color: var(--color-subtle); }
   @keyframes archive-in { from { opacity: 0; transform: translateX(8px); } }
   @media (prefers-reduced-motion: reduce) { .archive { animation: none; } }
   .contact-rows { display: flex; flex-direction: column; gap: 2px; }
@@ -539,7 +539,8 @@
     background: var(--color-surface);
   }
   .project.drop .head { background: transparent; }
-  /* The machine's state under the name, its dot on the name's edge: the toggle's 4 px, the 18 px tile and its 8 px gap. */
+  /* The machine's state under the name, its dot on the name's edge: the toggle's 4 px, the 18 px tile and its 8 px gap.
+     A machine out of reach marks its icon and its archive line `away`: this block's padding stays off them. */
   .offline { padding: 0 8px 6px 30px; }
   /* A row passing under it melts into the head instead of being sliced; over the card's own ground it shows nothing. */
   .head::after { content: ''; position: absolute; inset: 100% 0 auto; height: 6px; background: linear-gradient(var(--color-surface), transparent); pointer-events: none; }
@@ -616,7 +617,7 @@
   /* The machine, once two are listed: its icon before the name, its name and state in the tooltip. */
   .host { display: flex; flex: none; color: var(--color-muted-foreground); }
   /* The rows under it carry no machine icon, so the header says the machine is unreachable. */
-  .host.offline { color: var(--color-danger); }
+  .host.away { color: var(--color-danger); }
   .head :global(.counters) { flex: 0 1000 auto; min-width: min-content; }
   /* The menu keeps its slot at the right end even while hidden, so it sits at the same place on every project and
      the counters never move under the pointer. */
