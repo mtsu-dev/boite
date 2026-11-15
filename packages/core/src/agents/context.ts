@@ -131,7 +131,10 @@ export function linkedPullRequests(core: Core, threadIds: readonly string[]): Ma
   const rows = core.journal.db.query('SELECT key, value FROM settings WHERE key IN (SELECT value FROM json_each(?))')
     .all(JSON.stringify(threadIds.map(id => `${LINKED}${id}`))) as { key: string; value: string }[];
   for (const row of rows) {
-    try { linked.set(row.key.slice(LINKED.length), JSON.parse(row.value)); } catch { /* A link list that does not parse links nothing. */ }
+    try {
+      const stored = JSON.parse(row.value);
+      if (Array.isArray(stored) && stored.some(pr => typeof pr?.url === 'string')) linked.set(row.key.slice(LINKED.length), stored);
+    } catch { /* A link list that does not parse links nothing. */ }
   }
   return linked;
 }

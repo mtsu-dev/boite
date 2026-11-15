@@ -346,6 +346,22 @@ test('a pull request a delegated thread opened, then merged once archived, wakes
   expect(facts()).toEqual([]);
 });
 
+test('a desk thread whose last pull request was unlinked shows a delegated thread\'s pull request', async () => {
+  h.core.workforce.setLimits({ paused: true });
+  h.core.workforce.projects.follow(agent.id, worker, 'started');
+  const own = 'https://github.com/acme/app/pull/23';
+  link(worker, linkOf(own, 23));
+  expect(watchOf(worker)!.pullRequest?.url).toBe(own);
+  await h.core.linkedPullRequests.unlink(worker, own);
+  expect(h.core.linkedPullRequests.saved(worker)).toEqual([]);
+
+  const child = delegated(worker, 'thr_after_unlink', 'Ship after unlink');
+  const url = 'https://github.com/acme/app/pull/24';
+  link(child, linkOf(url, 24));
+  expect(watchOf(worker)!.pullRequest).toEqual({ number: 24, url, state: 'open', checks: null });
+  expect(agentContext(h.core, agent).text).toContain(`{"thread":"${worker}","title":"Worker","project":"test","state":"idle","pullRequest":"PR #24 open"}`);
+});
+
 test('a grandchild\'s failing checks and merge reach the desk once each, whichever of it and the desk thread tells first', async () => {
   h.core.workforce.setLimits({ paused: true });
   h.core.workforce.projects.follow(agent.id, worker, 'started');
