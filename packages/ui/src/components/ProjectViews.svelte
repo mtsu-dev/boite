@@ -64,7 +64,9 @@
   /* The switch keeps its width and 4 px clear of Filter: shrunk, its segment ran under Filter's focus ring. */
   .list-head { display: flex; align-items: center; gap: 4px; min-width: 0; height: 36px; margin-top: 10px; padding: 0; }
   .title { display: flex; flex: 1 0 auto; min-width: 0; margin: 0; font-size: var(--text-sm); font-weight: 500; color: var(--color-foreground); }
+  /* The bar's glyph size: 16 px as the sidebar fold and the panel door across the bar, not `button.small`'s 14. */
   .actions { display: flex; align-items: center; gap: 2px; flex: none; }
+  .actions :global(button) { --button-icon: 16px; }
   /* A pointer's full 32 px target each. */
   .actions :global(button.icon) { flex: none; width: 32px; height: 32px; border-radius: var(--radius-md); color: var(--color-muted-foreground); }
   .actions :global(button.icon:hover) { color: var(--color-foreground); }
@@ -96,5 +98,10 @@
   @media (max-width: 720px) {
     /* `button.icon` grows to the touch target on a phone. */
     .actions :global(button.icon) { width: var(--touch-target); height: var(--touch-target); }
+    /* Four 44 px targets and the switch overran the 319 px drawer and clipped New thread: Filter keeps its glyph,
+       its word for screen readers, and the targets touch, their glyphs still 28 px apart. */
+    .actions { gap: 0; }
+    .actions :global(button.worded) { width: var(--touch-target); height: var(--touch-target); padding: 0; justify-content: center; }
+    .actions :global(button.worded .word) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   }
 </style>

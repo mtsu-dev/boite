@@ -78,10 +78,11 @@
 
 <style>
   .display-options { position: relative; display: inline-flex; max-width: 100%; }
-  .trigger { position: relative; }
+  /* 16 px as every glyph in the bar beside it (the sidebar fold, search, settings), not `button.small`'s 14. */
+  .trigger { position: relative; --button-icon: 16px; }
   .trigger[aria-expanded='true'] { background: var(--color-surface-3); color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge); }
   .word { white-space: nowrap; }
   /* A filter on: the selected thing's ink, small on the glyph's corner, ringed off the ground. */
-  .dot { position: absolute; top: 5px; left: 17px; width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--color-foreground); box-shadow: 0 0 0 2px var(--color-background); pointer-events: none; }
-  .trigger.icon .dot { top: calc(50% - 11px); left: calc(50% + 4px); }
+  .dot { position: absolute; top: 4px; left: 18px; width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--color-foreground); box-shadow: 0 0 0 2px var(--color-background); pointer-events: none; }
+  .trigger.icon .dot { top: calc(50% - 12px); left: calc(50% + 5px); }
 </style>
