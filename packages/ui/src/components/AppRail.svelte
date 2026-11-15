@@ -89,12 +89,12 @@
   const unreadLabel = (value: number) => value === 1 ? strings.app.rail.unreadOne : fill(strings.app.rail.unreadMany, { count: String(value) });
   /**
    * The working arc follows the picture's outline, a disc or the open bot's squircle (AgentAvatar.svelte: a third of
-   * the side), 2.5 px outside it: drawn as a rounded square whose corners make it a circle, so it never cuts across
-   * the squircle's corners.
+   * the side): a 2.5 px ring 1.25 px outside it, whose outer corner is the outline's plus 3.75 px. On the disc that
+   * corner is half the ring's side, so the ring is a circle.
    */
   const AVATAR = 44;
-  const ORBIT_GAP = 2.5;
-  const orbitRadius = (squircle: boolean) => (squircle ? Math.round(AVATAR * 0.32) : AVATAR / 2) + ORBIT_GAP;
+  const ORBIT_REACH = 3.75;
+  const orbitRadius = (squircle: boolean) => (squircle ? Math.round(AVATAR * 0.32) : AVATAR / 2) + ORBIT_REACH;
 
   /** The bot whose conversation the Bots page shows, on the window's machine. */
   const openBot = $derived.by(() => {
@@ -272,7 +272,7 @@
               <AgentAvatar kind="profile" id={bot.row.profile.id} name={bot.row.profile.name} avatar={bot.row.profile.avatar} size={44} squircle={selected} mood={moodOfState(state, look)}
                 lit={look === 'working' || avatarLit({ open: selected, attention: state === 'waiting', failed: state === 'failed', unread })} />
               <!-- At work: an arc of the accent runs around the whole picture, its disc or its squircle. Asleep: a "z" rises beside it. -->
-              {#if look === 'working'}<svg class="orbit" viewBox="0 0 52 52" aria-hidden="true" data-testid="rail-bot-orbit"><rect x="1.5" y="1.5" width="49" height="49" rx={orbitRadius(selected)} pathLength="100" /></svg>
+              {#if look === 'working'}<span class="orbit" style:--orbit-radius="{orbitRadius(selected)}px" aria-hidden="true" data-testid="rail-bot-orbit"></span>
               {:else if look === 'asleep'}<span class="sleep" aria-hidden="true"><svg viewBox="0 0 16 16"><path class="z big" d="M2.5 8.5h5l-5 5.5h5" /><path class="z" d="M10 2.5h3.5L10 6.5h3.5" /></svg></span>{/if}
               <!-- One overlay, in one slot: the user's turn first, then a failure, work, then how many replies wait unread. -->
               {#if state === 'waiting'}<span class="badge" aria-hidden="true"><span class="needs"></span></span>
@@ -395,12 +395,28 @@
   .bot[data-look='asleep'] { --avatar-rest: var(--avatar-asleep); }
   /* An answer not read: the picture ringed in the text's own ink, cut out of the card. */
   .bot[data-look='answered'] :global(.agent-avatar) { box-shadow: 0 0 0 2px var(--rail-ground), 0 0 0 4px var(--color-foreground); }
-  /* The arc runs along its outline by its dash offset, and the drawing stays still: a turning square reaches past its
-     own box at every corner, and under the last picture that changed how far the list scrolls, frame after frame.
-     Running along the outline also keeps it on the open bot's squircle, where a turning circle cut its corners. */
-  .orbit { position: absolute; inset: -4px; width: calc(100% + 8px); height: calc(100% + 8px); pointer-events: none; }
-  .orbit rect { fill: none; stroke: var(--color-accent); stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 28 72; animation: rail-orbit 1.2s steps(72) infinite var(--loops); }
-  @keyframes rail-orbit { to { stroke-dashoffset: -100; } }
+  /* The ring stays still, cut to the picture's outline by its mask, and only a sector of accent turns inside it: a
+     transform the compositor moves, and the open bot's squircle keeps its corners where a turning circle cut them.
+     The ring clips what turns, so the sector's corners never reach past it into how far the list scrolls. */
+  .orbit {
+    position: absolute;
+    inset: -3.75px;
+    padding: 2.5px;
+    box-sizing: border-box;
+    border-radius: var(--orbit-radius);
+    overflow: hidden;
+    pointer-events: none;
+    -webkit-mask: linear-gradient(var(--color-foreground) 0 0) content-box, linear-gradient(var(--color-foreground) 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(var(--color-foreground) 0 0) content-box exclude, linear-gradient(var(--color-foreground) 0 0);
+  }
+  .orbit::before {
+    content: '';
+    position: absolute;
+    inset: -25%;
+    background: conic-gradient(transparent 0, var(--color-accent) 2%, var(--color-accent) 26%, transparent 28%);
+    animation: spin 1.2s steps(72) infinite var(--loops);
+  }
   /* The "z" on the card's ground at the picture's top right, the small one rising and fading after the large. Twelve
      steps over four seconds: three frames a second, and none while the window rests (--loops). */
   .sleep { position: absolute; right: -4px; top: -4px; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; background: var(--rail-ground); pointer-events: none; }
@@ -526,7 +542,7 @@
     border-radius: var(--radius-full);
     background: var(--color-foreground);
     box-shadow: 0 0 0 2px var(--rail-ground);
-    color: var(--rail-ground);
+    color: var(--color-on-foreground);
     font-size: 11px;
     font-weight: 700;
     line-height: 1;
@@ -559,7 +575,7 @@
     .app-rail { display: none; }
   }
   /* Still under reduced motion, as Spinner.svelte. */
-  @media (prefers-reduced-motion: reduce) { .orbit rect, .sleep .z, .news::after, .unread::after { animation: none; } .sleep .z { opacity: 0.8; } }
-  :global(html[data-motion='reduced']) :is(.orbit rect, .sleep .z, .news::after, .unread::after) { animation: none; }
+  @media (prefers-reduced-motion: reduce) { .orbit::before, .sleep .z, .news::after, .unread::after { animation: none; } .sleep .z { opacity: 0.8; } }
+  :global(html[data-motion='reduced']) :is(.orbit::before, .sleep .z, .news::after, .unread::after) { animation: none; }
   :global(html[data-motion='reduced']) .sleep .z { opacity: 0.8; }
 </style>

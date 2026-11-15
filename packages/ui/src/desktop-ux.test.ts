@@ -228,11 +228,11 @@ test("the rail counts the threads at work and a mochi's unread replies, and the 
     expect(unread.closest('[data-testid=rail-bot]')!.getAttribute('aria-label')).toContain(count === 1 ? strings.app.rail.unreadOne : fill(strings.app.rail.unreadMany, { count: String(count) }));
     // At work, the arc is a circle around the disc; opened, the picture turns squircle and the arc follows its corners.
     const worker = query<HTMLButtonElement>('[data-testid=rail-bot][data-state=working]');
-    const arc = () => worker.querySelector('[data-testid=rail-bot-orbit] rect')!;
-    expect(arc().getAttribute('rx')).toBe('24.5');
+    const arc = () => worker.querySelector<HTMLElement>('[data-testid=rail-bot-orbit]')!.style.getPropertyValue('--orbit-radius');
+    expect(arc()).toBe('25.75px');
     worker.click();
     await waitFor(() => worker.getAttribute('aria-current') === 'page');
-    expect(arc().getAttribute('rx')).toBe(String(Math.round(44 * 0.32) + 2.5));
+    expect(arc()).toBe(`${Math.round(44 * 0.32) + 3.75}px`);
     expect(worker.querySelector('.agent-avatar.squircle')).not.toBeNull();
   } finally {
     store.showChat();
