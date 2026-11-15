@@ -16,6 +16,8 @@ export const fr: Translation = {
       label: 'Boite',
       waitingOne: '1 a besoin de vous',
       waitingMany: '{count} ont besoin de vous',
+      workingOne: '1 au travail',
+      workingMany: '{count} au travail',
       bots: 'Mochis',
       add: 'Nouveau mochi ou équipe',
       botWaiting: '{name} a besoin de vous',
@@ -24,6 +26,8 @@ export const fr: Translation = {
       botPaused: '{name} est en pause',
       state: { waiting: 'a besoin de vous', failed: 'a échoué', working: 'travaille', paused: 'en pause' },
       unread: 'nouvelles réponses',
+      unreadOne: '1 nouvelle réponse',
+      unreadMany: '{count} nouvelles réponses',
       /** The list foot's limits line, in its tooltip (QuotaLine.svelte): the least left, the window and the account it is on. */
       limitsLeft: '{percent} % restant : {window}, {account}',
     }

@@ -6,7 +6,7 @@
   import { contactsShown } from '../lib/contacts-rail.svelte';
   import { workspace } from '../lib/workspace.svelte';
   import { followAgentDirectories } from '../lib/agent-directory.svelte';
-  import { agentsAtWork } from '../lib/work-counts';
+  import { agentsAtWork, threadsAtWork } from '../lib/work-counts';
 
   /**
    * The phone's places, along the bottom edge where a thumb rests, the
@@ -34,11 +34,14 @@
   const stores = $derived(workspace.machines.length ? workspace.machines.map(machine => machine.store) : [store]);
   const atWork = $derived(bots ? agentsAtWork(stores) : { count: 0, waiting: false });
   followAgentDirectories(() => stores, () => bots);
+  /** The conversations at work, as the desktop rail's Threads button counts them. */
+  const working = $derived(threadsAtWork(stores));
+  const workingLabel = $derived(working === 1 ? strings.app.rail.workingOne : fill(strings.app.rail.workingMany, { count: String(working) }));
 </script>
 
 <nav class="mobile-tabs" data-testid="mobile-tabs" aria-label={strings.mobile.navigation} {inert}>
-  <button type="button" class="tab" data-testid="mobile-conversations" aria-current={page('threads')} onclick={() => navigate('threads')}>
-    <span class="glyph"><MessageSquare size={20} /></span><span class="name ui-label">{strings.sidebar.threads}</span>
+  <button type="button" class="tab" data-testid="mobile-conversations" aria-current={page('threads')} aria-label={working ? `${strings.sidebar.threads}, ${workingLabel}` : undefined} onclick={() => navigate('threads')}>
+    <span class="glyph"><MessageSquare size={20} />{#if working}<span class="badge work" data-testid="mobile-threads-working">{working > 99 ? '99+' : working}</span>{/if}</span><span class="name ui-label">{strings.sidebar.threads}</span>
   </button>
   <button type="button" class="tab" data-testid="mobile-activity" aria-current={page('activity')} aria-label={waiting ? `${strings.mobile.activity}, ${fill(strings.mobile.waitingElsewhere, { count: String(waiting) })}` : undefined} onclick={() => navigate('activity')}>
     <span class="glyph"><Inbox size={20} />{#if waiting}<span class="badge" data-testid="mobile-activity-waiting">{waiting > 99 ? '99+' : waiting}</span>{/if}</span><span class="name ui-label">{strings.mobile.activity}</span>
@@ -88,6 +91,8 @@
       /* Two digits and "99+" on one line, at the tab's own spacing: it grows to the right, never wraps. */
       white-space: nowrap; letter-spacing: 0; font-variant-numeric: tabular-nums;
     }
+    /* The threads at work: the same count in the accent the working rows' arc wears. */
+    .badge.work { color: var(--color-accent); }
     /* Bots: a dot, the count is Activity's alone (the number stays in the tab's name). Amber once one asks, grey while they work. */
     .dot {
       position: absolute; top: 1px; left: calc(50% + 8px); width: 8px; height: 8px; border-radius: var(--radius-full);

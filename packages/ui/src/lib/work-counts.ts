@@ -41,3 +41,19 @@ export function agentsAtWork(stores: readonly Store[]): WorkCount {
   }
   return { count, waiting };
 }
+
+/**
+ * The conversations at work on every machine, as the projects' Working counts read them (lib/recent.svelte.ts
+ * workingThread): each listed thread of a project still shown, bots' own threads and helpers left to their own marks.
+ * The rail's Threads button and the phone's Threads tab carry it.
+ */
+export function threadsAtWork(stores: readonly Pick<Store, 'projects' | 'threadsOf' | 'subagents' | 'pendingQuestions' | 'pendingPermissions'>[]): number {
+  let count = 0;
+  for (const store of stores) {
+    for (const project of store.projects) {
+      if (project.archived) continue;
+      for (const thread of store.threadsOf(project.id)) if (workingThread(store, thread)) count++;
+    }
+  }
+  return count;
+}
