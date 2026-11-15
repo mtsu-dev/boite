@@ -608,7 +608,7 @@ export class Workspace {
     await this.select(local, undefined, local.draft?.projectId ?? undefined);
   }
 
-  /** The network changed: every machine waiting to retry tries now; one whose handshake is under way keeps it (`WsClient.wake`). */
+  /** The network changed, or a machine is back (`GroupLinks.start`): every machine waiting to retry tries now; one whose handshake is under way keeps it (`WsClient.wake`). */
   resumeMachines(): void {
     for (const machine of this.machines) {
       const client = machine.store.client;
