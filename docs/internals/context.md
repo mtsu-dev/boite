@@ -340,7 +340,8 @@ applies.
 
 Limits of the experiment: copies are held in memory, so a restart forgets them
 (the tail marker is persisted). A copy runs outside the scheduler's account
-slots and its usage is recorded on no turn. An unused Claude copy's transcript
+slots and its usage is recorded on no turn; the running totals it ends on are
+kept for the session that resumes it ([usage](usage.md#the-api-estimate)). An unused Claude copy's transcript
 is removed in an account Boite isolated; Codex keeps its unused forks. The
 in-memory client stores the setting but makes no copy.
 

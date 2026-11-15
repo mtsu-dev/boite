@@ -133,6 +133,8 @@ export class ClaudeTurn {
   #restores: string | null = null;
   /** The CLI's running totals as its result for this turn left them. */
   #agentTotals: AgentTotals | null = null;
+  /** The session generation the turn went on to with a swap, which its later totals belong to. */
+  #swappedTo: number | null = null;
   /** What the last API request of the turn carried, the context meter's reading. */
   #contextTokens: number | null = null;
   /** The lifetime of the last cache write the main loop made in this turn. */
@@ -233,12 +235,15 @@ export class ClaudeTurn {
     if (swap === null) return;
     this.#swap = null;
     const { prompt: _prompt, attachments: _attachments, continuation: _continuation, ...kept } = this.ctx;
+    const generation = (kept.thread.sessionGeneration ?? 0) + 1;
     this.ctx = {
       ...kept, prompt: swap.tail, attachments: [], sessionId: swap.sessionId, resumeAt: null,
-      // A new generation has no finished turn yet (`sessionUsage`).
-      sessionBefore: { costUsd: 0, tokens: 0 },
-      thread: { ...kept.thread, sessionId: swap.sessionId, sessionResumeAt: null, sessionGeneration: (kept.thread.sessionGeneration ?? 0) + 1 },
+      // The CLI resuming the copy restores the totals the copy's compaction left; a copy that
+      // reported none leaves the new generation with no finished turn yet (`sessionUsage`).
+      sessionBefore: swap.totals ?? { costUsd: 0, tokens: 0 },
+      thread: { ...kept.thread, sessionId: swap.sessionId, sessionResumeAt: null, sessionGeneration: generation },
     };
+    this.#swappedTo = generation;
     this.#sessionId = swap.sessionId;
     this.#lastEntry = null;
     this.#lastIsResult = false;
@@ -551,7 +556,9 @@ export class ClaudeTurn {
   #handleResult(message: SDKResultMessage): void {
     const usage = mapUsage(message, this.#costBefore, this.#heldBefore);
     this.#usage = this.#usageBefore === null ? usage : sumUsage(this.#usageBefore, usage);
-    this.#agentTotals = agentTotalsOf(message, this.#restores);
+    const totals = agentTotalsOf(message, this.#restores);
+    // Totals of the compacted session are what the next turn on its generation resumes from.
+    this.#agentTotals = totals !== null && this.#swappedTo !== null ? { ...totals, sessionGeneration: this.#swappedTo } : totals;
     this.#window = contextWindowOf(message, this.ctx.thread.model) ?? this.#window;
     // The run a swap ended measured the old session: the core already reads the compacted one.
     if (this.#swap !== null) return;

@@ -7,6 +7,7 @@ import { compactFocus, openWithCompaction } from '../src/drivers/claude/compacti
 import { STEP_HOOK_TIMEOUT_S } from '../src/drivers/claude/step.ts';
 import { ClaudeTurn } from '../src/drivers/claude/turn.ts';
 import type { TurnContext } from '../src/drivers/types.ts';
+import { sessionUsage } from '../src/usage.ts';
 
 const COMPACT_FOCUS = 'Keep requests, corrections, decisions, identifiers and the next step.';
 
@@ -234,7 +235,7 @@ const STEP_LIMIT = 200_000;
  * copy answer too. `preCompact`: after the second batch, the CLI's own
  * threshold is crossed and it runs `PreCompact(auto)` before compacting.
  */
-function stepTurn(plan: { first: number; second: number; preCompact?: boolean }) {
+function stepTurn(plan: { first: number; second: number; preCompact?: boolean; copyResult?: object; resumedResult?: object }) {
   const hooks: { event: string; output: unknown }[] = [];
   scripted(() => undefined, (fake, prompt) => {
     const { options } = calls[queries.indexOf(fake)]!;
@@ -242,13 +243,13 @@ function stepTurn(plan: { first: number; second: number; preCompact?: boolean })
       fake.emit(init('sess-copy'));
       fake.emit(sdk({ type: 'system', subtype: 'compact_boundary', session_id: 'sess-copy', uuid: 'copy-boundary',
         compact_metadata: { trigger: 'manual', pre_tokens: plan.first, post_tokens: 20_000 } }));
-      fake.emit(success('sess-copy'));
+      fake.emit(sdk({ ...(success('sess-copy') as object), ...plan.copyResult }));
       return;
     }
     if (options.resume === 'sess-copy') {
       fake.emit(init('sess-copy'));
       fake.emit(sdk({ ...(assistant('sess-copy', [{ type: 'text', text: 'went on' }]) as object), uuid: 'copy-answer' }));
-      fake.emit(success('sess-copy'));
+      fake.emit(sdk({ ...(success('sess-copy') as object), ...plan.resumedResult }));
       return;
     }
     const hook = async (event: 'PostToolBatch' | 'PreCompact', input: Record<string, unknown>): Promise<unknown> => {
@@ -325,6 +326,33 @@ test('a tool batch past the limit swaps in the copy forked at a tool result, and
     expect(parts.some(part => part.type === 'error')).toBe(false);
     await waitFor(() => finished.length > 0);
     expect(finished).toEqual(['done']);
+  } finally { client.close(); }
+});
+
+test('a turn that went on on a swapped-in copy is charged its own share, not the copy\'s restored totals', async () => {
+  // trn_kr7c6qd9ekp4wy29r2dg of a real journal (2026-11-15): the CLI on the copy restored its $55.632 and
+  // ended at $55.767, so its own requests cost $0.135; the turn was charged all $55.767.
+  const model = (tokens: { input: number; output: number; read: number; write: number }, costUSD: number) => ({ 'claude-opus-5': {
+    inputTokens: tokens.input, outputTokens: tokens.output, cacheReadInputTokens: tokens.read, cacheCreationInputTokens: tokens.write,
+    webSearchRequests: 0, costUSD, contextWindow: 1_000_000, maxOutputTokens: 64_000 } });
+  const copy = { input: 2_400, output: 180_000, read: 48_000_000, write: 2_600_000 };
+  const own = { input: 6, output: 616, read: 109_584, write: 12_591 };
+  const client = await harness.connect();
+  try {
+    const { threadId, finished } = await stepThread(client);
+    stepTurn({ first: 175_000, second: 200_500,
+      copyResult: { total_cost_usd: 55.632, usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }, modelUsage: model(copy, 55.632) },
+      resumedResult: { total_cost_usd: 55.767, usage: { input_tokens: own.input, output_tokens: own.output, cache_read_input_tokens: own.read, cache_creation_input_tokens: own.write },
+        modelUsage: model({ input: copy.input + own.input, output: copy.output + own.output, read: copy.read + own.read, write: copy.write + own.write }, 55.767) } });
+    expect(await runTurn(client, threadId, 'work')).toBe('done');
+    await waitFor(() => finished.length > 0);
+    const turn = harness.core.journal.lastTurn(threadId)!;
+    // The main CLI's 0.0125, then the copy's 55.767 - 55.632.
+    expect(turn.usage!.costUsdEquivalent).toBeCloseTo(0.0125 + 0.135, 9);
+    // Its totals are the compacted session's, which the next turn on generation 1 resumes from.
+    expect(turn.execution?.sessionGeneration).toBe(0);
+    expect(turn.agentTotals).toMatchObject({ costUsd: 55.767, sessionGeneration: 1 });
+    expect(sessionUsage(harness.core, threadId, 1, '')).toMatchObject({ costUsd: 55.767 });
   } finally { client.close(); }
 });
 
