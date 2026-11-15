@@ -206,6 +206,20 @@ export function reaches(total: number[], count: number, from: number, at: number
   return low;
 }
 
+/**
+ * Where the rows drawn at the bottom of the list start: up to `rows` above the
+ * first one on screen, `first`, but no further once `room` pixels are drawn
+ * above the view's top, `top`. A row as tall as several screens, a long turn's
+ * row of paragraphs and calls, is overscan enough on its own: the rows above it
+ * would be thousands of pixels of offscreen DOM, built for nothing on every
+ * open (docs/internals/performance.md, "A long turn is many rows").
+ */
+export function overscanAbove(total: number[], first: number, top: number, room: number, rows: number): number {
+  let start = first;
+  while (start > 0 && first - start < rows && top - (total[start] ?? 0) < room) start -= 1;
+  return start;
+}
+
 /** Keeps in each of `held` only the ids `lists` still carry: the heights and rises of rows `releaseOlder` took off the head go. */
 export function keepOnly(held: readonly (Map<string, unknown> | Set<string>)[], ...lists: readonly (readonly { id: string }[])[]): void {
   const ids = new Set(lists.flatMap((list) => list.map((row) => row.id)));

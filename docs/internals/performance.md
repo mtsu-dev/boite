@@ -1203,6 +1203,15 @@ for the files card. `?fake=1&heavy=1` seeds that shape: forty messages,
   wheel notch away from the bottom reads no layout, a diff's width comes from
   its `ResizeObserver` entry, page visibility has one listener for every call
   clock, and a call's description is kept by its input object.
+- At the bottom, the rows drawn above the screen stop at two, or sooner once
+  one screen is drawn there (`overscanAbove` in `lib/message-window.ts`). A row
+  of a session that writes a sentence before each call is taller than the
+  screen, so it is its own overscan. Reading history keeps four rows each side
+  whatever they weigh: a bound in pixels there changes no open, and the
+  heavy-thread scroll benches swing too much at load 20 to 40 to judge it. An
+  unmeasured row is worth 100 px per paragraph when that beats 11 px per part,
+  and a row's `data-gap` is set when it mounts, so its first measure writes
+  nothing to the page.
 
 Medians of five runs on 2026-10-07, 1280 x 890, software compositing, the base
 being `89556311`: a wheel up the long turn went from 1,895 to 784 ms of
@@ -1211,6 +1220,41 @@ main-thread CPU per three seconds, with 3,271 nodes under the scroller down to
 435 ms of long tasks to none, covering 47,000 px of its gesture instead of
 26,000. The ordinary 400-message thread measured 878 then 870 ms.
 [Heavy-thread report](../../bench/results/2026-10-07-heavy-thread.md).
+
+ADEMark's A11 opens a turn of 1,000 steps, a sentence and a `Read` each, from
+a short thread. Rows of twenty steps measure about 2,900 px; at the bottom of
+an 830 px view the window drew the last one and the two above it: 73
+paragraphs, 1,366 nodes under the timeline, all built by the click. Drawn
+alone, the last row is 25 paragraphs and 482 nodes. On 2026-11-14, production
+builds alternated behind one core in headless Chrome on a machine at load 12
+to 21, nine opens of each after a first: main-thread CPU per open went from a
+median of 213 to 124 ms, the first open after a reload, on estimates, from 241
+to 501 ms to 82 to 180 ms, and the elements a style pass recalculated from
+1,719 to 675. Each open still forces two layouts, the first of them the one the
+frame would run. The page's last mutation after the click now lands with the
+long task, about 70 ms in; A11's clock starts before the harness finds and
+clicks the row over devtools. Those numbers come from a build that also bounded
+the overscan of a history read in pixels, since removed; the open runs the same
+code.
+
+A11 itself, on the build of this change against main's, the two alternated
+behind one core on 2026-11-14, five runs of five opens each, the machine at
+load 15 to 56 from other work (`bench/ademark`, `run.ts --ade boite --tests A11`
+with `ADEMARK_BOITE_UI` set to each build):
+
+| Run | Load | main | This change |
+| --- | --- | --- | --- |
+| 1 | 47, 56 | 750 ms | 261 ms |
+| 2 | 37, 30 | 346 ms | 245 ms |
+| 3 | 25, 20 | 346 ms | 186 ms |
+| 4 | 15, 22 | 305 ms | 264 ms |
+| 5 | 29, 25 | 331 ms | 274 ms |
+
+The median run went from 346 to 261 ms, and every run of the change is under
+every run of main. The open draws one row and 482 nodes at 1600 x 1000, 475 at
+390 x 844. From there, three wheel notches or finger drags up and then twelve
+more in a row never showed the unmounted space above the rows: 0 px of it on
+screen in each of 267 frames on the desktop and 318 on the phone.
 
 `packages/ui/src/render-cost.test.ts` rejects unbounded blur, forbidden endless
 animation properties, outer-container `:has()` and outline width transitions.

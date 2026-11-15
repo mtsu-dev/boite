@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, expect, onTestFinished, vi } from 'vitest';
 import { test } from '../test/fake-client';
 import { flushSync, mount, unmount } from 'svelte';
-import { DEFAULT_DELEGATION_CONFIG, type AgentLetter, type Message } from '@boite/contracts';
+import { DEFAULT_DELEGATION_CONFIG, type AgentLetter, type Message, type MessagePart } from '@boite/contracts';
 import { strings } from '../lib/strings';
 import MessageList from './MessageList.svelte';
 import JumpLatest from './JumpLatest.svelte';
-import { windowStats } from '../lib/message-window';
+import { OVERSCAN, windowStats } from '../lib/message-window';
 import { TurnFileCache } from '../lib/turn-files';
 import { turnProgressStats } from '../lib/turn-progress.svelte';
 import { findHits } from '../lib/find';
@@ -1508,6 +1508,36 @@ test('a scroll inside the rows already drawn redraws nothing and reads no tool c
   const after = rowsDrawn();
   expect(after).toHaveLength(drawn.length);
   after.forEach((node, index) => expect(node).toBe(drawn[index]));
+});
+
+/**
+ * ADEMark's A11 session: a thousand steps of a sentence and a `Read`, one
+ * message cut in rows of twenty steps, each taller than the screen. At the
+ * bottom the window drew the last row and the two above it, 73 paragraphs and
+ * 1,366 nodes for an 830 px view, all built by the click that opens the thread.
+ */
+test('a turn that writes a sentence before each call opens on the one row that fills the screen', async () => {
+  const parts: MessagePart[] = [];
+  for (let step = 1; step <= 1000; step += 1) {
+    parts.push({ type: 'text', text: `Step ${step} of 1000. I read src/invoices.ts again.` },
+      { type: 'tool', toolId: `read-${step}`, name: 'Read', input: { file_path: 'src/invoices.ts' }, output: 'ok', status: 'done' });
+  }
+  const messages: Message[] = [{ id: 'm-steps', threadId: 't-steps', turnId: 'turn-steps', role: 'assistant', parts, state: 'complete', createdAt: 0 }];
+  // Fifty rows of twenty paragraphs, each worth 2,000 px until measured.
+  stubLayout(100_000);
+  running = mount(MessageList, { target: document.body, props: { store, threadId: 't-steps', messages } });
+  await settle();
+  expect(rowsDrawn()).toHaveLength(1);
+  expect(rowsDrawn()[0]!.textContent).toContain('Step 1000 of 1000');
+  expect(rowsDrawn()[0]!.textContent).not.toContain('Step 980 of 1000');
+
+  // Reading history keeps its four rows each side, whatever they weigh: the bound in pixels holds at the bottom only.
+  const timeline = document.querySelector<HTMLElement>('[data-testid=timeline]')!;
+  timeline.scrollTop = 100_000 - VIEW_HEIGHT - 100;
+  timeline.dispatchEvent(new Event('scroll'));
+  await settle();
+  expect(rowsDrawn()).toHaveLength(1 + OVERSCAN);
+  expect(rowsDrawn()[0]!.textContent).toContain('Step 901 of 1000');
 });
 
 test('Ctrl+F opens the row of a long message that holds the match, not its first row', async ({ ready }) => {
