@@ -3,78 +3,90 @@
 </p>
 <h1 align="center">boite <sub>[bwat]</sub></h1>
 <p align="center">
-  <a href="https://github.com/mtsu-dev/boite/releases">Download page</a> ·
+  An agentic development environment (ADE) for the coding agents you already use.
+</p>
+<p align="center">
+  <a href="https://github.com/mtsu-dev/boite/releases">Download</a> ·
   <a href="docs/README.md">Documentation</a> ·
   <a href="docs/server.md">Self-host</a>
 </p>
 
-<a href="https://mtsu.dev"><img align="right" src="https://mtsu.dev/press/mtsu-icon-1024.png" width="48" alt="MTSU"></a>
-
-boite is a desktop app and self-hosted server for coding agents. Run Claude Code,
-Codex or [another supported agent](docs/supported-agents.md) with your existing accounts.
-Keep your projects, conversations and agents together, across your computers and phone.
-
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/media/boite-dark.png" />
-  <img src="docs/media/boite-light.png" alt="Agent conversation and code changes in Boite" width="100%" />
+  <source media="(prefers-color-scheme: dark)" srcset="docs/media/boite-dark.gif" />
+  <img src="docs/media/boite-light.gif" alt="A finished conversation in Boite: the panel opens on its surfaces, shows the two reviewer subagents, then the code changes" width="100%" />
 </picture>
 
-[Watch the walkthrough](docs/media/boite.mp4)
+## An ADE, not an IDE
 
-<details>
-<summary>Animated preview</summary>
+An IDE is built around a code editor: you write the code and an assistant
+helps. An ADE is built around agents: they write the code, you give them
+tasks, review what they did and decide what ships.
 
-![Open the changes beside a conversation, then fade from light to dark](docs/media/boite.gif)
+Boite runs Claude Code, Codex and
+[the other supported agents](docs/supported-agents.md) with your own accounts,
+and gives each task its own conversation. Everything the task touches opens in
+a panel beside the chat: the diff, the project's files, a web page the agent
+is testing, a phone emulator, a terminal. The agents run on the computer that
+holds the project; you follow them from your desktop or your phone.
 
-</details>
+## What it does
 
-## Features
-
-- Choose a provider, model and account for each conversation.
-- Read streamed responses and tool calls beside files, diffs, previews and an agent's browser.
-- Isolate tasks in Git worktrees, delegate to subagents and run workflows.
-- Follow the same work from your desktop, a paired phone or the Android app.
-- Connect machines and headless servers; each runs agents beside its own projects.
-- Give ongoing work, scheduled routines and project monitoring to mochis.
+- One app for every agent: pick the agent, model, effort and account per
+  conversation, and switch them mid-conversation.
+- Review beside the chat: streamed answers and tool calls next to diffs,
+  files, previews, the agent's browser and device screens.
+- Isolated tasks: give a conversation its own Git worktree and branch, and
+  follow its pull request from the same place.
+- Agents working together: subagents, workflows of delegated steps, a council
+  of models reviewing one request, and mochis, persistent agents with memory
+  and schedules.
+- Everywhere your work is: pair a phone, connect several computers into one
+  group, or run Boite as a headless server.
+- Keep control: permission prompts, usage and subscription limits per account,
+  and a task manager showing what each agent uses on each machine.
 
 ## Get started
 
-Boite is open source and in beta. The [download page](https://github.com/mtsu-dev/boite/releases)
-lists builds for Windows, macOS and Linux, including Apple Silicon and Linux ARM64.
-New release notes put the download links under each platform, above the changelog.
+Boite is open source and in beta. The
+[download page](https://github.com/mtsu-dev/boite/releases) has builds for
+Windows, macOS and Linux, including Apple Silicon and Linux ARM64.
 
 > [!WARNING]
-> Current downloads are nightly prereleases. Nightly builds are unstable and may contain
-> bugs or unfinished changes. Back up your Boite data before installing or switching channels.
+> Current downloads are nightly prereleases. They are unstable and may contain
+> bugs or unfinished changes. Back up your Boite data before installing or
+> switching channels.
 
-1. Open the [download page](https://github.com/mtsu-dev/boite/releases) and choose your system and processor.
-2. Install and sign in to your agents, then connect them in Settings, Providers.
-3. Open a project, choose a model and start a conversation.
+1. Download and install Boite for your system.
+2. In Settings, Providers, connect your agents. Boite installs them when it
+   can, and you sign in with your existing accounts.
+3. Open a project folder, pick a model and send a first message.
 
 See [installation](docs/install.md), [first steps](docs/first-steps.md),
-[phone pairing](docs/phone.md) and [updates](docs/updates.md). To run agents on
-another machine, use the [server guide](docs/server.md).
+[phone pairing](docs/phone.md) and [updates](docs/updates.md). To run agents
+on another machine, read the [server guide](docs/server.md).
 
 ## Documentation
 
-The [user guide](docs/README.md) has one short page per feature. Start with
-[supported agents](docs/supported-agents.md), [accounts](docs/accounts.md),
-[machines](docs/machines.md) or [mochis](docs/mochis.md). The
+The [user guide](docs/README.md) has one short page per feature. Good places
+to start: [supported agents](docs/supported-agents.md),
+[the right panel](docs/panel.md), [subagents](docs/subagents.md),
+[machines](docs/machines.md) and [mochis](docs/mochis.md). The
 [technical reference](docs/internals/README.md) covers the implementation.
 
 ## Development
 
-The app uses a Bun core, Svelte 5 and a Tauri 2 desktop shell.
-Install the Bun version in `package.json`, then explore the UI with sample data:
+Boite has a Bun core, a Svelte 5 UI and a Tauri 2 desktop shell. Install the
+Bun version named in `package.json`, then try the UI with sample data:
 
 ```sh
 bun install --frozen-lockfile
 bun run dev:ui
 ```
 
-Open the local URL with `?fake=1` to try it without agent calls.
+Open the local URL with `?fake=1` to use it without any agent.
 [Contributing](CONTRIBUTING.md) covers what we accept and the checks;
-[development](docs/internals/development.md) covers the real core and desktop builds.
+[development](docs/internals/development.md) covers the real core, desktop
+builds and how the media on this page is recorded.
 
 ## Thanks
 
@@ -87,3 +99,6 @@ This project also follows
 ## License
 
 [MIT](LICENSE). Copyright © 2026 boite contributors.
+
+<a href="https://mtsu.dev"><img src="https://mtsu.dev/press/mtsu-icon-1024.png" width="32" alt="MTSU" align="left" /></a>
+Made by [MTSU](https://mtsu.dev).

@@ -1,8 +1,11 @@
 # Boite user guide
 
-Boite runs your coding agents in one app, on your computers and your phone.
-These pages explain how to use it. Each one is short and starts with what the
-feature is for.
+Boite is an agentic development environment (ADE): an app built around your
+coding agents rather than a code editor. The agents run on your computers, and
+you follow their work from any of them or from your phone.
+
+These pages explain how to use Boite. Each one is short and starts with what
+the feature is for.
 
 ## Start here
 

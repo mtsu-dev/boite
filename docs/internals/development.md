@@ -1426,11 +1426,13 @@ at most 200 paths, defaulting to 50, and report whether the walk was capped.
 
 ## README presentation
 
-The README opens with the app logo and static, theme-aware screenshots.
-Its optional ten-second film follows one action: opening the launch-page diff
-beside a conversation. It keeps the real timing of the clicks, holds the diff
-for reading and fades from light to dark over 850 ms. Sample project data and
-recording controls never enter a production build; no live providers run.
+The README opens with the app logo, a one-line description and a nine-second
+film shown by default: a `<picture>` element serves `boite-light.gif` or
+`boite-dark.gif` after the reader's GitHub theme. Both films follow the same
+actions: open the panel on its surfaces, show the two reviewer subagents, then
+open the launch-page diff they checked. They keep the real timing of the clicks
+and hold the diff for reading. Sample project data and recording controls never
+enter a production build; no live providers run.
 
 `scripts/readme/record.ts` starts an isolated Vite fixture, injects
 `scripts/readme/fixture.ts` through a recording-only plugin and fills the frame
@@ -1440,9 +1442,10 @@ bounds, captures desktop and 390-pixel phone views, and closes its own browser
 and server on success or failure.
 
 Install Playwright Core 1.63.0 in a separate tools directory and its recording
-encoder with `playwright-core install ffmpeg`. Supply a Chrome executable with
-View Transitions and a full FFmpeg build with H.264, VP8 decoding and GIF
-palette filters:
+encoder with `playwright-core install ffmpeg`. Supply a Chrome executable and a
+full FFmpeg build with H.264, VP8 decoding and GIF palette filters. `--angle`
+picks Chrome's ANGLE backend: `gl-egl` by default, `vulkan` on a machine
+without EGL:
 
 ```sh
 bun scripts/readme/record.ts \
@@ -1452,17 +1455,16 @@ bun scripts/readme/record.ts \
   --scratch /tmp/boite-readme-recording
 ```
 
-The default output is `docs/media`: one silent ten-second 1280 by 800 H.264 MP4,
-a matching 960-pixel GIF at 15 fps capped at 5 MiB, and two 2560 by 1600 static
-screenshots. The single browser recording changes the theme in place through
-a recording-only View Transition. There is no scene acceleration or blending
-of separately timed captures.
+The default output is `docs/media`: one 960-pixel GIF per theme, at 15 fps and
+128 colors, each capped at 5 MiB. Each theme is one continuous browser
+recording, with no scene acceleration or blending of separate captures. The
+1280 by 800 H.264 MP4 each GIF is encoded from stays in the scratch directory.
 
-`--inspect` exercises the same flow and captures both themes without encoding;
-`--output` changes the delivery directory. Raw video, phone captures, encoder
-logs and verification JSON stay in the scratch directory. `--encode-only`
-reuses `capture.json` and its raw recording to regenerate the MP4/GIF without
-a browser. The former `--combine-only` option has been replaced.
+`--inspect` runs the same flow in both themes without recording or encoding;
+`--output` changes the delivery directory. Raw video, the MP4s, desktop and
+phone captures, encoder logs and verification JSON stay in the scratch
+directory. `--encode-only` reuses each theme's `capture-<theme>.json` and its
+raw recording to regenerate the GIFs without a browser.
 
 Check both GitHub themes and the phone README layout after changing the text or
 media. Inspect the film and every capture before replacing committed media;
