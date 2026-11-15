@@ -16,9 +16,13 @@ export function seedReadme(ctx: FakeContext): void {
     't-team-running': 'Check accessibility',
     't-team-done': 'Review the layout',
   };
+  // The film shows two finished reviews: drop the demo's other children and their background runs.
   for (const [id, thread] of ctx.threads) {
-    if (!titles[id] && !thread.parentThreadId) ctx.threads.delete(id);
+    if (!titles[id] && (!thread.parentThreadId || id.startsWith('t-team-'))) ctx.threads.delete(id);
   }
+  const team = ctx.delegationAgents.get('t-trace') ?? [];
+  ctx.delegationAgents.set('t-trace', team.filter(row => ctx.threads.has(row.threadId)));
+  ctx.delegationTurns.set('t-trace', 1);
   ctx.pendingPermissions.clear();
   ctx.pendingQuestions.clear();
   for (const thread of ctx.threads.values()) {
@@ -27,6 +31,7 @@ export function seedReadme(ctx: FakeContext): void {
     thread.createdAt = at; thread.updatedAt = at + 41_000;
     thread.lastUserMessageAt = at;
     thread.status = 'idle'; thread.load = null;
+    thread.background = []; thread.backgroundHistory = [];
     thread.memoryEvents = []; thread.promptCache = undefined;
     thread.pullRequest = null;
     for (const turn of thread.turns) {
