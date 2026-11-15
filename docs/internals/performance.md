@@ -677,7 +677,7 @@ the turn's other events, which no channel holds back.
   came with its bytes reads its size from their header. Nothing around the box
   moves when the bytes land: the 180 by 120 place it replaced grew to the
   thumbnail and pushed what followed. An unmeasured prompt counts its
-  thumbnails on top of the 80 px estimate (`estimateSlot`), so the spacers
+  thumbnails on top of the 80 px base estimate (`estimateSlot`), so the spacers
   are closer to what scrolling up mounts. `tests/e2e/thread-loading.test.ts` checks
   this on a real core with 24 screenshots: the fetches on opening, and the
   reader's text keeping its position to the pixel while the scrolled pictures
@@ -1265,6 +1265,57 @@ The [frame report](../../bench/results/2026-09-30-ui-frames.md) and
 [typing/scroll report](../../bench/results/2026-09-30-typing-and-scroll.md) retain
 2026-09-30 measurements and the streaming-fixture correction. They use software
 compositing and mobile emulation, with uncontrolled background load.
+
+### A long answer is many rows
+
+A heavy conversation can also weigh in its text: answers of 20 to 40 KB of
+Markdown and code. `?fake=1&markdown=1` seeds twenty of them (`t-markdown`);
+`bench/ui-frames.ts` opens that thread inside its measured window ("open heavy
+thread") and wheels up it ("heavy answers scroll"). Its last column counts the
+long animation frames of the window and their total.
+
+- An unmeasured row is worth the mean height the session measured for its
+  class: its role, text only or not, and the log2 of its characters
+  (`SlotClasses` in `lib/message-window.ts`). A class never measured counts its
+  characters as lines of 90 at 24 px, never under 80 px; a prompt with
+  pictures keeps its row of thumbnails. A row's estimate is taken once, so a
+  mean that moves never shifts the rows under it.
+- A text part from 8 KB (`SPLIT_FROM`) is cut at top-level Markdown blocks into
+  rows of at least 4 KB (`textCuts` in `lib/timeline-rows.ts`): after a blank
+  line, never inside a fence, a list, an indented block or a table, never on
+  the line after a list, and never after the first use of a link or footnote
+  definition, so definitions and their uses share the last row. Rows are
+  `<message>#<part>.<block>`, the first keeping the message's id. Only whole
+  lines decide, so a streamed answer keeps its row ids when it ends. A slice's
+  bubble drops the edge it shares with the next one and reaches up through the
+  12 px between their rows. Rows of 2 KB from 4 KB opened faster but cost the
+  most to scroll through; rows of 8 KB from 16 KB saved nothing on open.
+- The finished answers of the rows the window has not drawn are split into the
+  blocks `Prose` draws and, from 16 KB of text, rendered in a lazy worker
+  (`prepareBlocks` in `lib/markdown.ts`, `lib/markdown-prepare.worker.ts`). The
+  HTML lands in the block cache, so a row scrolled to later only inserts it.
+  The rows on screen still render on the main thread, and so does every row
+  when the worker is missing or answers after 50 ms (`PREPARE_WAIT_MS`). The
+  rows are not held back until the worker answers: a page is inserted by the
+  store, outside the list, and a list that hid rows it was given would move the
+  reader's anchor.
+
+On 2026-11-15, `nice bun bench/ui-frames.ts --cpu 4 --runs 2 --only "long
+thread scroll,open heavy thread,heavy answers scroll"`, 1280 x 890, software
+compositing, two runs each, long animation frames in ms, the base being
+`d43ed1ee` with the fake thread added:
+
+| Build | Open heavy thread | Heavy answers scroll | Long thread scroll |
+| --- | --- | --- | --- |
+| Base | 1,061, 963 | 0, 0 | 2,464, 2,264 |
+| Class estimates | 643, 740 | 0, 0 | 1,464, 1,490 |
+| And rows of 2 KB | 216, 316 | 814, 814 | 1,711, 2,053 |
+| And the worker | 160, 174 | 934, 1,211 | 1,223, 874 |
+| Rows of 4 KB instead | 278, 213 | 782, 676 | not run |
+
+Cutting answers trades the open for the scroll: one answer drawn whole is
+2,681 nodes the open lays out at once and a wheel only composites, where cut
+rows mount and style as they come. The load of the machine was not controlled.
 
 ## What the UI costs at rest
 

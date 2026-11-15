@@ -32,15 +32,14 @@
   import SwitchMarker from './SwitchMarker.svelte';
   import MessageActions from './MessageActions.svelte';
   import { workspace } from '../lib/workspace.svelte';
-  import { answerText, movedBy, paragraphBlocks, startedFrom, turnAnswer } from '../lib/message-display';
-  import { prepareBlocks } from '../lib/markdown';
-  import { featureOn } from '../lib/features.svelte';
+  import { movedBy, startedFrom, turnAnswer } from '../lib/message-display';
+  import { HistoryPrepare, RowEstimates } from '../lib/row-cost';
   import { focusComposer } from '../lib/focus';
   import { isSending } from '../lib/composer-queue';
   import { retryTurn } from '../lib/composer-edit';
   import { TurnProgress } from '../lib/turn-progress.svelte';
-  import { ESTIMATE, GAP, OVERSCAN, SlotTotals, WINDOW_FROM, atOrBefore, estimateSlot, gapChanged, slotClasses, keepOnly, measurable, overscanAbove, reaches, sameView, slotGap, windowStats, type WindowView } from '../lib/message-window';
-  import { TimelineRows, rowEstimate, rowIndexOf, seam, shownText, type TimelineRow } from '../lib/timeline-rows';
+  import { GAP, OVERSCAN, SlotTotals, WINDOW_FROM, atOrBefore, gapChanged, keepOnly, measurable, overscanAbove, reaches, sameView, slotGap, windowStats, type WindowView } from '../lib/message-window';
+  import { TimelineRows, rowIndexOf, seam, type TimelineRow } from '../lib/timeline-rows';
   import { GapRows, NO_GAPS, READ_AHEAD, RangeAsk, gapHeight, heldNear, loadKeepingReader, wantedRange } from '../lib/history-gaps';
   import TimelineGap from './TimelineGap.svelte';
   import { latest } from '../lib/latest.svelte';
@@ -140,20 +139,7 @@
   /** One observer for the viewport's height and for every rendered message. */
   let boxes: ResizeObserver | undefined;
 
-  /**
-   * A row's estimate, taken once: the means of `slotClasses` move as rows are
-   * measured, and an unmeasured row that changed its weight under the totals
-   * would move the rows below it with nothing resized.
-   */
-  const estimated = new WeakMap<TimelineRow, number>();
-  function estimateRow(row: TimelineRow): number {
-    if (row.gap) return gapHeight(row.gap.count);
-    let known = estimated.get(row);
-    // A row of a cut message counts its own parts: its whole message's text is not its own.
-    if (known === undefined) { known = rowEstimate(row, row.first && row.last ? estimateSlot(row.message) : ESTIMATE); estimated.set(row, known); }
-    return known;
-  }
-  const slots = new SlotTotals<TimelineRow>(heights, estimateRow);
+  const estimates = new RowEstimates((count) => gapHeight(count)), slots = new SlotTotals<TimelineRow>(heights, row => estimates.of(row));
   /** Where the reader is, and the rows on the page by id (lib/reading-anchor.ts). */
   const anchors = new ReadingAnchor(savedReading);
   const savedTop = untrack(() => {
@@ -260,9 +246,7 @@
   const windowed = $derived(rows.length > WINDOW_FROM);
   /** The window was opened around a reading position and stops short of the thread's last message. */
   const cutBelow = $derived((store.messagesAfter ?? null) !== null);
-
   function totals(list: TimelineRow[]): number[] { return slots.totals(list, timelineOrder); }
-
   const promptInset = $derived(Math.min(96, Math.max(48, viewHeight * 0.12)));
   const promptLead = $derived.by(() => {
     void measured;
@@ -384,41 +368,7 @@
 
   const rendered = $derived(rows.slice(view.start, view.end));
 
-  /**
-   * A page of history renders its Markdown in a worker (`prepareBlocks`): the
-   * finished answers of the rows the window has not drawn are split into the
-   * blocks `Prose` draws and sent once, and a row scrolled to later inserts
-   * their HTML from the cache. The rows on screen render here as before, and
-   * so does any row when the worker is missing or slower than 50 ms. Under
-   * `PREPARE_FROM` characters a page is cheap enough here; the message still
-   * streaming is never sent.
-   */
-  const PREPARE_FROM = 16_384;
-  const sent = new WeakSet<TimelineRow>();
-  $effect(() => {
-    const all = rows;
-    const { start, end } = view;
-    const rich = featureOn('chat-artifacts') || featureOn('open-chat-links');
-    untrack(() => {
-      const blocks: string[] = [];
-      let chars = 0;
-      all.forEach((row, index) => {
-        const message = row.message;
-        if (sent.has(row) || (index >= start && index < end) || row.gap || message.role !== 'assistant' || message.state !== 'complete') return;
-        sent.add(row);
-        for (let at = row.from; at < row.to; at += 1) {
-          const part = message.parts[at];
-          if (part?.type !== 'text') continue;
-          const shown = shownText(message, part);
-          const text = row.text && at === row.from ? shown.slice(row.text.start, row.text.end) : shown;
-          chars += text.length;
-          blocks.push(...paragraphBlocks(answerText(text, false), false));
-        }
-      });
-      if (chars >= PREPARE_FROM) void prepareBlocks(blocks, rich);
-    });
-  });
-
+  const history = new HistoryPrepare(); $effect(() => { const all = rows, { start, end } = view; untrack(() => history.prepare(all, start, end)); }); // Off-screen answers render in a worker (lib/row-cost.ts).
   /**
    * A rendered message's real height replaces its estimate. One above what the user reads would push the text down
    * as it lands, so the same delta goes back into `scrollTop` and the viewport does not move.
@@ -447,10 +397,9 @@
       const previous = heights.get(id) ?? slots.estimateOf(rows[at]);
       if (previous === next) continue;
       heights.set(id, next);
+      estimates.learn(rows[at], next);
       moved = true;
       if (at < 0) continue;
-      const row = rows[at];
-      if (row && row.first && row.last && !row.gap && !row.failures) slotClasses.learn(row.message, next);
       // Everything from here down is worth a different number now.
       if (at < slots.dirty) slots.dirty = at;
       if (at < view.first) shift += next - previous;
@@ -554,7 +503,6 @@
   });
 
   function atBottom(box: HTMLDivElement): boolean { return box.scrollHeight - box.scrollTop - box.clientHeight < 80; }
-
   let scrolledHeight = 0, scrolledGap = 0;
   function onscroll() {
     const box = viewport;

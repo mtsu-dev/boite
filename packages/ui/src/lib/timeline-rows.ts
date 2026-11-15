@@ -305,3 +305,4 @@ export function seam(previous: TimelineRow | undefined, row: TimelineRow): 'part
   const tail = previous.message.parts.slice(previous.from, previous.to).findLast(shown);
   return lead?.type === 'text' || tail?.type === 'text' ? 'block' : 'part';
 }
+
