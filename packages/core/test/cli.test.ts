@@ -804,3 +804,16 @@ describe('settings', () => {
     ]);
   });
 });
+
+test('a thread that is not a mochi shows a thread it reaches, by its id or its full address', async () => {
+  const client = await harness.connect();
+  const other = (await echoThread(harness, client, 'VM worker')).threadId;
+  harness.core.journal.putMessage({ id: 'answer', threadId: other, turnId: 'history', role: 'assistant', state: 'complete', createdAt: Date.now(), parts: [{ type: 'text', text: 'Staging is back up.' }] });
+  const coreId = harness.core.coordination.card().coreId;
+  for (const address of [other, `${coreId}/${other}`]) {
+    const shown = await boite(['thread', 'show', address]);
+    expect(shown.err).toBe('');
+    expect(shown.out).toContain(`${other}  "VM worker"`);
+    expect(shown.out).toContain('last answer: Staging is back up.');
+  }
+});
