@@ -328,6 +328,13 @@ real('a rail too short for its mochis scrolls them, keeps its foot on screen and
     const foot = await page.evaluate<{ count: number; inside: boolean }>(`(() => { const buttons = [...document.querySelectorAll('${id('app-rail')} .foot button')]; return { count: buttons.length, inside: buttons.every(b => { const r = b.getBoundingClientRect(); return r.height > 0 && r.top >= 0 && r.bottom <= innerHeight; }) }; })()`);
     expect(foot.count).toBeGreaterThan(0);
     expect(foot.inside).toBe(true);
+    // Off macOS the rail's card reaches the window's top, inset by the frame gap, beside the list column's head:
+    // no empty band stands over its first button.
+    const top = await page.evaluate<{ card: number; gap: number; first: number; titlebar: number }>(`(() => { const css = getComputedStyle(document.documentElement);
+      return { card: document.querySelector('${id('app-rail')} .rail-card').getBoundingClientRect().top, gap: parseFloat(css.getPropertyValue('--frame-gap')),
+        first: document.querySelector('${id('view-threads')}').getBoundingClientRect().top, titlebar: parseFloat(css.getPropertyValue('--titlebar')) }; })()`);
+    expect(top.card).toBe(top.gap);
+    expect(top.first).toBeLessThan(top.titlebar);
     // The last bot's name card shows whole, right of the rail, level with it: the scroller does not cut it.
     await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: rail.last.x, y: rail.last.y });
     await page.waitFor(`getComputedStyle([...document.querySelectorAll('${id('app-rail')} .bots .rail-name')].at(-1)).opacity === '1'`);
