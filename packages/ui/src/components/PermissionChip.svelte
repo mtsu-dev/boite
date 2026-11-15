@@ -11,24 +11,29 @@
   import { floating } from '../lib/floating';
   import { strings } from '../lib/strings';
   import SheetHead from './SheetHead.svelte';
+  import ChipNote from './ChipNote.svelte';
 
   /**
    * The composer's permission chip: the mode's icon and word at rest, the same
    * word on every agent, desktop and phone, at 360 px too. It opens one list: each mode a full row with its icon,
    * its word, one plain line saying what the agent then does, and a check on
    * the live one. A popover on desktop, the shared bottom sheet on a phone.
-   * `readonly` names a bot's mode, set in its settings: it opens nothing.
+   * `readonly` names a bot's mode where this device cannot change it: a click
+   * says why (`hint`) and opens no list.
    */
-  let { items, active, onpick, disabled = false, readonly = false, readonlyHint = '' }: {
+  let { items, active, onpick, disabled = false, readonly = false, hint = '' }: {
     items: ModeChoice[];
     active: string;
     onpick: (id: string) => void;
     disabled?: boolean;
     readonly?: boolean;
-    readonlyHint?: string;
+    /** The chip's title in place of its own: whose setting it shows, or why it cannot change here. */
+    hint?: string;
   } = $props();
 
   const popover = new Closing();
+  /** A read-only chip's reason, shown on its click. */
+  const note = new Closing();
   let root = $state<HTMLDivElement | undefined>(undefined);
   let trigger = $state<HTMLButtonElement | undefined>(undefined);
   let list = $state<HTMLDivElement | undefined>(undefined);
@@ -101,12 +106,13 @@
 
 <div class="permission" bind:this={root}>
   {#if readonly}
-    <span class="ui-chip trigger readonly" data-testid="composer-mode" title={readonlyHint || name} aria-label={readonlyHint || name}>
+    <button type="button" class="ui-chip trigger readonly" data-testid="composer-mode" title={hint || name} aria-label={hint ? `${name}, ${hint}` : name} aria-expanded={note.open} bind:this={trigger} onclick={() => note.toggle()}>
       {#if Glyph}<Glyph size={14} strokeWidth={1.75} />{/if}
       <span class="ui-label word" data-testid="composer-mode-value">{current?.label ?? ''}</span>
-    </span>
+    </button>
+    {#if note.shown && hint}<ChipNote {note} anchor={() => trigger ?? null} text={hint} testid="composer-mode-note" />{/if}
   {:else}
-    <button type="button" class="ui-chip trigger" aria-haspopup="menu" aria-expanded={popover.open} aria-label={name} title={current?.title ?? strings.composer.mode} data-testid="composer-mode" {disabled} bind:this={trigger} onclick={toggle} {onkeydown}>
+    <button type="button" class="ui-chip trigger" aria-haspopup="menu" aria-expanded={popover.open} aria-label={name} title={hint || (current?.title ?? strings.composer.mode)} data-testid="composer-mode" {disabled} bind:this={trigger} onclick={toggle} {onkeydown}>
       {#if Glyph}<Glyph size={14} strokeWidth={1.75} />{/if}
       <span class="ui-label word" data-testid="composer-mode-value">{current?.label ?? ''}</span>
       <!-- The chevron the model chip has: all three read as controls that open. -->

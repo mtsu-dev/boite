@@ -45,6 +45,8 @@ export interface AgentRunner {
   occupied?: (path: string) => boolean;
   /** Validate new choices against the host catalog while retaining previously approved choices. */
   checkRoute?: (value: AgentSelection, previous?: Pick<AgentSelection, 'providerId' | 'accountId' | 'model' | 'effort'>) => void;
+  /** Moves the agent's thread to its new route, as the core does after a save that changes it; settles once the thread is there. */
+  move?: (threadId: string, selection: AgentSelection) => Promise<void>;
   /** Archives a thread, as a built-in bot's reset does to its old one. */
   archive?: (threadId: string) => void;
   /** The route a new thread takes on this core: a built-in bot created with none named runs there. */
@@ -336,8 +338,14 @@ export class FakeAgents {
 
   call(method: keyof AgentsRpcMethods, raw: unknown): unknown {
     const handler = Object.hasOwn(this.handlers, method) ? this.handlers[method as keyof AgentHandlers] as (params: unknown) => unknown : undefined;
-    return handler?.(raw);
+    const result = handler?.(raw);
+    // As the core, whose save moves the bot's thread before it answers: the next turn already runs on the new route.
+    const moving = this.moving;
+    this.moving = null;
+    return moving ? moving.then(() => result) : result;
   }
+  /** The thread move a save started, which its answer waits for. */
+  private moving: Promise<void> | null = null;
   private readonly handlers: AgentHandlers = {
     'agents.snapshot': p => this.snapshot(p.threadId, p.desk),
     'agents.profile.save': p => this.saveProfile(p, true),
@@ -513,6 +521,12 @@ export class FakeAgents {
     const agent = this.stamp(previous?.builtin ? { ...value, builtin: previous.builtin } : value, previous ?? undefined, 'agent') as AgentProfile;
     this.profiles.set(agent.id, agent);
     this.place(agent);
+    // As the core's `#edited`: only a new route on the bot moves its thread.
+    const threadId = previous ? this.threadOf(agent.id) : null;
+    if (threadId && JSON.stringify(previous!.selection) !== JSON.stringify(agent.selection)) {
+      const move = this.runner?.move?.(threadId, structuredClone(agent.selection));
+      if (move) this.moving = Promise.all([this.moving, move]).then(() => {});
+    }
     if (!previous) {
       // As the core: the agent's thread at once, and a first turn there where it introduces itself.
       this.makeThread(agent);

@@ -8,6 +8,7 @@
   import { strings } from '../lib/strings';
   import { levelName } from '../lib/format';
   import SheetHead from './SheetHead.svelte';
+  import ChipNote from './ChipNote.svelte';
 
   /**
    * The reasoning chip and its popover: one dot per level of the model's scale,
@@ -33,7 +34,7 @@
     onspeed = () => {},
     ondefault,
     readonly = false,
-    readonlyHint = ''
+    hint = ''
   }: {
     levels: EffortLevel[];
     /**
@@ -51,12 +52,15 @@
      * shows a Default switch that hands the level back to the agent.
      */
     ondefault?: () => void;
-    /** The level is set elsewhere (a bot's settings): the chip names it and opens nothing. */
+    /** The level is set where this device cannot change it (a bot's settings on a paired device): the chip names it, and a click says why (`hint`). */
     readonly?: boolean;
-    readonlyHint?: string;
+    /** The chip's title in place of its own: whose setting it shows, or why it cannot change here. */
+    hint?: string;
   } = $props();
 
   const popover = new Closing();
+  /** A read-only chip's reason, shown on its click. */
+  const note = new Closing();
   let root = $state<HTMLDivElement | undefined>(undefined);
   let trigger = $state<HTMLButtonElement | undefined>(undefined);
   let track = $state<HTMLDivElement | undefined>(undefined);
@@ -247,16 +251,17 @@
 
 <div class="effort" bind:this={root}>
   {#if readonly}
-  <span class="ui-chip trigger readonly" data-testid="composer-effort" title={readonlyHint || strings.composer.effortTitle} aria-label={`${strings.composer.effortTitle}: ${label}`}>
+  <button type="button" class="ui-chip trigger readonly" data-testid="composer-effort" title={hint || strings.composer.effortTitle} aria-label={`${strings.composer.effortTitle}: ${label}`} aria-expanded={note.open} bind:this={trigger} onclick={() => note.toggle()}>
     {@render face()}
-  </span>
+  </button>
+  {#if note.shown && hint}<ChipNote {note} anchor={() => trigger ?? null} text={hint} testid="composer-effort-note" />{/if}
   {:else}
   <button
     type="button"
     class="ui-chip trigger"
     aria-haspopup="dialog"
     aria-expanded={popover.open}
-    title={strings.composer.effortTitle}
+    title={hint || strings.composer.effortTitle}
     data-testid="composer-effort"
     bind:this={trigger}
     onclick={toggle}

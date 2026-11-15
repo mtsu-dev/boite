@@ -57,15 +57,19 @@ test('on a phone the modes open as the shared bottom sheet with its title', asyn
   } finally { restore(); }
 });
 
-test("a mochi's chip reads its mode and says where it is set, and opens nothing", () => {
+test("a mochi's chip on a device that cannot change it reads its mode, and a click says why instead of opening", () => {
   const onpick = vi.fn();
-  mounted = mount(PermissionChip, { target: document.body, props: { items: ITEMS, active: 'yolo', onpick, readonly: true, readonlyHint: "Set in Ada's settings" } });
+  const why = "Only the computer running Boite can change a mochi's settings.";
+  mounted = mount(PermissionChip, { target: document.body, props: { items: ITEMS, active: 'yolo', onpick, readonly: true, hint: why } });
   flushSync();
-  expect(chip().tagName).toBe('SPAN');
   expect(chip().textContent?.trim()).toBe('No limits');
-  expect(chip().getAttribute('title')).toBe("Set in Ada's settings");
+  expect(chip().getAttribute('title')).toBe(why);
   chip().click();
   flushSync();
   expect(menu()).toBeNull();
   expect(onpick).not.toHaveBeenCalled();
+  expect(document.querySelector('[data-testid=composer-mode-note]')?.textContent).toBe(why);
+  document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+  flushSync();
+  expect(chip().getAttribute('aria-expanded')).toBe('false');
 });

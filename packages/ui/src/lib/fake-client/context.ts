@@ -89,7 +89,7 @@ import { FakePlugins } from './plugins';
 import { initialHarnessUpdates } from './provider-installs';
 import { DATA_DIR, T0, toSummary } from './shared';
 import { fakeSpeechModels } from './speech';
-import { createAgentSession } from './threads';
+import { createAgentSession, threadMethods } from './threads';
 import { startTurn, stopTurn } from './turns';
 import { FakeWorkflows } from './workflows';
 import { initialDesktopUpdate, initialServerUpdate } from './server-update';
@@ -468,6 +468,12 @@ export class FakeContext {
       goal: (threadId, objective) => {
         const methods = activityMethods(this);
         void (objective === null ? methods['threads.activity.control']({ threadId, kind: 'goal', action: 'remove' }) : methods['threads.activity.set']({ threadId, goal: { objective } })).catch(() => {});
+      },
+      // As the core's `#edited`: a new route on the bot moves its thread, through the same update as the composer's.
+      move: (threadId, selection) => {
+        const thread = this.threads.get(threadId);
+        if (!thread || thread.accountId === selection.accountId && thread.model === selection.model && thread.effort === selection.effort && thread.permissionMode === selection.permissionMode) return Promise.resolve();
+        return threadMethods(this)['threads.update']({ threadId, accountId: selection.accountId, model: selection.model, effort: selection.effort, permissionMode: selection.permissionMode }).then(() => {}, () => {});
       },
       archive: threadId => {
         const thread = this.threads.get(threadId);

@@ -125,10 +125,16 @@
   /** A provider turned off has no column: the rail's first one shows instead. */
   const offered = (id: string | null | undefined) => (id && store.providerOn(id) ? store.providerOf(id) : null);
   let shown = $derived(offered(shownProviderId) ?? offered(provider?.id) ?? store.offeredProviders[0] ?? null);
+  /**
+   * The choice's own account lists that provider's models, unless it is gone
+   * (a removed account a bot still names): then its models are another
+   * account's, and a pick moves there.
+   */
+  const holds = (providerId: string) => !!choice && choice.providerId === providerId && (store.accounts.length === 0 || store.accountOf(choice.accountId) !== null);
   /** The account the right column belongs to: an agent lists its models per login. */
   let shownAccountId = $derived.by((): string | null => {
     if (!shown) return null;
-    if (choice && choice.providerId === shown.id) return choice.accountId;
+    if (holds(shown.id)) return choice!.accountId;
     return (store.usableAccountOf(shown.id) ?? store.accountsOf(shown.id)[0])?.id ?? null;
   });
   let seats = $derived(shown ? store.accountsOf(shown.id) : []);
@@ -277,8 +283,8 @@
   function pickModel(model: ModelInfo) {
     if (!shown) return;
     const instance =
-      choice && choice.providerId === shown.id
-        ? { providerId: choice.providerId, accountId: choice.accountId }
+      holds(shown.id)
+        ? { providerId: choice!.providerId, accountId: choice!.accountId }
         : firstInstanceOf(shown.id);
     if (instance) return applyPick(instance, model.id);
   }
