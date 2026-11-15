@@ -109,3 +109,12 @@ test('an address typed while the previous one is saving is the one saved next, a
   expect(sent).toEqual(['https://first.test', 'https://second.test']);
   expect(field.value).toBe('https://second.test');
 });
+
+// The page that holds the card no longer read the pairings for it: a paired phone was told to pair first.
+test('the card reads its own pairings once the connection is ready', async ({ store }) => {
+  const read = vi.spyOn(store, 'loadSessions');
+  component = mount(PhoneSettings, { target: document.body, props: { store } });
+  flushSync();
+  expect(store.connection).toBe('ready');
+  expect(read).toHaveBeenCalled();
+});

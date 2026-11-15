@@ -31,12 +31,29 @@ test('the list foot says the tightest window and whose it is in words, keeps the
   expect(document.querySelector('[data-testid=limits-glance]')).not.toBeNull();
 });
 
-test('the line names the account too where its provider has several', async () => {
-  const work: AccountQuota = { ...quota, accountId: 'claude-work', label: 'Work', windows: [{ id: 'week', label: 'Weekly', usedPercent: 40, resetsAt: null }] };
-  const call = vi.fn(async () => [quota, work]);
-  const store = { client: { call, on: () => () => {} }, connection: 'ready', owner: true, endpointUrl: 'quota-line-several', accounts: [{ id: 'claude-account', status: 'ok' }, { id: 'claude-work', status: 'ok' }] } as unknown as Store;
+test('several accounts: silent while one has room, then the best one\'s share, then out until the first reset', async () => {
+  const windows = (used: number, resetsAt: number | null = null) => [{ id: 'week', label: 'Weekly', usedPercent: used, resetsAt }];
+  let rows: AccountQuota[] = [quota, { ...quota, accountId: 'claude-work', label: 'Work', windows: windows(40) }];
+  let update: (rows: AccountQuota[]) => void = () => {};
+  const call = vi.fn(async () => rows);
+  const store = { client: { call, on: (event: string, listener: typeof update) => { if (event === 'quotas.updated') update = listener; return () => {}; } }, connection: 'ready', owner: true, endpointUrl: 'quota-line-several', accounts: [{ id: 'claude-account', status: 'ok' }, { id: 'claude-work', status: 'ok' }] } as unknown as Store;
   mounted = mount(QuotaLine, { target: document.body, props: { store } });
   await settle();
 
-  expect(document.querySelector('[data-testid=limits-gauge]')!.textContent).toBe('12% of Claude\'s weekly limit left on Home');
+  // Home is nearly spent, Work has 60 % left: nothing is blocked, the line only names the glance.
+  const button = document.querySelector<HTMLButtonElement>('[data-testid=nav-limits]')!;
+  expect(document.querySelector('[data-testid=limits-gauge]')).toBeNull();
+  expect(button.textContent?.trim()).toBe('Account limits');
+
+  rows = [quota, { ...rows[1]!, windows: windows(85) }];
+  update(rows);
+  await settle();
+  expect(document.querySelector('[data-testid=limits-gauge]')!.textContent).toBe('15% of Claude\'s weekly limit left on Work');
+
+  rows = [{ ...quota, windows: windows(100, Date.now() + 3_600_000) }, { ...rows[1]!, windows: windows(100, Date.now() + 7_200_000) }];
+  update(rows);
+  await settle();
+  const line = document.querySelector<HTMLElement>('[data-testid=limits-gauge]')!;
+  expect(line.dataset.limit).toBe('out');
+  expect(line.textContent).toMatch(/^Every Claude account is out, first one back \S/);
 });

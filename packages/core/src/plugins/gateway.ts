@@ -385,7 +385,7 @@ export class PluginGateways {
     const delay = this.relaunchDelaysMs[entry.crashes.length - 1];
     if (delay === undefined) {
       entry.status = 'crashed';
-      entry.error = `${why}; it failed ${entry.crashes.length} times in ${CRASH_WINDOW_MS / 60_000} minutes. Start it again from Settings > Agents > Plugins.`;
+      entry.error = `${why}; it failed ${entry.crashes.length} times in ${CRASH_WINDOW_MS / 60_000} minutes. Start it again from Settings > Plugins.`;
       this.#host.log('warn', entry.error, 'gateway.crashed');
     } else {
       entry.status = 'starting';

@@ -1,5 +1,5 @@
 /**
- * Settings > AI accounts > Local ACP command: an ACP agent the owner describes by
+ * Settings > Providers > Local ACP command: an ACP agent the owner describes by
  * the command that starts it, written as an ordinary user descriptor under
  * `<dataDir>/providers/`, so the loader, the ACP driver and `providers.dryRun`
  * treat it like a file written by hand.

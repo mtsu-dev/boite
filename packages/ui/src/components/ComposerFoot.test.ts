@@ -117,12 +117,12 @@ for (const phone of [false, true]) {
     // The held prompt is no count on the line: it stands above it as its own dashed bubble, folded or not.
     expect(document.querySelector('[data-testid=agent-dock-queued]')).toBeNull();
     expect(document.querySelector<HTMLElement>('[data-testid=composer-held]')!.hidden).toBe(false);
-    // The names follow on the same line on both screens: a phone cuts them earlier at a word, never drops them by rule.
+    // The marks carry the names on both screens (their tooltip, their hidden words): no rule drops them on a phone.
     expect(document.querySelector('[data-testid=agent-dock-names]')?.textContent).toContain(run!.name);
     const { compile } = await import('svelte/compiler');
     const { readFileSync } = await import('node:fs');
     const dock = readFileSync(`${import.meta.dirname}/AgentDock.svelte`, 'utf8').replace(/<script lang="ts">[\s\S]*?<\/script>/, '<script></script>');
-    expect(compile(dock, { filename: 'AgentDock.svelte', cssHash: () => 'd' }).css?.code).not.toMatch(/\.names\.d \{[^}]*display: none/);
+    expect(compile(dock, { filename: 'AgentDock.svelte', cssHash: () => 'd' }).css?.code).not.toMatch(/\.marks\.d \{[^}]*display: none/);
     const stop = document.querySelector<HTMLElement>('[data-testid=agent-dock-stop]')!;
     expect(stop.textContent?.trim()).toBe('Stop workflows');
     expect(stop.title).toContain('The agent itself is not stopped');
@@ -131,7 +131,7 @@ for (const phone of [false, true]) {
     // Unfolded: the same words, then one row per run; the queued bubble keeps its place with its Delete.
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
     expect(document.querySelector<HTMLElement>('[data-testid=agent-dock-label]')!.dataset.text).toBe('Waiting on 1 workflow');
-    expect([...document.querySelectorAll('[data-testid=agent-dock-row]')].map(row => row.textContent)).toEqual([run!.name]);
+    expect([...document.querySelectorAll('[data-testid=agent-dock-row] .words')].map(row => row.textContent)).toEqual([run!.name]);
     expect(document.querySelector<HTMLElement>('[data-testid=composer-held]')!.hidden).toBe(false);
     expect(document.querySelector('[data-testid=composer-queued-item] [data-testid=composer-queued-remove]')).not.toBeNull();
     vi.restoreAllMocks();
@@ -159,4 +159,28 @@ test('queued prompts are dashed bubbles under the strip line: a press takes one 
   const remove = vi.spyOn(store, 'removeQueued');
   items[0]!.querySelector<HTMLButtonElement>('[data-testid=composer-queued-remove]')!.click();
   expect(remove).toHaveBeenCalledWith(threadId, 0);
+});
+
+test('a subagent\'s command waiting for approval shows over its parent\'s composer, named by the subagent, and is answered there', async () => {
+  await open();
+  const parent = store.openThread!.id;
+  const child = store.threads.find((row) => row.id !== parent && !row.archived)!;
+  child.parentThreadId = parent;
+  // The child's ask, as the machine holds it: the parent's row reads "Needs you" (`rowAsks`), its own timeline has no row for it.
+  store.pendingPermissions = [{ id: 'child-perm', threadId: child.id, turnId: 'turn', toolName: 'Bash', input: { command: 'cargo test --workspace' }, description: 'Run the suite before the push', createdAt: 1 }];
+  const call = vi.spyOn(client, 'call');
+  foot();
+  await vi.waitFor(() => expect(document.querySelector('[data-testid=subagent-permissions] [data-testid=permission-card]')).not.toBeNull());
+  const card = document.querySelector<HTMLElement>('[data-testid=subagent-permissions] [data-testid=permission-card]')!;
+  expect(card.querySelector('[data-testid=permission-asker]')?.textContent).toContain(`Asked by ${child.title}`);
+  expect(card.querySelector('[data-testid=permission-why]')?.textContent).toBe('Run the suite before the push');
+  expect(card.querySelector('[data-testid=permission-subject]')?.textContent).toContain('cargo test --workspace');
+  // It is no row of this timeline: the way back to a row out of view does not count it.
+  expect(decisionTail.card).toBeNull();
+  card.querySelector<HTMLButtonElement>('[data-testid=permission-allow]')!.click();
+  await vi.waitFor(() => expect(call).toHaveBeenCalledWith('permissions.answer', { requestId: 'child-perm', decision: 'allow' }));
+  // The subagent's own ask only: the parent's stays on its row in the timeline.
+  store.pendingPermissions = [{ id: 'own', threadId: parent, turnId: 'turn', toolName: 'Bash', input: { command: 'ls' }, description: null, createdAt: 2 }];
+  flushSync();
+  expect(document.querySelector('[data-testid=subagent-permissions]')).toBeNull();
 });

@@ -8,7 +8,7 @@ type Methods = 'devices.list' | 'devices.open' | 'devices.sessions' | 'devices.f
 
 const SCREEN = { width: 1080, height: 2400 };
 /** The core's answer while the deviceStream setting is off (control.ts STREAM_OFF). */
-const STREAM_OFF = 'the live stream is off: the owner turns it on in Settings > Version > Experiments, or an agent asks with `boite settings request deviceStream true --why "..."`';
+const STREAM_OFF = 'the live stream is off: the owner turns it on in Settings > Experiments, or an agent asks with `boite settings request deviceStream true --why "..."`';
 /** How long a viewer stays counted after its last answer, as the core's stream.ts iewerMs. */
 const VIEWER_MS = 5000;
 /** How long a fake emulator takes to boot: long enough to see the starting state. */

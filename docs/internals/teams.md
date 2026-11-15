@@ -6,7 +6,7 @@ live context of its work; the team only carries posts between them. A post
 wakes the mochis it names, and a mochi answers either in the group, which every
 member reads, or privately to one member or the owner.
 
-Teams sit behind the Teams switch in Settings > Version > Experiments
+Teams sit behind the Teams switch in Settings > Experiments
 ([experiments](experiments.md)). While it is off on a machine, the `teams.*`
 methods and `boite team` commands on the teams that machine holds refuse with
 the reason `experiment-off`, and no mochi of that machine can enter a team. The
@@ -313,9 +313,16 @@ owner, then opens the new team's chat. Escape, Cancel or the scrim close it,
 and its exit animates.
 
 The team chat (`components/teams/TeamChat.svelte`) replaces the conversation
-view of a thread with `teamId`. The header (`components/teams/TeamHeader.svelte`)
-shows the team's pictures, its name and "Team chat · N mochis and you", or
-Paused or Archived, without terminal or panel. Its menu holds Edit the team,
+view of a thread with `teamId`, in a thread's own shapes: one reading column,
+a mochi's post on the page under its picture and name, the owner's a bubble on
+the right, the calendar's chip between two days (`DayDivider.svelte`) and the
+thread composer's card. A ping in a post, `@name` of a member, `@tous` or
+`@everyone`, reads in the accent colour (`lib/team-pings.ts`, the rule
+`teamMentions` routes by). The header (`components/teams/TeamHeader.svelte`)
+takes a mochi header's two places: on a desktop the window's top bar, with the
+team's name, the chevron of its menu and "Team chat · N mochis and you", or
+Paused or Archived; on a phone over the chat, with the way back and the team's
+pictures. It has no terminal or panel. Its menu holds Edit the team,
 Pause or Resume, and Archive, which asks first; an archived team's menu holds
 Edit the team and Restore. Edit opens the same dialog on the team: its name and
 brief go through `teams.update`, then each mochi taken out through
@@ -329,14 +336,16 @@ reach that machine. An edit may leave a team with no member, a new team needs
 one. An archived team takes no new member. Restoring it does not wait on a
 member that moved, which follows its mochi, and a mochi that is gone leaves as the
 team comes back.
-Over the posts, the members; a member opens its mochi's page. A member of another
+The column opens on the room: the members, then the team's brief; a member
+opens its mochi's page. A member of another
 machine shows that machine's name beside its own and opens nothing, its page
 being on that machine. The posts are the
 thread's messages, oldest first, paged like a thread's, so they arrive live and
 opening the chat marks it read. Each post shows:
 
-- its author: the mochi's name, or You for the owner, and the machine of a mochi
-  of another machine;
+- its author: the mochi's picture, in its colours, and name, with the machine
+  of a mochi of another machine; the owner's own posts are the bubbles, named
+  You for a screen reader only;
 - its time; posts of one author a few minutes apart read as one;
 - "Private to …" and the recipient, on a private post;
 - the post it answers, which scrolls to that post;
@@ -345,7 +354,7 @@ opening the chat marks it read. Each post shows:
   core's English notice.
 
 The composer (`components/teams/TeamComposer.svelte`) posts with `teams.post`
-and says, before the post goes, whom it wakes, from the same rule the core
+and says beside the send button, before the post goes, whom it wakes, from the same rule the core
 applies (`routeTeamPost`): the whole team when the post names nobody, the mochis
 it names with `@name`, which the mention menu writes at the caret, everyone
 with `@tous` or `@everyone`, or a reply's author. The audience menu makes the post

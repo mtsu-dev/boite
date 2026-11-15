@@ -32,12 +32,12 @@ boite plugin dev .
 conversation to run `boite hello-threads`.
 
 Edits to `boite-plugin.json` and `skills/` apply at once. After an edit to
-`ui/`, press "Reload interface" on Hello's card in Settings > Agents > Plugins. After an
+`ui/`, press "Reload interface" on Hello's card in Settings > Plugins. After an
 edit to `src/`, run `bun run pack` again. `boite plugin dev --remove hello` removes it.
 
 To publish your own copy, upload `hello.js` where the `pack` script's `--url`
 points and push the folder to a public git repository. Share its link or
-`owner/repo`: it goes in Settings > Agents > Plugins, or to an agent as
+`owner/repo`: it goes in Settings > Plugins, or to an agent as
 `boite plugin add <link> --why <reason>`. The URL in this manifest is a
 placeholder.
 

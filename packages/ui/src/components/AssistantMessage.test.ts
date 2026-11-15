@@ -272,8 +272,8 @@ test('a short text between calls reads as narration, what follows the last call 
   const message: Message = { ...last, id: 'm-narration', role: 'assistant', state: 'complete', parts: [{ type: 'text', text: 'Now the tests.' }, call('a'), { type: 'text', text: report }, call('b'), { type: 'text', text: 'Fixed.' }] };
   show(store, message);
   expect([...document.querySelectorAll('[data-testid=narration]')].map(node => node.textContent?.trim())).toEqual(['Now the tests.']);
-  // Only the user's messages are bubbles: the answers are free text in full ink.
-  expect(document.querySelector('.answer-bubble')).toBeNull();
+  // What the agent says is in a bubble; its narration between calls is not.
+  expect([...document.querySelectorAll('.answer-bubble')].map(node => node.textContent?.trim().slice(0, 6))).toEqual(['A long', 'Fixed.']);
   expect([...document.querySelectorAll('[data-kind=text]:not([data-testid=narration])')].map(node => node.textContent?.trim().slice(0, 6))).toEqual(['A long', 'Fixed.']);
 });
 

@@ -19,7 +19,10 @@
 </a>
 
 <style>
-  .pr-link { display: inline-flex; align-items: center; flex-shrink: 0; gap: 4px; color: var(--color-live); font-size: var(--text-xs); pointer-events: auto; text-decoration: underline; text-underline-offset: 3px; }
+  /* One vibrance for the three states: the merged violet is the measure, the open amber and the closed red are
+     brought down to it by a share of the row's own ink, so a state is read, never shouted. */
+  .pr-link { display: inline-flex; align-items: center; flex-shrink: 0; gap: 4px; color: color-mix(in oklch, var(--color-live) 70%, var(--color-muted-foreground)); font-size: var(--text-xs); pointer-events: auto; text-decoration: underline; text-decoration-color: color-mix(in oklch, currentColor 45%, transparent); text-underline-offset: 3px; }
   .pr-link.merged { color: var(--color-accent); }
-  .pr-link.closed { color: var(--color-danger); }
+  .pr-link.closed { color: color-mix(in oklch, var(--color-danger) 60%, var(--color-muted-foreground)); }
+  .pr-link:hover { text-decoration-color: currentColor; }
 </style>

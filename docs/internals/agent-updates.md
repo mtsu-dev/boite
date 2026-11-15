@@ -15,10 +15,10 @@ agents without a readable latest version.
 
 ## What the user sees
 
-The Agent updates card of Settings > Version (for the machine picked under the
-page's title) lists its agents with their installed and available versions, Update and Skip. A machine
+Each machine's Providers page (the machine picked above the page) lists its
+agents with their installed and available versions, Update and Skip. A machine
 with a release waiting for one of its agents says Update available on its row
-in Settings, Devices, Machines, and the Updates card on Version lists that release; a
+in Settings, Machines and updates, whose updates card lists that release; a
 skipped release does not. Updates create no pinned chat notice: the sidebar's update button and
 its card list them with the rest, and Update all starts every agent of every
 machine at once ([update everything](updates.md#update-everything)).
@@ -43,7 +43,7 @@ agents left running in the background ([Background work](#background-work)).
 It is off by default. `Check for updates` reads its versions again.
 A provider's own row keeps its sign-ins and installation controls and names no
 version: the agent's version, Update and Skip sit in the Agent updates card
-on the Version page.
+lower on the same Providers page.
 
 ## Two routes
 
@@ -289,13 +289,13 @@ on the next core like any turn it cut.
 
 A multi-machine client keeps separate update lists and routes each action to
 the owning core ([machines](machines.md)). The Agent updates card shows the
-agents of the machine picked under the Version page's title, including when provider
+agents of the machine picked above the Providers page, including when provider
 IDs match on different machines.
 
 With `autoUpdateHarnesses` enabled, a headless core checks ten minutes after
 startup and every six hours, postponing checks while work is active, and
 updates an agent by pausing its turns in flight between two tool calls. Enable it
-in that machine's Agent updates card, on Version. Providers
+on that machine's Providers page, under its agents. Providers
 without a managed release use the self route as the core user. An unwritable
 npm prefix fails before the
 updater starts and names the directory; other updater permission failures
@@ -326,7 +326,7 @@ The client treats that machine as having no updates and shows no error.
 
 - `providers.updates { refresh? }`: the list, answered from the last reading
   without running any agent. `refresh: true` reads every agent first. On a core
-  with no reading yet the list is empty; the Agent updates card asks for a refresh
+  with no reading yet the list is empty; the Providers page asks for a refresh
   when it opens on an empty list.
 - `providers.update { providerId }`: start one update. While turns of the
   agent still run a tool call, its entry is `updating` with `waitingFor` set

@@ -4,7 +4,7 @@
  *
  * The owner reads the local records as they are stored (credentials already
  * removed). An agent reads the anonymized view, `diagnostics.*`, while the
- * owner leaves Settings > Troubleshooting > Agents can read anonymized logs on. Both print one line
+ * owner leaves Settings > Diagnostics > agent access on. Both print one line
  * per record, oldest first, so the output reads as a story.
  */
 import { closeSync, fchmodSync, openSync, writeFileSync } from 'node:fs';

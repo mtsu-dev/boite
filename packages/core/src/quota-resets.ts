@@ -63,7 +63,7 @@ export class QuotaResetStore {
     // Using a reset starts the agent, which a provider turned off never does.
     const blocked = this.core.providers.policyBlock(account.providerId);
     if (blocked !== null) throw this.core.policy.refusal(blocked.policy, account.providerId);
-    if (!this.core.providers.enabled(account.providerId)) throw refused('Turn this provider on in Settings > AI accounts > Providers before using a reset.');
+    if (!this.core.providers.enabled(account.providerId)) throw refused('Turn this provider on in Settings > Providers before using a reset.');
     if (account.status === 'unauthenticated') throw refused('Sign in to this account before using a reset.');
     if (object(this.core.journal.getSetting('quota-accounts'))[account.id] === false) throw refused('Enable quota monitoring for this account before using a reset.');
     const key = attemptKey(this.core, account);

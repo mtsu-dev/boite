@@ -298,7 +298,7 @@ export class ThreadCards {
     let read: { value?: unknown };
     try { read = (await this.#core.coordination.request(peer, 'setting.read', { key: params.key })) as { value?: unknown }; }
     catch (error) {
-      if (error instanceof PeerRefusal) throw refused(`Boite on ${peer.name} cannot answer about ${params.key}: ${error.message}; the owner updates it in Settings, Version, Updates`, { field: 'machine' });
+      if (error instanceof PeerRefusal) throw refused(`Boite on ${peer.name} cannot answer about ${params.key}: ${error.message}; the owner updates it in Settings, Machines and updates`, { field: 'machine' });
       throw unavailable(`${peer.name} did not answer: ${messageOf(error)}`, { field: 'machine' });
     }
     // The owner flipped it while the read was on its way back: the announcement, newer, is what that machine has.

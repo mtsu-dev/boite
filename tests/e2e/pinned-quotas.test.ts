@@ -143,7 +143,8 @@ test('a narrow reading margin docks automatically and a wider chat restores the 
   await enableAndPin();
   await page.settleAnimations();
   expect(await page.evaluate(`document.querySelector('${card}').classList.contains('docked')`)).toBe(true);
-  expect(await page.evaluate(`document.querySelector('${card}').getBoundingClientRect().height`)).toBeLessThan(165);
+  // Two accounts under a 38 px head, as a card of the list: it stays a short card, never a column of its own.
+  expect(await page.evaluate(`document.querySelector('${card}').getBoundingClientRect().height`)).toBeLessThan(210);
   expect(await page.evaluate(`document.querySelector('${card}').getBoundingClientRect().right <= document.querySelector('[data-testid=chat]').getBoundingClientRect().left`)).toBe(true);
   expect(await page.evaluate(`document.querySelector('${position}')`)).toBeNull();
   await capture('auto-dock');

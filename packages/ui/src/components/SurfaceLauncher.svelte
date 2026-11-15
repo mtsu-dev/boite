@@ -39,7 +39,7 @@
         onclick={() => onlaunch(card.kind)}
         oncontextmenu={(event) => onmenu(event, card.kind)}
       >
-        <SurfaceIcon kind={card.kind} size={28} />
+        <SurfaceIcon kind={card.kind} size={22} />
         <span class="card-name ui-label">{kindName(card.kind)}</span>
         <span class="kbd ui-label-box"><span class="ui-label">{card.key}</span></span>
       </button>
@@ -48,17 +48,16 @@
 </div>
 
 <style>
-  /* The empty panel is all launcher: the cards share its whole height rather
-     than sit as a strip at the top of a blank column. */
+  /* The empty panel lists what it can open: compact tiles of one size at its top, as many to a row as its width holds.
+     A tile never stretches with the panel: wide or tall, the panel only leaves more room around them. */
   .launcher {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: 16px;
+    padding: var(--space-4);
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    container-type: inline-size;
+    gap: var(--space-3);
     animation: rise var(--dur-3) var(--ease-out-quint);
   }
 
@@ -71,17 +70,15 @@
     font-size: var(--text-sm);
   }
 
-  /* Two columns, four once the panel is wide: eight cards then make full rows. */
+  /* Three tiles to a row at the panel's default width, two at its narrowest. */
   .cards {
-    flex: 1;
+    flex: none;
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-auto-rows: minmax(96px, 1fr);
-    gap: 10px;
-  }
-
-  @container (min-width: 560px) {
-    .cards { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    grid-template-columns: repeat(auto-fill, var(--tile-width));
+    grid-auto-rows: var(--tile-height);
+    gap: var(--space-2);
+    --tile-width: 116px;
+    --tile-height: 84px;
   }
 
   .card {
@@ -90,9 +87,10 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 10px;
-    height: auto;
-    padding: 16px 12px;
+    gap: var(--space-3);
+    width: var(--tile-width);
+    height: var(--tile-height);
+    padding: var(--space-3) var(--space-2) var(--space-2);
     border-radius: var(--radius-lg);
     background: var(--color-surface-2);
     color: var(--color-muted-foreground);
@@ -109,18 +107,24 @@
 
   .card-name {
     color: var(--color-foreground);
+    font-size: var(--text-sm);
     font-weight: 600;
   }
 
-
+  /* The letter that opens it, quiet in the corner until the tile is pointed at. */
   .card .kbd {
     position: absolute;
-    top: 8px;
-    right: 8px;
+    top: 6px;
+    right: 6px;
+    opacity: .6;
+    transition: opacity var(--dur-2) var(--ease-out-quint);
   }
+  .card:hover .kbd, .card:focus-visible .kbd { opacity: 1; }
 
-  /* A phone has no keyboard to press the letter with. */
+  /* A phone has no keyboard to press the letter with, and three tiles share its width evenly. */
   @media (max-width: 720px) {
     .card .kbd { display: none; }
+    .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .card { width: auto; }
   }
 </style>

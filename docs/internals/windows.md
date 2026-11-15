@@ -66,7 +66,7 @@ The checks run in this order. The first one that fails refuses the capture:
    - the Windows sign-in, lock and elevation screens (`LogonUI.exe`,
      `LockApp.exe`, `CredentialUIBroker.exe`, `consent.exe`);
    - any name or full executable path listed in the
-     `windowCaptureExclusions` setting (Settings, Safeguards, Windows agents
+     `windowCaptureExclusions` setting (Settings, Machines, Windows agents
      never see). An app added there while the panel shows it closes the panel
      on the next frame.
 
@@ -96,7 +96,7 @@ The checks run in this order. The first one that fails refuses the capture:
 
 Every capture leaves a `window_capture` item in the conversation, with a JPEG
 thumbnail of at most 320 pixels. This applies to screenshots, clips and the
-first picture of each viewing in the panel. Settings, Safeguards, Windows agents may see
+first picture of each viewing in the panel. Settings, General, Allowed windows
 (also reached from a project's menu) lists the allowed apps of each project;
 removing one asks for confirmation first. The next capture of that app asks again, and a panel
 showing it closes on its next frame.

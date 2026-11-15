@@ -11,7 +11,7 @@ export const strings = {
     compacting: 'Freeing disk space in the history. This happens once and can take a few minutes.',
     noEndpointTitle: 'No core to connect to',
     noEndpointBody:
-      'On one of your machines, open Settings, Devices, Group, Add a device, and scan or type its code here.',
+      'On one of your machines, open Settings, Machines, Add a device, and scan or type its code here.',
     openSettings: 'Open settings',
     /** The column of buttons down the window's left edge (AppRail.svelte). */
     rail: {

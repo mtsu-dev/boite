@@ -188,9 +188,11 @@
   /* The card's one fill (.card). */
   --card-fill: var(--color-surface);
   --shadow-overlay: 0 12px 36px rgb(0 0 0 / 0.5), 0 1px 2px rgb(0 0 0 / 0.4);
-  --overlay-pad: var(--space-1);
+  /* Air on both levels: the card's own inset, then the row's, so a row's words start 18 px from the card's edge
+     and its hover fill never touches it. */
+  --overlay-pad: 6px;
   --overlay-row: max(32px, var(--control));
-  --overlay-row-pad: var(--space-2);
+  --overlay-row-pad: var(--space-3);
   --radius-overlay-row: var(--radius-sm);
   /* The panel's border draws its hairline; then a top light and a contact shadow.
      No wide blur: 40 px of it read as a darker band on the chrome beside the card.
@@ -358,7 +360,7 @@
   /* Settings read in the conversation's column (its default width, whatever width a thread was set to). */
   --settings-width: 920px;
   /* The settings' list of pages: wide enough for the longest page name in every language, no wider. */
-  --settings-nav: 252px;
+  --settings-nav: 264px;
   --settings-title: 28px;
   --settings-gutter: clamp(var(--space-5), 3vw, 48px);
   --settings-padding: var(--space-6);
@@ -377,6 +379,9 @@
   --dur-1: 90ms;
   --dur-2: 150ms;
   --dur-3: 220ms;
+  /* A picture taking or leaving its colours (the rail's bots), and the wait before a rail button's name shows. */
+  --dur-tint: 320ms;
+  --tip-delay: 500ms;
   --dur-whip: 360ms;
   --dur-typing: 1100ms;
   --dur-typing-step: 140ms;
@@ -399,6 +404,8 @@
   --motion: 1;
   /* A bot's picture at rest: grey, a touch under its lit tone (lib/avatar-lit.ts). */
   --avatar-rest: grayscale(1) brightness(0.92) contrast(0.95);
+  /* A sleeping bot in the rail (AppRail.svelte): its face says it sleeps, so it keeps some of its colour, dimmed. */
+  --avatar-asleep: grayscale(0.6) brightness(0.78);
   --z-whip: 100;
   --z-window-resize: 11000;
   --window-resize-edge: 5px;

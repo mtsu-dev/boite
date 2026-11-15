@@ -290,14 +290,16 @@ test('the Douane plugin: its gear in Plugins and the proxy card pointing at it, 
     await local.waitFor('window.__inView("[data-testid=subscription-proxy-settings]")');
     await shot('boite-douane-proxy-desktop.png');
 
-    // On the phone the proxy card is a card of AI accounts, open like the others.
+    // On the phone the proxy card sits under Limits.
     await local.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
     await local.waitFor('document.querySelector("[data-testid=mobile-header]")');
     await mobileAction(local, 'mobile-settings');
     await local.waitFor('document.querySelector("[data-testid=mobile-settings-home]")');
-    await local.click('[data-testid="settings-tab-ai"]');
+    await local.click('[data-testid="settings-tab-usage"]');
+    await local.click('[data-testid="mobile-usage-tab-limits"]');
     await local.waitFor('document.querySelector("[data-testid=subscription-proxy-settings]")');
-    expect(await local.evaluate('!!document.querySelector("[data-testid=settings-page][data-page=ai] [data-testid=subscription-proxy-settings]") && document.querySelector("[data-testid=subscription-proxy-settings]").closest("details") === null')).toBe(true);
+    await local.waitFor('document.querySelector("[data-testid=subscription-proxy-settings]").closest("details")');
+    await local.evaluate('document.querySelector("[data-testid=subscription-proxy-settings]").closest("details").open = true');
     await local.waitFor('document.querySelector("[data-testid=subscription-proxy-plugin]")?.dataset.state === "running"');
     await local.waitFor('window.__inView("[data-testid=subscription-proxy-key]")');
     expect(await local.evaluate('document.querySelector("[data-testid=subscription-proxy-key]")?.type')).toBe('password');

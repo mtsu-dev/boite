@@ -176,9 +176,9 @@
   .pin {
     color: var(--color-muted-foreground);
   }
-  /* A draft left in the box: full ink, the user's own work waiting. */
+  /* A draft left in the box: the accent, so it reads as the user's own work waiting. */
   .draft {
-    color: var(--color-foreground);
+    color: var(--color-accent);
   }
   /* The pull request: its number in the row's quiet ink, its state in the glyph's tone only. */
   .pr {

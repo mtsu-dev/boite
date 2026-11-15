@@ -33,6 +33,7 @@
   import { keepaliveRun } from '../lib/message-order';
   import { AgentsView, agentOfThread } from '../lib/agents.svelte';
   import AgentAvatar from './agents/AgentAvatar.svelte';
+  import ProviderLogo from './ProviderLogo.svelte';
   import { experimentOn } from '../lib/experiments.svelte';
   import { asksDocked, cardedCall, failedCall, questionDocked } from '../lib/one-status';
   import { machineAway } from '../lib/machine-away';
@@ -72,7 +73,7 @@
     changes?: { at: number; line: Snippet<[inline: boolean]> };
   } = $props();
 
-  /** Longer than this, a text before a step is a report of its own and reads in full ink. */
+  /** Longer than this, a text before a step is a report of its own and keeps its bubble. */
   const NARRATION_MAX = 320;
 
   function lastTextIndex(message: Message): number {
@@ -95,7 +96,7 @@
   const caretAt = $derived(message.state === 'streaming' ? lastTextIndex(message) : -1);
   /**
    * The agent's last step in this message. A short text before it is
-   * narration between calls ("Now the tests"), drawn muted and smaller:
+   * narration between calls ("Now the tests"), drawn muted without a bubble:
    * only what it says after its last step reads as an answer.
    */
   const lastStepAt = $derived(message.role === 'assistant' ? message.parts.findLastIndex(part => part.type === 'tool' || part.type === 'thinking') : -1);
@@ -143,7 +144,7 @@
   {@const engine = execution.model && isNamedModel(model ?? { id: execution.model, name: execution.model }) ? model?.name ?? execution.model : providerName(store, execution.providerId)}
   <!-- A persistent agent's answers are signed with its face, grey at rest (lib/avatar-lit.ts), and its name, at rest
        too, so a bot's words read as its own; the model it ran on is the tooltip. -->
-  <div class="model-attribution" class:bot={agent} data-testid="message-model" title={agentName ? engine : undefined}>{#if agent}<span class="face" data-testid="message-bot"><AgentAvatar kind="profile" id={agent.id} name={agent.name} avatar={agent.avatar} size={18} /></span>{/if}{agentName ?? engine}</div>
+  <div class="model-attribution" class:bot={agent} data-testid="message-model" title={agentName ? engine : undefined}>{#if agent}<span class="face" data-testid="message-bot"><AgentAvatar kind="profile" id={agent.id} name={agent.name} avatar={agent.avatar} size={18} /></span>{:else}<span class="face" data-testid="message-provider"><ProviderLogo providerId={execution.providerId} size={14} /></span>{/if}{agentName ?? engine}</div>
 {/if}
 {#if ping}
   {#if from === 0}<KeepaliveMarker turn={ping} count={keepaliveRun(store.openThread?.turns ?? [], ping.id)} />{/if}
@@ -195,7 +196,7 @@
         {:else if writtenPlan(shownText) && !(index === caretAt && part.complete !== true)}
           {@render plan(shownText)}
         {:else}
-        <Prose text={shownText} revision={textRevision(part)} live={index === caretAt && part.complete !== true}
+        <Prose text={shownText} revision={textRevision(part)} live={index === caretAt && part.complete !== true} bubble={message.role === 'assistant' && !narrated}
           typing={!compacting && latestInTurn && !toolRunning && message.role === 'assistant' && store.connection === 'ready' && store.openThread?.status === 'running' && index === message.parts.length - 1 && index === caretAt && part.complete !== true} {store} {threadId}
           views={message.role === 'assistant' ? views : undefined} />
         {/if}
@@ -308,10 +309,10 @@
 
 <style>
   /* On the same 4 px rest as the parts it names. */
-  .model-attribution { color: var(--instrument-meta); font-size: var(--instrument-meta-size); margin-bottom: calc(var(--chat-block-gap) - var(--chat-part-gap)); padding-left: var(--activity-padding); opacity: 0; transition: opacity var(--dur-2); }
+  .model-attribution { display: flex; align-items: center; gap: 6px; color: var(--instrument-meta); font-size: var(--instrument-meta-size); margin-bottom: calc(var(--chat-block-gap) - var(--chat-part-gap)); padding-left: var(--activity-padding); opacity: 0; transition: opacity var(--dur-2); }
   /* Read on demand, as a message's time and buttons are. */
   :global(.message:hover) .model-attribution, :global(.message:focus-within) .model-attribution { opacity: 1; }
-  .model-attribution.bot { display: flex; align-items: center; gap: 8px; opacity: 1; color: var(--instrument-ink); }
+  .model-attribution.bot { gap: 8px; opacity: 1; color: var(--instrument-ink); }
   .face { display: inline-flex; flex: none; }
   @media (hover: none) { .model-attribution { opacity: 1; } }
   /* Narration between calls: the agent thinking aloud, read at the answer's size and quieter only by its colour. */

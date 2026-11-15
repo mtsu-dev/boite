@@ -84,24 +84,18 @@ test('text and icons share a vertical centre across reading fonts, menus and pho
     })()`), `${font}: proxy row tip gathered`).toBe(true);
     await page.click('[data-testid="subscription-proxy-enabled"]');
     await page.waitFor(`document.querySelector('[data-testid="subscription-proxy-off"]')`);
-    // The machines and Add a device are on Devices.
-    await page.evaluate(`__boiteTest.workspace.active.showSettings('devices')`);
-    await page.waitFor(`document.querySelector('[data-testid="group-add-device"] .ui-label')`);
+    await page.evaluate(`__boiteTest.workspace.active.showSettings('machines')`);
+    await page.waitFor(`document.querySelector('[data-testid="updates-check-all"] .ui-label') && document.querySelector('[data-testid="updates-run-all"] .ui-label') && document.querySelector('[data-testid="group-add-device"] .ui-label')`);
     // The settings bar carries the page's title and its "i"; the page's own heading steps aside.
-    expect((await page.text('[data-testid="settings"] h1 .ui-label')).trim()).toBe('Devices');
-    for (const result of await labelOffsets(page, [
-      ['[data-testid="settings"] h1 .info-tip', '[data-testid="settings"] h1 .ui-label'],
-      ['[data-testid="group-add-device"] svg', '[data-testid="group-add-device"] .ui-label'],
-    ])) expect(Math.abs(result.offset), `${font}: devices`).toBeLessThanOrEqual(0.8);
-    // The app's updates, then the agents and their versions, are on Version.
-    await page.evaluate(`__boiteTest.workspace.active.showSettings('version')`);
-    await page.waitFor(`document.querySelector('[data-testid="updates-check-all"] .ui-label') && document.querySelector('[data-testid="updates-run-all"] .ui-label')`);
-    expect((await page.text('[data-testid="settings"] h1 .ui-label')).trim()).toBe('Version');
+    expect((await page.text('[data-testid="settings"] h1 .ui-label')).trim()).toBe('Machines and updates');
     for (const result of await labelOffsets(page, [
       ['[data-testid="settings"] h1 .info-tip', '[data-testid="settings"] h1 .ui-label'],
       ['[data-testid="updates-check-all"] svg', '[data-testid="updates-check-all"] .ui-label'],
       ['[data-testid="updates-run-all"] svg', '[data-testid="updates-run-all"] .ui-label'],
+      ['[data-testid="group-add-device"] svg', '[data-testid="group-add-device"] .ui-label'],
     ])) expect(Math.abs(result.offset), `${font}: machine updates`).toBeLessThanOrEqual(0.8);
+    // The agents and their versions are on Providers, under a title of the page's own level.
+    await page.evaluate(`__boiteTest.workspace.active.showSettings('accounts')`);
     await page.waitFor(`document.querySelector('[data-testid="harness-updates-card"] h2 .info-tip')`);
     for (const result of await labelOffsets(page, [
       ['[data-testid="harness-updates-card"] h2 .info-tip', '[data-testid="harness-updates-card"] h2 .ui-label'],
@@ -129,9 +123,9 @@ test('text and icons share a vertical centre across reading fonts, menus and pho
   await expectModeRowsCentred();
   await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', windowsVirtualKeyCode: 27 });
   await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', windowsVirtualKeyCode: 27 });
-  await page.evaluate(`__boiteTest.workspace.active.showSettings('conversations')`);
-  await page.waitFor(`document.querySelector('[data-testid="settings-tab-conversations"]')`);
-  for (const result of await labelOffsets(page, [['[data-testid="settings-tab-conversations"]', '[data-testid="settings-tab-conversations"] > span']])) expect(Math.abs(result.offset)).toBeLessThanOrEqual(0.8);
+  await page.evaluate(`__boiteTest.workspace.active.showSettings('general')`);
+  await page.waitFor(`document.querySelector('[data-testid="settings-tab-general"]')`);
+  for (const result of await labelOffsets(page, [['[data-testid="settings-tab-general"]', '[data-testid="settings-tab-general"] > span']])) expect(Math.abs(result.offset)).toBeLessThanOrEqual(0.8);
   await page.evaluate(`__boiteTest.workspace.active.showSettings('task-manager')`);
   await page.waitFor(`document.querySelector('[data-testid="task-manager"] .live .ui-label')`);
   for (const result of await labelOffsets(page, [['[data-testid="task-manager"] dt', '[data-testid="task-manager"] dt .ui-label']])) expect(Math.abs(result.offset)).toBeLessThanOrEqual(0.8);

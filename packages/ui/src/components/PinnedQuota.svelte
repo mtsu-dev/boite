@@ -104,7 +104,8 @@
   onpointerdown={startDrag} onkeydown={moveWithKeys}>
   <header>
     <span id={hintId} class="sr-only">{strings.quotas.dragHint}</span>
-    <Gauge size={14} />
+    <!-- The card's mark, as a project card's tile: the provider every row here belongs to. -->
+    {#if rows[0]}<span class="mark"><ProviderLogo providerId={rows[0].providerId} size={dock ? 18 : 14} /></span>{:else}<Gauge size={dock ? 16 : 14} />{/if}
     <strong title={store.modelOf(choice)?.name ?? choice?.model ?? ''}>{rows[0]?.providerName ?? strings.quotas.pinnedTitle}</strong>
     <button type="button" class="ghost icon" aria-label={strings.quotas.refresh} title={strings.quotas.refresh} data-testid="pinned-quota-refresh" aria-busy={reader.busy} disabled={!connected || reader.busy} onclick={() => refresh(true)}><RefreshCw size={13} class={reader.busy ? 'spinning' : ''} /></button>
     <button type="button" class="ghost icon" aria-label={strings.quotas.unpin} title={strings.quotas.unpin} data-testid="pinned-quota-unpin" onclick={() => pinnedQuotas.set(false)}><PinOff size={14} /></button>
@@ -117,7 +118,7 @@
     {:else if rows.length === 0}<p>{strings.quotas.pinnedEmpty}</p>{/if}
     {#each ordered as row (row.accountId)}
       <article data-testid="pinned-quota-account" data-account-id={row.accountId} data-provider={row.providerId} class:stale={row.status === 'unavailable'}>
-        <div class="account"><ProviderLogo providerId={row.providerId} size={14} /><span class="ui-label" title={quotaAccountName(row)}>{quotaAccountName(row)}</span></div>
+        <div class="account"><span class="ui-label" title={quotaAccountName(row)}>{quotaAccountName(row)}</span></div>
         {#each row.windows as window (window.id)}
           {@const left = remainingPercent(window.usedPercent)}
           <div class="window" title={window.resetsAt === null ? strings.quotas.noReset : fill(strings.quotas.resets, { time: quotaResetTime(window.resetsAt) })}>
@@ -144,9 +145,27 @@
   .pinned-quota[data-position='bottom-left'] { bottom: 12px; left: 12px; }
   .pinned-quota[data-position='bottom-right'] { bottom: 12px; right: 12px; }
   .pinned-quota.docked { position: relative; inset: auto; flex: 0 1 auto; width: auto; min-height: 0; max-height: min(320px, 40%); margin: 6px 10px 0; box-shadow: none; }
+  /* Docked under the thread list it is one of the list's cards (Sidebar.svelte `.project`): the same quiet
+     surface with no edge or shadow of its own, a 38 px head with the card title's type and its mark where a
+     project's tile sits, then rows at the list's size on the head's text edge, parted by air and not by rules. */
+  .pinned-quota.docked { margin: 0 8px 4px; padding: 4px; border: 0; border-radius: var(--radius-lg); background: var(--color-surface); opacity: 1; }
+  .pinned-quota.docked:hover, .pinned-quota.docked:focus-within { background: var(--color-surface); }
+  .docked header { height: 38px; padding: 0 2px 0 4px; gap: 2px; border-bottom: 0; }
+  .docked header > :global(svg), .docked .mark { margin-right: 6px; }
+  .docked strong { font-size: var(--text-title); font-weight: var(--weight-title); letter-spacing: -0.01em; }
+  .docked header button { width: 28px; height: 28px; color: var(--color-muted-foreground); }
+  .docked header button:hover:not(:disabled) { color: var(--color-foreground); }
+  .docked .body { padding: 0 8px 4px 4px; }
+  .docked article { padding: 0 0 8px; gap: 3px; }
+  .docked article + article { border-top: 0; }
+  .docked .account { height: 22px; font-size: var(--text-sm); font-weight: 600; }
+  .docked .window { height: 20px; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1fr) 3.2em; gap: 10px; font-size: var(--text-xs); }
+  .docked .track { border-radius: var(--radius-full); }
+  .docked p { margin: 0 0 6px; }
   .pinned-quota.inline { position: relative; inset: auto; flex: none; align-self: flex-start; max-height: min(200px, 30%); margin: 4px 12px; }
   header { touch-action: none; display: flex; flex: none; align-items: center; gap: 2px; padding: 1px 4px 1px 8px; border-bottom: 1px solid var(--color-border); }
   header > :global(svg) { flex: none; color: var(--color-muted-foreground); margin-right: 4px; }
+  .mark { display: flex; flex: none; margin-right: 4px; }
   strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); font-weight: 600; }
   header button { width: var(--control-sm); height: var(--control-sm); padding: 0; }
   header :global(.spinning) { animation: spin 900ms linear infinite var(--loops); }

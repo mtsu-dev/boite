@@ -45,13 +45,14 @@
   let counts = $derived.by(() => {
     const of = (state: RowState) => rows.filter(row => row.state === state).length;
     const working = of('working'), asks = of('asking'), done = of('done'), failed = of('failed'), stopped = of('stopped');
-    return [
-      working ? fill(strings.delegation.countWorking, { count: String(working) }) : '',
-      asks ? (asks === 1 ? strings.delegation.countAskingOne : fill(strings.delegation.countAsking, { count: String(asks) })) : '',
-      done ? fill(strings.delegation.countDone, { count: String(done) }) : '',
-      failed ? fill(strings.delegation.failed, { count: String(failed) }) : '',
-      stopped ? fill(strings.delegation.stopped, { count: String(stopped) }) : ''
-    ].filter(Boolean);
+    const all: { state: RowState; text: string }[] = [
+      { state: 'working', text: working ? fill(strings.delegation.countWorking, { count: String(working) }) : '' },
+      { state: 'asking', text: asks ? (asks === 1 ? strings.delegation.countAskingOne : fill(strings.delegation.countAsking, { count: String(asks) })) : '' },
+      { state: 'done', text: done ? fill(strings.delegation.countDone, { count: String(done) }) : '' },
+      { state: 'failed', text: failed ? fill(strings.delegation.failed, { count: String(failed) }) : '' },
+      { state: 'stopped', text: stopped ? fill(strings.delegation.stopped, { count: String(stopped) }) : '' }
+    ];
+    return all.filter(count => count.text);
   });
   const MARKS = 3;
   let marks = $derived(agents.slice(0, MARKS));
@@ -60,7 +61,7 @@
   let expanded = $state(false);
 </script>
 
-<ActivityCard live={team.active} heading={agents.length === 1 ? strings.delegation.groupOne : fill(strings.delegation.group, { count: String(agents.length) })}
+<ActivityCard live={team.active} tone={rows.some(row => row.state === 'failed') ? 'failed' : rows.some(row => row.state === 'done') ? 'done' : undefined} heading={agents.length === 1 ? strings.delegation.groupOne : fill(strings.delegation.group, { count: String(agents.length) })}
   timing={team} {expanded} onclick={() => { expanded = !expanded; }} data-testid="delegation-activity" data-count={agents.length} progressTestId="delegation-progress">
   {#snippet mark()}
     <span class="stack">
@@ -68,7 +69,7 @@
       {#if more > 0}<span class="more ui-label">+{more}</span>{/if}
     </span>
   {/snippet}
-  {#snippet progress()}<span class="counts">{#each counts as count, index (count)}{#if index > 0}{', '}{/if}<span class="count">{count}</span>{/each}</span>{/snippet}
+  {#snippet progress()}<span class="counts">{#each counts as count, index (count.text)}{#if index > 0}{', '}{/if}<span class="count" data-state={count.state}>{count.text}</span>{/each}</span>{/snippet}
   <ul class="agents" data-testid="delegation-agents">
     {#each rows as row (row.agent.thread.id)}
       <li>
@@ -93,11 +94,15 @@
 <style>
   /* The marks overlap a little, each ringed in the page's ground so the next one reads apart. */
   .stack { display: inline-flex; align-items: center; }
-  .logo { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: var(--radius-full); background: var(--color-surface-2); box-shadow: 0 0 0 1.5px var(--color-background); }
+  .logo { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: var(--radius-full); background: var(--color-surface-2); box-shadow: 0 0 0 1.5px var(--card-fill); }
   .logo + .logo { margin-left: -5px; }
   /* A button keeps its words on one line: on a narrow column the counts wrap between two, never inside one or under the time. */
   .counts { min-width: 0; white-space: normal; }
   .count { white-space: nowrap; }
+  /* What asks for him or came back reads in its colour: a result that arrived is seen. */
+  .count[data-state='asking'] { color: var(--color-live); font-weight: 600; }
+  .count[data-state='done'] { color: var(--color-success); font-weight: 600; }
+  .count[data-state='failed'] { color: var(--color-danger); font-weight: 600; }
   .more { margin-left: 4px; color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
   .agents { display: flex; flex-direction: column; margin: 0; padding: 0 0 2px; list-style: none; }
   /* One row per subagent, under the group's marks: its provider, its name, its state, its time; a cause on a

@@ -54,7 +54,6 @@ feature is for.
 - [Updates](updates.md): app updates and agent updates.
 - [Experiments](experiments.md): unfinished features you can turn on in a Nightly build.
 - [Privacy and network](privacy.md): what leaves your machine, and how to block it.
-- [Settings](settings.md): the nine pages of Settings and what each one holds.
 - [Troubleshooting](troubleshooting.md): logs and problem reports.
 
 ## For contributors

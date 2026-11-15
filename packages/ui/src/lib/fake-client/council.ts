@@ -87,7 +87,7 @@ function salonOf(ctx: FakeContext, parent: Thread, councilId: string, request: s
 
 export function councilMethods(ctx: FakeContext): CouncilMethods {
   const gate = () => {
-    if (!ctx.experimentsInForce().includes(COUNCIL_EXPERIMENT)) throw refused('the council needs the Council experiment, which is off in the desktop app (Settings, Version, Experiments)', { reason: 'experiment-off' });
+    if (!ctx.experimentsInForce().includes(COUNCIL_EXPERIMENT)) throw refused('the council needs the Council experiment, which is off in the desktop app (Settings, Experiments)', { reason: 'experiment-off' });
   };
   const all = () => [...state(ctx).councils.values()].sort((a, b) => b.createdAt - a.createdAt);
   const postsOf = (id: string) => state(ctx).posts.get(id) ?? [];

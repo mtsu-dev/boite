@@ -23,7 +23,7 @@
     align-items: center;
     gap: 8px;
     padding: 6px 6px 0 14px;
-    color: var(--color-foreground);
+    color: var(--color-accent);
     font-size: var(--text-xs);
   }
   .intent span { flex: 1; min-width: 0; }

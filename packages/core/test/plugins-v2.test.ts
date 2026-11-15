@@ -407,9 +407,9 @@ console.log(JSON.stringify({ accounts: [{ email: [env.BOITE_PLUGIN_ID, env.BOITE
       harness.core.plugins.inspect = (params) => { inspected.push(params); return inspect(params); };
       const code = await runCli(['plugin', 'add', 'https://github.com/example/standup/releases/tag/v1.2.0', '--why', 'Adds a standup command'], io);
       expect({ code, err }).toEqual({ code: 0, err: '' });
-      expect(out).toContain('card: Preview opens Settings > Agents > Plugins with https://github.com/example/standup at v1.2.0 read');
+      expect(out).toContain('card: Preview opens Settings > Plugins with https://github.com/example/standup at v1.2.0 read');
       const [card] = await owner.call('questions.list', { threadId });
-      expect(card).toMatchObject({ text: 'Adds a standup command', setting: { kind: 'open', page: 'agents', plugin: { url: 'https://github.com/example/standup', ref: 'v1.2.0' } } });
+      expect(card).toMatchObject({ text: 'Adds a standup command', setting: { kind: 'open', page: 'plugins', plugin: { url: 'https://github.com/example/standup', ref: 'v1.2.0' } } });
       expect(inspected).toEqual([]);
 
       // No reason, or an http source: refused before any card.

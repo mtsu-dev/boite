@@ -64,7 +64,7 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    color: var(--color-muted-foreground);
+    color: var(--color-accent);
     font-size: var(--text-xs);
     font-weight: 600;
   }

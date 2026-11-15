@@ -17,7 +17,7 @@ export const strings = {
     declined: 'Declined',
     closed: 'Closed without an answer',
   },
-  /** Settings, Agents: what an agent does without a card. */
+  /** Settings, General: what an agent does without a card. */
   agentsAlone: {
     heading: 'What agents may do alone',
     reach: 'Other conversations an agent reaches',

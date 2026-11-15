@@ -26,33 +26,39 @@ async function machine(): Promise<{ client: FakeClient; store: Store }> {
   return { client, store };
 }
 
-test('the list speaks the language just picked, and Devices says which machine this phone reaches', async () => {
+const value = (testid: string) => document.querySelector(`[data-testid=${testid}-value]`)?.textContent ?? null;
+
+test('Home\'s appearance row speaks the language just picked, theme word included', async () => {
   const { store } = await machine();
   store.showSettings();
   mounted = mount(MobileSettings, { target: document.body, props: { store } });
   await settle();
-  const name = (page: string) => document.querySelector(`[data-testid=settings-tab-${page}] .ui-label`)?.textContent;
-  expect(name('ai')).toBe('AI accounts');
-  expect(document.querySelector('[data-testid=mobile-settings-connection-value]')?.textContent?.trim()).not.toBe('');
-  // One value in the list, the connection: no other row carries a word of its own.
-  expect(document.querySelectorAll('[data-testid=mobile-settings-pages] .value')).toHaveLength(1);
+  expect(value('settings-tab-appearance')).toBe(`${strings.settings.themeSystem} · ${strings.settings.languageNames.en}`);
   await setLocaleSetting('fr');
   await settle();
-  expect(name('ai')).toBe('Comptes IA');
-  expect(name('help')).toBe(strings.settingsMap.pages.help);
-  store.connection = 'closed';
-  await settle();
-  expect(document.querySelector('[data-testid=mobile-settings-connection-value]')?.textContent?.trim()).toBe(strings.connection.closed);
+  expect(strings.settings.themeSystem).toBe('Système');
+  expect(value('settings-tab-appearance')).toBe(`Système · ${strings.settings.languageNames.fr}`);
 });
 
-test('Troubleshooting reads the machine picked, as the pages above it do', async () => {
+test('Home\'s voice row says nothing once its machine is out of reach, rather than its last On or Off', async () => {
+  const { store } = await machine();
+  store.showSettings();
+  mounted = mount(MobileSettings, { target: document.body, props: { store } });
+  await settle();
+  expect([strings.settings.homeOn, strings.settings.homeOff]).toContain(value('settings-tab-voice'));
+  store.connection = 'closed';
+  await settle();
+  expect(value('settings-tab-voice')).toBeNull();
+});
+
+test('Diagnostics lists the agents of the machine its bar picked, as the pages above it do', async () => {
   const here = await machine();
   const picked = await machine();
   vi.spyOn(here.store, 'owner', 'get').mockReturnValue(true);
   vi.spyOn(picked.store, 'owner', 'get').mockReturnValue(true);
   const asked = (client: FakeClient) => {
     const call = vi.spyOn(client, 'call');
-    return () => call.mock.calls.some(([method]) => method === 'diagnostics.summary');
+    return () => call.mock.calls.some(([method]) => method === 'resources.usage');
   };
   const hereAsked = asked(here.client), pickedAsked = asked(picked.client);
   Element.prototype.scrollIntoView ??= vi.fn();
