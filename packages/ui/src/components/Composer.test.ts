@@ -2176,7 +2176,7 @@ test('a phone shows the model, effort and permission chips in one row, the permi
   } finally { restore(); }
 });
 
-test("a mochi's composer shows the same three chips as a thread, each reading its value and opening nothing", async ({ app: _app }) => {
+test("a mochi's composer shows the same three chips as a thread, each reading its value and opening the thread's menu", async ({ app: _app }) => {
   const selection = { providerId: 'echo', accountId: 'a-echo', model: 'echo-1', effort: 'low', permissionMode: 'bypassPermissions' as const };
   const agent = await store.client!.call('agents.profile.save', { value: { name: 'Ada', domain: '', instructions: '', avatar: '', selection, status: 'active' } });
   const { threadId } = await store.client!.call('agents.open', { agentId: agent.id });
@@ -2186,14 +2186,14 @@ test("a mochi's composer shows the same three chips as a thread, each reading it
   const chips = Array.from(query('.chips').querySelectorAll('[data-testid=composer-picker], [data-testid=composer-effort], [data-testid=composer-mode]'));
   // One chip per setting, not "model · effort" merged into one: the same order and form as a thread's.
   expect(chips.map((el) => el.getAttribute('data-testid'))).toEqual(['composer-picker', 'composer-effort', 'composer-mode']);
-  expect(chips.map((el) => el.tagName)).toEqual(['SPAN', 'SPAN', 'SPAN']);
+  expect(chips.map((el) => el.tagName)).toEqual(['BUTTON', 'BUTTON', 'BUTTON']);
   expect(chipText('composer-effort')).toBe('Effort Low');
   expect(chipText('composer-mode')).toBe('Auto');
   expect(chips.every((el) => el.getAttribute('title') === "Set in Ada's settings")).toBe(true);
+  // The owner changes them here: the same menus as a thread's (picks: BotComposerChips.test.ts).
   query<HTMLElement>('[data-testid=composer-mode]').click();
-  query<HTMLElement>('[data-testid=composer-effort]').click();
   flushSync();
-  expect(document.querySelector('[data-testid=composer-mode-menu], [data-testid=composer-effort-menu]')).toBeNull();
+  await waitFor(() => document.querySelector('[data-testid=composer-mode-menu]') !== null);
 });
 
 test('a slash lists the agent commands first, filters, and completes the box', async ({ app: _app }) => {

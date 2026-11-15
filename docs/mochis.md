@@ -94,6 +94,10 @@ small helper rewrites its memory from what you asked and what it answered;
 turn off Update memory after each answer to stop it. The mochi also notes facts
 as it learns them. Its memory and identity stay when you change its model.
 
+The model, effort and permission chips under its message box change its
+settings, as its settings page does, and its next answer uses them. On a
+paired device they only show its settings.
+
 Under Engine settings, Brain folder moves every mochi's brain to a folder you
 choose, a Git repository of your own for example. Each mochi gets a folder named
 after it.

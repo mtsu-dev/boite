@@ -2,7 +2,7 @@
   import { TriangleAlert, UserX } from '@lucide/svelte';
   import type { AgentProfile } from '@boite/contracts';
   import type { AgentsView } from '../../lib/agents.svelte';
-  import { routeCatalog, routeGone, withDefaultRoute } from '../../lib/agent-route';
+  import { routeGone, saveDefaultRoute } from '../../lib/agent-route';
   import { errorText } from '../../lib/errors';
   import { accountName } from '../../lib/account-name';
   import { fill, strings } from '../../lib/strings';
@@ -33,13 +33,8 @@
     const model = same ? agent.selection.model : store.defaultModelOf(provider, account.id);
     const patch = { providerId: provider.id, accountId: account.id, model, effort: same ? agent.selection.effort : store.defaultEffortOf(provider.id, account.id, model) };
     busy = true;
-    try {
-      await view.save('agents.runtime.configure', async () => {
-        const stored = await store.client!.call('agents.runtime.get', { agentId: agent.id });
-        const latest = view.snapshot?.profiles.find(profile => profile.id === agent.id) ?? agent;
-        return { agentId: agent.id, expectedRevision: latest.revision, config: withDefaultRoute(stored, patch, routeCatalog(store)) };
-      });
-    } catch (error) { view.error = errorText(error); }
+    try { await saveDefaultRoute(view, agent, patch); }
+    catch (error) { view.error = errorText(error); }
     finally { busy = false; }
   }
 </script>

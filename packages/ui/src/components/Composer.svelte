@@ -1,11 +1,11 @@
 <script lang="ts">
   import { tick, untrack, type Snippet } from 'svelte';
-  import { supportsSideQuestions, type Attachment, type PreviewReference } from '@boite/contracts';
+  import { supportsSideQuestions, type AgentSelection, type Attachment, type PreviewReference } from '@boite/contracts';
   import { restorePreviewMentions } from '../lib/preview-mentions';
   import { runCommand } from '../lib/commands.svelte';
   import { agentSlashItems, boiteSlashItems, skillSlashItems, slashCompletion, listKey, mentionQueryOf, slashQueryOf, type ChipCommand } from '../lib/composer-menus';
   import { AgentsView, agentOfThread } from '../lib/agents.svelte';
-  import { routeGone } from '../lib/agent-route';
+  import { routeGone, saveDefaultRoute } from '../lib/agent-route';
   import { composerPlaceholder } from '../lib/composer-placeholder';
   import { readyToSend, receiveDroppedFiles, takeFiles } from '../lib/composer-attachments';
   import { rewindComposerEdit } from '../lib/composer-edit';
@@ -106,11 +106,11 @@
     mode: { testid: 'composer-mode', description: strings.slash.mode }
   };
 
-  /** The chips follow the open thread, or the remembered choice on a draft; an agent's box has none. */
+  /** The chips follow the open thread, or the remembered choice on a draft; a bot's show its settings. */
   $effect(() => {
     store.providers;
     store.accounts;
-    choice = chipChoice(store, thread, target);
+    choice = botProfile && !target ? store.composerChoice({ ...botProfile.selection, speed: null }) : chipChoice(store, thread, target);
   });
 
   /** Desktop drafts take the keyboard; touch navigation leaves it closed. */
@@ -174,9 +174,11 @@
   // Another conversation or machine on screen: the waiting send stays with the box it was pressed in, unsent.
   $effect(() => { void key; void store; untrack(() => { sendWhenLoaded = null; }); });
 
-  /** A persistent agent's own thread: the box is addressed to it by name, and its model, effort and mode live in its settings, not on chips. */
+  /** A persistent agent's own thread: the box is addressed to it by name, and its model, effort and mode are its settings, which the chips show and change. */
   const botProfile = $derived(thread?.agentSessionId ? agentOfThread(AgentsView.of(store).snapshot, thread.id) : null);
   const bot = $derived(botProfile?.name ?? null);
+  /** A chip's pick saved as the bot's setting, as its settings page saves it; the core lets only the owner do so. */
+  const botRoute = $derived(botProfile && store.owner ? (patch: Partial<AgentSelection>) => saveDefaultRoute(AgentsView.of(store), botProfile, patch) : null);
   /** The bot's account is gone: its chips point at the banner's remedy (`agents/AgentProblem.svelte`). */
   const botGone = $derived(!!botProfile && routeGone(store, botProfile.selection));
   /** The account behind the box is gone with no other to move to: the box locks, its placeholder the remedy (the banner's or the model chip's). */
@@ -810,7 +812,7 @@
     <!-- A bot's gone account said once, to a screen reader: the placeholder and its banner (AgentProblem) show it. -->
     {#if botGone}<span class="visually-hidden" role="status" data-testid="composer-bot-gone">{bot ? fill(strings.composer.botAccountGone, { name: bot }) : strings.accounts.removedHint}</span>{/if}
 
-    <ComposerBar bind:this={toolbar} {store} {key} {target} {bot} {botGone} {provider} canSend={sendable && !stopped && !accountGone} typed={!reply || text.trim().length > 0 || attachments.length > 0} waiting={sendWhenLoaded !== null} answering={reply} declining={!reply && !offline ? permission : null}
+    <ComposerBar bind:this={toolbar} {store} {key} {target} {bot} {botGone} {botRoute} {provider} canSend={sendable && !stopped && !accountGone} typed={!reply || text.trim().length > 0 || attachments.length > 0} waiting={sendWhenLoaded !== null} answering={reply} declining={!reply && !offline ? permission : null}
       onmention={!target && !reply && mentionProject !== null ? startMention : undefined} oncommand={!target && !reply && text.trim() === '' ? startCommand : undefined} bind:choice bind:picking bind:dictating
       onsubmit={() => void submit()}
       onfiles={(files) => void take(files)}

@@ -2,9 +2,10 @@
   import { ArrowUp, LoaderCircle, Mic, MicOff, Square } from '@lucide/svelte';
   import { tick } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
-  import { effectiveCompaction, type PermissionMode, type PermissionRequest, type ProviderSummary, type QuestionRequest } from '@boite/contracts';
+  import { effectiveCompaction, type AgentSelection, type PermissionMode, type PermissionRequest, type ProviderSummary, type QuestionRequest } from '@boite/contracts';
   import { formatTokens, providerName } from '../lib/format';
   import { confirm } from '../lib/confirm.svelte';
+  import { errorText } from '../lib/errors';
   import { switchDropsHistory, switchResetsCache, type CacheKey } from '../lib/switch-warning';
   import { modeHint, modeIcon, modeLabel, modesFor, modeWord, shownMode } from '../lib/permission-modes';
   import { fill, strings } from '../lib/strings';
@@ -58,6 +59,7 @@
     target = null,
     bot = null,
     botGone = false,
+    botRoute = null,
     provider,
     canSend,
     waiting = false,
@@ -78,10 +80,16 @@
     /** The open thread's id, or the draft's stash key. */
     key: string;
     target?: ComposerTarget | null;
-    /** The persistent agent this box writes to, by name: its model, effort and mode are its settings, so its chip only names the model. */
+    /** The persistent agent this box writes to, by name: its model, effort and mode are its settings, which the chips show. */
     bot?: string | null;
     /** The bot's account is gone: the chips name the banner's remedy instead of its settings. */
     botGone?: boolean;
+    /**
+     * Saves a pick as the bot's own setting, the write of its settings page
+     * (`saveDefaultRoute`). Absent where that page cannot change it (a paired
+     * device): the chips then say so on a click.
+     */
+    botRoute?: ((patch: Partial<AgentSelection>) => Promise<unknown>) | null;
     provider: ProviderSummary | null | undefined;
     canSend: boolean;
     /** Send was pressed while files were still being read: it goes once they are ready. */
@@ -159,8 +167,14 @@
   // A legacy mode still live (`plan`) keeps its own choice until another is picked.
   let modeChoices = $derived<ModeChoice[]>([...modes, ...modes.includes(displayedMode) ? [] : [displayedMode]]
     .map((mode) => ({ id: mode, label: modeWord(mode, provider), hint: modeLabel(mode, provider), title: modeHint(mode, provider), icon: modeIcon(mode) })));
-  /** A bot keeps its model, effort and mode in its settings: its chips read them and open nothing. */
-  let botHint = $derived(bot ? fill(botGone ? strings.composer.botAccountGone : strings.composer.botSettings, { name: bot }) : '');
+  /**
+   * A bot keeps its model, effort and mode in its settings: its chips show
+   * them and a pick saves there. Where that page is read only, each chip says
+   * why on a click.
+   */
+  let botLocked = $derived(bot !== null && !botRoute);
+  let botHint = $derived(!bot ? '' : botLocked ? strings.agentSettingRequest.guestHint
+    : fill(botGone ? strings.composer.botAccountGone : strings.composer.botSettings, { name: bot }));
   // The worktree switch exists where the core can honour it: a draft on a
   // folder the core found a `.git` in. No answer yet, or an older core that
   // never gives one, is no repository: a switch the core would refuse is noise.
@@ -172,7 +186,7 @@
   // offers no scale (an agent that keeps its own) gets no chip at all.
   let effortLevels = $derived((store.modelOf(choice)?.effort?.levels ?? []).filter(level => provider?.protocol === 'claude-sdk' || level.id !== 'ultrathink'));
   // An agent keeps no speed of its own: its chips offer none.
-  let speedOptions = $derived(speedControl(choice && !target ? store.modelsOf(choice.providerId, choice.accountId) : [], choice));
+  let speedOptions = $derived(speedControl(choice && !target && !bot ? store.modelsOf(choice.providerId, choice.accountId) : [], choice));
   let speeds = $derived(speedOptions.speeds);
   let activeEffort = $derived(choice?.effort ?? store.modelOf(choice)?.effort?.default ?? null);
   /** The model has a scale but no default: its agent picks the level until the user does. */
@@ -229,6 +243,12 @@
           });
           if (!go) return;
         }
+        if (botRoute) {
+          // The bot's settings take the pick, as its page would: another model starts at its own default level.
+          const { speed: _speed, ...route } = patch;
+          await saveBot(changedModel ? { effort: null, ...route } : route);
+          return;
+        }
         const accepted = await store.update(thread.id, {
           accountId: target.accountId, model: target.model, effort: target.effort, speed: target.speed,
           expectedSelectionVersion: thread.selectionVersion ?? 0,
@@ -253,6 +273,12 @@
     store.remember(choice);
   }
 
+  /** A refused save leaves the chips on the setting the core kept, and says why. */
+  async function saveBot(patch: Partial<AgentSelection>): Promise<void> {
+    try { await botRoute?.(patch); }
+    catch (error) { store.error = errorText(error); }
+  }
+
   function pickEffort(id: string | null) {
     void pick({ effort: id || null });
   }
@@ -263,6 +289,11 @@
     if (target?.selection) {
       picking = true;
       void target.selection.save({ ...choice, permissionMode: mode }).finally(() => { picking = false; });
+      return;
+    }
+    if (botRoute) {
+      picking = true;
+      void saveBot({ permissionMode: mode }).finally(() => { picking = false; });
       return;
     }
     choice = { ...choice, permissionMode: mode };
@@ -301,16 +332,16 @@
   <!-- One row on a phone as on a desktop: what runs the turn (model, effort), then how it runs (permission) with the context at the end. -->
   <div class="chips">
     <div class="line runs">
-    <!-- A bot's model is its own setting: its chip names it and changes nothing here. -->
-    <ModelPicker bind:this={chip} {store} {choice} disabled={picking} readonly={bot !== null} readonlyHint={botHint} onpick={pick} />
+    <!-- A bot's model is its own setting: a pick saves it there, as its settings page does. -->
+    <ModelPicker bind:this={chip} {store} {choice} disabled={picking} readonly={botLocked} hint={botHint} onpick={pick} />
     {#if choice && (effortLevels.length > 0 || speeds.length > 0)}
       <!-- The effort is a slider of its own, read at rest: its level, the bolt while fast is on. -->
-      <EffortSlider bind:this={slider} levels={effortLevels} active={activeEffort} onpick={pickEffort} ondefault={agentDefault ? () => pickEffort(null) : undefined} {speeds} speed={speedOptions.speed} onspeed={(id) => void pick(speedOptions.pick(id))} readonly={bot !== null} readonlyHint={botHint} />
+      <EffortSlider bind:this={slider} levels={effortLevels} active={activeEffort} onpick={pickEffort} ondefault={agentDefault ? () => pickEffort(null) : undefined} {speeds} speed={speedOptions.speed} onspeed={(id) => void pick(speedOptions.pick(id))} readonly={botLocked} hint={botHint} />
     {/if}
     </div>
     <div class="line how">
     {#if choice && modes.length > 0}
-      <PermissionChip items={modeChoices} active={displayedMode} onpick={pickMode} readonly={bot !== null} readonlyHint={botHint} />
+      <PermissionChip items={modeChoices} active={displayedMode} onpick={pickMode} disabled={picking} readonly={botLocked} hint={botHint} />
     {/if}
     {#if signedOut && store.owner}
       <button type="button" class="ui-chip signed-out" data-testid="composer-reconnect" title={fill(strings.connect.signedOut, { provider: provider?.name ?? '' })} onclick={() => store.openConnect(signedOut.providerId, signedOut.id)}><span class="ui-label">{strings.connect.reconnect}</span></button>

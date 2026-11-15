@@ -3,6 +3,7 @@
   import { ChevronDown, Plug, Sparkles } from '@lucide/svelte';
   import { isNamedModel } from '../lib/model-order';
   import ProviderLogo from './ProviderLogo.svelte';
+  import ChipNote from './ChipNote.svelte';
   import Deferred from './Deferred.svelte';
   import { parts } from '../lib/nested-parts';
   import type ModelPickerMenu from './ModelPickerMenu.svelte';
@@ -24,7 +25,7 @@
     single = false,
     disabled = false,
     readonly = false,
-    readonlyHint = '',
+    hint = '',
     onpick
   }: {
     store: Store;
@@ -34,13 +35,17 @@
     /** The choice's provider alone: no provider rail and no first level, its models straight away. */
     single?: boolean;
     disabled?: boolean;
-    /** The model is set elsewhere (a bot's settings): the chip names it and opens nothing. */
+    /** The model is set where this device cannot change it (a bot's settings on a paired device): the chip names it, and a click says why (`hint`). */
     readonly?: boolean;
-    readonlyHint?: string;
+    /** The chip's title in place of its own: whose setting it shows, or why it cannot change here. */
+    hint?: string;
     onpick: (patch: PickPatch) => void;
   } = $props();
 
   const popover = new Closing();
+  /** A read-only chip's reason, shown on its click. */
+  const note = new Closing();
+  let readonlyTrigger = $state<HTMLButtonElement | undefined>(undefined);
   let root = $state<HTMLDivElement | undefined>(undefined);
   let body = $state<ModelPickerMenu | undefined>(undefined);
 
@@ -59,8 +64,9 @@
     return account && account.isolationDir !== null ? account.label : null;
   });
 
-  /** Opens the popover once its chunk is there (a slash command, a removed account's chip). */
+  /** Opens the popover once its chunk is there (a slash command, a removed account's chip); a read-only chip says why instead. */
   export async function reveal() {
+    if (readonly) { note.show(); return; }
     if (!popover.open) toggle();
     await parts.ModelPickerMenu.load().catch(() => undefined);
     await tick();
@@ -96,10 +102,11 @@
       <span class="label ui-label">{strings.connect.button}</span>
     </button>
   {:else if readonly}
-  <span class="ui-chip trigger readonly" data-testid="composer-picker" title={readonlyHint || label}>
+  <button type="button" class="ui-chip trigger readonly" data-testid="composer-picker" title={hint || label} aria-label={[label, hint].filter(Boolean).join(', ')} aria-expanded={note.open} bind:this={readonlyTrigger} onclick={() => note.toggle()}>
     {#if provider}<ProviderLogo providerId={provider.id} size={14} />{/if}
     <span class="label ui-label">{label}</span>
-  </span>
+  </button>
+  {#if note.shown && hint}<ChipNote {note} anchor={() => readonlyTrigger ?? null} text={hint} testid="composer-picker-note" />{/if}
   {:else}
   <button
     type="button"
@@ -107,7 +114,7 @@
     aria-haspopup="menu"
     aria-expanded={popover.open}
     aria-label={[label, accountLabel].filter(Boolean).join(', ')}
-    title={locked ? strings.composer.lockedHint : strings.composer.picker}
+    title={hint || (locked ? strings.composer.lockedHint : strings.composer.picker)}
     data-testid="composer-picker"
     {disabled}
     onclick={toggle}

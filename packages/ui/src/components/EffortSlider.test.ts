@@ -203,14 +203,19 @@ test('the chip names what it sets then the level, with no step meter; a speed al
   expect(query('[data-testid=composer-effort]').textContent?.trim()).toBe('Standard speed');
 });
 
-test("a mochi's effort chip names its level and opens nothing", () => {
-  mounted = mount(EffortSlider, { target: document.body, props: { levels: LEVELS, active: 'high', onpick() {}, readonly: true, readonlyHint: "Set in Ada's settings" } });
+test("a mochi's effort chip on a device that cannot change it names its level, and a click says why instead of opening", () => {
+  const why = "Only the computer running Boite can change a mochi's settings.";
+  mounted = mount(EffortSlider, { target: document.body, props: { levels: LEVELS, active: 'high', onpick() {}, readonly: true, hint: why } });
   flushSync();
   const chip = query<HTMLElement>('[data-testid=composer-effort]');
-  expect(chip.tagName).toBe('SPAN');
   expect(chip.textContent?.trim()).toBe('Effort High');
-  expect(chip.getAttribute('title')).toBe("Set in Ada's settings");
+  expect(chip.getAttribute('title')).toBe(why);
+  expect(document.querySelector('[data-testid=composer-effort-note]')).toBeNull();
   chip.click();
   flushSync();
   expect(document.querySelector('[data-testid=composer-effort-menu]')).toBeNull();
+  expect(query('[data-testid=composer-effort-note]').textContent).toBe(why);
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+  flushSync();
+  expect(chip.getAttribute('aria-expanded')).toBe('false');
 });

@@ -127,8 +127,14 @@ last memory pass (`AgentStatus.memory`) marks the answer it followed, and its
 child conversation is left out of the subagent dock and of the gate that holds
 a finished turn's notification while its children work; the client keeps those
 ids per machine (`lib/agent-upkeep.ts`). The composer of a mochi's thread is
-addressed to it by name and shows no model, effort or mode chips: those are
-its settings.
+addressed to it by name. Its model, effort and mode chips show the mochi's
+settings (its profile's `selection`, not the thread's) and open the menus of
+any thread; a pick is saved the way its settings page saves it,
+`agents.runtime.configure` through `saveDefaultRoute` (`lib/agent-route.ts`),
+and the core then moves the mochi's thread, so the next turn runs on it. The
+settings page beside the chat rereads what another writer changed. Only the
+owner's app changes those settings: on a paired device the chips stay read
+only, and a click says so.
 
 The info panel is a surface of the thread's right panel (`desk`), opened
 by the top bar's info button and, the first time this device shows a mochi on

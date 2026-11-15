@@ -2,7 +2,7 @@
   import { errorText } from '../../lib/errors';
   import { routeCatalog, withDefaultRoute } from '../../lib/agent-route';
   import { secureId } from '../../lib/secure-id';
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { X } from '@lucide/svelte';
   import type { AgentProfile, AgentRuntimeConfig, AgentSelection, DelegationProfile } from '@boite/contracts';
   import type { AgentsView } from '../../lib/agents.svelte';
@@ -63,6 +63,33 @@
     });
     // Leaving the tab sends a change still waiting for a typing pause.
     return () => void save.flush();
+  });
+  /** The last revision another writer's values were read at, so each is read once. */
+  let synced = 0;
+  /**
+   * Another writer moved the bot (the chips on its conversation beside this
+   * card, another window): each field this card left alone shows the stored
+   * value, and so does its base, so the next save measures the card's own
+   * changes from it and merges them as write() does. A change of the card's
+   * own on its way is never overwritten: once it is saved, this runs again.
+   */
+  $effect(() => {
+    const revision = agent.revision, state = save.state;
+    untrack(() => {
+      const known = base;
+      if (!config || !known || revision === known.revision || revision === synced || state === 'waiting' || state === 'saving') return;
+      void view.store.client?.call('agents.runtime.get', { agentId: agent.id }).then(stored => {
+        if (base !== known || !config || save.state === 'waiting' || save.state === 'saving') return;
+        synced = revision;
+        const shown = config as unknown as Record<string, unknown>, was = known.config as unknown as Record<string, unknown>;
+        const [mine, from] = [shape($state.snapshot(config) as AgentRuntimeConfig), shape(known.config)];
+        for (const key of FIELDS) {
+          if (!same(mine[key], from[key])) continue;
+          shown[key] = structuredClone(stored[key]);
+          was[key] = structuredClone(stored[key]);
+        }
+      }).catch(() => {});
+    });
   });
 
   function add(child: boolean) {

@@ -1,4 +1,5 @@
-import type { AgentRuntimeConfig, AgentSelection } from '@boite/contracts';
+import type { AgentProfile, AgentRuntimeConfig, AgentSelection } from '@boite/contracts';
+import type { AgentsView } from './agents.svelte';
 import { secureId } from './secure-id';
 import type { Store } from './store.svelte';
 
@@ -47,4 +48,20 @@ export function withDefaultRoute(config: AgentRuntimeConfig, patch: Partial<Agen
     allowedRoutes = [...allowedRoutes, { id: secureId(), name: catalog.modelName(d) ?? d.model, providerId: d.providerId, accountId: d.accountId, model: d.model, effort: d.effort }];
   }
   return { ...config, defaultRoute: d, allowedRoutes };
+}
+
+/**
+ * Saves `patch` as the bot's default route, the write its settings make
+ * (`agents.runtime.configure`), on the runtime the core holds when the save's
+ * turn comes. The composer's chips on its conversation and the problem
+ * banner's account picker go through it; the core then moves the bot's
+ * thread, so its next turn runs there.
+ */
+export function saveDefaultRoute(view: AgentsView, agent: AgentProfile, patch: Partial<AgentSelection>): Promise<AgentProfile> {
+  const store = view.store;
+  return view.save('agents.runtime.configure', async () => {
+    const stored = await store.client!.call('agents.runtime.get', { agentId: agent.id });
+    const latest = view.snapshot?.profiles.find(profile => profile.id === agent.id) ?? agent;
+    return { agentId: agent.id, expectedRevision: latest.revision, config: withDefaultRoute(stored, patch, routeCatalog(store)) };
+  });
 }
