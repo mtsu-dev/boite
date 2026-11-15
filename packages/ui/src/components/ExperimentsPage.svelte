@@ -102,6 +102,11 @@
 </div>
 
 <style>
+  /* The bar heads the machine's half as the page's header heads the page: the same room under it. */
+  .page > :global(.machine-bar) { margin-bottom: var(--space-6); }
+  @media (max-width: 720px) {
+    .page > :global(.machine-bar) { margin-bottom: var(--space-5); }
+  }
   .tag { flex: none; padding: 0 var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-sm); color: var(--color-muted-foreground); font-size: var(--text-xs); line-height: 1.5; white-space: nowrap; }
   .tag.dev { color: var(--color-foreground); border-color: var(--color-muted-foreground); }
 </style>
