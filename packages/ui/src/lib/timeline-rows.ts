@@ -52,10 +52,16 @@ export interface TimelineRow {
   text?: { start: number; end?: number };
 }
 
-/** A text part is cut into rows from this many characters: under it, a row is a screen or two and cutting saves nothing. */
-export const SPLIT_FROM = 4096;
+/**
+ * A text part is cut into rows from this many characters: under it, a row is
+ * a screen or two and cutting saves nothing. Measured with `bench/ui-frames.ts`
+ * on 2026-11-15: rows of 2 KB from 4 KB opened the bench's answers fastest but
+ * cost the most to scroll through, rows of 8 KB from 16 KB saved nothing on
+ * open; 4 KB from 8 KB keeps most of the open and half the scroll cost.
+ */
+export const SPLIT_FROM = 8192;
 /** The characters a row of a cut text holds at least before the next top-level block may start another. */
-export const ROW_CHARS = 2048;
+export const ROW_CHARS = 4096;
 
 /** A line that continues a list, an indented block or a table: never the first line of a row. */
 const CONTINUES = /^(?:[ \t]{2,}|\t|[-*+][ \t]|\d+[.)][ \t]|\|)/;

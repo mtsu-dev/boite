@@ -205,7 +205,7 @@ test('a long answer is cut into rows at its top-level blocks, ids kept through i
   const fence = ['```ts', ...Array.from({ length: 30 }, (_, i) => `const line${i} = ${i};`), '', 'const afterBlank = 1;', '```'].join('\n');
   const list = Array.from({ length: 40 }, (_, i) => `- item ${i} ${'in a long list '.repeat(4)}`).join('\n\n');
   const table = ['| a | b |', '| - | - |', ...Array.from({ length: 30 }, (_, i) => `| ${i} | ${'cell '.repeat(10)} |`)].join('\n');
-  const text = [para(1), para(2), para(3), para(4), para(5), para(6), para(7), para(8), para(9), fence, para(10), list, para(11), table, para(12), para(13), para(14), para(15), para(16), para(17), para(18), para(19), para(20)].join('\n\n');
+  const text = [para(1), para(2), para(3), para(4), para(5), para(6), para(7), para(8), para(9), fence, para(10), list, para(11), table, ...Array.from({ length: 40 }, (_, i) => para(12 + i))].join('\n\n');
   expect(text.length).toBeGreaterThan(SPLIT_FROM);
   const cuts = textCuts(text);
   expect(cuts.length).toBeGreaterThan(1);
@@ -220,7 +220,7 @@ test('a long answer is cut into rows at its top-level blocks, ids kept through i
     expect(at === text.indexOf(para(11))).toBe(false);
   }
   // A definition and its first use stay in the last row.
-  const defined = `${text}\n\nSee [the guide][guide] and the note[^n].\n\n${para(21)}\n\n[guide]: https://example.com\n[^n]: A note.\n`;
+  const defined = `${text}\n\nSee [the guide][guide] and the note[^n].\n\n${para(60)}\n\n[guide]: https://example.com\n[^n]: A note.\n`;
   const withUse = textCuts(defined.replace(para(5), `${para(5)} [guide]`));
   expect(withUse.every(at => at <= defined.replace(para(5), `${para(5)} [guide]`).indexOf('[guide]'))).toBe(true);
   // Short answers are left whole.
@@ -250,11 +250,11 @@ test('a long answer is cut into rows at its top-level blocks, ids kept through i
   expect(done.map(row => row.text?.start ?? 0)).toEqual(rows.map(row => seen.get(row.id)));
 });
 
-test('the bench answers of 20 to 40 KB are cut into rows of a few KB', () => {
+test('the bench answers of 20 to 40 KB are cut into rows of about ROW_CHARS', () => {
   let seed = 3;
   const random = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
   const text = markdownAnswer(random, 30_000);
   const cuts = textCuts(text);
-  expect(cuts.length).toBeGreaterThanOrEqual(8);
-  expect(Math.max(...[0, ...cuts, text.length].slice(1).map((at, index) => at - ([0, ...cuts][index] ?? 0)))).toBeLessThan(8000);
+  expect(cuts.length).toBeGreaterThanOrEqual(4);
+  expect(Math.max(...[0, ...cuts, text.length].slice(1).map((at, index) => at - ([0, ...cuts][index] ?? 0)))).toBeLessThan(3 * ROW_CHARS);
 });
