@@ -5,7 +5,7 @@ import { DEFAULT_DELEGATION_CONFIG, type AgentLetter, type Message, type Message
 import { strings } from '../lib/strings';
 import MessageList from './MessageList.svelte';
 import JumpLatest from './JumpLatest.svelte';
-import { OVERSCAN, windowStats } from '../lib/message-window';
+import { OVERSCAN, slotClasses, windowStats } from '../lib/message-window';
 import { TurnFileCache } from '../lib/turn-files';
 import { turnProgressStats } from '../lib/turn-progress.svelte';
 import { findHits } from '../lib/find';
@@ -130,6 +130,8 @@ test('the parent timeline keeps one grouped row per launch, its counts live, tha
 // the list only says when it is needed.
 let jumpHost: ReturnType<typeof mount> | null = null;
 beforeEach(() => {
+  // The class means are the page's: one test's measures would move the next one's estimates.
+  slotClasses.clear();
   const target = document.createElement('div');
   document.body.appendChild(target);
   jumpHost = mount(JumpLatest, { target });

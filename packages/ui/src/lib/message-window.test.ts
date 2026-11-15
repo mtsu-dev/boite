@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
-import { BLOCK_GAP, GAP, gapChanged, slotGap } from './message-window';
+import type { Message } from '@boite/contracts';
+import { BLOCK_GAP, ESTIMATE, GAP, SlotClasses, THUMB_HEIGHT, estimateSlot, gapChanged, slotGap } from './message-window';
 
 test('a measured slot carries the gap its row keeps above it, and a changed seam asks for a new measure', () => {
   expect(slotGap(null, false)).toBe(GAP);
@@ -14,4 +15,24 @@ test('a measured slot carries the gap its row keeps above it, and a changed seam
   // An older page landed above: the row now joins the message over it.
   expect(gapChanged(node, 'part', false)).toBe(true);
   expect(gapChanged(node, null, false)).toBe(false);
+});
+
+test('an unmeasured row is estimated from its length class, and a class measured once is worth its mean', () => {
+  const said = (role: Message['role'], chars: number, id = 'm'): Message => ({ id, threadId: 't', turnId: 'u', role, state: 'complete', createdAt: 0, parts: [{ type: 'text', text: 'x'.repeat(chars) }] });
+  const classes = new SlotClasses();
+  // A short reply stays at the fixed estimate; a 30 KB answer is worth its lines, not 80 px.
+  expect(estimateSlot(said('assistant', 40), classes)).toBe(ESTIMATE);
+  const long = estimateSlot(said('assistant', 30_000), classes);
+  expect(long).toBeGreaterThan(5000);
+  // Two answers of the same class measured at 6,000 and 8,000 px: a third one is worth their mean.
+  classes.learn(said('assistant', 20_000), 6000);
+  classes.learn(said('assistant', 24_000), 8000);
+  expect(estimateSlot(said('assistant', 30_000), classes)).toBe(7000);
+  // Another role or another power of two is another class.
+  expect(estimateSlot(said('user', 30_000), classes)).toBe(long);
+  expect(estimateSlot(said('assistant', 70_000), classes)).toBeGreaterThan(long);
+  // Pictures keep their row of thumbnails, never a mean.
+  const pictured: Message = { ...said('user', 10), parts: [{ type: 'text', text: 'see' }, { type: 'image', mimeType: 'image/png', data: '' } as Message['parts'][number]] };
+  classes.learn(pictured, 900);
+  expect(estimateSlot(pictured, classes)).toBe(ESTIMATE + THUMB_HEIGHT + 10);
 });

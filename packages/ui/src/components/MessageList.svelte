@@ -37,7 +37,7 @@
   import { isSending } from '../lib/composer-queue';
   import { retryTurn } from '../lib/composer-edit';
   import { TurnProgress } from '../lib/turn-progress.svelte';
-  import { GAP, OVERSCAN, SlotTotals, WINDOW_FROM, atOrBefore, estimateSlot, gapChanged, keepOnly, measurable, overscanAbove, reaches, sameView, slotGap, windowStats, type WindowView } from '../lib/message-window';
+  import { ESTIMATE, GAP, OVERSCAN, SlotTotals, WINDOW_FROM, atOrBefore, estimateSlot, gapChanged, slotClasses, keepOnly, measurable, overscanAbove, reaches, sameView, slotGap, windowStats, type WindowView } from '../lib/message-window';
   import { TimelineRows, rowEstimate, rowIndexOf, seam, type TimelineRow } from '../lib/timeline-rows';
   import { GapRows, NO_GAPS, READ_AHEAD, RangeAsk, gapHeight, heldNear, loadKeepingReader, wantedRange } from '../lib/history-gaps';
   import TimelineGap from './TimelineGap.svelte';
@@ -138,7 +138,20 @@
   /** One observer for the viewport's height and for every rendered message. */
   let boxes: ResizeObserver | undefined;
 
-  const slots = new SlotTotals<TimelineRow>(heights, row => row.gap ? gapHeight(row.gap.count) : rowEstimate(row, estimateSlot(row.message)));
+  /**
+   * A row's estimate, taken once: the means of `slotClasses` move as rows are
+   * measured, and an unmeasured row that changed its weight under the totals
+   * would move the rows below it with nothing resized.
+   */
+  const estimated = new WeakMap<TimelineRow, number>();
+  function estimateRow(row: TimelineRow): number {
+    if (row.gap) return gapHeight(row.gap.count);
+    let known = estimated.get(row);
+    // A row of a cut message counts its own parts: its whole message's text is not its own.
+    if (known === undefined) { known = rowEstimate(row, row.first && row.last ? estimateSlot(row.message) : ESTIMATE); estimated.set(row, known); }
+    return known;
+  }
+  const slots = new SlotTotals<TimelineRow>(heights, estimateRow);
   /** Where the reader is, and the rows on the page by id (lib/reading-anchor.ts). */
   const anchors = new ReadingAnchor(savedReading);
   const savedTop = untrack(() => {
@@ -399,6 +412,8 @@
       heights.set(id, next);
       moved = true;
       if (at < 0) continue;
+      const row = rows[at];
+      if (row && row.first && row.last && !row.gap && !row.failures) slotClasses.learn(row.message, next);
       // Everything from here down is worth a different number now.
       if (at < slots.dirty) slots.dirty = at;
       if (at < view.first) shift += next - previous;
