@@ -21,6 +21,7 @@ import { machineArg, memberNamed, type StartFields } from '../threads/group-spaw
 import { GROUP_BOTS_OFF, OUTBOX_MAX, type BotEvent, type BotLease } from './group-host.ts';
 import { QUESTION_GRACE_MS } from './projects.ts';
 import { NOTICE_BATCH_MS } from './runtime.ts';
+import { cutAnswer } from './wake-pace.ts';
 import type { AgentStore } from './store.ts';
 import { quoted } from './validation.ts';
 
@@ -390,7 +391,10 @@ export class GroupBots {
     if (event.kind === 'turn') {
       const pr = row.pullRequest ? `\nPull request #${row.pullRequest.number} ${row.pullRequest.state}: ${quoted(row.pullRequest.url)}` : '';
       const answer = typeof event.answer === 'string' ? `Its final answer: ${quoted(cut(event.answer))}` : 'No text answer.';
-      this.#store.projects.notify(agent, key, `Turn ${String(event.status)} in ${about}.${pr}\n${answer}`, NOTICE_BATCH_MS, threadIds);
+      const head = `Turn ${String(event.status)} in ${about}.${pr}\n`;
+      // As on its own machine: a failure waits the batch delay, a finished turn the thread's pace (`wake-pace.ts`).
+      const paced = event.status === 'error' ? undefined : { paced: `${peer.coreId}/${row.id}`, brief: `${head}${typeof event.answer === 'string' ? `Its final answer: ${quoted(cutAnswer(event.answer, ref))}` : 'No text answer.'}` };
+      this.#store.projects.notify(agent, key, `${head}${answer}`, paced && event.mochi !== true ? 'paced' : NOTICE_BATCH_MS, threadIds, paced);
     } else if (event.kind === 'ask' && event.question) {
       const question = event.question;
       const options = Array.isArray(question.options) && question.options.length ? `\nOptions, by id: ${JSON.stringify(Object.fromEntries(question.options.map(option => [option.id, option.label])))}` : '';

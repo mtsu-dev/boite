@@ -52,6 +52,17 @@ stays readable.
   that thread fails, asks you something, waits on a permission or stays
   silent for 20 minutes, and when a pull request there is merged or its
   checks start to fail.
+- A thread that carries on by itself, with its next message already sent, a
+  goal or loop still running or its pull request being watched, wakes the
+  mochi only once it stops. While the mochi's wakes about a thread find
+  nothing to report, it waits longer before the next one: 30 seconds, then
+  5, 15 and at most 30 minutes. A wake that has something to say brings it
+  back to 30 seconds. Failures, questions, permissions, silences and merges
+  never wait longer.
+- A wake skipped for the daily budget, or one that failed before the mochi
+  answered, keeps its news for the next wake.
+- A routine brings what waited for it: the latest news of each thread, and
+  how many more threads moved when they do not all fit.
 - A wake with nothing to report folds to one "Checked" line and sends no
   notification.
 - A routine can wake the mochi only when there is news. Under More options,

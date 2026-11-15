@@ -288,6 +288,8 @@ event wakes and facts wait instead of being spent, and its status names the
 fix (`problem`); they start once the provider is back on or the mochi moves to
 another model. The facts that wait are bounded as always: 60 waking facts an
 hour and one wake's prompt of 16,000 characters, older ones dropped with a line.
+Past the budget, or when admission refuses a wake, its facts wait too
+([events](#events)).
 
 Every other turn the core starts by itself on the mochi's thread meets the
 same policy in `threads.startTurn` (`AgentRuntime.admit`): the output of a
@@ -353,9 +355,10 @@ them. A mochi that should hear every project event as it lands asks for
 `eventWakes true` ([settings](#asking-to-change-a-mochis-settings)).
 
 Facts gather: one `event` turn starts once the thread is free and the oldest
-waking fact is 30 seconds old, and it carries every waking fact waiting by
-then, those that arrived in the meantime included. Facts that arrive once it
-has started wait for the next one.
+waking fact is due, 30 seconds after it arrived unless it says otherwise
+([paced turn facts](#paced-turn-facts)), and it carries every waking fact
+waiting by then, those that arrived in the meantime included. Facts that
+arrive once it has started wait for the next one.
 An event prompt stops at 16,000 characters, older facts giving way, and one
 mochi receives at most 60 facts in an hour. A dropped fact, under either cap,
 leaves a system line in the mochi's thread naming it; past ten such lines in
@@ -363,6 +366,56 @@ an hour, one more says the rest go unlisted. Each fact records the threads it
 tells of; taking a project back drops what waiting facts say about its
 threads, and the runtime checks them again when it delivers them. Waiting
 facts survive a restart (`agents:pending:<agent>`).
+
+Facts are spent only by a wake that started. One skipped for the budget or
+refused at admission keeps them, and they are due again after 1, then 5, 15
+and 30 minutes (`RETRY_PACE_MS`, `agents/wake-pace.ts`), under the same caps.
+A wake that started but ended in error before its agent wrote any text (a
+spent subscription, an account unavailable, a core that stopped) gives them
+back the same way, ahead of those that came since, unless a newer fact of the
+same key or thread took their place; its retry has a receipt of its own. A
+wake that failed after its agent answered, or that the user stopped, spends
+them.
+
+A routine carries the waiting facts the mochi may still hear under the cap of
+an event wake (16,000 characters): one per thread, the latest (an urgent fact
+counts on its own), newest first while they fit, in the order they arrived.
+One line counts the threads left out and points to `boite threads`; every
+waiting fact is spent with the routine. A fact that waits for a routine
+quotes at most 300 characters of a thread's answer, then the address
+`boite threads read` takes (`DEFERRED_ANSWER`).
+
+### Paced turn facts
+
+A thread's finished turn is the fact that repeats most: a thread working by
+itself ends many turns, and most wakes about them end `[quiet]`. Two rules in
+`agents/wake-pace.ts` keep them to the turn the thread stops on.
+
+The turn is not told at all when the thread goes on by itself
+(`restartsAlone`, read once every listener of `turn.finished` ran): another
+turn of the thread is already queued or running; its goal or loop is still
+active, unless the goal waits on its reviewer; or the turn was the pull
+request watch at work (`pull-request`) or answered a letter from another agent
+(`coordination`). A failure is always told. So is a turn that answered the
+mochi's own letter (its prompt opens the mochi's section, `RESIDENT_LETTERS`):
+the mochi reads that answer only here
+([coordination](coordination.md#letters-from-the-mochi-of-a-project)), and it
+waits the first step only. A `background` turn is told: it is often where a
+task ended. A user's next message the app sends once the turn ended starts
+after it: the fact waits while its thread is at work, and the turn the thread
+stops on takes its place.
+
+The turns that are told wait per thread (`AgentFact.paced`). One fact waits
+per thread, the latest, keeping the place and the due time of the first, so a
+thread that keeps working wakes the mochi once per delay at most. The delay
+grows while the mochi's wakes about that thread end `[quiet]`: 30 seconds,
+then 5, 15 and 30 minutes (`TURN_PACE_MS`), the last step bounding it. A wake
+about the thread that speaks brings it back to 30 seconds. The step of each
+thread and the facts each running wake carried live in `agents:pace:<agent>`,
+forgotten with the mochi, a step after 7 days without a wake about its thread.
+A failure, a question, a permission, a stall, a merged pull request or failing
+checks are not paced and keep their own delay; a message from the user is a
+turn, never a fact, and runs at once.
 
 ### Outside events
 
@@ -667,7 +720,10 @@ ends, when any turn of the mochi's projects there fails, when one of their
 threads asks a question and when a thread on the desk waits on a tool
 permission (which stays the owner's to decide), and the mochi's machine turns it
 into a fact like a local one (keys start `remote:<core-id>:`), with the row
-the desk shows. An event that cannot leave waits in an outbox per machine
+the desk shows. The thread's machine leaves out a turn after which the thread
+goes on by itself and marks one that answered the mochi's own letter
+(`BotEvent.mochi`); the mochi's machine paces the others per
+`<core-id>/<thread-id>` ([paced turn facts](#paced-turn-facts)). An event that cannot leave waits in an outbox per machine
 (`OUTBOX_MAX`, the oldest leave first), retried after 5 s, 15 s, 1 min, then
 every 5 min, and at once when the mochi's machine sends any request again; an
 event already delivered never wakes the mochi twice.
