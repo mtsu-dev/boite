@@ -43,7 +43,8 @@ export async function makeAgent(h: TestCore, client: CoreClient, over: Partial<A
   return { agent, threadId };
 }
 
-export interface Answer { text?: string; status?: 'done' | 'error'; usage?: Usage | null; hold?: boolean }
+/** `compacted`: the agent compacted its session during the turn, as Claude reports an automatic compaction. */
+export interface Answer { text?: string; status?: 'done' | 'error'; usage?: Usage | null; hold?: boolean; compacted?: boolean }
 
 /**
  * Replaces the echo driver: `answer` writes each turn's reply. A turn with
@@ -56,7 +57,8 @@ export function scripted(answer: (ctx: TurnContext) => Answer) {
     prompts.set(ctx.thread.id, [...(prompts.get(ctx.thread.id) ?? []), ctx.prompt]);
     const reply = answer(ctx);
     const id = ctx.emit.startMessage('assistant');
-    if (reply.text !== undefined) ctx.emit.part(id, 0, { type: 'text', text: reply.text });
+    if (reply.compacted) ctx.emit.part(id, 0, { type: 'compaction', trigger: 'auto', preTokens: 100, postTokens: null });
+    if (reply.text !== undefined) ctx.emit.part(id, reply.compacted ? 1 : 0, { type: 'text', text: reply.text });
     ctx.emit.complete(id, 'complete');
     const result: TurnResult = reply.status === 'error'
       ? { status: 'error', error: 'Asked to fail', sessionId: ctx.sessionId ?? `session:${ctx.thread.id}`, usage: reply.usage ?? null }

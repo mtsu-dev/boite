@@ -82,36 +82,95 @@ test('a mochi\'s Boite guide is the thread guide less the project-bound commands
   expect(second.split(BOT_GUIDE).length - 1).toBe(1);
 });
 
-test('the context block is sent once, then again only once MEMORY.md changes or the session is fresh', async () => {
-  const driver = scripted(() => ({ text: 'Noted.' })); restore = driver.restore;
+test('the context block is sent once, then again only on a fresh session or a compaction; a change to MEMORY.md alone goes as its lines', async () => {
+  let compact = false;
+  const driver = scripted(() => ({ text: 'Noted.', compacted: compact })); restore = driver.restore;
   const { agent, threadId } = await makeAgent(h, client, { instructions: 'Answer about releases.' });
   const sent = () => driver.prompts.get(threadId) ?? [];
+  const ask = async (prompt: string) => {
+    const count = sent().length;
+    await client.call('turns.start', { threadId, prompt });
+    await waitFor(() => sent().length === count + 1 && settled(h, threadId));
+    return sent().at(-1)!;
+  };
+  const traced = () => (h.core.journal.db.query("SELECT payload FROM events WHERE thread_id = ? AND type = 'agent.context.sent' ORDER BY id").all(threadId) as { payload: string }[])
+    .map(row => JSON.parse(row.payload) as { turnId: string; kind: string; characters: number; hash: string });
   // The introduction opened a fresh session: it carried the block, with the persona.
   expect(sent()[0]).toContain(BLOCK);
   expect(sent()[0]).toContain('You are Ada, Open source.\nAnswer about releases.');
   expect(sent()[0]).toContain('[quiet]');
-  await client.call('turns.start', { threadId, prompt: 'First question?' });
-  await waitFor(() => sent().length === 2 && settled(h, threadId));
-  expect(sent()[1]).not.toContain(BLOCK);
-  expect(sent()[1]).toContain('First question?');
+  const first = await ask('First question?');
+  expect(first).not.toContain(BLOCK);
+  expect(first).toContain('First question?');
 
+  // Only the memory changed: the next turn hears the line added, not the block again.
   await client.call('agents.memory.note', { agentId: agent.id, text: 'The release is on Friday.' });
-  await client.call('turns.start', { threadId, prompt: 'Second question?' });
-  await waitFor(() => sent().length === 3 && settled(h, threadId));
-  expect(sent()[2]).toContain(BLOCK);
-  expect(sent()[2]).toMatch(/- \d{4}-\d{2}-\d{2} The release is on Friday\./);
+  const second = await ask('Second question?');
+  expect(second).not.toContain(BLOCK);
+  expect(second).toContain('Boite: your memory changed since this session last read it');
+  expect(second).toMatch(/Lines added at the top:\n- \d{4}-\d{2}-\d{2} The release is on Friday\.\n/);
+  expect(second).not.toContain('Lines removed');
+  expect(await ask('Third question?')).not.toContain('your memory changed');
 
-  await client.call('turns.start', { threadId, prompt: 'Third question?' });
-  await waitFor(() => sent().length === 4 && settled(h, threadId));
-  expect(sent()[3]).not.toContain(BLOCK);
+  // A line replaced: gone and new, each said once.
+  await client.call('agents.memory.note', { agentId: agent.id, text: 'The release moved to Monday.', replace: 'The release is' });
+  const moved = await ask('Fourth question?');
+  expect(moved).toMatch(/Lines removed:\n- \d{4}-\d{2}-\d{2} The release is on Friday\.\n\nLines added at the top:\n- \d{4}-\d{2}-\d{2} The release moved to Monday\.\n/);
+  expect(moved).not.toContain(BLOCK);
 
-  // A fresh native session (a compaction, an account switch) hears it again, with the journal's history.
+  // A fresh native session (an account switch) hears the block whole, memory changed or not, with the journal's history.
+  await client.call('agents.memory.note', { agentId: agent.id, text: 'Ship notes go to the wiki.' });
   const thread = h.core.threads.require(threadId);
   h.core.journal.putThread({ ...thread, sessionId: null, sessionGeneration: (thread.sessionGeneration ?? 0) + 1 });
-  await client.call('turns.start', { threadId, prompt: 'Fourth question?' });
-  await waitFor(() => sent().length === 5 && settled(h, threadId));
-  expect(sent()[4]).toContain(BLOCK);
-  expect(sent()[4]).toContain('Third question?');
+  const fresh = await ask('Fifth question?');
+  expect(fresh).toContain(BLOCK);
+  expect(fresh).not.toContain('your memory changed');
+  expect(fresh).toContain('Ship notes go to the wiki.');
+  expect(fresh).toContain('Fourth question?');
+
+  // A compaction summed the block up with the rest: the turn after it hears it whole, not the memory's lines.
+  compact = true;
+  await ask('Compact on the way');
+  compact = false;
+  await client.call('agents.memory.note', { agentId: agent.id, text: 'The wiki moved.' });
+  const compacted = await ask('After the compaction?');
+  expect(compacted).toContain(BLOCK);
+  expect(compacted).not.toContain('your memory changed');
+
+  // Each turn that carried something is on the thread's events: block or memory, its size and hash.
+  const turns = new Map(turnsOf(h, threadId).map(t => [t.id, t]));
+  const kinds = traced().map(t => t.kind);
+  expect(kinds).toEqual(['block', 'memory', 'memory', 'block', 'block']);
+  for (const trace of traced()) {
+    expect(turns.has(trace.turnId)).toBe(true);
+    expect(trace.hash).toMatch(/^[0-9a-f]{64}$/);
+  }
+  expect(traced()[1]!.characters).toBeLessThan(traced()[0]!.characters);
+});
+
+test('a memory rewritten past what its lines would say goes as the whole block, never a longer note', async () => {
+  const driver = scripted(() => ({ text: 'Noted.' })); restore = driver.restore;
+  const { agent, threadId } = await makeAgent(h, client);
+  const sent = () => driver.prompts.get(threadId) ?? [];
+  const write = async (memory: string) => {
+    const brain = await client.call('agents.brain.get', { agentId: agent.id });
+    await client.call('agents.brain.save', { agentId: agent.id, expectedRevision: brain.revision, instructions: brain.instructions, memory });
+  };
+  const ask = async (prompt: string) => {
+    const count = sent().length;
+    await client.call('turns.start', { threadId, prompt });
+    await waitFor(() => sent().length === count + 1 && settled(h, threadId));
+    return sent().at(-1)!;
+  };
+  const lines = (word: string) => Array.from({ length: 120 }, (_, i) => `- ${word} fact number ${i} with a few more words`).join('\n');
+  await write(`${lines('old')}\n`);
+  expect(await ask('One')).toContain(BLOCK);
+  // Every line differs: removed and added would say the file twice, longer than the block that holds it once.
+  await write(`${lines('new')}\n`);
+  const rewritten = await ask('Two');
+  expect(rewritten).toContain(BLOCK);
+  expect(rewritten).not.toContain('your memory changed');
+  expect(rewritten).toContain('- new fact number 119');
 });
 
 test('a due routine wakes the agent with a routine turn and records how it ended', async () => {

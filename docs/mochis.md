@@ -107,7 +107,10 @@ Each mochi has a brain folder: `AGENTS.md` holds its ways of working,
 `MEMORY.md` its notes and `skills/` its procedures. After an answer you saw, a
 small helper rewrites its memory from what you asked and what it answered;
 turn off Update memory after each answer to stop it. The mochi also notes facts
-as it learns them. Its memory and identity stay when you change its model.
+as it learns them, under a heading of its memory or in place of the one line a
+newer fact replaces. When only its memory changed since its last answer, the
+mochi is told the lines added and removed rather than all it knows again. Its
+memory and identity stay when you change its model.
 
 The model, effort and permission chips under its message box change its
 settings, as its settings page does, and its next answer uses them. On a

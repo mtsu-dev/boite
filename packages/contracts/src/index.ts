@@ -17,6 +17,7 @@ export * from './windows';
 export * from './desktop';
 export * from './agents';
 export { nextAgentOccurrence } from './agent-schedule';
+export * from './agent-memory';
 export * from './workflows';
 export * from './workflow-plan';
 export * from './workflow-loop';

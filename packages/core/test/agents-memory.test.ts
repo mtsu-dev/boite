@@ -153,6 +153,44 @@ test('boite mochi remember adds a dated line, and is refused once MEMORY.md is f
   expect(threadId).toBeTruthy();
 });
 
+test('boite mochi remember --replace swaps the one line that starts so and refuses none or several; --section files a fact under its heading', async () => {
+  script(() => 'SUMMARY: no change');
+  const h = await startTestCore(); cores.push(h);
+  const client = await h.connect();
+  const { agent } = await makeAgent(h, client);
+  const brain = h.core.workforce.resident.brain(agent.id);
+  const memory = '# Memory\n\n## Follow-ups\n- 2026-11-01 Nightly locale: broken\n- 2026-11-02 Nightly signing: pending\n\n## People\n- 2026-11-03 Sam reviews the docs\n';
+  h.core.workforce.resident.saveBrain({ agentId: agent.id, expectedRevision: brain.revision, instructions: brain.instructions, memory });
+  const file = () => readFileSync(join(brain.path, 'MEMORY.md'), 'utf8');
+  const today = new Date().toISOString().slice(0, 10);
+
+  // One line starts so, after its bullet and date: it is replaced where it stood.
+  await client.call('agents.memory.note', { agentId: agent.id, text: 'Nightly locale: fixed in #1090', replace: 'Nightly locale' });
+  expect(file()).toBe(memory.replace('- 2026-11-01 Nightly locale: broken', `- ${today} Nightly locale: fixed in #1090`));
+  // None: refused, the file as it was.
+  const before = file();
+  const none = await thrown(client.call('agents.memory.note', { agentId: agent.id, text: 'x', replace: 'Release train' }));
+  expect(none).toThrow('no line of MEMORY.md starts with "Release train"; nothing was written');
+  // Two: refused, citing both.
+  const two = await thrown(client.call('agents.memory.note', { agentId: agent.id, text: 'x', replace: 'Nightly' }));
+  expect(two).toThrow('2 lines of MEMORY.md start with "Nightly"; nothing was written');
+  expect(two).toThrow(`"- ${today} Nightly locale: fixed in #1090"`);
+  expect(two).toThrow('"- 2026-11-02 Nightly signing: pending"');
+  expect(file()).toBe(before);
+
+  // Under the heading, after its last line, before the blank line and the next heading.
+  await client.call('agents.memory.note', { agentId: agent.id, text: 'Ask Sam about the wiki', section: 'Follow-ups' });
+  expect(file()).toBe(before.replace('Nightly signing: pending\n', `Nightly signing: pending\n- ${today} Ask Sam about the wiki\n`));
+  // The last section runs to the end of the file; a heading that does not exist sends the fact to the end.
+  await client.call('agents.memory.note', { agentId: agent.id, text: 'Lee owns the server', section: '## people' });
+  await client.call('agents.memory.note', { agentId: agent.id, text: 'Orphan fact', section: 'Nowhere' });
+  expect(file().endsWith(`- 2026-11-03 Sam reviews the docs\n- ${today} Lee owns the server\n- ${today} Orphan fact\n`)).toBe(true);
+  // Both: the old line leaves, the new one goes under the heading.
+  await client.call('agents.memory.note', { agentId: agent.id, text: 'Sam reviews the site', replace: 'Sam reviews', section: 'People' });
+  expect(file()).not.toContain('Sam reviews the docs');
+  expect(file().endsWith(`## People\n- ${today} Lee owns the server\n- ${today} Orphan fact\n- ${today} Sam reviews the site\n`)).toBe(true);
+});
+
 test('brains move to the folder the owner chooses, named after their agents, and back', async () => {
   script(() => 'SUMMARY: no change');
   const h = await startTestCore(); cores.push(h);
