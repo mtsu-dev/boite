@@ -65,6 +65,7 @@ export function seedArchivedThread(): Thread {
 /** What `git worktree add` leaves behind a thread the fake placed in one: a clean registration. */
 export function registerFakeWorktree(ctx: FakeContext, projectId: string, placed: { path: string; branch: string }): void {
   ctx.removedWorktrees.delete(pathKey(placed.path));
+  ctx.deletedBranches.delete(pathKey(placed.path));
   if (ctx.worktrees.some((entry) => pathKey(entry.path) === pathKey(placed.path))) return;
   ctx.worktrees.push({ projectId, path: placed.path, branch: placed.branch, dirty: false, unmerged: false, missing: false, branchMerged: true });
 }
@@ -74,14 +75,22 @@ function inside(root: string, target: string): boolean {
 }
 
 /**
- * The core's `requireCwd` in `threads/rpc.ts`: a thread whose worktree was
- * removed is refused by its folder on its next turn. A folder the fake never
+ * The core's `requireCwd` in `threads/rpc.ts`: a thread whose worktree folder
+ * is gone gets its kept branch checked out there again (`threads/cwd.ts`),
+ * unless the cleanup's `worktreeRemoved` names it or the branch went too; any
+ * other is refused by its folder on its next turn. A folder the fake never
  * removed is taken to exist.
  */
 export function requireFakeCwd(ctx: FakeContext, thread: Thread): void {
   if (thread.archived) return;
   const key = pathKey(thread.cwd);
-  if (![...ctx.removedWorktrees, ...ctx.goneFolders].some((removed) => inside(removed, key))) return;
+  const gone = [...ctx.removedWorktrees, ...ctx.goneFolders].filter((removed) => inside(removed, key));
+  if (gone.length === 0) return;
+  if (thread.branch !== null && thread.projectId !== null && !thread.worktreeRemoved && !ctx.deletedBranches.has(key) && gone.every((removed) => removed === key)) {
+    ctx.goneFolders.delete(key);
+    registerFakeWorktree(ctx, thread.projectId, { path: thread.cwd, branch: thread.branch });
+    return;
+  }
   throw new RpcFailure({
     code: RpcErrorCode.Refused,
     message: `the folder ${thread.cwd} this thread works in does not exist any more: its worktree was removed or the folder moved`,
@@ -168,7 +177,9 @@ export function worktreeMethods(ctx: FakeContext) {
       }
       ctx.worktrees = ctx.worktrees.filter((candidate) => candidate !== target);
       ctx.removedWorktrees.add(pathKey(target.path));
-      return { ok: true as const, branchDeleted: target.branch !== null && (force === true || target.branchMerged) };
+      const branchDeleted = target.branch !== null && (force === true || target.branchMerged);
+      if (branchDeleted) ctx.deletedBranches.add(pathKey(target.path));
+      return { ok: true as const, branchDeleted };
     }
   } satisfies Partial<FakeMethods>;
 }

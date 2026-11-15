@@ -47,6 +47,8 @@ export interface Tab {
   dropped: number;
   history: BrowserHistoryEntry[];
   requests: Map<string, string>;
+  /** The page's own calls still loading, by request id: when each began (`page-events.ts`). */
+  loading: Map<string, number>;
   /** The page's calls while an agent captures them (`network.ts`), null otherwise. */
   network: NetworkCapture | null;
   recorder: TabRecorder | null;

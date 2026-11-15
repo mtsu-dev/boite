@@ -5,7 +5,6 @@
 
 import type { KeybindingCommand } from '@boite/contracts';
 import { experimentOn } from './experiments.svelte';
-import { commandKeywords } from './command-table';
 import type { PaletteItem } from './palette';
 import { strings } from './strings';
 import type { Store } from './store.svelte';
@@ -81,8 +80,7 @@ export function appCommands(store: Store, phone: boolean): PaletteItem[] {
   items.push(row('theme-light', strings.palette.themeLight));
   items.push(row('theme-system', strings.palette.themeSystem));
   if (open) items.push(row('archive', strings.palette.archive, 'close remove'));
-  // A Settings command also answers to the names its page had before the nine (`command-table.ts`).
-  return items.map((item) => { const old = commandKeywords(item.id); return old === undefined ? item : { ...item, keywords: item.keywords === undefined ? old : `${item.keywords} ${old}` }; });
+  return items;
 }
 
 export { commandLabel, runCommand } from './command-table';

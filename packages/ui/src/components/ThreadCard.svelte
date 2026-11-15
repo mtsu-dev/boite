@@ -217,6 +217,8 @@
 {/if}
 
 <style>
+  /* Typed, so the line's end eases under the row's buttons instead of jumping. */
+  @property --row-hide { syntax: '<length>'; inherits: false; initial-value: -12px; }
   .thread {
     /* The room the row's own buttons take at its right edge: a 32 px hit area each, a phone's touch target. */
     --act: max(32px, var(--control-sm));
@@ -264,10 +266,10 @@
     container: thread-row / inline-size;
   }
   /* The title wins. At rest a row, the open one included, carries one state at most (its mark and its word,
-     ThreadState.svelte), then its time. The pin, a draft and the pull request show under the
-     pointer or the keyboard (a click's focus does not count: the row just opened would keep them), and stay in
-     the tooltip; how long work has run lives in the thread. */
-  .thread:not(:hover, :has(:focus-visible)) .row :global(.headline > :is(.draft, .pin, .pr)) { display: none; }
+     ThreadState.svelte), then its time, and the pin and an unsent draft, always there as before the redraw: a mark
+     that only shows under the pointer says nothing at a glance. The pull request shows under the pointer or the
+     keyboard (a click's focus does not count: the row just opened would keep it), and stays in the tooltip. */
+  .thread:not(:hover, :has(:focus-visible)) .row :global(.headline > .pr) { display: none; }
   /* Activity's card, one form for every entry (ActivityList.svelte draws its surface): the kind line, its glyph the
      card's one mark, then the title, two lines at most, the place line under it, where the row lives and since when;
      what is asked runs under that, the decision pair beside the title or under everything. Every line after the kind
@@ -346,14 +348,14 @@
   .row:active:not(:disabled) {
     transform: none;
   }
-  /* A move waiting for the turn's end, like the marker the move leaves in the chat. */
+  /* A move waiting for the turn's end: the accent, like the marker the move leaves in the chat. */
   .pending {
     display: flex;
     align-items: center;
     gap: 4px;
     min-width: 0;
     font-size: var(--text-xs);
-    color: var(--color-muted-foreground);
+    color: var(--color-accent);
   }
   .pending span {
     overflow: hidden;
@@ -374,22 +376,32 @@
   .done { right: calc(3px + var(--act)); color: var(--color-muted-foreground); }
   .thread:has(.done) { --act-room: calc(2 * var(--act) + 3px); }
   .thread:is(:hover, :focus-within) .done, .thread:is(:hover, :focus-within) .actions { opacity: 1; }
-  /* While the buttons show, the title's line ends where they begin: the time gives up its place and a state
-     steps left, whole, so they never cover a word. */
-  .thread:not(.feed):is(:hover, :focus-within) .row > :global(.headline) { margin-right: calc(var(--act-room) + 4px - var(--pad-x)); }
-  .thread:is(:hover, :focus-within) :global(.headline .when:not(.state)) { visibility: hidden; }
-  /* The time leaves its room to the title rather than to an empty slot. */
-  .thread:not(.feed):is(:hover, :focus-within) :global(.headline > .at) { display: none; }
+  /* While the buttons show, nothing on the title's line moves. What ends the line, its time or its state, fades out
+     whole where it stands and the buttons take its place; when they need more room than it held (a short time, two
+     buttons), the title's last letters melt away under them (`--row-hide`, eased from past the line's edge). */
+  .thread:not(.feed) .row > :global(.headline) { --row-hide: -12px; transition: --row-hide var(--dur-2) var(--ease-out-quint); }
+  .thread:not(.feed) .row :global(.headline > :is(.when, .at)) { transition: opacity var(--dur-2) var(--ease-out-quint); }
+  .thread:not(.feed):is(:hover, :focus-within) .row > :global(.headline) {
+    --row-hide: calc(var(--act-room) - var(--pad-x));
+    mask-image: linear-gradient(to left, transparent var(--row-hide), black calc(var(--row-hide) + 12px));
+  }
+  .thread:not(.feed):is(:hover, :focus-within) .row :global(.headline > :is(.when, .at)) { opacity: 0; }
+  /* Activity's card keeps its menu on a line of its own; only a time under it steps out. */
+  .thread.feed:is(:hover, :focus-within) :global(.headline .when:not(.state)) { visibility: hidden; }
   /* The classic card, as it was before the redraw: one line for the title, its state or its time at the end, and the
      place line under it. */
   .classic { --pad-x: 10px; }
   .classic .row { min-height: var(--row); padding: 8px var(--pad-x); gap: 7px; }
-  .classic.meta .row { min-height: calc(var(--row) + 22px); padding: 9px 10px 28px; }
+  /* Two lines with air around them: the title carries the row, in the list's strongest weight; the place line
+     sits under the title's own edge, past the mark, a size and a tier under it, so the eye runs down the titles. */
+  .classic.meta .row { min-height: calc(var(--row) + 28px); padding: 11px 10px 33px; }
+  .thread.classic.meta .row :global(.headline .title) { font-weight: 600; }
   .thread.classic .row :global(.headline) { align-items: center; padding-top: 0; }
   .thread.classic .row :global(.headline .title) { display: block; white-space: nowrap; -webkit-line-clamp: none; line-clamp: none; padding-bottom: 0.5em; margin-bottom: -0.5em; }
   .thread.classic .row :global(.headline > :is(.when, .at, .bot, .provider, .draft, .pin, .pr, .tile)) { margin-top: 0; }
   .classic :is(.actions, .done) { top: calc(19px - var(--act) / 2); }
-  .metadata { position: absolute; bottom: 9px; left: 10px; right: 10px; display: flex; align-items: center; gap: 9px; min-width: 0; pointer-events: none; font-size: var(--text-xs); color: var(--color-muted-foreground); }
+  .metadata { position: absolute; bottom: 11px; left: calc(var(--pad-x) + var(--meta-inset, 23px)); right: 10px; display: flex; align-items: center; gap: 12px; min-width: 0; height: 16px; pointer-events: none; font-size: 12px; line-height: 16px; font-weight: 400; color: var(--color-subtle); }
+  .metadata :global(a) { font-weight: 500; }
   .metadata > span { display: flex; align-items: center; gap: 4px; min-width: 0; }
   .metadata span span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .metadata :global(svg) { flex: none; }
@@ -407,5 +419,7 @@
   @media (max-width: 720px) {
     .done, .actions { opacity: 1; }
     .thread:not(.feed) .row > :global(.headline) { margin-right: calc(var(--act-room) + 4px - var(--pad-x)); }
+    .thread:not(.feed):is(:hover, :focus-within) .row > :global(.headline) { mask-image: none; }
+    .thread:not(.feed):is(:hover, :focus-within) .row :global(.headline > :is(.when, .at)) { opacity: 1; }
   }
 </style>

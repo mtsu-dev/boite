@@ -1,6 +1,7 @@
 /**
  * A process and every descendant on Windows, read in this process: a Toolhelp
- * snapshot gives each pid, parent and image name, and
+ * snapshot gives each pid, parent and image name. Creation times reject
+ * stale parent PIDs that Windows reused, and
  * `NtQueryInformationProcess(ProcessCommandLineInformation)` each command line
  * (WebView2's `--type`). No PowerShell and no WMI: on a loaded runner
  * `Get-CimInstance Win32_Process` gave no answer within 10 s (job 118322361920),
@@ -20,6 +21,32 @@ const OFF_PARENT = 32;
 const OFF_EXE = 44;
 const EXE_CHARS = 260;
 
+/** Selects descendants from a snapshot, with creation times supplied independently of Windows. */
+export function selectProcessTree(all: readonly TreeProcess[], rootPid: number, createdAt: (pid: number) => bigint | null): TreeProcess[] {
+  if (!all.some(process => process.ProcessId === rootPid)) return [];
+  const times = new Map<number, bigint | null>();
+  const time = (pid: number) => {
+    if (!times.has(pid)) times.set(pid, createdAt(pid));
+    return times.get(pid) ?? null;
+  };
+  const ids = new Set([rootPid]);
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const process of all) {
+      if (!ids.has(process.ProcessId) && ids.has(process.ParentProcessId) && process.ProcessId !== 0) {
+        const parent = time(process.ParentProcessId);
+        const child = time(process.ProcessId);
+        // PPIDs survive their original parent. A newer process reusing that PID
+        // cannot be this child's parent; unknown dates cannot establish a link.
+        if (parent === null || child === null || parent > child) continue;
+        ids.add(process.ProcessId);
+        grew = true;
+      }
+    }
+  }
+  return all.filter(process => ids.has(process.ProcessId));
+}
+
 export async function windowsProcessTree(rootPid: number, authorized?: () => boolean): Promise<TreeProcess[]> {
   const { dlopen, FFIType, ptr } = await import('bun:ffi');
   // Loading FFI can outlive the attempt that authorized this observation.
@@ -32,6 +59,7 @@ export async function windowsProcessTree(rootPid: number, authorized?: () => boo
     Process32FirstW: { args: [FFIType.u64, FFIType.ptr], returns: FFIType.i32 },
     Process32NextW: { args: [FFIType.u64, FFIType.ptr], returns: FFIType.i32 },
     OpenProcess: { args: [FFIType.u32, FFIType.i32, FFIType.u32], returns: FFIType.u64 },
+    GetProcessTimes: { args: [FFIType.u64, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
     CloseHandle: { args: [FFIType.u64], returns: FFIType.i32 },
     GetLastError: { args: [], returns: FFIType.u32 },
   });
@@ -53,19 +81,25 @@ export async function windowsProcessTree(rootPid: number, authorized?: () => boo
     } finally {
       k32.symbols.CloseHandle(snapshot);
     }
-    const ids = new Set([rootPid]);
-    for (let grew = true; grew;) {
-      grew = false;
-      for (const process of all) {
-        if (!ids.has(process.ProcessId) && ids.has(process.ParentProcessId) && process.ProcessId !== 0) { ids.add(process.ProcessId); grew = true; }
-      }
-    }
-    const tree = all.filter(process => ids.has(process.ProcessId));
+    const tree = selectProcessTree(all, rootPid, creationTime);
     for (const process of tree) process.CommandLine = commandLine(process.ProcessId);
     return tree;
   } finally {
     k32.close();
     nt.close();
+  }
+
+  /** FILETIME stays exact, including adjacent 100 ns ticks above Number's safe range. */
+  function creationTime(pid: number): bigint | null {
+    const handle = BigInt(k32.symbols.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid));
+    if (handle === 0n) return null;
+    try {
+      const times = new Uint8Array(32);
+      if (k32.symbols.GetProcessTimes(handle, ptr(times), ptr(times.subarray(8, 16)), ptr(times.subarray(16, 24)), ptr(times.subarray(24, 32))) === 0) return null;
+      return new DataView(times.buffer).getBigUint64(0, true);
+    } finally {
+      k32.symbols.CloseHandle(handle);
+    }
   }
 
   /** The command line, or null for a process that exited or refuses even a limited query. */

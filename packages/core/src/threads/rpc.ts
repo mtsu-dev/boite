@@ -1,10 +1,10 @@
-import { stat } from 'node:fs/promises';
 import { pullRequestAddress, type AccountId, type ProviderId, type ThreadId } from '@boite/contracts';
 import type { Connection } from '../router.ts';
 import type { Core } from '../core.ts';
 import { promptOrigin } from '../client-preferences.ts';
 import { invalidParams, refused } from '../errors.ts';
 import { requireAgent } from './agentless.ts';
+import { folderPresent, requireThreadCwd, restoreThreadCwd } from './cwd.ts';
 import type { ProviderProbe } from '../providers/probe.ts';
 import { defaultModel, needsModelDiscovery } from './selection.ts';
 import { LinkedPullRequests } from '../linked-pull-requests.ts';
@@ -20,7 +20,8 @@ import { pluginActor, recordCreator } from '../plugins/actor.ts';
 import { trustLetters } from '../contacts/letter-scopes.ts';
 
 /**
- * A turn in a folder that is gone is refused by that folder. An archived
+ * A turn in a folder that is gone gets it back from its branch when it can
+ * (`restoreThreadCwd`), and is refused by that folder otherwise. An archived
  * thread keeps its `cwd` when its worktree is removed; restored, its next turn
  * would otherwise start an agent in nothing (the echo driver answered as if all
  * were well). Checked off the event loop, so a share whose host is gone stalls
@@ -31,12 +32,9 @@ async function requireCwd(core: Core, threadId: ThreadId): Promise<void> {
   if (thread.archived) return;
   // The project's own folder is asked too, beside this turn: gone or put back, every client hears it.
   if (thread.projectId !== null) void core.projects.requireFolder(thread.projectId).catch(() => undefined);
-  const present = await stat(thread.cwd).then((found) => found.isDirectory(), () => false);
-  if (!present) {
-    throw refused(`the folder ${thread.cwd} this thread works in does not exist any more: its worktree was removed or the folder moved`, {
-      threadId, cwd: thread.cwd, field: 'cwd', expected: 'an existing folder',
-    });
-  }
+  // Off the event loop first, so a share whose host is gone stalls this call only.
+  if (!(await folderPresent(thread.cwd))) await restoreThreadCwd(core, thread);
+  await requireThreadCwd(threadId, thread.cwd);
 }
 
 /** `12` or `#12`, else null. */

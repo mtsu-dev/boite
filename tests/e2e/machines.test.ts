@@ -149,8 +149,8 @@ test('two real cores pair, route turns independently, reconnect and survive a re
     await page.waitFor(`document.querySelector('[data-core-id="${home}"] ${id('machine-home')}') !== null && document.querySelectorAll('${id('machine-home')}').length === 1`);
     expect(await b.call('settings.get', {})).toMatchObject({ asyncQuestions: false, warmProcessMinutes: 2, agentCpuCapPercent: 35 });
     // Protection changes the machine its bar picks, here the second one, while the window stays on the first.
-    // The resource limits are a card of Safeguards.
-    await page.click(id('settings-tab-safeguards'));
+    // Resources is a section of Diagnostics.
+    await page.click(id('settings-tab-diagnostics'));
     await page.waitFor(`document.querySelector('${id('resources-page')}') && document.querySelector('${id('settings-machine')}')`);
     await page.click(id('settings-machine'));
     await page.waitFor(`document.querySelector('${id('settings-machine-menu')} [data-value="${second.url}"]')`);
@@ -408,8 +408,8 @@ test('one invitation groups two real cores: the page connects the second by itse
     // From the phone, the owner names the machine it paired with as its main one. The window is on the other
     // machine, where a start opened again until now: from this choice on, a start opens on the main one.
     await mobileAction(page, 'mobile-settings');
-    await page.waitFor(`document.querySelector('${id('settings-tab-devices')}')`);
-    await page.click(id('settings-tab-devices'));
+    await page.waitFor(`document.querySelector('${id('mobile-settings-connection')}')`);
+    await page.click(id('mobile-settings-connection'));
     await page.waitFor(`document.querySelector('${id('main-machine-pick')}')`);
     await page.click(id('main-machine-pick'));
     await page.waitFor(`document.querySelector('${id('main-machine-pick-menu')}')`);

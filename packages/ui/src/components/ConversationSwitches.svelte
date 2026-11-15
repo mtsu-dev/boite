@@ -12,8 +12,8 @@
    * from the list's display options), and `conversation`, whether answers show
    * their files and previews, whether a file link opens in its own app (only
    * the desktop app can do that), whether the integrated browser references
-   * elements, and how a turn's changes show (In the conversation, on the
-   * desktop and on a phone's own page).
+   * elements, how a turn's changes show and whether the message box corrects
+   * what is typed (In the conversation, on the desktop and on a phone's own page).
    */
   let { part, phone = false }: { part: 'list' | 'conversation'; phone?: boolean } = $props();
   const uid = $props.id();
@@ -30,7 +30,9 @@
     { id: 'preview-comments', label: strings.features.previewComments.title, effect: strings.features.previewComments.hint, checked: featureOn('preview-comments'), set: (value: boolean) => setFeature('preview-comments', value) },
     // Once under Appearance; they change what a turn shows, not how it looks, and keep their test ids.
     { id: 'group-changes', testid: 'chat-group-changes', label: strings.settings.groupChanges, effect: effects.groupChanges, checked: chatPrefs.groupChanges, set: (value: boolean) => setChatPref('groupChanges', value) },
-    { id: 'expand-diffs', testid: 'chat-expand-diffs', label: strings.settings.expandDiffs, effect: effects.expandDiffs, checked: chatPrefs.expandDiffs, set: (value: boolean) => setChatPref('expandDiffs', value) }
+    { id: 'expand-diffs', testid: 'chat-expand-diffs', label: strings.settings.expandDiffs, effect: effects.expandDiffs, checked: chatPrefs.expandDiffs, set: (value: boolean) => setChatPref('expandDiffs', value) },
+    // What the system does to a message as it is typed: its red underlines, its corrections, its capitals.
+    { id: 'typing-correction', testid: 'chat-typing-correction', label: strings.settings.typingCorrection, effect: effects.typingCorrection, checked: chatPrefs.typingCorrection, set: (value: boolean) => setChatPref('typingCorrection', value) }
   ]);
 </script>
 

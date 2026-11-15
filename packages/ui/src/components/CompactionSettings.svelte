@@ -42,8 +42,7 @@
 
 {#if store.owner}
   <section class="card" data-testid="compaction-settings">
-    <h2 class="ui-label-box"><span class="ui-label" id="{uid}-scope">{backgroundOnly ? strings.settings.compactionScopeBackground : strings.settings.compactionScope}</span></h2>
-    <div class="scope" role="group" aria-labelledby="{uid}-scope">
+    <div class="scope" role="group" aria-label={strings.settings.compactionScope}>
       {#each targets as item (item.id)}
         <button type="button" class="ui-chip" class:picked={target === item.id} aria-pressed={target === item.id}
           data-testid="compaction-target-{item.id ?? 'common'}" disabled={saving} onclick={() => void pick(item.id)}><span class="ui-label">{item.label}</span></button>
@@ -67,13 +66,13 @@
 {/if}
 
 <style>
-  .scope { display: flex; flex-wrap: wrap; gap: 6px; padding: var(--space-3) 0; }
+  .scope { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 20px; margin-bottom: 20px; border-bottom: 1px solid var(--color-border); }
   .ui-chip { flex: 1; justify-content: center; min-width: max-content; }
   .ui-chip.picked { border-color: var(--color-muted-foreground); color: var(--color-foreground); background: var(--color-active); }
-  .customize { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: var(--space-3) 0; }
+  .customize { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
   .words { display: flex; align-items: center; gap: 8px; }
   .hint { margin: 0 0 20px; }
-  fieldset { border: 0; padding: var(--space-3) 0; margin: 0; min-width: 0; }
+  fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
   fieldset:disabled { opacity: 0.6; }
   @media (max-width: 720px) {
     .scope { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }

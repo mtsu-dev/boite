@@ -188,7 +188,7 @@ executable, a non-repository project or an existing branch is refused by name
 without writing a thread. Git calls appear in the thread's trace. The header
 shows the recorded branch.
 
-Settings > Conversations > Worktrees offers project storage or an absolute shared
+Settings > General > Worktrees offers project storage or an absolute shared
 folder. Phone owners open that card from a project's Manage project menu or
 a settings link; it has no row in the phone's settings list.
 `settings.worktreeStorage` stores `{ mode: 'project', directory: null }` or
@@ -230,11 +230,18 @@ panel's reader (deadline, shared read slots, no index lock, no fsmonitor hook).
 A thread counts as a holder only when it belongs to the project or its folder,
 as written, lies in the project, its worktree folder or a listed worktree.
 
-Settings > Conversations > Worktrees and Manage project offer the same controls. Removing clean
+Settings > Worktrees and Manage project offer the same controls. Removing clean
 worktrees requires no force; ignored dependencies and build output leave with
 the directory. Dirty or unmerged removal asks first. Archive alone never removes
 a branch or worktree. Restoring a thread whose worktree was removed retains its
-`cwd`; sending or compacting refuses the missing folder instead of recreating it.
+`cwd`. A turn in a thread whose worktree folder is gone, from `turns.start` or
+one the core starts itself (a subagent's result, a resume, a pull-request wake),
+first checks the thread's branch out there again when the branch still exists
+(`restoreThreadCwd` in `threads/cwd.ts`, `Worktrees.recover`), unless the
+core's own cleanup removed it (`worktreeRemoved`, below). A deleted branch is
+never made again from HEAD: `turns.start` then refuses the missing folder, and
+an automatic turn fails with that sentence instead of the agent's own error
+(Claude Code blames its native binary) and plans no resume.
 
 ### Settled worktree cleanup
 
@@ -338,13 +345,13 @@ which stops it as archiving does. Done reads archived summaries only on expansio
 respecting the project and machine filters. A completed conversation opens for
 reading with a Move to Recent button in place of the composer. Reopening keeps
 history without restarting work. Mark done records its own date; `boite thread done`
-and the merged-PR archives of older cores do the same. Settings > Conversations > Archived threads controls the
+and the merged-PR archives of older cores do the same. Settings > General > Archived threads controls the
 delay before deletion, 3 days by default, or 0 to disable it. Restoring clears the
 date, and marking done again starts a new delay. Manual and older archives without
 a done date stay retained. Expiry runs at startup and once per minute, skips
 families with pending work or input, and uses the recoverable deletion flow below.
 
-Settings > Conversations > Thread list offers Group working threads,
+Settings > General > Conversations offers Group working threads,
 stored on this device. Phones reach the switch through the thread list's
 Display options. The sidebar's Display options panel (`DisplayOptions.svelte`) offers the
 view choice and this switch, each scope behind its "i". In Projects it adds the

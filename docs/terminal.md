@@ -70,15 +70,14 @@ Because `Ctrl+D` splits, type `exit` to end a shell. Other Ctrl-letter keys
 such as `Ctrl+K`, `Ctrl+S` and `Ctrl+F` reach the shell, and the up arrow and
 `Ctrl+R` stay the shell's own history. On Windows and Linux, `Ctrl+C` copies
 a selection or interrupts when nothing is selected, and `Ctrl+V` pastes.
-Settings, Input, Keyboard, Terminal changes these keys.
+Settings, Keyboard, Terminal changes these keys.
 
 ## Settings
 
-These apply to this device:
+In Settings, Appearance, for this device:
 
-- Terminal cursor, in Settings, Appearance, Terminal and scrollbars: Bar (the
-  default), Block or Underline.
-- Draw terminals on the GPU, in Settings, Devices, This device: on by default. Turn it off if a terminal draws
+- Terminal cursor: Bar (the default), Block or Underline.
+- Draw terminals on the GPU: on by default. Turn it off if a terminal draws
   badly; it applies to terminals opened next.
 
 ## Sign in from a terminal
@@ -86,7 +85,7 @@ These apply to this device:
 Some agents sign in through a menu in a terminal rather than a web page. Boite
 opens that sign-in in the same kind of shell.
 
-1. Press Sign in for that agent in Settings, AI accounts, Providers.
+1. Press Sign in for that agent in Settings, Providers.
 2. Answer its questions in the terminal.
 3. Press Close the terminal once you are signed in.
 

@@ -77,7 +77,7 @@ holds a claim back twice at most, then the review decides alone with the whole
 list, statuses included, in its prompt.
 
 The tracker runs on `Settings.goalTracker`, the Checklist model row of
-Settings, Conversations, Agent replies, shown to the owner only: a provider, a model and its reasoning level, stored by
+Settings, General, Conversations, shown to the owner only: a provider, a model and its reasoning level, stored by
 the core of that machine. Automatic (`null`) takes the newest Opus at medium on
 Claude or the newest Sol at high on Codex (`GOAL_TRACKER_DEFAULTS`), the
 conversation's own agent first, else the conversation's own model. A small
@@ -118,7 +118,7 @@ The client experiment Automatic goals (`auto-goal`, off by default) starts a
 reviewed goal without `/goal2`. A user prompt that starts a turn, on a thread
 with no goal or loop under way (a paused one counts), starts one when it holds
 at least `autoGoalMinChars` characters, 1500 by default. The owner sets that
-number under the switch in Settings, Version, Experiments; the core accepts 200 to 20000.
+number under the switch on the Experiments page; the core accepts 200 to 20000.
 A steer, a slash command or a queued `/goal` or `/loop` never starts one, and a
 subagent's thread never does.
 

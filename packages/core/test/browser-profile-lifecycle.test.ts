@@ -38,10 +38,10 @@ test('the browser is found where each OS installs it, and BOITE_BROWSER alone wh
     mkdirSync(dirname(edge), { recursive: true }); writeFileSync(edge, '');
     const none = () => null;
     expect(findChromium({ ProgramFiles: root }, 'win32', none)).toEqual({ path: edge });
-    expect(findChromium({}, 'linux', name => name === 'chromium' ? '/usr/bin/chromium' : null)).toEqual({ path: '/usr/bin/chromium' });
+    expect(findChromium({}, 'linux', name => name === 'chromium' ? '/usr/bin/chromium' : null, () => false)).toEqual({ path: '/usr/bin/chromium' });
     expect(findChromium({ BOITE_BROWSER: edge }, 'linux', () => '/usr/bin/chromium')).toEqual({ path: edge });
     expect(findChromium({ BOITE_BROWSER: join(root, 'gone') }, 'win32', () => '/usr/bin/chromium').path).toBeNull();
-    expect(findChromium({}, 'linux', none)).toMatchObject({ path: null, reason: expect.stringContaining('BOITE_BROWSER') });
+    expect(findChromium({}, 'linux', none, () => false)).toMatchObject({ path: null, reason: expect.stringContaining('BOITE_BROWSER') });
     expect(chromiumArgs('/profile', 'linux')).toEqual(expect.arrayContaining(['--headless=new', '--user-data-dir=/profile']));
     expect(chromiumArgs('/profile', 'linux', 'Agent/1')).toEqual(expect.arrayContaining(['--disable-blink-features=AutomationControlled', '--user-agent=Agent/1']));
     expect(chromiumArgs('/profile', 'linux').some(arg => arg.startsWith('--user-agent'))).toBe(false);
@@ -59,12 +59,13 @@ test('the browser is found where each OS installs it, and BOITE_BROWSER alone wh
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-// T3 Code's two options, on every system: pages drawn on the CPU, at twice their CSS size.
-test('the browser draws without the GPU at a device scale of 2, with SwiftShader left for WebGL', () => {
+// Pages at twice their CSS size on every system; where they are drawn is `gpuArgs` (browser-challenge.test.ts).
+test('the browser draws at a device scale of 2 and never with software WebGL', () => {
   for (const platform of ['linux', 'darwin', 'win32'] as const) {
     const args = chromiumArgs('/profile', platform);
-    expect(args).toEqual(expect.arrayContaining(['--disable-gpu', '--force-device-scale-factor=2']));
-    for (const gone of ['--enable-gpu', '--disable-software-rasterizer', '--use-gl=angle', '--use-angle=gl-egl']) expect(args).not.toContain(gone);
+    expect(args).toEqual(expect.arrayContaining(['--disable-software-rasterizer', '--force-device-scale-factor=2']));
+    for (const gone of ['--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=gl-egl']) expect(args).not.toContain(gone);
+    expect(chromiumArgs('/profile', platform, undefined, ['--disable-gpu', '--disable-software-rasterizer'])).toContain('--disable-gpu');
   }
 });
 

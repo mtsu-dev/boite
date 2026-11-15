@@ -14,8 +14,6 @@ type CommandDefinition = {
   id: string;
   label?: () => string;
   ownerOnly?: boolean;
-  /** Words the palette also finds it by, never shown: the old Settings page names for a command that opens one. */
-  keywords?: () => string;
   run?: (store: Store, inShell: boolean) => void;
 };
 
@@ -35,7 +33,7 @@ export const commandTable: readonly CommandDefinition[] = [
   { id: 'files', label: () => strings.keyboard.commands.files, ownerOnly: true, run: (store) => { store.showChat(); store.panel.toggleKind('files'); } },
   { id: 'tasks', label: () => strings.keyboard.commands.tasks, ownerOnly: true, run: (store) => { store.showChat(); store.panel.toggleKind('tasks'); } },
   { id: 'close-surface', label: () => strings.keyboard.commands.closeSurface },
-  { id: 'settings', label: () => strings.palette.settings, keywords: () => strings.palette.oldPages.settings, run: (store) => { store.showSettings(); } },
+  { id: 'settings', label: () => strings.palette.settings, run: (store) => { store.showSettings(); } },
   { id: 'stash', label: () => strings.keyboard.commands.stash },
   { id: 'send-and-draft', label: () => strings.keyboard.commands.sendAndDraft },
   // A paired device adds too once its core allows it (`deviceProjects`).
@@ -44,9 +42,9 @@ export const commandTable: readonly CommandDefinition[] = [
   { id: 'rename', label: () => strings.palette.rename, run: (store) => { store.showChat(); store.renameRequested = true; } },
   { id: 'retitle', label: () => strings.palette.retitle, run: (store) => { const open = store.openThread; if (open) void store.retitle(open.id); } },
   { id: 'trace', label: () => strings.palette.trace, ownerOnly: true, run: (store) => { store.showChat(); store.panel.toggleKind('trace'); } },
-  { id: 'appearance', label: () => strings.palette.appearance, keywords: () => strings.palette.oldPages.appearance, run: (store) => { store.showSettings('appearance'); } },
-  { id: 'providers', label: () => strings.palette.providers, keywords: () => strings.palette.oldPages.providers, ownerOnly: true, run: (store) => { store.showSettings('ai'); } },
-  { id: 'pair', label: () => strings.palette.pair, keywords: () => strings.palette.oldPages.pair, ownerOnly: true, run: (store) => { store.showSettings('devices', 'machines'); void store.addDevice(); } },
+  { id: 'appearance', label: () => strings.palette.appearance, run: (store) => { store.showSettings('appearance'); } },
+  { id: 'providers', label: () => strings.palette.providers, ownerOnly: true, run: (store) => { store.showSettings('accounts'); } },
+  { id: 'pair', label: () => strings.palette.pair, ownerOnly: true, run: (store) => { store.showSettings('machines', 'machines'); void store.addDevice(); } },
   { id: 'theme-dark', label: () => strings.palette.themeDark, run: () => { setTheme('dark'); } },
   { id: 'theme-light', label: () => strings.palette.themeLight, run: () => { setTheme('light'); } },
   { id: 'theme-system', label: () => strings.palette.themeSystem, run: () => { setTheme('system'); } },
@@ -75,8 +73,8 @@ export const commandTable: readonly CommandDefinition[] = [
     else if (store.draft && store.page === 'chat') store.projectChoiceRequest += 1;
   } },
   { id: 'subagents', run: (store) => { store.showChat(); store.panel.toggleKind('agents'); } },
-  { id: 'task-manager', keywords: () => strings.palette.oldPages.taskManager, run: (store) => { store.showSettings('help', 'task-manager'); } },
-  { id: 'archived', keywords: () => strings.palette.oldPages.archived, run: (store) => { store.showSettings('conversations', 'archived'); } },
+  { id: 'task-manager', run: (store) => { store.showSettings('task-manager'); } },
+  { id: 'archived', run: (store) => { store.showSettings('general', 'archived'); } },
   { id: 'tour', run: (store) => { store.showChat(); openTour(); } },
 ];
 const commandsById = new Map(commandTable.map(command => [command.id, command]));
@@ -85,11 +83,6 @@ const threadCommands = new Set(Array.from({ length: 9 }, (_, index) => `thread-$
 /** The label of every command a chord can reach. */
 export function commandLabel(id: KeybindingCommand): string {
   return commandsById.get(id)?.label?.() ?? fill(strings.keyboard.commands.thread, { n: id.slice('thread-'.length) });
-}
-
-/** The words the palette also finds a command by, beside the ones its row gives. */
-export function commandKeywords(id: string): string | undefined {
-  return commandsById.get(id)?.keywords?.();
 }
 
 /** Palette and shortcut callers keep the same command entry point. */

@@ -101,9 +101,9 @@ test('a thread on one machine asks the other to accept threads, the card flips i
     await page.evaluate(`document.querySelector('${marker}').scrollIntoView({ block: 'center' })`);
     await capture('started-desktop.png');
 
-    // Settings, Devices: each machine's row menu carries its own switches, named in full.
+    // Settings, Machines and updates: each machine's row menu carries its own switches, named in full.
     await page.click(id('nav-settings'));
-    await page.click(id('settings-tab-devices'));
+    await page.click(id('settings-tab-machines'));
     const triggers = `${id('machine-card')} ${id('machine-menu')}`;
     const menu = `${id('machine-menu-menu')}:not(.closing)`;
     await page.waitFor(`document.querySelectorAll('${triggers}').length === 2`, 15_000);

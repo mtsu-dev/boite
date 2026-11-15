@@ -432,8 +432,7 @@ test('a row growing above a reader just off the bottom leaves the reader there',
   // Grown below the fold with no scrollbar to redraw (edge scrollbars), headless Chrome on Windows can leave the
   // compositor its old scroll range, and the notch stopped at the old bottom. A drawn frame hands it the new one.
   await page.send('Page.captureScreenshot', { format: 'jpeg', quality: 1 });
-  // The way back takes its own row over the composer while it shows (`ComposerStrip`), so the gap is larger than the
-  // notches and growth alone: the notch is sized to land 40 px from the bottom, inside the 80 px.
+  // The notch is sized from the gap as measured, to land 40 px from the bottom, inside the 80 px.
   const notch = await page.evaluate<number>(gap) - 40;
   expect(notch).toBeGreaterThan(80);
   await page.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: box.x, y: box.y, deltaX: 0, deltaY: notch });

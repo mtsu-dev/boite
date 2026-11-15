@@ -107,13 +107,13 @@ export class FakePlugins {
     'plugins.accounts': (params) => {
       const plugin = this.#requirePlugin(params.id);
       if (plugin.status !== 'installed') throw new RpcFailure({ code: RpcErrorCode.Refused, message: `Install ${plugin.id} first.` });
-      if (plugin.enabled === false) throw new RpcFailure({ code: RpcErrorCode.Refused, message: `${plugin.id} is turned off. Turn it on in Settings > Agents > Plugins first.`, data: { id: plugin.id, enabled: false } });
+      if (plugin.enabled === false) throw new RpcFailure({ code: RpcErrorCode.Refused, message: `${plugin.id} is turned off. Turn it on in Settings > Plugins first.`, data: { id: plugin.id, enabled: false } });
       return structuredClone(this.#pluginPools[plugin.id] ?? []);
     },
     'plugins.accountAction': (params) => {
       const plugin = this.#requirePlugin(params.id);
       if (plugin.status !== 'installed') throw new RpcFailure({ code: RpcErrorCode.Refused, message: `Install ${plugin.id} first.` });
-      if (plugin.enabled === false) throw new RpcFailure({ code: RpcErrorCode.Refused, message: `${plugin.id} is turned off. Turn it on in Settings > Agents > Plugins first.`, data: { id: plugin.id, enabled: false } });
+      if (plugin.enabled === false) throw new RpcFailure({ code: RpcErrorCode.Refused, message: `${plugin.id} is turned off. Turn it on in Settings > Plugins first.`, data: { id: plugin.id, enabled: false } });
       const pools = this.#pluginPools[plugin.id] ?? [];
       const pool = pools.find((pool) => pool.provider === params.provider);
       if (pool && params.action === 'switch') for (const account of pool.accounts) account.active = account.email === params.email;
@@ -126,7 +126,7 @@ export class FakePlugins {
         throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'plugin app action must be start, stop or restart' });
       }
       if (plugin.status !== 'installed') throw new RpcFailure({ code: RpcErrorCode.Refused, message: `Install ${plugin.id} first.` });
-      if (plugin.enabled === false) throw new RpcFailure({ code: RpcErrorCode.Refused, message: `${plugin.id} is turned off. Turn it on in Settings > Agents > Plugins first.`, data: { id: plugin.id, enabled: false } });
+      if (plugin.enabled === false) throw new RpcFailure({ code: RpcErrorCode.Refused, message: `${plugin.id} is turned off. Turn it on in Settings > Plugins first.`, data: { id: plugin.id, enabled: false } });
       if (plugin.app === null) throw new RpcFailure({ code: RpcErrorCode.Refused, message: `${plugin.id} provides no desktop app.` });
       plugin.app = params.action === 'stop'
         ? { ...plugin.app, enabled: false, status: 'stopped', pid: null, startedAt: null, error: null }
@@ -140,7 +140,7 @@ export class FakePlugins {
       }
       const plugin = this.#requirePlugin(params.id);
       if (plugin.status !== 'installed') throw new RpcFailure({ code: RpcErrorCode.Refused, message: `Install ${plugin.id} first.` });
-      if (plugin.enabled === false) throw new RpcFailure({ code: RpcErrorCode.Refused, message: `${plugin.id} is turned off. Turn it on in Settings > Agents > Plugins first.`, data: { id: plugin.id, enabled: false } });
+      if (plugin.enabled === false) throw new RpcFailure({ code: RpcErrorCode.Refused, message: `${plugin.id} is turned off. Turn it on in Settings > Plugins first.`, data: { id: plugin.id, enabled: false } });
       if (plugin.gateway == null) throw new RpcFailure({ code: RpcErrorCode.Refused, message: `${plugin.id} provides no gateway.` });
       plugin.gateway = params.action === 'stop'
         ? { ...plugin.gateway, enabled: false, status: 'stopped', pid: null, version: null, startedAt: null, error: null }
@@ -151,7 +151,7 @@ export class FakePlugins {
     'plugins.autostart': (params) => {
       const plugin = this.#requirePlugin(params.id);
       if (plugin.status !== 'installed') throw new RpcFailure({ code: RpcErrorCode.Refused, message: `Install ${plugin.id} first.` });
-      if (plugin.enabled === false) throw new RpcFailure({ code: RpcErrorCode.Refused, message: `${plugin.id} is turned off. Turn it on in Settings > Agents > Plugins first.`, data: { id: plugin.id, enabled: false } });
+      if (plugin.enabled === false) throw new RpcFailure({ code: RpcErrorCode.Refused, message: `${plugin.id} is turned off. Turn it on in Settings > Plugins first.`, data: { id: plugin.id, enabled: false } });
       if (plugin.app === null && plugin.gateway == null) throw new RpcFailure({ code: RpcErrorCode.Refused, message: `${plugin.id} provides no desktop app or gateway to start with Boite.` });
       if (plugin.app !== null) plugin.app = { ...plugin.app, autostart: params.autostart };
       if (plugin.gateway != null) plugin.gateway = { ...plugin.gateway, autostart: params.autostart };

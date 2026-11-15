@@ -10,6 +10,8 @@ export const fr: Translation = {
     milliseconds: 'ms',
     seconds: 's',
     tokens: 'jetons',
-    days: 'jours'
+    days: 'jours',
+    /** A day in a short clock: `2j 03h` of work. */
+    day: 'j'
   }
 };

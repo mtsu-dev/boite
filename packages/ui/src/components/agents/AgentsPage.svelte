@@ -187,9 +187,9 @@
     return () => { mobileChrome.detail = false; };
   });
 
-  // On a desktop the bot's name and buttons stand in the window's top bar, not in the card.
+  // On a desktop the bot's name and buttons, or the open team's, stand in the window's top bar, not in the card.
   $effect(() => {
-    if (narrow.current || focus || !thread || !agent) return;
+    if (narrow.current || focus || !((thread && agent) || (teamThread && TeamHeader))) return;
     titleSlot.current = barHead;
     return () => { if (titleSlot.current === barHead) titleSlot.current = null; };
   });
@@ -222,6 +222,8 @@
 {#snippet barHead()}
   {#if thread && agent}
     <AgentHeader {store} {view} {agent} {status} {thread} onpane={next => { pane = pane === next ? null : next; }} />
+  {:else if teamThread && TeamHeader && !focus}
+    <TeamHeader {store} {view} {others} thread={teamThread} {team} />
   {/if}
 {/snippet}
 
@@ -275,7 +277,7 @@
       <!-- A thread the snapshot does not name yet, a moment after the agent was created. -->
       <div class="agents-chat"><ChatView {store} /></div>
     {:else if teamThread}
-      {#if TeamHeader}<TeamHeader {store} {view} {others} thread={teamThread} {team} onback={narrow.current ? back : undefined} />{/if}
+      {#if TeamHeader && narrow.current}<TeamHeader {store} {view} {others} thread={teamThread} {team} onback={back} />{/if}
       <div class="agents-chat"><ChatView {store} /></div>
     {:else if !snapshot}
       <p class="agent-empty">{view.loadError ? labels.offline : strings.app.loading}</p>

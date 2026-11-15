@@ -32,7 +32,7 @@ function card(localCore = true) {
   let allowed = false;
   const calls: string[] = [];
   const store = $state({
-    owner: true, principal: 'owner', connection: 'ready', localCore, sessions: [],
+    owner: true, principal: 'owner', connection: 'ready', localCore, sessions: [], loadSessions: async () => {},
     deviceInvite: invite('http://127.0.0.1:7337') as DeviceInvite | null,
     settings: { listenOnLan: false, publicUrl: null },
     core: { endpoint: { host: '127.0.0.1', port: 7337 } },
@@ -46,7 +46,6 @@ function card(localCore = true) {
     },
     addDevice: vi.fn(async () => { store.deviceInvite = invite(listening ? 'http://192.168.1.52:7337' : 'http://127.0.0.1:7337'); }),
     closeDeviceInvite: vi.fn(() => { store.deviceInvite = null; }),
-    loadSessions: vi.fn(async () => {}),
     saveSettings: vi.fn(async (patch: { listenOnLan?: boolean }) => { store.settings = { ...store.settings, ...patch }; return true; }),
   });
   mounted = mount(AddDevice, { target: document.body, props: { store: store as unknown as Store } });
@@ -86,7 +85,7 @@ test('isLoopback names the links that only reach the computer opening them', () 
 
 test('turning the network off restarts, settles on the bound address and draws the Add a device link again, even behind a public address', async () => {
   const store = $state({
-    owner: true, principal: 'owner', connection: 'ready', localCore: true, sessions: [], endpointUrl: null,
+    owner: true, principal: 'owner', connection: 'ready', localCore: true, sessions: [], loadSessions: async () => {}, endpointUrl: null,
     // A public address: the link names neither loopback nor the LAN, whatever the core listens on.
     deviceInvite: invite('https://boite.example.com') as DeviceInvite | null,
     settings: { listenOnLan: true, publicUrl: 'https://boite.example.com' },
@@ -100,7 +99,6 @@ test('turning the network off restarts, settles on the bound address and draws t
     }) },
     // Pairing.addDevice never throws: a failure becomes the store's error.
     addDevice: vi.fn(async () => { store.deviceInvite = invite('https://boite.example.com'); }),
-    loadSessions: vi.fn(async () => {}),
     saveSettings: vi.fn(async (patch: { listenOnLan?: boolean }) => { store.settings = { ...store.settings, ...patch }; return true; }),
   });
   mounted = mount(PhoneSettings, { target: document.body, props: { store: store as unknown as Store } });

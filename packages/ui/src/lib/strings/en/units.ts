@@ -8,6 +8,8 @@ export const strings = {
     milliseconds: 'ms',
     seconds: 's',
     tokens: 'tokens',
-    days: 'days'
+    days: 'days',
+    /** A day in a short clock: `2d 03h` of work. */
+    day: 'd'
   }
 } as const;

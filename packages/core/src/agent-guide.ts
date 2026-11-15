@@ -67,8 +67,8 @@ export function agentGuide(asyncQuestions: boolean, logAccess = false, skills: r
   return [
     'You run in Boite: your text renders as Markdown in a chat with a panel, on desktop and phones, not in a terminal. Processes are traced.',
     bot
-      ? `\`boite help\` lists commands. \`boite browser|device help\`: agent-browser/emulators; batch browser steps: \`&&\` or \`boite browser run -\`. ${pullRequests}`
-      : `\`boite help\` lists commands; \`boite where\` shows cwd/project/branch. Stay in the checkout. \`boite browser|device help\`: agent-browser/emulators; batch browser steps: \`&&\` or \`boite browser run -\`. ${pullRequests}`,
+      ? `\`boite help\` lists commands. \`boite browser|device help\`: agent-browser/emulators; browser actions print the page they leave; batch steps: \`&&\` or \`boite browser run -\`. ${pullRequests}`
+      : `\`boite help\` lists commands; \`boite where\` shows cwd/project/branch. Stay in the checkout. \`boite browser|device help\`: agent-browser/emulators; browser actions print the page they leave; batch steps: \`&&\` or \`boite browser run -\`. ${pullRequests}`,
     '`boite show <file>[:line]`, `boite diff [file]`, `boite browse <url>` open the panel. `boite preview <file.html>` previews HTML/assets; `boite attach <file>` sends files (512 MB max).',
     'Inline `path:line` opens this checkout\'s files. Use `boite attach` for media across machines.',
     // Only Linux has a virtual desktop (docs/internals/desktop.md): elsewhere the line would point at a refusal.

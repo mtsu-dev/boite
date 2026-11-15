@@ -2,7 +2,7 @@ import { AppWindow, Archive, ArrowDown, ArrowUp, Copy, FolderMinus, GitBranch, H
 import type { Project } from '@boite/contracts';
 import type { Store } from './store.svelte';
 import { workspace } from './workspace.svelte';
-import { archivedFocus } from './archived-focus.svelte';
+import { openArchived } from './archived-view.svelte';
 import { confirm } from './confirm.svelte';
 import { contextMenu } from './context-menu.svelte';
 import { experimentOn } from './experiments.svelte';
@@ -78,7 +78,7 @@ export function projectMenu(event: MouseEvent, owner: Store, project: Project, r
     { id: 'new', label: strings.sidebar.newThread, glyph: Plus, disabled: project.missing === true, ...(project.missing === true ? { title: strings.sidebar.projectMissing } : {}) },
     { id: 'copy', label: strings.sidebar.copyPath, title: project.path, glyph: Copy },
     ...(project.kind !== 'drafts' ? [{ id: 'rename', label: strings.common.rename, glyph: PencilLine }] : []),
-    // Archived threads have one home, Settings' archive: from a card it opens on this project, its count beside.
+    // The list's own archive (lib/archived-view.svelte.ts): from a card it opens on this project, its count beside.
     {
       id: 'archived', label: strings.settings.archived.heading, glyph: History, testid: 'project-archived-toggle',
       ...(archived && archived.count > 0 ? {
@@ -115,9 +115,7 @@ export function projectMenu(event: MouseEvent, owner: Store, project: Project, r
       }
       if (action === 'archived') {
         if (workspace.active !== owner) await workspace.select(owner);
-        archivedFocus.store = owner;
-        archivedFocus.projectId = project.id;
-        owner.showSettings('general', 'archived');
+        openArchived(owner, project.id);
       }
       if (action === 'archive-project') await archiveProjectWithUndo(owner, project);
       if (action === 'worktree-default') {

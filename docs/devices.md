@@ -42,8 +42,8 @@ iOS Simulators are view only in the panel: the agent drives them itself.
 
 ### Live device stream
 
-Experimental, in Nightly builds only: turn it on in Settings, Version,
-Experiments, Live device stream.
+Experimental, in Nightly builds only: turn it on in Settings, Experiments,
+Live device stream.
 
 Without it, the panel shows screenshots, a few per second, and only printable
 ASCII text reaches an Android device. With it on, an Android emulator or phone
@@ -67,7 +67,7 @@ The first capture of an app in a project asks you in the chat:
 Every capture leaves a small picture of it in the conversation. On a phone you
 get a notification for the request.
 
-Settings, Safeguards has two lists:
+Settings, Machines and updates has two lists:
 
 - Windows agents may see: the apps each project may capture without asking. Remove
   one and the next capture asks again.

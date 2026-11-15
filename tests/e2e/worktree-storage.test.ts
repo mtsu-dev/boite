@@ -52,8 +52,10 @@ test('owners choose storage in desktop and phone settings, with validation and e
   await page.waitFor(`document.querySelector('${id('worktree-storage-directory')}')?.value === 'D:\\\\Worktrees'`);
 
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-  // The phone keeps the page the desktop showed, Conversations: its Worktrees card holds the same form.
-  await page.waitFor(`document.querySelector('${id('mobile-settings-detail')}')`);
+  // The phone keeps the page the desktop showed: General, a page of rows under the settings list.
+  await page.waitFor(`document.querySelector('${id('mobile-settings-general')}')`);
+  // An owner's General page lists Worktrees; the page a project's menu links to opens the same form.
+  await page.click(id('mobile-settings-worktrees'));
   await page.waitFor(`document.querySelector('${id('worktree-storage-directory')}')?.value === 'D:\\\\Worktrees'`);
   await capture('worktree-storage-phone.png');
   await mode('project');
@@ -61,11 +63,11 @@ test('owners choose storage in desktop and phone settings, with validation and e
   await capture('worktree-storage-phone-project.png');
   expect(await page.evaluate(`${state}.threads.find(t => t.id === 't-scheduler').cwd`)).toBe(schedulerCwd);
   await page.click(id('mobile-settings-back'));
-  await page.waitFor(`document.querySelector('${id('mobile-settings-home')}') && !document.querySelector('${id('worktree-storage-directory')}')`);
+  await page.waitFor(`document.querySelector('${id('mobile-settings-general')}') && !document.querySelector('${id('worktree-storage-directory')}')`);
   await page.evaluate(`${state}.principal = 'session'; ${state}.client.becomes('session')`);
-  // A paired device has no worktrees to set: the link opens Conversations without the card.
+  // A paired device has no worktrees to set: no row, and the link opens no form.
+  await page.waitFor(`document.querySelector('${id('mobile-settings-general')}') && !document.querySelector('${id('mobile-settings-worktrees')}')`);
   await page.evaluate(`${state}.showSettings('general', 'worktrees')`);
-  await page.waitFor(`document.querySelector('${id('settings-page')}')?.dataset.page === 'conversations' && document.querySelector('${id('setting-chat-artifacts')}') !== null`);
-  expect(await page.evaluate(`document.getElementById('settings-worktrees') === null && document.querySelector('${id('worktree-storage-directory')}') === null`)).toBe(true);
+  await page.waitFor(`document.querySelector('${id('mobile-settings-home')}, ${id('mobile-settings-general')}') && !document.querySelector('${id('worktree-storage-directory')}')`);
   expect(page.errors()).toEqual([]);
 }, 60_000);

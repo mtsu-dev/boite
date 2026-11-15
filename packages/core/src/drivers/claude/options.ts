@@ -5,7 +5,7 @@ import type { SpawnedChild } from '../../procs.ts';
 import { profileFor, resolveExecutable } from '../../providers/resolve.ts';
 import type { SessionContext } from '../types.ts';
 import type { ToolGate } from './permissions.ts';
-import { cliEnv, liveSetup, THINKING_DISPLAY_FLAG } from './query.ts';
+import { cliEnv, liveSetup, ONE_SHOT_TITLE, THINKING_DISPLAY_FLAG } from './query.ts';
 import { stepHooks, type StepHost } from './step.ts';
 
 /** Claude Code's own subagent and workflow tools; `Task` is the older name of `Agent`. */
@@ -35,6 +35,10 @@ export function cliOptions(ctx: SessionContext, host: OptionsHost, lazyMcp: Reco
   const mode = ctx.thread.contextMode ?? null;
   return {
     resume: ctx.sessionId ?? undefined,
+    // The thread already has a name (a blank one gets the fixed one), and the core asks for a better one itself
+    // (`titles.ts`). Without this the CLI names every new session with one
+    // more request on the thread's model, for a title nothing in Boite reads.
+    ...(ctx.sessionId === null ? { title: ctx.thread.title.trim() === '' ? ONE_SHOT_TITLE : ctx.thread.title } : {}),
     // A rewind or a fork: the transcript up to that entry, under a new
     // session id, so the original session is never cut.
     ...(ctx.sessionId !== null && ctx.resumeAt ? { resumeSessionAt: ctx.resumeAt, forkSession: true } : {}),

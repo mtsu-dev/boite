@@ -7,7 +7,7 @@
   import InfoTip from './InfoTip.svelte';
 
   /**
-   * Settings > AI accounts > Providers: an ACP agent added from the command that starts it.
+   * Settings > Providers: an ACP agent added from the command that starts it.
    * The core writes it as a user descriptor and refuses a field it cannot use;
    * the refusal lands beside that field. Removing one sits in its row's details.
    */
@@ -83,15 +83,14 @@
   }
 </script>
 
-<section class="card local-acp" id="settings-local-acp" data-testid="local-acp">
-  <div class="card-head">
+<section class="card local-acp" data-testid="local-acp">
+  <div class="head">
     <h2 class="ui-label-box"><span class="ui-label">{strings.localAcp.heading}</span><InfoTip topic={strings.localAcp.heading} text={strings.localAcp.hint} /></h2>
     {#if !open}
       <button type="button" class="quiet small" data-testid="local-acp-open" onclick={() => { open = true; added = ''; }}><Plus size={14} /><span class="ui-label">{strings.localAcp.open}</span></button>
     {/if}
   </div>
-  {#if added && !open}<p class="hint" role="status" data-testid="local-acp-added">{added}</p>
-  {:else if !open}<p class="hint">{strings.localAcp.closed}</p>{/if}
+  {#if added && !open}<p class="hint" role="status" data-testid="local-acp-added">{added}</p>{/if}
   {#if open}
     <form transition:slide={{ duration: fold() }} onsubmit={(event) => { event.preventDefault(); void save(); }}>
       <label>
@@ -140,8 +139,10 @@
 </section>
 
 <style>
-  .local-acp { max-width: var(--settings-width); }
-  form { display: grid; gap: 14px; padding: var(--space-3) 0; }
+  .local-acp { max-width: var(--settings-width); padding: var(--settings-padding); }
+  .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  h2 { display: flex; align-items: center; margin: 0; }
+  form { display: grid; gap: 14px; margin-top: 16px; }
   label { display: grid; gap: 6px; font-size: var(--text-sm); }
   fieldset { display: grid; gap: 6px; min-width: 0; margin: 0; padding: 0; border: 0; font-size: var(--text-sm); }
   legend { display: flex; align-items: center; margin-bottom: 6px; padding: 0; }
@@ -151,7 +152,7 @@
   .row .key { flex: 0 0 38%; }
   [aria-invalid='true'] { border-color: var(--color-danger); }
   .actions { display: flex; flex-wrap: wrap; gap: 6px; }
-  .hint { margin: 0; padding: var(--space-3) 0; color: var(--color-muted-foreground); font-size: var(--text-sm); }
+  .hint { margin: 8px 0 0; color: var(--color-muted-foreground); font-size: var(--text-sm); }
   /* Not a `.hint`: the settings pages paint every hint muted, and a refusal reads as one. */
   .error { margin: 0; line-height: 1.5; }
   .error::first-letter { text-transform: uppercase; }

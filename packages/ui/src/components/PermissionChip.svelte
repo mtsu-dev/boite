@@ -135,18 +135,19 @@
   .trigger.readonly { cursor: default; }
   .trigger[aria-expanded='true'] { background: var(--control-glaze) var(--color-control-hover); color: var(--color-foreground); }
   @media (hover: hover) { .trigger:not(.readonly):hover { background: var(--control-glaze) var(--color-control-hover); color: var(--color-foreground); } }
-  /* Every menu's one edge, radius and shadow; rows at the app menus' height and inset. */
-  .popover { display: flex; flex-direction: column; gap: 2px; width: min(340px, calc(100vw - 24px)); padding: var(--space-1); color: var(--color-foreground); background: var(--overlay-surface); border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); box-shadow: var(--shadow-overlay); overflow-y: auto; animation: pop var(--dur-2) var(--ease-out-quint); }
+  /* Every menu's one edge, radius, shadow and insets. Wide enough for a mode's line to stay whole, and each row a
+     block of two lines with more air around it than between its name and its line. */
+  .popover { display: flex; flex-direction: column; gap: var(--space-1); width: min(400px, calc(100vw - 24px)); padding: var(--overlay-pad); color: var(--color-foreground); background: var(--overlay-surface); border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); box-shadow: var(--shadow-overlay); overflow-y: auto; animation: pop var(--dur-2) var(--ease-out-quint); }
   .popover.closing { animation-name: pop-out; pointer-events: none; }
-  .row { display: flex; align-items: center; justify-content: flex-start; gap: var(--space-3); width: 100%; height: auto; min-height: 48px; padding: var(--space-2) var(--overlay-row-pad, 10px); border: none; border-radius: var(--radius-sm); background: transparent; color: var(--color-foreground); font-size: var(--text-body); font-weight: 400; text-align: left; white-space: normal; }
+  .row { display: flex; align-items: center; justify-content: flex-start; gap: var(--space-3); width: 100%; height: auto; min-height: 52px; padding: 10px var(--overlay-row-pad); border: none; border-radius: var(--radius-sm); background: transparent; color: var(--color-foreground); font-size: var(--text-body); font-weight: 400; text-align: left; white-space: normal; }
   .row:hover, .row:focus-visible { background: var(--color-hover); }
   .row[aria-checked='true'] { background: var(--color-hover); }
   .glyph { display: inline-flex; flex: none; color: var(--color-muted-foreground); }
   .row[aria-checked='true'] .glyph { color: var(--color-foreground); }
-  .text { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
+  .text { display: flex; flex: 1; flex-direction: column; gap: var(--space-1); min-width: 0; }
   /* The word is the row's name; the line under it is lighter and smaller, so the eye lands on the word first. */
   .label { font-weight: 600; }
-  .hint { color: var(--color-muted-foreground); font-size: var(--text-meta, var(--text-xs)); line-height: 1.35; }
+  .hint { color: var(--color-muted-foreground); font-size: var(--text-meta, var(--text-xs)); line-height: 1.4; }
   .mark { display: inline-flex; flex: 0 0 14px; }
   /* The live mode's check is the one accent of the list. */
   .mark :global(svg) { color: var(--color-accent); }

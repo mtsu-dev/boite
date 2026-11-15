@@ -1,7 +1,7 @@
 export const strings = {
 
   browserProfiles: {
-    /** The card in Settings, Safeguards: agent control and the profiles below it. */
+    /** The card in Settings, General: agent control and the profiles below it. */
     card: 'Built-in browser',
     heading: 'Browser profiles',
     hint: 'Each profile keeps its own cookies, storage and sign-ins in the built-in browser, and keeps them after a restart. A private tab keeps nothing once the last private tab closes.',

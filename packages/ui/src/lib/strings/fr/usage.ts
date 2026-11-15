@@ -36,7 +36,7 @@ export const fr: Translation = {
     cacheSplitCost: 'Cache : {read} lus ({readCost}), {write} écrits ({writeCost}).',
     reportedCost: "Aucun tarif public ne correspond à ce modèle : le coût est celui que son agent a rapporté.",
     noRates: "Aucun tarif public ne correspond à ce modèle et son agent n'a rapporté aucun coût.",
-    olderCore: "La machine qui a fait ces tours a une version de Boite antérieure aux tarifs publics des API : seul un coût rapporté par son agent apparaît ici. Mettez-la à jour dans Réglages, Version, Mises à jour pour les estimer.",
+    olderCore: "La machine qui a fait ces tours a une version de Boite antérieure aux tarifs publics des API : seul un coût rapporté par son agent apparaît ici. Mettez-la à jour dans Réglages, Machines et mises à jour pour les estimer.",
     noTokens: "L'agent n'a rapporté aucun jeton pour ces tours : ils n'ont pas de coût.",
     priceOf: 'prix de {model}',
     metrics: { tokens: 'Jetons', cost: 'Estimation API', turns: 'Tours' },

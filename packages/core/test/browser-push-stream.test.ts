@@ -147,8 +147,9 @@ test('pictures wait for a viewer up to the limit; one past it is dropped and ack
     Date.now = clock;
   }
   await Bun.sleep(SCREENCAST_ACK_PACE_MS + 30);
-  // The still took one place, so two pictures found the queue full.
-  expect(chromium.of('Page.screencastFrameAck').map(one => one.params)).toEqual([{ sessionId: VIEWER_OUTPUT_LIMIT }, { sessionId: VIEWER_OUTPUT_LIMIT + 1 }]);
+  // The still took one place, so two pictures found the queue full; their timers may fire in either order.
+  const acknowledged = chromium.of('Page.screencastFrameAck').map(one => one.params);
+  expect(acknowledged.sort((a, b) => Number(a.sessionId) - Number(b.sessionId))).toEqual([{ sessionId: VIEWER_OUTPUT_LIMIT }, { sessionId: VIEWER_OUTPUT_LIMIT + 1 }]);
   const taken: Picture[] = [];
   stream.attach(picture => taken.push(picture));
   expect(taken).toHaveLength(VIEWER_OUTPUT_LIMIT);

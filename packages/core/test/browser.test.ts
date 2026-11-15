@@ -5,8 +5,10 @@ import { join } from 'node:path';
 import { echoThread, startTestCore } from './harness.ts';
 import { createBrowserFixture, picture } from './browser/fixture.ts';
 import { traceBrowserCommands } from './browser/dialog-trace.ts';
-import { thrown } from './settle.ts';
+import { rejection, thrown } from './settle.ts';
 import { Cdp } from '../src/browser/cdp.ts';
+import { browserCommand } from '../src/browser-cli.ts';
+import type { CliIo } from '../src/cli.ts';
 
 const browserFixture = createBrowserFixture();
 const { real, url, evaluate } = browserFixture;
@@ -230,8 +232,9 @@ real('an agent drives a page with agent-browser commands: refs, forms, dialogs a
   browserFixture.releaseLaterDialog();
   await browserFixture.laterDialogDone();
   expect(await command({ kind: 'get', what: 'title' })).toBe('later no');
-  // A covered element is reached through the DOM, and the agent hears what covered it.
-  expect(await command({ kind: 'click', selector: '@e8' })).toMatchObject({ note: expect.stringContaining('covered by div#cover') });
+  // A covered element refuses a click and names its cover with a ref; forced, it is reached through the DOM.
+  expect(await thrown(command({ kind: 'click', selector: '@e8' }))).toThrow(/@e8 is covered by div#cover Cover \[ref=e\d+\].*nothing was clicked/);
+  expect(await command({ kind: 'click', selector: '@e8', force: true })).toMatchObject({ note: expect.stringContaining('covered by div#cover') });
   expect(await thrown(command({ kind: 'click', selector: '@e70' }))).toThrow('unknown ref @e70');
   expect(await thrown(command({ kind: 'click', selector: 'button' }))).toThrow('matched 4');
   // Enter submits the form natively; the command waits for the next page and says where it went.
@@ -280,7 +283,8 @@ real('an element keeps its ref from one snapshot to the next, and a repeated sna
   expect(whole.split('\n').slice(3, 8)).toEqual(['- heading "All rows" [ref=e4] [level=2]', '- link "Item 101" [ref=e205]', '- button "Open 101" [ref=e206]', '- link "Item 1" [ref=e5]', '- button "Open 1" [ref=e6]']);
   expect(whole.split('\n')).toHaveLength(206);
   expect(String((await command({ kind: 'snapshot', view: 'diff' })).text)).toStartWith('- heading "Rows" [ref=e1] [level=1]\n');
-  expect(await tree()).toBe(whole);
+  // Each set of options keeps its own last view: the full tree in between leaves the -i one as it was.
+  expect(await tree()).toBe('no change since your last snapshot of this page, 206 lines unchanged; snapshot --full prints everything');
 
   // A removed element's ref is refused as stale, and its number is not given again.
   await evaluate('document.querySelector("#row-3").remove()');
@@ -290,7 +294,58 @@ real('an element keeps its ref from one snapshot to the next, and a repeated sna
 
   await command({ kind: 'open', url: url('/rows?again') });
   expect(await tree()).toBe(first);
+
+  // A whole page cut to maxChars, as an action prints it, counts what it left out and is no base for a diff.
+  await command({ kind: 'open', url: url('/rows?third') });
+  const cut = String((await command({ kind: 'snapshot', interactive: true, view: 'diff', maxChars: 500 })).text).split('\n');
+  expect(cut.slice(0, -1).join('\n').length).toBeLessThanOrEqual(500);
+  expect(cut.at(-1)).toMatch(/^\(\d+ more lines; snapshot -i prints them all\)$/);
+  expect(await tree()).toBe(first);
+  expect(await tree()).toBe('no change since your last snapshot of this page, 204 lines unchanged; snapshot --full prints everything');
 }, 150_000);
+
+real('each action prints the page it leaves: div buttons get refs, a click waits for its fetch, typing sends keys and a cover names its controls', async () => {
+  const { agent, threadId, harness } = browserFixture;
+  const io: CliIo = { cwd: harness.dataDir, env: {}, out: () => {}, err: () => {} };
+  const cli = async (...args: string[]) => (await browserCommand(args, io, agent, threadId)).lines.join('\n');
+  const opened = await cli('open', url('/widgets'));
+  // A new page is printed whole; a div with a click handler and a pointer is a control with a ref.
+  expect(opened).toContain('page (snapshot -i):');
+  const card = /clickable "Open card" \[ref=(e\d+)\]/.exec(opened)?.[1];
+  expect(card).toBeDefined();
+  expect(await cli('click', `@${card}`)).toEndWith('  the page did not change');
+  expect(await evaluate('document.title')).toBe('card opened');
+  // The page answers this click 500 ms later by fetch: the click returns once the answer is in, with -q and no page read after it.
+  expect(await cli('click', '-q', '#load')).not.toContain('page');
+  expect(await evaluate('result.textContent')).toBe('loaded');
+  // Typed text arrives as keys, the way a person's does, so a field that listens for them hears each one.
+  await cli('type', '-q', '#word', 'hello');
+  expect(await evaluate('[word.value, keys.textContent]')).toEqual(['hello', '5']);
+  // A banner over the target: nothing is clicked, and the refusal names the banner's controls by ref.
+  const refusal = String((await rejection(browserCommand(['click', '#buy'], io, agent, threadId))).reason);
+  expect(refusal).toMatch(/#buy is covered by div#banner .*\[ref=e\d+\]; controls there: button "Accept" \[ref=e\d+\], button "Settings" \[ref=e\d+\]/);
+  const accept = /button "Accept" \[ref=(e\d+)\]/.exec(refusal)![1];
+  // Accepting removes the banner. On a page this short the whole list is shorter than a diff of it.
+  const accepted = await cli('click', `@${accept}`);
+  expect(accepted).toContain('- button "Buy"');
+  expect(accepted).not.toContain('Accept');
+  expect(await cli('click', '#buy')).toEndWith('  the page did not change');
+  // A page that fetches its content as it loads is printed with it, and so is what a scroll loads.
+  expect(await cli('open', url('/late'))).toContain('button "Loaded"');
+  expect(await cli('scroll', '0', '1000')).toContain('button "More"');
+  // The same for a page reached by a reload or by a link.
+  expect(await cli('reload')).toContain('button "Loaded"');
+  expect(await cli('click', '#again')).toContain('button "Loaded"');
+  // A click that opens a window: the page printed is that window's, and it stays the current tab.
+  await cli('open', url());
+  const popped = await cli('click', '#pop');
+  expect(popped).toMatch(/a new window is the current tab: browser:/);
+  const tabs = ((await agent.call('browser.command', { threadId, action: { kind: 'status' } })).value as { tabs: Array<{ url: string; active: boolean }> }).tabs;
+  expect(tabs.find(tab => tab.active)?.url).toBe(url('/popup'));
+  await cli('click', '-q', '#shut');
+  // The popup closes after the click returns: the next test starts with one tab.
+  for (let i = 0; i < 50 && ((await agent.call('browser.command', { threadId, action: { kind: 'status' } })).value as { tabs: unknown[] }).tabs.length > 1; i++) await Bun.sleep(100);
+}, 60_000);
 
 real('a window a page opens joins the conversation as a tab of its own', () => traceBrowserCommands(async () => {
   const { agent, threadId } = browserFixture;

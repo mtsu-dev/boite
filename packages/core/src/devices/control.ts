@@ -59,7 +59,7 @@ const SESSIONS_MAX = 4;
 /** Sizes and qualities remembered per device for `previous`: a desktop and a phone each ask their own. */
 const FRAME_KINDS_MAX = 8;
 /** Where `boite device` and the panel send someone whose stream is off. */
-export const STREAM_OFF = 'the live stream is off: the owner turns it on in Settings > Version > Experiments, or an agent asks with `boite settings request deviceStream true --why "..."`';
+export const STREAM_OFF = 'the live stream is off: the owner turns it on in Settings > Experiments, or an agent asks with `boite settings request deviceStream true --why "..."`';
 
 
 /** What a listed device needs to be driven: its adb serial or simulator UDID. */

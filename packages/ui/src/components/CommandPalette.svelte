@@ -6,10 +6,12 @@
   import { Closing } from '../lib/closing.svelte';
   import { minuteClock } from '../lib/clock.svelte';
   import { appCommands, runCommand } from '../lib/commands.svelte';
+  import { archivedThreads } from '../lib/archive';
   import { pluginUi } from '../lib/plugin-ui.svelte';
   import { focusComposer, focusedElement, restoreFocus } from '../lib/focus';
   import { projectName } from '../lib/format';
-  import { PALETTE_LIMIT, RECENT_THREADS, rankItems, sectionRows, type PaletteItem } from '../lib/palette';
+  import { BOTS_SECTION, paletteSections, threadGroup, type PaletteItem, type PaletteSection } from '../lib/palette';
+  import { threadState } from '../lib/thread-state';
   import { strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import { MediaQuery } from 'svelte/reactivity';
@@ -39,6 +41,20 @@
   const inShell = window.__TAURI_INTERNALS__ !== undefined;
   const phoneWidth = new MediaQuery('(max-width: 720px)');
   const now = $derived(minuteClock.now);
+  /** Each machine's done and archived threads, read when the palette opens: a Store's list holds neither (lib/archive.ts). */
+  let shelved = $state.raw(new Map<Store, ThreadSummary[]>());
+  let reading = 0;
+
+  function readShelved() {
+    const read = ++reading;
+    for (const machine of untrack(() => machines)) {
+      const owner = machine.store;
+      // A machine that cannot answer keeps what it showed last; the rest of the list does not wait for it.
+      void archivedThreads(owner).then((threads) => {
+        if (read === reading) shelved = new Map(shelved).set(owner, threads);
+      }).catch(() => {});
+    }
+  }
 
   $effect(() => {
     if (!store.paletteOpen) {
@@ -56,6 +72,7 @@
     selected = 0;
     keyed = false;
     overlay.show();
+    readShelved();
     void tick().then(() => input?.focus({ preventScroll: true }));
   });
 
@@ -69,8 +86,6 @@
     /** A subagent's parent thread title: the row says whose helper it is. */
     parent?: string | null;
   }
-  /** Bots and team chats have no project: they gather under one heading of their own, never under Drafts. */
-  const BOTS = 'bots';
 
   let machines = $derived(workspace.machinesOr(store));
   /** One machine names no machine. */
@@ -78,22 +93,24 @@
   /** A heading names its machine as a project card does (lib/machine-host.ts): this app's own goes unsaid. */
   const home = $derived(machines.find(machine => machine.store === workspace.primary)?.id);
 
-  /** Every live thread, most recent first; the list cuts it to the recents until something is typed. */
+  /** Every thread under the heading of its state (lib/palette.ts), a bot's under Bots; the list orders and cuts them. */
   let threadData = $derived.by(() => {
-    const entries: { item: PaletteItem; at: number }[] = [];
+    const items: PaletteItem[] = [];
     const places = new Map<string, Place>();
     for (const machine of machines) {
-      for (const thread of machine.store.threads) {
-        if (thread.archived || thread.incognito) continue;
+      const live = new Set(machine.store.threads.map(thread => thread.id));
+      const every = [...machine.store.threads, ...(shelved.get(machine.store) ?? []).filter(thread => !live.has(thread.id))];
+      for (const thread of every) {
+        if (thread.incognito) continue;
         const project = machine.store.projects.find(p => p.id === thread.projectId) ?? null;
         const id = `thread:${machine.store.threadKey(thread.id)}`;
         const bot = project ? null : agentDirectory(machine.store).ownerOf(thread);
         const botThread = !project && (bot !== null || !!thread.agentSessionId || !!thread.teamId);
-        const section = botThread ? BOTS : `in:${machine.id}:${thread.projectId}`;
-        const parent = thread.parentThreadId ? machine.store.threads.find(one => one.id === thread.parentThreadId)?.title ?? null : null;
+        const section = botThread ? BOTS_SECTION : threadGroup(thread, threadState(thread, rowAsks(machine.store, thread.id)));
+        const parent = thread.parentThreadId ? every.find(one => one.id === thread.parentThreadId)?.title ?? null : null;
         places.set(id, { machine, project, thread, bot, parent });
-        if (!botThread && !places.has(section)) places.set(section, { machine, project, thread: null });
-        entries.push({ at: thread.lastUserMessageAt ?? thread.createdAt, item: {
+        if (botThread && thread.archived) continue;
+        items.push({
           id,
           kind: 'thread',
           // A bot's own conversation goes by the bot's name; its helpers keep their titles.
@@ -101,14 +118,15 @@
           // What a query may also land on: the project and the machine, never drawn on the row.
           hint: [project ? projectName(project) : '', bot ? `${bot.name} ${thread.title}` : '', parent ?? '', several ? machine.label : ''].filter(Boolean).join(' '),
           keywords: thread.status,
-          section
-        } });
+          section,
+          at: thread.lastUserMessageAt ?? thread.createdAt
+        });
       }
     }
-    return { items: entries.sort((a, b) => b.at - a.at).map(entry => entry.item), places };
+    return { items, places };
   });
 
-  /** Every project, a new thread in it once picked: offered only to a query, nothing typed keeps the list short. */
+  /** Every project, a new thread in it once picked: the list offers them only to a query. */
   let projectData = $derived.by(() => {
     const items: PaletteItem[] = [];
     const places = new Map<string, Place>();
@@ -132,17 +150,13 @@
       : []),
   ]);
 
-  const snapshot = { rows: [] as PaletteItem[] };
-  /** The ranked rows, a project's threads, the projects and the commands mixed until `sections` cuts them. */
-  let ranked = $derived.by((): PaletteItem[] => {
+  const snapshot = { sections: [] as PaletteSection[] };
+  /** The headings and their rows: threads by state, then projects, bots and commands. */
+  let sections = $derived.by((): PaletteSection[] => {
     // Keep the exit animation's rows without subscribing a closed search to live updates.
-    if (!store.paletteOpen) return snapshot.rows;
-    const typed = query.trim().length > 0;
-    const threads = typed ? threadData.items : threadData.items.slice(0, RECENT_THREADS);
-    const projects = typed ? projectData.items : [];
-    return snapshot.rows = rankItems(query, [...threads, ...projects, ...commandItems], PALETTE_LIMIT);
+    if (!store.paletteOpen) return snapshot.sections;
+    return snapshot.sections = paletteSections(query, [...threadData.items, ...projectData.items, ...commandItems]);
   });
-  let sections = $derived(sectionRows(ranked));
   /** The rows in the order they are drawn: what the arrows walk. */
   let rows = $derived(sections.flatMap(section => section.items));
 
@@ -238,6 +252,13 @@
     event.preventDefault();
   }
 
+  function headingOf(section: PaletteSection): string {
+    if (section.id === BOTS_SECTION) return strings.agents.heading;
+    if (section.kind === 'project') return strings.palette.projects;
+    if (section.kind === 'command') return strings.palette.commands;
+    return strings.palette.groups[section.id as keyof typeof strings.palette.groups] ?? section.id;
+  }
+
   function placeOf(id: string): Place | null {
     return threadData.places.get(id) ?? projectData.places.get(id) ?? null;
   }
@@ -279,17 +300,8 @@
       <div class="list" role="listbox" bind:this={list} data-testid="palette-list">
         {#each sections as section, at (section.id)}
           {@const first = offset(at)}
-          {@const heading = section.kind === 'thread' && section.id !== BOTS ? placeOf(section.id) : null}
           <div class="section" data-testid="palette-section" data-section={section.id}>
-            {#if heading}
-              <div class="section-label project-label" data-testid="palette-project">
-                {#if heading.project}<ProjectTile project={heading.project} store={heading.machine.store} size={16} />{/if}
-                <span class="name ui-label">{heading.project ? projectName(heading.project) : strings.drafts.name}</span>
-                {#if hostName(heading.machine, machines, home)}<MachinePlace host={hostName(heading.machine, machines, home)!} />{/if}
-              </div>
-            {:else}
-              <div class="section-label">{section.id === BOTS ? strings.agents.heading : section.kind === 'project' ? strings.palette.projects : strings.palette.commands}</div>
-            {/if}
+            <div class="section-label" data-testid="palette-heading">{headingOf(section)}</div>
             {#each section.items as item, n (item.id)}
               {@const index = first + n}
               {@const place = placeOf(item.id)}
@@ -298,6 +310,7 @@
                 class="row"
                 class:selected={index === selected}
                 class:keyed={keyed && index === selected}
+                class:sub={!!place?.parent}
                 role="option"
                 tabindex="-1"
                 aria-selected={index === selected}
@@ -307,16 +320,18 @@
                 onmousemove={() => { selected = index; keyed = false; }}
                 onclick={() => pick(item)}
               >
-                <!-- A thread's slot stays empty, its title under its project's name; a bot's holds its picture. The state reads at the right. -->
+                <!-- The slot says where the row lives: a thread's project, a bot's picture, a subagent's turn off its parent. The state reads at the right. -->
                 <span class="mark-slot">
                   {#if place?.bot}<AgentAvatar kind="profile" id={place.bot.id} name={place.bot.name} avatar={place.bot.avatar} size={16} />
                   {:else if place?.thread?.teamId}<AgentAvatar kind="team" id={place.thread.teamId} name={place.thread.title} size={16} />
                   {:else if !place?.thread && item.kind === 'project' && place?.project}<ProjectTile project={place.project} store={place.machine.store} size={16} />
-                  {:else if place?.parent}<span class="sub-mark" aria-hidden="true"><CornerDownRight size={14} /></span>{/if}
+                  {:else if place?.parent}<span class="sub-mark" aria-hidden="true"><CornerDownRight size={14} /></span>
+                  {:else if place?.thread && place.project}<ProjectTile project={place.project} store={place.machine.store} size={16} />{/if}
                 </span>
                 <span class="label ui-label" class:sub={!!place?.parent}>{item.label}</span>
                 {#if place?.parent}{@const [before, after = ''] = strings.palette.subagentOf.split('{parent}')}<span class="parent ui-label" data-testid="palette-parent"><span class="joint">{before}</span><span class="parent-title">{place.parent}</span>{#if after}<span class="joint">{after}</span>{/if}</span>{/if}
                 {#if place?.thread}
+                  {#if place.project && !place.parent}<span class="where" data-testid="palette-where"><span class="ui-label">{projectName(place.project)}</span>{#if hostName(place.machine, machines, home)}<MachinePlace host={hostName(place.machine, machines, home)!} />{/if}</span>{/if}
                   <span class="state"><ThreadState thread={place.thread} {now} subagents={rowAsks(place.machine.store, place.thread.id)} away={place.machine.store.connection !== 'ready'} mark /></span>
                 {:else if item.kind === 'project' && place}
                   <span class="meta">{#if several}<MachinePlace host={hostMark(place.machine.label, place.machine.store.connection)} />{/if}<span class="ui-label">{strings.palette.newThread}</span></span>
@@ -380,7 +395,7 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    height: 48px;
+    height: 52px;
     /* The rows' text edges on both sides: the list's padding plus a row's, and the same scrollbar gutter, so the Esc
        key and every row's state end on one right edge whether the list scrolls or not. */
     padding: 0 calc(var(--overlay-pad) + var(--overlay-row-pad));
@@ -419,7 +434,7 @@
   }
 
   .section + .section {
-    margin-top: 4px;
+    margin-top: var(--space-2);
   }
 
   /* The overlay's head form, as Menu's headings. */
@@ -427,28 +442,6 @@
     padding: var(--space-2) var(--overlay-row-pad) var(--space-1);
     color: var(--color-subtle);
   }
-
-  /* A project heading reads like the sidebar's: tile, name, then its machine. */
-  .project-label {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-    text-transform: none;
-    letter-spacing: normal;
-    font-size: var(--text-sm);
-    font-weight: 600;
-    color: var(--color-foreground);
-  }
-
-  .project-label .name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  /* The heading's machine stays whole after the name, as on the list's cards. */
-  .project-label :global(.machine-place) { flex: none; }
 
   .row {
     width: 100%;
@@ -500,6 +493,13 @@
 
   /* A subagent's title gives its room to the parent's name only past its own width. */
   .label.sub { flex: 0 1 auto; }
+  /* A helper stands under its state like any thread, a step back: smaller, in the quiet ink, until it is the row Enter takes. */
+  .row.sub { color: var(--color-muted-foreground); font-size: var(--text-sm); }
+  .row.sub.selected { color: var(--color-foreground); }
+  /* Whose thread it is, quiet at the row's end: the heading says its state, this says its project. */
+  .where { flex: 0 1 auto; display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; max-width: 38%; font-size: var(--text-sm); color: var(--color-subtle); }
+  .where .ui-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .where :global(.machine-place) { flex: none; }
   /* "in" stays whole; only the parent's title, the user's words, ends in an ellipsis when the row is short. */
   .parent { flex: 1 1 0; display: flex; min-width: 0; white-space: nowrap; font-size: var(--text-sm); color: var(--color-muted-foreground); }
   .parent .joint { flex: none; white-space: pre; }
@@ -518,11 +518,6 @@
 
   .kbd {
     flex: none;
-  }
-
-  /* The list's grammar: at rest a thread shows its state only when it asks for the user or failed; the row Enter takes shows the rest. */
-  .row:not(.selected) .state :global(.when:not(.waiting, .error, .interrupted)) {
-    display: none;
   }
 
   .empty {

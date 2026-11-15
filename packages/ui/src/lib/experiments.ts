@@ -1,6 +1,6 @@
 /*
  * The experiments this build carries: work that is not finished and may change
- * or go away, turned on per machine from Settings, Version, Experiments. The ids this
+ * or go away, turned on per machine from Settings, Experiments. The ids this
  * device chose live in `localStorage` under `boite.experiments` as a JSON array
  * of strings, the way the theme lives under `boite.theme` and the window
  * material under `boite.glass`. These are client preferences, not core settings.

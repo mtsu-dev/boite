@@ -1,11 +1,9 @@
 export const strings = {
-  /** Settings > AI accounts: an ACP agent added from the command that starts it. */
+  /** Settings > Providers: an ACP agent added from the command that starts it. */
   localAcp: {
     heading: 'Local ACP command',
     hint: 'Any agent that speaks ACP, started from its own command. It keeps its own sign-in and settings, and lists its models itself. Each argument is passed exactly as written, with no shell.',
     open: 'Add',
-    /** The card's one line while its form is closed. */
-    closed: 'An agent started from its own command',
     name: 'Name',
     namePlaceholder: 'My agent',
     commandPlaceholder: 'my-agent',

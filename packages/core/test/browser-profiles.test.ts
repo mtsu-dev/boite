@@ -72,12 +72,14 @@ test('boite browser lists profiles and asks to open a tab in a named one', async
     expect(opened.code).toBe(0);
     expect(JSON.parse(opened.out).profile).toBe(pro.id);
     expect((await run(['open', 'https://tripo.ai'])).code).toBe(0);
-    // agent-browser's open: the current tab when there is one; a named profile has its own tab. Each open then looks up the site's recipes.
-    expect(seen.filter(action => action.kind !== 'recipes')).toEqual([{ kind: 'profiles' }, { kind: 'open', url: 'https://tripo.ai', reuse: true, profile: 'Pro' }, { kind: 'open', url: 'https://tripo.ai', reuse: true }]);
+    // agent-browser's open: the current tab when there is one; a named profile has its own tab. Each open then looks up the site's recipes and reads the page it prints.
+    const asked = () => seen.filter(action => action.kind !== 'recipes' && action.kind !== 'snapshot');
+    expect(seen.filter(action => action.kind === 'snapshot')).toEqual([1, 2].map(() => ({ kind: 'snapshot', interactive: true, view: 'diff', maxChars: 8000 })));
+    expect(asked()).toEqual([{ kind: 'profiles' }, { kind: 'open', url: 'https://tripo.ai', reuse: true, profile: 'Pro' }, { kind: 'open', url: 'https://tripo.ai', reuse: true }]);
     for (const args of [['open', 'https://tripo.ai', '--profile'], ['open', 'https://tripo.ai', '--profile', 'a', '--profile', 'b']]) {
       expect((await run(args)).code).not.toBe(0);
     }
-    expect(seen.filter(action => action.kind !== 'recipes')).toHaveLength(3);
+    expect(asked()).toHaveLength(3);
     expect((await run(['help'])).out).toContain('--profile');
     await owner.call('settings.set', { browserProfiles: [pro], browserDefaultProfile: pro.id });
     expect(await owner.call('settings.set', { browserDefaultProfile: 'private' }).catch((error: Error) => error.message)).toContain('never private');

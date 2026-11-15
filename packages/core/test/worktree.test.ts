@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, sy
 import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { slugOf, worktreeRoot } from '../src/worktree.ts';
+import { worktreeRemovalKey } from '../src/worktree-cleanup-state.ts';
 import { echoDriver } from '../src/drivers/echo.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import { startTestCore, waitFor } from './harness.ts';
@@ -229,6 +230,44 @@ describe('a thread in its own worktree', () => {
     const turn = await client.call('turns.start', { threadId: thread.id, prompt: 'hello' });
     await waitFor(() => harness.core.journal.getTurn(turn.id)?.status === 'done');
     expect(readFileSync(ignore, 'utf8')).toBe('*\n');
+  });
+
+  test('a live thread whose worktree is removed under it gets its branch back in that folder on its next turn, one Boite starts too', async () => {
+    const project = await repoProject();
+    const thread = await client.call('threads.create', {
+      projectId: project.id, providerId: 'echo', accountId: await echoAccount(), title: 'Removed under it', worktree: { branch: 'boite/removed-under-it' },
+    });
+    git(thread.cwd, 'commit', '-q', '--allow-empty', '-m', 'work to keep');
+    const head = git(thread.cwd, 'rev-parse', 'HEAD');
+    // What a cleanup script run beside Boite does: the folder goes, the branch stays.
+    git(project.path, 'worktree', 'remove', thread.cwd);
+    expect(existsSync(thread.cwd)).toBe(false);
+    // A subagent's result reaches its parent without `turns.start`.
+    const delivered = harness.core.threads.startTurn(thread.id as never, 'your subagent is done', { kind: 'delegation' });
+    await waitFor(() => harness.core.journal.getTurn(delivered.id)?.status !== 'running');
+    expect(harness.core.journal.getTurn(delivered.id)).toMatchObject({ status: 'done' });
+    expect(git(thread.cwd, 'rev-parse', '--abbrev-ref', 'HEAD').trim()).toBe(thread.branch!);
+    expect(git(thread.cwd, 'rev-parse', 'HEAD')).toBe(head);
+
+    git(project.path, 'worktree', 'remove', thread.cwd);
+    const sent = await client.call('turns.start', { threadId: thread.id, prompt: 'still there?' });
+    await waitFor(() => harness.core.journal.getTurn(sent.id)?.status === 'done');
+    expect(git(thread.cwd, 'rev-parse', 'HEAD')).toBe(head);
+
+    // A removal the core's cleanup recorded keeps its notice: the folder is not made again.
+    git(project.path, 'worktree', 'remove', thread.cwd);
+    harness.core.journal.setSetting(worktreeRemovalKey(thread.id), { path: thread.cwd, branch: thread.branch, branchDeleted: false, reason: 'clean', removedAt: Date.now() });
+    expect((await rejection(client.call('turns.start', { threadId: thread.id, prompt: 'and now?' }))).reason).toMatchObject({ rpc: { data: { field: 'cwd', cwd: thread.cwd } } });
+    expect(existsSync(thread.cwd)).toBe(false);
+
+    // An external removal that took the branch too cannot silently succeed with a warm agent.
+    harness.core.journal.deleteSetting(worktreeRemovalKey(thread.id));
+    git(project.path, 'branch', '-D', thread.branch!);
+    const gone = harness.core.threads.startTurn(thread.id as never, 'your subagent is done', { kind: 'delegation' });
+    await waitFor(() => ['done', 'error'].includes(harness.core.journal.getTurn(gone.id)?.status ?? ''));
+    expect(harness.core.journal.getTurn(gone.id)).toMatchObject({ status: 'error', error: expect.stringContaining(thread.cwd) });
+    expect(existsSync(thread.cwd)).toBe(false);
+    expect(git(project.path, 'branch', '--list', thread.branch!)).toBe('');
   });
 
   test('workspace recovery reattaches a surviving legacy long branch after its directory was removed', async () => {

@@ -2,7 +2,9 @@
 
 A thread's summary carries `context`, what the agent's last request held and
 how much room the model gives it. The message bar draws a ring beside its send
-controls; the percentage appears in the detail panel. When the agent compacts its
+controls, aligned to the right of the setting chips. The ring stays clickable
+without a measurement; from 70% used, it also shows the percentage left and the
+prompt cache timer. The percentage always appears in the detail panel. When the agent compacts its
 conversation mid-turn, the
 timeline gets a divider saying how many tokens went. Both come from the agent
 itself: the core never estimates a context size. The ring stays unfilled when
@@ -83,7 +85,7 @@ The existing Stop action cancels the maintenance turn. Paired devices may call i
 | ACP | `/compact` only when the session advertised that command |
 | echo | `[compact]`, a deterministic test operation; the divider it draws says `manual`, while `[compact]` inside a prompt draws an `auto` one |
 
-Claude summary instructions are optional in Settings, Agents, Compaction defaults by agent type.
+Claude summary instructions are optional in Settings, Advanced, Compaction.
 The common value applies to conversations, subagents and mochis; a customized
 category can keep its own instructions or leave them empty for the native
 summary prompt. Existing customized categories without this field also keep
@@ -116,8 +118,9 @@ again when invoked.
 ## Automatic compaction
 
 `Settings.autoCompact` is `{ tokens, moments }` or null, set by the owner under
-Settings, Agents, Compaction defaults by agent type. A phone connected as owner
-lists the same page ([phone settings](phone.md#settings-on-a-phone)). Null is
+Settings, Advanced. A phone connected as owner has an Automatic compaction row
+in its machine settings and can also open the same card through a settings
+link ([phone settings](phone.md#settings-on-a-phone)). Null is
 the default: each agent keeps its own compaction behaviour.
 
 `Settings.compactionByType` optionally overrides the complete policy for
@@ -240,8 +243,8 @@ a conversation in Done: its agent is asked instead and answers after its turn.
 ### Background compaction
 
 `Settings.backgroundCompaction` is an experiment, off by default, that the
-owner turns on under Settings, Version, Experiments, for the machine picked
-under the page's title, the one that runs the thread (an agent asks with
+owner turns on under Settings, Experiments, for the machine picked above the
+card, the one that runs the thread (an agent asks with
 `boite settings request backgroundCompaction true --why "..."`). It works
 with the token limit above and does nothing without one. Like `deviceStream`,
 it stays on its machine: the group's settings do not carry it.
