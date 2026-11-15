@@ -333,6 +333,14 @@ async function main(): Promise<void> {
         await open('open=recent&markdown=1');
         await page.evaluate(`setTimeout(() => void globalThis.__bench.store.open('t-markdown'), 100)`);
       },
+      // The same thread, opened before the window, read up through its answers with the wheel.
+      'heavy answers scroll': async () => {
+        await open('open=recent&markdown=1');
+        await page.evaluate(`globalThis.__bench.store.open('t-markdown')`);
+        await page.waitFor(`globalThis.__bench.store.openThread?.id === 't-markdown' && document.querySelector('[data-testid=message]')`);
+        await Bun.sleep(1200);
+        wheel();
+      },
       // A flick: 20,000 px a second, which crosses a whole turn of work in the measured window.
       'heavy thread flick': async () => { await openHeavy(); wheel(W, H, 70_000, 20_000); },
       // The scrollbar thumb dropped at six places across the thread, one every 450 ms: each lands on rows never drawn.
