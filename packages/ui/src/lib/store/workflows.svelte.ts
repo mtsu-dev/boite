@@ -129,7 +129,7 @@ export class Workflows {
    * per saved step, so a read already in flight for the same thread is marked
    * to go again rather than joined by a second one.
    */
-  async loadWorkflows(threadId = this.ctx.store.openThread?.id): Promise<void> {
+  async loadWorkflows(threadId = this.ctx.store.openThread?.id, { join = false }: { join?: boolean } = {}): Promise<void> {
     const s = this.ctx.store;
     const client = this.ctx.client;
     // A machine that dropped is not asked. The read is tracked on purpose: the
@@ -138,7 +138,8 @@ export class Workflows {
     const generation = this.ctx.clientGeneration, navigation = s.navigationGeneration;
     const reading = this.workflowsReading;
     if (reading?.threadId === threadId && reading.client === client && reading.generation === generation && reading.navigation === navigation) {
-      reading.again = true;
+      // A view that mounts (`join`) takes the answer in flight: nothing changed since it was asked.
+      if (!join) reading.again = true;
       return;
     }
     const epoch = ++this.workflowsEpoch;

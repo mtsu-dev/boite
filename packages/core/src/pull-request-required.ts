@@ -44,8 +44,13 @@ export function parseProtection(raw: string): string[] {
   return [...list(checks.contexts).map(name), ...list(checks.checks).map(check => name(row(check).context))];
 }
 
-/** gh's words for a branch or a repository GitHub does not show: nothing is required there. */
-const missing = (message: string) => /HTTP 404|Not Found|Branch not found/i.test(message);
+/**
+ * gh's words for a branch or a repository GitHub does not show, or for a
+ * private repository whose plan has no branch protection or rulesets (the 403
+ * that asks to upgrade to GitHub Pro): nothing is required there, and asking
+ * again every two minutes would only spend the gh slots and fill the log.
+ */
+const missing = (message: string) => /HTTP 404|Not Found|Branch not found|Upgrade to GitHub Pro|make this repository public to enable this feature/i.test(message);
 
 /**
  * Marks the checks the base branch requires, and adds each required context

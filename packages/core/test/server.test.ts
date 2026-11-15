@@ -230,6 +230,26 @@ describe('server', () => {
     expect(healthObserved).toBeLessThan(processed);
   });
 
+  test('a liveness hello answers while the connection\'s slow calls fill its slots', async () => {
+    // A phone back from the background asks hello to learn whether its socket still works,
+    // and drops it after a few seconds of silence: a probe queued behind eight pull request
+    // reads of 1 to 5 seconds read as a dead link.
+    const client = await harness.connect();
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    let started = 0;
+    harness.core.router.register('projects.list', async () => { started++; await held; return []; });
+    const slow = Promise.all(Array.from({ length: 8 }, () => client.call('projects.list', {})));
+    await waitFor(() => started === 8);
+    let answered = false;
+    const probe = client.call('hello', { protocolVersion: PROTOCOL_VERSION, client: { name: 'test', version: '0' } }).then(() => { answered = true; });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const before = answered;
+    release();
+    await Promise.all([slow, probe]);
+    expect(before).toBe(true);
+  });
+
   test('a socket that never drains bounds subsequent responses and isolates the healthy client', () => {
     const closed: number[] = [], frames: string[] = [];
     let buffered = 0;

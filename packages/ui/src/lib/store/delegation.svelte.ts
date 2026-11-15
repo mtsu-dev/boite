@@ -34,14 +34,15 @@ interface RefreshJob {
 class ViewRefresh {
   private job: RefreshJob | null = null;
 
+  /** `join`: nothing changed since the read in flight started (a second view mounting), so its answer will do. */
   request(client: Client, threadId: ThreadId, epoch: string, directory: boolean, current: () => boolean,
-    read: (directory: boolean, latest: () => boolean) => Promise<void>): Promise<void> {
+    read: (directory: boolean, latest: () => boolean) => Promise<void>, join = false): Promise<void> {
     let job = this.job;
     const fresh = !job || job.client !== client || job.threadId !== threadId || job.epoch !== epoch;
     if (fresh) this.job = job = { client, threadId, epoch, revision: 0, directory: false, waiters: [] };
     const active = job!;
     active.directory ||= directory;
-    const revision = ++active.revision;
+    const revision = join && !fresh && !directory ? active.revision : ++active.revision;
     const answer = new Promise<void>(resolve => active.waiters.push({ revision, resolve }));
     // Reads kicked off by a component effect must not subscribe that effect to the view.
     if (fresh) untrack(() => { void this.run(active, current, read); });
@@ -148,7 +149,8 @@ export class Delegation {
     }
   }
 
-  async loadDelegation(threadId = this.ctx.store.openThread?.id): Promise<void> {
+  /** `join`: a view that mounts waits for a read already in flight instead of asking for another. */
+  async loadDelegation(threadId = this.ctx.store.openThread?.id, { join = false }: { join?: boolean } = {}): Promise<void> {
     const s = this.ctx.store;
     const client = this.ctx.client;
     // A machine that dropped is not asked. The read stays untracked: an effect
@@ -188,7 +190,7 @@ export class Delegation {
         if (this.teamRead === pending) this.teamRead = null;
         if (current()) this.delegationLoading = false;
       }
-    });
+    }, join);
   }
 
   /** A `thread.load` on a team row, kept for a team read in flight like a whole row. */

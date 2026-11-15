@@ -95,15 +95,17 @@
     const timer = setInterval(look, 1000);
     return () => { live = false; clearInterval(timer); };
   });
+  // The id alone: the full conversation replacing the row a click drew must not start the watchers again.
+  const watchedThreadId = $derived(store.openThread?.id);
   // New agent pages bring the panel forward on wider clients; phones stay on the user's chosen view.
   $effect(() => {
-    const threadId = store.openThread?.id;
+    const threadId = watchedThreadId;
     void store.connection;
     if (threadId && store.client?.state === 'ready') return watchAgentBrowser(store, threadId);
   });
   // A simulator or emulator the agent opens shows up in the panel, here and on a phone (docs/internals/devices.md); so does a desktop window it watches.
   $effect(() => {
-    const threadId = store.openThread?.id;
+    const threadId = watchedThreadId;
     void store.connection;
     const stops = threadId && store.client?.state === 'ready' ? [watchDevices(store, threadId), watchWindows(store, threadId)] : [];
     return () => stops.forEach((stop) => stop());

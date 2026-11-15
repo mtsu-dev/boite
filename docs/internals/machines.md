@@ -119,7 +119,9 @@ sends no clock and the offset stays zero.
 
 The client detects silent remote sockets (`packages/ui/src/lib/ws-client.ts`).
 On a remote host, 25 seconds without any frame sends a `hello`, which the core
-answers on an open connection with its info and nothing else. That `hello`
+answers on an open connection with its info and nothing else, ahead of that
+connection's eight request slots: queued behind its own slow calls (pull
+request reads of 1 to 5 seconds), it read as a dead socket. That `hello`
 carries no token and no device signature, since the core reads none of its
 params once the socket is authenticated. A call that hears no frame at all for
 3 seconds sends the same `hello`, so a click on a conversation of a machine

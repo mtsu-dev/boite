@@ -5,6 +5,27 @@ import { logMessageOf } from '../log-errors.ts';
 import { ServerConnection } from './connection.ts';
 import { hello } from './hello.ts';
 import { clientField, logRpcTiming } from './connection-log.ts';
+import { methodOf } from './frame-queue.ts';
+
+/** The largest liveness hello taken ahead of the queue: the pre-auth limit, far above a real one. */
+const PROBE_MAX_CHARS = 64 * 1024;
+
+/**
+ * An authenticated client's `hello` is its liveness probe and costs nothing
+ * here: it is answered ahead of the connection's queue, since queued behind
+ * that client's own slow calls it reads as a dead socket and makes the client
+ * drop a working connection. The frame is parsed, since the cheap match alone
+ * could take a `method` key inside the params.
+ */
+export function isLivenessHello(raw: string): boolean {
+  if (raw.length > PROBE_MAX_CHARS || methodOf(raw) !== 'hello') return false;
+  try {
+    const frame = JSON.parse(raw) as { method?: unknown } | null;
+    return frame !== null && typeof frame === 'object' && frame.method === 'hello';
+  } catch {
+    return false;
+  }
+}
 
 /** Answers a frame the queue refused without running it, under the frame's own id. */
 export function refuseFrame(connection: ServerConnection, raw: string, message: string): void {

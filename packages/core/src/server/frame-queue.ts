@@ -46,7 +46,7 @@ export interface FrameQueueCounts {
 }
 
 /** The method a frame names, read without parsing it. */
-function methodOf(raw: string): string {
+export function methodOf(raw: string): string {
   return /"method"\s*:\s*"([^"\\]{1,100})"/.exec(raw)?.[1] ?? '(unnamed)';
 }
 interface Pending {
