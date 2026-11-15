@@ -30,8 +30,12 @@ export type BrowserAction =
    * options, `full` with the whole text. Both become what the next diff is
    * compared with. Without `view` (a script, the panel) the text is whole and
    * the agent's last view stays as it was, since nobody showed it this one.
+   * `maxChars` cuts a whole text that is longer, with a line counting what
+   * it left out: the page an action prints after it stays a few thousand
+   * characters. A diff is never cut, and the page is still read whole, so the
+   * next diff compares all of it; a cut view is not a base for one.
    */
-  | { kind: 'snapshot'; interactive?: boolean; compact?: boolean; depth?: number; selector?: string; urls?: boolean; view?: 'diff' | 'full' }
+  | { kind: 'snapshot'; interactive?: boolean; compact?: boolean; depth?: number; selector?: string; urls?: boolean; view?: 'diff' | 'full'; maxChars?: number }
   | { kind: 'diagnostics'; clear?: boolean }
   | { kind: 'preset'; preset: BrowserPreset; orientation?: 'portrait' | 'landscape' }
   | { kind: 'appearance'; colorScheme: 'light' | 'dark' | 'system' }
@@ -68,10 +72,13 @@ export type BrowserAction =
   | { kind: 'recipe-result'; name: string; ok: boolean; error?: string }
   /**
    * `selector` is an `@eN` ref from a snapshot of the page, a CSS selector matching
-   * one element, or `text=...`. `count: 2` double-clicks.
+   * one element, or `text=...`. `count: 2` double-clicks. Something drawn over
+   * the element refuses the click and is named; `force` clicks it through the
+   * DOM instead, as check and uncheck do with it.
    */
-  | { kind: 'click'; selector: string; count?: 1 | 2 }
-  | { kind: 'hover' | 'focus' | 'check' | 'uncheck' | 'scrollintoview'; selector: string }
+  | { kind: 'click'; selector: string; count?: 1 | 2; force?: boolean }
+  | { kind: 'hover' | 'focus' | 'scrollintoview'; selector: string }
+  | { kind: 'check' | 'uncheck'; selector: string; force?: boolean }
   /** `fill` replaces the field's text, `type` adds to it. */
   | { kind: 'fill' | 'type'; selector: string; text: string }
   | { kind: 'select'; selector: string; values: string[] }
@@ -408,6 +415,7 @@ function checkSnapshot(action: BrowserAction & { kind: 'snapshot' }): string | n
   if (action.depth !== undefined && !(Number.isInteger(action.depth) && action.depth >= 1 && action.depth <= 50)) return 'snapshot depth must be an integer from 1 to 50';
   if (action.selector !== undefined && !text(action.selector, 4000)) return 'snapshot selector must contain 1 to 4000 characters';
   if (action.view !== undefined && action.view !== 'diff' && action.view !== 'full') return 'snapshot view must be diff or full';
+  if (action.maxChars !== undefined && !(Number.isInteger(action.maxChars) && action.maxChars >= 500 && action.maxChars <= 40_000)) return 'snapshot maxChars must be an integer from 500 to 40000';
   return [action.interactive, action.compact, action.urls].every(flag => flag === undefined || typeof flag === 'boolean') ? null : 'snapshot flags must be booleans';
 }
 
@@ -419,6 +427,7 @@ function checkOpenUrl(action: BrowserAction & { kind: 'open' | 'navigate' }): st
 }
 
 function checkSelector(action: BrowserAction & { kind: 'hover' | 'focus' | 'check' | 'uncheck' | 'scrollintoview' }): string | null {
+  if ('force' in action && action.force !== undefined && typeof action.force !== 'boolean') return 'browser force must be a boolean';
   return text(action.selector, 4000) ? null : 'browser selector must contain 1 to 4000 characters';
 }
 
@@ -486,6 +495,7 @@ const ACTION_CHECKS: BrowserActionChecks = {
   'navigate': checkOpenUrl,
   'click': action => {
     if (action.count !== undefined && action.count !== 1 && action.count !== 2) return 'browser click count must be 1 or 2';
+    if (action.force !== undefined && typeof action.force !== 'boolean') return 'browser force must be a boolean';
     return text(action.selector, 4000) ? null : 'browser selector must contain 1 to 4000 characters';
   },
   'hover': checkSelector,

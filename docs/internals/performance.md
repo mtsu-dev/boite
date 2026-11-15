@@ -1564,7 +1564,10 @@ pictures a second and 386 ms to 22.6 pushed and 71 ms, for 118 % of a core in
 Chrome instead of 21 %, and its own animation from 60 to 23 frames a second.
 WebGL runs on SwiftShader there: 26 % to 351 % of a core and 60 to 16 frames a
 second in the page for the simple shader, 25 % to 814 % and 60 to 8 for the
-heavy one, which the viewer then sees at 8 pictures a second.
+heavy one, which the viewer then sees at 8 pictures a second. These WebGL figures predate the GPU: since 2026-11-14 the browser
+draws WebGL on the machine's GPU where it has one and has no software WebGL
+otherwise ([which browser](browser.md#which-browser)); they were not measured
+again.
 
 ## Browser tabs nobody uses
 
@@ -1849,9 +1852,11 @@ Replay, the default, spends no tokens. Each repeat starts a fresh core on a
 temporary data directory with one echo thread and runs every task as a fixed
 script of real CLI processes in that thread's environment
 (`BOITE_CORE_URL`, `BOITE_AGENT_TOKEN`, `BOITE_THREAD_ID`): `open`, then for
-each action the action on a ref read by its label out of the previous
-`snapshot -i` output, then `snapshot -i` again. A ref the CLI refuses, or a
-label missing from the snapshot, gets one `snapshot -i --full` and one retry.
+each action the action on a ref read by its label out of the page the script
+last saw. Each action prints the page it leaves, a whole list, a diff the
+script applies or a line saying nothing changed, and `snapshot -i` runs only
+after an output without one. A ref the CLI refuses, or a label missing from
+the page, gets one `snapshot -i --full` and one retry.
 The first `open` of each core starts the browser and is reported apart.
 `--cli` replaces `bun packages/core/src/main.ts cli` and must accept
 `browser <command>` after it.
@@ -1890,7 +1895,18 @@ eight tasks, a call median of 148 ms and p95 of 508 ms; the 320-row page alone
 read 24,901 bytes in 4 calls. With [snapshot diffs](../../bench/results/2026-11-14-browser-agent-diff.md),
 on `112aa099c` under the same load: 24 of 24 again in the same 93 calls, 26,451
 bytes (about 6,613 tokens), the 320-row page 12,742 bytes; the seven small
-tasks changed by at most 6 bytes, the diff header. The
+tasks changed by at most 6 bytes, the diff header. With
+[the page printed after each action](../../bench/results/2026-11-14-browser-agent-observe.md),
+on `a4e651969` with the change uncommitted and a load average near 23: 24 of
+24 in 48 calls instead of 93, since no action needs a `snapshot -i` of its
+own, and 35,366 bytes. The seven small tasks read 14,589 bytes against 13,709
+with diffs alone; the 320-row page read 20,777 bytes in 3 calls, because `open` prints
+its first 8,000 characters and the row is further down, so the script reads
+the whole list once more. A [live run](../../bench/results/2026-11-14-browser-agent-live-observe.md)
+of the same change, Claude Opus 5.5 at medium effort, three runs per task,
+succeeded 24 of 24. Its first runs, the ones comparable with the single runs
+above, made 29 tool calls and 62 `boite browser` commands against 34 and 79
+with diffs alone, and read 984,667 cache tokens against 1,143,695. The
 [live run](../../bench/results/2026-11-14-browser-agent-live.md), Claude Opus 5.5
 at medium effort, one run per task, succeeded 8 of 8 on both sides with 33 and
 34 tool calls: totals follow the call count, since each call rereads the

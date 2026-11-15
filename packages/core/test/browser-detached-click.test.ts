@@ -67,7 +67,9 @@ test('a native click whose own page detaches on release stops before another cli
   try {
     expect(await automate(fixture.page, 'popup-tab', { kind: 'click', selector: '#shut', count: 2 }))
       .toMatchObject({ tabId: 'popup-tab', value: { ok: true } });
-    expect(fixture.input).toEqual(['mouseMoved', 'mousePressed', 'mouseReleased']);
+    // The pointer travels in a few moves, then one press and one release: no second click.
+    expect(fixture.input.filter(type => type !== 'mouseMoved')).toEqual(['mousePressed', 'mouseReleased']);
+    expect(fixture.input.indexOf('mouseMoved')).toBe(0);
     expect(fixture.readsAfterDetach()).toBe(0);
     expect(fixture.released()).toBe(1);
   } finally { fixture.relay.cdp.close(); }

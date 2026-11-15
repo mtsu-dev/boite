@@ -109,7 +109,10 @@ An agent can add a profile, never rename or delete one: that stays in Settings.
 agent cannot select a tab from another conversation.
 
 `snapshot -i` lists the page's interactive elements with refs:
-`- textbox "Email" [ref=e3]`, `- button "Continue" [ref=e5]`. Without `-i` it
+`- textbox "Email" [ref=e3]`, `- button "Continue" [ref=e5]`. A plain element
+that acts as a control, a `div` or `span` with a click handler, a `tabindex` or
+its own pointer cursor and no control inside, is listed as
+`- clickable "Open card" [ref=e7]`. Without `-i` it
 adds headings, text and the containers around them; `-c` drops the containers,
 `-d 3` stops at a depth, `-s "#main"` keeps one part and `-u` adds link urls.
 `click @e5`, `fill @e3 ada@example.com`, `type`, `select`, `check`, `press Enter`,
@@ -131,10 +134,21 @@ form, a captcha or a sign-in widget, is listed under its iframe, and its
 elements take refs and commands like the page's own
 ([frames](browser.md#frames-from-other-origins)).
 
+`open`, `navigate`, `back`, `forward`, `reload`, `click`, `hover`, `check`,
+`uncheck`, `fill`, `type`, `select`, `press`, `scroll` and `wait` end by
+printing the page they leave, as `snapshot -i` would: a diff against the
+agent's last view of that page, `the page did not change`, or the whole list
+(8,000 characters at most) on a new page. The agent reads the result of its
+action without a snapshot call of its own. The page read is the current tab's:
+after a click that opened a window (a sign-in popup), the output says
+`a new window is the current tab: browser:...` and prints that window. `-q` leaves the page out; on
+`fill`, `type`, `select`, `eval` and `dialog`, whose last words are text, it
+must come first (`fill -q @e3 text`).
+
 Each separate command waits for the agent's next turn, and that turn takes far
 longer than the command (about 40 ms). Steps the agent can foresee go in one
-shell call that ends on a snapshot:
-`boite browser click @e3 && boite browser wait --load load && boite browser snapshot -i`.
+shell call, and the last one prints the page:
+`boite browser fill -q @e3 ada@example.com && boite browser click @e5`.
 Steps with loops or conditions go in a script: `boite browser run <file>`, or
 `run -` with the script on stdin, runs it as the body of an async function
 with `page`, `args` (the words after the script), `console` and `sleep(ms)` in
@@ -163,9 +177,12 @@ where it went; `open` waits for the DOM too, never for the load event, so a page
 whose image or script never finishes still answers within 10 seconds. `wait`
 waits for an element, `--text`, `--url "**/done"`, `--fn <js>` or
 `--load domcontentloaded|load|networkidle`, for 10 seconds unless `--timeout`
-says otherwise, at most 15. Clicks, keys and text are native input, which pages
-treat as a person's own; a covered element is clicked through the DOM, and the
-output names what covered it.
+says otherwise, at most 15. An action that stays on its page returns once the
+page has had no change and no call loading for 100 ms, at most one second.
+Clicks, keys and text are native input, which pages treat as a person's own. A
+covered element is not clicked: the error names the cover and the controls
+around it with their refs, such as a cookie banner's `Accept`; `click --force`
+clicks it through the DOM ([browser](browser.md#actions-and-input)).
 
 Nobody can answer a dialog in a headless page. An alert, confirm or prompt
 raised while an action runs is accepted, or dismissed after `dialog dismiss`,

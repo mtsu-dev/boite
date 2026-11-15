@@ -24,7 +24,15 @@ The core looks for a Chromium-based browser where each installs:
 | ------- | --------------------------------------------------------------------------------------------- |
 | Windows | Chrome, Edge, Chromium and Brave under `Program Files`, `Program Files (x86)` and `LOCALAPPDATA` |
 | macOS   | Chrome, Chromium, Edge and Brave in `/Applications`                                           |
+| Linux   | Chrome stable at `/opt/google/chrome/chrome`, then beta (`/opt/google/chrome-beta/chrome`) and dev (`/opt/google/chrome-unstable/chrome`) |
 | any     | `google-chrome`, `google-chrome-stable`, `chromium`, `chromium-browser`, `microsoft-edge`, `brave-browser` on `PATH` |
+
+Chrome stable comes first on every system, and on Linux before any command on
+`PATH`: a `google-chrome` there can be Chrome for Testing. That build's brand
+list (`navigator.userAgentData.brands`, `Sec-CH-UA`) says "Chromium" where
+Chrome says "Google Chrome", and it never updates, so it falls behind the
+version every other visitor of a site runs. Both are things a bot check reads.
+A machine meant to browse the public web installs Chrome stable.
 
 `BOITE_BROWSER` names the executable instead, and is then the only place
 looked at. Edge ships with Windows 10 and 11, so a Windows machine always has
@@ -36,26 +44,47 @@ The browser runs with `--headless=new`, muted, without a first-run page, sync
 or background downloads, in a 1280 × 800 window whose page measured
 1280 × 720 on Chrome 153.
 
-The GPU is off (`--disable-gpu`) and every page is drawn at twice its CSS size
-(`--force-device-scale-factor=2`), on Windows, Linux and macOS alike. Both come
-from T3 Code's browser ([pingdotgg/t3code](https://github.com/pingdotgg/t3code),
-MIT License), whose way of sending a page to a viewer Boite follows
-([Watching it](#watching-it)): a screencast ignores a device scale that
-DevTools emulates, so only a real factor of 2 gives a dense screen sharp
-frames, and a headless browser that composites on the CPU draws the same
-pictures on a machine with a GPU, a weak one or none. Pages draw on the CPU,
-and WebGL runs on a software renderer, on the CPU too (SwiftShader on Linux,
-Direct3D's Basic Render Driver on Windows): a heavy WebGL page takes several
-cores and draws far fewer frames than when the browser used the GPU
-([performance](performance.md#a-remote-browser-view)). A page sees
-`devicePixelRatio` 2, as on a laptop with a dense screen. The agent's
-screenshots stay in CSS pixels: the browser shrinks them itself
-(`browser/shrink.ts`), and recordings keep the page's CSS size.
+Every page is drawn at twice its CSS size (`--force-device-scale-factor=2`),
+on Windows, Linux and macOS alike. That comes from T3 Code's browser
+([pingdotgg/t3code](https://github.com/pingdotgg/t3code), MIT License), whose
+way of sending a page to a viewer Boite follows ([Watching it](#watching-it)):
+a screencast ignores a device scale that DevTools emulates, so only a real
+factor of 2 gives a dense screen sharp frames. A page sees `devicePixelRatio`
+2, as on a laptop with a dense screen. The agent's screenshots stay in CSS
+pixels: the browser shrinks them itself (`browser/shrink.ts`), and recordings
+keep the page's CSS size.
 
-Before 2026-11-11 the browser used the GPU (`--enable-gpu`, ANGLE over EGL on
+The browser draws on the machine's GPU where it has a usable one (`gpuArgs`
+in `browser/chromium.ts`). A desktop Chrome has WebGL on a real GPU; a page
+that finds no WebGL, or finds SwiftShader, takes the browser for a headless
+one.
+
+| OS      | GPU                                                                                           |
+| ------- | --------------------------------------------------------------------------------------------- |
+| Windows | Chrome's own choice                                                                           |
+| macOS   | Chrome's own choice, off in a virtual machine (the processor's name says "Virtual")           |
+| Linux   | On when this account may open a render node under `/dev/dri`: ANGLE over Vulkan (`--use-angle=vulkan`) when a Vulkan driver is installed, Chrome's default otherwise. Off (`--disable-gpu`) without a render node |
+
+Software WebGL is off everywhere (`--disable-software-rasterizer`): where the
+GPU is off or does not start, pages draw on the CPU and have no WebGL, never
+SwiftShader, which names itself in the renderer string and takes every core.
+`BOITE_BROWSER_GPU=off` turns the GPU off on a machine where it misbehaves.
+Measured on 2026-11-14 with Chrome for Testing 157 on Linux, a Radeon 780M and
+no system libEGL, reading `WEBGL_debug_renderer_info` in a page:
+
+| Options                                              | WebGL renderer                                             |
+| ---------------------------------------------------- | ---------------------------------------------------------- |
+| `--disable-gpu` (before)                             | none, no WebGL context                                     |
+| `--use-angle=vulkan --disable-software-rasterizer`   | `ANGLE (AMD, Vulkan 1.4.305 (AMD Radeon Graphics (RADV PHOENIX) (0x00001900)), radv)` |
+| Chrome's default alone                               | `ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)` |
+| Chrome's default with `--disable-software-rasterizer` | none                                                       |
+| Vulkan without a driver, with or without that option | none                                                       |
+
+Between 2026-11-11 and 2026-11-14 the GPU was off on every system, as in T3
+Code's browser. Before that it was on (`--enable-gpu`, ANGLE over EGL on
 Linux) except on a Mac in a virtual machine, where Chrome's GPU process lost
 its Metal device on the paravirtual GPU and no DevTools command was answered
-for 10 to 30 seconds.
+for 10 to 30 seconds: that exception stays.
 
 Boite's other options differ from T3 Code's and were left as they are: T3
 starts Chromium through Playwright (`headless: true`, without
@@ -143,8 +172,46 @@ session, since the shell reads its console.
 
 This brings it level with the same Chrome running with a window on the same
 network, not past it. Etsy, SeLoger and Reddit still asked for a captcha on
-2026-10-09, and so did Chrome with a window under Xvfb on that address. The
-user solves a captcha in the panel, which takes clicks and drags.
+2026-10-09, and so did Chrome with a window under Xvfb on that address.
+
+A site's bot check is passed the way a person's Chrome passes it, and never
+answered for the browser: no value a page reads is changed, no puzzle is
+solved, no outside service or proxy is used. After `open`, `navigate`, and a
+`back`, `forward` or `reload`, `browser/challenge.ts` looks at the page once
+(one evaluation, a few selectors; a page with no check waits for nothing) for:
+
+| Check                                   | Recognised by                                                        | What the core does |
+| --------------------------------------- | -------------------------------------------------------------------- | ------------------ |
+| Cloudflare's wait page                  | `_cf_chl_opt`, the title "Just a moment", `#challenge-form` and kin  | waits; clicks its Turnstile box once after 4 s |
+| Turnstile, reCAPTCHA, hCaptcha checkbox | the widget's frame or response field, on a page that holds little else | clicks the box once, waits |
+| Akamai, AWS WAF, DataDome's device check | `#sec-if-cpt-container`, `awswaf.com` and `captcha-delivery.com` scripts | waits |
+| HUMAN press and hold                    | `#px-captcha`                                                        | names it at once |
+| reCAPTCHA or hCaptcha images, DataDome's slider, Amazon's captcha page | the puzzle's frame, `captcha-delivery.com`, `validateCaptcha` | names it at once |
+| Cloudflare or Akamai refusal            | "Attention Required", "Access Denied" with `errors.edgesuite.net`    | names it at once |
+
+A widget inside a form with fields (a sign-up, a comment) is that form's
+business and is left alone. The wait looks again every 300 ms for at most
+12 s, under the 15 s an agent's own `wait` may take; two looks in a row
+without a check end it, and a page that cannot answer, as between the check
+and the site, counts as still checking. The click is native input
+(`Input.dispatchMouseEvent`): the pointer comes from outside the widget
+through seven points and presses a little off the box's centre, once. Just
+before the press it looks again with `elementFromPoint`: when a banner or a
+button drawn over the widget would take the point, nothing is pressed and the
+note ends `(something covers its checkbox, so nothing was clicked)`. The
+reply's `note` says how it ended, `passed a Cloudflare check in 3.4 s` or
+`still on a Cloudflare check after 12 s (its checkbox was clicked); take a
+screenshot, act on the page, or ask the user to take over in the panel`, and
+a reply that met no check has no note. A press and hold or a puzzle is named
+so the agent tries it with its own commands; the user solves what is left in
+the panel, which takes clicks and drags.
+
+Clicking the box is not being trusted. On 2026-11-14, from this project's
+build machine with Chrome for Testing 157 and a new profile,
+deviceandbrowserinfo.com answered `isBot: false`, while Cloudflare's managed
+check on scrapingcourse.com ticked the box, verified, and showed it again, and
+nowsecure.nl stayed on its Turnstile: what passes there is Chrome stable, a
+profile with the cookies of earlier visits, and an address sites trust.
 
 ## Processes and profiles
 
@@ -351,13 +418,39 @@ command after it alone.
 A command whose caller closed its connection before the command's turn came
 never runs; one already running finishes, since it may be changing the page.
 
+### Actions and input
+
 `open` and `navigate` wait up to 10 seconds for the next page's DOM, never for
 the load event, which an image or a script that never finishes can hold back;
 a page still loading by then is returned with `loading: true` rather than an
-error. A click, a key or a fill that starts a navigation waits the same way and
-reports where the page went. Clicks, keys and text are native input; an element
-something covers is clicked through the DOM, and the agent hears what covered
-it.
+error. Once the DOM is there, and any bot check has ended, the page gets the
+same settle as an action below, so a page that fetches its content as it loads
+is read with it. A click, a key or a fill that starts a navigation waits the same way,
+settles the page it reached and reports where the page went; `back`,
+`forward` and `reload` settle it after any bot check.
+
+An action that stays on its page returns once the page has settled
+(`settle` in `browser/automation.ts`), `scroll` included, since a list
+that loads more as it is scrolled answers after the scroll: at least 100 ms, then as soon as the
+document has had no mutation for 100 ms and no document, fetch or XHR call
+younger than 1.5 seconds is still loading, at most one second (`history`
+waits 800 ms at least). The page kit counts mutations with a
+`MutationObserver`; the tab counts calls from its `Network` events
+(`freshCalls` in `browser/page-events.ts`), and a call that never ends stops
+counting after 1.5 seconds, so a long poll or a stream holds no action back.
+A navigation ends the wait at once.
+
+Clicks, keys and text are native input. The pointer travels to its target in
+three to five eased `mouseMoved` steps from where it last was, lands at a
+random point in the middle of the box that the element itself receives, and
+holds each press 30 to 70 ms. `type` sends printable ASCII up to 200
+characters key by key, so a page that listens for keys hears each one; longer
+or other text goes in with `Input.insertText`. An element something covers
+is not clicked: the command fails with nothing pressed, names the cover with
+its ref and lists up to five controls of the fixed, sticky or dialog layer
+around it (`cover` in the page kit), so the agent accepts a cookie banner or
+closes a dialog the way a person would. `click --force` and `check --force`
+click it through the DOM instead, with a note naming the cover.
 
 Before pressing, a native click waits up to two seconds for trusted pointer
 movement in the target's document and checks that the target and every enclosing
@@ -396,12 +489,13 @@ in that frame's document. Native input is sent to
 the tab in the top document's coordinates: each iframe around the element is
 scrolled into its parent's view, and the point moves out through its content
 box, scaled with it. A point outside a parent's view, or where something is
-drawn over an iframe, is clicked through the DOM, with a note naming what
-covered it. After a navigation of the top document the iframe refs of a route
+drawn over an iframe, is refused like any covered element, and `--force`
+clicks it through the DOM. After a navigation of the top document the iframe refs of a route
 name nothing, so an old frame ref is refused by name.
 
-The core keeps, per tab, the last snapshot an agent was shown: its lines,
-options and document (`browser/snapshot-diff.ts`), 40,000 characters at most.
+The core keeps, per tab, the last snapshot an agent was shown for each set
+of options, four sets at most: its lines and document
+(`browser/snapshot-diff.ts`), 40,000 characters at most.
 Only a snapshot action with a `view` counts as shown: the CLI sends
 `view: 'diff'`, `snapshot --full` and the page a failed script step left send
 `view: 'full'`. A `diff` view of the same document with the same options
@@ -409,6 +503,8 @@ answers with the lines added and removed since, each run under the last
 unchanged heading, landmark or iframe line. The whole text is sent instead for
 a tab's first snapshot, a new document, other options, `view: 'full'`, a
 snapshot cut short on either side, or a diff longer than half the text. A
+snapshot identical to the last view answers `unchanged: true` with a one-line
+diff, whatever the page's length. A
 snapshot without a view, a script's `page.snapshot()` or a client's, is whole
 and leaves the agent's last view alone: the agent never read it, so a diff
 against it would hide lines.

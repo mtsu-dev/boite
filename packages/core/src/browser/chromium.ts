@@ -3,7 +3,8 @@
  * one profile folder. The core speaks the DevTools protocol to it; nothing of
  * it is shown on screen.
  */
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { accessSync, constants, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { cpus } from 'node:os';
 import { join } from 'node:path';
 import type { BrowserUserAgent } from '@boite/contracts';
 
@@ -15,6 +16,15 @@ export interface ChromiumMissing { path: null; reason: string }
 
 /** Chromium-based browsers by command name, the first found wins. */
 const COMMANDS = ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser', 'microsoft-edge', 'microsoft-edge-stable', 'brave-browser'];
+
+/**
+ * Where Google's packages install Chrome on Linux, stable first. They come
+ * before any command on `PATH`: a `google-chrome` there can be Chrome for
+ * Testing, whose brand list says "Chromium" and whose build never updates,
+ * two things a site reads. The stable channel says "Google Chrome" and
+ * follows the releases a site sees from everyone else.
+ */
+const LINUX_CANDIDATES = ['/opt/google/chrome/chrome', '/opt/google/chrome-beta/chrome', '/opt/google/chrome-unstable/chrome'];
 
 function windowsCandidates(env: Record<string, string | undefined>): string[] {
   const roots = [env.ProgramFiles, env['ProgramFiles(x86)'], env.LOCALAPPDATA].filter((root): root is string => !!root);
@@ -36,12 +46,13 @@ const MAC_CANDIDATES = [
 /**
  * `BOITE_BROWSER` names the executable when set, and is the only place looked
  * at then. Otherwise Chrome, Chromium, Edge or Brave, where each installs.
+ * `exists` is a test seam.
  */
-export function findChromium(env: Record<string, string | undefined> = process.env, platform = process.platform, which: (name: string) => string | null = name => Bun.which(name)): ChromiumFound | ChromiumMissing {
+export function findChromium(env: Record<string, string | undefined> = process.env, platform = process.platform, which: (name: string) => string | null = name => Bun.which(name), exists: (path: string) => boolean = existsSync): ChromiumFound | ChromiumMissing {
   const wanted = env.BOITE_BROWSER?.trim();
-  if (wanted) return existsSync(wanted) ? { path: wanted } : { path: null, reason: `BOITE_BROWSER names ${wanted}, which does not exist` };
-  const candidates = platform === 'win32' ? windowsCandidates(env) : platform === 'darwin' ? MAC_CANDIDATES : [];
-  for (const candidate of candidates) if (existsSync(candidate)) return { path: candidate };
+  if (wanted) return exists(wanted) ? { path: wanted } : { path: null, reason: `BOITE_BROWSER names ${wanted}, which does not exist` };
+  const candidates = platform === 'win32' ? windowsCandidates(env) : platform === 'darwin' ? MAC_CANDIDATES : platform === 'linux' ? LINUX_CANDIDATES : [];
+  for (const candidate of candidates) if (exists(candidate)) return { path: candidate };
   for (const name of COMMANDS) {
     const found = which(name);
     if (found) return { path: found };
@@ -77,20 +88,73 @@ export function trimProfile(profileDir: string): void {
   if (complete) writeFileSync(mark, '');
 }
 
+/** What `gpuArgs` reads of the machine; a test seam. */
+export interface GpuProbe {
+  /** Linux: a DRM render node this account may open for reading and writing. */
+  renderNode(): boolean;
+  /** Linux: a Vulkan driver is installed (a manifest under `vulkan/icd.d`). */
+  vulkanDriver(): boolean;
+  /** macOS: the machine is a virtual one. */
+  virtualMac(): boolean;
+}
+
+const VULKAN_ICD_DIRS = ['/usr/share/vulkan/icd.d', '/etc/vulkan/icd.d', '/usr/local/share/vulkan/icd.d'];
+
+const MACHINE_GPU: GpuProbe = {
+  renderNode: () => {
+    try {
+      return readdirSync('/dev/dri').some(name => {
+        if (!name.startsWith('renderD')) return false;
+        try { accessSync(join('/dev/dri', name), constants.R_OK | constants.W_OK); return true; } catch { return false; }
+      });
+    } catch { return false; }
+  },
+  vulkanDriver: () => VULKAN_ICD_DIRS.some(dir => { try { return readdirSync(dir).some(name => name.endsWith('.json')); } catch { return false; } }),
+  // Apple's hypervisor names its processor "Apple M1 (Virtual)"; an Intel guest is not told apart and sets BOITE_BROWSER_GPU=off.
+  virtualMac: () => /virtual/i.test(cpus()[0]?.model ?? ''),
+};
+
+/**
+ * The options that decide where pages and WebGL are drawn. A desktop Chrome
+ * has WebGL on the machine's GPU, and a page that finds none takes the
+ * browser for a headless one, so the GPU is on wherever one is usable:
+ *
+ * - Windows: Chrome's own choice (Direct3D 11 through ANGLE).
+ * - macOS: Chrome's own choice (Metal), except in a virtual machine, where
+ *   Chrome's GPU process lost its Metal device on the paravirtual GPU and no
+ *   DevTools command was answered for 10 to 30 seconds (2026-10-20).
+ * - Linux: only with a render node under `/dev/dri` this account may open.
+ *   ANGLE then goes over Vulkan when a Vulkan driver is installed, which
+ *   needs no system libEGL or display; otherwise over Chrome's default (EGL).
+ *
+ * Software WebGL is off everywhere (`--disable-software-rasterizer`): where
+ * the GPU does not start, a page gets no WebGL rather than SwiftShader, whose
+ * renderer string names it and which takes every core. Without that option
+ * Chrome 157 fell back to SwiftShader on Linux by itself (2026-11-14).
+ * `BOITE_BROWSER_GPU=off` turns the GPU off on a machine where it misbehaves.
+ */
+export function gpuArgs(platform = process.platform, env: Record<string, string | undefined> = process.env, probe: GpuProbe = MACHINE_GPU): string[] {
+  const off = ['--disable-gpu', '--disable-software-rasterizer'];
+  if (/^(off|0|false)$/i.test(env.BOITE_BROWSER_GPU?.trim() ?? '')) return off;
+  if (platform === 'win32') return ['--disable-software-rasterizer'];
+  if (platform === 'darwin') return probe.virtualMac() ? off : ['--disable-software-rasterizer'];
+  if (!probe.renderNode()) return off;
+  return [...(probe.vulkanDriver() ? ['--use-angle=vulkan'] : []), '--disable-software-rasterizer'];
+}
+
 /**
  * Headless, muted, no first-run page, no sync or background downloads. The
  * window size is the page's viewport until a viewer or the agent sets one.
  * `--password-store=basic` and `--use-mock-keychain` keep Chromium from
  * asking the desktop's keyring for a password, which would open a dialog.
  *
- * The GPU is off and every page is drawn at twice its CSS size, on every
- * system: T3 Code's browser does both (https://github.com/pingdotgg/t3code,
- * MIT License), and the frames a viewer is sent follow its method
- * (`push-stream.ts`). A screencast ignores the device scale DevTools
- * emulates, so only a real factor of 2 gives sharp frames. Without a GPU
- * Chromium draws pages on the CPU and WebGL with a software renderer
- * (SwiftShader on Linux, Direct3D's Basic Render Driver on Windows): a
- * heavy WebGL page takes several cores and draws fewer frames than before.
+ * Every page is drawn at twice its CSS size, on every system, as T3 Code's
+ * browser does (https://github.com/pingdotgg/t3code, MIT License), and the
+ * frames a viewer is sent follow its method (`push-stream.ts`). A screencast
+ * ignores the device scale DevTools emulates, so only a real factor of 2
+ * gives sharp frames. `gpu` is where pages and WebGL are drawn (`gpuArgs`):
+ * on the machine's GPU when it has a usable one, on the CPU and without
+ * WebGL otherwise.
  *
  * Sites turn away a browser that says it is automated, so it says what the
  * same browser says with a window. `userAgent` replaces the one that names
@@ -102,9 +166,9 @@ export function trimProfile(profileDir: string): void {
  * as Chrome 157 divides it by the forced scale twice (3840 × 2160 gave a page
  * a screen of 960 × 540).
  */
-export function chromiumArgs(profileDir: string, platform = process.platform, userAgent?: string): string[] {
+export function chromiumArgs(profileDir: string, platform = process.platform, userAgent?: string, gpu: string[] = gpuArgs(platform)): string[] {
   return [
-    '--disable-gpu',
+    ...gpu,
     `--force-device-scale-factor=${RENDER_SCALE}`,
     // Every tab of the agent counts as shown: none is throttled for being in the background.
     '--disable-background-timer-throttling',
