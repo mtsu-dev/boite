@@ -13,10 +13,8 @@
    * press, opens or deletes it. `onopen` runs once it is open, so the phone
    * can show the chat. A draft sent while its machine was away waits under a
    * clock until its conversation starts, and its menu can take the send back.
-   * `classic`: the desktop sidebar's row, its mark in the thread rows' 18 px
-   * slot and its words on their titles' edge (ThreadCard.svelte).
    */
-  let { owner, entry, onopen, classic = false }: { owner: Store; entry: Store['draftEntries'][number]; onopen?: () => void; classic?: boolean } = $props();
+  let { owner, entry, onopen }: { owner: Store; entry: Store['draftEntries'][number]; onopen?: () => void } = $props();
   let active = $derived(entry.active && workspace.active === owner);
   let machine = $derived.by(() => { const found = workspace.machines.find(item => item.store === owner); return found ? machineName(found) : strings.machines.local; });
   let tooltip = $derived(
@@ -44,7 +42,7 @@
   }
 </script>
 
-<button class="ghost draft" class:active class:classic class:failed={entry.queued !== null && typeof entry.queued !== 'string'} data-testid="draft-row" data-project-id={entry.projectId ?? ''} data-draft-id={entry.id}
+<button class="ghost draft" class:active class:failed={entry.queued !== null && typeof entry.queued !== 'string'} data-testid="draft-row" data-project-id={entry.projectId ?? ''} data-draft-id={entry.id}
   data-queued={entry.queued === null ? undefined : typeof entry.queued === 'string' ? entry.queued : 'failed'}
   aria-current={active ? 'page' : undefined} title={tooltip} onclick={open} oncontextmenu={menu} use:longPress>
   {#if entry.queued === 'waiting' || entry.queued === 'starting'}<Clock size={14} aria-hidden="true" />
@@ -56,10 +54,6 @@
 <style>
   .draft { width: 100%; height: auto; min-height: var(--row); justify-content: flex-start; gap: 8px; padding: 8px 10px; font-weight: 400; -webkit-touch-callout: none; }
   .draft.active { background: var(--color-active); }
-  /* The thread rows' 18 px mark slot, right under the project's tile, then their 8 px to the title. */
-  .draft.classic { padding-left: 4px; }
-  .draft.classic > :global(svg) { margin-inline: 1px; }
-  .draft.classic > .mark { margin-inline: 5px; }
   /* The pencil in the accent: the user's own words, waiting to be sent. */
   .draft :global(svg) { flex: none; color: var(--color-accent); }
   .draft[data-queued='waiting'] :global(svg) { color: var(--color-muted-foreground); }
