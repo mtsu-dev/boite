@@ -26,6 +26,8 @@ test("Claude runs on Claude Code's prompt with Boite's guide in it, so no messag
     expect(appended(options)).toContain('`path:line`');
     expect(options.settings).toMatchObject({ autoMemoryEnabled: false });
   }
+  // A resumed session keeps the name it has: only a new one is given the thread's.
+  for (const { options } of calls) expect(options.title === undefined).toBe(options.resume !== undefined);
   const prompts = calls.flatMap(call => call.prompts);
   expect(prompts[0]).toContain('hello');
   expect(prompts.some(prompt => prompt.includes('again'))).toBe(true);

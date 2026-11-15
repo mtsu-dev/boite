@@ -2,7 +2,9 @@
 
 A thread's summary carries `context`, what the agent's last request held and
 how much room the model gives it. The message bar draws a ring beside its send
-controls; the percentage appears in the detail panel. When the agent compacts its
+controls, aligned to the right of the setting chips. The ring stays clickable
+without a measurement; from 70% used, it also shows the percentage left and the
+prompt cache timer. The percentage always appears in the detail panel. When the agent compacts its
 conversation mid-turn, the
 timeline gets a divider saying how many tokens went. Both come from the agent
 itself: the core never estimates a context size. The ring stays unfilled when

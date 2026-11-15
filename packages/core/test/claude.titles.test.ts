@@ -35,6 +35,10 @@ test('Claude titles the first request with its images while the main SDK query k
     expect(titleCall.prompts[0]).toContain('needsRefinement');
     expect(titleCall.prompts[0]).toContain(png);
     expect(calls).toHaveLength(2);
+    // A session that has a name is one the CLI does not name: without these
+    // two, a first prompt costs two more requests, one on the thread's model.
+    expect(titleCall.options.title).toBe('Boite');
+    expect(calls.find(call => call.options.persistSession !== false)!.options.title).toBe(thread.title);
     release.resolve();
     expect((await finished).status).toBe('done');
     expect(calls).toHaveLength(2);

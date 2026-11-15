@@ -30,34 +30,34 @@
   const grouped = $derived(recentPreferences.groupWorking);
   const open = $derived(!collapsed && !searching && projectThreadView.isOpen(entry, 'working'));
   const failOnly = $derived(failed > 0 && failed >= waiting);
-  const waitingLabel = $derived(
-    failOnly ? fill(strings.sidebar.projectFailedThreads, { count: String(waiting), project: projectName(entry.project) })
-    : failed > 0 ? fill(strings.sidebar.projectMixedThreads, { waiting: String(waiting - failed), failed: String(failed), project: projectName(entry.project) })
-    : fill(strings.sidebar.projectWaitingThreads, { count: String(waiting), project: projectName(entry.project) }));
+  const name = $derived(projectName(entry.project));
+  const waitingLabel = $derived(fill(
+    failOnly ? strings.sidebar.projectFailedThreads : failed > 0 ? strings.sidebar.projectMixedThreads : strings.sidebar.projectWaitingThreads,
+    { count: String(waiting), waiting: String(waiting - failed), failed: String(failed), project: name }));
   const done = $derived(archiveCount(entry.project, 'done'));
   const doneOpen = $derived(!collapsed && projectThreadView.isOpen(entry, 'done'));
-  const doneLabel = $derived(fill(strings.sidebar.projectDoneThreads, { count: String(done), project: projectName(entry.project) }));
-  const workingLabel = $derived(fill(strings.sidebar.projectWorkingThreads, { count: String(working), project: projectName(entry.project) }));
+  const doneLabel = $derived(fill(strings.sidebar.projectDoneThreads, { count: String(done), project: name }));
+  const workingLabel = $derived(fill(strings.sidebar.projectWorkingThreads, { count: String(working), project: name }));
 </script>
+
+{#snippet workingCounter(fold: boolean)}
+  <button type="button" class={fold ? 'ghost fold-toggle' : 'ghost counter working'} class:away class:active={open && grouped} data-testid="project-working-toggle" data-count={working}
+    title={workingLabel} aria-label={workingLabel} aria-expanded={fold || grouped ? open : undefined} aria-controls={fold || grouped ? `${controls}-working` : undefined} disabled={searching || (!fold && !grouped)}
+    onclick={() => projectThreadView.toggle(entry, 'working', collapsed)}>
+    <span class="work-ring" aria-hidden="true"></span><span class="ui-label word">{strings.sidebar.workingThreads}</span><span class="ui-label count">{formatCount(working)}</span>
+  </button>
+{/snippet}
 
 {#if place === 'fold'}
   {#if working > 0 && grouped && waiting > 0 && !collapsed}
-    <button type="button" class="ghost fold-toggle" class:away class:active={open} data-testid="project-working-toggle" data-count={working}
-      title={workingLabel} aria-label={workingLabel} aria-expanded={open} aria-controls="{controls}-working" disabled={searching}
-      onclick={() => projectThreadView.toggle(entry, 'working', collapsed)}>
-      <span class="work-ring" aria-hidden="true"></span><span class="ui-label">{strings.sidebar.workingThreads}</span><span class="ui-label count">{formatCount(working)}</span>
-    </button>
+    {@render workingCounter(true)}
   {/if}
 {:else}<div class="counters">
   {#if waiting > 0}
     <span class="counter waiting" class:failed={failOnly} data-testid="project-waiting-count" data-count={waiting} data-state={failOnly ? 'error' : 'waiting'} role="img" title={waitingLabel} aria-label={waitingLabel}><span class="mark-word">{#if failOnly}<FailMark />{:else}<span class="dot" aria-hidden="true"></span>{/if}<span class="ui-label word" class:spare={!collapsed && listed >= waiting}>{failOnly ? strings.sidebar.state.error : strings.sidebar.state.waiting}</span></span><span class="ui-label number">{formatCount(waiting)}</span></span>
   {/if}
   {#if working > 0 && waiting === 0 && (grouped || collapsed)}
-    <button type="button" class="ghost counter working" class:away class:active={open && grouped} data-testid="project-working-toggle" data-count={working}
-      title={workingLabel} aria-label={workingLabel} aria-expanded={grouped ? open : undefined} aria-controls={grouped ? `${controls}-working` : undefined} disabled={!grouped || searching}
-      onclick={() => projectThreadView.toggle(entry, 'working', collapsed)}>
-      <span class="work-ring" aria-hidden="true"></span><span class="ui-label word">{strings.sidebar.workingThreads}</span><span class="ui-label">{formatCount(working)}</span>
-    </button>
+    {@render workingCounter(false)}
   {/if}
   {#if done > 0 && !doneFilter.shown}
     <button type="button" class="ghost counter done" class:active={doneOpen} data-testid="project-done-toggle" data-count={done}
@@ -75,7 +75,7 @@
   .counter { display: inline-flex; align-items: center; height: 22px; min-width: 0; padding: 0 6px; gap: 4px; border: none; border-radius: var(--radius-sm);
     background: transparent; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 400; font-variant-numeric: tabular-nums; }
   .counter:disabled { opacity: 1; }
-  .waiting .number { color: var(--color-live); font-weight: var(--weight-title); }
+  .waiting .number { margin-left: 4px; color: var(--color-live); font-weight: var(--weight-title); }
   .waiting.failed .number { color: var(--color-danger); }
   /* The word beside the mark the rows wear, so the dot is learned where it is first named. */
   .dot { width: 8px; height: 8px; flex: none; border-radius: var(--radius-full); background: var(--color-live); }
@@ -90,20 +90,15 @@
   .mark-word { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; min-width: 12px; height: 22px; overflow: hidden; }
   .mark-word::before { content: ''; width: 0; height: 22px; }
   .waiting .word { margin: 0 2px 0 4px; }
-  .waiting .number { margin-left: 4px; }
   .spare { display: none; }
-  @container sidebar (max-width: 235.98px) {
-    .counter .spare { display: block; }
-  }
-  @container sidebar (max-width: 255.98px) {
-    :global(html:lang(fr)) .counter .spare { display: block; }
-  }
   /* Working keeps its word whole and cannot fold it under a strut as above: pressed, its ground would stay as wide as
      the word. So the word leaves at the widths where the rows drop theirs, and the project's name keeps its room. */
   @container sidebar (max-width: 235.98px) {
+    .counter .spare { display: block; }
     .working .word { display: none; }
   }
   @container sidebar (max-width: 255.98px) {
+    :global(html:lang(fr)) .counter .spare { display: block; }
     :global(html:lang(fr)) .working .word { display: none; }
   }
   /* Work: the rows' turning accent arc (ThreadState.svelte), on the same loop. */

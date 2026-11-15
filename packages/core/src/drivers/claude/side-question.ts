@@ -2,7 +2,7 @@ import { unavailable } from '../../errors.ts';
 import type { Query, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { profileFor, resolveExecutable } from '../../providers/resolve.ts';
 import type { SideQuestionContext } from '../types.ts';
-import { childEnv, liveSetup, type ClaudeDeps } from './query.ts';
+import { childEnv, liveSetup, ONE_SHOT_TITLE, type ClaudeDeps } from './query.ts';
 
 /** A fresh, unpersisted query leaves the running session and its prompt queue alone. */
 export async function sideQuestion(deps: ClaudeDeps, ctx: SideQuestionContext): Promise<string> {
@@ -28,6 +28,7 @@ export async function sideQuestion(deps: ClaudeDeps, ctx: SideQuestionContext): 
       maxTurns: 1,
       tools: [], allowedTools: [], mcpServers: {}, strictMcpConfig: true, settingSources: [],
       persistSession: false,
+      title: ONE_SHOT_TITLE,
       includePartialMessages: false,
       pathToClaudeCodeExecutable: executable,
       abortController,

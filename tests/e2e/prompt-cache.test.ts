@@ -61,6 +61,34 @@ test('a warm Claude cache counts down beside the context meter', async () => {
   expect(await page.text('[data-testid="prompt-cache-detail"]')).toContain('1 h · API');
 }, 90_000);
 
+test('the context stays at the right and its bare ring opens details on desktop and phone', async () => {
+  for (const size of [{ width: 1300, height: 850 }, { width: 390, height: 844 }]) {
+    const page = await open(size, { minutesAgo: 2, ttlSeconds: 300, source: 'documented' });
+    for (const tokens of [198000, 138000, null]) {
+      await page.evaluate(`(async () => { (${STORE}).openThread.context = ${tokens === null ? 'null' : `{tokens:${tokens},window:200000,at:Date.now()}`}; })()`);
+      await page.waitFor(`document.querySelector('[data-testid="context-meter"]')?.dataset.percent === '${tokens === null ? '' : tokens / 2000}'`);
+      expect(await page.evaluate<boolean>(`(() => {
+        const control = document.querySelector('.context-control');
+        const row = control.closest('.chips');
+        return Math.abs(control.getBoundingClientRect().right - row.getBoundingClientRect().right) < 2;
+      })()`)).toBe(true);
+      if (tokens === 198000) {
+        expect(await page.text('[data-testid="context-trigger"]')).toContain('1% context left');
+      } else {
+        expect((await page.text('[data-testid="context-trigger"]')).trim()).toBe('');
+        expect(await page.evaluate<boolean>(`!!document.querySelector('[data-testid="context-trigger"] .ring')`)).toBe(true);
+      }
+      const name = `context-right-${size.width}-${tokens ?? 'empty'}`;
+      await page.screenshot(join(import.meta.dir, '.artifacts', name + '.png'));
+      await page.click('[data-testid="context-trigger"]');
+      await page.waitFor(`document.querySelector('[data-testid="context-popup"]')`);
+      if (tokens === null) await page.screenshot(join(import.meta.dir, '.artifacts', name + '-popup.png'));
+      await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+      await page.waitFor(`!document.querySelector('[data-testid="context-popup"]')`);
+    }
+  }
+}, 90_000);
+
 test('an active turn hides the old cache clock until its new result arrives', async () => {
   const page = await open({ width: 1300, height: 850 }, { minutesAgo: 4, ttlSeconds: 300, source: 'reported' });
   await page.waitFor(`document.querySelector('${CHIP}')?.dataset.state === 'warm'`);

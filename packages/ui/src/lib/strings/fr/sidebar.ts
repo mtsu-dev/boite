@@ -84,6 +84,8 @@ export const fr: Translation = {
     addProject: 'Ajouter un projet',
     noProjects: 'Aucun projet pour le moment.',
     noThreads: 'Aucun fil pour le moment.',
+    threadCountOne: '{count} fil',
+    threadCountMany: '{count} fils',
     noMatch: 'Rien ne correspond.',
     unread: 'Non lu',
     collapse: 'Masquer la barre latérale',
