@@ -9,8 +9,9 @@ On the desktop, each mochi shows as a picture in the app rail, the column down
 the window's left edge, and the phone shows a Mochis tab in its bottom bar.
 Teams come first; drag a picture up or down to put mochis and teams in your own
 order, which this device keeps. A small mark on a picture says the mochi needs
-you, failed, is at work or has a new answer; point at the picture to read it
-in words beside the mochi's name.
+you, failed or is at work; a mochi with unread answers shows how many, and a
+team shows a dot. A circle runs around the picture while the mochi works. Point
+at the picture to read it in words beside the mochi's name.
 
 ## Create a mochi
 

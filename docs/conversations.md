@@ -28,6 +28,9 @@ Recent in Display options.
 Fold a project to hide its threads. Its heading shows the thread count just
 after the project name, on desktop and phone.
 
+The Threads button in the app rail, and the Threads tab on a phone, show how
+many threads are at work across your machines.
+
 ## Drafts without a project
 
 A new device opens a draft. Drafts live in `Documents/Boite`, and each
