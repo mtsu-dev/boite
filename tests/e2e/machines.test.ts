@@ -102,7 +102,7 @@ test('an offline machine moves no glyph: the project head keeps its places and R
       return { host: [host.width, host.height, Math.round(host.top + host.height / 2)], tile: Math.round(box('${id('project-tile')}').top + 9), name: Math.round(box('.name').left - box('${id('project-tile')}').left) };
     })`);
     expect(heads.length).toBeGreaterThan(1);
-    for (const head of heads) expect(head).toEqual({ host: [14, 14, head.tile], tile: head.tile, name: heads[0].name });
+    for (const head of heads) expect(head).toEqual({ host: [14, 14, head.tile], tile: head.tile, name: heads[0]!.name });
     // Recent: the project's folder at the same place on every row, the out-of-reach machine's mark after it.
     await showThreadView(away, 'recent');
     await away.waitFor(`document.querySelector('${id('thread-where')} .machine.away')`);
