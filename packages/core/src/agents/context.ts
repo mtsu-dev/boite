@@ -57,25 +57,68 @@ export function deskState(core: Core, thread: ThreadSummary): string {
   return 'idle';
 }
 
+/** How far below a desk thread its delegated threads are read: a subagent's subagent and beyond. */
+export const DESCENDANTS_DEPTH = 8;
+
+/** One pull request a thread linked, as a desk line words it, and whether Boite watches it. */
+export interface DeskLink { pr: AgentWatchPullRequest; watched: boolean }
+
+/** Every pull request a thread linked, oldest link first, with the checks its watch last read. */
+export function deskLinks(core: Core, threadId: string, stored: unknown = core.journal.getSetting(`${LINKED}${threadId}`)): DeskLink[] {
+  const linked = Array.isArray(stored) ? (stored as LinkedPullRequest[]).filter(p => typeof p?.url === 'string') : [];
+  const watches = linked.length ? core.pullRequestWatches?.of(threadId) ?? [] : [];
+  return linked.map(pr => {
+    const watch = watches.find(w => w.url.toLowerCase() === pr.url.toLowerCase());
+    const seen = watch?.seen ?? null;
+    const checks: AgentWatchPullRequest['checks'] = seen === null || seen.checks.total === 0 ? null
+      : seen.checks.failed > 0 ? 'failing' : seen.checks.running > 0 ? 'pending' : 'passing';
+    const state: AgentWatchPullRequest['state'] = pr.state === 'MERGED' ? 'merged' : pr.state === 'CLOSED' ? 'closed' : pr.draft ? 'draft' : 'open';
+    return { pr: { number: pr.number, url: pr.url, state, checks: state === 'merged' || state === 'closed' ? null : checks }, watched: watch !== undefined };
+  });
+}
+
+/** The link a line shows: a watched one, else the newest open one, else the newest. */
+function shownLink(links: readonly DeskLink[]): AgentWatchPullRequest | null {
+  return (links.find(l => l.watched) ?? [...links].reverse().find(l => l.pr.state === 'open' || l.pr.state === 'draft') ?? links.at(-1))?.pr ?? null;
+}
+
 /**
  * The pull request a desk line shows: the one Boite watches for the thread,
  * else its newest open link, else its newest link, with the checks the watch
- * last read. Null when the thread linked none.
+ * last read. A thread that linked none shows one of `below`, the links of
+ * the threads it delegated (`descendantLinks`), chosen the same way. Null
+ * when none of them linked one.
  */
-export function deskPullRequest(core: Core, thread: ThreadSummary, stored: unknown = core.journal.getSetting(`${LINKED}${thread.id}`)): AgentWatchPullRequest | null {
-  const linked = Array.isArray(stored) ? (stored as LinkedPullRequest[]).filter(p => typeof p?.url === 'string') : [];
-  const watches = core.pullRequestWatches?.of(thread.id) ?? [];
-  const pr = linked.find(p => watches.some(w => w.url.toLowerCase() === p.url.toLowerCase()))
-    ?? [...linked].reverse().find(p => p.state === 'OPEN') ?? linked.at(-1);
-  if (!pr) {
-    const known = thread.pullRequest;
-    return known ? { number: known.number, url: known.url, state: known.state === 'MERGED' ? 'merged' : known.state === 'CLOSED' ? 'closed' : 'open', checks: null } : null;
+export function deskPullRequest(core: Core, thread: ThreadSummary, stored: unknown = core.journal.getSetting(`${LINKED}${thread.id}`), below: readonly DeskLink[] = []): AgentWatchPullRequest | null {
+  const own = shownLink(deskLinks(core, thread.id, stored));
+  if (own) return own;
+  const known = thread.pullRequest;
+  if (known) return { number: known.number, url: known.url, state: known.state === 'MERGED' ? 'merged' : known.state === 'CLOSED' ? 'closed' : 'open', checks: null };
+  return shownLink(below);
+}
+
+/**
+ * The links of the threads each of `threadIds` delegated, down to
+ * `DESCENDANTS_DEPTH`, in one read for a whole desk: oldest thread first, so
+ * the newest link comes last. Archived ones count, deleted ones do not.
+ */
+export function descendantLinks(core: Core, threadIds: readonly string[]): Map<string, DeskLink[]> {
+  const below = new Map<string, DeskLink[]>();
+  if (threadIds.length === 0) return below;
+  const rows = core.journal.db.query(`WITH RECURSIVE family(root, id, depth, at, seq) AS (
+      SELECT value, value, 0, 0, 0 FROM json_each(?)
+      UNION ALL SELECT family.root, threads.id, family.depth + 1, threads.created_at, threads.rowid FROM threads JOIN family ON threads.parent_thread_id = family.id WHERE family.depth < ${DESCENDANTS_DEPTH})
+    SELECT family.root AS root, family.id AS id, settings.value AS value FROM family
+      JOIN settings ON settings.key = '${LINKED}' || family.id
+    WHERE family.depth > 0 AND family.id NOT IN (SELECT thread_id FROM thread_deletions)
+    ORDER BY family.at, family.seq`).all(JSON.stringify(threadIds)) as { root: string; id: string; value: string }[];
+  for (const row of rows) {
+    let stored: unknown;
+    try { stored = JSON.parse(row.value); } catch { continue; /* A link list that does not parse links nothing. */ }
+    const links = deskLinks(core, row.id, stored);
+    if (links.length) below.set(row.root, [...below.get(row.root) ?? [], ...links]);
   }
-  const seen = watches.find(w => w.url.toLowerCase() === pr.url.toLowerCase())?.seen ?? null;
-  const checks: AgentWatchPullRequest['checks'] = seen === null || seen.checks.total === 0 ? null
-    : seen.checks.failed > 0 ? 'failing' : seen.checks.running > 0 ? 'pending' : 'passing';
-  const state: AgentWatchPullRequest['state'] = pr.state === 'MERGED' ? 'merged' : pr.state === 'CLOSED' ? 'closed' : pr.draft ? 'draft' : 'open';
-  return { number: pr.number, url: pr.url, state, checks: state === 'merged' || state === 'closed' ? null : checks };
+  return below;
 }
 
 /**
@@ -131,6 +174,7 @@ function deskLines(core: Core, agent: AgentProfile): string[] {
   const store = core.workforce;
   const watches = store.projects.watchesOf(agent.id).slice(0, 30);
   const linked = linkedPullRequests(core, watches.map(w => w.threadId));
+  const below = descendantLinks(core, watches.filter(w => !linked.has(w.threadId)).map(w => w.threadId));
   const projectNames = new Map<string, string | null>();
   return [...watches.map(({ thread }) => {
     let project: string | null = null;
@@ -138,7 +182,7 @@ function deskLines(core: Core, agent: AgentProfile): string[] {
       if (!projectNames.has(thread.projectId)) projectNames.set(thread.projectId, core.journal.getProject(thread.projectId)?.name ?? null);
       project = projectNames.get(thread.projectId)!;
     }
-    const pr = pullRequestText(deskPullRequest(core, thread, linked.get(thread.id) ?? null));
+    const pr = pullRequestText(deskPullRequest(core, thread, linked.get(thread.id) ?? null, below.get(thread.id)));
     const stalled = store.projects.stalledSince(thread.id);
     // One JSON object per thread: a title is the thread's own text and opens no line of its own here.
     return `- ${JSON.stringify({ thread: thread.id, title: thread.title, ...(project ? { project } : {}), state: deskState(core, thread), ...(stalled === null ? {} : { silentSince: new Date(stalled).toISOString() }), ...(pr ? { pullRequest: pr } : {}) })}`;

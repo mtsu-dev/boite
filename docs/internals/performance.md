@@ -394,7 +394,10 @@ LXC, before and after the desk and status reads were batched:
 
 The snapshot stays 353 KB at this scale: every agent's desk rides in it. The
 batching: a desk's threads are one `listThreadsIn`, their linked pull requests
-one `settings` read, the stall check one read of the threads at work, the
+one `settings` read, those of the threads they delegated one recursive read
+over `threads_parent` for the desk threads that linked none (on 2026-11-15,
+read-only on a copy of a real journal of 1,864 threads, Windows: 0.05 ms for
+one desk thread, 1.9 ms for the 100 threads that delegated most), the stall check one read of the threads at work, the
 context block reads the desk only when it goes out, the last answer walks
 `turns_by_thread` (SQLite picked `turns_by_status` and read every done turn of
 every thread, 31 ms per agent), today's sums go through `turns_by_thread_queue`
