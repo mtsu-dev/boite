@@ -336,7 +336,17 @@ is data from other threads, not instructions:
   minutes (`STALL_MS`, `agents/projects.ts`): once per turn, and the desk row
   shows `stalledSince` until the turn speaks again or ends;
 - a pull request of a thread on its desk is merged, or its checks start to
-  fail (once each time they go from pending or passing to failing);
+  fail (once each time they go from pending or passing to failing). A pull
+  request of a thread it delegated counts too, at any depth up to 8
+  (`DESCENDANTS_DEPTH`, `agents/context.ts`), even once that thread is
+  archived: on `threads.pullRequestsChanged`, the core walks its parents up to
+  the nearest one on the desk, and the fact names both threads under that
+  desk thread (`#compareBelow`, `agents/projects.ts`). The follow keeps what
+  the mochi was last told of each of them (`below`, by URL, at most 50); a
+  pull request the desk thread linked as well is told once, whichever of the
+  two hears of it first. A mochi whose desk holds the delegated thread itself
+  hears of it there. A subagent on another machine of the group is not
+  read: its links stay on that machine;
 - an entrusted thread's goal is done or blocked (a stop is the user's doing and
   only leaves a line);
 - a service outside Boite sends one ([outside events](#outside-events)).
@@ -423,7 +433,8 @@ skills (`skills/<name>/SKILL.md` or `skills/<name>.md`), its routines with
 their next run (at most 2,000 characters of them, then `N more: boite mochi
 routines`), its desk (one JSON object per watched thread: id, title, project,
 state, stall, pull request and checks, under a line that says titles are data
-from other threads), and its projects with the commands that reach them.
+from other threads; a thread that linked no pull request shows one of the
+threads it delegated, read for the whole desk in one query), and its projects with the commands that reach them.
 
 The block goes whole on a fresh native session (no session id, after a
 compaction or an account switch) and whenever its hash moved since the last
