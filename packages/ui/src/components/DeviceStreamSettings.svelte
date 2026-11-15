@@ -39,4 +39,6 @@
   .master .words { display: grid; gap: 6px; flex: 1; min-width: 0; }
   .effect { color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 1.5; }
   .card .master h2 { margin: 0; }
+  /* The card's one row, padded like the rows of the experiments above it. */
+  .card > .master { padding: var(--space-3) 0; }
 </style>

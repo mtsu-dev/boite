@@ -66,16 +66,19 @@
 {/if}
 
 <style>
-  .scope { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 20px; margin-bottom: 20px; border-bottom: 1px solid var(--color-border); }
+  /* Rows of one card: each pads itself like a settings row, and the one line
+     between two sits on the lower row's top edge, where a settings page's
+     card draws its own (styles/settings.css): one line, on any page. */
+  .card > .scope { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: var(--space-3) 0; }
   .ui-chip { flex: 1; justify-content: center; min-width: max-content; }
   .ui-chip.picked { border-color: var(--color-muted-foreground); color: var(--color-foreground); background: var(--color-active); }
-  .customize { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+  .customize { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: var(--space-3) 0; border-top: 1px solid var(--color-border); }
   .words { display: flex; align-items: center; gap: 8px; }
-  .hint { margin: 0 0 20px; }
-  fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+  .hint { margin: 0 0 var(--space-3); }
+  fieldset { border: 0; border-top: 1px solid var(--color-border); padding: var(--space-3) 0; margin: 0; min-width: 0; }
   fieldset:disabled { opacity: 0.6; }
   @media (max-width: 720px) {
-    .scope { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .card > .scope { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .ui-chip { min-width: 0; }
   }
 </style>
