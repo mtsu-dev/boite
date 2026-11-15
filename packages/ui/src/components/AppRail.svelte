@@ -17,6 +17,7 @@
   import { separator } from '../lib/menu';
   import { contextMenu } from '../lib/context-menu.svelte';
   import { dragWindow } from '../lib/window-drag';
+  import { isMac } from '../lib/keybindings';
   import { railBotState, threadsNeedingYou, type RailBotState } from '../lib/app-rail';
   import { inbox } from '../lib/inbox.svelte';
   import { followActivityReturn } from '../lib/activity-return.svelte';
@@ -94,6 +95,8 @@
   const onThreads = $derived(store.page === 'chat' && !inbox.open);
   const onActivity = $derived(store.page === 'chat' && inbox.open);
   const onContacts = $derived(store.page === 'home');
+  /** macOS draws its traffic lights over the window's top left corner: only there does the card leave them the band. */
+  const lights = window.__TAURI_INTERNALS__ !== undefined && isMac();
 
   type Bot = { machine: Machine; row: AgentRowData };
   function stateOf({ machine, row }: Bot): RailBotState {
@@ -210,9 +213,10 @@
 {/snippet}
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<nav class="app-rail" aria-label={strings.app.rail.label} data-testid="app-rail" onmousedown={dragWindow}>
-  <!-- The rail's card, under its buttons: rounded and edged like the chat card (app.css `.framed`), its top level
-       with the chat card's, so the band above stays the window's to drag (and macOS's lights). -->
+<nav class="app-rail" class:lights aria-label={strings.app.rail.label} data-testid="app-rail" onmousedown={dragWindow}>
+  <!-- The rail's card, under its buttons: rounded and edged like the chat card (app.css `.framed`). It reaches the
+       window's top as the list column's head does, so no empty band stands over it; on macOS its top is the chat
+       card's, leaving the band to the traffic lights. Its empty parts still drag the window. -->
   <span class="rail-card framed" aria-hidden="true"></span>
   <div class="slot" class:selected={onThreads}>
     <button type="button" class="rail-button" class:on={onThreads} aria-current={onThreads ? 'page' : undefined}
@@ -326,15 +330,18 @@
     flex-direction: column;
     align-items: center;
     gap: 8px;
-    padding: calc(var(--titlebar) + 10px) 0 calc(var(--frame-gap) + 12px);
+    padding: calc(var(--rail-top) + 10px) 0 calc(var(--frame-gap) + 12px);
     user-select: none;
     -webkit-user-select: none;
     /* The card's own ground: the badges and counts are cut out of it. */
     --rail-ground: var(--color-background);
+    /* The card's top: the window's own, inset by the frame gap as on its other sides. */
+    --rail-top: var(--frame-gap);
   }
-  /* A card of the frame like the chat's, inset by the frame gap on the window's side and the list's, its top on
-     the chat card's. Behind every button (z-index -1 in the rail's own stacking context). */
-  .rail-card { position: absolute; inset: var(--titlebar) var(--frame-gap) var(--frame-gap); z-index: -1; pointer-events: none; }
+  .app-rail.lights { --rail-top: var(--titlebar); }
+  /* A card of the frame like the chat's, inset by the frame gap on every side but macOS's top (--rail-top).
+     Behind every button (z-index -1 in the rail's own stacking context). */
+  .rail-card { position: absolute; inset: var(--rail-top) var(--frame-gap) var(--frame-gap); z-index: -1; pointer-events: none; }
   .grow { flex: 1; min-height: 8px; }
 
   /* One place per button. */
