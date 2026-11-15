@@ -119,7 +119,17 @@ function writeState(root: string, state: FakeSdkState): void {
   const pending = `${target}.${process.pid}.${crypto.randomUUID()}.tmp`;
   try {
     writeFileSync(pending, JSON.stringify(state));
-    renameSync(pending, target);
+    // Windows refuses to replace a file another fake tool has open for reading: retry for up to a second.
+    for (let attempt = 0; ; attempt++) {
+      try {
+        renameSync(pending, target);
+        break;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (attempt >= 50 || (code !== 'EPERM' && code !== 'EACCES' && code !== 'EBUSY')) throw error;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+      }
+    }
   } finally {
     rmSync(pending, { force: true });
   }
