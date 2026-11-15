@@ -266,14 +266,14 @@ test('a working row holds a still ring, the open thread the one spinner, and cou
   expect(state.getAttribute('title')).toBe('Working for 1m 07s');
 });
 
-test('every state that matters says its word beside a mark of its own shape: the amber dot, the failure\'s "!" disc, the ring; news is its time alone', () => {
+test('every state that matters says its word beside a mark of its own shape: the amber dot, the failure\'s "!" disc, the ring; news says Done without a mark', () => {
   vi.useFakeTimers({ now: NOW });
   for (const [thread, kind, word, mark] of [
     [{ status: 'waiting' }, 'waiting', 'Needs you', '.dot'],
     [{ status: 'error' }, 'error', 'Failed', '.fail'],
     [{ status: 'running', runningSince: NOW - 65_000 }, 'working', '1m 05s', '.work-ring'],
     [{ status: 'queued' }, 'queued', 'Queued', '.work-ring'],
-    [{ status: 'idle', unread: true }, 'done', '2m ago', null]
+    [{ status: 'idle', unread: true }, 'done', 'Done', null]
   ] as const) {
     const state = draw(thread);
     expect(state.dataset['state']).toBe(kind);
@@ -281,7 +281,7 @@ test('every state that matters says its word beside a mark of its own shape: the
     if (mark) expect(state.querySelectorAll('.dot, .fail, .work-ring')).toHaveLength(1);
     if (mark) expect(state.querySelector(mark)).not.toBeNull();
     else expect(state.querySelector('.dot, .work-ring')).toBeNull();
-    expect(state.textContent?.trim()).toMatch(kind === 'done' ? /\d/ : new RegExp(`^${word}$`));
+    expect(state.textContent?.trim()).toMatch(new RegExp(`^${word}$`));
     unmount(running!, { outro: false });
     running = null;
   }

@@ -94,6 +94,13 @@ test('a phone list row says its state in a word after its mark, before its time:
     await unmount(mounted);
     mounted = undefined;
   }
+  // A turn that ended unread: "Done" in words, then the time.
+  thread.status = 'idle'; thread.unread = true; thread.openQuestions = 0; thread.backgroundWork = null; thread.pullRequestWatches = [];
+  mounted = mount(MobileThreadRow, { target: document.body, props: { machine, thread, project, now: Date.now(), items: [], onopen: () => {}, onaction: () => {} } });
+  flushSync();
+  const done = document.querySelector<HTMLElement>('[data-testid=thread-state]')!;
+  expect([done.dataset['state'], done.textContent?.trim()]).toEqual(['done', 'Done']);
+  expect(done.nextElementSibling?.matches('.at')).toBe(true);
 });
 
 test('an Activity row keeps the title on the row\'s width: the ask is whole under it, a sub-agent one line, the verb follows the content', () => {
