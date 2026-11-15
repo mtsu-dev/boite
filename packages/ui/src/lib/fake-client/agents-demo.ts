@@ -115,7 +115,8 @@ export function seedAgentsDemo(ctx: FakeContext): void {
     });
   }
   liveTurn(ctx, novaThread, now - 3 * MINUTE, 'Is the release notes draft ready?', 'Checking the release branch first, then I will sum up what changed since 2.0.', { name: 'Bash', input: { command: 'bun run test packages/ui', description: 'Run the UI tests' }, step: 'Run the UI tests' });
-  ctx.agents.seedRoutine({ agentId: nova.agent.id, name: 'Release check', prompt: 'Check the release branch and the open pull requests.', schedule: { kind: 'interval', everyMinutes: 120 } });
+  ctx.agents.seedRoutine({ agentId: nova.agent.id, name: 'Release check', prompt: 'Check the release branch and the open pull requests.', schedule: { kind: 'interval', everyMinutes: 120 },
+    check: 'gh pr list --json number,title,statusCheckRollup', lastOutcome: 'nothing', lastScheduledAt: now - 22 * MINUTE });
   ctx.agents.seedMemory(nova.agent.id, '## Release 2.0.4\n- The login fix ships in it, PR #482.\n- Release notes live in `CHANGELOG.md`, newest first.\n\n## How the user likes it\n- A pull request is done when its checks pass, not when it opens.');
   ctx.agents.seedRuntime(nova.agent.id, { dailyBudgetUsd: 2 });
   ctx.agents.seedSpend(nova.agent.id, 1.35);

@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { crc32, deflateSync } from 'node:zlib';
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { MessagePart } from '@boite/contracts';
-import { waitFor } from './harness.ts';
+import { startTurn, waitFor } from './harness.ts';
 import {
   answerEach,
   assistant,
@@ -10,6 +10,7 @@ import {
   claudeThread,
   harness,
   init,
+  openClaudeThread,
   queries,
   runTurn,
   scripted,
@@ -48,8 +49,7 @@ function greyPng(width: number, height: number): string {
 }
 
 test('Claude Agent tools reach Team while child text remains on its sidechain', async () => {
-  const client = await harness.connect();
-  const threadId = await claudeThread(client);
+  const { client, threadId } = await openClaudeThread();
   scripted(fake => {
     fake.emit(init('sess-native'));
     fake.emit(assistant('sess-native', [{ type: 'tool_use', id: 'native-claude', name: 'Agent', input: { description: 'Parser review', prompt: 'Review parser boundaries', model: 'sonnet' } }]));
@@ -66,8 +66,7 @@ test('Claude Agent tools reach Team while child text remains on its sidechain', 
 
 describe('claude driver', () => {
   test('a retried stream discards its incomplete blocks and preserves the preceding tool exchange', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
     const answer = '{"answer":"complete"}';
     scripted(fake => {
       const event = (body: unknown) => fake.emit(streamEvent('sess-retry', body));
@@ -115,8 +114,7 @@ describe('claude driver', () => {
   });
 
   test('a retry before response headers preserves the completed response of the preceding request', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
     scripted(fake => {
       const event = (body: unknown) => fake.emit(streamEvent('sess-retry-headers', body));
       fake.emit(init('sess-retry-headers'));
@@ -137,8 +135,7 @@ describe('claude driver', () => {
   });
 
   test('the prompt cache clock starts at the last main-loop request, not at a subagent one or the turn end', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
     let mainAt = 0;
     scripted((fake) => {
       void (async () => {
@@ -165,8 +162,7 @@ describe('claude driver', () => {
     expect(thread.turns.at(-1)!.finishedAt! - cache.at).toBeGreaterThanOrEqual(150);
   });
   test('a scripted turn maps deltas, the tool pair, the usage and the session id', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
 
     scripted((fake) => {
       fake.emit(init('sess-map'));
@@ -186,8 +182,7 @@ describe('claude driver', () => {
       fake.end();
     });
 
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
-    await client.call('turns.start', { threadId, prompt: 'ping' });
+    const { finished } = await startTurn(client, threadId, 'ping', 10000);
     const done = await finished;
 
     expect(done.status).toBe('done');
@@ -215,8 +210,7 @@ describe('claude driver', () => {
   });
 
   test('a thinking block streams into its own part, ahead of the text, and is not repeated', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
 
     scripted((fake) => {
       fake.emit(init('sess-think'));
@@ -263,8 +257,7 @@ describe('claude driver', () => {
   });
 
   test('tool summaries stay off until the owner turns them on, each one being a small-model request', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
     scripted((fake) => {
       fake.emit(init('sess-off'));
       fake.emit(success('sess-off'));
@@ -343,8 +336,7 @@ describe('claude driver', () => {
   });
 
   test('a summary that lands after the cards were written keeps their input and output', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
     scripted(fake => fake.emit(init('sess-late')));
     const turn = await client.call('turns.start', { threadId, prompt: 'write it' });
     await waitFor(() => calls[0]?.prompts.length === 1);
@@ -372,8 +364,7 @@ describe('claude driver', () => {
   });
 
   test('a tool input streams as partial json, then the assistant frame parses it', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
     await client.call('threads.subscribe', { threadId });
 
     const parts: { partIndex: number; part: MessagePart }[] = [];
@@ -448,8 +439,7 @@ describe('claude driver', () => {
   });
 
   test('one Edit writes its card three times, and the hooks never ship the original file', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
     await client.call('threads.subscribe', { threadId });
     const written: MessagePart[] = [];
     client.on('message.part', (event) => {
@@ -488,8 +478,7 @@ describe('claude driver', () => {
   });
 
   test('a PreToolUse with no assistant frame before it still draws the card', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
     scripted((fake, options) => {
       const pre = options.hooks!.PreToolUse![0]!.hooks[0]!;
       void (async () => {
@@ -506,8 +495,7 @@ describe('claude driver', () => {
   });
 
   test('Edit, Write and MultiEdit inputs become diff documents on their tool parts', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
     await client.call('threads.subscribe', { threadId });
 
     scripted((fake) => {
@@ -579,8 +567,7 @@ describe('claude driver', () => {
   });
 
   test('on Claude 5.1+, the second of two thinking blocks before a tool call is the progress text', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
     const reasoning = 'The failure points at the parser.';
     const update = "Now I'll run the parser tests.";
     // One API message per model: what 5.1+ and 5.0 send ahead of the same call.
@@ -619,8 +606,7 @@ describe('claude driver', () => {
   });
 
   test('an image attachment rides beside the text as a content block', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
 
     // Like the CLI, the fake answers once it has read the prompt.
     scripted(() => undefined, answerEach('sess-image'));
@@ -651,8 +637,7 @@ describe('claude driver', () => {
   });
 
   test('supportedCommands lists the slash commands, and commands_changed moves the list', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
     await client.call('settings.set', { warmProcessMinutes: 5 });
 
     scripted(
@@ -695,8 +680,7 @@ describe('claude driver', () => {
   });
 
   test('the last request of a turn is the context meter, the result names the window, and a compaction is a divider', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
 
     scripted(() => undefined, (fake) => {
       fake.emit(init('sess-context'));

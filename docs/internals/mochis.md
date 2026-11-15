@@ -791,6 +791,34 @@ occurrence with `lastOutcome: 'skipped'` and advances `nextAt`. `lastTurnId`
 and `lastOutcome` (`done`, `quiet`, `error`, `stopped`, `skipped`) follow
 `turn.finished`. A single-date routine is done once it ran.
 
+A routine may carry a `check` (`agents/checks.ts`): a shell command of at most
+`AGENT_ROUTINE_CHECK_MAX` (2,000) characters that decides whether an
+occurrence is worth a turn. When the routine is due, the core runs it through
+`procs.spawn` as a process of the mochi's thread, in the thread's folder, under
+`/bin/sh -c` (`ComSpec /d /s /c` on Windows), with no model involved. It reads
+at most 64 KiB of each stream and stops the command after 60 seconds. The
+output's hash is compared with `checkSeen`, the hash of what the mochi last read:
+
+| The check | What happens |
+|---|---|
+| prints nothing, or what it printed before | no turn: `lastOutcome: 'nothing'`, `nextAt` advances, `checkSeen` kept |
+| prints something else | a `routine` turn whose prompt ends with the command and its output (first 8,000 characters) as data; `checkSeen` is set once the turn started |
+| exits non-zero, times out or cannot start | the same turn, saying the check failed and why, once per distinct failure |
+
+A pause skips the occurrence before the check runs; a spent budget skips it
+after, leaving `checkSeen` as it was, so the news still counts tomorrow. Output
+that arrives more than a second after the shell exited (a child it left
+behind holding the pipes) is dropped. A
+check whose news meets a busy thread keeps its result and starts the turn
+when the thread is free, without running the command again. Run now starts
+the routine's turn without the check. Changing the command clears
+`checkSeen`; a move carries the command and not `checkSeen`. The owner may
+set any check. The mochi's own `boite mochi schedule` may add or change one only
+while its thread runs in a mode that never asks before a command
+(`bypassPermissions` or `yolo`): a check runs unattended, so a mochi that must
+ask before a command cannot plant one. It may always keep or remove one. The
+context block names a routine's check, and the desk row marks it.
+
 The mochi keeps its own routines (`boite mochi routines|schedule|unschedule`,
 `agents.routine.save|remove`). One mochi holds at most `AGENT_ROUTINES_MAX`
 (50) routines, a new one past it refused with the count; a name holds at most
@@ -863,7 +891,13 @@ thread:
 - `last`: the final text block of its last non-quiet answer, first 200
   characters;
 - `today`: its turns since local midnight, the wakes among them (`routine` and
-  `event`), the quiet ones and their spend in API-equivalent dollars.
+  `event`), the quiet ones and their spend in API-equivalent dollars. The
+  mochi column's head shows it behind an "i", against `dailyBudgetUsd` read
+  with `agents.runtime.get`; an occurrence a check held back starts no turn
+  and is not counted.
+
+The head's one line (`BotColumnHead.svelte`) reads the step while it works,
+what it waits on, why it failed, its pause, else `nextWake`, else its role.
 
 `agents.changed` is an invalidation: clients fetch a snapshot. It goes out at
 most once a second, the first change at once, while a mochi works (a step, a
@@ -1053,8 +1087,10 @@ Follow the relevant [development checks](development.md#checks-and-tests).
 Core tests: `agents.test.ts` (creation and introduction, the user's messages
 as ordinary turns, delete refused and archive, open recreates, own snapshot
 only), `agents-runtime.test.ts` (the context block, routine wakes and
-outcomes, quiet events, budget, pauses, fact batching, instructions changed,
-an outside event from a paired device),
+outcomes, a routine's check waking the mochi only on new output and who may
+set one, a wake that failed on a usage limit resuming after the reset, quiet
+events, budget, pauses, fact batching, instructions changed, an outside event
+from a paired device),
 `agents-desk.test.ts` (desk rows from a started, an entrusted and a watched
 thread, follows kept while open and dropped a day after done, the open cap,
 the stall event once per turn, an entrusted goal waking the mochi, pull

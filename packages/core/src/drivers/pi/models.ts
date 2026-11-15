@@ -1,14 +1,12 @@
-import { withLogDiagnostic } from '../../log-errors.ts';
 import type { EffortLevel, ModelInfo, ProviderDescriptor } from '@boite/contracts';
-import { messageOf, unavailable } from '../../errors.ts';
+import { unavailable } from '../../errors.ts';
 import { profileFor, resolveLaunch } from '../../providers/resolve.ts';
 import type { ProbeContext } from '../types.ts';
+import { probeModels } from '../model-probe.ts';
 import { agentEnv, textOf } from './mapping.ts';
 import { AGENT_OWN_MODEL, PROBE_TIMEOUT_MS, STDERR_MAX, THINKING_LEVELS } from './protocol.ts';
 import type { PiModel } from './protocol.ts';
 import { dataOf, PiPeer } from './rpc.ts';
-
-type Timer = ReturnType<typeof setTimeout>;
 
 /** The words the picker shows for pi's level ids. */
 const EFFORT_LABELS: Record<string, string> = {
@@ -128,22 +126,10 @@ export async function readModels(ctx: ProbeContext): Promise<ModelInfo[]> {
     throw unavailable(`no ${ctx.provider.id} executable on this machine`, { providerId: ctx.provider.id });
   }
 
-  let lastStderr = '';
   const child = ctx.spawnChild(launch.executable, [...launch.prefix, ...(profile?.launch?.args ?? []), '--no-session'], {
     cwd: ctx.cwd,
     env: agentEnv(ctx.accountEnv),
   });
-  child.stderr.setEncoding('utf8');
-  child.stderr.on('data', (chunk: string) => {
-    for (const line of chunk.split(/\r?\n/)) {
-      const text = line.trim();
-      if (text.length > 0) lastStderr = text.slice(0, STDERR_MAX);
-    }
-  });
-
-  const say = (head: string) => withLogDiagnostic(unavailable(lastStderr.length === 0 ? head : `${head}: ${lastStderr}`, detail), head);
-  const detail = { providerId: ctx.provider.id, accountId: ctx.accountId };
-  let timer: Timer | null = null;
   const peer = new PiPeer(child, {
     // A probe runs no turn: pi has nothing to stream and nothing to ask.
     event: () => undefined,
@@ -152,52 +138,26 @@ export async function readModels(ctx: ProbeContext): Promise<ModelInfo[]> {
     },
   });
 
-  try {
-    const died = new Promise<never>((_resolve, reject) => {
-      child.once('exit', (code) => {
-        reject(say(`the ${ctx.provider.id} agent exited with code ${code ?? 'unknown'}`));
-      });
-      child.once('error', (error) => {
-        reject(say(`the ${ctx.provider.id} agent did not start: ${messageOf(error)}`));
-      });
-    });
-    const expired = new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => {
-        reject(say(`the ${ctx.provider.id} agent did not list its models in ${PROBE_TIMEOUT_MS / 1000} s`));
-      }, PROBE_TIMEOUT_MS);
-      timer.unref?.();
-    });
-
-    const read = (async (): Promise<PiListing> => {
-      const state = dataOf(await peer.command('get_state'));
-      const listed = dataOf(await peer.command('get_available_models'));
-      const levels = dataOf(await peer.command('get_available_thinking_levels'));
-      const current = (state['model'] ?? {}) as PiModel;
-      const currentId =
-        typeof current.id === 'string' && typeof current.provider === 'string'
-          ? `${current.provider}/${current.id}`
-          : '';
-      return {
-        models: Array.isArray(listed['models']) ? (listed['models'] as PiModel[]) : [],
-        current: currentId,
-        thinkingLevel: textOf(state['thinkingLevel']),
-        sessionLevels: Array.isArray(levels['levels']) ? (levels['levels'] as string[]) : [],
-      };
-    })();
-
-    const listing = await Promise.race([read, died, expired]);
+  return probeModels(ctx, child, { noun: 'agent', timeoutMs: PROBE_TIMEOUT_MS, stderrMax: STDERR_MAX, over: () => peer.fail('the pi probe is over') }, async () => {
+    const state = dataOf(await peer.command('get_state'));
+    const listed = dataOf(await peer.command('get_available_models'));
+    const levels = dataOf(await peer.command('get_available_thinking_levels'));
+    const current = (state['model'] ?? {}) as PiModel;
+    const currentId =
+      typeof current.id === 'string' && typeof current.provider === 'string'
+        ? `${current.provider}/${current.id}`
+        : '';
+    const listing: PiListing = {
+      models: Array.isArray(listed['models']) ? (listed['models'] as PiModel[]) : [],
+      current: currentId,
+      thinkingLevel: textOf(state['thinkingLevel']),
+      sessionLevels: Array.isArray(levels['levels']) ? (levels['levels'] as string[]) : [],
+    };
+    return listing;
+  }, (listing) => {
     checkLevels(ctx, listing);
     return modelsFrom(ctx.provider, listing);
-  } finally {
-    if (timer !== null) clearTimeout(timer);
-    peer.fail('the pi probe is over');
-    try {
-      child.stdin.end();
-    } catch {
-      // the pipe is already gone
-    }
-    ctx.killTree();
-  }
+  });
 }
 
 /**

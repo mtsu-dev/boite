@@ -1,7 +1,7 @@
 <script lang="ts">
   import { errorText } from '../../lib/errors';
   import { secureId } from '../../lib/secure-id';
-  import { CalendarClock, Pause, Pencil, Play, Trash2 } from '@lucide/svelte';
+  import { CalendarClock, Pause, Pencil, Play, Radar, Trash2 } from '@lucide/svelte';
   import type { AgentRoutine } from '@boite/contracts';
   import type { AgentsView } from '../../lib/agents.svelte';
   import { dateTime, describeSchedule, routineName, routineState, spent } from '../../lib/schedule';
@@ -14,7 +14,7 @@
    * editing opens the same form that planned it. Run now waits while the bot's
    * thread is at work, as the core refuses a second turn then. `compact`, on the desk: one row,
    * the name and its next run (the schedule on hover), a failed last run under the name, the
-   * actions as icons over the time on hover.
+   * actions as icons over the time on hover. A routine with a check carries a small radar: it wakes the bot only on news.
    */
   let { view, routine, compact = false }: { view: AgentsView; routine: AgentRoutine; compact?: boolean } = $props();
   let editing = $state(false);
@@ -45,11 +45,11 @@
 {:else if compact}
   <article class="desk-routine" data-state={standing.kind} data-testid="routine-{routine.id}">
     <div class="desk-routine-text" title={showPrompt ? routine.prompt : undefined}>
-      <strong>{routine.name}</strong>
+      <strong>{routine.name}{#if routine.check}<span class="routine-checked" role="img" title={t.checked} aria-label={t.checked} data-testid="routine-checked"><Radar size={12} strokeWidth={1.75} /></span>{/if}</strong>
       <!-- What it did last time, whatever came of it: the desk reads as the bot's recent work, not only its plans. -->
       {#if outcome && routine.lastScheduledAt}<span class="desk-routine-last agent-state" data-status={outcome}>{fill(t.lastRun, { state: labels.outcome[outcome], when: dateTime(routine.lastScheduledAt) })}</span>{/if}
     </div>
-    <span class="desk-routine-when routine-state" data-state={standing.kind} title={describeSchedule(routine.schedule)}>{standing.kind === 'next' ? dateTime(routine.nextAt!) : standing.text}</span>
+    <span class="desk-routine-when routine-state" data-state={standing.kind} title={describeSchedule(routine.schedule)}>{standing.text}</span>
     {#if view.store.owner}
       <div class="desk-routine-actions">
         <button type="button" class="ghost small icon" disabled={view.pending || busy || agent?.status === 'archived'} title={busy ? labels.runNowBusy : labels.runNow} aria-label={labels.runNow} onclick={() => void runNow()} data-testid="routine-run"><Play size={13} strokeWidth={1.75} /></button>
@@ -66,6 +66,7 @@
       <div class="routine-text">
         <strong>{routine.name}</strong>
         <span class="routine-when">{describeSchedule(routine.schedule)}</span>
+        {#if routine.check}<span class="routine-when routine-check" title={routine.check} data-testid="routine-checked"><Radar size={12} strokeWidth={1.75} />{t.checked}</span>{/if}
       </div>
       <span class="routine-state" data-state={standing.kind}>{standing.text}</span>
     </header>

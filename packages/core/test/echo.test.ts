@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { ATTACHMENTS_PER_TURN, type ImageAttachment, type MessagePart, type QuestionAnswer, type RpcEvents, type ToolDocument } from '@boite/contracts';
-import { echoThread, scriptedClaude, startTestCore, waitFor } from './harness.ts';
+import { echoThread, openEchoThread, scriptedClaude, startTestCore, startTurn, waitFor } from './harness.ts';
 import type { TestCore } from './harness.ts';
 import { connect } from '../src/client.ts';
 import { thrown } from './settle.ts';
@@ -20,9 +20,7 @@ afterEach(async () => {
 
 describe('echo driver', () => {
   test('a turn streams the prompt back, then finishes with usage', async () => {
-    const client = await harness.connect();
-    const { threadId } = await echoThread(harness, client);
-    await client.call('threads.subscribe', { threadId });
+    const { client, threadId } = await openEchoThread(harness);
 
     const prompt = 'the echo driver streams this prompt back in small chunks';
     const deltas: string[] = [];
@@ -69,9 +67,7 @@ describe('echo driver', () => {
   });
 
   test('a think directive streams a thinking part in two deltas before the text', async () => {
-    const client = await harness.connect();
-    const { threadId } = await echoThread(harness, client);
-    await client.call('threads.subscribe', { threadId });
+    const { client, threadId } = await openEchoThread(harness);
 
     const deltas: { partIndex: number; text: string }[] = [];
     const thoughts: Extract<MessagePart, { type: 'thinking' }>[] = [];
@@ -82,8 +78,7 @@ describe('echo driver', () => {
       if (event.threadId === threadId) deltas.push({ partIndex: event.partIndex, text: event.text });
     });
 
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
-    await client.call('turns.start', { threadId, prompt: '[think]what the echo says' });
+    const { finished } = await startTurn(client, threadId, '[think]what the echo says', 10000);
     expect((await finished).status).toBe('done');
 
     const thread = await client.call('threads.get', { threadId });
@@ -103,9 +98,7 @@ describe('echo driver', () => {
   });
 
   test('reasoning closes when the message finishes or the turn is stopped before another part', async () => {
-    const client = await harness.connect();
-    const { threadId } = await echoThread(harness, client);
-    await client.call('threads.subscribe', { threadId });
+    const { client, threadId } = await openEchoThread(harness);
     for (const stop of [false, true]) {
       const finished = client.next('turn.finished', turn => turn.threadId === threadId, 10000);
       const thought = client.next('message.part', event => event.threadId === threadId && event.part.type === 'thinking');
@@ -124,9 +117,7 @@ describe('echo driver', () => {
   });
 
   test('every turn writes the context meter on the thread, and a compact directive lowers it behind a divider', async () => {
-    const client = await harness.connect();
-    const { threadId } = await echoThread(harness, client);
-    await client.call('threads.subscribe', { threadId });
+    const { client, threadId } = await openEchoThread(harness);
 
     const updates: RpcEvents['thread.updated'][] = [];
     client.on('thread.updated', (summary) => {
@@ -154,9 +145,7 @@ describe('echo driver', () => {
   });
 
   test('threads.compact draws a manual divider, an inline compact directive an automatic one', async () => {
-    const client = await harness.connect();
-    const { threadId } = await echoThread(harness, client);
-    await client.call('threads.subscribe', { threadId });
+    const { client, threadId } = await openEchoThread(harness);
 
     let finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
     await client.call('turns.start', { threadId, prompt: 'first' });
@@ -173,17 +162,14 @@ describe('echo driver', () => {
   });
 
   test('a tool directive produces a running then a done tool part', async () => {
-    const client = await harness.connect();
-    const { threadId } = await echoThread(harness, client);
-    await client.call('threads.subscribe', { threadId });
+    const { client, threadId } = await openEchoThread(harness);
 
     const parts: MessagePart[] = [];
     client.on('message.part', (event) => {
       if (event.threadId === threadId) parts.push(event.part);
     });
 
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
-    await client.call('turns.start', { threadId, prompt: 'run [tool] now' });
+    const { finished } = await startTurn(client, threadId, 'run [tool] now', 10000);
     await finished;
 
     const tools = parts.filter((part) => part.type === 'tool');
@@ -193,9 +179,7 @@ describe('echo driver', () => {
   });
 
   test('a tool-stream directive types the input as deltas before the parsed one lands', async () => {
-    const client = await harness.connect();
-    const { threadId } = await echoThread(harness, client);
-    await client.call('threads.subscribe', { threadId });
+    const { client, threadId } = await openEchoThread(harness);
 
     const parts: { partIndex: number; part: MessagePart }[] = [];
     const deltas: { partIndex: number; text: string }[] = [];
@@ -206,8 +190,7 @@ describe('echo driver', () => {
       if (event.threadId === threadId) deltas.push({ partIndex: event.partIndex, text: event.text });
     });
 
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
-    await client.call('turns.start', { threadId, prompt: 'run [tool-stream] now' });
+    const { finished } = await startTurn(client, threadId, 'run [tool-stream] now', 10000);
     expect((await finished).status).toBe('done');
 
     const json = '{"command":"echo streamed","description":"a streamed input"}';
@@ -231,12 +214,9 @@ describe('echo driver', () => {
   });
 
   test('the diff, doc and image directives each carry their document on the tool part', async () => {
-    const client = await harness.connect();
-    const { threadId } = await echoThread(harness, client);
-    await client.call('threads.subscribe', { threadId });
+    const { client, threadId } = await openEchoThread(harness);
 
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
-    await client.call('turns.start', { threadId, prompt: '[diff][doc][image]' });
+    const { finished } = await startTurn(client, threadId, '[diff][doc][image]', 10000);
     expect((await finished).status).toBe('done');
 
     const thread = await client.call('threads.get', { threadId });
@@ -274,9 +254,7 @@ describe('echo driver', () => {
   });
 
   test('an image sent with the prompt is journalled on the user message and named back by the agent', async () => {
-    const client = await harness.connect();
-    const { threadId } = await echoThread(harness, client);
-    await client.call('threads.subscribe', { threadId });
+    const { client, threadId } = await openEchoThread(harness);
 
     // A one-pixel PNG, 70 bytes, as the composer would send it.
     const png =
@@ -319,13 +297,10 @@ describe('echo driver', () => {
   });
 
   test('a permission directive waits for the answer, then continues', async () => {
-    const client = await harness.connect();
-    const { threadId } = await echoThread(harness, client);
-    await client.call('threads.subscribe', { threadId });
+    const { client, threadId } = await openEchoThread(harness);
 
     const requested = client.next('permission.requested', (request) => request.threadId === threadId, 10000);
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
-    await client.call('turns.start', { threadId, prompt: '[permission]' });
+    const { finished } = await startTurn(client, threadId, '[permission]', 10000);
 
     const request = await requested;
     expect(request.toolName).toBe('fake_tool');
@@ -351,8 +326,7 @@ describe('echo driver', () => {
     await client.call('threads.subscribe', { threadId });
 
     const requested = client.next('permission.requested', (request) => request.threadId === threadId, 10000);
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
-    await client.call('turns.start', { threadId, prompt: '[permission]' });
+    const { finished } = await startTurn(client, threadId, '[permission]', 10000);
     const request = await requested;
 
     // A second client, connected after the request and subscribed to nothing:
@@ -381,8 +355,7 @@ describe('echo driver', () => {
     await client.call('threads.subscribe', { threadId });
 
     const asked = client.next('question.asked', (request) => request.threadId === threadId, 10000);
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
-    await client.call('turns.start', { threadId, prompt: 'question' });
+    const { finished } = await startTurn(client, threadId, 'question', 10000);
 
     const question = await asked;
     expect(question.text).toBe('Which shape should the echo take?');
@@ -423,12 +396,9 @@ describe('echo driver', () => {
   });
 
   test('an answer carries files: the card lists them, the agent reads their paths', async () => {
-    const client = await harness.connect();
-    const { threadId } = await echoThread(harness, client);
-    await client.call('threads.subscribe', { threadId });
+    const { client, threadId } = await openEchoThread(harness);
     const asked = client.next('question.asked', (request) => request.threadId === threadId, 10000);
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
-    await client.call('turns.start', { threadId, prompt: 'question' });
+    const { finished } = await startTurn(client, threadId, 'question', 10000);
     const question = await asked;
     const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
     const shot = { kind: 'image' as const, mimeType: 'image/png' as const, data: png, name: 'screen.png' };
@@ -460,12 +430,9 @@ describe('echo driver', () => {
   });
 
   test('skipping a blocking question resumes the turn without a user answer', async () => {
-    const client = await harness.connect();
-    const { threadId } = await echoThread(harness, client);
-    await client.call('threads.subscribe', { threadId });
+    const { client, threadId } = await openEchoThread(harness);
     const asked = client.next('question.asked', request => request.threadId === threadId);
-    const finished = client.next('turn.finished', turn => turn.threadId === threadId);
-    await client.call('turns.start', { threadId, prompt: 'question' });
+    const { finished } = await startTurn(client, threadId, 'question');
     const question = await asked;
     await client.call('questions.skip', { threadId, questionId: question.id });
     expect((await finished).status).toBe('done');
@@ -476,15 +443,12 @@ describe('echo driver', () => {
   });
 
   test('a question refuses an unknown id, an option nobody offered and an empty answer', async () => {
-    const client = await harness.connect();
-    const { threadId } = await echoThread(harness, client);
-    await client.call('threads.subscribe', { threadId });
+    const { client, threadId } = await openEchoThread(harness);
 
     expect(await thrown(client.call('questions.answer', { threadId, questionId: 'qst_nobody', optionIds: ['short'] }))).toThrow(/qst_nobody/);
 
     const asked = client.next('question.asked', (request) => request.threadId === threadId, 10000);
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
-    await client.call('turns.start', { threadId, prompt: 'question' });
+    const { finished } = await startTurn(client, threadId, 'question', 10000);
     const question = await asked;
 
     expect(await thrown(client.call('questions.answer', { threadId, questionId: question.id, optionIds: ['purple'] }))).toThrow(/options/);
@@ -497,13 +461,10 @@ describe('echo driver', () => {
   });
 
   test('a turn stopped while a question waits cancels it', async () => {
-    const client = await harness.connect();
-    const { threadId } = await echoThread(harness, client);
-    await client.call('threads.subscribe', { threadId });
+    const { client, threadId } = await openEchoThread(harness);
 
     const asked = client.next('question.asked', (request) => request.threadId === threadId, 10000);
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
-    await client.call('turns.start', { threadId, prompt: 'question' });
+    const { finished } = await startTurn(client, threadId, 'question', 10000);
     const question = await asked;
 
     const answered = client.next('question.answered', (event) => event.questionId === question.id, 10000);
@@ -516,13 +477,10 @@ describe('echo driver', () => {
   });
 
   test('a turn stopped while a permission card is open denies it and the turn really ends', async () => {
-    const client = await harness.connect();
-    const { threadId } = await echoThread(harness, client);
-    await client.call('threads.subscribe', { threadId });
+    const { client, threadId } = await openEchoThread(harness);
 
     const requested = client.next('permission.requested', (request) => request.threadId === threadId, 10000);
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
-    await client.call('turns.start', { threadId, prompt: '[permission]' });
+    const { finished } = await startTurn(client, threadId, '[permission]', 10000);
     const request = await requested;
     expect((await client.call('threads.get', { threadId })).status).toBe('waiting');
 
@@ -538,16 +496,13 @@ describe('echo driver', () => {
   });
 
   test('with two cards open, answering one keeps the thread waiting on the other', async () => {
-    const client = await harness.connect();
-    const { threadId } = await echoThread(harness, client);
-    await client.call('threads.subscribe', { threadId });
+    const { client, threadId } = await openEchoThread(harness);
 
     const raised: string[] = [];
     client.on('permission.requested', (request) => {
       if (request.threadId === threadId) raised.push(request.id);
     });
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
-    await client.call('turns.start', { threadId, prompt: '[permission:2]' });
+    const { finished } = await startTurn(client, threadId, '[permission:2]', 10000);
     await waitFor(() => raised.length === 2);
     const cards = await client.call('permissions.list', { threadId });
     expect(cards).toHaveLength(2);
@@ -573,8 +528,7 @@ describe('echo driver', () => {
     const seen: string[] = [];
     watcher.onAny((event) => seen.push(event));
 
-    const finished = subscriber.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
-    await subscriber.call('turns.start', { threadId, prompt: 'nobody is watching this one closely' });
+    const { finished } = await startTurn(subscriber, threadId, 'nobody is watching this one closely', 10000);
     await finished;
 
     expect(seen).toContain('thread.updated');
@@ -585,9 +539,7 @@ describe('echo driver', () => {
   // The spawn directive goes through `cmd /c` on Windows, which a test here
   // does not start; Linux and macOS CI run this one.
   test.skipIf(process.platform === 'win32')('a stop ends a spawn turn without waiting for the child', async () => {
-    const client = await harness.connect();
-    const { threadId } = await echoThread(harness, client);
-    await client.call('threads.subscribe', { threadId });
+    const { client, threadId } = await openEchoThread(harness);
     const started = client.next('process.started', (record) => record.threadId === threadId, 10000);
     const exited = client.next('process.exited', (record) => record.threadId === threadId, 10000);
     const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
@@ -612,8 +564,7 @@ describe('echo driver', () => {
     watcher.onAny((event) => seen.push(event));
 
     const exited = subscriber.next('process.exited', (record) => record.threadId === threadId, 10000);
-    const finished = subscriber.next('turn.finished', (turn) => turn.threadId === threadId, 15000);
-    await subscriber.call('turns.start', { threadId, prompt: '[spawn:echo hello]' });
+    const { finished } = await startTurn(subscriber, threadId, '[spawn:echo hello]', 15000);
     await exited;
     await finished;
 
@@ -622,9 +573,7 @@ describe('echo driver', () => {
   });
 
   test('a spawn directive traces the child and appends its output', async () => {
-    const client = await harness.connect();
-    const { threadId } = await echoThread(harness, client);
-    await client.call('threads.subscribe', { threadId });
+    const { client, threadId } = await openEchoThread(harness);
 
     const started: RpcEvents['process.started'][] = [];
     let rootPid: number | undefined;
@@ -685,12 +634,9 @@ describe('echo driver', () => {
   });
 
   test('an error directive fails the turn loudly', async () => {
-    const client = await harness.connect();
-    const { threadId } = await echoThread(harness, client);
-    await client.call('threads.subscribe', { threadId });
+    const { client, threadId } = await openEchoThread(harness);
 
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
-    await client.call('turns.start', { threadId, prompt: 'this [error] ends it' });
+    const { finished } = await startTurn(client, threadId, 'this [error] ends it', 10000);
     const done = await finished;
     expect(done.status).toBe('error');
     expect(done.error).toBe('echo error requested');
@@ -769,8 +715,7 @@ describe('echo driver', () => {
     const client = await harness.connect();
     const { threadId } = await echoThread(harness, client);
 
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
-    await client.call('turns.start', { threadId, prompt: 'unread please' });
+    const { finished } = await startTurn(client, threadId, 'unread please', 10000);
     await finished;
 
     expect((await client.call('threads.get', { threadId })).unread).toBe(true);
@@ -785,16 +730,14 @@ describe('echo driver', () => {
     const plugin = await connect(harness.url, harness.token, { client: { name: 'plugin', version: 'test' } });
     try {
       await plugin.call('threads.subscribe', { threadId });
-      const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
-      await client.call('turns.start', { threadId, prompt: 'followed by a plugin' });
+      const { finished } = await startTurn(client, threadId, 'followed by a plugin', 10000);
       await finished;
       expect((await client.call('threads.get', { threadId })).unread).toBe(true);
 
       // A window that has the thread open still reads it as it lands.
       await client.call('threads.markRead', { threadId });
       await client.call('threads.subscribe', { threadId });
-      const again = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
-      await client.call('turns.start', { threadId, prompt: 'read in the window' });
+      const { finished: again } = await startTurn(client, threadId, 'read in the window', 10000);
       await again;
       expect((await client.call('threads.get', { threadId })).unread).toBe(false);
     } finally {

@@ -1,4 +1,4 @@
-import { pullRequestWatchWaits, type ThreadStatus, type ThreadSummary } from '@boite/contracts';
+import { pullRequestWatchWaits, type ThreadSummary } from '@boite/contracts';
 
 /**
  * What a thread row says in place of its time: the agent works, needs the
@@ -20,11 +20,6 @@ type StateFields = Pick<ThreadSummary, 'status' | 'unread' | 'backgroundWork' | 
  */
 export function needsUser(thread: Pick<ThreadSummary, 'status' | 'openQuestions'>): boolean {
   return thread.status === 'waiting' || (thread.openQuestions ?? 0) > 0;
-}
-
-/** What an agent's picture shows for the thread it works in: waiting on the user, at work while queued or running, else at rest. */
-export function avatarStatus(status: ThreadStatus | undefined): 'running' | 'waiting' | 'idle' {
-  return status === 'waiting' ? 'waiting' : status === 'running' || status === 'queued' ? 'running' : 'idle';
 }
 
 /** What a parent's delegated agents add to its state: how many are at work, and how many wait on the user. */

@@ -51,6 +51,12 @@ export async function claudeThread(client: CoreClient): Promise<string> {
   return thread.id;
 }
 
+/** A new client on a fresh Claude thread, the opening of most scripted Claude tests. */
+export async function openClaudeThread(): Promise<{ client: CoreClient; threadId: string }> {
+  const client = await harness.connect();
+  return { client, threadId: await claudeThread(client) };
+}
+
 /**
  * The SDK's `Query` as far as the driver uses it: an async iterable, interrupt
  * and close, and the three setters that change a live session's model, effort

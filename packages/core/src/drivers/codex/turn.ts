@@ -1,4 +1,5 @@
-import type { MessageId, MessagePart, ToolStatus, Usage } from '@boite/contracts';
+import type { ToolStatus, Usage } from '@boite/contracts';
+import { DecidedTurnParts } from '../turn-parts.ts';
 import type { PromptCacheLife, TurnContext, TurnRefusal, TurnResult } from '../types.ts';
 import { codexRefusal } from './availability.ts';
 import type { CodexTokenCounts } from './mapping.ts';
@@ -42,11 +43,7 @@ function foldOutput(entry: ToolEntry): void {
  * driver draws them: one text part the deltas append to, one part per item that
  * is a tool, one part per approval question.
  */
-export class CodexTurn {
-  #messageId: MessageId | null = null;
-  #nextIndex = 0;
-  #textIndex: number | null = null;
-  #thinkingIndex: number | null = null;
+export class CodexTurn extends DecidedTurnParts {
   /** The reasoning section the last thinking delta belonged to. */
   #thinkingSection: string | null = null;
   readonly #tools = new Map<string, ToolEntry>();
@@ -59,15 +56,6 @@ export class CodexTurn {
   #status: TurnResult['status'] = 'done';
   #error: string | null = null;
   #diagnosticError: string | undefined;
-  #resolve: (result: TurnResult) => void = () => undefined;
-  #decide: () => void = () => undefined;
-  #wake: () => void = () => undefined;
-
-  readonly done: Promise<TurnResult>;
-  /** Resolves the moment the outcome is known, before anything is journalled. */
-  readonly finished: Promise<void>;
-  /** Resolves on `stop()`, so an approval still waiting can decline and move on. */
-  readonly stopped: Promise<void>;
 
   sessionId: string | null;
   /** The Codex turn id, known once `turn/start` answers. */
@@ -79,9 +67,6 @@ export class CodexTurn {
   usageTotal: CodexTokenCounts | null = null;
   /** The published prompt cache lifetime of the model this turn ran on. */
   cacheLife: PromptCacheLife | null = null;
-  decided = false;
-  isStopped = false;
-  settled = false;
   /** `thread/resume` said the Codex thread is gone. */
   sessionLost = false;
   /** The code of the last `error` notification Codex sent without retrying, for a failure that carries none. */
@@ -90,26 +75,13 @@ export class CodexTurn {
   spentWindowResetsAt: number | null = null;
   #refusal: TurnRefusal | undefined;
 
-  constructor(readonly ctx: TurnContext) {
+  constructor(ctx: TurnContext) {
+    super(ctx);
     this.sessionId = ctx.sessionId;
-    this.done = new Promise<TurnResult>((resolve) => {
-      this.#resolve = resolve;
-    });
-    this.finished = new Promise<void>((resolve) => {
-      this.#decide = resolve;
-    });
-    this.stopped = new Promise<void>((resolve) => {
-      this.#wake = resolve;
-    });
   }
 
   noteSession(sessionId: string): void {
     this.sessionId = sessionId;
-  }
-
-  markStopped(): void {
-    this.isStopped = true;
-    this.#wake();
   }
 
   /** `turn/completed`, or a `turn/start` that already answered with a finished turn. */
@@ -130,7 +102,7 @@ export class CodexTurn {
         return;
     }
     this.decided = true;
-    this.#decide();
+    this.decide();
   }
 
   fail(reason: string, diagnostic?: string): void {
@@ -140,7 +112,7 @@ export class CodexTurn {
     this.#error = reason;
     this.#diagnosticError = diagnostic;
     this.part(this.takeIndex(), { type: 'error', message: reason });
-    this.#decide();
+    this.decide();
   }
 
   /** A stop the agent never got to act on: the turn ends stopped, with nothing drawn. */
@@ -148,7 +120,7 @@ export class CodexTurn {
     if (this.decided) return;
     this.decided = true;
     this.#status = 'stopped';
-    this.#decide();
+    this.decide();
   }
 
   /**
@@ -166,7 +138,7 @@ export class CodexTurn {
       this.#status = 'error';
       this.#error = reason;
     }
-    this.#decide();
+    this.decide();
   }
 
   settle(): void {
@@ -174,12 +146,9 @@ export class CodexTurn {
     this.#flushOutput();
     this.settled = true;
     this.decided = true;
-    this.#wake();
-    this.#decide();
-    if (this.#messageId !== null) {
-      this.ctx.emit.complete(this.#messageId, this.#status === 'error' ? 'error' : 'complete');
-    }
-    this.#resolve({
+    this.wake();
+    this.decide();
+    this.resolve(this.#status, () => ({
       status: this.#status,
       sessionId: this.sessionId,
       usage: this.usage,
@@ -190,29 +159,12 @@ export class CodexTurn {
         ? { checkpoint: { sessionId: this.sessionId, entry: this.#completedTurnId } } : {}),
       ...(this.sessionLost ? { sessionLost: true } : {}),
       ...(this.#status === 'error' && this.#refusal ? { refusal: this.#refusal } : {}),
-    });
+    }));
   }
 
   // -- parts ----------------------------------------------------------------
 
-  #message(): MessageId {
-    if (this.#messageId === null) this.#messageId = this.ctx.emit.startMessage('assistant');
-    return this.#messageId;
-  }
-
-  part(index: number, part: MessagePart): void {
-    this.ctx.emit.part(this.#message(), index, part);
-  }
-
-  takeIndex(): number {
-    this.#textIndex = null;
-    this.#thinkingIndex = null;
-    const index = this.#nextIndex;
-    this.#nextIndex += 1;
-    return index;
-  }
-
-  writeText(text: string, itemId?: string): void {
+  override writeText(text: string, itemId?: string): void {
     if (text.length === 0) return;
     if (itemId) {
       let entry = this.#textItems.get(itemId);
@@ -223,17 +175,10 @@ export class CodexTurn {
         this.part(entry.index, { type: 'text', text: '' });
       }
       entry.text += text;
-      this.ctx.emit.delta(this.#message(), entry.index, text);
+      this.ctx.emit.delta(this.message(), entry.index, text);
       return;
     }
-    if (this.#textIndex === null) {
-      const index = this.#nextIndex;
-      this.#nextIndex += 1;
-      this.#textIndex = index;
-      this.#thinkingIndex = null;
-      this.part(index, { type: 'text', text: '' });
-    }
-    this.ctx.emit.delta(this.#message(), this.#textIndex, text);
+    super.writeText(text);
   }
 
   completeText(itemId: string, text: string): void {
@@ -246,7 +191,7 @@ export class CodexTurn {
 
   /** A thinking part is open: its deltas already report the `thinking` phase. */
   get thinkingOpen(): boolean {
-    return this.#thinkingIndex !== null;
+    return this.thinkingIndex !== null;
   }
 
   /**
@@ -255,19 +200,14 @@ export class CodexTurn {
    * server streams each section with no newline around it, so a delta of a new
    * section that lands in the same part starts after a blank line.
    */
-  writeThinking(text: string, section?: string): void {
+  override writeThinking(text: string, section?: string): void {
     if (text.length === 0) return;
-    if (this.#thinkingIndex === null) {
-      const index = this.#nextIndex;
-      this.#nextIndex += 1;
-      this.#thinkingIndex = index;
-      this.#textIndex = null;
-      this.part(index, { type: 'thinking', text: '' });
-    } else if (section !== undefined && this.#thinkingSection !== null && section !== this.#thinkingSection) {
-      this.ctx.emit.delta(this.#message(), this.#thinkingIndex, '\n\n');
+    const open = this.thinkingIndex;
+    if (open !== null && section !== undefined && this.#thinkingSection !== null && section !== this.#thinkingSection) {
+      this.ctx.emit.delta(this.message(), open, '\n\n');
     }
     if (section !== undefined) this.#thinkingSection = section;
-    this.ctx.emit.delta(this.#message(), this.#thinkingIndex, text);
+    super.writeThinking(text);
   }
 
   /**

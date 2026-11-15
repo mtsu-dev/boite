@@ -24,6 +24,8 @@ export const strings = {
       botFailed: '{name} failed',
       botWorking: '{name} is at work',
       botPaused: '{name} is paused',
+      /** The same states as the two words beside a mochi's name when the pointer is on its picture. */
+      state: { waiting: 'needs you', failed: 'failed', working: 'at work', paused: 'paused' },
       /** A mochi or team with replies not read yet: its picture's badge, in words. */
       unread: 'new replies',
       /** The list foot's limits line, in its tooltip (QuotaLine.svelte): the least left, the window and the account it is on. */

@@ -1,9 +1,9 @@
-import { withLogDiagnostic } from '../../log-errors.ts';
 import type { EffortLevel, ModelInfo, ProviderDescriptor, QuotaResetOutcome } from '@boite/contracts';
 import pkg from '../../../package.json';
 import { messageOf, unavailable } from '../../errors.ts';
 import { profileFor, resolveExecutable } from '../../providers/resolve.ts';
 import type { ProbeContext, SessionContext } from '../types.ts';
+import { probeModels } from '../model-probe.ts';
 import { subscriptionProxyCodexArgs } from '../../subscription-proxy.ts';
 import type { CodexModel, CodexModelListResponse, Timer } from './protocol.ts';
 import { AGENT_OWN_MODEL, CLIENT_NAME, PROBE_MAX_PAGES, PROBE_TIMEOUT_MS, STDERR_MAX } from './protocol.ts';
@@ -125,22 +125,10 @@ export async function readModels(ctx: ProbeContext): Promise<ModelInfo[]> {
     throw unavailable(`no ${ctx.provider.id} executable on this machine`, { providerId: ctx.provider.id });
   }
 
-  let lastStderr = '';
   const child = ctx.spawnChild(executable, subscriptionProxyCodexArgs(profile?.launch?.args ?? [], ctx.accountEnv), {
     cwd: ctx.cwd,
     env: { ...process.env, ...ctx.accountEnv },
   });
-  child.stderr.setEncoding('utf8');
-  child.stderr.on('data', (chunk: string) => {
-    for (const line of chunk.split(/\r?\n/)) {
-      const text = line.trim();
-      if (text.length > 0) lastStderr = text.slice(0, STDERR_MAX);
-    }
-  });
-
-  const say = (head: string) => withLogDiagnostic(unavailable(lastStderr.length === 0 ? head : `${head}: ${lastStderr}`, detail), head);
-  const detail = { providerId: ctx.provider.id, accountId: ctx.accountId };
-  let timer: Timer | null = null;
   const rpc = new CodexRpc(child, {
     // A probe draws nothing and answers nothing: the server has no turn to
     // report on and no approval to ask for.
@@ -151,43 +139,15 @@ export async function readModels(ctx: ProbeContext): Promise<ModelInfo[]> {
     },
   });
 
-  try {
-    const died = new Promise<never>((_resolve, reject) => {
-      child.once('exit', (code) => {
-        reject(say(`the ${ctx.provider.id} agent exited with code ${code ?? 'unknown'}`));
-      });
-      child.once('error', (error) => {
-        reject(say(`the ${ctx.provider.id} agent did not start: ${messageOf(error)}`));
-      });
+  return probeModels(ctx, child, { noun: 'agent', timeoutMs: PROBE_TIMEOUT_MS, stderrMax: STDERR_MAX, over: () => rpc.fail('the codex probe is over') }, async () => {
+    await rpc.request('initialize', {
+      clientInfo: { name: CLIENT_NAME, title: null, version: pkg.version },
+      capabilities: null,
     });
-    const expired = new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => {
-        reject(say(`the ${ctx.provider.id} agent did not list its models in ${PROBE_TIMEOUT_MS / 1000} s`));
-      }, PROBE_TIMEOUT_MS);
-      timer.unref?.();
-    });
+    rpc.notify('initialized', {});
 
-    const read = (async (): Promise<ModelInfo[]> => {
-      await rpc.request('initialize', {
-        clientInfo: { name: CLIENT_NAME, title: null, version: pkg.version },
-        capabilities: null,
-      });
-      rpc.notify('initialized', {});
-
-      return listModels(rpc, ctx.provider);
-    })();
-
-    return await Promise.race([read, died, expired]);
-  } finally {
-    if (timer !== null) clearTimeout(timer);
-    rpc.fail('the codex probe is over');
-    try {
-      child.stdin.end();
-    } catch {
-      // the pipe is already gone
-    }
-    ctx.killTree();
-  }
+    return listModels(rpc, ctx.provider);
+  });
 }
 
 /**

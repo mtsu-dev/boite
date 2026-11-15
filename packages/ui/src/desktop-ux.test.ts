@@ -191,6 +191,10 @@ test('the rail puts teams first, and a picture moved with the keyboard keeps its
     await waitFor(() => order().some(key => key.startsWith('team:')) && order().filter(key => key.startsWith('bot:')).length >= 2);
     // Untouched, the team leads.
     expect(order()[0]).toMatch(/^team:/);
+    // A bot whose picture carries a badge says what the badge means beside its name, under the pointer.
+    const badged = [...document.querySelectorAll<HTMLElement>('[data-testid=rail-bot]')].filter(bot => ['waiting', 'failed', 'working', 'paused'].includes(bot.dataset['state']!));
+    expect(badged.length).toBeGreaterThan(0);
+    for (const bot of badged) expect(bot.closest('.slot')!.querySelector('.rail-name .note')?.textContent).toBe(strings.app.rail.state[bot.dataset['state'] as 'waiting']);
     const bots = order().filter(key => key.startsWith('bot:'));
     // ArrowUp on the second bot moves it above the first; the device keeps the order.
     const second = query<HTMLButtonElement>(`[data-testid=rail-bot][data-agent-id="${bots[1]!.slice(4)}"]`);

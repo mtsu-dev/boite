@@ -122,6 +122,11 @@
     if (state === 'paused') return fill(strings.app.rail.botPaused, { name });
     return name;
   }
+  /** What the hover name adds after a bot's name: what its badge means, in words, then its machine when there are several. */
+  function noteOf(state: RailBotState, unread: boolean, machine: string | null): string | null {
+    const words = state === 'waiting' || state === 'failed' || state === 'working' || state === 'paused' ? strings.app.rail.state[state] : unread ? strings.app.rail.unread : null;
+    return [words, machine].filter(Boolean).join(' · ') || null;
+  }
   /** The members as pictures: the bot's own when its machine's bots are read, else the robot its id picks. */
   function pictures({ machine, team }: TeamRow) {
     const profiles = agentDirectory(machine.store).snapshot?.profiles ?? [];
@@ -254,7 +259,7 @@
               {:else if state === 'failed'}<span class="badge" aria-hidden="true"><FailMark /></span>
               {:else if look === 'answered'}<span class="badge" data-testid="rail-bot-unread" aria-hidden="true"><span class="news"></span></span>{/if}
             </button>
-            {@render railName(bot.row.profile.name, null, several ? machineName(bot.machine) : null)}
+            {@render railName(bot.row.profile.name, null, noteOf(state, unread && !selected, several ? machineName(bot.machine) : null))}
           </div>
         {:else}
           {@const row = entry.team}
@@ -480,10 +485,11 @@
   }
   .needs, .news { width: 10px; height: 10px; border-radius: 50%; background: var(--color-live); }
   .news { position: relative; background: var(--color-foreground); }
-  /* The ring is an outline moving out, not a scaled box: a scaled box adds to what the scroller can scroll, an
-     outline is ink only. */
-  .news::after { content: ''; position: absolute; inset: 0; border-radius: 50%; outline: 1.5px solid var(--color-foreground); outline-offset: 0; opacity: 0; animation: rail-ping 2.4s steps(36) infinite var(--loops); }
-  @keyframes rail-ping { 0%, 55% { opacity: 0; outline-offset: 0; } 60% { opacity: 0.8; outline-offset: 0; } 100% { opacity: 0; outline-offset: 6px; } }
+  /* The ring grows by a transform, and a transformed box adds to what a scroller can scroll: under the last picture
+     it would move the end of the list at every beat. The dot contains its layout, so the ring is ink only. */
+  .news { contain: layout; }
+  .news::after { content: ''; position: absolute; inset: 0; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--color-foreground); opacity: 0; animation: rail-ping 2.4s steps(36) infinite var(--loops); }
+  @keyframes rail-ping { 0%, 55% { opacity: 0; transform: scale(1); } 60% { opacity: 0.8; transform: scale(1); } 100% { opacity: 0; transform: scale(2.2); } }
 
   .foot { display: flex; flex-direction: column; align-items: center; gap: 4px; align-self: stretch; }
   .foot :global(button.icon.on) { background: var(--color-surface-3); color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge); border-radius: var(--radius-rail); }

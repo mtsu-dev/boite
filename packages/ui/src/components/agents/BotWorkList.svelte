@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { CheckCheck, ListTodo } from '@lucide/svelte';
   import type { AgentWatch } from '@boite/contracts';
   import { splitDesk } from '../../lib/agent-desk';
   import type { AgentsView } from '../../lib/agents.svelte';
@@ -21,7 +22,8 @@
    */
   /**
    * `onstart`: the column's empty desk, one prompt in its middle, the conversation with the composer ready.
-   * `ontask`: the Desk panel's, the composer beside it; without `onstart` an empty list is a line under its heading.
+   * `ontask`: the Desk panel's, the composer beside it; without `onstart` an empty list is a line under its heading,
+   * and each heading carries a glyph like the panel's other sections.
    */
   let { view, agentId, onstart, ontask }: { view: AgentsView; agentId: string; onstart?: () => void; ontask?: () => void } = $props();
   const store = $derived(view.store);
@@ -81,16 +83,16 @@
 <div class="bot-work" class:idle={!!onstart && !sections.handling.length && !sections.done.length} data-testid="desk-work">
   {#if sections.handling.length || sections.done.length}
     {#if sections.handling.length}
-      <h3 class="bot-section" data-testid="bot-handling">{t.handling} <span class="bot-section-count">{sections.handling.length}</span></h3>
+      <h3 class="bot-section" data-testid="bot-handling">{#if !onstart}<ListTodo size={13} strokeWidth={1.75} />{/if}{t.handling} <span class="bot-section-count">{sections.handling.length}</span></h3>
       {@render rows(sections.handling, false)}
     {/if}
     {#if sections.done.length}
-      <h3 class="bot-section" data-testid="bot-done">{t.done} <span class="bot-section-count">{sections.done.length}</span></h3>
+      <h3 class="bot-section" data-testid="bot-done">{#if !onstart}<CheckCheck size={13} strokeWidth={1.75} />{/if}{t.done} <span class="bot-section-count">{sections.done.length}</span></h3>
       {@render rows(sections.done, true)}
     {/if}
   {:else if !onstart}
     <!-- On the Desk panel the empty line sits under the heading it describes, its action beside it. -->
-    <h3 class="bot-section">{t.handling}</h3>
+    <h3 class="bot-section"><ListTodo size={13} strokeWidth={1.75} />{t.handling}</h3>
     <p class="desk-empty desk-empty-row"><span>{t.workEmpty}</span>{#if ontask && store.owner}<button type="button" class="small" data-testid="desk-work-start" onclick={ontask}><span class="ui-label">{t.workStart}</span></button>{/if}</p>
   {:else if !first}
     <!-- An empty desk is one prompt in the column's middle; with no conversation either it moves over the chat (AgentsPage). -->

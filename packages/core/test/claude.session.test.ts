@@ -5,7 +5,7 @@ import type { Options } from '@anthropic-ai/claude-agent-sdk';
 import type { Turn } from '@boite/contracts';
 import { connect } from '../src/client.ts';
 import { restoredCost } from '../src/drivers/claude/mapping.ts';
-import { waitFor } from './harness.ts';
+import { startTurn, waitFor } from './harness.ts';
 import {
   answerEach,
   assistant,
@@ -13,6 +13,7 @@ import {
   claudeThread,
   harness,
   init,
+  openClaudeThread,
   queries,
   runTurn,
   scripted,
@@ -25,8 +26,7 @@ useClaudeHarness();
 
 describe('claude driver', () => {
   test.each([false, true])('an unfinished live control cannot change the next turn after Stop=%s', async stop => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
     await client.call('settings.set', { warmProcessMinutes: 5 });
     const control = Promise.withResolvers<void>();
     const answered = Promise.withResolvers<void>();
@@ -74,8 +74,7 @@ describe('claude driver', () => {
   });
 
   test('permission mode changes reach a running query without another prompt and leave hooks alone', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
     scripted(fake => fake.emit(init('sess-live-mode')));
     const turn = await client.call('turns.start', { threadId, prompt: 'Keep working' });
     await waitFor(() => calls[0]?.prompts.length === 1);
@@ -95,8 +94,7 @@ describe('claude driver', () => {
     await waitFor(() => harness.core.journal.getTurn(turn.id)?.status === 'done');
   });
   test('effort and fast mode off reach a running query; fast mode on waits for the next turn', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
     await client.call('settings.set', { warmProcessMinutes: 5 });
     harness.core.providers.require('claude').models.find(model => model.id === 'claude-opus-5')!.speeds = [{ id: 'fast', label: 'Fast' }];
     await client.call('threads.update', { threadId, model: 'claude-opus-5', effort: 'low', speed: 'fast' });
@@ -129,8 +127,7 @@ describe('claude driver', () => {
   });
 
   test('a running CLI that keeps fast mode off moves the turn to a process launched with it', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
     await client.call('settings.set', { warmProcessMinutes: 5 });
     harness.core.providers.require('claude').models.find(model => model.id === 'claude-opus-5')!.speeds = [{ id: 'fast', label: 'Fast' }];
     await client.call('threads.update', { threadId, model: 'claude-opus-5' });
@@ -151,8 +148,7 @@ describe('claude driver', () => {
   });
 
   test('viewing initializes a prompt-free query and retains it across real turns at zero minutes', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
     scripted(fake => fake.emit(init('sess-prepared')), answerEach('sess-prepared'));
     await client.call('threads.focus', { threadId });
     await waitFor(() => queries.length === 1);
@@ -172,8 +168,7 @@ describe('claude driver', () => {
   });
 
   test('a prepared query applies the effort and speed selected before the first prompt', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
     harness.core.providers.require('claude').models.find(model => model.id === 'claude-opus-5')!.speeds = [{ id: 'fast', label: 'Fast' }];
     await client.call('threads.update', { threadId, model: 'claude-opus-5' });
     scripted(fake => fake.emit(init('sess-prepared')), answerEach('sess-prepared'));
@@ -190,8 +185,7 @@ describe('claude driver', () => {
 
   /** One plain turn on a thread set to `effort`, so the test can read what the SDK got. */
   async function turnWithEffort(effort: string | null): Promise<{ options: Options; prompt: string }> {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
     const updated = await client.call('threads.update', { threadId, effort });
     expect(updated.effort).toBe(effort);
 
@@ -201,8 +195,7 @@ describe('claude driver', () => {
       fake.end();
     });
 
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
-    await client.call('turns.start', { threadId, prompt: 'ping' });
+    const { finished } = await startTurn(client, threadId, 'ping', 10000);
     expect((await finished).status).toBe('done');
 
     const call = calls[0];
@@ -231,8 +224,7 @@ describe('claude driver', () => {
   // -- warm sessions --------------------------------------------------------
 
   test('two turns on a warm thread share one query and one prompt stream', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
     await client.call('settings.set', { warmProcessMinutes: 5 });
 
     scripted(() => undefined, answerEach('sess-warm'));
@@ -246,8 +238,7 @@ describe('claude driver', () => {
   });
 
   test('a warm query reports a running total, and each turn is charged its own share', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
     await client.call('settings.set', { warmProcessMinutes: 5 });
 
     // The CLI counts `total_cost_usd` from the start of its process: 0.25, then 0.25 + 0.05.
@@ -258,8 +249,7 @@ describe('claude driver', () => {
 
     const costs: (number | null)[] = [];
     for (const prompt of ['first', 'second']) {
-      const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
-      await client.call('turns.start', { threadId, prompt });
+      const { finished } = await startTurn(client, threadId, prompt, 10000);
       costs.push((await finished).usage?.costUsdEquivalent ?? null);
     }
 
@@ -269,8 +259,7 @@ describe('claude driver', () => {
   });
 
   test('a cold query that resumes a session is charged its own share, whether or not the CLI restored its totals', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
 
     // Each turn uses 26 tokens. The second process restores the session (52 tokens held, 0.25 + 0.05);
     // the third has lost it and counts from zero. The fourth restores only what the third saved
@@ -298,8 +287,7 @@ describe('claude driver', () => {
 
     const costs: (number | null)[] = [];
     for (const prompt of ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth']) {
-      const finished = client.next('turn.finished', (finishedTurn) => finishedTurn.threadId === threadId, 10000);
-      await client.call('turns.start', { threadId, prompt });
+      const { finished } = await startTurn(client, threadId, prompt, 10000);
       costs.push((await finished).usage?.costUsdEquivalent ?? null);
     }
 
@@ -315,8 +303,7 @@ describe('claude driver', () => {
   });
 
   for (const warmProcessMinutes of [0, 5]) test(`a compaction records the tokens and cache lifetimes its running totals grew by, which its own usage leaves at zero (warm ${warmProcessMinutes} min)`, async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
     await client.call('settings.set', { warmProcessMinutes });
 
     // Claude Code 2.1.316, measured 2026-10-31: `/compact` answers with a zeroed `usage` and no
@@ -341,11 +328,9 @@ describe('claude driver', () => {
       fake.emit(sdk({ ...(success('sess-compact-usage') as object), ...results[turn++] }));
     });
 
-    const first = client.next('turn.finished', (finished) => finished.threadId === threadId, 10000);
-    await client.call('turns.start', { threadId, prompt: 'first' });
+    const { finished: first } = await startTurn(client, threadId, 'first', 10000);
     expect((await first).usage).toMatchObject({ cacheWriteTokens: 14_422, cacheWriteHourTokens: 14_422 });
-    const second = client.next('turn.finished', (finished) => finished.threadId === threadId, 10000);
-    await client.call('turns.start', { threadId, prompt: 'second' });
+    const { finished: second } = await startTurn(client, threadId, 'second', 10000);
     expect((await second).usage?.costUsdEquivalent).toBeCloseTo(0.0038164, 10);
 
     const compacted = client.next('turn.finished', (finished) => finished.threadId === threadId, 10000);
@@ -359,8 +344,7 @@ describe('claude driver', () => {
   });
 
   for (const [when, versions] of [['before a turn with tokens showed the CLI restoring', ['2.1.316', '2.1.316']], ['when only another CLI version was seen restoring', ['2.1.316', '2.1.316', '2.2.0']]] as const) test(`a cold compaction is not read as a restored session ${when}, even when every count grew`, async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
 
     // The resumed CLI restored nothing, so the compaction's totals hold only the summary request, which outweighs
     // the turns before it in every bucket. With no own usage to measure against, nothing tells it from a restore.
@@ -384,8 +368,7 @@ describe('claude driver', () => {
     });
 
     for (const prompt of ['first', 'second'].slice(0, turns.length)) {
-      const done = client.next('turn.finished', (finished) => finished.threadId === threadId, 10000);
-      await client.call('turns.start', { threadId, prompt });
+      const { finished: done } = await startTurn(client, threadId, prompt, 10000);
       await done;
     }
     const compacted = client.next('turn.finished', (finished) => finished.threadId === threadId, 10000);
@@ -409,8 +392,7 @@ describe('claude driver', () => {
   });
 
   test('a resumed CLI that restored less than the journal holds leaves the turn unpriced instead of charging the session again', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
 
     // The second process restored the session's tokens (52 held for a 26-token turn) but a total of 0.1, under the 0.25
     // the journal already charged. Charging 0.1 would count the first turn twice, and every later resume more.
@@ -424,8 +406,7 @@ describe('claude driver', () => {
 
     const finished: Turn[] = [];
     for (const prompt of ['first', 'second']) {
-      const done = client.next('turn.finished', (finishedTurn) => finishedTurn.threadId === threadId, 10000);
-      await client.call('turns.start', { threadId, prompt });
+      const { finished: done } = await startTurn(client, threadId, prompt, 10000);
       finished.push(await done);
     }
 
@@ -437,8 +418,7 @@ describe('claude driver', () => {
   });
 
   test('warmProcessMinutes at zero keeps one query per turn', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
     expect((await client.call('settings.get', {})).warmProcessMinutes).toBe(0);
 
     scripted(() => undefined, answerEach('sess-cold'));
@@ -452,8 +432,7 @@ describe('claude driver', () => {
   });
 
   test('a model, an effort and a mode changed between the turns go to the live query', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
     await client.call('settings.set', { warmProcessMinutes: 5 });
 
     scripted(() => undefined, answerEach('sess-live'));
@@ -484,8 +463,7 @@ describe('claude driver', () => {
   });
 
   test('a plan mode Claude entered by itself is put back to the thread mode before the next turn', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
     await client.call('settings.set', { warmProcessMinutes: 5 });
     const answer = answerEach('sess-drift');
     scripted(() => undefined, (fake, prompt, index) => {
@@ -507,8 +485,7 @@ describe('claude driver', () => {
   });
 
   test('warm queries apply Auto and YOLO in place and keep configured hooks', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
     await client.call('settings.set', { warmProcessMinutes: 5 });
     scripted(() => undefined, answerEach('sess-mode-switch'));
     for (const mode of ['default', 'bypassPermissions', 'yolo', 'bypassPermissions', 'default'] as const) {
@@ -525,8 +502,7 @@ describe('claude driver', () => {
   });
 
   test('a turn that changed nothing reaches for no setter at all', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
     await client.call('settings.set', { warmProcessMinutes: 5 });
 
     scripted(() => undefined, answerEach('sess-still'));
@@ -539,8 +515,7 @@ describe('claude driver', () => {
   });
 
   test('ultrathink on a warm query clears the effort level back to the model default', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
     await client.call('settings.set', { warmProcessMinutes: 5 });
     await client.call('threads.update', { threadId, effort: 'xhigh' });
 
@@ -558,8 +533,7 @@ describe('claude driver', () => {
   });
 
   test.each(['setModel', 'fastMode'])('a refused %s setter resumes on the new setup and the turn still runs', async (setter) => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
     await client.call('settings.set', { warmProcessMinutes: 5 });
     const logs: string[] = [];
     client.on('core.log', (entry) => {
@@ -587,8 +561,7 @@ describe('claude driver', () => {
   });
 
   test('the idle window ends the session and the next turn starts a new query', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
     // Fractions are minutes too: 0.002 is the 120 ms this test can afford to wait.
     await client.call('settings.set', { warmProcessMinutes: 0.002 });
 
@@ -604,8 +577,7 @@ describe('claude driver', () => {
   });
 
   test('stop on a warm session closes it and the next turn starts a new query', async () => {
-    const client = await harness.connect();
-    const threadId = await claudeThread(client);
+    const { client, threadId } = await openClaudeThread();
     await client.call('settings.set', { warmProcessMinutes: 5 });
 
     scripted(
@@ -621,8 +593,7 @@ describe('claude driver', () => {
       },
     );
 
-    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
-    await client.call('turns.start', { threadId, prompt: 'take your time' });
+    const { finished } = await startTurn(client, threadId, 'take your time', 10000);
     await waitFor(() => queries.length === 1);
     expect(await client.call('turns.stop', { threadId })).toEqual({ stopped: true });
     expect((await finished).status).toBe('stopped');
@@ -704,8 +675,7 @@ test('Claude discovery reports only its model capabilities, caches and refreshes
 test('a new Claude session learns `boite ask` once, and the setting turns it off', async () => {
   harness.core.settings.set({ asyncQuestions: true, warmProcessMinutes: 5 });
   scripted(() => undefined, answerEach('sess-teach'));
-  const client = await harness.connect();
-  const threadId = await claudeThread(client);
+  const { client, threadId } = await openClaudeThread();
   expect(await runTurn(client, threadId, 'first')).toBe('done');
   expect(await runTurn(client, threadId, 'second')).toBe('done');
   expect(calls[0]!.prompts[0]).toContain('boite ask "<question>"');
@@ -726,8 +696,7 @@ test('with a brain, a new Claude session reads the Boite guide in its system pro
   writeFileSync(join(brain, 'AGENTS.md'), 'Shared convention');
   await harness.core.brain.configure({ path: brain, enabled: true, boiteGuide: true });
   scripted(() => undefined, answerEach('sess-guide'));
-  const client = await harness.connect();
-  const threadId = await claudeThread(client);
+  const { client, threadId } = await openClaudeThread();
   expect(await runTurn(client, threadId, 'first')).toBe('done');
   expect(await runTurn(client, threadId, 'second')).toBe('done');
   const [first, second] = calls[0]!.prompts;
@@ -758,8 +727,7 @@ function appendedPrompt(options: Options): string {
 
 
 test('Send now during cold Claude startup stops the old turn and sends one new prompt before model output', async () => {
-  const client = await harness.connect();
-  const threadId = await claudeThread(client);
+  const { client, threadId } = await openClaudeThread();
   const ready = Promise.withResolvers<void>();
   scripted(fake => fake.emit(init('sess-startup')), undefined, ready.promise);
   try {
@@ -783,8 +751,7 @@ test('Send now during cold Claude startup stops the old turn and sends one new p
 });
 
 test('user follow-ups enter the running Claude prompt stream without a second turn or interrupt', async () => {
-  const client = await harness.connect();
-  const threadId = await claudeThread(client);
+  const { client, threadId } = await openClaudeThread();
   scripted(fake => fake.emit(init('sess-steer')));
   const turn = await client.call('turns.start', { threadId, prompt: 'Keep working' });
   await waitFor(() => calls[0]?.prompts.length === 1);

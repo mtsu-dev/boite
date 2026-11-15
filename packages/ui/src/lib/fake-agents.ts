@@ -1,4 +1,4 @@
-import { nextAgentOccurrence, RpcErrorCode, AGENT_MEMORY_MAX, AGENT_PICTURE_CODE, AGENT_PICTURE_MAX_BYTES, AGENT_PICTURE_TYPES, isAgentPicture, AGENT_ROUTINE_NAME_MAX, AGENT_ROUTINE_PROMPT_MAX, AGENT_ROUTINES_MAX } from '@boite/contracts';
+import { nextAgentOccurrence, RpcErrorCode, AGENT_MEMORY_MAX, AGENT_PICTURE_CODE, AGENT_PICTURE_MAX_BYTES, AGENT_PICTURE_TYPES, isAgentPicture, AGENT_ROUTINE_CHECK_MAX, AGENT_ROUTINE_NAME_MAX, AGENT_ROUTINE_PROMPT_MAX, AGENT_ROUTINES_MAX } from '@boite/contracts';
 import { BUILTIN_BOTS, BUILTIN_LOCKED, BUILTIN_NEVER_ARCHIVED } from './fake-client/builtin-bots';
 import type {
   AgentAccountGrant, AgentBuiltin, AgentBrain, AgentBrainRoot, AgentEntrustment, AgentProfile, AgentQueuedMove, AgentRecord, AgentRoutine, AgentRuntimeConfig, AgentSchedule,
@@ -680,12 +680,16 @@ export class FakeAgents {
     if (!previous && held >= AGENT_ROUTINES_MAX) this.refuse(`routine: ${agent.name} already has ${held} routines, the most an agent may hold is ${AGENT_ROUTINES_MAX}; remove one before adding another`);
     if (p.value.name.length > AGENT_ROUTINE_NAME_MAX || !p.value.name.trim()) this.refuse(`name: expected 1 to ${AGENT_ROUTINE_NAME_MAX} characters`);
     if (p.value.prompt.length > AGENT_ROUTINE_PROMPT_MAX || !p.value.prompt.trim()) this.refuse(`prompt: expected 1 to ${AGENT_ROUTINE_PROMPT_MAX} characters`);
+    // The core's check: a command of 2,000 characters at most; one that changed forgets what it printed last.
+    const check = p.value.check?.trim() || null;
+    if (check && check.length > AGENT_ROUTINE_CHECK_MAX) this.refuse(`check: expected at most ${AGENT_ROUTINE_CHECK_MAX} characters`);
+    const checkSeen = check && check === (previous?.check ?? null) ? previous?.checkSeen ?? null : null;
     const s = p.value.schedule, changed = JSON.stringify(previous?.schedule) !== JSON.stringify(s);
     const spent = s.kind === 'once' && !changed && previous?.lastScheduledAt != null;
     // The core's save: run bookkeeping comes from the record, and a new once date clears the run it replaces.
     const lastScheduledAt = s.kind === 'once' && changed ? null : previous?.lastScheduledAt ?? null;
     const nextAt = !p.value.enabled || spent ? null : previous?.enabled && !changed ? previous.nextAt : s.kind === 'once' ? s.at : nextOccurrence(s, Date.now());
-    const routine = this.stamp({ ...p.value, nextAt, lastTurnId: previous?.lastTurnId ?? null, lastOutcome: previous?.lastOutcome ?? null, lastScheduledAt }, previous, 'routine') as AgentRoutine;
+    const routine = this.stamp({ ...p.value, check, checkSeen, nextAt, lastTurnId: previous?.lastTurnId ?? null, lastOutcome: previous?.lastOutcome ?? null, lastScheduledAt }, previous, 'routine') as AgentRoutine;
     this.routines.set(routine.id, routine);
     this.bump();
     return structuredClone(routine);

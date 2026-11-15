@@ -5,7 +5,8 @@ import type { SpawnedChild } from '../../procs.ts';
 import { agentEnv, profileFor } from '../../providers/resolve.ts';
 import { writeLandsInside } from '../../workdir.ts';
 import type { QuestionAsk, SessionContext } from '../types.ts';
-import { exitWithin } from '../exit.ts';
+import { exitSentence, exitWithin } from '../exit.ts';
+import { IdleTimer } from '../idle-timer.ts';
 import {
   addUsage,
   answerOf,
@@ -34,7 +35,6 @@ import type {
   MuseSessionRecord,
   MuseTokenUsage,
   OpenApproval,
-  Timer,
 } from './protocol.ts';
 import {
   EXIT_GRACE_MS,
@@ -92,7 +92,7 @@ export class MuseSession {
   #exitCode: number | null = null;
   #exited: Promise<number | null> | null = null;
   #processClosed: Promise<void> = Promise.resolve();
-  #idle: Timer | null = null;
+  readonly #idle = new IdleTimer(() => this.#drop());
   readonly #retention = new SessionRetention();
   /** The turn waiting on the host's startup, which a stop ends by closing the host. */
   #opening: MuseTurn | null = null;
@@ -126,13 +126,13 @@ export class MuseSession {
 
   setViewed(viewed: boolean): void {
     this.#retention.setViewed(viewed);
-    this.#clearIdle();
+    this.#idle.clear();
     if (!viewed && !this.busy() && !this.#ended) this.#armIdle();
   }
 
   async prepare(ctx: SessionContext, forTurn = false): Promise<void> {
     this.#retention.prepare(forTurn);
-    this.#clearIdle();
+    this.#idle.clear();
     try { await this.#start(ctx); }
     catch (error) { this.#drop(); throw error; }
     finally {
@@ -149,7 +149,7 @@ export class MuseSession {
     this.warmMs = warmMs;
     this.#retention.beginTurn();
     this.#running += 1;
-    this.#clearIdle();
+    this.#idle.clear();
     this.#queue = this.#queue.then(async () => {
       try {
         await this.#runTurn(turn);
@@ -481,15 +481,14 @@ export class MuseSession {
   }
 
   #exitSentence(code: number | null, diagnostic = false): string {
-    const head = `the muse host exited with code ${code === null ? 'unknown' : code}`;
-    return diagnostic || this.#lastStderr.length === 0 ? head : `${head}: ${this.#lastStderr}`;
+    return exitSentence('muse host', code, this.#lastStderr, diagnostic);
   }
 
   #drop(): void {
     if (this.#ended) return;
     this.#ended = true;
     this.#closing = true;
-    this.#clearIdle();
+    this.#idle.clear();
     try { this.#protection?.close(this.#processClosed); }
     catch (error) { this.#logSink?.('error', `muse: protected cleanup failed: ${logMessageOf(error)}`); }
     this.#protection = null;
@@ -512,18 +511,7 @@ export class MuseSession {
   }
 
   #armIdle(): void {
-    this.#clearIdle();
-    this.#idle = setTimeout(() => {
-      this.#idle = null;
-      this.#drop();
-    }, this.#retention.idleMs(this.warmMs));
-    this.#idle?.unref?.();
-  }
-
-  #clearIdle(): void {
-    if (this.#idle === null) return;
-    clearTimeout(this.#idle);
-    this.#idle = null;
+    this.#idle.arm(this.#retention.idleMs(this.warmMs));
   }
 
   // -- what the host sends --------------------------------------------------

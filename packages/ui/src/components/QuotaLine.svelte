@@ -74,14 +74,12 @@
   .quota-line { flex: none; margin: 0 6px; padding: 4px 0 8px; border-top: 1px solid transparent; transition: border-color var(--motion-duration) var(--motion-curve); }
   /* Nothing to say: the glance's name, a step quieter than the rows. Running low, amber; a provider no account can
      serve, the full ink with a red glyph. */
-  .line { display: flex; align-items: center; gap: 8px; width: 100%; height: var(--control-sm); padding: 0 var(--pad-x, 8px); justify-content: flex-start;
+  /* The sentence reads whole: one line where it fits, two in a narrow column, never cut after a few words. */
+  .line { display: flex; align-items: center; gap: 8px; width: 100%; height: auto; min-height: var(--control-sm); padding: 3px var(--pad-x, 8px); justify-content: flex-start; text-align: left;
     color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 500; font-variant-numeric: tabular-nums; }
   .line:hover:not(:disabled) { color: var(--color-foreground); }
-  .line .ui-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .line .ui-label { min-width: 0; overflow: hidden; white-space: normal; line-height: 1.35; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
   .line :global(svg) { flex: none; }
-  /* A notice is read whole: it takes a second line rather than lose the time or the account it ends on. */
-  .line:is(.low, .out) { height: auto; min-height: var(--control-sm); padding-block: 5px; text-align: left; }
-  .line:is(.low, .out) .ui-label { white-space: normal; line-height: 16px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
   .line.quiet { color: var(--color-subtle); }
   .line.low { color: var(--color-caution); }
   .line.out { color: var(--color-foreground); }

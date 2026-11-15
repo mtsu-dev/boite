@@ -59,6 +59,8 @@ export const AGENT_ROUTINES_MAX = 50;
 /** A routine's name and prompt, in characters. */
 export const AGENT_ROUTINE_NAME_MAX = 80;
 export const AGENT_ROUTINE_PROMPT_MAX = 4000;
+/** A routine's check command, in characters. */
+export const AGENT_ROUTINE_CHECK_MAX = 2000;
 /**
  * A daily schedule with `days` runs only on those weekdays, numbered 0 (Sunday) to 6 in
  * its timezone. Absent means every day; the core drops a list of all seven.
@@ -83,10 +85,23 @@ export interface AgentRoutine extends AgentRecord {
   lastScheduledAt: number | null;
   /**
    * How the last occurrence ended: `quiet` when it had nothing for the user,
-   * `skipped` when the budget or a pause held it. A failed occurrence never
+   * `skipped` when the budget or a pause held it, `nothing` when its check
+   * printed nothing new and no turn started. A failed occurrence never
    * blocks the next one; only one still queued or running does.
    */
-  lastOutcome?: 'done' | 'quiet' | 'error' | 'stopped' | 'skipped' | null;
+  lastOutcome?: 'done' | 'quiet' | 'error' | 'stopped' | 'skipped' | 'nothing' | null;
+  /**
+   * A shell command the core runs in the agent's folder each time the routine
+   * comes due, before any turn: the agent wakes only when it prints something
+   * it did not print the time before, or fails in a new way, and reads that
+   * output with the prompt. An occurrence with nothing new costs no turn. Run
+   * now skips it. The owner sets it; the agent itself only while its thread
+   * runs with full access, since the command runs without a permission card.
+   * Null or missing: every occurrence wakes the agent.
+   */
+  check?: string | null;
+  /** A print of what the check last showed the agent, so the same output does not wake it twice; null once it printed nothing. */
+  checkSeen?: string | null;
 }
 
 /** Stable identities are independent of provider processes and native sessions. */

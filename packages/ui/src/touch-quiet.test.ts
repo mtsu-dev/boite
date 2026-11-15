@@ -1,9 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, test } from 'vitest';
+import { appCss } from './test/app-css';
 
-/** The file without its comments, which may name a selector. */
-const read = (path: string) => readFileSync(resolve('src', path), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+/** The source without its comments, which may name a selector. */
+const bare = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, '');
+const read = (path: string) => bare(readFileSync(resolve('src', path), 'utf8'));
 
 /** The at-rule preludes around `at`, innermost first: what a rule there waits for. */
 function around(css: string, at: number): string[] {
@@ -29,12 +31,12 @@ function rules(css: string, pattern: RegExp): { selector: string; within: string
 }
 
 test("the shared chip is `.ui-chip`: a component's own `.chip` class is never styled by app.css", () => {
-  expect(rules(read('app.css'), /\.chip\b/).map((rule) => rule.selector)).toEqual([]);
-  expect(rules(read('app.css'), /\.ui-chip\b/).length).toBeGreaterThan(0);
+  expect(rules(bare(appCss()), /\.chip\b/).map((rule) => rule.selector)).toEqual([]);
+  expect(rules(bare(appCss()), /\.ui-chip\b/).length).toBeGreaterThan(0);
 });
 
 test("a tap leaves the composer quiet: its hairline brightens under a fine pointer or after a key, as its ring does", () => {
-  const found = rules(read('app.css'), /\.composer:focus-within/).concat(rules(read('app.css'), /\.composer\.keys:focus-within/));
+  const found = rules(bare(appCss()), /\.composer:focus-within/).concat(rules(bare(appCss()), /\.composer\.keys:focus-within/));
   expect(found.length).toBe(2);
   for (const rule of found) expect(rule.selector.includes('.keys') || rule.within.some((media) => /hover:\s*hover/.test(media) && /pointer:\s*fine/.test(media))).toBe(true);
 });
@@ -50,6 +52,6 @@ test("the phone model search is a 44 px field the input fills: its hairline is d
   const css = read('components/ModelSearch.svelte');
   const phone = css.slice(css.indexOf('@media (max-width: 720px)'));
   expect(phone).toMatch(/\.search \{ height: var\(--touch-target\); border: 0;/);
-  expect(read('app.css')).toMatch(/--touch-target: 44px;/);
+  expect(bare(appCss())).toMatch(/--touch-target: 44px;/);
   expect(css).toMatch(/\.search input \{[^}]*height: 100%;/);
 });

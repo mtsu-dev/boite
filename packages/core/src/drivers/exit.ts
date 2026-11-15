@@ -18,3 +18,9 @@ export function exitWithin(exited: Promise<number | null> | null, ms: number, cl
     });
   });
 }
+
+/** What a turn fails with when its agent is gone: the exit code, then the last line it printed unless `diagnostic`. */
+export function exitSentence(subject: string, code: number | null, lastStderr: string, diagnostic = false): string {
+  const head = `the ${subject} exited with code ${code === null ? 'unknown' : code}`;
+  return diagnostic || lastStderr.length === 0 ? head : `${head}: ${lastStderr}`;
+}
