@@ -64,7 +64,7 @@
 
 <div class="display-options" bind:this={root}>
   <!-- With words the visible text is its name; the tooltip says what it opens. -->
-  <button type="button" class="ghost trigger small" class:icon={!spoken} class:worded={!!spoken} class:filtered={filters > 0} bind:this={trigger} aria-haspopup="dialog" aria-expanded={popover.open}
+  <button type="button" class="ghost trigger" class:icon={!spoken} class:worded={!!spoken} class:filtered={filters > 0} bind:this={trigger} aria-haspopup="dialog" aria-expanded={popover.open}
     aria-label={spoken ? undefined : strings.sidebar.groupingOptions} title={strings.sidebar.groupingOptions} data-testid={`${prefix}grouping-options`} data-view={workspace.view} data-filters={filters} onclick={toggle}>
     <ListFilter size={16} />
     {#if spoken}<span class="word ui-label" data-testid={`${prefix}filter-name`}>{spoken}</span>{/if}
@@ -81,7 +81,8 @@
   .trigger { position: relative; }
   .trigger[aria-expanded='true'] { background: var(--color-surface-3); color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge); }
   .word { white-space: nowrap; }
-  /* A filter on: the selected thing's ink, small on the glyph's corner, ringed off the ground. */
-  .dot { position: absolute; top: 5px; left: 17px; width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--color-foreground); box-shadow: 0 0 0 2px var(--color-background); pointer-events: none; }
-  .trigger.icon .dot { top: calc(50% - 11px); left: calc(50% + 4px); }
+  /* A filter on: the selected thing's ink, small on the glyph's corner, ringed off the ground. The glyph sits 7 px
+     into a worded Filter and centres in a square one (32 or 28 px): the smaller of the two offsets is its corner. */
+  .dot { position: absolute; top: calc(50% - 12px); left: min(20px, 50% + 5px); width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--color-foreground); box-shadow: 0 0 0 2px var(--color-background); pointer-events: none; }
+  .trigger.icon .dot { left: calc(50% + 5px); }
 </style>

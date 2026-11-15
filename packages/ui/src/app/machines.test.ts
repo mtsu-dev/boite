@@ -218,7 +218,7 @@ test('a project card shows its machine\'s icon once two machines are listed', as
   expect(line()).toBeNull();
   // A machine retrying a dropped link: its icon marks it, no line, no "Connecting" banner.
   remote.store.connection = 'connecting';
-  await waitFor(() => card(remote.id)!.querySelector('[data-testid=project-host].offline') !== null);
+  await waitFor(() => card(remote.id)!.querySelector('[data-testid=project-host].away') !== null);
   expect(line()).toBeNull();
   expect(card(remote.id)!.textContent).not.toContain('Connecting');
   remote.store.connection = 'closed';
@@ -226,7 +226,7 @@ test('a project card shows its machine\'s icon once two machines are listed', as
   expect(line()!.textContent).toContain(`${remote.label} is offline`);
   expect(card(remote.id)!.querySelectorAll('[data-testid=project-reconnect]')).toHaveLength(1);
   // No second Offline chip beside the name, and the line sits under the head, before any row.
-  expect(card(remote.id)!.querySelector('[data-testid=project-host]')?.classList.contains('offline')).toBe(true);
+  expect(card(remote.id)!.querySelector('[data-testid=project-host]')?.classList.contains('away')).toBe(true);
   expect(card(remote.id)!.querySelector('[data-testid=machine-away]')).toBeNull();
   const firstRow = card(remote.id)!.querySelector('[data-testid=thread-row]');
   if (firstRow) expect(line()!.compareDocumentPosition(firstRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
