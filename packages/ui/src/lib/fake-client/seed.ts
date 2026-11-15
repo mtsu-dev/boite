@@ -6,6 +6,7 @@ import { T0 } from './shared';
 import { heavyThread } from './heavy-thread';
 import { diagramsThread } from './diagrams-thread';
 import { readabilityThread } from './readability-thread';
+import { markdownThread } from './markdown-thread';
 import { longThread, seedThreads } from './threads-seed';
 import { settlePermission, settleQuestion } from './requests';
 import { seedArchivedThread, seedWorktrees } from './worktrees';
@@ -100,6 +101,10 @@ export function seed(ctx: FakeContext): void {
   if (ctx.diagrams) {
     const diagrams = diagramsThread();
     ctx.threads.set(diagrams.id, diagrams);
+  }
+  if (ctx.markdown) {
+    const written = markdownThread();
+    ctx.threads.set(written.id, written);
   }
   if (ctx.readability) {
     const readable = readabilityThread();

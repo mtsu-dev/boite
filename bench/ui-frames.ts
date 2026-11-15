@@ -17,9 +17,10 @@
  * it is given. `--gpu` composites on the machine's GPU instead, the usual case
  * of an accelerated WebView2, and stops if Chrome only finds a software renderer.
  *
- * The last two columns hold whatever else the machine runs: the main thread's
+ * The two columns before the last hold whatever else the machine runs: the main thread's
  * own CPU time over the measured window, and the nodes under the scroller and
  * the listeners of the page at its end. The frame figures before them are wall-clock.
+ * The last column counts the long animation frames, over 50 ms each, and their total.
  *
  * The typing scenarios press a key every 40 ms in the composer and report each
  * key's latency, from its keydown to the task after the next frame. `--trace`
@@ -83,7 +84,7 @@ interface TraceEvent {
   name: string; ph: string; ts: number; dur?: number; tid: number; pid: number;
   args?: { name?: string; beginData?: { stackTrace?: { functionName: string }[] }; data?: { reason?: string; nodeName?: string } };
 }
-interface Measure { fps: number; p95: number; worst: number; longTasks: number; longMs: number; mainMs: number; scriptMs: number; layoutMs: number; styleMs: number; cpuMs: number; nodes: number; listeners: number; scrolled: number; keys: number[] }
+interface Measure { fps: number; p95: number; worst: number; longTasks: number; longMs: number; loafs: number; loafMs: number; mainMs: number; scriptMs: number; layoutMs: number; styleMs: number; cpuMs: number; nodes: number; listeners: number; scrolled: number; keys: number[] }
 
 class Page {
   #id = 0;
@@ -151,6 +152,7 @@ const PROMPT = 'Streaming bench paragraph with enough words to wrap across the c
 const LARGE_FILE = Array.from({ length: 2600 }, (_, index) => `export function step${index}(input: { id: string; count: number }): string { return \`\${input.id}:\${input.count + ${index}}\`; }\n`).join('').slice(0, 190_000);
 const SETUP = `
   window.__long = [];
+  window.__loaf = [];
   // Each key's latency: from the keydown's own timestamp to the task after the
   // next frame, which is when what the key changed has been painted.
   window.__keys = [];
@@ -159,6 +161,7 @@ const SETUP = `
     requestAnimationFrame(() => { const channel = new MessageChannel(); channel.port1.onmessage = () => window.__keys.push(performance.now() - start); channel.port2.postMessage(0); });
   }, true);
   try { new PerformanceObserver((list) => { for (const e of list.getEntries()) window.__long.push(e.duration); }).observe({ type: 'longtask', buffered: true }); } catch {}
+  try { new PerformanceObserver((list) => { for (const e of list.getEntries()) window.__loaf.push(e.duration); }).observe({ type: 'long-animation-frame', buffered: true }); } catch {}
   try { if (location.search.includes('tour=1')) localStorage.removeItem(${JSON.stringify(ONBOARDING_STORAGE_KEY)}); else localStorage.setItem(${JSON.stringify(ONBOARDING_STORAGE_KEY)}, ${JSON.stringify(JSON.stringify({ version: ONBOARDING_VERSION, at: 0 }))}); } catch {}
 `;
 
@@ -325,6 +328,11 @@ async function main(): Promise<void> {
       'long thread scroll': async () => { await open('open=recent&long=1'); wheel(); },
       'scroll while streaming': async () => { await open('open=recent&stream=tokens&long=1'); await stream(); wheel(); },
       'heavy thread scroll': async () => { await openHeavy(); wheel(); },
+      // Twenty answers of 20 to 40 KB of Markdown and code (`?fake=1&markdown=1`), opened 100 ms into the measured window.
+      'open heavy thread': async () => {
+        await open('open=recent&markdown=1');
+        await page.evaluate(`setTimeout(() => void globalThis.__bench.store.open('t-markdown'), 100)`);
+      },
       // A flick: 20,000 px a second, which crosses a whole turn of work in the measured window.
       'heavy thread flick': async () => { await openHeavy(); wheel(W, H, 70_000, 20_000); },
       // The scrollbar thumb dropped at six places across the thread, one every 450 ms: each lands on rows never drawn.
@@ -378,11 +386,12 @@ async function main(): Promise<void> {
       }
       if (PROFILE) { await page.send('Profiler.enable'); await page.send('Profiler.setSamplingInterval', { interval: 200 }); await page.send('Profiler.start'); }
       const before = await page.metrics();
-      const run = await page.evaluate<{ times: number[]; long: number[] }>(`new Promise((done) => {
+      const run = await page.evaluate<{ times: number[]; long: number[]; loaf: number[] }>(`new Promise((done) => {
         const times = [];
         const from = window.__long.length;
+        const loafFrom = window.__loaf.length;
         const start = performance.now();
-        function frame(now) { times.push(now); if (now - start < 3000) requestAnimationFrame(frame); else done({ times, long: window.__long.slice(from) }); }
+        function frame(now) { times.push(now); if (now - start < 3000) requestAnimationFrame(frame); else done({ times, long: window.__long.slice(from), loaf: window.__loaf.slice(loafFrom) }); }
         requestAnimationFrame(frame);
       })`);
       const after = await page.metrics();
@@ -436,6 +445,8 @@ async function main(): Promise<void> {
         worst: gaps.at(-1) ?? 0,
         longTasks: run.long.length,
         longMs: run.long.reduce((sum, duration) => sum + duration, 0),
+        loafs: run.loaf.length,
+        loafMs: run.loaf.reduce((sum, duration) => sum + duration, 0),
         mainMs: ((after['TaskDuration']! - before['TaskDuration']!) * 1000) / seconds,
         scriptMs: ((after['ScriptDuration']! - before['ScriptDuration']!) * 1000) / seconds,
         layoutMs: ((after['LayoutDuration']! - before['LayoutDuration']!) * 1000) / seconds,
@@ -458,7 +469,7 @@ async function main(): Promise<void> {
       compositing = renderer;
     }
     console.log(`# ${W}x${H}@${DPR}, CPU x${CPU}, ${new Date().toISOString().slice(0, 10)}, ${compositing}`);
-    console.log('scenario | variant | fps | p95 ms | worst ms | long tasks | main ms/s (script, layout, style) | main ms per 1000 px | keys: count, median, p95, worst ms | main CPU ms, per 1000 px | scroller nodes, listeners');
+    console.log('scenario | variant | fps | p95 ms | worst ms | long tasks | main ms/s (script, layout, style) | main ms per 1000 px | keys: count, median, p95, worst ms | main CPU ms, per 1000 px | scroller nodes, listeners | long animation frames');
     for (const [name, setup] of Object.entries(scenarios)) {
       if (ONLY && !ONLY.includes(name)) continue;
       for (let run = 0; run < RUNS; run++) {
@@ -473,7 +484,7 @@ async function main(): Promise<void> {
             const at = (share: number) => (m.keys[Math.min(m.keys.length - 1, Math.floor(m.keys.length * share))] ?? 0).toFixed(1);
             const keys = m.keys.length ? `${m.keys.length}, ${at(0.5)}, ${at(0.95)}, ${at(1)}` : '-';
             const cpuPerPixel = (name.includes('scroll') || name.includes('flick')) && m.scrolled > 0 ? (m.cpuMs / m.scrolled * 1000).toFixed(0) : '-';
-            console.log(`${name} | ${variant} | ${m.fps.toFixed(1)} | ${m.p95.toFixed(0)} | ${m.worst.toFixed(0)} | ${m.longTasks} (${m.longMs.toFixed(0)} ms) | ${m.mainMs.toFixed(0)} (${m.scriptMs.toFixed(0)}, ${m.layoutMs.toFixed(0)}, ${m.styleMs.toFixed(0)}) | ${perPixel} | ${keys} | ${m.cpuMs.toFixed(0)}, ${cpuPerPixel} | ${m.nodes}, ${m.listeners}`);
+            console.log(`${name} | ${variant} | ${m.fps.toFixed(1)} | ${m.p95.toFixed(0)} | ${m.worst.toFixed(0)} | ${m.longTasks} (${m.longMs.toFixed(0)} ms) | ${m.mainMs.toFixed(0)} (${m.scriptMs.toFixed(0)}, ${m.layoutMs.toFixed(0)}, ${m.styleMs.toFixed(0)}) | ${perPixel} | ${keys} | ${m.cpuMs.toFixed(0)}, ${cpuPerPixel} | ${m.nodes}, ${m.listeners} | ${m.loafs} (${m.loafMs.toFixed(0)} ms)`);
           } catch (error) {
             console.log(`${name} | ${variant} | failed: ${error instanceof Error ? error.message : String(error)}`);
           }

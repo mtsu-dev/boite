@@ -138,6 +138,8 @@ export interface FakeClientOptions {
   diagrams?: boolean;
   /** Seeds a conversation of a few days with narration, compactions and wakes, what `?fake=1&readability=1` opens (`readability-thread.ts`). */
   readability?: boolean;
+  /** Seeds a thread of twenty long Markdown answers, `t-markdown`, what `?fake=1&markdown=1` adds (`markdown-thread.ts`). */
+  markdown?: boolean;
   /** Seeds this many more threads at work, their load sampled every second: what `?fake=1&working=16` shows. */
   working?: number;
   /** Seeds this many more threads at rest, a long sidebar (`working-seed.ts`). */
@@ -432,6 +434,7 @@ export class FakeContext {
   readonly heavy: boolean;
   readonly diagrams: boolean;
   readonly readability: boolean;
+  readonly markdown: boolean;
   readonly quotaExtras: boolean;
   readonly plainLink: boolean;
   brainLinkPermission: boolean;
@@ -567,6 +570,7 @@ export class FakeContext {
     this.heavy = options.heavy ?? false;
     this.diagrams = options.diagrams ?? false;
     this.readability = options.readability ?? false;
+    this.markdown = options.markdown ?? false;
     const coreId = options.coreId ?? `${secureId()}${secureId()}`;
     if (options.desktopApp) {
       this.serverUpdate = { ...this.serverUpdate, mode: 'manual', phase: 'idle', version: null, publishedAt: null, received: 0, total: null, error: null };
