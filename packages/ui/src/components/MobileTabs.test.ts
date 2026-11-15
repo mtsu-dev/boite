@@ -55,13 +55,13 @@ test('Mochis carries a dot while mochis work, in the waiting colour once one ask
   expect(tab('mobile-agents')!.getAttribute('aria-label')).toBe('Mochis, 1 at work, something needs you');
 });
 
-test('Contacts keeps a tab of its own beside Mochis, marked on its page: no switch hides it behind the Mochis tab', async () => {
+test('Contacts keeps a tab of its own under Activity, before Mochis, marked on its page: no switch hides it behind the Mochis tab', async () => {
   setExperiment('contacts', true);
   client.close(); store.detach();
   client = new FakeClient({ delayMs: 0 }); store = new Store(); store.attach(client); await store.connect();
   app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate: () => {} } }); await settle();
-  expect(document.querySelectorAll('.mobile-tabs .tab')).toHaveLength(4);
-  expect(tab('mobile-agents')).not.toBeNull();
+  // The desktop rail's order: Contacts right under Activity, before the bots.
+  expect([...document.querySelectorAll('.mobile-tabs .tab')].map((node) => node.getAttribute('data-testid'))).toEqual(['mobile-conversations', 'mobile-activity', 'mobile-contacts', 'mobile-agents']);
   tab('mobile-contacts')!.click(); await settle();
   expect(store.page).toBe('home');
   expect(tab('mobile-contacts')!.getAttribute('aria-current')).toBe('page');

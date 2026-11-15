@@ -1,6 +1,6 @@
 <script lang="ts">
   import { markFeature } from '@boite/contracts';
-  import { ChevronRight, Contact, UserPlus } from '@lucide/svelte';
+  import { ChevronRight, UserPlus, UsersRound } from '@lucide/svelte';
   import { contactRows, initialsOf, openContact, watchContacts } from '../../lib/contacts.svelte';
   import { count } from '../../lib/format';
   import { fill, strings } from '../../lib/strings';
@@ -38,7 +38,7 @@
 <section class="contacts" data-testid="sidebar-contacts">
   <div class="head">
     <button type="button" class="ghost toggle" aria-expanded={open} onclick={toggle} data-testid="sidebar-contacts-toggle">
-      <span class="mark"><Contact size={16} strokeWidth={1.75} /><span class="fold-caret" class:open aria-hidden="true"><ChevronRight size={16} /></span></span>
+      <span class="mark"><UsersRound size={16} strokeWidth={1.75} /><span class="fold-caret" class:open aria-hidden="true"><ChevronRight size={16} /></span></span>
       <span class="title ui-label">{labels.heading}</span>
       <!-- Folded, the title alone says something waits; open, the rows say it. -->
       {#if waiting && !open}<span class="waiting ui-label" data-testid="sidebar-contacts-waiting" title={fill(labels.waiting, { count: count(waiting) })}>{count(waiting)}</span>{/if}

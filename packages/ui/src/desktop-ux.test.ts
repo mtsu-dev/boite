@@ -61,11 +61,11 @@ test('a maximized panel stays with its thread: the Contacts page beside the list
   }
 });
 
-test('contacts are a circle of the rail beside the mochis, never a side of the Mochis column: its head folds the column on the right, a row opens a contact', async () => {
+test('contacts are a place at the top of the rail, under Activity and above the bots, never a side of the Mochis column: its head folds the column on the right, a row opens a contact', async () => {
   writeExperiments(['resident-agents', 'contacts']);
   await mountOnFake();
   try {
-    // A first start finds the column folded; the rail keeps a Contacts circle with the bots on.
+    // A first start finds the column folded; the rail keeps Contacts with the places, right under Activity.
     // The Bots page draws no such column: read it afresh each time.
     const rail = () => query('[data-testid=contacts-rail]');
     // The column is fetched after the shell (`lib/contacts-entry.ts`).
@@ -74,8 +74,10 @@ test('contacts are a circle of the rail beside the mochis, never a side of the M
     expect(query('main').compareDocumentPosition(rail()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(query('[data-testid=rail-contacts]').getAttribute('aria-current')).toBeNull();
     expect(document.querySelector('[data-testid=contacts-toggle]')).toBeNull();
+    const places = [...query('[data-testid=app-rail]').querySelectorAll('[data-testid=view-threads], [data-testid=nav-activity], [data-testid=rail-contacts], [data-testid=rail-add]')];
+    expect(places.map(button => button.getAttribute('data-testid'))).toEqual(['view-threads', 'nav-activity', 'rail-contacts', 'rail-add']);
 
-    // The Bots column has no switch to Contacts: the rail's circle opens the Contacts page in the main card.
+    // The Bots column has no switch to Contacts: the rail's button opens the Contacts page in the main card.
     workspace.showAgents(store);
     await waitFor(() => document.querySelector('[data-testid=side-head]') !== null);
     expect(document.querySelector('[data-testid=side-switch]')).toBeNull();
