@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { desktopShell } from '../lib/shell-platform';
   import { onMount } from 'svelte';
   import { PanelLeftClose, PanelLeftOpen, Settings } from '@lucide/svelte';
   import { MediaQuery } from 'svelte/reactivity';
@@ -27,7 +28,7 @@
   /** `listless`: the desktop draws no list column yet (lib/list-absent.ts), so there is nothing to fold. */
   let { store, edge = false, listless = false }: { store: Store; edge?: boolean; listless?: boolean } = $props();
 
-  const inShell = window.__TAURI_INTERNALS__ !== undefined;
+  const inShell = desktopShell();
   /** macOS draws its own traffic lights over the window's top left corner, and no caption buttons are drawn here. */
   const macShell = inShell && isMac();
   const linuxFrame = linuxShell();

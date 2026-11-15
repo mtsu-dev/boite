@@ -31,6 +31,7 @@ import { appPage } from './app-origin';
 import { pictureSources } from './agent-pictures.svelte';
 import { bootWorkspace, byHand, hostOf, primaryMachine } from './workspace-boot';
 import { machineIcons, namedByUser, PROFILE_KEY, profileKey, profileName, profiles, typedName, type MachineIconName } from './machine-names';
+import { desktopShell } from './shell-platform';
 
 export { machineIcons, type MachineIconName } from './machine-names';
 
@@ -187,14 +188,13 @@ export class Workspace {
   }
 
   /**
-   * Another machine may be shown in place of the one the window opened on,
-   * which has not answered. Never in place of the shell's own core, which the
-   * shell brings back itself, and not before an address is known: the shell is
-   * still starting its core, or the owner is being asked about a link.
+   * Another machine may be shown in place of the one the window opened on, which has not answered.
+   * Never in place of the shell's own core, which the shell brings back itself, and not before an
+   * address is known: the shell is still starting its core, or the owner is being asked about a link.
    */
   #mayStandIn(): boolean {
     return store.endpointUrl !== null && !store.localCore && store.connection !== 'ready'
-      && (window.__TAURI_INTERNALS__ !== undefined || readEnvironments().some((e) => opens(e) && e.url !== store.endpointUrl));
+      && (desktopShell() || readEnvironments().some((e) => opens(e) && e.url !== store.endpointUrl));
   }
 
   /** Whether the machine the window opens on has still not said hello after `PRIMARY_PATIENCE_MS`, with another machine to show instead. */

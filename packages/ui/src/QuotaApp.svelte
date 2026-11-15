@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { desktopShell } from './lib/shell-platform';
   import { onMount } from 'svelte';
   import type { Account, Settings } from '@boite/contracts';
   import { WsClient, type Client } from './lib/client';
@@ -58,7 +59,7 @@
     catch (cause) { error = String(cause); return false; }
   }
   async function action(action: string) {
-    if (!window.__TAURI_INTERNALS__) return;
+    if (!desktopShell()) return;
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('quota_window', { action });
@@ -99,7 +100,7 @@
         pendingAccounts?.set(accountId, null);
         accounts = accounts?.filter((entry) => entry.id !== accountId);
       }));
-      if (window.__TAURI_INTERNALS__) {
+      if (desktopShell()) {
         const { listen } = await import('@tauri-apps/api/event');
         const opened = await listen('tray://open', () => { visible = true; void refresh(); });
         const closed = await listen('tray://closed', () => { visible = false; });

@@ -1,0 +1,15 @@
+{
+  "name": "@boite/mobile",
+  "version": "2.0.0-beta.1",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "tauri": "tauri",
+    "build:android": "tauri android build --target aarch64",
+    "build:android:apk": "tauri android build --apk --target aarch64"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.4"
+  }
+}

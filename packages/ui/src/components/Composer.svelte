@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { desktopShell } from '../lib/shell-platform';
   import { tick, untrack, type Snippet } from 'svelte';
   import { supportsSideQuestions, type AgentSelection, type Attachment, type PreviewReference } from '@boite/contracts';
   import { restorePreviewMentions } from '../lib/preview-mentions';
@@ -83,10 +84,9 @@
   /** The box has the keyboard: one of the two things that open the slash menu. */
   let focused = $state(false);
   /**
-   * The last press came from keys, not a pointer. A touch screen focuses the
-   * card itself so no keyboard opens, and the browser counted that script
-   * focus as a keyboard one: the accent ring lit at every tap. It shows only
-   * after a key now.
+   * The last press came from keys, not a pointer. A touch screen focuses the card itself so no
+   * keyboard opens, and the browser counted that script focus as a keyboard one: the accent ring
+   * lit at every tap. It shows only after a key now.
    */
   let viaKeys = $state(false);
   /** Escape shuts the menu on text it keeps, until that text changes again. */
@@ -98,7 +98,7 @@
   let pendingEdit: { start: number; end: number } | undefined;
   const mentions = new ComposerMentions();
 
-  const inShell = window.__TAURI_INTERNALS__ !== undefined;
+  const inShell = desktopShell();
   /** The three commands the composer runs itself: each one opens a chip's menu. */
   const CHIP_COMMANDS: Record<string, ChipCommand> = {
     model: { testid: 'composer-picker', description: strings.slash.model },

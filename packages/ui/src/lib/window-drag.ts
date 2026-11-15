@@ -1,12 +1,13 @@
 import type { Window as TauriWindow } from '@tauri-apps/api/window';
 import { linuxShell } from './shell-platform';
+import { desktopShell } from './shell-platform';
 
 /**
  * The window's drag, shared by the main column's top bar and the app rail:
  * every bit of chrome with nothing to press moves the window, the way a
  * native title bar does.
  */
-const inShell = typeof window !== 'undefined' && window.__TAURI_INTERNALS__ !== undefined;
+const inShell = typeof window !== 'undefined' && desktopShell();
 
 let cached: Promise<TauriWindow> | null = null;
 

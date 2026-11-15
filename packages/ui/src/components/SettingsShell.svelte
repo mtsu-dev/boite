@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { desktopShell } from '../lib/shell-platform';
   import { MediaQuery } from 'svelte/reactivity';
   import { tick } from 'svelte';
   import MobileSettings from './MobileSettings.svelte';
@@ -86,7 +87,7 @@
     if (page && section) untrack(() => store.showSettings(page, section.id, { flash: section.flash === true }));
   });
   const narrow = new MediaQuery('(max-width: 720px)');
-  const inShell = window.__TAURI_INTERNALS__ !== undefined;
+  const inShell = desktopShell();
   const HomeIcon = SETTINGS_ICONS.home;
 
   /** A page as the nav names it. */

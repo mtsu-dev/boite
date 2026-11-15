@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { desktopShell } from '../lib/shell-platform';
   import { CornerDownLeft, FileText, Puzzle } from '@lucide/svelte';
   import type { Message, Turn } from '@boite/contracts';
   import { bytes, count } from '../lib/format';
@@ -54,13 +55,13 @@
 
   /** In the shell the link saves the file into Downloads and opens it; a browser downloads it. */
   async function openFile(event: MouseEvent, part: FilePart): Promise<void> {
-    if (window.__TAURI_INTERNALS__ === undefined && !part.dataDeferred) return;
+    if (!desktopShell() && !part.dataDeferred) return;
     event.preventDefault();
     const owner = store, threadId = message.threadId, messageId = message.id, index = message.parts.indexOf(part);
     try {
       const data = part.dataDeferred ? await owner.loadMessageAttachment(threadId, messageId, index) : part.data;
       if (data === null) return;
-      if (window.__TAURI_INTERNALS__ === undefined) browserDownload(`data:application/octet-stream;base64,${data}`, part.name ?? strings.composer.attachAlt);
+      if (!desktopShell()) browserDownload(`data:application/octet-stream;base64,${data}`, part.name ?? strings.composer.attachAlt);
       else await saveAttachment(part.name ?? strings.composer.attachAlt, decodeBase64(data), true);
     } catch (error) {
       owner.reportError(error, 'minor');
@@ -109,7 +110,7 @@
     return {
       src, name, mimeType: image.mimeType, kind: 'image',
       save: () => {
-        if (window.__TAURI_INTERNALS__ === undefined) { browserDownload(src, name); return; }
+        if (!desktopShell()) { browserDownload(src, name); return; }
         saveAttachment(name, decodeBase64(image.data), false).catch((error: unknown) => { store.reportError(error, 'minor'); });
       }
     };

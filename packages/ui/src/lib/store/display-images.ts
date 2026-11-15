@@ -2,6 +2,7 @@ import { parseGroupRelayUrl, type RpcParams, type ThreadId } from '@boite/contra
 import { coreHref } from '../endpoint';
 import { strings } from '../strings';
 import type { StoreContext } from './context';
+import { desktopShell } from '../shell-platform';
 
 /** Copies kept for a scroll back; past either bound the oldest goes. */
 const KEPT = 120;
@@ -81,7 +82,7 @@ export class DisplayImages {
     const client = this.ctx.client;
     if (!client) throw new Error(strings.connection.unavailable);
     const endpoint = this.ctx.store?.endpointUrl ?? null;
-    const ticket = !(window.__TAURI_INTERNALS__ !== undefined && endpoint !== null && parseGroupRelayUrl(endpoint) !== null);
+    const ticket = !(desktopShell() && endpoint !== null && parseGroupRelayUrl(endpoint) !== null);
     const { data, mimeType: type, url } = await client.call('messages.attachment', { ...params, ...(ticket ? { ticket } : {}) });
     if (url === undefined) return `data:${type ?? mimeType};base64,${data}`;
     return url.startsWith('/') && endpoint !== null ? coreHref(endpoint, url) : url;

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { desktopShell } from '../lib/shell-platform';
   import { lockedBy } from '../lib/policy';
   import FirewallNotice from './FirewallNotice.svelte';
   import { errorText } from '../lib/errors';
@@ -21,7 +22,7 @@
   const uid = $props.id();
   const lanLocked = $derived(lockedBy(store.policy, 'network.lan') !== null);
   const pushLocked = $derived(lockedBy(store.policy, 'network.push') !== null);
-  const inShell = window.__TAURI_INTERNALS__ !== undefined;
+  const inShell = desktopShell();
   const secure = window.isSecureContext;
   const capable = secure && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
   let standalone = $state(installed());

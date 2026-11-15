@@ -7,6 +7,7 @@ import type { StoreContext } from './context';
 import { retainRows } from './snapshot-reads';
 import { created, draftKey } from './drafts.svelte';
 import { secureId } from '../secure-id';
+import { desktopShell } from '../shell-platform';
 
 /** The projects in the sidebar, the draft a new thread starts as, and where the app lands. */
 export class Projects {
@@ -186,7 +187,7 @@ export class Projects {
   async addProjects(paths: string[]): Promise<void> {
     const s = this.ctx.store;
     // Explorer paths belong to this computer even while a remote core is open.
-    if (window.__TAURI_INTERNALS__ && !s.localCore) await s.useLocalCore();
+    if (desktopShell() && !s.localCore) await s.useLocalCore();
     if (!s.owner || s.connection !== 'ready') return;
     const client = this.ctx.client;
     if (!client) return;

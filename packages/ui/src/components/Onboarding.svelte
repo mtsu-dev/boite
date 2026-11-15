@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { desktopShell } from '../lib/shell-platform';
   import { lockedBy } from '../lib/policy';
   import { onMount, tick, untrack } from 'svelte';
   import { AppWindow, ArrowLeftRight, Bell, Check, FileDiff, Languages, MessageCircle, Mic, Minimize2, Palette, SquareTerminal, VolumeX, X } from '@lucide/svelte';
@@ -18,7 +19,7 @@
   import { toggled } from '../lib/autosave.svelte';
 
   let { store }: { store: Store } = $props();
-  const inShell = window.__TAURI_INTERNALS__ !== undefined;
+  const inShell = desktopShell();
   /** Read once, as the tour opens: a window resized halfway keeps the screens it started with. */
   const phone = onPhone();
   const screens = $derived(steps(store.owner, phone));

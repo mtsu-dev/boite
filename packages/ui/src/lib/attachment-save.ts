@@ -1,3 +1,4 @@
+import { desktopShell } from './shell-platform';
 /**
  * A file the chat carries, taken out of it. The shell writes it into the
  * system's Downloads folder through `save_attachment`, which only opens inert
@@ -13,7 +14,7 @@ export function decodeBase64(data: string): Uint8Array<ArrayBuffer> {
 
 /** Null outside the shell, where the caller downloads through the browser instead. */
 export async function saveAttachment(name: string, bytes: Uint8Array<ArrayBuffer>, open: boolean): Promise<SavedAttachment | null> {
-  if (window.__TAURI_INTERNALS__ === undefined) return null;
+  if (!desktopShell()) return null;
   const { invoke } = await import('@tauri-apps/api/core');
   return invoke<SavedAttachment>('save_attachment', bytes, {
     headers: { 'x-boite-name': encodeURIComponent(name), 'x-boite-open': open ? '1' : '0' }
@@ -22,7 +23,7 @@ export async function saveAttachment(name: string, bytes: Uint8Array<ArrayBuffer
 
 /** Download a ticketed file without copying its entire body through the webview's IPC. */
 export async function saveAttachmentUrl(name: string, url: string, open: boolean): Promise<SavedAttachment | null> {
-  if (window.__TAURI_INTERNALS__ === undefined) return null;
+  if (!desktopShell()) return null;
   const { invoke } = await import('@tauri-apps/api/core');
   return invoke<SavedAttachment>('save_attachment_url', { name, url, open });
 }

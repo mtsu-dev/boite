@@ -9,6 +9,7 @@ import type { DesktopUpdateStatus } from '@boite/contracts';
 import { appUpdater, type UpdateSnapshot } from './app-update.svelte';
 import type { Store } from './store.svelte';
 import { fill, strings } from './strings';
+import { desktopShell } from './shell-platform';
 
 /** How long download ticks of one phase wait before the next report: the core relays each to every owner window. */
 const TICK_MS = 1000;
@@ -64,7 +65,7 @@ export function reportDesktopUpdates(stores: () => readonly Store[]): () => void
  * the core this shell started acts, and only for the release it offers itself.
  */
 export function appUpdateRequested(from: Store, version: string): void {
-  if (window.__TAURI_INTERNALS__ === undefined || !from.localCore) return;
+  if (!desktopShell() || !from.localCore) return;
   if (!appUpdater.snapshot.supported || appUpdater.snapshot.version !== version) return;
   from.reportError(fill(strings.desktopUpdate.requested, { version }), 'minor');
   void appUpdater.installRequested(version).catch((error: unknown) => { from.reportError(error); });

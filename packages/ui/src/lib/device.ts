@@ -1,3 +1,4 @@
+import { desktopShell } from './shell-platform';
 /**
  * What this client says it runs on (`hello` `client.device`), so an agent
  * knows where a prompt came from. The shell names the computer with the name
@@ -25,6 +26,6 @@ export function touchScreen(): boolean {
 }
 
 export function deviceLabel(): string | null {
-  if (window.__TAURI_INTERNALS__ !== undefined) return computer;
+  if (desktopShell()) return computer;
   return touchScreen() || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ? 'phone' : 'browser';
 }

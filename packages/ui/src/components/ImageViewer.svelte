@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { desktopShell } from '../lib/shell-platform';
   import Notice from './Notice.svelte';
   /**
    * Pictures and videos over the whole window, one at a time, with the others
@@ -37,7 +38,7 @@
   let natural = $state({ width: 0, height: 0 });
   let viewport = $state({ width: 0, height: 0 });
   let notice = $state('');
-  const shareable = canShareFiles() && window.__TAURI_INTERNALS__ === undefined;
+  const shareable = canShareFiles() && !desktopShell();
   /** Files fetched for the share sheet, by URL: iOS opens the sheet only when it is asked straight from the tap. */
   const files = new Map<string, File>();
 
