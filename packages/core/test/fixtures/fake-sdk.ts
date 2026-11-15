@@ -7,7 +7,7 @@
  * `<root>/state.json`, and each call is appended to `<root>/calls.log`.
  * Never touches a real device.
  */
-import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
@@ -113,10 +113,22 @@ export function png(width = SCREEN.width, height = SCREEN.height, color: [number
   return bytes;
 }
 
+/** Readers in other fake SDK processes must see a complete old or new snapshot. */
+function writeState(root: string, state: FakeSdkState): void {
+  const target = join(root, 'state.json');
+  const pending = `${target}.${process.pid}.${crypto.randomUUID()}.tmp`;
+  try {
+    writeFileSync(pending, JSON.stringify(state));
+    renameSync(pending, target);
+  } finally {
+    rmSync(pending, { force: true });
+  }
+}
+
 /** Lays out a fake SDK and returns its root, its Xcode folder and a reader for its call log. */
 export function fakeSdk(state: Partial<FakeSdkState> = {}, tools: { adb?: boolean; emulator?: boolean; xcrun?: boolean } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'boite-fake-sdk-'));
-  writeFileSync(join(root, 'state.json'), JSON.stringify({ avds: [], running: {}, ...state }));
+  writeState(root, { avds: [], running: {}, ...state });
   const wrap = (folder: string, tool: string) => {
     mkdirSync(join(root, folder), { recursive: true });
     if (process.platform === 'win32') {
@@ -138,12 +150,12 @@ export function fakeSdk(state: Partial<FakeSdkState> = {}, tools: { adb?: boolea
     /** Changes what every screen shows from the next capture on. */
     paint: (screen: [number, number, number]) => {
       const state = JSON.parse(readFileSync(join(root, 'state.json'), 'utf8')) as FakeSdkState;
-      writeFileSync(join(root, 'state.json'), JSON.stringify({ ...state, screen }));
+      writeState(root, { ...state, screen });
     },
     /** Ends every fake emulator process, which watch the state for their serial. */
     stopEmulators: () => {
       const state = JSON.parse(readFileSync(join(root, 'state.json'), 'utf8')) as FakeSdkState;
-      writeFileSync(join(root, 'state.json'), JSON.stringify({ ...state, running: {} }));
+      writeState(root, { ...state, running: {} });
     },
     /** Whether a call is waiting at this gate. */
     waiting: (name: string) => existsSync(join(root, `${name}.waiting`)),
@@ -152,7 +164,7 @@ export function fakeSdk(state: Partial<FakeSdkState> = {}, tools: { adb?: boolea
     /** Changes what the fake device and its scrcpy server do from the next call on. */
     set: (change: Partial<FakeSdkState>) => {
       const state = JSON.parse(readFileSync(join(root, 'state.json'), 'utf8')) as FakeSdkState;
-      writeFileSync(join(root, 'state.json'), JSON.stringify({ ...state, ...change }));
+      writeState(root, { ...state, ...change });
     },
     /** The control messages every fake scrcpy server received, in order. */
     controls: (): ScrcpyControl[] => (existsSync(join(root, 'control.log')) ? readFileSync(join(root, 'control.log'), 'utf8').trim().split('\n').map((line) => JSON.parse(line)) : []),
@@ -170,7 +182,7 @@ async function scrcpyServer(root: string, serial: string, state: FakeSdkState, a
   const jar = args.find((arg) => arg.startsWith('CLASSPATH='))?.slice(10);
   if (!jar || state.pushed?.[serial] !== jar) { process.stderr.write('Error: Could not find or load main class com.genymobile.scrcpy.Server\n'); return 1; }
   delete state.pushed![serial];
-  writeFileSync(join(root, 'state.json'), JSON.stringify(state));
+  writeState(root, state);
   const log = (line: string) => appendFileSync(join(root, 'scrcpy.log'), `${line}\n`);
   log(`start ${scid}`);
   process.stdout.write('[server] INFO: Device: [fake] Boite Phone (Android 15)\n');
@@ -269,12 +281,8 @@ async function scrcpyServer(root: string, serial: string, state: FakeSdkState, a
   let closed = false;
   void ended.then(() => { closed = true; });
   const plugged = () => {
-    try {
-      const now = JSON.parse(readFileSync(join(root, 'state.json'), 'utf8')) as FakeSdkState;
-      return !state.physical?.some((phone) => phone.serial === serial) || now.physical?.some((phone) => phone.serial === serial);
-    } catch {
-      return true; // read while another fake call rewrote it
-    }
+    const now = JSON.parse(readFileSync(join(root, 'state.json'), 'utf8')) as FakeSdkState;
+    return !state.physical?.some((phone) => phone.serial === serial) || now.physical?.some((phone) => phone.serial === serial);
   };
   while (!closed && Date.now() - started < 60_000) {
     if (!plugged()) { process.stderr.write('[server] ERROR: device offline\n'); log(`unplugged ${scid}`); process.exit(1); }
@@ -302,7 +310,7 @@ async function gate(root: string, name: string): Promise<void> {
 async function main(root: string, tool: string, args: string[]): Promise<number> {
   const statePath = join(root, 'state.json');
   const read = () => JSON.parse(readFileSync(statePath, 'utf8')) as FakeSdkState;
-  const write = (state: FakeSdkState) => writeFileSync(statePath, JSON.stringify(state));
+  const write = (state: FakeSdkState) => writeState(root, state);
   appendFileSync(join(root, 'calls.log'), `${tool} ${args.join(' ')}\n`);
   const out = (text: string) => process.stdout.write(text);
   const state = read();

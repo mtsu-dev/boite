@@ -27,8 +27,6 @@
   import { machineAway } from '../lib/machine-away';
   import { declineHint } from '../lib/composer-placeholder';
   import { repliesOf } from '../lib/question-reply.svelte';
-  /** The context's reading shows in the row from this percent used. */
-  const CONTEXT_SHOWN_FROM = 70;
   import { workspace } from '../lib/workspace.svelte';
   import PluginSlotButtons from './PluginSlotButtons.svelte';
 
@@ -126,10 +124,10 @@
   let bound = $derived(!target && store.openThread !== null);
   let contextUsed = $derived(store.openThread?.context ? contextPercent(store.openThread.context, store.settings ? effectiveCompaction(store.settings, store.openThread).autoCompact : null) : null);
   /**
-   * The reading only once the context matters (a nearly full one whatever the
-   * preference); below that the row shows nothing there and `/compact` stays.
+   * Keep the ring available before a reading arrives. A nearly full context
+   * stays visible even when the control is hidden in the user's preferences.
    */
-  let showContext = $derived(contextUsed !== null && (contextLevel(contextUsed) === 'full' || work.shows('header.context') && contextUsed >= CONTEXT_SHOWN_FROM));
+  let showContext = $derived(work.shows('header.context') || contextLevel(contextUsed) === 'full');
   /** Every agent can read uploaded files through its local tools. */
   let canAttach = $derived(!!target || (provider !== null && provider !== undefined));
 
@@ -408,7 +406,7 @@
     display: none;
   }
 
-  .context-control { display: flex; flex: none; }
+  .context-control { display: flex; flex: none; margin-inline-start: auto; }
 
   .chips .ui-chip.signed-out { color: var(--color-live); }
   /* Every chip's chevron is the same quiet mark: the value stays what the eye reads. */
@@ -566,7 +564,6 @@
     .line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 6px; min-width: 0; }
     .line.how:not(:has(*)) { display: none; }
     .line > :global(*) { flex: none; max-width: 100%; }
-    .line.how > .context-control { margin-inline-start: auto; }
     /* Each setting reads as a control at rest: a quiet surface and a hairline
        around its icon, its value and its chevron, 36 px drawn in a 44 px target. */
     .bar .chips :global(:is(.picker, .effort, .permission) > .trigger) {

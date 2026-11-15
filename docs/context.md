@@ -6,8 +6,10 @@ you keep writing while the agent works.
 
 ## Read the context meter
 
-The ring beside the send button fills as the conversation grows. Hover it,
-focus it or tap it to see the exact counts:
+The ring at the right of the message bar fills as the conversation grows.
+It stays clickable before the first measurement and below 70% used. From 70%,
+it also shows the percentage of context left. Hover it, focus it or tap it to
+see the exact counts:
 
 - Used, and the tokens available before the model's limit, or before
   auto-compaction when you set a token limit.

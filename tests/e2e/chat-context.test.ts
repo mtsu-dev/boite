@@ -129,9 +129,9 @@ test('silent work has no typing bubble, live text stays visible, and receipts fo
   await capture('quiet-chat-done');
 }, 30000);
 test('context opens on hover, shows exact segments, and compaction needs its own click', async () => {
-  // The composer shows the context only from 70% used since the redesign.
+  // Above 70% used, the composer shows the percentage beside the ring.
   await update(`thread.context = {tokens:151000,window:200000,at:Date.now(),breakdown:{input:118000,cache:30000,output:3000}}; thread.sessionId = 'test-session'; window.__compactCalls = 0; store.compact = async () => {window.__compactCalls++;};`);
-  await page.waitFor(`document.querySelector('[data-testid="context-meter"]')`);
+  await page.waitFor(`document.querySelector('[data-testid="context-meter"]')?.dataset.percent === '76'`);
   await page.evaluate(`document.querySelector('[data-testid="context-meter"]').dispatchEvent(new MouseEvent('mouseenter'))`);
   await page.waitFor(`document.querySelector('[data-testid="context-popup"]')`);
   expect(await page.evaluate(`window.__compactCalls`)).toBe(0);
@@ -153,11 +153,13 @@ test('context meter uses the auto-compaction threshold on desktop and phone', as
   await page.send('Emulation.setTouchEmulationEnabled',{enabled:false});
   await page.evaluate(`document.documentElement.dataset.theme = 'dark'`);
   await update(`thread.context = {tokens:212569,window:1000000,at:Date.now()}; thread.sessionId = 'test-session'; store.settings = {...store.settings,autoCompact:null};`);
-  // 21% of the model's window: the redesigned composer keeps the reading hidden below 70%.
-  await page.waitFor(`document.querySelector('[data-testid="context-meter"]') === null`);
+  // At 21% used the ring stays available; only the percentage stays hidden.
+  await page.waitFor(`document.querySelector('[data-testid="context-meter"]')?.dataset.percent === '21'`);
+  expect((await page.text('[data-testid="context-trigger"]')).trim()).toBe('');
   await capture('auto-compact-context-before-desktop');
   await update(`store.settings = {...store.settings,autoCompact:{tokens:250000,moments:['turn-end']}};`);
   await page.waitFor(`document.querySelector('[data-testid="context-meter"]')?.dataset.percent === '85'`);
+  expect(await page.text('[data-testid="context-trigger"]')).toContain('15% context left');
   await page.click('[data-testid="context-trigger"]');
   await page.waitFor(`document.querySelector('[data-testid="context-popup"]')`);
   expect(await page.evaluate(`document.querySelector('[data-testid="context-popup"] .total .num').textContent`)).toBe('212,569 / 250,000');
