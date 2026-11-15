@@ -121,7 +121,7 @@ test('a parent row shows how many sub-agents it has at work, in every state, and
   expect(state.querySelector('[data-testid="thread-subagents"]')).toBeNull();
 });
 
-test('work names what it waits on: the heaviest background task, CI or the merge queue, never a bare Working', () => {
+test('work names what it waits on: the heaviest background task, CI or the merge queue; a turn reads its time', () => {
   vi.useFakeTimers({ now: NOW });
   const word = (thread: Partial<Shown> & Record<string, unknown>) => {
     const state = draw(thread as Partial<Shown>);
@@ -131,7 +131,8 @@ test('work names what it waits on: the heaviest background task, CI or the merge
     document.body.innerHTML = '';
     return text;
   };
-  expect(word({ status: 'running', runningSince: NOW - 5_000 })).toBe('Working');
+  expect(word({ status: 'running', runningSince: NOW - 5_000 })).toBe('5s');
+  expect(word({ status: 'running', runningSince: null })).toBe('Working');
   expect(word({ status: 'queued' })).toBe('Queued');
   expect(word({ backgroundWork: { kinds: ['shell', 'monitor'], since: NOW } })).toBe('Command');
   expect(word({ backgroundWork: { kinds: ['shell', 'workflow'], since: NOW } })).toBe('Workflow');
@@ -174,10 +175,10 @@ test('a parent counts a child waiting on its background work among its working s
 test('a parent at work reads working, and one whose child asks reads Needs you, with no count on the row', () => {
   vi.useFakeTimers({ now: NOW });
   const child = (id: string, fields: Partial<ThreadSummary>) => ({ id: id as ThreadId, parentThreadId: 'p' as ThreadId, archived: false, status: 'running', runningSince: NOW - 30_000, ...fields }) as ThreadSummary;
-  // Its own turn runs: the row says working, its time in the tooltip, the thread view lists the children.
+  // Its own turn runs: the row shows how long, the thread view lists the children.
   const working = draw({ status: 'running', runningSince: NOW - 65_000 }, { count: 2, since: NOW - 30_000, asking: 0 });
   expect(working.dataset['state']).toBe('working');
-  expect(working.textContent?.trim()).toBe('Working');
+  expect(working.textContent?.trim()).toBe('1m 05s');
   expect(working.getAttribute('title')).toBe('Working for 1m 05s');
   unmount(running!, { outro: false });
   running = null;
@@ -246,26 +247,28 @@ test('a shell left running reads as background work, with a still ring rather th
   expect(state.getAttribute('title')).toBe('In background for 5s\n1 shell, 1 monitor still running');
 });
 
-test('a working row holds a still ring, the open thread the one spinner, and counts from its turn start, second by second', () => {
+test('a working row shows how long its turn has run, second by second, beside a ring that is not a spinner icon', () => {
   vi.useFakeTimers({ now: NOW });
   const state = draw({ status: 'running', runningSince: NOW - 65_000 });
   expect(state.dataset['state']).toBe('working');
   // A list holds many rows at work: none of their marks moves.
   expect(state.querySelector('.work-ring')).not.toBeNull();
   expect(state.querySelector('svg, .spinner, .pulse')).toBeNull();
-  expect(state.textContent?.trim()).toBe('Working');
+  expect(state.textContent?.trim()).toBe('1m 05s');
   expect(state.getAttribute('title')).toBe('Working for 1m 05s');
 
   vi.advanceTimersByTime(2_000);
   flushSync();
+  expect(state.textContent?.trim()).toBe('1m 07s');
   expect(state.getAttribute('title')).toBe('Working for 1m 07s');
 });
 
 test('every state that matters says its word beside a mark of its own shape: the amber dot, the failure\'s "!" disc, the ring; news is its time alone', () => {
+  vi.useFakeTimers({ now: NOW });
   for (const [thread, kind, word, mark] of [
     [{ status: 'waiting' }, 'waiting', 'Needs you', '.dot'],
     [{ status: 'error' }, 'error', 'Failed', '.fail'],
-    [{ status: 'running', runningSince: NOW - 65_000 }, 'working', 'Working', '.work-ring'],
+    [{ status: 'running', runningSince: NOW - 65_000 }, 'working', '1m 05s', '.work-ring'],
     [{ status: 'queued' }, 'queued', 'Queued', '.work-ring'],
     [{ status: 'idle', unread: true }, 'done', '2m ago', null]
   ] as const) {
@@ -319,6 +322,7 @@ test('the desktop list keeps every row\'s word at its default width in every vie
 });
 
 test('a desktop list row below its threshold keeps the mark alone, the word in its accessible name', () => {
+  vi.useFakeTimers({ now: NOW });
   // The word goes only where the title would keep under about 12 characters a line: 198 px of row text in English, 218 in French, a 236 or 256 px list.
   const { en, fr } = wordThresholds();
   expect(en).toBeCloseTo(198, 0);
@@ -326,7 +330,7 @@ test('a desktop list row below its threshold keeps the mark alone, the word in i
   for (const [thread, name, word] of [
     [{ status: 'waiting' }, /^Needs you$/, 'Needs you'],
     [{ status: 'error' }, /^Failed$/, 'Failed'],
-    [{ status: 'running', runningSince: NOW - 65_000 }, /^Working for /, 'Working'],
+    [{ status: 'running', runningSince: NOW - 65_000 }, /^Working for /, '1m 05s'],
   ] as const) {
     running = mount(ThreadState, { target: document.body, props: { thread: { unread: false, runningSince: null, backgroundWork: null, lastUserMessageAt: NOW, createdAt: NOW, ...thread }, now: NOW, fit: true } });
     flushSync();

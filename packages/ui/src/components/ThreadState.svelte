@@ -27,7 +27,9 @@
    * its cloud; each mark is followed by its word ("Needs you", "Failed",
    * "Stopped", "Working", "Queued", "Offline") in the row's neutral ink, the hue staying on the mark. News and
    * rest show the time. Work turns, as it does in the thread; a queued turn's
-   * arc waits, still. How long work has run lives in the thread and the tooltip.
+   * arc waits, still. A turn at work shows how long it has run in place of
+   * "Working" (the ring already says it works); background work keeps the word
+   * that names what it waits on, its time in the tooltip.
    * `fit`: the desktop list, where the word stays at every width a user gets by
    * default and the title gives way first (two lines, cut at a word); the word
    * goes only where the title would keep under about 12 characters a line (the
@@ -69,7 +71,7 @@
   let spent = $derived(since === null ? null : elapsed(Math.max(secondClock.now, now) - since));
   /**
    * The word beside the mark: what the work waits on, so a list tells a CI run from a command or a workflow
-   * without a hover ("CI running", "Command", "Sub-agents"); the turn itself reads "Working", an unreached
+   * without a hover ("CI running", "Command", "Sub-agents"); the turn itself reads its time ("4m 12s"), "Working" before it has one, an unreached
    * machine "Offline". Mixed background work names the heaviest: a workflow, an agent, then a shell.
    */
   let word = $derived.by(() => {
@@ -83,6 +85,7 @@
       const heaviest = (['workflow', 'agent', 'shell'] as const).find(each => kinds.includes(each));
       return words[heaviest ?? 'other'];
     }
+    if (kind === 'working') return spent ?? strings.sidebar.state.working;
     return strings.sidebar.state[kind];
   });
   let label = $derived.by(() => {

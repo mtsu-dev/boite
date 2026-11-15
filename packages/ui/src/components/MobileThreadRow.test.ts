@@ -57,13 +57,13 @@ test('a phone row that needs you says it beside its dot, and an Activity row rea
   expect([deny.dataset['verb'], deny.classList.contains('secondary'), deny.parentElement!.classList.contains('decision-actions')]).toEqual(['deny', true, true]);
 });
 
-test('a phone list row says its state in a word after its mark, before its time: Needs you, Working, Failed', async () => {
+test('a phone list row says its state in a word after its mark, before its time: Needs you, how long it works, Failed', async () => {
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
   const thread = store.threads.find(row => !row.parentThreadId && row.projectId && row.id !== store.openThread?.id)!;
   const project = store.projects.find(row => row.id === thread.projectId);
   const machine = { id: 'local', label: 'Local', store };
-  for (const [status, state, word, mark] of [['waiting', 'waiting', 'Needs you', '.dot'], ['running', 'working', 'Working', '.work-ring'], ['error', 'error', 'Failed', '.fail']] as const) {
+  for (const [status, state, word, mark] of [['waiting', 'waiting', /^Needs you$/, '.dot'], ['running', 'working', /^1m 0\ds$/, '.work-ring'], ['error', 'error', /^Failed$/, '.fail']] as const) {
     thread.status = status;
     thread.runningSince = status === 'running' ? Date.now() - 60_000 : null;
     thread.archived = false;
@@ -76,7 +76,7 @@ test('a phone list row says its state in a word after its mark, before its time:
     const parts = [...shown.parentElement!.children];
     const at = shown.parentElement!.querySelector('.at')!;
     expect(shown.querySelector(mark)).not.toBeNull();
-    expect(shown.querySelector('.word')?.textContent).toBe(word);
+    expect(shown.querySelector('.word')?.textContent).toMatch(word);
     // Mark, word, then the time, on the title's line.
     expect(parts.indexOf(at)).toBe(parts.indexOf(shown) + 1);
     expect(shown.firstElementChild!.compareDocumentPosition(shown.querySelector('.word')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
