@@ -399,6 +399,12 @@
   .thread.classic .row :global(.headline) { align-items: center; padding-top: 0; }
   .thread.classic .row :global(.headline .title) { display: block; white-space: nowrap; -webkit-line-clamp: none; line-clamp: none; padding-bottom: 0.5em; margin-bottom: -0.5em; }
   .thread.classic .row :global(.headline > :is(.when, .at, .bot, .provider, .draft, .pin, .pr, .tile)) { margin-top: 0; }
+  /* The row's mark stands in an 18 px slot right under the project card's 18 px tile (the head's 4 px inset,
+     Sidebar.svelte), centred on it whatever its size (a 14 px provider, a 16 px face or tile), and the title
+     starts under the card's name: slot, 6 px gap and 2 px make the head's 8 px gap. */
+  .classic .row, .classic.meta .row { padding-left: 4px; }
+  .thread.classic .row :global(.headline > :is(.bot, .provider)) { justify-content: center; width: 18px; margin-right: 2px; }
+  .thread.classic .row :global(.headline > .tile) { margin: 0 3px 0 1px; }
   .classic :is(.actions, .done) { top: calc(19px - var(--act) / 2); }
   .metadata { position: absolute; bottom: 11px; left: calc(var(--pad-x) + var(--meta-inset, 23px)); right: 10px; display: flex; align-items: center; gap: 12px; min-width: 0; height: 16px; pointer-events: none; font-size: 12px; line-height: 16px; font-weight: 400; color: var(--color-subtle); }
   .metadata :global(a) { font-weight: 500; }

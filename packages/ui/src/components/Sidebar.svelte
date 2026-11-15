@@ -293,7 +293,7 @@
     {#if workspace.view === 'recent'}
       {#each visible as machine (machine.id)}
         {#each machine.store.draftEntries.filter(entry => !selected || (selected.machine.id === machine.id && selected.project.id === entry.projectId)) as entry (entry.id)}
-          <DraftRow owner={machine.store} {entry} />
+          <DraftRow owner={machine.store} {entry} classic />
         {/each}
       {/each}
       <!-- One history, newest first under the pins (lib/thread-order.ts compareRecent): the marks say what needs you. -->
@@ -322,7 +322,7 @@
     {:else}
       {#each visible as machine (machine.id)}
         {#each machine.store.draftEntries.filter(entry => entry.projectId === null) as entry (entry.id)}
-          <DraftRow owner={machine.store} {entry} />
+          <DraftRow owner={machine.store} {entry} classic />
         {/each}
       {/each}
       {#snippet card(entry: ProjectEntry, list: ProjectEntry[], section: ProjectSection)}
@@ -393,7 +393,7 @@
           <div id="{controls}-body" class="disclosure-fold" class:open={!collapsed} inert={collapsed}>
             <div>
               <SharedProjectThreads store={owner} projectId={project.id} active={!collapsed && !away}>
-              {#each draftsHere as draft (draft.id)}<DraftRow {owner} entry={draft} />{/each}
+              {#each draftsHere as draft (draft.id)}<DraftRow {owner} entry={draft} classic />{/each}
               <WindowList items={fold.shown} keyOf={thread => JSON.stringify([machine.id, thread.id])} {scrollRoot} active={!collapsed} estimate={36} measurements={measurements(JSON.stringify([machine.id, project.id]))}>
                 {#snippet row(thread)}<ThreadCard {machine} {project} {thread} {now} classic showDone placed={!!host(machine)?.away} />{/snippet}
               </WindowList>
