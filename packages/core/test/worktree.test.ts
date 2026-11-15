@@ -235,7 +235,7 @@ describe('a thread in its own worktree', () => {
   test('a live thread whose worktree is removed under it gets its branch back in that folder on its next turn, one Boite starts too', async () => {
     const project = await repoProject();
     const thread = await client.call('threads.create', {
-      projectId: project.id, providerId: 'echo', accountId: await echoAccount(), title: 'Removed under it', worktree: {},
+      projectId: project.id, providerId: 'echo', accountId: await echoAccount(), title: 'Removed under it', worktree: { branch: 'boite/removed-under-it' },
     });
     git(thread.cwd, 'commit', '-q', '--allow-empty', '-m', 'work to keep');
     const head = git(thread.cwd, 'rev-parse', 'HEAD');
@@ -259,6 +259,15 @@ describe('a thread in its own worktree', () => {
     harness.core.journal.setSetting(worktreeRemovalKey(thread.id), { path: thread.cwd, branch: thread.branch, branchDeleted: false, reason: 'clean', removedAt: Date.now() });
     expect((await rejection(client.call('turns.start', { threadId: thread.id, prompt: 'and now?' }))).reason).toMatchObject({ rpc: { data: { field: 'cwd', cwd: thread.cwd } } });
     expect(existsSync(thread.cwd)).toBe(false);
+
+    // An external removal that took the branch too cannot silently succeed with a warm agent.
+    harness.core.journal.deleteSetting(worktreeRemovalKey(thread.id));
+    git(project.path, 'branch', '-D', thread.branch!);
+    const gone = harness.core.threads.startTurn(thread.id as never, 'your subagent is done', { kind: 'delegation' });
+    await waitFor(() => ['done', 'error'].includes(harness.core.journal.getTurn(gone.id)?.status ?? ''));
+    expect(harness.core.journal.getTurn(gone.id)).toMatchObject({ status: 'error', error: expect.stringContaining(thread.cwd) });
+    expect(existsSync(thread.cwd)).toBe(false);
+    expect(git(project.path, 'branch', '--list', thread.branch!)).toBe('');
   });
 
   test('workspace recovery reattaches a surviving legacy long branch after its directory was removed', async () => {

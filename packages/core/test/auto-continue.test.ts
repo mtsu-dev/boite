@@ -162,8 +162,8 @@ test('a stopped turn, an answered turn and a spent usage window resume nothing',
 
 test('a turn Boite starts in a folder that is gone fails naming the folder, and resumes nothing', async () => {
   const h = await startTestCore();
-  // What Claude Code says when it is spawned in a folder that does not exist.
-  const asked = scripted(failed('Claude Code native binary at /usr/lib/claude exists but failed to launch.'));
+  // A warm agent can answer without spawning anything in the missing folder.
+  const asked = scripted(done);
   try {
     const client = await h.connect();
     const folder = join(h.dataDir, 'removed-worktree');
@@ -174,10 +174,11 @@ test('a turn Boite starts in a folder that is gone fails naming the folder, and 
     rmSync(folder, { recursive: true });
     // A subagent's result reaches its parent without `turns.start`, which would refuse it.
     h.core.threads.startTurn(threadId, 'Boite delegation messages: your subagent is done', { kind: 'delegation' });
-    await waitFor(() => turns(h, threadId)[0]?.status === 'error');
+    await waitFor(() => ['done', 'error'].includes(turns(h, threadId)[0]?.status ?? ''));
     await Bun.sleep(150);
-    expect(asked).toHaveLength(1);
+    expect(asked).toHaveLength(0);
     expect(turns(h, threadId)).toHaveLength(1);
+    expect(turns(h, threadId)[0]!.status).toBe('error');
     expect(turns(h, threadId)[0]!.error).toBe(`the folder ${folder} this thread works in does not exist any more: its worktree was removed or the folder moved`);
     expect((await client.call('threads.get', { threadId })).retry).toBeNull();
   } finally { await h.stop(); }

@@ -39,14 +39,17 @@ export async function requireThreadCwd(threadId: ThreadId, cwd: string): Promise
  * replaces the composer) is left as is, and a checkout git refuses is logged:
  * the turn then fails by folder.
  * Null, at once, when there is nothing to do, as `ChildWorktrees.enter`: a
- * turn starts its agent in the same tick as before.
+ * turn starts its agent in the same tick as before. A folder still gone after
+ * recovery is refused before even a warm agent can answer from it.
  */
 export function restoreThreadCwd(core: Core, thread: ThreadSummary): Promise<void> | null {
   const { branch, projectId } = thread;
-  if (branch === null || projectId === null || thread.archived || existsSync(thread.cwd)) return null;
-  if (worktreeRemovalOf(core.journal, thread) !== null) return null;
+  if (thread.archived || existsSync(thread.cwd)) return null;
+  if (branch === null || projectId === null || worktreeRemovalOf(core.journal, thread) !== null) return requireThreadCwd(thread.id, thread.cwd);
   const project = core.journal.getProject(projectId);
-  return project ? recover(core, thread, project, branch) : null;
+  return project
+    ? recover(core, thread, project, branch).then(() => requireThreadCwd(thread.id, thread.cwd))
+    : requireThreadCwd(thread.id, thread.cwd);
 }
 
 async function recover(core: Core, thread: ThreadSummary, project: Project, branch: string): Promise<void> {
