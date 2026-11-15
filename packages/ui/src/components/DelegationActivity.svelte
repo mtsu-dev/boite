@@ -65,7 +65,7 @@
   timing={team} {expanded} onclick={() => { expanded = !expanded; }} data-testid="delegation-activity" data-count={agents.length} progressTestId="delegation-progress">
   {#snippet mark()}
     <span class="stack">
-      {#each marks as agent (agent.thread.id)}<span class="logo"><ProviderLogo providerId={agent.thread.providerId} size={13} /></span>{/each}
+      {#each marks as agent (agent.thread.id)}<span class="logo"><ProviderLogo providerId={agent.thread.providerId} size={16} /></span>{/each}
       {#if more > 0}<span class="more ui-label">+{more}</span>{/if}
     </span>
   {/snippet}
@@ -92,10 +92,10 @@
 </ActivityCard>
 
 <style>
-  /* The marks overlap a little, each ringed in the page's ground so the next one reads apart. */
-  .stack { display: inline-flex; align-items: center; }
-  .logo { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: var(--radius-full); background: var(--color-surface-2); box-shadow: 0 0 0 1.5px var(--card-fill); }
-  .logo + .logo { margin-left: -5px; }
+  /* The marks stand bare on the card's tile, side by side: no disc of their own and no overlap, which ran the
+     rays of one mark into the next. */
+  .stack { display: inline-flex; align-items: center; gap: 3px; }
+  .logo { display: inline-flex; }
   /* A button keeps its words on one line: on a narrow column the counts wrap between two, never inside one or under the time. */
   .counts { min-width: 0; white-space: normal; }
   .count { white-space: nowrap; }
@@ -103,7 +103,7 @@
   .count[data-state='asking'] { color: var(--color-live); font-weight: 600; }
   .count[data-state='done'] { color: var(--color-success); font-weight: 600; }
   .count[data-state='failed'] { color: var(--color-danger); font-weight: 600; }
-  .more { margin-left: 4px; color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+  .more { margin-left: 1px; color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
   .agents { display: flex; flex-direction: column; margin: 0; padding: 0 0 2px; list-style: none; }
   /* One row per subagent, under the group's marks: its provider, its name, its state, its time; a cause on a
      second line under all but the mark, so the name's column, narrowed by the state and the time, never holds it. */

@@ -400,6 +400,8 @@
   .thread.classic .row :global(.headline) { align-items: center; padding-top: 0; }
   .thread.classic .row :global(.headline .title) { display: block; white-space: nowrap; -webkit-line-clamp: none; line-clamp: none; padding-bottom: 0.5em; margin-bottom: -0.5em; }
   .thread.classic .row :global(.headline > :is(.when, .at, .bot, .provider, .draft, .pin, .pr, .tile)) { margin-top: 0; }
+  /* The provider's 14 px mark centred under the project card's 18 px tile (Sidebar.svelte), the title kept under its name. */
+  .thread.classic .row :global(.headline > .provider) { margin: 0 4px 0 -4px; }
   .classic :is(.actions, .done) { top: calc(19px - var(--act) / 2); }
   .metadata { position: absolute; bottom: 11px; left: calc(var(--pad-x) + var(--meta-inset, 23px)); right: 10px; display: flex; align-items: center; gap: 12px; min-width: 0; height: 16px; pointer-events: none; font-size: 12px; line-height: 16px; font-weight: 400; color: var(--color-subtle); }
   .metadata :global(a) { font-weight: 500; }
