@@ -29,6 +29,7 @@
   import RecentGroup from './RecentGroup.svelte';
   import RecentDone from './RecentDone.svelte';
   import ProjectThreadCounters from './ProjectThreadCounters.svelte';
+  import ProjectThreadCount from './ProjectThreadCount.svelte';
   import ProjectShelf from './ProjectShelf.svelte';
   import ProjectCardsSection from './ProjectCardsSection.svelte';
   import ThreadCard from './ThreadCard.svelte';
@@ -348,7 +349,7 @@
               {#if projectView.order === 'manual'}<GripVertical size={12} />{/if}<span class="mark"><ProjectTile {project} store={owner} size={18} /><span class="fold-caret" class:open={!collapsed} aria-hidden="true"><ChevronRight size={16} /></span></span
               >{#if multi}<span class="host" data-testid="project-host" class:offline={owner.connection !== 'ready'}
                 title={`${machine.label} · ${strings.connection[owner.connection]}`} aria-label={machine.label}><MachineIcon icon={machine.icon} os={owner.core?.os} size={14} /></span>{/if}<span class="name project-title ui-label" class:gone={project.missing === true}>{projectName(project)}</span
-              >{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup && !needsYou(rollup.kind) && rollup.kind !== 'done' && lists.working.length === 0}<ProjectRollup {rollup} />{/if}
+              >{#if collapsed}<ProjectThreadCount {entry} />{/if}{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup && !needsYou(rollup.kind) && rollup.kind !== 'done' && lists.working.length === 0}<ProjectRollup {rollup} />{/if}
             </button>
             <ProjectThreadCounters {entry} working={lists.working.length} waiting={needs.count} failed={needs.failed} {listed} {controls} {collapsed} {away} />
             <button
