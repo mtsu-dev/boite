@@ -5,6 +5,7 @@ import { sumUsage } from '../../usage.ts';
 import { isoTime } from './diagnostics.ts';
 import {
   agentTotalsOf,
+  accountVendor,
   apiErrorReason,
   apiErrorStatusOf,
   cacheLifeOf,
@@ -489,7 +490,7 @@ export class ClaudeTurn {
         return;
       }
       if (this.#status !== 'error') this.#refusal = message.error === 'overloaded' ? { kind: 'capacity' } : message.error === 'rate_limit' ? { kind: 'usage-limit', resetsAt: this.#rejectedUntil } : undefined;
-      this.fail(apiErrorReason(message.error, content));
+      this.fail(apiErrorReason(message.error, content, accountVendor(this.ctx.thread.model)));
       return;
     }
     const body = message.message as { id?: string; model?: string; content?: unknown; usage?: unknown } | undefined;
