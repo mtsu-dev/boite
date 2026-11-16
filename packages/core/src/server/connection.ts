@@ -5,7 +5,59 @@ import { newId } from '../ids.ts';
 import type { Connection } from '../router.ts';
 import type { Identity } from '../sessions.ts';
 
+/** How long a remote client's thinking and tool-input deltas are held and joined. */
 const REMOTE_DELTA_WINDOW_MS = 80;
+/**
+ * The longest a remote client waits for the text of an answer while its
+ * paragraph is still open (`#paceText`): a long paragraph, a code block or a
+ * list goes out at least this often.
+ */
+export const REMOTE_TEXT_CAP_MS = 250;
+/** The text parts one socket remembers the opening of; past it the oldest is forgotten and would open again. */
+const OPENINGS_MAX = 1024;
+/** Characters that end a sentence when a space or a tab follows them. */
+const SENTENCE_STOPS = '.!?\u2026';
+/** Ones that end it by themselves: CJK writes no space after a stop. */
+const WIDE_SENTENCE_STOPS = '\u3002\uff01\uff1f';
+/** What may close around a stop before the space: quotes, brackets, Markdown emphasis. */
+const SENTENCE_CLOSERS = '"\')]*_\u201d\u2019\u00bb';
+/** A blank line: where a paragraph, a list or a code block's chunk ends. */
+const BLANK_LINE = /\n[ \t]*\n/g;
+
+/**
+ * Where the first sentence of a text ends in `text`, given the last character
+ * already sent of it, '' while only blanks were: the index just past the space
+ * that follows its stop, or past the first line break after a word. -1 while
+ * it goes on.
+ */
+function sentenceEnd(before: string, text: string): number {
+  let previous = before;
+  for (let at = 0; at < text.length; at += 1) {
+    const char = text[at] as string;
+    if (previous === '' && /\s/.test(char)) continue;
+    if (char === '\n' || WIDE_SENTENCE_STOPS.includes(char)) return at + 1;
+    if ((char === ' ' || char === '\t') && SENTENCE_STOPS.includes(previous)) return at + 1;
+    if (!(SENTENCE_CLOSERS.includes(char) && SENTENCE_STOPS.includes(previous))) previous = char;
+  }
+  return -1;
+}
+
+/**
+ * The index in `text` just past the last blank line that `held` and `text`
+ * make together, -1 when there is none. `held` has none of its own: what is
+ * held is flushed at its last one.
+ */
+function paragraphEnd(held: string, text: string): number {
+  // A blank line can start in what is held: from its last line break.
+  const lastBreak = held.lastIndexOf('\n');
+  const from = lastBreak === -1 ? held.length : lastBreak;
+  const tail = held.slice(from) + text;
+  let end = -1;
+  for (const match of tail.matchAll(BLANK_LINE)) end = match.index + match[0].length;
+  const at = end - (held.length - from);
+  return end === -1 || at <= 0 ? -1 : at;
+}
+
 export const OUTBOUND_MAX_BUFFERED_BYTES = 32 * 1024 * 1024;
 export const OUTBOUND_MAX_PENDING_PARTS = 1024;
 export const OUTBOUND_CONGESTION_TIMEOUT_MS = 10_000;
@@ -86,6 +138,10 @@ export class ServerConnection implements Connection {
   readonly #catchUp = new Set<string>();
   readonly #paced = new Map<string, RpcEvents['message.delta']>();
   #paceTimer: ReturnType<typeof setTimeout> | null = null;
+  /** When `#paceTimer` fires, on `performance.now()`'s clock. */
+  #paceDeadline = 0;
+  /** Text parts, `message|part`: true once their first sentence went out, else the last character sent of it. */
+  readonly #openings = new Map<string, string | true>();
   /** Frames waiting behind a chunked answer that is still leaving, in order; null when none is. */
   #outbox: Iterator<string>[] | null = null;
   #outboxBytes = 0;
@@ -125,6 +181,7 @@ export class ServerConnection implements Connection {
     }
     this.#flushPaced();
     if (this.#closed) return;
+    if (name === 'message.completed') this.#forgetOpenings((payload as RpcEvents['message.completed']).messageId);
     if (name === 'message.delta' && this.#congested) {
       this.#queueCatchUp(payload as RpcEvents['message.delta']);
       return;
@@ -207,15 +264,73 @@ export class ServerConnection implements Connection {
   }
 
   /**
-   * A remote client gets its text every `REMOTE_DELTA_WINDOW_MS` rather than
-   * every 16 ms. Each frame costs its envelope, its ids and the headers under
-   * it whatever text it carries, so five deltas in one frame are a fifth of
-   * the bytes, and the UI only re-renders a paragraph once it closes. Any
-   * other frame on this socket, an event or a response, sends what is held
-   * first: a client never sees a card, or a snapshot, before the text that
-   * came before it.
+   * A remote client gets its deltas joined rather than every 16 ms. Each frame
+   * costs its envelope, its ids and the headers under it whatever text it
+   * carries, so five deltas in one frame are a fifth of the bytes, and the UI
+   * only re-renders a paragraph once it closes. The text of an answer is paced
+   * by `#paceText`; a thinking part or a tool's streamed input is held for
+   * `REMOTE_DELTA_WINDOW_MS`. Any other frame on this socket, an event or a
+   * response, sends what is held first: a client never sees a card, or a
+   * snapshot, before the text that came before it.
    */
   #pace(delta: RpcEvents['message.delta']): void {
+    const kind = this.#partType(delta.messageId, delta.partIndex);
+    if (kind === undefined || kind === 'text') this.#paceText(delta);
+    else this.#hold(delta, REMOTE_DELTA_WINDOW_MS);
+  }
+
+  /**
+   * A text part's first sentence leaves as it is written, with no hold, so
+   * the reader starts at once. Past it, the text leaves at each blank line,
+   * one whole paragraph at a time, and anything held `REMOTE_TEXT_CAP_MS`
+   * leaves anyway.
+   */
+  #paceText(delta: RpcEvents['message.delta']): void {
+    const key = `${delta.messageId}|${delta.partIndex}`;
+    let text = delta.text;
+    const opening = this.#openings.get(key);
+    if (opening !== true) {
+      const cut = sentenceEnd(opening ?? '', text);
+      const blank = (opening ?? '') === '' && text.trim() === '';
+      this.#open(key, cut !== -1 ? true : blank ? '' : (text.at(-1) ?? ''));
+      // What is held, of this part or another, goes first.
+      this.#flushPaced();
+      if (this.#closed) return;
+      const head = cut === -1 ? text : text.slice(0, cut);
+      this.#sendNow('message.delta', head === text ? delta : { ...delta, text: head });
+      if (head === text) return;
+      text = text.slice(cut);
+      if (this.#closed) return;
+      if (this.#congested) { this.#queueCatchUp({ ...delta, text }); return; }
+    }
+    const end = paragraphEnd(this.#paced.get(key)?.text ?? '', text);
+    if (end === -1) { this.#hold(text === delta.text ? delta : { ...delta, text }, REMOTE_TEXT_CAP_MS); return; }
+    this.#hold({ ...delta, text: text.slice(0, end) }, REMOTE_TEXT_CAP_MS);
+    this.#flushPaced();
+    if (end === text.length || this.#closed) return;
+    const rest = { ...delta, text: text.slice(end) };
+    if (this.#congested) this.#queueCatchUp(rest);
+    else this.#hold(rest, REMOTE_TEXT_CAP_MS);
+  }
+
+  /** Marks where `key`'s opening stands, keeping at most `OPENINGS_MAX` parts. */
+  #open(key: string, state: string | true): void {
+    if (!this.#openings.has(key) && this.#openings.size >= OPENINGS_MAX) {
+      const oldest = this.#openings.keys().next().value;
+      if (oldest !== undefined) this.#openings.delete(oldest);
+    }
+    this.#openings.set(key, state);
+  }
+
+  /** A completed message streams no more text: its parts' openings go. */
+  #forgetOpenings(messageId: string): void {
+    if (this.#openings.size === 0) return;
+    const prefix = `${messageId}|`;
+    for (const key of this.#openings.keys()) if (key.startsWith(prefix)) this.#openings.delete(key);
+  }
+
+  /** Holds `delta` with what is held of its part, and sends everything held at the latest `windowMs` from now. */
+  #hold(delta: RpcEvents['message.delta'], windowMs: number): void {
     const key = `${delta.messageId}|${delta.partIndex}`;
     let held = this.#paced.get(key);
     // Merged text counts as its upper bound until the bounds could cross the
@@ -238,7 +353,13 @@ export class ServerConnection implements Connection {
     if (exact) this.#pacedBytes += bytes;
     else { this.#unmeasured.push(delta.text); this.#unmeasuredBound += bytes; }
     if (this.#pacedBytes > RPC_MAX_FRAME_BYTES) { this.#flushPaced(); return; }
-    this.#paceTimer ??= setTimeout(() => this.#flushPaced(), REMOTE_DELTA_WINDOW_MS);
+    const deadline = performance.now() + windowMs;
+    if (this.#paceTimer !== null) {
+      if (deadline >= this.#paceDeadline) return;
+      clearTimeout(this.#paceTimer);
+    }
+    this.#paceDeadline = deadline;
+    this.#paceTimer = setTimeout(() => this.#flushPaced(), windowMs);
   }
 
   /** Counts the merged texts held by their bound, once. */
@@ -382,6 +503,7 @@ export class ServerConnection implements Connection {
     if (this.#paceTimer !== null) clearTimeout(this.#paceTimer);
     this.#paceTimer = null;
     this.#paced.clear();
+    this.#openings.clear();
     this.#catchUp.clear();
     this.#catchUpBytes = 0;
     this.#pacedBytes = 0;
