@@ -82,6 +82,20 @@ export class ReadingCache {
     if (copy && this.#threads.get(id) === thread) whenIdle(() => { if (this.#threads.get(id) === thread && settle()) this.#threads.set(id, copy(thread)); });
   }
 
+  /**
+   * Keeps a page read ahead of any visit, only where it fits beside what is
+   * held: it never pushes out a timeline the reader left, nor replaces one.
+   * Answers whether it was kept.
+   */
+  prefill(id: string, thread: Thread, bytes: number): boolean {
+    if (this.#threads.has(id) || bytes > READING_CACHE_BYTES) return false;
+    if (this.#threads.size >= READING_CACHE_THREADS || this.#total + bytes > READING_CACHE_TOTAL) return false;
+    this.#threads.set(id, thread);
+    this.#bytes.set(id, bytes);
+    this.#total += bytes;
+    return true;
+  }
+
   /** Another copy of the same timeline in place of `held`: same size, same place in the order. */
   replace(id: string, held: Thread, copy: Thread): void {
     if (this.#threads.get(id) === held) this.#threads.set(id, copy);
