@@ -671,6 +671,44 @@ commit that already has a nightly. It accepts that branch's pull request CI run
 without rerunning or following it, skips reservation and every
 publication, and has its own concurrency group.
 
+A failed nightly is rerun when GitHub, not the code, failed it.
+`nightly-retry.yml` starts on `workflow_run` when a `boite (de nuit)` run
+completes as a failure. `scripts/ci/nightly-retry.ts` reads the run again and
+drops the event when a newer attempt has started since, then judges every job
+of that exact attempt that did not succeed or skip. A job no runner picked up
+ends `cancelled`, with "The job was not acquired by Runner of type hosted" in
+its annotations and no log (job 129797415964 of run 42806494714): that
+annotation is the one thing that makes a cancelled job infrastructure. A failed
+job is infrastructure when it has that annotation or when its failed step's
+log holds a
+dependency download refused with 429: Gradle's `Could not GET ... Received
+status code 429`, npm's `429 Too Many Requests`, bun's `error: GET ... - 429`
+or cargo's `got 429` (`INFRA_PATTERNS`). A test that names a 429, or a request
+retried in a step that passed, is not one. The step's lines are cut from the
+job log by its start and end times, which are whole seconds. A second it
+shares with another step that ran is left out, since a step's marks cannot be
+told from its neighbour's (an action step may start without a `##[group]Run`
+line). The one exception is the last second of a step spanning several: its
+lines up to the first `##[error]` line, the runner's "Process completed with
+exit code", are its own, and that is where a build prints the 429 that ended
+it. When every judged job is infrastructure, the script reads the run
+once more and calls `rerun-failed-jobs` only if it is still that attempt,
+completed as a failure, so a manual rerun started meanwhile gets no extra
+attempt; one other job, a run
+on another branch than `main` or a run titled as a dry run (the nightly's
+`run-name`, since `workflow_run` carries no inputs) leaves it failed. Attempts
+1 and 2 are rerun, attempt 3 is not (`MAX_ATTEMPTS`): macOS x64 got no runner
+on the 2026-11-08, 11-10 and 11-12 schedules, which published nothing, and the
+2026-11-16 dispatch (run 43926328921) got one on its third attempt, after a
+Maven Central 429 on the Android app in the first. Each unplaced attempt waits
+15 minutes before GitHub ends it, so two reruns bound the extra wait near 30
+minutes; past that, the next night takes the unpublished commit again. A manual
+rerun counts as an attempt. The job needs `actions: write`, `checks: read` for
+the annotations and `contents: read`. It runs from `main`, never from the
+failed run's commit, and no pull request reports its check, so no ruleset
+requires it ([check names](#check-names)). `NIGHTLY_ENABLED=false` stops it
+too.
+
 Versions use `2.0.0-nightly.YYYYMMDD.N`, taking the base from the manifest and
 resetting the counter each UTC day. For example, September 15's first build is
 `2.0.0-nightly.20260915.1`, then `.2` for a new commit. Build inputs stamp the

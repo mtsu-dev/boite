@@ -1,4 +1,6 @@
 name: boite (de nuit)
+# workflow_run carries no inputs: nightly-retry.yml reads a dry run from this title.
+run-name: ${{ inputs.dry-run && 'boite (de nuit), dry run' || 'boite (de nuit)' }}
 
 on:
   schedule:
