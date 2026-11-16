@@ -223,9 +223,10 @@ what separates them at run time: [experiments](experiments.md) do not exist in
 a Release, in the app or in the core, and nothing else has to be set when a
 version is cut.
 
-A nightly that GitHub fails to run, with no hosted runner for a job or a
-dependency registry answering 429, has its failed jobs rerun automatically,
-twice at most; a failing step is never rerun, nor is a dry run
+A nightly that GitHub fails to run has its failed jobs rerun automatically,
+twice at most, when every one of them either got no hosted runner or failed on
+a dependency download a registry refused with 429. A failing build or test
+step, an ordinary cancel and a dry run are never rerun
 ([boite (de nuit)](ci.md#boite-de-nuit)). A nightly still failed after that is
 not published, and the next night builds its commit again.
 

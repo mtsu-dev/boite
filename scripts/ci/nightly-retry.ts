@@ -1,34 +1,50 @@
 /**
  * Reruns the failed jobs of a failed `boite (de nuit)` run when GitHub, not the
  * code, failed them: no hosted runner was acquired for the job, or a dependency
- * registry rate limited it. The nightly has no other retry, so each of
+ * registry rate limited a download. The nightly has no other retry, so each of
  * 2026-11-08, 11-10 and 11-12 lost its build to macOS x64 never getting a
  * runner, and 2026-11-16's dispatch needed three attempts.
  *
- * A job counts as infrastructure only when one of INFRA_PATTERNS matches its
- * check-run annotations or the tail of its log. One failed job without such a
- * match keeps the whole run failed: rerun-failed-jobs would also run it again.
- * A dry run is never rerun, and neither is attempt MAX_ATTEMPTS or later.
+ * Every job of the attempt that did not succeed or skip is judged. A job no
+ * runner picked up ends `cancelled`, with GitHub's annotation as its only
+ * trace: that annotation makes it infrastructure, nothing else does for a
+ * cancelled job. A failed job is infrastructure when that annotation is there
+ * or when its failed step's log holds a dependency download refused with 429
+ * (INFRA_PATTERNS). One job judged otherwise keeps the whole run failed:
+ * rerun-failed-jobs would run it again too. A dry run is never rerun, nor an
+ * event older than the run's current attempt, nor attempt MAX_ATTEMPTS.
  *
  * Env: GITHUB_REPOSITORY, GH_TOKEN, GITHUB_EVENT_PATH (a workflow_run event).
  */
 import { appendFileSync, readFileSync } from 'node:fs';
 
-/** A failed job of the run, as the retry reads it. */
-export type FailedJob = { name: string; annotations: string[]; log?: string };
-export type RetryInput = { runAttempt: number; dryRun: boolean; jobs: FailedJob[] };
+/** A job of the attempt; `log` is its failed step's log (failedStepLog). */
+export type Job = { name: string; conclusion: string | null; annotations: string[]; log?: string };
+/** A step as the jobs API lists it. */
+export type Step = { name: string; conclusion: string | null; started_at: string | null; completed_at: string | null };
+/** `runAttempt` is the event's attempt, `currentAttempt` the run's when the retry reads it. */
+export type RetryInput = { runAttempt: number; currentAttempt: number; dryRun: boolean; jobs: Job[] };
 export type RetryDecision = { rerun: boolean; reason: string };
 
+/** The only cause a cancelled job may have: GitHub never placed it. */
+export const NOT_ACQUIRED = /The job was not acquired by Runner of type hosted/i;
+
 /**
- * Each message that means the job never got to fail on its own. They are read
- * in the annotations and in the log alike: the runner message is an annotation
- * only (the job has no log), a registry's 429 is in the log behind a generic
- * "exit code 1" annotation.
+ * Each message that means a job never got to fail on its own. `annotation` is
+ * read in the job's annotations; every other entry is a dependency download a
+ * registry refused, read in the failed step's log only, so a test that names a
+ * 429 or a request retried earlier in the job is not mistaken for one.
  */
-export const INFRA_PATTERNS: { cause: string; pattern: RegExp }[] = [
-  { cause: 'no hosted runner was acquired', pattern: /The job was not acquired by Runner of type hosted/i },
-  { cause: 'a registry answered 429', pattern: /\bstatus code 429\b/i },
-  { cause: 'a registry answered Too Many Requests', pattern: /\bToo Many Requests\b/i },
+export const INFRA_PATTERNS: { tool: string; cause: string; pattern: RegExp }[] = [
+  { tool: 'annotation', cause: 'no hosted runner was acquired', pattern: NOT_ACQUIRED },
+  // Could not GET 'https://repo.maven.apache.org/...pom'. Received status code 429 from server: Too Many Requests
+  { tool: 'gradle', cause: 'a Maven registry answered 429', pattern: /Could not (?:GET|HEAD|download) '?https?:\/\/\S+.*\b(?:status code 429|Too Many Requests)\b/i },
+  // npm error 429 Too Many Requests - GET https://registry.npmjs.org/...
+  { tool: 'npm', cause: 'the npm registry answered 429', pattern: /\bnpm (?:ERR!|error) (?:code E429|429 Too Many Requests)\b/i },
+  // error: GET https://registry.npmjs.org/... - 429
+  { tool: 'bun', cause: 'a registry answered 429 to bun install', pattern: /\berror: (?:GET|HEAD) https?:\/\/\S+ - 429\b/ },
+  // failed to get successful HTTP response from `https://index.crates.io/...` (...), got 429
+  { tool: 'cargo', cause: 'a crates registry answered 429', pattern: /failed to get successful HTTP response from `https?:\/\/[^`]+`.*\bgot 429\b/ },
 ];
 
 /**
@@ -44,30 +60,49 @@ export const MAX_ATTEMPTS = 3;
 /** The nightly's run-name for a dry run matches this; a scheduled or publishing run's does not. */
 export const DRY_RUN_TITLE = /\bdry run\b/i;
 
-/** How much of a job's log is read: a registry's refusal ends the build, so it sits in the tail. */
-export const LOG_TAIL_LINES = 400;
+/** A job the retry judges: anything but a success or a skip (`failure`, `timed_out`, `cancelled`). */
+export const judged = (conclusion: string | null) => conclusion !== 'success' && conclusion !== 'skipped' && conclusion !== 'neutral';
 
-/** The cause of a job's failure when it was GitHub's or a registry's, else undefined. */
-export function infraCause(job: FailedJob): string | undefined {
-  const texts = [...job.annotations, job.log ?? ''];
-  return INFRA_PATTERNS.find(({ pattern }) => texts.some((text) => pattern.test(text)))?.cause;
+const second = (iso: string) => Math.floor(Date.parse(iso) / 1000);
+
+/**
+ * The log lines of the job's failed steps, without their timestamps: each line
+ * of a job log starts with one, and a step's started_at and completed_at bound
+ * it to the second. '' when no step failed, as for a job no runner ran.
+ */
+export function failedStepLog(log: string, steps: Step[]): string {
+  const windows = steps.filter((step) => step.conclusion !== null && judged(step.conclusion) && step.started_at && step.completed_at)
+    .map((step) => [second(step.started_at!), second(step.completed_at!)] as const);
+  if (windows.length === 0) return '';
+  return log.replace(/^\uFEFF/, '').split('\n').flatMap((line) => {
+    const stamp = /^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.\d+)?Z (.*)$/.exec(line);
+    if (!stamp) return [];
+    const at = second(`${stamp[1]}Z`);
+    return windows.some(([from, to]) => at >= from && at <= to) ? [stamp[2]!] : [];
+  }).join('\n');
 }
 
-export function decide({ runAttempt, dryRun, jobs }: RetryInput): RetryDecision {
+/** The cause of a judged job's end when it was GitHub's or a registry's, else undefined. */
+export function infraCause(job: Job): string | undefined {
+  if (job.annotations.some((text) => NOT_ACQUIRED.test(text))) return INFRA_PATTERNS[0]!.cause;
+  if (job.conclusion === 'cancelled') return undefined;
+  return INFRA_PATTERNS.slice(1).find(({ pattern }) => pattern.test(job.log ?? ''))?.cause;
+}
+
+export function decide({ runAttempt, currentAttempt, dryRun, jobs }: RetryInput): RetryDecision {
   if (dryRun) return { rerun: false, reason: 'a dry run is never rerun' };
+  if (runAttempt < currentAttempt) return { rerun: false, reason: `attempt ${runAttempt} is stale: the run is at attempt ${currentAttempt}` };
   if (runAttempt >= MAX_ATTEMPTS) return { rerun: false, reason: `attempt ${runAttempt} is the last one rerun automatically (bound ${MAX_ATTEMPTS})` };
-  if (jobs.length === 0) return { rerun: false, reason: 'no failed job to judge' };
-  const real = jobs.filter((job) => infraCause(job) === undefined);
-  if (real.length > 0) return { rerun: false, reason: `failed on a step, not on infrastructure: ${real.map((job) => job.name).join(', ')}` };
-  const causes = jobs.map((job) => `${job.name} (${infraCause(job)})`).join(', ');
+  const ended = jobs.filter((job) => judged(job.conclusion));
+  if (ended.length === 0) return { rerun: false, reason: 'no failed job to judge' };
+  const real = ended.filter((job) => infraCause(job) === undefined);
+  if (real.length > 0) return { rerun: false, reason: `ended on a step or a cancel, not on infrastructure: ${real.map((job) => `${job.name} (${job.conclusion})`).join(', ')}` };
+  const causes = ended.map((job) => `${job.name} (${infraCause(job)})`).join(', ');
   return { rerun: true, reason: `failed on infrastructure only: ${causes}; rerunning its failed jobs` };
 }
 
-type Job = { id: number; name: string; conclusion: string | null };
+type ApiJob = { id: number; name: string; conclusion: string | null; steps?: Step[] };
 type WorkflowRun = { id: number; run_attempt: number; head_branch: string | null; display_title: string; conclusion: string | null; html_url: string };
-
-/** A failed job of the latest attempt: GitHub's `failure` or `timed_out`, never a cancelled or skipped one. */
-const failed = (job: Job) => job.conclusion === 'failure' || job.conclusion === 'timed_out';
 
 async function api(path: string, init: RequestInit = {}): Promise<Response> {
   const { GITHUB_API_URL: base = 'https://api.github.com', GH_TOKEN: token } = process.env;
@@ -80,8 +115,8 @@ async function api(path: string, init: RequestInit = {}): Promise<Response> {
   return response;
 }
 
-/** The last LOG_TAIL_LINES lines, or '' when the job has no log (no runner ran it). */
-async function logTail(repo: string, id: number): Promise<string> {
+/** The job's whole log, or '' when it has none (no runner ran it). */
+async function jobLog(repo: string, id: number): Promise<string> {
   const { GITHUB_API_URL: base = 'https://api.github.com', GH_TOKEN: token } = process.env;
   // The answer redirects to signed storage, which must not receive the token.
   const answer = await fetch(`${base}/repos/${repo}/actions/jobs/${id}/logs`, {
@@ -94,7 +129,7 @@ async function logTail(repo: string, id: number): Promise<string> {
   if (!location) throw new Error(`GET job ${id} logs answered ${answer.status} without a location: ${await answer.text()}`);
   const log = await fetch(location, { signal: AbortSignal.timeout(60_000) });
   if (!log.ok) throw new Error(`job ${id}'s log download answered ${log.status}`);
-  return (await log.text()).split('\n').slice(-LOG_TAIL_LINES).join('\n');
+  return await log.text();
 }
 
 if (import.meta.main) {
@@ -104,20 +139,28 @@ if (import.meta.main) {
   if (!run) throw new Error(`${eventPath} holds no workflow_run`);
   // Only main publishes: a run anywhere else is a dry run whatever its title.
   const dryRun = run.head_branch !== 'main' || DRY_RUN_TITLE.test(run.display_title);
-  const judged = run.conclusion === 'failure' && !dryRun && run.run_attempt < MAX_ATTEMPTS;
-  const page = judged
-    ? await (await api(`/repos/${repo}/actions/runs/${run.id}/jobs?filter=latest&per_page=100`)).json() as { total_count: number; jobs: Job[] }
-    : { total_count: 0, jobs: [] };
-  if (page.total_count > page.jobs.length) throw new Error(`${run.html_url} has ${page.total_count} jobs, more than one page of ${page.jobs.length}`);
-  const jobs = judged
-    ? await Promise.all(page.jobs.filter(failed).map(async (job): Promise<FailedJob> => {
+  let decision: RetryDecision;
+  if (run.conclusion !== 'failure') {
+    decision = { rerun: false, reason: `the run ended ${run.conclusion ?? 'without a conclusion'}, not failure` };
+  } else if (dryRun || run.run_attempt >= MAX_ATTEMPTS) {
+    decision = decide({ runAttempt: run.run_attempt, currentAttempt: run.run_attempt, dryRun, jobs: [] });
+  } else {
+    // A rerun started since this event makes it stale: read the run as it is now.
+    const current = await (await api(`/repos/${repo}/actions/runs/${run.id}`)).json() as WorkflowRun;
+    const page = current.run_attempt > run.run_attempt
+      ? { total_count: 0, jobs: [] as ApiJob[] }
+      : await (await api(`/repos/${repo}/actions/runs/${run.id}/attempts/${run.run_attempt}/jobs?per_page=100`)).json() as { total_count: number; jobs: ApiJob[] };
+    if (page.total_count > page.jobs.length) throw new Error(`${run.html_url} has ${page.total_count} jobs, more than one page of ${page.jobs.length}`);
+    const jobs = await Promise.all(page.jobs.map(async (job): Promise<Job> => {
+      if (!judged(job.conclusion)) return { name: job.name, conclusion: job.conclusion, annotations: [] };
       const annotations = await (await api(`/repos/${repo}/check-runs/${job.id}/annotations?per_page=100`)).json() as { message: string }[];
-      return { name: job.name, annotations: annotations.map((annotation) => annotation.message), log: await logTail(repo, job.id) };
-    }))
-    : [];
-  const decision = run.conclusion === 'failure'
-    ? decide({ runAttempt: run.run_attempt, dryRun, jobs })
-    : { rerun: false, reason: `the run ended ${run.conclusion ?? 'without a conclusion'}, not failure` };
+      const messages = annotations.map((annotation) => annotation.message);
+      // A cancelled job is judged on its annotations alone, and one no runner ran has no log.
+      const log = job.conclusion === 'cancelled' ? '' : failedStepLog(await jobLog(repo, job.id), job.steps ?? []);
+      return { name: job.name, conclusion: job.conclusion, annotations: messages, log };
+    }));
+    decision = decide({ runAttempt: run.run_attempt, currentAttempt: current.run_attempt, dryRun, jobs });
+  }
   const message = `${run.html_url} attempt ${run.run_attempt}: ${decision.reason}`;
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${message}\n`);
   console.log(message);

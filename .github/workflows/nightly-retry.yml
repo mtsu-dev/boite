@@ -1,11 +1,15 @@
 name: boite (de nuit) retry
 
 # Reruns the failed jobs of a failed nightly when GitHub or a registry failed
-# them, not the code: no hosted runner acquired (macOS x64 on 2026-11-08, 11-10,
-# 11-12 and 11-16), or a registry's 429 (Maven Central on 2026-11-16).
-# scripts/ci/nightly-retry.ts decides and bounds it to attempts 1 and 2; a dry
-# run and any real step failure are never rerun. workflow_run runs this file
-# from main, never the failed run's code, and no pull request reports its check.
+# them, not the code: a job no hosted runner picked up (macOS x64 on 2026-11-08,
+# 11-10, 11-12 and 11-16, ended cancelled with that annotation), or a failed
+# step whose dependency download a registry refused with 429 (Maven Central on
+# 2026-11-16). scripts/ci/nightly-retry.ts decides: it reruns attempts 1 and 2
+# only, drops an event older than the run's current attempt, and never reruns a
+# dry run, an ordinary cancel or a real step failure. workflow_run runs this
+# file from main, never the failed run's code, and no pull request reports its
+# check.
+
 on:
   workflow_run:
     workflows: [boite (de nuit)]
