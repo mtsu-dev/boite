@@ -189,7 +189,8 @@ export class Connection {
         // phone, so the screens a device is refused can be walked without pairing one,
         // `&missing=<method>,...` answers those methods like an older machine,
         // `&version=2.0.0` answers as a Release core, where no experiment runs,
-        // and `&load=<n>` adds n threads that stream without end (`&loadtick=<ms>`).
+        // `&load=<n>` adds n threads that stream without end (`&loadtick=<ms>`),
+        // and `&coreid=<id>` keeps the core's id across reloads, as a real machine does.
         s.attach(
           new FakeClient({
             long: params.get('long') === '1',
@@ -211,6 +212,7 @@ export class Connection {
             pluginArchiveDemo: params.get('pluginArchive') === '1',
             uninstalled: params.get('uninstalled') === '1',
             ...(params.get('version') ? { version: params.get('version')! } : {}),
+            ...(params.get('coreid') ? { coreId: params.get('coreid')! } : {}),
             ...(params.get('principal') === 'session' ? { principal: 'session' as const } : {}),
             ...(params.get('missing') ? { missing: params.get('missing')!.split(',') } : {})
           })

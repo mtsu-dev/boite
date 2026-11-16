@@ -474,6 +474,29 @@ retried automatically. Taking an entry back into the box and sending it again
 creates a new request. A machine offline since the app started has no cards to
 open: the client keeps no copy of the thread list.
 
+The client does keep the last page of each machine's 8 most recently opened
+threads (`lib/thread-snapshots.ts`), so that one opened after a reload paints
+at once. A thread with nothing in memory opens from that snapshot, read from
+IndexedDB and decrypted within 250 ms or skipped, then asks the core with the
+snapshot's `after` cursor, as a visit still in the reading cache does. An
+answer that does not resume from that cursor (`messagesFrom` absent) drops the
+snapshot, and the thread shows only what the core sent. A snapshot is written
+once a thread's page has stayed put for one second and the page is idle, and
+again when the reader leaves it. Bounds: 8 threads per machine, 512 KiB per
+thread, 4 MiB on the device; the least recently opened goes first. Each record
+is AES-GCM encrypted under a key made once per machine, non-extractable and
+kept in IndexedDB as a `CryptoKey`, with a random 96-bit IV per record and the
+machine and thread ids as additional data; a record that does not decrypt is
+dropped. An incognito thread, a thread whose page holds a secret card, and any
+connection other than the owner's or a paired device's are never written. A
+rewind, a truncation, a refused open or a forgotten thread drops its record.
+Forgetting a saved machine (`removeEnvironment`, which a revoked key also
+calls) or a group dropping it (`removeBrought`) purges every machine this
+device reached at that address, key included. The machine is the core's
+`coreId`; a core without one keeps no snapshots, and neither does a browser
+without IndexedDB or `crypto.subtle`. Boite has no sign-out and no Settings
+action to forget local data, so nothing purges all machines at once.
+
 A new conversation waits the same way. Sending a draft while its core is
 offline keeps its first prompt and captured selection on the device. A client
 must reconnect to synchronize that input. After the core accepts it, it creates

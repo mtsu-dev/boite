@@ -109,7 +109,7 @@ Agents of machines in a group can find and message each other
 | --- | --- | --- |
 | Remove from the group | A machine's or a device's row | Every machine refuses it, as each one hears of it. |
 | Leave the group | This machine | This machine forgets the group; phones added on it leave too. |
-| Remove machine | A machine in the list | Forgets it on this device only. Agents and files stay. |
+| Remove machine | A machine in the list | Forgets it on this device only, with the copies of its recent conversations. Agents and files stay. |
 
 A machine that is off learns a removal when it comes back, and until then it
 still trusts the removed machine. Remove a machine you think is compromised
