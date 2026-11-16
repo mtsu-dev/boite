@@ -12,14 +12,15 @@ import type {
   ThreadSummary
 } from '@boite/contracts';
 import { ReadingCache, readingCacheBytes } from '../reading-cache';
-import { INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, READING_PAGE_BYTES, forTransport } from '@boite/contracts';
+import { DeviceSnapshots, readingPage } from './device-snapshots';
+import { INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, READING_PAGE_BYTES } from '@boite/contracts';
 import { DeferredParts } from './deferred-parts';
 import { askPage, ThreadPreloads } from './thread-preload';
 import { lightPage, NewerPages, setMessagesAfter, type ReadingPosition } from './reading-pages.svelte';
 export type { ReadingPosition } from './reading-pages.svelte';
 import { forgetArchivedThread } from '../archive-history';
 import { rightPanel } from '../right-panel.svelte';
-import { workingChildren, type WorkingChildren, lastIndexById, mergeResumed, patchFields, patchRow, reconcileThread, threadsByProject } from '../thread-rows';
+import { workingChildren, type WorkingChildren, lastIndexById, mergeResumed, patchFields, patchRow, reconcileThread, summaryOf, threadsByProject } from '../thread-rows';
 import type { StoreContext } from './context';
 import { RpcErrorCode, threadActive } from '@boite/contracts';
 import { RpcFailure, wasDropped } from '../client';
@@ -30,12 +31,6 @@ import { archiveWhile, keepArchived, pinWhile } from './optimistic';
 
 /** What a rewind hands back to the composer: the removed message's content, and how the agent forgets it. */
 export type RewoundMessage = Omit<ThreadRewind, 'thread'>;
-
-/** The row part of a thread, without what only an open thread carries. */
-function summaryOf(thread: Thread): ThreadSummary {
-  const { memoryEvents: _memoryEvents, messages: _messages, turns: _turns, commands: _commands, background: _background, backgroundHistory: _history, activity: _activity, messagesBefore: _before, messagesAfter: _after, messagesFrom: _from, messagesSync: _sync, messagesUnchanged: _unchanged, messageOffset: _offset, ...summary } = thread;
-  return summary;
-}
 
 /** The thread list, the open thread and its subscription, and what one thread's lifecycle asks of the core. */
 export class Threads {
@@ -62,7 +57,7 @@ export class Threads {
    */
   rewinding = $state<Record<ThreadId, MessageId>>({});
   readonly readingPositions = new Map<string, ReadingPosition>();
-  readonly readingThreads = new ReadingCache();
+  readonly readingThreads = new ReadingCache(threadId => this.snapshots.drop(threadId));
   subscribedThreadId: ThreadId | null = null;
   /** The newest open or navigation, including a quiet revalidation of the current thread. */
   openGeneration = 0;
@@ -75,8 +70,10 @@ export class Threads {
   readonly #unloaded = new Set<ThreadId>();
   /** The folded parts of this visit's messages, fetched when opened. */
   readonly parts: DeferredParts;
+  /** The device's copies of recent threads, for an open after a reload; a visit the reading cache forgets goes there too. */
+  readonly snapshots: DeviceSnapshots;
 
-  constructor(private readonly ctx: StoreContext) { this.newer = new NewerPages(ctx); this.preloads = new ThreadPreloads(ctx, this); this.parts = new DeferredParts(ctx, this); }
+  constructor(private readonly ctx: StoreContext) { this.newer = new NewerPages(ctx); this.preloads = new ThreadPreloads(ctx, this); this.parts = new DeferredParts(ctx, this); this.snapshots = new DeviceSnapshots(ctx, this, this.#unloaded); }
   get openTarget(): ThreadId | null { return this.#openTarget; }
 
   async capabilities(threadId: ThreadId) {
@@ -149,13 +146,11 @@ export class Threads {
     const thread = this.openThread;
     // A bare row whose page never came holds nothing (navigation clears `loadingThreadId` before this runs): reopened, it loads.
     if (!thread || (thread.messages.length === 0 && this.#unloaded.has(thread.id))) return;
-    // Keep more small visits within the same 16 MiB budget. An expanded tool
-    // gives its full output back to the core before it enters this cache.
-    const messages = forTransport(thread.messages, lightPage(this.ctx));
-    const kept = messages.every((message, index) => message === thread.messages[index]) ? thread : { ...thread, messages };
+    const kept = readingPage(this.ctx, thread); // Lighter, so more small visits fit the same 16 MiB budget.
     // The deep proxy on screen weighs several times its data: once the next thread is painted, plain data replaces it.
-    this.readingThreads.remember(thread.id, kept, readingCacheBytes(messages), held => $state.snapshot(held) as Thread,
+    this.readingThreads.remember(thread.id, kept, readingCacheBytes(kept.messages), held => $state.snapshot(held) as Thread,
       () => this.openThread?.id !== thread.id && this.preloads.waitingThreadId !== thread.id);
+    this.snapshots.schedule(thread.id, kept); // What the visit ended on is its snapshot for the next start too.
   }
 
   #unreadCount = $derived(this.threads.filter((t) => t.unread).length);
@@ -274,7 +269,7 @@ export class Threads {
   applyRewound(thread: Thread): void {
     this.upsertThread(summaryOf(thread)); this.ctx.positions.note(thread.id, thread.messages, thread.messageOffset);
     // A cached visit holds the removed messages: the next open reads the thread again.
-    this.readingThreads.delete(thread.id);
+    this.readingThreads.forget(thread.id);
     for (const held of this.threadSnapshots(thread.id)) {
       delete held.messagesFrom;
       delete held.messagesSync;
@@ -291,7 +286,7 @@ export class Threads {
    * of it and has nothing to do.
    */
   truncate(threadId: ThreadId, messageId: MessageId): void {
-    this.readingThreads.delete(threadId);
+    this.readingThreads.forget(threadId);
     let stale = false;
     for (const thread of this.threadSnapshots(threadId)) {
       const index = lastIndexById(thread.messages, messageId);
@@ -354,8 +349,11 @@ export class Threads {
         await client.call('threads.unsubscribe', { threadId }).catch(() => undefined);
       }
     };
+    // Nothing in memory, and no press on its way: the device's snapshot paints the thread and gives the cursor the page asks from.
+    const snapshot = this.openThread?.id === threadId || this.readingThreads.get(threadId) || this.preloads.waitingThreadId === threadId || !this.snapshots.mayHold(threadId) ? undefined : await this.snapshots.read(threadId);
+    if (!newest()) return;
     const previousThread = this.openThread;
-    let held = this.openThread?.id === threadId ? this.openThread : this.readingThreads.get(threadId);
+    let held = this.openThread?.id === threadId ? this.openThread : this.readingThreads.get(threadId) ?? snapshot;
     // The bare row of an open still on its way holds nothing to paint: clicked again, the thread shows loading, not an empty history.
     if (held && held.messages.length === 0 && this.#unloaded.has(threadId)) held = undefined;
     // A press on this thread already asked for its page (`thread-preload.ts`): the open takes it over.
@@ -416,7 +414,8 @@ export class Threads {
         ? client.call('threads.unsubscribe', { threadId: previous }).catch(() => undefined)
         : Promise.resolve();
       this.ctx.composer.settle(threadId);
-      const cached = held ?? this.readingThreads.get(threadId);
+      // A snapshot the core did not resume from goes (below), and the thread shows only what the core sent.
+      const cached = snapshot !== undefined && thread.messagesFrom === undefined ? undefined : held ?? this.readingThreads.get(threadId);
       const freshIds = new Set(thread.messages.map(m => m.id));
       if (thread.messagesFrom !== undefined && held) mergeResumed(held, thread);
       else if (cached && cached.messages.some(m => freshIds.has(m.id))) {
@@ -428,7 +427,7 @@ export class Threads {
         thread.turns = [...cached.turns.filter(turn => !turnIds.has(turn.id)), ...thread.turns];
         thread.messagesBefore = cached.messagesBefore;
       } else {
-        this.readingThreads.delete(threadId);
+        this.readingThreads.forget(threadId);
         // A page around the reader's message keeps their place; any other starts at the end.
         if (!around || !freshIds.has(around)) this.readingPositions.delete(threadId);
       }
@@ -441,6 +440,7 @@ export class Threads {
       loaded = true;
       this.loadingThreadId = null;
       this.loadingBytes = null;
+      this.snapshots.schedule(threadId);
       // The thread may already be waiting on a request this page never saw,
       // and may have had one settled where this client could not hear it.
       const permissions = await permissionsAsked;
@@ -469,7 +469,7 @@ export class Threads {
             if (previousThread) s.startDraft(previousThread.projectId, { refresh: false });
           }
           // Rollback can remember the rejected target: discard it afterwards.
-          this.readingThreads.delete(threadId);
+          this.readingThreads.forget(threadId);
           this.readingPositions.delete(threadId);
         }
         // The machine went while the thread opened: it shows offline, and the reconnect opens it again.
@@ -867,7 +867,7 @@ export class Threads {
       delete composer.staged[threadId];
       rightPanel.forget(s.threadKey(threadId));
     }
-    this.readingThreads.delete(threadId);
+    this.readingThreads.forget(threadId);
     this.readingPositions.delete(threadId);
     if (s.terminalShown(threadId)) s.hideTerminal(threadId);
   }
