@@ -1286,7 +1286,10 @@ long animation frames of the window and their total.
   the line after a list, and never after the first use of a link or footnote
   definition, so definitions and their uses share the last row. Rows are
   `<message>#<part>.<block>`, the first keeping the message's id. Only whole
-  lines decide, so a streamed answer keeps its row ids when it ends. A slice's
+  lines decide, so a streamed answer keeps its row ids when it ends. A long
+  turn (`rowCuts`) that ends on a long answer takes both cuts, its rows of parts
+  then named `<message>#<first part>`. A written plan (`# Plan`) stays one row:
+  its card copies, downloads and saves the whole text. A slice's
   bubble drops the edge it shares with the next one and reaches up through the
   12 px between their rows. Rows of 2 KB from 4 KB opened faster but cost the
   most to scroll through; rows of 8 KB from 16 KB saved nothing on open.
@@ -1307,12 +1310,16 @@ long animation frames of the window and their total.
   runs in a `requestIdleCallback` only while the idle period has more time left
   than the last step took, with no timeout: a busy main thread mounts nothing
   (where the browser has no idle callbacks, one step per 200 ms). Nothing warms
-  until two frames after the opened thread first had a slice to warm.
+  until two frames after the opened thread first had a slice to warm. Only
+  slices of one text part count: the rows of a turn's work are not warmed. Past
+  256 warmed ids, it forgets those outside the window, so an answer of more
+  slices than that is still warmed to its end.
 - A slice of a finished cut answer is `content-visibility: auto`, its
   `contain-intrinsic-size` its slot as measured or estimated: off screen it
   skips style and layout, so a mount costs the DOM alone. Its paint clip reaches
   up through the gap to the slice above (`overflow-clip-margin`), where the
-  bubble joins it.
+  bubble joins it. In a turn that published a page, the slice's first and last
+  runs of text join the slices around it.
 - Find opens the slice that holds the match (`FindHit.at`, `rowIndexOf`), and
   every slice of a cut answer takes the whole reading measure, so a short last
   slice is as wide as the slices above it.
@@ -1360,12 +1367,29 @@ same command, machine load (1 min) from 32 down to 9:
 | Final, before the clip margin | 189, 175 | 0, 57 | 1,121, 1,574 | 14 to 12 |
 | Base again | 1,127, 477 | 0, 0 | 2,104, 2,214 | 12 to 9 |
 
-The final build meets the three marks: the open under 500 ms a run, the wheel
-up the answers under 150, the long thread no worse than the base of the same
-session. The overflow clip margin, added after, only changes paint. The long
-thread scrolls about a third of the base's distance on this branch (main ms per
-1000 px three times the base's), already at 916467a4: its totals compare
-windows of different length.
+The long thread's scrollTop moved about a third of the base's in the window
+above (main ms per 1000 px three times the base's), but the text did not.
+About 0.9 s into the wheel, the store lands a page of 120 older messages above
+the reader. Counted at their class estimates, they grow the list by about
+5,000 px in one frame (scrollHeight 33,500 to 38,600), and the list moves
+scrollTop by as much, against the wheel. The base counted them at 80 px and
+grew them as they were measured, about 3,000 px over the whole wheel. A probe
+logging every frame's rows (`?fake=1&long=1`, the bench's wheel of 9,000 px,
+CPU x4) found the same text distance for both: base 8,996 to 9,003 px, this
+branch 9,009 to 9,183 px, ending on the same prompt (`m-long-320`). The same
+page landing with no input moved the text 0.3 px (base) and 0.6 px (branch).
+Since then the bench counts the distance the text moved on screen, not
+scrollTop. Same command, 2026-11-16, load 8 to 26:
+
+| Build | Open heavy thread | Heavy answers scroll | Long thread scroll | Long thread, main ms per 1000 px | Load |
+| --- | --- | --- | --- | --- | --- |
+| Base | 495, 426 | 0, 0 | 1,437, 1,628 | 328, 326 | 8 to 9 |
+| 57957a49 (clip margin) | 143, 247 | 114, 0 | 1,491, 504 | 310, 311 | 9 to 21 |
+| Final (review fixes) | 276, 223 | 66, 126 | 1,890, 1,880 | 326, 314 | 21 to 26 |
+
+The open stays under 500 ms a run and the wheel up the answers under 150. Per
+1000 px of text, the long thread costs the base's main thread time; its long
+frames moved with the machine's load.
 
 Cutting answers trades the open for the scroll: one answer drawn whole is
 2,681 nodes the open lays out at once and a wheel only composites, where cut
