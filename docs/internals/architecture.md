@@ -356,6 +356,13 @@ prompts and labels live in `threads/resume-text.ts`.
 Owner and paired-device connections name one visible conversation through
 `threads.focus`. Claude, Codex, ACP, pi and Muse can prepare their traced process
 and native session before a prompt, without creating a turn, message or model prompt.
+Preparation waits until the thread has been the connection's visible thread for
+`FOCUS_DWELL_MS` (one second, `threads/focus.ts`): arrowing through ten threads
+otherwise launched ten agents of a few hundred MB that lived 30 s for nothing. A
+thread left sooner prepares nothing and starts no grace. There is no wait when the
+connection reports protected input for the thread (the composer has text,
+attachments or queued input, so the first keystroke prepares a waiting thread), when
+another connection already shows or prepared it, or when its process is live.
 Viewed sessions stay ready across completed turns even when
 `warmProcessMinutes` is zero. The last viewer leaving starts a 30-second grace,
 extended by a longer configured warm period. Hidden pages and machine or phone
