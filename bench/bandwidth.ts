@@ -4,13 +4,17 @@
  * thread, one streamed turn and a reconnect. Everything runs on the echo
  * driver in a fresh data directory, through the counting relay of `lib/wire.ts`.
  *
- *   bun run bench/bandwidth.ts [--rtt 150] [--sequence sequential|pipelined] [--core path/to/main.ts] [--locale en|fr] [--only page] [--json out.json]
+ *   bun run bench/bandwidth.ts [--rtt 150] [--sequence sequential|pipelined] [--core path/to/main.ts] [--locale en|fr] [--only page|reply] [--runs 5] [--json out.json]
  *
  * `--sequence` is which client the calls imitate: `sequential` is the UI before
  * 2026-09-19 (one call awaited after the other on a thread open), `pipelined`
  * the UI after it. `--locale` is the device's language: the page load adds the
  * catalogue chunk index.html's head script preloads for it. `--only page`
- * stops after the three page-load rows.
+ * stops after the three page-load rows. `--only reply` streams the fixed
+ * sample reply of `SAMPLE_REPLY` `--runs` times at a model's pace and reports
+ * when its first word and its first sentence reach the phone, how many delta
+ * frames carry it and the longest wait between two of them; every full run
+ * ends with one such reply too.
  */
 import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -36,7 +40,10 @@ const REMOTE = { client: { name: 'bench', version: '2.0.0-beta.1' }, timeoutMs: 
 
 const CORE_MAIN = flag('core', '');
 const LOCALE = flag('locale', 'en');
-const ONLY_PAGE = flag('only', '') === 'page';
+const ONLY = flag('only', '');
+const ONLY_PAGE = ONLY === 'page';
+const ONLY_REPLY = ONLY === 'reply';
+const RUNS = Math.max(1, Number(flag('runs', ONLY_REPLY ? '5' : '1')));
 /** What a browser opens to one host over HTTP/1.1, which is all Bun.serve speaks. */
 const CONNECTIONS = 6;
 
@@ -68,6 +75,64 @@ function proseSource(seed: number): (count: number) => string {
   };
 }
 const words = proseSource(20260919);
+
+/**
+ * One fixed reply as an agent writes it: an opening sentence, paragraphs, a
+ * code block and a list. It goes out `REPLY_PIECE` characters every
+ * `REPLY_GAP_MS` plus the echo driver's own 5 ms, about 270 characters a
+ * second, which is a model streaming 65 tokens a second.
+ */
+const SAMPLE_REPLY = [
+  'The build fails because the cache key ignores the lockfile. The rest of this reply explains why and how to fix it.',
+  '',
+  'Each job restores the cache from a key made of the operating system and the branch name. When a dependency changes, the key stays the same, so the job restores a store that no longer matches the lockfile and the install step refuses it.',
+  '',
+  'Hashing the lockfile into the key solves it:',
+  '',
+  '```yaml',
+  '- uses: actions/cache@v4',
+  '  with:',
+  '    path: ~/.bun/install/cache',
+  '    key: bun-${{ runner.os }}-${{ hashFiles(\'bun.lock\') }}',
+  '    restore-keys: bun-${{ runner.os }}-',
+  '```',
+  '',
+  'Three things change with it:',
+  '',
+  '- a lockfile change gives a new key, so the store is rebuilt once;',
+  '- the restore key still finds the last store, so most packages come from it;',
+  '- two branches with the same lockfile share one store.',
+  '',
+  'Run the workflow twice after the change: the first run writes the new store, and the second should restore it in a few seconds.',
+].join('\n');
+const SAMPLE_FIRST_SENTENCE = 'The build fails because the cache key ignores the lockfile.';
+const REPLY_PIECE = 12;
+const REPLY_GAP_MS = 40;
+
+/** The prompt that makes the echo driver write `text` at a model's pace. */
+function pacedPrompt(text: string): string {
+  const pieces: string[] = [];
+  for (let at = 0; at < text.length; at += REPLY_PIECE) pieces.push(text.slice(at, at + REPLY_PIECE));
+  return pieces.join(`[sleep:${REPLY_GAP_MS}]`);
+}
+
+interface ReplyRun {
+  /** From sending `turns.start` to the first delta of the reply on the phone. */
+  firstMs: number;
+  /** To the moment the phone holds the whole first sentence. */
+  sentenceMs: number;
+  /** To `message.completed`. */
+  doneMs: number;
+  deltas: number;
+  /** The longest time between two delta frames while the reply streams. */
+  longestGapMs: number;
+  downBytes: number;
+}
+
+const median = (values: number[]): number => {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor((sorted.length - 1) / 2)] as number;
+};
 
 interface Row {
   name: string;
@@ -212,12 +277,62 @@ function report(rows: Row[]): void {
   if (JSON_OUT !== '') writeFileSync(JSON_OUT, `${JSON.stringify({ rttMs: RTT_MS, sequence: SEQUENCE, locale: LOCALE, rows }, null, 2)}\n`);
 }
 
+/** Streams `SAMPLE_REPLY` on `threadId` and times what `client`, subscribed behind the relay, receives of it. */
+async function streamReply(client: CoreClient, relay: ReturnType<typeof startWire>, threadId: string): Promise<ReplyRun> {
+  let messageId: string | null = null;
+  let text = '';
+  let deltas = 0;
+  let firstAt = 0, sentenceAt = 0, lastAt = 0, longestGap = 0;
+  const offStarted = client.on('message.started', (message) => {
+    if (message.threadId === threadId && message.role === 'assistant') messageId = message.id;
+  });
+  const offDelta = client.on('message.delta', (delta) => {
+    if (delta.messageId !== messageId) return;
+    const at = performance.now();
+    deltas += 1;
+    if (firstAt === 0) firstAt = at;
+    else longestGap = Math.max(longestGap, at - lastAt);
+    lastAt = at;
+    text += delta.text;
+    if (sentenceAt === 0 && text.includes(SAMPLE_FIRST_SENTENCE)) sentenceAt = at;
+  });
+  try {
+    relay.reset();
+    const completed = client.next('message.completed', (event) => event.threadId === threadId && event.messageId === messageId, 120_000);
+    const startedAt = performance.now();
+    await client.call('turns.start', { threadId, prompt: pacedPrompt(SAMPLE_REPLY) });
+    await completed;
+    const doneAt = performance.now();
+    await settle();
+    if (text !== SAMPLE_REPLY) throw new Error(`the phone put together ${text.length} characters, not the ${SAMPLE_REPLY.length} of the reply`);
+    return { firstMs: firstAt - startedAt, sentenceMs: sentenceAt - startedAt, doneMs: doneAt - startedAt, deltas, longestGapMs: longestGap, downBytes: relay.read().down };
+  } finally {
+    offStarted();
+    offDelta();
+  }
+}
+
+function reportReplies(runs: ReplyRun[]): void {
+  const row = (name: string, pick: (run: ReplyRun) => number, digits = 0): string =>
+    `| ${name} | ${median(runs.map(pick)).toFixed(digits)} | ${Math.min(...runs.map(pick)).toFixed(digits)} | ${Math.max(...runs.map(pick)).toFixed(digits)} |`;
+  console.log(`\nsample reply of ${SAMPLE_REPLY.length} characters, ${runs.length} runs, round trip ${RTT_MS} ms, ${new Date().toISOString().slice(0, 10)}\n`);
+  console.log('| reply on a phone | median | min | max |');
+  console.log('| --- | ---: | ---: | ---: |');
+  console.log(row('send to first word, ms', (run) => run.firstMs));
+  console.log(row('send to first sentence, ms', (run) => run.sentenceMs));
+  console.log(row('send to message.completed, ms', (run) => run.doneMs));
+  console.log(row('delta frames', (run) => run.deltas));
+  console.log(row('longest wait between frames, ms', (run) => run.longestGapMs));
+  console.log(row('down KB', (run) => run.downBytes / 1024, 1));
+}
+
 async function main(): Promise<void> {
-  if (!existsSync(UI_INDEX)) throw new Error('packages/ui/dist is missing: bun run build:ui first');
+  if (!ONLY_REPLY && !existsSync(UI_INDEX)) throw new Error('packages/ui/dist is missing: bun run build:ui first');
   const core = await startCore(CORE_MAIN === '' ? {} : { command: ['bun', 'run', CORE_MAIN] });
   const direct = await connect(core.url, core.token, { client: { name: 'bench', version: '2.0.0-beta.1' } });
   const directory = mkdtempSync(join(tmpdir(), 'boite-bench-project-'));
   const rows: Row[] = [];
+  let replyRuns: ReplyRun[] = [];
   let wire: ReturnType<typeof startWire> | undefined;
   let client: CoreClient | undefined;
 
@@ -225,6 +340,28 @@ async function main(): Promise<void> {
     const project = await direct.call('projects.add', { path: directory, name: 'bench' });
     const account = (await direct.call('accounts.list', {})).find((entry) => entry.providerId === 'echo');
     if (account === undefined) throw new Error('the core has no echo account');
+
+    const replies = async (relay: ReturnType<typeof startWire>, phone: CoreClient): Promise<ReplyRun[]> => {
+      const thread = await direct.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: account.id, title: 'reply' });
+      // The echo driver writes back what it is sent: the answer-style line and, on a thread's first turn, the agent guide go first.
+      await direct.call('settings.set', { shortAnswers: false });
+      const warm = direct.next('turn.finished', (event) => event.threadId === thread.id, 60_000);
+      await direct.call('turns.start', { threadId: thread.id, prompt: 'warm up' });
+      await warm;
+      await phone.call('threads.subscribe', { threadId: thread.id });
+      const runs: ReplyRun[] = [];
+      for (let run = 0; run < RUNS; run += 1) runs.push(await streamReply(phone, relay, thread.id));
+      return runs;
+    };
+    if (ONLY_REPLY) {
+      const relay = startWire(core.port, RTT_MS / 2);
+      wire = relay;
+      client = await connect(relay.url, core.token, REMOTE);
+      const runs = await replies(relay, client);
+      reportReplies(runs);
+      if (JSON_OUT !== '') writeFileSync(JSON_OUT, `${JSON.stringify({ rttMs: RTT_MS, runs }, null, 2)}\n`);
+      return;
+    }
 
     // A sidebar worth of threads, and one long conversation to open.
     for (let index = 0; index < 60; index += 1) {
@@ -302,6 +439,7 @@ async function main(): Promise<void> {
       await boot(client);
       await openThread(remote(), long.id, held);
     });
+    replyRuns = await replies(relay, remote());
   } finally {
     client?.close();
     wire?.stop();
@@ -311,6 +449,7 @@ async function main(): Promise<void> {
   }
 
   report(rows);
+  reportReplies(replyRuns);
 }
 
 await main();

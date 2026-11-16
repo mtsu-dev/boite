@@ -453,11 +453,32 @@ values enable compression and delta batching.
   takeover, which takes a 30 KB JSON answer to 1.6 KB. The mode with a shared
   context was measured too and rejected: on Bun 1.4.2 it shrinks small frames
   ten times but only Huffman-codes a large one, 30 KB to 20.9 KB.
-- `message.delta` events are held for 80 ms and joined per message part. A
-  small deflated frame keeps about 84 % of its size, so fewer and larger frames
-  are what saves bytes while text streams. Held deltas always leave before any
-  other event and before any response, so the order on the wire stays the order
-  of the turn.
+- The text of an answer opens at once: each text part's first sentence leaves
+  as it is written, ended by a stop and a space or by the first line break.
+  After it, text is held per message part and leaves at each blank line, one
+  whole paragraph at a time, and at the latest 250 ms after the first character
+  held, so a long paragraph, a code block or a list never stalls. A thinking
+  part's deltas and a tool's streamed input are held for 80 ms and joined per
+  part. A small deflated frame keeps about 84 % of its size, so fewer and
+  larger frames are what saves bytes while text streams. Held deltas always
+  leave before any other event, a tool call included, and before any response,
+  so the order on the wire stays the order of the turn.
+
+  `bun run bench/bandwidth.ts --only reply --runs 7` streams a fixed 933
+  character reply (paragraphs, a code block, a list) at about 270 characters a
+  second behind a 150 ms round trip. On 2026-11-16, Linux, medians of 7 runs:
+
+  | text pacing | first word | first sentence | delta frames | longest wait | down KB |
+  | --- | ---: | ---: | ---: | ---: | ---: |
+  | 80 ms window, before | 259 ms | 443 ms | 39 | 101 ms | 15.2 |
+  | sentence, paragraphs, 150 ms cap | 186 ms | 381 ms | 28 | 201 ms | 13.9 |
+  | sentence, paragraphs, 250 ms cap | 194 ms | 380 ms | 22 | 283 ms | 13.1 |
+  | sentence, paragraphs, 400 ms cap | 182 ms | 365 ms | 19 | 404 ms | 12.7 |
+  | sentence, paragraphs, 600 ms cap | 190 ms | 375 ms | 16 | 601 ms | 12.3 |
+  | sentence, paragraphs, 1000 ms cap | 189 ms | 378 ms | 15 | 731 ms | 12.2 |
+
+  The cap is where the frames stop falling fast: 150 to 250 ms takes 6 frames
+  off for 82 ms more of the longest wait, 250 to 400 ms only 3 for 121 ms more.
 
 The core checks each complete RPC response against 16 MiB of serialized UTF-8,
 including its envelope, caller ID, turns, memory notices and other metadata.
@@ -2187,6 +2208,7 @@ bun bench/remote-browser-frames.ts --rtt 0,80,200   # frames a second a viewer g
 bun bench/browser-agent.ts --repeat 3             # CLI calls, bytes and call times of eight scripted browser tasks
 bun run build:ui
 bun run bench/bandwidth.ts --rtt 150          # bytes and time per scenario behind a delayed relay
+bun run bench/bandwidth.ts --only reply --runs 7   # first word, first sentence and delta frames of one streamed reply
 bun run bench/bandwidth.ts --core <other checkout>/packages/core/src/main.ts --sequence sequential
 bun run bench/startup.ts --exe <boite-shell.exe> --runs 7
 bun bench/ui-frames.ts --noblur                # fps and main thread per UI scenario, software compositing
@@ -2212,7 +2234,10 @@ powershell -File bench/installer-extract.ps1 -Work <scratch>   # Windows: time t
 `bench/bandwidth.ts` puts a TCP relay between the client and the core, counts
 the bytes each way and delays each direction by half the round trip. `--core`
 measures another checkout's core and the UI build beside it, and
-`--sequence sequential` plays the client that checkout shipped. The bench
+`--sequence sequential` plays the client that checkout shipped. `--only reply`
+streams one fixed reply at a model's pace on the echo driver, `--runs` times,
+and reports when its first word and its first sentence reach the client, its
+delta frames and the longest wait between two of them; it needs no UI build. The bench
 client sends a non-loopback `Host`, otherwise the core would treat it as local.
 
 `bench/startup.ts` starts the hidden shell on a fresh data directory and a fresh
