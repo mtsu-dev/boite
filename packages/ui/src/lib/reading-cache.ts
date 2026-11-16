@@ -68,6 +68,9 @@ export class ReadingCache {
   readonly #dropped = new Map<string, number>();
   #cleared = 0;
 
+  /** `forgotten` hears of a thread whose visit is no longer one to resume from (`forget`). */
+  constructor(private readonly forgotten?: (id: string) => void) {}
+
   get size(): number { return this.#threads.size; }
 
   get(id: string): Thread | undefined { return this.#threads.get(id); }
@@ -122,6 +125,12 @@ export class ReadingCache {
     this.#total -= bytes;
     this.#bytes.delete(id);
     return this.#threads.delete(id);
+  }
+
+  /** Lets `id` go because what it holds can no longer be caught up from, and says so to whoever kept another copy. */
+  forget(id: string): boolean {
+    this.forgotten?.(id);
+    return this.delete(id);
   }
 
   clear(): void {

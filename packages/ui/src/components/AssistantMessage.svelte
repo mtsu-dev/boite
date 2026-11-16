@@ -9,7 +9,7 @@
   import type { Store } from '../lib/store.svelte';
   import { count, formatTokens, providerName } from '../lib/format';
   import { isNamedModel } from '../lib/model-order';
-  import { planOf } from '../lib/plan';
+  import { planOf, writtenPlan as isWrittenPlan } from '../lib/plan';
   import Deferred from './Deferred.svelte';
   import { parts } from '../lib/deferred-parts';
   import { councilBuilt } from '../lib/council-entry';
@@ -25,7 +25,9 @@
   import { activityShown, compactionText, runKey, type ActivityPart, type CompactionPart } from '../lib/tool-groups';
   import { MessageRuns } from '../lib/memory-timeline';
   import { chatPrefs } from '../lib/chat-prefs.svelte';
-  import { shownText as shownTextOf } from '../lib/timeline-rows';
+  import { shownText as shownTextOf, type TextSlice } from '../lib/timeline-rows';
+  import { viewAt } from '../lib/inline-view';
+  import { headingAt } from '../lib/markdown';
   import KeepaliveMarker from './KeepaliveMarker.svelte';
   import ErrorCard from './ErrorCard.svelte';
   import AgentNoticeLine from './AgentNoticeLine.svelte';
@@ -45,7 +47,11 @@
    * then every part it carries, its calls and reasoning folded into activity runs.
    * `signedOut` is the thread's account when it is signed out, so an error can
    * carry the way back in. `from` and `to` name the parts to draw when the
-   * timeline cut a long message in several rows (lib/timeline-rows.ts).
+   * timeline cut a long message in several rows (lib/timeline-rows.ts), and
+   * `slice` the characters of part `from`'s text a row of a long answer draws,
+   * with what the whole answer decided for it (`TextSlice`); `reveal` brings
+   * up the row of this message that draws character `offset` of part `part`
+   * and the element `anchor` in it, for a link to a heading of another slice.
    * `views` are the pages its turn published, for its answer to place.
    * `changes` is its turn's change count, drawn on the line of the run that
    * holds part `at`.
@@ -56,6 +62,8 @@
     message,
     from = 0,
     to,
+    slice,
+    reveal,
     signedOut,
     showModel,
     latestInTurn = true,
@@ -67,6 +75,8 @@
     message: Message;
     from?: number;
     to?: number;
+    slice?: TextSlice;
+    reveal?: (part: number, offset: number, anchor: string) => void;
     signedOut: Account | null;
     showModel: boolean;
     latestInTurn?: boolean;
@@ -101,9 +111,19 @@
    * only what it says after its last step reads as an answer.
    */
   const lastStepAt = $derived(message.role === 'assistant' ? message.parts.findLastIndex(part => part.type === 'tool' || part.type === 'thinking') : -1);
+  /** Read on the whole text of the part, never on a slice of it: the last slice of a long report is no narration. */
   const narrates = (index: number, text: string) => index < lastStepAt && text.length <= NARRATION_MAX;
+  /** Whether a page of the turn stands at a cut, on either side of it: the bubbles there do not join. */
+  const placesPage = (paths: readonly string[] | undefined) => !!views?.length && !!paths?.some(path => viewAt(views, path));
+  /** A slice's bubble continues the slice above and below it, unless a page stands at the cut (`TextSlice.pages`). */
+  const joins = (slice: TextSlice) => ({ above: slice.start > 0 && !placesPage(slice.pages?.above), below: slice.end !== undefined && !placesPage(slice.pages?.below) });
+  /** A `#heading` link to a heading another slice draws: that slice is brought up and the list goes to the heading. */
+  const toHeading = (index: number, whole: string) => (id: string) => {
+    const at = headingAt(whole, id);
+    if (at >= 0) reveal?.(index, at, id);
+  };
   /** An answer headed "Plan" is a plan written out rather than handed over: once said, it reads in the plan's outline. */
-  const writtenPlan = (text: string) => message.role === 'assistant' && /^\s*#{1,6}\s+plan\s*\n/i.test(text);
+  const writtenPlan = (text: string) => message.role === 'assistant' && isWrittenPlan(text);
   /**
    * An error that ended the thread's last turn, at rest, can be answered in
    * place: the same prompt sent again (`retryTurn`, the turn's own Retry).
@@ -183,8 +203,11 @@
     {:else if message.parts[run.index]}
     {@const index = run.index}
     {@const part = message.parts[run.index]!}
-    {@const shownText = part.type === 'text' ? shownTextOf(message, part) : ''}
-    {@const narrated = part.type === 'text' && message.role === 'assistant' && narrates(index, shownText.trim())}
+    {@const sliced = slice && index === from ? slice : undefined}
+    {@const whole = part.type === 'text' ? shownTextOf(message, part) : ''}
+    {@const shownText = sliced ? whole.slice(sliced.start, sliced.end) : whole}
+    {@const open = !sliced || sliced.end === undefined}
+    {@const narrated = part.type === 'text' && message.role === 'assistant' && narrates(index, whole.trim())}
     {#if (part.type !== 'text' || shownText.trim().length > 0) && ((part.type !== 'council' && part.type !== 'debate') || experimentOn(COUNCIL_EXPERIMENT)) && !(asking && part.type === 'question' && questionDocked(store, part))}
     <!-- Narration is a class, not another branch: the paragraphs already drawn stay the same nodes when a step arrives after them. -->
     <div class="part" class:narration={narrated} data-kind={part.type} data-testid={narrated ? 'narration' : undefined}>
@@ -194,14 +217,15 @@
             <Activity size={14} strokeWidth={1.75} aria-hidden="true" />
             <div class="system-copy"><Prose text={shownText} {store} {threadId} /></div>
           </div>
-        {:else if writtenPlan(shownText) && !(index === caretAt && part.complete !== true)}
+        {:else if !sliced && writtenPlan(shownText) && !(index === caretAt && part.complete !== true)}
           {@render plan(shownText)}
         {:else}
-        <Prose text={shownText} revision={textRevision(part)} live={index === caretAt && part.complete !== true} bubble={message.role === 'assistant' && !narrated}
-          typing={!compacting && latestInTurn && !toolRunning && message.role === 'assistant' && store.connection === 'ready' && store.openThread?.status === 'running' && index === message.parts.length - 1 && index === caretAt && part.complete !== true} {store} {threadId}
+        <Prose text={shownText} revision={textRevision(part)} live={open && index === caretAt && part.complete !== true} bubble={message.role === 'assistant' && !narrated}
+          joined={sliced ? joins(sliced) : undefined} anchor={sliced && reveal ? toHeading(index, whole) : undefined}
+          typing={open && !compacting && latestInTurn && !toolRunning && message.role === 'assistant' && store.connection === 'ready' && store.openThread?.status === 'running' && index === message.parts.length - 1 && index === caretAt && part.complete !== true} {store} {threadId}
           views={message.role === 'assistant' ? views : undefined} />
         {/if}
-        {#if part.omitted}<p class="omitted" data-testid="text-omitted">{fill(strings.chat.textOmitted, { count: count(part.omitted) })}</p>{/if}
+        {#if part.omitted && open}<p class="omitted" data-testid="text-omitted">{fill(strings.chat.textOmitted, { count: count(part.omitted) })}</p>{/if}
 
       {:else if part.type === 'artifact' && part.view}
         <InlineView {part} {store} {threadId} messageId={message.id} partIndex={index} />

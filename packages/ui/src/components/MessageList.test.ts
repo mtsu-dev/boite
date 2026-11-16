@@ -5,7 +5,7 @@ import { DEFAULT_DELEGATION_CONFIG, type AgentLetter, type Message, type Message
 import { strings } from '../lib/strings';
 import MessageList from './MessageList.svelte';
 import JumpLatest from './JumpLatest.svelte';
-import { OVERSCAN, windowStats } from '../lib/message-window';
+import { OVERSCAN, slotClasses, windowStats } from '../lib/message-window';
 import { TurnFileCache } from '../lib/turn-files';
 import { turnProgressStats } from '../lib/turn-progress.svelte';
 import { findHits } from '../lib/find';
@@ -130,6 +130,8 @@ test('the parent timeline keeps one grouped row per launch, its counts live, tha
 // the list only says when it is needed.
 let jumpHost: ReturnType<typeof mount> | null = null;
 beforeEach(() => {
+  // The class means are the page's: one test's measures would move the next one's estimates.
+  slotClasses.clear();
   const target = document.createElement('div');
   document.body.appendChild(target);
   jumpHost = mount(JumpLatest, { target });
@@ -1552,7 +1554,7 @@ test('Ctrl+F opens the row of a long message that holds the match, not its first
   const paragraph = giant.parts[at];
   if (paragraph?.type !== 'text') throw new Error('the giant message holds paragraphs');
   paragraph.text = `${paragraph.text} xylophone`;
-  expect(findHits(messages, 'xylophone')).toEqual([{ messageId: giant.id, nth: 0, part: at }]);
+  expect(findHits(messages, 'xylophone')).toEqual([{ messageId: giant.id, nth: 0, part: at, at: expect.any(Number) }]);
 
   stubLayout(60_000);
   live.findOpen = true;

@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
@@ -1476,6 +1477,26 @@ describe('acp driver', () => {
     delete process.env['ACP_FAKE_REFUSE_MODES'];
     process.env['ACP_FAKE_NO_MODES'] = '1';
     expect((await finishTurn(client, await acpThread(client), 'first')).status).toBe('done');
+  });
+
+  test('a council member refused its plan mode while the turn warms its process names the mode, not the exit code of the process Boite closed', async () => {
+    const client = await startCore();
+    spyOn(harness!.core.council, 'owns').mockReturnValue(true);
+    process.env['ACP_FAKE_NO_MODES'] = '1';
+    // A Git project takes a code checkpoint, and the process is prepared beside it.
+    const { accountId } = await acpAccount(client);
+    const repo = mkdtempSync(join(tmpdir(), 'boite-acp-council-'));
+    const init = spawn('git', ['init', '-q', repo], { stdio: 'ignore' });
+    await new Promise((resolve) => init.once('exit', resolve));
+    const project = await client.call('projects.add', { path: repo, name: 'council' });
+    const thread = await client.call('threads.create', { projectId: project.id, providerId: 'acp-fake', accountId, title: 'council member', permissionMode: 'plan' });
+    await client.call('threads.subscribe', { threadId: thread.id });
+    const logs = collectLogs(client);
+    const finished = await finishTurn(client, thread.id, 'first');
+    expect(logs.some((line) => line.includes('preparing the turn failed'))).toBe(true);
+    expect(finished.status).toBe('error');
+    expect(finished.error).toContain('native agent offers no exact mode for plan');
+    expect(finished.error).not.toContain('exited with code');
   });
 
   /** One `initialize` per agent process, which is what the probe cache saves. */

@@ -50,15 +50,79 @@ export const THUMB_HEIGHT = 88;
 /** What the pictures' row adds besides them: its margin and the frames. */
 const THUMB_ROW = 10;
 
+/** A first guess for a class never measured: a line of about `LINE_CHARS` characters is `LINE_HEIGHT` px, under `SLOT_FRAME` px of frame. */
+const LINE_CHARS = 90;
+const LINE_HEIGHT = 24;
+const SLOT_FRAME = 56;
+
+/** The characters of text a message carries, and whether it carries anything else. */
+function textWeight(message: Message): { chars: number; mixed: boolean } {
+  let chars = 0;
+  let mixed = false;
+  for (const part of message.parts) {
+    if (part.type === 'text') chars += part.text.length;
+    else mixed = true;
+  }
+  return { chars, mixed };
+}
+
 /**
- * What a message is worth before it is measured. A prompt's pictures add their
- * one row of thumbnails on top of `ESTIMATE`: left out, a prompt with
- * screenshots grew once on screen, and everything below the reader moved by
- * the difference.
+ * The measured heights of the session by class of message: its role, whether
+ * it carries more than text, and the log2 of its characters. A 30 KB answer and
+ * a one-line reply were both worth `ESTIMATE` until measured, so a page of long
+ * answers was summed at a few hundred pixels where it filled screens: the
+ * scrollbar jumped as rows were measured and the window mounted many rows for
+ * the one that filled the view. A class measured once is worth the mean of
+ * what it measured since; one never measured, its characters as lines.
  */
-export function estimateSlot(message: Message): number {
-  if (message.role !== 'user' || !message.parts.some(part => part.type === 'image')) return ESTIMATE;
-  return ESTIMATE + THUMB_HEIGHT + THUMB_ROW;
+export class SlotClasses {
+  readonly #sums = new Map<string, { total: number; count: number }>();
+
+  static key(message: Message): string {
+    const { chars, mixed } = textWeight(message);
+    return `${message.role}${mixed ? '+' : ''}${Math.floor(Math.log2(chars + 1))}`;
+  }
+
+  learn(message: Message, height: number): void {
+    if (pictured(message)) return;
+    const key = SlotClasses.key(message);
+    const sum = this.#sums.get(key);
+    if (sum) { sum.total += height; sum.count += 1; } else this.#sums.set(key, { total: height, count: 1 });
+  }
+
+  /** The mean measured for the message's class, undefined while none is. */
+  mean(message: Message): number | undefined {
+    const sum = this.#sums.get(SlotClasses.key(message));
+    return sum ? Math.round(sum.total / sum.count) : undefined;
+  }
+
+  clear(): void { this.#sums.clear(); }
+}
+
+/** The classes the page has measured since it loaded. */
+export const slotClasses = new SlotClasses();
+
+function pictured(message: Message): boolean {
+  return message.role === 'user' && message.parts.some(part => part.type === 'image');
+}
+
+/**
+ * What a message is worth before it is measured: the mean of its class
+ * (`SlotClasses`), else its text as lines, never under `ESTIMATE`. A prompt's
+ * pictures add their one row of thumbnails on top of `ESTIMATE`: left out, a
+ * prompt with screenshots grew once on screen, and everything below the
+ * reader moved by the difference.
+ */
+export function estimateSlot(message: Message, classes: SlotClasses = slotClasses): number {
+  if (pictured(message)) return ESTIMATE + THUMB_HEIGHT + THUMB_ROW;
+  const mean = classes.mean(message);
+  if (mean !== undefined) return mean;
+  return Math.max(ESTIMATE, SLOT_FRAME + Math.ceil(textWeight(message).chars / LINE_CHARS) * LINE_HEIGHT);
+}
+
+/** What a row drawing `chars` characters of one answer is worth before it is measured: its lines under the block gap. */
+export function textSlotEstimate(chars: number): number {
+  return BLOCK_GAP + Math.ceil(chars / LINE_CHARS) * LINE_HEIGHT;
 }
 
 // -- the running totals ------------------------------------------------------

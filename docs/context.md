@@ -36,7 +36,9 @@ the chat with the token counts before and after.
 ### Automatic compaction
 
 Settings, Advanced, Automatic compaction sets when Boite compacts for you.
-Without it, each agent keeps its own behaviour.
+It starts on, with Before the prompt cache expires only. Turned off, each
+agent keeps its own behaviour. A choice you saved, off included, stays as you
+left it.
 
 | Setting | What it does |
 | --- | --- |
@@ -91,6 +93,10 @@ and go out in order once it is back.
 Both work with every agent and keep running when you switch conversations or
 close the app. The bar above the box can pause, resume or remove them. After a
 restart of Boite, press resume to continue.
+
+In a Claude conversation, a job Claude schedules for itself keeps it running
+after the turn until the job is over or removed. Stop or archiving the
+conversation ends it.
 
 ## Ask a side question
 

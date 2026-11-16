@@ -1,5 +1,5 @@
 import { expect, test, vi } from 'vitest';
-import { RpcErrorCode, SYNCED_SETTINGS, type RpcMethodName } from '@boite/contracts';
+import { DEFAULT_AUTO_COMPACT, RpcErrorCode, SYNCED_SETTINGS, type RpcMethodName } from '@boite/contracts';
 import { RpcFailure, type Client } from './client';
 import { FakeClient } from './fake-client';
 import { SyncFailure, syncSettings, type SyncEnd } from './settings-sync';
@@ -197,7 +197,8 @@ test('a setting the home never wrote follows as its default, so one given back t
   const report = await syncSettings(await end(from), await end(to));
 
   expect(report.changed).toBe(2);
-  expect(await to.call('settings.get', {})).toMatchObject({ shortAnswers: true, autoCompact: null });
+  // Automatic compaction the home never saved is its default rule, and the copy carries that.
+  expect(await to.call('settings.get', {})).toMatchObject({ shortAnswers: true, autoCompact: DEFAULT_AUTO_COMPACT });
 });
 
 test('a setting another window keeps on the target while the copy is on its way stays as that window saved it', async () => {

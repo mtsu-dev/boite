@@ -71,7 +71,9 @@ export const CONTROL_HELP = `  threads [list] [--project <p>] [--archived]
                                  projects other machines of the group entrusted
                                  to it, as <machine>/<id>, and names a machine
                                  it cannot reach (--project <machine>/<name>)
-  thread show <id>               state, pending questions and permissions, last answer
+  thread show <id>               state, pending questions and permissions, last answer;
+                                 from a thread that is not a mochi's, any thread
+                                 boite threads lists, by its address there
   thread send <id> <text>        the owner's prompt, or the agent's message
   thread done <id>               put a thread that is not at work in Done
                                  (without <id>: this one, once this turn ends)

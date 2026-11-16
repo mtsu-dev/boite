@@ -41,7 +41,8 @@ test('a pull request reports the same fixed check names whichever jobs run', () 
   ].sort());
   // labeler.yml runs the base's workflow through pull_request_target.
   // An advisory name that no job reports any more is a stale exception.
-  for (const name of ADVISORY) expect(workflowChecks('ci.yml')).toContain(name);
+  const reported = ['ci.yml', 'mobile.yml'].flatMap((file) => workflowChecks(file));
+  for (const name of ADVISORY) expect(reported).toContain(name);
 });
 
 test('every job a needs chain runs through is in the list, so a skip after a failed dependency comes with a failed check', () => {

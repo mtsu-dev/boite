@@ -12,7 +12,7 @@ import { startServer } from '../src/server.ts';
 import { assertIdleFamily } from '../src/threads/completion.ts';
 import { HANDOFF } from '../src/threads/handoff.ts';
 import { AGENT_ENV } from '@boite/contracts';
-import { echoThread, rolledBackArchive, startTestCore, waitFor, type TestCore } from './harness.ts';
+import { echoThread, messageScans, rolledBackArchive, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
 
 const cores: TestCore[] = [];
@@ -153,6 +153,15 @@ test('a plan runs as child threads: output feeds a fan-out, a false condition sk
   await owner.call('threads.restore', { threadId });
   expect(await owner.call('workflows.get', { threadId, runId: run.id })).toEqual(recorded);
   expect(h.core.scheduler.state().running).toEqual([]);
+});
+
+test('a step\'s end reads its answer through an index, never by a scan of every message', async () => {
+  scripted(ctx => taskOf(ctx.prompt) === 'List the files.' ? '```json\n{"files": ["a.ts"]}\n```' : '```json\n{"bugs": []}\n```');
+  const { h, owner, threadId } = await setup();
+  const scans = messageScans(h);
+  const run = await owner.call('workflows.start', { threadId, plan: REVIEW, requestId: 'scan-1' });
+  expect((await settled(h, threadId, run.id)).status).toBe('done');
+  expect(scans()).toEqual([]);
 });
 
 test('plans are refused by field before anything starts', async () => {

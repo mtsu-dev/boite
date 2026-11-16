@@ -146,6 +146,16 @@ takes the wake off the record, so a core that dies in between keeps it. A busy
 thread gets it 30 s after its turn ends, and a restart arms it again, 3 s
 after the start at the earliest.
 
+The jobs a Claude CLI keeps in its own process (`CronCreate`, the CLI's
+`/loop`, `ScheduleWakeup`) also hold that process past the warm window. The
+driver registers a Stop hook and reads its `session_crons` list (CLI 2.1.325):
+while the last Stop listed a job, the idle window does not run and the next
+turn reuses that CLI. A `CronCreate` or `CronDelete` call makes the count
+unknown, which holds the CLI too, until the next Stop says. A Stop with an
+empty list, or a CLI that sends no list, gives the warm window back. Stop on
+the thread, an archive, a changed setup and shutdown still end the CLI
+(`packages/core/src/drivers/claude/crons.ts`).
+
 ## What starts it
 
 | Caller | Trigger |

@@ -27,6 +27,14 @@ change that traffic. Besides it, Boite connects out for the following:
 
 A plugin you install is a program of its own and may reach any address.
 
+## What stays on this device
+
+To open recent conversations at once, each phone or computer keeps the last
+page of the 8 conversations you opened most recently on each machine, at most
+4 MiB in all, encrypted with a key that never leaves the browser. Incognito
+conversations and conversations with a secret request are never kept. Remove
+machine deletes that machine's copies and their key.
+
 ## Usage analytics
 
 Boite can count how it is used, to know what to fix first. There are three

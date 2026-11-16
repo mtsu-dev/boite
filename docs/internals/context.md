@@ -120,8 +120,19 @@ again when invoked.
 `Settings.autoCompact` is `{ tokens, moments }` or null, set by the owner under
 Settings, Advanced. A phone connected as owner has an Automatic compaction row
 in its machine settings and can also open the same card through a settings
-link ([phone settings](phone.md#settings-on-a-phone)). Null is
-the default: each agent keeps its own compaction behaviour.
+link ([phone settings](phone.md#settings-on-a-phone)). Null turns it
+off: each agent keeps its own compaction behaviour.
+
+The default is `DEFAULT_AUTO_COMPACT` (`packages/contracts/src/settings-validation.ts`),
+`{ tokens: null, moments: ['cache-expiry'] }`. The core reads it while the
+stored settings have no `autoCompact` key, and sends it in `settings.get` and
+`settings.updated`, so every client shows it as the current value. A saved
+null (off) is a key with a value: it stays off. A save of another setting
+does not write the default into the store (`UNSAVED_DEFAULTS` in
+`packages/core/src/settings.ts`), so a missing key keeps meaning "never
+saved" and a later default reaches that install. An older core leaves the
+key out and means null by it: clients and the settings copy read a missing
+key as off (`SYNCED_DEFAULTS`, `effectiveSetting`).
 
 `Settings.compactionByType` optionally overrides the complete policy for
 `agent` (regular conversation), `subagent` (a thread with `parentThreadId`)

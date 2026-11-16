@@ -103,7 +103,7 @@ test('release downloads link the actual installers by platform before the change
     `Boite_${version}_amd64.deb`, `Boite_${version}_amd64.AppImage`,
     `Boite_${version}_arm64.deb`, `Boite_${version}_aarch64.AppImage`,
     `boite-server_${version}_x64.zip`, `boite-server_${version}_arm64.zip`,
-    `boite-server_${version}_android.zip`,
+    `boite-server_${version}_android.zip`, `boite-mobile_${version}_android.apk`,
     // Reused APKs keep their own versions, independently of the desktop release.
     'boite-android-1.0.1.apk', 'boite-server-android-1.0.0.apk',
   ];

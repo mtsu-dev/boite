@@ -11,10 +11,18 @@ once and it reaches every machine of your [group](machines.md).
 | Web app on iPhone | Open a machine's HTTPS address in Safari, then Share, Add to Home Screen. There is no iOS package. |
 | Web app on Android | Install Boite on the phone's Settings, Notifications screen, or the browser's install menu. |
 | Android app | Download `boite-android-<version>.apk` from a nightly release on the phone, allow the browser to install unknown apps, open Boite. |
+| Native Android app, preview | Download `boite-mobile_<version>_android.apk` from a nightly release on the phone, allow the browser to install unknown apps, open Boite. It needs no Chrome. |
 
 The Android app opens Boite's own address, `https://boite.mtsu.dev`, in
 Chrome, so app updates need no new APK. That address only serves the app:
 conversations go from the phone to your machines, never to it.
+
+The native app carries its own screens, so each release brings a new APK. It
+looks for one by itself: when Manage machines shows Update available, tap
+Update, then Restart. The first time, Android asks you to let Boite install
+apps and to confirm the update; later updates skip that confirmation, and
+Boite reopens on its own. On a phone with Google Play, Play Protect may still
+offer to scan the app first: Install without scanning goes on.
 
 ## Make your computer reachable
 

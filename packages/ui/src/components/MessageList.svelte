@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, onMount, tick, untrack } from 'svelte';
+  import { flushSync, onDestroy, onMount, tick, untrack } from 'svelte';
   import { MESSAGE_PAGE, type Message } from '@boite/contracts';
   import { strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
@@ -33,12 +33,13 @@
   import MessageActions from './MessageActions.svelte';
   import { workspace } from '../lib/workspace.svelte';
   import { movedBy, startedFrom, turnAnswer } from '../lib/message-display';
+  import { HistoryPrepare, RowEstimates, SliceWarmth, isSlice, layOut, sliceBox } from '../lib/row-cost';
   import { focusComposer } from '../lib/focus';
   import { isSending } from '../lib/composer-queue';
   import { retryTurn } from '../lib/composer-edit';
   import { TurnProgress } from '../lib/turn-progress.svelte';
-  import { GAP, OVERSCAN, SlotTotals, WINDOW_FROM, atOrBefore, estimateSlot, gapChanged, keepOnly, measurable, overscanAbove, reaches, sameView, slotGap, windowStats, type WindowView } from '../lib/message-window';
-  import { TimelineRows, rowEstimate, rowIndexOf, seam, type TimelineRow } from '../lib/timeline-rows';
+  import { GAP, OVERSCAN, SlotTotals, WINDOW_FROM, atOrBefore, gapChanged, keepOnly, measurable, overscanAbove, reaches, sameView, slotGap, windowStats, type WindowView } from '../lib/message-window';
+  import { TimelineRows, rowIndexOf, seam, type TimelineRow } from '../lib/timeline-rows';
   import { GapRows, NO_GAPS, READ_AHEAD, RangeAsk, gapHeight, heldNear, loadKeepingReader, wantedRange } from '../lib/history-gaps';
   import TimelineGap from './TimelineGap.svelte';
   import { latest } from '../lib/latest.svelte';
@@ -138,7 +139,7 @@
   /** One observer for the viewport's height and for every rendered message. */
   let boxes: ResizeObserver | undefined;
 
-  const slots = new SlotTotals<TimelineRow>(heights, row => row.gap ? gapHeight(row.gap.count) : rowEstimate(row, estimateSlot(row.message)));
+  const estimates = new RowEstimates((count) => gapHeight(count)), slots = new SlotTotals<TimelineRow>(heights, row => estimates.of(row));
   /** Where the reader is, and the rows on the page by id (lib/reading-anchor.ts). */
   const anchors = new ReadingAnchor(savedReading);
   const savedTop = untrack(() => {
@@ -180,7 +181,7 @@
   /** What lies under the last row inside the viewport (`timelineEndRoom`), 20 px until read. */
   let endRoom = $state(20);
   const readEndRoom = (box: HTMLElement) => { endRoom = timelineEndRoom(box) ?? endRoom; };
-  let navigationTarget = $state<string | null>(null);
+  let navigationTarget = $state<string | null>(null), navigationAnchor: string | null = null; // the element of the target row to align, a heading a link of another slice names
   let failureTarget = $state<{ id: string } | null>(null);
   let promptTarget = $state<string | null>(savedReading?.followPrompt ?? null);
   let reservePrompt = $state<string | null>(savedReading?.reservePrompt ?? null);
@@ -190,7 +191,7 @@
   let handledFocus = untrack(() => store.promptFocus);
   function stopLift() { cancelAnimationFrame(liftFrame); liftFrame = 0; lifting = false; }
   function releaseNavigation(event?: KeyboardEvent) {
-    releaseAnchor(); navigationTarget = null;
+    releaseAnchor(); navigationTarget = null; navigationAnchor = null;
     if (promptTarget) pinned = false;
     promptTarget = null;
     stopLift();
@@ -209,14 +210,14 @@
     return null;
   });
 
-  /** To a message, or to the row of it that draws `part` when a long one is cut in several. */
-  function jumpToMessage(id: string, part?: number) {
+  /** To a message, or to the row of it that draws `part` when a long one is cut in several, and to the element `anchor` in that row. */
+  function jumpToMessage(id: string, part?: number, offset?: number, anchor?: string) {
     releaseNavigation();
     const box = viewport;
-    const index = rowIndexOf(rows, id, part);
+    const index = rowIndexOf(rows, id, part, offset);
     if (!box || index < 0) return;
     failureTarget = { id };
-    navigationTarget = rows[index]!.id;
+    navigationTarget = rows[index]!.id; navigationAnchor = anchor ?? null;
     pinned = false;
     behind = true;
     box.scrollTop = totals(rows)[index] ?? 0;
@@ -235,7 +236,7 @@
       const node = anchors.nodes.get(id);
       if (!node?.isConnected) return;
       node.style.animation = 'none';
-      const delta = node.getBoundingClientRect().top - box.getBoundingClientRect().top - 20;
+      const delta = ((navigationAnchor && node.querySelector(`[id="${CSS.escape(navigationAnchor)}"]`)) || node).getBoundingClientRect().top - box.getBoundingClientRect().top - 20;
       if (Math.abs(delta) > 1) box.scrollTop += delta;
       scrollTop = box.scrollTop;
     });
@@ -245,9 +246,7 @@
   const windowed = $derived(rows.length > WINDOW_FROM);
   /** The window was opened around a reading position and stops short of the thread's last message. */
   const cutBelow = $derived((store.messagesAfter ?? null) !== null);
-
   function totals(list: TimelineRow[]): number[] { return slots.totals(list, timelineOrder); }
-
   const promptInset = $derived(Math.min(96, Math.max(48, viewHeight * 0.12)));
   const promptLead = $derived.by(() => {
     void measured;
@@ -337,7 +336,7 @@
 
   /** The slice of messages that meets the viewport, the overscan added, and the two heights the spacers carry for the rest.
    * While pinned the window hangs off the end of the list, not `scrollTop`, so the bottom is right on the first frame. */
-  let lastView: WindowView | undefined;
+  let lastView: WindowView | undefined, warmed = $state(0); const warmth = new SliceWarmth();
   const view = $derived.by(() => {
     void measured;
     windowStats.recomputes += 1;
@@ -360,15 +359,16 @@
     }
 
     // At the live end, paint fewer offscreen rows: two at most, and none once a screen is drawn above the view. Reading
-    // history keeps four rows each side, whatever they weigh, for wheel and touch navigation.
-    const start = pinned ? overscanAbove(total, first, whole - viewHeight, viewHeight, 2) : Math.max(0, first - OVERSCAN);
-    const end = Math.min(count, last + OVERSCAN);
+    // history keeps four rows each side, whatever they weigh, for wheel and touch navigation. The slices of a long
+    // answer at either edge join the window as idle time mounts them (`SliceWarmth`).
+    void warmed;
+    const { start, end } = warmth.widen(list, pinned ? overscanAbove(total, first, whole - viewHeight, viewHeight, 2) : Math.max(0, first - OVERSCAN), Math.min(count, last + OVERSCAN));
     // The same object while the window covers the same rows: a scroll inside them redraws nothing.
     return lastView = sameView(lastView, { start, end, first, above: total[start] ?? 0, below: whole - (total[end] ?? 0) });
   });
-
   const rendered = $derived(rows.slice(view.start, view.end));
-
+  const history = new HistoryPrepare(); $effect(() => { const all = rows, { start, end } = view; untrack(() => history.prepare(all, start, end)); });
+  $effect(() => { void view; untrack(() => warmth.wake(() => ({ rows, start: view.start, end: view.end }), () => { warmed += 1; flushSync(); }, id => layOut(anchors.nodes.get(id)))); }); onDestroy(() => warmth.stop()); // Off-screen answers render in a worker, edge slices mount and lay out in idle time (lib/row-cost.ts).
   /**
    * A rendered message's real height replaces its estimate. One above what the user reads would push the text down
    * as it lands, so the same delta goes back into `scrollTop` and the viewport does not move.
@@ -397,6 +397,7 @@
       const previous = heights.get(id) ?? slots.estimateOf(rows[at]);
       if (previous === next) continue;
       heights.set(id, next);
+      estimates.learn(rows[at], next);
       moved = true;
       if (at < 0) continue;
       // Everything from here down is worth a different number now.
@@ -502,7 +503,6 @@
   });
 
   function atBottom(box: HTMLDivElement): boolean { return box.scrollHeight - box.scrollTop - box.clientHeight < 80; }
-
   let scrolledHeight = 0, scrolledGap = 0;
   function onscroll() {
     const box = viewport;
@@ -709,8 +709,8 @@
 
 <div class="timeline-wrap">
   {#if store.findOpen && FindBar}
-    <FindBar {messages} {viewport} request={store.findRequest} jump={(id, part) => jumpToMessage(id, part)}
-      rowOf={(id, part) => { const row = rows[rowIndexOf(rows, id, part)]; return row?.failures ? { id: `failure:${id}`, from: 0 } : row ?? { id, from: 0 }; }} onclose={() => (store.findOpen = false)} />
+    <FindBar {messages} {viewport} request={store.findRequest} jump={(id, part, offset) => jumpToMessage(id, part, offset)}
+      rowOf={(id, part, offset) => { const row = rows[rowIndexOf(rows, id, part, offset)]; return row?.failures ? { id: `failure:${id}`, from: 0 } : row ?? { id, from: 0 }; }} onclose={() => (store.findOpen = false)} />
   {/if}
   {#if !narrow.current}<MessageOutline {messages} active={activePrompt} jump={id => void jumpToMessage(id)}
     hasOlder={store.messagesBefore !== null} loading={store.loadingOlder} loadOlder={() => { if (viewport) { releaseNavigation(); viewport.scrollTop = rows[0]?.gap ? Math.max(0, (totals(rows)[1] ?? 0) - viewport.clientHeight) : 0; pinned = false; loadAbove(viewport); } }} />{/if}
@@ -741,7 +741,7 @@
           use:track={{ row, joined }}
           class="message {message.role}"
           class:rest={!row.first} {...reveal.attrs(message)}
-          data-seam={joined}
+          data-seam={joined} style:content-visibility={isSlice(row) ? 'auto' : undefined} style:overflow-clip-margin={isSlice(row) ? 'var(--chat-block-gap)' : undefined} style:contain-intrinsic-size={sliceBox(row, heights.get(row.id) ?? slots.estimateOf(row), slotGap(joined, !row.first))}
           style:margin-top={joined && 'calc(var(--chat-block-gap) - var(--chat-message-gap))'}
           data-testid={row.first ? 'message' : 'message-rest'}
           data-role={group ? 'agent-mail' : message.role} data-turn={message.turnId}
@@ -765,7 +765,7 @@
           {:else if message.role === 'user'}
             <UserMessage {store} {message} {turn} accepted={!!turn} responded={progress.responded(message.turnId)} edit={atRest && !isSending(message) ? () => void editMessage(message) : undefined} />
           {:else}
-            <AssistantMessage {store} {threadId} {message} from={row.from} to={row.to} {signedOut} showModel={row.first && firstAssistantInTurn.get(message.turnId) === message.id}
+            <AssistantMessage {store} {threadId} {message} from={row.from} to={row.to} slice={row.text} reveal={(part, offset, anchor) => jumpToMessage(message.id, part, offset, anchor)} {signedOut} showModel={row.first && firstAssistantInTurn.get(message.turnId) === message.id}
               latestInTurn={lastInTurn.get(message.turnId) === message.id} views={views.get(message.turnId)}
               changes={host?.messageId === message.id ? { at: host.index, line: changes } : undefined} />
           {/if}

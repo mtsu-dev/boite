@@ -1,4 +1,4 @@
-import type { Options, SpawnOptions } from '@anthropic-ai/claude-agent-sdk';
+import type { HookCallback, Options, SpawnOptions } from '@anthropic-ai/claude-agent-sdk';
 import { messageOf, unavailable } from '../../errors.ts';
 import { userStdioServers, type LazyServerEntry } from '../../mcp/lazy.ts';
 import type { SpawnedChild } from '../../procs.ts';
@@ -19,6 +19,8 @@ export interface OptionsHost {
   compactionSummary: () => string | null;
   /** The turn the CLI is on and the interrupt, for the step hooks. */
   steps: StepHost;
+  /** The Stop hook: what the CLI has scheduled inside its own process when a run ends. */
+  stop: HookCallback;
   spawn: (options: SpawnOptions) => SpawnedChild;
 }
 
@@ -92,6 +94,7 @@ export function cliOptions(ctx: SessionContext, host: OptionsHost, lazyMcp: Reco
     hooks: {
       PreToolUse: [{ hooks: [host.gate.preToolUse] }],
       PostToolUse: [{ hooks: [host.gate.postToolUse] }],
+      Stop: [{ hooks: [host.stop] }],
       // The step boundary after each tool batch, and the native compaction's safety net.
       ...stepHooks(host.steps, host.compactionSummary),
     },

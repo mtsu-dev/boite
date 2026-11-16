@@ -4,5 +4,17 @@
 # On Windows that core is the runtime plus the bundle in `core`, elsewhere the compiled core alone.
 core="${BOITE_CORE_EXECUTABLE:-$(dirname "$0")/boite-core}"
 here="$(dirname "$core")"
-if [ -f "$here/core/main.js" ]; then exec "$core" "$here/core/main.js" cli "$@"; fi
+bundle="$here/core/main.js"
+if [ -f "$bundle" ] && command -v cygpath >/dev/null 2>&1; then
+  # Git Bash rewrites a native program's arguments that look like MSYS paths, and
+  # MSYS_NO_PATHCONV turns that off: the runtime would then get this bundle as
+  # `/c/...`, which it cannot open. The bundle goes as a Windows path either way.
+  bundle="$(cygpath -w "$bundle")"
+  # A folder after --machine or --core is that machine's: as typed, never
+  # rewritten to `C:/Program Files/Git/home/...`.
+  for arg in "$@"; do
+    case "$arg" in --machine | --core) export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'; break ;; esac
+  done
+fi
+if [ -f "$bundle" ]; then exec "$core" "$bundle" cli "$@"; fi
 exec "$core" cli "$@"

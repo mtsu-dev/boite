@@ -1,7 +1,8 @@
 import { errorText } from './errors';
 import { strings } from './strings';
 import { updateStale } from './update-freshness';
-import { desktopShell } from './shell-platform';
+import { desktopShell, MOBILE_BUILD } from './shell-platform';
+import { androidBackend, androidUpdater } from './app-update-android';
 
 export type UpdateChannel = 'stable' | 'nightly';
 
@@ -195,7 +196,19 @@ const fixture = queryFixture();
 
 /** True for the native window, plus the explicit fake harness used by visual tests. */
 export function showAppUpdateUi(): boolean {
-  return desktopShell() || fixture !== undefined;
+  return desktopShell() || androidApp() || fixture !== undefined;
+}
+
+/** The native updater of this app: the desktop shell's, or the Android app's own. */
+function nativeBackend(): AppUpdateBackend {
+  // `MOBILE_BUILD` is constant: the desktop and web builds leave the Android updater out.
+  const android = MOBILE_BUILD ? androidUpdater() : null;
+  return MOBILE_BUILD && android ? androidBackend(android) : tauriBackend();
+}
+
+/** The Android app with its updater; always false outside the mobile build. */
+export function androidApp(): boolean {
+  return MOBILE_BUILD && androidUpdater() !== null;
 }
 
 /**
@@ -226,7 +239,7 @@ export class AppUpdater {
   constructor(
     backend: AppUpdateBackend = tauriBackend(),
     clock: UpdateClock = systemClock,
-    isShell: () => boolean = () => desktopShell()
+    isShell: () => boolean = () => desktopShell() || androidApp()
   ) {
     this.#backend = backend;
     this.#clock = clock;
@@ -516,7 +529,7 @@ export class AppUpdater {
 }
 
 export const appUpdater = new AppUpdater(
-  fixture ? testBackend(fixture) : tauriBackend(),
+  fixture ? testBackend(fixture) : nativeBackend(),
   systemClock,
   showAppUpdateUi
 );

@@ -21,6 +21,8 @@ export const strings = {
     ready: 'Version {version} is ready to install.',
     waiting: 'Waiting for work to finish',
     installing: 'Agents finish their current step, then the installer starts',
+    androidInstalling: 'Boite restarts to install the update. If Android asks, confirm it.',
+    androidPermission: 'Allow Boite to install apps on the page Android opened, then tap Update again.',
     current: 'Boite is up to date.',
     failed: 'The update failed.',
     lastChecked: 'Checked at {time}',

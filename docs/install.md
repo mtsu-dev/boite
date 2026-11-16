@@ -22,6 +22,7 @@ to download it, how to install it on each system and which channel to follow.
 | Debian or Ubuntu | The `.deb` package, x64 or ARM64 |
 | Other Linux distributions | The AppImage, x64 or ARM64 |
 | Android phone | The `boite-android-<version>.apk` file, when the release has one |
+| Android phone, native app preview | The `boite-mobile_<version>_android.apk` file, in nightly releases |
 
 ## System requirements
 

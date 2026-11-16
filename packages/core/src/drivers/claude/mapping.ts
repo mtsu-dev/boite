@@ -1,6 +1,7 @@
 import type { SDKAssistantMessageError, SDKMessage, SDKResultMessage, SlashCommand } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentCommand, AgentTotals, BackgroundTask, ToolDocument, Usage } from '@boite/contracts';
 import type { PromptCacheLife } from '../types.ts';
+import { imageDocument } from '../documents.ts';
 import { stringify } from '../tool-text.ts';
 
 /** `api_retry`: the CLI is running a request that failed and will try again. */
@@ -93,14 +94,37 @@ export function contentBlocks(content: unknown): ContentBlock[] {
   return [];
 }
 
-export function resultText(content: unknown): string {
-  if (typeof content === 'string') return content;
-  if (Array.isArray(content)) {
-    return (content as ContentBlock[])
-      .map((block) => (block.type === 'text' ? (block.text ?? '') : stringify(block) ?? ''))
-      .join('\n');
+/** An image block of a tool result: base64 in `source`, the shape the Messages API gives it. */
+function imageOf(block: ContentBlock): ToolDocument | null {
+  if (block.type !== 'image') return null;
+  const source = (block as { source?: unknown }).source;
+  if (typeof source !== 'object' || source === null) return null;
+  const { type, media_type: mimeType, data } = source as { type?: unknown; media_type?: unknown; data?: unknown };
+  if (type !== 'base64' || typeof mimeType !== 'string' || typeof data !== 'string') return null;
+  return imageDocument(mimeType, data, null);
+}
+
+/**
+ * A tool result as the card's output text and its image documents. Text blocks
+ * keep their order; a base64 image is an image document, not text, so the
+ * output that the card prints and that a carried history quotes holds no
+ * base64. Any other block is its JSON.
+ */
+export function toolResultOf(content: unknown): { output: string; images: ToolDocument[] } {
+  if (typeof content === 'string') return { output: content, images: [] };
+  if (!Array.isArray(content)) return { output: stringify(content) ?? '', images: [] };
+  const texts: string[] = [];
+  const images: ToolDocument[] = [];
+  for (const block of content as ContentBlock[]) {
+    if (block.type === 'text') {
+      texts.push(block.text ?? '');
+      continue;
+    }
+    const image = imageOf(block);
+    if (image !== null) images.push(image);
+    else texts.push(stringify(block) ?? '');
   }
-  return stringify(content) ?? '';
+  return { output: texts.join('\n'), images };
 }
 
 
@@ -290,12 +314,22 @@ export function contextWindowOf(result: SDKResultMessage, model: string | null):
   return typeof window === 'number' && Number.isFinite(window) && window > 0 ? window : null;
 }
 
-/** What an API error code means, or the generic sentence for a code that says nothing. */
-export function errorSentence(error: SDKAssistantMessageError): string {
-  return namedErrorSentence(error) ?? (error === 'unknown' ? 'Claude stopped on an API error and gave no reason.' : `Claude stopped on an API error (${error}).`);
+/**
+ * Whose account a refusal speaks for: Claude's, or the provider a gateway
+ * route names ahead of its model (`antigravity/gemini-4-hydrogen-xhigh`).
+ */
+export function accountVendor(model: string | null | undefined): string {
+  const slash = model?.indexOf('/') ?? -1;
+  const vendor = slash > 0 ? model!.slice(0, slash) : '';
+  return vendor === '' || vendor === 'anthropic' || vendor === 'claude' ? 'Claude' : vendor;
 }
 
-function namedErrorSentence(error: SDKAssistantMessageError): string | null {
+/** What an API error code means, or the generic sentence for a code that says nothing. */
+export function errorSentence(error: SDKAssistantMessageError, vendor = 'Claude'): string {
+  return namedErrorSentence(error, vendor) ?? (error === 'unknown' ? 'Claude stopped on an API error and gave no reason.' : `Claude stopped on an API error (${error}).`);
+}
+
+function namedErrorSentence(error: SDKAssistantMessageError, vendor: string): string | null {
   switch (error) {
     case 'authentication_failed':
       return 'Claude could not authenticate this account. Sign in again to reconnect.';
@@ -306,7 +340,7 @@ function namedErrorSentence(error: SDKAssistantMessageError): string | null {
     case 'billing_error':
       return 'Claude reported a billing problem on this account.';
     case 'rate_limit':
-      return 'This Claude account has hit its rate limit.';
+      return `This ${vendor} account has hit its rate limit.`;
     case 'overloaded':
       return 'Claude is overloaded and refused the request.';
     case 'invalid_request':
@@ -401,10 +435,10 @@ function textOf(content: unknown): string {
  * A code the CLI could not name (`unknown`, as when a proxy cuts the stream)
  * adds nothing, so the text alone is the reason.
  */
-export function apiErrorReason(error: SDKAssistantMessageError, content: unknown): string {
+export function apiErrorReason(error: SDKAssistantMessageError, content: unknown, vendor = 'Claude'): string {
   const said = textOf(content);
-  if (said.length === 0) return errorSentence(error);
-  const sentence = namedErrorSentence(error);
+  if (said.length === 0) return errorSentence(error, vendor);
+  const sentence = namedErrorSentence(error, vendor);
   if (sentence === null) return said;
   return said === sentence ? sentence : `${sentence} ${said}`;
 }

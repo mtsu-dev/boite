@@ -1359,7 +1359,11 @@ the earlier 2048 px cap and replayed by a retry or a carried-over history.
 The CLI forwards a prompt's images unchanged, while the images its own tools
 read are fitted by the CLI to the model's limit. A GIF, or anything Bun cannot
 decode, goes as it is. Tool images shown in the timeline
-(`drivers/documents.ts`) never go back to the agent.
+(`drivers/documents.ts`) never go back to the agent. An image block of a Claude
+tool result is one of them (`toolResultOf` in `drivers/claude/mapping.ts`): the
+card's output keeps only the result's text blocks, in order, so a history
+carried into a new session, a handoff or a background compaction quotes no
+base64.
 
 An answer to a question with a free field takes the composer's files the same
 way (`questions.answer` `attachments`); see [Providers](providers.md).

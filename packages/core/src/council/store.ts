@@ -729,11 +729,11 @@ export class CouncilStore {
     return { text: written.map(turn => turn.text).join('\n\n'), turnIds: written.map(turn => turn.id) };
   }
 
-  /** The whole text of a turn's last answer. */
+  /** The whole text of a turn's last answer, by thread and turn as stepAnswer reads it. */
   #answer(turn: Turn): string {
     const rows = this.#core.journal.db.query(`SELECT (SELECT group_concat(json_extract(value, '$.text'), char(10))
       FROM json_each(messages.parts) WHERE json_extract(value, '$.type') = 'text') AS answer
-      FROM messages WHERE turn_id = ? AND role = 'assistant' ORDER BY rowid DESC LIMIT 8`).all(turn.id) as { answer: string | null }[];
+      FROM messages WHERE thread_id = ? AND turn_id = ? AND role = 'assistant' ORDER BY rowid DESC LIMIT 8`).all(turn.threadId, turn.id) as { answer: string | null }[];
     for (const row of rows) if (row.answer?.trim()) return row.answer.trim();
     return '';
   }

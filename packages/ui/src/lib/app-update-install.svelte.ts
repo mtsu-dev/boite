@@ -1,4 +1,4 @@
-import { appUpdater, type AppUpdater } from './app-update.svelte';
+import { androidApp, appUpdater, type AppUpdater } from './app-update.svelte';
 import { confirm } from './confirm.svelte';
 import { strings } from './strings';
 
@@ -17,7 +17,8 @@ export class AppUpdateInstall {
     const channel = updater.snapshot.channel;
     this.preparing = true;
     try {
-      const accepted = await confirm.ask({
+      // Android asks in its own dialog, and no agent of this phone stops.
+      const accepted = androidApp() || await confirm.ask({
         title: strings.appUpdate.installTitle,
         body: strings.appUpdate.installBody,
         confirmLabel: strings.appUpdate.install,

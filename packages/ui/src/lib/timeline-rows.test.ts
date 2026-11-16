@@ -3,7 +3,9 @@ import type { MemoryEvent, Message, MessagePart } from '@boite/contracts';
 import { heavyThread } from './fake-client/heavy-thread';
 import { memoryPartRuns } from './memory-timeline';
 import { partRuns } from './tool-groups';
-import { CUT_FROM, ROW_PARTS, TimelineRows, rowCuts, rowEstimate, rowIndexOf, seam, type TimelineRow } from './timeline-rows';
+import { CUT_FROM, ROW_CHARS, ROW_PARTS, SPLIT_FROM, TimelineRows, rowCuts, rowEstimate, rowIndexOf, seam, textCuts, type TimelineRow } from './timeline-rows';
+import { markdownAnswer } from './fake-client/markdown-thread';
+import { findHits } from './find';
 
 const tool = (id: string): MessagePart => ({ type: 'tool', toolId: id, name: 'Bash', input: { command: `echo ${id}` }, output: 'ok', status: 'done' });
 const text = (value: string): MessagePart => ({ type: 'text', text: value });
@@ -197,4 +199,143 @@ test('an assistant message that carries on the turn above joins it at the gap of
   expect(seam({ ...wake, message: { ...wake.message, turnId: 'other' } }, running)).toBeNull();
   expect(seam(tools, { ...running, first: false })).toBeNull();
   expect(seam(undefined, running)).toBeNull();
+});
+
+test('a long answer is cut into rows at its top-level blocks, ids kept through its stream and its end', () => {
+  const para = (n: number) => `Paragraph ${n} ${'with words enough to fill a line '.repeat(8)}`.trim();
+  const fence = ['```ts', ...Array.from({ length: 30 }, (_, i) => `const line${i} = ${i};`), '', 'const afterBlank = 1;', '```'].join('\n');
+  const list = Array.from({ length: 40 }, (_, i) => `- item ${i} ${'in a long list '.repeat(4)}`).join('\n\n');
+  const table = ['| a | b |', '| - | - |', ...Array.from({ length: 30 }, (_, i) => `| ${i} | ${'cell '.repeat(10)} |`)].join('\n');
+  const text = [para(1), para(2), para(3), para(4), para(5), para(6), para(7), para(8), para(9), fence, para(10), list, para(11), table, ...Array.from({ length: 40 }, (_, i) => para(12 + i))].join('\n\n');
+  expect(text.length).toBeGreaterThan(SPLIT_FROM);
+  const cuts = textCuts(text);
+  expect(cuts.length).toBeGreaterThan(1);
+  for (const [index, at] of cuts.entries()) {
+    // Each cut starts a block after a blank line, at least ROW_CHARS after the one before.
+    expect(text.slice(at - 2, at)).toBe('\n\n');
+    expect(at - (cuts[index - 1] ?? 0)).toBeGreaterThanOrEqual(ROW_CHARS);
+    // Never inside the fence, the list or the table, and never on the line after the list.
+    const before = text.slice(0, at);
+    expect((before.match(/```/g) ?? []).length % 2).toBe(0);
+    expect(text.slice(at).startsWith('- ') || text.slice(at).startsWith('|')).toBe(false);
+    expect(at === text.indexOf(para(11))).toBe(false);
+  }
+  // A `[label]: …` line written at the end binds nothing: the cuts already made stay.
+  const used = text.replace(para(5), `${para(5)} [guide]`);
+  expect(textCuts(`${used}\n\n[guide]: https://example.com\n`).slice(0, textCuts(used).length)).toEqual(textCuts(used));
+  // Short answers are left whole.
+  expect(textCuts(para(1))).toEqual([]);
+
+  // Rows: the first keeps the message's id, then <message>#<part>.<block>; each draws its slice.
+  const answer: Message = { id: 'm-a', threadId: 't', turnId: 'u', role: 'assistant', state: 'complete', createdAt: 0, parts: [{ type: 'text', text, complete: true }] };
+  const rows = new TimelineRows().build([answer]);
+  expect(rows.map(row => row.id)).toEqual(['m-a', ...cuts.map((_, index) => `m-a#0.${index + 1}`)]);
+  expect(rows.map(row => row.text)).toEqual([{ start: 0, end: cuts[0] }, ...cuts.map((start, index) => cuts[index + 1] === undefined ? { start } : { start, end: cuts[index + 1] })]);
+  expect(rows.map(row => text.slice(row.text!.start, row.text!.end)).join('')).toBe(text);
+  // Each slice is estimated by its own characters, not the whole answer's.
+  expect(rowEstimate(rows[1]!, 9000)).toBeLessThan(2000);
+
+  // Streamed a line at a time, the rows are those of the prefix, the same ids, and the finished answer keeps them.
+  const streamed = new TimelineRows();
+  const lines = text.split('\n');
+  const seen = new Map<string, number>();
+  for (let count = 1; count <= lines.length; count += 1) {
+    const prefix = lines.slice(0, count).join('\n') + (count < lines.length ? '\n' : '');
+    const live: Message = { ...answer, state: 'streaming', parts: [{ type: 'text', text: prefix }] };
+    for (const row of streamed.build([live])) if (!seen.has(row.id)) seen.set(row.id, row.text?.start ?? 0);
+  }
+  const done = streamed.build([answer]);
+  expect(done.map(row => row.id)).toEqual(rows.map(row => row.id));
+  expect([...seen.keys()]).toEqual(rows.map(row => row.id));
+  expect(done.map(row => row.text?.start ?? 0)).toEqual(rows.map(row => seen.get(row.id)));
+});
+
+test('the bench answers of 20 to 40 KB are cut into rows of about ROW_CHARS', () => {
+  let seed = 3;
+  const random = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const text = markdownAnswer(random, 30_000);
+  const cuts = textCuts(text);
+  expect(cuts.length).toBeGreaterThanOrEqual(4);
+  expect(Math.max(...[0, ...cuts, text.length].slice(1).map((at, index) => at - ([0, ...cuts][index] ?? 0)))).toBeLessThan(3 * ROW_CHARS);
+});
+
+test('a long turn that ends on a long answer is cut at its paragraphs and its answer in slices', () => {
+  let seed = 5;
+  const random = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const answer = markdownAnswer(random, 21_738);
+  const parts = [...work(16, 9).slice(0, -1), text(answer)];
+  expect(parts.length).toBe(161);
+  const turn = message('m-turn', parts);
+  const rows = new TimelineRows().build([turn]);
+  const slices = rows.filter(row => row.text);
+  // The answer is drawn in slices, each of its own characters, and the work above it in rows of parts.
+  expect(slices.length).toBe(textCuts(answer).length + 1);
+  expect(slices.map(row => answer.slice(row.text!.start, row.text!.end)).join('')).toBe(answer);
+  const work_ = rows.filter(row => !row.text);
+  expect(work_.length).toBe(rowCuts(turn).length + 1);
+  // Every part drawn once, in order, under unique ids, the first keeping the message's.
+  expect(rows[0]!.id).toBe('m-turn');
+  expect(new Set(rows.map(row => row.id)).size).toBe(rows.length);
+  const spans = rows.filter(row => (row.text?.start ?? 0) === 0);
+  expect(spans.map(row => row.from)).toEqual([0, ...spans.slice(0, -1).map(row => row.to)]);
+  expect(spans.at(-1)!.to).toBe(parts.length);
+  // A run never spans a cut: the rows of parts draw the runs the whole message drew.
+  expect(work_.flatMap(row => memoryPartRuns(turn.parts, [], row.from, row.to))).toEqual(partRuns(turn.parts).slice(0, -1));
+  expect(rows.map(row => row.first)).toEqual(rows.map((_, index) => index === 0));
+  expect(rows.map(row => row.last)).toEqual(rows.map((_, index) => index === rows.length - 1));
+});
+
+test('a long written plan stays one row, so its card copies, downloads and saves all of it', () => {
+  let seed = 9;
+  const random = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const plan = `# Plan\n\n${markdownAnswer(random, 20_000)}`;
+  expect(textCuts(plan).length).toBeGreaterThan(1);
+  const rows = new TimelineRows().build([message('m-plan', [text(plan)])]);
+  expect(rows).toHaveLength(1);
+  expect(rows[0]).toMatchObject({ id: 'm-plan', first: true, last: true });
+  expect(rows[0]!.text).toBeUndefined();
+});
+
+test('find opens the slice of a cut answer that holds the match, not its last slice', () => {
+  let seed = 7;
+  const random = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const words = `The quokka opens this answer.\n\n${markdownAnswer(random, 15_000)}\n\nThe platypus sits in the middle.\n\n${markdownAnswer(random, 15_000)}\n\nA wombat closes it.`;
+  const answer = message('m-long', [text(words)]);
+  const rows = new TimelineRows().build([message('m-q', [text('Explain')], 'user'), answer]);
+  const slices = rows.filter(row => row.message === answer);
+  expect(slices.length).toBeGreaterThanOrEqual(5);
+  const holding = (word: string) => {
+    const [hit] = findHits([answer], word);
+    const row = rows[rowIndexOf(rows, hit!.messageId, hit!.part, hit!.at)]!;
+    expect(words.slice(row.text?.start, row.text?.end)).toContain(word);
+    return slices.indexOf(row);
+  };
+  expect(holding('quokka')).toBe(0);
+  expect(holding('platypus')).toBeGreaterThan(0);
+  expect(holding('platypus')).toBeLessThan(slices.length - 1);
+  expect(holding('wombat')).toBe(slices.length - 1);
+  // No offset named: the first slice of the part, where a jump to the message opens.
+  expect(rows[rowIndexOf(rows, 'm-long', 0)]).toBe(slices[0]);
+});
+
+test('each slice carries the pages placed at its cuts, and a long system message is never cut', () => {
+  const paragraph = `${'Some words in a paragraph. '.repeat(4)}\n\n`;
+  const path = '.boite/views/orbit.html';
+  const words = `${paragraph.repeat(38)}![Orbit](${path})\n\n${paragraph.repeat(80)}`;
+  const answer = message('m-paged', [text(words)]);
+  const rows = new TimelineRows().build([answer]);
+  const at = rows.findIndex(row => row.text?.start === words.indexOf('!['));
+  expect(at).toBeGreaterThan(0);
+  // The page's line opens a slice: the bubbles on both sides of that cut stay closed where a page of the turn stands.
+  expect(rows[at - 1]!.text).toMatchObject({ end: words.indexOf('!['), pages: { below: [path] } });
+  expect(rows[at]!.text!.pages).toEqual({ above: [path] });
+  expect(rows.filter(row => row.text?.pages).map(row => row.id)).toEqual([rows[at - 1]!.id, rows[at]!.id]);
+  // The text replaced in place with another page at the same cut: the rows name the new page, not the cached one.
+  const other = '.boite/views/orbat.html';
+  const list = new TimelineRows();
+  list.build([answer]);
+  answer.parts[0] = text(words.replace(path, other));
+  expect(list.build([answer])[at]!.text!.pages).toEqual({ above: [other] });
+  // A wake-up's note draws its mark beside its whole text.
+  expect(new TimelineRows().build([message('m-wake', [text(words)], 'system')])).toHaveLength(1);
 });

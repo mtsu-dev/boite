@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { RPC_CHUNK_BYTES, RPC_CHUNK_MARK, RPC_MAX_FRAME_BYTES, type MessageId, type RpcEvents } from '@boite/contracts';
 import { connect } from '../src/client.ts';
 import { isLoopbackHost, ServerConnection, staticResponse } from '../src/server.ts';
-import { slices } from '../src/server/connection.ts';
+import { REMOTE_TEXT_CAP_MS, slices } from '../src/server/connection.ts';
 import { startTestCore } from './harness.ts';
 import type { TestCore } from './harness.ts';
 
@@ -39,6 +39,11 @@ function attached(remote: boolean): { connection: ServerConnection; sent: Sent[]
 const delta = (text: string, messageId = 'msg_a'): RpcEvents['message.delta'] =>
   ({ threadId: 'thr_a', messageId, partIndex: 0, text }) as RpcEvents['message.delta'];
 
+/** Every delta of this test lands on a part of `kind`, which the journal would say of a live message. */
+function notText(kind: 'thinking' | 'tool'): void {
+  harness.core.journal.streaming.partType = () => kind;
+}
+
 describe('what a remote client is sent', () => {
   test('only a loopback Host is local', () => {
     for (const host of ['127.0.0.1:4321', 'localhost:4321', 'LOCALHOST', '[::1]:4321', '127.0.0.1']) {
@@ -57,8 +62,9 @@ describe('what a remote client is sent', () => {
     expect(sent.every((entry) => entry.compressed === false)).toBe(true);
   });
 
-  test('a remote connection holds deltas for a window, joins them per part and compresses the frame', async () => {
+  test('a remote connection holds the deltas of a thinking part or a tool input for a window, joins them per part and compresses the frame', async () => {
     const { connection, sent } = attached(true);
+    notText('thinking');
     connection.sendEvent('message.delta', delta('one'));
     connection.sendEvent('message.delta', delta(' two'));
     connection.sendEvent('message.delta', delta('other', 'msg_b'));
@@ -69,20 +75,77 @@ describe('what a remote client is sent', () => {
     connection.close(1000, 'done');
   });
 
+  test('a remote connection sends the first sentence of a text at once, then whole paragraphs', async () => {
+    const { connection, sent } = attached(true);
+    const texts = (): (string | undefined)[] => sent.map((entry) => entry.frame.params?.text);
+    connection.sendEvent('message.delta', delta('The build'));
+    expect(texts()).toEqual(['The build']);
+    connection.sendEvent('message.delta', delta(' fails. The cache'));
+    expect(texts()).toEqual(['The build', ' fails. ']);
+    connection.sendEvent('message.delta', delta(' key is stale.'));
+    connection.sendEvent('message.delta', delta('\n'));
+    // Past the window but inside the cap, the paragraph is still open.
+    await Bun.sleep(120);
+    expect(texts()).toEqual(['The build', ' fails. ']);
+    connection.sendEvent('message.delta', delta('\nHash the'));
+    expect(texts()).toEqual(['The build', ' fails. ', 'The cache key is stale.\n\n']);
+    expect(sent.every((entry) => entry.compressed === true)).toBe(true);
+    connection.close(1000, 'done');
+  });
+
+  test('a stop closed by emphasis in the next delta still ends the first sentence', () => {
+    const { connection, sent } = attached(true);
+    connection.sendEvent('message.delta', delta('**Done.'));
+    connection.sendEvent('message.delta', delta('**'));
+    connection.sendEvent('message.delta', delta(' More text'));
+    expect(sent.map((entry) => entry.frame.params?.text)).toEqual(['**Done.', '**', ' ']);
+    connection.close(1000, 'done');
+  });
+
+  test('a long paragraph, a code block or a list leaves by the time cap rather than waiting for its end', async () => {
+    const { connection, sent } = attached(true);
+    const texts = (): (string | undefined)[] => sent.map((entry) => entry.frame.params?.text);
+    connection.sendEvent('message.delta', delta('Here it is:\n'));
+    connection.sendEvent('message.delta', delta('```ts\nconst a = 1;\n'));
+    connection.sendEvent('message.delta', delta('const b = 2;\n'));
+    expect(texts()).toEqual(['Here it is:\n']);
+    await Bun.sleep(REMOTE_TEXT_CAP_MS + 60);
+    expect(texts()).toEqual(['Here it is:\n', '```ts\nconst a = 1;\nconst b = 2;\n']);
+    connection.close(1000, 'done');
+  });
+
+  test('held text leaves before a tool call, so the order on the wire is the order of the turn', () => {
+    const { connection, sent } = attached(true);
+    connection.sendEvent('message.delta', delta('Reading the file. '));
+    connection.sendEvent('message.delta', delta('It is short'));
+    expect(sent.map((entry) => entry.frame.params?.text)).toEqual(['Reading the file. ']);
+    const tool = { type: 'tool', toolId: 'tool_a', name: 'Read', input: {}, output: null, status: 'running' };
+    connection.sendEvent('message.part', { threadId: 'thr_a', messageId: 'msg_a', partIndex: 1, part: tool } as unknown as RpcEvents['message.part']);
+    connection.sendEvent('message.delta', { ...delta('Done. '), partIndex: 2 });
+    expect(sent.map((entry) => `${entry.frame.method} ${entry.frame.params?.text ?? ''}`)).toEqual([
+      'message.delta Reading the file. ', 'message.delta It is short', 'message.part ', 'message.delta Done. ',
+    ]);
+    connection.close(1000, 'done');
+  });
+
   test('held deltas leave before any other event and before a response, so the order on the wire is the order of the turn', () => {
     const { connection, sent } = attached(true);
+    const frames = (): string[] => sent.map((entry) => entry.frame.method === undefined ? `response ${entry.frame.id}` : `${entry.frame.method} ${entry.frame.params?.text ?? ''}`.trimEnd());
+    connection.sendEvent('message.delta', delta('First. '));
     connection.sendEvent('message.delta', delta('tail'));
+    // Past the first sentence, the text is held.
+    expect(frames()).toEqual(['message.delta First.']);
     connection.sendEvent('turn.finished', { threadId: 'thr_a' } as unknown as RpcEvents['turn.finished']);
-    connection.sendEvent('message.delta', delta('late'));
+    connection.sendEvent('message.delta', delta(' late'));
+    expect(frames()).toEqual(['message.delta First.', 'message.delta tail', 'turn.finished']);
     connection.sendResponse({ jsonrpc: '2.0', id: 7, result: null });
-    expect(sent.map((entry) => entry.frame.method ?? `response ${entry.frame.id}`)).toEqual([
-      'message.delta', 'turn.finished', 'message.delta', 'response 7',
-    ]);
+    expect(frames()).toEqual(['message.delta First.', 'message.delta tail', 'turn.finished', 'message.delta  late', 'response 7']);
     connection.close(1000, 'done');
   });
 
   test('pacing flushes bounded distinct parts before the next frame', () => {
     const { connection, sent } = attached(true);
+    notText('tool');
     for (let index = 0; index < 1025; index++) connection.sendEvent('message.delta', delta('x', `msg_${index}`));
     expect(sent).toHaveLength(1024);
     connection.sendResponse({ jsonrpc: '2.0', id: 1, result: 'ok' });
@@ -94,6 +157,7 @@ describe('what a remote client is sent', () => {
 
   test('held text leaves when its exact JSON, not an estimate of it, would pass the frame limit', () => {
     const { connection, sent } = attached(true);
+    notText('thinking');
     connection.sendEvent('message.delta', delta('a'));
     let room = RPC_MAX_FRAME_BYTES - Buffer.byteLength(JSON.stringify({ jsonrpc: '2.0', method: 'message.delta', params: delta('a') }));
     // Escaped characters weigh two bytes each in JSON, plain ones one.
@@ -114,10 +178,11 @@ describe('what a remote client is sent', () => {
 
   test('closing drops what was held', async () => {
     const { connection, sent } = attached(true);
+    connection.sendEvent('message.delta', delta('Sent. '));
     connection.sendEvent('message.delta', delta('never'));
     connection.close(1000, 'gone');
-    await Bun.sleep(120);
-    expect(sent).toEqual([]);
+    await Bun.sleep(REMOTE_TEXT_CAP_MS + 60);
+    expect(sent.map((entry) => entry.frame.params?.text)).toEqual(['Sent. ']);
   });
 });
 

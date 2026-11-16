@@ -566,6 +566,88 @@ describe('claude driver', () => {
     expect(documentsOf('toolu_bash')).toBeUndefined();
   });
 
+  test('an image in a tool result becomes an image document and stays out of the output text', async () => {
+    const { client, threadId } = await openClaudeThread();
+    const png = greyPng(32, 16);
+    scripted((fake) => {
+      fake.emit(init('sess-image'));
+      fake.emit(assistant('sess-image', [{ type: 'tool_use', id: 'toolu_shot', name: 'mcp__browser__screenshot', input: {} }]));
+      fake.emit(sdk({
+        type: 'user',
+        session_id: 'sess-image',
+        parent_tool_use_id: null,
+        message: {
+          role: 'user',
+          content: [{
+            type: 'tool_result',
+            tool_use_id: 'toolu_shot',
+            content: [
+              { type: 'text', text: 'Captured the page.' },
+              { type: 'image', source: { type: 'base64', media_type: 'image/png', data: png } },
+              { type: 'text', text: 'Viewport 32x16.' },
+            ],
+          }],
+        },
+      }));
+      fake.emit(success('sess-image'));
+      fake.end();
+    });
+    expect(await runTurn(client, threadId, 'shoot')).toBe('done');
+
+    const thread = await client.call('threads.get', { threadId });
+    const tool = thread.messages.at(-1)?.parts.find((part) => part.type === 'tool');
+    expect(tool).toMatchObject({
+      toolId: 'toolu_shot',
+      status: 'done',
+      output: 'Captured the page.\nViewport 32x16.',
+      documents: [{ kind: 'image', mimeType: 'image/png', data: png, alt: null }],
+    });
+    expect(tool?.type === 'tool' ? tool.output : '').not.toContain(png.slice(0, 32));
+  });
+
+  test('a result with an image that lands before its Edit call keeps the image behind the diff', async () => {
+    const { client, threadId } = await openClaudeThread();
+    const png = greyPng(8, 8);
+    scripted((fake) => {
+      fake.emit(init('sess-replay'));
+      // A replayed call: its result first, then the call it answers.
+      fake.emit(sdk({
+        type: 'user',
+        session_id: 'sess-replay',
+        parent_tool_use_id: null,
+        message: {
+          role: 'user',
+          content: [{
+            type: 'tool_result',
+            tool_use_id: 'toolu_late',
+            content: [{ type: 'text', text: 'edited' }, { type: 'image', source: { type: 'base64', media_type: 'image/png', data: png } }],
+          }],
+        },
+      }));
+      fake.emit(assistant('sess-replay', [{
+        type: 'tool_use',
+        id: 'toolu_late',
+        name: 'Edit',
+        input: { file_path: 'src/app.ts', old_string: 'a', new_string: 'b' },
+      }]));
+      fake.emit(success('sess-replay'));
+      fake.end();
+    });
+    expect(await runTurn(client, threadId, 'replay')).toBe('done');
+
+    const thread = await client.call('threads.get', { threadId });
+    const tool = thread.messages.at(-1)?.parts.find((part) => part.type === 'tool');
+    expect(tool).toMatchObject({
+      toolId: 'toolu_late',
+      name: 'Edit',
+      output: 'edited',
+      documents: [
+        { kind: 'diff', path: 'src/app.ts', oldText: 'a', newText: 'b' },
+        { kind: 'image', mimeType: 'image/png', data: png, alt: null },
+      ],
+    });
+  });
+
   test('on Claude 5.1+, the second of two thinking blocks before a tool call is the progress text', async () => {
     const { client, threadId } = await openClaudeThread();
     const reasoning = 'The failure points at the parser.';
