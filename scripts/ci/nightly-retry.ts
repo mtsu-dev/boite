@@ -6,8 +6,8 @@
  * runner, and 2026-11-16's dispatch needed three attempts.
  *
  * Every job of the attempt that did not succeed or skip is judged. A job no
- * runner picked up ends `cancelled`, with GitHub's annotation as its only
- * trace: that annotation makes it infrastructure, nothing else does for a
+ * runner picked up ends `cancelled`, with GitHub's annotation among its
+ * annotations and no log: that annotation makes it infrastructure, nothing else does for a
  * cancelled job. A failed job is infrastructure when that annotation is there
  * or when its failed step's log holds a dependency download refused with 429
  * (INFRA_PATTERNS). One job judged otherwise keeps the whole run failed:

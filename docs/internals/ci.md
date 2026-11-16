@@ -676,8 +676,8 @@ A failed nightly is rerun when GitHub, not the code, failed it.
 completes as a failure. `scripts/ci/nightly-retry.ts` reads the run again and
 drops the event when a newer attempt has started since, then judges every job
 of that exact attempt that did not succeed or skip. A job no runner picked up
-ends `cancelled`, with "The job was not acquired by Runner of type hosted" as
-its only annotation and no log (job 129797415964 of run 42806494714): that
+ends `cancelled`, with "The job was not acquired by Runner of type hosted" in
+its annotations and no log (job 129797415964 of run 42806494714): that
 annotation is the one thing that makes a cancelled job infrastructure. A failed
 job is infrastructure when it has that annotation or when its failed step's
 log holds a
