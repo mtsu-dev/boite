@@ -1301,12 +1301,18 @@ long animation frames of the window and their total.
   reader's anchor. The slices of the answers at the window's two edges go to
   the worker first, in a batch of their own, and the rest of the page after.
 - The slices of a cut answer at either edge of the window mount in idle time
-  (`SliceWarmth` in `lib/row-cost.ts`): one row per side per idle slice
-  (`requestIdleCallback`, or 200 ms where there is none) until the whole answer
-  is drawn, so a wheel moving into it finds its rows there. It also runs at the
-  live end, which costs the open: each idle mount of a 4 KB slice is a long
-  frame at CPU x4. Warming only once the reader has left the live end kept the
-  open but mounted the rows mid-scroll again.
+  (`SliceWarmth` in `lib/row-cost.ts`), below the window first, until the
+  whole answer is drawn, so a wheel moving into it finds its rows there. Each
+  slice takes two steps: a mount, then its style and layout (`layOut`). A step
+  runs in a `requestIdleCallback` only while the idle period has more time left
+  than the last step took, with no timeout: a busy main thread mounts nothing
+  (where the browser has no idle callbacks, one step per 200 ms). Nothing warms
+  until two frames after the opened thread first had a slice to warm.
+- A slice of a finished cut answer is `content-visibility: auto`, its
+  `contain-intrinsic-size` its slot as measured or estimated: off screen it
+  skips style and layout, so a mount costs the DOM alone. Its paint clip reaches
+  up through the gap to the slice above (`overflow-clip-margin`), where the
+  bubble joins it.
 - Find opens the slice that holds the match (`FindHit.at`, `rowIndexOf`), and
   every slice of a cut answer takes the whole reading measure, so a short last
   slice is as wide as the slices above it.
@@ -1335,8 +1341,31 @@ scroll,open heavy thread,heavy answers scroll"`, each build made with `--build
 | Idle slices, at the live end too | 2,245, 627 | 161, 66 | 2,753, 2,182 |
 | Idle slices once the reader left the live end | 631, 355 | 636, 858 | 2,393, 2,561 |
 
-The first is the committed one: the wheel up the answers is back near the
-base, the open is not.
+The first is what 916467a4 committed: the wheel up the answers was back near
+the base, the open was not. A trace of one idle mount of a 4 KB slice at CPU x4
+(the open, six mounts, 36 to 93 ms each) split it: style 21 ms, the prepared
+HTML parsed into the DOM 20 ms, layout 9 ms, script 7.5 ms (Svelte; no Markdown
+parse or highlight, the worker did them), all of the style and layout forced in
+the same task by the pinned list taking its bottom (`BottomEdge.follow` reading
+`scrollHeight`), then 10 to 15 ms of rendering in the frame. On 2026-11-16,
+same command, machine load (1 min) from 32 down to 9:
+
+| Build | Open heavy thread | Heavy answers scroll | Long thread scroll | Load |
+| --- | --- | --- | --- | --- |
+| Base | 986, 885 | 0, 0 | 2,367, 2,436 | 32 to 35 |
+| 916467a4 | 1,070, 695 | 73, 73 | 1,823, 2,459 | 29 to 30 |
+| Off-screen slices skip layout | 702, 222 | 124, 165 | 1,938, 2,200 | 33 to 28 |
+| And idle steps that fit, after paint | 223, 466 | 214, 51 | 1,518, 1,399 | 23 to 29 |
+| And the layout as a step of its own | 341, 139 | 52, 56 | 2,116, 2,084 | 28 to 20 |
+| Final, before the clip margin | 189, 175 | 0, 57 | 1,121, 1,574 | 14 to 12 |
+| Base again | 1,127, 477 | 0, 0 | 2,104, 2,214 | 12 to 9 |
+
+The final build meets the three marks: the open under 500 ms a run, the wheel
+up the answers under 150, the long thread no worse than the base of the same
+session. The overflow clip margin, added after, only changes paint. The long
+thread scrolls about a third of the base's distance on this branch (main ms per
+1000 px three times the base's), already at 916467a4: its totals compare
+windows of different length.
 
 Cutting answers trades the open for the scroll: one answer drawn whole is
 2,681 nodes the open lays out at once and a wheel only composites, where cut
