@@ -190,6 +190,8 @@ export function androidBackend(bridge: AndroidUpdater, fetcher: typeof fetch = (
         waiter = null;
         return;
       case 'failed':
+        // The download ended: a later check must not read it back as still running.
+        publish({ ...snapshot, phase: 'error', received: 0, error: event.message });
         waiter?.reject(new Error(event.message));
         waiter = null;
         return;
@@ -205,7 +207,8 @@ export function androidBackend(bridge: AndroidUpdater, fetcher: typeof fetch = (
     status: async () => snapshot,
     check: async (channel, force = false) => {
       if (channel !== snapshot.channel) saveChannel(channel);
-      if (!force && channel === snapshot.channel && snapshot.phase !== 'error' && Date.now() - checkedAt < REUSE_MS) return snapshot;
+      // Only a list just read is reused, never the state of a download or an install.
+      if (!force && channel === snapshot.channel && ['available', 'current'].includes(snapshot.phase) && Date.now() - checkedAt < REUSE_MS) return snapshot;
       publish({ ...snapshot, phase: 'checking', channel, error: null });
       const found = candidateOf(await releasePages(fetcher, channel), channel);
       checkedAt = Date.now();

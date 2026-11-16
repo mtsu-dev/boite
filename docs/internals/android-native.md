@@ -119,9 +119,14 @@ updates itself, through the same Updates card as the desktop app
   cache, then refuses it unless it is `dev.mtsu.boite`, has a higher version
   code and is signed by the installed app's key. It then opens a
   `PackageInstaller` session. Android asks once to let Boite install apps,
-  then shows its own confirmation; Boite closes while it installs. On
-  Android 12 and later, once the app installed itself, later updates need no
-  tap.
+  then shows its own confirmation. Once the app installed itself, Android 12
+  and later skip that confirmation (`UPDATE_PACKAGES_WITHOUT_USER_ACTION`).
+  Google Play Protect, where the phone has it, still offers to scan an app it
+  does not know before each install. Boite stops while it installs; on the
+  OnePlus 8T it reopened on its own both times.
+- The card is the desktop one: Update downloads and checks the APK, then
+  Restart installs it. A failed download leaves the card in error, and the
+  next Update reads the release list again.
 - Android itself refuses an APK signed by another key or with a lower code,
   whatever the app checks. The release's Minisign signature, which the desktop
   updater checks, is not read here.
@@ -130,10 +135,10 @@ A test build can read another release list:
 `VITE_APP_UPDATE_FEED=<url> bunx tauri android build --apk --target aarch64`.
 
 Google Play forbids an app that updates itself (`REQUEST_INSTALL_PACKAGES` for
-that purpose). The Play build must drop the permission, `AppUpdates.kt` and the
-`BoiteUpdater` bridge; without the bridge the UI shows no Updates card. Play
-App Signing must use the same key, or a phone that installed the APK cannot
-take Play's updates.
+that purpose). The Play build must drop both install permissions,
+`AppUpdates.kt` and the `BoiteUpdater` bridge; without the bridge the UI shows
+no Updates card. Play App Signing must use the same key, or a phone that
+installed the APK cannot take Play's updates.
 
 ## Measurements
 

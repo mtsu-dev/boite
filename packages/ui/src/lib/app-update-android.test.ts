@@ -118,6 +118,9 @@ test('a failed download or list rejects with its reason', async () => {
   const downloading = backend.download();
   window.__boiteAppUpdate!({ kind: 'failed', message: 'The download is signed by another key than this app' });
   await expect(downloading).rejects.toThrow('signed by another key');
+  expect(await backend.status()).toMatchObject({ phase: 'error', error: 'The download is signed by another key than this app' });
+  // The next try asks the list again instead of reading back a download that ended.
+  expect(await backend.check('nightly')).toMatchObject({ phase: 'available', received: 0 });
 
   const offline = androidBackend(bridge(), vi.fn(async () => new Response('{}', { status: 403 })));
   await expect(offline.check('nightly')).rejects.toThrow('the release list answered 403');

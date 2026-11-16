@@ -114,7 +114,7 @@ class AppUpdates(private val activity: Activity, private val webView: WebView) {
         hops += 1
         continue
       }
-      check(code == 200) { "$url: the server answered $code" }
+      check(code == 200) { "${connection.url}: the server answered $code" }
       break
     }
     val total = connection.contentLengthLong
@@ -137,7 +137,7 @@ class AppUpdates(private val activity: Activity, private val webView: WebView) {
       }
     }
     connection.disconnect()
-    check(total <= 0 || received == total) { "$url: the download stopped at $received of $total bytes" }
+    check(total <= 0 || received == total) { "${connection.url}: the download stopped at $received of $total bytes" }
   }
 
   /** The same refusals Android would make, said before its dialog instead of as a bare failure. */
