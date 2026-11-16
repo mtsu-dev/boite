@@ -11,6 +11,7 @@ import {
   answerEach,
   assistant,
   calls,
+  type FakeQuery,
   claudeThread,
   harness,
   init,
@@ -20,6 +21,7 @@ import {
   scripted,
   sdk,
   success,
+  toolResult,
   useClaudeHarness,
 } from './fixtures/claude-query.ts';
 
@@ -594,6 +596,74 @@ describe('claude driver', () => {
     expect(await runTurn(client, threadId, 'second')).toBe('done');
     expect(queries).toHaveLength(2);
     expect(calls[1]?.prompts).toEqual(['second']);
+  });
+
+  /**
+   * The Stop hook as CLI 2.1.325 calls it: `session_crons` lists the jobs
+   * CronCreate, ScheduleWakeup and `/loop` armed inside the process.
+   */
+  const stopHook = (fake: FakeQuery, sessionId: string, crons: unknown[]): Promise<unknown> => {
+    const callback = calls[queries.indexOf(fake)]!.options.hooks?.Stop?.[0]?.hooks[0];
+    if (callback === undefined) return Promise.resolve('no hook');
+    return callback({ hook_event_name: 'Stop', session_id: sessionId, transcript_path: '', cwd: harness.dataDir, stop_hook_active: false,
+      background_tasks: [], session_crons: crons } as never, undefined, { signal: new AbortController().signal });
+  };
+  const cron = { id: 'cron-1', schedule: '*/5 * * * *', recurring: true, prompt: 'check the build' };
+  const ended = (index: number): boolean => (queries[index] as unknown as { ended: boolean }).ended;
+
+  test('a session cron the CLI reports at Stop keeps it past the idle window, until a Stop reports none', async () => {
+    const { client, threadId } = await openClaudeThread();
+    await client.call('settings.set', { warmProcessMinutes: 0.002 });
+    const sessionId = 'sess-cron';
+    let crons: unknown[] = [cron];
+    scripted(() => undefined, (fake, _prompt, index) => {
+      fake.emit(init(sessionId));
+      fake.emit(assistant(sessionId, [{ type: 'text', text: `answer ${index}` }]));
+      // The CLI runs the Stop hooks before it writes the turn's result.
+      void stopHook(fake, sessionId, crons).then(() => fake.emit(success(sessionId)));
+    });
+
+    expect(await runTurn(client, threadId, 'watch the build every 5 minutes')).toBe('done');
+    // The idle window is 120 ms: a CLI it ended takes its cron with it.
+    await Bun.sleep(400);
+    expect(queries[0]!.closes).toBe(0);
+    expect(ended(0)).toBe(false);
+
+    crons = [];
+    expect(await runTurn(client, threadId, 'stop watching')).toBe('done');
+    expect(queries).toHaveLength(1);
+    // Nothing scheduled any more: the usual idle window ends the CLI.
+    await waitFor(() => queries[0]!.closes > 0);
+  });
+
+  test('a CronCreate call holds the CLI until the next Stop says what is scheduled, even with warm sessions off', async () => {
+    const { client, threadId } = await openClaudeThread();
+    expect((await client.call('settings.get', {})).warmProcessMinutes).toBe(0);
+    const sessionId = 'sess-cron-unknown';
+    scripted(() => undefined, (fake, prompt, index) => {
+      fake.emit(init(sessionId));
+      if (prompt === 'loop on it') {
+        fake.emit(assistant(sessionId, [{ type: 'tool_use', id: 'toolu_cron', name: 'CronCreate', input: { cron: cron.schedule, prompt: cron.prompt, recurring: true } }]));
+        fake.emit(toolResult(sessionId, 'toolu_cron', 'Scheduled cron-1'));
+        fake.emit(assistant(sessionId, [{ type: 'text', text: 'scheduled' }]));
+        // No Stop payload reached the core for this turn: what is scheduled is unknown.
+        fake.emit(success(sessionId));
+        return;
+      }
+      fake.emit(assistant(sessionId, [{ type: 'text', text: `answer ${index}` }]));
+      void stopHook(fake, sessionId, []).then(() => fake.emit(success(sessionId)));
+    });
+
+    expect(await runTurn(client, threadId, 'loop on it')).toBe('done');
+    await Bun.sleep(300);
+    expect(queries[0]!.closes).toBe(0);
+    expect(ended(0)).toBe(false);
+
+    // The next turn goes to the CLI that holds the cron, not to a new one.
+    expect(await runTurn(client, threadId, 'how is it going')).toBe('done');
+    expect(queries).toHaveLength(1);
+    // Its Stop reported nothing scheduled: warm sessions are off, so the CLI ends now.
+    await waitFor(() => ended(0));
   });
 
   test('stop on a warm session closes it and the next turn starts a new query', async () => {

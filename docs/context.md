@@ -92,6 +92,10 @@ Both work with every agent and keep running when you switch conversations or
 close the app. The bar above the box can pause, resume or remove them. After a
 restart of Boite, press resume to continue.
 
+In a Claude conversation, a job Claude schedules for itself keeps it running
+after the turn until the job is over or removed. Stop or archiving the
+conversation ends it.
+
 ## Ask a side question
 
 In a Claude conversation, type `/btw <question>` to ask something while the

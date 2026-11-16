@@ -15,6 +15,7 @@ import { noteClaudeMessage } from './diagnostics.ts';
 import {protectedClaudeOptions} from './protected.ts';
 import { openWithCompaction } from './compaction.ts';
 import { cliOptions, lazyServers, type OptionsHost } from './options.ts';
+import { SessionCrons } from './crons.ts';
 
 /** How long `stop()` lets the CLI end its turn before the abort signal takes it. */
 const STOP_GRACE_MS = 3_000;
@@ -103,6 +104,7 @@ export class ClaudeSession {
   #linger: Timer | null = null;
   /** The background work ended while a turn was still open: the linger starts once that turn is over. */
   #lingerOwed = false;
+  readonly #crons = new SessionCrons();
 
   #query: Query | null = null;
   #ctx: SessionContext;
@@ -133,6 +135,7 @@ export class ClaudeSession {
     abortController: this.#abortController, gate: this.#gate,
     compactionSummary: () => this.#ctx.compactionSummary?.() ?? null, spawn: options => this.#spawnCli(options),
     steps: { head: () => this.#head(), interrupt: () => this.#interrupt() },
+    stop: async input => { if (!this.#closing && !this.#ended && this.#crons.stopped(input)) this.#clearIdle(); return {}; },
   };
 
   #warmMs: number;
@@ -179,9 +182,9 @@ export class ClaudeSession {
     return this.#ready;
   }
 
-  /** Background work, or output of the CLI's own that no turn took yet: the CLI must stay. */
+  /** Background work, a job the CLI scheduled, or output of its own that no turn took yet: the CLI must stay. */
   holding(): boolean {
-    return this.#background.length > 0 || this.#woken || this.#linger !== null;
+    return this.#background.length > 0 || this.#crons.held || this.#woken || this.#linger !== null;
   }
 
   /** The CLI went on by itself and wrote something the next turn is opened for. */
@@ -577,7 +580,7 @@ export class ClaudeSession {
     }
     const sessionId = (message as { session_id?: string }).session_id;
     if (typeof sessionId === 'string' && sessionId.length > 0) this.#sessionId = sessionId;
-    if (message.type === 'system') this.#noteTasks(message);
+    if (message.type === 'system') this.#noteTasks(message); else this.#crons.noted(message);
     if (this.#loopLifecycle(message)) return;
     if (this.#native === 'drop') {
       // Deltas only stream what the run's assistant messages hold: a folded replay needs none of them.
@@ -676,10 +679,10 @@ export class ClaudeSession {
     this.#afterTurns();
   }
 
-  /** Nothing attached any more: keep the CLI for its background work, else the warm rule. */
+  /** Nothing attached any more: keep the CLI for its background work and its scheduled jobs, else the warm rule. */
   #afterTurns(): void {
     if (this.#closing || this.#ended || this.#waiting.length > 0) return;
-    if (this.#background.length > 0 || this.#woken) return;
+    if (this.#background.length > 0 || this.#crons.held || this.#woken) return;
     if (this.#lingerOwed) { this.#startLinger(); return; }
     if (this.#retention.viewed) return;
     if (this.#retention.idleMs(this.#warmMs) > 0) this.#armIdle();
