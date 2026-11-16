@@ -1,7 +1,12 @@
-import type { AgentCommand, BackgroundTask, ThreadId } from '@boite/contracts';
+import type { AgentCommand, BackgroundTask, PromptSuggestion, RpcEvents, ThreadId, TurnId } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { BackgroundHistory, type BackgroundOwner } from './background-history.ts';
 import { saveThread, withLoad } from './records.ts';
+
+/** Threads whose prediction is kept at once; beyond it the oldest goes. */
+const SUGGESTIONS_MAX = 256;
+/** A prediction is one message: longer text is cut. */
+const SUGGESTION_MAX_CHARS = 2000;
 
 /**
  * What an agent reports about itself between messages: the commands it
@@ -18,9 +23,69 @@ export class AgentState {
   readonly background = new Map<ThreadId, BackgroundTask[]>();
 
   readonly backgroundHistory: BackgroundHistory;
+  /**
+   * The agent's predicted next message, the latest per thread and tied to the
+   * turn that produced it. Memory only and bounded: a prediction is worth
+   * nothing once the owner moved on, and a fresh core has none.
+   */
+  readonly suggestions = new Map<ThreadId, PromptSuggestion>();
 
   constructor(private readonly core: Core) {
     this.backgroundHistory = new BackgroundHistory(core.journal);
+    // A new turn, a message sent or the thread gone: the prediction no longer answers anything.
+    core.bus.onCommitted((name, payload) => {
+      if (name === 'turn.started') {
+        const turn = payload as RpcEvents['turn.started'];
+        // A cache keepalive is Boite's own turn, not the owner moving on.
+        if (turn.execution?.operation !== 'keepalive') this.clearSuggestion(turn.threadId);
+      } else if (name === 'thread.removed') this.clearSuggestion((payload as RpcEvents['thread.removed']).threadId);
+      else if (name === 'message.started' && (payload as RpcEvents['message.started']).role === 'user') this.clearSuggestion((payload as RpcEvents['message.started']).threadId);
+      else if (name === 'turn.finished') {
+        const turn = payload as RpcEvents['turn.finished'];
+        const early = this.#early.get(turn.threadId);
+        this.#early.delete(turn.threadId);
+        if (early !== undefined && early.turnId === turn.id) this.noteSuggestion(turn.threadId, early.turnId, early.text);
+      }
+    });
+  }
+
+  /** A prediction the driver sent before the core closed its turn, held until `turn.finished`. */
+  readonly #early = new Map<ThreadId, { turnId: TurnId; text: string }>();
+
+  /**
+   * Keeps the agent's prediction made after `turnId` when it still applies:
+   * the thread rests on that turn, finished without error or stop, and no
+   * question or permission card waits on it.
+   */
+  noteSuggestion(threadId: ThreadId, turnId: TurnId, text: string): boolean {
+    const trimmed = text.trim();
+    if (trimmed.length === 0) return false;
+    const thread = this.core.journal.getThread(threadId);
+    if (thread === null || thread.archivedAt) return false;
+    const last = this.core.journal.lastTurn(threadId);
+    if (last !== null && last.id === turnId && (last.status === 'running' || last.status === 'queued')) {
+      this.#early.set(threadId, { turnId, text });
+      return false;
+    }
+    if (last === null || last.id !== turnId || last.status !== 'done' || thread.status !== 'idle') return false;
+    const cards = this.core.threads?.cards;
+    if (cards && (cards.listQuestions(threadId).length > 0 || cards.listPermissions(threadId).length > 0)) return false;
+    const suggestion: PromptSuggestion = { turnId, text: trimmed.slice(0, SUGGESTION_MAX_CHARS), at: Date.now() };
+    this.suggestions.delete(threadId);
+    this.suggestions.set(threadId, suggestion);
+    // Oldest first: the bound drops the thread whose prediction is the most stale.
+    while (this.suggestions.size > SUGGESTIONS_MAX) {
+      const oldest = this.suggestions.keys().next().value;
+      if (oldest === undefined) break;
+      this.suggestions.delete(oldest);
+    }
+    this.core.bus.emit('thread.suggestion', { threadId, suggestion });
+    return true;
+  }
+
+  clearSuggestion(threadId: ThreadId): void {
+    if (!this.suggestions.delete(threadId)) return;
+    this.core.bus.emit('thread.suggestion', { threadId, suggestion: null });
   }
 
   /** What the agent still runs in the background, told to the clients when it changed. */

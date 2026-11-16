@@ -120,6 +120,23 @@ export class TurnContexts {
     return this.#boiteGuide(thread, provider) || undefined;
   }
 
+  /**
+   * The agent's own next-message prediction, for a conversation the owner
+   * drives (`Settings.promptSuggestions`): never for a delegated child or a
+   * workflow step, a council member, a mochi, a team chat or a salon.
+   */
+  #suggestions(thread: ThreadSummary): Pick<SessionContext, 'promptSuggestions' | 'suggestion'> {
+    // Explicitly off: a turn's context also overrides the session context a prepared session started with.
+    const off = { promptSuggestions: false, suggestion: undefined };
+    if (this.#core.settings.get().promptSuggestions === false) return off;
+    if (thread.parentThreadId || thread.agentSessionId || thread.teamId || thread.councilId || this.#core.council?.owns(thread.id) === true) return off;
+    const threadId = thread.id;
+    return {
+      promptSuggestions: true,
+      suggestion: (turnId, text) => { this.#threads.agentState.noteSuggestion(threadId, turnId, text); },
+    };
+  }
+
   /** Setup only: no journalled turn, no consumed deferred input and no message sink. */
   makeSessionContext(thread: ThreadSummary, provider: ProviderDescriptor, account: Account): SessionContext {
     thread = this.#core.sharedAccess.contextThread(thread);
@@ -138,6 +155,7 @@ export class TurnContexts {
       warmProcessMinutes: this.#core.settings.get().warmProcessMinutes,
       toolSummaries: this.#core.settings.get().toolSummaries === true,
       shortAnswers: this.#core.settings.get().shortAnswers !== false,
+      ...this.#suggestions(thread),
       autoCompactTokens: () => effectiveCompaction(this.#core.settings.get(), this.#core.journal.getThread(threadId) ?? thread).autoCompact?.tokens ?? null,
       backgroundCompaction: () => backgroundSetting(effectiveCompaction(this.#core.settings.get(), this.#core.journal.getThread(threadId) ?? thread)),
       compactionSummary: () => effectiveCompaction(this.#core.settings.get(), this.#core.journal.getThread(threadId) ?? thread).compactionSummary ?? null,
@@ -492,6 +510,7 @@ export class TurnContexts {
       warmProcessMinutes: this.#core.settings.get().warmProcessMinutes,
       toolSummaries: this.#core.settings.get().toolSummaries === true,
       shortAnswers: this.#core.settings.get().shortAnswers !== false,
+      ...(bare || operation === 'background' ? { promptSuggestions: false, suggestion: undefined } : this.#suggestions(thread)),
       autoCompactTokens: () => effectiveCompaction(this.#core.settings.get(), this.#core.journal.getThread(threadId) ?? thread).autoCompact?.tokens ?? null,
       backgroundCompaction: () => backgroundSetting(effectiveCompaction(this.#core.settings.get(), this.#core.journal.getThread(threadId) ?? thread)),
       compactionSummary: () => effectiveCompaction(this.#core.settings.get(), this.#core.journal.getThread(threadId) ?? thread).compactionSummary ?? null,

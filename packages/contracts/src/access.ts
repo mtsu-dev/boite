@@ -259,6 +259,8 @@ export const DEVICE_EVENTS: ReadonlySet<RpcEventName> = new Set<RpcEventName>([
   'todos.updated', // The whole list todos.list already answers the device.
   'project.added', 'project.removed', 'project.updated',
   'thread.created', 'thread.updated', 'thread.removed', 'thread.commands', 'thread.background', 'thread.btw',
+  // The agent's predicted next message, text the device already reads in the thread's answers; threads.get carries it too.
+  'thread.suggestion',
   // The load `thread.updated` already carries to the same sockets, without the rest of the row.
   'thread.load',
   'turn.started', 'turn.finished',

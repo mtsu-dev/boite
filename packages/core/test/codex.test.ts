@@ -26,7 +26,7 @@ import { thrown } from './settle.ts';
 /** The fake Codex app-server: a real ndjson JSON-RPC process over stdio, run by bun. */
 const FAKE_SERVER = fileURLToPath(new URL('./fixtures/codex-server.ts', import.meta.url));
 /** The fixture's environment switches a test may set; every one is cleared after it. */
-const FAKE_SWITCHES = ['CODEX_FAKE_NO_LIVE_SETTINGS', 'CODEX_FAKE_FORK_ERROR', 'CODEX_FAKE_FORK_SAME', 'CODEX_FAKE_LOST', 'CODEX_FAKE_DEAF', 'CODEX_FAKE_SLOW_START', 'CODEX_FAKE_OUTPUT_GATE', 'CODEX_FAKE_HOOKS', 'CODEX_FAKE_INIT_FAILURES', 'CODEX_FAKE_INIT_ERROR', 'CODEX_FAKE_CRASH_ERROR', 'CODEX_FAKE_INIT_RPC_ERROR', 'CODEX_FAKE_LOGIN_WAIT', 'CODEX_FAKE_RESET_CREDITS', 'CODEX_FAKE_RESET_ERROR', 'CODEX_FAKE_SLOW_MODELS', 'CODEX_FAKE_ARCHIVED', 'CODEX_FAKE_MCP', 'CODEX_FAKE_CONFIG_READ_ERROR', 'CODEX_FAKE_GRACE', 'CODEX_FAKE_CONFIG_READ_HANG', 'CODEX_FAKE_SKILLS', 'CODEX_FAKE_SLOW_SKILLS'];
+const FAKE_SWITCHES = ['CODEX_FAKE_NO_LIVE_SETTINGS', 'CODEX_FAKE_FORK_ERROR', 'CODEX_FAKE_FORK_SAME', 'CODEX_FAKE_LOST', 'CODEX_FAKE_DEAF', 'CODEX_FAKE_SLOW_START', 'CODEX_FAKE_OUTPUT_GATE', 'CODEX_FAKE_HOOKS', 'CODEX_FAKE_INIT_FAILURES', 'CODEX_FAKE_INIT_ERROR', 'CODEX_FAKE_CRASH_ERROR', 'CODEX_FAKE_INIT_RPC_ERROR', 'CODEX_FAKE_LOGIN_WAIT', 'CODEX_FAKE_RESET_CREDITS', 'CODEX_FAKE_RESET_ERROR', 'CODEX_FAKE_SLOW_MODELS', 'CODEX_FAKE_ARCHIVED', 'CODEX_FAKE_MCP', 'CODEX_FAKE_CONFIG_READ_ERROR', 'CODEX_FAKE_GRACE', 'CODEX_FAKE_CONFIG_READ_HANG', 'CODEX_FAKE_SKILLS', 'CODEX_FAKE_SLOW_SKILLS', 'CODEX_FAKE_PREDICTION'];
 
 test('native collaboration is journalled and appears in Team without using Boite delegation', async () => {
   const { client, threadId } = await startThread();
@@ -374,6 +374,56 @@ describe('codex driver', () => {
     other.close();
     await waitFor(() => harness!.core.procs.liveCount(threadId) === 0, 35_000);
   }, 40_000);
+
+  const predictions = (): number => fakeLog().split('\n').filter(line => line.startsWith('thread/prediction/request ')).length;
+
+  test('a completed turn asks the composer prediction once and keeps it until the next message; a child or the setting off asks nothing', async () => {
+    process.env['CODEX_FAKE_PREDICTION'] = 'completed';
+    const { client, threadId } = await startThread();
+    // The owner looks at the thread: its process stays for the prediction's answer.
+    await client.call('threads.focus', { threadId });
+    const events: RpcEvents['thread.suggestion'][] = [];
+    harness!.core.bus.onCommitted((name, payload) => { if (name === 'thread.suggestion') events.push(payload as RpcEvents['thread.suggestion']); });
+    const first = await startTurn(client, threadId, 'first');
+    const turn = await first.finished;
+    expect(turn.status).toBe('done');
+    await waitFor(() => events.length === 1);
+    expect(predictions()).toBe(1);
+    expect(events[0]).toMatchObject({ threadId, suggestion: { turnId: turn.id, text: expect.stringMatching(/^next after codex-fake-turn-/) } });
+    expect((await client.call('threads.get', { threadId })).suggestion).toMatchObject({ turnId: turn.id });
+    // The owner sends the next message: the prediction no longer applies.
+    const second = await startTurn(client, threadId, 'second');
+    await waitFor(() => events.length >= 2);
+    expect(events[1]).toEqual({ threadId, suggestion: null });
+    await second.finished;
+    await waitFor(() => predictions() === 2);
+
+    // A delegated child is not a conversation the owner drives.
+    const child = await codexThread(client);
+    harness!.core.journal.putThread({ ...harness!.core.journal.getThread(child)!, parentThreadId: threadId });
+    expect((await (await startTurn(client, child, 'child')).finished).status).toBe('done');
+    // The child's result may wake the parent for a turn of its own: one request per finished parent turn, none for the child.
+    const parentDone = (): number => harness!.core.journal.listTurns(threadId).filter(turn => turn.status === 'done').length;
+    await waitFor(() => harness!.core.journal.getThread(threadId)?.status === 'idle' && predictions() === parentDone());
+    await Bun.sleep(50);
+    expect(predictions()).toBe(parentDone());
+    const before = predictions();
+    // Off: the next turn asks nothing either.
+    await client.call('settings.set', { promptSuggestions: false });
+    expect((await (await startTurn(client, threadId, 'third')).finished).status).toBe('done');
+    await Bun.sleep(50);
+    expect(predictions()).toBe(before);
+  }, 30_000);
+
+  test('a composer prediction the server refuses shows nothing, is asked once per session and logged once', async () => {
+    delete process.env['CODEX_FAKE_PREDICTION'];
+    const { client, threadId } = await startThread();
+    await client.call('threads.focus', { threadId });
+    for (const prompt of ['one', 'two']) expect((await (await startTurn(client, threadId, prompt)).finished).status).toBe('done');
+    await Bun.sleep(50);
+    expect(predictions()).toBe(1);
+    expect((await client.call('threads.get', { threadId })).suggestion ?? null).toBeNull();
+  }, 30_000);
 
   test('sending while preparation is opening waits for the same process', async () => {
     const { client, threadId } = await startThread();

@@ -52,6 +52,7 @@ import type { SubscriptionProxyRpcEvents, SubscriptionProxyRpcMethods } from './
 import type { TerminalsRpcEvents, TerminalsRpcMethods } from './terminals';
 import type { SharedProjectsRpcEvents, SharedProjectsRpcMethods } from './shared-projects';
 import type { ThreadsRpcEvents, ThreadsRpcMethods } from './threads';
+import type { PromptSuggestionsRpcEvents } from './prompt-suggestions';
 import type { TodosRpcEvents, TodosRpcMethods } from './todos';
 import type { TraceRpcEvents, TraceRpcMethods } from './trace';
 import type { TurnsRpcEvents, TurnsRpcMethods } from './turns';
@@ -67,6 +68,7 @@ export * from './plugins';
 export * from './plugin-source';
 export * from './projects';
 export * from './threads';
+export * from './prompt-suggestions';
 export * from './usage';
 export * from './turns';
 export * from './messages';
@@ -187,6 +189,7 @@ export interface RpcEvents extends
   PluginsRpcEvents,
   ProjectsRpcEvents,
   ThreadsRpcEvents,
+  PromptSuggestionsRpcEvents,
   TurnsRpcEvents,
   MessagesRpcEvents,
   PermissionsRpcEvents,

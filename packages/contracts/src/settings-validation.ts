@@ -320,6 +320,7 @@ const SETTING_RULES: { readonly [K in keyof Settings]-?: FieldRule<K> } = {
   autoInstallUpdates: bool('autoInstallUpdates') as FieldRule<'autoInstallUpdates'>,
   asyncQuestions: bool('asyncQuestions') as FieldRule<'asyncQuestions'>,
   shortAnswers: bool('shortAnswers') as FieldRule<'shortAnswers'>,
+  promptSuggestions: bool('promptSuggestions') as FieldRule<'promptSuggestions'>,
   toolSummaries: bool('toolSummaries') as FieldRule<'toolSummaries'>,
   agentLogAccess: bool('agentLogAccess') as FieldRule<'agentLogAccess'>,
   autoResumeLimitedThreads: bool('autoResumeLimitedThreads') as FieldRule<'autoResumeLimitedThreads'>,

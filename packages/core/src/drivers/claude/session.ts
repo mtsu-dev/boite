@@ -67,6 +67,8 @@ export class ClaudeSession {
   #compactionModel: string | null = null;
   readonly #timers = new Set<Timer>();
   readonly #waiting: ClaudeTurn[] = [];
+  /** The context of the turn that ended last, which a `prompt_suggestion` answers. */
+  #suggestFor: TurnContext | null = null;
   /** Turns whose prompt was queued, or which adopted the CLI's own run. */
   readonly #steerable = new WeakSet<ClaudeTurn>();
   readonly #tasks = new SessionTasks();
@@ -568,6 +570,7 @@ export class ClaudeSession {
 
   /** `replayed` is an adopted message handed to the turn that opened for it: already diagnosed when it came. */
   #receive(message: SDKMessage, replayed = false): void {
+    if (message.type === 'prompt_suggestion') { this.#suggest(message); return; }
     if (authenticationSuspectOf(message)) this.#authSuspect = true;
     const authFailure = authenticationFailureOf(message, this.#authSuspect);
     if (message.type === 'result' && subagentOf(message) === null) this.#authSuspect = false;
@@ -675,8 +678,21 @@ export class ClaudeSession {
     // Retire this transport instead of waiting indefinitely for its control reply.
     if (this.#permissionTurn === turn) this.close(null, STOP_GRACE_MS);
     this.#waiting.shift();
+    this.#suggestFor = turn.ctx;
     turn.settle();
     this.#afterTurns();
+  }
+
+  /**
+   * The CLI's prediction of the next message (`promptSuggestions`) arrives
+   * after the result of the turn it follows: it belongs to the last turn
+   * that ended, once. The core decides whether it still applies.
+   */
+  #suggest(message: Extract<SDKMessage, { type: 'prompt_suggestion' }>): void {
+    const ctx = this.#suggestFor;
+    this.#suggestFor = null;
+    if (ctx === null || typeof message.suggestion !== 'string') return;
+    ctx.suggestion?.(ctx.turn.id, message.suggestion);
   }
 
   /** Nothing attached any more: keep the CLI for its background work and its scheduled jobs, else the warm rule. */

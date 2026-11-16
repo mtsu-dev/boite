@@ -785,6 +785,17 @@ function handle(method: string, raw: unknown): unknown {
       log(`turn/settings/update ${turnId} effort=${'effort' in params ? String(params['effort']) : '-'} serviceTier=${'serviceTier' in params ? String(params['serviceTier']) : '-'}`);
       return { status: waiting.has(turnId) && params['threadId'] === threadId ? 'applied' : 'targetUnavailable' };
     }
+    case 'thread/prediction/request': {
+      // The composer prediction (experimental): `CODEX_FAKE_PREDICTION=completed` answers empty, then a
+      // notification with the text; `=failed` notifies `failed`; unset refuses the method like codex 0.169.
+      const sourceTurnId = textOf(params['sourceTurnId']);
+      log(`thread/prediction/request ${textOf(params['threadId'])} ${sourceTurnId}`);
+      const mode = process.env['CODEX_FAKE_PREDICTION'];
+      if (mode !== 'completed' && mode !== 'failed') throw new Error('thread/prediction/request is not implemented yet');
+      if (!experimentalApi) throw new Error('thread/prediction/request requires experimentalApi capability');
+      setTimeout(() => send({ method: 'thread/prediction/updated', params: { threadId: params['threadId'], sourceTurnId, result: mode === 'failed' ? { type: 'failed' } : { type: 'completed', text: `next after ${sourceTurnId}` } } }), 0);
+      return {};
+    }
     case 'turn/interrupt': {
       const turnId = textOf(params['turnId']);
       log(`turn/interrupt ${turnId}`);

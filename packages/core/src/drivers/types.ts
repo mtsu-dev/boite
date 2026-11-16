@@ -23,6 +23,7 @@ import type {
   ThreadSummary,
   Timestamp,
   Turn,
+  TurnId,
   Usage,
 } from '@boite/contracts';
 import type { SpawnedChild, SpawnedProcess, SpawnOptions } from '../procs.ts';
@@ -215,6 +216,15 @@ export interface TurnContext {
   warmProcessMinutes: number;
   /** Claude labels each batch of tool calls, one small-model request each (`Settings.toolSummaries`). Absent means off. */
   toolSummaries?: boolean;
+  /**
+   * Ask the agent for its own prediction of the owner's next message after a
+   * turn (`Settings.promptSuggestions`, human-driven conversations only):
+   * Claude's `promptSuggestions` option at process start, Codex's
+   * `thread/prediction/request`. Absent means off. Never a separate model call.
+   */
+  promptSuggestions?: boolean;
+  /** The prediction for the turn `turnId` (Boite's id), which may arrive after the turn settled. */
+  suggestion?(turnId: TurnId, text: string): void;
   /** The agent is asked to stay quiet until its answer (`Settings.shortAnswers`); Claude's own progress reminder goes off. Absent means off. */
   shortAnswers?: boolean;
   /** The owner's current independent token limit, read without a provider request. Null keeps native defaults. */
@@ -320,7 +330,7 @@ export interface TurnContext {
 /** Native session setup without a prompt, a turn or a message sink. */
 export type SessionContext = Pick<TurnContext,
   'thread' | 'account' | 'provider' | 'sessionId' | 'resumeAt' | 'sessionBefore' |
-  'accountEnv' | 'systemGuide' | 'warmProcessMinutes' | 'toolSummaries' | 'shortAnswers' | 'autoCompactTokens' | 'backgroundCompaction' | 'compactionSummary' | 'log' | 'diagnostic' | 'authenticationFailed' | 'commands' | 'context' | 'hook' |
+  'accountEnv' | 'systemGuide' | 'warmProcessMinutes' | 'toolSummaries' | 'shortAnswers' | 'promptSuggestions' | 'suggestion' | 'autoCompactTokens' | 'backgroundCompaction' | 'compactionSummary' | 'log' | 'diagnostic' | 'authenticationFailed' | 'commands' | 'context' | 'hook' |
   'background' | 'backgroundFinished' | 'wake' | 'notice' | 'loopWake' | 'spawnChild' | 'finishStartup' | 'killTree' | 'quota' | 'lazyMcp' | 'protectedExecution' | 'modeRequired'>;
 
 export type DiagnosticLevel = 'debug' | 'info' | 'warn' | 'error';
