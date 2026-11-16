@@ -685,10 +685,13 @@ dependency download refused with 429: Gradle's `Could not GET ... Received
 status code 429`, npm's `429 Too Many Requests`, bun's `error: GET ... - 429`
 or cargo's `got 429` (`INFRA_PATTERNS`). A test that names a 429, or a request
 retried in a step that passed, is not one. The step's lines are cut from the
-job log by its start and end times, which are whole seconds: in a second it
-shares with another step, it begins at its own last `##[group]Run` line and
-ends at its first `##[error]` line, and a shared second without that mark is
-left out. When every judged job is infrastructure, the script reads the run
+job log by its start and end times, which are whole seconds. A second it
+shares with another step that ran is left out, since a step's marks cannot be
+told from its neighbour's (an action step may start without a `##[group]Run`
+line). The one exception is the last second of a step spanning several: its
+lines up to the first `##[error]` line, the runner's "Process completed with
+exit code", are its own, and that is where a build prints the 429 that ended
+it. When every judged job is infrastructure, the script reads the run
 once more and calls `rerun-failed-jobs` only if it is still that attempt,
 completed as a failure, so a manual rerun started meanwhile gets no extra
 attempt; one other job, a run

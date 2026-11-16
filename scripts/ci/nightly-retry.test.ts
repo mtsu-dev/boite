@@ -106,8 +106,8 @@ test('a step sharing a second with the failed one does not leak into it', () => 
     '2026-11-16T18:20:30.2000000Z Post job cleanup.',
     '2026-11-16T18:20:30.3000000Z npm error 429 Too Many Requests - GET https://registry.npmjs.org/left-pad',
   ].join('\n');
+  // The first second is shared: nothing ties its lines to one step for certain.
   expect(failedStepLog(log, steps).split('\n')).toEqual([
-    '##[group]Run bun test',
     'error: expect(received).toBe(expected)',
     '##[error]Process completed with exit code 1.',
   ]);
@@ -115,6 +115,24 @@ test('a step sharing a second with the failed one does not leak into it', () => 
   // With no marker to split a shared second, its lines are left out rather than guessed.
   const unmarked = log.replace('##[group]Run bun test', 'tests start').replace('##[error]Process completed with exit code 1.', 'done');
   expect(failedStepLog(unmarked, steps)).toBe('error: expect(received).toBe(expected)');
+});
+
+test('a step that starts and ends in the failed step\'s first second does not leak through its own mark', () => {
+  // Sol's review case: the test action starts without a Run mark, so the last
+  // mark of that second is the install's and its 429 would read as the test's.
+  const steps: Step[] = [
+    { name: 'Run bun install --frozen-lockfile', conclusion: 'success', started_at: '2026-11-16T18:20:12Z', completed_at: '2026-11-16T18:20:12Z' },
+    { name: 'Run ./.github/actions/test', conclusion: 'failure', started_at: '2026-11-16T18:20:12Z', completed_at: '2026-11-16T18:20:30Z' },
+  ];
+  const log = [
+    '2026-11-16T18:20:12.0000000Z ##[group]Run bun install --frozen-lockfile',
+    '2026-11-16T18:20:12.1000000Z error: GET https://registry.npmjs.org/left-pad - 429',
+    '2026-11-16T18:20:12.2000000Z Prepare all required actions',
+    '2026-11-16T18:20:29.0000000Z error: expect(received).toBe(expected)',
+    '2026-11-16T18:20:30.1000000Z ##[error]Process completed with exit code 1.',
+  ].join('\n');
+  expect(failedStepLog(log, steps)).not.toContain('429');
+  expect(decide({ ...first, jobs: [{ ...realFailure, log: failedStepLog(log, steps) }] })).toMatchObject({ rerun: false });
 });
 
 test('the rerun is sent only while the run still stands as the failed attempt judged', () => {

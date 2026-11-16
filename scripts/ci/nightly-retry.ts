@@ -69,28 +69,31 @@ const second = (iso: string) => Math.floor(Date.parse(iso) / 1000);
 /**
  * The log lines of the job's failed steps, without their timestamps. Each line
  * of a job log starts with one, but a step's started_at and completed_at only
- * bound it to the second, which it can share with the step before and after.
- * The log's own marks split those seconds: in the first one the step begins
- * at its last `##[group]Run` line, in the last one it ends at its first
- * `##[error]` line (the runner's "Process completed with exit code"). A shared
- * second without that mark is left out rather than guessed. '' when no step
- * failed, as for a job no runner ran.
+ * bound it to the second, which it can share with another step that ran. A
+ * step's own marks cannot be told from its neighbour's (an action step may
+ * start without a `##[group]Run` line), so a shared second is left out, with
+ * one exception: when the step spans several seconds, its last second's lines
+ * up to the first `##[error]` line (the runner's "Process completed with exit
+ * code") are its own, since the step before it ended in an earlier second.
+ * '' when no step failed, as for a job no runner ran.
  */
 export function failedStepLog(log: string, steps: Step[]): string {
-  const windows = steps.filter((step) => step.conclusion !== null && judged(step.conclusion) && step.started_at && step.completed_at)
-    .map((step) => [second(step.started_at!), second(step.completed_at!)] as const);
+  const timed = (step: Step) => step.started_at !== null && step.completed_at !== null;
+  const ran = steps.filter((step) => timed(step) && step.conclusion !== 'skipped');
   const lines = log.replace(/^\uFEFF/, '').split('\n').flatMap((line) => {
     const stamp = /^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.\d+)?Z (.*)$/.exec(line);
     return stamp ? [{ at: second(`${stamp[1]}Z`), text: stamp[2]! }] : [];
   });
   const kept = new Set<number>();
-  for (const [from, to] of windows) {
-    const marker = lines.findLastIndex((line) => line.at === from && line.text.startsWith('##[group]Run '));
-    const start = marker !== -1 ? marker : lines.findIndex((line) => line.at > from);
-    if (start === -1) continue;
-    const error = lines.findIndex((line, index) => index >= start && line.at === to && line.text.startsWith('##[error]'));
-    const end = error !== -1 ? error : lines.findLastIndex((line) => line.at < to);
-    for (let index = start; index <= end; index++) kept.add(index);
+  for (const step of ran.filter((step) => step.conclusion !== null && judged(step.conclusion))) {
+    const [from, to] = [second(step.started_at!), second(step.completed_at!)];
+    const shared = (at: number) => ran.some((other) => other !== step && second(other.started_at!) <= at && at <= second(other.completed_at!));
+    const error = from < to ? lines.findIndex((line) => line.at === to && line.text.startsWith('##[error]')) : -1;
+    lines.forEach((line, index) => {
+      if (line.at < from || line.at > to) return;
+      if (from < to && line.at === to && error !== -1) { if (index <= error) kept.add(index); return; }
+      if (!shared(line.at)) kept.add(index);
+    });
   }
   return [...kept].sort((x, y) => x - y).map((index) => lines[index]!.text).join('\n');
 }
