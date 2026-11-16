@@ -33,7 +33,7 @@
   import MessageActions from './MessageActions.svelte';
   import { workspace } from '../lib/workspace.svelte';
   import { movedBy, startedFrom, turnAnswer } from '../lib/message-display';
-  import { HistoryPrepare, RowEstimates } from '../lib/row-cost';
+  import { HistoryPrepare, RowEstimates, SliceWarmth } from '../lib/row-cost';
   import { focusComposer } from '../lib/focus';
   import { isSending } from '../lib/composer-queue';
   import { retryTurn } from '../lib/composer-edit';
@@ -336,7 +336,7 @@
 
   /** The slice of messages that meets the viewport, the overscan added, and the two heights the spacers carry for the rest.
    * While pinned the window hangs off the end of the list, not `scrollTop`, so the bottom is right on the first frame. */
-  let lastView: WindowView | undefined;
+  let lastView: WindowView | undefined, warmed = $state(0); const warmth = new SliceWarmth();
   const view = $derived.by(() => {
     void measured;
     windowStats.recomputes += 1;
@@ -359,16 +359,16 @@
     }
 
     // At the live end, paint fewer offscreen rows: two at most, and none once a screen is drawn above the view. Reading
-    // history keeps four rows each side, whatever they weigh, for wheel and touch navigation.
-    const start = pinned ? overscanAbove(total, first, whole - viewHeight, viewHeight, 2) : Math.max(0, first - OVERSCAN);
-    const end = Math.min(count, last + OVERSCAN);
+    // history keeps four rows each side, whatever they weigh, for wheel and touch navigation. The slices of a long
+    // answer at either edge join the window as idle time mounts them (`SliceWarmth`).
+    void warmed;
+    const { start, end } = warmth.widen(list, pinned ? overscanAbove(total, first, whole - viewHeight, viewHeight, 2) : Math.max(0, first - OVERSCAN), Math.min(count, last + OVERSCAN));
     // The same object while the window covers the same rows: a scroll inside them redraws nothing.
     return lastView = sameView(lastView, { start, end, first, above: total[start] ?? 0, below: whole - (total[end] ?? 0) });
   });
-
   const rendered = $derived(rows.slice(view.start, view.end));
-
-  const history = new HistoryPrepare(); $effect(() => { const all = rows, { start, end } = view; untrack(() => history.prepare(all, start, end)); }); // Off-screen answers render in a worker (lib/row-cost.ts).
+  const history = new HistoryPrepare(); $effect(() => { const all = rows, { start, end } = view; untrack(() => history.prepare(all, start, end)); });
+  $effect(() => { void view; untrack(() => warmth.wake(() => ({ rows, start: view.start, end: view.end }), () => { warmed += 1; })); }); onDestroy(() => warmth.stop()); // Off-screen answers render in a worker, edge slices mount in idle time (lib/row-cost.ts).
   /**
    * A rendered message's real height replaces its estimate. One above what the user reads would push the text down
    * as it lands, so the same delta goes back into `scrollTop` and the viewport does not move.
