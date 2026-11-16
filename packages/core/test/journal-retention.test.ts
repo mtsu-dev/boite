@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Journal } from '../src/journal.ts';
 import { compactionSteps, PRUNED_AT, scheduleEventRetention } from '../src/journal/retention.ts';
+import { countEvents } from './event-count.ts';
 
 const DAY = 86_400_000;
 let dir: string, journal: Journal;
@@ -116,7 +117,7 @@ test('a failed ANALYZE is retried before the next statement and retention comple
   expect(attempts[2]).toBe(pending[1]!);
   for (let ticks = 0; ticks < 40 && clock.delays[0] !== DAY; ticks++) await clock.tick();
   expect(clock.delays).toEqual([DAY]);
-  expect(journal.countEvents()).toBe(0);
+  expect(countEvents(journal)).toBe(0);
   expect(attempts.slice(1, pending.length + 1)).toEqual(pending);
   // Pruning can populate settings after the startup snapshot; only normal stale statistics run afterward.
   expect(journal.staleStatistics()).toEqual([]);
@@ -136,7 +137,7 @@ test('a failed prune retries shortly without rebuilding completed startup statis
   expect(clock.delays).toEqual([30_000]);
   failure.mockImplementation(prune);
   await clock.tick();
-  expect(journal.countEvents()).toBe(0);
+  expect(countEvents(journal)).toBe(0);
   expect(stale.mock.calls.filter(args => args[0] === true)).toHaveLength(1);
   for (let ticks = 0; ticks < 40 && clock.delays[0] !== DAY; ticks++) await clock.tick();
   expect(clock.delays).toEqual([DAY]);
@@ -167,7 +168,7 @@ test('WAL wait pauses statistics and pruning without inflating the first batch, 
   expect(analyze).toHaveBeenCalled();
   expect(prune.mock.calls[0]?.[2]).toBe(500);
   for (let ticks = 0; ticks < 40 && clock.delays[0] !== DAY; ticks++) await tickAndCheckpoint();
-  expect(journal.countEvents()).toBe(0);
+  expect(countEvents(journal)).toBe(0);
   expect(clock.delays).toEqual([DAY]);
   expect(errors).toEqual([]);
 });

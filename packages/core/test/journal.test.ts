@@ -8,6 +8,7 @@ import type { Message, Turn } from '@boite/contracts';
 import { MESSAGE_PAGE_MAX_BYTES, RPC_MAX_FRAME_BYTES } from '@boite/contracts';
 import { Journal } from '../src/journal.ts';
 import { JournalTooNewError, SCHEMA_VERSION } from '../src/journal/schema.ts';
+import { countEvents } from './event-count.ts';
 
 let dir: string;
 let file: string;
@@ -387,7 +388,7 @@ describe('journal', () => {
       journal.putProject({ id: 'prj_1', name: 'one', path: 'D:/one', createdAt: 1 });
     });
     expect(journal.listProjects()).toHaveLength(1);
-    expect(journal.countEvents('project.added')).toBe(1);
+    expect(countEvents(journal, 'project.added')).toBe(1);
   });
 
   test('deltas are buffered into the message, with no event of their own', () => {
@@ -399,7 +400,7 @@ describe('journal', () => {
     journal.appendDelta('thr_test', 'msg_1', 0, 'world');
 
     journal.flushDeltas();
-    expect(journal.countEvents('message.delta')).toBe(0);
+    expect(countEvents(journal, 'message.delta')).toBe(0);
     const message = journal.getMessage('msg_1');
     expect(message?.parts).toEqual([{ type: 'text', text: 'hello world' }]);
   });
@@ -514,7 +515,7 @@ describe('journal', () => {
     expect(journal.pruneEvents(cutoff, 3)).toBe(3);
     expect(journal.pruneEvents(cutoff, 3)).toBe(2);
     expect(journal.pruneEvents(cutoff, 3)).toBe(0);
-    expect(journal.countEvents()).toBe(4);
+    expect(countEvents(journal)).toBe(4);
     expect((journal.db.query("SELECT MAX(id) AS id FROM events WHERE type = 'agents.record'").get() as { id: number }).id).toBe(revision);
   });
 
@@ -527,7 +528,7 @@ describe('journal', () => {
 
     journal = new Journal(file);
     expect(journal.listProjects().map((project) => project.id)).toEqual(['prj_keep']);
-    expect(journal.countEvents()).toBe(1);
+    expect(countEvents(journal)).toBe(1);
     expect(journal.getThread('thr_pending')?.branchNamingPending).toBe(true);
     expect(journal.listThreads()[0]?.branchNamingPending).toBe(true);
   });
@@ -557,6 +558,14 @@ test('single-turn reads and the session sum pick what a scan of every turn picke
   }));
   journal.putTurn({ id: 'trn_other', threadId: 'thr_other', status: 'running', queuedAt: 0, startedAt: 0, finishedAt: null, usage: usage(5, 5), error: null, execution: execution(1) });
   const all = journal.listTurns('thr_many');
+  // No journal method reads a whole table on the event loop: `bun run check` fails if one of these compiles.
+  const wholeTable = (): unknown[] => [
+    // @ts-expect-error turns are read by thread, never every turn of the journal at once
+    journal.listTurns(),
+    // @ts-expect-error events by type are counted by the tests alone (`event-count.ts`): no index serves it
+    journal.countEvents('thread.created'),
+  ];
+  void wholeTable;
   expect(journal.runningTurn('thr_many')).toEqual(all.findLast(turn => turn.status === 'running')!);
   expect(journal.lastTurn('thr_many')).toEqual(all.at(-1)!);
   expect(journal.lastEndedTurn('thr_many')).toEqual(all.findLast(turn => turn.status !== 'queued' && turn.status !== 'running')!);

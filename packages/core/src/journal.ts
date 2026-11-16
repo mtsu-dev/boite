@@ -174,14 +174,6 @@ export class Journal {
     if (!this.closed) analyze(this.db, statement);
   }
 
-  countEvents(type?: string): number {
-    const row =
-      type === undefined
-        ? (this.db.query('SELECT COUNT(*) AS n FROM events').get() as { n: number } | null)
-        : (this.db.query('SELECT COUNT(*) AS n FROM events WHERE type = ?').get(type) as { n: number } | null);
-    return row?.n ?? 0;
-  }
-
   close(): void {
     if (this.closed) return;
     try {
@@ -444,12 +436,9 @@ export class Journal {
     this.db.query('INSERT INTO turn_requests (thread_id, request_id, fingerprint, turn_id, message_id) VALUES (?, ?, ?, ?, ?)').run(threadId, requestId, fingerprint, turnId, messageId);
   }
 
-  listTurns(threadId?: string): Turn[] {
-    const rows =
-      threadId === undefined
-        ? (this.db.query('SELECT * FROM turns ORDER BY rowid').all() as TurnRow[])
-        : (this.db.query('SELECT * FROM turns WHERE thread_id = ? ORDER BY rowid').all(threadId) as TurnRow[]);
-    return rows.map(toTurn);
+  /** One thread's turns, through `turns_by_thread`. Every turn of the journal at once is no read for the event loop. */
+  listTurns(threadId: string): Turn[] {
+    return (this.db.query('SELECT * FROM turns WHERE thread_id = ? ORDER BY rowid').all(threadId) as TurnRow[]).map(toTurn);
   }
 
   /** One turn read without the thread's history (`journal/turn-rows.ts`). */
