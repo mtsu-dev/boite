@@ -333,7 +333,8 @@ async function main(): Promise<void> {
       // Twenty answers of 20 to 40 KB of Markdown and code (`?fake=1&markdown=1`), opened 100 ms into the measured window.
       'open heavy thread': async () => {
         await open('open=recent&markdown=1');
-        await page.evaluate(`setTimeout(() => void globalThis.__bench.store.open('t-markdown'), 100)`);
+        // Armed here, fired by the measured window itself: the variant's CSS, the scroller scan and the metrics before it take their own time.
+        await page.evaluate(`globalThis.__benchStart = () => setTimeout(() => void globalThis.__bench.store.open('t-markdown'), 100)`);
       },
       // The same thread, opened before the window, read up through its answers with the wheel.
       'heavy answers scroll': async () => {
@@ -402,6 +403,7 @@ async function main(): Promise<void> {
         const from = window.__long.length;
         const loafFrom = window.__loaf.length;
         const start = performance.now();
+        const kick = window.__benchStart; window.__benchStart = undefined; kick?.();
         // The distance the text itself moved, which scrollTop is not: a page of history landing above
         // the reader grows the list, and the list moves scrollTop by as much so the text stays put.
         // Read after each paint, when layout is clean, on a row on screen in the frame before.
