@@ -60,6 +60,8 @@ function askToFollowLink(url: string): Promise<boolean> {
  */
 export class Connection {
   connection = $state<ClientState>('idle');
+  /** Times this client was ready again after it had been ready: the link came back. */
+  returns = $state(0);
   core = $state<CoreInfo | null>(null);
   /** How far the core's clock runs ahead of this device's (`Client.clockOffset`). */
   clockOffset = $state(0);

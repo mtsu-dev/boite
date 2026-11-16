@@ -267,18 +267,19 @@ export class GroupLinks {
     const moved = (): void => changed(true);
     const connection = (navigator as Navigator & { connection?: EventTarget }).connection;
     const stopNetwork = onNetworkChange(moved);
-    // Each machine's connection as last seen, and whether it was ever ready. One ready again after it lost its link
-    // says the network is back: every other machine waiting out its backoff tries now (`WsClient.wake`), not at its next turn.
-    const seen = new WeakMap<object, { connection: string; wasReady: boolean }>();
+    // Each machine's count of returns as last seen. One ready again after it lost its link says the network
+    // is back: every other machine waiting out its backoff tries now (`WsClient.wake`), not at its next turn.
+    const seen = new WeakMap<object, number>();
     const stop = $effect.root(() => {
       $effect(() => {
         let back = false;
         // Read so the effect follows them: the list, each connection, each roster, a machine's word that it has none.
         for (const machine of this.workspace.machines) {
-          const connection = machine.store.connection;
+          void machine.store.connection;
+          const returns = machine.store.returns;
           const last = seen.get(machine.store);
-          if (connection === 'ready' && last !== undefined && last.connection !== 'ready' && last.wasReady) back = true;
-          seen.set(machine.store, { connection, wasReady: (last?.wasReady ?? false) || connection === 'ready' });
+          if (last !== undefined && returns > last) back = true;
+          seen.set(machine.store, returns);
           void machine.store.group;
           void machine.store.groupKnown;
           void machine.store.ungrouped;
