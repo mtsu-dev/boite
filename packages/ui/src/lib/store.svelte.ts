@@ -7,6 +7,7 @@ import { followDesktopOf } from './experiments';
 import { modelFavorites } from './model-favorites.svelte';
 import { readLayout, readPrefs } from './prefs';
 import { watchIncognito } from './store/incognito.svelte';
+import { watchIdlePreloads } from './store/thread-preload-watch.svelte';
 import { markRead as markThreadsRead } from './store/mark-read';
 import type { Accounts } from './store/accounts.svelte';
 import type { Composer } from './store/composer.svelte';
@@ -174,6 +175,7 @@ export class Store {
     ctx.off.push(ctx.sync.watch());
     ctx.off.push(ctx.draftStartup.watch());
     ctx.off.push(watchIncognito(ctx));
+    ctx.off.push(watchIdlePreloads(ctx));
     // Each machine hears about this window's own failures. Unit tests drive
     // fake timers through stores by the hundred, so the reporter stays out of them.
     if (import.meta.env.MODE !== 'test') ctx.off.push(startDiagnosticsReport(client));
@@ -576,7 +578,8 @@ export class Store {
   forkSideQuestion(...args: Parameters<Threads['forkSideQuestion']>) { return this.#ctx.threads.forkSideQuestion(...args); }
   mergeBack(...args: Parameters<Threads['mergeBack']>) { return this.#ctx.threads.mergeBack(...args); }
   fork(...args: Parameters<Threads['fork']>) { return this.#ctx.threads.fork(...args); }
-  open(...args: Parameters<Threads['open']>) { return this.#ctx.threads.open(...args); }
+  /** Reads ahead (`IdlePreloads`) stop for an open and wait for the next idle moment after it. */
+  open(...args: Parameters<Threads['open']>) { const resume = this.#ctx.threads.preloads.idle.pause(); return this.#ctx.threads.open(...args).finally(resume); }
   preload(threadId: ThreadId) { return this.#ctx.threads.preloads.preload(threadId); }
   loadToolOutput(...args: Parameters<Threads['loadToolOutput']>) { return this.#ctx.threads.loadToolOutput(...args); }
   acquireToolOutput(...args: Parameters<Threads['acquireToolOutput']>) { return this.#ctx.threads.acquireToolOutput(...args); }

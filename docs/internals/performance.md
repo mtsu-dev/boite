@@ -337,6 +337,20 @@ click had medians of 222, 230 and 232 ms, and Load on press 95,
 day. The press saved about the 120 ms it was held, up to one round trip. The fake does not delay pushed events or model payload size, and a real
 core adds its own handling time to both paths.
 
+## Read ahead when idle
+
+`bun test tests/e2e/idle-preload.test.ts` loads the fake core in a hidden
+browser with a simulated 200 ms round trip (`?fake=1&open=recent&rtt=200`),
+leaves the page idle 3 s, clicks the first sidebar thread that is not open,
+and times the release to the first message drawn in the timeline, four
+samples each on a fresh page. On 2026-11-16 in the Linux container
+(`BOITE_E2E_BROWSER=chrome-headless-shell`, under `nice`), the code before
+the read-ahead had medians of 261 and 257 ms, the loading view shown every
+time; with it, four runs had medians of 115, 59, 38 and 55 ms, the loading
+view never shown. The spread after is the timeline's own drawing time. The
+fake does not model payload size, and a real core adds its own handling time
+to the cold path.
+
 ## Naming a long conversation
 
 `bun run bench/retitle.ts` creates 5,000 messages containing about 40 MB of text
@@ -551,6 +565,21 @@ the turn's other events, which no channel holds back.
   the other visits again (`ReadingCache` in `reading-cache.ts`). Once the page
   is idle, a plain copy replaces the deep `$state` proxy the timeline drew,
   which weighed several times its data.
+- Once a machine is ready and the page idle (`requestIdleCallback`, else
+  1 s), its first sidebar threads are read ahead into the same cache
+  (`IdlePreloads` in `lib/store/thread-preload.ts`): up to 4, one at a time,
+  in the Recent order (pins, then the latest message), skipping the open
+  thread, archived and incognito ones and those already held; 1 on a
+  connection with `saveData`. Each is the first page an open would ask, as a
+  plain `threads.get` with a sync proof and no `open`, so it subscribes
+  nothing. It enters the cache only where it fits without pushing a visit
+  out. Nothing is read while a thread opens or a turn runs in the open one;
+  an open or a drop drops the read in flight and the rest, and the reads left
+  resume at the next idle moment after an open. Opening such a thread then
+  paints at once and asks only for what came after the page, like any visit.
+  An answer whose thread was deleted, archived, rewound or truncated while it
+  was read, or is no longer one to read ahead, is dropped.
+  Off under automation unless `__BOITE_IDLE_PRELOAD_TEST__` is set.
 - A summary written over the open thread (`thread.updated`, a load tick)
   writes only the fields that changed (`patchFields`), so a tick that moves
   `load` alone wakes only what reads `load`.

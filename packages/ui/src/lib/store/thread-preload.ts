@@ -8,10 +8,17 @@
  * on screen nor marks anything read nor reads requests. The open that follows
  * claims the press and does those itself, after the page. Until the page is on
  * screen, events patch it like the open thread (`Threads.threadSnapshots`).
+ *
+ * Before any press, a ready machine reads its first sidebar threads ahead once
+ * the page is idle (`IdlePreloads`): their first page goes into the reading
+ * cache, so a click on one paints it at once, like a thread visited before.
  */
 
-import { INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, MESSAGE_PAGE_MAX, type MessageId, type Thread, type ThreadId, type ThreadSnapshot } from '@boite/contracts';
+import { INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, MESSAGE_PAGE_MAX, type MessageId, type ProjectId, type RpcParams, type Thread, type ThreadId, type ThreadSnapshot, type ThreadSummary } from '@boite/contracts';
 import type { Client } from '../client';
+import { whenIdle } from '../idle';
+import { readingCacheBytes } from '../reading-cache';
+import { compareRecent } from '../thread-order';
 import { resumeRequest } from '../thread-rows';
 import type { StoreContext } from './context';
 import { lightPage, type ReadingPosition } from './reading-pages.svelte';
@@ -47,16 +54,12 @@ export interface Opener {
 }
 
 /**
- * The page and subscription for `threadId`. A recent visit asks only for what
- * it cannot vouch for, a long thread left away from its end opens around the
- * reader's message, and a bundled core subscribes in the same call with `open`.
- * `current` says whether the loading view may still count the page in.
+ * The page `threadId` opens on: a recent visit asks only for what it cannot
+ * vouch for, a long thread left away from its end opens around the reader's
+ * message, any other reads its last screen.
  */
-export function askPage(ctx: StoreContext, opener: Opener, client: Client, threadId: ThreadId, held: Thread | undefined, open: { previous?: ThreadId; requests?: boolean; markRead?: boolean }, current: () => boolean): PageAsk {
+function pageRequest(ctx: StoreContext, opener: Opener, threadId: ThreadId, held: Thread | undefined): { params: RpcParams<'threads.get'>; after: MessageId | undefined; around: MessageId | undefined } {
   const features = ctx.store.core?.features;
-  const bundled = features?.threadSnapshots === true;
-  const channels = ctx.streams.params(threadId);
-  const subscribed = bundled ? null : client.call('threads.subscribe', { threadId, ...channels });
   // A thread already in hand, open or among the recent ones, asks only for
   // what it cannot vouch for: a reconnect on a long conversation used to
   // download its last 120 messages again for the two that were new.
@@ -66,8 +69,22 @@ export function askPage(ctx: StoreContext, opener: Opener, client: Client, threa
   const saved = held || !features?.readingPages ? undefined : opener.readingPositions.get(threadId);
   const around = saved && !saved.pinned ? saved.anchor?.id : undefined;
   // A page holds about one screen; the rest comes as the reader scrolls. A resume tail is never cut.
-  const fetched = client.call('threads.get', { ...resume, limit: held ? MESSAGE_PAGE_MAX : INITIAL_MESSAGE_PAGE, maxBytes: INITIAL_PAGE_BYTES, ...lightPage(ctx), ...(around ? { around } : {}),
-    ...(bundled ? { sync: held?.messagesSync && held.messagesSync.from === resume.after ? held.messagesSync : true, open, ...channels } : {})
+  return { params: { ...resume, limit: held ? MESSAGE_PAGE_MAX : INITIAL_MESSAGE_PAGE, maxBytes: INITIAL_PAGE_BYTES, ...lightPage(ctx), ...(around ? { around } : {}) }, after: resume.after, around };
+}
+
+/**
+ * The page and subscription for `threadId` (`pageRequest`), and with a
+ * bundled core the subscription in the same call with `open`. `current` says
+ * whether the loading view may still count the page in.
+ */
+export function askPage(ctx: StoreContext, opener: Opener, client: Client, threadId: ThreadId, held: Thread | undefined, open: { previous?: ThreadId; requests?: boolean; markRead?: boolean }, current: () => boolean): PageAsk {
+  const features = ctx.store.core?.features;
+  const bundled = features?.threadSnapshots === true;
+  const channels = ctx.streams.params(threadId);
+  const subscribed = bundled ? null : client.call('threads.subscribe', { threadId, ...channels });
+  const { params, after, around } = pageRequest(ctx, opener, threadId, held);
+  const fetched = client.call('threads.get', { ...params,
+    ...(bundled ? { sync: held?.messagesSync && held.messagesSync.from === after ? held.messagesSync : true, open, ...channels } : {})
   }, held || !features?.chunkedAnswers ? {} : {
     // The loading view counts the page in as the core slices it.
     onProgress: (received, total) => { if (current() && opener.loadingThreadId === threadId) opener.loadingBytes = { threadId, received, total }; }
@@ -82,8 +99,12 @@ export class ThreadPreloads {
   #waiting: Preload | null = null;
   /** The press an `open()` took over, patched by events until its page is on screen. */
   #claimed: Preload | null = null;
+  /** The first sidebar threads, read ahead once the machine is ready and the page idle. */
+  readonly idle: IdlePreloads;
 
-  constructor(private readonly ctx: StoreContext, private readonly opener: Opener) {}
+  constructor(private readonly ctx: StoreContext, private readonly opener: ReadAheadSource) {
+    this.idle = new IdlePreloads(ctx, opener, threadId => this.#waiting?.threadId === threadId);
+  }
 
   /**
    * Asks for `threadId`'s page and subscription now. Answers the release, for
@@ -166,5 +187,178 @@ export class ThreadPreloads {
     if (!preload || this.#waiting !== preload) return;
     this.#waiting = null;
     this.giveBack(preload);
+  }
+}
+
+/** How many threads a ready machine reads ahead, and on a connection that asks to save data. */
+export const IDLE_PRELOADS = 4;
+export const IDLE_PRELOADS_SAVING_DATA = 1;
+/** Without requestIdleCallback, the wait before reading ahead; with it, the longest wait for an idle moment. */
+export const IDLE_PRELOAD_WAIT_MS = 1000;
+
+/** The threads to read ahead on this connection: one when it asks to save data (`navigator.connection.saveData`). */
+export function idlePreloadCount(nav: { connection?: { saveData?: boolean } } | undefined = globalThis.navigator as { connection?: { saveData?: boolean } } | undefined): number {
+  return nav?.connection?.saveData === true ? IDLE_PRELOADS_SAVING_DATA : IDLE_PRELOADS;
+}
+
+/** Off under a driven browser and in unit tests, which count their own calls, unless a test asked for it. */
+export function idlePreloadAllowed(): boolean {
+  if (typeof window !== 'undefined' && window.__BOITE_IDLE_PRELOAD_TEST__ === true) return true;
+  if (import.meta.env.MODE === 'test') return false;
+  return globalThis.navigator?.webdriver !== true;
+}
+
+/** What the read-ahead reads of the thread store, beside what a press reads. */
+export interface ReadAheadSource extends Opener {
+  readonly readingThreads: { get(threadId: string): Thread | undefined; prefill(threadId: string, thread: Thread, bytes: number): boolean; mark(): number; droppedSince(threadId: string, mark: number): boolean };
+  /** A project's rows as its card lists them: no archived, incognito or helper thread. */
+  threadsOf(projectId: ProjectId): readonly ThreadSummary[];
+}
+
+/**
+ * The first page of up to `IDLE_PRELOADS` threads, read ahead into the reading
+ * cache once the machine is ready and the page idle, in the sidebar's order.
+ * The open thread, archived and incognito ones and those already held are
+ * skipped. One read at a time, each after the previous answered, and none
+ * while a thread opens or a turn streams in the open one: an open or a drop
+ * drops the rest, and an answer that lands after it. So is an answer whose
+ * thread left the reading cache while it was read (a delete, an archive, a
+ * rewind, a truncation) or is no longer one to read ahead. A read is a plain
+ * `threads.get` with no `open`: it subscribes nothing, and the open that
+ * follows asks only for what came after the page, as for any visit.
+ */
+export class IdlePreloads {
+  /** The client the reads below went to; a drop or another client starts over. */
+  #client: Client | null = null;
+  /** The threads asked since the machine was ready, answered or refused. */
+  readonly #asked = new Set<ThreadId>();
+  #pauses = 0;
+  #cancelIdle: (() => void) | null = null;
+  /** The reads in progress; another value cancels them and drops their answer. */
+  #run: object | null = null;
+
+  /** `pressed` says a press waits on the thread: its page is on its way already. */
+  constructor(private readonly ctx: StoreContext, private readonly source: ReadAheadSource, private readonly pressed: (threadId: ThreadId) => boolean) {}
+
+  /** The threads read so far since the machine was ready. */
+  get asked(): readonly ThreadId[] { return [...this.#asked]; }
+
+  /** Looks at the machine again: starts the reads when it may, stops them when it must. */
+  poke(): void {
+    if (!idlePreloadAllowed()) return;
+    const client = this.ctx.client;
+    const ready = client !== null && this.ctx.store.connection === 'ready';
+    if (!ready || client !== this.#client) {
+      this.#cancel();
+      this.#asked.clear();
+      this.#client = ready ? client : null;
+      if (!ready) return;
+    }
+    if (this.#held()) { this.#cancel(); return; }
+    if (this.#run || this.#cancelIdle || this.#asked.size >= idlePreloadCount() || !this.#next()) return;
+    this.#cancelIdle = whenIdle(() => { this.#cancelIdle = null; void this.#read(); }, { timeout: IDLE_PRELOAD_WAIT_MS, fallback: IDLE_PRELOAD_WAIT_MS });
+  }
+
+  /** An open holds the reads back until the returned resume: what was left waits for the next idle moment. */
+  pause(): () => void {
+    this.#pauses++;
+    this.#cancel();
+    let resumed = false;
+    return () => {
+      if (resumed) return;
+      resumed = true;
+      this.#pauses--;
+      this.poke();
+    };
+  }
+
+  /** The store lets this machine go. */
+  stop(): void {
+    this.#cancel();
+    this.#asked.clear();
+    this.#client = null;
+  }
+
+  /** An open on its way, or a turn running in the open thread, its answer streaming in. */
+  #held(): boolean {
+    return this.#pauses > 0 || this.source.loadingThreadId !== null || this.source.openThread?.status === 'running';
+  }
+
+  /** This machine's rows as Recent lists them (`compareRecent`): pins first, then the latest message. */
+  #sidebarRows(): ThreadSummary[] {
+    return this.ctx.store.projects.filter(project => project.archived !== true).flatMap(project => this.source.threadsOf(project.id))
+      .sort((a, b) => compareRecent({ thread: a }, { thread: b }));
+  }
+
+  #cancel(): void {
+    this.#cancelIdle?.();
+    this.#cancelIdle = null;
+    this.#run = null;
+  }
+
+  #wanted(row: ThreadSummary): boolean {
+    const id = row.id;
+    const { source } = this;
+    return !row.archived && !row.incognito && !this.#asked.has(id) && source.readingThreads.get(id) === undefined
+      && source.openThread?.id !== id && source.subscribedThreadId !== id && source.openTarget !== id && !this.pressed(id);
+  }
+
+  #next(): ThreadSummary | undefined {
+    return this.#sidebarRows().find(row => this.#wanted(row));
+  }
+
+  async #read(): Promise<void> {
+    const client = this.#client;
+    if (!client || this.#run || this.#held()) return;
+    const run = {};
+    this.#run = run;
+    const current = () => this.#run === run && this.ctx.client === client && this.ctx.store.connection === 'ready';
+    try {
+      while (current() && !this.#held() && this.#asked.size < idlePreloadCount()) {
+        const row = this.#next();
+        if (!row) return;
+        const threadId = row.id;
+        this.#asked.add(threadId);
+        const { params } = pageRequest(this.ctx, this.source, threadId, undefined);
+        const mark = this.source.readingThreads.mark();
+        let page: ThreadSnapshot;
+        try {
+          // The proof lets the open that follows hear "unchanged" instead of the page again.
+          page = await client.call('threads.get', { ...params, ...(this.ctx.store.core?.features?.threadSnapshots ? { sync: true as const } : {}) });
+        } catch {
+          continue;
+        }
+        if (!current()) {
+          // Cancelled: the thread may be read on the next idle moment.
+          if (this.#client === client) this.#asked.delete(threadId);
+          return;
+        }
+        const { opened: _opened, ...thread } = page;
+        if (!this.#keepable(threadId, mark)) continue;
+        this.ctx.positions.note(threadId, thread.messages, thread.messageOffset);
+        this.#keep(threadId, thread);
+      }
+    } finally {
+      if (this.#run === run) this.#run = null;
+    }
+  }
+
+  /**
+   * Whether an answer asked at `mark` may still go into the reading cache: its
+   * thread was not dropped from it since (deleted, archived, rewound or
+   * truncated), and its row is still one to read ahead.
+   */
+  #keepable(threadId: ThreadId, mark: number): boolean {
+    if (this.source.readingThreads.droppedSince(threadId, mark)) return false;
+    const row = this.ctx.store.projects.filter(project => project.archived !== true)
+      .flatMap(project => this.source.threadsOf(project.id)).find(candidate => candidate.id === threadId);
+    return row !== undefined && !row.archived && !row.incognito;
+  }
+
+  /** Into the reading cache, unless the thread came in meanwhile another way. */
+  #keep(threadId: ThreadId, thread: Thread): void {
+    const { source } = this;
+    if (source.readingThreads.get(threadId) || source.openThread?.id === threadId || source.openTarget === threadId || this.pressed(threadId)) return;
+    source.readingThreads.prefill(threadId, thread, readingCacheBytes(thread.messages));
   }
 }

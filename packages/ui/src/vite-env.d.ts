@@ -17,6 +17,8 @@ declare global {
     __BOITE_APP_UPDATE_TEST__?: import('./lib/app-update.svelte').AppUpdateTestFixture;
     /** Lets the press-preload test run under a driven browser, which otherwise skips it. */
     __BOITE_PRESS_PRELOAD_TEST__?: boolean;
+    /** Lets the idle read-ahead run under a driven browser or a unit test, which otherwise skip it. */
+    __BOITE_IDLE_PRELOAD_TEST__?: boolean;
   }
 }
 
