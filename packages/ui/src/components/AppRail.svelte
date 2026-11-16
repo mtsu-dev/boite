@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { desktopShell } from '../lib/shell-platform';
   import { MediaQuery } from 'svelte/reactivity';
   import { Inbox, MessageSquare, Plus, Settings, UsersRound } from '@lucide/svelte';
   import type { Store } from '../lib/store.svelte';
@@ -110,7 +111,7 @@
   const onActivity = $derived(store.page === 'chat' && inbox.open);
   const onContacts = $derived(store.page === 'home');
   /** macOS draws its traffic lights over the window's top left corner: only there does the card leave them the band. */
-  const lights = window.__TAURI_INTERNALS__ !== undefined && isMac();
+  const lights = desktopShell() && isMac();
 
   type Bot = { machine: Machine; row: AgentRowData };
   function stateOf({ machine, row }: Bot): RailBotState {

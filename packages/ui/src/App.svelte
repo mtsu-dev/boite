@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { desktopShell } from './lib/shell-platform';
   import { errorText } from './lib/errors';
   import { onMount, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
@@ -70,7 +71,7 @@
   import AgentsLayout from './components/agents/AgentsLayout.svelte';
 
   let store = $derived(workspace.active);
-  const inShell = window.__TAURI_INTERNALS__ !== undefined;
+  const inShell = desktopShell();
   // The phone's navigation (`lib/mobile-navigation.ts`). A failed fetch (offline,
   // cold cache) lets the app draw with a bar that says so and retries, by hand,
   // when the core answers again or when the browser is back online.

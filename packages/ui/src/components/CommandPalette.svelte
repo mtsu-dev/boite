@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { desktopShell } from '../lib/shell-platform';
   import { rowAsks } from '../lib/status-order';
   import { tick, untrack } from 'svelte';
   import { CornerDownRight, Search } from '@lucide/svelte';
@@ -38,7 +39,7 @@
   /** What had the keyboard before the palette took it, where it goes back on close. */
   let previous: HTMLElement | null = null;
 
-  const inShell = window.__TAURI_INTERNALS__ !== undefined;
+  const inShell = desktopShell();
   const phoneWidth = new MediaQuery('(max-width: 720px)');
   const now = $derived(minuteClock.now);
   /** Each machine's done and archived threads, read when the palette opens: a Store's list holds neither (lib/archive.ts). */

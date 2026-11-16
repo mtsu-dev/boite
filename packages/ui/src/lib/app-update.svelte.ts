@@ -1,6 +1,7 @@
 import { errorText } from './errors';
 import { strings } from './strings';
 import { updateStale } from './update-freshness';
+import { desktopShell } from './shell-platform';
 
 export type UpdateChannel = 'stable' | 'nightly';
 
@@ -194,7 +195,7 @@ const fixture = queryFixture();
 
 /** True for the native window, plus the explicit fake harness used by visual tests. */
 export function showAppUpdateUi(): boolean {
-  return window.__TAURI_INTERNALS__ !== undefined || fixture !== undefined;
+  return desktopShell() || fixture !== undefined;
 }
 
 /**
@@ -225,7 +226,7 @@ export class AppUpdater {
   constructor(
     backend: AppUpdateBackend = tauriBackend(),
     clock: UpdateClock = systemClock,
-    isShell: () => boolean = () => window.__TAURI_INTERNALS__ !== undefined
+    isShell: () => boolean = () => desktopShell()
   ) {
     this.#backend = backend;
     this.#clock = clock;

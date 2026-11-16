@@ -21,6 +21,7 @@ import { NOTIFICATION_KINDS, notifiesOnFinish, quotaAlertLeft, quotaAlertTitle, 
 import type { Client } from './client';
 import { PUSH_ENABLED_KEY } from './pwa';
 import { fill, strings } from './strings';
+import { desktopShell } from './shell-platform';
 
 export const NOTIFICATIONS_STORAGE_KEY = 'boite.notifications';
 export const NOTIFICATION_MUTED_STORAGE_KEY = 'boite.notifications.muted';
@@ -292,7 +293,7 @@ export function setNotificationSender(next: Sender | null): void {
  */
 export function onNotificationOpen(next: Opener | null): () => void {
   opener = next;
-  if (next === null || window.__TAURI_INTERNALS__ === undefined) return () => {};
+  if (next === null || !desktopShell()) return () => {};
   let stop: (() => void) | undefined;
   let disposed = false;
   void import('@tauri-apps/api/event').then(async ({ listen }) => {
@@ -362,7 +363,7 @@ async function webSender(toast: Toast): Promise<void> {
 /** Sends, and never throws: a toast that cannot go out is not an error the chat should show. */
 export async function sendNotification(toast: Toast): Promise<void> {
   try {
-    const send = sender ?? (window.__TAURI_INTERNALS__ !== undefined ? shellSender : webSender);
+    const send = sender ?? (desktopShell() ? shellSender : webSender);
     await send(toast);
   } catch {
     /* no notification surface here */
@@ -377,7 +378,7 @@ export async function sendNotification(toast: Toast): Promise<void> {
 export async function requestNotificationPermission(): Promise<boolean> {
   try {
     // A Windows toast asks nobody: the system's own switch decides, silently.
-    if (window.__TAURI_INTERNALS__ !== undefined) return true;
+    if (desktopShell()) return true;
     if (typeof Notification === 'undefined') return false;
     if (Notification.permission === 'granted') return true;
     return (await Notification.requestPermission()) === 'granted';

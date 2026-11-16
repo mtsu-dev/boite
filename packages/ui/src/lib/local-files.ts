@@ -1,8 +1,9 @@
 import type { Store } from './store.svelte';
+import { desktopShell } from './shell-platform';
 
 /** Paths belong to the thread's machine, which may differ from the desktop. */
 export function localFileDirectory(store: Store | undefined, threadId: string | undefined): string | null {
-  if (!window.__TAURI_INTERNALS__ || !store?.owner || !store.localCore || !threadId) return null;
+  if (!desktopShell() || !store?.owner || !store.localCore || !threadId) return null;
   return store.threads.find(thread => thread.id === threadId)?.cwd ?? null;
 }
 
