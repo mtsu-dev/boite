@@ -115,6 +115,8 @@ export class AcpSession {
   readonly #controls = new SessionControls(() => ({ agent: this.#agent, sessionId: this.#sessionId }));
   #lastStderr = '';
   #exited: Promise<number | null> | null = null;
+  /** The process ended before Boite closed it: its exit, not the error that closed it, says why. */
+  #diedAlone = false;
   readonly #idle = new IdleTimer(() => this.#drop());
   readonly #retention = new SessionRetention();
   /** The turn whose `session/prompt` is in flight; updates outside one are dropped. */
@@ -400,10 +402,7 @@ export class AcpSession {
       } else if (error instanceof LoadRefused || error instanceof ModelRefused) {
         turn.fail(error.message);
       } else {
-        // An agent that exits while it starts takes the connection with it,
-        // and its exit code and last stderr line say more than that.
-        const code = await exitWithin(this.#exited, EXIT_GRACE_MS);
-        turn.fail(code === undefined ? failureText(error) : this.#exitSentence(code), code === undefined ? logMessageOf(error) : this.#exitSentence(code, true));
+        await this.#fail(turn, error);
       }
       this.#endTurn(turn, true);
       return;
@@ -480,10 +479,7 @@ export class AcpSession {
         // The stop closed the process under the prompt.
         turn.stopNow();
       } else {
-        // A child that died takes the connection with it, and its exit says more
-        // than "the connection closed": give it a moment to be reported.
-        const code = await exitWithin(this.#exited, EXIT_GRACE_MS);
-        turn.fail(code === undefined ? failureText(error) : this.#exitSentence(code), code === undefined ? logMessageOf(error) : this.#exitSentence(code, true));
+        await this.#fail(turn, error);
       }
       this.#endTurn(turn, true);
       return;
@@ -744,6 +740,7 @@ export class AcpSession {
     });
     this.#exited = new Promise<number | null>((resolve) => {
       child.once('exit', (code) => {
+        this.#diedAlone = !this.#closing;
         resolve(code);
         // A process that dies on its own leaves nothing reusable behind: the
         // next turn of the thread starts a fresh one.
@@ -754,6 +751,18 @@ export class AcpSession {
         if (!this.#closing) this.#drop();
       });
     });
+  }
+
+  /**
+   * A turn whose start or prompt threw. An agent that exits on its own takes the
+   * connection with it, and its exit code and last stderr line say more than
+   * that. One Boite closed because of the error (a refused mode, model or load)
+   * exits with the code of that kill: the error itself is the reason.
+   */
+  async #fail(turn: AcpTurn, error: unknown): Promise<void> {
+    const code = await exitWithin(this.#exited, EXIT_GRACE_MS);
+    if (code === undefined || !this.#diedAlone) turn.fail(failureText(error), logMessageOf(error));
+    else turn.fail(this.#exitSentence(code), this.#exitSentence(code, true));
   }
 
   #exitSentence(code: number | null, diagnostic = false): string {
