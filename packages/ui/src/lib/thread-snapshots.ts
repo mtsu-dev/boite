@@ -16,6 +16,16 @@
  * thread of a connection that is not this owner's (a contact never reaches a
  * Store, and only `owner` and `session` connections write here).
  *
+ * Windows of one browser share the database, so every guard against a write
+ * landing after what should have stopped it lives in it: a purge generation
+ * per machine and a drop generation per thread, each bumped in the same
+ * transaction as the deletion. A write reads them and the machine's key when
+ * it is asked, before it takes its page, encrypts outside any transaction, and
+ * commits in one transaction that stores nothing unless both generations and
+ * the key are unchanged. Making a missing key checks the purge generation the
+ * same way. A purge is also told to the other windows on a `BroadcastChannel`,
+ * only so they let their waiting writes go early.
+ *
  * A browser without IndexedDB or `crypto.subtle` skips all of it.
  */
 
@@ -38,29 +48,45 @@ export interface SnapshotMachine { machine: string; id: string; key: CryptoKey; 
 export interface SnapshotMeta { machine: string; threadId: string; bytes: number; openedAt: number }
 export interface SnapshotData { iv: Uint8Array; data: ArrayBuffer }
 
-/** The storage the snapshots sit in: IndexedDB in the app, a Map in tests. */
+/**
+ * Where a write stands, read when it is asked: the generations of a purge of
+ * everything, of its machine and of a drop of its thread, and the id of the
+ * machine's key then, null when it had none.
+ */
+export interface SnapshotMark { all: number; purge: number; drop: number; keyId: string | null }
+
+/** A mark that never matches: what a write carries when its mark could not be read. */
+const UNREADABLE: SnapshotMark = { all: Number.NaN, purge: Number.NaN, drop: Number.NaN, keyId: '' };
+
+/** The storage the snapshots sit in: IndexedDB in the app, a Map in tests. Each method is one atomic step. */
 export interface SnapshotDb {
   machine(machine: string): Promise<SnapshotMachine | undefined>;
   machines(): Promise<SnapshotMachine[]>;
+  /** The generations and key a write of `threadId` starts from. */
+  mark(machine: string, threadId: string): Promise<SnapshotMark>;
   /**
-   * Keeps `entry` unless the machine has one already, in one step no other
-   * window can come between: answers the entry kept, so two windows making a
-   * machine's first key at once both use the one that won.
+   * Keeps `entry` unless the machine has a key already, and only while no
+   * purge came since `mark`: answers the key kept, so two windows making a
+   * machine's first key at once both use the one that won, or undefined.
    */
-  addMachine(entry: SnapshotMachine): Promise<SnapshotMachine>;
-  /** Adds `url` to the machine's addresses, in one step, only while the machine has a key. */
+  addMachine(entry: SnapshotMachine, mark: SnapshotMark): Promise<SnapshotMachine | undefined>;
+  /** Adds `url` to the machine's addresses, only while the machine has a key. */
   noteUrl(machine: string, url: string): Promise<void>;
   metas(): Promise<SnapshotMeta[]>;
   data(machine: string, threadId: string): Promise<SnapshotData | undefined>;
   /**
-   * Stores the record only while the machine's stored key is the one with id
-   * `keyId`, checked in the same step as the write: a key purged or replaced
-   * by another window since drops it. Answers whether it was stored.
+   * Stores the record only while no purge or drop of it came since `mark` and
+   * the machine's stored key is the one with id `keyId`, all checked in the
+   * same step as the write. Answers whether it was stored.
    */
-  put(meta: SnapshotMeta, data: SnapshotData, keyId: string): Promise<boolean>;
+  put(meta: SnapshotMeta, data: SnapshotData, mark: SnapshotMark, keyId: string): Promise<boolean>;
+  /** The thread's record goes, and its drop generation moves on. */
   delete(machine: string, threadId: string): Promise<void>;
-  /** The machine's key and every record of it. */
+  /** The machine's key and every record of it go, and its purge generation moves on. */
   deleteMachine(machine: string): Promise<void>;
+  /** `deleteMachine` for every machine reached at `url`; answers which. */
+  deleteUrl(url: string): Promise<string[]>;
+  /** Everything goes, and the generation of a purge of everything moves on. */
   clear(): Promise<void>;
 }
 
@@ -69,14 +95,31 @@ export interface ThreadSnapshot { thread: Thread; after: MessageId | null }
 
 const recordKey = (machine: string, threadId: string) => JSON.stringify([machine, threadId]);
 
-/** A Map behind the same interface; what tests and a page without IndexedDB would use. */
+/** The keys of the generations: one for everything, one per machine, one per thread. */
+type GenerationKey = ['all'] | ['purge', string] | ['drop', string, string];
+const allKey = (): GenerationKey => ['all'];
+const purgeKey = (machine: string): GenerationKey => ['purge', machine];
+const dropKey = (machine: string, threadId: string): GenerationKey => ['drop', machine, threadId];
+
+/** Whether a write marked `mark` may still land, given what is stored now. */
+function unchanged(mark: SnapshotMark, now: Omit<SnapshotMark, 'keyId'>): boolean {
+  return mark.all === now.all && mark.purge === now.purge && mark.drop === now.drop;
+}
+
+/** A Map behind the same interface; what tests and a page without IndexedDB would use. Each method runs without an await, so it is atomic. */
 export class MemorySnapshotDb implements SnapshotDb {
   readonly keys = new Map<string, SnapshotMachine>();
   readonly meta = new Map<string, SnapshotMeta>();
   readonly records = new Map<string, SnapshotData>();
+  readonly generations = new Map<string, number>();
+  #gen(key: GenerationKey): number { return this.generations.get(JSON.stringify(key)) ?? 0; }
+  #bump(key: GenerationKey): void { this.generations.set(JSON.stringify(key), this.#gen(key) + 1); }
+  #now(machine: string, threadId: string) { return { all: this.#gen(allKey()), purge: this.#gen(purgeKey(machine)), drop: this.#gen(dropKey(machine, threadId)) }; }
   async machine(machine: string) { return this.keys.get(machine); }
   async machines() { return [...this.keys.values()]; }
-  async addMachine(entry: SnapshotMachine) {
+  async mark(machine: string, threadId: string) { return { ...this.#now(machine, threadId), keyId: this.keys.get(machine)?.id ?? null }; }
+  async addMachine(entry: SnapshotMachine, mark: SnapshotMark) {
+    if (!unchanged(mark, { ...this.#now(entry.machine, ''), drop: mark.drop })) return undefined;
     const held = this.keys.get(entry.machine);
     if (held) return held;
     this.keys.set(entry.machine, entry);
@@ -88,27 +131,44 @@ export class MemorySnapshotDb implements SnapshotDb {
   }
   async metas() { return [...this.meta.values()]; }
   async data(machine: string, threadId: string) { return this.records.get(recordKey(machine, threadId)); }
-  async put(meta: SnapshotMeta, data: SnapshotData, keyId: string) {
-    if (this.keys.get(meta.machine)?.id !== keyId) return false;
+  async put(meta: SnapshotMeta, data: SnapshotData, mark: SnapshotMark, keyId: string) {
+    if (!unchanged(mark, this.#now(meta.machine, meta.threadId)) || this.keys.get(meta.machine)?.id !== keyId) return false;
     const key = recordKey(meta.machine, meta.threadId);
     this.meta.set(key, meta);
     this.records.set(key, data);
     return true;
   }
   async delete(machine: string, threadId: string) {
+    this.#bump(dropKey(machine, threadId));
     const key = recordKey(machine, threadId);
     this.meta.delete(key);
     this.records.delete(key);
   }
-  async deleteMachine(machine: string) {
+  #deleteMachine(machine: string) {
+    this.#bump(purgeKey(machine));
     this.keys.delete(machine);
     for (const [key, meta] of this.meta) if (meta.machine === machine) { this.meta.delete(key); this.records.delete(key); }
+    // The purge generation outdates every drop generation of the machine.
+    for (const key of this.generations.keys()) if (key.startsWith(JSON.stringify(['drop', machine]).slice(0, -1) + ',')) this.generations.delete(key);
   }
-  async clear() { this.keys.clear(); this.meta.clear(); this.records.clear(); }
+  async deleteMachine(machine: string) { this.#deleteMachine(machine); }
+  async deleteUrl(url: string) {
+    const machines = [...this.keys.values()].filter(entry => entry.urls.includes(url)).map(entry => entry.machine);
+    for (const machine of machines) this.#deleteMachine(machine);
+    return machines;
+  }
+  async clear() {
+    this.#bump(allKey());
+    this.keys.clear(); this.meta.clear(); this.records.clear();
+    for (const key of this.generations.keys()) if (key.startsWith('["drop",')) this.generations.delete(key);
+  }
 }
 
 const DATABASE = 'boite-thread-snapshots-v1';
-type StoreName = 'machines' | 'meta' | 'data';
+/** 2: keys carry an id, and the generations store exists. What version 1 held is dropped. */
+const DATABASE_VERSION = 2;
+type StoreName = 'machines' | 'meta' | 'data' | 'generations';
+const STORES: StoreName[] = ['machines', 'meta', 'data', 'generations'];
 
 function done<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -125,18 +185,34 @@ function committed(transaction: IDBTransaction): Promise<void> {
   });
 }
 
-/** IndexedDB: machines by id, metadata and encrypted data by `[machine, threadId]`. */
+/** Reads `requests` one after the other inside a transaction, then hands their results over. */
+function readAll(asks: (() => IDBRequest)[], then: (results: unknown[]) => void): void {
+  const results: unknown[] = [];
+  const next = () => {
+    const ask = asks[results.length];
+    if (!ask) { then(results); return; }
+    const request = ask();
+    request.onsuccess = () => { results.push(request.result); next(); };
+  };
+  next();
+}
+
+const dropRange = (machine?: string) => machine === undefined ? IDBKeyRange.bound(['drop'], ['drop', []]) : IDBKeyRange.bound(['drop', machine], ['drop', machine, []]);
+
+/** IndexedDB: machines by id, metadata and encrypted data by `[machine, threadId]`, generations by `GenerationKey`. */
 export class IndexedSnapshotDb implements SnapshotDb {
   #db: Promise<IDBDatabase> | null = null;
 
   #open(): Promise<IDBDatabase> {
     return this.#db ??= new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open(DATABASE, 1);
+      const request = indexedDB.open(DATABASE, DATABASE_VERSION);
       request.onupgradeneeded = () => {
         const db = request.result;
+        for (const name of [...db.objectStoreNames]) db.deleteObjectStore(name);
         db.createObjectStore('machines', { keyPath: 'machine' });
         db.createObjectStore('meta', { keyPath: ['machine', 'threadId'] });
         db.createObjectStore('data');
+        db.createObjectStore('generations');
       };
       request.onsuccess = () => {
         const db = request.result;
@@ -154,82 +230,106 @@ export class IndexedSnapshotDb implements SnapshotDb {
     return done(ask(db.transaction(store, 'readonly').objectStore(store)));
   }
 
-  async #write(stores: StoreName[], change: (transaction: IDBTransaction) => void): Promise<void> {
+  /** One transaction over `stores`; what `change` leaves in its result once it committed. */
+  async #write<T>(stores: StoreName[], mode: IDBTransactionMode, change: (transaction: IDBTransaction, answer: (value: T) => void) => void, fallback: T): Promise<T> {
     const db = await this.#open();
-    const transaction = db.transaction(stores, 'readwrite');
+    const transaction = db.transaction(stores, mode);
     const finished = committed(transaction);
-    change(transaction);
+    let result = fallback;
+    change(transaction, value => { result = value; });
     await finished;
+    return result;
+  }
+
+  /** The generations as stored now, read inside `t`. */
+  #now(t: IDBTransaction, machine: string, threadId: string, then: (now: Omit<SnapshotMark, 'keyId'>, entry: SnapshotMachine | undefined) => void): void {
+    const generations = t.objectStore('generations');
+    readAll([() => generations.get(allKey()), () => generations.get(purgeKey(machine)), () => generations.get(dropKey(machine, threadId)), () => t.objectStore('machines').get(machine)], ([all, purge, drop, entry]) => {
+      then({ all: (all as number | undefined) ?? 0, purge: (purge as number | undefined) ?? 0, drop: (drop as number | undefined) ?? 0 }, entry as SnapshotMachine | undefined);
+    });
+  }
+
+  #bump(t: IDBTransaction, key: GenerationKey): void {
+    const generations = t.objectStore('generations');
+    const reading = generations.get(key);
+    reading.onsuccess = () => { generations.put(((reading.result as number | undefined) ?? 0) + 1, key); };
+  }
+
+  #deleteMachine(t: IDBTransaction, machine: string): void {
+    const range = IDBKeyRange.bound([machine], [machine, []]);
+    this.#bump(t, purgeKey(machine));
+    t.objectStore('machines').delete(machine);
+    t.objectStore('meta').delete(range);
+    t.objectStore('data').delete(range);
+    t.objectStore('generations').delete(dropRange(machine));
   }
 
   machine(machine: string) { return this.#read<SnapshotMachine | undefined>('machines', store => store.get(machine)); }
   machines() { return this.#read<SnapshotMachine[]>('machines', store => store.getAll()); }
-  async addMachine(entry: SnapshotMachine) {
-    let kept: SnapshotMachine | undefined;
-    await this.#write(['machines'], t => {
-      const store = t.objectStore('machines');
-      const reread = () => { store.get(entry.machine).onsuccess = (event) => { kept = (event.target as IDBRequest<SnapshotMachine | undefined>).result; }; };
-      store.get(entry.machine).onsuccess = (event) => {
-        kept = (event.target as IDBRequest<SnapshotMachine | undefined>).result;
-        if (kept) return;
-        // add, never put: should another window's key be there by now, it stays, and is the one read back.
-        const adding = store.add(entry);
-        adding.onsuccess = () => { kept = entry; };
-        adding.onerror = (event) => {
-          if (adding.error?.name !== 'ConstraintError') return;
-          event.preventDefault();
-          event.stopPropagation();
-          reread();
-        };
-      };
-    });
-    if (!kept) throw new Error(`Thread snapshots: no key kept for machine ${entry.machine}`);
-    return kept;
+  mark(machine: string, threadId: string) {
+    return this.#write<SnapshotMark>(['machines', 'generations'], 'readonly', (t, answer) => {
+      this.#now(t, machine, threadId, (now, entry) => answer({ ...now, keyId: entry?.id ?? null }));
+    }, UNREADABLE);
+  }
+  addMachine(entry: SnapshotMachine, mark: SnapshotMark) {
+    return this.#write<SnapshotMachine | undefined>(['machines', 'generations'], 'readwrite', (t, answer) => {
+      this.#now(t, entry.machine, '', (now, held) => {
+        if (!unchanged(mark, { ...now, drop: mark.drop })) return;
+        if (held) { answer(held); return; }
+        // add, never put: should another window's key be there by now, the transaction fails and nothing is replaced.
+        t.objectStore('machines').add(entry).onsuccess = () => answer(entry);
+      });
+    }, undefined);
   }
   noteUrl(machine: string, url: string) {
-    return this.#write(['machines'], t => {
+    return this.#write<void>(['machines'], 'readwrite', t => {
       const store = t.objectStore('machines');
       const reading = store.get(machine) as IDBRequest<SnapshotMachine | undefined>;
       reading.onsuccess = () => {
         const entry = reading.result;
         if (entry && !entry.urls.includes(url)) store.put({ ...entry, urls: [...entry.urls, url] });
       };
-    });
+    }, undefined);
   }
   metas() { return this.#read<SnapshotMeta[]>('meta', store => store.getAll()); }
   data(machine: string, threadId: string) { return this.#read<SnapshotData | undefined>('data', store => store.get([machine, threadId])); }
-  async put(meta: SnapshotMeta, data: SnapshotData, keyId: string) {
-    let stored = false;
-    // One transaction over the key and the record: no other window's purge or new key comes between the check and the write.
-    await this.#write(['machines', 'meta', 'data'], t => {
-      const reading = t.objectStore('machines').get(meta.machine) as IDBRequest<SnapshotMachine | undefined>;
-      reading.onsuccess = () => {
-        if (reading.result?.id !== keyId) return;
+  put(meta: SnapshotMeta, data: SnapshotData, mark: SnapshotMark, keyId: string) {
+    // One transaction over the generations, the key and the record: no other window's purge, drop or new key comes between the check and the write.
+    return this.#write<boolean>(STORES, 'readwrite', (t, answer) => {
+      this.#now(t, meta.machine, meta.threadId, (now, entry) => {
+        if (!unchanged(mark, now) || entry?.id !== keyId) return;
         t.objectStore('meta').put(meta);
         t.objectStore('data').put(data, [meta.machine, meta.threadId]);
-        stored = true;
-      };
-    });
-    return stored;
+        answer(true);
+      });
+    }, false);
   }
   delete(machine: string, threadId: string) {
-    return this.#write(['meta', 'data'], t => {
+    return this.#write<void>(['meta', 'data', 'generations'], 'readwrite', t => {
+      this.#bump(t, dropKey(machine, threadId));
       t.objectStore('meta').delete([machine, threadId]);
       t.objectStore('data').delete([machine, threadId]);
-    });
+    }, undefined);
   }
-  async deleteMachine(machine: string) {
-    const range = IDBKeyRange.bound([machine], [machine, []]);
-    await this.#write(['machines', 'meta', 'data'], t => {
-      t.objectStore('machines').delete(machine);
-      t.objectStore('meta').delete(range);
-      t.objectStore('data').delete(range);
-    });
+  deleteMachine(machine: string) {
+    return this.#write<void>(STORES, 'readwrite', t => this.#deleteMachine(t, machine), undefined);
+  }
+  deleteUrl(url: string) {
+    return this.#write<string[]>(STORES, 'readwrite', (t, answer) => {
+      const reading = t.objectStore('machines').getAll() as IDBRequest<SnapshotMachine[]>;
+      reading.onsuccess = () => {
+        const machines = reading.result.filter(entry => entry.urls.includes(url)).map(entry => entry.machine);
+        for (const machine of machines) this.#deleteMachine(t, machine);
+        answer(machines);
+      };
+    }, []);
   }
   clear() {
-    return this.#write(['machines', 'meta', 'data'], t => {
+    return this.#write<void>(STORES, 'readwrite', t => {
+      this.#bump(t, allKey());
       for (const store of ['machines', 'meta', 'data'] as const) t.objectStore(store).clear();
-    });
+      t.objectStore('generations').delete(dropRange());
+    }, undefined);
   }
 }
 
@@ -249,20 +349,12 @@ export interface SnapshotOptions {
   db: SnapshotDb;
   subtle: SubtleCrypto;
   now?: () => number;
-  /** Where this page tells its other windows of a purge, and hears theirs; none by default. */
+  /** Where this page tells its other windows of a purge, and hears theirs, so they let their waiting writes go early; none by default. */
   channel?: BroadcastChannel | null;
 }
 
-/** A write's point of departure (`ThreadSnapshots.mark`). */
-export interface SnapshotMark {
-  /** The purge count when it was asked. */
-  count: number;
-  /** The id of the machine's key then, null when it had none: only then may the write make one. */
-  key: Promise<string | null>;
-}
-
 /** What a purge tells the other windows. */
-interface PurgeNotice { machines?: string[]; urls?: string[]; all?: boolean }
+export interface PurgeNotice { machines: string[]; urls: string[]; all: boolean }
 
 /** A key this page holds, and the addresses it knows the machine's entry has. */
 interface HeldKey { id: string; key: CryptoKey; urls: Set<string> }
@@ -280,28 +372,19 @@ export class ThreadSnapshots {
   /** Which threads have a record, read once; until then every thread may. */
   #index: Promise<Map<string, Set<string>>> | null = null;
   #known: Map<string, Set<string>> | null = null;
-  /** Writes and deletes run one after the other, so eviction counts what is there. */
+  /** This page's writes and deletes run one after the other, so eviction counts what is there. */
   #queue: Promise<unknown> = Promise.resolve();
+  /** The keys this page read; a write uses one only when it is the key its mark names. */
   readonly #keys = new Map<string, Promise<HeldKey>>();
   readonly #channel: BroadcastChannel | null;
-  /**
-   * Counts the purges this page asked or heard of from another window. A
-   * write asked at an earlier count than the last purge of its machine, its
-   * address or everything is not kept: a debounced write must not bring back
-   * what a removal or revocation purged. Across windows, the key check in
-   * `SnapshotDb.put` holds even when the notice is late or missing.
-   */
-  #purges = 0;
-  readonly #purgedMachines = new Map<string, number>();
-  readonly #purgedUrls = new Map<string, number>();
-  #purgedAll = 0;
+  readonly #listeners = new Set<(notice: PurgeNotice) => void>();
 
   constructor(options: SnapshotOptions) {
     this.#db = options.db;
     this.#subtle = options.subtle;
     this.#now = options.now ?? Date.now;
     this.#channel = options.channel ?? null;
-    this.#channel?.addEventListener('message', (event: MessageEvent<PurgeNotice>) => {
+    this.#channel?.addEventListener('message', (event: MessageEvent<Partial<PurgeNotice>>) => {
       const notice = event.data;
       if (!notice || typeof notice !== 'object') return;
       const strings = (list: unknown) => Array.isArray(list) ? list.filter((item): item is string => typeof item === 'string') : [];
@@ -312,20 +395,22 @@ export class ThreadSnapshots {
   /** Stops hearing other windows. */
   close(): void { this.#channel?.close(); }
 
-  /** Counts a purge here, and forgets what this page held of it. */
-  #purged({ machines = [], urls = [], all = false }: PurgeNotice, mark = ++this.#purges): number {
-    if (all) { this.#purgedAll = mark; this.#keys.clear(); this.#known?.clear(); }
-    for (const machine of machines) {
-      this.#purgedMachines.set(machine, Math.max(this.#purgedMachines.get(machine) ?? 0, mark));
-      this.#keys.delete(machine);
-      this.#known?.delete(machine);
-    }
-    for (const url of urls) this.#purgedUrls.set(url, Math.max(this.#purgedUrls.get(url) ?? 0, mark));
-    return mark;
+  /** Hears of every purge, this page's or another window's: the waiting writes it concerns may go. */
+  onPurge(listener: (notice: PurgeNotice) => void): () => void {
+    this.#listeners.add(listener);
+    return () => { this.#listeners.delete(listener); };
   }
 
-  #tell(notice: PurgeNotice): void {
-    try { this.#channel?.postMessage(notice); } catch { /* A closed channel: the key check still holds. */ }
+  /** Forgets what this page held of a purge, and says so. */
+  #purged(notice: PurgeNotice): void {
+    if (notice.all) { this.#keys.clear(); this.#known?.clear(); }
+    for (const machine of notice.machines) { this.#keys.delete(machine); this.#known?.delete(machine); }
+    for (const listener of [...this.#listeners]) listener(notice);
+  }
+
+  #told(notice: PurgeNotice): void {
+    this.#purged(notice);
+    try { this.#channel?.postMessage(notice); } catch { /* A closed channel: the generations still hold. */ }
   }
 
   #serial<T>(task: () => Promise<T>): Promise<T> {
@@ -360,16 +445,13 @@ export class ThreadSnapshots {
     } else threads?.delete(threadId);
   }
 
-  /** What a write scheduled now for `machine` carries (`write`'s `mark`). */
-  mark(machine: string): SnapshotMark {
-    const held = this.#keys.get(machine);
-    const key = held ? held.then(entry => entry.id) : this.#db.machine(machine).then(entry => entry?.id ?? null);
-    // Unreadable: a write may neither make a key nor use one.
-    return { count: this.#purges, key: key.catch(() => '') };
-  }
-
-  #purgedSince(machine: string, url: string | null, mark: number): boolean {
-    return this.#purgedAll > mark || (this.#purgedMachines.get(machine) ?? 0) > mark || (url !== null && (this.#purgedUrls.get(url) ?? 0) > mark);
+  /**
+   * Where a write of `threadId` asked now starts from: read before the page
+   * is taken, so that a purge or a drop after this point keeps it out. Read
+   * behind this page's drops and purges already asked, which come before it.
+   */
+  mark(machine: string, threadId: string): Promise<SnapshotMark> {
+    return this.#serial(() => this.#db.mark(machine, threadId)).catch(() => UNREADABLE);
   }
 
   /** Starts reading which threads have a record, so a later `mayHold` answers without waiting. */
@@ -382,23 +464,28 @@ export class ThreadSnapshots {
   }
 
   /**
-   * The machine's key, made non-extractable on its first write when `create`
-   * says the write may make one; `url` is where this device reaches it.
+   * The machine's key: the one `mark` names, or for a write whose machine had
+   * none, the one stored since or one made now, non-extractable, unless a
+   * purge came since. Without a
+   * mark (a read), whichever is stored. `url` is where this device reaches it.
    */
-  async #key(machine: string, url: string | null, create: boolean): Promise<HeldKey | undefined> {
-    const cached = this.#keys.get(machine);
-    if (cached) {
-      const held = await cached;
-      if (url !== null && !held.urls.has(url)) { await this.#db.noteUrl(machine, url); held.urls.add(url); }
-      return held;
+  async #key(machine: string, url: string | null, mark: SnapshotMark | null): Promise<HeldKey | undefined> {
+    const cached = await this.#keys.get(machine)?.catch(() => undefined);
+    let held = cached && (!mark || cached.id === mark.keyId) ? cached : undefined;
+    if (!held) {
+      const entry = await this.#db.machine(machine);
+      // A key made since a mark that found none is fine: the commit checks no purge came since.
+      let kept = entry && (!mark || mark.keyId === null || entry.id === mark.keyId) ? entry : undefined;
+      if (!entry && mark?.keyId === null) {
+        const key = await this.#subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+        // Another window may make this machine's first key at the same time: the one stored first is everyone's.
+        kept = await this.#db.addMachine({ machine, id: crypto.randomUUID(), key, urls: url === null ? [] : [url] }, mark);
+      }
+      if (!kept) return undefined;
+      held = { id: kept.id, key: kept.key, urls: new Set(kept.urls) };
+      this.#keys.set(machine, Promise.resolve(held));
     }
-    const entry = await this.#db.machine(machine);
-    if (!entry && !create) return undefined;
-    // Another window may make this machine's first key at the same time: the one stored first is everyone's.
-    const kept = entry ?? await this.#db.addMachine({ machine, id: crypto.randomUUID(), key: await this.#subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']), urls: url === null ? [] : [url] });
-    if (url !== null && !kept.urls.includes(url)) await this.#db.noteUrl(machine, url);
-    const held: HeldKey = { id: kept.id, key: kept.key, urls: new Set(url === null ? kept.urls : [...kept.urls, url]) };
-    this.#keys.set(machine, Promise.resolve(held));
+    if (url !== null && !held.urls.has(url)) { await this.#db.noteUrl(machine, url); held.urls.add(url); }
     return held;
   }
 
@@ -406,29 +493,24 @@ export class ThreadSnapshots {
    * Keeps `thread` as `machine`'s most recently opened, unless it may not be
    * kept or is over `SNAPSHOT_BYTES`; then drops the oldest records until the
    * bounds hold. Answers whether it was kept. A thread that may not be kept
-   * loses any record it had. `mark` is where the write was asked
-   * (`mark()`): a purge of the machine or its address since then skips it, and
-   * so does a key other than the one the machine had then, or any key when it
-   * had none and another window made one meanwhile. A write never makes a key
-   * for a machine that had one when it was asked.
+   * loses any record it had. `mark` (`mark()`) is where the write was asked,
+   * read before its page was taken: a purge of the machine or a drop of the
+   * thread since, or another key, keeps it out.
    */
-  write(machine: string, url: string | null, thread: Thread, after: MessageId | null, mark: SnapshotMark = this.mark(machine)): Promise<boolean> {
+  write(machine: string, url: string | null, thread: Thread, after: MessageId | null, mark: Promise<SnapshotMark> = this.mark(machine, thread.id)): Promise<boolean> {
     return this.#serial(async () => {
-      const purged = () => this.#purgedSince(machine, url, mark.count);
       try {
-        if (purged()) return false;
+        const marked = await mark;
         if (!snapshotAllowed(thread)) { await this.#drop(machine, thread.id); return false; }
         const plain = bytes(JSON.stringify({ thread, after }));
         if (plain.byteLength > SNAPSHOT_BYTES) { await this.#drop(machine, thread.id); return false; }
-        const expected = await mark.key;
-        const held = await this.#key(machine, url, expected === null);
-        if (!held || purged() || (expected !== null && held.id !== expected)) return false;
+        const held = await this.#key(machine, url, marked);
+        if (!held) return false;
         const iv = crypto.getRandomValues(new Uint8Array(12));
         const data = await this.#subtle.encrypt({ name: 'AES-GCM', iv, additionalData: bytes(recordKey(machine, thread.id)) }, held.key, plain);
         await this.#loadIndex();
-        if (purged()) return false;
-        if (!await this.#db.put({ machine, threadId: thread.id, bytes: data.byteLength, openedAt: this.#now() }, { iv, data }, held.id)) {
-          // Purged or given a new key by another window: what this page held of it is stale.
+        if (!await this.#db.put({ machine, threadId: thread.id, bytes: data.byteLength, openedAt: this.#now() }, { iv, data }, marked, held.id)) {
+          // A purge, a drop or another key came first, maybe from another window: what this page held of the key may be stale.
           this.#keys.delete(machine);
           return false;
         }
@@ -468,7 +550,7 @@ export class ThreadSnapshots {
       if (!this.mayHold(machine, threadId)) return undefined;
       const record = await this.#db.data(machine, threadId);
       if (!record) { this.#noteIndex(machine, threadId, false); return undefined; }
-      const held = await this.#key(machine, null, false);
+      const held = await this.#key(machine, null, null);
       if (!held) { await this.drop(machine, threadId); return undefined; }
       try {
         const plain = await this.#subtle.decrypt({ name: 'AES-GCM', iv: record.iv as Uint8Array<ArrayBuffer>, additionalData: bytes(recordKey(machine, threadId)) }, held.key, record.data);
@@ -484,39 +566,32 @@ export class ThreadSnapshots {
     }
   }
 
-  /** Forgets one thread's record: the core refused its cursor, or the thread changed under it. */
+  /**
+   * Forgets one thread's record: the core refused its cursor, or the thread
+   * changed under it. Always in the database, and its drop generation keeps
+   * out any write of it asked before, in this window or another.
+   */
   drop(machine: string, threadId: string): Promise<void> {
-    // Always in the database, behind every write asked before it: this page's index
-    // knows neither a first write still pending nor a record another window wrote.
     return this.#serial(() => this.#drop(machine, threadId)).catch(() => undefined);
   }
 
   /** Forgets a machine: its key and every record of it. */
   purgeMachine(machine: string): Promise<void> {
-    this.#purged({ machines: [machine] });
-    this.#tell({ machines: [machine] });
+    this.#told({ machines: [machine], urls: [], all: false });
     return this.#serial(() => this.#db.deleteMachine(machine)).catch(() => undefined);
   }
 
   /** Forgets every machine this device reached at `url`. */
   purgeUrl(url: string): Promise<void> {
-    const mark = this.#purged({ urls: [url] });
-    this.#tell({ urls: [url] });
     return this.#serial(async () => {
-      for (const entry of await this.#db.machines()) {
-        if (!entry.urls.includes(url)) continue;
-        // A write asked before this purge, under another address or none, is not kept either, here or in another window.
-        this.#purged({ machines: [entry.machine] }, mark);
-        this.#tell({ machines: [entry.machine] });
-        await this.#db.deleteMachine(entry.machine);
-      }
+      const machines = await this.#db.deleteUrl(url);
+      this.#told({ machines, urls: [url], all: false });
     }).catch(() => undefined);
   }
 
   /** Forgets everything on this device. */
   purgeAll(): Promise<void> {
-    this.#purged({ all: true });
-    this.#tell({ all: true });
+    this.#told({ machines: [], urls: [], all: true });
     return this.#serial(() => this.#db.clear()).catch(() => undefined);
   }
 }

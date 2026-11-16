@@ -494,13 +494,18 @@ connection other than the owner's or a paired device's are never written. A
 rewind, a truncation, a refused open or a forgotten thread drops its record.
 Forgetting a saved machine (`removeEnvironment`, which a revoked key also
 calls) or a group dropping it (`removeBrought`) purges every machine this
-device reached at that address, key included. A write still waiting for its
-page then, or when the store lets its machine go, is not made; other windows
-hear of the purge on a `BroadcastChannel` and skip theirs too. Whatever the
-notice, a record is stored only in the same IndexedDB transaction that finds
-the machine's stored key to be the one it was encrypted with, and only a write
-asked while the machine had no key may make one. A drop deletes the record in
-the database, behind every write asked before it. The machine is the core's
+device reached at that address, key included. Every window of the browser
+shares the database, so the guards live in it: a purge generation per machine,
+never deleted, and a drop generation per thread, kept until a purge of its
+machine outdates it, each moved on in the same transaction as the deletion. A write reads both and the machine's key when
+it is scheduled, takes its page only after, encrypts outside any transaction,
+and stores the record in one transaction that writes nothing unless both
+generations and the stored key are unchanged. Making a missing key checks the
+purge generation in its own transaction, so a key being made when another
+window purges does not come back. A drop always deletes in the database. A
+purge is also posted on a `BroadcastChannel`, only so other windows let their
+waiting writes go early, and a store that lets its machine go cancels its own.
+The machine is the core's
 `coreId`; a core without one keeps no snapshots, and neither does a browser
 without IndexedDB or `crypto.subtle`. Boite has no sign-out and no Settings
 action to forget local data, so nothing purges all machines at once.

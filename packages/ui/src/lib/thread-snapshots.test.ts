@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import type { Message, Thread } from '@boite/contracts';
 import { MemorySnapshotDb, SNAPSHOT_BYTES, SNAPSHOT_THREADS, SNAPSHOT_TOTAL, ThreadSnapshots, setThreadSnapshots } from './thread-snapshots';
 import { removeEnvironment, upsertEnvironment } from './endpoint-env';
@@ -88,12 +88,12 @@ test('a record that does not decrypt is dropped, and so is one moved to another 
   const flipped = new Uint8Array(first!.data.slice(0));
   flipped[0]! ^= 1;
   const keyId = (await db.machine('core-a'))!.id;
-  await db.put((await db.metas()).find(meta => meta.threadId === 't1')!, { iv: first!.iv, data: flipped.buffer }, keyId);
+  await db.put((await db.metas()).find(meta => meta.threadId === 't1')!, { iv: first!.iv, data: flipped.buffer }, await db.mark('core-a', 't1'), keyId);
   expect(await snapshots.read('core-a', 't1')).toBeUndefined();
   expect((await db.metas()).map(meta => meta.threadId)).toEqual(['t2']);
   // t2's bytes under t3's name: the additional data says which thread it was written for.
   const t2 = (await db.data('core-a', 't2'))!;
-  await db.put({ machine: 'core-a', threadId: 't3', bytes: 1, openedAt: 1 }, t2, keyId);
+  await db.put({ machine: 'core-a', threadId: 't3', bytes: 1, openedAt: 1 }, t2, await db.mark('core-a', 't3'), keyId);
   const fresh = new ThreadSnapshots({ db, subtle: crypto.subtle });
   expect(await fresh.read('core-a', 't3')).toBeUndefined();
   expect(await db.data('core-a', 't3')).toBeUndefined();
@@ -148,41 +148,95 @@ test('two windows writing a machine\'s first threads at once share one key, and 
   expect((await db.machine('core-a'))?.urls).toEqual(['https://a.example']);
 });
 
-test('a write asked in one window before another window purged the machine, or made it a new key, is not kept', async () => {
+test('a write asked in one window before another window purged the machine is not kept, and the next one uses the new key', async () => {
   const db = new MemorySnapshotDb();
   const one = new ThreadSnapshots({ db, subtle: crypto.subtle, channel: null });
   const two = new ThreadSnapshots({ db, subtle: crypto.subtle, channel: null });
   // Window two holds the machine's key, and schedules a write.
   expect(await two.write('core-a', null, thread('t1'), null)).toBe(true);
-  const waiting = two.mark('core-a');
+  const waiting = two.mark('core-a', 't2');
   // Window one forgets the machine (removed, or the device revoked there): key and records go.
   await one.purgeMachine('core-a');
   expect([db.keys.size, db.records.size]).toEqual([0, 0]);
-  // Window two, not told, still holds the old key for its next write.
-  const again = two.mark('core-a');
+  // Window two, not told, still holds the old key.
   expect(await two.write('core-a', null, thread('t2'), null, waiting)).toBe(false);
   expect([db.keys.size, db.records.size]).toEqual([0, 0]);
-  // Window one writes again under a new key: window two's write, asked under the key it held, is not kept either.
+  // Window one writes again under a new key; window two's next write uses it, not the one it held.
   expect(await one.write('core-a', null, thread('t3'), null)).toBe(true);
-  expect(await two.write('core-a', null, thread('t2'), null, again)).toBe(false);
+  expect(await two.write('core-a', null, thread('t2'), null)).toBe(true);
   const reloaded = new ThreadSnapshots({ db, subtle: crypto.subtle, channel: null });
-  expect((await db.metas()).map(meta => meta.threadId)).toEqual(['t3']);
   expect((await reloaded.read('core-a', 't3'))?.thread.id).toBe('t3');
+  expect((await reloaded.read('core-a', 't2'))?.thread.id).toBe('t2');
 });
 
-test('a purge in one window reaches the writes another window has waiting, through the broadcast channel', async () => {
+/** WebCrypto whose key making or encryption waits for the returned release, once. */
+function heldCrypto(step: 'generateKey' | 'encrypt'): { subtle: SubtleCrypto; started: Promise<void>; release: () => void } {
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  let start!: () => void;
+  const started = new Promise<void>(resolve => { start = resolve; });
+  let held = false;
+  const real = crypto.subtle;
+  const subtle = {
+    generateKey: (...args: Parameters<SubtleCrypto['generateKey']>) => real.generateKey(...args),
+    encrypt: (...args: Parameters<SubtleCrypto['encrypt']>) => real.encrypt(...args),
+    decrypt: (...args: Parameters<SubtleCrypto['decrypt']>) => real.decrypt(...args),
+  } as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>;
+  const plain = subtle[step]!;
+  subtle[step] = async (...args: unknown[]) => {
+    if (!held) { held = true; start(); await gate; }
+    return plain(...args);
+  };
+  return { subtle: subtle as unknown as SubtleCrypto, started, release };
+}
+
+test('a key being made in one window while another purges the machine does not come back, nor does a write asked before the purge', async () => {
+  const db = new MemorySnapshotDb();
+  const one = new ThreadSnapshots({ db, subtle: crypto.subtle, channel: null });
+  const held = heldCrypto('generateKey');
+  const two = new ThreadSnapshots({ db, subtle: held.subtle, channel: null });
+  // Window two starts the machine's first write and is making its key when window one purges.
+  const writing = two.write('core-a', null, thread('t1'), null);
+  await held.started;
+  await one.purgeMachine('core-a');
+  held.release();
+  expect(await writing).toBe(false);
+  expect([db.keys.size, db.records.size]).toEqual([0, 0]);
+  // A write asked while the machine had no key, then made one in window one, which then purged.
+  const waiting = two.mark('core-a', 't2');
+  expect(await one.write('core-a', null, thread('t3'), null)).toBe(true);
+  await one.purgeMachine('core-a');
+  expect(await two.write('core-a', null, thread('t2'), null, waiting)).toBe(false);
+  expect([db.keys.size, db.records.size]).toEqual([0, 0]);
+});
+
+test('a drop in one window wins over a write of that thread another window is encrypting', async () => {
+  const db = new MemorySnapshotDb();
+  const held = heldCrypto('encrypt');
+  const one = new ThreadSnapshots({ db, subtle: held.subtle, channel: null });
+  const two = new ThreadSnapshots({ db, subtle: crypto.subtle, channel: null });
+  expect(await two.write('core-a', null, thread('t0'), null)).toBe(true);
+  // Window one is encrypting t1 under the machine's key when window two drops t1 (a rewind there).
+  const writing = one.write('core-a', null, thread('t1'), null);
+  await held.started;
+  await two.drop('core-a', 't1');
+  held.release();
+  expect(await writing).toBe(false);
+  expect(await db.data('core-a', 't1')).toBeUndefined();
+  expect(await db.data('core-a', 't0')).toBeDefined();
+});
+
+test('a purge in one window is told to the others, which let their waiting writes go', async () => {
   if (typeof BroadcastChannel === 'undefined') return;
   const db = new MemorySnapshotDb();
   const one = new ThreadSnapshots({ db, subtle: crypto.subtle, channel: new BroadcastChannel('snapshots-test') });
   const two = new ThreadSnapshots({ db, subtle: crypto.subtle, channel: new BroadcastChannel('snapshots-test') });
-  // Window two schedules a write while the machine has no key: alone, it would make one.
-  const waiting = two.mark('core-a');
-  expect(await one.write('core-a', 'https://a.example', thread('t1'), null)).toBe(true);
+  const heard: unknown[] = [];
+  const unlisten = two.onPurge(notice => heard.push(notice));
+  await one.write('core-a', 'https://a.example', thread('t1'), null);
   await one.purgeUrl('https://a.example');
-  await new Promise(resolve => setTimeout(resolve, 50));
-  expect(await two.write('core-a', null, thread('t2'), null, waiting)).toBe(false);
-  expect([db.keys.size, db.records.size]).toEqual([0, 0]);
-  one.close(); two.close();
+  await vi.waitFor(() => expect(heard).toEqual([{ machines: ['core-a'], urls: ['https://a.example'], all: false }]));
+  unlisten(); one.close(); two.close();
 });
 
 test('a drop deletes a record another window wrote after this window read its index', async () => {

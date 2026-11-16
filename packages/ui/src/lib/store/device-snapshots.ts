@@ -29,6 +29,8 @@ export class DeviceSnapshots {
   readonly #writes = new Map<ThreadId, () => void>();
   /** Bumped when the store lets its machine go: a write that fires after it is not made. */
   #generation = 0;
+  /** Stops hearing of purges, which let the waiting writes go early (the database keeps them out anyway). */
+  #unlisten: (() => void) | null = null;
 
   /** `unloaded` holds the threads shown as a bare row, their page not in yet: nothing to write. */
   constructor(private readonly ctx: StoreContext, private readonly pages: Pages, private readonly unloaded: ReadonlySet<ThreadId>) {}
@@ -78,26 +80,46 @@ export class DeviceSnapshots {
     const target = this.#target();
     if (!target) return;
     this.#writes.get(threadId)?.();
-    // A purge of the machine or its address after this point, a removal or a revocation, skips the write.
-    const mark = target.snapshots.mark(target.machine);
+    this.#listen(target.snapshots);
+    // A purge of the machine or a drop of the thread after this point, in any window, keeps the write out.
+    const mark = target.snapshots.mark(target.machine, threadId);
     const generation = this.#generation;
+    let live = true;
     let cancelIdle: (() => void) | null = null;
     const timer: ReturnType<typeof setTimeout> = setTimeout(() => {
       cancelIdle = whenIdle(() => {
         this.#writes.delete(threadId);
-        if (this.#generation !== generation || this.ctx.store.core?.coreId !== target.machine) return;
-        const thread = this.#page(threadId) ?? left;
-        if (!thread || thread.messages.length === 0) return;
-        void target.snapshots.write(target.machine, target.url, thread, resumeRequest(threadId, thread).after ?? null, mark);
+        // The page is taken once the mark is read, never before.
+        void mark.then(() => {
+          if (!live || this.#generation !== generation || this.ctx.store.core?.coreId !== target.machine) return;
+          const thread = this.#page(threadId) ?? left;
+          if (!thread || thread.messages.length === 0) return;
+          void target.snapshots.write(target.machine, target.url, thread, resumeRequest(threadId, thread).after ?? null, mark);
+        });
       });
     }, SNAPSHOT_WRITE_DELAY_MS);
-    this.#writes.set(threadId, () => { clearTimeout(timer); cancelIdle?.(); this.#writes.delete(threadId); });
+    this.#writes.set(threadId, () => { live = false; clearTimeout(timer); cancelIdle?.(); this.#writes.delete(threadId); });
+  }
+
+  /** A purge here or in another window that concerns this machine lets the waiting writes go. */
+  #listen(snapshots: ThreadSnapshots): void {
+    this.#unlisten ??= snapshots.onPurge(({ machines, urls, all }) => {
+      const machine = this.ctx.store.core?.coreId;
+      const url = this.ctx.connection.endpointUrl;
+      if (all || (machine && machines.includes(machine)) || (url !== null && urls.includes(withoutTrailingSlashes(url)))) this.#cancelAll();
+    });
+  }
+
+  #cancelAll(): void {
+    for (const cancel of [...this.#writes.values()]) cancel();
   }
 
   /** The store lets its machine go: the writes still waiting are not made. */
   stop(): void {
     this.#generation++;
-    for (const cancel of [...this.#writes.values()]) cancel();
+    this.#cancelAll();
+    this.#unlisten?.();
+    this.#unlisten = null;
   }
 
   /** The thread changed in a way its snapshot cannot be caught up from: it goes. */
