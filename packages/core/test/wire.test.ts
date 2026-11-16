@@ -93,6 +93,15 @@ describe('what a remote client is sent', () => {
     connection.close(1000, 'done');
   });
 
+  test('a stop closed by emphasis in the next delta still ends the first sentence', () => {
+    const { connection, sent } = attached(true);
+    connection.sendEvent('message.delta', delta('**Done.'));
+    connection.sendEvent('message.delta', delta('**'));
+    connection.sendEvent('message.delta', delta(' More text'));
+    expect(sent.map((entry) => entry.frame.params?.text)).toEqual(['**Done.', '**', ' ']);
+    connection.close(1000, 'done');
+  });
+
   test('a long paragraph, a code block or a list leaves by the time cap rather than waiting for its end', async () => {
     const { connection, sent } = attached(true);
     const texts = (): (string | undefined)[] => sent.map((entry) => entry.frame.params?.text);

@@ -25,21 +25,23 @@ const SENTENCE_CLOSERS = '"\')]*_\u201d\u2019\u00bb';
 const BLANK_LINE = /\n[ \t]*\n/g;
 
 /**
- * Where the first sentence of a text ends in `text`, given the last character
- * already sent of it, '' while only blanks were: the index just past the space
- * that follows its stop, or past the first line break after a word. -1 while
- * it goes on.
+ * Where the first sentence of a text ends in `text`, given `before`, the state
+ * the previous delta left: `cut` is the index just past the space that follows
+ * its stop, or past the first line break after a word, -1 while it goes on.
+ * `state` is what the next delta starts from: '' while only blanks were sent,
+ * else the last character that counts, a stop kept across the quotes and
+ * emphasis that close around it.
  */
-function sentenceEnd(before: string, text: string): number {
+function sentenceEnd(before: string, text: string): { cut: number; state: string } {
   let previous = before;
   for (let at = 0; at < text.length; at += 1) {
     const char = text[at] as string;
     if (previous === '' && /\s/.test(char)) continue;
-    if (char === '\n' || WIDE_SENTENCE_STOPS.includes(char)) return at + 1;
-    if ((char === ' ' || char === '\t') && SENTENCE_STOPS.includes(previous)) return at + 1;
+    if (char === '\n' || WIDE_SENTENCE_STOPS.includes(char)) return { cut: at + 1, state: previous };
+    if ((char === ' ' || char === '\t') && SENTENCE_STOPS.includes(previous)) return { cut: at + 1, state: previous };
     if (!(SENTENCE_CLOSERS.includes(char) && SENTENCE_STOPS.includes(previous))) previous = char;
   }
-  return -1;
+  return { cut: -1, state: previous };
 }
 
 /**
@@ -140,7 +142,7 @@ export class ServerConnection implements Connection {
   #paceTimer: ReturnType<typeof setTimeout> | null = null;
   /** When `#paceTimer` fires, on `performance.now()`'s clock. */
   #paceDeadline = 0;
-  /** Text parts, `message|part`: true once their first sentence went out, else the last character sent of it. */
+  /** Text parts, `message|part`: true once their first sentence went out, else the state `sentenceEnd` left. */
   readonly #openings = new Map<string, string | true>();
   /** Frames waiting behind a chunked answer that is still leaving, in order; null when none is. */
   #outbox: Iterator<string>[] | null = null;
@@ -290,9 +292,8 @@ export class ServerConnection implements Connection {
     let text = delta.text;
     const opening = this.#openings.get(key);
     if (opening !== true) {
-      const cut = sentenceEnd(opening ?? '', text);
-      const blank = (opening ?? '') === '' && text.trim() === '';
-      this.#open(key, cut !== -1 ? true : blank ? '' : (text.at(-1) ?? ''));
+      const { cut, state } = sentenceEnd(opening ?? '', text);
+      this.#open(key, cut === -1 ? state : true);
       // What is held, of this part or another, goes first.
       this.#flushPaced();
       if (this.#closed) return;
