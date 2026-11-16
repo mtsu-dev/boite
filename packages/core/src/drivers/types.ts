@@ -264,6 +264,12 @@ export interface TurnContext {
    */
   wake?(text: string, display?: string): void;
   /**
+   * The agent warned of something beside its work with no turn open, as the
+   * Claude CLI does on exit after its last result. The core writes it as a
+   * finished message of the thread's last turn: no turn starts, no agent runs.
+   */
+  notice?(part: Extract<import('@boite/contracts').MessagePart, { type: 'notice' }>): void;
+  /**
    * The agent's CLI fired a ScheduleWakeup timer by itself (`scheduledFor`,
    * epoch ms, null when it did not say). True when the core still wants that
    * wake, which this consumes; false when it was cancelled or replaced, and the
@@ -315,7 +321,7 @@ export interface TurnContext {
 export type SessionContext = Pick<TurnContext,
   'thread' | 'account' | 'provider' | 'sessionId' | 'resumeAt' | 'sessionBefore' |
   'accountEnv' | 'systemGuide' | 'warmProcessMinutes' | 'toolSummaries' | 'shortAnswers' | 'autoCompactTokens' | 'backgroundCompaction' | 'compactionSummary' | 'log' | 'diagnostic' | 'authenticationFailed' | 'commands' | 'context' | 'hook' |
-  'background' | 'backgroundFinished' | 'wake' | 'loopWake' | 'spawnChild' | 'finishStartup' | 'killTree' | 'quota' | 'lazyMcp' | 'protectedExecution' | 'modeRequired'>;
+  'background' | 'backgroundFinished' | 'wake' | 'notice' | 'loopWake' | 'spawnChild' | 'finishStartup' | 'killTree' | 'quota' | 'lazyMcp' | 'protectedExecution' | 'modeRequired'>;
 
 export type DiagnosticLevel = 'debug' | 'info' | 'warn' | 'error';
 /** Scalars only: never a prompt, a tool input or output, a command line or a token. */

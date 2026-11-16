@@ -342,13 +342,22 @@ const TURN_MARKERS: TurnMarker[] = [
   ]) },
 ];
 
-/** The agent's notices, shaped as the Claude driver maps them (`drivers/claude/notices.ts`). */
+/** The agent's notices, shaped as the Claude driver maps them (`drivers/claude/notices.ts`): three during the turn. */
 const NOTICES: MessagePart[] = [
-  { type: 'notice', notice: { kind: 'writes_lost', cause: 'disk_full', transcript: true }, detail: 'session_writes_lost: ENOSPC; lost transcript; sessions 5f1c2a90' },
   { type: 'notice', notice: { kind: 'attachments_missing', missing: 1, sent: 3 }, detail: 'file_attachments_missing: message 0b7e44d1; file_9c2 (too_large)' },
   { type: 'notice', notice: { kind: 'instructions_large', chars: 52_400, limit: 40_000, files: 3 }, detail: 'instruction_size_warning: 52400 chars in 3 files, limit 40000; largest 41200' },
   { type: 'notice', notice: { kind: 'mirror_failed' }, detail: 'mirror_error: append timed out; project boite, session 5f1c2a90' },
 ];
+
+/** The one the CLI writes as it exits, after the turn ended: a finished message of that turn, as the core writes it. */
+const EXIT_NOTICE: MessagePart = { type: 'notice', notice: { kind: 'writes_lost', cause: 'disk_full', transcript: true }, detail: 'session_writes_lost: ENOSPC; lost transcript; sessions 5f1c2a90' };
+
+function exitNotice(ctx: FakeContext, thread: Thread, turn: Turn): void {
+  const message: Message = { id: `m-${++ctx.seq}`, threadId: thread.id, turnId: turn.id, role: 'system', parts: [structuredClone(EXIT_NOTICE)], state: 'complete', createdAt: ctx.now() };
+  thread.messages.push(message);
+  ctx.emitToThread(thread.id, 'message.started', structuredClone(message));
+  ctx.emitToThread(thread.id, 'message.completed', { threadId: thread.id, messageId: message.id, state: 'complete' });
+}
 
 function integrityNotices(ctx: FakeContext, thread: Thread, message: Message): void {
   for (const notice of NOTICES) {
@@ -442,6 +451,7 @@ function finishTurn(ctx: FakeContext, thread: Thread, turn: Turn, message: Messa
   ctx.touch(thread);
   ctx.emit('turn.finished', structuredClone(turn));
   pushScheduler(ctx, turn, 'finished');
+  if (!record.cancelled && prompt.includes('[notices]')) exitNotice(ctx, thread, turn);
   // A move the agent asked for during the turn happens now, as the core's turn runner does.
   applyWaitingMove(ctx, thread.id);
   // Then the Done its agent asked for, as the core's turn runner calls `agentDone.applyWaiting`.

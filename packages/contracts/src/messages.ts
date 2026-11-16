@@ -124,11 +124,13 @@ export const CLIENT_DEVICE_MAX = 64;
 /**
  * Something the agent said went wrong beside its turn, which runs on. A client
  * words it in its own language from these fields.
- * `writes_lost`: the agent could not save its session, or only its own
- * settings when `transcript` is false; resuming may miss part of the
- * conversation. `attachments_missing`: `missing` of the `sent` files attached
- * to a prompt never reached it. `instructions_large`: its instruction files
- * (`files` of them) hold `chars` characters, over the `limit` it recommends.
+ * `writes_lost`: the agent could not save part of its transcript, so
+ * resuming may miss part of the conversation, or, when `transcript` is false,
+ * only changes to its own configuration; `cause` is the disk full, its quota
+ * used up, or another code. `attachments_missing`: `missing` of the `sent`
+ * files attached to a prompt never reached it. `instructions_large`: its
+ * instruction files (`files` of them) hold `chars` characters, over the
+ * `limit` it recommends.
  * `mirror_failed`: a copy of the transcript kept outside the agent dropped a batch.
  */
 export type AgentNotice =

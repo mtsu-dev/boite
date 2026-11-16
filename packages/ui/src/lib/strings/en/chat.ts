@@ -186,11 +186,11 @@ export const strings = {
      * `{cause}` is one of `diskFull`, `diskQuota`, `writeFailed`.
      */
     notice: {
-      writesLost: '{cause}: part of this conversation was not saved, so resuming it later may miss some of it',
-      writesLostSettings: '{cause}: settings the agent changed during this run were not saved',
-      diskFull: 'The disk is full',
-      diskQuota: 'The disk quota is used up',
-      writeFailed: 'A save failed',
+      writesLost: "{cause}: part of the agent's transcript was not saved, so resuming this conversation may miss some of it",
+      writesLostSettings: '{cause}: changes the agent made to its own configuration during this run were not saved',
+      diskFull: 'The disk was full',
+      diskQuota: 'The disk quota was used up',
+      writeFailed: 'A write to disk failed',
       attachmentsMissing: 'Some attached files did not reach the agent ({missing} of {sent}): it went on without them',
       instructionsLarge: 'The instruction files hold {chars} characters, over the {limit} recommended: the agent may be slower and less precise',
       instructionsLargeOne: 'The instruction file holds {chars} characters, over the {limit} recommended: the agent may be slower and less precise',

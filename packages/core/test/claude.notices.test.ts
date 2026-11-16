@@ -41,4 +41,34 @@ describe('claude integrity notices', () => {
       expect.objectContaining({ type: 'text', text: 'went on' }),
     ]);
   });
+
+  test('a notice the CLI writes as it exits, after the turn ended, shows in the thread and starts nothing', async () => {
+    harness.core.settings.set({ warmProcessMinutes: 0 });
+    const client = await harness.connect();
+    const threadId = await claudeThread(client);
+    let exits = 0;
+    scripted((fake) => {
+      // The CLI's documented order: the last result, then this frame as it exits once the core closed its input.
+      const end = fake.end.bind(fake);
+      fake.end = () => { if (exits++ === 0) fake.emit(sdk(NOTICES[0])); end(); };
+    }, (fake) => {
+      fake.emit(init(SESSION));
+      fake.emit(assistant(SESSION, [{ type: 'text', text: 'answer' }]));
+      fake.emit(success(SESSION));
+    });
+
+    const shown = client.next('message.started', message => message.threadId === threadId && message.parts.some(part => part.type === 'notice'), 10000);
+    expect(await runTurn(client, threadId, 'go')).toBe('done');
+    const message = await shown;
+    expect(exits).toBeGreaterThan(0);
+
+    const thread = await client.call('threads.get', { threadId });
+    expect(thread.turns.map(turn => turn.status)).toEqual(['done']);
+    expect(thread.messages.map(entry => entry.role)).toEqual(['user', 'assistant', 'system']);
+    expect(thread.messages.at(-1)).toMatchObject({
+      id: message.id, role: 'system', state: 'complete', turnId: thread.turns[0]!.id,
+      parts: [{ type: 'notice', notice: { kind: 'writes_lost', cause: 'disk_full', transcript: true },
+        detail: 'session_writes_lost: ENOSPC; lost transcript, global_config; sessions sess-notices' }],
+    });
+  }, 15_000);
 });

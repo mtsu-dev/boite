@@ -1399,9 +1399,12 @@ SDK's types): `session_writes_lost` (`error_code`, `lost`,
 (`error`, `key`). `drivers/claude/notices.ts` turns each into a `notice` part:
 the fields a client words in its own language, and the CLI's own account as
 `detail`, behind the notice's "i". The turn is neither stopped nor failed. The
-CLI documents `session_writes_lost` as written on exit after the last result:
-a CLI the core is closing has no turn left to show it on, so only one written
-during a turn shows.
+CLI documents `session_writes_lost` as written on exit after the last result,
+when the core closes its input (idle, shutdown, a changed setup): with no turn
+attached, the session hands the part to `SessionContext.notice`, and the core
+writes it as a finished `system` message of the thread's last turn, without
+starting a turn or the agent. A background compaction's copy keeps its notices
+to itself.
 
 ## Claude's MCP servers on demand
 

@@ -4,6 +4,7 @@ import { messageOf } from '../../errors.ts';
 import type { SpawnedChild } from '../../procs.ts';
 import type { LiveTurnSettings, SessionContext, TurnContext } from '../types.ts';
 import { hookReport } from './hooks.ts';
+import { noticePart } from './notices.ts';
 import { authenticationFailureOf, authenticationSuspectOf, backgroundKind, commandsOf, isApiRetry, isAuthenticationFailure, subagentOf } from './mapping.ts';
 import { RunningTotals } from './totals.ts';
 import { toolGate } from './permissions.ts';
@@ -612,7 +613,9 @@ export class ClaudeSession {
     if (message.type === 'system' && message.subtype === 'hook_response') (this.#head()?.ctx ?? this.#ctx).hook?.(hookReport(message));
     const turn = this.#head();
     if (turn === null) {
-      this.#adopt(message);
+      // A notice such as `session_writes_lost`, written as the CLI exits after its last result, opens no turn.
+      const notice = noticePart(message);
+      if (notice !== null) this.#ctx.notice?.(notice); else this.#adopt(message);
       return;
     }
     if (this.#sessionId !== null) turn.noteSession(this.#sessionId);
