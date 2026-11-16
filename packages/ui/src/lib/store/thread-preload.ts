@@ -245,6 +245,7 @@ export class IdlePreloads {
 
   /** Looks at the machine again: starts the reads when it may, stops them when it must. */
   poke(): void {
+    if (!idlePreloadAllowed()) return;
     const client = this.ctx.client;
     const ready = client !== null && this.ctx.store.connection === 'ready';
     if (!ready || client !== this.#client) {
