@@ -134,6 +134,13 @@ settings (its profile's `selection`, not the thread's) and open the menus of
 any thread; a pick is saved the way its settings page saves it,
 `agents.runtime.configure` through `saveDefaultRoute` (`lib/agent-route.ts`),
 and the core then moves the mochi's thread, so the next turn runs on it. The
+thread keeps that route, a `default` alias included: a send never rewrites it
+the way a plain thread's alias becomes the named default
+(`deliverySelection` in `lib/store/composer.svelte.ts`). `threads.update` on a
+mochi's own thread refuses a route its allowed routes lack, by the mochi's
+name (`resident.assertPick`): its turns would all fail on the route check. A
+turn that fails before its agent starts, that check included, writes its
+reason as an error part (`threads/turn-error.ts`). The
 settings page beside the chat rereads what another writer changed. Only the
 owner's app changes those settings: on a paired device the chips stay read
 only, and a click says so.

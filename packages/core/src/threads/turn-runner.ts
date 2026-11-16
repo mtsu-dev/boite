@@ -11,6 +11,7 @@ import { markRunning } from './lifecycle.ts';
 import { TurnAttempts, type TurnAttemptState } from './turn-attempts.ts';
 import { stderrTail } from '../drivers/stderr-tail.ts';
 import { turnSwitch } from './switch-notice.ts';
+import { writeTurnError } from './turn-error.ts';
 import { folderPresent, restoreThreadCwd, ThreadCwdGone } from './cwd.ts';
 
 export { STOP_DEADLINE, STOP_DEADLINE_ERROR } from './turn-attempts.ts';
@@ -115,6 +116,7 @@ export class TurnRunner {
 
     let result: TurnResult;
     let started = false;
+    let driving = false;
     try {
       // Commit the running state before a driver can spawn or stream output.
       this.threads.progress.begin(threadId, turnId);
@@ -144,6 +146,7 @@ export class TurnRunner {
       const account = this.#core.accounts.require(state.thread.accountId);
       assertDriverRunnable(provider.protocol, this.#core.providers.summary(provider.id), account);
       const driver = getDriver(provider.protocol);
+      driving = true;
       result = await this.#attempts.run(queued, state, { provider, account, driver }, permissions);
       if (state.running.execution?.operation === 'coordination' && result.status === 'done') this.#core.coordination.submitted(threadId, turnId);
     } catch (error) {
@@ -160,6 +163,11 @@ export class TurnRunner {
     if (result.status === 'error' && !result.refusal && !(await folderPresent(state.thread.cwd))) {
       const gone = new ThreadCwdGone(threadId, state.thread.cwd);
       result = { ...result, error: gone.message, diagnosticError: `${gone.message}; the agent said: ${result.diagnosticError ?? result.error ?? 'nothing'}`, cwdGone: true };
+    }
+    // No driver ran to write why: the transcript says it, else the turn only reads "failed". A gone folder has its own notice.
+    if (started && !driving && result.status === 'error' && !result.cwdGone) {
+      try { writeTurnError(this.#core, state.running, result.error ?? 'unknown error'); }
+      catch (error) { reportSettlementError(this.#core, threadId, turnId, 'error message', error); }
     }
 
     const { thread, running } = state;

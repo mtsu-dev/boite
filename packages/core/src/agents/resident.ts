@@ -112,6 +112,17 @@ export class ResidentAgents {
     const owner=this.ownerOf(threadId);if(!owner)return;
     if(this.#records.get('profile',owner).status==='archived'||!this.allowed(owner,selection,!!this.#core.threads.require(threadId).parentThreadId))throw refused('account/model access was withdrawn from this mochi');
   }
+  /**
+   * A pick on a mochi's own thread that its settings do not allow: refused at
+   * once, by its name. Its turns would otherwise all fail on `assertThreadRoute`.
+   * The mochi's settings, or the chips of its conversation, change its route.
+   */
+  assertPick(thread:{id:string; parentThreadId?:string|null}, selection:AgentSelection):void {
+    if(thread.parentThreadId)return;
+    const owner=this.ownerOf(thread.id);if(!owner||this.allowed(owner,selection))return;
+    const name=this.#records.get('profile',owner).name;
+    throw refused(`model: ${name} runs only on the models its settings allow; change its model in its settings`,{field:'model',expected:'a route the mochi allows'});
+  }
   /** Stops what runs on a route the owner withdrew, and the subagents of an archived agent. */
   enforce():void {
     for(const session of this.#records.list('session')){

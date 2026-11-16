@@ -1,13 +1,13 @@
 import { ACTIVE_THREAD_STATUSES } from '@boite/contracts';
-import type { Message, MessageId, MessagePart, RpcParams, ThreadId, Turn } from '@boite/contracts';
+import type { RpcParams, ThreadId, Turn } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { assertDriverRunnable } from '../drivers/index.ts';
 import { notFound, refused } from '../errors.ts';
 import { requireAgent } from './agentless.ts';
-import { newId } from '../ids.ts';
 import { markQueued, settleStatus } from './lifecycle.ts';
 import { checkStoredEffort, checkStoredSpeed } from './selection.ts';
 import { announceFinished, finishTurn } from './turn-settlement.ts';
+import { addErrorPart, closeAsError, openTurnMessage } from './turn-error.ts';
 
 /** What a turn a dead core left behind says, once the next core has closed it. */
 export const CRASH_WHILE_RUNNING = 'The core stopped while this turn was running; send the prompt again.';
@@ -151,53 +151,14 @@ export class ThreadRecovery {
       // Through the turn index: the rest of the thread, images included, is never parsed.
       const streaming = Array.from(this.#core.journal.walkTurnMessages(threadId, turn.id, { blobs: false }))
         .filter((message) => message.state === 'streaming');
-      const carrier = streaming.at(-1) ?? this.#openRecoveryMessage(turn);
-      const index = carrier.parts.length;
-      const part: MessagePart = { type: 'error', message: reason };
-      this.#core.journal.append(
-        { type: 'message.part', threadId, version: 1, payload: { messageId: carrier.id, partIndex: index, part } },
-        () => {
-          this.#core.journal.setMessagePart(carrier.id, index, part);
-        },
-      );
-      this.#core.bus.emit('message.part', { threadId, messageId: carrier.id, partIndex: index, part });
-      for (const message of streaming) if (message.id !== carrier.id) this.#closeAsError(threadId, message.id);
-      this.#closeAsError(threadId, carrier.id);
+      const carrier = streaming.at(-1) ?? openTurnMessage(this.#core, turn);
+      addErrorPart(this.#core, threadId, carrier, reason);
+      for (const message of streaming) if (message.id !== carrier.id) closeAsError(this.#core, threadId, message.id);
+      closeAsError(this.#core, threadId, carrier.id);
     }
 
     // The thread rests where a live failure leaves it: `error` (`threads/lifecycle.ts`).
     const finished: Turn = { ...turn, status: 'error', finishedAt: Date.now(), error: reason };
     announceFinished(this.#core, finished, finishTurn(this.#core, finished, 'crashed'));
-  }
-
-  /** A queued turn never opened a message; the error needs one to live in. */
-  #openRecoveryMessage(turn: Turn): Message {
-    const message: Message = {
-      id: newId('msg_'),
-      threadId: turn.threadId,
-      turnId: turn.id,
-      role: 'assistant',
-      parts: [],
-      state: 'streaming',
-      createdAt: Date.now(),
-    };
-    this.#core.journal.append(
-      { type: 'message.started', threadId: turn.threadId, version: 1, payload: message },
-      () => {
-        this.#core.journal.putMessage(message);
-      },
-    );
-    this.#core.bus.emit('message.started', message);
-    return message;
-  }
-
-  #closeAsError(threadId: ThreadId, messageId: MessageId): void {
-    this.#core.journal.append(
-      { type: 'message.completed', threadId, version: 1, payload: { messageId, state: 'error' } },
-      () => {
-        this.#core.journal.setMessageState(messageId, 'error');
-      },
-    );
-    this.#core.bus.emit('message.completed', { threadId, messageId, state: 'error' });
   }
 }
