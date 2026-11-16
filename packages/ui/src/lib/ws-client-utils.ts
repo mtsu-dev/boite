@@ -11,6 +11,24 @@ export function defaultBackoff(attempt: number, random: () => number = Math.rand
 }
 
 /**
+ * The first retry after a socket that was ready goes down: 125 to 250 ms, at
+ * random, rather than the 1 s of `defaultBackoff(0)`. A core that restarts, or
+ * a link that blinks, is usually back by then, and the spread still keeps the
+ * phones of one core apart. The attempt counts like any other: if it fails, the
+ * next waits `defaultBackoff(1)`.
+ */
+export function quickRetry(random: () => number = Math.random): number {
+  return Math.round(125 + random() * 125);
+}
+
+/**
+ * A ready socket lost sooner than this after its hello is a host dropping in a
+ * loop: its first retry waits out the backoff, which grows with each such drop
+ * in a row, instead of `quickRetry`.
+ */
+export const STEADY_MS = 10_000;
+
+/**
  * How long one attempt gets for TCP, TLS, the upgrade and the hello together:
  * 10 s, then 20 s, then 30 s. A lossy link that needs longer than 10 s would
  * otherwise be cut off on every attempt and never connect.
@@ -39,11 +57,15 @@ export function streamUrl(coreUrl: string, path: string): string {
 }
 
 /**
- * Silence on a remote socket before the client asks whether the core is still
- * there. A phone whose NAT mapping expired, or a core host that went to sleep,
- * leaves a socket that never fires close.
+ * Silence on a remote socket, page in the foreground, before the client asks
+ * whether the core is still there. A phone whose NAT mapping expired, or a core
+ * host that went to sleep, leaves a socket that never fires close: with the
+ * probe's 10 s deadline it shows offline within 22 s of its last frame. The
+ * probe is one small `hello` the core answers ahead of its request queue, so
+ * asking twice as often as the 25 s this was until 2026-11-15 costs a frame
+ * each way.
  */
-export const IDLE_PROBE_MS = 25_000;
+export const IDLE_PROBE_MS = 12_000;
 /**
  * How long a probe waits for any frame at all, the same 10 s a new socket gets
  * to say hello. Frames arrive in order, so a probe's answer queues behind a long
@@ -73,6 +95,80 @@ export const QUIET_CALL_MS = 3_000;
 export const UPLOAD_FLOOR_BYTES_PER_S = 32 * 1024;
 /** How long `resume()` gives the socket it already has before replacing it. */
 export const RESUME_PROBE_MS = 4_000;
+/**
+ * Away this long, a remote socket is as likely dead as alive: `resume()` opens
+ * a new one at once beside the probe of the old, and keeps whichever answers
+ * first, so a dead socket costs one handshake rather than the probe's 4 s too.
+ */
+export const RACE_AFTER_HIDDEN_MS = 8_000;
+/** How often a visible page compares its clocks to notice that the system slept. */
+export const WAKE_TICK_MS = 1_000;
+/** A wall clock that ran this much further than the page's own clock in one tick: the system slept. */
+export const WAKE_JUMP_MS = 5_000;
+
+/**
+ * Calls `woke(slept)` when the system wakes from a sleep the page stayed
+ * visible through, a laptop lid closed on the app: a tick every second while
+ * the page is visible compares how far `Date.now()` moved with how far
+ * `performance.now()` did, which does not count the sleep. One timer for the
+ * whole app, stopped while the page is hidden, where `resume()` on the way back
+ * does the same work. Returns the stop.
+ */
+export function watchWake(woke: (slept: number) => void, tick = WAKE_TICK_MS): () => void {
+  let timer: ReturnType<typeof setInterval> | null = null;
+  let wall = 0;
+  let mono = 0;
+  const start = (): void => {
+    if (timer !== null || pageHidden()) return;
+    wall = Date.now();
+    mono = performance.now();
+    timer = setInterval(() => {
+      const nowWall = Date.now();
+      const nowMono = performance.now();
+      const jump = (nowWall - wall) - (nowMono - mono);
+      wall = nowWall;
+      mono = nowMono;
+      if (jump > WAKE_JUMP_MS) woke(Math.round(jump));
+    }, tick);
+  };
+  const stop = (): void => {
+    if (timer !== null) clearInterval(timer);
+    timer = null;
+  };
+  const visibility = (): void => { if (pageHidden()) stop(); else start(); };
+  document.addEventListener('visibilitychange', visibility);
+  start();
+  return () => {
+    document.removeEventListener('visibilitychange', visibility);
+    stop();
+  };
+}
+
+/**
+ * Calls `back(away)` each time the page comes back in sight, with how long it
+ * was gone in ms: on `visibilitychange`, and on `pageshow` for a page restored
+ * from the back-forward cache. Either one ends the absence, so the next one is
+ * counted from its own hide. Returns the stop.
+ */
+export function watchAbsence(back: (away: number) => void): () => void {
+  let hiddenAt: number | null = pageHidden() ? Date.now() : null;
+  const shown = (): void => {
+    const away = hiddenAt === null ? 0 : Date.now() - hiddenAt;
+    hiddenAt = null;
+    back(away);
+  };
+  const visibility = (): void => {
+    if (pageHidden()) hiddenAt ??= Date.now();
+    else if (hiddenAt !== null) shown();
+  };
+  const pageshow = (event: PageTransitionEvent): void => { if (event.persisted && !pageHidden()) shown(); };
+  document.addEventListener('visibilitychange', visibility);
+  window.addEventListener('pageshow', pageshow);
+  return () => {
+    document.removeEventListener('visibilitychange', visibility);
+    window.removeEventListener('pageshow', pageshow);
+  };
+}
 
 /** The shell and a browser on the core's machine: that socket cannot go half-open. */
 export function isLoopbackUrl(url: string): boolean {

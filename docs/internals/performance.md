@@ -483,6 +483,26 @@ returned 0 (dropped) for a 31 MB frame with 29.8 MB already buffered on
 call's 120 s timeout. The UI asks for progress on a first open's `threads.get`
 when the core advertises `chunkedAnswers`.
 
+### Reconnecting
+
+A remote client checks and replaces its socket by the rules in
+[machines](machines.md#connecting-a-machine); these are the times they give, on the
+fake clock of `packages/ui/src/lib/ws-client-timing.test.ts`, with a handshake
+of 100 ms (the socket opens after 50 ms, the hello is answered 50 ms later):
+
+| From | To | Before (2026-11-15) | After |
+| --- | --- | --- | --- |
+| `resume()` after 30 s hidden, the old socket dead | ready | 4,100 ms | 100 ms |
+| a ready socket's close | first retry | 1,000 ms (800 to 1,200) | 188 ms (125 to 250) |
+| the last frame of a link that died silently, page in sight | offline | 35,000 ms | 22,000 ms |
+
+The first row was the 4 s `hello` the old socket got before a new one opened;
+away 8 seconds or more, the new socket now opens beside it. The third is the
+idle probe, 12 seconds of silence instead of 25, plus its 10 second deadline.
+Run with `cd packages/ui && bun x vitest run --silent=false
+src/lib/ws-client-timing.test.ts`; the before column is the same file run on
+the parent commit, where `resume()` ignores how long the page was away.
+
 ### Stream channels
 
 A socket picks, per thread, what it receives of the streaming messages:
