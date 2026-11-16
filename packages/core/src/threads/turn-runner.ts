@@ -116,7 +116,6 @@ export class TurnRunner {
 
     let result: TurnResult;
     let started = false;
-    let driving = false;
     try {
       // Commit the running state before a driver can spawn or stream output.
       this.threads.progress.begin(threadId, turnId);
@@ -146,7 +145,6 @@ export class TurnRunner {
       const account = this.#core.accounts.require(state.thread.accountId);
       assertDriverRunnable(provider.protocol, this.#core.providers.summary(provider.id), account);
       const driver = getDriver(provider.protocol);
-      driving = true;
       result = await this.#attempts.run(queued, state, { provider, account, driver }, permissions);
       if (state.running.execution?.operation === 'coordination' && result.status === 'done') this.#core.coordination.submitted(threadId, turnId);
     } catch (error) {
@@ -164,8 +162,8 @@ export class TurnRunner {
       const gone = new ThreadCwdGone(threadId, state.thread.cwd);
       result = { ...result, error: gone.message, diagnosticError: `${gone.message}; the agent said: ${result.diagnosticError ?? result.error ?? 'nothing'}`, cwdGone: true };
     }
-    // No driver ran to write why: the transcript says it, else the turn only reads "failed". A gone folder has its own notice.
-    if (started && !driving && result.status === 'error' && !result.cwdGone) {
+    // A failure no driver wrote (route check, worktree, checkpoint, preparation) still says why, else the turn only reads "failed". A gone folder has its own notice.
+    if (started && result.status === 'error' && !result.cwdGone && !this.#saidWhy(threadId, turnId)) {
       try { writeTurnError(this.#core, state.running, result.error ?? 'unknown error'); }
       catch (error) { reportSettlementError(this.#core, threadId, turnId, 'error message', error); }
     }
@@ -258,5 +256,13 @@ export class TurnRunner {
 
   stopRunning(threadId: ThreadId): boolean {
     return this.#attempts.stopRunning(threadId);
+  }
+
+  /** Whether the turn's transcript already holds an error part, as a driver writes one. */
+  #saidWhy(threadId: ThreadId, turnId: TurnId): boolean {
+    for (const message of this.#core.journal.walkTurnMessages(threadId, turnId, { blobs: false })) {
+      if (message.parts.some(part => part.type === 'error')) return true;
+    }
+    return false;
   }
 }

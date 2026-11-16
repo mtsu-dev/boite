@@ -100,4 +100,18 @@ test("a pick outside a mochi's routes is refused by name, and a turn on one says
   await waitFor(() => h.core.journal.getTurn(turn.id)?.status === 'error');
   const parts = [...h.core.journal.walkTurnMessages(threadId, turn.id, { blobs: false })].flatMap(message => message.parts);
   expect(parts).toContainEqual({ type: 'error', message: 'account/model access was withdrawn from this mochi' });
+
+  // The same for a failure inside the attempt, before its driver streamed anything.
+  h.core.threads.update({ threadId, model: 'echo' });
+  const checkpoints = h.core.threads.codeCheckpoints;
+  const begin = checkpoints.begin;
+  checkpoints.begin = () => { throw new Error('checkpoint preparation failed'); };
+  try {
+    const failed = await client.call('turns.start', { threadId, prompt: 'Again' });
+    await waitFor(() => h.core.journal.getTurn(failed.id)?.status === 'error');
+    const said = [...h.core.journal.walkTurnMessages(threadId, failed.id, { blobs: false })].flatMap(message => message.parts);
+    expect(said.filter(part => part.type === 'error')).toEqual([{ type: 'error', message: 'checkpoint preparation failed' }]);
+  } finally {
+    checkpoints.begin = begin;
+  }
 });
