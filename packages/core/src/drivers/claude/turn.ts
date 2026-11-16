@@ -55,8 +55,12 @@ interface ToolEntry {
    * `documents` live in the stored part only, and a later change patches it.
    */
   released: boolean;
-  /** The result carried images: they stay the card's documents once the call is released. */
-  imaged: boolean;
+  /**
+   * The result's image documents, kept past the release: a call that lands
+   * after its result (a replay) writes the card's documents again, its diffs
+   * first and these behind them.
+   */
+  images: ToolDocument[];
 }
 
 type UserMessage = Extract<SDKMessage, { type: 'user' }>;
@@ -718,11 +722,10 @@ export class ClaudeTurn {
     this.#tools.set(toolId, entry);
     if (entry.released) {
       // The result came first (a replayed or adopted call): the card keeps its output.
-      // A result's images are the card's documents when the input describes no change.
-      const keep = documents === null || (documents.length === 0 && entry.imaged);
+      const all = documents === null ? null : [...documents, ...entry.images];
       this.#patchTool(entry, {
         name, input, inputText,
-        ...(keep ? {} : { documents: documents.length > 0 ? documents : undefined }),
+        ...(all === null ? {} : { documents: all.length > 0 ? all : undefined }),
       });
       return;
     }
@@ -741,7 +744,7 @@ export class ClaudeTurn {
   finishTool(toolId: string, output: string, status: ToolStatus, images: ToolDocument[] = []): void {
     const entry = this.#tools.get(toolId) ?? this.#newTool(toolId);
     entry.status = status;
-    if (images.length > 0) entry.imaged = true;
+    if (images.length > 0) entry.images = images;
     this.#tools.set(toolId, entry);
     if (entry.released) {
       this.#patchTool(entry, { output, status, ...(images.length > 0 ? { documents: images } : {}) });
@@ -750,8 +753,8 @@ export class ClaudeTurn {
     entry.output = output;
     if (images.length > 0) entry.documents = [...entry.documents, ...images];
     this.#emitTool(toolId, entry);
-    // The stored part holds the call now; a screenshot's base64 or a written
-    // file is not kept a second time for the rest of the turn.
+    // The stored part holds the call now; a written file is not kept a second
+    // time for the rest of the turn. Only the result's images stay (`images`).
     if (status !== 'running') {
       entry.released = true;
       entry.input = null;
@@ -776,7 +779,7 @@ export class ClaudeTurn {
       documents: [],
       summary: null,
       released: false,
-      imaged: false,
+      images: [],
     };
   }
 
