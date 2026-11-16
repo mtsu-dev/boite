@@ -12,7 +12,8 @@
  * or when its failed step's log holds a dependency download refused with 429
  * (INFRA_PATTERNS). One job judged otherwise keeps the whole run failed:
  * rerun-failed-jobs would run it again too. A dry run is never rerun, nor an
- * event older than the run's current attempt, nor attempt MAX_ATTEMPTS.
+ * event older than the run's current attempt, nor attempt MAX_ATTEMPTS, and
+ * the run is read once more just before the rerun call (confirmRerun).
  *
  * Env: GITHUB_REPOSITORY, GH_TOKEN, GITHUB_EVENT_PATH (a workflow_run event).
  */
@@ -66,20 +67,32 @@ export const judged = (conclusion: string | null) => conclusion !== 'success' &&
 const second = (iso: string) => Math.floor(Date.parse(iso) / 1000);
 
 /**
- * The log lines of the job's failed steps, without their timestamps: each line
- * of a job log starts with one, and a step's started_at and completed_at bound
- * it to the second. '' when no step failed, as for a job no runner ran.
+ * The log lines of the job's failed steps, without their timestamps. Each line
+ * of a job log starts with one, but a step's started_at and completed_at only
+ * bound it to the second, which it can share with the step before and after.
+ * The log's own marks split those seconds: in the first one the step begins
+ * at its last `##[group]Run` line, in the last one it ends at its first
+ * `##[error]` line (the runner's "Process completed with exit code"). A shared
+ * second without that mark is left out rather than guessed. '' when no step
+ * failed, as for a job no runner ran.
  */
 export function failedStepLog(log: string, steps: Step[]): string {
   const windows = steps.filter((step) => step.conclusion !== null && judged(step.conclusion) && step.started_at && step.completed_at)
     .map((step) => [second(step.started_at!), second(step.completed_at!)] as const);
-  if (windows.length === 0) return '';
-  return log.replace(/^\uFEFF/, '').split('\n').flatMap((line) => {
+  const lines = log.replace(/^\uFEFF/, '').split('\n').flatMap((line) => {
     const stamp = /^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.\d+)?Z (.*)$/.exec(line);
-    if (!stamp) return [];
-    const at = second(`${stamp[1]}Z`);
-    return windows.some(([from, to]) => at >= from && at <= to) ? [stamp[2]!] : [];
-  }).join('\n');
+    return stamp ? [{ at: second(`${stamp[1]}Z`), text: stamp[2]! }] : [];
+  });
+  const kept = new Set<number>();
+  for (const [from, to] of windows) {
+    const marker = lines.findLastIndex((line) => line.at === from && line.text.startsWith('##[group]Run '));
+    const start = marker !== -1 ? marker : lines.findIndex((line) => line.at > from);
+    if (start === -1) continue;
+    const error = lines.findIndex((line, index) => index >= start && line.at === to && line.text.startsWith('##[error]'));
+    const end = error !== -1 ? error : lines.findLastIndex((line) => line.at < to);
+    for (let index = start; index <= end; index++) kept.add(index);
+  }
+  return [...kept].sort((x, y) => x - y).map((index) => lines[index]!.text).join('\n');
 }
 
 /** The cause of a judged job's end when it was GitHub's or a registry's, else undefined. */
@@ -101,8 +114,18 @@ export function decide({ runAttempt, currentAttempt, dryRun, jobs }: RetryInput)
   return { rerun: true, reason: `failed on infrastructure only: ${causes}; rerunning its failed jobs` };
 }
 
+/**
+ * The run as read just before the rerun call: the logs take a while, and a
+ * manual rerun started or even finished meanwhile must not get one more.
+ */
+export function confirmRerun(attempt: number, now: { run_attempt: number; status: string; conclusion: string | null }): RetryDecision {
+  if (now.run_attempt !== attempt) return { rerun: false, reason: `the run moved to attempt ${now.run_attempt} while attempt ${attempt} was judged` };
+  if (now.status !== 'completed' || now.conclusion !== 'failure') return { rerun: false, reason: `the run is now ${now.status} ${now.conclusion ?? ''}`.trimEnd() + `, not a completed failure` };
+  return { rerun: true, reason: `attempt ${attempt} is still the run's last, failed` };
+}
+
 type ApiJob = { id: number; name: string; conclusion: string | null; steps?: Step[] };
-type WorkflowRun = { id: number; run_attempt: number; head_branch: string | null; display_title: string; conclusion: string | null; html_url: string };
+type WorkflowRun = { id: number; run_attempt: number; status: string; head_branch: string | null; display_title: string; conclusion: string | null; html_url: string };
 
 async function api(path: string, init: RequestInit = {}): Promise<Response> {
   const { GITHUB_API_URL: base = 'https://api.github.com', GH_TOKEN: token } = process.env;
@@ -160,6 +183,11 @@ if (import.meta.main) {
       return { name: job.name, conclusion: job.conclusion, annotations: messages, log };
     }));
     decision = decide({ runAttempt: run.run_attempt, currentAttempt: current.run_attempt, dryRun, jobs });
+  }
+  if (decision.rerun) {
+    const now = await (await api(`/repos/${repo}/actions/runs/${run.id}`)).json() as WorkflowRun;
+    const confirmed = confirmRerun(run.run_attempt, now);
+    if (!confirmed.rerun) decision = { rerun: false, reason: `${decision.reason}; dropped: ${confirmed.reason}` };
   }
   const message = `${run.html_url} attempt ${run.run_attempt}: ${decision.reason}`;
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${message}\n`);

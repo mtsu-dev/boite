@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { decide, DRY_RUN_TITLE, failedStepLog, INFRA_PATTERNS, type Job, MAX_ATTEMPTS, type Step } from './nightly-retry.ts';
+import { confirmRerun, decide, DRY_RUN_TITLE, failedStepLog, INFRA_PATTERNS, type Job, MAX_ATTEMPTS, type Step } from './nightly-retry.ts';
 
 // Desktop / macOS x64 as the API returned it for run 42806494714 (job
 // 129797415964, 2026-11-10): no runner picked it up, GitHub ended it
@@ -76,16 +76,54 @@ test('only the failed step of a job is read', () => {
     '﻿2026-11-16T18:13:34.7109624Z error: GET https://registry.npmjs.org/left-pad - 429',
     '2026-11-16T18:13:36.5472914Z ##[group]Run set -euo pipefail',
     '2026-11-16T18:15:41.2099244Z             > Could not GET \'https://repo.maven.apache.org/x.pom\'. Received status code 429 from server: Too Many Requests',
+    '2026-11-16T18:15:41.5546725Z ##[error]Process completed with exit code 1.',
     '2026-11-16T18:15:47.1000000Z Post job cleanup.',
   ].join('\n');
   expect(failedStepLog(log, steps).split('\n')).toEqual([
     '##[group]Run set -euo pipefail',
     '            > Could not GET \'https://repo.maven.apache.org/x.pom\'. Received status code 429 from server: Too Many Requests',
+    '##[error]Process completed with exit code 1.',
   ]);
   // A 429 retried in a step that passed, then a real failure later: not infrastructure.
   const late = log.replace(/\n2026-11-16T18:15:41.*/, '\n2026-11-16T18:15:41.2099244Z error: expect(received).toBe(expected)');
   expect(decide({ ...first, jobs: [{ ...realFailure, log: failedStepLog(late, steps) }] })).toMatchObject({ rerun: false });
   expect(failedStepLog(log, [])).toBe('');
+});
+
+test('a step sharing a second with the failed one does not leak into it', () => {
+  // Steps are timed to the second: the log's own markers split that second.
+  const steps: Step[] = [
+    { name: 'Run bun install --frozen-lockfile', conclusion: 'success', started_at: '2026-11-16T18:20:10Z', completed_at: '2026-11-16T18:20:12Z' },
+    { name: 'Run bun test', conclusion: 'failure', started_at: '2026-11-16T18:20:12Z', completed_at: '2026-11-16T18:20:30Z' },
+    { name: 'Post Run actions/checkout', conclusion: 'success', started_at: '2026-11-16T18:20:30Z', completed_at: '2026-11-16T18:20:31Z' },
+  ];
+  const log = [
+    '2026-11-16T18:20:10.0000000Z ##[group]Run bun install --frozen-lockfile',
+    '2026-11-16T18:20:12.1000000Z error: GET https://registry.npmjs.org/left-pad - 429',
+    '2026-11-16T18:20:12.2000000Z ##[group]Run bun test',
+    '2026-11-16T18:20:29.0000000Z error: expect(received).toBe(expected)',
+    '2026-11-16T18:20:30.1000000Z ##[error]Process completed with exit code 1.',
+    '2026-11-16T18:20:30.2000000Z Post job cleanup.',
+    '2026-11-16T18:20:30.3000000Z npm error 429 Too Many Requests - GET https://registry.npmjs.org/left-pad',
+  ].join('\n');
+  expect(failedStepLog(log, steps).split('\n')).toEqual([
+    '##[group]Run bun test',
+    'error: expect(received).toBe(expected)',
+    '##[error]Process completed with exit code 1.',
+  ]);
+  expect(decide({ ...first, jobs: [{ ...realFailure, log: failedStepLog(log, steps) }] })).toMatchObject({ rerun: false });
+  // With no marker to split a shared second, its lines are left out rather than guessed.
+  const unmarked = log.replace('##[group]Run bun test', 'tests start').replace('##[error]Process completed with exit code 1.', 'done');
+  expect(failedStepLog(unmarked, steps)).toBe('error: expect(received).toBe(expected)');
+});
+
+test('the rerun is sent only while the run still stands as the failed attempt judged', () => {
+  expect(confirmRerun(2, { run_attempt: 2, status: 'completed', conclusion: 'failure' })).toMatchObject({ rerun: true });
+  // A manual rerun started, or already finished, while the logs were read.
+  expect(confirmRerun(2, { run_attempt: 3, status: 'in_progress', conclusion: null })).toMatchObject({ rerun: false, reason: expect.stringContaining('attempt 3') });
+  expect(confirmRerun(2, { run_attempt: 3, status: 'completed', conclusion: 'failure' })).toMatchObject({ rerun: false });
+  expect(confirmRerun(2, { run_attempt: 2, status: 'queued', conclusion: null })).toMatchObject({ rerun: false });
+  expect(confirmRerun(2, { run_attempt: 2, status: 'completed', conclusion: 'success' })).toMatchObject({ rerun: false });
 });
 
 test('the attempt at the bound is not rerun', () => {

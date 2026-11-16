@@ -680,12 +680,18 @@ ends `cancelled`, with "The job was not acquired by Runner of type hosted" as
 its only annotation and no log (job 129797415964 of run 42806494714): that
 annotation is the one thing that makes a cancelled job infrastructure. A failed
 job is infrastructure when it has that annotation or when its failed step's
-log, cut from the job log by the step's start and end times, holds a
+log holds a
 dependency download refused with 429: Gradle's `Could not GET ... Received
 status code 429`, npm's `429 Too Many Requests`, bun's `error: GET ... - 429`
 or cargo's `got 429` (`INFRA_PATTERNS`). A test that names a 429, or a request
-retried in a step that passed, is not one. When every judged job is
-infrastructure, it calls `rerun-failed-jobs` on that run; one other job, a run
+retried in a step that passed, is not one. The step's lines are cut from the
+job log by its start and end times, which are whole seconds: in a second it
+shares with another step, it begins at its own last `##[group]Run` line and
+ends at its first `##[error]` line, and a shared second without that mark is
+left out. When every judged job is infrastructure, the script reads the run
+once more and calls `rerun-failed-jobs` only if it is still that attempt,
+completed as a failure, so a manual rerun started meanwhile gets no extra
+attempt; one other job, a run
 on another branch than `main` or a run titled as a dry run (the nightly's
 `run-name`, since `workflow_run` carries no inputs) leaves it failed. Attempts
 1 and 2 are rerun, attempt 3 is not (`MAX_ATTEMPTS`): macOS x64 got no runner
