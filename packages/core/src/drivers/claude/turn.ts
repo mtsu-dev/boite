@@ -24,6 +24,7 @@ import {
 } from './mapping.ts';
 import type { HeldUsage, StreamEvent } from './mapping.ts';
 import { hookEndPart } from './hooks.ts';
+import { noticePart } from './notices.ts';
 import { PROMPT_EFFORT } from './query.ts';
 import type { ClaudeSession } from './session.ts';
 import { claudeProgress } from './progress.ts';
@@ -356,6 +357,8 @@ export class ClaudeTurn {
    * `compact_boundary`: it compacted the conversation, drawn as a divider.
    * `informational` with `prevent_continuation`: one of the user's hooks ended
    * the turn, drawn as a quiet line; the CLI writes nothing else for it.
+   * The integrity notices (`notices.ts`): a notice in the thread, and the
+   * turn runs on.
    */
   #handleSystem(message: Extract<SDKMessage, { type: 'system' }>): void {
     if (message.subtype === 'api_retry') this.#discardAttempt();
@@ -363,6 +366,8 @@ export class ClaudeTurn {
     if (message.subtype === 'informational' && message.prevent_continuation === true) {
       this.part(this.takeIndex(), hookEndPart(message.content));
     }
+    const notice = noticePart(message);
+    if (notice !== null) this.part(this.takeIndex(), notice);
     if (message.subtype === 'compact_boundary') {
       const meta = message.compact_metadata;
       this.part(this.takeIndex(), {

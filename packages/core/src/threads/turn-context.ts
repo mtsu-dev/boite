@@ -97,6 +97,23 @@ export class TurnContexts {
     return agentGuide(provider.protocol !== 'echo' && settings.asyncQuestions !== false, logAccess, skills, !!thread.agentSessionId, goalTrack, experiments.includes('teams'), plugins);
   }
 
+  /**
+   * A notice the agent sent with no turn open: a finished message of the
+   * thread's last turn, as the background compaction's divider is. A thread
+   * gone or never run keeps nothing. A secret in use on the thread is masked,
+   * as in a turn's parts.
+   */
+  #notice(threadId: ThreadId, raw: Extract<MessagePart, { type: 'notice' }>): void {
+    if (this.#core.journal.isClosed() || this.#core.journal.getThread(threadId) === null) return;
+    const turnId = this.#core.journal.lastTurn(threadId)?.id;
+    if (!turnId) return;
+    const part = this.#core.secrets.maskPart(threadId, raw);
+    const message: Message = { id: newId('msg_'), threadId, turnId, role: 'system', parts: [part], state: 'complete', createdAt: Date.now() };
+    this.#core.journal.putMessage(message);
+    this.#core.bus.emit('message.started', message);
+    this.#core.bus.emit('message.completed', { threadId, messageId: message.id, state: 'complete' });
+  }
+
   /** The guide as a session option, for a driver that puts it in the system prompt. */
   #systemGuide(thread: ThreadSummary, provider: ProviderDescriptor): string | undefined {
     if (!takesSystemGuide(provider.protocol)) return undefined;
@@ -138,6 +155,7 @@ export class TurnContexts {
       background: list => this.#threads.agentState.noteBackground(threadId, list, backgroundOwner),
       backgroundFinished: (id, state) => this.#threads.agentState.finishBackground(threadId, id, backgroundOwner, state),
       wake: (text, display) => this.#threads.deferred.wake(threadId, text, display),
+      notice: part => this.#notice(threadId, part),
       loopWake: scheduledFor => this.#core.wakes.cliFired(threadId, scheduledFor),
       spawnChild: this.leasedSpawnChild(threadId, provider, { resume: thread.sessionId !== null }),
       finishStartup: () => this.#core.procs.finishStartup(this.#core.procs.protection.controlScope(threadId) ?? threadId),
@@ -504,6 +522,7 @@ export class TurnContexts {
       background: list => this.#threads.agentState.noteBackground(threadId, list, backgroundOwner),
       backgroundFinished: (id, state) => this.#threads.agentState.finishBackground(threadId, id, backgroundOwner, state),
       wake: (text, display) => this.#threads.deferred.wake(threadId, text, display),
+      notice: part => this.#notice(threadId, part),
       loopWake: scheduledFor => this.#core.wakes.cliFired(threadId, scheduledFor),
       requestPermission: (toolName: string, input: unknown, description: string | null): PermissionTicket => {
         // Shared contexts hide native tools. Approval of the attested protected

@@ -1,10 +1,11 @@
 import type { Query, SDKMessage, SpawnOptions as SdkSpawnOptions } from '@anthropic-ai/claude-agent-sdk';
-import type { BackgroundTask, PermissionMode } from '@boite/contracts';
+import type { PermissionMode } from '@boite/contracts';
 import { messageOf } from '../../errors.ts';
 import type { SpawnedChild } from '../../procs.ts';
 import type { LiveTurnSettings, SessionContext, TurnContext } from '../types.ts';
 import { hookReport } from './hooks.ts';
-import { authenticationFailureOf, authenticationSuspectOf, backgroundKind, commandsOf, isApiRetry, isAuthenticationFailure, subagentOf } from './mapping.ts';
+import { noticePart } from './notices.ts';
+import { authenticationFailureOf, authenticationSuspectOf, commandsOf, isApiRetry, isAuthenticationFailure, subagentOf } from './mapping.ts';
 import { RunningTotals } from './totals.ts';
 import { toolGate } from './permissions.ts';
 import { liveSetup, PROMPT_EFFORT, PromptQueue, STDERR_MAX } from './query.ts';
@@ -15,6 +16,7 @@ import { noteClaudeMessage } from './diagnostics.ts';
 import {protectedClaudeOptions} from './protected.ts';
 import { openWithCompaction } from './compaction.ts';
 import { cliOptions, lazyServers, type OptionsHost } from './options.ts';
+import { SessionTasks } from './tasks.ts';
 import { SessionCrons } from './crons.ts';
 
 /** How long `stop()` lets the CLI end its turn before the abort signal takes it. */
@@ -67,11 +69,7 @@ export class ClaudeSession {
   readonly #waiting: ClaudeTurn[] = [];
   /** Turns whose prompt was queued, or which adopted the CLI's own run. */
   readonly #steerable = new WeakSet<ClaudeTurn>();
-  /** What the CLI runs in the background, as its last `background_tasks_changed` said. */
-  #background: BackgroundTask[] = [];
-  readonly #backgroundFinishers = new Map<string, NonNullable<SessionContext['backgroundFinished']>[]>();
-  /** `task_started` by task id: the tool call that launched it and when. */
-  readonly #launched = new Map<string, { toolId: string | null; startedAt: number }>();
+  readonly #tasks = new SessionTasks();
   /** What the CLI wrote with no turn attached, replayed into the turn the core opens for it. */
   #orphans: SDKMessage[] = [];
   /** The core was asked for a turn for the orphans and has not attached one yet. */
@@ -184,7 +182,7 @@ export class ClaudeSession {
 
   /** Background work, a job the CLI scheduled, or output of its own that no turn took yet: the CLI must stay. */
   holding(): boolean {
-    return this.#background.length > 0 || this.#crons.held || this.#woken || this.#linger !== null;
+    return this.#tasks.running || this.#crons.held || this.#woken || this.#linger !== null;
   }
 
   /** The CLI went on by itself and wrote something the next turn is opened for. */
@@ -615,7 +613,9 @@ export class ClaudeSession {
     if (message.type === 'system' && message.subtype === 'hook_response') (this.#head()?.ctx ?? this.#ctx).hook?.(hookReport(message));
     const turn = this.#head();
     if (turn === null) {
-      this.#adopt(message);
+      // A notice such as `session_writes_lost`, written as the CLI exits after its last result, opens no turn.
+      const notice = noticePart(message);
+      if (notice !== null) this.#ctx.notice?.(notice); else this.#adopt(message);
       return;
     }
     if (this.#sessionId !== null) turn.noteSession(this.#sessionId);
@@ -682,54 +682,21 @@ export class ClaudeSession {
   /** Nothing attached any more: keep the CLI for its background work and its scheduled jobs, else the warm rule. */
   #afterTurns(): void {
     if (this.#closing || this.#ended || this.#waiting.length > 0) return;
-    if (this.#background.length > 0 || this.#crons.held || this.#woken) return;
+    if (this.#tasks.running || this.#crons.held || this.#woken) return;
     if (this.#lingerOwed) { this.#startLinger(); return; }
     if (this.#retention.viewed) return;
     if (this.#retention.idleMs(this.#warmMs) > 0) this.#armIdle();
     else this.close(null);
   }
 
-  /**
-   * `background_tasks_changed` is the whole set, each time; `task_started`
-   * names the tool call behind a task. Ambient tasks (watchers the CLI runs
-   * for itself) are not work anyone waits on.
-   */
+  /** The background set changed: tell the thread, and once it empties, give the CLI its moment to answer. */
   #noteTasks(message: Extract<SDKMessage, { type: 'system' }>): void {
     if (this.#ended || this.#closing) return;
-    if (message.subtype === 'task_notification') {
-      const owners = this.#backgroundFinishers.get(message.task_id);
-      const finish = owners?.shift();
-      const state = message.status === 'completed' ? 'completed' : message.status === 'failed' ? 'error' : 'cancelled';
-      finish?.(message.task_id, state);
-      if (!owners?.length) this.#backgroundFinishers.delete(message.task_id);
-      return;
-    }
-    if (message.subtype === 'task_started') {
-      if (this.#ctx.backgroundFinished) {
-        const owners = this.#backgroundFinishers.get(message.task_id) ?? [];
-        if (owners.at(-1) !== this.#ctx.backgroundFinished) owners.push(this.#ctx.backgroundFinished);
-        this.#backgroundFinishers.set(message.task_id, owners);
-      }
-      this.#launched.set(message.task_id, { toolId: message.tool_use_id ?? null, startedAt: Date.now() });
-      return;
-    }
-    if (message.subtype !== 'background_tasks_changed') return;
-    const next = message.tasks.filter(task => task.ambient !== true).map((task): BackgroundTask => {
-      if (!this.#backgroundFinishers.has(task.task_id) && this.#ctx.backgroundFinished) this.#backgroundFinishers.set(task.task_id, [this.#ctx.backgroundFinished]);
-      const known = this.#launched.get(task.task_id) ?? this.#background.find(entry => entry.id === task.task_id);
-      return {
-        id: task.task_id,
-        kind: backgroundKind(task.task_type),
-        description: task.description,
-        toolId: known?.toolId ?? null,
-        startedAt: known?.startedAt ?? Date.now(),
-      };
-    });
-    const ended = this.#background.length > 0 && next.length === 0;
-    this.#background = next;
-    for (const id of [...this.#launched.keys()]) if (!next.some(task => task.id === id)) this.#launched.delete(id);
+    const had = this.#tasks.running;
+    const next = this.#tasks.noted(message, this.#ctx);
+    if (next === null) return;
     this.#ctx.background?.(next);
-    if (!ended || this.#closing) return;
+    if (!had || next.length > 0) return;
     // Ended in the same second as the turn: the CLI answers the notification once the turn's result is out.
     if (this.#waiting.length > 0) this.#lingerOwed = true;
     else this.#startLinger();
@@ -825,14 +792,10 @@ export class ClaudeSession {
     this.#dropped = [];
     this.#foreignResults = 0;
     this.#replayResult = false;
-    this.#backgroundFinishers.clear();
     // The CLI no longer tracks what it ran in the background. The command itself
     // can outlive it (Windows kills no tree): the registry's orphan sweep, which
     // the core schedules when it releases the thread, stops that.
-    if (this.#background.length > 0) {
-      this.#background = [];
-      this.#ctx.background?.([]);
-    }
+    if (this.#tasks.clear()) this.#ctx.background?.([]);
     for (const timer of this.#timers) clearTimeout(timer);
     this.#timers.clear();
     try {

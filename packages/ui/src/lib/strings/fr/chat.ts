@@ -147,6 +147,17 @@ export const fr: Translation = {
     hookBlocked: 'Un hook a bloqué ce message',
     hookStopped: 'Un hook a arrêté le tour',
     hookSays: '{label} : {message}',
+    notice: {
+      writesLost: "{cause} : une partie du journal de l'agent n'a pas été enregistrée et pourrait manquer si vous reprenez cette conversation",
+      writesLostSettings: "{cause} : des changements de configuration faits par l'agent pendant cette session n'ont pas été enregistrés",
+      diskFull: 'Le disque était plein',
+      diskQuota: 'Le quota du disque était atteint',
+      writeFailed: 'Une écriture sur le disque a échoué',
+      attachmentsMissing: "Des fichiers joints ne sont pas parvenus à l'agent ({missing} sur {sent}) : il a continué sans eux",
+      instructionsLarge: "Les fichiers d'instructions font {chars} caractères, au-delà des {limit} conseillés : l'agent risque d'être plus lent et moins précis",
+      instructionsLargeOne: "Le fichier d'instructions fait {chars} caractères, au-delà des {limit} conseillés : l'agent risque d'être plus lent et moins précis",
+      mirrorFailed: "Une partie de cette conversation n'a pas été copiée dans le stockage de session : cette copie en manque",
+    },
     permissionAsk: {
       command: 'Lancer une commande',
       edit: 'Modifier {file}',

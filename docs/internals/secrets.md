@@ -97,8 +97,8 @@ and guides but always report no stored keys and memory-only storage.
 ## Masking and limits
 
 The core retains keyed hashes, not values, for masking the conversation's
-text, thinking, tools, terminal, process command lines, logs and diagnostic
-exports. Hashes remain available after delivery until the core stops, so late
+text, thinking, tools, terminal, the agent's notices (also one written after
+its turn ended), process command lines, logs and diagnostic exports. Hashes remain available after delivery until the core stops, so late
 output is still masked. The exact and URL-encoded forms become `•••• (<NAME>)`.
 Values shorter than eight bytes are not masked. Streamed chunks are masked
 individually and completed messages are masked again; a value split across

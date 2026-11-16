@@ -546,6 +546,7 @@ export class BackgroundCompaction {
       background: () => undefined,
       backgroundFinished: () => undefined,
       wake: () => undefined,
+      notice: () => undefined,
       log: (level, message, context) => { if (context?.kind !== 'provider-output') base.log(level, message, context); },
       // Traced under the thread, but never the thread's whole tree.
       spawnChild: this.threads.contexts.leasedSpawnChild(thread.id, provider),

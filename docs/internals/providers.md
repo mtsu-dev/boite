@@ -1390,6 +1390,22 @@ Completed requests and their tools remain. A `message_delta` with a stop
 reason confirms completion; `message_stop` alone does not, because the CLI
 also emits it when a stream is interrupted.
 
+Four system messages say something the CLI saves or reads went wrong while the
+turn goes on (fields read from CLI 2.1.325, three of them missing from the
+SDK's types): `session_writes_lost` (`error_code`, `lost`,
+`transcript_session_ids`), `file_attachments_missing` (`message_uuid`,
+`sent_count`, `missing`), `instruction_size_warning` (`total_chars`,
+`total_limit_chars`, `file_count`, `largest_chars`) and `mirror_error`
+(`error`, `key`). `drivers/claude/notices.ts` turns each into a `notice` part:
+the fields a client words in its own language, and the CLI's own account as
+`detail`, behind the notice's "i". The turn is neither stopped nor failed. The
+CLI documents `session_writes_lost` as written on exit after the last result,
+when the core closes its input (idle, shutdown, a changed setup): with no turn
+attached, the session hands the part to `SessionContext.notice`, and the core
+writes it as a finished `system` message of the thread's last turn, without
+starting a turn or the agent, masking a secret in use on the thread as a
+turn's parts are. A background compaction's copy keeps its notices to itself.
+
 ## Claude's MCP servers on demand
 
 Claude Code starts every stdio server of the user's `mcpServers` with each
