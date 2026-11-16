@@ -79,7 +79,7 @@ export class DeviceSnapshots {
     if (!target) return;
     this.#writes.get(threadId)?.();
     // A purge of the machine or its address after this point, a removal or a revocation, skips the write.
-    const mark = target.snapshots.mark();
+    const mark = target.snapshots.mark(target.machine);
     const generation = this.#generation;
     let cancelIdle: (() => void) | null = null;
     const timer: ReturnType<typeof setTimeout> = setTimeout(() => {

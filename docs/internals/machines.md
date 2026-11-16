@@ -495,8 +495,12 @@ rewind, a truncation, a refused open or a forgotten thread drops its record.
 Forgetting a saved machine (`removeEnvironment`, which a revoked key also
 calls) or a group dropping it (`removeBrought`) purges every machine this
 device reached at that address, key included. A write still waiting for its
-page then, or when the store lets its machine go, is not made, and a drop runs
-behind every write asked before it. The machine is the core's
+page then, or when the store lets its machine go, is not made; other windows
+hear of the purge on a `BroadcastChannel` and skip theirs too. Whatever the
+notice, a record is stored only in the same IndexedDB transaction that finds
+the machine's stored key to be the one it was encrypted with, and only a write
+asked while the machine had no key may make one. A drop deletes the record in
+the database, behind every write asked before it. The machine is the core's
 `coreId`; a core without one keeps no snapshots, and neither does a browser
 without IndexedDB or `crypto.subtle`. Boite has no sign-out and no Settings
 action to forget local data, so nothing purges all machines at once.

@@ -87,12 +87,13 @@ test('a record that does not decrypt is dropped, and so is one moved to another 
   const [first] = [...db.records.values()];
   const flipped = new Uint8Array(first!.data.slice(0));
   flipped[0]! ^= 1;
-  await db.put((await db.metas()).find(meta => meta.threadId === 't1')!, { iv: first!.iv, data: flipped.buffer });
+  const keyId = (await db.machine('core-a'))!.id;
+  await db.put((await db.metas()).find(meta => meta.threadId === 't1')!, { iv: first!.iv, data: flipped.buffer }, keyId);
   expect(await snapshots.read('core-a', 't1')).toBeUndefined();
   expect((await db.metas()).map(meta => meta.threadId)).toEqual(['t2']);
   // t2's bytes under t3's name: the additional data says which thread it was written for.
   const t2 = (await db.data('core-a', 't2'))!;
-  await db.put({ machine: 'core-a', threadId: 't3', bytes: 1, openedAt: 1 }, t2);
+  await db.put({ machine: 'core-a', threadId: 't3', bytes: 1, openedAt: 1 }, t2, keyId);
   const fresh = new ThreadSnapshots({ db, subtle: crypto.subtle });
   expect(await fresh.read('core-a', 't3')).toBeUndefined();
   expect(await db.data('core-a', 't3')).toBeUndefined();
@@ -145,4 +146,53 @@ test('two windows writing a machine\'s first threads at once share one key, and 
   expect((await reloaded.read('core-a', 't1'))?.thread.id).toBe('t1');
   expect((await reloaded.read('core-a', 't2'))?.thread.id).toBe('t2');
   expect((await db.machine('core-a'))?.urls).toEqual(['https://a.example']);
+});
+
+test('a write asked in one window before another window purged the machine, or made it a new key, is not kept', async () => {
+  const db = new MemorySnapshotDb();
+  const one = new ThreadSnapshots({ db, subtle: crypto.subtle, channel: null });
+  const two = new ThreadSnapshots({ db, subtle: crypto.subtle, channel: null });
+  // Window two holds the machine's key, and schedules a write.
+  expect(await two.write('core-a', null, thread('t1'), null)).toBe(true);
+  const waiting = two.mark('core-a');
+  // Window one forgets the machine (removed, or the device revoked there): key and records go.
+  await one.purgeMachine('core-a');
+  expect([db.keys.size, db.records.size]).toEqual([0, 0]);
+  // Window two, not told, still holds the old key for its next write.
+  const again = two.mark('core-a');
+  expect(await two.write('core-a', null, thread('t2'), null, waiting)).toBe(false);
+  expect([db.keys.size, db.records.size]).toEqual([0, 0]);
+  // Window one writes again under a new key: window two's write, asked under the key it held, is not kept either.
+  expect(await one.write('core-a', null, thread('t3'), null)).toBe(true);
+  expect(await two.write('core-a', null, thread('t2'), null, again)).toBe(false);
+  const reloaded = new ThreadSnapshots({ db, subtle: crypto.subtle, channel: null });
+  expect((await db.metas()).map(meta => meta.threadId)).toEqual(['t3']);
+  expect((await reloaded.read('core-a', 't3'))?.thread.id).toBe('t3');
+});
+
+test('a purge in one window reaches the writes another window has waiting, through the broadcast channel', async () => {
+  if (typeof BroadcastChannel === 'undefined') return;
+  const db = new MemorySnapshotDb();
+  const one = new ThreadSnapshots({ db, subtle: crypto.subtle, channel: new BroadcastChannel('snapshots-test') });
+  const two = new ThreadSnapshots({ db, subtle: crypto.subtle, channel: new BroadcastChannel('snapshots-test') });
+  // Window two schedules a write while the machine has no key: alone, it would make one.
+  const waiting = two.mark('core-a');
+  expect(await one.write('core-a', 'https://a.example', thread('t1'), null)).toBe(true);
+  await one.purgeUrl('https://a.example');
+  await new Promise(resolve => setTimeout(resolve, 50));
+  expect(await two.write('core-a', null, thread('t2'), null, waiting)).toBe(false);
+  expect([db.keys.size, db.records.size]).toEqual([0, 0]);
+  one.close(); two.close();
+});
+
+test('a drop deletes a record another window wrote after this window read its index', async () => {
+  const db = new MemorySnapshotDb();
+  const one = new ThreadSnapshots({ db, subtle: crypto.subtle, channel: null });
+  const two = new ThreadSnapshots({ db, subtle: crypto.subtle, channel: null });
+  expect(await two.read('core-a', 't1')).toBeUndefined();
+  expect(await one.write('core-a', null, thread('t1'), null)).toBe(true);
+  // Window two's index says nothing of t1; the thread was rewound there.
+  await two.drop('core-a', 't1');
+  expect(await db.data('core-a', 't1')).toBeUndefined();
+  expect(await one.read('core-a', 't1')).toBeUndefined();
 });
