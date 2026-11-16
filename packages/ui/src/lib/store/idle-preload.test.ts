@@ -37,13 +37,16 @@ async function machine(hold = false, answerFirst = false): Promise<{ ahead: () =
   client = new FakeClient({ delayMs: 0 });
   await client.connect();
   await client.call('threads.pin', { threadId: 't-trace', pinned: true });
-  const make = (title: string, extra: { incognito?: boolean } = {}) => client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: 'a-echo', title, ...extra });
+  const make = (title: string, extra: { incognito?: boolean; projectId?: string } = {}) => client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: 'a-echo', title, ...extra });
   const older = await make('older');
   await new Promise(resolve => setTimeout(resolve, 5));
   const newer = await make('newer');
   const shelved = await make('archived');
   await client.call('threads.archive', { threadId: shelved.id, archived: true });
-  await make('incognito', { incognito: true }).catch(() => undefined);
+  // As on the core, an incognito thread starts in the drafts. Pinned, it would come first were it not left out.
+  const drafts = await client.call('projects.drafts', {});
+  const hidden = await make('incognito', { incognito: true, projectId: drafts.id });
+  await client.call('threads.pin', { threadId: hidden.id, pinned: true });
   const real = client.call.bind(client);
   const calls: [string, Params][] = [];
   let inFlight = 0, most = 0;
