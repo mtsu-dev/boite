@@ -43,8 +43,14 @@ import { RELAYED_LINK_HEADER } from '../server/peer.ts';
 import { MAX_SOCKET_BUFFER_BYTES } from '../browser/push-stream.ts';
 import { ticketAddresses } from './addresses.ts';
 
-/** One address of the other member gets this long to open before the next is tried. */
+/** One address of the other member gets this long to open. */
 const DIAL_MS = 4000;
+/** While no address has opened, the next one is tried this long after the last, without waiting for it to fail. */
+export const DIAL_STAGGER_MS = 250;
+/** The other member is asked for a sign of life after this long without a frame from it. */
+export const UPSTREAM_PING_MS = 10_000;
+/** After this long without a frame from the other member, a pong included, both halves of a pipe close. */
+export const UPSTREAM_DEAD_MS = 25_000;
 /** What the client may have sent past its hello while the other member is being reached. */
 const QUEUE_MAX_BYTES = 32 * 1024 * 1024;
 /** How often pipes to a machine that left the group are closed. */
@@ -79,6 +85,61 @@ function carried(rest: string): 'socket' | 'stream' | 'http' | null {
   if (rest.startsWith(`${BROWSER_STREAM_ROUTE}/`) && BROWSER_STREAM_TICKET.test(rest.slice(BROWSER_STREAM_ROUTE.length + 1))) return 'stream';
   for (const route of [FILE_ROUTE, VIEW_ROUTE]) if (rest.startsWith(`${route}/`) && /^[A-Za-z0-9_-]{1,256}$/.test(rest.slice(route.length + 1))) return 'http';
   return null;
+}
+
+/**
+ * The first of `targets` to open, and where: the first is tried at once, then
+ * one more every `staggerMs` while none has opened, or at once when every one
+ * tried so far failed. Each attempt keeps its own deadline (`open`'s). The
+ * first to open wins; every other is called off through its signal, or
+ * handed to `discard` when it opens anyway. Null when none opens, or when
+ * `stopped` says the caller no longer waits before the next attempt.
+ */
+export function firstOpen<T>(
+  targets: readonly string[],
+  open: (target: string, signal: AbortSignal) => Promise<T>,
+  discard: (value: T) => void,
+  stopped: () => boolean = () => false,
+  staggerMs = DIAL_STAGGER_MS,
+): Promise<{ target: string; value: T } | null> {
+  return new Promise((resolve) => {
+    const dialing = new Set<AbortController>();
+    let next = 0, done = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const finish = (result: { target: string; value: T } | null): void => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      for (const controller of dialing) controller.abort();
+      dialing.clear();
+      resolve(result);
+    };
+    const launch = (): void => {
+      clearTimeout(timer);
+      timer = undefined;
+      if (done) return;
+      if (next >= targets.length || stopped()) {
+        if (dialing.size === 0) finish(null);
+        return;
+      }
+      const target = targets[next++]!;
+      const controller = new AbortController();
+      dialing.add(controller);
+      open(target, controller.signal).then(
+        (value) => {
+          dialing.delete(controller);
+          if (done) discard(value);
+          else finish({ target, value });
+        },
+        () => {
+          dialing.delete(controller);
+          if (!done) launch();
+        },
+      );
+      if (next < targets.length) timer = setTimeout(launch, staggerMs);
+    };
+    launch();
+  });
 }
 
 /** What a relayed socket carries on this machine's server. */
@@ -150,31 +211,33 @@ export class RelayHub implements RelaySink {
     if (targets.length === 0) return new Response('that machine gives no address this one may carry a client to', { status: 502 });
     const search = new URL(request.url).search;
     const range = request.headers.get('range');
-    for (const target of targets) {
+    const won = await firstOpen(targets, (target, signal) => {
+      // Called off when another address answered first, or after `DIAL_MS` without headers; never once the body flows.
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), DIAL_MS);
-      try {
-        const upstream = await fetch(`${target}${path.rest}${search}`, {
-          method: request.method,
-          headers: range === null ? {} : { range },
-          redirect: 'manual',
-          signal: controller.signal,
-        });
+      const abort = (): void => controller.abort();
+      signal.addEventListener('abort', abort, { once: true });
+      const timer = setTimeout(abort, DIAL_MS);
+      return fetch(`${target}${path.rest}${search}`, {
+        method: request.method,
+        headers: range === null ? {} : { range },
+        redirect: 'manual',
+        signal: controller.signal,
+      }).finally(() => {
         clearTimeout(timer);
-        this.#core.group.reached(path.coreId, target);
-        const headers = new Headers();
-        for (const name of KEPT_HEADERS) {
-          const value = upstream.headers.get(name);
-          if (value !== null) headers.set(name, value);
-        }
-        // Bun hands the body back decompressed: the length the other member said no longer holds.
-        if (upstream.headers.has('content-encoding')) headers.delete('content-length');
-        return new Response(request.method === 'HEAD' ? null : upstream.body, { status: upstream.status, headers });
-      } catch {
-        clearTimeout(timer);
-      }
+        signal.removeEventListener('abort', abort);
+      });
+    }, (late) => void late.body?.cancel().catch(() => undefined));
+    if (won === null) return new Response('that machine does not answer', { status: 502 });
+    const { target, value: upstream } = won;
+    this.#core.group.reached(path.coreId, target);
+    const headers = new Headers();
+    for (const name of KEPT_HEADERS) {
+      const value = upstream.headers.get(name);
+      if (value !== null) headers.set(name, value);
     }
-    return new Response('that machine does not answer', { status: 502 });
+    // Bun hands the body back decompressed: the length the other member said no longer holds.
+    if (upstream.headers.has('content-encoding')) headers.delete('content-length');
+    return new Response(request.method === 'HEAD' ? null : upstream.body, { status: upstream.status, headers });
   }
 
   /**
@@ -199,16 +262,13 @@ export class RelayHub implements RelaySink {
   async stream(path: RelayPath): Promise<RelayedStream | null> {
     const targets = this.targets(path.coreId);
     if (carried(path.rest) !== 'stream' || targets === null) return null;
-    for (const target of targets) {
-      const opened = await TextSocket.connect(`${target.replace(/^http/, 'ws')}${path.rest}`, DIAL_MS, { binary: true }).catch(() => null);
-      if (opened === null) continue;
-      this.#core.group.reached(path.coreId, target);
-      this.#arm();
-      const stream = new RelayedStream(path.coreId, opened, (ended) => { this.#streams.delete(ended); if (this.size === 0) this.#disarm(); });
-      this.#streams.add(stream);
-      return stream;
-    }
-    return null;
+    const won = await firstOpen(targets, (target, signal) => TextSocket.connect(`${target.replace(/^http/, 'ws')}${path.rest}`, DIAL_MS, { binary: true, signal }), (late) => late.close());
+    if (won === null) return null;
+    this.#core.group.reached(path.coreId, won.target);
+    this.#arm();
+    const stream = new RelayedStream(path.coreId, won.value, (ended) => { this.#streams.delete(ended); if (this.size === 0) this.#disarm(); });
+    this.#streams.add(stream);
+    return stream;
   }
 
   /** The counted peers of the relayed sockets whose key for this machine is not checked yet. */
@@ -266,6 +326,7 @@ export class RelayPipe {
   #closed = false;
   #helloTimer: ReturnType<typeof setTimeout> | null = null;
   #congestionTimer: ReturnType<typeof setTimeout> | null = null;
+  #livenessTimer: ReturnType<typeof setTimeout> | null = null;
   /** The client's key for this machine was checked: from then on it no longer counts as waiting for its hello. */
   authenticated = false;
   /** The session that key belongs to, null for the owner's token: revoking it closes this pipe. */
@@ -373,6 +434,7 @@ export class RelayPipe {
     upstream.onMessage((text) => this.#forward(text));
     upstream.onClose((event) => this.close(SENDABLE(event.code) ? event.code : 1011, event.reason || 'the other machine closed the connection'));
     if (this.#closed) return;
+    this.#watch(upstream);
     upstream.send(JSON.stringify({ ...frame, params: rest }));
     for (const queued of this.#queue) upstream.send(queued);
     this.#queue = [];
@@ -419,19 +481,49 @@ export class RelayPipe {
     if ((this.#socket?.getBufferedAmount() ?? 0) > 0) this.#congested();
   }
 
-  /** The first address of the other member that opens a socket, or null. */
+  /** The first address of the other member that opens a socket (`firstOpen`), or null. */
   async #dial(targets: string[]): Promise<Upstream | null> {
-    for (const target of targets) {
-      if (this.#closed) return null;
-      // The other core deflates what it sends a client that is not on its loopback: offered, as Bun's client did.
-      const headers = { [RELAYED_LINK_HEADER]: this.encrypted ? 'encrypted' : 'plain' };
-      const opened = await TextSocket.connect(`${target.replace(/^http/, 'ws')}${RPC_PATH}`, DIAL_MS, { deflate: true, headers }).catch(() => null);
-      if (opened !== null) {
-        this.#core.group.reached(this.coreId, target);
-        return opened;
+    // The other core deflates what it sends a client that is not on its loopback: offered, as Bun's client did.
+    const headers = { [RELAYED_LINK_HEADER]: this.encrypted ? 'encrypted' : 'plain' };
+    const won = await firstOpen(
+      targets,
+      (target, signal) => TextSocket.connect(`${target.replace(/^http/, 'ws')}${RPC_PATH}`, DIAL_MS, { deflate: true, headers, signal }),
+      (late) => late.close(),
+      () => this.#closed,
+    );
+    if (won === null) return null;
+    this.#core.group.reached(this.coreId, won.target);
+    return won.value;
+  }
+
+  /**
+   * Signs of life from the other member: it is pinged after `UPSTREAM_PING_MS`
+   * without a frame, and again each time as long, and after `UPSTREAM_DEAD_MS`
+   * of silence both halves close with 1013, which the client reconnects on.
+   * One timer per pipe, set again from its own callback rather than on every
+   * frame. The client's half is pinged by Bun's server (`sendPings`).
+   */
+  #watch(upstream: Upstream): void {
+    let pingedAt = Date.now();
+    const check = (): void => {
+      this.#livenessTimer = null;
+      if (this.#closed || this.#upstream !== upstream) return;
+      const now = Date.now();
+      const quiet = now - upstream.heardAt;
+      if (quiet >= UPSTREAM_DEAD_MS) {
+        this.close(1013, 'the other machine gave no sign of life; reconnect');
+        // A path that went silent carries no close handshake either.
+        upstream.drop('the other machine gave no sign of life');
+        return;
       }
-    }
-    return null;
+      if (now - Math.max(upstream.heardAt, pingedAt) >= UPSTREAM_PING_MS) {
+        upstream.ping();
+        pingedAt = now;
+      }
+      const nextPing = UPSTREAM_PING_MS - (now - Math.max(upstream.heardAt, pingedAt));
+      this.#livenessTimer = setTimeout(check, Math.max(1, Math.min(nextPing, UPSTREAM_DEAD_MS - quiet)));
+    };
+    this.#livenessTimer = setTimeout(check, UPSTREAM_PING_MS);
   }
 
   #name(): string {
@@ -454,6 +546,8 @@ export class RelayPipe {
     if (this.#helloTimer !== null) clearTimeout(this.#helloTimer);
     if (this.#congestionTimer !== null) clearTimeout(this.#congestionTimer);
     this.#congestionTimer = null;
+    if (this.#livenessTimer !== null) clearTimeout(this.#livenessTimer);
+    this.#livenessTimer = null;
     this.#queue = [];
     const upstream = this.#upstream;
     this.#upstream = null;

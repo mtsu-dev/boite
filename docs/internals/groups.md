@@ -319,7 +319,10 @@ written as numbers. A member that gives neither, a MagicDNS name alone, is
 carried by nobody and shown as giving no usable address. A direct ticket goes
 to an address every machine the client was paired with by hand allows, so a
 common one is enough. A carrier dials whichever of its own addresses for the
-member answers, which the client does not choose: nobody carries the client
+member answers first: the address that answered last first, then one more
+every 250 ms while none has opened, or at once when every one tried so far
+failed. Each address gets 4 seconds; the first to open wins and the others are
+hung up. The client does not choose that address: nobody carries the client
 there until those machines list the same addresses (their order does not
 count), since one of them may hold an older roster and dial an address the
 member gave up. One of them that no longer lists the member stops every route
@@ -340,6 +343,14 @@ socket counts against the same bounds as a direct one: five seconds and 64 KB
 for its hello, and the places for sockets waiting on one. Revoking the key it
 came in with closes it, and its sockets to a machine that leaves the group are
 closed within fifteen seconds.
+
+The relaying machine watches its half to the member: after 10 seconds without
+a frame from it, it sends a ping, and again every 10 seconds of silence; after
+25 seconds with nothing, not even a pong, it closes both halves with 1013 and
+the client reconnects. The client's half is pinged by Bun's server, which
+pings a socket idle for 60 seconds and closes it after 120 seconds of silence
+(its defaults, which the server keeps); the client's own probe of a quiet
+socket usually finds a dead path sooner.
 
 While a member is reached through another, the client tries its own addresses
 every 30 seconds while none answers, and moves to the first that answers, so a phone back on the
@@ -744,11 +755,14 @@ two members that cannot reach each other. `packages/ui/src/lib/group-links.test.
 and `workspace.test.ts` hold the client rules: which addresses get a key, who
 says who is in a group, and what is asked before a held key is sent, and when
 a member is carried by another and moved back to its own address.
-`packages/core/test/group-relay.test.ts` runs two real cores: a phone carried
+`packages/core/test/group-relay-pipe.test.ts` holds a pipe on a fake clock
+against a member that went silent: pinged at 10 and 20 seconds, closed with
+1013 at 25. `packages/core/test/group-relay.test.ts` runs two real cores: a phone carried
 from one to the other with a ticket, then with the key it got; refusals by the
 relaying machine for a missing, wrong, agent or revoked key; a member outside
 the group or one that does not answer; a file with its range and a view with
-its headers; a socket closed when its member leaves; a notification forwarded
+its headers; a socket closed when its member leaves; a first address that never
+answers, passed over after 250 ms; a notification forwarded
 to the device's home machine, refused for a device that is not its own. The shared contract scenario in
 `tests/contract/scenarios.ts` holds the refusals on the core and on the
 in-memory client. `tests/e2e/machines.test.ts` joins two real cores from the
