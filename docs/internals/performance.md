@@ -1386,10 +1386,13 @@ scrollTop. Same command, 2026-11-16, load 8 to 26:
 | Base | 495, 426 | 0, 0 | 1,437, 1,628 | 328, 326 | 8 to 9 |
 | 57957a49 (clip margin) | 143, 247 | 114, 0 | 1,491, 504 | 310, 311 | 9 to 21 |
 | Final (review fixes) | 276, 223 | 66, 126 | 1,890, 1,880 | 326, 314 | 21 to 26 |
+| Final again | 201, 177 | 66, 195 | 809, 765 | 338, 338 | 5 to 9 |
+| Base again | 604, 1,401 | 0, 0 | 1,952, 1,033 | 360, 337 | 9 to 8 |
 
-The open stays under 500 ms a run and the wheel up the answers under 150. Per
-1000 px of text, the long thread costs the base's main thread time; its long
-frames moved with the machine's load.
+The open stays under 500 ms a run; the wheel up the answers stayed under 150
+in five runs of six, 195 in the last. Per 1000 px of text, the long thread
+costs the base's main thread time; its long frames moved with the machine's
+load.
 
 Cutting answers trades the open for the scroll: one answer drawn whole is
 2,681 nodes the open lays out at once and a wheel only composites, where cut
