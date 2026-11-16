@@ -8,6 +8,13 @@ import { logMessageOf } from '../log-errors.ts';
 /** A `threads.focus` report as push sees it: the thread shown, and when the user last used it while watching. */
 export interface AttentionReport { threadId: ThreadId | null; activeAt: number | null }
 
+/**
+ * How long a thread stays a connection's visible thread before its agent is
+ * prepared. Arrowing through ten threads launched ten agents that lived 30 s
+ * for nothing; a thread left sooner prepares nothing and leaves no grace.
+ */
+export const FOCUS_DWELL_MS = 1000;
+
 /** One visible conversation per socket. Preparation never participates in turn admission. */
 export class ThreadFocus {
   readonly #viewers = new Map<string, ThreadId>();
@@ -15,6 +22,12 @@ export class ThreadFocus {
   readonly #protectAll = new Set<string>();
   readonly #inputReports = new Set<string>();
   readonly #prepared = new Map<ThreadId, { key: string; pending: boolean }>();
+  /** Viewed threads past their dwell, or shown with intent: only these prepare. */
+  readonly #settled = new Set<ThreadId>();
+  /** Per connection, the thread it shows that still waits for `dwellMs`. */
+  readonly #dwells = new Map<string, { threadId: ThreadId; timer: ReturnType<typeof setTimeout> }>();
+  /** `FOCUS_DWELL_MS`; a test shortens it. */
+  dwellMs = FOCUS_DWELL_MS;
   /** Per connection, the thread its user is looking at and until when the core believes it (`ATTENTION_LEASE_MS`). */
   readonly #attention = new Map<string, { threadId: ThreadId; until: number }>();
   readonly #attentionListeners = new Set<(report: AttentionReport) => void>();
@@ -32,9 +45,10 @@ export class ThreadFocus {
         const threadId = (payload as { threadId: ThreadId }).threadId;
         setThreadViewed(threadId, false);
         this.#prepared.delete(threadId);
+        this.#settled.delete(threadId);
         for (const ids of this.#protectedInputs.values()) ids.delete(threadId);
         for (const [connectionId, viewed] of this.#viewers) {
-          if (viewed === threadId) this.#viewers.delete(connectionId);
+          if (viewed === threadId) { this.#viewers.delete(connectionId); this.#cancelDwell(connectionId); }
         }
       }
     });
@@ -72,13 +86,46 @@ export class ThreadFocus {
     else if (protectAllThreads === false) this.#protectAll.delete(connectionId);
     this.#attend(connectionId, threadId, attentive === true, idleMs);
     const previous = this.#viewers.get(connectionId);
+    const sharedView = threadId !== null && previous !== threadId && this.viewed(threadId);
     if (threadId === null) this.#viewers.delete(connectionId);
     else this.#viewers.set(connectionId, threadId);
+    if (previous !== threadId) this.#cancelDwell(connectionId);
     if (previous && previous !== threadId && !this.viewed(previous)) {
       setThreadViewed(previous, false);
       this.#prepared.delete(previous);
+      this.#settled.delete(previous);
+    }
+    if (threadId !== null && !this.#settled.has(threadId)) {
+      if (sharedView || this.#prepared.has(threadId) || this.#core.procs.liveCount(threadId) > 0) this.#settled.add(threadId);
+      else if (!this.#dwells.has(connectionId)) {
+        const timer = setTimeout(() => {
+          if (this.#dwells.get(connectionId)?.timer !== timer) return;
+          this.#dwells.delete(connectionId);
+          this.#settle(threadId);
+        }, this.dwellMs);
+        timer.unref?.();
+        this.#dwells.set(connectionId, { threadId, timer });
+      }
+    }
+    // Input typed on any client is intent: a thread waiting for its dwell prepares at once.
+    for (const [waiting, dwell] of this.#dwells) {
+      if (this.hasReportedInput(dwell.threadId)) { this.#cancelDwell(waiting); this.#settle(dwell.threadId); }
     }
     if (threadId !== null) this.#refresh(threadId);
+  }
+
+  #settle(threadId: ThreadId): void {
+    if (this.#closed || this.#core.stopping || !this.viewed(threadId)) return;
+    this.#settled.add(threadId);
+    for (const [connectionId, dwell] of this.#dwells) if (dwell.threadId === threadId) this.#cancelDwell(connectionId);
+    this.#refresh(threadId);
+  }
+
+  #cancelDwell(connectionId: string): void {
+    const dwell = this.#dwells.get(connectionId);
+    if (!dwell) return;
+    clearTimeout(dwell.timer);
+    this.#dwells.delete(connectionId);
   }
 
   disconnect(connectionId: string): void {
@@ -148,7 +195,7 @@ export class ThreadFocus {
       return;
     }
     setThreadViewed(threadId, true);
-    if (threadActive(thread.status)) return;
+    if (!this.#settled.has(threadId) || threadActive(thread.status)) return;
     const key = JSON.stringify([thread.providerId, thread.accountId, thread.selectionVersion, thread.sessionGeneration, thread.cwd, thread.sessionResumeAt]);
     const previous = this.#prepared.get(threadId);
     if (previous?.pending || previous?.key === key) return;
@@ -194,6 +241,9 @@ export class ThreadFocus {
     this.#protectAll.clear();
     this.#inputReports.clear();
     this.#prepared.clear();
+    this.#settled.clear();
+    for (const dwell of this.#dwells.values()) clearTimeout(dwell.timer);
+    this.#dwells.clear();
     this.#attention.clear();
     this.#attentionListeners.clear();
   }
