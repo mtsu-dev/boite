@@ -279,11 +279,16 @@ function sliceRows(message: Message, pieces: { part: number; cuts: number[] }[],
   spans.forEach((span, index) => add(index === 0 ? message.id : span.id, message, span.from, span.to, index === 0, index === spans.length - 1, undefined, span.text));
 }
 
-/** The row of `messageId` that draws `part`, or its first row with no part named. -1 when the message is not listed. */
-export function rowIndexOf(rows: readonly TimelineRow[], messageId: string, part?: number): number {
+/**
+ * The row of `messageId` that draws `part`, or its first row with no part
+ * named. A long text cut in slices answers the slice that holds character
+ * `offset` of its shown text, its first slice without one. -1 when the
+ * message is not listed.
+ */
+export function rowIndexOf(rows: readonly TimelineRow[], messageId: string, part?: number, offset = 0): number {
   let at = rows.findIndex(row => row.id === messageId || row.failures?.some(message => message.id === messageId));
   if (at < 0 || part === undefined) return at;
-  while (rows[at + 1]?.message === rows[at]!.message && rows[at + 1]!.from <= part) at += 1;
+  for (let next = rows[at + 1]; next?.message === rows[at]!.message && (next.from < part || (next.from === part && (next.text?.start ?? 0) <= offset)); next = rows[at + 1]) at += 1;
   return at;
 }
 

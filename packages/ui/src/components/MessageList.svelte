@@ -211,10 +211,10 @@
   });
 
   /** To a message, or to the row of it that draws `part` when a long one is cut in several. */
-  function jumpToMessage(id: string, part?: number) {
+  function jumpToMessage(id: string, part?: number, offset?: number) {
     releaseNavigation();
     const box = viewport;
-    const index = rowIndexOf(rows, id, part);
+    const index = rowIndexOf(rows, id, part, offset);
     if (!box || index < 0) return;
     failureTarget = { id };
     navigationTarget = rows[index]!.id;
@@ -709,8 +709,8 @@
 
 <div class="timeline-wrap">
   {#if store.findOpen && FindBar}
-    <FindBar {messages} {viewport} request={store.findRequest} jump={(id, part) => jumpToMessage(id, part)}
-      rowOf={(id, part) => { const row = rows[rowIndexOf(rows, id, part)]; return row?.failures ? { id: `failure:${id}`, from: 0 } : row ?? { id, from: 0 }; }} onclose={() => (store.findOpen = false)} />
+    <FindBar {messages} {viewport} request={store.findRequest} jump={(id, part, offset) => jumpToMessage(id, part, offset)}
+      rowOf={(id, part, offset) => { const row = rows[rowIndexOf(rows, id, part, offset)]; return row?.failures ? { id: `failure:${id}`, from: 0 } : row ?? { id, from: 0 }; }} onclose={() => (store.findOpen = false)} />
   {/if}
   {#if !narrow.current}<MessageOutline {messages} active={activePrompt} jump={id => void jumpToMessage(id)}
     hasOlder={store.messagesBefore !== null} loading={store.loadingOlder} loadOlder={() => { if (viewport) { releaseNavigation(); viewport.scrollTop = rows[0]?.gap ? Math.max(0, (totals(rows)[1] ?? 0) - viewport.clientHeight) : 0; pinned = false; loadAbove(viewport); } }} />{/if}

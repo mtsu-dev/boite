@@ -1554,7 +1554,7 @@ test('Ctrl+F opens the row of a long message that holds the match, not its first
   const paragraph = giant.parts[at];
   if (paragraph?.type !== 'text') throw new Error('the giant message holds paragraphs');
   paragraph.text = `${paragraph.text} xylophone`;
-  expect(findHits(messages, 'xylophone')).toEqual([{ messageId: giant.id, nth: 0, part: at }]);
+  expect(findHits(messages, 'xylophone')).toEqual([{ messageId: giant.id, nth: 0, part: at, at: expect.any(Number) }]);
 
   stubLayout(60_000);
   live.findOpen = true;

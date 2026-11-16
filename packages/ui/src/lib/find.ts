@@ -4,21 +4,23 @@ import { planOf } from './plan';
 
 /**
  * One occurrence of the query: in which message, which one there counting from
- * 0, and in which of its parts, so a long message the timeline cut in several
- * rows is opened on the row that draws it.
+ * 0, in which of its parts and where in that part's shown text, so a long
+ * message the timeline cut in several rows, or a long answer cut in slices, is
+ * opened on the row that draws it.
  */
 export interface FindHit {
   messageId: string;
   nth: number;
   part: number;
+  at: number;
 }
 
-function occurrences(text: string, needle: string): number {
-  if (!needle) return 0;
+function occurrences(text: string, needle: string): number[] {
+  if (!needle) return [];
   const hay = text.toLowerCase();
-  let count = 0;
-  for (let at = hay.indexOf(needle); at >= 0; at = hay.indexOf(needle, at + needle.length)) count += 1;
-  return count;
+  const found: number[] = [];
+  for (let at = hay.indexOf(needle); at >= 0; at = hay.indexOf(needle, at + needle.length)) found.push(at);
+  return found;
 }
 
 /**
@@ -49,7 +51,7 @@ export function findHits(messages: readonly Message[], query: string): FindHit[]
   return messages.flatMap((message) => {
     let nth = 0;
     return readable(message).flatMap(({ part, text }) =>
-      Array.from({ length: occurrences(text, needle) }, () => ({ messageId: message.id, nth: nth++, part })));
+      occurrences(text, needle).map((at) => ({ messageId: message.id, nth: nth++, part, at })));
   });
 }
 

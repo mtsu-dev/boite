@@ -5,6 +5,7 @@ import { memoryPartRuns } from './memory-timeline';
 import { partRuns } from './tool-groups';
 import { CUT_FROM, ROW_CHARS, ROW_PARTS, SPLIT_FROM, TimelineRows, rowCuts, rowEstimate, rowIndexOf, seam, textCuts, type TimelineRow } from './timeline-rows';
 import { markdownAnswer } from './fake-client/markdown-thread';
+import { findHits } from './find';
 
 const tool = (id: string): MessagePart => ({ type: 'tool', toolId: id, name: 'Bash', input: { command: `echo ${id}` }, output: 'ok', status: 'done' });
 const text = (value: string): MessagePart => ({ type: 'text', text: value });
@@ -257,4 +258,26 @@ test('the bench answers of 20 to 40 KB are cut into rows of about ROW_CHARS', ()
   const cuts = textCuts(text);
   expect(cuts.length).toBeGreaterThanOrEqual(4);
   expect(Math.max(...[0, ...cuts, text.length].slice(1).map((at, index) => at - ([0, ...cuts][index] ?? 0)))).toBeLessThan(3 * ROW_CHARS);
+});
+
+test('find opens the slice of a cut answer that holds the match, not its last slice', () => {
+  let seed = 7;
+  const random = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const words = `The quokka opens this answer.\n\n${markdownAnswer(random, 15_000)}\n\nThe platypus sits in the middle.\n\n${markdownAnswer(random, 15_000)}\n\nA wombat closes it.`;
+  const answer = message('m-long', [text(words)]);
+  const rows = new TimelineRows().build([message('m-q', [text('Explain')], 'user'), answer]);
+  const slices = rows.filter(row => row.message === answer);
+  expect(slices.length).toBeGreaterThanOrEqual(5);
+  const holding = (word: string) => {
+    const [hit] = findHits([answer], word);
+    const row = rows[rowIndexOf(rows, hit!.messageId, hit!.part, hit!.at)]!;
+    expect(words.slice(row.text?.start, row.text?.end)).toContain(word);
+    return slices.indexOf(row);
+  };
+  expect(holding('quokka')).toBe(0);
+  expect(holding('platypus')).toBeGreaterThan(0);
+  expect(holding('platypus')).toBeLessThan(slices.length - 1);
+  expect(holding('wombat')).toBe(slices.length - 1);
+  // No offset named: the first slice of the part, where a jump to the message opens.
+  expect(rows[rowIndexOf(rows, 'm-long', 0)]).toBe(slices[0]);
 });

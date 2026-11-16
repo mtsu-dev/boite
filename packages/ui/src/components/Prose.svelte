@@ -481,7 +481,12 @@
   .paragraph + .paragraph { margin-top: var(--chat-block-gap); }
   /* A long answer cut in rows (lib/timeline-rows.ts) stays one bubble: a slice
      drops the edge it shares with the next one and reaches up through the
-     block gap between their rows, where the paragraph gap would have been. */
+     block gap between their rows, where the paragraph gap would have been.
+     Every slice takes the whole reading measure: one of them alone fits its
+     own blocks, and a short last slice drew narrower than the slices above
+     it. A text long enough to be cut has a paragraph that fills the measure,
+     so the whole answer was that wide unsplit. */
+  .answer-bubble:is(.joined-above, .joined-below) { width: auto; }
   .answer-bubble.joined-above {
     margin-top: calc(-1 * var(--chat-block-gap));
     padding-top: var(--chat-block-gap);
