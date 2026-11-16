@@ -188,6 +188,8 @@ export class Store {
     ctx.clientGeneration++;
     ctx.settings.brainCommands = [];
     ctx.models.flushModels();
+    // A write still waiting for its page would land after the machine went.
+    ctx.threads.snapshots.stop();
     void ctx.threads.unsubscribe();
     ctx.threads.loadingThreadId = null;
     this.retitling = [];

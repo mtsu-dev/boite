@@ -3,6 +3,7 @@ import type { Thread } from '@boite/contracts';
 import { FakeClient } from '../fake-client';
 import { Store } from '../store.svelte';
 import { MemorySnapshotDb, SNAPSHOT_WRITE_DELAY_MS, ThreadSnapshots, setThreadSnapshots } from '../thread-snapshots';
+import { removeEnvironment, upsertEnvironment } from '../endpoint-env';
 
 type Params = { threadId?: string; after?: string };
 
@@ -13,6 +14,7 @@ afterEach(() => {
   for (const client of clients) client.close();
   stores = []; clients = [];
   setThreadSnapshots(undefined);
+  localStorage.clear();
   vi.restoreAllMocks();
 });
 
@@ -82,4 +84,31 @@ test('a snapshot whose cursor the core does not know is dropped, and the thread 
   expect(store.openThread!.messages.map(message => message.id)).toEqual(page.messages.map(message => message.id));
   await snapshots.purgeMachine('none');
   expect(await db.data('core-fixture', 't-descriptors')).toBeUndefined();
+});
+
+test('a write still waiting for its page to settle is dropped when the machine is removed or the store lets it go', async () => {
+  const db = new MemorySnapshotDb();
+  const snapshots = new ThreadSnapshots({ db, subtle: crypto.subtle });
+  setThreadSnapshots(snapshots);
+  const url = 'https://a.example';
+  upsertEnvironment({ url, token: 'key-a', paired: true });
+  const first = await load();
+  first.store.endpointUrl = url;
+  await first.store.open('t-descriptors');
+  await until(() => db.records.size === 1, SNAPSHOT_WRITE_DELAY_MS + 3000);
+  // Leaving schedules the left page and the new one; the device then loses its key there.
+  await first.store.open('t-trace');
+  removeEnvironment(url, 'key-a');
+  await snapshots.purgeMachine('none');
+  expect([db.keys.size, db.records.size]).toEqual([0, 0]);
+  await new Promise(resolve => setTimeout(resolve, SNAPSHOT_WRITE_DELAY_MS + 1500));
+  expect([db.keys.size, db.records.size]).toEqual([0, 0]);
+
+  // A store that lets its machine go writes nothing it had waiting.
+  const second = await load();
+  await second.store.open('t-descriptors');
+  second.store.detach();
+  await new Promise(resolve => setTimeout(resolve, SNAPSHOT_WRITE_DELAY_MS + 1500));
+  await snapshots.purgeMachine('none');
+  expect([db.keys.size, db.records.size]).toEqual([0, 0]);
 });

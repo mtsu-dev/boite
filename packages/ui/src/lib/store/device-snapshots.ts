@@ -27,6 +27,8 @@ interface Pages {
 export class DeviceSnapshots {
   /** The writes waiting for their page to settle, by thread. */
   readonly #writes = new Map<ThreadId, () => void>();
+  /** Bumped when the store lets its machine go: a write that fires after it is not made. */
+  #generation = 0;
 
   /** `unloaded` holds the threads shown as a bare row, their page not in yet: nothing to write. */
   constructor(private readonly ctx: StoreContext, private readonly pages: Pages, private readonly unloaded: ReadonlySet<ThreadId>) {}
@@ -76,17 +78,26 @@ export class DeviceSnapshots {
     const target = this.#target();
     if (!target) return;
     this.#writes.get(threadId)?.();
+    // A purge of the machine or its address after this point, a removal or a revocation, skips the write.
+    const mark = target.snapshots.mark();
+    const generation = this.#generation;
     let cancelIdle: (() => void) | null = null;
     const timer: ReturnType<typeof setTimeout> = setTimeout(() => {
       cancelIdle = whenIdle(() => {
         this.#writes.delete(threadId);
-        if (this.ctx.store.core?.coreId !== target.machine) return;
+        if (this.#generation !== generation || this.ctx.store.core?.coreId !== target.machine) return;
         const thread = this.#page(threadId) ?? left;
         if (!thread || thread.messages.length === 0) return;
-        void target.snapshots.write(target.machine, target.url, thread, resumeRequest(threadId, thread).after ?? null);
+        void target.snapshots.write(target.machine, target.url, thread, resumeRequest(threadId, thread).after ?? null, mark);
       });
     }, SNAPSHOT_WRITE_DELAY_MS);
     this.#writes.set(threadId, () => { clearTimeout(timer); cancelIdle?.(); this.#writes.delete(threadId); });
+  }
+
+  /** The store lets its machine go: the writes still waiting are not made. */
+  stop(): void {
+    this.#generation++;
+    for (const cancel of [...this.#writes.values()]) cancel();
   }
 
   /** The thread changed in a way its snapshot cannot be caught up from: it goes. */

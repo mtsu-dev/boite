@@ -487,12 +487,16 @@ thread, 4 MiB on the device; the least recently opened goes first. Each record
 is AES-GCM encrypted under a key made once per machine, non-extractable and
 kept in IndexedDB as a `CryptoKey`, with a random 96-bit IV per record and the
 machine and thread ids as additional data; a record that does not decrypt is
-dropped. An incognito thread, a thread whose page holds a secret card, and any
+dropped. Two windows making a machine's first key at once both keep the one
+stored first: one IndexedDB transaction reads the machine and adds the key
+only if it is absent. An incognito thread, a thread whose page holds a secret card, and any
 connection other than the owner's or a paired device's are never written. A
 rewind, a truncation, a refused open or a forgotten thread drops its record.
 Forgetting a saved machine (`removeEnvironment`, which a revoked key also
 calls) or a group dropping it (`removeBrought`) purges every machine this
-device reached at that address, key included. The machine is the core's
+device reached at that address, key included. A write still waiting for its
+page then, or when the store lets its machine go, is not made, and a drop runs
+behind every write asked before it. The machine is the core's
 `coreId`; a core without one keeps no snapshots, and neither does a browser
 without IndexedDB or `crypto.subtle`. Boite has no sign-out and no Settings
 action to forget local data, so nothing purges all machines at once.

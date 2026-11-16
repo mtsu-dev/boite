@@ -121,3 +121,28 @@ test('removing a machine or the device losing its key there purges that machine\
   await snapshots.purgeAll();
   expect(db.records.size + db.keys.size).toBe(0);
 });
+
+test('a drop asked while the first write of its thread is still pending removes what that write stored', async () => {
+  const { snapshots } = setup();
+  // The index is read and holds nothing yet: the write below has not noted its record.
+  expect(await snapshots.read('core-a', 't1')).toBeUndefined();
+  const writing = snapshots.write('core-a', null, thread('t1'), null);
+  const dropping = snapshots.drop('core-a', 't1');
+  expect(await writing).toBe(true);
+  await dropping;
+  expect(await snapshots.read('core-a', 't1')).toBeUndefined();
+  expect(snapshots.mayHold('core-a', 't1')).toBe(false);
+});
+
+test('two windows writing a machine\'s first threads at once share one key, and each reads the other\'s', async () => {
+  const db = new MemorySnapshotDb();
+  const one = new ThreadSnapshots({ db, subtle: crypto.subtle });
+  const two = new ThreadSnapshots({ db, subtle: crypto.subtle });
+  expect(await Promise.all([one.write('core-a', 'https://a.example', thread('t1'), null), two.write('core-a', null, thread('t2'), null)])).toEqual([true, true]);
+  expect(db.keys.size).toBe(1);
+  // After a reload, both records decrypt under the one key kept.
+  const reloaded = new ThreadSnapshots({ db, subtle: crypto.subtle });
+  expect((await reloaded.read('core-a', 't1'))?.thread.id).toBe('t1');
+  expect((await reloaded.read('core-a', 't2'))?.thread.id).toBe('t2');
+  expect((await db.machine('core-a'))?.urls).toEqual(['https://a.example']);
+});
