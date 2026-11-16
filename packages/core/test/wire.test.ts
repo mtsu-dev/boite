@@ -130,13 +130,16 @@ describe('what a remote client is sent', () => {
 
   test('held deltas leave before any other event and before a response, so the order on the wire is the order of the turn', () => {
     const { connection, sent } = attached(true);
+    const frames = (): string[] => sent.map((entry) => entry.frame.method === undefined ? `response ${entry.frame.id}` : `${entry.frame.method} ${entry.frame.params?.text ?? ''}`.trimEnd());
+    connection.sendEvent('message.delta', delta('First. '));
     connection.sendEvent('message.delta', delta('tail'));
+    // Past the first sentence, the text is held.
+    expect(frames()).toEqual(['message.delta First.']);
     connection.sendEvent('turn.finished', { threadId: 'thr_a' } as unknown as RpcEvents['turn.finished']);
-    connection.sendEvent('message.delta', delta('late'));
+    connection.sendEvent('message.delta', delta(' late'));
+    expect(frames()).toEqual(['message.delta First.', 'message.delta tail', 'turn.finished']);
     connection.sendResponse({ jsonrpc: '2.0', id: 7, result: null });
-    expect(sent.map((entry) => entry.frame.method ?? `response ${entry.frame.id}`)).toEqual([
-      'message.delta', 'turn.finished', 'message.delta', 'response 7',
-    ]);
+    expect(frames()).toEqual(['message.delta First.', 'message.delta tail', 'turn.finished', 'message.delta  late', 'response 7']);
     connection.close(1000, 'done');
   });
 
