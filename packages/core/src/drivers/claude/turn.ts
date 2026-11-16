@@ -18,8 +18,8 @@ import {
   mapUsage,
   NOTHING_HELD,
   requestTokens,
-  resultText,
   subagentOf,
+  toolResultOf,
 } from './mapping.ts';
 import type { HeldUsage, StreamEvent } from './mapping.ts';
 import { hookEndPart } from './hooks.ts';
@@ -29,6 +29,12 @@ import { claudeProgress } from './progress.ts';
 
 /** The rough size of a token, for what a step adds to the context after the last measured request. */
 const CHARS_PER_TOKEN = 4;
+/**
+ * What one image of a tool result adds to the context, in characters at
+ * `CHARS_PER_TOKEN`: the model reads an image as about 1,600 tokens at the
+ * size the CLI sends, not as its base64.
+ */
+const IMAGE_CONTEXT_CHARS = 1600 * CHARS_PER_TOKEN;
 
 /** What the CLI answers a `resume` whose transcript is gone (CLI 2.1.282, probed offline). */
 const MISSING_SESSION = /^No conversation found with session ID: /;
@@ -49,6 +55,8 @@ interface ToolEntry {
    * `documents` live in the stored part only, and a later change patches it.
    */
   released: boolean;
+  /** The result carried images: they stay the card's documents once the call is released. */
+  imaged: boolean;
 }
 
 type UserMessage = Extract<SDKMessage, { type: 'user' }>;
@@ -546,10 +554,10 @@ export class ClaudeTurn {
     const body = message.message as { content?: unknown } | undefined;
     for (const block of contentBlocks(body?.content)) {
       if (block.type !== 'tool_result' || typeof block.tool_use_id !== 'string') continue;
-      const output = resultText(block.content);
+      const { output, images } = toolResultOf(block.content);
       this.#answered.add(block.tool_use_id);
-      this.#addedChars += output.length;
-      this.finishTool(block.tool_use_id, output, block.is_error === true ? 'error' : 'done');
+      this.#addedChars += output.length + images.length * IMAGE_CONTEXT_CHARS;
+      this.finishTool(block.tool_use_id, output, block.is_error === true ? 'error' : 'done', images);
     }
   }
 
@@ -710,9 +718,11 @@ export class ClaudeTurn {
     this.#tools.set(toolId, entry);
     if (entry.released) {
       // The result came first (a replayed or adopted call): the card keeps its output.
+      // A result's images are the card's documents when the input describes no change.
+      const keep = documents === null || (documents.length === 0 && entry.imaged);
       this.#patchTool(entry, {
         name, input, inputText,
-        ...(documents === null ? {} : { documents: documents.length > 0 ? documents : undefined }),
+        ...(keep ? {} : { documents: documents.length > 0 ? documents : undefined }),
       });
       return;
     }
@@ -727,15 +737,18 @@ export class ClaudeTurn {
     return entry !== undefined && entry.inputText === null;
   }
 
-  finishTool(toolId: string, output: string, status: ToolStatus): void {
+  /** `images` are the result's own documents, drawn after any the input made. */
+  finishTool(toolId: string, output: string, status: ToolStatus, images: ToolDocument[] = []): void {
     const entry = this.#tools.get(toolId) ?? this.#newTool(toolId);
     entry.status = status;
+    if (images.length > 0) entry.imaged = true;
     this.#tools.set(toolId, entry);
     if (entry.released) {
-      this.#patchTool(entry, { output, status });
+      this.#patchTool(entry, { output, status, ...(images.length > 0 ? { documents: images } : {}) });
       return;
     }
     entry.output = output;
+    if (images.length > 0) entry.documents = [...entry.documents, ...images];
     this.#emitTool(toolId, entry);
     // The stored part holds the call now; a screenshot's base64 or a written
     // file is not kept a second time for the rest of the turn.
@@ -763,6 +776,7 @@ export class ClaudeTurn {
       documents: [],
       summary: null,
       released: false,
+      imaged: false,
     };
   }
 

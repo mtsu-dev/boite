@@ -566,6 +566,45 @@ describe('claude driver', () => {
     expect(documentsOf('toolu_bash')).toBeUndefined();
   });
 
+  test('an image in a tool result becomes an image document and stays out of the output text', async () => {
+    const { client, threadId } = await openClaudeThread();
+    const png = greyPng(32, 16);
+    scripted((fake) => {
+      fake.emit(init('sess-image'));
+      fake.emit(assistant('sess-image', [{ type: 'tool_use', id: 'toolu_shot', name: 'mcp__browser__screenshot', input: {} }]));
+      fake.emit(sdk({
+        type: 'user',
+        session_id: 'sess-image',
+        parent_tool_use_id: null,
+        message: {
+          role: 'user',
+          content: [{
+            type: 'tool_result',
+            tool_use_id: 'toolu_shot',
+            content: [
+              { type: 'text', text: 'Captured the page.' },
+              { type: 'image', source: { type: 'base64', media_type: 'image/png', data: png } },
+              { type: 'text', text: 'Viewport 32x16.' },
+            ],
+          }],
+        },
+      }));
+      fake.emit(success('sess-image'));
+      fake.end();
+    });
+    expect(await runTurn(client, threadId, 'shoot')).toBe('done');
+
+    const thread = await client.call('threads.get', { threadId });
+    const tool = thread.messages.at(-1)?.parts.find((part) => part.type === 'tool');
+    expect(tool).toMatchObject({
+      toolId: 'toolu_shot',
+      status: 'done',
+      output: 'Captured the page.\nViewport 32x16.',
+      documents: [{ kind: 'image', mimeType: 'image/png', data: png, alt: null }],
+    });
+    expect(tool?.type === 'tool' ? tool.output : '').not.toContain(png.slice(0, 32));
+  });
+
   test('on Claude 5.1+, the second of two thinking blocks before a tool call is the progress text', async () => {
     const { client, threadId } = await openClaudeThread();
     const reasoning = 'The failure points at the parser.';
