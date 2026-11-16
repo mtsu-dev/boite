@@ -80,11 +80,14 @@ describe('automatic compaction', () => {
   beforeEach(() => { AUTO_COMPACT.settleMs = 20; });
   afterEach(() => { Object.assign(AUTO_COMPACT, saved); });
   const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-  /** One prompt run to its end; echo reads 100 tokens plus one per character. */
+  /**
+   * One prompt run to its end; echo reads 100 tokens plus one per character.
+   * It waits for the turn it started: the first `turn.finished` of the thread
+   * can be an earlier turn's, still on its way to the client.
+   */
   async function turn(client: CoreClient, threadId: string, prompt: string): Promise<void> {
-    const done = client.next('turn.finished', t => t.threadId === threadId);
-    await client.call('turns.start', { threadId, prompt });
-    await done;
+    const started = await client.call('turns.start', { threadId, prompt });
+    await waitFor(() => h.core.journal.listTurns(threadId).find(t => t.id === started.id)?.finishedAt != null, 10_000);
   }
   const compactions = async (client: CoreClient, threadId: string) =>
     (await client.call('threads.get', { threadId })).turns.filter(t => t.execution?.operation === 'compact');
