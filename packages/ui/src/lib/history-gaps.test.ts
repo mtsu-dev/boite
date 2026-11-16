@@ -149,4 +149,24 @@ describe('history gaps', () => {
     expect(await loadKeepingReader(async (landing) => { landing(); return 3; }, () => undefined, hold, async () => {}, moved)).toBe(3);
     expect(hold).toHaveBeenCalledTimes(2);
   });
+
+  test('a page landing while a gap fills the screen holds no row drawn below it', async () => {
+    // The reader is on a gap: the first row drawn starts 4878 px under the top of a 730 px view.
+    const view = document.createElement('div');
+    view.scrollTop = 9542;
+    const row = document.createElement('article');
+    row.dataset['mid'] = 'm-180';
+    view.append(row);
+    view.getBoundingClientRect = () => ({ top: 0, bottom: 730 }) as DOMRect;
+    row.getBoundingClientRect = () => ({ top: 4878, bottom: 4958 }) as DOMRect;
+    expect(rowOnScreen(view)).toBeNull();
+    // Held, that row stayed the saved reading anchor once the page weighed more than its gap, and a thread
+    // opened again put the reader thousands of pixels under the place they left.
+    const hold = vi.fn();
+    const moved = vi.fn();
+    expect(await loadKeepingReader(async (landing) => { landing(); return 60; }, () => view, hold, async () => {}, moved)).toBe(60);
+    expect(hold).not.toHaveBeenCalled();
+    expect(moved).not.toHaveBeenCalled();
+    expect(view.scrollTop).toBe(9542);
+  });
 });

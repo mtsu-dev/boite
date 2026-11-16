@@ -97,13 +97,18 @@ export class GapRows {
 
 /**
  * The row drawn at the top of `view` and how far its top is from the view's,
- * read off the page: what a page landing above it must not move.
+ * read off the page: what a page landing above it must not move. Null when a
+ * gap fills the view: the first row drawn under it is not what the reader
+ * reads, and the page weighs what its rows are estimated at, not what the gap
+ * counted, so that row moves by the difference as the page lands. Held, it
+ * stayed the reading anchor until the reader scrolled, and a thread opened
+ * again put them where that row was, screens away.
  */
 export function rowOnScreen(view: HTMLElement): { id: string; offset: number } | null {
-  const top = view.getBoundingClientRect().top;
+  const { top, bottom } = view.getBoundingClientRect();
   for (const node of view.querySelectorAll<HTMLElement>('[data-mid]')) {
     const box = node.getBoundingClientRect();
-    if (box.bottom > top) return { id: node.dataset['mid']!, offset: box.top - top };
+    if (box.bottom > top) return box.top < bottom ? { id: node.dataset['mid']!, offset: box.top - top } : null;
   }
   return null;
 }
