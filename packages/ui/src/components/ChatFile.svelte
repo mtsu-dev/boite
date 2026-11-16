@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { desktopShell } from '../lib/shell-platform';
   import { errorText } from '../lib/errors';
   import { onMount, tick } from 'svelte';
   import { Check, Download, FileText, Image, Film, Music2, Maximize2, RefreshCw, X } from '@lucide/svelte';
@@ -138,7 +139,7 @@
    * Returns false outside the shell, where the browser handles it.
    */
   async function save(andOpen: boolean): Promise<boolean> {
-    if (window.__TAURI_INTERNALS__ === undefined) return false;
+    if (!desktopShell()) return false;
     if (saving) return true;
     saving = true;
     try {
@@ -173,7 +174,7 @@
       void load().then(async () => { if (!disposed && url && !(await save(false))) browserDownload(url, name); });
       return;
     }
-    if (window.__TAURI_INTERNALS__ === undefined) {
+    if (!desktopShell()) {
       if (file?.type === 'artifact') {
         event.preventDefault();
         void loadArtifact().then(() => browserDownload(url, name)).catch(reason => error = String(reason));
@@ -246,7 +247,7 @@
   }
 
   function saveForViewer(): void {
-    if (window.__TAURI_INTERNALS__ !== undefined) { void save(false); return; }
+    if (desktopShell()) { void save(false); return; }
     if (file?.type === 'artifact') void loadArtifact().then(() => browserDownload(url, name)).catch(reason => error = String(reason));
     else browserDownload(url, name);
   }

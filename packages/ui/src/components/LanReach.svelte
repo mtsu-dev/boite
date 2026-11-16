@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { desktopShell } from '../lib/shell-platform';
   import { lockedBy } from '../lib/policy';
   import type { Store } from '../lib/store.svelte';
   import { strings } from '../lib/strings';
@@ -23,7 +24,7 @@
   const text = strings.group.reach;
 
   /** Only the desktop app brings a stopped core of its own back. */
-  const canRestart = $derived(store.localCore && typeof window !== 'undefined' && window.__TAURI_INTERNALS__ !== undefined);
+  const canRestart = $derived(store.localCore && typeof window !== 'undefined' && desktopShell());
   let phase = $state<'idle' | 'restarting' | 'failed'>('idle');
   $effect(() => { restarting = phase === 'restarting'; });
 

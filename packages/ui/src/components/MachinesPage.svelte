@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { desktopShell } from '../lib/shell-platform';
   import { lockedBy } from '../lib/policy';
   import { onDestroy, tick, untrack } from 'svelte';
   import { ConnectionGroup } from '../lib/connection-group.svelte';
@@ -122,7 +123,7 @@
   }
 
   /** The form already on the page takes it; a second one is drawn only when none is. */
-  const topForm = $derived(window.__TAURI_INTERNALS__ === undefined && groupStore.principal !== 'owner' && !workspace.machines.some(machine => machine.store.connection === 'ready'));
+  const topForm = $derived(!desktopShell() && groupStore.principal !== 'owner' && !workspace.machines.some(machine => machine.store.connection === 'ready'));
   async function repair() {
     if (!topForm) {
       memberRepair = true;

@@ -17,6 +17,7 @@ import { heardBuild } from '../experiments';
 import { SETTINGS_TABS, type SettingsTab } from '../settings-tabs';
 import { retainRows } from './snapshot-reads';
 import { applyThreadChanges, readThreadList } from './thread-list';
+import { desktopShell } from '../shell-platform';
 
 /**
  * The version a paired device reports in `hello` and Settings lists beside it.
@@ -60,6 +61,8 @@ function askToFollowLink(url: string): Promise<boolean> {
  */
 export class Connection {
   connection = $state<ClientState>('idle');
+  /** Times this client was ready again after it had been ready: the link came back. */
+  returns = $state(0);
   core = $state<CoreInfo | null>(null);
   /** How far the core's clock runs ahead of this device's (`Client.clockOffset`). */
   clockOffset = $state(0);
@@ -128,7 +131,7 @@ export class Connection {
    * core on a server types the server's path instead.
    */
   get pickerAvailable(): boolean {
-    return window.__TAURI_INTERNALS__ !== undefined && this.localCore;
+    return desktopShell() && this.localCore;
   }
 
   /** Stop streaming the hidden conversation while keeping machine summaries live. */
@@ -218,7 +221,7 @@ export class Connection {
           })
         );
       } else {
-        if (window.__TAURI_INTERNALS__) {
+        if (desktopShell()) {
           const local = await fromTauri();
           if (local) {
             this.localEndpointUrl = local.url;
@@ -230,7 +233,7 @@ export class Connection {
           this.connection = 'closed';
           // The shell's reason, when it has one: the core exited and what it
           // printed, or a start that never answered.
-          const refusal = window.__TAURI_INTERNALS__ ? shellEndpointError() : null;
+          const refusal = desktopShell() ? shellEndpointError() : null;
           if (refusal) s.error = fill(strings.errors.coreStart, { reason: refusal });
           // The phone app before any machine: its screen is the way in.
           if (appPage()) this.pairingRequired = true;
@@ -311,7 +314,7 @@ export class Connection {
     let key = endpoint.token;
     const began = Date.now();
     // A phone or a browser is a device of its group: one key, signed for each machine. The desktop app is its machine's own.
-    const admitting = window.__TAURI_INTERNALS__ === undefined && endpoint.grant !== undefined;
+    const admitting = !desktopShell() && endpoint.grant !== undefined;
     this.#signed = endpoint.signs !== undefined || admitting;
     const client = new WsClient({
       url,
@@ -364,7 +367,7 @@ export class Connection {
         this.pairingRequired = true;
         this.ctx.store.error = strings.errors.revoked;
       },
-      clientName: window.__TAURI_INTERNALS__ === undefined ? 'pwa' : 'shell',
+      clientName: desktopShell() ? 'shell' : 'pwa',
       version: UI_VERSION,
       device: deviceLabel
     });
@@ -446,7 +449,7 @@ export class Connection {
    * to give, its reason then being the store's error.
    */
   async #followLocalCore(client: Client): Promise<'moved' | 'same' | 'refused'> {
-    if (!this.localCore || window.__TAURI_INTERNALS__ === undefined) return 'same';
+    if (!this.localCore || !desktopShell()) return 'same';
     const local = await fromTauri();
     if (this.ctx.client !== client) return 'same';
     if (!local) {
@@ -514,7 +517,7 @@ export class Connection {
    */
   async #handOverKey(client: Client, core: CoreInfo): Promise<void> {
     const url = this.endpointUrl;
-    if (window.__TAURI_INTERNALS__ !== undefined || this.localCore || url === null || !core.features?.deviceKeys || !core.coreId) return;
+    if (desktopShell() || this.localCore || url === null || !core.features?.deviceKeys || !core.coreId) return;
     if (this.principal === 'owner' || this.principal === 'agent') return;
     const saved = readEnvironments().find((env) => env.url === url);
     if (saved === undefined || saved.token === '' || saved.signs !== undefined) return;

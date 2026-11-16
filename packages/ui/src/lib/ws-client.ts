@@ -11,9 +11,33 @@ import type { CallOptions, ClientState, EventHandler, FrameSocket, ObservableCli
 import { RpcFailure, closedFailure, droppedFailure, transportFailure, unansweredFailure } from './rpc-error';
 import { receiveFrame, type Pending } from './ws-client-frames';
 import {
-  IDLE_PROBE_MS, PROBE_DEADLINE_MS, QUIET_CALL_MS, RESUME_PROBE_MS, MESSAGE_TOO_BIG, UPLOAD_FLOOR_BYTES_PER_S,
-  browserSocket, defaultBackoff, frameBytes, isLoopbackUrl, megabytes, openDeadline, pageHidden, rpcUrl, streamUrl
+  IDLE_PROBE_MS, PROBE_DEADLINE_MS, QUIET_CALL_MS, RACE_AFTER_HIDDEN_MS, RESUME_PROBE_MS, MESSAGE_TOO_BIG, STEADY_MS, UPLOAD_FLOOR_BYTES_PER_S,
+  browserSocket, defaultBackoff, frameBytes, isLoopbackUrl, megabytes, openDeadline, pageHidden, quickRetry, rpcUrl, streamUrl
 } from './ws-client-utils';
+
+/**
+ * A socket `resume()` opens beside the one the client has, before it knows
+ * whether that one is dead. Its frames stay aside, in `pending`, until it wins:
+ * `claim()` says whether it still may.
+ */
+interface Candidate {
+  pending: Map<number, Pending>;
+  claim: () => boolean;
+  /** Set by `#open`: ends the attempt and closes its socket without a word to the client. */
+  cancel: () => void;
+}
+
+const NO_HANDLERS = new Map<string, Set<(payload: unknown) => void>>();
+const RESUMED = 'connection resumed; check the conversation before resending';
+
+/** Closes a socket with its handlers taken off first, so its close reaches nothing. */
+function closeQuietly(socket: SocketLike): void {
+  socket.onopen = null;
+  socket.onmessage = null;
+  socket.onclose = null;
+  socket.onerror = null;
+  socket.close();
+}
 
 export class WsClient implements ObservableClient {
   #options: Required<Omit<WsClientOptions, 'clientName' | 'version' | 'device' | 'grant' | 'ticket' | 'paired' | 'relay' | 'signer' | 'onDevice' | 'onSession' | 'onRevoked' | 'onUnauthorized' | 'onUngrouped'>> & {
@@ -70,6 +94,12 @@ export class WsClient implements ObservableClient {
   #liveness: ReturnType<typeof setTimeout> | null = null;
   /** The one probe in flight: settled true by any frame, false by its deadline or a teardown. */
   #probe: { socket: SocketLike; result: Promise<boolean>; settle: (alive: boolean) => void } | null = null;
+  /** The one race `resume()` runs after a long absence, never two: settles true once nothing more is needed. */
+  #race: { candidate: Candidate; done: Promise<boolean> } | null = null;
+  /** When the socket in use said hello: one lost sooner than `STEADY_MS` after it is a drop in a loop. */
+  #readyAt = 0;
+  /** Ready sockets lost in a row, each within `STEADY_MS` of its hello. */
+  #flaps = 0;
 
   constructor(options: WsClientOptions) {
     this.#options = {
@@ -104,6 +134,11 @@ export class WsClient implements ObservableClient {
 
   get state(): ClientState {
     return this.#state;
+  }
+
+  /** A socket to another machine, which can go half-open; the shell's own core and a page on its machine cannot. */
+  get remote(): boolean {
+    return this.#remote;
   }
 
   /** Whether the last hello that succeeded came after failed attempts of this client's own backoff. */
@@ -159,18 +194,24 @@ export class WsClient implements ObservableClient {
   }
 
   /**
-   * Back from hidden, back online or out of the back/forward cache. A mobile
-   * browser can keep a dead socket after sleep without firing close, but most
-   * of the time the socket is fine: it is probed first, and only a socket that
-   * stays silent is replaced, rejecting the calls it carried.
+   * Back from hidden, back online, out of the back/forward cache or out of a
+   * system sleep; `away` is how long the page was gone, in ms. A mobile browser
+   * can keep a dead socket after sleep without firing close, but most of the
+   * time the socket is fine: it is probed first, and only a socket that stays
+   * silent is replaced, rejecting the calls it carried. Away `RACE_AFTER_HIDDEN_MS`
+   * or more, a remote socket is not waited on: a new one opens beside the probe
+   * and whichever answers first is kept (`#raceFor`).
    */
-  async resume(): Promise<void> {
+  async resume(away = 0): Promise<void> {
     if (this.#manuallyClosed || this.#state === 'idle') return;
     // A one-time grant must finish its exchange before any connection replaces it.
     if ((this.#grant !== null || this.#ticket !== null) && this.#opening) { await this.#opening; return; }
+    // One race at a time: a second signal of the same return waits for it.
+    if (this.#race !== null) { await this.#race.done; return; }
     const socket = this.#socket;
     if (this.#state === 'ready' && socket !== null) {
-      if (await this.#probeSocket(socket, RESUME_PROBE_MS)) return;
+      const race = this.#remote && away >= RACE_AFTER_HIDDEN_MS && this.#grant === null && this.#ticket === null;
+      if (race ? await this.#raceFor(socket) : await this.#probeSocket(socket, RESUME_PROBE_MS)) return;
       // Closed meanwhile, or already replaced by a socket of its own.
       if (this.#manuallyClosed || (this.#socket !== null && this.#socket !== socket)) return;
     }
@@ -191,6 +232,7 @@ export class WsClient implements ObservableClient {
    */
   async wake(): Promise<void> {
     if (this.#manuallyClosed || this.#state === 'idle' || this.#state === 'ready') return;
+    if (this.#race !== null) { await this.#race.done; return; }
     if (this.#opening !== null) {
       await this.#opening.then(() => undefined, () => undefined);
       return;
@@ -212,6 +254,62 @@ export class WsClient implements ObservableClient {
     void this.#probeSocket(socket, RESUME_PROBE_MS).then((alive) => {
       if (!alive) this.#lost(socket);
     });
+  }
+
+  /**
+   * A new socket opens at once beside the probe of `old`; the first to prove
+   * alive is kept. The probe answered first: the new socket closes and nothing
+   * changes. The new socket's hello first: it replaces `old` as a reconnect
+   * would, the calls on `old` failing with the same message as after a probe
+   * that failed. The probe failed first: `old` goes now and the new socket,
+   * still on its way, is the reconnect. True once the client needs nothing more.
+   */
+  #raceFor(old: SocketLike): Promise<boolean> {
+    // Frames on `old` since the race began: any of them proves it alive, at the very moment it lands.
+    const heard = this.#framesReceived;
+    let decided = false;
+    const candidate: Candidate = {
+      pending: new Map(),
+      claim: () => {
+        if (decided || this.#manuallyClosed) return false;
+        if (this.#socket === old ? this.#framesReceived !== heard : this.#socket !== null) return false;
+        decided = true;
+        return true;
+      },
+      cancel: () => undefined
+    };
+    const opening = this.#open(candidate);
+    const won = opening.then(() => true, () => false);
+    const probe = this.#probeSocket(old, RESUME_PROBE_MS);
+    const keepOld = (): boolean => {
+      if (decided) return true;
+      decided = true;
+      candidate.cancel();
+      return true;
+    };
+    const run = async (): Promise<boolean> => {
+      const first = await Promise.race([probe.then((alive) => (alive ? 'alive' : 'dead')), won.then((ok) => (ok ? 'won' : 'failed'))]);
+      if (first === 'won') return true;
+      if (first === 'alive') return keepOld();
+      if (first === 'failed') return (await probe) && keepOld();
+      // Dead: unless the new socket already took over, the old one goes now and the new one, on its way, is the reconnect.
+      if (!decided && !this.#manuallyClosed) {
+        if (this.#socket === old) {
+          this.#teardown(RESUMED, true);
+          this.#setState('connecting');
+          this.#attempt = 0;
+        }
+        if (this.#socket === null && this.#opening === null) {
+          this.#opening = opening;
+          this.#cancelOpen = candidate.cancel;
+          void opening.finally(() => { if (this.#opening === opening) this.#opening = null; }).catch(() => undefined);
+        }
+      }
+      return won;
+    };
+    const done = run().finally(() => { if (this.#race?.candidate === candidate) this.#race = null; });
+    this.#race = { candidate, done };
+    return done;
   }
 
   #startOpen(): Promise<CoreInfo> {
@@ -249,6 +347,7 @@ export class WsClient implements ObservableClient {
       clearTimeout(this.#retryTimer);
       this.#retryTimer = null;
     }
+    this.#race?.candidate.cancel();
     this.#teardown('client closed');
     this.#setState('closed');
   }
@@ -263,7 +362,8 @@ export class WsClient implements ObservableClient {
     socket: SocketLike,
     method: M,
     params: RpcParams<M>,
-    onProgress?: (received: number, total: number) => void
+    onProgress?: (received: number, total: number) => void,
+    calls: Map<number, Pending> = this.#pending
   ): Promise<RpcResult<M>> {
     // Asking for progress is what makes the core slice a long answer. A remote socket asks it of
     // every call: slices keep frames arriving while a long answer downloads, so silence there means
@@ -290,7 +390,7 @@ export class WsClient implements ObservableClient {
         ? setTimeout(() => { if (this.#framesReceived === heard) this.#suspect(socket); }, QUIET_CALL_MS)
         : null;
       const expire = () => {
-        this.#pending.delete(id);
+        calls.delete(id);
         reject(unansweredFailure(method));
         // A call that never answers is the first sign of a half-open socket:
         // ask once, and replace the socket if nothing at all comes back.
@@ -305,10 +405,10 @@ export class WsClient implements ObservableClient {
         touch: () => { clearTimeout(timer); timer = setTimeout(expire, wait); },
         ...(onProgress ? { onProgress } : {})
       };
-      this.#pending.set(id, pending);
-      try { socket.send(frame); this.#sentSinceFrame += size; }
+      calls.set(id, pending);
+      try { socket.send(frame); if (calls === this.#pending) this.#sentSinceFrame += size; }
       catch (error) {
-        this.#pending.delete(id);
+        calls.delete(id);
         pending.reject(error instanceof Error ? error : transportFailure(String(error)));
       }
     });
@@ -336,13 +436,23 @@ export class WsClient implements ObservableClient {
     return frames;
   }
 
-  #open(): Promise<CoreInfo> {
-    this.#setState('connecting');
-    this.#sentSinceFrame = 0;
+  /**
+   * `candidate`: a socket beside the one the client has, which takes its place
+   * only once its hello answered and `candidate.claim()` agrees (`#promote`).
+   * Until then nothing it does reaches the client: a failure closes it quietly.
+   */
+  #open(candidate: Candidate | null = null): Promise<CoreInfo> {
+    if (candidate === null) {
+      this.#setState('connecting');
+      this.#sentSinceFrame = 0;
+    }
     const socket = this.#options.socketFactory(rpcUrl(this.#options.url));
-    this.#socket = socket;
+    if (candidate === null) this.#socket = socket;
+    // A candidate still beside the client's socket, or one that lost: never the client's.
+    const aside = (): boolean => candidate !== null && this.#socket !== socket;
 
-    const deadline = this.#options.openDeadline(this.#attempt);
+    // A candidate opens on a network the page just came back to: the first deadline, as `resume()` gives.
+    const deadline = this.#options.openDeadline(candidate === null ? this.#attempt : 0);
     return new Promise<CoreInfo>((resolve, reject) => {
       let settled = false;
       const timeout = setTimeout(() => {
@@ -355,11 +465,23 @@ export class WsClient implements ObservableClient {
         clearTimeout(timeout);
         reject(transportFailure(message));
       };
-      this.#cancelOpen = () => fail('connection replaced');
+      /** A candidate that will not be the client's: its attempt ends and its socket closes, unheard. */
+      const dropAside = (message: string): void => {
+        fail(message);
+        closeQuietly(socket);
+        if (candidate !== null) this.#dropPending(message, false, candidate.pending);
+      };
+      if (candidate === null) this.#cancelOpen = () => fail('connection replaced');
+      else candidate.cancel = () => dropAside('connection replaced');
 
-      socket.onmessage = (event) => this.#receive(event.data);
+      socket.onmessage = (event) => {
+        if (!aside()) this.#receive(event.data);
+        else if (candidate !== null) this.#receiveAside(event.data, candidate.pending);
+      };
       socket.onerror = () => fail('socket error');
       socket.onclose = (event) => {
+        if (aside()) { dropAside('connection closed'); return; }
+        const wasReady = this.#state === 'ready';
         const incompatible = event?.code === RpcCloseCode.ProtocolMismatch;
         if (incompatible) this.#manuallyClosed = true;
         const reason = event?.code === MESSAGE_TOO_BIG
@@ -374,13 +496,15 @@ export class WsClient implements ObservableClient {
           return;
         }
         this.#setState('connecting');
-        this.#scheduleRetry();
+        this.#scheduleRetry(wasReady ? 'lost' : null);
       };
       socket.onopen = () => {
         // The device key loads beside the socket: the hello waits for it, once.
         const signer = this.#signer;
         if (signer !== null && signer.key === null) {
-          signer.ready.then(() => { if (this.#socket === socket && !settled) socket.onopen?.(); }, () => {
+          signer.ready.then(() => { if ((candidate !== null || this.#socket === socket) && !settled) socket.onopen?.(); }, () => {
+            // A candidate leaves the verdict to the reconnect that follows if the old socket is dead too.
+            if (aside()) { dropAside('this device could not read or make its key'); return; }
             this.#manuallyClosed = true;
             fail('this device could not read or make its key');
             socket.close();
@@ -392,6 +516,7 @@ export class WsClient implements ObservableClient {
         // and a liveness hello later would carry it to the machine at the end.
         const relay = this.#relay?.() ?? null;
         if (this.#relay !== null && relay === null) {
+          if (aside()) { dropAside('this device is no longer paired with the machine that carried it there'); return; }
           this.#manuallyClosed = true;
           fail('this device is no longer paired with the machine that carried it there');
           socket.close();
@@ -401,8 +526,13 @@ export class WsClient implements ObservableClient {
         // The machine this hello is signed for, and its nonce: what a refusal saying it is in no group must be signed over.
         const meant = hello.device !== undefined && 'nonce' in hello.device ? { coreId: signer?.coreId ?? null, nonce: hello.device.nonce } : null;
         const sentAt = Date.now();
-        this.#send(socket, 'hello', { ...hello, ...(relay === null ? {} : { relay }) }).then(
+        this.#send(socket, 'hello', { ...hello, ...(relay === null ? {} : { relay }) }, undefined, candidate?.pending ?? this.#pending).then(
           (result) => {
+            if (aside()) {
+              // The old socket proved alive first, or the client closed: this one goes, unheard.
+              if (settled || candidate === null || !candidate.claim()) { dropAside('connection replaced'); return; }
+              this.#promote(socket, candidate);
+            }
             if (result.core.protocolVersion !== PROTOCOL_VERSION) {
               this.#manuallyClosed = true;
               fail(`core protocol version must be ${PROTOCOL_VERSION}`);
@@ -443,6 +573,7 @@ export class WsClient implements ObservableClient {
             this.#attempt = 0;
             this.#core = result.core;
             this.#lastFrameAt = Date.now();
+            this.#readyAt = this.#lastFrameAt;
             // The core read its clock halfway through the round trip, as far as this side can tell.
             this.#clockOffset = typeof result.core.now === 'number' ? Math.round(result.core.now - (sentAt + this.#lastFrameAt) / 2) : 0;
             this.#clockError = Math.ceil((this.#lastFrameAt - sentAt) / 2);
@@ -456,6 +587,8 @@ export class WsClient implements ObservableClient {
             }
           },
           (error: unknown) => {
+            // A candidate refused is no verdict on the client: the reconnect after a dead probe hears it again.
+            if (aside()) { dropAside(error instanceof Error ? error.message : String(error)); return; }
             if (!settled) {
               settled = true;
               clearTimeout(timeout);
@@ -493,6 +626,30 @@ export class WsClient implements ObservableClient {
         );
       };
     });
+  }
+
+  /**
+   * The candidate's hello answered first: it becomes the client's socket the
+   * way a reconnect makes one, the old socket closed and its calls failed as
+   * `resume()` fails them, the state through `connecting` so the store reloads
+   * what it missed. The hello's own answer then sets the clock, the principal
+   * and the subscriptions as for any new socket.
+   */
+  #promote(socket: SocketLike, candidate: Candidate): void {
+    if (this.#race?.candidate === candidate) this.#race = null;
+    if (this.#socket !== null) this.#teardown(RESUMED, true);
+    this.#socket = socket;
+    this.#sentSinceFrame = 0;
+    this.#cancelOpen = null;
+    for (const [id, entry] of candidate.pending) this.#pending.set(id, entry);
+    candidate.pending.clear();
+    this.#attempt = 0;
+    this.#setState('connecting');
+  }
+
+  /** A candidate's frames before it wins: answers to its own calls, no event reaches a handler. */
+  #receiveAside(raw: unknown, pending: Map<number, Pending>): void {
+    receiveFrame(raw, pending, NO_HANDLERS, (whole) => this.#receiveAside(whole, pending));
   }
 
   #helloParams(): RpcParams<'hello'> {
@@ -580,7 +737,7 @@ export class WsClient implements ObservableClient {
     }
     this.#setState('connecting');
     this.#attempt = 0;
-    this.#scheduleRetry();
+    this.#scheduleRetry('probe');
   }
 
   /** One timer per ready remote socket, re-armed from its own callback rather than on every frame. */
@@ -627,12 +784,29 @@ export class WsClient implements ObservableClient {
     }
   }
 
-  #scheduleRetry(): void {
-    if (this.#retryTimer !== null) return;
-    // Offline, a remote host cannot answer: the 'online' event calls resume().
-    // A loopback core still can, and a browser may say offline beside it.
-    if (this.#remote && typeof navigator !== 'undefined' && navigator.onLine === false) return;
-    const delay = this.#options.backoff(this.#attempt);
+  /**
+   * `lost`: a socket that was ready closed; `probe`: one stopped answering.
+   * Either way the first retry goes almost at once: with no wait at all after
+   * a probe, which already waited its deadline, and `quickRetry` after a close,
+   * unless the socket closed within `STEADY_MS` of its hello: a host dropping
+   * in a loop waits the backoff, longer at each drop in a row. The attempt
+   * counts all the same, so a retry that fails waits `backoff(1)`. Offline too, the retries go on with their backoff: a browser
+   * that says offline is often wrong, and the 'online' event still calls
+   * `resume()` at once.
+   */
+  #scheduleRetry(after: 'lost' | 'probe' | null = null): void {
+    // A race's candidate is on its way: it is the retry, and the race opens another if it fails.
+    if (this.#retryTimer !== null || this.#race !== null) return;
+    if (after === 'probe') {
+      this.#attempt += 1;
+      void this.#startOpen().catch(() => undefined);
+      return;
+    }
+    let delay = this.#options.backoff(this.#attempt);
+    if (after === 'lost') {
+      this.#flaps = Date.now() - this.#readyAt < STEADY_MS ? this.#flaps + 1 : 0;
+      delay = this.#flaps > 0 ? this.#options.backoff(this.#flaps - 1) : quickRetry();
+    }
     this.#attempt += 1;
     this.#retryTimer = setTimeout(() => {
       this.#retryTimer = null;
@@ -642,9 +816,9 @@ export class WsClient implements ObservableClient {
   }
 
   /** `dropped`: the socket went under the calls, which a reconnect may answer when asked again. */
-  #dropPending(message: string, dropped = false): void {
-    const pending = [...this.#pending.values()];
-    this.#pending.clear();
+  #dropPending(message: string, dropped = false, calls: Map<number, Pending> = this.#pending): void {
+    const pending = [...calls.values()];
+    calls.clear();
     for (const entry of pending) entry.reject(dropped ? droppedFailure(message) : transportFailure(message));
   }
 

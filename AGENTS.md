@@ -161,6 +161,8 @@ and assertions when making the suite faster.
   pairing, the APK and deployment.
 - [Android server](docs/internals/android-server.md): the core and agents on a phone in
   Termux, driven by the Boite Server app.
+- [Native Android app](docs/internals/android-native.md): the Tauri client in
+  `apps/mobile`, its build, signing and measurements.
 - [Machines](docs/internals/machines.md): connections, browser origins and thread views.
 - [Groups](docs/internals/groups.md): the roster of one owner's machines, invitations, tickets and the
   addresses a member gives.

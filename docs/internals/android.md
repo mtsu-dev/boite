@@ -3,6 +3,8 @@
 This is the Android client: it connects to an existing core, which
 runs the agents and keeps the conversations. To host the core on the phone
 itself, use the separate [Boite Server app and Termux](android-server.md).
+The [native Android app](android-native.md) in `apps/mobile` is its
+successor for Play and phones without Chrome, not published yet.
 
 `apps/android` is a Trusted Web Activity: a small Android package that opens
 one HTTPS page in Chrome, full screen, without an address bar. The nightly's

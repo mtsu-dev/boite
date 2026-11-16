@@ -1,3 +1,4 @@
+import { desktopShell } from './shell-platform';
 /*
  * The window material: what the compositor draws behind the window on Windows.
  * Acrylic, Mica or Solid, stored under `boite.glass` the way the theme is
@@ -54,7 +55,7 @@ export function writeGlass(kind: Glass): void {
 }
 
 function insideShell(): boolean {
-  return window.__TAURI_INTERNALS__ !== undefined;
+  return desktopShell();
 }
 
 async function ask(command: string, args: Record<string, unknown> = {}): Promise<unknown> {

@@ -411,3 +411,43 @@ test('a relayed socket is held to the bounds of one waiting for its hello, and g
   onB.close();
   phone.close();
 });
+
+test('a relay whose first address of the other member never answers opens the next one a quarter second later, not four', async () => {
+  const { a, b, phone } = await home();
+  // Takes the connection and never answers the upgrade, as a path that went dark does.
+  // The relay's own dial is the upgrade to /rpc that names the relayed link; a's other traffic to b goes there too.
+  const held = new Set<Bun.Socket>();
+  let closedAt = 0, dialed = 0;
+  const dark = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: {
+    data: (socket, bytes) => { if (/^GET \/rpc /.test(bytes.toString()) && /x-boite-relayed-link/i.test(bytes.toString())) { held.add(socket); dialed++; } },
+    end: (socket) => { if (held.delete(socket)) closedAt = performance.now(); socket.end(); },
+  } });
+  try {
+    const good = a.core.group.routes(id(b))!;
+    expect(good.length).toBeGreaterThan(0);
+    const routes = a.core.group.routes.bind(a.core.group);
+    a.core.group.routes = (coreId: string) => coreId === id(b) ? [`http://127.0.0.1:${dark.port}`, ...good] : routes(coreId);
+    const reached: string[] = [];
+    const reach = a.core.group.reached.bind(a.core.group);
+    a.core.group.reached = (coreId: string, url: string) => { reached.push(url); reach(coreId, url); };
+    const { ticket } = await phone.call('group.ticket', { coreId: id(b) });
+    const startedAt = performance.now();
+    const onB = await connect(groupRelayUrl(a.url, id(b)), '', { ticket, relay: phone.session!.token, client: { name: 'pwa', version: '1' } });
+    const openedAt = performance.now();
+    console.log(`relayed hello answered ${(openedAt - startedAt).toFixed(0)} ms after it was sent, with a dead first address`);
+    expect((await onB.call('group.get', {}))?.self).toBe(id(b));
+    expect(openedAt - startedAt).toBeLessThan(2000);
+    // The winner is remembered, the dead address never is. Group sync also reports
+    // the addresses it reached, so only which addresses were reported is asserted.
+    expect(reached).toContain(good[0]!);
+    expect(reached).not.toContain(`http://127.0.0.1:${dark.port}`);
+    await waitFor(() => held.size === 0, 2000);
+    expect(dialed).toBe(1);
+    expect(closedAt - startedAt).toBeLessThan(2000);
+    onB.close();
+  } finally {
+    for (const socket of held) socket.end();
+    dark.stop(true);
+    phone.close();
+  }
+});

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { desktopShell } from '../lib/shell-platform';
   import { onMount, tick, untrack } from 'svelte';
   import { ArrowLeft, ArrowRightToLine, ChevronLeft, ChevronRight, ListX, Maximize2, Minimize2, SquareX, X, GripHorizontal, PanelsTopLeft } from '@lucide/svelte';
   import { floatingPanel, RESIZE_DIRECTIONS } from '../lib/floating-panel';
@@ -59,7 +60,7 @@
     onexit: (event: AnimationEvent) => void;
   } = $props();
 
-  const inShell = window.__TAURI_INTERNALS__ !== undefined;
+  const inShell = desktopShell();
   /** The showing surface's way back, which a phone's head arrow takes first (`lib/panel-tools.svelte.ts`). */
   const tools = providePanelTools();
   const phone = $derived((innerWidth.current ?? window.innerWidth) <= 720);
@@ -291,7 +292,6 @@
     event.preventDefault();
     launch(card.kind);
   }
-
 
   const PLUGIN_TAB = 'plugin-tab:';
   /** Plugin interfaces load from the window's own core, so their tabs are offered on its threads. */

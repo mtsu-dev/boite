@@ -7,6 +7,7 @@ import { available as availableTo, kindName, offeredCards, unavailable } from '.
 import { surfaceGlyph } from './surface-glyphs';
 import { work } from './work-prefs.svelte';
 import { strings } from './strings';
+import { desktopShell } from './shell-platform';
 
 /** The selector's last row, which no surface kind can be called. */
 export const CUSTOMIZE = 'customize';
@@ -98,7 +99,7 @@ const ROLES: Record<string, () => string> = {
  * this device cannot show stays listed, greyed with why.
  */
 export function panelChoices(store: Store, thread: ThreadSummary | null, options: { phone?: boolean; available?: (kind: SurfaceKind) => boolean; showing?: SurfaceKind; used?: readonly string[]; plugins?: readonly MenuItem[] } = {}): MenuItem[] {
-  const inShell = typeof window !== 'undefined' && window.__TAURI_INTERNALS__ !== undefined;
+  const inShell = typeof window !== 'undefined' && desktopShell();
   const can = options.available ?? ((kind: SurfaceKind) => availableTo(kind, inShell, store.owner));
   const showing = 'showing' in options ? options.showing : store.panelOpen ? store.panel.active?.kind : undefined;
   const plain = !!thread && !thread.teamId && !thread.councilId;

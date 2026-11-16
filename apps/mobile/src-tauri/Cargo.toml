@@ -1,0 +1,32 @@
+[package]
+name = "boite-mobile"
+version = "2.0.0-beta.1"
+description = "Boite for Android: the UI as a native app, paired with a core elsewhere"
+edition = "2021"
+rust-version = "1.82"
+publish = false
+license = "MIT"
+
+[lib]
+name = "boite_mobile_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.7", features = [] }
+
+[dependencies]
+# No default features: no dynamic ACL, no desktop-only pieces. `wry` is the
+# webview and `compression` keeps the embedded UI brotli-compressed in the
+# library, which is most of the package.
+tauri = { version = "2.12", default-features = false, features = ["wry", "compression"] }
+# External links go to the system browser instead of replacing the app's page.
+tauri-plugin-opener = "2.7"
+
+# The package is the size of this library plus the UI it embeds: size first,
+# one codegen unit and fat LTO so the linker can drop what is never called.
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true

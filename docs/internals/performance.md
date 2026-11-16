@@ -227,7 +227,15 @@ fresh core so earlier tests cannot hide a race in first-use imports.
 
 Authenticated RPC requests rotate between connections in four-millisecond
 slices. At most eight handlers per connection and 64 overall can wait on
-asynchronous work. Authenticated agents can occupy at most 48 of those slots,
+asynchronous work. Each connection has two lanes: background, the slow reads
+listed in `BACKGROUND_METHODS` next to the queue (pull requests, their files
+and reviews, `git.status`, `git.diff`, `worktrees.list`), and interactive,
+everything else. Frames start in arrival order, but background requests hold
+at most six of a connection's eight slots: once six run, the connection's
+first queued interactive frame goes ahead of the background ones that wait.
+Each lane keeps its own order. With eight 300 ms pull request reads queued, a
+`settings.get` behind them started after 302.7 ms before the lanes and 1.4 ms
+after (`bun test test/frame-queue.test.ts` in `packages/core`, 2026-11-15). Authenticated agents can occupy at most 48 of those slots,
 leaving capacity for owner actions, paired clients and authentication while
 agents wait for replies. Each connection retains at most 1,024 frames or 32 MiB of
 text; the total stays below 4,096 frames or 64 MiB, including active requests.
@@ -482,7 +490,13 @@ a frame (its default is 16 MiB) below the budget the code enforces.
 
 A relayed socket (`/group/relay/<core id>/rpc`) keeps the same budget: past
 32 MiB unread, a dropped send or 10 seconds without a drain, it closes with
-1013. It is deflated when its Host is not loopback, as a direct remote socket
+1013. The relaying machine dials the member's addresses 250 ms apart rather
+than one after the other: with a first address that takes the connection and
+never answers, the relayed hello was answered after 4,008 ms before and 253 ms
+after (`bun test test/group-relay.test.ts -t "never answers"` in
+`packages/core`, 2026-11-15). Its half to the member is pinged after 10
+seconds of silence and closed with 1013 after 25, where Bun's 120-second idle
+close was the only bound before (`test/group-relay-pipe.test.ts`, fake clock). It is deflated when its Host is not loopback, as a direct remote socket
 is. `terminal.output` goes only to the connections that attached that shell
 with `terminals.open` or `accounts.loginTerminal`; `terminal.exited` still
 reaches every owner window.
@@ -510,6 +524,26 @@ returned 0 (dropped) for a 31 MB frame with 29.8 MB already buffered on
 2026-10-05; slicing keeps a long answer off that path. A slice resets the
 call's 120 s timeout. The UI asks for progress on a first open's `threads.get`
 when the core advertises `chunkedAnswers`.
+
+### Reconnecting
+
+A remote client checks and replaces its socket by the rules in
+[machines](machines.md#connecting-a-machine); these are the times they give, on the
+fake clock of `packages/ui/src/lib/ws-client-timing.test.ts`, with a handshake
+of 100 ms (the socket opens after 50 ms, the hello is answered 50 ms later):
+
+| From | To | Before (2026-11-15) | After |
+| --- | --- | --- | --- |
+| `resume()` after 30 s hidden, the old socket dead | ready | 4,100 ms | 100 ms |
+| a ready socket's close | first retry | 1,000 ms (800 to 1,200) | 188 ms (125 to 250) |
+| the last frame of a link that died silently, page in sight | offline | 35,000 ms | 22,000 ms |
+
+The first row was the 4 s `hello` the old socket got before a new one opened;
+away 8 seconds or more, the new socket now opens beside it. The third is the
+idle probe, 12 seconds of silence instead of 25, plus its 10 second deadline.
+Run with `cd packages/ui && bun x vitest run --silent=false
+src/lib/ws-client-timing.test.ts`; the before column is the same file run on
+the parent commit, where `resume()` ignores how long the page was away.
 
 ### Stream channels
 

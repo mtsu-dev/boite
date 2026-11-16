@@ -94,7 +94,9 @@ test('every feature declared cut writes its marker and its flag in the sources, 
 test('the UI build and the core build define the kind and the flags of the stamped version', async () => {
   const { default: config } = await import('../../packages/ui/vite.config.ts');
   const version = (JSON.parse(readFileSync(join(import.meta.dir, '..', '..', 'package.json'), 'utf8')) as { version: string }).version;
-  expect((config as { define?: Record<string, string> }).define).toMatchObject(featureDefines(version));
+  for (const mode of ['production', 'mobile']) {
+    expect(config({ command: 'build', mode }).define).toMatchObject(featureDefines(version));
+  }
   // The bundle and the compiled sidecar both pass the same flags.
   const { defineFlags } = await import('../../packages/core/bin/defines.ts');
   expect(defineFlags('2.0.0')).toEqual(Object.entries(featureDefines('2.0.0')).flatMap(([name, value]) => ['--define', `${name}=${value}`]));
