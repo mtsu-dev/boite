@@ -1319,7 +1319,18 @@ long animation frames of the window and their total.
   skips style and layout, so a mount costs the DOM alone. Its paint clip reaches
   up through the gap to the slice above (`overflow-clip-margin`), where the
   bubble joins it. In a turn that published a page, the slice's first and last
-  runs of text join the slices around it.
+  runs of text join the slices around it, except at a cut with a page's line on
+  either side of it: the page stands there between two closed bubbles.
+- A slice only draws its characters; what the answer means is read on the
+  whole text and carried by the row (`TextSlice` in `lib/timeline-rows.ts`). A
+  cut text is never a plan card (plans are left whole) nor narration (it is
+  longer than `NARRATION_MAX`), whatever its slice opens on or however short its
+  last slice is. Each slice carries the pages placed by the lines at its two
+  cuts (`textSlice`). A long system message is not cut. Text left out of a long
+  answer is said once, under its last slice. A `#heading` link to a heading
+  another slice draws finds the heading in the whole answer (`headingAt` in
+  `lib/markdown.ts`) and goes to the row that holds it, mounted or not, aligned
+  on the heading.
 - Find opens the slice that holds the match (`FindHit.at`, `rowIndexOf`), and
   every slice of a cut answer takes the whole reading measure, so a short last
   slice is as wide as the slices above it.

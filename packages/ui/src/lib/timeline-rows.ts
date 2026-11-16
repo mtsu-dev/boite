@@ -3,6 +3,7 @@ import { promptText, visibleAnswer } from './message-display';
 import { failedRun } from './failed-attempts';
 import { writtenPlan } from './plan';
 import { textSlotEstimate } from './message-window';
+import { placedPath } from './inline-view';
 
 /**
  * What the timeline's window counts and measures. A message is one row, except
@@ -45,12 +46,25 @@ export interface TimelineRow {
   gap?: { from: number; count: number };
   /** Consecutive failed attempts, including their wake-ups, kept in one disclosure. */
   failures?: readonly Message[];
-  /**
-   * Set on a row that draws one slice of a long text part, the part `from`:
-   * the shown text's characters `[start, end)`, to its end when `end` is unset
-   * (the last slice, the one a streamed answer still grows).
-   */
-  text?: { start: number; end?: number };
+  /** Set on a row that draws one slice of a long text part, the part `from` (`TextSlice`). */
+  text?: TextSlice;
+}
+
+/**
+ * One slice of a long text: the shown text's characters `[start, end)`, to
+ * its end when `end` is unset (the last slice, the one a streamed answer
+ * still grows). A slice only draws its characters: what the answer means is
+ * decided on the whole text when it is cut and carried here. A cut text is
+ * never a written plan (`textPieces` leaves plans whole) nor narration (it is
+ * longer than any). `pages` are the paths the lines on either side of its top
+ * cut (`above`) and its bottom cut (`below`) place (`placedPath`): where one
+ * names a page of the turn, the page stands at the cut and the bubbles on its
+ * two sides do not join. Unset when none does.
+ */
+export interface TextSlice {
+  start: number;
+  end?: number;
+  pages?: { above?: string[]; below?: string[] };
 }
 
 /**
@@ -115,19 +129,40 @@ export function textCuts(text: string): number[] {
   return cuts.filter(at => at <= firstUse);
 }
 
-/** The long text parts of a message and where each is cut, the parts a memory notice is anchored on and written plans left whole. */
-function textPieces(message: Message, anchored?: ReadonlySet<number>): { part: number; cuts: number[] }[] {
-  if (message.role === 'user') return [];
-  const pieces: { part: number; cuts: number[] }[] = [];
+/**
+ * The long text parts of an assistant message and their slices, the parts a
+ * memory notice is anchored on and written plans left whole. A system
+ * message is never cut: its note draws its mark beside the whole text.
+ */
+function textPieces(message: Message, anchored?: ReadonlySet<number>): { part: number; slices: TextSlice[] }[] {
+  if (message.role !== 'assistant') return [];
+  const pieces: { part: number; slices: TextSlice[] }[] = [];
   message.parts.forEach((part, index) => {
     if (part.type !== 'text' || part.text.length < SPLIT_FROM || anchored?.has(index)) return;
     const shown = shownText(message, part);
     // A written plan is drawn whole in its card, which copies and saves all of it.
-    if (message.role === 'assistant' && writtenPlan(shown)) return;
+    if (writtenPlan(shown)) return;
     const cuts = textCuts(shown);
-    if (cuts.length) pieces.push({ part: index, cuts });
+    if (cuts.length) pieces.push({ part: index, slices: [0, ...cuts].map((start, at) => textSlice(shown, start, cuts[at])) });
   });
   return pieces;
+}
+
+/** The paths the lines on either side of the cut at `at` place: the last line written above it and its first line. */
+function pagesAt(text: string, at: number): string[] | undefined {
+  const before = text.slice(0, at).trimEnd();
+  const above = placedPath(before.slice(before.lastIndexOf('\n') + 1));
+  const lineEnd = text.indexOf('\n', at);
+  const below = placedPath(text.slice(at, lineEnd < 0 ? undefined : lineEnd));
+  const paths = [above, below].filter((path): path is string => path !== null);
+  return paths.length ? paths : undefined;
+}
+
+/** The slice `[start, end)` of the shown text `text`, with what its edges are decided on the whole text. */
+export function textSlice(text: string, start: number, end?: number): TextSlice {
+  const above = start > 0 ? pagesAt(text, start) : undefined;
+  const below = end !== undefined ? pagesAt(text, end) : undefined;
+  return { start, ...(end !== undefined ? { end } : {}), ...(above || below ? { pages: { ...(above ? { above } : {}), ...(below ? { below } : {}) } } : {}) };
 }
 
 /**
@@ -220,7 +255,7 @@ export class TimelineRows {
     const known = new Map<string, TimelineRow>();
     const rows: TimelineRow[] = [];
     let changedFrom = -1;
-    const add = (id: string, message: Message, from: number, to: number, first: boolean, last: boolean, failures?: readonly Message[], text?: { start: number; end?: number }): void => {
+    const add = (id: string, message: Message, from: number, to: number, first: boolean, last: boolean, failures?: readonly Message[], text?: TextSlice): void => {
       const before = this.#known.get(id);
       const sameFailures = before?.failures === failures || !!failures && before?.failures?.length === failures.length && failures.every((item, i) => before.failures?.[i] === item);
       const sameText = before?.text?.start === text?.start && before?.text?.end === text?.end;
@@ -260,7 +295,7 @@ export class TimelineRows {
 }
 
 /** What `TimelineRows.build` adds a row with. */
-type AddRow = (id: string, message: Message, from: number, to: number, first: boolean, last: boolean, failures?: readonly Message[], text?: { start: number; end?: number }) => void;
+type AddRow = (id: string, message: Message, from: number, to: number, first: boolean, last: boolean, failures?: readonly Message[], text?: TextSlice) => void;
 
 /**
  * The rows of a message with long text parts: the parts before and between
@@ -269,8 +304,8 @@ type AddRow = (id: string, message: Message, from: number, to: number, first: bo
  * message's id; a slice is `<message>#<part>.<block>`, a row of parts
  * `<message>#<its first part>`.
  */
-function sliceRows(message: Message, pieces: { part: number; cuts: number[] }[], partCuts: readonly number[], add: AddRow): void {
-  const spans: { id: string; from: number; to: number; text?: { start: number; end?: number } }[] = [];
+function sliceRows(message: Message, pieces: { part: number; slices: TextSlice[] }[], partCuts: readonly number[], add: AddRow): void {
+  const spans: { id: string; from: number; to: number; text?: TextSlice }[] = [];
   const range = (from: number, to: number): void => {
     for (const at of [...partCuts.filter(cut => cut > from && cut < to), to]) {
       spans.push({ id: `${message.id}#${from}`, from, to: at });
@@ -278,13 +313,9 @@ function sliceRows(message: Message, pieces: { part: number; cuts: number[] }[],
     }
   };
   let from = 0;
-  for (const { part, cuts } of pieces) {
+  for (const { part, slices } of pieces) {
     if (part > from) range(from, part);
-    const bounds = [0, ...cuts];
-    bounds.forEach((start, block) => {
-      const end = bounds[block + 1];
-      spans.push({ id: `${message.id}#${part}.${block}`, from: part, to: part + 1, text: end === undefined ? { start } : { start, end } });
-    });
+    slices.forEach((text, block) => spans.push({ id: `${message.id}#${part}.${block}`, from: part, to: part + 1, text }));
     from = part + 1;
   }
   if (from < message.parts.length) range(from, message.parts.length);

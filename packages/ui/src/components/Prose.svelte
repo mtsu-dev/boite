@@ -28,10 +28,12 @@
    * of the answer that names one (`answerPieces`) draws it there, and the
    * text around it becomes a bubble above it and another under it.
    */
-  let { text, live = false, typing = false, bubble = false, joined, store, threadId, views, revision }: {
+  let { text, live = false, typing = false, bubble = false, joined, anchor: elsewhere, store, threadId, views, revision }: {
     text: string; live?: boolean; typing?: boolean; bubble?: boolean; store?: Store; threadId?: string; views?: readonly Message[]; revision?: object;
     /** Set on one slice of a long answer cut in rows: its bubble continues the row above, the row below, or both. */
     joined?: { above: boolean; below: boolean };
+    /** Set on one slice of a long answer: goes to the heading `id` when another slice draws it. */
+    anchor?: (id: string) => void;
   } = $props();
   let selected = $state<{ path: string; line?: number } | null>(null);
   const directLinks = $derived(featureOn('open-chat-links'));
@@ -44,8 +46,10 @@
       const href = anchor.getAttribute('href');
       if (href?.startsWith('#')) {
         try {
-          const heading = host?.querySelector(`[id="${CSS.escape(decodeURIComponent(href.slice(1)))}"]`);
+          const id = decodeURIComponent(href.slice(1));
+          const heading = host?.querySelector(`[id="${CSS.escape(id)}"]`);
           if (heading) { event.preventDefault(); heading.scrollIntoView({ block: 'nearest', behavior: glides() ? 'smooth' : 'auto' }); }
+          else if (elsewhere) { event.preventDefault(); elsewhere(id); }
         } catch { /* A malformed fragment is not a local file. */ }
       }
       return;

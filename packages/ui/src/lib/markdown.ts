@@ -1,5 +1,5 @@
 import { inline, mathHtml } from './markdown-inline';
-import { closesFence, fenceLanguage, openFence } from './fences';
+import { FenceScan, closesFence, fenceLanguage, openFence } from './fences';
 /**
  * The markdown an agent answer needs: paragraphs, headings, nested and task
  * lists, block quotes, tables, rules, fenced and inline code, bold, italic,
@@ -24,6 +24,31 @@ function escape(text: string): string {
 
 
 const HEADING = /^(#{1,6})\s+(.+)$/;
+
+/** The anchor a heading titled `title` gets: what a `#fragment` link to it names. */
+export function headingId(title: string): string {
+  return title.toLowerCase().replace(/[^\p{L}\p{N}_ -]/gu, '').trim().replace(/\s+/g, '-');
+}
+
+/**
+ * Where the heading whose anchor is `id` starts in `text`, -1 when none: a
+ * link to it in one slice of an answer cut in rows (lib/timeline-rows.ts)
+ * opens the slice that holds it, read on the whole answer as it is now.
+ */
+export function headingAt(text: string, id: string): number {
+  const fences = new FenceScan();
+  for (let start = 0; start < text.length;) {
+    const end = text.indexOf('\n', start);
+    const line = text.slice(start, end < 0 ? undefined : end);
+    if (!fences.line(line) && !fences.inside) {
+      const heading = HEADING.exec(line);
+      if (heading && headingId(heading[2] ?? '') === id) return start;
+    }
+    if (end < 0) break;
+    start = end + 1;
+  }
+  return -1;
+}
 const RULE = /^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/;
 const ITEM = /^(\s*)(?:[-*+]|\d+[.)])\s+(.*)$/;
 const BULLET_MARK = /^\s*[-*+]\s/;
@@ -244,7 +269,7 @@ export function renderMarkdown(source: string, rich = false): string {
       flushAll();
       const level = Math.min(6, (heading[1]?.length ?? 1) + 2);
       const title = heading[2] ?? '';
-      const id = rich ? ` id="${escape(title.toLowerCase().replace(/[^\p{L}\p{N}_ -]/gu, '').trim().replace(/\s+/g, '-'))}"` : '';
+      const id = rich ? ` id="${escape(headingId(title))}"` : '';
       html.push(`<h${level}${id}>${inline(title, rich)}</h${level}>`);
       continue;
     }

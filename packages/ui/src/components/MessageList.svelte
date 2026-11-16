@@ -181,7 +181,7 @@
   /** What lies under the last row inside the viewport (`timelineEndRoom`), 20 px until read. */
   let endRoom = $state(20);
   const readEndRoom = (box: HTMLElement) => { endRoom = timelineEndRoom(box) ?? endRoom; };
-  let navigationTarget = $state<string | null>(null);
+  let navigationTarget = $state<string | null>(null), navigationAnchor: string | null = null; // the element of the target row to align, a heading a link of another slice names
   let failureTarget = $state<{ id: string } | null>(null);
   let promptTarget = $state<string | null>(savedReading?.followPrompt ?? null);
   let reservePrompt = $state<string | null>(savedReading?.reservePrompt ?? null);
@@ -191,7 +191,7 @@
   let handledFocus = untrack(() => store.promptFocus);
   function stopLift() { cancelAnimationFrame(liftFrame); liftFrame = 0; lifting = false; }
   function releaseNavigation(event?: KeyboardEvent) {
-    releaseAnchor(); navigationTarget = null;
+    releaseAnchor(); navigationTarget = null; navigationAnchor = null;
     if (promptTarget) pinned = false;
     promptTarget = null;
     stopLift();
@@ -210,14 +210,14 @@
     return null;
   });
 
-  /** To a message, or to the row of it that draws `part` when a long one is cut in several. */
-  function jumpToMessage(id: string, part?: number, offset?: number) {
+  /** To a message, or to the row of it that draws `part` when a long one is cut in several, and to the element `anchor` in that row. */
+  function jumpToMessage(id: string, part?: number, offset?: number, anchor?: string) {
     releaseNavigation();
     const box = viewport;
     const index = rowIndexOf(rows, id, part, offset);
     if (!box || index < 0) return;
     failureTarget = { id };
-    navigationTarget = rows[index]!.id;
+    navigationTarget = rows[index]!.id; navigationAnchor = anchor ?? null;
     pinned = false;
     behind = true;
     box.scrollTop = totals(rows)[index] ?? 0;
@@ -236,7 +236,7 @@
       const node = anchors.nodes.get(id);
       if (!node?.isConnected) return;
       node.style.animation = 'none';
-      const delta = node.getBoundingClientRect().top - box.getBoundingClientRect().top - 20;
+      const delta = ((navigationAnchor && node.querySelector(`[id="${CSS.escape(navigationAnchor)}"]`)) || node).getBoundingClientRect().top - box.getBoundingClientRect().top - 20;
       if (Math.abs(delta) > 1) box.scrollTop += delta;
       scrollTop = box.scrollTop;
     });
@@ -765,7 +765,7 @@
           {:else if message.role === 'user'}
             <UserMessage {store} {message} {turn} accepted={!!turn} responded={progress.responded(message.turnId)} edit={atRest && !isSending(message) ? () => void editMessage(message) : undefined} />
           {:else}
-            <AssistantMessage {store} {threadId} {message} from={row.from} to={row.to} slice={row.text} {signedOut} showModel={row.first && firstAssistantInTurn.get(message.turnId) === message.id}
+            <AssistantMessage {store} {threadId} {message} from={row.from} to={row.to} slice={row.text} reveal={(part, offset, anchor) => jumpToMessage(message.id, part, offset, anchor)} {signedOut} showModel={row.first && firstAssistantInTurn.get(message.turnId) === message.id}
               latestInTurn={lastInTurn.get(message.turnId) === message.id} views={views.get(message.turnId)}
               changes={host?.messageId === message.id ? { at: host.index, line: changes } : undefined} />
           {/if}

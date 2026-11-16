@@ -318,3 +318,19 @@ test('find opens the slice of a cut answer that holds the match, not its last sl
   // No offset named: the first slice of the part, where a jump to the message opens.
   expect(rows[rowIndexOf(rows, 'm-long', 0)]).toBe(slices[0]);
 });
+
+test('each slice carries the pages placed at its cuts, and a long system message is never cut', () => {
+  const paragraph = `${'Some words in a paragraph. '.repeat(4)}\n\n`;
+  const path = '.boite/views/orbit.html';
+  const words = `${paragraph.repeat(38)}![Orbit](${path})\n\n${paragraph.repeat(80)}`;
+  const answer = message('m-paged', [text(words)]);
+  const rows = new TimelineRows().build([answer]);
+  const at = rows.findIndex(row => row.text?.start === words.indexOf('!['));
+  expect(at).toBeGreaterThan(0);
+  // The page's line opens a slice: the bubbles on both sides of that cut stay closed where a page of the turn stands.
+  expect(rows[at - 1]!.text).toMatchObject({ end: words.indexOf('!['), pages: { below: [path] } });
+  expect(rows[at]!.text!.pages).toEqual({ above: [path] });
+  expect(rows.filter(row => row.text?.pages).map(row => row.id)).toEqual([rows[at - 1]!.id, rows[at]!.id]);
+  // A wake-up's note draws its mark beside its whole text.
+  expect(new TimelineRows().build([message('m-wake', [text(words)], 'system')])).toHaveLength(1);
+});

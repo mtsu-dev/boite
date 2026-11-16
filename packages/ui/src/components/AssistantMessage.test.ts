@@ -5,6 +5,7 @@ import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
 import { workspace } from '../lib/workspace.svelte';
 import AssistantMessage from './AssistantMessage.svelte';
+import { textSlice, type TextSlice } from '../lib/timeline-rows';
 
 let mounted: ReturnType<typeof mount> | undefined;
 afterEach(async () => { if (mounted) await unmount(mounted); mounted = undefined; document.body.innerHTML = ''; });
@@ -140,6 +141,108 @@ test('the slices of a long answer in a turn that published a page join into one 
   // The first and the last slices join only on their inner side.
   expect(runs(0, head.length)).toEqual(['v']);
   expect(runs(text.length - 'The last slice.'.length)).toEqual(['^']);
+});
+
+test('a page placed exactly at a cut stands between two closed bubbles: the slices on its sides do not join', async () => {
+  const { store } = await openTrace();
+  const message = store.openThread!.messages.at(-1)!;
+  const path = '.boite/views/orbit.html';
+  const view: Message = { id: 'm-orbit', threadId: message.threadId, turnId: message.turnId, role: 'assistant', state: 'complete', createdAt: message.createdAt, parts: [
+    { type: 'artifact', id: 'a-orbit', name: 'orbit.html', mimeType: 'text/html', bytes: 10, view: { title: 'Orbit', height: 300, source: path } },
+  ] };
+  const text = `Before the page.\n\n![Orbit](${path})\n\nAfter the page.`;
+  message.state = 'complete';
+  message.parts = [{ type: 'text', text, complete: true }];
+  const runs = (slice: TextSlice) => {
+    if (mounted) unmount(mounted);
+    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, slice, signedOut: null, showModel: false, views: [view] } });
+    flushSync();
+    return Array.from(document.querySelectorAll('[data-testid=text-run]')).map(node => `${node.classList.contains('joined-above') ? '^' : ''}${node.classList.contains('joined-below') ? 'v' : ''}`);
+  };
+  // Cut in front of the page's line: the slice above ends closed, the page opens the slice below.
+  const page = text.indexOf('![');
+  expect(textSlice(text, 0, page)).toEqual({ start: 0, end: page, pages: { below: [path] } });
+  expect(runs(textSlice(text, 0, page))).toEqual(['']);
+  expect(runs(textSlice(text, page))).toEqual(['']);
+  // Cut under it: the slice below starts with its own top edge.
+  const after = text.indexOf('After');
+  expect(runs(textSlice(text, 0, after))).toEqual(['']);
+  expect(runs(textSlice(text, after))).toEqual(['']);
+  // Without the page among the turn's views the line is text, and the slices join.
+  if (mounted) unmount(mounted);
+  mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, slice: textSlice(text, after), signedOut: null, showModel: false, views: [] } });
+  flushSync();
+  expect(document.querySelector('[data-testid=text-part]')!.classList.contains('joined-above')).toBe(true);
+});
+
+/** A report cut in three slices, a "Plan" heading opening the middle one, then a call: `draw` mounts one slice the way the list does. */
+async function slicedReport(): Promise<{ head: string; plan: string; draw: (slice: TextSlice) => void }> {
+  const { store } = await openTrace();
+  const last = store.openThread!.messages.at(-1)!;
+  const head = `${'A long report the agent wrote before going on. '.repeat(10)}\n\n`;
+  const plan = '# Plan\n\nStep one of a section named Plan.\n\n';
+  const text = `${head}${plan}Done.`;
+  const message: Message = { ...last, id: 'm-sliced-report', role: 'assistant', state: 'complete', parts: [
+    { type: 'text', text, complete: true },
+    { type: 'tool', toolId: 'b', name: 'Bash', input: { command: 'echo b' }, output: 'ok', status: 'done' },
+  ] };
+  const draw = (slice: TextSlice) => {
+    if (mounted) unmount(mounted);
+    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, from: 0, to: 1, slice, signedOut: null, showModel: false } });
+    flushSync();
+  };
+  return { head, plan, draw };
+}
+
+test('a middle slice that opens on a "Plan" heading is a slice of the report, joined in its bubble, never a plan card of its own', async () => {
+  const { head, plan, draw } = await slicedReport();
+  draw({ start: head.length, end: head.length + plan.length });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  flushSync();
+  expect(document.querySelector('.answer-bubble.joined-above.joined-below')?.textContent).toContain('Step one');
+  expect(document.querySelector('[data-testid=plan-card]')).toBeNull();
+});
+
+test('the short last slice of a long report before a call keeps the report\'s bubble: narration is read on the whole text', async () => {
+  const { head, plan, draw } = await slicedReport();
+  draw({ start: head.length + plan.length });
+  expect(document.querySelector('[data-testid=narration]')).toBeNull();
+  expect(document.querySelector('.answer-bubble.joined-above')?.textContent?.trim()).toBe('Done.');
+});
+
+test('a link to a heading another slice draws brings that slice up at the heading', async () => {
+  const { store } = await openTrace();
+  const last = store.openThread!.messages.at(-1)!;
+  const head = 'Read [the details](#the-details) below.\n\n';
+  const text = `${head}Between.\n\n## The details\n\nThey are here.`;
+  const message: Message = { ...last, id: 'm-sliced-links', role: 'assistant', state: 'complete', parts: [{ type: 'text', text, complete: true }] };
+  const reveal = vi.fn();
+  const draw = (slice: TextSlice) => {
+    if (mounted) unmount(mounted);
+    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, slice, reveal, signedOut: null, showModel: false } });
+    flushSync();
+  };
+  draw({ start: 0, end: head.length });
+  const link = document.querySelector<HTMLAnchorElement>('a[href="#the-details"]')!;
+  const click = new MouseEvent('click', { bubbles: true, cancelable: true });
+  link.dispatchEvent(click);
+  expect(reveal).toHaveBeenCalledWith(0, text.indexOf('## The details'), 'the-details');
+  expect(click.defaultPrevented).toBe(true);
+});
+
+test('text left out of a long answer is said once, under its last slice', async () => {
+  const { store } = await openTrace();
+  const last = store.openThread!.messages.at(-1)!;
+  const text = 'The first slice.\n\nThe last slice.';
+  const message: Message = { ...last, id: 'm-sliced-omitted', role: 'assistant', state: 'complete', parts: [{ type: 'text', text, complete: true, omitted: 1200 }] };
+  const omitted = (slice: TextSlice) => {
+    if (mounted) unmount(mounted);
+    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, slice, signedOut: null, showModel: false } });
+    flushSync();
+    return document.querySelectorAll('[data-testid=text-omitted]').length;
+  };
+  const cut = text.indexOf('The last');
+  expect([omitted({ start: 0, end: cut }), omitted({ start: cut })]).toEqual([0, 1]);
 });
 
 test('reasoning folds with the calls into one line and empty reasoning under a second is not drawn', async () => {
