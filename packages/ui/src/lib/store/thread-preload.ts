@@ -210,7 +210,7 @@ export function idlePreloadAllowed(): boolean {
 
 /** What the read-ahead reads of the thread store, beside what a press reads. */
 export interface ReadAheadSource extends Opener {
-  readonly readingThreads: { get(threadId: string): Thread | undefined; prefill(threadId: string, thread: Thread, bytes: number): boolean };
+  readonly readingThreads: { get(threadId: string): Thread | undefined; prefill(threadId: string, thread: Thread, bytes: number): boolean; mark(): number; droppedSince(threadId: string, mark: number): boolean };
   /** A project's rows as its card lists them: no archived, incognito or helper thread. */
   threadsOf(projectId: ProjectId): readonly ThreadSummary[];
 }
@@ -221,7 +221,9 @@ export interface ReadAheadSource extends Opener {
  * The open thread, archived and incognito ones and those already held are
  * skipped. One read at a time, each after the previous answered, and none
  * while a thread opens or a turn streams in the open one: an open or a drop
- * drops the rest, and an answer that lands after it. A read is a plain
+ * drops the rest, and an answer that lands after it. So is an answer whose
+ * thread left the reading cache while it was read (a delete, an archive, a
+ * rewind, a truncation) or is no longer one to read ahead. A read is a plain
  * `threads.get` with no `open`: it subscribes nothing, and the open that
  * follows asks only for what came after the page, as for any visit.
  */
@@ -317,6 +319,7 @@ export class IdlePreloads {
         const threadId = row.id;
         this.#asked.add(threadId);
         const { params } = pageRequest(this.ctx, this.source, threadId, undefined);
+        const mark = this.source.readingThreads.mark();
         let page: ThreadSnapshot;
         try {
           // The proof lets the open that follows hear "unchanged" instead of the page again.
@@ -330,12 +333,25 @@ export class IdlePreloads {
           return;
         }
         const { opened: _opened, ...thread } = page;
+        if (!this.#keepable(threadId, mark)) continue;
         this.ctx.positions.note(threadId, thread.messages, thread.messageOffset);
         this.#keep(threadId, thread);
       }
     } finally {
       if (this.#run === run) this.#run = null;
     }
+  }
+
+  /**
+   * Whether an answer asked at `mark` may still go into the reading cache: its
+   * thread was not dropped from it since (deleted, archived, rewound or
+   * truncated), and its row is still one to read ahead.
+   */
+  #keepable(threadId: ThreadId, mark: number): boolean {
+    if (this.source.readingThreads.droppedSince(threadId, mark)) return false;
+    const row = this.ctx.store.projects.filter(project => project.archived !== true)
+      .flatMap(project => this.source.threadsOf(project.id)).find(candidate => candidate.id === threadId);
+    return row !== undefined && !row.archived && !row.incognito;
   }
 
   /** Into the reading cache, unless the thread came in meanwhile another way. */
