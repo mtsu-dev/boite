@@ -215,9 +215,9 @@ export class GroupStore {
     return good !== undefined && all.includes(good) ? [good, ...all.filter((address) => address !== good)] : all;
   }
 
-  reached(coreId: string, url: string): void {
-    if (this.roster?.cores.some((core) => core.coreId === coreId)) this.#good.set(coreId, url);
-  }
+  /** Whether a member answered since this core started (`boite state machines`). */
+  answered(coreId: string): boolean { return this.#good.has(coreId); }
+  reached(coreId: string, url: string): void { if (this.roster?.cores.some((core) => core.coreId === coreId)) this.#good.set(coreId, url); }
 
   /**
    * The address a pairing link names for a machine of a group, or null. A phone opens that link and sends its grant

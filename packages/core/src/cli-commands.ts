@@ -14,7 +14,7 @@ export const BUILTIN_COMMANDS: ReadonlySet<string> = new Set([
   // cli.ts
   'ask', 'attach', 'bot', 'browse', 'browser', 'contacts', 'delegate', 'desktop', 'device', 'diff', 'goal', 'issue',
   'journal-check', 'logs', 'open', 'pr', 'preview', 'preview-close', 'projects', 'secret', 'server', 'settings', 'show',
-  'status', 'task', 'team', 'thread', 'threads', 'todo', 'view', 'where', 'window', 'workflow', 'plugin',
+  'state', 'status', 'task', 'team', 'thread', 'threads', 'todo', 'view', 'where', 'window', 'workflow', 'plugin',
   // control-cli.ts
   'questions', 'answer', 'permissions', 'allow', 'deny',
   // The spellings `canonicalCommand` rewrites: `mochi` is the one help shows, `agent` and `agents` are old.
@@ -56,6 +56,8 @@ export function ownerWithoutThread(parsed: Parsed): boolean {
   const [command, action] = parsed.positional;
   if (isControlCommand(parsed)) return true;
   if (command === 'projects') return true;
+  // What the user sees is the owner's own to read from a terminal: no thread is needed.
+  if (command === 'state') return true;
   // An outside event names its mochi: the owner's terminal or a paired device sends it with no thread.
   if (command === 'bot' && action === 'event') return true;
   return command === 'thread' && action === 'new';

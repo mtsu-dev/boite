@@ -1,5 +1,5 @@
 /** Permission requests and questions: asked by a turn, answered by the user. */
-import { RpcErrorCode, agentSettingAnswerText, checkClientPreferences, checkSettingRequest, effectiveExperiments, experimentalSettingRefusal, isMachineSetting, MACHINE_SETTINGS, settledMachineSetting, settledExperiment, type SettingMachine, type ClientPreferences, type ExperimentId, checkSettingsPatch, readSettings, settingAnswerText, settledSetting, type Message, type MessagePart, type PermissionRequest, type QuestionAnswer, type QuestionOption, type QuestionRequest, type AgentSettingAsk, type SettingAsk, type SettingCardAsk, type SettingRequestParams, type Settings, type TeamAsk, type Thread, type ThreadId, type Turn } from '@boite/contracts';
+import { RpcErrorCode, isStateDomain, type StateReading, type StateVersion, agentSettingAnswerText, checkClientPreferences, checkSettingRequest, effectiveExperiments, experimentalSettingRefusal, isMachineSetting, MACHINE_SETTINGS, settledMachineSetting, settledExperiment, type SettingMachine, type ClientPreferences, type ExperimentId, checkSettingsPatch, readSettings, settingAnswerText, settledSetting, type Message, type MessagePart, type PermissionRequest, type QuestionAnswer, type QuestionOption, type QuestionRequest, type AgentSettingAsk, type SettingAsk, type SettingCardAsk, type SettingRequestParams, type Settings, type TeamAsk, type Thread, type ThreadId, type Turn } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { fakeCore } from './coordination';
 import { checkAnswer, checkAsk } from './checks';
@@ -372,6 +372,22 @@ export function requestMethods(ctx: FakeContext) {
       const turn = thread.turns.find((entry) => entry.status === 'running') ?? thread.turns.at(-1);
       if (!turn) throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'the thread has no turn to ask in yet', data: { threadId: params.threadId } });
       return requestSetting(ctx, thread, turn, params);
+    },
+    // The in-memory core has no quotas, group, updaters or processes: each domain reads empty, as a fresh core does.
+    'agent.state': async (params) => {
+      if (!isStateDomain(params.domain)) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `domain must be one of summary, limits, machines, updates, inbox, tasks, version, route; got ${String(params.domain)}`, data: { field: 'domain' } });
+      const version: StateVersion = { version: ctx.core.version, channel: 'stable', track: null, platform: 'browser', arch: 'unknown', build: 'source', bun: null };
+      const readings: Record<StateReading['domain'], StateReading> = {
+        version: { domain: 'version', version },
+        limits: { domain: 'limits', limits: [] },
+        machines: { domain: 'machines', machines: [{ kind: 'machine', name: 'this machine', self: true, os: null, reached: null, lastSeenAt: null, current: null, version: ctx.core.version }] },
+        updates: { domain: 'updates', updates: { version: ctx.core.version, channel: 'stable', server: null, desktop: null, agents: [] } },
+        inbox: { domain: 'inbox', inbox: [] },
+        tasks: { domain: 'tasks', tasks: [] },
+        route: { domain: 'route', route: { gateway: null, providers: [] } },
+        summary: { domain: 'summary', summary: { version, route: { gateway: null, providers: 0 }, machines: { online: 1, total: 1, devices: 0 }, updates: { failing: 0, available: 0 }, inbox: { needs: 0, updates: 0 }, limits: { accounts: 0, highest: null }, tasks: { processes: 0, memoryBytes: 0 } } },
+      };
+      return readings[params.domain];
     },
     'agent.settings': async () => ({
       app: ctx.clientPreferences === null ? null : { language: ctx.clientPreferences.language, device: null, client: null },

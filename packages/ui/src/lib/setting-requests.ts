@@ -74,6 +74,52 @@ export function settingHint(key: RequestableKey): string | null {
   return experiment === null ? null : experimentCopy()[experiment]?.hint ?? null;
 }
 
+/**
+ * What a setting does, as its Settings page explains it: the muted line under
+ * it and its hint, joined. Null where the page says nothing more than its
+ * name. `boite state settings` reads the English of this table, which
+ * `packages/contracts/src/setting-help.ts` holds (setting-help.test.ts keeps
+ * the two the same).
+ */
+export function settingHelp(key: RequestableKey): string | null {
+  const experiment = experimentOf(key);
+  if (experiment !== null) return experimentCopy()[experiment]?.hint ?? null;
+  const s = strings.settings;
+  const effects = s.effects;
+  const parts: Partial<Record<RequestableSetting, readonly string[]>> = {
+    asyncQuestions: [effects.asyncQuestions],
+    shortAnswers: [effects.shortAnswers, s.shortAnswersHint],
+    toolSummaries: [effects.toolSummaries, s.toolSummariesHint],
+    titleModel: [s.titleModelHint],
+    threadDoneRetentionDays: [s.archived.doneRetentionHint],
+    threadDeletionRetentionDays: [s.deleted.retentionHint],
+    focusGuard: [effects.focusGuard],
+    muteAgents: [effects.muteAgents],
+    agentCpuCapPercent: [s.agentCpuCapHint],
+    agentMemoryBudgetPercent: [s.agentMemoryBudgetHint],
+    threadMemoryCapMb: [s.threadMemoryCapHint],
+    memoryReserveMb: [s.memoryReserveHint],
+    memoryProtection: [effects.memoryProtection, s.memoryProtectionHint],
+    reapOrphans: [effects.reapOrphans, s.reapOrphansHint],
+    autoUpdateHarnesses: [effects.harnessAutoUpdate, strings.harnessUpdates.autoHint],
+    autoInstallUpdates: [effects.appAutoInstall, strings.appUpdate.autoInstallHint],
+    listenOnLan: [effects.listenOnLan, s.listenOnLanHint],
+    publicUrl: [strings.phone.publicUrlHint],
+    browserOrigins: [strings.machines.browserOriginsHint],
+    warmProcessMinutes: [s.warmProcessMinutesHint],
+    autoCompact: [effects.autoCompact, s.autoCompactHint],
+    compactionByType: [s.compactionInheritanceHint],
+    compactionSummary: [s.compactionSummaryHint],
+    autoResumeLimitedThreads: [effects.autoResume, strings.quotas.autoResumeHint],
+    backgroundCompaction: [effects.backgroundCompaction, s.backgroundCompactionHint],
+    deviceStream: [effects.deviceStream, s.deviceStreamHint],
+    groupThreads: [strings.machines.groupThreadsHint],
+    groupBots: [strings.machines.groupBotsHint],
+  };
+  const text = parts[key as RequestableSetting];
+  return text === undefined ? null : text.join(' ');
+}
+
 /** A value as the card shows it: `60 %`, `On`, `512 MB`, `In D:/worktrees`. */
 export function settingValueText(key: RequestableKey, value: unknown, providers: readonly ProviderSummary[] = []): string {
   const words = strings.settingRequest;

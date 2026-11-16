@@ -116,7 +116,11 @@ ${CONTROL_HELP}
   secret ask <NAME> --why <text> ask the user for a key on a card; prints
                                  saved secret:<ref>, declined, cancelled or timed_out
   secret write|run|pipe <ref>    use it without seeing it; boite secret help
-  settings [key]                 Boite settings you may ask about: value, page,
+  state [settings [page|key]|limits|machines|updates|inbox|tasks|version|route]
+                                 what the user sees in Boite, read-only: settings
+                                 with what each does, limits, machines, updates,
+                                 the Activity inbox, the task manager
+  settings [key|page]            Boite settings you may ask about: value, page,
                                  the name the user's app shows; first, the
                                  language the app speaks; experiments last
   settings request <key> <value> --why <text>
@@ -717,13 +721,13 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
         ], rest[1] === undefined ? read : shown[0]);
         return;
       }
-      if (rest.length > 1) throw new Usage('settings expects a key, request <key> <value> or open <page>');
-      const read = await client.call('agent.settings', { threadId });
-      const shown = action === undefined ? read.settings : read.settings.filter(reading => reading.key === action);
-      if (shown.length === 0) throw new Usage(`settings: unknown key ${action}; boite settings lists them`);
-      const rows = shown.map(reading => `${reading.key} ${JSON.stringify(reading.value)} ${reading.page}#${reading.section}${reading.label === undefined ? '' : ` ${JSON.stringify(reading.label)}`}${reading.sensitive ? ' (sensitive)' : ''}`);
-      print(action === undefined ? [appLine(read.app), ...rows] : rows, action === undefined ? read : shown[0]);
+      if (rest.length > 1) throw new Usage('settings expects a key, a page, request <key> <value> or open <page>');
+      const { read, shown } = await (await families()).readSettingsFor(client, threadId, action, 'settings');
+      const rows = (await families()).settingsLines(shown, false);
+      const one = action !== undefined && !(SETTINGS_PAGES as readonly string[]).includes(action);
+      print(action === undefined ? [appLine(read.app), ...rows] : rows, one ? shown[0] : { app: read.app, settings: shown });
     },
+    state: async () => (await families()).stateCommand(client, threadId, rest, print),
     ask: async () => {
       // An agent once ran `boite ask help` for this text and drew a card reading "help".
       if (rest.length === 1 && rest[0] === 'help') { print([USAGE], { help: USAGE }); return; }

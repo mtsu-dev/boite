@@ -466,6 +466,7 @@ boite thread new <project> <brief> [--worktree] [--title <title>] [--machine <na
                                  start a thread in a project, on this machine or
                                  another of the group; its first answer comes
                                  back as a message
+boite state [domain]             what the user sees, read-only (see State below)
 boite projects                   the projects added to Boite
 boite projects add <folder> [--name <name>] [--machine <name>]
                                  add an existing folder as a project, on this
@@ -1071,6 +1072,42 @@ model, and `send`,
 [Workflows](workflows.md) run a JSON plan of such children: `workflow help`
 prints the whole format, `workflow run` starts it and opens it in the panel,
 and the results come back as one message when the run ends.
+
+## State
+
+`boite state` reads what the user sees in Boite, read-only, so an agent asked
+about Boite answers from it instead of guessing. Without a domain it prints one
+line each for the version, the gateway route, machines online, failing and
+available updates, the Activity inbox, the highest quota window and the task
+manager's processes and memory.
+
+```sh
+boite state settings advanced   # a Settings page, or one key, with what each setting does
+boite state limits              # each account's quota windows, from the last reading
+boite state machines            # group machines (answered since start) and paired devices
+boite state updates             # app, server and desktop updates, each agent's version and last error
+boite state inbox --json        # Activity's rows: questions, permissions, failures, stops, finished
+boite state tasks|version|route
+```
+
+`state settings` reads `agent.settings`. Under each row it prints the help
+text the Settings page shows for that setting, in English: `SETTING_HELP` in
+`packages/contracts/src/setting-help.ts`. That file is a copy of `settingHelp`
+in `packages/ui/src/lib/setting-requests.ts`.
+`packages/ui/src/lib/setting-help.test.ts` fails when the two differ, and
+`UPDATE_SETTING_HELP=1` rewrites the copy. A setting whose page only names it
+has no text. `boite settings <page>` takes a page name the same way, through
+the same read (`packages/core/src/cli-state.ts`).
+
+Every other domain is one call to `agent.state`
+(`packages/core/src/state.ts`), which agents may call for their own thread.
+It reads the last quota reading and asks no provider again. Account labels
+show an email as its first letter and domain. Machines report whether this
+core reached them since it started. The inbox applies the rules of Activity
+(`packages/ui/src/lib/activity-feed.ts`) on the core's thread list, but cannot
+see the sub-agent rows a client groups under their parent. The route names a
+Douane or CLIProxyAPI gateway by its origin, never its credentials. From a
+terminal, the owner runs `boite state` without `--thread`.
 
 ## Diagnostics
 

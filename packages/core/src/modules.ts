@@ -18,6 +18,7 @@ import { registerSessionMethods } from './sessions.ts';
 import { registerTailscaleMethods } from './tailscale.ts';
 import { registerFirewallMethods } from './firewall.ts';
 import { registerSettingsMethods } from './settings.ts';
+import { registerStateMethods } from './state.ts';
 import { registerPolicy } from './policy-gate.ts';
 import { registerSubscriptionProxy } from './subscription-proxy.ts';
 import { registerGatewayMove } from './gateway-move.ts';
@@ -151,6 +152,7 @@ export function registerModules(core: Core): void {
   registerTraceMethods(core);
   registerUsageMethods(core);
   registerSettingsMethods(core);
+  registerStateMethods(core);
   registerSubscriptionProxy(core);
   registerGatewayMove(core);
   registerKeybindingMethods(core);
