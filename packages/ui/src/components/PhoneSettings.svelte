@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { desktopShell } from '../lib/shell-platform';
+  import { desktopShell, tauriApp } from '../lib/shell-platform';
   import { lockedBy } from '../lib/policy';
   import FirewallNotice from './FirewallNotice.svelte';
   import { errorText } from '../lib/errors';
@@ -23,6 +23,7 @@
   const lanLocked = $derived(lockedBy(store.policy, 'network.lan') !== null);
   const pushLocked = $derived(lockedBy(store.policy, 'network.push') !== null);
   const inShell = desktopShell();
+  const inApp = tauriApp();
   const secure = window.isSecureContext;
   const capable = secure && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
   let standalone = $state(installed());
@@ -65,7 +66,7 @@
   $effect(() => { if (store.connection === 'ready') untrack(() => void store.loadSessions()); });
 
   $effect(() => {
-    if (inShell || !paired || !ownOrigin || store.connection !== 'ready') return;
+    if (inApp || !paired || !ownOrigin || store.connection !== 'ready') return;
     let live = true;
     void store.client?.call('push.status', {}).then(result => {
       if (!live) return;
@@ -177,6 +178,8 @@
   {#if !inShell}
     <!-- The phone's screen: the desktop has these rows under General's switch. -->
     {#if !showServerSettings}<div class="block" data-testid="phone-notification-kinds"><NotificationKinds {store} mobile /></div>{/if}
+  {/if}
+  {#if !inApp}
     <div class="block">
       {#if standalone}<p class="hint">{strings.phone.installed}</p>
       {:else}
