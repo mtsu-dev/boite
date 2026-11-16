@@ -51,19 +51,47 @@ export class HistoryPrepare {
   }
 }
 
-/** Rows a warm-up mounts per idle slice, on each side of the window. */
-export const WARM_ROWS = 1;
-/** How long a warm-up waits for an idle slice before it runs anyway, and the delay where the browser has none. */
+/** What mounting one slice is taken to cost until one has been timed, in ms: an idle period with less left mounts nothing. */
+export const WARM_SLICE_MS = 12;
+/** The delay between two steps where the browser has no idle callbacks. */
 export const WARM_WAIT_MS = 200;
+/** An idle period lasts 50 ms at most: a slice timed over this still mounts, alone, in a whole one. */
+const IDLE_MAX_MS = 45;
 
-/** Runs `run` in the browser's next idle slice, or after `WARM_WAIT_MS` at most; answers how to cancel it. */
-export function whenIdle(run: () => void, wait = WARM_WAIT_MS): () => void {
+/**
+ * Runs `run` in the browser's next idle period, with no timeout: a busy main thread mounts nothing. `left` answers the
+ * ms the period has left. Where the browser has none, `run` comes after `WARM_WAIT_MS` with room for one step.
+ * Answers how to cancel it.
+ */
+export function whenIdle(run: (left: () => number) => void): () => void {
   if (typeof requestIdleCallback === 'function') {
-    const id = requestIdleCallback(() => run(), { timeout: wait });
+    const id = requestIdleCallback(deadline => run(() => deadline.timeRemaining()));
     return () => cancelIdleCallback(id);
   }
-  const id = setTimeout(run, wait);
+  let given = false;
+  const id = setTimeout(() => run(() => (given ? 0 : ((given = true), Infinity))), WARM_WAIT_MS);
   return () => clearTimeout(id);
+}
+
+/**
+ * A row drawing a slice of a finished cut answer. Off screen, it skips its style and layout
+ * (`content-visibility: auto`) and stands for `sliceBox`: its slot as measured or estimated, its gap
+ * taken off. Its paint clip reaches up through that gap (`overflow-clip-margin`), where the bubble
+ * joins the slice above. A slice the warm-up mounted ahead of the reader is laid out in idle time (`layOut`).
+ */
+export function isSlice(row: TimelineRow): boolean {
+  return !row.gap && !(row.first && row.last) && row.message.state === 'complete';
+}
+
+export function sliceBox(row: TimelineRow, slot: number, gap: number): string | undefined {
+  return isSlice(row) ? `auto ${Math.max(0, Math.round(slot - gap))}px` : undefined;
+}
+
+/** A warmed slice drawn ahead of the reader: styled and laid out now, in idle time, not as the wheel reaches it. */
+export function layOut(node: HTMLElement | undefined): void {
+  if (!node?.isConnected) return;
+  node.style.contentVisibility = 'visible';
+  void node.offsetHeight;
 }
 
 /** Two rows that draw slices of one finished message, neither of them a gap. */
@@ -71,20 +99,35 @@ function sameAnswer(a: TimelineRow | undefined, b: TimelineRow | undefined): boo
   return !!a && !!b && !a.gap && !b.gap && a.message === b.message && a.message.state === 'complete';
 }
 
+type RowWindow = { rows: readonly TimelineRow[]; start: number; end: number };
+
 /**
  * The slices of a long answer the window reaches into, mounted ahead of the
  * reader in idle time. A row of a cut answer at the window's edge leaves the
  * rest of its answer unmounted, and a wheel moving into them mounted one per
- * frame, each a slice of Markdown parsed and laid out mid-scroll. Here each
- * idle slice of the main thread mounts the next row of that answer on each
- * side (`WARM_ROWS`), until the whole answer is drawn: the wheel finds them
- * there. Only rows of the answers at the edges count, so what stays mounted is
- * at most two answers more than the window, and a row of another message
- * stops the warm-up.
+ * frame, each a slice of Markdown parsed and laid out mid-scroll. Here the
+ * browser's idle periods do it in two steps per slice: `grow` mounts the next
+ * row of that answer (a slice off screen skips its style and layout,
+ * `content-visibility: auto`), then `lay` styles and lays it out. A step runs
+ * only while the period has more time left than the last step took (`grow`
+ * runs the mount's effects at once, so it is timed whole), until the whole answer is drawn: the wheel
+ * finds it there. Below the window first, where a reader at the top goes.
+ * Nothing warms until two frames after the first wake that had a slice to
+ * warm: the opened thread has painted. Only rows
+ * of the answers at the edges count, so what stays mounted is at most two
+ * answers more than the window, and a row of another message stops it.
  */
 export class SliceWarmth {
   readonly #warm = new Set<string>();
+  #unlaid: string[] = [];
   #pending: (() => void) | undefined;
+  #ready = false;
+  #cost = WARM_SLICE_MS;
+  #wake: (() => void) | undefined;
+  #settling = false;
+
+  /** `frames` runs its callback once the opened thread has painted: two frames after the first wake with rows to warm. */
+  constructor(private readonly frames: (run: () => void) => void = run => requestAnimationFrame(() => requestAnimationFrame(run))) {}
 
   /** `[start, end)` widened through the rows of the edge answers mounted already. */
   widen(rows: readonly TimelineRow[], start: number, end: number): { start: number; end: number } {
@@ -93,37 +136,67 @@ export class SliceWarmth {
     return { start, end };
   }
 
-  /** The rows a warm-up would mount next around `[start, end)`, one per side at most. */
-  next(rows: readonly TimelineRow[], start: number, end: number): TimelineRow[] {
-    const out: TimelineRow[] = [];
-    for (let step = 0; step < WARM_ROWS && start > 0 && sameAnswer(rows[start - 1], rows[start]); step += 1) out.push(rows[--start]!);
-    for (let step = 0; step < WARM_ROWS && end < rows.length && sameAnswer(rows[end - 1], rows[end]); step += 1) out.push(rows[end++]!);
-    return out;
+  /** The row a warm-up would mount next around `[start, end)`: below the window first. */
+  next(rows: readonly TimelineRow[], start: number, end: number): TimelineRow | undefined {
+    if (end < rows.length && sameAnswer(rows[end - 1], rows[end])) return rows[end];
+    if (start > 0 && sameAnswer(rows[start - 1], rows[start])) return rows[start - 1];
+    return undefined;
+  }
+
+  /** What one step is counted at: the last ones timed, at most a whole idle period. */
+  get cost(): number {
+    return Math.min(this.#cost, IDLE_MAX_MS);
+  }
+
+  /** The opened thread has painted: idle periods may mount now. */
+  ready(): void {
+    this.#ready = true;
+    this.#wake?.();
+  }
+
+  /** Nothing warms before the list has painted what it opened on. */
+  #settle(): void {
+    if (this.#settling) return;
+    this.#settling = true;
+    this.frames(() => this.ready());
   }
 
   /**
-   * Asks for an idle slice when the window has an edge answer to finish:
-   * `read` gives the window then, `grew` is told once rows were added.
+   * Asks for an idle period when the window has an edge answer to finish or a
+   * warmed row to lay out: `read` gives the window then, `grow` mounts the rows
+   * added at once, `lay` styles and lays out the row of that id if it is still mounted.
    */
-  wake(read: () => { rows: readonly TimelineRow[]; start: number; end: number }, grew: () => void, idle = whenIdle): void {
+  wake(read: () => RowWindow, grow: () => void, lay: (id: string) => void, idle = whenIdle, now = () => performance.now()): void {
+    this.#wake = () => this.wake(read, grow, lay, idle, now);
     if (this.#pending) return;
-    const { rows, start, end } = read();
-    if (this.next(rows, start, end).length === 0) return;
-    this.#pending = idle(() => {
+    if (!this.#unlaid.length) { const { rows, start, end } = read(); if (!this.next(rows, start, end)) return; }
+    if (!this.#ready) return this.#settle();
+    this.#pending = idle(left => {
       this.#pending = undefined;
-      const now = read();
-      const rows = this.next(now.rows, now.start, now.end);
-      if (rows.length === 0) return;
-      // Ids of answers far from the window are worth nothing; a reader who jumped away starts again.
-      if (this.#warm.size > 256) this.#warm.clear();
-      for (const row of rows) this.#warm.add(row.id);
-      grew();
+      while (left() > this.cost) {
+        const began = now();
+        const id = this.#unlaid.shift();
+        if (id !== undefined) lay(id);
+        else {
+          const { rows, start, end } = read();
+          const row = this.next(rows, start, end);
+          if (!row) return;
+          // Ids of answers far from the window are worth nothing; a reader who jumped away starts again.
+          if (this.#warm.size > 256) this.#warm.clear();
+          this.#warm.add(row.id);
+          this.#unlaid.push(row.id);
+          grow();
+        }
+        this.#cost = Math.max(now() - began, this.#cost * 0.75);
+      }
+      this.wake(read, grow, lay, idle, now);
     });
   }
 
   stop(): void {
     this.#pending?.();
     this.#pending = undefined;
+    this.#wake = undefined;
   }
 }
 

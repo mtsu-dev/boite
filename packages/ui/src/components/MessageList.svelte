@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, onMount, tick, untrack } from 'svelte';
+  import { flushSync, onDestroy, onMount, tick, untrack } from 'svelte';
   import { MESSAGE_PAGE, type Message } from '@boite/contracts';
   import { strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
@@ -33,7 +33,7 @@
   import MessageActions from './MessageActions.svelte';
   import { workspace } from '../lib/workspace.svelte';
   import { movedBy, startedFrom, turnAnswer } from '../lib/message-display';
-  import { HistoryPrepare, RowEstimates, SliceWarmth } from '../lib/row-cost';
+  import { HistoryPrepare, RowEstimates, SliceWarmth, isSlice, layOut, sliceBox } from '../lib/row-cost';
   import { focusComposer } from '../lib/focus';
   import { isSending } from '../lib/composer-queue';
   import { retryTurn } from '../lib/composer-edit';
@@ -368,7 +368,7 @@
   });
   const rendered = $derived(rows.slice(view.start, view.end));
   const history = new HistoryPrepare(); $effect(() => { const all = rows, { start, end } = view; untrack(() => history.prepare(all, start, end)); });
-  $effect(() => { void view; untrack(() => warmth.wake(() => ({ rows, start: view.start, end: view.end }), () => { warmed += 1; })); }); onDestroy(() => warmth.stop()); // Off-screen answers render in a worker, edge slices mount in idle time (lib/row-cost.ts).
+  $effect(() => { void view; untrack(() => warmth.wake(() => ({ rows, start: view.start, end: view.end }), () => { warmed += 1; flushSync(); }, id => layOut(anchors.nodes.get(id)))); }); onDestroy(() => warmth.stop()); // Off-screen answers render in a worker, edge slices mount and lay out in idle time (lib/row-cost.ts).
   /**
    * A rendered message's real height replaces its estimate. One above what the user reads would push the text down
    * as it lands, so the same delta goes back into `scrollTop` and the viewport does not move.
@@ -741,7 +741,7 @@
           use:track={{ row, joined }}
           class="message {message.role}"
           class:rest={!row.first} {...reveal.attrs(message)}
-          data-seam={joined}
+          data-seam={joined} style:content-visibility={isSlice(row) ? 'auto' : undefined} style:overflow-clip-margin={isSlice(row) ? 'var(--chat-block-gap)' : undefined} style:contain-intrinsic-size={sliceBox(row, heights.get(row.id) ?? slots.estimateOf(row), slotGap(joined, !row.first))}
           style:margin-top={joined && 'calc(var(--chat-block-gap) - var(--chat-message-gap))'}
           data-testid={row.first ? 'message' : 'message-rest'}
           data-role={group ? 'agent-mail' : message.role} data-turn={message.turnId}
