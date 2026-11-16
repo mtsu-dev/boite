@@ -26,7 +26,7 @@ export class SessionCrons {
     return this.#count > 0;
   }
 
-  /** A frame from the CLI: an assistant message that calls CronCreate or CronDelete. */
+  /** A frame as the CLI writes it, never replayed: a call to CronCreate or CronDelete. A replay would undo a Stop that came after it. */
   noted(message: SDKMessage): void {
     if (message.type !== 'assistant') return;
     const content: unknown = message.message.content;

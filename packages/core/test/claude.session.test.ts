@@ -666,6 +666,41 @@ describe('claude driver', () => {
     await waitFor(() => ended(0));
   });
 
+  test('a CronDelete the CLI ran on its own, replayed into the turn opened later, does not undo the Stop that followed it', async () => {
+    const { client, threadId } = await openClaudeThread();
+    const sessionId = 'sess-cron-adopted';
+    // The core opens the turn for the CLI's own run only once that run is over.
+    const deferred = harness.core.threads.deferred;
+    const wake = deferred.wake.bind(deferred);
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    let woken!: () => void;
+    const asked = new Promise<void>(resolve => { woken = resolve; });
+    deferred.wake = (...args) => { woken(); void gate.then(() => wake(...args)); };
+    scripted(() => undefined, (fake) => {
+      fake.emit(init(sessionId));
+      fake.emit(assistant(sessionId, [{ type: 'text', text: 'scheduled' }]));
+      void stopHook(fake, sessionId, [cron]).then(() => fake.emit(success(sessionId)));
+    });
+
+    expect(await runTurn(client, threadId, 'loop on it')).toBe('done');
+    const fake = queries[0]!;
+    // The cron fired: the CLI runs it by itself and deletes the cron.
+    fake.emit(assistant(sessionId, [{ type: 'tool_use', id: 'toolu_del', name: 'CronDelete', input: { id: cron.id } }]));
+    await asked;
+    fake.emit(toolResult(sessionId, 'toolu_del', 'Deleted cron-1'));
+    await stopHook(fake, sessionId, []);
+    fake.emit(success(sessionId));
+    await Bun.sleep(50);
+
+    const adopted = client.next('turn.finished', (turn) => turn.threadId === threadId && turn.execution?.operation === 'background', 10000);
+    release();
+    expect((await adopted).status).toBe('done');
+    // Nothing is scheduled and warm sessions are off: the CLI ends.
+    await Bun.sleep(300);
+    expect(ended(0)).toBe(true);
+  });
+
   test('stop on a warm session closes it and the next turn starts a new query', async () => {
     const { client, threadId } = await openClaudeThread();
     await client.call('settings.set', { warmProcessMinutes: 5 });

@@ -580,7 +580,7 @@ export class ClaudeSession {
     }
     const sessionId = (message as { session_id?: string }).session_id;
     if (typeof sessionId === 'string' && sessionId.length > 0) this.#sessionId = sessionId;
-    if (message.type === 'system') this.#noteTasks(message); else this.#crons.noted(message);
+    if (message.type === 'system') this.#noteTasks(message); else if (!replayed) this.#crons.noted(message);
     if (this.#loopLifecycle(message)) return;
     if (this.#native === 'drop') {
       // Deltas only stream what the run's assistant messages hold: a folded replay needs none of them.
