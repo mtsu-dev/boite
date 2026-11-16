@@ -227,7 +227,15 @@ fresh core so earlier tests cannot hide a race in first-use imports.
 
 Authenticated RPC requests rotate between connections in four-millisecond
 slices. At most eight handlers per connection and 64 overall can wait on
-asynchronous work. Authenticated agents can occupy at most 48 of those slots,
+asynchronous work. Each connection has two lanes: background, the slow reads
+listed in `BACKGROUND_METHODS` next to the queue (pull requests, their files
+and reviews, `git.status`, `git.diff`, `worktrees.list`), and interactive,
+everything else. Frames start in arrival order, but background requests hold
+at most six of a connection's eight slots: once six run, the connection's
+first queued interactive frame goes ahead of the background ones that wait.
+Each lane keeps its own order. With eight 300 ms pull request reads queued, a
+`settings.get` behind them started after 302.7 ms before the lanes and 1.4 ms
+after (`bun test test/frame-queue.test.ts` in `packages/core`, 2026-11-15). Authenticated agents can occupy at most 48 of those slots,
 leaving capacity for owner actions, paired clients and authentication while
 agents wait for replies. Each connection retains at most 1,024 frames or 32 MiB of
 text; the total stays below 4,096 frames or 64 MiB, including active requests.
@@ -336,6 +344,20 @@ click had medians of 222, 230 and 232 ms, and Load on press 95,
 96 and 100 ms. The Windows CI job measured medians of 225 and 92 ms the same
 day. The press saved about the 120 ms it was held, up to one round trip. The fake does not delay pushed events or model payload size, and a real
 core adds its own handling time to both paths.
+
+## Read ahead when idle
+
+`bun test tests/e2e/idle-preload.test.ts` loads the fake core in a hidden
+browser with a simulated 200 ms round trip (`?fake=1&open=recent&rtt=200`),
+leaves the page idle 3 s, clicks the first sidebar thread that is not open,
+and times the release to the first message drawn in the timeline, four
+samples each on a fresh page. On 2026-11-16 in the Linux container
+(`BOITE_E2E_BROWSER=chrome-headless-shell`, under `nice`), the code before
+the read-ahead had medians of 261 and 257 ms, the loading view shown every
+time; with it, four runs had medians of 115, 59, 38 and 55 ms, the loading
+view never shown. The spread after is the timeline's own drawing time. The
+fake does not model payload size, and a real core adds its own handling time
+to the cold path.
 
 ## Naming a long conversation
 
@@ -454,7 +476,13 @@ a frame (its default is 16 MiB) below the budget the code enforces.
 
 A relayed socket (`/group/relay/<core id>/rpc`) keeps the same budget: past
 32 MiB unread, a dropped send or 10 seconds without a drain, it closes with
-1013. It is deflated when its Host is not loopback, as a direct remote socket
+1013. The relaying machine dials the member's addresses 250 ms apart rather
+than one after the other: with a first address that takes the connection and
+never answers, the relayed hello was answered after 4,008 ms before and 253 ms
+after (`bun test test/group-relay.test.ts -t "never answers"` in
+`packages/core`, 2026-11-15). Its half to the member is pinged after 10
+seconds of silence and closed with 1013 after 25, where Bun's 120-second idle
+close was the only bound before (`test/group-relay-pipe.test.ts`, fake clock). It is deflated when its Host is not loopback, as a direct remote socket
 is. `terminal.output` goes only to the connections that attached that shell
 with `terminals.open` or `accounts.loginTerminal`; `terminal.exited` still
 reaches every owner window.
@@ -482,6 +510,26 @@ returned 0 (dropped) for a 31 MB frame with 29.8 MB already buffered on
 2026-10-05; slicing keeps a long answer off that path. A slice resets the
 call's 120 s timeout. The UI asks for progress on a first open's `threads.get`
 when the core advertises `chunkedAnswers`.
+
+### Reconnecting
+
+A remote client checks and replaces its socket by the rules in
+[machines](machines.md#connecting-a-machine); these are the times they give, on the
+fake clock of `packages/ui/src/lib/ws-client-timing.test.ts`, with a handshake
+of 100 ms (the socket opens after 50 ms, the hello is answered 50 ms later):
+
+| From | To | Before (2026-11-15) | After |
+| --- | --- | --- | --- |
+| `resume()` after 30 s hidden, the old socket dead | ready | 4,100 ms | 100 ms |
+| a ready socket's close | first retry | 1,000 ms (800 to 1,200) | 188 ms (125 to 250) |
+| the last frame of a link that died silently, page in sight | offline | 35,000 ms | 22,000 ms |
+
+The first row was the 4 s `hello` the old socket got before a new one opened;
+away 8 seconds or more, the new socket now opens beside it. The third is the
+idle probe, 12 seconds of silence instead of 25, plus its 10 second deadline.
+Run with `cd packages/ui && bun x vitest run --silent=false
+src/lib/ws-client-timing.test.ts`; the before column is the same file run on
+the parent commit, where `resume()` ignores how long the page was away.
 
 ### Stream channels
 
@@ -531,6 +579,21 @@ the turn's other events, which no channel holds back.
   the other visits again (`ReadingCache` in `reading-cache.ts`). Once the page
   is idle, a plain copy replaces the deep `$state` proxy the timeline drew,
   which weighed several times its data.
+- Once a machine is ready and the page idle (`requestIdleCallback`, else
+  1 s), its first sidebar threads are read ahead into the same cache
+  (`IdlePreloads` in `lib/store/thread-preload.ts`): up to 4, one at a time,
+  in the Recent order (pins, then the latest message), skipping the open
+  thread, archived and incognito ones and those already held; 1 on a
+  connection with `saveData`. Each is the first page an open would ask, as a
+  plain `threads.get` with a sync proof and no `open`, so it subscribes
+  nothing. It enters the cache only where it fits without pushing a visit
+  out. Nothing is read while a thread opens or a turn runs in the open one;
+  an open or a drop drops the read in flight and the rest, and the reads left
+  resume at the next idle moment after an open. Opening such a thread then
+  paints at once and asks only for what came after the page, like any visit.
+  An answer whose thread was deleted, archived, rewound or truncated while it
+  was read, or is no longer one to read ahead, is dropped.
+  Off under automation unless `__BOITE_IDLE_PRELOAD_TEST__` is set.
 - A summary written over the open thread (`thread.updated`, a load tick)
   writes only the fields that changed (`patchFields`), so a tick that moves
   `load` alone wakes only what reads `load`.
@@ -677,7 +740,7 @@ the turn's other events, which no channel holds back.
   came with its bytes reads its size from their header. Nothing around the box
   moves when the bytes land: the 180 by 120 place it replaced grew to the
   thumbnail and pushed what followed. An unmeasured prompt counts its
-  thumbnails on top of the 80 px estimate (`estimateSlot`), so the spacers
+  thumbnails on top of the 80 px base estimate (`estimateSlot`), so the spacers
   are closer to what scrolling up mounts. `tests/e2e/thread-loading.test.ts` checks
   this on a real core with 24 screenshots: the fetches on opening, and the
   reader's text keeping its position to the pixel while the scrolled pictures
@@ -1283,6 +1346,149 @@ The [frame report](../../bench/results/2026-09-30-ui-frames.md) and
 [typing/scroll report](../../bench/results/2026-09-30-typing-and-scroll.md) retain
 2026-09-30 measurements and the streaming-fixture correction. They use software
 compositing and mobile emulation, with uncontrolled background load.
+
+### A long answer is many rows
+
+A heavy conversation can also weigh in its text: answers of 20 to 40 KB of
+Markdown and code. `?fake=1&markdown=1` seeds twenty of them (`t-markdown`);
+`bench/ui-frames.ts` opens that thread inside its measured window ("open heavy
+thread") and wheels up it ("heavy answers scroll"). Its last column counts the
+long animation frames of the window and their total.
+
+- An unmeasured row is worth the mean height the session measured for its
+  class: its role, text only or not, and the log2 of its characters
+  (`SlotClasses` in `lib/message-window.ts`). A class never measured counts its
+  characters as lines of 90 at 24 px, never under 80 px; a prompt with
+  pictures keeps its row of thumbnails. A row's estimate is taken once, so a
+  mean that moves never shifts the rows under it.
+- A text part from 8 KB (`SPLIT_FROM`) is cut at top-level Markdown blocks into
+  rows of at least 4 KB (`textCuts` in `lib/timeline-rows.ts`): after a blank
+  line, never inside a fence, a list, an indented block or a table, never on
+  the line after a list. The renderer has no reference links or footnotes, so
+  a `[label]: …` line binds nothing across a cut. Rows are
+  `<message>#<part>.<block>`, the first keeping the message's id. Only whole
+  lines decide, so a streamed answer keeps its row ids when it ends. A long
+  turn (`rowCuts`) that ends on a long answer takes both cuts, its rows of parts
+  then named `<message>#<first part>`. A written plan (`# Plan`) stays one row:
+  its card copies, downloads and saves the whole text. A slice's
+  bubble drops the edge it shares with the next one and reaches up through the
+  12 px between their rows. Rows of 2 KB from 4 KB opened faster but cost the
+  most to scroll through; rows of 8 KB from 16 KB saved nothing on open.
+- The finished answers of the rows the window has not drawn are split into the
+  blocks `Prose` draws and, from 16 KB of text, rendered in a lazy worker
+  (`prepareBlocks` in `lib/markdown.ts`, `lib/markdown-prepare.worker.ts`). The
+  HTML lands in the block cache, so a row scrolled to later only inserts it.
+  The rows on screen still render on the main thread, and so does every row
+  when the worker is missing or answers after 50 ms (`PREPARE_WAIT_MS`). The
+  rows are not held back until the worker answers: a page is inserted by the
+  store, outside the list, and a list that hid rows it was given would move the
+  reader's anchor. The slices of the answers at the window's two edges go to
+  the worker first, in a batch of their own, and the rest of the page after.
+- The slices of a cut answer at either edge of the window mount in idle time
+  (`SliceWarmth` in `lib/row-cost.ts`), below the window first, until the
+  whole answer is drawn, so a wheel moving into it finds its rows there. Each
+  slice takes two steps: a mount, then its style and layout (`layOut`). A step
+  runs in a `requestIdleCallback` only while the idle period has more time left
+  than the last step took, with no timeout: a busy main thread mounts nothing
+  (where the browser has no idle callbacks, one step per 200 ms). Nothing warms
+  until two frames after the opened thread first had a slice to warm. Only
+  slices of one text part count: the rows of a turn's work are not warmed. Past
+  256 warmed ids, it forgets those outside the window, so an answer of more
+  slices than that is still warmed to its end.
+- A slice of a finished cut answer is `content-visibility: auto`, its
+  `contain-intrinsic-size` its slot as measured or estimated: off screen it
+  skips style and layout, so a mount costs the DOM alone. Its paint clip reaches
+  up through the gap to the slice above (`overflow-clip-margin`), where the
+  bubble joins it. In a turn that published a page, the slice's first and last
+  runs of text join the slices around it, except at a cut with a page's line on
+  either side of it: the page stands there between two closed bubbles.
+- A slice only draws its characters; what the answer means is read on the
+  whole text and carried by the row (`TextSlice` in `lib/timeline-rows.ts`). A
+  cut text is never a plan card (plans are left whole) nor narration (it is
+  longer than `NARRATION_MAX`), whatever its slice opens on or however short its
+  last slice is. Each slice carries the pages placed by the lines at its two
+  cuts (`textSlice`). A long system message is not cut. Text left out of a long
+  answer is said once, under its last slice. A `#heading` link to a heading
+  another slice draws finds the heading in the whole answer (`headingAt` in
+  `lib/markdown.ts`) and goes to the row that holds it, mounted or not, aligned
+  on the heading.
+- Find opens the slice that holds the match (`FindHit.at`, `rowIndexOf`), and
+  every slice of a cut answer takes the whole reading measure, so a short last
+  slice is as wide as the slices above it.
+
+On 2026-11-15, `nice bun bench/ui-frames.ts --cpu 4 --runs 2 --only "long
+thread scroll,open heavy thread,heavy answers scroll"`, 1280 x 890, software
+compositing, two runs each, long animation frames in ms, the base being
+`d43ed1ee` with the fake thread added:
+
+| Build | Open heavy thread | Heavy answers scroll | Long thread scroll |
+| --- | --- | --- | --- |
+| Base | 1,061, 963 | 0, 0 | 2,464, 2,264 |
+| Class estimates | 643, 740 | 0, 0 | 1,464, 1,490 |
+| And rows of 2 KB | 216, 316 | 814, 814 | 1,711, 2,053 |
+| And the worker | 160, 174 | 934, 1,211 | 1,223, 874 |
+| Rows of 4 KB instead | 278, 213 | 782, 676 | not run |
+
+On 2026-11-16, same command (`BOITE_E2E_BROWSER=$(which chrome-headless-shell) nice
+bun bench/ui-frames.ts --bundle <dir> --cpu 4 --runs 2 --only "long thread
+scroll,open heavy thread,heavy answers scroll"`, each build made with `--build
+<dir>`), a loaded machine, so compare rows of one day only:
+
+| Build | Open heavy thread | Heavy answers scroll | Long thread scroll |
+| --- | --- | --- | --- |
+| Base | 1,761, 1,103 | 0, 54 | 2,636, 2,634 |
+| Idle slices, at the live end too | 2,245, 627 | 161, 66 | 2,753, 2,182 |
+| Idle slices once the reader left the live end | 631, 355 | 636, 858 | 2,393, 2,561 |
+
+The first is what 916467a4 committed: the wheel up the answers was back near
+the base, the open was not. A trace of one idle mount of a 4 KB slice at CPU x4
+(the open, six mounts, 36 to 93 ms each) split it: style 21 ms, the prepared
+HTML parsed into the DOM 20 ms, layout 9 ms, script 7.5 ms (Svelte; no Markdown
+parse or highlight, the worker did them), all of the style and layout forced in
+the same task by the pinned list taking its bottom (`BottomEdge.follow` reading
+`scrollHeight`), then 10 to 15 ms of rendering in the frame. On 2026-11-16,
+same command, machine load (1 min) from 32 down to 9:
+
+| Build | Open heavy thread | Heavy answers scroll | Long thread scroll | Load |
+| --- | --- | --- | --- | --- |
+| Base | 986, 885 | 0, 0 | 2,367, 2,436 | 32 to 35 |
+| 916467a4 | 1,070, 695 | 73, 73 | 1,823, 2,459 | 29 to 30 |
+| Off-screen slices skip layout | 702, 222 | 124, 165 | 1,938, 2,200 | 33 to 28 |
+| And idle steps that fit, after paint | 223, 466 | 214, 51 | 1,518, 1,399 | 23 to 29 |
+| And the layout as a step of its own | 341, 139 | 52, 56 | 2,116, 2,084 | 28 to 20 |
+| Final, before the clip margin | 189, 175 | 0, 57 | 1,121, 1,574 | 14 to 12 |
+| Base again | 1,127, 477 | 0, 0 | 2,104, 2,214 | 12 to 9 |
+
+The long thread's scrollTop moved about a third of the base's in the window
+above (main ms per 1000 px three times the base's), but the text did not.
+About 0.9 s into the wheel, the store lands a page of 120 older messages above
+the reader. Counted at their class estimates, they grow the list by about
+5,000 px in one frame (scrollHeight 33,500 to 38,600), and the list moves
+scrollTop by as much, against the wheel. The base counted them at 80 px and
+grew them as they were measured, about 3,000 px over the whole wheel. A probe
+logging every frame's rows (`?fake=1&long=1`, the bench's wheel of 9,000 px,
+CPU x4) found the same text distance for both: base 8,996 to 9,003 px, this
+branch 9,009 to 9,183 px, ending on the same prompt (`m-long-320`). The same
+page landing with no input moved the text 0.3 px (base) and 0.6 px (branch).
+Since then the bench counts the distance the text moved on screen, not
+scrollTop. Same command, 2026-11-16, load 8 to 26:
+
+| Build | Open heavy thread | Heavy answers scroll | Long thread scroll | Long thread, main ms per 1000 px | Load |
+| --- | --- | --- | --- | --- | --- |
+| Base | 495, 426 | 0, 0 | 1,437, 1,628 | 328, 326 | 8 to 9 |
+| 57957a49 (clip margin) | 143, 247 | 114, 0 | 1,491, 504 | 310, 311 | 9 to 21 |
+| Final (review fixes) | 276, 223 | 66, 126 | 1,890, 1,880 | 326, 314 | 21 to 26 |
+| Final again | 201, 177 | 66, 195 | 809, 765 | 338, 338 | 5 to 9 |
+| Base again | 604, 1,401 | 0, 0 | 1,952, 1,033 | 360, 337 | 9 to 8 |
+
+The open stays under 500 ms a run; the wheel up the answers stayed under 150
+in five runs of six, 195 in the last. Per 1000 px of text, the long thread
+costs the base's main thread time; its long frames moved with the machine's
+load.
+
+Cutting answers trades the open for the scroll: one answer drawn whole is
+2,681 nodes the open lays out at once and a wheel only composites, where cut
+rows mount and style as they come. The load of the machine was not controlled.
 
 ## What the UI costs at rest
 

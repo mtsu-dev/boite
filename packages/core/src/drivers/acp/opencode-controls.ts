@@ -6,6 +6,8 @@ export type NativeCall = (path: string, method?: string, body?: unknown) => Prom
 export const object = (value: unknown): Record<string, unknown> => plainObject(value) ?? {};
 export const list = (value: unknown): Record<string, unknown>[] => Array.isArray(value) ? value.map(object) : [];
 export const text = (value: unknown): string => typeof value === 'string' ? value : '';
+/** The waits before each new read of an agent list that came back empty: 4.75 s in all. */
+const AGENT_LOAD_WAITS_MS: readonly number[] = [0, 250, 500, 1000, 1000, 2000];
 
 export class OpenCodeControls {
   private models: Record<string, unknown>[] = [];
@@ -18,12 +20,21 @@ export class OpenCodeControls {
 
   async read(session: Record<string, unknown>): Promise<void> {
     const query = `?${new URLSearchParams({ 'location[directory]': this.cwd })}`;
+    const primary = (answer: unknown) => list(object(answer)['data']).filter(agent => agent['mode'] !== 'subagent' && agent['hidden'] !== true);
     const [models, preferred, agents, commands] = await Promise.all([
       this.call(`/api/model${query}`), this.call(`/api/model/default${query}`),
       this.call(`/api/agent${query}`), this.call(`/api/command${query}`),
     ]);
     this.models = list(object(models)['data']).filter(model => model['enabled'] !== false);
-    this.agents = list(object(agents)['data']).filter(agent => agent['mode'] !== 'subagent' && agent['hidden'] !== true);
+    this.agents = primary(agents);
+    // OpenCode 2.3 answers the agent list at once, empty, while a fresh location
+    // still loads its agents (about 0.4 s); the model list waits for that load.
+    // A location always has a primary agent, so an empty list is one not read yet.
+    for (const wait of AGENT_LOAD_WAITS_MS) {
+      if (this.agents.length > 0) break;
+      await new Promise(resolve => setTimeout(resolve, wait));
+      this.agents = primary(await this.call(`/api/agent${query}`));
+    }
     this.commands = list(object(commands)['data']);
     const model = object(session['model'] ?? object(preferred)['data']);
     this.model = { providerID: model['providerID'], id: model['id'], ...(model['variant'] ? { variant: model['variant'] } : {}) };

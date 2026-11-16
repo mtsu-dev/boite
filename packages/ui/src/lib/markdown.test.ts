@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'vitest';
-import { renderBlock, renderMarkdown } from './markdown';
+import { describe, expect, test, vi } from 'vitest';
+import { headingAt, renderBlock, renderMarkdown } from './markdown';
 
 describe('renderMarkdown', () => {
   test('emphasis spans links and keeps formatting inside their labels', () => {
@@ -218,4 +218,57 @@ describe('diagrams and formulas', () => {
     expect(renderMarkdown('```view\n<p>Hi')).toBe('<pre data-language="view"><code>&lt;p&gt;Hi</code></pre>');
     expect(renderMarkdown('```html\n<p>Hi</p>\n```')).toBe('<pre data-language="html"><code>&lt;p&gt;Hi&lt;/p&gt;</code></pre>');
   });
+});
+
+test('a page of history is rendered in the worker before its rows draw, and here when the worker is missing or slow', async () => {
+  vi.useFakeTimers();
+  try {
+    let delay = 10;
+    const posted: string[][] = [];
+    class FakeWorker {
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+      postMessage(data: { id: number; blocks: string[]; rich: boolean }): void {
+        posted.push(data.blocks);
+        setTimeout(() => this.onmessage?.({ data: { id: data.id, html: data.blocks.map(block => `<p>worker: ${block}</p>`) } } as MessageEvent), delay);
+      }
+      terminate(): void {}
+    }
+    vi.stubGlobal('Worker', FakeWorker);
+    vi.resetModules();
+    const markdown = await import('./markdown');
+    // Answered within PREPARE_WAIT_MS: the rows find the worker's HTML in the cache, nothing renders here.
+    const page = markdown.prepareBlocks(['First **block**', 'Second block', 'First **block**']);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(await page).toBe('worker');
+    expect(posted).toEqual([['First **block**', 'Second block']]);
+    expect(markdown.renderBlock('First **block**')).toBe('<p>worker: First **block**</p>');
+    // Known blocks are not sent again.
+    expect(await markdown.prepareBlocks(['Second block'])).toBe('known');
+    // Slower than 50 ms: the page stops waiting and its rows render here; the late answer still fills the cache.
+    delay = 200;
+    const slow = markdown.prepareBlocks(['Slow block']);
+    await vi.advanceTimersByTimeAsync(markdown.PREPARE_WAIT_MS);
+    expect(await slow).toBe('here');
+    expect(markdown.knownBlock('Slow block')).toBe(false);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(markdown.knownBlock('Slow block')).toBe(true);
+    // No worker: here, at once.
+    vi.stubGlobal('Worker', undefined);
+    vi.resetModules();
+    const bare = await import('./markdown');
+    expect(await bare.prepareBlocks(['Third block'])).toBe('here');
+    expect(bare.renderBlock('Third block')).toBe('<p>Third block</p>');
+  } finally {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  }
+});
+
+test('a link finds a quoted heading in the whole answer, as the renderer gives it its anchor', () => {
+  const answer = 'Intro.\n\n> ## Details\n> Quoted.\n\n```\n# Not a heading\n```\n\n## Details\n';
+  expect(renderMarkdown(answer, true)).toContain('id="details"');
+  expect(headingAt(answer, 'details')).toBe(answer.indexOf('> ## Details'));
+  expect(headingAt('>> ### Deep', 'deep')).toBe(0);
+  expect(headingAt(answer, 'not-a-heading')).toBe(-1);
 });

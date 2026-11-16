@@ -8,6 +8,7 @@ import {
 } from './endpoint';
 import { strings } from './strings';
 import { holdsBack } from './group-links.svelte';
+import { desktopShell } from './shell-platform';
 
 /** Keeps lifecycle and navigation guards private to the workspace facade. */
 interface BootLifecycle {
@@ -49,7 +50,7 @@ export function primaryMachine(workspace: Workspace, selected: Endpoint | null, 
 
 async function connectShellLocal(workspace: Workspace, lifecycle: BootLifecycle): Promise<void> {
   const store = workspace.primary;
-  if (!window.__TAURI_INTERNALS__ || store.localCore) return;
+  if (!desktopShell() || store.localCore) return;
   const local = await fromTauri();
   if (!lifecycle.current()) return;
   if (local && local.url !== store.endpointUrl) await workspace.add(local, strings.machines.local);
@@ -76,7 +77,7 @@ async function vet(workspace: Workspace, saved: StoredEnvironment[]): Promise<St
   if (held.length === 0) return [];
   const anchors: Endpoint[] = saved.filter((e) => e.coreId === undefined && opens(e))
     .map((e) => ({ url: e.url, token: e.token, paired: e.paired, ...(e.signs === undefined ? {} : { signs: e.signs }) }));
-  const local = window.__TAURI_INTERNALS__ ? await fromTauri().catch(() => null) : null;
+  const local = desktopShell() ? await fromTauri().catch(() => null) : null;
   if (local && !anchors.some((e) => e.url === local.url)) anchors.push(local);
   return workspace.groups.vet(held, anchors);
 }
@@ -84,7 +85,7 @@ async function vet(workspace: Workspace, saved: StoredEnvironment[]): Promise<St
 /** The machine paired by hand a window falls back on: the one serving this page first. None in the shell, which has its own core. */
 export function byHand(): StoredEnvironment | undefined {
   const byHand = readEnvironments().filter((e) => e.coreId === undefined && opens(e));
-  return window.__TAURI_INTERNALS__ ? undefined : byHand.find((e) => servesThisPage(e.url)) ?? byHand[0];
+  return desktopShell() ? undefined : byHand.find((e) => servesThisPage(e.url)) ?? byHand[0];
 }
 
 /**

@@ -1,4 +1,5 @@
 import { experimentsShown } from './experiments.svelte';
+import { desktopShell } from './shell-platform';
 
 /** Every Settings page, so a value read from a link can be checked before it opens one. */
 export const SETTINGS_TABS = ['home', 'advanced', 'brain', 'voice', 'general', 'machines', 'appearance', 'keyboard', 'accounts', 'plugins', 'browser', 'usage', 'limits', 'resources', 'task-manager', 'experiments', 'diagnostics'] as const;
@@ -158,7 +159,7 @@ export function pageScopeOf(tab: SettingsTab): 'device' | 'machine' | null {
  * and the keyboard: the app always does, a browser once wider than a phone.
  */
 export function desktopSettings(phoneWidth: boolean): boolean {
-  return !phoneWidth || window.__TAURI_INTERNALS__ !== undefined;
+  return !phoneWidth || desktopShell();
 }
 
 /**

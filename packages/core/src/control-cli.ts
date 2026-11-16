@@ -9,15 +9,15 @@
  * prompt. A bot the owner entrusted projects to goes through `resident.*`
  * and coordination from its own thread: the core holds it to its projects,
  * and its messages reach a thread marked as its own, never as the user's.
- * Any other thread lists what coordination lets it reach. Deleting threads
+ * Any other thread lists and shows what coordination lets it reach. Deleting threads
  * and deciding permissions stay the owner's.
  *
  * A bot also names a thread of a project another machine of the group
  * entrusted to it as `<machine>/<thread-id>`; that machine checks it again.
  */
-import type { AgentSpawn, AgentWatch, PermissionRequest, Project, ProjectThreadDetail, ProjectThreadRow, QuestionRequest, RpcParams, ThreadSummary, ThreadWake } from '@boite/contracts';
+import type { AgentContact, AgentSpawn, AgentWatch, PermissionRequest, Project, ProjectThreadDetail, ProjectThreadRow, QuestionRequest, RpcParams, ThreadSummary, ThreadWake } from '@boite/contracts';
 import type { CoreClient } from './client.ts';
-import { contactLine, NO_CONTACT } from './agents-cli.ts';
+import { contactLine, NO_CONTACT, resolveAgent } from './agents-cli.ts';
 import { requiredText, Usage, type Parsed } from './cli-args.ts';
 import { THREAD_ACTIONS } from './cli-commands.ts';
 
@@ -226,6 +226,24 @@ export async function controlCommand(client: CoreClient, caller: Caller, threadI
     return client.call('resident.thread', { threadId, target, ...machineOf(machine) });
   };
   /**
+   * A thread as a thread that is not a mochi's sees it: the contact
+   * `boite threads` lists, here or on another machine, and its last answer as
+   * `threads read` reads it. Its questions and permissions stay its owner's.
+   */
+  const contactDetail = async (value: string): Promise<{ contact: AgentContact; selfCore: string; lastAnswer: string | null }> => {
+    const [{ self }, { agents }] = await Promise.all([
+      client.call('collaboration.get', { threadId }),
+      /^[0-9a-f]{64}\//.test(value) ? Promise.resolve({ agents: [] as AgentContact[] }) : client.call('collaboration.directory', { threadId }),
+    ]);
+    const target = resolveAgent(value, agents, self.coreId);
+    const page = await client.call('collaboration.read', { threadId, target, limit: 20 });
+    const last = page.entries.findLast(entry => entry.role === 'assistant' && entry.text.trim().length > 0);
+    // A page carries the start of each entry; the answer itself is read whole, to the limit the owner sees.
+    const whole = last === undefined || last.length === undefined ? last : (await client.call('collaboration.read', { threadId, target, entry: last.id })).entries[0];
+    const answer = whole?.text.trim() || null;
+    return { contact: page.contact, selfCore: self.coreId, lastAnswer: answer && answer.length > 4000 ? `${answer.slice(0, 3900)}\n[Truncated.]` : answer };
+  };
+  /**
    * The details of a bot's threads with something pending, here and on each
    * machine its projects are on; a machine that does not answer is named.
    */
@@ -319,6 +337,9 @@ export async function controlCommand(client: CoreClient, caller: Caller, threadI
           const answer = last?.parts.flatMap(part => part.type === 'text' ? [part.text] : []).join('\n').trim() || null;
           const detail = { thread: ownerRow(thread, projects, questions, permissions), questions, permissions, lastAnswer: answer && answer.length > 4000 ? `${answer.slice(0, 3900)}\n[Truncated.]` : answer, wake: thread.wake ?? null };
           print([threadLine(detail.thread), `cwd: ${thread.cwd}`, ...wakeLines(detail.wake), ...questions.flatMap(questionLines), ...permissions.map(permissionLine), `last answer: ${detail.lastAnswer ?? '(none)'}`], detail);
+        } else if ((await client.call('resident.view', { threadId })).agentId === null) {
+          const detail = await contactDetail(value);
+          print([contactLine(detail.contact, detail.selfCore), `last answer: ${detail.lastAnswer ?? '(none)'}`], { contact: detail.contact, lastAnswer: detail.lastAnswer });
         } else {
           const found = await client.call('resident.thread', { threadId, target, ...remote });
           // The JSON carries the same `<machine>/<thread-id>` the text prints, so `boite answer` takes either.

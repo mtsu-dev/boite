@@ -6,15 +6,16 @@
  *
  * The markup keeps its `href`, its `target` and its `rel`: a right click still
  * copies the address, and nothing changes for a page rendered outside the shell.
+ * The Android app takes the same route: its webview would otherwise load the
+ * link in place of the app.
  */
 
-function insideTauri(): boolean {
-  return window.__TAURI_INTERNALS__ !== undefined;
-}
+import { desktopShell, tauriApp } from './shell-platform';
+
 
 /** Opens a url where the user expects it: the system browser, never this window. */
 export async function openExternal(url: string): Promise<void> {
-  if (insideTauri()) {
+  if (tauriApp()) {
     const { openUrl } = await import('@tauri-apps/plugin-opener');
     await openUrl(url);
     return;
@@ -29,7 +30,7 @@ export async function openExternal(url: string): Promise<void> {
  * execute through here.
  */
 export async function revealFile(path: string): Promise<void> {
-  if (!insideTauri()) throw new Error('showing a file in its folder needs the desktop app');
+  if (!desktopShell()) throw new Error('showing a file in its folder needs the desktop app');
   const { revealItemInDir } = await import('@tauri-apps/plugin-opener');
   await revealItemInDir(path);
 }
@@ -40,7 +41,7 @@ export async function revealFile(path: string): Promise<void> {
  * through, so an agent's file cannot be run from here.
  */
 export async function openOwnFile(path: string): Promise<void> {
-  if (!insideTauri()) throw new Error('opening a file needs the desktop app');
+  if (!desktopShell()) throw new Error('opening a file needs the desktop app');
   const { openPath } = await import('@tauri-apps/plugin-opener');
   await openPath(path);
 }
@@ -55,7 +56,7 @@ export async function openOwnFile(path: string): Promise<void> {
 export function installExternalLinks(root: HTMLElement): () => void {
   const onclick = (event: MouseEvent): void => {
     if (event.defaultPrevented) return;
-    if (event.button !== 0 || (!insideTauri() && (event.ctrlKey || event.shiftKey || event.metaKey))) return;
+    if (event.button !== 0 || (!tauriApp() && (event.ctrlKey || event.shiftKey || event.metaKey))) return;
     const target = event.target;
     if (!(target instanceof Element)) return;
     const anchor = target.closest('a[href]');
@@ -69,7 +70,7 @@ export function installExternalLinks(root: HTMLElement): () => void {
     } catch {
       return;
     }
-    if (origin === window.location.origin && !insideTauri()) return;
+    if (origin === window.location.origin && !tauriApp()) return;
 
     event.preventDefault();
     void openExternal(href);

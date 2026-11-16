@@ -2,6 +2,7 @@
 import { parseGroupRelayUrl, withoutTrailingSlashes } from '@boite/contracts';
 import { readEnvironments, type StoredEnvironment } from './endpoint-env';
 import { opens, storeEndpoint, clearStoredEndpoint } from './endpoint-storage';
+import { desktopShell } from './shell-platform';
 
 export const MAIN_STORAGE_KEY = 'boite.main';
 
@@ -71,7 +72,7 @@ export function openOnMainMachine(): void {
 }
 
 export function insideTauri(): boolean {
-  return window.__TAURI_INTERNALS__ !== undefined;
+  return desktopShell();
 }
 
 /**

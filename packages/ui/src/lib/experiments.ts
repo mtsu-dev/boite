@@ -31,6 +31,7 @@
 
 import { EXPERIMENT_IDS, effectiveExperiments, experimentListed, experimentsRun, listedExperiments, type ExperimentId } from '@boite/contracts';
 import { RELEASE_VERSION } from './release';
+import { desktopShell } from './shell-platform';
 
 /** Declared in contracts: the app reports which are on, and an agent may ask to flip one (`client.preferences`). */
 export { EXPERIMENT_IDS, type ExperimentId };
@@ -84,7 +85,7 @@ function tell(enabled = readExperiments()): void {
  * with; the desktop app is the one it follows, so it keeps its own.
  */
 export function canFollowDesktop(): boolean {
-  return typeof window !== 'undefined' && window.__TAURI_INTERNALS__ === undefined;
+  return typeof window !== 'undefined' && !desktopShell();
 }
 
 /** Whether the switches are the desktop app's: true until this device flips one of its own. */

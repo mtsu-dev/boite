@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { desktopShell } from '../lib/shell-platform';
   import AgentRepliesSettings from './AgentRepliesSettings.svelte';
   import CardScope from './CardScope.svelte';
   import ShellSettings from './ShellSettings.svelte';
@@ -25,7 +26,7 @@
   /** `store` is the machine whose settings these are; `here`, this window's, holds its notifications and tour. */
   let { store, here = store }: { store: Store; here?: Store } = $props();
   const uid = $props.id();
-  const inShell = window.__TAURI_INTERNALS__ !== undefined;
+  const inShell = desktopShell();
   let terminalGpu = $state(untrack(() => readTerminalGpu()));
 </script>
 

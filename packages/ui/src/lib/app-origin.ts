@@ -1,4 +1,5 @@
 import { APP_ORIGIN, withoutTrailingSlashes } from '@boite/contracts';
+import { desktopShell, mobileApp } from './shell-platform';
 
 /** An override as the browser writes origins, or nothing for one the cores would refuse: https, no path, query or credentials. */
 function named(value: unknown): string | undefined {
@@ -22,9 +23,13 @@ export const appOrigin: string = (import.meta.env.DEV ? named((globalThis as { _
   // A development build only: the end to end tests serve the app at an address of their own, set before the page loads.
   ?? named(import.meta.env.VITE_BOITE_APP_ORIGIN) ?? APP_ORIGIN;
 
-/** Whether this page is the phone app's, served by no machine. */
+/**
+ * Whether this page is the phone app's, served by no machine: the hosted one,
+ * or the Android app, whose page is its own packaged files.
+ */
 export function appPage(): boolean {
-  return typeof window !== 'undefined' && window.__TAURI_INTERNALS__ === undefined && window.location.origin === appOrigin;
+  if (mobileApp()) return true;
+  return typeof window !== 'undefined' && !desktopShell() && window.location.origin === appOrigin;
 }
 
 /**
@@ -38,6 +43,8 @@ export function reachableFromApp(address: string): boolean {
     const url = new URL(address);
     if (url.protocol === 'https:') return true;
     if (url.protocol !== 'http:') return false;
+    // The Android app's page is plain http and allows cleartext: no mixed content to block.
+    if (mobileApp()) return true;
     const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
     return host === 'localhost' || host.endsWith('.localhost') || host === '::1' || /^127(\.\d{1,3}){3}$/.test(host);
   } catch {

@@ -10,6 +10,7 @@
 import type { UiRevealTarget } from '@boite/contracts';
 import type { Store } from './store.svelte';
 import { fill, strings } from './strings';
+import { desktopShell } from './shell-platform';
 
 /** What the reveal needs of the workspace: picking a machine, and maybe a thread or an agent's page on it. */
 export interface RevealWorkspace {
@@ -31,7 +32,7 @@ export function onReveal(next: Revealer): () => void {
 
 /** The event as the Store that received it hands it on. Outside the shell, or from another machine's core, nothing happens. */
 export function revealRequested(from: Store, target: UiRevealTarget): void {
-  if (window.__TAURI_INTERNALS__ === undefined || !from.localCore || revealer === null) return;
+  if (!desktopShell() || !from.localCore || revealer === null) return;
   void revealer(from, target).catch((error: unknown) => { console.warn('ui.reveal failed', error); });
 }
 

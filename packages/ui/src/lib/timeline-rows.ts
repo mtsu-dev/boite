@@ -1,6 +1,9 @@
 import type { MemoryEvent, Message, MessagePart } from '@boite/contracts';
 import { promptText, visibleAnswer } from './message-display';
 import { failedRun } from './failed-attempts';
+import { writtenPlan } from './plan';
+import { textSlotEstimate } from './message-window';
+import { placedPath } from './inline-view';
 
 /**
  * What the timeline's window counts and measures. A message is one row, except
@@ -16,6 +19,12 @@ import { failedRun } from './failed-attempts';
  * never spans it, so the rows draw exactly what the whole message drew, and
  * the gap above a continuing row is always the one a paragraph takes under
  * whatever came before it (`BLOCK_GAP`).
+ *
+ * A long answer is the other kind: one text part of 30 KB of Markdown is one
+ * row as tall as many screens, all of it parsed and laid out to show a screen
+ * of it. From `SPLIT_FROM` characters its text is cut at top-level Markdown
+ * blocks into rows of about `ROW_CHARS` (`textCuts`), each drawing its slice
+ * of the text (`TimelineRow.text`), so the window skips the blocks off screen.
  */
 
 /** The parts a row of a cut message holds before the next paragraph may start another. */
@@ -37,6 +46,123 @@ export interface TimelineRow {
   gap?: { from: number; count: number };
   /** Consecutive failed attempts, including their wake-ups, kept in one disclosure. */
   failures?: readonly Message[];
+  /** Set on a row that draws one slice of a long text part, the part `from` (`TextSlice`). */
+  text?: TextSlice;
+}
+
+/**
+ * One slice of a long text: the shown text's characters `[start, end)`, to
+ * its end when `end` is unset (the last slice, the one a streamed answer
+ * still grows). A slice only draws its characters: what the answer means is
+ * decided on the whole text when it is cut and carried here. A cut text is
+ * never a written plan (`textPieces` leaves plans whole) nor narration (it is
+ * longer than any). `pages` are the paths the lines on either side of its top
+ * cut (`above`) and its bottom cut (`below`) place (`placedPath`): where one
+ * names a page of the turn, the page stands at the cut and the bubbles on its
+ * two sides do not join. Unset when none does.
+ */
+export interface TextSlice {
+  start: number;
+  end?: number;
+  pages?: { above?: string[]; below?: string[] };
+}
+
+/**
+ * A text part is cut into rows from this many characters: under it, a row is
+ * a screen or two and cutting saves nothing. Measured with `bench/ui-frames.ts`
+ * on 2026-11-15: rows of 2 KB from 4 KB opened the bench's answers fastest but
+ * cost the most to scroll through, rows of 8 KB from 16 KB saved nothing on
+ * open; 4 KB from 8 KB keeps most of the open and half the scroll cost.
+ */
+export const SPLIT_FROM = 8192;
+/** The characters a row of a cut text holds at least before the next top-level block may start another. */
+export const ROW_CHARS = 4096;
+
+/** A line that continues a list, an indented block or a table: never the first line of a row. */
+const CONTINUES = /^(?:[ \t]{2,}|\t|[-*+][ \t]|\d+[.)][ \t]|\|)/;
+
+/**
+ * Where a long text is cut into rows: the offsets of the lines that start a
+ * new row, each the first line of a top-level block after a blank line, at
+ * least `ROW_CHARS` after the row before it. Never inside a fence, a list, an
+ * indented block or a table, and never on the line after a list. The renderer
+ * has no reference links or footnotes, so a `[label]: …` line binds nothing
+ * across a cut. Only whole lines decide, so the cuts of a streamed text are the cuts of
+ * its prefix, and a row's id stays the same as more text arrives and once it
+ * ends. Empty under `SPLIT_FROM`.
+ */
+export function textCuts(text: string): number[] {
+  if (text.length < SPLIT_FROM) return [];
+  const cuts: number[] = [];
+  let fence = '';
+  let rowStart = 0;
+  let blank = false;
+  let afterList = false;
+  for (let start = 0; start < text.length;) {
+    const end = text.indexOf('\n', start);
+    if (end < 0) break;
+    const line = text.slice(start, end);
+    const trimmed = line.trim();
+    if (fence) {
+      if (trimmed.startsWith(fence) && trimmed.replaceAll(fence[0]!, '') === '') fence = '';
+      blank = false;
+    } else {
+      if (blank && trimmed && !afterList && start - rowStart >= ROW_CHARS && !CONTINUES.test(line)) {
+        cuts.push(start);
+        rowStart = start;
+      }
+      const open = /^(`{3,}|~{3,})/.exec(trimmed);
+      if (open) fence = open[1]!;
+      if (trimmed) afterList = CONTINUES.test(line);
+      blank = trimmed === '';
+    }
+    start = end + 1;
+  }
+  return cuts;
+}
+
+function samePaths(a?: readonly string[], b?: readonly string[]): boolean {
+  return a === b || !!a && !!b && a.length === b.length && a.every((path, i) => path === b[i]);
+}
+
+function samePages(a: TextSlice['pages'], b: TextSlice['pages']): boolean {
+  return samePaths(a?.above, b?.above) && samePaths(a?.below, b?.below);
+}
+
+/**
+ * The long text parts of an assistant message and their slices, the parts a
+ * memory notice is anchored on and written plans left whole. A system
+ * message is never cut: its note draws its mark beside the whole text.
+ */
+function textPieces(message: Message, anchored?: ReadonlySet<number>): { part: number; slices: TextSlice[] }[] {
+  if (message.role !== 'assistant') return [];
+  const pieces: { part: number; slices: TextSlice[] }[] = [];
+  message.parts.forEach((part, index) => {
+    if (part.type !== 'text' || part.text.length < SPLIT_FROM || anchored?.has(index)) return;
+    const shown = shownText(message, part);
+    // A written plan is drawn whole in its card, which copies and saves all of it.
+    if (writtenPlan(shown)) return;
+    const cuts = textCuts(shown);
+    if (cuts.length) pieces.push({ part: index, slices: [0, ...cuts].map((start, at) => textSlice(shown, start, cuts[at])) });
+  });
+  return pieces;
+}
+
+/** The paths the lines on either side of the cut at `at` place: the last line written above it and its first line. */
+function pagesAt(text: string, at: number): string[] | undefined {
+  const before = text.slice(0, at).trimEnd();
+  const above = placedPath(before.slice(before.lastIndexOf('\n') + 1));
+  const lineEnd = text.indexOf('\n', at);
+  const below = placedPath(text.slice(at, lineEnd < 0 ? undefined : lineEnd));
+  const paths = [above, below].filter((path): path is string => path !== null);
+  return paths.length ? paths : undefined;
+}
+
+/** The slice `[start, end)` of the shown text `text`, with what its edges are decided on the whole text. */
+export function textSlice(text: string, start: number, end?: number): TextSlice {
+  const above = start > 0 ? pagesAt(text, start) : undefined;
+  const below = end !== undefined ? pagesAt(text, end) : undefined;
+  return { start, ...(end !== undefined ? { end } : {}), ...(above || below ? { pages: { ...(above ? { above } : {}), ...(below ? { below } : {}) } } : {}) };
 }
 
 /**
@@ -60,6 +186,11 @@ const PARAGRAPH_ESTIMATE = 100;
 /** What a row weighs before it is measured: `whole` for a message drawn as one row. */
 export function rowEstimate(row: TimelineRow, whole: number): number {
   if (row.first && row.last) return whole;
+  if (row.text) {
+    const part = row.message.parts[row.from];
+    const length = part?.type === 'text' ? part.text.length : 0;
+    return textSlotEstimate((row.text.end ?? length) - row.text.start);
+  }
   let paragraphs = 0;
   for (let index = row.from; index < row.to; index += 1) if (row.message.parts[index]?.type === 'text') paragraphs += 1;
   return Math.max(whole, (row.to - row.from) * PART_ESTIMATE, paragraphs * PARAGRAPH_ESTIMATE);
@@ -124,11 +255,13 @@ export class TimelineRows {
     const known = new Map<string, TimelineRow>();
     const rows: TimelineRow[] = [];
     let changedFrom = -1;
-    const add = (id: string, message: Message, from: number, to: number, first: boolean, last: boolean, failures?: readonly Message[]): void => {
+    const add = (id: string, message: Message, from: number, to: number, first: boolean, last: boolean, failures?: readonly Message[], text?: TextSlice): void => {
       const before = this.#known.get(id);
       const sameFailures = before?.failures === failures || !!failures && before?.failures?.length === failures.length && failures.every((item, i) => before.failures?.[i] === item);
-      const row = before && before.message === message && before.from === from && before.to === to && before.first === first && before.last === last && sameFailures
-        ? before : { id, message, from, to, first, last, ...(failures ? { failures } : {}) };
+      // The pages at a cut decide its joins: a replaced text that keeps its cuts can name other pages there.
+      const sameText = before?.text?.start === text?.start && before?.text?.end === text?.end && samePages(before?.text?.pages, text?.pages);
+      const row = before && before.message === message && before.from === from && before.to === to && before.first === first && before.last === last && sameFailures && sameText
+        ? before : { id, message, from, to, first, last, ...(failures ? { failures } : {}), ...(text ? { text } : {}) };
       known.set(id, row);
       if (changedFrom < 0 && this.#rows[rows.length] !== row) changedFrom = rows.length;
       rows.push(row);
@@ -143,7 +276,11 @@ export class TimelineRows {
         continue;
       }
       const count = message.parts.length;
-      const cuts = count > CUT_FROM ? rowCuts(message, anchoredParts(memory?.get(message.id))) : [];
+      const anchored = anchoredParts(memory?.get(message.id));
+      const cuts = count > CUT_FROM ? rowCuts(message, anchored) : [];
+      // A long turn that ends on a long answer takes both cuts: the answer is sliced inside its rows of parts.
+      const pieces = textPieces(message, anchored);
+      if (pieces.length) { sliceRows(message, pieces, cuts, add); continue; }
       if (cuts.length === 0) { add(message.id, message, 0, count, true, true); continue; }
       add(message.id, message, 0, cuts[0]!, true, false);
       cuts.forEach((from, index) => add(`${message.id}#${index + 1}`, message, from, cuts[index + 1] ?? count, false, index === cuts.length - 1));
@@ -158,11 +295,44 @@ export class TimelineRows {
   }
 }
 
-/** The row of `messageId` that draws `part`, or its first row with no part named. -1 when the message is not listed. */
-export function rowIndexOf(rows: readonly TimelineRow[], messageId: string, part?: number): number {
+/** What `TimelineRows.build` adds a row with. */
+type AddRow = (id: string, message: Message, from: number, to: number, first: boolean, last: boolean, failures?: readonly Message[], text?: TextSlice) => void;
+
+/**
+ * The rows of a message with long text parts: the parts before and between
+ * them as rows of their own, cut again at `partCuts` (`rowCuts`) in a long
+ * turn, then one row per slice of each long text. The first row keeps the
+ * message's id; a slice is `<message>#<part>.<block>`, a row of parts
+ * `<message>#<its first part>`.
+ */
+function sliceRows(message: Message, pieces: { part: number; slices: TextSlice[] }[], partCuts: readonly number[], add: AddRow): void {
+  const spans: { id: string; from: number; to: number; text?: TextSlice }[] = [];
+  const range = (from: number, to: number): void => {
+    for (const at of [...partCuts.filter(cut => cut > from && cut < to), to]) {
+      spans.push({ id: `${message.id}#${from}`, from, to: at });
+      from = at;
+    }
+  };
+  let from = 0;
+  for (const { part, slices } of pieces) {
+    if (part > from) range(from, part);
+    slices.forEach((text, block) => spans.push({ id: `${message.id}#${part}.${block}`, from: part, to: part + 1, text }));
+    from = part + 1;
+  }
+  if (from < message.parts.length) range(from, message.parts.length);
+  spans.forEach((span, index) => add(index === 0 ? message.id : span.id, message, span.from, span.to, index === 0, index === spans.length - 1, undefined, span.text));
+}
+
+/**
+ * The row of `messageId` that draws `part`, or its first row with no part
+ * named. A long text cut in slices answers the slice that holds character
+ * `offset` of its shown text, its first slice without one. -1 when the
+ * message is not listed.
+ */
+export function rowIndexOf(rows: readonly TimelineRow[], messageId: string, part?: number, offset = 0): number {
   let at = rows.findIndex(row => row.id === messageId || row.failures?.some(message => message.id === messageId));
   if (at < 0 || part === undefined) return at;
-  while (rows[at + 1]?.message === rows[at]!.message && rows[at + 1]!.from <= part) at += 1;
+  for (let next = rows[at + 1]; next?.message === rows[at]!.message && (next.from < part || (next.from === part && (next.text?.start ?? 0) <= offset)); next = rows[at + 1]) at += 1;
   return at;
 }
 
@@ -184,3 +354,4 @@ export function seam(previous: TimelineRow | undefined, row: TimelineRow): 'part
   const tail = previous.message.parts.slice(previous.from, previous.to).findLast(shown);
   return lead?.type === 'text' || tail?.type === 'text' ? 'block' : 'part';
 }
+

@@ -51,3 +51,18 @@ test('a rejected window before a rate_limit error plans the resume at that windo
   await waitFor(() => harness.core.threads.list({}).find(thread => thread.id === threadId)?.retry?.resetsAt === resetsAt * 1000);
   expect(await client.call('turns.cancelRetry', { threadId })).toEqual({ cancelled: true });
 });
+
+test('a rate limit on a gateway route names the provider of its model, not a Claude account', async () => {
+  const client = await harness.connect();
+  const threadId = await claudeThread(client);
+  // The model a subscription proxy route stores, which the scripted account cannot list.
+  harness.core.journal.putThread({ ...harness.core.threads.require(threadId), model: 'antigravity/gemini-4-hydrogen-xhigh' });
+  const text = 'API Error: Request rejected (429) · all accounts for this provider are unavailable; last upstream refusal: RESOURCE_EXHAUSTED';
+  scripted(() => {}, (fake) => {
+    fake.emit(init('sess-gateway'));
+    for (const message of apiError('sess-gateway', 'rate_limit', text)) fake.emit(message);
+  });
+  expect(await runTurn(client, threadId, 'hello')).toBe('error');
+  const turn = (await client.call('threads.get', { threadId })).turns.at(-1);
+  expect(turn?.error).toBe(`This antigravity account has hit its rate limit. ${text}`);
+});

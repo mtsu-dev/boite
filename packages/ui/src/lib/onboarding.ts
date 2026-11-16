@@ -1,3 +1,5 @@
+import { desktopShell } from './shell-platform';
+
 /*
  * The tour that opens once, the first time Boite runs on a device.
  *
@@ -47,7 +49,7 @@ export const PHONE_QUERY = '(max-width: 720px)';
 
 /** Whether this window is the phone layout of a browser, never the desktop shell. */
 export function onPhone(): boolean {
-  if ('__TAURI_INTERNALS__' in window) return false;
+  if (desktopShell()) return false;
   return typeof window.matchMedia === 'function' && window.matchMedia(PHONE_QUERY).matches;
 }
 

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { brotliCompressSync, constants, gzipSync } from 'node:zlib';
 import { defineConfig, type Plugin } from 'vite';
@@ -28,6 +28,25 @@ function stampWorker(outDir: string): void {
   const names = readdirSync(assets).sort();
   const buildId = createHash('sha256').update(names.join('\n')).digest('hex').slice(0, 16);
   writeFileSync(worker, stampWorkerCache(readFileSync(worker, 'utf8'), buildId));
+}
+
+/**
+ * The Android app's build (`--mode mobile`) loads its files from the APK, which
+ * Tauri already compresses: no service worker, no web manifest and no `.br` or
+ * `.gz` copies that would only grow the package.
+ */
+function dropWorker(): Plugin {
+  let outDir = 'dist';
+  return {
+    name: 'boite-drop-worker',
+    apply: 'build',
+    configResolved(config) {
+      outDir = resolve(config.root, config.build.outDir);
+    },
+    closeBundle() {
+      for (const name of ['sw.js', 'manifest.webmanifest']) rmSync(join(outDir, name), { force: true });
+    },
+  };
 }
 
 /**
@@ -186,8 +205,8 @@ function offlineParts(): Plugin {
   };
 }
 
-export default defineConfig({
-  plugins: [lucideGlyph(), completeCatalogues(), svelte(), { name: 'boite-colors-prepaint', transformIndexHtml: () => [{ tag: 'script', children: colorsBootScript(), injectTo: 'head' }] }, browserFloor(), dropFakeClient(), localePreload(), offlineParts(), prepaintMinify(), precompress()],
+export default defineConfig(({ mode }) => ({
+  plugins: [lucideGlyph(), completeCatalogues(), svelte(), { name: 'boite-colors-prepaint', transformIndexHtml: () => [{ tag: 'script', children: colorsBootScript(), injectTo: 'head' }] }, browserFloor(), dropFakeClient(), localePreload(), offlineParts(), prepaintMinify(), ...(mode === 'mobile' ? [dropWorker()] : [precompress()])],
   base: './',
   // The build's kind and one flag per tagged feature, from the stamped version: a
   // Release bundle holds no nightly or dev feature (docs/internals/experiments.md#out-of-the-build).
@@ -203,4 +222,4 @@ export default defineConfig({
     rolldownOptions: { output: { codeSplitting: { groups: [{ name: 'boot', tags: ['$initial'], minShareCount: 2 }] } } }
   },
   server: { port: 5173, strictPort: true }
-});
+}));

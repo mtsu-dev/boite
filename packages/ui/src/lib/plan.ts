@@ -36,3 +36,12 @@ export function planFileName(plan: string, taken: Iterable<string> = []): string
   for (let n = 2; used.has(name); n++) name = `${base}-${n}.md`;
   return name;
 }
+
+/**
+ * Whether an answer's text is a plan the agent wrote: it opens with a heading
+ * "Plan". The page draws it whole in a plan card, whose copy, download and save
+ * take its whole text, so a long one is never cut into rows (lib/timeline-rows.ts).
+ */
+export function writtenPlan(text: string): boolean {
+  return /^\s*#{1,6}\s+plan\s*\n/i.test(text);
+}
