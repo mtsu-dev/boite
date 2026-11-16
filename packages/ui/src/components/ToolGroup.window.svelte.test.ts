@@ -98,3 +98,17 @@ test('the keyboard walks across steps out of the window and the focused step sur
   expect(document.activeElement?.closest('[data-testid=tool-card]')).toBe(card(root, 999));
   expect(cards(root).length).toBeLessThanOrEqual(MOST);
 });
+
+test('a live step that takes an opened run to the window threshold keeps the focused step and its card', async () => {
+  const { root, props } = await opened(79);
+  const before = card(root, 3)!;
+  const toggle = before.querySelector<HTMLButtonElement>('[data-testid=tool-toggle]')!;
+  toggle.focus();
+  props.parts.push({ ...call(79), status: 'running', exitCode: null });
+  await settle();
+  expect(root.querySelector('[data-testid=tool-group]')?.getAttribute('data-count')).toBe('80');
+  // The same card, not a new one: nothing remounts as the run starts windowing.
+  expect(card(root, 3)).toBe(before);
+  expect(document.activeElement).toBe(toggle);
+  expect(cards(root).length).toBeLessThanOrEqual(MOST);
+});

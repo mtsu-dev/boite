@@ -1261,18 +1261,20 @@ screen in each of 267 frames on the desktop and 318 on the phone.
 
 ### A long opened run
 
-A run of 80 steps or more draws, once opened, only the steps near the chat's
-view and six more on each side, through the sidebar's `WindowList`; the rest
-are spacers of their measured or estimated height (34 px, one folded step and
-its gap). A step the user opened or closed keeps that while its row is away.
-Under 80 steps the run draws every step as before: at 20 steps both ways mount
-the same 20 cards, and a window starts paying for its observers below the
-point where it saves nodes. Measured on 2026-11-16 in headless Chrome at
+An opened run of tool calls goes through the sidebar's `WindowList`. Under 80
+steps it draws every step; from 80 on, only the steps near the chat's view and
+six more on each side, the rest spacers of their measured or estimated height
+(34 px, one folded step and its gap). One path for both lengths: a live step
+that takes a run to 80 remounts no card and the focused step keeps its focus.
+A step the user opened or closed keeps that while its row is away. At 20 steps
+the run mounts the same 20 cards as before, with 41 more nodes (the row
+wrappers) in jsdom. Measured on 2026-11-16 in headless Chrome at
 1280 x 800 on `?fake=1&run=1000&open=recent`, opening the 1,000-step run mounted
 1,000 cards and 13,214 nodes in 703 ms before, 24 cards and 382 nodes in 40 ms
 after (click to the second frame, one run each). `ToolGroup.window.svelte.test.ts`
 holds an opened 1,000-step run to the rows in view and their overscan, and
-covers an appended step, a step opened and scrolled away and the keyboard.
+covers an appended step, a step opened and scrolled away, the keyboard, and a
+live step that crosses the threshold under a focused step.
 
 `packages/ui/src/render-cost.test.ts` rejects unbounded blur, forbidden endless
 animation properties, outer-container `:has()` and outline width transitions.

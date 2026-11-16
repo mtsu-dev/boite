@@ -17,7 +17,7 @@
   import type { ToolDisclosure } from '../lib/store/deferred-parts';
   import { textRevision } from '../lib/text-revisions';
   import { SvelteMap } from 'svelte/reactivity';
-  import WindowList, { WINDOW_FROM } from './WindowList.svelte';
+  import WindowList from './WindowList.svelte';
 
   /*
    * A run of activity with no answer between it: calls and the reasoning around
@@ -124,13 +124,15 @@
   });
 
   /*
-   * A long run draws only the steps near the chat's view, a few more each side,
-   * and spacers of their measured or estimated height for the rest
-   * (`WindowList`): 1,000 opened steps mounted 1,000 cards and 13,000 nodes.
-   * A step the user opened or closed keeps that while its row is away.
+   * An opened run goes through `WindowList` whatever its length: under its
+   * WINDOW_FROM steps it draws them all, from there only the steps near the
+   * chat's view, a few more each side, and spacers of their measured or
+   * estimated height for the rest (1,000 opened steps mounted 1,000 cards and
+   * 13,000 nodes). One path for both, so a live step that crosses the
+   * threshold remounts nothing and the focused step keeps its focus. A step
+   * the user opened or closed keeps that while its row is away.
    */
   const stepKey = (step: Step) => step.part.type === 'tool' ? step.part.toolId : `thinking-${step.index}`;
-  let windowed = $derived(steps.length >= WINDOW_FROM);
   let group = $state<HTMLDivElement>();
   let scrollRoot = $derived(group?.closest<HTMLElement>('[data-scroll-root]') ?? undefined);
   const unfolded = new SvelteMap<string, boolean>();
@@ -222,16 +224,10 @@
     <div class="disclosure-fold" class:open inert={!open}>
       <div>
         {#if built}
-          <div class="calls" class:windowed>
-            {#if windowed}
-              <WindowList items={steps} keyOf={stepKey} {scrollRoot} estimate={STEP_ESTIMATE}>
-                {#snippet row({ part, index }: Step)}<div class="step">{@render step(part, index, true)}</div>{/snippet}
-              </WindowList>
-            {:else}
-              {#each steps as entry (stepKey(entry))}
-                {@render step(entry.part, entry.index, true)}
-              {/each}
-            {/if}
+          <div class="calls">
+            <WindowList items={steps} keyOf={stepKey} {scrollRoot} estimate={STEP_ESTIMATE}>
+              {#snippet row({ part, index }: Step)}<div class="step">{@render step(part, index, true)}</div>{/snippet}
+            </WindowList>
           </div>
         {/if}
       </div>
@@ -381,9 +377,9 @@
     border-left: 1px solid var(--color-border);
   }
 
-  /* Windowed, each row carries the gap above it inside its measured height,
-     and the list starts one gap higher so the first step sits where it did. */
-  .calls.windowed > :global(.window-list) { margin-top: calc(-1 * var(--chat-part-gap)); }
+  /* Each row carries the gap above it inside its measured height, and the
+     list starts one gap higher so the first step sits where it did. */
+  .calls > :global(.window-list) { margin-top: calc(-1 * var(--chat-part-gap)); }
   .step { padding-top: var(--chat-part-gap); }
 
   @media (prefers-reduced-motion: reduce) { :is(.pulse, .label.shimmer) { animation: none; } .label.shimmer { color: var(--instrument-ink); background: none; } }
