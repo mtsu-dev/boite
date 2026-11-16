@@ -16,6 +16,7 @@ class MainActivity : TauriActivity() {
     // "Fully drawn" with the time since launch, the number `am start -W` and
     // the Play vitals report as time to full display.
     webView.addJavascriptInterface(ReadySignal(), "BoiteAndroid")
+    webView.addJavascriptInterface(AppUpdates(this, webView), "BoiteUpdater")
   }
 
   private inner class ReadySignal {

@@ -1,0 +1,142 @@
+name: mobile
+
+# The native Android app in apps/mobile: a Tauri client with the UI inside the
+# APK, so every release carries a new build. The nightly signs it with the key
+# of the other Android apps and publishes boite-mobile_<version>_android.apk,
+# which the app's own updater offers (docs/internals/android-native.md).
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: The commit to build; empty builds the caller's own. The nightly passes the one whose CI passed.
+        type: string
+        default: ''
+      enabled:
+        description: Off skips the build, which still reports its check name; ci.yml turns it off when nothing in the app changed.
+        type: boolean
+        default: true
+      release:
+        description: Sign the APK for publication.
+        type: boolean
+        default: false
+      version:
+        description: The release version the app carries; empty keeps apps/mobile's.
+        type: string
+        default: ''
+    secrets:
+      ANDROID_KEYSTORE:
+        description: Base64 of the PKCS12 keystore holding the key aliased boite.
+        required: false
+      ANDROID_KEYSTORE_PASSWORD:
+        required: false
+  workflow_dispatch:
+    inputs:
+      # Declared here too: an undeclared input reads as false and would skip the build.
+      enabled:
+        description: Build the APK.
+        type: boolean
+        default: true
+      release:
+        description: Sign the APK for publication.
+        type: boolean
+        default: false
+      version:
+        description: The release version the app carries; empty keeps apps/mobile's.
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  apk:
+    if: inputs.enabled
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version-file: package.json
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        with:
+          toolchain: stable
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+        with:
+          workspaces: apps/mobile/src-tauri -> target
+          shared-key: mobile-release-v1
+      - run: bun install --frozen-lockfile
+      - name: Choose the version
+        id: meta
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          version="${VERSION:-$(jq -r .version apps/mobile/src-tauri/tauri.conf.json)}"
+          # Minutes since 2020-01-01 UTC: every build gets a higher code than
+          # the one before it, whatever its channel, and the app reads its
+          # build time back from it (lib/app-update-android.ts).
+          code=$(( ($(date -u +%s) - 1577836800) / 60 ))
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          mkdir -p "$RUNNER_TEMP/apk"
+      - name: Build the APK
+        working-directory: apps/mobile
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          CODE: ${{ steps.meta.outputs.code }}
+        run: |
+          set -euo pipefail
+          export NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          config=$(jq -cn --arg version "$VERSION" --argjson code "$CODE" '{version: $version, bundle: {android: {versionCode: $code}}}')
+          bunx tauri android build --apk --target aarch64 --config "$config"
+      - name: Keep the unsigned APK
+        if: ${{ !inputs.release }}
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: cp apps/mobile/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk "$RUNNER_TEMP/apk/boite-mobile_${VERSION}_android-unsigned.apk"
+      - name: Sign it
+        if: inputs.release
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          # An unsigned APK is a file no phone installs: missing secrets fail the job.
+          if [[ -z "${KEYSTORE_B64:-}" || -z "${KEYSTORE_PASSWORD:-}" ]]; then
+            echo '::error::ANDROID_KEYSTORE or ANDROID_KEYSTORE_PASSWORD is unset: refusing to publish an unsigned APK' >&2
+            exit 1
+          fi
+          bt=$(printf '%s\n' "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)
+          ks="$RUNNER_TEMP/android.p12"
+          out="$RUNNER_TEMP/apk/boite-mobile_${VERSION}_android.apk"
+          trap 'rm -f "$ks" "$RUNNER_TEMP/aligned.apk"' EXIT
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$ks"
+          "$bt/zipalign" -f -p 4 apps/mobile/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk "$RUNNER_TEMP/aligned.apk"
+          # Passwords come from the environment, so neither lands in a process list.
+          "$bt/apksigner" sign --ks "$ks" --ks-pass env:KEYSTORE_PASSWORD --ks-key-alias boite \
+            --out "$out" "$RUNNER_TEMP/aligned.apk"
+          "$bt/apksigner" verify "$out"
+      - uses: ./.github/actions/upload-artifact
+        with:
+          name: ${{ inputs.release && 'mobile-apk' || 'mobile-apk-unsigned' }}
+          path: ${{ runner.temp }}/apk/*.apk
+          if-no-files-found: error
+          # An APK is a zip already.
+          compression-level: 0
+          retention-days: 7

@@ -23,6 +23,8 @@ export const fr: Translation = {
     ready: 'La version {version} est prête à installer.',
     waiting: 'En attente de la fin du travail',
     installing: "Les agents terminent leur étape, puis l'installation démarre",
+    androidInstalling: "Android vous demande de confirmer la mise à jour. Boite se ferme pendant l'installation : rouvrez-la ensuite.",
+    androidPermission: "Autorisez Boite à installer des applications sur la page qu'Android a ouverte, puis touchez à nouveau Mise à jour.",
     current: 'Boite est à jour.',
     failed: 'La mise à jour a échoué.',
     lastChecked: 'Vérifié à {time}',

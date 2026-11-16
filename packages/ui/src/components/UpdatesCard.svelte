@@ -3,6 +3,7 @@
   import { ArrowRight, CircleArrowDown, ExternalLink, RefreshCw, RotateCw } from '@lucide/svelte';
   import { appUpdater, showAppUpdateUi, type AppUpdater, type UpdateChannel } from '../lib/app-update.svelte';
   import { appUpdateInstall } from '../lib/app-update-install.svelte';
+  import { androidUpdater } from '../lib/app-update-android';
   import { updateEverything, type PartState } from '../lib/update-everything.svelte';
   import { listedName, workspace } from '../lib/workspace.svelte';
   import { bytes, time } from '../lib/format';
@@ -70,8 +71,9 @@
           ? fill(strings.appUpdate.downloaded, { received: bytes(app.received) })
           : fill(strings.appUpdate.downloading, { received: bytes(app.received), total: bytes(app.total) });
       case 'ready': return strings.updateAll.ready;
-      case 'waiting': return strings.appUpdate.waiting;
-      case 'installing': return strings.appUpdate.installing;
+      // On Android nothing waits for agents: the system's own dialog confirms.
+      case 'waiting': return androidUpdater() ? strings.appUpdate.androidInstalling : strings.appUpdate.waiting;
+      case 'installing': return androidUpdater() ? strings.appUpdate.androidInstalling : strings.appUpdate.installing;
       case 'current': return strings.serverUpdate.current;
       case 'blocked': return fill(strings.appUpdate.blocked, { version: app.version ?? '' });
       case 'error': return app.error ?? strings.appUpdate.failed;

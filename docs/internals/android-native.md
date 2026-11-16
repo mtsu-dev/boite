@@ -6,7 +6,8 @@ bundle as the shell and the phone web app, built with
 `vite build --mode mobile`. It has no core of its own: like the
 [Trusted Web Activity](android.md) it is a client of the machines its phone is
 added to, but it needs no Chrome and loads no page from the network. The
-package is `dev.mtsu.boite`. No workflow builds or publishes it yet.
+package is `dev.mtsu.boite`. The nightly builds and signs it, and the app
+updates itself from there until it is on Play ([updates](#updates)).
 
 ## Limits
 
@@ -15,8 +16,9 @@ What the app does not do yet, or what nobody has checked on a phone:
 | Area | State |
 | --- | --- |
 | Notifications | No push. They arrive only while the app is open. |
-| Updates | None. The UI is inside the APK, so a new UI needs a new APK, installed by hand. |
-| Distribution | No workflow builds, signs or publishes it. No Play bundle (AAB) was built yet. |
+| Updates | From the nightly only: no stable release carries the APK yet. The first build with the updater is installed by hand. |
+| Distribution | No Play listing. No Play bundle (AAB) was built yet, and a Play build must leave the updater out. |
+| CI | Only the nightly builds the APK: a pull request that breaks it fails that night's release. |
 | QR code | The manifest asks for no camera, so pairing is by pasting the link. Scanning was never tried. |
 | Networks | Tested only through `adb reverse` to a core on a PC. A core on the LAN or a tailnet is untested. |
 | HTML views | Framing a core's `/view/` page is allowed by the policy, never tried on a phone. |
@@ -93,6 +95,45 @@ the launch never flashes white.
 `tauri android init` generated `src-tauri/gen/android`, and that project is
 tracked with the edits above. `bunx tauri icon src-tauri/icons/icon.png`
 regenerates the launcher icons from the app icon.
+
+## Updates
+
+The UI is inside the APK, so a new UI needs a new APK. Outside a store the app
+updates itself, through the same Updates card as the desktop app
+(Settings, Machines):
+
+- `mobile.yml` builds the APK. The nightly runs it with the release's version
+  and signs it with the key of the other Android apps (`ANDROID_KEYSTORE`,
+  alias `boite`). The release publishes `boite-mobile_<version>_android.apk`
+  beside the other files, and the release notes link it.
+- The version code is the build's time, in minutes since 2020-01-01 UTC. Each
+  build gets a higher code than every build before it, whatever its channel,
+  so Android installs it over any of them. A build made by hand keeps the
+  code 1 of `tauri.conf.json`, which every release replaces.
+- `lib/app-update-android.ts` reads GitHub's release list, 8 seconds after
+  launch, every 6 hours and on Check for updates, and picks the newest APK of
+  the channel. Within a channel only a higher version is offered. Switching
+  channel offers the other one's newest build only when it was published after
+  this build: an older one has a lower code and Android would refuse it.
+- `AppUpdates.kt` (`window.BoiteUpdater`) downloads the APK to the app's
+  cache, then refuses it unless it is `dev.mtsu.boite`, has a higher version
+  code and is signed by the installed app's key. It then opens a
+  `PackageInstaller` session. Android asks once to let Boite install apps,
+  then shows its own confirmation; Boite closes while it installs. On
+  Android 12 and later, once the app installed itself, later updates need no
+  tap.
+- Android itself refuses an APK signed by another key or with a lower code,
+  whatever the app checks. The release's Minisign signature, which the desktop
+  updater checks, is not read here.
+
+A test build can read another release list:
+`VITE_APP_UPDATE_FEED=<url> bunx tauri android build --apk --target aarch64`.
+
+Google Play forbids an app that updates itself (`REQUEST_INSTALL_PACKAGES` for
+that purpose). The Play build must drop the permission, `AppUpdates.kt` and the
+`BoiteUpdater` bridge; without the bridge the UI shows no Updates card. Play
+App Signing must use the same key, or a phone that installed the APK cannot
+take Play's updates.
 
 ## Measurements
 

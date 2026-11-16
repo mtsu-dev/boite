@@ -2,6 +2,7 @@ import { errorText } from './errors';
 import { strings } from './strings';
 import { updateStale } from './update-freshness';
 import { desktopShell } from './shell-platform';
+import { androidBackend, androidUpdater } from './app-update-android';
 
 export type UpdateChannel = 'stable' | 'nightly';
 
@@ -195,7 +196,13 @@ const fixture = queryFixture();
 
 /** True for the native window, plus the explicit fake harness used by visual tests. */
 export function showAppUpdateUi(): boolean {
-  return desktopShell() || fixture !== undefined;
+  return desktopShell() || androidUpdater() !== null || fixture !== undefined;
+}
+
+/** The native updater of this app: the desktop shell's, or the Android app's own. */
+function nativeBackend(): AppUpdateBackend {
+  const android = androidUpdater();
+  return android ? androidBackend(android) : tauriBackend();
 }
 
 /**
@@ -226,7 +233,7 @@ export class AppUpdater {
   constructor(
     backend: AppUpdateBackend = tauriBackend(),
     clock: UpdateClock = systemClock,
-    isShell: () => boolean = () => desktopShell()
+    isShell: () => boolean = () => desktopShell() || androidUpdater() !== null
   ) {
     this.#backend = backend;
     this.#clock = clock;
@@ -516,7 +523,7 @@ export class AppUpdater {
 }
 
 export const appUpdater = new AppUpdater(
-  fixture ? testBackend(fixture) : tauriBackend(),
+  fixture ? testBackend(fixture) : nativeBackend(),
   systemClock,
   showAppUpdateUi
 );
