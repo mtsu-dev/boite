@@ -1298,7 +1298,18 @@ long animation frames of the window and their total.
   when the worker is missing or answers after 50 ms (`PREPARE_WAIT_MS`). The
   rows are not held back until the worker answers: a page is inserted by the
   store, outside the list, and a list that hid rows it was given would move the
-  reader's anchor.
+  reader's anchor. The slices of the answers at the window's two edges go to
+  the worker first, in a batch of their own, and the rest of the page after.
+- The slices of a cut answer at either edge of the window mount in idle time
+  (`SliceWarmth` in `lib/row-cost.ts`): one row per side per idle slice
+  (`requestIdleCallback`, or 200 ms where there is none) until the whole answer
+  is drawn, so a wheel moving into it finds its rows there. It also runs at the
+  live end, which costs the open: each idle mount of a 4 KB slice is a long
+  frame at CPU x4. Warming only once the reader has left the live end kept the
+  open but mounted the rows mid-scroll again.
+- Find opens the slice that holds the match (`FindHit.at`, `rowIndexOf`), and
+  every slice of a cut answer takes the whole reading measure, so a short last
+  slice is as wide as the slices above it.
 
 On 2026-11-15, `nice bun bench/ui-frames.ts --cpu 4 --runs 2 --only "long
 thread scroll,open heavy thread,heavy answers scroll"`, 1280 x 890, software
@@ -1312,6 +1323,20 @@ compositing, two runs each, long animation frames in ms, the base being
 | And rows of 2 KB | 216, 316 | 814, 814 | 1,711, 2,053 |
 | And the worker | 160, 174 | 934, 1,211 | 1,223, 874 |
 | Rows of 4 KB instead | 278, 213 | 782, 676 | not run |
+
+On 2026-11-16, same command (`BOITE_E2E_BROWSER=$(which chrome-headless-shell) nice
+bun bench/ui-frames.ts --bundle <dir> --cpu 4 --runs 2 --only "long thread
+scroll,open heavy thread,heavy answers scroll"`, each build made with `--build
+<dir>`), a loaded machine, so compare rows of one day only:
+
+| Build | Open heavy thread | Heavy answers scroll | Long thread scroll |
+| --- | --- | --- | --- |
+| Base | 1,761, 1,103 | 0, 54 | 2,636, 2,634 |
+| Idle slices, at the live end too | 2,245, 627 | 161, 66 | 2,753, 2,182 |
+| Idle slices once the reader left the live end | 631, 355 | 636, 858 | 2,393, 2,561 |
+
+The first is the committed one: the wheel up the answers is back near the
+base, the open is not.
 
 Cutting answers trades the open for the scroll: one answer drawn whole is
 2,681 nodes the open lays out at once and a wheel only composites, where cut
