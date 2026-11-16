@@ -223,6 +223,12 @@ what separates them at run time: [experiments](experiments.md) do not exist in
 a Release, in the app or in the core, and nothing else has to be set when a
 version is cut.
 
+A nightly that GitHub fails to run, with no hosted runner for a job or a
+dependency registry answering 429, has its failed jobs rerun automatically,
+twice at most; a failing step is never rerun, nor is a dry run
+([boite (de nuit)](ci.md#boite-de-nuit)). A nightly still failed after that is
+not published, and the next night builds its commit again.
+
 Boite Dev remains a separate development install. It uses `com.boite.two.dev`,
 the product name Boite Dev and `boite2-dev`, with no automatic app updates.
 

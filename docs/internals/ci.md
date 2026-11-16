@@ -671,6 +671,27 @@ commit that already has a nightly. It accepts that branch's pull request CI run
 without rerunning or following it, skips reservation and every
 publication, and has its own concurrency group.
 
+A failed nightly is rerun when GitHub, not the code, failed it.
+`nightly-retry.yml` starts on `workflow_run` when a `boite (de nuit)` run
+completes as a failure, and `scripts/ci/nightly-retry.ts` reads each failed
+job of its latest attempt: its check-run annotations and the last 400 lines of
+its log. When every failed job matches one of `INFRA_PATTERNS` (the annotation
+"The job was not acquired by Runner of type hosted", or a registry's `status
+code 429` or `Too Many Requests`), it calls `rerun-failed-jobs` on that run.
+One failed job without a match, a run on another branch than `main` or a run
+titled as a dry run (the nightly's `run-name`, since `workflow_run` carries no
+inputs) is left failed. Attempts 1 and 2 are rerun, attempt 3 is not
+(`MAX_ATTEMPTS`): macOS x64 got no runner on the 2026-11-08, 11-10 and 11-12
+schedules, which published nothing, and the 2026-11-16 dispatch (run
+43926328921) got one on its third attempt, after a Maven Central 429 on the
+Android app in the first. Each unplaced attempt waits 15 minutes before GitHub
+fails it, so two reruns bound the extra wait near 30 minutes; past that, the
+next night takes the unpublished commit again. A manual rerun counts as an
+attempt. The job needs `actions: write`, `checks: read` for the annotations
+and `contents: read`. It runs from `main`, never from the failed run's commit,
+and no pull request reports its check, so no ruleset requires it
+([check names](#check-names)). `NIGHTLY_ENABLED=false` stops it too.
+
 Versions use `2.0.0-nightly.YYYYMMDD.N`, taking the base from the manifest and
 resetting the counter each UTC day. For example, September 15's first build is
 `2.0.0-nightly.20260915.1`, then `.2` for a new commit. Build inputs stamp the

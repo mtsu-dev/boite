@@ -1,0 +1,43 @@
+name: boite (de nuit) retry
+
+# Reruns the failed jobs of a failed nightly when GitHub or a registry failed
+# them, not the code: no hosted runner acquired (macOS x64 on 2026-11-08, 11-10,
+# 11-12 and 11-16), or a registry's 429 (Maven Central on 2026-11-16).
+# scripts/ci/nightly-retry.ts decides and bounds it to attempts 1 and 2; a dry
+# run and any real step failure are never rerun. workflow_run runs this file
+# from main, never the failed run's code, and no pull request reports its check.
+on:
+  workflow_run:
+    workflows: [boite (de nuit)]
+    types: [completed]
+
+permissions: {}
+
+concurrency:
+  group: nightly-retry-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  retry:
+    name: Rerun infrastructure failures
+    # The same emergency stop as the nightly; a run that did not fail has nothing to rerun.
+    if: vars.NIGHTLY_ENABLED != 'false' && github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      # Lists the run's jobs, reads their logs and reruns the failed ones.
+      actions: write
+      # Reads each failed job's annotations, where the runner message is.
+      checks: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version-file: package.json
+      - name: Rerun failed jobs when infrastructure failed them
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bun scripts/ci/nightly-retry.ts
