@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
-import { renderBlock, renderMarkdown } from './markdown';
+import { headingAt, renderBlock, renderMarkdown } from './markdown';
 
 describe('renderMarkdown', () => {
   test('emphasis spans links and keeps formatting inside their labels', () => {
@@ -263,4 +263,12 @@ test('a page of history is rendered in the worker before its rows draw, and here
     vi.unstubAllGlobals();
     vi.useRealTimers();
   }
+});
+
+test('a link finds a quoted heading in the whole answer, as the renderer gives it its anchor', () => {
+  const answer = 'Intro.\n\n> ## Details\n> Quoted.\n\n```\n# Not a heading\n```\n\n## Details\n';
+  expect(renderMarkdown(answer, true)).toContain('id="details"');
+  expect(headingAt(answer, 'details')).toBe(answer.indexOf('> ## Details'));
+  expect(headingAt('>> ### Deep', 'deep')).toBe(0);
+  expect(headingAt(answer, 'not-a-heading')).toBe(-1);
 });

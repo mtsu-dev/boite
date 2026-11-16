@@ -1283,8 +1283,8 @@ long animation frames of the window and their total.
 - A text part from 8 KB (`SPLIT_FROM`) is cut at top-level Markdown blocks into
   rows of at least 4 KB (`textCuts` in `lib/timeline-rows.ts`): after a blank
   line, never inside a fence, a list, an indented block or a table, never on
-  the line after a list, and never after the first use of a link or footnote
-  definition, so definitions and their uses share the last row. Rows are
+  the line after a list. The renderer has no reference links or footnotes, so
+  a `[label]: …` line binds nothing across a cut. Rows are
   `<message>#<part>.<block>`, the first keeping the message's id. Only whole
   lines decide, so a streamed answer keeps its row ids when it ends. A long
   turn (`rowCuts`) that ends on a long answer takes both cuts, its rows of parts

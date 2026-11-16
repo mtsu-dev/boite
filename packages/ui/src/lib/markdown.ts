@@ -39,7 +39,9 @@ export function headingAt(text: string, id: string): number {
   const fences = new FenceScan();
   for (let start = 0; start < text.length;) {
     const end = text.indexOf('\n', start);
-    const line = text.slice(start, end < 0 ? undefined : end);
+    // A quoted heading is rendered with its anchor too (`readQuote`): its marks come off first.
+    let line = text.slice(start, end < 0 ? undefined : end);
+    for (let quoted = QUOTE.exec(line); quoted; quoted = QUOTE.exec(line)) line = quoted[1] ?? '';
     if (!fences.line(line) && !fences.inside) {
       const heading = HEADING.exec(line);
       if (heading && headingId(heading[2] ?? '') === id) return start;

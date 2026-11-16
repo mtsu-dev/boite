@@ -220,10 +220,9 @@ test('a long answer is cut into rows at its top-level blocks, ids kept through i
     expect(text.slice(at).startsWith('- ') || text.slice(at).startsWith('|')).toBe(false);
     expect(at === text.indexOf(para(11))).toBe(false);
   }
-  // A definition and its first use stay in the last row.
-  const defined = `${text}\n\nSee [the guide][guide] and the note[^n].\n\n${para(60)}\n\n[guide]: https://example.com\n[^n]: A note.\n`;
-  const withUse = textCuts(defined.replace(para(5), `${para(5)} [guide]`));
-  expect(withUse.every(at => at <= defined.replace(para(5), `${para(5)} [guide]`).indexOf('[guide]'))).toBe(true);
+  // A `[label]: …` line written at the end binds nothing: the cuts already made stay.
+  const used = text.replace(para(5), `${para(5)} [guide]`);
+  expect(textCuts(`${used}\n\n[guide]: https://example.com\n`).slice(0, textCuts(used).length)).toEqual(textCuts(used));
   // Short answers are left whole.
   expect(textCuts(para(1))).toEqual([]);
 
@@ -331,6 +330,12 @@ test('each slice carries the pages placed at its cuts, and a long system message
   expect(rows[at - 1]!.text).toMatchObject({ end: words.indexOf('!['), pages: { below: [path] } });
   expect(rows[at]!.text!.pages).toEqual({ above: [path] });
   expect(rows.filter(row => row.text?.pages).map(row => row.id)).toEqual([rows[at - 1]!.id, rows[at]!.id]);
+  // The text replaced in place with another page at the same cut: the rows name the new page, not the cached one.
+  const other = '.boite/views/orbat.html';
+  const list = new TimelineRows();
+  list.build([answer]);
+  answer.parts[0] = text(words.replace(path, other));
+  expect(list.build([answer])[at]!.text!.pages).toEqual({ above: [other] });
   // A wake-up's note draws its mark beside its whole text.
   expect(new TimelineRows().build([message('m-wake', [text(words)], 'system')])).toHaveLength(1);
 });

@@ -80,17 +80,14 @@ export const ROW_CHARS = 4096;
 
 /** A line that continues a list, an indented block or a table: never the first line of a row. */
 const CONTINUES = /^(?:[ \t]{2,}|\t|[-*+][ \t]|\d+[.)][ \t]|\|)/;
-/** A link or footnote definition: `[label]: …` or `[^note]: …`. */
-const DEFINITION = /^ {0,3}\[(\^?[^\]\n]+)\]:/gm;
 
 /**
  * Where a long text is cut into rows: the offsets of the lines that start a
  * new row, each the first line of a top-level block after a blank line, at
  * least `ROW_CHARS` after the row before it. Never inside a fence, a list, an
- * indented block or a table, never on the line after a list, and never between
- * a link or footnote definition and its first use: every cut lies before the
- * first `[label]` a definition names, so definitions and uses share the last
- * row. Only whole lines decide, so the cuts of a streamed text are the cuts of
+ * indented block or a table, and never on the line after a list. The renderer
+ * has no reference links or footnotes, so a `[label]: …` line binds nothing
+ * across a cut. Only whole lines decide, so the cuts of a streamed text are the cuts of
  * its prefix, and a row's id stays the same as more text arrives and once it
  * ends. Empty under `SPLIT_FROM`.
  */
@@ -121,12 +118,15 @@ export function textCuts(text: string): number[] {
     }
     start = end + 1;
   }
-  if (cuts.length === 0) return cuts;
-  const labels = [...text.matchAll(DEFINITION)].map(match => `[${match[1]!.toLowerCase()}]`);
-  if (labels.length === 0) return cuts;
-  const lower = text.toLowerCase();
-  const firstUse = Math.min(...labels.map(label => lower.indexOf(label)).filter(at => at >= 0));
-  return cuts.filter(at => at <= firstUse);
+  return cuts;
+}
+
+function samePaths(a?: readonly string[], b?: readonly string[]): boolean {
+  return a === b || !!a && !!b && a.length === b.length && a.every((path, i) => path === b[i]);
+}
+
+function samePages(a: TextSlice['pages'], b: TextSlice['pages']): boolean {
+  return samePaths(a?.above, b?.above) && samePaths(a?.below, b?.below);
 }
 
 /**
@@ -258,7 +258,8 @@ export class TimelineRows {
     const add = (id: string, message: Message, from: number, to: number, first: boolean, last: boolean, failures?: readonly Message[], text?: TextSlice): void => {
       const before = this.#known.get(id);
       const sameFailures = before?.failures === failures || !!failures && before?.failures?.length === failures.length && failures.every((item, i) => before.failures?.[i] === item);
-      const sameText = before?.text?.start === text?.start && before?.text?.end === text?.end;
+      // The pages at a cut decide its joins: a replaced text that keeps its cuts can name other pages there.
+      const sameText = before?.text?.start === text?.start && before?.text?.end === text?.end && samePages(before?.text?.pages, text?.pages);
       const row = before && before.message === message && before.from === from && before.to === to && before.first === first && before.last === last && sameFailures && sameText
         ? before : { id, message, from, to, first, last, ...(failures ? { failures } : {}), ...(text ? { text } : {}) };
       known.set(id, row);
