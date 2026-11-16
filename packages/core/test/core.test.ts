@@ -111,6 +111,7 @@ describe('settings', () => {
       muteAgents: true,
       reapOrphans: true,
       autoUpdateHarnesses: false,
+      autoCompact: { tokens: null, moments: ['cache-expiry'] },
       // Off only because the harness turns it off; a missing value reads as on.
       asyncQuestions: false,
       shortAnswers: false,

@@ -95,6 +95,14 @@ export interface AutoCompact {
   moments: AutoCompactMoment[];
 }
 
+/**
+ * The rule a core reads when the user never saved `autoCompact`: compact a
+ * thread left idle just before its prompt cache lapses, at the cached price.
+ * A saved value, null (off) included, always wins. The core never writes this
+ * default into its store by itself, so a missing key means "never saved".
+ */
+export const DEFAULT_AUTO_COMPACT: AutoCompact = { tokens: null, moments: ['cache-expiry'] };
+
 /** The bounds of `Settings.autoGoalMinChars`, and the length it reads as when missing. */
 export const AUTO_GOAL_MIN_CHARS = { min: 200, max: 20000, default: 1500 } as const;
 

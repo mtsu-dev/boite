@@ -86,6 +86,8 @@ describe('cache keepalive', () => {
   let h: TestCore;
   beforeEach(async () => {
     h = await startTestCore();
+    // Pings alone: the default cache-expiry compaction would take their place (the first two tests set it).
+    h.core.settings.set({ autoCompact: null });
     // The 300 s cache of the fake: a ping 300 ms after the last request.
     CACHE_KEEPALIVE.marginMs = 300_000 - 300;
     CACHE_KEEPALIVE.retryMs = 50;

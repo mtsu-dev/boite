@@ -36,7 +36,9 @@ the chat with the token counts before and after.
 ### Automatic compaction
 
 Settings, Advanced, Automatic compaction sets when Boite compacts for you.
-Without it, each agent keeps its own behaviour.
+It starts on, with Before the prompt cache expires only. Turned off, each
+agent keeps its own behaviour. A choice you saved, off included, stays as you
+left it.
 
 | Setting | What it does |
 | --- | --- |

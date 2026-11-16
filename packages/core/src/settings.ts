@@ -1,4 +1,4 @@
-import { agentDefaultsToWrite, checkSettingsPatch, experimentalSettingRefusal, followedPatch, holdExperimentalSettings, keepLaterFavorites, keepStoredExperimentalSettings, readSettings, MACHINE_SETTINGS, DEFAULT_THREAD_DONE_RETENTION_DAYS, DEFAULT_THREAD_DELETION_RETENTION_DAYS, subscriptionProxyOf, type AdminPolicy, type Settings, type SubscriptionProxy } from '@boite/contracts';
+import { agentDefaultsToWrite, checkSettingsPatch, DEFAULT_AUTO_COMPACT, experimentalSettingRefusal, followedPatch, holdExperimentalSettings, keepLaterFavorites, keepStoredExperimentalSettings, readSettings, MACHINE_SETTINGS, DEFAULT_THREAD_DONE_RETENTION_DAYS, DEFAULT_THREAD_DELETION_RETENTION_DAYS, subscriptionProxyOf, type AdminPolicy, type Settings, type SubscriptionProxy } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { writesTitles } from './drivers/index.ts';
 import { invalidParams, refused } from './errors.ts';
@@ -22,7 +22,15 @@ export const DEFAULT_SETTINGS: Settings = {
   muteAgents: true,
   reapOrphans: true,
   autoUpdateHarnesses: false,
+  autoCompact: DEFAULT_AUTO_COMPACT,
 };
+
+/**
+ * Defaults a save of another setting leaves out of the store: their key stays
+ * missing until the user saves them, so missing keeps meaning "never touched"
+ * and a later default still reaches that install. A saved null is a choice.
+ */
+const UNSAVED_DEFAULTS = ['autoCompact'] as const satisfies readonly (keyof Settings)[];
 
 export class SettingsStore {
   readonly #core: Core;
@@ -138,10 +146,15 @@ export class SettingsStore {
     const checked = keepLaterFavorites(previous, followed ? normalized : keepStoredExperimentalSettings(saved, normalized, this.#core.version));
     const kept: Settings = { ...saved, ...this.#withoutHeld(saved, checked) };
     const next = this.#overlay(kept);
+    const raw = this.#core.journal.getSetting('settings');
+    const written = { ...kept };
+    for (const key of UNSAVED_DEFAULTS) {
+      if (!Object.hasOwn(checked, key) && !(typeof raw === 'object' && raw !== null && Object.hasOwn(raw, key))) Reflect.deleteProperty(written, key);
+    }
     this.#core.journal.append({ type: 'settings.changed', threadId: null, version: 1, payload: next }, () => {
       // Private credentials share the transaction, never its public event payload.
       persistPrivate?.();
-      this.#core.journal.setSetting('settings', kept);
+      this.#core.journal.setSetting('settings', written);
     });
     logSettingsChange(this.#core, previous, next);
     this.#core.scheduler.onSettingsChanged();

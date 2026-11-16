@@ -171,8 +171,9 @@ export interface Settings {
   autoGoalMinChars?: number;
   /**
    * Independent token limit and idle moments for automatic compaction. The
-   * limit reaches native tool boundaries where supported. Null or missing
-   * leaves each agent's own behaviour. Missing on older cores.
+   * limit reaches native tool boundaries where supported. Null leaves each
+   * agent's own behaviour. A core that never had it saved reads and sends
+   * `DEFAULT_AUTO_COMPACT`; missing, from an older core, means null.
    */
   autoCompact?: AutoCompact | null;
   /**

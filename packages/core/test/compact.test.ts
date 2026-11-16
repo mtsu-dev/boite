@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { checkSettingsPatch, DEFAULT_DELEGATION_CONFIG, effectiveCompaction, followedPatch, effectiveSetting, type CompactionPolicy } from '@boite/contracts';
+import { checkSettingsPatch, DEFAULT_DELEGATION_CONFIG, effectiveCompaction, followedPatch, effectiveSetting, type AutoCompact, type CompactionPolicy } from '@boite/contracts';
 import type { CoreClient } from '../src/client.ts';
 import { echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { AUTO_COMPACT, COLD_WAKE } from '../src/threads/auto-compact.ts';
@@ -52,6 +52,27 @@ test('compaction rejects missing sessions and stale selections, and preserves hi
   try { await client.call('threads.compact', { threadId }); throw new Error('accepted a busy session'); }
   catch (e) { expect(String(e)).toContain('in-flight'); }
   await done; client.close();
+});
+
+test('a new install compacts before the prompt cache expires, and a saved choice keeps its value', async () => {
+  const client = await h.connect();
+  const cacheExpiry: AutoCompact = { tokens: null, moments: ['cache-expiry'] };
+  expect((await client.call('settings.get', {})).autoCompact).toEqual(cacheExpiry);
+  // Settings an older core saved without this one, and a save of another setting, still read the default.
+  h.core.journal.setSetting('settings', { shortAnswers: false });
+  expect(h.core.settings.get().autoCompact).toEqual(cacheExpiry);
+  expect((await client.call('settings.set', { muteAgents: false })).autoCompact).toEqual(cacheExpiry);
+  // That save stores no copy of the default, so a later default still reaches this install.
+  expect(Object.hasOwn(h.core.journal.getSetting('settings') as object, 'autoCompact')).toBe(false);
+  // Off as an older core stored it (null), off as saved here, and a rule of the user's own, all stay.
+  h.core.journal.setSetting('settings', { autoCompact: null });
+  expect(h.core.settings.get().autoCompact).toBeNull();
+  await client.call('settings.set', { autoCompact: { tokens: 200_000, moments: ['turn-end'] } });
+  expect((await client.call('settings.set', { autoCompact: null })).autoCompact).toBeNull();
+  expect((await client.call('settings.set', { muteAgents: true })).autoCompact).toBeNull();
+  expect((await client.call('settings.set', { autoCompact: { tokens: 200_000, moments: ['turn-end'] } })).autoCompact).toEqual({ tokens: 200_000, moments: ['turn-end'] });
+  expect(h.core.settings.get().autoCompact).toEqual({ tokens: 200_000, moments: ['turn-end'] });
+  client.close();
 });
 
 describe('automatic compaction', () => {
