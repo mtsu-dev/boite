@@ -21,7 +21,7 @@ import type { AgentTask, GitChange, PanelSurface, RpcParams, SettingsReading, To
 import type { CoreClient } from './client.ts';
 import { CORE_VERSION } from './version.ts';
 import { resolveDataDir } from './paths.ts';
-import { contextRequest, parse, requiredText, Usage, type Parsed } from './cli-args.ts';
+import { contextRequest, parse, requiredText, ShortUsage, Usage, type Parsed } from './cli-args.ts';
 import { BOT_HELP, CONTROL_HELP, PLUGIN_COMMAND_TIMEOUT_MS, PLUGIN_HELP, isControlCommand, isPluginCommandWord, ownerWithoutThread } from './cli-commands.ts';
 import type { Caller } from './control-cli.ts';
 
@@ -856,7 +856,7 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
     return 0;
   } catch (error) {
     if (error instanceof Usage) {
-      io.err(`${error.message}\n${USAGE}\n`);
+      io.err(error instanceof ShortUsage ? `${error.message}\n` : `${error.message}\n${USAGE}\n`);
       return 2;
     }
     io.err(`error: ${(error as Error).message}\n`);

@@ -83,7 +83,8 @@ export function settingHint(key: RequestableKey): string | null {
  */
 export function settingHelp(key: RequestableKey): string | null {
   const experiment = experimentOf(key);
-  if (experiment !== null) return experimentCopy()[experiment]?.hint ?? null;
+  const hint = experiment === null ? null : experimentCopy()[experiment]?.hint;
+  if (experiment !== null) return hint ? sentences([hint]) : null;
   const s = strings.settings;
   const effects = s.effects;
   const parts: Partial<Record<RequestableSetting, readonly string[]>> = {
@@ -117,7 +118,12 @@ export function settingHelp(key: RequestableKey): string | null {
     groupBots: [strings.machines.groupBotsHint],
   };
   const text = parts[key as RequestableSetting];
-  return text === undefined ? null : text.join(' ');
+  return text === undefined ? null : sentences(text);
+}
+
+/** Parts read as sentences: the muted line under a switch has no final stop, the hint after it does. */
+function sentences(parts: readonly string[]): string {
+  return parts.map(part => (/[.!?:]$/.test(part.trim()) ? part.trim() : `${part.trim()}.`)).join(' ');
 }
 
 /** A value as the card shows it: `60 %`, `On`, `512 MB`, `In D:/worktrees`. */

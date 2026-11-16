@@ -2,6 +2,8 @@ import type { Channel } from '@boite/contracts';
 import { isPluginCommandWord } from './cli-commands.ts';
 
 export class Usage extends Error {}
+/** A usage error whose message is the command's own usage line: the CLI prints it without the whole help. */
+export class ShortUsage extends Usage {}
 
 export interface Parsed {
   positional: string[];

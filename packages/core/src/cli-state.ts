@@ -5,7 +5,7 @@
  * `boite settings [page|key]` prints its rows through `settingsLines` too.
  */
 import { SETTING_HELP, SETTINGS_PAGES, STATE_DOMAINS, isSettingsPage, isStateDomain, type SettingReading, type SettingsReading, type StateReading } from '@boite/contracts';
-import { Usage } from './cli-args.ts';
+import { ShortUsage, Usage } from './cli-args.ts';
 import type { CoreClient } from './client.ts';
 
 type Printer = (lines: string[], value: unknown) => void;
@@ -90,17 +90,20 @@ export function stateLines(reading: StateReading): string[] {
   }
 }
 
+/** The one usage line a wrong `boite state` prints, instead of the whole help. */
+export const STATE_USAGE = `usage: boite state [settings [page|key]|${STATE_DOMAINS.filter(name => name !== 'summary').join('|')}] [--json]`;
+
 export async function stateCommand(client: CoreClient, threadId: string, rest: string[], print: Printer): Promise<void> {
   const [domain, filter] = rest;
   if (domain === 'settings') {
-    if (rest.length > 2) throw new Usage('state settings takes one page or key');
+    if (rest.length > 2) throw new ShortUsage(STATE_USAGE);
     const { read, shown } = await readSettingsFor(client, threadId, filter, 'state settings');
     const value = { app: read.app, settings: shown.map(reading => ({ ...reading, ...(SETTING_HELP[reading.key] === undefined ? {} : { help: SETTING_HELP[reading.key] }) })) };
     print(shown.length === 0 ? [`settings: page ${filter} has no setting an agent reads`] : settingsLines(shown, true), value);
     return;
   }
   const wanted = domain ?? 'summary';
-  if (!isStateDomain(wanted) || rest.length > 1) throw new Usage(`state takes one of settings [page|key], ${STATE_DOMAINS.filter(name => name !== 'summary').join(', ')}`);
+  if (!isStateDomain(wanted) || rest.length > 1) throw new ShortUsage(STATE_USAGE);
   const reading = await client.call('agent.state', { threadId, domain: wanted });
   print(stateLines(reading), reading);
 }
