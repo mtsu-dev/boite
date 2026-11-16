@@ -6,6 +6,7 @@ import { Journal } from '../src/journal.ts';
 import { FileTickets } from '../src/workdir.ts';
 import { readArtifact } from '../src/artifacts.ts';
 import { pruneArtifactSnapshots } from '../src/artifact-retention.ts';
+import { ARTIFACT_REFERENCES } from '../src/journal/artifact-references.ts';
 import { connect, type CoreClient } from '../src/client.ts';
 import { runCli } from '../src/cli.ts';
 import { echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';
@@ -129,6 +130,9 @@ test('large snapshots stay out of JSON, seek over HTTP, renew, survive restart a
   harness.core.journal.db.query('DELETE FROM messages WHERE id = ?').run(sent.id);
   await pruneArtifactSnapshots(harness.core, Date.now() + 2 * 86_400_000);
   expect(readdirSync(join(harness.dataDir, 'artifacts')).sort()).toEqual([part.id, `${part.id}.gz`]);
+  // The scan reads only the rows that hold an artifact, through their index: every message of a large journal took seconds.
+  const plan = (harness.core.journal.db.query(`EXPLAIN QUERY PLAN ${ARTIFACT_REFERENCES}`).all() as { detail: string }[]).map(row => row.detail);
+  expect(plan).toContain('SCAN messages USING INDEX messages_artifacts');
   harness.core.journal.db.query('DELETE FROM messages WHERE id = ?').run(clone.id);
   await pruneArtifactSnapshots(harness.core, Date.now() + 2 * 86_400_000);
   expect(readdirSync(join(harness.dataDir, 'artifacts'))).toEqual([]);

@@ -16,6 +16,7 @@ import { createCouncil } from '../council/journal.ts';
 import { createRemovedTurnUsage } from './usage-sums.ts';
 import { createKeptProcesses } from './kept-processes.ts';
 import { createMessageStats } from './thread-stats.ts';
+import { ARTIFACT_ROW } from './artifact-references.ts';
 
 export const SCHEMA_VERSION = 51;
 
@@ -570,4 +571,6 @@ export function ensureIndexes(db: Database): void {
   db.exec("CREATE INDEX IF NOT EXISTS events_questions_asked ON events (id) WHERE type = 'question.asked'");
   db.exec("CREATE INDEX IF NOT EXISTS events_questions_answered ON events (thread_id, id) WHERE type = 'question.answered'");
   db.exec("CREATE INDEX IF NOT EXISTS events_thread_memory ON events (thread_id, id) WHERE type = 'thread.memory'");
+  // The few rows artifact retention reads back (`artifact-references.ts`); built once, by a read of every message.
+  db.exec(`CREATE INDEX IF NOT EXISTS messages_artifacts ON messages (thread_id) WHERE ${ARTIFACT_ROW}`);
 }
