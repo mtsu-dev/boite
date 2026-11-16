@@ -8,6 +8,23 @@ bundle as the shell and the phone web app, built with
 added to, but it needs no Chrome and loads no page from the network. The
 package is `dev.mtsu.boite`. No workflow builds or publishes it yet.
 
+## Limits
+
+What the app does not do yet, or what nobody has checked on a phone:
+
+| Area | State |
+| --- | --- |
+| Notifications | No push. They arrive only while the app is open. |
+| Updates | None. The UI is inside the APK, so a new UI needs a new APK, installed by hand. |
+| Distribution | No workflow builds, signs or publishes it. No Play bundle (AAB) was built yet. |
+| QR code | The manifest asks for no camera, so pairing is by pasting the link. Scanning was never tried. |
+| Networks | Tested only through `adb reverse` to a core on a PC. A core on the LAN or a tailnet is untested. |
+| HTML views | Framing a core's `/view/` page is allowed by the policy, never tried on a phone. |
+| Offline | No copy of a thread stays on the phone: each opens from the core. |
+| Processors | arm64 only. |
+| Platforms | No iOS build. `gen/apple` does not exist yet. |
+| Package name | `dev.mtsu.boite` becomes permanent once published on Play. |
+
 ## What differs from the web app
 
 - `MOBILE_BUILD` (`import.meta.env.MODE === 'mobile'`) tells the UI it is the
@@ -103,9 +120,3 @@ for i in 1 2 3 4 5; do
 done
 dumpsys meminfo dev.mtsu.boite | grep 'TOTAL PSS'
 ```
-
-## Limits
-
-- No push yet. Notifications arrive only while the app is open.
-- The package name `dev.mtsu.boite` becomes permanent once published on Play.
-- There is no iOS build. `gen/apple` does not exist yet.
