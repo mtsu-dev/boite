@@ -1,4 +1,4 @@
-package com.boite.app
+package dev.mtsu.boite
 
 import android.os.Bundle
 import android.webkit.JavascriptInterface

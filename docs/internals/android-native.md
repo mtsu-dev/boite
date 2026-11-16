@@ -6,7 +6,7 @@ bundle as the shell and the phone web app, built with
 `vite build --mode mobile`. It has no core of its own: like the
 [Trusted Web Activity](android.md) it is a client of the machines its phone is
 added to, but it needs no Chrome and loads no page from the network. The
-package is `com.boite.app`. No workflow builds or publishes it yet.
+package is `dev.mtsu.boite`. No workflow builds or publishes it yet.
 
 ## What differs from the web app
 
@@ -97,15 +97,15 @@ The cold start loop:
 
 ```sh
 for i in 1 2 3 4 5; do
-  am force-stop com.boite.app; sleep 1; logcat -c
-  am start -W -n com.boite.app/.MainActivity | grep TotalTime
-  sleep 3; logcat -d | grep 'Fully drawn com.boite.app'
+  am force-stop dev.mtsu.boite; sleep 1; logcat -c
+  am start -W -n dev.mtsu.boite/.MainActivity | grep TotalTime
+  sleep 3; logcat -d | grep 'Fully drawn dev.mtsu.boite'
 done
-dumpsys meminfo com.boite.app | grep 'TOTAL PSS'
+dumpsys meminfo dev.mtsu.boite | grep 'TOTAL PSS'
 ```
 
 ## Limits
 
 - No push yet. Notifications arrive only while the app is open.
-- The package name `com.boite.app` becomes permanent once published on Play.
+- The package name `dev.mtsu.boite` becomes permanent once published on Play.
 - There is no iOS build. `gen/apple` does not exist yet.

@@ -24,12 +24,12 @@ val tauriProperties = Properties().apply {
 
 android {
     compileSdk = 36
-    namespace = "com.boite.app"
+    namespace = "dev.mtsu.boite"
     defaultConfig {
         // A core on the LAN or the tailnet answers on plain ws://, the way the
         // phone page reaches it; a public core sits behind its proxy's TLS.
         manifestPlaceholders["usesCleartextTraffic"] = "true"
-        applicationId = "com.boite.app"
+        applicationId = "dev.mtsu.boite"
         minSdk = 24
         targetSdk = 36
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
