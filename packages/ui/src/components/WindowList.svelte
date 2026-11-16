@@ -1,17 +1,24 @@
+<script lang="ts" module>
+  /** Under this many rows a list renders whole: a window would cost more than it saves. */
+  export const WINDOW_FROM = 80;
+</script>
+
 <script lang="ts" generics="T">
   import { tick, untrack, type Snippet } from 'svelte';
   import { atOrBefore, reaches } from '../lib/message-window';
   import { subscribeScroll, type ScrollGeometry, type ScrollSubscription } from '../lib/scroll-coordinator';
-  let { items, keyOf, row, scrollRoot, estimate = 40, active = true, measurements = new Map<string, number>() }: {
+  let { items, keyOf, row, scrollRoot, estimate = 40, active = true, whole = false, measurements = new Map<string, number>() }: {
     items: T[];
     keyOf: (item: T) => string;
     row: Snippet<[T]>;
     scrollRoot?: HTMLElement;
     estimate?: number;
     active?: boolean;
+    /** Under WINDOW_FROM, every row stays mounted wherever the list sits, off screen or not yet placed. */
+    whole?: boolean;
     measurements?: Map<string, number>;
   } = $props();
-  const threshold = 80, overscan = 6;
+  const overscan = 6;
   let container = $state<HTMLDivElement>();
   let top = $state(0), height = $state(600);
   let located = $state(false);
@@ -32,9 +39,10 @@
     for (let i = 0; i < keys.length; i++) result.push(result[i]! + (heights.get(keys[i]!) ?? estimate));
     return result;
   });
-  const windowed = $derived(items.length >= threshold);
+  const windowed = $derived(items.length >= WINDOW_FROM);
   const range = $derived.by(() => {
     if (!active) return { start: 0, end: 0 };
+    if (whole && !windowed) return { start: 0, end: items.length };
     if (scrollRoot && !located) return { start: 0, end: 0 };
     if (top + height < 0 || top > sums[items.length]!) return { start: 0, end: 0 };
     if (!windowed) return { start: 0, end: items.length };

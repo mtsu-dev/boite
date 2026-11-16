@@ -50,6 +50,8 @@
     folded = false,
     permission = null,
     carded = false,
+    toggled = $bindable(null),
+    showAll = $bindable(false),
     store,
     threadId
   }: {
@@ -81,6 +83,10 @@
     permission?: 'allow' | 'deny' | null;
     /** The turn's error card says this call's stop and exit code: its line marks nothing. */
     carded?: boolean;
+    /** The user opened (true) or closed (false) the body, null until they do: a long run keeps it while the row is away. */
+    toggled?: boolean | null;
+    /** The user pressed Show all under the input: kept by a long run while the row is away, like `toggled`. */
+    showAll?: boolean;
     /** Where a thread link in a document starts from. */
     store?: Store;
     threadId?: string;
@@ -116,7 +122,6 @@
   /** What the expanded input is cut to before `Show all` is pressed. */
   const CLAMP_LINES = 6;
 
-  let showAll = $state(false);
 
   let streaming = $derived(typeof inputText === 'string');
   let part = $derived<ToolPart>({ type: 'tool', toolId: '', name, input, inputText, output, status });
@@ -158,7 +163,6 @@
 
   // Input stays behind the disclosure while it arrives. Change previews follow
   // the device preference, including deferred diffs fetched when shown.
-  let toggled = $state<boolean | null>(null);
   let shown = $derived(toggled ?? (chatPrefs.expandDiffs && diffs.length > 0 && !failed));
   let chip = $derived(shown ? '' : documentsDeferred ? chipFor(documents) : others.length > 0 ? chipFor(others) : '');
   /**

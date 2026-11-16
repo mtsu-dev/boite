@@ -135,6 +135,8 @@ export interface FakeClientOptions {
   longCopies?: number;
   /** Seeds one thread of forty messages and 11.5 MiB of tool calls, what `?fake=1&heavy=1` opens the list on. */
   heavy?: boolean;
+  /** Seeds one thread whose turn is a single run of this many calls, what `?fake=1&run=<n>` adds. */
+  longRun?: number;
   /** Seeds one thread whose answer holds diagrams and formulas, what `?fake=1&diagrams=1` opens (`diagrams-thread.ts`). */
   diagrams?: boolean;
   /** Seeds a conversation of a few days with narration, compactions and wakes, what `?fake=1&readability=1` opens (`readability-thread.ts`). */
@@ -433,6 +435,7 @@ export class FakeContext {
   readonly loopDemo: boolean;
   readonly longCopies: number;
   readonly heavy: boolean;
+  readonly longRun: number;
   readonly diagrams: boolean;
   readonly readability: boolean;
   readonly markdown: boolean;
@@ -569,6 +572,7 @@ export class FakeContext {
     this.loopDemo = options.loopDemo ?? false;
     this.longCopies = options.longCopies ?? 0;
     this.heavy = options.heavy ?? false;
+    this.longRun = options.longRun ?? 0;
     this.diagrams = options.diagrams ?? false;
     this.readability = options.readability ?? false;
     this.markdown = options.markdown ?? false;

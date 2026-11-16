@@ -187,7 +187,7 @@ export class Connection {
         const { FakeClient } = await import('../fake-client');
         // `&long=1` adds the four-hundred-message thread the windowed list is
         // looked at on (`&copies=<n>` n more for the reading cache), `&heavy=1` the forty messages and 11.5 MiB of tool calls
-        // a long agent session leaves, `&diagrams=1` an answer with diagrams and formulas, `&readability=1` a few days of narration, compactions and wakes, `&markdown=1` twenty long Markdown answers,
+        // a long agent session leaves, `&run=<n>` one turn of n calls in a single run, `&diagrams=1` an answer with diagrams and formulas, `&readability=1` a few days of narration, compactions and wakes, `&markdown=1` twenty long Markdown answers,
         // `&working=<n>` n more threads at work, `&principal=session` answers as a paired
         // phone, so the screens a device is refused can be walked without pairing one,
         // `&missing=<method>,...` answers those methods like an older machine,
@@ -199,6 +199,7 @@ export class Connection {
             long: params.get('long') === '1',
             ...(params.get('copies') ? { longCopies: Number(params.get('copies')) } : {}),
             heavy: params.get('heavy') === '1',
+            ...(params.get('run') ? { longRun: Number(params.get('run')) } : {}),
             diagrams: params.get('diagrams') === '1',
             readability: params.get('readability') === '1',
             markdown: params.get('markdown') === '1',
