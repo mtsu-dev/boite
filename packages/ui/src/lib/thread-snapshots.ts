@@ -390,7 +390,7 @@ export class ThreadSnapshots {
   readonly #db: SnapshotDb;
   readonly #subtle: SubtleCrypto;
   readonly #now: () => number;
-  /** Which threads have a record, read once; until then every thread may. */
+  /** Which threads have a record, read once; until then no thread is read (`mayHold`). */
   #index: Promise<Map<string, Set<string>>> | null = null;
   #known: Map<string, Set<string>> | null = null;
   /** This page's writes and deletes run one after the other, so eviction counts what is there. */
@@ -475,12 +475,17 @@ export class ThreadSnapshots {
     return this.#serial(() => this.#db.mark(machine, threadId, url)).catch(() => UNREADABLE);
   }
 
-  /** Starts reading which threads have a record, so a later `mayHold` answers without waiting. */
+  /** Starts reading which threads have a record, so that `mayHold` knows by the first open. */
   warm(): void { void this.#loadIndex(); }
 
-  /** False only when the index is read and holds no record of `threadId`: an open then skips the read. */
+  /**
+   * True only when the index is read and holds a record of `threadId`: any
+   * other open skips the read and goes as without snapshots. An index not read
+   * yet, the database still opening or one that never answers (a broken or
+   * stubbed IndexedDB), never holds an open back.
+   */
   mayHold(machine: string, threadId: string): boolean {
-    if (!this.#known) { this.warm(); return true; }
+    if (!this.#known) { this.warm(); return false; }
     return this.#known.get(machine)?.has(threadId) ?? false;
   }
 

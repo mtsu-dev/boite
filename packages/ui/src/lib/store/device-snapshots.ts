@@ -10,7 +10,8 @@ import { whenIdle } from '../idle';
 import { resumeRequest } from '../thread-rows';
 import { SNAPSHOT_READ_WAIT_MS, SNAPSHOT_WRITE_DELAY_MS, threadSnapshots, type ThreadSnapshots } from '../thread-snapshots';
 import type { StoreContext } from './context';
-import { lightPage } from './reading-pages.svelte';
+import { lightPage, type ReadingPosition } from './reading-pages.svelte';
+import { readingAround } from './thread-preload';
 
 /** The page a visit leaves in the reading cache, and on the device: an expanded tool gives its full output back to the core first. */
 export function readingPage(ctx: StoreContext, thread: Thread): Thread {
@@ -18,10 +19,11 @@ export function readingPage(ctx: StoreContext, thread: Thread): Thread {
   return messages.every((message, index) => message === thread.messages[index]) ? thread : { ...thread, messages };
 }
 
-/** What a write reads of the thread store when its time comes. */
+/** What a write reads of the thread store when its time comes, and where an open's reader left each thread. */
 interface Pages {
   readonly openThread: Thread | null;
   readonly readingThreads: { get(threadId: string): Thread | undefined };
+  readonly readingPositions: Map<string, ReadingPosition>;
 }
 
 export class DeviceSnapshots {
@@ -33,7 +35,10 @@ export class DeviceSnapshots {
   #unlisten: (() => void) | null = null;
 
   /** `unloaded` holds the threads shown as a bare row, their page not in yet: nothing to write. */
-  constructor(private readonly ctx: StoreContext, private readonly pages: Pages, private readonly unloaded: ReadonlySet<ThreadId>) {}
+  constructor(private readonly ctx: StoreContext, private readonly pages: Pages, private readonly unloaded: ReadonlySet<ThreadId>) {
+    // Which threads the device holds is read as the page starts: an open asks for a snapshot only once it is known.
+    threadSnapshots()?.warm();
+  }
 
   /** What to write for a thread: its page on screen, or the one the reading cache holds. */
   #page(threadId: ThreadId): Thread | undefined {
@@ -41,8 +46,13 @@ export class DeviceSnapshots {
     return open?.id === threadId && !this.unloaded.has(threadId) ? readingPage(this.ctx, open) : this.pages.readingThreads.get(threadId);
   }
 
-  /** False when there is nothing to read for `threadId`: the open then never waits. */
+  /**
+   * False when there is nothing to read for `threadId`: the open then never
+   * waits. False too when the reader left it away from its end: the snapshot
+   * is the last page, and the open asks for the page around their message.
+   */
   mayHold(threadId: ThreadId): boolean {
+    if (readingAround(this.ctx, this.pages, threadId) !== undefined) return false;
     const target = this.#target();
     return target !== null && target.snapshots.mayHold(target.machine, threadId);
   }

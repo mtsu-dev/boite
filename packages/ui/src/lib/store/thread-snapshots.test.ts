@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 import type { Thread } from '@boite/contracts';
 import { FakeClient } from '../fake-client';
 import { Store } from '../store.svelte';
-import { MemorySnapshotDb, SNAPSHOT_WRITE_DELAY_MS, ThreadSnapshots, setThreadSnapshots } from '../thread-snapshots';
+import { IndexedSnapshotDb, MemorySnapshotDb, SNAPSHOT_WRITE_DELAY_MS, ThreadSnapshots, setThreadSnapshots } from '../thread-snapshots';
 import { removeEnvironment, upsertEnvironment } from '../endpoint-env';
 import type { StoreContext } from './context';
 import { DeviceSnapshots } from './device-snapshots';
@@ -18,6 +18,7 @@ afterEach(() => {
   setThreadSnapshots(undefined);
   localStorage.clear();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 /** A page load: a fresh fake core with the same id and seed, and a store attached to it. */
@@ -133,7 +134,7 @@ test('a page left before a drop in another window is not written once this windo
   const left = page('t1', ['m1', 'removed-message']);
   const memory = new Map<string, Thread>([['t1', left]]);
   const ctx = { store: { core: { coreId: 'core-a' }, principal: 'owner' }, connection: { endpointUrl: null } } as unknown as StoreContext;
-  const device = new DeviceSnapshots(ctx, { openThread: null, readingThreads: { get: id => memory.get(id) } }, new Set());
+  const device = new DeviceSnapshots(ctx, { openThread: null, readingThreads: { get: id => memory.get(id) }, readingPositions: new Map() }, new Set());
   // Another write holds this window's queue: the leave's generations are read behind it.
   const clog = one.write('core-a', null, page('t0', ['a']), null);
   await encrypting;
@@ -159,6 +160,35 @@ test('a snapshot read that fails, the database blocked, opens the thread from th
   const { store } = await load();
   await store.open('t-descriptors');
   expect(store.openThread?.id).toBe('t-descriptors');
+  expect(store.openThread!.messages.length).toBeGreaterThan(0);
+  expect(store.loadingThreadId).toBeNull();
+});
+
+test('a thread left away from its end, out of memory, reopens around the reader\'s message, not from its snapshot', async () => {
+  const db = new MemorySnapshotDb();
+  setThreadSnapshots(new ThreadSnapshots({ db, subtle: crypto.subtle }));
+  const first = await load();
+  await first.store.open('t-descriptors');
+  await until(() => db.records.size === 1, SNAPSHOT_WRITE_DELAY_MS + 3000);
+  const anchor = first.store.openThread!.messages[0]!.id;
+
+  // Many visits later in the same page: the reading cache let it go, the place read is kept.
+  const { store, gets } = await load();
+  store.readingPositions.set('t-descriptors', { top: 0, pinned: false, heights: new Map(), anchor: { id: anchor, offset: 0 } });
+  await store.open('t-descriptors');
+  const ask = gets.find(params => params.threadId === 't-descriptors') as Params & { around?: string };
+  expect([ask.around, ask.after]).toEqual([anchor, undefined]);
+  expect(store.openThread!.messages.map(message => message.id)).toContain(anchor);
+});
+
+test('a database that never opens leaves thread opening as without snapshots: the row paints at once', async () => {
+  vi.stubGlobal('indexedDB', { open: () => ({}) });
+  setThreadSnapshots(new ThreadSnapshots({ db: new IndexedSnapshotDb(), subtle: crypto.subtle }));
+  const { store } = await load();
+  const opening = store.open('t-descriptors');
+  // No await before the row is shown, as when this device keeps no snapshot.
+  expect(store.openThread?.id).toBe('t-descriptors');
+  await opening;
   expect(store.openThread!.messages.length).toBeGreaterThan(0);
   expect(store.loadingThreadId).toBeNull();
 });
