@@ -23,6 +23,20 @@ files did not reach it, or its instruction files are too long. The warning
 shows as a warning line in the reply, with the agent's own report behind its
 "i". The turn goes on.
 
+After the agent answers, the empty message box can show the next message the
+agent expects, in grey with a Tab key beside it. Press Tab to write it in as
+a draft you can edit, then send it as usual; Tab never sends. Press Esc to
+hide it until the next answer. On a phone it shows as a chip above the box:
+tap it to write it in, or tap its x to hide it. The suggestion goes away once
+you type, and is not shown while a question or a permission waits for you.
+
+It comes from Claude and Codex themselves, at no extra cost, and only in
+conversations you lead, not in subagents, workflows or councils. Codex shows
+one only on versions that support it; Claude starts from its second answer. The conversation must be on screen when
+the answer ends, unless agents stay warm a few minutes. Turn it off with Suggest the next message in Settings,
+General; a Claude conversation already open follows the change the next time
+its agent starts.
+
 The message box checks spelling and corrects as you type, as your system
 does. Turn off Check spelling and correct as I type in Settings, General, In
 the conversation, to keep your text as typed, with no red underline.

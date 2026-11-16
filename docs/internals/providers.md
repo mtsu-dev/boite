@@ -1380,8 +1380,9 @@ thread's account. It names the calls it covers, so it can arrive while the next
 batch already runs; a call of an earlier turn is not redrawn. The other
 progress messages the CLI sends (`thinking_tokens`, `api_retry`, `status`,
 `task_progress`) feed the turn's footer (`drivers/claude/progress.ts`, see
-[trace](trace.md)); `prompt_suggestion` and `rate_limit_event` stay unused by
-the timeline.
+[trace](trace.md)); `prompt_suggestion` becomes the thread's suggested next
+message (see Suggested next message below) and `rate_limit_event` stays unused
+by the timeline.
 
 Each streamed API request owns its output parts. When Claude Code reports
 `api_retry` after an interrupted response, the driver clears that attempt's
@@ -1405,6 +1406,54 @@ attached, the session hands the part to `SessionContext.notice`, and the core
 writes it as a finished `system` message of the thread's last turn, without
 starting a turn or the agent, masking a secret in use on the thread as a
 turn's parts are. A background compaction's copy keeps its notices to itself.
+
+## Suggested next message
+
+After a turn of a conversation the owner leads, the empty message box offers
+the next message the agent expects (Settings > General > Suggest the next
+message, `Settings.promptSuggestions`, on by default). Only the agent's own
+prediction is used, never a separate model call:
+
+- Claude: the driver starts the CLI with the Agent SDK option
+  `promptSuggestions: true` (`drivers/claude/options.ts`). The CLI sends one
+  `prompt_suggestion` message after the turn's `result`; the session hands it
+  to `TurnContext.suggestion` with the turn it ended. The CLI skips a
+  conversation with fewer than two answers (`early_conversation` in CLI
+  2.1.x), so the first suggestion follows the second answer. The option is read when
+  the process starts, so an open conversation follows a change of the setting
+  at its next process start.
+- Codex: after a completed turn the driver asks
+  `thread/prediction/request {threadId, sourceTurnId}`, the app-server's
+  experimental composer prediction (`drivers/codex/prediction.ts`). The answer
+  is the notification `thread/prediction/updated` with
+  `result: {type: "completed", text}` or `{type: "failed"}`. A failure, or an
+  app-server that refuses the method (codex 0.169 answers "not implemented
+  yet"), shows nothing; the session stops asking and logs it once at debug.
+  `thread/sample` is not used: it bills a hidden fork. The setting is read at
+  each turn.
+- ACP agents, pi, Muse and echo give none.
+
+Both arrive after the turn ended, so they need the process still open: a
+thread the owner is looking at, or warm minutes above zero. A process closed
+at the end of the turn gives no suggestion.
+
+The core (`threads/agent-state.ts`) keeps one suggestion per thread in memory
+(at most 256 threads, 2,000 characters), tied to its turn, and publishes it as
+`thread.suggestion` and in `threads.get` (`Thread.suggestion`). It drops a
+suggestion that arrives for a turn that is no longer the last, that ended in
+error or interruption, or while a question or permission waits. A new turn
+(not a keep-alive), a sent message, an archive or a removal clears it. No
+suggestion is asked for a subagent or delegated child, a mochi thread, a
+workflow step or team member, a council member, a background turn or a bare
+preparation (`threads/turn-context.ts`). Paired devices receive the event: it
+is text they already read in the thread's answers.
+
+The composer (`ComposerField`, `lib/prompt-suggestion.svelte.ts`) shows it
+as ghost text with a Tab badge in the empty field, or as a chip above it on a
+phone or touch screen. Tab or a tap writes it in as a draft to edit; it is
+never sent. Esc or the chip's x hides it for that turn, on that page only. It
+hides while text is typed, while sending, during dictation and behind a
+question or permission.
 
 ## Claude's MCP servers on demand
 
