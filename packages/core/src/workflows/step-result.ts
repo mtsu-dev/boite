@@ -3,11 +3,13 @@ import type { Turn, WorkflowInstance, WorkflowShape } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { tooLong } from './notices.ts';
 
-/** The whole text of a turn's last answer, for JSON that may run past the bounded result. */
+/** The whole text of a turn's last answer, for JSON that may run past the bounded result.
+ * By thread and turn, so messages_by_turn finds it: by turn alone sqlite scanned every message
+ * of the journal on the event loop at each step's end. */
 export function stepAnswer(core: Core, turn: Turn): string {
   const rows = core.journal.db.query(`SELECT (SELECT group_concat(json_extract(value, '$.text'), char(10))
     FROM json_each(messages.parts) WHERE json_extract(value, '$.type') = 'text') AS answer
-    FROM messages WHERE turn_id = ? AND role = 'assistant' ORDER BY rowid DESC LIMIT 8`).all(turn.id) as { answer: string | null }[];
+    FROM messages WHERE thread_id = ? AND turn_id = ? AND role = 'assistant' ORDER BY rowid DESC LIMIT 8`).all(turn.threadId, turn.id) as { answer: string | null }[];
   for (const row of rows) if (row.answer?.trim()) return row.answer.slice(0, 64_000);
   return '';
 }
