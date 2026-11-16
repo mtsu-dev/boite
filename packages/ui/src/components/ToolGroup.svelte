@@ -125,12 +125,13 @@
 
   /*
    * An opened run goes through `WindowList` whatever its length: under its
-   * WINDOW_FROM steps it draws them all, from there only the steps near the
+   * WINDOW_FROM steps it keeps them all mounted, on screen or not, from there only the steps near the
    * chat's view, a few more each side, and spacers of their measured or
    * estimated height for the rest (1,000 opened steps mounted 1,000 cards and
    * 13,000 nodes). One path for both, so a live step that crosses the
    * threshold remounts nothing and the focused step keeps its focus. A step
-   * the user opened or closed keeps that while its row is away.
+   * the user opened or closed, or whose input they showed whole, keeps that
+   * while its row is away.
    */
   const stepKey = (step: Step) => step.part.type === 'tool' ? step.part.toolId : `thinking-${step.index}`;
   let group = $state<HTMLDivElement>();
@@ -147,6 +148,7 @@
   {:else}
     <ToolCard
       bind:toggled={() => unfolded.get(part.toolId) ?? null, (value) => { if (value !== null) unfolded.set(part.toolId, value); }}
+      bind:showAll={() => unfolded.get(`${part.toolId}:all`) ?? false, (value) => unfolded.set(`${part.toolId}:all`, value)}
       name={part.name}
       input={part.input}
       inputText={part.inputText}
@@ -225,7 +227,7 @@
       <div>
         {#if built}
           <div class="calls">
-            <WindowList items={steps} keyOf={stepKey} {scrollRoot} estimate={STEP_ESTIMATE}>
+            <WindowList items={steps} keyOf={stepKey} {scrollRoot} estimate={STEP_ESTIMATE} whole>
               {#snippet row({ part, index }: Step)}<div class="step">{@render step(part, index, true)}</div>{/snippet}
             </WindowList>
           </div>

@@ -7,13 +7,15 @@
   import { tick, untrack, type Snippet } from 'svelte';
   import { atOrBefore, reaches } from '../lib/message-window';
   import { subscribeScroll, type ScrollGeometry, type ScrollSubscription } from '../lib/scroll-coordinator';
-  let { items, keyOf, row, scrollRoot, estimate = 40, active = true, measurements = new Map<string, number>() }: {
+  let { items, keyOf, row, scrollRoot, estimate = 40, active = true, whole = false, measurements = new Map<string, number>() }: {
     items: T[];
     keyOf: (item: T) => string;
     row: Snippet<[T]>;
     scrollRoot?: HTMLElement;
     estimate?: number;
     active?: boolean;
+    /** Under WINDOW_FROM, every row stays mounted wherever the list sits, off screen or not yet placed. */
+    whole?: boolean;
     measurements?: Map<string, number>;
   } = $props();
   const overscan = 6;
@@ -40,6 +42,7 @@
   const windowed = $derived(items.length >= WINDOW_FROM);
   const range = $derived.by(() => {
     if (!active) return { start: 0, end: 0 };
+    if (whole && !windowed) return { start: 0, end: items.length };
     if (scrollRoot && !located) return { start: 0, end: 0 };
     if (top + height < 0 || top > sums[items.length]!) return { start: 0, end: 0 };
     if (!windowed) return { start: 0, end: items.length };

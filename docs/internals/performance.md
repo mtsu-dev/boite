@@ -1262,11 +1262,12 @@ screen in each of 267 frames on the desktop and 318 on the phone.
 ### A long opened run
 
 An opened run of tool calls goes through the sidebar's `WindowList`. Under 80
-steps it draws every step; from 80 on, only the steps near the chat's view and
+steps it keeps every step mounted, on screen or not; from 80 on, only the steps near the chat's view and
 six more on each side, the rest spacers of their measured or estimated height
 (34 px, one folded step and its gap). One path for both lengths: a live step
 that takes a run to 80 remounts no card and the focused step keeps its focus.
-A step the user opened or closed keeps that while its row is away. At 20 steps
+A step the user opened or closed, or whose input they showed whole, keeps that
+while its row is away. At 20 steps
 the run mounts the same 20 cards as before, with 41 more nodes (the row
 wrappers) in jsdom. Measured on 2026-11-16 in headless Chrome at
 1280 x 800 on `?fake=1&run=1000&open=recent`, opening the 1,000-step run mounted

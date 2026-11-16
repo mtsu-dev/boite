@@ -112,3 +112,39 @@ test('a live step that takes an opened run to the window threshold keeps the foc
   expect(document.activeElement).toBe(toggle);
   expect(cards(root).length).toBeLessThanOrEqual(MOST);
 });
+
+/** A call whose input runs past the six lines an open card shows before "Show all". */
+const wide = (id: number): ToolPart => ({ ...call(id), input: { command: `echo ${id}`, ...Object.fromEntries(Array.from({ length: 9 }, (_, key) => [`key${key}`, `value ${id}`])) } });
+
+async function showAll(root: HTMLElement, id: number) {
+  card(root, id)!.querySelector<HTMLButtonElement>('[data-testid=tool-toggle]')!.click();
+  await settle();
+  card(root, id)!.querySelector<HTMLButtonElement>('[data-testid=tool-input-show-all]')!.click();
+  await settle();
+  expect(card(root, id)!.querySelector('[data-testid=tool-input-show-all]')).toBeNull();
+}
+
+test('a short opened run keeps every step mounted, and an input shown whole stays whole, once the chat scrolls past it', async () => {
+  const { root, props } = await opened(20);
+  props.parts[2] = wide(2);
+  await settle();
+  await showAll(root, 2);
+  // The run is far above the view: under the window threshold it keeps its cards all the same.
+  await scrollTo(root, 5000);
+  expect(cards(root)).toHaveLength(20);
+  await scrollTo(root, 0);
+  expect(card(root, 2)!.querySelector('[data-testid=tool-input]')).not.toBeNull();
+  expect(card(root, 2)!.querySelector('[data-testid=tool-input-show-all]')).toBeNull();
+});
+
+test('in a long run an input shown whole stays whole after its row scrolls away and back', async () => {
+  const { root, props } = await opened(1000);
+  props.parts[2] = wide(2);
+  await settle();
+  await showAll(root, 2);
+  await scrollTo(root, 500 * ROW);
+  expect(card(root, 2)).toBeUndefined();
+  await scrollTo(root, 0);
+  expect(card(root, 2)!.querySelector('[data-testid=tool-input]')).not.toBeNull();
+  expect(card(root, 2)!.querySelector('[data-testid=tool-input-show-all]')).toBeNull();
+});
