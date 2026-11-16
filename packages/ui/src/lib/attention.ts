@@ -1,4 +1,5 @@
 import { ATTENTION_IDLE_MS } from '@boite/contracts';
+import { desktopShell } from './shell-platform';
 
 /**
  * What the desktop shell knows and a page cannot: how long the whole system
@@ -16,7 +17,7 @@ export const PRESENCE_POLL_MS = 5_000;
 export const WINDOW_FOCUS_EVENT = 'window://focus';
 
 export function shellPresence(): PresenceSource | null {
-  if (typeof window === 'undefined' || window.__TAURI_INTERNALS__ === undefined) return null;
+  if (typeof window === 'undefined' || !desktopShell()) return null;
   return async () => {
     const { invoke } = await import('@tauri-apps/api/core');
     return invoke<Presence>('user_presence');

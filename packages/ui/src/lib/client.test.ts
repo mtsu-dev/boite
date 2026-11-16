@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { PROTOCOL_VERSION, RPC_CHUNK_MARK, RPC_MAX_FRAME_BYTES, RpcCloseCode, RpcErrorCode, type CoreInfo } from '@boite/contracts';
 import { RpcFailure, WsClient, defaultBackoff, openDeadline, readyAgain, rpcUrl, streamUrl, wasDropped, type SocketLike } from './client';
 import { frameStream } from './remote-browser-stream';
+import { watchAbsence, watchWake } from './ws-client-utils';
 
 const CORE: CoreInfo = {
   version: '2.0.0-beta.1',
@@ -144,21 +145,65 @@ describe('reconnect timing', () => {
     } finally { client.close(); vi.useRealTimers(); }
   });
 
-  test('offline, a remote client waits for the online event instead of retrying', async () => {
+  test('offline, a remote client keeps retrying on its backoff, and the online event retries at once', async () => {
     vi.useFakeTimers();
     const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
-    const { client, sockets } = withSockets('https://core.test', 'secret', 1_000);
+    const { client, sockets } = withSockets('https://core.test', 'secret', 5_000);
     try {
       void client.connect().catch(() => undefined);
       take(sockets, 0).close();
-      await vi.advanceTimersByTimeAsync(60_000);
+      // A browser that says offline is often wrong: the next attempt is not parked.
+      await vi.advanceTimersByTimeAsync(4_999);
       expect(sockets).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(sockets).toHaveLength(2);
       expect(client.state).toBe('connecting');
 
       online.mockReturnValue(true);
       void client.resume().catch(() => undefined);
-      expect(sockets).toHaveLength(2);
+      expect(sockets).toHaveLength(3);
     } finally { online.mockRestore(); client.close(); vi.useRealTimers(); }
+  });
+
+  test('a ready socket that closes is tried again within 250 ms, a failed retry waits the backoff, and a host dropping in a loop backs off', async () => {
+    vi.useFakeTimers();
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const { client, sockets } = withSockets('http://127.0.0.1:8777', 'secret');
+    try {
+      const first = await handshake(client, sockets, 'owner');
+      await vi.advanceTimersByTimeAsync(60_000);
+      first.close();
+      // 125 to 250 ms at random, 188 at the middle: not the 1 s of the backoff's first step.
+      await vi.advanceTimersByTimeAsync(187);
+      expect(sockets).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(sockets).toHaveLength(2);
+      // That attempt counted: when it fails, the next waits the backoff's second step.
+      take(sockets, 1).close();
+      await vi.advanceTimersByTimeAsync(1_999);
+      expect(sockets).toHaveLength(2);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(sockets).toHaveLength(3);
+      // Ready, then gone 5 s later: a host that drops in a loop waits 1 s, then 2 s, as before.
+      const third = take(sockets, 2);
+      third.open();
+      third.receive({ id: third.frame(0).id, result: { core: CORE, principal: 'owner' } });
+      await vi.advanceTimersByTimeAsync(5_000);
+      third.close();
+      await vi.advanceTimersByTimeAsync(999);
+      expect(sockets).toHaveLength(3);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(sockets).toHaveLength(4);
+      const fourth = take(sockets, 3);
+      fourth.open();
+      fourth.receive({ id: fourth.frame(0).id, result: { core: CORE, principal: 'owner' } });
+      await vi.advanceTimersByTimeAsync(0);
+      fourth.close();
+      await vi.advanceTimersByTimeAsync(1_999);
+      expect(sockets).toHaveLength(4);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(sockets).toHaveLength(5);
+    } finally { random.mockRestore(); client.close(); vi.useRealTimers(); }
   });
 
   test('offline, a loopback client keeps retrying: its core is on this machine', async () => {
@@ -344,15 +389,18 @@ describe('WsClient', () => {
     try {
       const first = await handshake(client, sockets, 'session');
 
-      await vi.advanceTimersByTimeAsync(25_000);
+      await vi.advanceTimersByTimeAsync(11_999);
+      expect(first.sent.map(raw => JSON.parse(raw).method)).toEqual(['hello']);
+      await vi.advanceTimersByTimeAsync(1);
       expect(first.sent.map(raw => JSON.parse(raw).method)).toEqual(['hello', 'hello']);
       // The core reads nothing of a probe's params: no credential goes with it.
       expect(Object.keys(first.frame(1).params ?? {}).sort()).toEqual(['client', 'protocolVersion']);
       expect(client.state).toBe('ready');
-      await vi.advanceTimersByTimeAsync(15_000);
+      await vi.advanceTimersByTimeAsync(10_000);
       expect(first.closed).toBe(true);
       expect(states).toEqual(['connecting', 'ready', 'connecting']);
-      await vi.advanceTimersByTimeAsync(1_000);
+      // The probe already waited its deadline: the new socket opens with no wait.
+      await vi.advanceTimersByTimeAsync(0);
       expect(sockets).toHaveLength(2);
     } finally { client.close(); vi.useRealTimers(); }
   });
@@ -390,13 +438,12 @@ describe('WsClient', () => {
       await vi.advanceTimersByTimeAsync(4_000);
       expect(first.closed).toBe(true);
       expect(client.state).toBe('connecting');
-      // No retry while offline: the 'online' event calls resume().
-      await vi.advanceTimersByTimeAsync(60_000);
-      expect(sockets).toHaveLength(1);
+      // Offline or not, a probe that failed tries again with no wait; the backoff paces what follows.
+      await vi.advanceTimersByTimeAsync(0);
+      expect(sockets).toHaveLength(2);
 
       // A socket that answers the question keeps the connection.
       online.mockReturnValue(true);
-      void client.resume().catch(() => undefined);
       const second = take(sockets, 1);
       second.open();
       second.receive({ id: second.frame(0).id, result: { core: CORE, principal: 'session' } });
@@ -435,7 +482,7 @@ describe('WsClient', () => {
     } finally { client.close(); vi.useRealTimers(); }
   });
 
-  test('a half-open remote socket carrying a call is replaced 35 s after its last frame, not after the call times out', async () => {
+  test('a half-open remote socket carrying a call is replaced 22 s after its last frame, not after the call times out', async () => {
     vi.useFakeTimers();
     const { client, sockets } = withSockets('https://core.test', 'session', 1_000);
     try {
@@ -446,7 +493,7 @@ describe('WsClient', () => {
       await vi.advanceTimersByTimeAsync(1_000);
       first.receive({ method: 'core.log', params: { level: 'info', message: 'tick', at: 1 } });
 
-      await vi.advanceTimersByTimeAsync(24_999);
+      await vi.advanceTimersByTimeAsync(11_999);
       expect(first.sent.map(raw => JSON.parse(raw).method)).toEqual(['hello', 'threads.list']);
       await vi.advanceTimersByTimeAsync(1);
       expect(first.sent.map(raw => JSON.parse(raw).method)).toEqual(['hello', 'threads.list', 'hello']);
@@ -685,6 +732,172 @@ describe('WsClient', () => {
     expect(states).toEqual(['connecting', 'ready']);
     client.close();
   });
+  test('back after 30 s away with a dead socket: a new socket opens beside the probe and is ready in one handshake', async () => {
+    vi.useFakeTimers({ now: 1_000_000 });
+    const { client, sockets } = withSockets('https://core.test', 'session', 60_000);
+    const states: string[] = [];
+    client.onState((state) => states.push(state));
+    try {
+      const first = await handshake(client, sockets, 'session', SLICING);
+      const subscribed = client.call('threads.subscribe', { threadId: 'thr_open' });
+      first.receive({ id: first.frame(1).id, result: { ok: true } });
+      await subscribed;
+      const pending = client.call('turns.start', { threadId: 'thr_open', prompt: 'once' }).catch((error: unknown) => error);
+
+      const started = Date.now();
+      const resumed = client.resume(30_000);
+      // The old socket is asked, and a new one is on its way at the same instant.
+      expect(first.sent.map(raw => JSON.parse(raw).method)).toEqual(['hello', 'threads.subscribe', 'turns.start', 'hello']);
+      expect(sockets).toHaveLength(2);
+      // A second signal of the same return joins the race: never two candidates.
+      void client.resume(30_000);
+      await client.wake();
+      expect(sockets).toHaveLength(2);
+      const second = take(sockets, 1);
+      await vi.advanceTimersByTimeAsync(50);
+      second.open();
+      expect(second.sent.map(raw => JSON.parse(raw).method)).toEqual(['hello']);
+      // The core answers the new hello 50 ms later, its clock 5 s ahead; the old socket never answers.
+      await vi.advanceTimersByTimeAsync(50);
+      second.receive({ id: second.frame(0).id, result: { core: { ...SLICING, now: Date.now() - 25 + 5_000 }, principal: 'session' } });
+      await resumed;
+      expect(Date.now() - started).toBe(100);
+      expect(client.state).toBe('ready');
+      expect(states).toEqual(['connecting', 'ready', 'connecting', 'ready']);
+      expect(first.closed).toBe(true);
+      // The old socket's calls fail as after any resume, marked dropped so the store asks again.
+      const failure = await pending;
+      expect((failure as Error).message).toBe('connection resumed; check the conversation before resending');
+      expect(wasDropped(failure)).toBe(true);
+      expect(client.clockOffset).toBe(5_000);
+      // The new socket follows what the old one did, and carries the calls from now on.
+      expect(second.sent.map(raw => JSON.parse(raw).method)).toEqual(['hello', 'threads.subscribe']);
+      const next = client.call('projects.list', {});
+      second.receive({ id: second.frame(2).id, result: [] });
+      expect(await next).toEqual([]);
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(sockets).toHaveLength(2);
+    } finally { client.close(); vi.useRealTimers(); }
+  });
+
+  test('back after 30 s away with a socket that answers: the new socket closes and nothing is torn down', async () => {
+    vi.useFakeTimers();
+    const { client, sockets } = withSockets('https://core.test', 'session', 60_000);
+    const states: string[] = [];
+    client.onState((state) => states.push(state));
+    try {
+      const first = await handshake(client, sockets, 'session', SLICING);
+      const pending = client.call('threads.compact', { threadId: 'thread' });
+      const resumed = client.resume(30_000);
+      const second = take(sockets, 1);
+      second.open();
+      first.receive({ id: first.frame(2).id, result: { core: SLICING, principal: 'session' } });
+      expect(await resumed).toBeUndefined();
+      expect(second.closed).toBe(true);
+      // Its hello answered late changes nothing.
+      second.receive({ id: second.frame(0).id, result: { core: SLICING, principal: 'session' } });
+      first.receive({ id: first.frame(1).id, result: { ok: true } });
+      expect(await pending).toEqual({ ok: true });
+      expect(first.closed).toBe(false);
+      expect(states).toEqual(['connecting', 'ready']);
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(sockets).toHaveLength(2);
+    } finally { client.close(); vi.useRealTimers(); }
+  });
+
+  test('back after 30 s away, the old socket silent and the new one slow: the old goes at the probe deadline and the new one is the reconnect', async () => {
+    vi.useFakeTimers();
+    const { client, sockets } = withSockets('https://core.test', 'session', 60_000);
+    try {
+      const first = await handshake(client, sockets, 'session', SLICING);
+      const resumed = client.resume(30_000);
+      const second = take(sockets, 1);
+      await vi.advanceTimersByTimeAsync(4_000);
+      expect(first.closed).toBe(true);
+      expect(client.state).toBe('connecting');
+      expect(sockets).toHaveLength(2);
+      second.open();
+      second.receive({ id: second.frame(0).id, result: { core: SLICING, principal: 'session' } });
+      await resumed;
+      expect(client.state).toBe('ready');
+      expect(sockets).toHaveLength(2);
+    } finally { client.close(); vi.useRealTimers(); }
+  });
+
+  test('back after less than 8 s, or to a loopback core, only the probe asks: no new socket', async () => {
+    vi.useFakeTimers();
+    try {
+      for (const [url, away] of [['https://core.test', 7_999], ['http://127.0.0.1:8777', 30_000]] as const) {
+        const { client, sockets } = withSockets(url, 'session', 60_000);
+        const first = await handshake(client, sockets, 'session');
+        const resumed = client.resume(away);
+        expect(sockets).toHaveLength(1);
+        await vi.advanceTimersByTimeAsync(4_000);
+        expect(first.closed).toBe(true);
+        expect(sockets).toHaveLength(2);
+        client.close();
+        await resumed.catch(() => undefined);
+      }
+    } finally { vi.useRealTimers(); }
+  });
+
+  test('a page in sight through a system sleep is told how long it slept, by a timer that stops while it is hidden', async () => {
+    vi.useFakeTimers();
+    let slept = 0;
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => Date.now() - slept);
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    const woke: number[] = [];
+    let stop = (): void => undefined;
+    try {
+      stop = watchWake((away) => woke.push(away));
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(woke).toEqual([]);
+      // The lid closes for 30 s: the wall clock moves on, the page's own clock and its timers do not.
+      slept += 30_000;
+      vi.setSystemTime(Date.now() + 30_000);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(woke).toEqual([30_000]);
+      // A 4 s jump is a clock correction or a busy tab, not a sleep.
+      slept += 4_000;
+      vi.setSystemTime(Date.now() + 4_000);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(woke).toEqual([30_000]);
+      visibility.mockReturnValue('hidden');
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(vi.getTimerCount()).toBe(0);
+      visibility.mockReturnValue('visible');
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(vi.getTimerCount()).toBe(1);
+      stop();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally { stop(); clock.mockRestore(); visibility.mockRestore(); vi.useRealTimers(); }
+  });
+
+  test('a page back from the back-forward cache ends its absence, so the next one counts from its own hide', () => {
+    vi.useFakeTimers();
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    const back: number[] = [];
+    const stop = watchAbsence((away) => back.push(away));
+    const hide = (): void => { visibility.mockReturnValue('hidden'); document.dispatchEvent(new Event('visibilitychange')); };
+    const show = (): void => { visibility.mockReturnValue('visible'); document.dispatchEvent(new Event('visibilitychange')); };
+    try {
+      hide();
+      vi.setSystemTime(Date.now() + 20_000);
+      // Restored from the cache: the page comes back by `pageshow` alone.
+      visibility.mockReturnValue('visible');
+      window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+      vi.setSystemTime(Date.now() + 5_000);
+      hide();
+      vi.setSystemTime(Date.now() + 1_000);
+      show();
+      // A 1 s absence only probes; counted from the first hide it would be 26 s and race a new socket.
+      expect(back).toEqual([20_000, 1_000]);
+      // A `pageshow` that is not a restore is the first load, not a return.
+      window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: false }));
+      expect(back).toEqual([20_000, 1_000]);
+    } finally { stop(); visibility.mockRestore(); vi.useRealTimers(); }
+  });
+
   test('hello is the first frame, and it carries the token and the device', async () => {
     const sockets: FakeSocket[] = [];
     const client = new WsClient({

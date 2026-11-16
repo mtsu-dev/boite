@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { desktopShell } from '../lib/shell-platform';
   import { errorText } from '../lib/errors';
   import { onMount, tick } from 'svelte';
   import { Check, Download, FileText, Image, Film, Music2, Maximize2, RefreshCw, X } from '@lucide/svelte';
@@ -138,7 +139,7 @@
    * Returns false outside the shell, where the browser handles it.
    */
   async function save(andOpen: boolean): Promise<boolean> {
-    if (window.__TAURI_INTERNALS__ === undefined) return false;
+    if (!desktopShell()) return false;
     if (saving) return true;
     saving = true;
     try {
@@ -173,7 +174,7 @@
       void load().then(async () => { if (!disposed && url && !(await save(false))) browserDownload(url, name); });
       return;
     }
-    if (window.__TAURI_INTERNALS__ === undefined) {
+    if (!desktopShell()) {
       if (file?.type === 'artifact') {
         event.preventDefault();
         void loadArtifact().then(() => browserDownload(url, name)).catch(reason => error = String(reason));
@@ -246,7 +247,7 @@
   }
 
   function saveForViewer(): void {
-    if (window.__TAURI_INTERNALS__ !== undefined) { void save(false); return; }
+    if (desktopShell()) { void save(false); return; }
     if (file?.type === 'artifact') void loadArtifact().then(() => browserDownload(url, name)).catch(reason => error = String(reason));
     else browserDownload(url, name);
   }
@@ -287,7 +288,7 @@
   });
 </script>
 
-<section class="chat-file" class:inline-media={inlineMedia} data-testid="chat-file" aria-busy={loading || saving} use:onView={nearMedia}>
+<section class="chat-file" class:inline-media={inlineMedia} class:sound={inlineMedia && audio} data-testid="chat-file" aria-busy={loading || saving} use:onView={nearMedia}>
   {#if waiting}
     <div class="preview" data-testid="artifact-waiting">
       <button type="button" class="shot boxed" style:width={boxWidth} style:aspect-ratio={boxRatio} use:onView={near} onclick={() => void openOriginal()} disabled={loading}
@@ -344,6 +345,8 @@
 <style>
   .chat-file { margin-block: 10px; max-width: 100%; min-width: 0; border-radius: var(--radius-lg); background: var(--color-surface); overflow: hidden; display: flex; flex-direction: column; }
   .inline-media { width: fit-content; min-width: min(240px, 100%); max-width: min(560px, 100%); }
+  /* A player has no size of its own: fitted to the file name, its seek bar was too short to aim at a moment. */
+  .sound { width: min(560px, 100%); }
   .file-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; min-width: 0; order: 0; }
   .inline-media .file-row { order: 1; }
   .identity { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; height: auto; margin: -6px; padding: 6px; border: 0; border-radius: var(--radius-sm); background: none; color: inherit; font: inherit; font-weight: 400; text-align: left; justify-content: flex-start; }

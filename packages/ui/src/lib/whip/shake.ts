@@ -1,4 +1,5 @@
 import { markFeature } from '@boite/contracts';
+import { desktopShell } from '../shell-platform';
 /**
  * The hit a crack lands: the native window shakes, or the whole interface when
  * the window cannot move (browser, phone, maximized, fullscreen).
@@ -13,7 +14,7 @@ export async function shakeWindow(): Promise<void> {
   shaking = true;
   const mine = ++generation;
   try {
-    if (window.__TAURI_INTERNALS__) {
+    if (desktopShell()) {
       const { invoke } = await import('@tauri-apps/api/core');
       if (mine !== generation || await invoke<boolean>('whip_window')) return;
     }

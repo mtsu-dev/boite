@@ -1,3 +1,4 @@
+import { desktopShell } from './shell-platform';
 /*
  * The interface zoom: `Ctrl+=`, `Ctrl+-` and `Ctrl+0` anywhere in the desktop
  * shell, and the Zoom row of Settings, Appearance. It is the webview's own
@@ -38,7 +39,7 @@ export function zoomKey(event: KeyboardEvent): -1 | 0 | 1 | null {
 }
 
 export function inShell(): boolean {
-  return typeof window !== 'undefined' && window.__TAURI_INTERNALS__ !== undefined;
+  return typeof window !== 'undefined' && desktopShell();
 }
 
 /** The stored factor, 1 when none is stored or it is not a rung of the ladder. */

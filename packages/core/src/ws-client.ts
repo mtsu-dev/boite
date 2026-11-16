@@ -214,6 +214,8 @@ export interface ConnectOptions {
   deflate?: boolean;
   /** Read binary messages (`onBinary`) instead of ending the stream on one. */
   binary?: boolean;
+  /** Calls the attempt off before the upgrade: the connection ends and the promise rejects. Ignored once open. */
+  signal?: AbortSignal;
 }
 
 /** One client frame, masked as RFC 6455 requires of a client. */
@@ -411,6 +413,8 @@ export class TextSocket {
         }
       };
       const timer = setTimeout(() => fail(`no WebSocket upgrade from ${target.host} within ${timeoutMs} ms`, true), timeoutMs);
+      if (options.signal?.aborted) { fail(`the connection to ${target.host} was called off`); return; }
+      options.signal?.addEventListener('abort', () => fail(`the connection to ${target.host} was called off`), { once: true });
       Bun.connect({
         hostname: options.address ?? hostname,
         port: Number(target.port || (secure ? 443 : 80)),

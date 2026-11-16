@@ -38,9 +38,14 @@ export function listen(ctx: StoreContext, client: Client): void {
   };
 
   if (observable(client)) {
+    let wasReady = client.state === 'ready';
     ctx.off.push(
       client.onState((state) => {
         if (!current()) return;
+        // Counted here, not read from `connection`: a replaced socket goes connecting then ready in one
+        // callback, which an effect reading `connection` would see as ready all along.
+        if (state === 'ready' && wasReady && s.connection !== 'ready') ctx.connection.returns++;
+        if (state === 'ready') wasReady = true;
         if (state !== 'ready') {
           ctx.connection.invalidateReads();
           ctx.workflows.disconnected();

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { desktopShell } from './lib/shell-platform';
   import { errorText } from './lib/errors';
   import { onMount, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
@@ -59,6 +60,7 @@
   import { watchRest } from './lib/at-rest';
   import { watchLoopPhase } from './lib/loop-phase';
   import { WsClient } from './lib/client';
+  import { watchAbsence, watchWake } from './lib/ws-client-utils';
   import { listenForInstall } from './lib/pwa';
   import { appPage } from './lib/app-origin';
   import { localNetwork } from './lib/local-network.svelte';
@@ -69,7 +71,7 @@
   import AgentsLayout from './components/agents/AgentsLayout.svelte';
 
   let store = $derived(workspace.active);
-  const inShell = window.__TAURI_INTERNALS__ !== undefined;
+  const inShell = desktopShell();
   // The phone's navigation (`lib/mobile-navigation.ts`). A failed fetch (offline,
   // cold cache) lets the app draw with a bar that says so and retries, by hand,
   // when the core answers again or when the browser is back online.
@@ -236,27 +238,26 @@
     // Another machine of the group reads this computer's app updates from its core.
     const stopDesktopReport = reportDesktopUpdates(() => workspace.machines.map((machine) => machine.store));
     const stopUpdates = watchUpdates(() => workspace.machines.map((machine) => machine.store));
-    let hidden = document.hidden;
-    const resume = () => {
+    /** `away`: how long the page was gone, in ms; `remoteOnly`: the shell's own core and a page on its machine are left alone. */
+    const resume = (away = 0, remoteOnly = false) => {
       if (document.hidden) return;
       for (const machine of workspace.machines) {
         const client = machine.store.client;
-        if (client instanceof WsClient) void client.resume().catch(() => undefined);
+        if (client instanceof WsClient && (!remoteOnly || client.remote)) void client.resume(away).catch(() => undefined);
       }
     };
-    const visibility = () => {
-      documentVisible = !document.hidden;
-      if (document.hidden) hidden = true;
-      else if (hidden) { hidden = false; resume(); }
-    };
-    const pageshow = (event: PageTransitionEvent) => { if (event.persisted) resume(); };
+    const visibility = () => { documentVisible = !document.hidden; };
+    // How long the page stayed away tells `resume()` whether to open a new socket at once.
+    const stopAbsence = watchAbsence((away) => resume(away));
+    const online = () => resume();
+    // The system slept with the page in sight, a laptop closed on the app: every remote socket is checked as after that long away.
+    const stopWake = watchWake((slept) => resume(slept, true));
     const offline = () => { for (const machine of workspace.machines) if (machine.store.client instanceof WsClient) machine.store.client.offline(); };
     // The app's page is public and every machine is on a private address: Chrome lets its sockets through once "Local network" is allowed.
-    const stopLocalNetwork = appPage() ? localNetwork.start(resume) : () => undefined;
+    const stopLocalNetwork = appPage() ? localNetwork.start(() => resume()) : () => undefined;
     document.addEventListener('visibilitychange', visibility);
-    window.addEventListener('online', resume);
+    window.addEventListener('online', online);
     window.addEventListener('offline', offline);
-    window.addEventListener('pageshow', pageshow);
     const notification = (event: MessageEvent) => { if (workspace.workerMessage(event.data)) mobileScreen = 'chat'; };
     navigator.serviceWorker?.addEventListener('message', notification);
     return () => {
@@ -268,10 +269,11 @@
       stopInstall();
       stopUpdates();
       stopLocalNetwork();
+      stopWake();
+      stopAbsence();
       document.removeEventListener('visibilitychange', visibility);
-      window.removeEventListener('online', resume);
+      window.removeEventListener('online', online);
       window.removeEventListener('offline', offline);
-      window.removeEventListener('pageshow', pageshow);
       navigator.serviceWorker?.removeEventListener('message', notification);
     };
   });

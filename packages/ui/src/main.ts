@@ -6,6 +6,7 @@ import { startLocale } from './lib/i18n.svelte';
 import { showBootFailure } from './lib/boot-failure';
 import { applyChatWidth, readChatWidth } from './lib/chat-width';
 import { startZoom } from './lib/zoom';
+import { desktopShell } from './lib/shell-platform';
 
 // Every import above parsed and ran: index.html's too-old-browser notice stands down.
 (window as { __boiteBooted?: boolean }).__boiteBooted = true;
@@ -52,7 +53,10 @@ boot().catch(() => {
  * mount is laid out, the second when it has reached the screen.
  */
 function revealShell(): void {
-  if (quotas || window.__TAURI_INTERNALS__ === undefined) return;
+  // The Android app reports its first frame as fully drawn (apps/mobile MainActivity).
+  const android = (window as { BoiteAndroid?: { ready(): void } }).BoiteAndroid;
+  if (android) requestAnimationFrame(() => requestAnimationFrame(() => android.ready()));
+  if (quotas || !desktopShell()) return;
   void zoomed.then(() => {
     let sent = false;
     const ready = () => {

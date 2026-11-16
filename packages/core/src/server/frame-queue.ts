@@ -9,6 +9,21 @@ const MAX_ACTIVE = 64;
 /** Long agent waits must leave 16 slots for the UI, paired devices and new hellos. */
 const MAX_AGENT_ACTIVE = MAX_ACTIVE - 16;
 const MAX_ACTIVE_PER_CONNECTION = 8;
+/** Slow reads leave two of a connection's slots to everything else: a tap is answered while pull requests load. */
+const MAX_BACKGROUND_PER_CONNECTION = MAX_ACTIVE_PER_CONNECTION - 2;
+/**
+ * The background lane: methods that wait on a subprocess or the network,
+ * often for one to five seconds. Everything else is interactive.
+ */
+export const BACKGROUND_METHODS: ReadonlySet<string> = new Set([
+  'threads.pullRequest', // The branch's pull request and its checks, read from the forge.
+  'threads.pullRequests', // The linked pull requests; a refresh reads each from the forge.
+  'threads.pullRequestFiles', // A page of a pull request's files and patches, from the forge.
+  'threads.pullRequestReview', // A pull request's reviews and comments, from the forge.
+  'git.status', // Runs git status, and git diff for the counts, in the thread's checkout.
+  'git.diff', // Runs git to read both sides of a file.
+  'worktrees.list', // Runs git worktree list, then git status in each worktree.
+]);
 /**
  * Requests of closed connections whose handlers still run. A handler that
  * ignores its signal keeps running after its slot came back: past these caps
@@ -23,6 +38,9 @@ function fromAgent(connection: ServerConnection): boolean {
 
 interface Frame {
   raw: string;
+  /** Its place among the connection's frames, both lanes together. */
+  seq: number;
+  background: boolean;
   resolve(): void;
   reject(error: unknown): void;
 }
@@ -49,17 +67,32 @@ export interface FrameQueueCounts {
 export function methodOf(raw: string): string {
   return /"method"\s*:\s*"([^"\\]{1,100})"/.exec(raw)?.[1] ?? '(unnamed)';
 }
-interface Pending {
+/** One lane of a connection's queued frames, in arrival order. */
+interface Lane {
   frames: Frame[];
   head: number;
+}
+interface Pending {
+  interactive: Lane;
+  background: Lane;
+  /** Frames queued in both lanes. */
+  size: number;
   bytes: number;
+  seq: number;
 }
 
-/** Round-robin requests leave time for HTTP, streamed replies and other clients. */
+/**
+ * Round-robin requests leave time for HTTP, streamed replies and other clients.
+ * Each connection has two lanes, interactive and background (`BACKGROUND_METHODS`):
+ * its frames start in arrival order, but once background requests hold
+ * `MAX_BACKGROUND_PER_CONNECTION` of its slots, its first queued interactive
+ * frame goes ahead of the background ones that wait.
+ */
 export class FrameQueue {
   readonly #pending = new Map<ServerConnection, Pending>();
   readonly #disconnected = new WeakSet<ServerConnection>();
   readonly #activeByConnection = new Map<ServerConnection, number>();
+  readonly #backgroundByConnection = new Map<ServerConnection, number>();
   readonly #started = new Map<ServerConnection, Set<Started>>();
   readonly #retained = new Map<ServerConnection, { count: number; bytes: number }>();
   #active = 0;
@@ -106,22 +139,26 @@ export class FrameQueue {
       const byBytes = this.bytes + bytes > MAX_PENDING_BYTES;
       let victim: ServerConnection | undefined, largest = 0;
       for (const [candidate, queue] of this.#pending) {
-        const size = byBytes ? queue.bytes : queue.frames.length - queue.head;
+        const size = byBytes ? queue.bytes : queue.size;
         if (size > largest) { largest = size; victim = candidate; }
       }
       // Active and detached handlers retain their budget until completion and cannot be dropped.
       this.#refuse(victim ?? connection, `RPC queue exceeds ${MAX_PENDING_FRAMES} frames or ${MAX_PENDING_BYTES} bytes; reconnect`);
       if (victim === undefined || victim === connection) return Promise.resolve();
     }
-    const queue = this.#pending.get(connection) ?? { frames: [], head: 0, bytes: 0 };
+    const queue = this.#pending.get(connection) ?? { interactive: { frames: [], head: 0 }, background: { frames: [], head: 0 }, size: 0, bytes: 0, seq: 0 };
     this.#pending.set(connection, queue);
+    const background = BACKGROUND_METHODS.has(methodOf(raw));
+    const seq = queue.seq++;
+    queue.size++;
     this.count++;
     this.bytes += bytes;
     queue.bytes += bytes;
     retained.count++;
     retained.bytes += bytes;
     this.#retained.set(connection, retained);
-    const result = new Promise<void>((resolve, reject) => queue.frames.push({ raw, resolve, reject }));
+    const lane = background ? queue.background : queue.interactive;
+    const result = new Promise<void>((resolve, reject) => lane.frames.push({ raw, seq, background, resolve, reject }));
     this.#schedule();
     return result;
   }
@@ -140,7 +177,8 @@ export class FrameQueue {
     const queue = this.#pending.get(connection);
     if (!queue) return;
     this.#pending.delete(connection);
-    for (const frame of queue.frames.slice(queue.head)) {
+    const frames = [...queue.interactive.frames.slice(queue.interactive.head), ...queue.background.frames.slice(queue.background.head)].sort((a, b) => a.seq - b.seq);
+    for (const frame of frames) {
       this.#release(connection, frame);
       frame.resolve();
     }
@@ -157,24 +195,26 @@ export class FrameQueue {
     this.#timer = null;
     const deadline = performance.now() + SLICE_MS;
     while (this.#pending.size > 0 && this.#active < MAX_ACTIVE && performance.now() < deadline) {
-      let available: [ServerConnection, Pending] | undefined;
-      for (const entry of this.#pending) {
-        const connection = entry[0];
-        if ((this.#activeByConnection.get(connection) ?? 0) < MAX_ACTIVE_PER_CONNECTION
-          && (!fromAgent(connection) || this.#activeAgents < MAX_AGENT_ACTIVE)) { available = entry; break; }
+      let available: [ServerConnection, Pending, Lane] | undefined;
+      for (const [connection, queue] of this.#pending) {
+        if ((this.#activeByConnection.get(connection) ?? 0) >= MAX_ACTIVE_PER_CONNECTION
+          || (fromAgent(connection) && this.#activeAgents >= MAX_AGENT_ACTIVE)) continue;
+        const lane = this.#nextLane(connection, queue);
+        if (lane !== null) { available = [connection, queue, lane]; break; }
       }
       if (!available) return;
-      const [connection, queue] = available;
-      const frame = queue.frames[queue.head++]!;
+      const [connection, queue, lane] = available;
+      const frame = lane.frames[lane.head++]!;
       const refused = this.#saturated(connection);
       queue.bytes -= frame.raw.length * 2;
-      delete queue.frames[queue.head - 1];
-      if (queue.head >= 128 && queue.head * 2 >= queue.frames.length) {
-        queue.frames = queue.frames.slice(queue.head);
-        queue.head = 0;
+      queue.size--;
+      delete lane.frames[lane.head - 1];
+      if (lane.head >= 128 && lane.head * 2 >= lane.frames.length) {
+        lane.frames = lane.frames.slice(lane.head);
+        lane.head = 0;
       }
       this.#pending.delete(connection);
-      if (queue.head < queue.frames.length) this.#pending.set(connection, queue);
+      if (queue.size > 0) this.#pending.set(connection, queue);
       if (refused) {
         // Queued before the cap filled: refused now, never left waiting.
         this.#release(connection, frame);
@@ -186,6 +226,8 @@ export class FrameQueue {
       const agent = fromAgent(connection);
       if (agent) this.#activeAgents++;
       this.#activeByConnection.set(connection, (this.#activeByConnection.get(connection) ?? 0) + 1);
+      const background = frame.background;
+      if (background) this.#backgroundByConnection.set(connection, (this.#backgroundByConnection.get(connection) ?? 0) + 1);
       let state: 'active' | 'detached' | 'freed' = 'active', method = '';
       const leaveActive = () => {
         this.#active--;
@@ -193,6 +235,10 @@ export class FrameQueue {
         const remaining = (this.#activeByConnection.get(connection) ?? 1) - 1;
         if (remaining === 0) this.#activeByConnection.delete(connection);
         else this.#activeByConnection.set(connection, remaining);
+        if (!background) return;
+        const slow = (this.#backgroundByConnection.get(connection) ?? 1) - 1;
+        if (slow === 0) this.#backgroundByConnection.delete(connection);
+        else this.#backgroundByConnection.set(connection, slow);
       };
       const request: Started = {
         controller: new AbortController(),
@@ -239,6 +285,19 @@ export class FrameQueue {
       catch (error) { complete(); frame.reject(error); }
     }
     if (this.#active < MAX_ACTIVE) this.#schedule();
+  }
+
+  /**
+   * The lane whose first frame this connection starts next, or null when it
+   * starts none now: the earlier of the two heads, unless that one is
+   * background and the connection already runs its share of those.
+   */
+  #nextLane(connection: ServerConnection, queue: Pending): Lane | null {
+    const interactive = queue.interactive.frames[queue.interactive.head];
+    const background = queue.background.frames[queue.background.head];
+    if (background !== undefined && (interactive === undefined || background.seq < interactive.seq)
+      && (this.#backgroundByConnection.get(connection) ?? 0) < MAX_BACKGROUND_PER_CONNECTION) return queue.background;
+    return interactive === undefined ? null : queue.interactive;
   }
 
   #schedule(): void {

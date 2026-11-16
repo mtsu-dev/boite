@@ -227,7 +227,15 @@ fresh core so earlier tests cannot hide a race in first-use imports.
 
 Authenticated RPC requests rotate between connections in four-millisecond
 slices. At most eight handlers per connection and 64 overall can wait on
-asynchronous work. Authenticated agents can occupy at most 48 of those slots,
+asynchronous work. Each connection has two lanes: background, the slow reads
+listed in `BACKGROUND_METHODS` next to the queue (pull requests, their files
+and reviews, `git.status`, `git.diff`, `worktrees.list`), and interactive,
+everything else. Frames start in arrival order, but background requests hold
+at most six of a connection's eight slots: once six run, the connection's
+first queued interactive frame goes ahead of the background ones that wait.
+Each lane keeps its own order. With eight 300 ms pull request reads queued, a
+`settings.get` behind them started after 302.7 ms before the lanes and 1.4 ms
+after (`bun test test/frame-queue.test.ts` in `packages/core`, 2026-11-15). Authenticated agents can occupy at most 48 of those slots,
 leaving capacity for owner actions, paired clients and authentication while
 agents wait for replies. Each connection retains at most 1,024 frames or 32 MiB of
 text; the total stays below 4,096 frames or 64 MiB, including active requests.
@@ -336,6 +344,20 @@ click had medians of 222, 230 and 232 ms, and Load on press 95,
 96 and 100 ms. The Windows CI job measured medians of 225 and 92 ms the same
 day. The press saved about the 120 ms it was held, up to one round trip. The fake does not delay pushed events or model payload size, and a real
 core adds its own handling time to both paths.
+
+## Read ahead when idle
+
+`bun test tests/e2e/idle-preload.test.ts` loads the fake core in a hidden
+browser with a simulated 200 ms round trip (`?fake=1&open=recent&rtt=200`),
+leaves the page idle 3 s, clicks the first sidebar thread that is not open,
+and times the release to the first message drawn in the timeline, four
+samples each on a fresh page. On 2026-11-16 in the Linux container
+(`BOITE_E2E_BROWSER=chrome-headless-shell`, under `nice`), the code before
+the read-ahead had medians of 261 and 257 ms, the loading view shown every
+time; with it, four runs had medians of 115, 59, 38 and 55 ms, the loading
+view never shown. The spread after is the timeline's own drawing time. The
+fake does not model payload size, and a real core adds its own handling time
+to the cold path.
 
 ## Naming a long conversation
 
@@ -454,7 +476,13 @@ a frame (its default is 16 MiB) below the budget the code enforces.
 
 A relayed socket (`/group/relay/<core id>/rpc`) keeps the same budget: past
 32 MiB unread, a dropped send or 10 seconds without a drain, it closes with
-1013. It is deflated when its Host is not loopback, as a direct remote socket
+1013. The relaying machine dials the member's addresses 250 ms apart rather
+than one after the other: with a first address that takes the connection and
+never answers, the relayed hello was answered after 4,008 ms before and 253 ms
+after (`bun test test/group-relay.test.ts -t "never answers"` in
+`packages/core`, 2026-11-15). Its half to the member is pinged after 10
+seconds of silence and closed with 1013 after 25, where Bun's 120-second idle
+close was the only bound before (`test/group-relay-pipe.test.ts`, fake clock). It is deflated when its Host is not loopback, as a direct remote socket
 is. `terminal.output` goes only to the connections that attached that shell
 with `terminals.open` or `accounts.loginTerminal`; `terminal.exited` still
 reaches every owner window.
@@ -482,6 +510,26 @@ returned 0 (dropped) for a 31 MB frame with 29.8 MB already buffered on
 2026-10-05; slicing keeps a long answer off that path. A slice resets the
 call's 120 s timeout. The UI asks for progress on a first open's `threads.get`
 when the core advertises `chunkedAnswers`.
+
+### Reconnecting
+
+A remote client checks and replaces its socket by the rules in
+[machines](machines.md#connecting-a-machine); these are the times they give, on the
+fake clock of `packages/ui/src/lib/ws-client-timing.test.ts`, with a handshake
+of 100 ms (the socket opens after 50 ms, the hello is answered 50 ms later):
+
+| From | To | Before (2026-11-15) | After |
+| --- | --- | --- | --- |
+| `resume()` after 30 s hidden, the old socket dead | ready | 4,100 ms | 100 ms |
+| a ready socket's close | first retry | 1,000 ms (800 to 1,200) | 188 ms (125 to 250) |
+| the last frame of a link that died silently, page in sight | offline | 35,000 ms | 22,000 ms |
+
+The first row was the 4 s `hello` the old socket got before a new one opened;
+away 8 seconds or more, the new socket now opens beside it. The third is the
+idle probe, 12 seconds of silence instead of 25, plus its 10 second deadline.
+Run with `cd packages/ui && bun x vitest run --silent=false
+src/lib/ws-client-timing.test.ts`; the before column is the same file run on
+the parent commit, where `resume()` ignores how long the page was away.
 
 ### Stream channels
 
@@ -531,6 +579,21 @@ the turn's other events, which no channel holds back.
   the other visits again (`ReadingCache` in `reading-cache.ts`). Once the page
   is idle, a plain copy replaces the deep `$state` proxy the timeline drew,
   which weighed several times its data.
+- Once a machine is ready and the page idle (`requestIdleCallback`, else
+  1 s), its first sidebar threads are read ahead into the same cache
+  (`IdlePreloads` in `lib/store/thread-preload.ts`): up to 4, one at a time,
+  in the Recent order (pins, then the latest message), skipping the open
+  thread, archived and incognito ones and those already held; 1 on a
+  connection with `saveData`. Each is the first page an open would ask, as a
+  plain `threads.get` with a sync proof and no `open`, so it subscribes
+  nothing. It enters the cache only where it fits without pushing a visit
+  out. Nothing is read while a thread opens or a turn runs in the open one;
+  an open or a drop drops the read in flight and the rest, and the reads left
+  resume at the next idle moment after an open. Opening such a thread then
+  paints at once and asks only for what came after the page, like any visit.
+  An answer whose thread was deleted, archived, rewound or truncated while it
+  was read, or is no longer one to read ahead, is dropped.
+  Off under automation unless `__BOITE_IDLE_PRELOAD_TEST__` is set.
 - A summary written over the open thread (`thread.updated`, a load tick)
   writes only the fields that changed (`patchFields`), so a tick that moves
   `load` alone wakes only what reads `load`.

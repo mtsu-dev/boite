@@ -286,3 +286,50 @@ test('one sender cannot spend another connection\'s byte capacity', async () => 
     expect(reads).toBe(1);
   } finally { queue.close(); }
 });
+
+test('an interactive call starts at once behind eight slow pull request reads, and each lane keeps its own order', async () => {
+  const connection = { close: () => undefined } as unknown as ServerConnection;
+  const frame = (method: string, id: number) => JSON.stringify({ jsonrpc: '2.0', id, method, params: {} });
+  const slowMs = 300;
+  const started: string[] = [];
+  let slowEnded = false, interactiveAt = 0;
+  const queue = new FrameQueue(async (_connection, raw) => {
+    const { method, id } = JSON.parse(raw) as { method: string; id: number };
+    started.push(`${method}#${id}`);
+    if (method === 'settings.get') { interactiveAt = performance.now(); return; }
+    await new Promise(resolve => setTimeout(resolve, slowMs));
+    slowEnded = true;
+  });
+  try {
+    const slow = Array.from({ length: 8 }, (_, id) => queue.enqueue(connection, frame(id % 2 === 0 ? 'threads.pullRequest' : 'git.status', id)));
+    const sentAt = performance.now();
+    const interactive = queue.enqueue(connection, frame('settings.get', 8));
+    await interactive;
+    const delay = interactiveAt - sentAt;
+    console.log(`interactive call started ${delay.toFixed(1)} ms after it was queued behind 8 slow calls of ${slowMs} ms`);
+    expect(slowEnded).toBe(false);
+    expect(delay).toBeLessThan(slowMs / 2);
+    await Promise.all(slow);
+    // Six background calls ran first, in order; the last two waited for a background slot, still in order.
+    expect(started).toEqual([0, 1, 2, 3, 4, 5].map(id => `${id % 2 === 0 ? 'threads.pullRequest' : 'git.status'}#${id}`).concat('settings.get#8', 'threads.pullRequest#6', 'git.status#7'));
+  } finally { queue.close(); }
+});
+
+test('background calls alone never hold more than six of a connection\'s slots, and interactive calls still get eight', async () => {
+  const connection = { close: () => undefined } as unknown as ServerConnection;
+  const gate = Promise.withResolvers<void>();
+  let active = 0, maximum = 0;
+  const run = async () => { active++; maximum = Math.max(maximum, active); await gate.promise; active--; };
+  const queue = new FrameQueue(run);
+  try {
+    const slow = Array.from({ length: 10 }, (_, id) => queue.enqueue(connection, JSON.stringify({ id, method: 'threads.pullRequests' })));
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(active).toBe(6);
+    const fast = Array.from({ length: 4 }, (_, id) => queue.enqueue(connection, JSON.stringify({ id, method: 'threads.get' })));
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(active).toBe(8);
+    gate.resolve();
+    await Promise.all([...slow, ...fast]);
+    expect(maximum).toBe(8);
+  } finally { gate.resolve(); queue.close(); }
+});

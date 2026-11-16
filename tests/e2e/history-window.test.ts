@@ -96,6 +96,8 @@ test('a song an agent published never sends the messages at the bottom back to t
     await page.waitFor(`(() => { const shown = ${shows}; return !shown.skeleton && shown.song; })()`, 8_000).catch(() => undefined);
     // The song landed and the live end let go of it and of all above the last answer: the skeleton stayed.
     expect(await page.evaluate(shows)).toEqual({ skeleton: false, song: true, jump: false });
+    // The song's card, whose player fills it, is as wide as an inline picture, not fitted to the file name: its seek bar stays long enough to aim with.
+    expect(await page.evaluate<number>(`document.querySelector('${timeline} [data-testid=chat-file]').getBoundingClientRect().width`)).toBeGreaterThanOrEqual(520);
     await page.evaluate(`(() => {
       window.__skeletons = 0;
       const frame = () => { if (${shows}.skeleton) window.__skeletons += 1; window.__frame = requestAnimationFrame(frame); };

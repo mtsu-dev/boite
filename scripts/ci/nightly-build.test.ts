@@ -20,5 +20,7 @@ test('nightly build stamps the core and installer without changing the stable co
 
 test('the UI build defines the version it reports from the root package.json the stamp writes', async () => {
   const { default: config } = await import('../../packages/ui/vite.config.ts');
-  expect((config as { define?: Record<string, string> }).define?.['__BOITE_VERSION__']).toBe(JSON.stringify(releaseVersion()));
+  for (const mode of ['production', 'mobile']) {
+    expect(config({ command: 'build', mode }).define?.['__BOITE_VERSION__']).toBe(JSON.stringify(releaseVersion()));
+  }
 });

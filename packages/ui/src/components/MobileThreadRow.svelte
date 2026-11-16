@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { rowAsks, stateForm } from '../lib/status-order';
+  import { rowAsks, rowSaysState, stateForm } from '../lib/status-order';
   import { Archive, Ellipsis, GitBranch, Pin, PinOff } from '@lucide/svelte';
   import { trackThreadPullRequest } from '../lib/thread-pull-request.svelte';
   import type { Project, ThreadSummary } from '@boite/contracts';
@@ -62,7 +62,7 @@
   const pin = $derived(items.find(item => item.id === 'pin'));
   const archive = $derived(items.find(item => item.id === 'archive'));
   const kind = $derived(thread.archived ? null : threadState(thread, rowAsks(owner, thread.id)));
-  /** A dot when the user must act or a turn failed, the arc for work, each with its word; the time alone otherwise (ThreadState draws it then). */
+  /** A dot when the user must act or a turn failed, the arc for work, each with its word; "Done" for news; the time alone otherwise (ThreadState draws it then). */
   const form = $derived(stateForm(kind));
   const away = $derived(owner.connection !== 'ready');
   const pr = trackThreadPullRequest(() => ({ owner, thread }));
@@ -122,7 +122,7 @@
         <span class="title-line" data-row-title>{#if !feedKind && form !== null}<span class="lone-mark"><ThreadState {thread} {now} subagents={rowAsks(owner, thread.id)} {away} mark /></span>{/if}<ThreadHeadline {owner} {thread} offline={away} ask={why} /></span>
       {:else}
         <ThreadHeadline {owner} {thread} {now} tile={compact && where === undefined ? project : undefined} offline={away}
-          at={form !== null ? thread.lastUserMessageAt ?? thread.createdAt : undefined} />
+          at={rowSaysState(kind) ? thread.lastUserMessageAt ?? thread.createdAt : undefined} />
       {/if}
       {#if listLine}<span class="meta meta-room" aria-hidden="true"><span class="ui-label">&nbsp;</span></span>{/if}
     </button>

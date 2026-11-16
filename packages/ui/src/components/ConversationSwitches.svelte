@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { desktopShell } from '../lib/shell-platform';
   import { chatPrefs, setChatPref } from '../lib/chat-prefs.svelte';
   import { featureOn } from '../lib/features.svelte';
   import { setFeature } from '../lib/features';
@@ -17,7 +18,7 @@
    */
   let { part, phone = false }: { part: 'list' | 'conversation'; phone?: boolean } = $props();
   const uid = $props.id();
-  const inShell = window.__TAURI_INTERNALS__ !== undefined;
+  const inShell = desktopShell();
   /** Each row says what turning it on does; the "i" stays where that needs more than a line. */
   type Option = { id: string; testid?: string; label: string; effect: string; tip?: string; checked: boolean; set: (value: boolean) => void };
   const effects = strings.settings.effects;

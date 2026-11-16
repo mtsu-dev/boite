@@ -52,10 +52,15 @@ export function rowAsks(store: RowSource<Delegated | WorkingChildren>, threadId:
 
 /**
  * How every list marks a state: the user's own (their turn, a failure) by a
- * dot or a "!" disc, work by the accent arc, news and rest by nothing but the
- * time. A marked state carries its word beside the mark (ThreadState.svelte).
+ * dot or a "!" disc, work by the accent arc, news ("Done") and rest by no
+ * mark. A marked state carries its word beside the mark (ThreadState.svelte).
  */
 export function stateForm(state: ThreadState | null): 'act' | 'work' | null {
   if (state === 'waiting' || state === 'error' || state === 'interrupted') return 'act';
   return state === null || state === 'done' ? null : 'work';
+}
+
+/** A row says this state in words before its time: every marked state, and "Done" (ThreadState.svelte). */
+export function rowSaysState(state: ThreadState | null): boolean {
+  return state === 'done' || stateForm(state) !== null;
 }
