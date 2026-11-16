@@ -11,8 +11,9 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
-import android.webkit.JavascriptInterface
 import android.webkit.WebView
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import org.json.JSONObject
 import java.io.File
 import java.lang.ref.WeakReference
@@ -38,18 +39,39 @@ class AppUpdates(private val activity: Activity, private val webView: WebView) {
     worker.execute { dir.listFiles()?.forEach { it.delete() } }
   }
 
-  @JavascriptInterface
-  fun info(): String {
+  /**
+   * Serves the page as `window.BoiteUpdater`, a message port Android injects
+   * only into the app's own origin and answers only from its main frame: an
+   * HTML view in a frame, whatever its origin, never reaches the installer.
+   * A WebView too old for that gets no updater, and the UI no Updates card.
+   */
+  fun attach() {
+    if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) return
+    WebViewCompat.addWebMessageListener(webView, "BoiteUpdater", setOf(ORIGIN)) { _, message, _, isMainFrame, reply ->
+      if (!isMainFrame) return@addWebMessageListener
+      // This runs on the UI thread: a malformed request is dropped, never thrown.
+      val (request, result) = try {
+        val request = JSONObject(message.data ?: "")
+        request to when (request.optString("cmd")) {
+          "info" -> info()
+          "download" -> { download(request.getString("url"), request.getString("version")); JSONObject.NULL }
+          "install" -> install(request.getString("version"))
+          else -> return@addWebMessageListener
+        }
+      } catch (_: Exception) {
+        return@addWebMessageListener
+      }
+      reply.postMessage(JSONObject().put("id", request.opt("id")).put("result", result).toString())
+    }
+  }
+
+  private fun info(): JSONObject {
     val info = installed()
-    return JSONObject()
-      .put("version", info.versionName ?: "")
-      .put("code", versionCode(info))
-      .toString()
+    return JSONObject().put("version", info.versionName ?: "").put("code", versionCode(info))
   }
 
   /** Starts the download of `version` from `url`; events report progress and the end. */
-  @JavascriptInterface
-  fun download(url: String, version: String) {
+  private fun download(url: String, version: String) {
     worker.execute {
       try {
         downloaded?.let { (done, file) -> if (done == version && file.isFile) { emit(JSONObject().put("kind", "downloaded").put("version", version)); return@execute } }
@@ -76,8 +98,7 @@ class AppUpdates(private val activity: Activity, private val webView: WebView) {
    * install apps yet: Android's page for that opens, and the owner taps
    * Update again once allowed. "missing" when nothing is downloaded.
    */
-  @JavascriptInterface
-  fun install(version: String): String {
+  private fun install(version: String): String {
     val file = downloaded?.takeIf { it.first == version && it.second.isFile }?.second ?: return "missing"
     if (Build.VERSION.SDK_INT >= 26 && !activity.packageManager.canRequestPackageInstalls()) {
       activity.runOnUiThread {
@@ -185,6 +206,8 @@ class AppUpdates(private val activity: Activity, private val webView: WebView) {
   }
 
   companion object {
+    /** The page's origin: Tauri serves the packaged UI there. */
+    const val ORIGIN = "http://tauri.localhost"
     @Volatile var live: WeakReference<AppUpdates>? = null
   }
 }

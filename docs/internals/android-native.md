@@ -115,7 +115,11 @@ updates itself, through the same Updates card as the desktop app
   the channel. Within a channel only a higher version is offered. Switching
   channel offers the other one's newest build only when it was published after
   this build: an older one has a lower code and Android would refuse it.
-- `AppUpdates.kt` (`window.BoiteUpdater`) downloads the APK to the app's
+- `AppUpdates.kt` answers on `window.BoiteUpdater`, a message port
+  (`addWebMessageListener`) that Android injects only into
+  `http://tauri.localhost` and that answers only its main frame: an HTML view
+  in a frame cannot reach it. A WebView without that feature gets no Updates
+  card. It downloads the APK to the app's
   cache, then refuses it unless it is `dev.mtsu.boite`, has a higher version
   code and is signed by the installed app's key. It then opens a
   `PackageInstaller` session. Android asks once to let Boite install apps,

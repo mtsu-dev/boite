@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { androidBackend, builtAt, candidateOf, compareVersions, offers, type AndroidUpdater, type GithubRelease } from './app-update-android';
+import { androidBackend, builtAt, candidateOf, compareVersions, offers, portUpdater, type AndroidUpdater, type AndroidUpdaterPort, type GithubRelease } from './app-update-android';
 import { strings } from './strings';
 
 function release(tag: string, files: string[], extra: Partial<GithubRelease> = {}): GithubRelease {
@@ -18,9 +18,9 @@ function bridge(info = { version: '2.0.0-nightly.20261115.1', code: 3_600_000 })
   const fake: AndroidUpdater & { calls: string[]; answer(value: string): void } = {
     calls,
     answer: (value) => { answer = value; },
-    info: () => JSON.stringify(info),
-    download: (url, version) => { calls.push(`download ${version} ${url}`); },
-    install: (version) => { calls.push(`install ${version}`); return answer; }
+    info: async () => info,
+    download: async (url, version) => { calls.push(`download ${version} ${url}`); },
+    install: async (version) => { calls.push(`install ${version}`); return answer; }
   };
   return fake;
 }
@@ -130,4 +130,20 @@ test('the channel the owner picks is kept for the next start', async () => {
   const fetcher = answer([release('v2.0.0-beta.2', [apk('2.0.0-beta.2')])]);
   await androidBackend(bridge(), fetcher).check('stable');
   expect((await androidBackend(bridge(), fetcher).status()).channel).toBe('stable');
+});
+
+test('the port pairs each answer with its request and ignores anything else', async () => {
+  const sent: { id: number; cmd: string; version?: string }[] = [];
+  const port: AndroidUpdaterPort = { onmessage: null, postMessage: (message) => { sent.push(JSON.parse(message)); } };
+  const updater = portUpdater(port);
+  const info = updater.info();
+  const install = updater.install('2.0.0-nightly.20261116.2');
+  expect(sent.map(({ cmd }) => cmd)).toEqual(['info', 'install']);
+  expect(sent[1]).toMatchObject({ version: '2.0.0-nightly.20261116.2' });
+  port.onmessage!({ data: 'not json' });
+  port.onmessage!({ data: JSON.stringify({ id: 99, result: 'stray' }) });
+  port.onmessage!({ data: JSON.stringify({ id: sent[1]!.id, result: 'permission' }) });
+  port.onmessage!({ data: JSON.stringify({ id: sent[0]!.id, result: { version: '2.0.0', code: 5 } }) });
+  expect(await install).toBe('permission');
+  expect(await info).toEqual({ version: '2.0.0', code: 5 });
 });

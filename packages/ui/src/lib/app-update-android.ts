@@ -9,12 +9,20 @@ import type { AppUpdateBackend, UpdateChannel, UpdateSnapshot } from './app-upda
 import { MOBILE_BUILD, tauriApp } from './shell-platform';
 import { strings } from './strings';
 
-/** What `AppUpdates.kt` exposes to the page. */
+/** The updater `AppUpdates.kt` serves, over the port below. */
 export interface AndroidUpdater {
-  /** JSON `{ version, code }` of the installed app. */
-  info(): string;
-  download(url: string, version: string): void;
-  install(version: string): 'started' | 'permission' | 'missing' | string;
+  info(): Promise<{ version: string; code: number }>;
+  download(url: string, version: string): Promise<void>;
+  install(version: string): Promise<'started' | 'permission' | 'missing' | string>;
+}
+
+/**
+ * What Android injects as `window.BoiteUpdater`: a message port, only in the
+ * app's own page and only in its main frame, never in a framed HTML view.
+ */
+export interface AndroidUpdaterPort {
+  postMessage(message: string): void;
+  onmessage: ((event: { data: string }) => void) | null;
 }
 
 /** What `AppUpdates.kt` reports through `window.__boiteAppUpdate`. */
@@ -27,7 +35,7 @@ export type AndroidUpdateEvent =
 
 declare global {
   interface Window {
-    BoiteUpdater?: AndroidUpdater;
+    BoiteUpdater?: AndroidUpdaterPort;
     __boiteAppUpdate?: (event: AndroidUpdateEvent) => void;
   }
 }
@@ -63,9 +71,37 @@ const CHANNEL_KEY = 'boite.app-update-channel';
  */
 const CODE_EPOCH = Date.UTC(2020, 0, 1);
 
+/** Requests over the port, each answered by the reply that carries its id. */
+export function portUpdater(port: AndroidUpdaterPort): AndroidUpdater {
+  let next = 0;
+  const pending = new Map<number, (result: unknown) => void>();
+  port.onmessage = (event) => {
+    let reply: { id?: unknown; result?: unknown };
+    try { reply = JSON.parse(event.data) as typeof reply; } catch { return; }
+    if (typeof reply.id !== 'number') return;
+    pending.get(reply.id)?.(reply.result);
+    pending.delete(reply.id);
+  };
+  const call = (cmd: string, args: Record<string, string> = {}) => new Promise<unknown>((resolve) => {
+    const id = next += 1;
+    pending.set(id, resolve);
+    port.postMessage(JSON.stringify({ id, cmd, ...args }));
+  });
+  return {
+    info: async () => call('info') as Promise<{ version: string; code: number }>,
+    download: async (url, version) => { await call('download', { url, version }); },
+    install: async (version) => String(await call('install', { version }))
+  };
+}
+
+let bridge: { port: AndroidUpdaterPort; updater: AndroidUpdater } | null = null;
+
 /** The bridge, only in the Android app built for itself. */
 export function androidUpdater(): AndroidUpdater | null {
-  return MOBILE_BUILD && tauriApp() && typeof window !== 'undefined' ? window.BoiteUpdater ?? null : null;
+  const port = MOBILE_BUILD && tauriApp() && typeof window !== 'undefined' ? window.BoiteUpdater : undefined;
+  if (!port) return null;
+  if (bridge?.port !== port) bridge = { port, updater: portUpdater(port) };
+  return bridge.updater;
 }
 
 export function trackOf(version: string): UpdateChannel {
@@ -163,12 +199,17 @@ async function releasePages(fetcher: typeof fetch, channel: UpdateChannel): Prom
 }
 
 export function androidBackend(bridge: AndroidUpdater, fetcher: typeof fetch = (...args) => fetch(...args)): AppUpdateBackend {
-  const installed = JSON.parse(bridge.info()) as { version: string; code: number };
-  const currentChannel = trackOf(installed.version);
+  let installed = { version: '', code: 0 };
   let snapshot: UpdateSnapshot = {
-    phase: 'idle', currentVersion: installed.version, currentChannel, channel: readChannel(currentChannel),
+    phase: 'idle', currentVersion: '', currentChannel: 'stable', channel: 'stable',
     version: null, notes: null, publishedAt: null, received: 0, total: null, error: null, supported: true
   };
+  // Every request waits for the installed version, which the port answers first.
+  const known = bridge.info().then((info) => {
+    installed = info;
+    const currentChannel = trackOf(info.version);
+    snapshot = { ...snapshot, currentVersion: info.version, currentChannel, channel: readChannel(currentChannel) };
+  });
   let candidate: Candidate | null = null;
   let checkedAt = 0;
   let waiter: { resolve: (value: UpdateSnapshot) => void; reject: (error: Error) => void } | null = null;
@@ -204,8 +245,12 @@ export function androidBackend(bridge: AndroidUpdater, fetcher: typeof fetch = (
   };
 
   return {
-    status: async () => snapshot,
+    status: async () => {
+      await known;
+      return snapshot;
+    },
     check: async (channel, force = false) => {
+      await known;
       if (channel !== snapshot.channel) saveChannel(channel);
       // Only a list just read is reused, never the state of a download or an install.
       if (!force && channel === snapshot.channel && ['available', 'current'].includes(snapshot.phase) && Date.now() - checkedAt < REUSE_MS) return snapshot;
@@ -225,11 +270,11 @@ export function androidBackend(bridge: AndroidUpdater, fetcher: typeof fetch = (
       publish({ ...snapshot, phase: 'downloading', received: 0, error: null });
       return new Promise<UpdateSnapshot>((resolve, reject) => {
         waiter = { resolve, reject };
-        bridge.download(url, version);
+        bridge.download(url, version).catch(reject);
       });
     },
     install: async () => {
-      const answer = snapshot.version ? bridge.install(snapshot.version) : 'missing';
+      const answer = snapshot.version ? await bridge.install(snapshot.version) : 'missing';
       if (answer === 'permission') {
         publish({ ...snapshot, phase: 'ready', error: null });
         throw new Error(strings.appUpdate.androidPermission);
