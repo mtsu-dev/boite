@@ -23,9 +23,9 @@
     viewport: HTMLElement | undefined;
     /** Bumped by each Ctrl+F: a second one while open selects the query again. */
     request: number;
-    jump: (messageId: string, part: number) => void;
-    /** The row of the timeline that draws a part of a message, and the first part it draws. */
-    rowOf: (messageId: string, part: number) => { id: string; from: number };
+    jump: (messageId: string, part: number, offset: number) => void;
+    /** The row of the timeline that draws a part of a message at `offset` of its text, the first part it draws, and where its slice of that text starts. */
+    rowOf: (messageId: string, part: number, offset: number) => { id: string; from: number; text?: { start: number } };
     onclose: () => void;
   } = $props();
 
@@ -55,20 +55,21 @@
       clearFind();
       return;
     }
-    // A long message is cut in rows: the match is the nth of its own row, past the ones the rows above hold.
-    const row = rowOf(hit.messageId, hit.part);
-    const above = row.from === 0 ? 0 : hits.filter(other => other.messageId === hit.messageId && other.part < row.from).length;
-    void show(row.id, hit.messageId, hit.part, hit.nth - above, q);
+    // A long message is cut in rows, a long answer in slices: the match is the nth of its own row, past the ones the rows above hold.
+    const row = rowOf(hit.messageId, hit.part, hit.at);
+    const start = row.text?.start ?? 0;
+    const above = hits.filter(other => other.messageId === hit.messageId && (other.part < row.from || (other.part === row.from && other.at < start))).length;
+    void show(row.id, hit.messageId, hit.part, hit.at, hit.nth - above, q);
   });
 
   $effect(() => () => clearFind());
 
-  async function show(rowId: string, messageId: string, part: number, nth: number, q: string) {
+  async function show(rowId: string, messageId: string, part: number, offset: number, nth: number, q: string) {
     const box = viewport;
     if (!box) return;
     let article = box.querySelector<HTMLElement>(`[data-mid="${CSS.escape(rowId)}"]`);
     if (!article) {
-      jump(messageId, part);
+      jump(messageId, part, offset);
       await tick();
       await new Promise((resolve) => requestAnimationFrame(resolve));
       article = box.querySelector<HTMLElement>(`[data-mid="${CSS.escape(rowId)}"]`);

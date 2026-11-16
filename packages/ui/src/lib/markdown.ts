@@ -1,5 +1,5 @@
 import { inline, mathHtml } from './markdown-inline';
-import { closesFence, fenceLanguage, openFence } from './fences';
+import { FenceScan, closesFence, fenceLanguage, openFence } from './fences';
 /**
  * The markdown an agent answer needs: paragraphs, headings, nested and task
  * lists, block quotes, tables, rules, fenced and inline code, bold, italic,
@@ -24,6 +24,33 @@ function escape(text: string): string {
 
 
 const HEADING = /^(#{1,6})\s+(.+)$/;
+
+/** The anchor a heading titled `title` gets: what a `#fragment` link to it names. */
+export function headingId(title: string): string {
+  return title.toLowerCase().replace(/[^\p{L}\p{N}_ -]/gu, '').trim().replace(/\s+/g, '-');
+}
+
+/**
+ * Where the heading whose anchor is `id` starts in `text`, -1 when none: a
+ * link to it in one slice of an answer cut in rows (lib/timeline-rows.ts)
+ * opens the slice that holds it, read on the whole answer as it is now.
+ */
+export function headingAt(text: string, id: string): number {
+  const fences = new FenceScan();
+  for (let start = 0; start < text.length;) {
+    const end = text.indexOf('\n', start);
+    // A quoted heading is rendered with its anchor too (`readQuote`): its marks come off first.
+    let line = text.slice(start, end < 0 ? undefined : end);
+    for (let quoted = QUOTE.exec(line); quoted; quoted = QUOTE.exec(line)) line = quoted[1] ?? '';
+    if (!fences.line(line) && !fences.inside) {
+      const heading = HEADING.exec(line);
+      if (heading && headingId(heading[2] ?? '') === id) return start;
+    }
+    if (end < 0) break;
+    start = end + 1;
+  }
+  return -1;
+}
 const RULE = /^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/;
 const ITEM = /^(\s*)(?:[-*+]|\d+[.)])\s+(.*)$/;
 const BULLET_MARK = /^\s*[-*+]\s/;
@@ -111,6 +138,12 @@ export function renderBlock(source: string, rich = false): string {
     return known;
   }
   const html = renderMarkdown(source, rich);
+  keep(key, html);
+  return html;
+}
+
+/** Keeps `html` for a block, oldest first out past `RENDERED_CHARS`: what `renderBlock` and a prepared page both fill. */
+function keep(key: string, html: string): void {
   rendered.set(key, html);
   renderedChars += key.length + html.length;
   for (const [oldest, value] of rendered) {
@@ -118,7 +151,70 @@ export function renderBlock(source: string, rich = false): string {
     rendered.delete(oldest);
     renderedChars -= oldest.length + value.length;
   }
-  return html;
+}
+
+/** How long a page waits for the worker before its rows render here, as they did before it. */
+export const PREPARE_WAIT_MS = 50;
+
+/** The worker, made on the first page worth preparing; null once it could not start. */
+let preparer: Worker | null | undefined;
+let lastPrepare = 0;
+const preparing = new Map<number, (html: string[] | null) => void>();
+
+function prepareWorker(): Worker | null {
+  if (preparer !== undefined) return preparer;
+  if (typeof Worker === 'undefined') return preparer = null;
+  try {
+    preparer = new Worker(new URL('./markdown-prepare.worker.ts', import.meta.url), { type: 'module' });
+  } catch {
+    return preparer = null;
+  }
+  preparer.onmessage = ({ data }: MessageEvent<{ id: number; html?: string[] }>) => {
+    const done = preparing.get(data.id);
+    preparing.delete(data.id);
+    done?.(data.html ?? null);
+  };
+  // A worker that failed to load answers nothing: the rows render here, as without one.
+  preparer.onerror = (event) => {
+    event.preventDefault();
+    preparer?.terminate();
+    preparer = null;
+    const waiting = [...preparing.values()];
+    preparing.clear();
+    for (const done of waiting) done(null);
+  };
+  return preparer;
+}
+
+/**
+ * Renders the finished blocks of a page of history in a worker and keeps their
+ * HTML in the block cache, so the rows that draw them later only insert it.
+ * Answers how the page went: `worker` when its HTML came back within `wait`
+ * ms, `here` when there is no worker or it was slower, the rows then rendering
+ * their blocks on the main thread as `renderBlock` always did (an answer that
+ * comes later still fills the cache), `known` when every block was cached.
+ */
+export function prepareBlocks(sources: readonly string[], rich = false, wait = PREPARE_WAIT_MS, make: () => Worker | null = prepareWorker): Promise<'worker' | 'here' | 'known'> {
+  const prefix = rich ? 'r' : 'p';
+  const blocks = [...new Set(sources)].filter((source) => !rendered.has(prefix + source));
+  if (blocks.length === 0) return Promise.resolve('known');
+  const away = make();
+  if (!away) return Promise.resolve('here');
+  return new Promise((settle) => {
+    const id = ++lastPrepare;
+    const late = setTimeout(() => settle('here'), wait);
+    preparing.set(id, (html) => {
+      clearTimeout(late);
+      if (html) blocks.forEach((block, index) => { const value = html[index]; if (value !== undefined && !rendered.has(prefix + block)) keep(prefix + block, value); });
+      settle(html ? 'worker' : 'here');
+    });
+    away.postMessage({ id, blocks, rich });
+  });
+}
+
+/** Whether `renderBlock` has this block's HTML already. */
+export function knownBlock(source: string, rich = false): boolean {
+  return rendered.has((rich ? 'r' : 'p') + source);
 }
 
 export function renderMarkdown(source: string, rich = false): string {
@@ -175,7 +271,7 @@ export function renderMarkdown(source: string, rich = false): string {
       flushAll();
       const level = Math.min(6, (heading[1]?.length ?? 1) + 2);
       const title = heading[2] ?? '';
-      const id = rich ? ` id="${escape(title.toLowerCase().replace(/[^\p{L}\p{N}_ -]/gu, '').trim().replace(/\s+/g, '-'))}"` : '';
+      const id = rich ? ` id="${escape(headingId(title))}"` : '';
       html.push(`<h${level}${id}>${inline(title, rich)}</h${level}>`);
       continue;
     }

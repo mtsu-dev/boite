@@ -14,9 +14,9 @@ test('every occurrence counts, without case, oldest message first, and tool card
     ])
   ];
   expect(findHits(messages, 'parser')).toEqual([
-    { messageId: 'm-1', nth: 0, part: 0 },
-    { messageId: 'm-2', nth: 0, part: 0 },
-    { messageId: 'm-2', nth: 1, part: 0 }
+    { messageId: 'm-1', nth: 0, part: 0, at: 8 },
+    { messageId: 'm-2', nth: 0, part: 0, at: 4 },
+    { messageId: 'm-2', nth: 1, part: 0, at: 21 }
   ]);
   expect(findHits(messages, '  ')).toEqual([]);
   expect(findHits(messages, 'lexer')).toEqual([]);
