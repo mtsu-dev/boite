@@ -127,9 +127,11 @@ class AppUpdates(private val activity: Activity, private val webView: WebView) {
       connection.setRequestProperty("Accept", "application/octet-stream")
       val code = connection.responseCode
       if (code in 300..399 && hops < 5) {
-        val next = connection.getHeaderField("Location") ?: error("$url: a redirect with no address")
+        val from = connection.url
+        val next = connection.getHeaderField("Location") ?: error("$from: a redirect with no address")
         connection.disconnect()
-        val target = URL(URL(url), next)
+        // A relative address is relative to the hop that sent it, not to the first one.
+        val target = URL(from, next)
         require(target.protocol == "https" || target.protocol == "http") { "$target: expected an http or https address" }
         connection = target.openConnection() as HttpURLConnection
         hops += 1
