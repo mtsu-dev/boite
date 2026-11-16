@@ -4,6 +4,8 @@ import { FakeClient } from '../fake-client';
 import { Store } from '../store.svelte';
 import { MemorySnapshotDb, SNAPSHOT_WRITE_DELAY_MS, ThreadSnapshots, setThreadSnapshots } from '../thread-snapshots';
 import { removeEnvironment, upsertEnvironment } from '../endpoint-env';
+import type { StoreContext } from './context';
+import { DeviceSnapshots } from './device-snapshots';
 
 type Params = { threadId?: string; after?: string };
 
@@ -111,4 +113,39 @@ test('a write still waiting for its page to settle is dropped when the machine i
   await new Promise(resolve => setTimeout(resolve, SNAPSHOT_WRITE_DELAY_MS + 1500));
   await snapshots.purgeMachine('none');
   expect([db.keys.size, db.records.size]).toEqual([0, 0]);
+});
+
+test('a page left before a drop in another window is not written once this window\'s memory let it go', async () => {
+  const db = new MemorySnapshotDb();
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  let started!: () => void;
+  const encrypting = new Promise<void>(resolve => { started = resolve; });
+  const subtle = {
+    generateKey: (...args: Parameters<SubtleCrypto['generateKey']>) => crypto.subtle.generateKey(...args),
+    encrypt: async (...args: Parameters<SubtleCrypto['encrypt']>) => { started(); await gate; return crypto.subtle.encrypt(...args); },
+    decrypt: (...args: Parameters<SubtleCrypto['decrypt']>) => crypto.subtle.decrypt(...args),
+  } as unknown as SubtleCrypto;
+  const one = new ThreadSnapshots({ db, subtle, channel: null });
+  const two = new ThreadSnapshots({ db, subtle: crypto.subtle, channel: null });
+  setThreadSnapshots(one);
+  const page = (id: string, ids: string[]) => ({ id, projectId: 'p', title: id, status: 'idle', createdAt: 1, messages: ids.map(mid => ({ id: mid, threadId: id, turnId: `turn-${mid}`, role: 'assistant', createdAt: 1, parts: [{ type: 'text', text: mid }] })), turns: [], commands: [], messagesBefore: null }) as unknown as Thread;
+  const left = page('t1', ['m1', 'removed-message']);
+  const memory = new Map<string, Thread>([['t1', left]]);
+  const ctx = { store: { core: { coreId: 'core-a' }, principal: 'owner' }, connection: { endpointUrl: null } } as unknown as StoreContext;
+  const device = new DeviceSnapshots(ctx, { openThread: null, readingThreads: { get: id => memory.get(id) } }, new Set());
+  // Another write holds this window's queue: the leave's generations are read behind it.
+  const clog = one.write('core-a', null, page('t0', ['a']), null);
+  await encrypting;
+  // The leave, with the page it held then (an argument the store no longer passes).
+  device.schedule('t1', ...([left] as unknown as []));
+  // Window two drops t1 (a rewind there), and the memory here lets the page go.
+  await two.drop('core-a', 't1');
+  memory.delete('t1');
+  release();
+  await clog;
+  await new Promise(resolve => setTimeout(resolve, SNAPSHOT_WRITE_DELAY_MS + 1500));
+  await one.purgeMachine('none');
+  expect(await db.data('core-a', 't1')).toBeUndefined();
+  device.stop();
 });

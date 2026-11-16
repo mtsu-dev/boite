@@ -88,12 +88,12 @@ test('a record that does not decrypt is dropped, and so is one moved to another 
   const flipped = new Uint8Array(first!.data.slice(0));
   flipped[0]! ^= 1;
   const keyId = (await db.machine('core-a'))!.id;
-  await db.put((await db.metas()).find(meta => meta.threadId === 't1')!, { iv: first!.iv, data: flipped.buffer }, await db.mark('core-a', 't1'), keyId);
+  await db.put((await db.metas()).find(meta => meta.threadId === 't1')!, { iv: first!.iv, data: flipped.buffer }, await db.mark('core-a', 't1', null), keyId);
   expect(await snapshots.read('core-a', 't1')).toBeUndefined();
   expect((await db.metas()).map(meta => meta.threadId)).toEqual(['t2']);
   // t2's bytes under t3's name: the additional data says which thread it was written for.
   const t2 = (await db.data('core-a', 't2'))!;
-  await db.put({ machine: 'core-a', threadId: 't3', bytes: 1, openedAt: 1 }, t2, await db.mark('core-a', 't3'), keyId);
+  await db.put({ machine: 'core-a', threadId: 't3', bytes: 1, openedAt: 1 }, t2, await db.mark('core-a', 't3', null), keyId);
   const fresh = new ThreadSnapshots({ db, subtle: crypto.subtle });
   expect(await fresh.read('core-a', 't3')).toBeUndefined();
   expect(await db.data('core-a', 't3')).toBeUndefined();
@@ -249,4 +249,20 @@ test('a drop deletes a record another window wrote after this window read its in
   await two.drop('core-a', 't1');
   expect(await db.data('core-a', 't1')).toBeUndefined();
   expect(await one.read('core-a', 't1')).toBeUndefined();
+});
+
+test('a purge by address while a machine\'s first key is being made there keeps the key and the write out', async () => {
+  const db = new MemorySnapshotDb();
+  const one = new ThreadSnapshots({ db, subtle: crypto.subtle, channel: null });
+  const held = heldCrypto('generateKey');
+  const two = new ThreadSnapshots({ db, subtle: held.subtle, channel: null });
+  // Window two makes the machine's first key, reached at a.example; nothing maps that address to it yet.
+  const writing = two.write('core-a', 'https://a.example', thread('t1'), null);
+  await held.started;
+  // The device forgets a.example in window one meanwhile.
+  await one.purgeUrl('https://a.example');
+  held.release();
+  expect(await writing).toBe(false);
+  expect([db.keys.size, db.records.size]).toEqual([0, 0]);
+  expect(await new ThreadSnapshots({ db, subtle: crypto.subtle, channel: null }).read('core-a', 't1')).toBeUndefined();
 });

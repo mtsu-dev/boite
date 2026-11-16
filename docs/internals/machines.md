@@ -495,14 +495,20 @@ rewind, a truncation, a refused open or a forgotten thread drops its record.
 Forgetting a saved machine (`removeEnvironment`, which a revoked key also
 calls) or a group dropping it (`removeBrought`) purges every machine this
 device reached at that address, key included. Every window of the browser
-shares the database, so the guards live in it: a purge generation per machine,
-never deleted, and a drop generation per thread, kept until a purge of its
-machine outdates it, each moved on in the same transaction as the deletion. A write reads both and the machine's key when
-it is scheduled, takes its page only after, encrypts outside any transaction,
-and stores the record in one transaction that writes nothing unless both
-generations and the stored key are unchanged. Making a missing key checks the
-purge generation in its own transaction, so a key being made when another
-window purges does not come back. A drop always deletes in the database. A
+shares the database, so the guards live in it: a purge generation per machine
+and one per address, never deleted, and a drop generation per thread, kept
+until a purge of its machine outdates it, each moved on in the same
+transaction as the deletion. A purge by address moves the address's
+generation on even when no key maps the address to a machine yet. A write
+reads the generations of its machine, its address and its thread, and the
+machine's key, when it is scheduled; it takes its page only after, from the
+screen or the reading cache, so a page left before a drop is never written
+with the generations read after it, and nothing is written once memory let
+the page go. It encrypts outside any transaction and stores the record in one
+transaction that writes nothing unless the generations and the stored key are
+unchanged. Making a missing key checks the generations of the machine and the
+address in its own transaction and records the address with the key, so a
+key being made when another window purges does not come back. A drop always deletes in the database. A
 purge is also posted on a `BroadcastChannel`, only so other windows let their
 waiting writes go early, and a store that lets its machine go cancels its own.
 The machine is the core's

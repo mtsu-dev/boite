@@ -150,7 +150,7 @@ export class Threads {
     // The deep proxy on screen weighs several times its data: once the next thread is painted, plain data replaces it.
     this.readingThreads.remember(thread.id, kept, readingCacheBytes(kept.messages), held => $state.snapshot(held) as Thread,
       () => this.openThread?.id !== thread.id && this.preloads.waitingThreadId !== thread.id);
-    this.snapshots.schedule(thread.id, kept); // What the visit ended on is its snapshot for the next start too.
+    this.snapshots.schedule(thread.id); // What the visit ended on, read back from the reading cache, is its snapshot for the next start too.
   }
 
   #unreadCount = $derived(this.threads.filter((t) => t.unread).length);

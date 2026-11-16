@@ -73,26 +73,27 @@ export class DeviceSnapshots {
 
   /**
    * Writes `threadId`'s page once it has stayed put for
-   * `SNAPSHOT_WRITE_DELAY_MS` and the page is idle: what `page` answers then,
-   * or `left` once the reader moved on and the reading cache let it go.
+   * `SNAPSHOT_WRITE_DELAY_MS` and the page is idle: the page on screen or the
+   * one the reading cache holds, taken only once the write's generations are
+   * read, and nothing when neither holds it any more.
    */
-  schedule(threadId: ThreadId, left?: Thread): void {
+  schedule(threadId: ThreadId): void {
     const target = this.#target();
     if (!target) return;
     this.#writes.get(threadId)?.();
     this.#listen(target.snapshots);
     // A purge of the machine or a drop of the thread after this point, in any window, keeps the write out.
-    const mark = target.snapshots.mark(target.machine, threadId);
+    const mark = target.snapshots.mark(target.machine, threadId, target.url);
     const generation = this.#generation;
     let live = true;
     let cancelIdle: (() => void) | null = null;
     const timer: ReturnType<typeof setTimeout> = setTimeout(() => {
       cancelIdle = whenIdle(() => {
         this.#writes.delete(threadId);
-        // The page is taken once the mark is read, never before.
+        // The page is taken once the mark is read, never before: a page held from earlier could predate a drop the mark already counts.
         void mark.then(() => {
           if (!live || this.#generation !== generation || this.ctx.store.core?.coreId !== target.machine) return;
-          const thread = this.#page(threadId) ?? left;
+          const thread = this.#page(threadId);
           if (!thread || thread.messages.length === 0) return;
           void target.snapshots.write(target.machine, target.url, thread, resumeRequest(threadId, thread).after ?? null, mark);
         });
