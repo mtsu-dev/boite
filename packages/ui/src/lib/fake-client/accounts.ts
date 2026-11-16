@@ -58,7 +58,7 @@ function gatewayRows(state: SubscriptionProxyQuotas): AccountQuota[] {
   })));
 }
 
-function quotas(ctx: FakeContext): AccountQuota[] {
+export function quotas(ctx: FakeContext): AccountQuota[] {
   return [...accountQuotas(ctx), ...gatewayRows(gatewayQuotas(ctx))].map(row => ctx.quotaAlerts[row.accountId] ? { ...row, alerts: { ...ctx.quotaAlerts[row.accountId] } } : row);
 }
 

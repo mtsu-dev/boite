@@ -278,6 +278,8 @@ export class QuotaStore {
     if (this.#gatewayOwnsLimits()) return this.#decorate(this.gateway.rows());
     return this.#decorate([...this.#core.accounts.list().map((row) => this.#snapshot(row)), ...this.gateway.rows()]);
   }
+  /** Every row as known now, from the cache alone: no provider and no gateway is asked (`boite state limits`). */
+  cached(): AccountQuota[] { return this.#known(); }
   #decorate(rows: AccountQuota[]): AccountQuota[] { return rows.map((row) => this.alerts.decorate(row)); }
   /**
    * A Douane in use answers for the accounts that serve this machine's agents.

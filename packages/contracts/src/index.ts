@@ -83,6 +83,8 @@ export * from './imports';
 export * from './core';
 export * from './agent-door';
 export * from './state';
+export * from './activity';
+export * from './harness-updates';
 export * from './setting-help';
 export * from './panel';
 export * from './todos';

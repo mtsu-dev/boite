@@ -8,15 +8,15 @@
  * credential or full email.
  */
 import {
-  isStateDomain, maskEmail, subscriptionProxyName, subscriptionProxyOrigin, subscriptionProxyServes,
-  type StateAgentUpdate, type StateAppUpdate, type StateInboxRow, type StateLimit, type StateMachine, type StateReading,
-  type StateRoute, type StateSummary, type StateTask, type StateUpdates, type StateVersion, type ThreadSummary,
+  isStateDomain, stateAgentUpdate, stateInbox, stateLimit, stateMachines, stateRoute, stateSummary, stateTasks,
+  type StateAppUpdate, type StateInboxRow, type StateLimit, type StateMachine, type StateReading, type StateRoute, type StateSummary,
+  type StateTask, type StateUpdates, type StateVersion,
 } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { invalidParams } from './errors.ts';
 import { CORE_VERSION } from './version.ts';
 
-type StateCore = Pick<Core, 'version' | 'channel' | 'quotas' | 'group' | 'sessions' | 'updates' | 'serverUpdates' | 'desktopUpdates' | 'threads' | 'projects' | 'procs' | 'journal' | 'settings' | 'providers'>;
+type StateCore = Pick<Core, 'subscribers' | 'version' | 'channel' | 'quotas' | 'group' | 'sessions' | 'updates' | 'serverUpdates' | 'desktopUpdates' | 'threads' | 'projects' | 'procs' | 'journal' | 'settings' | 'providers'>;
 
 export function registerStateMethods(core: Core): void {
   core.router.register('agent.state', (params) => {
@@ -28,7 +28,7 @@ export function registerStateMethods(core: Core): void {
 export async function readState(core: StateCore, domain: StateReading['domain']): Promise<StateReading> {
   switch (domain) {
     case 'version': return { domain, version: await versionOf(core) };
-    case 'limits': return { domain, limits: await limitsOf(core) };
+    case 'limits': return { domain, limits: limitsOf(core) };
     case 'machines': return { domain, machines: machinesOf(core) };
     case 'updates': return { domain, updates: await updatesOf(core) };
     case 'inbox': return { domain, inbox: inboxOf(core) };
@@ -54,32 +54,16 @@ async function versionOf(core: StateCore): Promise<StateVersion> {
   };
 }
 
-/** The last reading, as the Limits page opens with it: no provider is asked again. */
-async function limitsOf(core: StateCore): Promise<StateLimit[]> {
-  const quotas = await core.quotas.list(false);
-  return quotas.map(quota => ({
-    provider: quota.providerName,
-    account: maskEmail(quota.label),
-    status: quota.status,
-    windows: quota.windows.map(window => ({ label: window.label, usedPercent: window.usedPercent, resetsAt: window.resetsAt })),
-    gateway: quota.gateway !== undefined,
-    checkedAt: quota.checkedAt,
-    error: quota.error === null ? null : maskEmail(quota.error),
-  }));
+/** The last reading, cached rows only: no provider and no gateway is asked, even on a cold or expired cache. */
+function limitsOf(core: StateCore): StateLimit[] {
+  return core.quotas.cached().map(stateLimit);
 }
 
+/** "Online" for another machine: it answered since this core started. A device: one of its sockets is open now. */
 function machinesOf(core: StateCore): StateMachine[] {
-  const group = core.group.view('owner');
-  const machines: StateMachine[] = group === null
-    ? [{ kind: 'machine', name: 'this machine', self: true, os: process.platform, reached: null, lastSeenAt: null, current: null, version: core.version }]
-    : group.cores.map(member => {
-      const self = member.coreId === group.self;
-      return { kind: 'machine', name: member.name, self, os: member.os ?? null, reached: self ? null : core.group.answered(member.coreId), lastSeenAt: null, current: null, version: self ? core.version : null };
-    });
-  const devices: StateMachine[] = core.sessions.list(null).map(session => ({
-    kind: 'device', name: session.client.name, self: false, os: null, reached: null, lastSeenAt: session.lastSeenAt, current: session.current, version: session.client.version || null,
-  }));
-  return [...machines, ...devices];
+  return stateMachines(core.group.view('owner'), core.sessions.list(null), {
+    version: core.version, os: process.platform, reached: coreId => core.group.answered(coreId), connected: sessionId => core.subscribers.sessionConnected(sessionId),
+  });
 }
 
 function appUpdate(status: { phase: string; version: string | null; error: string | null } | null): StateAppUpdate | null {
@@ -94,88 +78,30 @@ async function updatesOf(core: StateCore): Promise<StateUpdates> {
     channel: core.channel,
     server: server !== null && server.phase !== 'idle' ? appUpdate(server) : null,
     desktop: appUpdate(core.desktopUpdates.snapshot()),
-    agents: agents.map((update): StateAgentUpdate => ({
-      provider: update.providerId, name: update.name, route: update.route, installed: update.current, available: update.latest,
-      state: update.state, error: update.state === 'failed' ? update.message : null, checkedAt: update.checkedAt,
-    })),
+    agents: agents.map(stateAgentUpdate),
   };
 }
 
-/**
- * Activity's rows (`packages/ui/src/lib/activity-feed.ts`): a thread waiting
- * on the user or failed (Needs you), one stopped or finished unread
- * (updates). Team chats, council salons, incognito and archived threads are
- * not listed there.
- */
+/** Activity's rows (`stateInbox`, Activity's own derivation over the threads, questions and permissions it reads). */
 function inboxOf(core: StateCore): StateInboxRow[] {
   const projects = new Map(core.projects.list().map(project => [project.id, project.name]));
-  const permissions = new Set(core.threads.listPermissions().map(permission => permission.threadId));
-  const rows: StateInboxRow[] = [];
-  for (const thread of core.threads.list({})) {
-    if (thread.archived || thread.incognito || thread.teamId || thread.councilId) continue;
-    const kind = inboxKind(thread, permissions.has(thread.id));
-    if (kind === null) continue;
-    rows.push({
-      threadId: thread.id, title: thread.title, project: thread.projectId === null ? null : projects.get(thread.projectId) ?? null,
-      kind, section: kind === 'stopped' || kind === 'done' ? 'updates' : 'needs', at: thread.updatedAt,
-    });
-  }
-  return rows.sort((a, b) => (a.section === b.section ? b.at - a.at : a.section === 'needs' ? -1 : 1));
-}
-
-function inboxKind(thread: ThreadSummary, permission: boolean): StateInboxRow['kind'] | null {
-  if (permission) return 'permission';
-  if (thread.status === 'waiting' || (thread.openQuestions ?? 0) > 0) return 'question';
-  if (thread.status === 'error') return 'failed';
-  if (thread.status !== 'idle') return null;
-  if (thread.backgroundWait?.state === 'interrupted') return 'stopped';
-  if ((thread.backgroundWork?.kinds.length ?? 0) > 0 || thread.backgroundWait?.state === 'waiting') return null;
-  return thread.unread ? 'done' : null;
+  return stateInbox(core.threads.list({}), core.threads.listQuestions(), core.threads.listPermissions(), projectId => projects.get(projectId) ?? null);
 }
 
 function tasksOf(core: StateCore): StateTask[] {
-  const tasks: StateTask[] = [];
-  for (const threadId of core.procs.liveThreads()) {
+  return stateTasks(core.procs.liveThreads().flatMap(threadId => {
     const thread = core.journal.getThread(threadId);
     const live = core.procs.liveOf(threadId);
-    if (thread === null || live.length === 0) continue;
-    const load = core.procs.loadOf(threadId) ?? { processes: live.length, cpuPercent: 0, memoryBytes: 0 };
-    tasks.push({ threadId, title: thread.title, status: thread.status, processes: load.processes, cpuPercent: load.cpuPercent, memoryBytes: load.memoryBytes });
-  }
-  return tasks.sort((a, b) => b.memoryBytes - a.memoryBytes);
+    if (thread === null || live.length === 0) return [];
+    return [{ threadId, title: thread.title, status: thread.status, load: core.procs.loadOf(threadId) ?? { processes: live.length, cpuPercent: 0, memoryBytes: 0 } }];
+  }));
 }
 
 function routeOf(core: StateCore): StateRoute {
-  const proxy = core.settings.get().subscriptionProxy ?? null;
-  const providers = core.providers.list().loaded;
-  return {
-    gateway: proxy === null ? null : { name: subscriptionProxyName(proxy.kind), enabled: proxy.enabled, mode: proxy.mode ?? 'remote', origin: subscriptionProxyOrigin(proxy) },
-    providers: providers.map(provider => ({ id: provider.id, name: provider.name, viaGateway: proxy?.enabled === true && subscriptionProxyServes(provider, proxy.kind) })),
-  };
+  return stateRoute(core.settings.get().subscriptionProxy ?? null, core.providers.list().loaded, core.quotas.gateway.state());
 }
 
 async function summaryOf(core: StateCore): Promise<StateSummary> {
-  const [version, limits, updates] = await Promise.all([versionOf(core), limitsOf(core), updatesOf(core)]);
-  const machines = machinesOf(core);
-  const inbox = inboxOf(core);
-  const tasks = tasksOf(core);
-  const route = routeOf(core);
-  const members = machines.filter(machine => machine.kind === 'machine');
-  let highest: StateSummary['limits']['highest'] = null;
-  for (const limit of limits) for (const window of limit.windows) {
-    if (highest === null || window.usedPercent > highest.usedPercent) highest = { provider: limit.provider, account: limit.account, label: window.label, usedPercent: window.usedPercent };
-  }
-  const failing = updates.agents.filter(agent => agent.state === 'failed').length
-    + [updates.server, updates.desktop].filter(app => app?.phase === 'error').length;
-  const available = updates.agents.filter(agent => agent.available !== null && agent.available !== agent.installed).length
-    + [updates.server, updates.desktop].filter(app => app?.phase === 'available' || app?.phase === 'ready').length;
-  return {
-    version,
-    route: { gateway: route.gateway?.enabled ? route.gateway.name : null, providers: route.providers.filter(provider => provider.viaGateway).length },
-    machines: { online: members.filter(machine => machine.self || machine.reached === true).length, total: members.length, devices: machines.length - members.length },
-    updates: { failing, available },
-    inbox: { needs: inbox.filter(row => row.section === 'needs').length, updates: inbox.filter(row => row.section === 'updates').length },
-    limits: { accounts: limits.length, highest },
-    tasks: { processes: tasks.reduce((sum, task) => sum + task.processes, 0), memoryBytes: tasks.reduce((sum, task) => sum + task.memoryBytes, 0) },
-  };
+  const [version, updates] = await Promise.all([versionOf(core), updatesOf(core)]);
+  return stateSummary({ version, updates, limits: limitsOf(core), machines: machinesOf(core), inbox: inboxOf(core), tasks: tasksOf(core), route: routeOf(core) });
 }

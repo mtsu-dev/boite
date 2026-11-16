@@ -1095,19 +1095,25 @@ text the Settings page shows for that setting, in English: `SETTING_HELP` in
 `packages/contracts/src/setting-help.ts`. That file is a copy of `settingHelp`
 in `packages/ui/src/lib/setting-requests.ts`.
 `packages/ui/src/lib/setting-help.test.ts` fails when the two differ, and
-`UPDATE_SETTING_HELP=1` rewrites the copy. A setting whose page only names it
-has no text. `boite settings <page>` takes a page name the same way, through
+`UPDATE_SETTING_HELP=1` rewrites the copy. Every setting an agent reads has a
+text: `settingHelp` covers every key or does not compile. `boite settings <page>` takes a page name the same way, through
 the same read (`packages/core/src/cli-state.ts`).
 
 Every other domain is one call to `agent.state`
 (`packages/core/src/state.ts`), which agents may call for their own thread.
-It reads the last quota reading and asks no provider again. Account labels
+The projections are in `packages/contracts/src/state.ts`, shared with the
+app's in-memory core. Limits read the cached rows only (`QuotaStore.cached`):
+no provider and no gateway is asked, even on a cold cache. Account labels
 show an email as its first letter and domain. Machines report whether this
-core reached them since it started. The inbox applies the rules of Activity
-(`packages/ui/src/lib/activity-feed.ts`) on the core's thread list, but cannot
-see the sub-agent rows a client groups under their parent. The route names a
-Douane or CLIProxyAPI gateway by its origin, never its credentials. From a
-terminal, the owner runs `boite state` without `--thread`.
+core reached them since it started; a paired device is connected while one of
+its sockets, direct or relayed, is open. Updates count an agent's release as
+available only when the app offers it (`harnessOffered`: not skipped). The
+inbox is Activity's own derivation (`activityEvents` in
+`packages/contracts/src/activity.ts`), with a sub-agent that shares its
+parent's event marked `nested`. The route names a Douane or CLIProxyAPI
+gateway by its origin, never its credentials, and reads Muse as served only
+when the gateway's last answer verified its native pool. From a terminal, the
+owner runs `boite state` without `--thread`.
 
 ## Diagnostics
 

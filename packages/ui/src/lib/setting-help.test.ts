@@ -37,5 +37,7 @@ ${body}
 `);
     return;
   }
+  // Every setting an agent reads is explained on its page (its muted line, its hint, its info tip): none goes without.
+  for (const key of REQUESTABLE_SETTING_KEYS) expect(table[key], key).toBeTruthy();
   expect(SETTING_HELP, 'run UPDATE_SETTING_HELP=1 bunx vitest run src/lib/setting-help.test.ts in packages/ui').toEqual(table);
 });

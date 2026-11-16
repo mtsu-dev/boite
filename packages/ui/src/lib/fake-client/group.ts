@@ -43,7 +43,7 @@ export function refreshOwnCard(ctx: FakeContext): void {
   announce(roster, [ctx]);
 }
 
-function view(ctx: FakeContext): Group | null {
+export function view(ctx: FakeContext): Group | null {
   const roster = ctx.roster;
   if (roster === null) return null;
   return {

@@ -5,7 +5,7 @@
  * are in `packages/contracts/src/setting-requests.ts`, the core's cards in
  * `packages/core/src/threads/cards.ts`.
  */
-import { EXPERIMENT_STAGES, experimentOf, type AutoCompactMoment, type ProviderSummary, type RequestableKey, type RequestableSetting, type SettingAsk, type SettingCardAsk, type SettingsPage } from '@boite/contracts';
+import { COORDINATION_REACH, EXPERIMENT_STAGES, experimentOf, type AutoCompactMoment, type ProviderSummary, type RequestableKey, type RequestableSetting, type SettingAsk, type SettingCardAsk, type SettingsPage } from '@boite/contracts';
 import { experimentCopy } from './experiment-copy';
 import { experimentsShown } from './experiments.svelte';
 import { formatLocale } from './i18n.svelte';
@@ -87,13 +87,16 @@ export function settingHelp(key: RequestableKey): string | null {
   if (experiment !== null) return hint ? sentences([hint]) : null;
   const s = strings.settings;
   const effects = s.effects;
-  const parts: Partial<Record<RequestableSetting, readonly string[]>> = {
+  const worktrees = s.worktrees, alone = strings.agentsAlone;
+  // Every setting an agent reads has its page's words: a new one fails to compile until it has them.
+  const parts: Record<RequestableSetting, readonly string[]> = {
     asyncQuestions: [effects.asyncQuestions],
     shortAnswers: [effects.shortAnswers, s.shortAnswersHint],
     toolSummaries: [effects.toolSummaries, s.toolSummariesHint],
     titleModel: [s.titleModelHint],
     threadDoneRetentionDays: [s.archived.doneRetentionHint],
     threadDeletionRetentionDays: [s.deleted.retentionHint],
+    worktreeStorage: [`${worktrees.storageProject}: ${worktrees.storageProjectHint} .boite/worktrees`, `${worktrees.storageShared}: ${worktrees.storageSharedHint}`, worktrees.storageNewOnly],
     focusGuard: [effects.focusGuard],
     muteAgents: [effects.muteAgents],
     agentCpuCapPercent: [s.agentCpuCapHint],
@@ -116,9 +119,11 @@ export function settingHelp(key: RequestableKey): string | null {
     deviceStream: [effects.deviceStream, s.deviceStreamHint],
     groupThreads: [strings.machines.groupThreadsHint],
     groupBots: [strings.machines.groupBotsHint],
+    agentBotCreation: [`${alone.bots}: ${alone.botsEffect}`],
+    coordinationReach: COORDINATION_REACH.map(step => `${alone.steps[step]}: ${alone.effects[step]}`),
   };
   const text = parts[key as RequestableSetting];
-  return text === undefined ? null : sentences(text);
+  return text === undefined || text.length === 0 ? null : sentences(text);
 }
 
 /** Parts read as sentences: the muted line under a switch has no final stop, the hint after it does. */

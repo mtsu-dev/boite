@@ -12,14 +12,14 @@ test('every Settings page has a boite state settings read, and every key the app
   expect(selectSettings(settings, 'nonsense')).toBeNull();
 });
 
-test('a page lists its settings with what each does, and a setting the app does not explain gets no text', () => {
+test('a page lists its settings with what each does, and every setting an agent reads is explained', () => {
   const advanced = selectSettings(settings, 'advanced')!;
   expect(advanced.map(reading => reading.key)).toContain('warmProcessMinutes');
   expect(advanced.every(reading => reading.page === 'advanced')).toBe(true);
   const lines = settingsLines(advanced, true);
   expect(lines).toContain(`    ${SETTING_HELP.warmProcessMinutes}`);
-  expect(SETTING_HELP.worktreeStorage).toBeUndefined();
-  expect(settingsLines(selectSettings(settings, 'worktreeStorage')!, true)).toHaveLength(1);
+  for (const key of REQUESTABLE_SETTING_KEYS) expect(SETTING_HELP[key], key).toBeTruthy();
+  expect(settingsLines(selectSettings(settings, 'worktreeStorage')!, true)).toEqual([expect.stringContaining('worktreeStorage '), `    ${SETTING_HELP.worktreeStorage}`]);
 });
 
 test('agent.state is an agent read for its own thread only, and labels never show a full email', () => {

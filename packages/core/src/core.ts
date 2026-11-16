@@ -94,6 +94,8 @@ export interface SubscriptionSink {
   hasSubscribers(threadId: ThreadId): boolean;
   /** Every socket a revoked session holds goes, with the close code the client reads as "pair again". */
   closeSession(sessionId: string): void;
+  /** A socket of this paired session is open now, directly or relayed: its device is connected (`boite state machines`). */
+  sessionConnected(sessionId: string): boolean;
   /** Every socket an agent of this thread holds goes: the thread was archived or removed under it. */
   closeAgents(threadId: ThreadId): void;
   /** Every socket a plugin's revoked token opened goes: it was uninstalled or its permissions changed. */
@@ -261,6 +263,7 @@ export class Core {
   subscribers: SubscriptionSink = {
     hasSubscribers: () => false,
     closeSession: () => undefined,
+    sessionConnected: () => false,
     closeAgents: () => undefined,
     closePlugin: () => undefined,
     reveal: () => 0,

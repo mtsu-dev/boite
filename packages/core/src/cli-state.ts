@@ -59,11 +59,11 @@ export function stateLines(reading: StateReading): string[] {
       const u = reading.updates;
       const app = (name: string, status: typeof u.server) => status === null ? [] : [`${name}: ${status.phase}${status.version ? ` ${status.version}` : ''}${status.error ? ` [${status.error}]` : ''}`];
       return [`version: ${u.version} (${u.channel})`, ...app('server update', u.server), ...app('desktop update', u.desktop),
-        ...(u.agents.length === 0 ? ['agents: none installed'] : u.agents.map(agent => `${agent.provider}: ${agent.installed ?? 'unknown'}${agent.available && agent.available !== agent.installed ? ` -> ${agent.available} available` : ''}, ${agent.state} (${agent.route})${agent.error ? ` [${agent.error}]` : ''}`))];
+        ...(u.agents.length === 0 ? ['agents: none installed'] : u.agents.map(agent => `${agent.provider}: ${agent.installed ?? 'unknown'}${agent.offered ? ` -> ${agent.available} available` : ''}, ${agent.state} (${agent.route})${agent.error ? ` [${agent.error}]` : ''}`))];
     }
     case 'inbox':
       if (reading.inbox.length === 0) return ['inbox: nothing needs the user'];
-      return reading.inbox.map(row => `${row.threadId} ${row.section === 'needs' ? 'needs you' : 'update'}: ${row.kind}, ${JSON.stringify(row.title)}${row.project ? ` in ${row.project}` : ''} (${when(row.at)})`);
+      return reading.inbox.map(row => `${row.nested ? '  under the row above: ' : ''}${row.threadId} ${row.section === 'needs' ? 'needs you' : 'update'}: ${row.kind}, ${JSON.stringify(row.title)}${row.project ? ` in ${row.project}` : ''} (${when(row.at)})`);
     case 'tasks':
       if (reading.tasks.length === 0) return ['tasks: no agent process runs'];
       return reading.tasks.map(task => `${task.threadId} ${JSON.stringify(task.title)}: ${task.processes} processes, ${memory(task.memoryBytes)}, ${Math.round(task.cpuPercent)}% CPU (${task.status})`);
