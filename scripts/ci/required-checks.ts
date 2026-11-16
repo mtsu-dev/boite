@@ -57,7 +57,9 @@ export function pullRequestWorkflows(files: string[], load: Load = loadWorkflow)
 // Checks a pull request reports that the ruleset leaves out on purpose: their
 // failure is shown and explained, never blocking. Bundle size left the ruleset
 // on 2026-11-12, a body reason can lift it and main's own debt can fail it.
-export const ADVISORY = ['Bundle size'];
+// The native Android app builds only on its own pull requests (mobile.yml), so
+// a required check of that name would wait forever on every other one.
+export const ADVISORY = ['Bundle size', 'Native Android app'];
 
 /** The names a pull request reports, which the ruleset requires. */
 export function requiredChecks(files: string[], load: Load = loadWorkflow): string[] {
