@@ -215,7 +215,7 @@ export interface RpcEvents extends
 export type RpcEventName = keyof RpcEvents;
 
 export { attachmentError, answerAttachmentError, decodedBytes } from './attachment-validation.ts';
-export { AUTO_COMPACT_MOMENTS, AUTO_COMPACT_TOKENS, AUTO_GOAL_MIN_CHARS, BROWSER_ORIGINS_MAX, CACHE_KEEPALIVE_HOURS, MODEL_FAVORITES_MAX, checkSettingsPatch, compareModelFavorites, keepLaterFavorites, type AutoCompact, type AutoCompactMoment, type CacheKeepalive, type SettingsPatchCheck } from './settings-validation.ts';
+export { AUTO_COMPACT_MOMENTS, AUTO_COMPACT_TOKENS, DEFAULT_AUTO_COMPACT, AUTO_GOAL_MIN_CHARS, BROWSER_ORIGINS_MAX, CACHE_KEEPALIVE_HOURS, MODEL_FAVORITES_MAX, checkSettingsPatch, compareModelFavorites, keepLaterFavorites, type AutoCompact, type AutoCompactMoment, type CacheKeepalive, type SettingsPatchCheck } from './settings-validation.ts';
 export { checkRpcParams, type RpcParamsCheck } from './rpc-params.ts';
 export { TITLE_MODEL_DEFAULTS, defaultTitleModel, newestModel } from './title-models.ts';
 export { ChangeLog, LIST_CHANGES_IDS, listCursorProblem } from './list-changes.ts';

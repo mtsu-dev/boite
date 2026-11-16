@@ -10,6 +10,7 @@ import {
   type ExperimentId,
   type QuotaAlerts,
   ChangeLog,
+  DEFAULT_AUTO_COMPACT,
   DEFAULT_THREAD_DELETION_RETENTION_DAYS,
   DEFAULT_THREAD_DONE_RETENTION_DAYS,
   PROTOCOL_VERSION,
@@ -594,6 +595,7 @@ export class FakeContext {
       muteAgents: true,
       reapOrphans: true,
       autoUpdateHarnesses: false,
+      autoCompact: DEFAULT_AUTO_COMPACT,
       // The demo machine reads as an install older than these two settings, as the core leaves one: open.
       // `?agents=closed` shows a new install.
       ...(closedAgents() ? CLOSED_AGENT_DEFAULTS : OPEN_AGENT_DEFAULTS)
