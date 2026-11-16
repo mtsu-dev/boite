@@ -1,6 +1,7 @@
 // Owns remembered environments and updates to the keys a device holds for them.
 import { withoutTrailingSlashes } from '@boite/contracts';
 import { droppedAddresses, memberKey, setDropped, setMark } from './endpoint-dropped';
+import { threadSnapshots } from './thread-snapshots';
 import { brought, signsOf, readStoredEndpoint, storeEndpoint, clearStoredEndpoint, rawStoredUrl, type Endpoint } from './endpoint-storage';
 
 /**
@@ -190,6 +191,8 @@ export function removeEnvironment(url: string, token?: string): StoredEnvironmen
   const all = readEnvironments();
   const list = all.filter((env) => env.url !== withoutTrailingSlashes(url) || (token !== undefined && env.token !== token));
   storeEnvironments(list);
+  // The threads this device kept of that machine, and their key, go with it.
+  if (list.length < all.length) void threadSnapshots()?.purgeUrl(withoutTrailingSlashes(url));
   // The same key may be the one the window opens on next time: it goes too, or the
   // next start would send it to the address it was just forgotten at.
   const stored = readStoredEndpoint();
@@ -218,6 +221,7 @@ export function removeBrought(url: string, machine: { coreId: string; groupId?: 
   // The address is marked first: a key another window left for that machine, in the list or as the core
   // it opens on, is not read again either.
   setDropped(url, dropped);
+  void threadSnapshots()?.purgeUrl(withoutTrailingSlashes(url));
   if (rawStoredUrl() === withoutTrailingSlashes(url)) clearStoredEndpoint();
   return readEnvironments();
 }

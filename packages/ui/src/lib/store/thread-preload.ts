@@ -54,20 +54,26 @@ export interface Opener {
 }
 
 /**
+ * A long thread left away from its end opens where the reader was: the page
+ * around the message at the top of their view, not the last one. Only for a
+ * thread with no page held; the device's snapshot (the last page) yields to it.
+ */
+export function readingAround(ctx: StoreContext, opener: Pick<Opener, 'readingPositions'>, threadId: ThreadId): MessageId | undefined {
+  const saved = ctx.store.core?.features?.readingPages ? opener.readingPositions.get(threadId) : undefined;
+  return saved && !saved.pinned ? saved.anchor?.id : undefined;
+}
+
+/**
  * The page `threadId` opens on: a recent visit asks only for what it cannot
  * vouch for, a long thread left away from its end opens around the reader's
  * message, any other reads its last screen.
  */
 function pageRequest(ctx: StoreContext, opener: Opener, threadId: ThreadId, held: Thread | undefined): { params: RpcParams<'threads.get'>; after: MessageId | undefined; around: MessageId | undefined } {
-  const features = ctx.store.core?.features;
   // A thread already in hand, open or among the recent ones, asks only for
   // what it cannot vouch for: a reconnect on a long conversation used to
   // download its last 120 messages again for the two that were new.
   const resume = resumeRequest(threadId, held);
-  // A long thread left away from its end opens where the reader was: the
-  // page around the message at the top of their view, not the last one.
-  const saved = held || !features?.readingPages ? undefined : opener.readingPositions.get(threadId);
-  const around = saved && !saved.pinned ? saved.anchor?.id : undefined;
+  const around = held ? undefined : readingAround(ctx, opener, threadId);
   // A page holds about one screen; the rest comes as the reader scrolls. A resume tail is never cut.
   return { params: { ...resume, limit: held ? MESSAGE_PAGE_MAX : INITIAL_MESSAGE_PAGE, maxBytes: INITIAL_PAGE_BYTES, ...lightPage(ctx), ...(around ? { around } : {}) }, after: resume.after, around };
 }

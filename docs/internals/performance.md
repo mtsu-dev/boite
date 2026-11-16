@@ -359,6 +359,20 @@ view never shown. The spread after is the timeline's own drawing time. The
 fake does not model payload size, and a real core adds its own handling time
 to the cold path.
 
+## Open after a reload
+
+`bun test tests/e2e/thread-snapshots.test.ts` loads the fake core in a hidden
+browser with a simulated 200 ms round trip
+(`?fake=1&rtt=200&coreid=snapshot-bench`, the id kept across reloads), opens
+`t-descriptors`, waits 2.5 s for its snapshot to be written, reloads the page
+and times the call that opens the thread again to its first message drawn,
+four samples. On 2026-11-16 in the Linux container
+(`BOITE_E2E_BROWSER=chrome-headless-shell`, under `nice`), origin/main
+(7d3bdee43) had a median of 226 ms [223, 227, 226, 224], the loading view
+shown every time; with the snapshots, 33 ms [17, 33, 15, 34], the loading view
+never shown. The fake does not model payload size; the time after is the
+IndexedDB read, the decryption and the timeline's own drawing.
+
 ## Naming a long conversation
 
 `bun run bench/retitle.ts` creates 5,000 messages containing about 40 MB of text

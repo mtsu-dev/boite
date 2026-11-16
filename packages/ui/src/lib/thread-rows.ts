@@ -115,6 +115,12 @@ export function resumeRequest(threadId: ThreadId, held: Pick<Thread, 'messages' 
   return after === null ? { threadId } : { threadId, after };
 }
 
+/** The row part of a thread, without what only an open thread carries. */
+export function summaryOf(thread: Thread): ThreadSummary {
+  const { memoryEvents: _memoryEvents, messages: _messages, turns: _turns, commands: _commands, background: _background, backgroundHistory: _history, activity: _activity, messagesBefore: _before, messagesAfter: _after, messagesFrom: _from, messagesSync: _sync, messagesUnchanged: _unchanged, messageOffset: _offset, ...summary } = thread;
+  return summary;
+}
+
 /** A panel key of the machine `machineId`: prefixed with its id, or bare on a store that has none. */
 export function ownsPanelKey(machineId: string, key: string): boolean {
   if (!machineId) return !key.startsWith('[');

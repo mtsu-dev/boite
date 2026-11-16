@@ -500,6 +500,52 @@ retried automatically. Taking an entry back into the box and sending it again
 creates a new request. A machine offline since the app started has no cards to
 open: the client keeps no copy of the thread list.
 
+The client does keep the last page of each machine's 8 most recently opened
+threads (`lib/thread-snapshots.ts`), so that one opened after a reload paints
+at once. A thread with nothing in memory opens from that snapshot, read from
+IndexedDB and decrypted within 250 ms or skipped (so is a read that fails,
+the database blocked by another tab), then asks the core with the
+snapshot's `after` cursor, as a visit still in the reading cache does. An
+answer that does not resume from that cursor (`messagesFrom` absent) drops the
+snapshot, and the thread shows only what the core sent. A snapshot is written
+once a thread's page has stayed put for one second and the page is idle, and
+again when the reader leaves it. Bounds: 8 threads per machine, 512 KiB per
+thread, 4 MiB on the device; the least recently opened goes first, never the
+one just written, whatever the clock says. Each record
+is AES-GCM encrypted under a key made once per machine, non-extractable and
+kept in IndexedDB as a `CryptoKey`, with a random 96-bit IV per record and the
+machine and thread ids as additional data. A record that does not decrypt
+with the key a page holds is tried once with the key stored now, which another
+window may have made since, and dropped only if that fails too. Two windows
+making a machine's first key at once both keep the one stored first: one
+IndexedDB transaction reads the machine and adds the key only if it is absent,
+and a window whose add still fails reads the stored key back. An incognito thread, a thread whose page holds a secret card, and any
+connection other than the owner's or a paired device's are never written. A
+rewind, a truncation, a refused open or a forgotten thread drops its record.
+Forgetting a saved machine (`removeEnvironment`, which a revoked key also
+calls) or a group dropping it (`removeBrought`) purges every machine this
+device reached at that address, key included. Every window of the browser
+shares the database, so the guards live in it: a purge generation per machine
+and one per address, never deleted, and a drop generation per thread, kept
+until a purge of its machine outdates it, each moved on in the same
+transaction as the deletion. A purge by address moves the address's
+generation on even when no key maps the address to a machine yet. A write
+reads the generations of its machine, its address and its thread, and the
+machine's key, when it is scheduled; it takes its page only after, from the
+screen or the reading cache, so a page left before a drop is never written
+with the generations read after it, and nothing is written once memory let
+the page go. It encrypts outside any transaction and stores the record in one
+transaction that writes nothing unless the generations and the stored key are
+unchanged. Making a missing key checks the generations of the machine and the
+address in its own transaction and records the address with the key, so a
+key being made when another window purges does not come back. A drop always deletes in the database. A
+purge is also posted on a `BroadcastChannel`, only so other windows let their
+waiting writes go early, and a store that lets its machine go cancels its own.
+The machine is the core's
+`coreId`; a core without one keeps no snapshots, and neither does a browser
+without IndexedDB or `crypto.subtle`. Boite has no sign-out and no Settings
+action to forget local data, so nothing purges all machines at once.
+
 A new conversation waits the same way. Sending a draft while its core is
 offline keeps its first prompt and captured selection on the device. A client
 must reconnect to synchronize that input. After the core accepts it, it creates
