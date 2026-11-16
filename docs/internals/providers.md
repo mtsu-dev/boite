@@ -1403,8 +1403,8 @@ CLI documents `session_writes_lost` as written on exit after the last result,
 when the core closes its input (idle, shutdown, a changed setup): with no turn
 attached, the session hands the part to `SessionContext.notice`, and the core
 writes it as a finished `system` message of the thread's last turn, without
-starting a turn or the agent. A background compaction's copy keeps its notices
-to itself.
+starting a turn or the agent, masking a secret in use on the thread as a
+turn's parts are. A background compaction's copy keeps its notices to itself.
 
 ## Claude's MCP servers on demand
 

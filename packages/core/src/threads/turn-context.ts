@@ -100,12 +100,14 @@ export class TurnContexts {
   /**
    * A notice the agent sent with no turn open: a finished message of the
    * thread's last turn, as the background compaction's divider is. A thread
-   * gone or never run keeps nothing.
+   * gone or never run keeps nothing. A secret in use on the thread is masked,
+   * as in a turn's parts.
    */
-  #notice(threadId: ThreadId, part: Extract<MessagePart, { type: 'notice' }>): void {
+  #notice(threadId: ThreadId, raw: Extract<MessagePart, { type: 'notice' }>): void {
     if (this.#core.journal.isClosed() || this.#core.journal.getThread(threadId) === null) return;
     const turnId = this.#core.journal.lastTurn(threadId)?.id;
     if (!turnId) return;
+    const part = this.#core.secrets.maskPart(threadId, raw);
     const message: Message = { id: newId('msg_'), threadId, turnId, role: 'system', parts: [part], state: 'complete', createdAt: Date.now() };
     this.#core.journal.putMessage(message);
     this.#core.bus.emit('message.started', message);

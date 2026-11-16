@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { secretMask } from '@boite/contracts';
 import { assistant, claudeThread, harness, init, runTurn, scripted, sdk, success, useClaudeHarness } from './fixtures/claude-query.ts';
 
 useClaudeHarness();
@@ -70,5 +71,31 @@ describe('claude integrity notices', () => {
       parts: [{ type: 'notice', notice: { kind: 'writes_lost', cause: 'disk_full', transcript: true },
         detail: 'session_writes_lost: ENOSPC; lost transcript, global_config; sessions sess-notices' }],
     });
+  }, 15_000);
+
+  test('a secret of the thread in a notice written at exit is masked in the stored message and the event', async () => {
+    harness.core.settings.set({ warmProcessMinutes: 0 });
+    const client = await harness.connect();
+    const threadId = await claudeThread(client);
+    const value = 'sk-notice-0123456789abcdef';
+    harness.core.secrets.masks.add(`thread:${threadId}`, 'test:notice', 'API_KEY', new TextEncoder().encode(value));
+    let exits = 0;
+    scripted((fake) => {
+      const end = fake.end.bind(fake);
+      fake.end = () => { if (exits++ === 0) fake.emit(sdk({ ...NOTICES[3], error: `append to https://store.example/?key=${value} timed out` })); end(); };
+    }, (fake) => {
+      fake.emit(init(SESSION));
+      fake.emit(success(SESSION));
+    });
+
+    const shown = client.next('message.started', message => message.threadId === threadId && message.parts.some(part => part.type === 'notice'), 10000);
+    expect(await runTurn(client, threadId, 'go')).toBe('done');
+    const sent = await shown;
+    const stored = (await client.call('threads.get', { threadId })).messages.find(message => message.id === sent.id);
+    for (const message of [sent, stored]) {
+      const detail = JSON.stringify(message?.parts);
+      expect(detail).not.toContain(value);
+      expect(detail).toContain(`append to https://store.example/?key=${secretMask('API_KEY')} timed out`);
+    }
   }, 15_000);
 });
