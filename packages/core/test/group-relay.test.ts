@@ -437,8 +437,10 @@ test('a relay whose first address of the other member never answers opens the ne
     console.log(`relayed hello answered ${(openedAt - startedAt).toFixed(0)} ms after it was sent, with a dead first address`);
     expect((await onB.call('group.get', {}))?.self).toBe(id(b));
     expect(openedAt - startedAt).toBeLessThan(2000);
-    // The winner is remembered, the dead address is let go as soon as the other answered.
-    expect(reached).toEqual([good[0]!]);
+    // The winner is remembered, the dead address never is. Group sync also reports
+    // the addresses it reached, so only which addresses were reported is asserted.
+    expect(reached).toContain(good[0]!);
+    expect(reached).not.toContain(`http://127.0.0.1:${dark.port}`);
     await waitFor(() => held.size === 0, 2000);
     expect(dialed).toBe(1);
     expect(closedAt - startedAt).toBeLessThan(2000);
