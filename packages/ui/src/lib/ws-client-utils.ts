@@ -144,6 +144,32 @@ export function watchWake(woke: (slept: number) => void, tick = WAKE_TICK_MS): (
   };
 }
 
+/**
+ * Calls `back(away)` each time the page comes back in sight, with how long it
+ * was gone in ms: on `visibilitychange`, and on `pageshow` for a page restored
+ * from the back-forward cache. Either one ends the absence, so the next one is
+ * counted from its own hide. Returns the stop.
+ */
+export function watchAbsence(back: (away: number) => void): () => void {
+  let hiddenAt: number | null = pageHidden() ? Date.now() : null;
+  const shown = (): void => {
+    const away = hiddenAt === null ? 0 : Date.now() - hiddenAt;
+    hiddenAt = null;
+    back(away);
+  };
+  const visibility = (): void => {
+    if (pageHidden()) hiddenAt ??= Date.now();
+    else if (hiddenAt !== null) shown();
+  };
+  const pageshow = (event: PageTransitionEvent): void => { if (event.persisted && !pageHidden()) shown(); };
+  document.addEventListener('visibilitychange', visibility);
+  window.addEventListener('pageshow', pageshow);
+  return () => {
+    document.removeEventListener('visibilitychange', visibility);
+    window.removeEventListener('pageshow', pageshow);
+  };
+}
+
 /** The shell and a browser on the core's machine: that socket cannot go half-open. */
 export function isLoopbackUrl(url: string): boolean {
   try {

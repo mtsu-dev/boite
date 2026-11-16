@@ -196,10 +196,11 @@ handshake is under way keeps that socket (`WsClient.wake`): signals every few
 seconds would otherwise restart a slow handshake before it could finish. Four signals count as one: the `network.changed` event of
 any connected core, the browser's `online` event, a `change` of
 `navigator.connection`, and a machine of the window reconnecting by itself
-after failed attempts. A machine of the window that is ready again after losing
-its link, by any path, also retries every other machine waiting out its backoff
-(`GroupLinks.start`, through `Workspace.resumeMachines`). Signals that arrive together give one retry at once and
-at most one more a second later. A core sends `network.changed` to its owner
+after failed attempts. These four that arrive together give one retry at once
+and at most one more a second later. A fifth signal skips that settling: a
+machine of the window that is ready again after losing its link, by any path,
+retries every other machine waiting out its backoff at once (`GroupLinks.start`,
+through `Workspace.resumeMachines`), since the link it proves is already back. A core sends `network.changed` to its owner
 connections when the set of its non-internal interface addresses changes, so
 Tailscale coming up or the computer joining another Wi-Fi is seen within about
 2.5 seconds. It reads its interfaces every 2.5 seconds only while an owner

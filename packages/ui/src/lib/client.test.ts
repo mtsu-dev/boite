@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { PROTOCOL_VERSION, RPC_CHUNK_MARK, RPC_MAX_FRAME_BYTES, RpcCloseCode, RpcErrorCode, type CoreInfo } from '@boite/contracts';
 import { RpcFailure, WsClient, defaultBackoff, openDeadline, readyAgain, rpcUrl, streamUrl, wasDropped, type SocketLike } from './client';
 import { frameStream } from './remote-browser-stream';
-import { watchWake } from './ws-client-utils';
+import { watchAbsence, watchWake } from './ws-client-utils';
 
 const CORE: CoreInfo = {
   version: '2.0.0-beta.1',
@@ -871,6 +871,31 @@ describe('WsClient', () => {
       stop();
       expect(vi.getTimerCount()).toBe(0);
     } finally { stop(); clock.mockRestore(); visibility.mockRestore(); vi.useRealTimers(); }
+  });
+
+  test('a page back from the back-forward cache ends its absence, so the next one counts from its own hide', () => {
+    vi.useFakeTimers();
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    const back: number[] = [];
+    const stop = watchAbsence((away) => back.push(away));
+    const hide = (): void => { visibility.mockReturnValue('hidden'); document.dispatchEvent(new Event('visibilitychange')); };
+    const show = (): void => { visibility.mockReturnValue('visible'); document.dispatchEvent(new Event('visibilitychange')); };
+    try {
+      hide();
+      vi.setSystemTime(Date.now() + 20_000);
+      // Restored from the cache: the page comes back by `pageshow` alone.
+      visibility.mockReturnValue('visible');
+      window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+      vi.setSystemTime(Date.now() + 5_000);
+      hide();
+      vi.setSystemTime(Date.now() + 1_000);
+      show();
+      // A 1 s absence only probes; counted from the first hide it would be 26 s and race a new socket.
+      expect(back).toEqual([20_000, 1_000]);
+      // A `pageshow` that is not a restore is the first load, not a return.
+      window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: false }));
+      expect(back).toEqual([20_000, 1_000]);
+    } finally { stop(); visibility.mockRestore(); vi.useRealTimers(); }
   });
 
   test('hello is the first frame, and it carries the token and the device', async () => {

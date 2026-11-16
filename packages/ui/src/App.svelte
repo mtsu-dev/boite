@@ -59,7 +59,7 @@
   import { watchRest } from './lib/at-rest';
   import { watchLoopPhase } from './lib/loop-phase';
   import { WsClient } from './lib/client';
-  import { watchWake } from './lib/ws-client-utils';
+  import { watchAbsence, watchWake } from './lib/ws-client-utils';
   import { listenForInstall } from './lib/pwa';
   import { appPage } from './lib/app-origin';
   import { localNetwork } from './lib/local-network.svelte';
@@ -237,8 +237,6 @@
     // Another machine of the group reads this computer's app updates from its core.
     const stopDesktopReport = reportDesktopUpdates(() => workspace.machines.map((machine) => machine.store));
     const stopUpdates = watchUpdates(() => workspace.machines.map((machine) => machine.store));
-    // When the page went out of sight: how long it stayed away tells `resume()` whether to open a new socket at once.
-    let hiddenAt: number | null = document.hidden ? Date.now() : null;
     /** `away`: how long the page was gone, in ms; `remoteOnly`: the shell's own core and a page on its machine are left alone. */
     const resume = (away = 0, remoteOnly = false) => {
       if (document.hidden) return;
@@ -247,16 +245,9 @@
         if (client instanceof WsClient && (!remoteOnly || client.remote)) void client.resume(away).catch(() => undefined);
       }
     };
-    const visibility = () => {
-      documentVisible = !document.hidden;
-      if (document.hidden) hiddenAt ??= Date.now();
-      else if (hiddenAt !== null) {
-        const away = Date.now() - hiddenAt;
-        hiddenAt = null;
-        resume(away);
-      }
-    };
-    const pageshow = (event: PageTransitionEvent) => { if (event.persisted) resume(hiddenAt === null ? 0 : Date.now() - hiddenAt); };
+    const visibility = () => { documentVisible = !document.hidden; };
+    // How long the page stayed away tells `resume()` whether to open a new socket at once.
+    const stopAbsence = watchAbsence((away) => resume(away));
     const online = () => resume();
     // The system slept with the page in sight, a laptop closed on the app: every remote socket is checked as after that long away.
     const stopWake = watchWake((slept) => resume(slept, true));
@@ -266,7 +257,6 @@
     document.addEventListener('visibilitychange', visibility);
     window.addEventListener('online', online);
     window.addEventListener('offline', offline);
-    window.addEventListener('pageshow', pageshow);
     const notification = (event: MessageEvent) => { if (workspace.workerMessage(event.data)) mobileScreen = 'chat'; };
     navigator.serviceWorker?.addEventListener('message', notification);
     return () => {
@@ -279,10 +269,10 @@
       stopUpdates();
       stopLocalNetwork();
       stopWake();
+      stopAbsence();
       document.removeEventListener('visibilitychange', visibility);
       window.removeEventListener('online', online);
       window.removeEventListener('offline', offline);
-      window.removeEventListener('pageshow', pageshow);
       navigator.serviceWorker?.removeEventListener('message', notification);
     };
   });
