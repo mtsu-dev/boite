@@ -361,7 +361,7 @@ and times the call that opens the thread again to its first message drawn,
 four samples. On 2026-11-16 in the Linux container
 (`BOITE_E2E_BROWSER=chrome-headless-shell`, under `nice`), origin/main
 (7d3bdee43) had a median of 226 ms [223, 227, 226, 224], the loading view
-shown every time; with the snapshots, 36 ms [47, 24, 30, 36], the loading view
+shown every time; with the snapshots, 33 ms [17, 33, 15, 34], the loading view
 never shown. The fake does not model payload size; the time after is the
 IndexedDB read, the decryption and the timeline's own drawing.
 
