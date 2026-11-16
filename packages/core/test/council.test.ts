@@ -632,7 +632,9 @@ test('delegate wait holds through a round, and an answer cut from the message re
 test('a member past the round\'s time has no score, and the parent still gets the others; it is asked again next round', async () => {
   const d = driver(run => (run.model === 'gamma' && run.prompt.includes('round 1.') ? null : run.prompt.includes('Boite council, round') ? `From ${run.model}.\nScore: 6/10` : 'Noted.'));
   const { h, threadId, start, read } = await setup();
-  h.core.council.minuteMs = 150;
+  // Alpha and Beta answer at once, Gamma never: the minute must outlast a slow
+  // runner's spawn and answer, or every member reads absent (150 ms did not).
+  h.core.council.minuteMs = 1500;
   const { id } = await start({ timeoutMinutes: 1 });
   await waitFor(() => d.delivered().length === 1, 5000);
   const { council, posts } = await read(id);
