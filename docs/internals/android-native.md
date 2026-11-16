@@ -18,7 +18,7 @@ What the app does not do yet, or what nobody has checked on a phone:
 | Notifications | No push. They arrive only while the app is open. |
 | Updates | From the nightly only: no stable release carries the APK yet. The first build with the updater is installed by hand. |
 | Distribution | No Play listing. No Play bundle (AAB) was built yet, and a Play build must leave the updater out. |
-| CI | Only the nightly builds the APK: a pull request that breaks it fails that night's release. |
+| CI | A pull request builds the APK only when it changes `apps/mobile`, and no required check waits for it: a UI change that breaks the app fails that night's release. |
 | QR code | The manifest asks for no camera, so pairing is by pasting the link. Scanning was never tried. |
 | Networks | Tested only through `adb reverse` to a core on a PC. A core on the LAN or a tailnet is untested. |
 | HTML views | Framing a core's `/view/` page is allowed by the policy, never tried on a phone. |

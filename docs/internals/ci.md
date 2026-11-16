@@ -124,6 +124,10 @@ reports its own name (`Desktop`), never the inner ones. So:
   not change: every inner job skips, costs no runner, and reports
   `Desktop / Linux x64` as it would running. The portable jobs are one per
   platform of `PORTABLE_ALL`, each skipped unless `platforms` lists its id.
+- `mobile.yml`, the native Android app ([android-native](android-native.md)),
+  is not part of `ci.yml`: it runs on its own on a pull request that changes
+  `apps/mobile/` or the workflow, unsigned, and the nightly signs and
+  publishes it. No ruleset requires it.
 - A job skipped because its dependency failed counts as passed in a ruleset, so
   the ruleset requires every job of each needs chain (`Plan and repository
   checks`, `Build UI`).

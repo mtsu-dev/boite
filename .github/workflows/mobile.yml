@@ -13,7 +13,7 @@ on:
         type: string
         default: ''
       enabled:
-        description: Off skips the build, which still reports its check name; ci.yml turns it off when nothing in the app changed.
+        description: Off skips the build.
         type: boolean
         default: true
       release:
@@ -30,6 +30,11 @@ on:
         required: false
       ANDROID_KEYSTORE_PASSWORD:
         required: false
+  # A change to the app builds it unsigned; no required check waits for it.
+  pull_request:
+    paths:
+      - apps/mobile/**
+      - .github/workflows/mobile.yml
   workflow_dispatch:
     inputs:
       # Declared here too: an undeclared input reads as false and would skip the build.
@@ -55,7 +60,8 @@ defaults:
 
 jobs:
   apk:
-    if: inputs.enabled
+    name: Native Android app
+    if: github.event_name == 'pull_request' || inputs.enabled
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
