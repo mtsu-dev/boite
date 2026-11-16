@@ -94,6 +94,7 @@ client. Development fixtures spend no provider tokens:
 | `?fake=1` | In-memory core; no service worker |
 | `?fake=1&long=1` | Four-hundred-message conversation |
 | `?fake=1&heavy=1` | Forty messages and 11.5 MiB of tool calls, the last turn 1,300 of them |
+| `?fake=1&run=1000&open=recent` | One turn whose work is a single run of 1,000 calls, the opened run's window |
 | `?fake=1&stream=tokens` | Sixteen-character streaming deltas |
 | `?fake=1&rtt=200` | Every call waits a 200 ms round trip, half each way; pushed events are not delayed |
 | `?fake=1&open=recent` | Opens the latest thread instead of a new draft |

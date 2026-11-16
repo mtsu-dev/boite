@@ -4,6 +4,7 @@ import { seedAccounts } from './accounts-seed';
 import { QUESTION_OPTIONS, QUESTION_TEXT } from './conversation';
 import { T0 } from './shared';
 import { heavyThread } from './heavy-thread';
+import { longRunThread } from './long-run-thread';
 import { diagramsThread } from './diagrams-thread';
 import { readabilityThread } from './readability-thread';
 import { longThread, seedThreads } from './threads-seed';
@@ -96,6 +97,10 @@ export function seed(ctx: FakeContext): void {
   if (ctx.heavy) {
     const heavy = heavyThread();
     ctx.threads.set(heavy.id, heavy);
+  }
+  if (ctx.longRun > 0) {
+    const run = longRunThread(ctx.longRun);
+    ctx.threads.set(run.id, run);
   }
   if (ctx.diagrams) {
     const diagrams = diagramsThread();

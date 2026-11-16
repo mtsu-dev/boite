@@ -1,3 +1,8 @@
+<script lang="ts" module>
+  /** Under this many rows a list renders whole: a window would cost more than it saves. */
+  export const WINDOW_FROM = 80;
+</script>
+
 <script lang="ts" generics="T">
   import { tick, untrack, type Snippet } from 'svelte';
   import { atOrBefore, reaches } from '../lib/message-window';
@@ -11,7 +16,7 @@
     active?: boolean;
     measurements?: Map<string, number>;
   } = $props();
-  const threshold = 80, overscan = 6;
+  const overscan = 6;
   let container = $state<HTMLDivElement>();
   let top = $state(0), height = $state(600);
   let located = $state(false);
@@ -32,7 +37,7 @@
     for (let i = 0; i < keys.length; i++) result.push(result[i]! + (heights.get(keys[i]!) ?? estimate));
     return result;
   });
-  const windowed = $derived(items.length >= threshold);
+  const windowed = $derived(items.length >= WINDOW_FROM);
   const range = $derived.by(() => {
     if (!active) return { start: 0, end: 0 };
     if (scrollRoot && !located) return { start: 0, end: 0 };

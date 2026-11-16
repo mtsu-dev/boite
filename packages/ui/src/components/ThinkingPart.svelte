@@ -12,14 +12,13 @@
   import { viewerHost } from '../lib/media-gallery';
 
   /** `store` and `threadId` say where a thread link in the reasoning starts from. */
-  let { text, live = false, startedAt = null, finishedAt = null, store, threadId, revision }: { text: string; live?: boolean; startedAt?: number | null; finishedAt?: number | null; store?: Store; threadId?: string; revision?: object } = $props();
+  /** `open` is the fold, the part's alone: a long run binds it to keep it while the row is away. */
+  let { text, live = false, startedAt = null, finishedAt = null, store, threadId, revision, open = $bindable(false) }: { text: string; live?: boolean; startedAt?: number | null; finishedAt?: number | null; store?: Store; threadId?: string; revision?: object; open?: boolean } = $props();
 
   const took = $derived(startedAt === null || (!live && finishedAt === null) ? '' : elapsed((live ? secondClock.now : finishedAt!) - startedAt));
   // A diagram in the reasoning opens in the timeline's viewer.
   const viewers = viewerHost();
 
-  // Folded by default, and the fold belongs to this part alone.
-  let open = $state(false);
   const empty = $derived(text.trim().length === 0);
   // What the step is about ("Inspecting the driver"), the plain word while it has none.
   // The scan resumes where the last delta left off.

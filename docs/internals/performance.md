@@ -1259,6 +1259,21 @@ every run of main. The open draws one row and 482 nodes at 1600 x 1000, 475 at
 more in a row never showed the unmounted space above the rows: 0 px of it on
 screen in each of 267 frames on the desktop and 318 on the phone.
 
+### A long opened run
+
+A run of 80 steps or more draws, once opened, only the steps near the chat's
+view and six more on each side, through the sidebar's `WindowList`; the rest
+are spacers of their measured or estimated height (34 px, one folded step and
+its gap). A step the user opened or closed keeps that while its row is away.
+Under 80 steps the run draws every step as before: at 20 steps both ways mount
+the same 20 cards, and a window starts paying for its observers below the
+point where it saves nodes. Measured on 2026-11-16 in headless Chrome at
+1280 x 800 on `?fake=1&run=1000&open=recent`, opening the 1,000-step run mounted
+1,000 cards and 13,214 nodes in 703 ms before, 24 cards and 382 nodes in 40 ms
+after (click to the second frame, one run each). `ToolGroup.window.svelte.test.ts`
+holds an opened 1,000-step run to the rows in view and their overscan, and
+covers an appended step, a step opened and scrolled away and the keyboard.
+
 `packages/ui/src/render-cost.test.ts` rejects unbounded blur, forbidden endless
 animation properties, outer-container `:has()` and outline width transitions.
 The [frame report](../../bench/results/2026-09-30-ui-frames.md) and

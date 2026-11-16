@@ -16,6 +16,8 @@
   import type { Snippet } from 'svelte';
   import type { ToolDisclosure } from '../lib/store/deferred-parts';
   import { textRevision } from '../lib/text-revisions';
+  import { SvelteMap } from 'svelte/reactivity';
+  import WindowList, { WINDOW_FROM } from './WindowList.svelte';
 
   /*
    * A run of activity with no answer between it: calls and the reasoning around
@@ -66,6 +68,8 @@
     changes?: Snippet<[inline: boolean]>;
   } = $props();
 
+  /** A folded step's row before it is measured: a --control line and the --chat-part-gap above it. */
+  const STEP_ESTIMATE = 34;
   const ICONS = { command: SquareTerminal, read: FileText, edit: FilePen, write: FilePen, search: Search, fetch: Globe, web: Globe, agent: Bot, other: Wrench };
 
   const isLive = (index: number) => thinkingLive && index === parts.length - 1;
@@ -74,7 +78,8 @@
   let asked = $derived(new Map([...pairs].map(([at, call]) => [call, parts[at] as PermissionStep])));
   /** Waiting permissions: each one's command row stands for its call, under the run, with Deny and Allow once. */
   let waiting = $derived(parts.filter((part): part is PermissionStep => part.type === 'permission' && part.decision === null));
-  let steps = $derived(parts.flatMap((part, index): { part: ActivityPart; index: number }[] => {
+  type Step = { part: ActivityPart; index: number };
+  let steps = $derived(parts.flatMap((part, index): Step[] => {
     if (part.type === 'permission') return part.decision !== null && !pairs.has(index) ? [{ part, index }] : [];
     if (part.type === 'tool') return asked.get(index)?.decision === null ? [] : [{ part, index }];
     return thinkingShown(part, isLive(index)) ? [{ part, index }] : [];
@@ -117,6 +122,18 @@
   $effect(() => {
     if (open) built = true;
   });
+
+  /*
+   * A long run draws only the steps near the chat's view, a few more each side,
+   * and spacers of their measured or estimated height for the rest
+   * (`WindowList`): 1,000 opened steps mounted 1,000 cards and 13,000 nodes.
+   * A step the user opened or closed keeps that while its row is away.
+   */
+  const stepKey = (step: Step) => step.part.type === 'tool' ? step.part.toolId : `thinking-${step.index}`;
+  let windowed = $derived(steps.length >= WINDOW_FROM);
+  let group = $state<HTMLDivElement>();
+  let scrollRoot = $derived(group?.closest<HTMLElement>('[data-scroll-root]') ?? undefined);
+  const unfolded = new SvelteMap<string, boolean>();
 </script>
 
 
@@ -124,9 +141,10 @@
   {#if part.type === 'permission'}
     {@render ask(part)}
   {:else if part.type === 'thinking'}
-    <ThinkingPart text={part.text} revision={textRevision(part)} live={isLive(index)} startedAt={part.startedAt ?? null} finishedAt={part.finishedAt ?? null} {store} {threadId} />
+    <ThinkingPart bind:open={() => unfolded.get(`thinking-${index}`) ?? false, (value) => unfolded.set(`thinking-${index}`, value)} text={part.text} revision={textRevision(part)} live={isLive(index)} startedAt={part.startedAt ?? null} finishedAt={part.finishedAt ?? null} {store} {threadId} />
   {:else}
     <ToolCard
+      bind:toggled={() => unfolded.get(part.toolId) ?? null, (value) => { if (value !== null) unfolded.set(part.toolId, value); }}
       name={part.name}
       input={part.input}
       inputText={part.inputText}
@@ -165,7 +183,7 @@
   {@render step(steps[0].part, steps[0].index)}
   {@render changes?.(false)}
 {:else if steps.length > 0}
-  <div class="group" data-testid="tool-group" data-count={steps.length} data-live={live}>
+  <div class="group" bind:this={group} data-testid="tool-group" data-count={steps.length} data-live={live}>
     <!-- The run's line, and the turn's change count on it when its last change is here: one row, not a card under it. -->
     <div class="line" class:counted={!!changes}>
     <button
@@ -204,10 +222,16 @@
     <div class="disclosure-fold" class:open inert={!open}>
       <div>
         {#if built}
-          <div class="calls">
-            {#each steps as { part, index } (part.type === 'tool' ? part.toolId : `thinking-${index}`)}
-              {@render step(part, index, true)}
-            {/each}
+          <div class="calls" class:windowed>
+            {#if windowed}
+              <WindowList items={steps} keyOf={stepKey} {scrollRoot} estimate={STEP_ESTIMATE}>
+                {#snippet row({ part, index }: Step)}<div class="step">{@render step(part, index, true)}</div>{/snippet}
+              </WindowList>
+            {:else}
+              {#each steps as entry (stepKey(entry))}
+                {@render step(entry.part, entry.index, true)}
+              {/each}
+            {/if}
           </div>
         {/if}
       </div>
@@ -356,6 +380,11 @@
     padding-left: var(--activity-gap);
     border-left: 1px solid var(--color-border);
   }
+
+  /* Windowed, each row carries the gap above it inside its measured height,
+     and the list starts one gap higher so the first step sits where it did. */
+  .calls.windowed > :global(.window-list) { margin-top: calc(-1 * var(--chat-part-gap)); }
+  .step { padding-top: var(--chat-part-gap); }
 
   @media (prefers-reduced-motion: reduce) { :is(.pulse, .label.shimmer) { animation: none; } .label.shimmer { color: var(--instrument-ink); background: none; } }
   :global(html[data-motion='reduced']) :is(.pulse, .label.shimmer) { animation: none; }

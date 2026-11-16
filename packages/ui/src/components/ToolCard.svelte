@@ -50,6 +50,7 @@
     folded = false,
     permission = null,
     carded = false,
+    toggled = $bindable(null),
     store,
     threadId
   }: {
@@ -81,6 +82,8 @@
     permission?: 'allow' | 'deny' | null;
     /** The turn's error card says this call's stop and exit code: its line marks nothing. */
     carded?: boolean;
+    /** The user opened (true) or closed (false) the body, null until they do: a long run keeps it while the row is away. */
+    toggled?: boolean | null;
     /** Where a thread link in a document starts from. */
     store?: Store;
     threadId?: string;
@@ -158,7 +161,6 @@
 
   // Input stays behind the disclosure while it arrives. Change previews follow
   // the device preference, including deferred diffs fetched when shown.
-  let toggled = $state<boolean | null>(null);
   let shown = $derived(toggled ?? (chatPrefs.expandDiffs && diffs.length > 0 && !failed));
   let chip = $derived(shown ? '' : documentsDeferred ? chipFor(documents) : others.length > 0 ? chipFor(others) : '');
   /**
