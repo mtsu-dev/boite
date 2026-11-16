@@ -62,6 +62,11 @@ export class ReadingCache {
   readonly #threads = new Map<string, Thread>();
   readonly #bytes = new Map<string, number>();
   #total = 0;
+  /** Counts every delete and clear, kept or not: what a page read before it no longer vouches for. */
+  #changes = 0;
+  /** The count at each thread's last delete, and at the last clear. */
+  readonly #dropped = new Map<string, number>();
+  #cleared = 0;
 
   /** `forgotten` hears of a thread whose visit is no longer one to resume from (`forget`). */
   constructor(private readonly forgotten?: (id: string) => void) {}
@@ -99,12 +104,22 @@ export class ReadingCache {
     return true;
   }
 
+  /** The point a read starts from; `droppedSince` answers whether its thread left the cache after it. */
+  mark(): number { return this.#changes; }
+
+  /** Whether `id` was deleted, or the cache cleared, since `mark`: a page read before then may hold what left the thread. */
+  droppedSince(id: string, mark: number): boolean {
+    return this.#cleared > mark || (this.#dropped.get(id) ?? 0) > mark;
+  }
+
   /** Another copy of the same timeline in place of `held`: same size, same place in the order. */
   replace(id: string, held: Thread, copy: Thread): void {
     if (this.#threads.get(id) === held) this.#threads.set(id, copy);
   }
 
   delete(id: string): boolean {
+    // Counted even when nothing is held: a read ahead of the thread may be on its way.
+    this.#dropped.set(id, ++this.#changes);
     const bytes = this.#bytes.get(id);
     if (bytes === undefined) return false;
     this.#total -= bytes;
@@ -119,6 +134,8 @@ export class ReadingCache {
   }
 
   clear(): void {
+    this.#cleared = ++this.#changes;
+    this.#dropped.clear();
     this.#threads.clear();
     this.#bytes.clear();
     this.#total = 0;

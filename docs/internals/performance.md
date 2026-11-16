@@ -571,6 +571,8 @@ the turn's other events, which no channel holds back.
   an open or a drop drops the read in flight and the rest, and the reads left
   resume at the next idle moment after an open. Opening such a thread then
   paints at once and asks only for what came after the page, like any visit.
+  An answer whose thread was deleted, archived, rewound or truncated while it
+  was read, or is no longer one to read ahead, is dropped.
   Off under automation unless `__BOITE_IDLE_PRELOAD_TEST__` is set.
 - A summary written over the open thread (`thread.updated`, a load tick)
   writes only the fields that changed (`patchFields`), so a tick that moves

@@ -29,9 +29,11 @@ const isReadAhead = (method: string, params: Params) => method === 'threads.get'
 /**
  * A machine with a pinned old thread, two new ones, an archived and an
  * incognito one, the store attached to it and `t-descriptors` open. Reads
- * ahead wait for `release` when `hold` is set.
+ * ahead wait for `release` when `hold` is set: before the core reads the
+ * page, or after it, holding an answer that may be stale by then, when
+ * `answerFirst` is set. `release(true)` holds the next read again.
  */
-async function machine(hold = false): Promise<{ ahead: () => ThreadId[]; calls: () => [string, Params][]; inFlight: () => number; release: () => void; created: { older: ThreadId; newer: ThreadId } }> {
+async function machine(hold = false, answerFirst = false): Promise<{ ahead: () => ThreadId[]; calls: () => [string, Params][]; inFlight: () => number; release: (again?: boolean) => void; created: { older: ThreadId; newer: ThreadId } }> {
   client = new FakeClient({ delayMs: 0 });
   await client.connect();
   await client.call('threads.pin', { threadId: 't-trace', pinned: true });
@@ -51,8 +53,10 @@ async function machine(hold = false): Promise<{ ahead: () => ThreadId[]; calls: 
     if (!isReadAhead(method, params)) return real(method as never, params as never, options as never);
     inFlight++; most = Math.max(most, inFlight);
     try {
-      if (gate) await gate.promise;
-      return await real(method as never, params as never, options as never);
+      if (gate && !answerFirst) await gate.promise;
+      const answer = await real(method as never, params as never, options as never);
+      if (gate && answerFirst) await gate.promise;
+      return answer;
     } finally { inFlight--; }
   }) as never);
   store = new Store();
@@ -63,7 +67,7 @@ async function machine(hold = false): Promise<{ ahead: () => ThreadId[]; calls: 
     ahead: () => calls.filter(([method, params]) => isReadAhead(method, params)).map(([, params]) => params.threadId as ThreadId),
     calls: () => calls,
     inFlight: () => most,
-    release: () => { const held = gate; gate = null; held?.resolve(); },
+    release: (again = false) => { const held = gate; gate = again ? gated() : null; held?.resolve(); },
     created: { older: older.id, newer: newer.id },
   };
 }
@@ -141,6 +145,28 @@ test('a drop or an open drops the read in flight and the rest; the reads start o
   await vi.waitFor(() => expect(again().length).toBeGreaterThan(1), { timeout: IDLE_PRELOAD_WAIT_MS * 4 });
   expect(again()).not.toContain('t-scheduler');
   expect(again()[1]).toBe('t-trace');
+});
+
+test('a page read before a rewind or an archive of its thread is not kept once it lands', async () => {
+  const { ahead, release } = await machine(true, true);
+  const first = (await client.call('threads.get', { threadId: 't-trace' })).messages.find(message => message.role === 'user')!;
+  // The core read t-trace whole; the user then edits its first message before the answer lands.
+  await vi.waitFor(() => expect(ahead()).toEqual(['t-trace']), { timeout: IDLE_PRELOAD_WAIT_MS * 4 });
+  expect(await store.rewind(first.id, 't-trace')).not.toBeNull();
+  release(true);
+  // The next read is answered, then its thread is archived before the answer lands.
+  await vi.waitFor(() => expect(ahead()).toEqual(['t-trace', 't-bench']), { timeout: IDLE_PRELOAD_WAIT_MS * 4 });
+  await store.archive('t-bench');
+  release();
+  await vi.waitFor(() => expect(ahead().length).toBeGreaterThan(2), { timeout: IDLE_PRELOAD_WAIT_MS * 4 });
+  // Neither stale page was kept: the rewound thread loads again and never shows the message that left it.
+  const opening = store.open('t-trace');
+  expect(store.loadingThreadId).toBe('t-trace');
+  expect(store.openThread?.messages.some(message => message.id === first.id) ?? false).toBe(false);
+  await opening;
+  expect(store.openThread?.messages.some(message => message.id === first.id)).toBe(false);
+  expect(store.threads.some(row => row.id === 't-bench')).toBe(false);
+  expect(await paintsAtOnce('t-bench')).toBe(false);
 });
 
 /** The same machine, its socket back. */
