@@ -1,8 +1,9 @@
 import { expect, test } from 'vitest';
 import type { Message } from '@boite/contracts';
 import { markdownAnswer } from './fake-client/markdown-thread';
-import { HistoryPrepare, SliceWarmth, WARM_SLICE_MS } from './row-cost';
-import { TimelineRows } from './timeline-rows';
+import { HistoryPrepare, SliceWarmth, WARM_SLICE_MS, isSlice } from './row-cost';
+import { TimelineRows, type TimelineRow } from './timeline-rows';
+import { heavyThread } from './fake-client/heavy-thread';
 
 function answers(count: number): Message[] {
   let seed = 11;
@@ -53,6 +54,37 @@ test('the slices of the answers at the window edges mount, then lay out, in idle
   expect(grew).toBe(middle.length - 2);
   expect(laid).toEqual([...middle.slice(4), ...middle.slice(0, 2).reverse()].map(row => row.id));
   expect(idle.length).toBe(0);
+});
+
+/** Runs a warm-up of `rows` from the window `[start, end)` to its end: every idle period 50 ms, each step 20 ms. */
+function warmAll(rows: readonly TimelineRow[], start: number, end: number, rounds = 2000): { warmth: SliceWarmth; grew: number; pending: number } {
+  const warmth = new SliceWarmth(run => run());
+  const idle: ((left: () => number) => void)[] = [];
+  let clock = 0, grew = 0;
+  const wake = () => warmth.wake(() => ({ rows, ...warmth.widen(rows, start, end) }), () => { grew += 1; clock += 20; }, () => { clock += 20; }, run => { idle.push(run); return () => {}; }, () => clock);
+  wake();
+  for (let round = 0; round < rounds && idle.length; round += 1) { const from = clock; idle.shift()!(() => 50 - (clock - from)); wake(); }
+  return { warmth, grew, pending: idle.length };
+}
+
+test('the warm-up mounts only slices of one text part: the rows of a long turn of work are no slices', () => {
+  const thread = heavyThread();
+  const turn = thread.messages.find(message => new TimelineRows().build([message]).length > 5)!;
+  const rows = new TimelineRows().build([turn]);
+  expect(rows.some(row => row.text)).toBe(false);
+  expect(rows.filter(isSlice)).toEqual([]);
+  const { warmth, grew } = warmAll(rows, 2, 3);
+  expect(grew).toBe(0);
+  expect(warmth.widen(rows, 2, 3)).toEqual({ start: 2, end: 3 });
+});
+
+test('an answer of more slices than the warm set holds is warmed to its end, and the warm-up then stops', () => {
+  const message = answers(1)[1]!;
+  const rows: TimelineRow[] = Array.from({ length: 300 }, (_, index) => ({ id: `a-0#0.${index}`, message, from: 0, to: 1, first: index === 0, last: index === 299, text: index === 299 ? { start: index * 10 } : { start: index * 10, end: index * 10 + 10 } }));
+  const { warmth, grew, pending } = warmAll(rows, 0, 2);
+  expect(warmth.widen(rows, 0, 2)).toEqual({ start: 0, end: 300 });
+  expect(grew).toBe(298);
+  expect(pending).toBe(0);
 });
 
 test('the slices next to the window are sent to the worker first, the rest of the page after them', () => {

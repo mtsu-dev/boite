@@ -115,6 +115,33 @@ test('a line naming a page the turn published cuts the answer there, without dra
   expect(document.querySelector('[data-testid=text-part]')!.textContent).toContain('GoneThe end.');
 });
 
+test('the slices of a long answer in a turn that published a page join into one bubble at their continuous ends', async () => {
+  const { store } = await openTrace();
+  const message = store.openThread!.messages.at(-1)!;
+  const view: Message = { id: 'm-orbit', threadId: message.threadId, turnId: message.turnId, role: 'assistant', state: 'complete', createdAt: message.createdAt, parts: [
+    { type: 'artifact', id: 'a-orbit', name: 'orbit.html', mimeType: 'text/html', bytes: 10, view: { title: 'Orbit', height: 300, source: '.boite/views/orbit.html' } },
+  ] };
+  const head = 'The first slice.\n\n';
+  const middle = 'A middle slice with no page.\n\nIts second paragraph.\n\n';
+  const placed = 'Before the page.\n\n![Orbit](.boite/views/orbit.html)\n\nAfter the page.\n\n';
+  const text = `${head}${middle}${placed}The last slice.`;
+  message.state = 'complete';
+  message.parts = [{ type: 'text', text, complete: true }];
+  const runs = (start: number, end?: number) => {
+    if (mounted) unmount(mounted);
+    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, slice: end === undefined ? { start } : { start, end }, signedOut: null, showModel: false, views: [view] } });
+    flushSync();
+    return Array.from(document.querySelectorAll('[data-testid=text-run]')).map(node => `${node.classList.contains('joined-above') ? '^' : ''}${node.classList.contains('joined-below') ? 'v' : ''}`);
+  };
+  // A slice between two others, no page in it: one bubble joined above and below.
+  expect(runs(head.length, head.length + middle.length)).toEqual(['^v']);
+  // A slice placing a page: the bubble above the page joins the slice above, the one under it the slice below.
+  expect(runs(head.length + middle.length, text.length - 'The last slice.'.length)).toEqual(['^', 'v']);
+  // The first and the last slices join only on their inner side.
+  expect(runs(0, head.length)).toEqual(['v']);
+  expect(runs(text.length - 'The last slice.'.length)).toEqual(['^']);
+});
+
 test('reasoning folds with the calls into one line and empty reasoning under a second is not drawn', async () => {
   const { store } = await openTrace();
   const message = store.openThread!.messages.at(-1)!;

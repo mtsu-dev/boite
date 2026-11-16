@@ -9,7 +9,7 @@
   import type { Store } from '../lib/store.svelte';
   import { count, formatTokens, providerName } from '../lib/format';
   import { isNamedModel } from '../lib/model-order';
-  import { planOf } from '../lib/plan';
+  import { planOf, writtenPlan as isWrittenPlan } from '../lib/plan';
   import Deferred from './Deferred.svelte';
   import { parts } from '../lib/deferred-parts';
   import { councilBuilt } from '../lib/council-entry';
@@ -105,7 +105,7 @@
   const lastStepAt = $derived(message.role === 'assistant' ? message.parts.findLastIndex(part => part.type === 'tool' || part.type === 'thinking') : -1);
   const narrates = (index: number, text: string) => index < lastStepAt && text.length <= NARRATION_MAX;
   /** An answer headed "Plan" is a plan written out rather than handed over: once said, it reads in the plan's outline. */
-  const writtenPlan = (text: string) => message.role === 'assistant' && /^\s*#{1,6}\s+plan\s*\n/i.test(text);
+  const writtenPlan = (text: string) => message.role === 'assistant' && isWrittenPlan(text);
   /**
    * An error that ended the thread's last turn, at rest, can be answered in
    * place: the same prompt sent again (`retryTurn`, the turn's own Retry).

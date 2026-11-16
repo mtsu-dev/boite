@@ -1,6 +1,7 @@
 import type { MemoryEvent, Message, MessagePart } from '@boite/contracts';
 import { promptText, visibleAnswer } from './message-display';
 import { failedRun } from './failed-attempts';
+import { writtenPlan } from './plan';
 import { textSlotEstimate } from './message-window';
 
 /**
@@ -114,13 +115,16 @@ export function textCuts(text: string): number[] {
   return cuts.filter(at => at <= firstUse);
 }
 
-/** The long text parts of a message and where each is cut, the parts a memory notice is anchored on left whole. */
+/** The long text parts of a message and where each is cut, the parts a memory notice is anchored on and written plans left whole. */
 function textPieces(message: Message, anchored?: ReadonlySet<number>): { part: number; cuts: number[] }[] {
   if (message.role === 'user') return [];
   const pieces: { part: number; cuts: number[] }[] = [];
   message.parts.forEach((part, index) => {
     if (part.type !== 'text' || part.text.length < SPLIT_FROM || anchored?.has(index)) return;
-    const cuts = textCuts(shownText(message, part));
+    const shown = shownText(message, part);
+    // A written plan is drawn whole in its card, which copies and saves all of it.
+    if (message.role === 'assistant' && writtenPlan(shown)) return;
+    const cuts = textCuts(shown);
     if (cuts.length) pieces.push({ part: index, cuts });
   });
   return pieces;
@@ -238,8 +242,9 @@ export class TimelineRows {
       const count = message.parts.length;
       const anchored = anchoredParts(memory?.get(message.id));
       const cuts = count > CUT_FROM ? rowCuts(message, anchored) : [];
-      const pieces = cuts.length === 0 ? textPieces(message, anchored) : [];
-      if (pieces.length) { sliceRows(message, pieces, add); continue; }
+      // A long turn that ends on a long answer takes both cuts: the answer is sliced inside its rows of parts.
+      const pieces = textPieces(message, anchored);
+      if (pieces.length) { sliceRows(message, pieces, cuts, add); continue; }
       if (cuts.length === 0) { add(message.id, message, 0, count, true, true); continue; }
       add(message.id, message, 0, cuts[0]!, true, false);
       cuts.forEach((from, index) => add(`${message.id}#${index + 1}`, message, from, cuts[index + 1] ?? count, false, index === cuts.length - 1));
@@ -259,15 +264,22 @@ type AddRow = (id: string, message: Message, from: number, to: number, first: bo
 
 /**
  * The rows of a message with long text parts: the parts before and between
- * them as rows of their own, then one row per slice of each long text. The
- * first row keeps the message's id; a slice is `<message>#<part>.<block>`,
- * the parts after a long text `<message>#<part>`.
+ * them as rows of their own, cut again at `partCuts` (`rowCuts`) in a long
+ * turn, then one row per slice of each long text. The first row keeps the
+ * message's id; a slice is `<message>#<part>.<block>`, a row of parts
+ * `<message>#<its first part>`.
  */
-function sliceRows(message: Message, pieces: { part: number; cuts: number[] }[], add: AddRow): void {
+function sliceRows(message: Message, pieces: { part: number; cuts: number[] }[], partCuts: readonly number[], add: AddRow): void {
   const spans: { id: string; from: number; to: number; text?: { start: number; end?: number } }[] = [];
+  const range = (from: number, to: number): void => {
+    for (const at of [...partCuts.filter(cut => cut > from && cut < to), to]) {
+      spans.push({ id: `${message.id}#${from}`, from, to: at });
+      from = at;
+    }
+  };
   let from = 0;
   for (const { part, cuts } of pieces) {
-    if (part > from) spans.push({ id: `${message.id}#${from}`, from, to: part });
+    if (part > from) range(from, part);
     const bounds = [0, ...cuts];
     bounds.forEach((start, block) => {
       const end = bounds[block + 1];
@@ -275,7 +287,7 @@ function sliceRows(message: Message, pieces: { part: number; cuts: number[] }[],
     });
     from = part + 1;
   }
-  if (from < message.parts.length) spans.push({ id: `${message.id}#${from}`, from, to: message.parts.length });
+  if (from < message.parts.length) range(from, message.parts.length);
   spans.forEach((span, index) => add(index === 0 ? message.id : span.id, message, span.from, span.to, index === 0, index === spans.length - 1, undefined, span.text));
 }
 

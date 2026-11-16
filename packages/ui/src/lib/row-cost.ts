@@ -80,7 +80,7 @@ export function whenIdle(run: (left: () => number) => void): () => void {
  * joins the slice above. A slice the warm-up mounted ahead of the reader is laid out in idle time (`layOut`).
  */
 export function isSlice(row: TimelineRow): boolean {
-  return !row.gap && !(row.first && row.last) && row.message.state === 'complete';
+  return !!row.text && !row.gap && row.message.state === 'complete';
 }
 
 export function sliceBox(row: TimelineRow, slot: number, gap: number): string | undefined {
@@ -94,12 +94,15 @@ export function layOut(node: HTMLElement | undefined): void {
   void node.offsetHeight;
 }
 
-/** Two rows that draw slices of one finished message, neither of them a gap. */
+/** Two rows that draw slices of one text part of a finished message: the rows of a turn's work are no slices. */
 function sameAnswer(a: TimelineRow | undefined, b: TimelineRow | undefined): boolean {
-  return !!a && !!b && !a.gap && !b.gap && a.message === b.message && a.message.state === 'complete';
+  return !!a && !!b && isSlice(a) && isSlice(b) && a.message === b.message && a.from === b.from;
 }
 
 type RowWindow = { rows: readonly TimelineRow[]; start: number; end: number };
+
+/** Warmed ids kept before those out of the window are forgotten. */
+const WARM_KEEP = 256;
 
 /**
  * The slices of a long answer the window reaches into, mounted ahead of the
@@ -113,7 +116,7 @@ type RowWindow = { rows: readonly TimelineRow[]; start: number; end: number };
  * runs the mount's effects at once, so it is timed whole), until the whole answer is drawn: the wheel
  * finds it there. Below the window first, where a reader at the top goes.
  * Nothing warms until two frames after the first wake that had a slice to
- * warm: the opened thread has painted. Only rows
+ * warm: the opened thread has painted. Only slices of one text part
  * of the answers at the edges count, so what stays mounted is at most two
  * answers more than the window, and a row of another message stops it.
  */
@@ -182,7 +185,8 @@ export class SliceWarmth {
           const row = this.next(rows, start, end);
           if (!row) return;
           // Ids of answers far from the window are worth nothing; a reader who jumped away starts again.
-          if (this.#warm.size > 256) this.#warm.clear();
+          // The window's own warmed slices stay: dropped, it would shrink and mount them again, never reaching the end.
+          if (this.#warm.size > WARM_KEEP) this.#keep(rows.slice(start, end));
           this.#warm.add(row.id);
           this.#unlaid.push(row.id);
           grow();
@@ -191,6 +195,13 @@ export class SliceWarmth {
       }
       this.wake(read, grow, lay, idle, now);
     });
+  }
+
+  /** Forgets the warmed ids but those of `rows`. */
+  #keep(rows: readonly TimelineRow[]): void {
+    const kept = rows.filter(row => this.#warm.has(row.id)).map(row => row.id);
+    this.#warm.clear();
+    for (const id of kept) this.#warm.add(id);
   }
 
   stop(): void {

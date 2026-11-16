@@ -20,6 +20,8 @@
  * The two columns before the last hold whatever else the machine runs: the main thread's
  * own CPU time over the measured window, and the nodes under the scroller and
  * the listeners of the page at its end. The frame figures before them are wall-clock.
+ * "Per 1000 px" is per 1000 px the text moved on screen, not scrollTop: a page of
+ * history landing above the reader moves scrollTop by its height and the text not at all.
  * The last column counts the long animation frames, over 50 ms each, and their total.
  *
  * The typing scenarios press a key every 40 ms in the composer and report each
@@ -400,11 +402,24 @@ async function main(): Promise<void> {
         const from = window.__long.length;
         const loafFrom = window.__loaf.length;
         const start = performance.now();
-        function frame(now) { times.push(now); if (now - start < 3000) requestAnimationFrame(frame); else done({ times, long: window.__long.slice(from), loaf: window.__loaf.slice(loafFrom) }); }
+        // The distance the text itself moved, which scrollTop is not: a page of history landing above
+        // the reader grows the list, and the list moves scrollTop by as much so the text stays put.
+        // Read after each paint, when layout is clean, on a row on screen in the frame before.
+        const sc = window.__sc; let anchor = null, anchorTop = 0; window.__content = 0; window.__anchored = false;
+        const track = () => {
+          if (!sc) return;
+          if (anchor?.isConnected) window.__content += anchor.getBoundingClientRect().top - anchorTop;
+          const box = sc.getBoundingClientRect(); anchor = null;
+          for (const row of sc.querySelectorAll('[data-testid^=message]')) { const r = row.getBoundingClientRect(); if (r.bottom > box.top + box.height / 2) { anchor = row; anchorTop = r.top; window.__anchored = true; break; } }
+        };
+        const after = () => { const channel = new MessageChannel(); channel.port1.onmessage = track; channel.port2.postMessage(0); };
+        track();
+        function frame(now) { times.push(now); after(); if (now - start < 3000) requestAnimationFrame(frame); else done({ times, long: window.__long.slice(from), loaf: window.__loaf.slice(loafFrom) }); }
         requestAnimationFrame(frame);
       })`);
       const after = await page.metrics();
-      const scrolled = await page.evaluate<number>(`window.__sc ? Math.round(Math.abs(window.__sc.scrollTop - window.__sc0)) : 0`);
+      // A scroller of other rows, the thread list, counts its scrollTop.
+      const scrolled = await page.evaluate<number>(`Math.round(Math.abs(window.__anchored ? window.__content : window.__sc ? window.__sc.scrollTop - window.__sc0 : 0))`);
       const keys = await page.evaluate<number[]>(`window.__keys.slice(window.__keys0)`);
       if (TRACE) {
         await page.send('Tracing.end');

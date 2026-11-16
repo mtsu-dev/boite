@@ -232,7 +232,8 @@
       {#if group.kind === 'view'}
         <InlineView part={viewPart(group.message)!} {store} {threadId} messageId={group.message.id} partIndex={0} />
       {:else}
-        <div class="prose" class:live class:answer-bubble={bubble} data-testid="text-run">
+        <!-- A slice of a cut answer joins the slices around it at its continuous ends: its first and its last run of text. -->
+        <div class="prose" class:live class:answer-bubble={bubble} class:joined-above={joined?.above && group === groups[0]} class:joined-below={joined?.below && group === end} data-testid="text-run">
           {#each group.blocks as piece (piece.key)}
             <div class="paragraph" data-testid="paragraph">{@html renderBlock(piece.block, rich)}</div>
           {/each}{#if group === end}{@render writing()}{/if}

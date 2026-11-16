@@ -260,6 +260,43 @@ test('the bench answers of 20 to 40 KB are cut into rows of about ROW_CHARS', ()
   expect(Math.max(...[0, ...cuts, text.length].slice(1).map((at, index) => at - ([0, ...cuts][index] ?? 0)))).toBeLessThan(3 * ROW_CHARS);
 });
 
+test('a long turn that ends on a long answer is cut at its paragraphs and its answer in slices', () => {
+  let seed = 5;
+  const random = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const answer = markdownAnswer(random, 21_738);
+  const parts = [...work(16, 9).slice(0, -1), text(answer)];
+  expect(parts.length).toBe(161);
+  const turn = message('m-turn', parts);
+  const rows = new TimelineRows().build([turn]);
+  const slices = rows.filter(row => row.text);
+  // The answer is drawn in slices, each of its own characters, and the work above it in rows of parts.
+  expect(slices.length).toBe(textCuts(answer).length + 1);
+  expect(slices.map(row => answer.slice(row.text!.start, row.text!.end)).join('')).toBe(answer);
+  const work_ = rows.filter(row => !row.text);
+  expect(work_.length).toBe(rowCuts(turn).length + 1);
+  // Every part drawn once, in order, under unique ids, the first keeping the message's.
+  expect(rows[0]!.id).toBe('m-turn');
+  expect(new Set(rows.map(row => row.id)).size).toBe(rows.length);
+  const spans = rows.filter(row => (row.text?.start ?? 0) === 0);
+  expect(spans.map(row => row.from)).toEqual([0, ...spans.slice(0, -1).map(row => row.to)]);
+  expect(spans.at(-1)!.to).toBe(parts.length);
+  // A run never spans a cut: the rows of parts draw the runs the whole message drew.
+  expect(work_.flatMap(row => memoryPartRuns(turn.parts, [], row.from, row.to))).toEqual(partRuns(turn.parts).slice(0, -1));
+  expect(rows.map(row => row.first)).toEqual(rows.map((_, index) => index === 0));
+  expect(rows.map(row => row.last)).toEqual(rows.map((_, index) => index === rows.length - 1));
+});
+
+test('a long written plan stays one row, so its card copies, downloads and saves all of it', () => {
+  let seed = 9;
+  const random = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const plan = `# Plan\n\n${markdownAnswer(random, 20_000)}`;
+  expect(textCuts(plan).length).toBeGreaterThan(1);
+  const rows = new TimelineRows().build([message('m-plan', [text(plan)])]);
+  expect(rows).toHaveLength(1);
+  expect(rows[0]).toMatchObject({ id: 'm-plan', first: true, last: true });
+  expect(rows[0]!.text).toBeUndefined();
+});
+
 test('find opens the slice of a cut answer that holds the match, not its last slice', () => {
   let seed = 7;
   const random = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
