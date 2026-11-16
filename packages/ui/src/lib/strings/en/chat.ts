@@ -180,6 +180,22 @@ export const strings = {
     hookStopped: 'A hook stopped the turn',
     /** The line above with what the hook said: `{label}` one of the two, `{message}` its words. */
     hookSays: '{label}: {message}',
+    /**
+     * The agent warned that something it saves or reads went wrong, and its turn
+     * went on (`part.type === 'notice'`): what happened, then what it means.
+     * `{cause}` is one of `diskFull`, `diskQuota`, `writeFailed`.
+     */
+    notice: {
+      writesLost: '{cause}: part of this conversation was not saved, so resuming it later may miss some of it',
+      writesLostSettings: '{cause}: settings the agent changed during this run were not saved',
+      diskFull: 'The disk is full',
+      diskQuota: 'The disk quota is used up',
+      writeFailed: 'A save failed',
+      attachmentsMissing: 'Some attached files did not reach the agent ({missing} of {sent}): it went on without them',
+      instructionsLarge: 'The instruction files hold {chars} characters, over the {limit} recommended: the agent may be slower and less precise',
+      instructionsLargeOne: 'The instruction file holds {chars} characters, over the {limit} recommended: the agent may be slower and less precise',
+      mirrorFailed: 'Part of this conversation was not copied to the session store: that copy misses it',
+    },
     /** What the agent asks to do, one sentence per kind of tool (`lib/tool-summary.ts`). */
     permissionAsk: {
       command: 'Run a command',

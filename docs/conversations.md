@@ -17,6 +17,12 @@ draft folder when you have no project yet.
 The chat shows Starting agent while the agent launches, then Working for once
 it starts working. The startup timer counts the current turn.
 
+An agent can warn that something went wrong beside its work while it carries
+on: the disk was full and part of the conversation was not saved, attached
+files did not reach it, or its instruction files are too long. The warning
+shows as a warning line in the reply, with the agent's own report behind its
+"i". The turn goes on.
+
 The message box checks spelling and corrects as you type, as your system
 does. Turn off Check spelling and correct as I type in Settings, General, In
 the conversation, to keep your text as typed, with no red underline.

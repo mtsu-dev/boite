@@ -28,6 +28,7 @@
   import { shownText as shownTextOf } from '../lib/timeline-rows';
   import KeepaliveMarker from './KeepaliveMarker.svelte';
   import ErrorCard from './ErrorCard.svelte';
+  import AgentNoticeLine from './AgentNoticeLine.svelte';
   import { retryTurn } from '../lib/composer-edit';
   import WindowCard from './WindowCardLoader.svelte';
   import { keepaliveRun } from '../lib/message-order';
@@ -291,6 +292,9 @@
           <span class="text">{part.message.trim() ? fill(strings.chat.hookSays, { label, message: part.message.trim() }) : label}</span>
           <span class="event">{part.event}</span>
         </p>
+      {:else if part.type === 'notice'}
+        <!-- The agent warned and went on: a notice of the timeline, not a failure of the turn. -->
+        <AgentNoticeLine notice={part.notice} detail={part.detail} />
       {:else if part.type === 'window_capture'}
         <WindowCard {part} />
       {:else if part.type === 'window_consent'}

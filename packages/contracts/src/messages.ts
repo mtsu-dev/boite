@@ -121,6 +121,22 @@ export interface SentFrom {
 /** The longest `hello` `client.device` the core keeps. */
 export const CLIENT_DEVICE_MAX = 64;
 
+/**
+ * Something the agent said went wrong beside its turn, which runs on. A client
+ * words it in its own language from these fields.
+ * `writes_lost`: the agent could not save its session, or only its own
+ * settings when `transcript` is false; resuming may miss part of the
+ * conversation. `attachments_missing`: `missing` of the `sent` files attached
+ * to a prompt never reached it. `instructions_large`: its instruction files
+ * (`files` of them) hold `chars` characters, over the `limit` it recommends.
+ * `mirror_failed`: a copy of the transcript kept outside the agent dropped a batch.
+ */
+export type AgentNotice =
+  | { kind: 'writes_lost'; cause: 'disk_full' | 'quota' | 'other'; transcript: boolean }
+  | { kind: 'attachments_missing'; missing: number; sent: number }
+  | { kind: 'instructions_large'; chars: number; limit: number; files: number }
+  | { kind: 'mirror_failed' };
+
 export type MessagePart =
   /**
    * `omitted`: characters a page left out of the end of `text` because the
@@ -238,6 +254,12 @@ export type MessagePart =
    * hook that denied a tool call shows on that tool's card instead.
    */
   | { type: 'hook'; event: string; outcome: 'blocked' | 'stopped'; message: string }
+  /**
+   * The agent warned that something it saves or reads went wrong, and went on:
+   * a quiet notice, not a failure. `detail` is the agent's own account in its
+   * terms (codes, ids), shown on demand.
+   */
+  | { type: 'notice'; notice: AgentNotice; detail: string }
   /**
    * A native window an agent captured with `boite window`, or whose stream a
    * viewer started in the Window panel: no capture is silent. `thumbnail` is a

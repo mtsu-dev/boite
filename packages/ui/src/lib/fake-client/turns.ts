@@ -320,6 +320,8 @@ const TURN_MARKERS: TurnMarker[] = [
       requestAgentSetting(ctx, thread, turn, { threadId: thread.id, agent: agent.id, key: 'model', value: 'opencode/default', reason: AGENT_MODEL_REASON });
     } catch { /* already on it, or already asked */ }
   } },
+  // The fake's own: the four notices an agent sends beside a turn that goes on.
+  { matches: prompt => prompt.includes('[notices]'), run: (ctx, thread, _turn, message) => integrityNotices(ctx, thread, message) },
   { matches: prompt => prompt.includes('[background]'), run: (ctx, thread, _turn, message) => backgroundShell(ctx, thread, message) },
   { matches: prompt => prompt.includes('[monitor]'), run: (ctx, thread, _turn, message) => backgroundShell(ctx, thread, message, 'monitor') },
   { matches: prompt => prompt.includes('[tool-stream]'), run: (ctx, thread, _turn, message) => streamToolInput(ctx, thread, message) },
@@ -339,6 +341,23 @@ const TURN_MARKERS: TurnMarker[] = [
     { kind: 'image', mimeType: 'image/png', data: IMAGE_BASE64, alt: 'one pixel' }
   ]) },
 ];
+
+/** The agent's notices, shaped as the Claude driver maps them (`drivers/claude/notices.ts`). */
+const NOTICES: MessagePart[] = [
+  { type: 'notice', notice: { kind: 'writes_lost', cause: 'disk_full', transcript: true }, detail: 'session_writes_lost: ENOSPC; lost transcript; sessions 5f1c2a90' },
+  { type: 'notice', notice: { kind: 'attachments_missing', missing: 1, sent: 3 }, detail: 'file_attachments_missing: message 0b7e44d1; file_9c2 (too_large)' },
+  { type: 'notice', notice: { kind: 'instructions_large', chars: 52_400, limit: 40_000, files: 3 }, detail: 'instruction_size_warning: 52400 chars in 3 files, limit 40000; largest 41200' },
+  { type: 'notice', notice: { kind: 'mirror_failed' }, detail: 'mirror_error: append timed out; project boite, session 5f1c2a90' },
+];
+
+function integrityNotices(ctx: FakeContext, thread: Thread, message: Message): void {
+  for (const notice of NOTICES) {
+    const partIndex = message.parts.length;
+    const part = structuredClone(notice);
+    message.parts.push(part);
+    ctx.emitToThread(thread.id, 'message.part', { threadId: thread.id, messageId: message.id, partIndex, part: structuredClone(part) });
+  }
+}
 
 function finishThinking(ctx: FakeContext, thread: Thread, message: Message): void {
   const thought = message.parts[0];
