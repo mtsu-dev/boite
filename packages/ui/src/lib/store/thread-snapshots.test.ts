@@ -149,3 +149,16 @@ test('a page left before a drop in another window is not written once this windo
   expect(await db.data('core-a', 't1')).toBeUndefined();
   device.stop();
 });
+
+test('a snapshot read that fails, the database blocked, opens the thread from the machine as if there were none', async () => {
+  const db = new MemorySnapshotDb();
+  const snapshots = new ThreadSnapshots({ db, subtle: crypto.subtle });
+  setThreadSnapshots(snapshots);
+  vi.spyOn(snapshots, 'mayHold').mockReturnValue(true);
+  vi.spyOn(snapshots, 'read').mockRejectedValue(new DOMException('The database is blocked by another tab.', 'AbortError'));
+  const { store } = await load();
+  await store.open('t-descriptors');
+  expect(store.openThread?.id).toBe('t-descriptors');
+  expect(store.openThread!.messages.length).toBeGreaterThan(0);
+  expect(store.loadingThreadId).toBeNull();
+});

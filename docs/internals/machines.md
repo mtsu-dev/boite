@@ -477,19 +477,23 @@ open: the client keeps no copy of the thread list.
 The client does keep the last page of each machine's 8 most recently opened
 threads (`lib/thread-snapshots.ts`), so that one opened after a reload paints
 at once. A thread with nothing in memory opens from that snapshot, read from
-IndexedDB and decrypted within 250 ms or skipped, then asks the core with the
+IndexedDB and decrypted within 250 ms or skipped (so is a read that fails,
+the database blocked by another tab), then asks the core with the
 snapshot's `after` cursor, as a visit still in the reading cache does. An
 answer that does not resume from that cursor (`messagesFrom` absent) drops the
 snapshot, and the thread shows only what the core sent. A snapshot is written
 once a thread's page has stayed put for one second and the page is idle, and
 again when the reader leaves it. Bounds: 8 threads per machine, 512 KiB per
-thread, 4 MiB on the device; the least recently opened goes first. Each record
+thread, 4 MiB on the device; the least recently opened goes first, never the
+one just written, whatever the clock says. Each record
 is AES-GCM encrypted under a key made once per machine, non-extractable and
 kept in IndexedDB as a `CryptoKey`, with a random 96-bit IV per record and the
-machine and thread ids as additional data; a record that does not decrypt is
-dropped. Two windows making a machine's first key at once both keep the one
-stored first: one IndexedDB transaction reads the machine and adds the key
-only if it is absent. An incognito thread, a thread whose page holds a secret card, and any
+machine and thread ids as additional data. A record that does not decrypt
+with the key a page holds is tried once with the key stored now, which another
+window may have made since, and dropped only if that fails too. Two windows
+making a machine's first key at once both keep the one stored first: one
+IndexedDB transaction reads the machine and adds the key only if it is absent,
+and a window whose add still fails reads the stored key back. An incognito thread, a thread whose page holds a secret card, and any
 connection other than the owner's or a paired device's are never written. A
 rewind, a truncation, a refused open or a forgotten thread drops its record.
 Forgetting a saved machine (`removeEnvironment`, which a revoked key also

@@ -266,3 +266,43 @@ test('a purge by address while a machine\'s first key is being made there keeps 
   expect([db.keys.size, db.records.size]).toEqual([0, 0]);
   expect(await new ThreadSnapshots({ db, subtle: crypto.subtle, channel: null }).read('core-a', 't1')).toBeUndefined();
 });
+
+test('a window that loses the race to store a machine\'s first key writes under the winner\'s', async () => {
+  // As the database answers when another window's add lands first: the add fails, the other key is stored.
+  class Raced extends MemorySnapshotDb {
+    winner: string | null = null;
+    override async addMachine(entry: Parameters<MemorySnapshotDb['addMachine']>[0], mark: Parameters<MemorySnapshotDb['addMachine']>[1]): ReturnType<MemorySnapshotDb['addMachine']> {
+      const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+      this.winner = (await super.addMachine({ ...entry, id: 'the-other-window', key }, mark))!.id;
+      throw new DOMException('Key already exists in the object store.', 'ConstraintError');
+    }
+  }
+  const db = new Raced();
+  const snapshots = new ThreadSnapshots({ db, subtle: crypto.subtle, channel: null });
+  expect(await snapshots.write('core-a', null, thread('t1'), null)).toBe(true);
+  expect(db.winner).toBe('the-other-window');
+  expect((await new ThreadSnapshots({ db, subtle: crypto.subtle, channel: null }).read('core-a', 't1'))?.thread.id).toBe('t1');
+});
+
+test('the record just written stays, even when the clock stepped back before it', async () => {
+  const clock = { now: 1000 };
+  const db = new MemorySnapshotDb();
+  const snapshots = new ThreadSnapshots({ db, subtle: crypto.subtle, now: () => clock.now-- });
+  for (let index = 0; index <= SNAPSHOT_THREADS; index++) await snapshots.write('core-a', null, thread(`t${index}`), null);
+  const kept = (await db.metas()).map(meta => meta.threadId);
+  expect(kept).toHaveLength(SNAPSHOT_THREADS);
+  expect(kept).toContain(`t${SNAPSHOT_THREADS}`);
+});
+
+test('a record another window wrote under a new key reads back here, where the old key was still held', async () => {
+  const db = new MemorySnapshotDb();
+  const one = new ThreadSnapshots({ db, subtle: crypto.subtle, channel: null });
+  const two = new ThreadSnapshots({ db, subtle: crypto.subtle, channel: null });
+  expect(await one.write('core-a', null, thread('t1', 'under the first key'), null)).toBe(true);
+  // Window two purges the machine and writes t1 again, under a new key; no notice reaches window one.
+  await two.purgeMachine('core-a');
+  expect(await two.write('core-a', null, thread('t1', 'under the second key'), null)).toBe(true);
+  const read = await one.read('core-a', 't1');
+  expect(read?.thread.messages[0]?.parts[0]).toEqual({ type: 'text', text: 'under the second key' });
+  expect(await db.data('core-a', 't1')).toBeDefined();
+});

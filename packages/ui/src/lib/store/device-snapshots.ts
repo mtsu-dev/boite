@@ -67,7 +67,8 @@ export class DeviceSnapshots {
     if (!target?.snapshots.mayHold(target.machine, threadId)) return undefined;
     let late: ReturnType<typeof setTimeout> | undefined;
     const waited = new Promise<undefined>(resolve => { late = setTimeout(() => resolve(undefined), SNAPSHOT_READ_WAIT_MS); });
-    const read = await Promise.race([target.snapshots.read(target.machine, threadId), waited]).finally(() => clearTimeout(late));
+    // A read that fails (the database blocked by another tab) is no snapshot: the open goes to the machine.
+    const read = await Promise.race([target.snapshots.read(target.machine, threadId).catch(() => undefined), waited]).finally(() => clearTimeout(late));
     return read?.thread;
   }
 

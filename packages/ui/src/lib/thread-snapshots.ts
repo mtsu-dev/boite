@@ -288,8 +288,15 @@ export class IndexedSnapshotDb implements SnapshotDb {
       this.#now(t, entry.machine, '', mark.address, (now, held) => {
         if (!unchanged(mark, { ...now, drop: mark.drop })) return;
         if (held) { answer(held); return; }
-        // add, never put: should another window's key be there by now, the transaction fails and nothing is replaced.
-        t.objectStore('machines').add(entry).onsuccess = () => answer(entry);
+        // add, never put: should another window's key be there by now, nothing is replaced and the stored one is the answer.
+        const adding = t.objectStore('machines').add(entry);
+        adding.onsuccess = () => answer(entry);
+        adding.onerror = event => {
+          if (adding.error?.name !== 'ConstraintError') return;
+          event.preventDefault(); // Keeps the transaction, which reads the winner instead.
+          const reading = t.objectStore('machines').get(entry.machine) as IDBRequest<SnapshotMachine | undefined>;
+          reading.onsuccess = () => { if (reading.result) answer(reading.result); };
+        };
       });
     }, undefined);
   }
@@ -481,10 +488,11 @@ export class ThreadSnapshots {
    * The machine's key: the one `mark` names, or for a write whose machine had
    * none, the one stored since or one made now, non-extractable, unless a
    * purge came since. Without a
-   * mark (a read), whichever is stored. `url` is where this device reaches it.
+   * mark (a read), whichever is held, or with `stored` the one read from the
+   * database again. `url` is where this device reaches it.
    */
-  async #key(machine: string, url: string | null, mark: SnapshotMark | null): Promise<HeldKey | undefined> {
-    const cached = await this.#keys.get(machine)?.catch(() => undefined);
+  async #key(machine: string, url: string | null, mark: SnapshotMark | null, stored = false): Promise<HeldKey | undefined> {
+    const cached = stored ? undefined : await this.#keys.get(machine)?.catch(() => undefined);
     let held = cached && (!mark || cached.id === mark.keyId) ? cached : undefined;
     if (!held) {
       const entry = await this.#db.machine(machine);
@@ -494,7 +502,9 @@ export class ThreadSnapshots {
         const key = await this.#subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
         // Another window may make this machine's first key at the same time: the one stored first is everyone's.
         // Made for the mark's address: a purge of that address since keeps it out, before any key maps the address to the machine.
-        kept = await this.#db.addMachine({ machine, id: crypto.randomUUID(), key, urls: mark.address === null ? [] : [mark.address] }, mark);
+        const made = { machine, id: crypto.randomUUID(), key, urls: mark.address === null ? [] : [mark.address] };
+        // Should the add fail, another window's key being stored first, the stored one is read back: the commit still checks the mark.
+        kept = await this.#db.addMachine(made, mark).catch(() => this.#db.machine(machine));
       }
       if (!kept) return undefined;
       held = { id: kept.id, key: kept.key, urls: new Set(kept.urls) };
@@ -542,7 +552,9 @@ export class ThreadSnapshots {
     const metas = (await this.#db.metas()).sort((a, b) => a.openedAt - b.openedAt);
     const gone = new Set<SnapshotMeta>();
     const mine = metas.filter(meta => meta.machine === machine);
-    for (const meta of mine.slice(0, Math.max(0, mine.length - SNAPSHOT_THREADS))) gone.add(meta);
+    // Never the record just written, even should a clock stepped back date it before the others.
+    const older = mine.filter(meta => meta.threadId !== newest);
+    for (const meta of older.slice(0, Math.max(0, mine.length - SNAPSHOT_THREADS))) gone.add(meta);
     let total = metas.reduce((sum, meta) => sum + (gone.has(meta) ? 0 : meta.bytes), 0);
     for (const meta of metas) {
       if (total <= SNAPSHOT_TOTAL) break;
@@ -558,24 +570,36 @@ export class ThreadSnapshots {
     this.#noteIndex(machine, threadId, false);
   }
 
-  /** The snapshot of `threadId`, decrypted; a record that does not decrypt or parse is dropped. */
+  /**
+   * The snapshot of `threadId`, decrypted. A record that does not decrypt or
+   * parse with the key held here is tried once more with the key stored now,
+   * which another window may have made since; failing again, it is dropped.
+   */
   async read(machine: string, threadId: string): Promise<ThreadSnapshot | undefined> {
     try {
       await this.#loadIndex();
       if (!this.mayHold(machine, threadId)) return undefined;
       const record = await this.#db.data(machine, threadId);
       if (!record) { this.#noteIndex(machine, threadId, false); return undefined; }
+      const open = async (key: CryptoKey): Promise<ThreadSnapshot | undefined> => {
+        try {
+          const plain = await this.#subtle.decrypt({ name: 'AES-GCM', iv: record.iv as Uint8Array<ArrayBuffer>, additionalData: bytes(recordKey(machine, threadId)) }, key, record.data);
+          const parsed = JSON.parse(decoder.decode(plain)) as ThreadSnapshot;
+          return parsed?.thread?.id === threadId && Array.isArray(parsed.thread.messages) ? parsed : undefined;
+        } catch {
+          return undefined;
+        }
+      };
       const held = await this.#key(machine, null, null);
-      if (!held) { await this.drop(machine, threadId); return undefined; }
-      try {
-        const plain = await this.#subtle.decrypt({ name: 'AES-GCM', iv: record.iv as Uint8Array<ArrayBuffer>, additionalData: bytes(recordKey(machine, threadId)) }, held.key, record.data);
-        const parsed = JSON.parse(decoder.decode(plain)) as ThreadSnapshot;
-        if (parsed?.thread?.id !== threadId || !Array.isArray(parsed.thread.messages)) throw new Error('Not a snapshot of this thread');
-        return parsed;
-      } catch {
-        await this.drop(machine, threadId);
-        return undefined;
+      let parsed = held && await open(held.key);
+      if (!parsed) {
+        // The key held here may be stale: another window may have purged the machine and written under a new one.
+        this.#keys.delete(machine);
+        const stored = await this.#key(machine, null, null, true);
+        if (stored && stored.id !== held?.id) parsed = await open(stored.key);
       }
+      if (!parsed) await this.drop(machine, threadId);
+      return parsed;
     } catch {
       return undefined;
     }
