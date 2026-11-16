@@ -109,6 +109,14 @@ test('a ready machine reads its first four sidebar threads ahead, one at a time,
   expect(await paintsAtOnce(created.older)).toBe(false);
 });
 
+test('where the read-ahead is off (a driven browser, a unit test), an open does not start it', async () => {
+  delete window.__BOITE_IDLE_PRELOAD_TEST__;
+  const { ahead } = await machine();
+  await store.open('t-bench');
+  await new Promise(resolve => setTimeout(resolve, IDLE_PRELOAD_WAIT_MS * 2.5));
+  expect(ahead()).toEqual([]);
+});
+
 test('a connection that saves data reads one thread ahead', async () => {
   Object.defineProperty(navigator, 'connection', { value: { saveData: true }, configurable: true });
   const { ahead } = await machine();
