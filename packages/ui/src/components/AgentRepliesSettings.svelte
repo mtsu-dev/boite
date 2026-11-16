@@ -16,7 +16,7 @@
   const uid = $props.id();
 
   /** A switch saves when it flips, as every other switch in Settings does; a refusal puts it back. */
-  async function toggle(key: 'asyncQuestions' | 'shortAnswers' | 'toolSummaries', input: HTMLInputElement) {
+  async function toggle(key: 'asyncQuestions' | 'shortAnswers' | 'toolSummaries' | 'promptSuggestions', input: HTMLInputElement) {
     const ok = await store.saveSettings({ [key]: input.checked });
     if (!ok) input.checked = store.settings?.[key] ?? (key === 'toolSummaries' ? false : true);
   }
@@ -47,6 +47,14 @@
     </span>
     <input id="{uid}-tool-summaries" aria-labelledby="{uid}-tool-summaries-name" aria-describedby="{uid}-tool-summaries-effect" type="checkbox" role="switch" data-testid="setting-tool-summaries"
       checked={store.settings?.toolSummaries ?? false} disabled={!store.settings} onchange={(event) => void toggle('toolSummaries', event.currentTarget)} />
+  </label>
+  <label for="{uid}-suggest" class="switch-row">
+    <span class="text">
+      <span class="ui-label-box"><span class="ui-label" id="{uid}-suggest-name">{strings.settings.promptSuggestions}</span><InfoTip topic={strings.settings.promptSuggestions} text={strings.settings.promptSuggestionsHint} /></span>
+      <span class="hint" id="{uid}-suggest-effect">{strings.settings.effects.promptSuggestions}</span>
+    </span>
+    <input id="{uid}-suggest" aria-labelledby="{uid}-suggest-name" aria-describedby="{uid}-suggest-effect" type="checkbox" role="switch" data-testid="setting-prompt-suggestions"
+      checked={store.settings?.promptSuggestions ?? true} disabled={!store.settings} onchange={(event) => void toggle('promptSuggestions', event.currentTarget)} />
   </label>
   {#if store.settings}<TitleModelSetting {store} /><GoalTrackerSetting {store} />{/if}
 </section>

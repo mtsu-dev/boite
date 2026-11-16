@@ -1,7 +1,10 @@
 <script lang="ts">
-  import type { Attachment, PreviewReference } from '@boite/contracts';
+  import type { Attachment, PreviewReference, PromptSuggestion, ThreadId } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
   import { chatPrefs } from '../lib/chat-prefs.svelte';
+  import { strings } from '../lib/strings';
+  import { offeredSuggestion } from '../lib/prompt-suggestion.svelte';
+  import ComposerSuggestion from './ComposerSuggestion.svelte';
   import ComposerImageReferences from './ComposerImageReferences.svelte';
   import PreviewReferences from './PreviewReferences.svelte';
 
@@ -12,8 +15,8 @@
    * composer owns the text and every key; this draws them.
    */
   let {
-    box = $bindable(), store, key, text, highlighted, keywords, command, references, attachments, gutter, scroll, placeholder, disabled,
-    onreference, onopenimage, onhoverimage, onbeforeinput, oncopy, oncut, oninput, onkeydown, onpaste, ontrack, onscroll, onfocus, onblur
+    box = $bindable(), store, key, text, highlighted, keywords, command, references, attachments, gutter, scroll, placeholder, suggest = null, disabled,
+    onsuggested, onreference, onopenimage, onhoverimage, onbeforeinput, oncopy, oncut, oninput, onkeydown, onpaste, ontrack, onscroll, onfocus, onblur
   }: {
     box?: HTMLTextAreaElement;
     store: Store;
@@ -28,7 +31,11 @@
     gutter: number;
     scroll: number;
     placeholder: string;
+    /** The thread whose suggested next message the field may offer: given only while nothing else needs the box (Composer). */
+    suggest?: { id: ThreadId; suggestion?: PromptSuggestion | null } | null;
     disabled: boolean;
+    /** Writes the taken suggestion in as the draft; it never sends. */
+    onsuggested: (text: string) => void;
     onreference: (reference: PreviewReference) => void;
     onopenimage: (attachment: Attachment) => void;
     onhoverimage: (attachment: Attachment | null) => void;
@@ -52,7 +59,33 @@
   }
   /** With the correction turned off, the phone keyboard also stops correcting and capitalizing. Spread because the textarea's typed attributes leave `autocorrect` out. */
   let typing = $derived<Record<string, string>>(chatPrefs.typingCorrection ? {} : { autocorrect: 'off', autocapitalize: 'off' });
+  const uid = $props.id();
+
+  /**
+   * The agent's suggested next message in the empty field: ghost text with a
+   * Tab badge on a desktop, a chip above the field on a phone. Tab or a tap
+   * writes it in to edit, Esc or the x dismisses it for this turn.
+   */
+  let offered = $derived(text.length === 0 && attachments.length === 0 && references.length === 0 && !disabled ? offeredSuggestion(store, suggest) : null);
+  let ghost = $derived(offered?.text ?? null);
+  function takeSuggestion(): void {
+    if (!offered) return;
+    onsuggested(offered.text);
+    box?.focus({ preventScroll: true });
+  }
+  function keydown(event: KeyboardEvent): void {
+    const plain = !event.isComposing && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey;
+    if (offered && plain && (event.key === 'Tab' || event.key === 'Escape')) {
+      event.preventDefault();
+      if (event.key === 'Tab') takeSuggestion();
+      else offered.dismiss();
+      return;
+    }
+    onkeydown(event);
+  }
 </script>
+
+{#if offered}<ComposerSuggestion text={offered.text} ontake={takeSuggestion} ondismiss={offered.dismiss} />{/if}
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="input-wrap" onpointerdown={reach}>
@@ -60,6 +93,9 @@
   <div class="input-highlight" aria-hidden={references.length || attachments.length ? undefined : true} data-testid="composer-highlight" style:right={`${gutter}px`}>
     <div class="input-paint input-mirror" style:transform={`translateY(${-scroll}px)`}><PreviewReferences {text} {references} {store} threadId={key} editing {keywords} command={command || undefined} {onreference}>{#snippet paint(parts)}<ComposerImageReferences segments={parts} {attachments} onopen={onopenimage} onhover={onhoverimage} />{/snippet}</PreviewReferences>{'\n'}</div>
   </div>
+{/if}
+{#if ghost}
+  <div class="input-ghost" id="{uid}-ghost" data-testid="composer-suggestion" style:right={`${gutter}px`}><span class="visually-hidden">{strings.composer.suggestion.label}: </span><span class="ghost-text">{ghost}</span> <kbd class="ghost-key" aria-hidden="true">{strings.composer.suggestion.key}</kbd></div>
 {/if}
 <textarea
   class:highlighted
@@ -69,7 +105,7 @@
   {oncopy}
   {oncut}
   {oninput}
-  {onkeydown}
+  onkeydown={keydown}
   {onpaste}
   onkeyup={ontrack}
   {onscroll}
@@ -79,8 +115,9 @@
   {onblur}
   rows="1"
   {disabled}
-  {placeholder}
+  placeholder={ghost ? '' : placeholder}
   aria-label={placeholder}
+  aria-describedby={ghost ? `${uid}-ghost` : undefined}
   data-testid="composer-input"
   spellcheck={!command && chatPrefs.typingCorrection}
   {...typing}
@@ -105,6 +142,31 @@
     /* Follows the textarea's scroll: reduced motion's blanket transition would paint each step a frame late. */
     transition-property: none;
   }
+
+  /* The suggestion sits where the placeholder would, in its color, one line cut short; a phone shows its chip instead (ComposerSuggestion). */
+  .input-ghost {
+    position: absolute;
+    inset: 0;
+    padding: var(--composer-input-padding, 12px 14px 0);
+    pointer-events: none;
+    color: var(--color-subtle);
+    font-size: var(--text-reading);
+    line-height: var(--leading-reading);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ghost-key {
+    margin-left: var(--space-1);
+    padding: 0 var(--space-1);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: var(--text-xs);
+    color: var(--color-muted-foreground);
+    vertical-align: middle;
+  }
+  @media (max-width: 720px), (pointer: coarse) { .input-ghost { display: none; } }
 
   textarea.highlighted { color: transparent; caret-color: var(--color-accent); }
   textarea.highlighted::selection { background: var(--color-accent-soft); }

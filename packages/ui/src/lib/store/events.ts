@@ -143,6 +143,13 @@ export function listen(ctx: StoreContext, client: Client): void {
     const preloaded = threads.preloads.thread(threadId);
     if (preloaded) preloaded.commands = commands;
   });
+  // The agent's suggested next message, the latest only, on the open thread like the commands.
+  on('thread.suggestion', ({ threadId, suggestion }) => {
+    const open = s.openThread;
+    if (open && open.id === threadId) open.suggestion = suggestion;
+    const preloaded = threads.preloads.thread(threadId);
+    if (preloaded) preloaded.suggestion = suggestion;
+  });
   // What the agent still runs in the background, whole each time, like the commands.
   on('thread.background', ({ threadId, tasks, history }) => {
     const open = s.openThread;
