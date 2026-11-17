@@ -299,7 +299,8 @@ describe('harness updates', () => {
       "const { appendFileSync, chmodSync, rmSync, writeFileSync } = require('node:fs');",
       `appendFileSync(${JSON.stringify(calls)}, process.argv.at(-1) + '\\n');`,
       "const version = process.argv.at(-1).split('@').at(-1);",
-      `writeFileSync(${JSON.stringify(state)}, version);`,
+      // The copy put back prints another version than the one asked for: the row shows what it prints.
+      `writeFileSync(${JSON.stringify(state)}, version === '1.0.5' ? '1.0.4' : version);`,
       // npm holds the new release a moment with the program gone, long enough for a check to run meanwhile.
       `if (version === '1.1.0') { rmSync(${JSON.stringify(program)}); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1500); }`,
       `else { writeFileSync(${JSON.stringify(program)}, ${JSON.stringify(script)}); chmodSync(${JSON.stringify(program)}, 0o755); }`,
@@ -315,12 +316,12 @@ describe('harness updates', () => {
     await waitFor(() => !existsSync(program));
     await client.call('providers.updates', { refresh: true });
     const update = only(await failed);
-    expect(update).toMatchObject({ current: '1.0.5', latest: '1.1.0', skipped: '1.1.0', pending: false });
-    expect(update.message).toMatch(/`npm install -g @boite-test\/fake-agent@1\.1\.0` left Fake updating agent unable to start .*; Boite put back 1\.0\.5; Boite skips 1\.1\.0/);
+    expect(update).toMatchObject({ current: '1.0.4', latest: '1.1.0', skipped: '1.1.0', pending: false });
+    expect(update.message).toMatch(/`npm install -g @boite-test\/fake-agent@1\.1\.0` left Fake updating agent unable to start .*; Boite put back 1\.0\.5, which reports 1\.0\.4; Boite skips 1\.1\.0/);
     expect(readFileSync(calls, 'utf8').trim().split('\n')).toEqual(['@boite-test/fake-agent@1.1.0', '@boite-test/fake-agent@1.0.5']);
     expect(readFileSync(layout.link, 'utf8')).toBe(script);
     // The agent starts again, and a check no longer offers the release that broke it.
-    expect(only(await client.call('providers.updates', { refresh: true }))).toMatchObject({ current: '1.0.5', latest: '1.1.0', state: 'idle', pending: false, skipped: '1.1.0' });
+    expect(only(await client.call('providers.updates', { refresh: true }))).toMatchObject({ current: '1.0.4', latest: '1.1.0', state: 'idle', pending: false, skipped: '1.1.0' });
     await waitFor(() => harness?.core.procs.liveCount('update:update-fake') === 0);
   }, 60000);
 

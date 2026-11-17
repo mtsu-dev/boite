@@ -1,7 +1,7 @@
 import { readFileSync, realpathSync } from 'node:fs';
-import { dirname, isAbsolute, join, relative } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative } from 'node:path';
 import type { OsProfile } from '@boite/contracts';
-import { npmInstallOf, npmParked, npmReplacedPaths, restoreNpmParked, type NpmCommand, type NpmInstall } from './npm.ts';
+import { binNames, npmInstallOf, npmParked, npmReplacedPaths, restoreNpmParked, type NpmCommand, type NpmInstall } from './npm.ts';
 import { recheckVersions } from './versions.ts';
 import { forgetWhich } from './which.ts';
 import { programBehindWrappers, resolveCommand, type ResolvedCommand } from './resolve.ts';
@@ -89,7 +89,7 @@ export async function runNpmUpdate(npm: NpmUpdate, run: () => Promise<string>, e
 /** What {@link installKeepingStart} asks of the updater. */
 export interface PutBack {
   /** Resolves once the agent prints its version, and throws when it does not start. */
-  starts: () => Promise<unknown>;
+  starts: () => Promise<string>;
   install: (npm: NpmUpdate) => Promise<string>;
   /** The new release is known broken: skip it, so neither automatic updates nor Update all install it again. */
   broken: () => unknown;
@@ -116,6 +116,8 @@ const START_TRIES = 2;
 export async function installKeepingStart(npm: NpmUpdate, fallback: string | null, name: string, io: PutBack): Promise<string> {
   const previous = npmManifestVersion(npm.install) ?? fallback;
   const said = await io.install(npm);
+  // The version the program printed at its last successful start.
+  let answered = '';
   const fails = async (): Promise<string | null> => {
     let reason = '';
     for (let tries = 0; tries < START_TRIES; tries++) {
@@ -123,7 +125,7 @@ export async function installKeepingStart(npm: NpmUpdate, fallback: string | nul
       forgetWhich();
       recheckVersions();
       try {
-        await io.starts();
+        answered = await io.starts();
       } catch (error) {
         reason = messageOf(error);
         continue;
@@ -154,7 +156,8 @@ export async function installKeepingStart(npm: NpmUpdate, fallback: string | nul
     }
     const still = await fails();
     if (still !== null) throw new UpdateUndone(`${broken}, and ${previous} put back does not start either (${still}); ${skipped}`, null);
-    throw new UpdateUndone(`${broken}; Boite put back ${previous}; ${skipped}`, previous);
+    const reports = answered === previous ? '' : `, which reports ${answered}`;
+    throw new UpdateUndone(`${broken}; Boite put back ${previous}${reports}; ${skipped}`, answered);
   } finally {
     await io.settled();
   }
@@ -185,11 +188,13 @@ function realpathOr(path: string): string {
   }
 }
 
-/** True when the program sits in the install's package, or is one of npm's Windows shims in its prefix. */
+/** True when the program sits in the install's package, or is npm's Windows shim in its prefix for one of the package's commands. */
 function installedBy(install: NpmInstall, program: string): boolean {
   const inner = relative(install.packageDir, program);
   if (inner !== '' && !inner.startsWith('..') && !isAbsolute(inner)) return true;
-  return process.platform === 'win32' && relative(install.prefix, dirname(program)) === '';
+  if (process.platform !== 'win32' || relative(install.prefix, dirname(program)) !== '') return false;
+  const name = basename(program).toLowerCase();
+  return binNames(install.packageDir).some((bin) => ['.cmd', '.ps1'].some((ext) => name === `${bin}${ext}`.toLowerCase()));
 }
 
 function messageOf(error: unknown): string {
