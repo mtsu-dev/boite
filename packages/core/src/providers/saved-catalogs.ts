@@ -61,3 +61,24 @@ export function saveCatalog(core: Core, providerId: ProviderId, accountId: Accou
 export function forgetSavedCatalog(core: Core, accountId: AccountId): void {
   core.journal.db.query('DELETE FROM settings WHERE key GLOB ?').run(`${PREFIX}*${JSON.stringify(accountId)}]`);
 }
+
+/**
+ * The agent's own part of a list read through a gateway, kept apart from the
+ * gateway rows: when the agent fails behind a gateway that answers, this part
+ * still describes its models, speed tiers included, after a restart.
+ */
+const nativeKeyOf = (providerId: ProviderId, accountId: AccountId): string => `${PREFIX}native:${JSON.stringify([providerId, accountId])}`;
+
+export function saveNativeList(core: Core, providerId: ProviderId, accountId: AccountId, models: ModelInfo[]): void {
+  const context = contextOf(core, providerId, accountId);
+  if (context === null) return;
+  core.journal.setSetting(nativeKeyOf(providerId, accountId), { context, models, probedAt: Date.now() } satisfies Stored);
+}
+
+export function readNativeList(core: Core, providerId: ProviderId, accountId: AccountId): ModelInfo[] | null {
+  let stored: Partial<Stored> | null | undefined;
+  try { stored = core.journal.getSetting(nativeKeyOf(providerId, accountId)) as Partial<Stored> | null | undefined; }
+  catch { return null; }
+  if (stored === null || typeof stored !== 'object' || !Array.isArray(stored.models)) return null;
+  return stored.context === contextOf(core, providerId, accountId) ? stored.models : null;
+}

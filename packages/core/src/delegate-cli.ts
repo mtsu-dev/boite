@@ -26,6 +26,8 @@ export interface DelegateOptions {
   worktree?: boolean;
   /** `delegate models|spawn --machine <name>`: another machine of the group. */
   machine?: string;
+  /** `delegate models --refresh`: read the lists again instead of the ones held. */
+  refresh?: boolean;
   /** What `contextRequest` built from the context flags; the core checks it. */
   context?: Record<string, unknown>;
   /** Where the command runs: `council --request-file` is read from there. */
@@ -145,7 +147,7 @@ export async function delegateCommand(client: CoreClient, threadId: string, rest
   switch (action) {
     case 'models': {
       const machine = options.machine;
-      const models = await client.call('delegation.models', { threadId, ...(machine === undefined ? {} : { machine }) });
+      const models = await client.call('delegation.models', { threadId, ...(machine === undefined ? {} : { machine }), ...(options.refresh ? { refresh: true } : {}) });
       print([
         machine === undefined
           ? `models a child can run on: boite delegate spawn "<brief>" --model <provider/model> [--effort <level>] [--speed <tier>]`

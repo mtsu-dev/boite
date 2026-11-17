@@ -4,11 +4,12 @@ import { join } from 'node:path';
 import type { SubscriptionProxy } from '@boite/contracts';
 import { checkSettingsPatch } from '@boite/contracts';
 import { connect } from '../src/client.ts';
-import { probedModelsOf } from '../src/drivers/index.ts';
+import { getDriver, probedModelsOf, setDriver } from '../src/drivers/index.ts';
+import { readNativeList, saveCatalog } from '../src/providers/saved-catalogs.ts';
 import { childEnv } from '../src/drivers/claude/query.ts';
 import { agentEnv } from '../src/providers/resolve.ts';
 import { mergeProxyModels, readSubscriptionProxyModels, subscriptionProxyCodexArgs, subscriptionProxyEnv } from '../src/subscription-proxy.ts';
-import { startTestCore, type TestCore } from './harness.ts';
+import { startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
 import { countEvents } from './event-count.ts';
 
@@ -495,4 +496,91 @@ test('a Claude child drops the parent session markers and keeps the account vari
   } finally {
     if (saved === undefined) delete process.env.CLAUDE_CODE_ENTRYPOINT; else process.env.CLAUDE_CODE_ENTRYPOINT = saved;
   }
+});
+
+test('a refresh whose agent fails behind a gateway that answers keeps the agent\'s last list and its speed tiers', async () => {
+  gateway = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch() {
+    return Response.json({ data: [{ id: 'codex/gpt-6.2-sol', name: 'GPT-6.2-Sol', supported_endpoint_types: ['openai-response'] }] });
+  } });
+  const sol = { id: 'gpt-6.2-sol', name: 'GPT-6.2 Sol', default: true, speeds: [{ id: 'priority', label: 'Fast' }, { id: 'ultrafast', label: 'Ultrafast' }] };
+  let reads = 0;
+  const restore = setDriver('codex-appserver', { ...getDriver('codex-appserver'), probe: async () => {
+    if (++reads > 1) throw new Error('codex app-server did not start');
+    return { models: [sol], probedAt: 1 };
+  } });
+  try {
+    harness = await startTestCore({ settings: { subscriptionProxy: config(`http://127.0.0.1:${gateway.port}/v1`) } });
+    const owner = await harness.connect();
+    const codex = await owner.call('accounts.add', { providerId: 'codex', label: 'Gateway Codex' });
+    expect((await owner.call('providers.probe', { providerId: 'codex', accountId: codex.id })).models).toEqual([sol]);
+    expect((await owner.call('providers.probe', { providerId: 'codex', accountId: codex.id, refresh: true })).models).toEqual([sol]);
+    expect(reads).toBe(2);
+    // Still the list a spawn checks, and a read right after starts no agent.
+    await waitFor(() => probedModelsOf('codex-appserver', 'codex', codex.id)?.some(row => row.id === 'gpt-6.2-sol') === true);
+    expect((await owner.call('providers.probe', { providerId: 'codex', accountId: codex.id })).models).toEqual([sol]);
+    expect(reads).toBe(2);
+    // The agent's part is saved apart from the gateway rows, for the next start.
+    expect(readNativeList(harness.core, 'codex', codex.id)).toEqual([sol]);
+  } finally { restore(); }
+});
+
+test('an agent that never answered behind the gateway leaves the gateway\'s new list, not an older gateway-only one', async () => {
+  let id = 'codex/gpt-old';
+  gateway = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch() {
+    return Response.json({ data: [{ id, name: id, supported_endpoint_types: ['openai-response'] }] });
+  } });
+  const restore = setDriver('codex-appserver', { ...getDriver('codex-appserver'), probe: async () => { throw new Error('codex app-server did not start'); } });
+  try {
+    harness = await startTestCore({ settings: { subscriptionProxy: config(`http://127.0.0.1:${gateway.port}/v1`) } });
+    const owner = await harness.connect();
+    const codex = await owner.call('accounts.add', { providerId: 'codex', label: 'Gateway Codex' });
+    const ids = async (refresh: boolean) => (await owner.call('providers.probe', { providerId: 'codex', accountId: codex.id, refresh })).models.map(model => model.id);
+    expect(await ids(false)).toEqual(['codex/gpt-old']);
+    id = 'codex/gpt-new';
+    expect(await ids(true)).toEqual(['codex/gpt-new']);
+  } finally { restore(); }
+});
+
+test('a list saved before the agent\'s rows were kept apart still gives its rows with speed tiers when the agent fails', async () => {
+  gateway = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch() {
+    return Response.json({ data: [{ id: 'codex/gpt-new', name: 'GPT new', supported_endpoint_types: ['openai-response'] }] });
+  } });
+  const sol = { id: 'gpt-6.2-sol', name: 'GPT-6.2 Sol', default: true, speeds: [{ id: 'priority', label: 'Fast' }] };
+  const restore = setDriver('codex-appserver', { ...getDriver('codex-appserver'), probe: async () => { throw new Error('codex app-server did not start'); } });
+  try {
+    harness = await startTestCore({ settings: { subscriptionProxy: config(`http://127.0.0.1:${gateway.port}/v1`) } });
+    const owner = await harness.connect();
+    const codex = await owner.call('accounts.add', { providerId: 'codex', label: 'Gateway Codex' });
+    // What an earlier version saved: the merged list, with an old gateway row.
+    saveCatalog(harness.core, 'codex', codex.id, { models: [sol, { id: 'codex/gpt-old', name: 'GPT old' }], probedAt: 1 });
+    expect((await owner.call('providers.probe', { providerId: 'codex', accountId: codex.id, refresh: true })).models.map(model => model.id))
+      .toEqual(['gpt-6.2-sol', 'codex/gpt-new']);
+  } finally { restore(); }
+});
+
+test('an agent list read under a gateway that changed meanwhile is never kept for the new one', async () => {
+  const serve = (id: string) => Bun.serve({ hostname: '127.0.0.1', port: 0, fetch() {
+    return Response.json({ data: [{ id, name: id, supported_endpoint_types: ['openai-response'] }] });
+  } });
+  gateway = serve('codex/old-row');
+  const other = serve('codex/new-row');
+  const stale = { id: 'stale-native', name: 'Stale', default: true };
+  const agent = Promise.withResolvers<void>();
+  let reads = 0;
+  const restore = setDriver('codex-appserver', { ...getDriver('codex-appserver'), probe: async () => {
+    if (++reads === 1) { await agent.promise; return { models: [stale], probedAt: 1 }; }
+    throw new Error('codex app-server did not start');
+  } });
+  try {
+    harness = await startTestCore({ settings: { subscriptionProxy: config(`http://127.0.0.1:${gateway.port}/v1`) } });
+    const owner = await harness.connect();
+    const codex = await owner.call('accounts.add', { providerId: 'codex', label: 'Gateway Codex' });
+    const read = owner.call('providers.probe', { providerId: 'codex', accountId: codex.id });
+    await waitFor(() => reads === 1);
+    await owner.call('subscriptionProxy.configure', { subscriptionProxy: config(`http://127.0.0.1:${other.port}/v1`) });
+    agent.resolve();
+    expect(await thrown(read)).toThrow('changed during discovery');
+    const models = (await owner.call('providers.probe', { providerId: 'codex', accountId: codex.id, refresh: true })).models.map(model => model.id);
+    expect(models).not.toContain('stale-native');
+  } finally { restore(); other.stop(true); agent.resolve(); }
 });

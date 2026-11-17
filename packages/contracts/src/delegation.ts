@@ -240,7 +240,8 @@ export interface DelegationRpcMethods {
    * models, read from it now while its owner keeps `groupThreads` on; `current`
    * marks this conversation's model there.
    */
-  'delegation.models': { params: { threadId: ThreadId; machine?: string }; result: DelegationModels };
+  /** `refresh` reads this machine's lists again, as the picker's refresh does, so a model released since the last read appears. */
+  'delegation.models': { params: { threadId: ThreadId; machine?: string; refresh?: boolean }; result: DelegationModels };
   /**
    * From a parent to a child blocked on a question card, the text answers
    * that question (an option label, or free text where it takes some) and the
