@@ -186,6 +186,17 @@ test('rows that break the contract are dropped and strings are bounded', () => {
   expect(entry.credits).toEqual([{ id: 'c', label: 'c', unit: null, remaining: null, limit: null, used: null }]);
 });
 
+test('the share used outside Douane is kept per window only when it is a percent', () => {
+  const windows = (outside: unknown[]) => parseGatewayQuotas({ providers: [{ provider: 'claude', entries: [{ id: 'a', label: 'A',
+    windows: outside.map((value, index) => ({ id: `w${index}`, label: 'Weekly', used_percent: 50, ...(value === undefined ? {} : { outside_percent: value }) })) }] }] },
+  () => 'Claude').providers[0]!.entries[0]!.windows;
+  const parsed = windows([40, 0, 100, 12.5, undefined, 140, -3, '40', null, Number.NaN]);
+  expect(parsed.map((window) => window.outsidePercent)).toEqual([40, 0, 100, 12.5, undefined, undefined, undefined, undefined, undefined, undefined]);
+  // Absent means absent, not zero: the field is left out of the window.
+  expect(parsed.slice(4).every((window) => !('outsidePercent' in window))).toBe(true);
+  expect(parsed[0]).toEqual({ id: 'w0', label: 'Weekly', usedPercent: 50, resetsAt: null, outsidePercent: 40 });
+});
+
 test('local accounts stay stored and come back unchanged when the proxy goes off', async () => {
   gateway = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch() { return Response.json(DOUANE); } });
   harness = await startTestCore();

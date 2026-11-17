@@ -16,6 +16,13 @@ export interface QuotaWindow {
   resetsAt: Timestamp | null;
   /** Douane's choice of the window shown first and largest. Missing means the weekly window leads. */
   primary?: true;
+  /**
+   * Douane only: percent points of this account-wide window that no call through
+   * Douane explains, the raw account figure. Someone used the account directly
+   * (the official app, another device, a leaked token). Missing when Douane does
+   * not say.
+   */
+  outsidePercent?: number;
 }
 
 /**

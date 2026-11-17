@@ -16,6 +16,8 @@ type ObjectValue = Record<string, unknown>;
 const object = (value: unknown): ObjectValue | null => typeof value === 'object' && value !== null && !Array.isArray(value) ? value as ObjectValue : null;
 const number = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) ? value : null;
 const percent = (value: unknown): number | null => { const n = number(value); return n === null ? null : Math.max(0, Math.min(100, n)); };
+/** A share that must already be a percent: anything outside 0..100 is ignored, not clamped. */
+const share = (value: unknown): number | null => { const n = number(value); return n !== null && n >= 0 && n <= 100 ? n : null; };
 function text(value: unknown, max: number): string | null {
   if (typeof value !== 'string') return null;
   const clean = value.replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
@@ -36,6 +38,8 @@ function windowOf(raw: unknown): QuotaWindow | null {
   if (used === null) return null;
   const window: QuotaWindow = { id, label: text(row['label'], 80) ?? id, usedPercent: used, resetsAt: time(row['reset_at']) };
   if (row['primary'] === true) window.primary = true;
+  const outside = share(row['outside_percent']);
+  if (outside !== null) window.outsidePercent = outside;
   return window;
 }
 

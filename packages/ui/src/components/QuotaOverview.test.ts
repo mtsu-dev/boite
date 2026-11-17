@@ -108,3 +108,26 @@ test('the headline and reset come from the primary window, weekly first unless D
   flushSync();
   expect(article().querySelector('.caption.reset')).toBeNull();
 });
+
+test('a window Douane cannot fully explain says how much was used outside it, from 5 points on', () => {
+  const limit = (id: string, label: string, outsidePercent?: number) =>
+    ({ id, label, usedPercent: 60, resetsAt: null, ...(outsidePercent === undefined ? {} : { outsidePercent }) });
+  component = mount(QuotaOverview, { target: document.body, props: { rows: [
+    { ...quota('leaked', 'Claude Max', 60), windows: [limit('five-hour', '5 hours', 12), limit('weekly', 'Weekly', 40)] },
+    { ...quota('noise', 'Claude Pro', 60), windows: [limit('weekly', 'Weekly', 4.9)] },
+    quota('plain', 'Codex', 60),
+  ] } });
+  flushSync();
+  const lines = (id: string) => [...document.querySelectorAll<HTMLElement>(`[data-account-id="${id}"] [data-testid=quota-outside]`)];
+  // Collapsed, the row says the largest share once, in the danger colour, with why behind its "i".
+  expect(lines('leaked').map(line => [line.dataset.window, line.querySelector('.ui-label')!.textContent])).toEqual([['weekly', '40% used outside Douane']]);
+  expect(lines('leaked')[0]!.querySelector('[data-testid=info-tip]')!.getAttribute('aria-label')).toContain('40% used outside Douane');
+  expect(lines('noise')).toEqual([]);
+  expect(lines('plain')).toEqual([]);
+  // Expanded, each window over the line carries its own share, weekly first as the row leads with it.
+  document.querySelector<HTMLButtonElement>('[data-account-id="leaked"] button')!.click(); flushSync();
+  expect(lines('leaked').map(line => [line.dataset.window, line.querySelector('.ui-label')!.textContent])).toEqual([
+    ['weekly', '40% used outside Douane'], ['five-hour', '12% used outside Douane'],
+  ]);
+  expect(lines('leaked').every(line => line.parentElement!.classList.contains('details'))).toBe(true);
+});

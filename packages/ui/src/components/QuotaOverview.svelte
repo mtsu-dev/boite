@@ -1,6 +1,7 @@
 <script lang="ts">
   import { ChevronDown, RotateCcw } from '@lucide/svelte';
-  import type { AccountQuota } from '@boite/contracts';
+  import type { AccountQuota, QuotaWindow as Limit } from '@boite/contracts';
+  import InfoTip from './InfoTip.svelte';
   import ProviderLogo from './ProviderLogo.svelte';
   import QuotaExtras from './QuotaExtras.svelte';
   import QuotaWindow from './QuotaWindow.svelte';
@@ -25,7 +26,17 @@
   const left = (used: number) => fill(strings.quotas.remaining, { percent: tenth(remainingPercent(used)) });
   const miniName = (label: string) => label.includes(' · ') ? label.split(' · ').slice(1).join(' · ') :
     label === 'Weekly' ? strings.quotas.windowWeeklyCompact : label === 'Monthly' ? strings.quotas.windowMonthlyCompact : quotaWindowName(label);
+  /** Below 5 points, the account's own rounding and Douane's lag explain the gap: no line. */
+  const OUTSIDE_SHOWN = 5;
+  const outside = (limit: Limit) => (limit.outsidePercent ?? 0) >= OUTSIDE_SHOWN;
+  /** The collapsed row says the largest share once; the expanded one says it under each window. */
+  const mostOutside = (windows: Limit[]) => windows.filter(outside).reduce<Limit | null>((most, limit) => most && most.outsidePercent! >= limit.outsidePercent! ? most : limit, null);
 </script>
+
+{#snippet outsideLine(limit: Limit)}
+  {@const said = fill(strings.quotas.outsideUsed, { percent: tenth(limit.outsidePercent!) })}
+  <p class="outside" data-testid="quota-outside" data-window={limit.id}><span class="ui-label">{said}</span><InfoTip topic={said} text={strings.quotas.outsideHint} /></p>
+{/snippet}
 
 <div class="overview" class:loading use:reorder.track data-testid="quota-overview">
   {#if rows.length === 0}
@@ -45,6 +56,7 @@
     {@const reset = shown.primary?.resetsAt ?? null}
     {@const credits = quotaCredits(row)}
     {@const paid = credits !== null && drained}
+    {@const outsideMost = mostOutside(windows)}
     {@const percent = credits?.kind === 'budget' ? Math.max(0, Math.min(100, credits.remaining! / credits.limit! * 100)) : null}
     <article data-testid="quota-provider" data-provider={row.providerId} data-account-id={row.accountId} class:expanded={expanded === row.accountId} class:dragging={reorder.dragging === row.accountId}>
       <div class="account-heading">
@@ -83,12 +95,16 @@
           </span>
         </button>
       </div>
+      {#if outsideMost && expanded !== row.accountId}{@render outsideLine(outsideMost)}{/if}
       {#if row.source === 'observation' && row.checkedAt !== null}<p class="caption">{fill(strings.quotas.observed, { time: exactTime(row.checkedAt) })}</p>{/if}
       {#if !paid}<div class="extras"><QuotaExtras {row} compact /></div>{/if}
       {#if row.error}<p class="error" role="status">{row.error}</p>{/if}
       {#if expanded === row.accountId}
         <div class="details" id={`usage-${row.accountId}`}>
-          {#each windows as limit (limit.id)}<QuotaWindow {limit} owner={name} busy={loading && !completed.includes(row.accountId)} />{/each}
+          {#each windows as limit (limit.id)}
+            <QuotaWindow {limit} owner={name} busy={loading && !completed.includes(row.accountId)} />
+            {#if outside(limit)}{@render outsideLine(limit)}{/if}
+          {/each}
         </div>
       {/if}
     </article>
@@ -137,6 +153,9 @@
   .extras { padding: 4px 4px 0 32px; }
   .extras:not(:has(> :global(*))) { display: none; }
   .error { margin: 4px 4px 0 32px; }
+  .outside { display: flex; align-items: center; gap: 2px; margin: 2px 4px 0 32px; color: var(--color-danger); font-size: var(--text-xs); font-weight: 500; overflow-wrap: anywhere; }
+  .outside > :global(.info-tip) { flex: none; }
+  .details > .outside { margin: -6px 0 0; }
   .details { --quota-bar: 7px; margin: 6px 4px 0 32px; display: grid; gap: 10px; animation: rise var(--dur-2) var(--ease-out-quint); }
   .empty { display: grid; justify-items: start; gap: 10px; padding: 16px 4px; }
   .empty p { margin: 0; color: var(--color-muted-foreground); font-size: var(--text-sm); }

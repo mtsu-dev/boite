@@ -106,6 +106,10 @@ While it is on:
 - Limits shows the gateway's limits, or opens its dashboard inside Boite.
   The Use Douane (or Use CLIProxyAPI) switch there turns the gateway on and
   off, from a phone too.
+- Under an account's limit, a red line such as "40% used outside Douane"
+  means part of that limit was spent without going through Douane: someone
+  used the account directly, from the official app, another device or a
+  leaked token.
 - Other agents keep their own configuration.
 
 Turning the proxy off brings your local accounts back unchanged. Use HTTPS
