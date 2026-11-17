@@ -10,7 +10,7 @@
   import { onMount } from 'svelte';
   import { slide } from 'svelte/transition';
   import { ChevronRight, Plus, RefreshCw, Terminal } from '@lucide/svelte';
-  import { providerEnabled, type Account, type ProviderSummary } from '@boite/contracts';
+  import { maskEmails, providerEnabled, type Account, type ProviderSummary } from '@boite/contracts';
   import ProviderIcon from './ProviderLogo.svelte';
   import ModelPicker from './ModelPicker.svelte';
   import EffortSlider from './EffortSlider.svelte';
@@ -263,7 +263,7 @@
     const body = account.isolationDir === null ? strings.accounts.removeDefaultBody : strings.accounts.removeBody;
     const warning = count === 0 ? '' : (count === 1 ? strings.accounts.removeThread : strings.accounts.removeThreads).replace('{count}', String(count));
     const accepted = await confirm.ask({
-      title: fill(strings.accounts.removeTitle, { account: account.label }),
+      title: fill(strings.accounts.removeTitle, { account: accountName(account) }),
       body: warning ? `${warning} ${body}` : body,
       confirmLabel: strings.accounts.remove,
       cancelLabel: strings.install.removeCancel,
@@ -487,7 +487,7 @@
       {:else}
         <div class="account-line">
           <div class="who">
-            <h3>{entry.label}</h3>
+            <h3>{maskEmails(entry.label)}</h3>
             <p class="state">
               <span class="kind ui-label">{entry.isolationDir === null ? strings.providerSettings.default : strings.providerSettings.isolated}</span>
               {#if entry.status !== 'ok'}

@@ -80,12 +80,32 @@ export interface QuotaAlert {
   at: Timestamp;
 }
 
+/** An address, or a gateway's shortened one (`chris@…`): the local part, then a domain or the ellipsis that stands for it. */
+const EMAIL = /([\p{L}\p{N}._%+-]+)@((?:[\p{L}\p{N}-]+\.)+\p{L}{2,}|\u2026)/gu;
+
+/**
+ * Text that names an account, with every email address in it masked to its
+ * first letters (`you@example.com` reads `y•••@e•••.com`): enough to tell two
+ * logins apart, nothing a screen share or a lock-screen notice gives away.
+ * Every place that shows an account's name or a gateway's label goes through
+ * it; the address in full is shown only on demand, on the Accounts page.
+ */
+export function maskEmails(text: string): string {
+  return text.replace(EMAIL, (_match, local: string, domain: string) => {
+    if (domain === '\u2026') return `${local[0]}\u2022\u2022\u2022@${domain}`;
+    const dot = domain.lastIndexOf('.');
+    return `${local[0]}\u2022\u2022\u2022@${domain[0]}\u2022\u2022\u2022${domain.slice(dot)}`;
+  });
+}
+
 /**
  * An alert's title, the same in a push and a toast: the account, then the
- * model or group a scoped window names (`Weekly · Opus` gives `Opus`).
+ * model or group a scoped window names (`Weekly · Opus` gives `Opus`). An
+ * address in the account's name is masked: a push shows on a locked screen.
  */
 export function quotaAlertTitle(alert: Pick<QuotaAlert, 'label' | 'providerName' | 'window'>): string {
-  const name = alert.label.includes(alert.providerName) ? alert.label : `${alert.providerName} · ${alert.label}`;
+  const label = maskEmails(alert.label);
+  const name = label.includes(alert.providerName) ? label : `${alert.providerName} · ${label}`;
   const scope = alert.window.label.split(' · ').filter((part) => !/week|hour|seven|\b\d+\s*-?[hd]\b/i.test(part)).join(' · ');
   return scope ? `${name} · ${scope}` : name;
 }

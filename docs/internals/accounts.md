@@ -162,6 +162,10 @@ account, while keeping its ID, login directory and thread references.
 Settings shows the chosen account label and its email separately. Emails stay
 blurred until hovered, focused from the keyboard or tapped on a phone.
 The model picker's account chips and their tooltips show the chosen label only.
+Everywhere else an address shown as an account's name (the adopted
+`Default` login, a gateway's label, a plugin's saved account, a limit alert's
+title) goes through `maskEmails` in the contracts: `you@example.com` reads
+`y•••@e•••.com`, so a screen share or a locked phone gives no address away.
 
 ## The login flow
 

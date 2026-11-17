@@ -2,7 +2,7 @@
   import { errorText } from '../lib/errors';
   import { untrack } from 'svelte';
   import { ChevronRight, CircleAlert, RefreshCw } from '@lucide/svelte';
-  import { RpcErrorCode, type HookRun, type HooksStatus, type ProviderHooks } from '@boite/contracts';
+  import { RpcErrorCode, maskEmails, type HookRun, type HooksStatus, type ProviderHooks } from '@boite/contracts';
   import { RpcFailure } from '../lib/client';
   import { clockTime, count as figure, exactTime, providerName } from '../lib/format';
   import { formatLocale } from '../lib/i18n.svelte';
@@ -99,7 +99,7 @@
     return [
       ...provider.sources.flatMap(source => source.error ? [{ title: fill(strings.hooks.unreadable, { path: source.path }), message: source.error }] : []),
       ...provider.accounts.flatMap(account => account.problems.map(problem => ({
-        title: fill(strings.hooks.accountMisses, { account: account.label, path: problem.path }),
+        title: fill(strings.hooks.accountMisses, { account: maskEmails(account.label), path: problem.path }),
         message: problem.message
       })))
     ];

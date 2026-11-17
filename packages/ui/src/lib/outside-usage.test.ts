@@ -14,7 +14,7 @@ test('names the account with the largest share used outside Douane, across every
     row('a', 'Claude Max · chris@…', [window('five-hour', 12), window('weekly', 30)]),
     row('b', 'Claude Pro · work@…', [window('five-hour', 41), window('weekly', 5)]),
     row('c', 'ChatGPT Plus', [window('weekly', 35)], { providerId: 'codex', providerName: 'Codex' }),
-  ])).toEqual({ account: 'Claude Pro · work@…', provider: 'Claude', percent: 41 });
+  ])).toEqual({ account: 'Claude Pro · w•••@…', provider: 'Claude', percent: 41 });
 });
 
 test('below 10 points, or without the field, nothing is worth a notice', () => {

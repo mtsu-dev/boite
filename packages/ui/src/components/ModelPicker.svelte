@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { accountName } from '../lib/account-name';
   import { tick } from 'svelte';
   import { ChevronDown, Plug, Sparkles } from '@lucide/svelte';
   import { isNamedModel } from '../lib/model-order';
@@ -61,7 +62,7 @@
   let accountLabel = $derived.by(() => {
     if (!choice || !provider || store.accountsOf(provider.id).length < 2) return null;
     const account = store.accountOf(choice.accountId);
-    return account && account.isolationDir !== null ? account.label : null;
+    return account && account.isolationDir !== null ? accountName(account) : null;
   });
 
   /** Opens the popover once its chunk is there (a slash command, a removed account's chip); a read-only chip says why instead. */
