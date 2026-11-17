@@ -684,7 +684,7 @@ left for the next of those moments.
 
 ## What ships
 
-Ten descriptors ship, and only the first nine are ever visible to a user: `echo`
+Eleven descriptors ship, and only the first ten are ever visible to a user: `echo`
 is the deterministic fake the tests and the bench run on, loaded only under
 `BOITE_ECHO=1`.
 
