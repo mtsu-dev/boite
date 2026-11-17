@@ -28,6 +28,7 @@
   import { whipEntry } from '../lib/whip-entry.svelte';
   import FailMark from './FailMark.svelte';
   import Deferred from './Deferred.svelte';
+  import LimitsButton from './LimitsButton.svelte';
   import { parts } from '../lib/deferred-parts';
   import { QuotaReorder } from '../lib/quota-reorder.svelte';
   import { railOrder } from '../lib/rail-order.svelte';
@@ -38,9 +39,8 @@
    * view: where to be (the threads, Activity with what asks, Contacts), then one picture
    * per team and per bot of every machine, in the order the user dragged them, then the machines when there is
    * more than one, and Settings. The open place is the filled tile; a bot's
-   * picture says how it stands: asleep, at work, or with an answer not read. The limits are a line at the foot of
-   * the list column
-   * (QuotaLine.svelte). It stands on the window's chrome from top to bottom;
+   * picture says how it stands: asleep, at work, or with an answer not read. The limits are the ring above
+   * Settings (LimitsButton.svelte). It stands on the window's chrome from top to bottom;
    * a phone keeps its own navigation and never draws it.
    */
   let { store }: { store: Store } = $props();
@@ -316,7 +316,7 @@
 
   <span class="grow"></span>
 
-  <!-- The machines, once there are two or one is in trouble; the limits are the list column's foot. -->
+  <!-- The machines, once there are two or one is in trouble, then the limits' ring, then Settings. -->
   <div class="foot">
     <!-- Lit like the buttons above while it filters the list or its menu is open. -->
     <div class="slot status" class:selected={machineFilter.shown(machines) !== null}>
@@ -325,6 +325,7 @@
     <!-- Each with the same name card as every rail button; a slot with no button (nothing to update) takes no room. -->
     {#if !narrow.current}<div class="slot extra"><Deferred part={parts.UpdatesNotice} quiet>{#snippet children(UpdatesNotice)}<UpdatesNotice name={statusName} />{/snippet}</Deferred></div>{/if}
     {#if experimentOn('whip') && whipEntry.feature}{@const WhipButton = whipEntry.feature.WhipButton}<div class="slot extra"><WhipButton name={statusName} /></div>{/if}
+    <div class="slot extra limits-slot"><LimitsButton {store} name={statusName} /></div>
     <div class="slot" class:selected={store.page === 'settings'}>
       <button type="button" class="ghost icon" class:on={store.page === 'settings'} aria-current={store.page === 'settings' ? 'page' : undefined}
         aria-label={strings.sidebar.settings} aria-describedby={settingsKey ? 'rail-settings-key' : undefined}

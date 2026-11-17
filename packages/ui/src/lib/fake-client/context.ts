@@ -123,6 +123,7 @@ export interface FakeClientOptions {
   delayMs?: number;
   /** Exhausted quotas with banked resets and credits for visual checks. */
   quotaExtras?: boolean;
+  quotaLimit?: 'out' | 'low' | null;
   /** Simulate Windows refusing global instruction symlinks. */
   brainLinkPermission?: boolean;
   /**
@@ -444,6 +445,8 @@ export class FakeContext {
   readonly readability: boolean;
   readonly markdown: boolean;
   readonly quotaExtras: boolean;
+  /** `?quotaLimit=out|low`: every Claude account spent, or low, on its 5-hour window, for the rail's limits ring. */
+  readonly quotaLimit: 'out' | 'low' | null;
   readonly plainLink: boolean;
   brainLinkPermission: boolean;
   /**
@@ -454,6 +457,8 @@ export class FakeContext {
 
   constructor(options: FakeClientOptions = {}) {
     this.composer = options.composerState ?? new FakeComposerState();
+    const limit = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('quotaLimit') : null;
+    this.quotaLimit = options.quotaLimit ?? (limit === 'out' || limit === 'low' ? limit : null);
     this.quotaExtras = options.quotaExtras ?? (typeof location !== 'undefined' && new URLSearchParams(location.search).get('quotaExtras') === '1');
     this.brainLinkPermission = options.brainLinkPermission ?? (typeof location !== 'undefined' && new URLSearchParams(location.search).get('brainLinkPermission') === '1');
     this.plainLink = options.plainLink ?? (typeof location !== 'undefined' && new URLSearchParams(location.search).get('plainLink') === '1');

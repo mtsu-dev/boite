@@ -239,11 +239,11 @@ test('dock reserves rail space above the foot and leaves the final thread reacha
   await move('dock');
   expect(await page.evaluate(`(() => {
     const q = document.querySelector('${card}'), list = document.querySelector('[data-project-list]');
-    // The desktop rail's foot is the limits line (QuotaLine.svelte) since the redesign.
-    const foot = q.parentElement.querySelector(':scope > .quota-line');
-    return !list.contains(q) && q.previousElementSibling === list && q.nextElementSibling === foot
+    // The limits moved to the app rail (LimitsButton.svelte): the dock is the column's last part, inside it.
+    const column = q.parentElement.getBoundingClientRect();
+    return !list.contains(q) && q.previousElementSibling === list && q.nextElementSibling === null
       && list.getBoundingClientRect().bottom <= q.getBoundingClientRect().top
-      && q.getBoundingClientRect().bottom <= foot.getBoundingClientRect().top;
+      && q.getBoundingClientRect().bottom <= column.bottom;
   })()`)).toBe(true);
   await page.evaluate(`document.querySelector('[data-project-list]').scrollTop = document.querySelector('[data-project-list]').scrollHeight`);
   await page.settleAnimations();

@@ -1,6 +1,9 @@
 import { expect, test } from 'vitest';
 import type { AccountQuota } from '@boite/contracts';
-import { limitsNotice } from './limits-meter';
+import { limitsNotice as notice } from './limits-meter';
+
+// The fixtures' resets are small numbers: read them from the epoch, before any of them passed.
+const limitsNotice = (rows: readonly AccountQuota[]) => notice(rows, 0);
 
 type Win = [label: string, used: number, resetsAt?: number];
 const row = (label: string, ...windows: Win[]) => ({
@@ -62,4 +65,13 @@ test('an account that keeps serving on credits is not out', () => {
 // A daily window bounds the whole account like a weekly one: it read as one model's.
 test('a daily window is the account\'s, not a model\'s', () => {
   expect(limitsNotice([row('Home', ['Daily', 100, 5000])])).toMatchObject({ kind: 'out', window: 'Daily', scoped: false });
+});
+
+test('a spent window whose reset has passed is a stale reading: the line does not keep it out', () => {
+  // Muse read at 06:00 out until 06:06; no call since, so no fresh reading. At 07:00 the line must not still say out.
+  const muse = { ...row('Meta', ['Session', 100, 6_000], ['Weekly', 33, 90_000]), providerId: 'muse', providerName: 'Muse Code' } as AccountQuota;
+  expect(notice([muse], 5_000)).toMatchObject({ kind: 'out', provider: 'Muse Code', until: 6_000 });
+  expect(notice([muse], 7_000)).toBeNull();
+  // Every window passed: nothing known of the account, nothing announced.
+  expect(notice([row('Home', ['Weekly', 100, 6_000])], 7_000)).toBeNull();
 });

@@ -28,8 +28,8 @@ export const fr: Translation = {
       unread: 'nouvelles réponses',
       unreadOne: '1 nouvelle réponse',
       unreadMany: '{count} nouvelles réponses',
-      /** The list foot's limits line, in its tooltip (QuotaLine.svelte): the least left, the window and the account it is on. */
-      limitsLeft: '{percent} % restant : {window}, {account}',
+      /** The rail's limits button, in its name card under the sentence (LimitsButton.svelte): how long until the first account serves again. */
+      limitsBack: 'retour dans {time}',
     }
   }
 };

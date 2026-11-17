@@ -1,5 +1,6 @@
 import type { AccountQuota } from '@boite/contracts';
 import { quotaAccountName, quotaCredits, quotaTone, remainingPercent } from './quota-reader.svelte';
+import { strings } from './strings';
 
 /**
  * What the list's limits line has to say, when it has anything to say: a
@@ -36,14 +37,17 @@ interface Room { row: AccountQuota; left: number; window: string; scoped: boolea
  * An account's room for `scope`: the least left among its account-wide windows
  * and that scope's own window. Null when nothing is known of it (no reading)
  * or when it keeps serving past its windows (credits): such an account is
- * never counted out.
+ * never counted out. A window whose reset has passed says nothing any more:
+ * its reading is from before the reset (Douane reads Muse only on its own
+ * calls), so it is left out until a fresh one lands, never shown spent.
  */
-function room(row: AccountQuota, scope: string | null): Room | null {
+function room(row: AccountQuota, scope: string | null, now: number): Room | null {
   if (row.windows.length === 0 || quotaCredits(row) !== null) return null;
   let found: Room | null = null;
   for (const window of row.windows) {
     const wide = general(window.label);
     if (!wide && window.label !== scope) continue;
+    if (window.resetsAt !== null && window.resetsAt <= now) continue;
     const left = remainingPercent(window.usedPercent);
     // Among spent windows the latest reset is the one to wait for.
     const later = found !== null && left === 0 && found.left === 0 && (window.resetsAt === null || (found.resetsAt !== null && window.resetsAt > found.resetsAt));
@@ -79,15 +83,16 @@ function groups(rows: readonly AccountQuota[]): AccountQuota[][] {
  * - the best account of a provider below the low mark (`quotaTone`).
  * One account at 0 % says nothing while another of the same provider has
  * room: a gateway switches by itself, so nothing is blocked. Out comes before
- * low, the whole provider before one model, then the least left.
+ * low, the whole provider before one model, then the least left. `now` drops
+ * the windows whose reset has passed.
  */
-export function limitsNotice(rows: readonly AccountQuota[]): LimitsNotice | null {
+export function limitsNotice(rows: readonly AccountQuota[], now = Date.now()): LimitsNotice | null {
   const notices: LimitsNotice[] = [];
   for (const members of groups(rows)) {
     const scopes: (string | null)[] = [null, ...new Set(members.flatMap((row) => row.windows.map((window) => window.label).filter((label) => !general(label))))];
     let wholeOut = false;
     for (const scope of scopes) {
-      const rooms = members.map((row) => room(row, scope));
+      const rooms = members.map((row) => room(row, scope, now));
       // An account nothing is known of may still serve: nothing to announce.
       if (rooms.some((entry) => entry === null)) continue;
       const known = rooms as Room[];
@@ -109,4 +114,30 @@ export function limitsNotice(rows: readonly AccountQuota[]): LimitsNotice | null
   const rank = (notice: LimitsNotice) => (notice.kind === 'out' ? 0 : 2) + (notice.scoped ? 1 : 0);
   notices.sort((a, b) => rank(a) - rank(b) || a.left - b.left);
   return notices[0] ?? null;
+}
+
+const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
+
+/** A window's length from its label (`5 hours`, `Weekly`, `Fable weekly`), null when the label does not say it (Muse's `Session`). */
+export function windowSpan(label: string): number | null {
+  const parts = label.split(' · ');
+  for (const part of parts) {
+    const hours = /^(\d+(?:\.\d+)?) hours$/.exec(part)?.[1];
+    if (hours !== undefined) return Number(hours) * HOUR;
+  }
+  const word = label.toLowerCase();
+  if (/\bdaily\b/.test(word)) return DAY;
+  if (/\bweekly\b/.test(word)) return 7 * DAY;
+  if (/\bmonthly\b/.test(word)) return 30 * DAY;
+  return null;
+}
+
+/** The wait under the limits ring, short enough for the rail: `42m`, `5h42`, `3d`. */
+export function countdown(ms: number): string {
+  const minutes = Math.max(1, Math.ceil(ms / 60_000));
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h${String(minutes % 60).padStart(2, '0')}`;
+  return `${Math.round(hours / 24)}${strings.units.day}`;
 }
