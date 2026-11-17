@@ -100,6 +100,16 @@
     return () => document.removeEventListener('pointerdown', onpress, true);
   });
 
+  // The rail stays on every page: a move to another one (Settings from the keyboard,
+  // the palette) leaves no glance open over it, waiting for the next press to close.
+  let shownPage = untrack(() => store.page);
+  $effect(() => {
+    const now = store.page;
+    if (now === shownPage) return;
+    shownPage = now;
+    untrack(() => { if (popover.open) popover.hide(); });
+  });
+
   function close() {
     popover.hide();
     near()?.focus({ preventScroll: true });
