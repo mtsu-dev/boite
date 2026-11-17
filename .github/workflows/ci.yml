@@ -99,7 +99,11 @@ jobs:
         # GHSA-gcqx-w48m-w2h4 (low): deepmerge 4.3.1, the latest release, has no fix.
         # Only @sveltejs/vite-plugin-svelte uses it, merging build configuration.
         # Drop the ignore once a patched deepmerge or plugin ships.
-        run: bun audit --ignore=GHSA-gcqx-w48m-w2h4
+        # GHSA-fc5q-39xc-vjpf (high): ReDoS in picomatch through 4.0.7, the latest
+        # release, with no fix. Only vite, vitest and tinyglobby use it, all dev
+        # tools of @boite/ui matching globs from this repo's own config, never a
+        # pattern a user or a peer sends. Drop the ignore once picomatch ships a fix.
+        run: bun audit --ignore=GHSA-gcqx-w48m-w2h4 --ignore=GHSA-fc5q-39xc-vjpf
       - run: bun scripts/check-docs.ts
       - run: bun test scripts/ci scripts/dev scripts/migrate ./bench ./apps/shell/scripts ./apps/android-server ./packages/plugin-sdk
       # Missing sentences are warnings here and in the nightly; release.yml refuses them.
