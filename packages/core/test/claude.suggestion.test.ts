@@ -45,6 +45,30 @@ describe('claude prompt suggestions', () => {
     expect(harness.core.threads.agentState.suggestions.has(threadId)).toBe(false);
   });
 
+  test('a secret of the thread in the suggestion is masked in the event and in threads.get', async () => {
+    harness.core.settings.set({ warmProcessMinutes: 5 });
+    const client = await harness.connect();
+    const threadId = await claudeThread(client);
+    const value = 'sk-suggest-0123456789abcdef';
+    harness.core.secrets.masks.add(`thread:${threadId}`, 'test:suggest', 'API_KEY', new TextEncoder().encode(value));
+    const events: RpcEvents['thread.suggestion'][] = [];
+    harness.core.bus.onCommitted((name, payload) => { if (name === 'thread.suggestion') events.push(payload as RpcEvents['thread.suggestion']); });
+    scripted(() => undefined, (fake) => {
+      fake.emit(init(SESSION));
+      fake.emit(assistant(SESSION, [{ type: 'text', text: 'answer' }]));
+      fake.emit(success(SESSION));
+      fake.emit(sdk({ type: 'prompt_suggestion', suggestion: `export API_KEY=${value} and rerun`, uuid: 'ps-secret', session_id: SESSION }));
+    });
+
+    expect(await runTurn(client, threadId, 'first')).toBe('done');
+    await waitFor(() => events.length === 1);
+    const stored = (await client.call('threads.get', { threadId })).suggestion;
+    for (const text of [events[0]?.suggestion?.text, stored?.text]) {
+      expect(text).toContain('API_KEY');
+      expect(text).not.toContain(value);
+    }
+  });
+
   test('turned off, the CLI starts without the option and a stray suggestion is dropped', async () => {
     harness.core.settings.set({ warmProcessMinutes: 5, promptSuggestions: false });
     const client = await harness.connect();

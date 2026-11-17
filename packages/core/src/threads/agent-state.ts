@@ -58,6 +58,8 @@ export class AgentState {
    * question or permission card waits on it.
    */
   noteSuggestion(threadId: ThreadId, turnId: TurnId, text: string): boolean {
+    // Masked before anything keeps it: it reaches clients, paired devices and plugins like a reply does.
+    text = this.core.secrets.mask(threadId, text);
     const trimmed = text.trim();
     if (trimmed.length === 0) return false;
     const thread = this.core.journal.getThread(threadId);

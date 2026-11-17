@@ -67,8 +67,8 @@ export class ClaudeSession {
   #compactionModel: string | null = null;
   readonly #timers = new Set<Timer>();
   readonly #waiting: ClaudeTurn[] = [];
-  /** The context of the turn that ended last, which a `prompt_suggestion` answers. */
-  #suggestFor: TurnContext | null = null;
+  /** The turn that ended last and its callback, which a `prompt_suggestion` answers; only the id, so the turn's context is let go. */
+  #suggestFor: { turnId: TurnContext['turn']['id']; suggestion: NonNullable<TurnContext['suggestion']> } | null = null;
   /** Turns whose prompt was queued, or which adopted the CLI's own run. */
   readonly #steerable = new WeakSet<ClaudeTurn>();
   readonly #tasks = new SessionTasks();
@@ -678,7 +678,8 @@ export class ClaudeSession {
     // Retire this transport instead of waiting indefinitely for its control reply.
     if (this.#permissionTurn === turn) this.close(null, STOP_GRACE_MS);
     this.#waiting.shift();
-    this.#suggestFor = turn.ctx;
+    const suggestion = turn.ctx.promptSuggestions === true ? turn.ctx.suggestion : undefined;
+    this.#suggestFor = suggestion === undefined ? null : { turnId: turn.ctx.turn.id, suggestion };
     turn.settle();
     this.#afterTurns();
   }
@@ -689,10 +690,10 @@ export class ClaudeSession {
    * that ended, once. The core decides whether it still applies.
    */
   #suggest(message: Extract<SDKMessage, { type: 'prompt_suggestion' }>): void {
-    const ctx = this.#suggestFor;
+    const expected = this.#suggestFor;
     this.#suggestFor = null;
-    if (ctx === null || typeof message.suggestion !== 'string') return;
-    ctx.suggestion?.(ctx.turn.id, message.suggestion);
+    if (expected === null || typeof message.suggestion !== 'string') return;
+    expected.suggestion(expected.turnId, message.suggestion);
   }
 
   /** Nothing attached any more: keep the CLI for its background work and its scheduled jobs, else the warm rule. */
