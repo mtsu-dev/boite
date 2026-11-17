@@ -2,8 +2,8 @@
  * The Android app's updater, for the APK installed outside a store. This side
  * reads GitHub's release list and picks the build to offer, then opens its APK
  * in the browser, which downloads it and hands it to Android's installer. The
- * app installs nothing itself: Play Protect blocks an app that holds
- * REQUEST_INSTALL_PACKAGES as harmful. `AppUpdates.kt` (`window.BoiteUpdater`)
+ * app installs nothing itself: Play Protect refused as harmful the build
+ * that held REQUEST_INSTALL_PACKAGES and installed its own updates. `AppUpdates.kt` (`window.BoiteUpdater`)
  * only says which build is installed. docs/internals/android-native.md#updates.
  */
 import type { AppUpdateBackend, UpdateChannel, UpdateSnapshot } from './app-update.svelte';
@@ -187,10 +187,11 @@ async function releasePages(fetcher: typeof fetch, channel: UpdateChannel): Prom
 }
 
 /**
- * The release offered is "ready" as soon as it is found: there is nothing to
- * download in the app. Installing opens its APK in the browser; once the
- * owner comes back without the new build, the offer is ready again, so a
- * download that failed there can start over.
+ * Nothing downloads in the app: "ready" follows the click at once, and
+ * installing opens the APK in the browser. Once the owner comes back without
+ * the new build, the release is offered again, so a download that failed
+ * there can start over; it never waits as "ready", which the cards word as a
+ * restart.
  */
 export function androidBackend(
   bridge: AndroidUpdater,
@@ -218,7 +219,7 @@ export function androidBackend(
   };
   // Android stops the app to replace it: still running on the way back means not installed.
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && snapshot.phase === 'installing') publish({ ...snapshot, phase: 'ready' });
+    if (document.visibilityState === 'visible' && snapshot.phase === 'installing') publish({ ...snapshot, phase: 'available' });
   });
 
   return {

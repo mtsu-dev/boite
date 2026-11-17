@@ -6,8 +6,8 @@
          A phone without a camera still installs the app and pastes the link. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
-    <!-- No REQUEST_INSTALL_PACKAGES: Play Protect blocks an app that can
-         install packages as harmful. An update downloads in the browser
+    <!-- No REQUEST_INSTALL_PACKAGES: Play Protect refused as harmful the
+         build that installed its own updates. An update downloads in the browser
          (docs/internals/android-native.md#updates). -->
 
     <application

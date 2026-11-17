@@ -325,14 +325,15 @@ export class AppUpdater {
   /**
    * The owner picked a channel. Checks it now and, when that brings a build of
    * the other channel, downloads it at once: the card's next button restarts
-   * into it.
+   * into it. The Android app has nothing to download ahead: its Update button
+   * opens the APK.
    */
   async switchChannel(channel: UpdateChannel): Promise<void> {
     if (channel === this.snapshot.channel) return;
     this.checkNow(channel);
     await this.settled();
     const { phase, channel: checked, currentChannel } = this.snapshot;
-    if (phase === 'available' && checked === channel && currentChannel !== channel) this.download();
+    if (phase === 'available' && checked === channel && currentChannel !== channel && !androidApp()) this.download();
   }
 
   #queueCheck(channel: UpdateChannel, force: boolean): void {

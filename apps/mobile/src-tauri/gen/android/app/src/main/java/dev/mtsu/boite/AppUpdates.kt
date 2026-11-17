@@ -13,7 +13,7 @@ import org.json.JSONObject
  * the installed version and version code. The UI picks the release
  * (`lib/app-update-android.ts`) and opens its APK in the browser, which
  * downloads it and hands it to Android's installer. The app itself installs
- * nothing: Play Protect blocks an app that can install packages as harmful.
+ * nothing: Play Protect refused as harmful the build that installed its own updates.
  */
 class AppUpdates(private val activity: Activity, private val webView: WebView) {
   /**

@@ -57,7 +57,7 @@ test('a channel offers a higher version; a switch only a build published after t
   expect(offers('2.0.0-beta.1', 1, stable(-1_000_000), 'stable')).toBe(true);
 });
 
-test('the offer opens its APK in the browser, and is ready again when the owner comes back', async () => {
+test('the offer opens its APK in the browser, and is offered again when the owner comes back', async () => {
   const opened: string[] = [];
   const fetcher = answer([release('v2.0.0-nightly.20261116.1', [apk('2.0.0-nightly.20261116.1')])]);
   const backend = androidBackend(bridge(), fetcher, async (url) => { opened.push(url); });
@@ -82,8 +82,8 @@ test('the offer opens its APK in the browser, and is ready again when the owner 
   expect((await backend.status()).phase).toBe('installing');
   // Android stops the app to replace it: back and still running, the update can start over.
   document.dispatchEvent(new Event('visibilitychange'));
-  expect((await backend.status()).phase).toBe('ready');
-  expect(seen).toEqual(['checking', 'available', 'checking', 'available', 'ready', 'installing', 'ready']);
+  expect((await backend.status()).phase).toBe('available');
+  expect(seen).toEqual(['checking', 'available', 'checking', 'available', 'ready', 'installing', 'available']);
 });
 
 test('a failed list rejects with its reason, and nothing opens without an offer', async () => {

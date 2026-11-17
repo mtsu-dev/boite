@@ -135,9 +135,12 @@ offers each one through the same Updates card as the desktop app
   asks to confirm. Android stops Boite to replace it. Back in a Boite still
   running, the card offers the update again, in case the download failed.
 - The app holds no `REQUEST_INSTALL_PACKAGES` and no
-  `UPDATE_PACKAGES_WITHOUT_USER_ACTION`: Google Play Protect blocks an app
-  that holds either as "Harmful app blocked". The nightly of 2026-11-16, which installed its updates
-  itself, was blocked that way on a phone with Google services.
+  `UPDATE_PACKAGES_WITHOUT_USER_ACTION`. The nightly of 2026-11-16 held both
+  and installed its updates itself: Google Play Protect's servers judged that
+  APK harmful, and a phone with Google services refused it as "Harmful app
+  blocked". A build without them, signed with the same key, installs. The
+  verdict is Google's, per APK: a refused build can be appealed through
+  Google's Play Protect appeal form.
 - `AppUpdates.kt` answers on `window.BoiteUpdater`, a message port
   (`addWebMessageListener`) that Android injects only into
   `http://tauri.localhost` and that answers only its main frame. It only says

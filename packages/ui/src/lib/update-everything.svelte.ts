@@ -1,5 +1,5 @@
 import type { DesktopUpdateStatus, HarnessUpdate, Os, ProviderId, ServerUpdateStatus } from '@boite/contracts';
-import { appUpdater, showAppUpdateUi, type UpdateChannel, type UpdatePhase } from './app-update.svelte';
+import { androidApp, appUpdater, showAppUpdateUi, type UpdateChannel, type UpdatePhase } from './app-update.svelte';
 import { harnessOffered } from './machine-updates';
 import { strings } from './strings';
 import { listedName, workspace, type Machine } from './workspace.svelte';
@@ -309,7 +309,8 @@ export class UpdateEverything {
   /**
    * Starts the updates: every part of every machine, or with `appOnly` this
    * app's own release alone. The app only downloads: the card then says to
-   * restart, which `restart` does, so nothing restarts under the user.
+   * restart, which `restart` does, so nothing restarts under the user. The
+   * Android app opens its APK at once, since Android's installer asks first.
    */
   async run({ appOnly = false }: { appOnly?: boolean } = {}): Promise<void> {
     if (this.running) return;
@@ -322,7 +323,8 @@ export class UpdateEverything {
       const machines = new Map(workspace.machines.map((machine) => [machine.id, machine]));
       const local = plan.some((machine) => machine.local && machine.parts.some((part) => part.id === 'app' && part.startable));
       // The app's download is the longest step and touches nothing that runs: it starts first.
-      const app = local ? appUpdater.prepare() : Promise.resolve(false);
+      // Android restarts nothing here: the browser fetches the APK and Android's installer asks, so one click goes all the way.
+      const app = local ? appUpdater.prepare().then((ready) => { if (ready && androidApp()) appUpdater.install(); }) : Promise.resolve();
       await Promise.all(plan.map((machine) => {
         const store = machines.get(machine.id)?.store;
         const agents = machine.parts.filter((part) => part.startable && !BOITE_PARTS.includes(part.id)).map((part) => part.id as ProviderId);
