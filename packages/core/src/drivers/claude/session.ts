@@ -1,6 +1,7 @@
 import type { Query, SDKMessage, SpawnOptions as SdkSpawnOptions } from '@anthropic-ai/claude-agent-sdk';
 import type { PermissionMode } from '@boite/contracts';
 import { messageOf } from '../../errors.ts';
+import { EXIT_GRACE_MS } from '../exit.ts';
 import type { SpawnedChild } from '../../procs.ts';
 import type { LiveTurnSettings, SessionContext, TurnContext } from '../types.ts';
 import { hookReport } from './hooks.ts';
@@ -113,6 +114,12 @@ export class ClaudeSession {
   #started = false;
   /** When the CLI was spawned, for the time it took to say init. */
   #spawnedAt: number | null = null;
+  /**
+   * The last line the CLI printed on stderr and the end of its stdio. The SDK
+   * rejects a dead CLI with its exit code alone; that line usually names the
+   * cause (a full disk under the sandbox's reserve, a broken install).
+   */
+  #cli: { lastStderr: string; exited: boolean; closed: Promise<void> } | null = null;
   #closing = false;
   #ended = false;
   #loginRejected = false;
@@ -561,7 +568,7 @@ export class ClaudeSession {
       }
       this.#finish(null);
     } catch (error) {
-      this.#finish(messageOf(error));
+      this.#finish(await this.#withCliStderr(messageOf(error)));
     } finally {
       // The CLI is gone: the servers it started through the core go too.
       lazy?.release();
@@ -870,11 +877,31 @@ export class ClaudeSession {
     });
     // The SDK reads stderr only for the process it spawns itself, so with a
     // custom spawner nothing drains that pipe unless we do it here.
+    let closed: () => void = () => undefined;
+    const cli = { lastStderr: '', exited: false, closed: new Promise<void>(resolve => { closed = resolve; }) };
+    this.#cli = cli;
+    child.once('exit', () => { cli.exited = true; });
+    child.once('close', () => { cli.exited = true; closed(); });
+    child.once('error', () => closed());
     child.stderr.setEncoding('utf8');
     child.stderr.on('data', (chunk: string) => {
       const text = chunk.trim();
-      if (text.length > 0) this.#ctx.log('warn', `claude cli: ${text.slice(0, STDERR_MAX)}`, { kind: 'provider-output', event: 'provider.output' });
+      if (text.length === 0) return;
+      this.#ctx.log('warn', `claude cli: ${text.slice(0, STDERR_MAX)}`, { kind: 'provider-output', event: 'provider.output' });
+      const last = text.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0).at(-1);
+      if (last !== undefined) cli.lastStderr = last.slice(0, STDERR_MAX);
     });
     return child;
+  }
+
+  /** A query that failed because its CLI died ends on the CLI's last stderr line, once that pipe is drained. */
+  async #withCliStderr(reason: string): Promise<string> {
+    const cli = this.#cli;
+    if (cli === null) return reason;
+    let timer: Timer | undefined;
+    await Promise.race([cli.closed, new Promise<void>(resolve => { timer = setTimeout(resolve, EXIT_GRACE_MS); })]);
+    clearTimeout(timer);
+    if (!cli.exited || cli.lastStderr.length === 0 || reason.includes(cli.lastStderr)) return reason;
+    return `${reason}: ${cli.lastStderr}`;
   }
 }

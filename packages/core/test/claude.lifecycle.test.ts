@@ -289,6 +289,29 @@ describe('claude driver', () => {
     expect(thread.sessionGeneration ?? 0).toBe(0);
   });
 
+  test('a CLI that dies before it starts fails the turn with its last stderr line', async () => {
+    const client = await harness.connect();
+    const threadId = await claudeThread(client);
+    const said = 'thread new: 1.8 GiB free on / under the 2.0 GiB reserve';
+
+    scripted((fake, options) => {
+      const child = options.spawnClaudeCodeProcess!({
+        command: process.execPath,
+        args: ['-e', `process.stderr.write(${JSON.stringify(`starting\n${said}\n`)}); process.exit(125)`],
+        env: { ...process.env },
+        signal: new AbortController().signal,
+      });
+      // The SDK rejects on exit, before the stderr pipe has necessarily drained.
+      child.once('exit', () => {
+        fake.exitError = 'Claude Code process exited with code 125';
+        fake.end();
+      });
+    });
+
+    expect(await runTurn(client, threadId, 'never starts')).toBe('error');
+    expect(harness.core.journal.listTurns(threadId).at(-1)?.error).toEndWith(`Claude Code process exited with code 125: ${said}`);
+  });
+
   test('spawnClaudeCodeProcess goes through the registry and is traced', async () => {
     const client = await harness.connect();
     const threadId = await claudeThread(client);

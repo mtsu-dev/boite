@@ -403,7 +403,12 @@ export class CodexSession {
           return rpc;
         } catch (error) {
           await this.#waitForStartupClose();
-          if (this.#closing || this.#active?.isStopped || this.#exitCode !== 1 || !this.#sqliteInitFailed) throw error;
+          if (this.#closing || this.#active?.isStopped) throw error;
+          // A child that died before it answered says why on its way out, where "stdout ended" says nothing.
+          if (this.#exitCode !== null && this.#exitCode !== 0 && !(this.#exitCode === 1 && this.#sqliteInitFailed)) {
+            throw withLogDiagnostic(new Error(this.#exitSentence(this.#exitCode)), this.#exitSentence(this.#exitCode, true));
+          }
+          if (this.#exitCode !== 1 || !this.#sqliteInitFailed) throw error;
           if (attempt >= SQLITE_INIT_ATTEMPTS) throw withLogDiagnostic(new Error(this.#exitSentence(this.#exitCode)), this.#exitSentence(this.#exitCode, true));
           const delay = SQLITE_INIT_BACKOFF_MS * attempt;
           ctx.log('warn', `codex: retrying SQLite initialization in ${delay} ms (attempt ${attempt + 1}/${SQLITE_INIT_ATTEMPTS})`);
