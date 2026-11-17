@@ -24,6 +24,10 @@
  * `ACP_FAKE_ARGV=1` logs `argv <json>` with the arguments after the script at
  * `initialize`, so a test sees what reached the program, one entry each.
  *
+ * `ACP_FAKE_VIBE=1` makes it Mistral Vibe: its effort is the `thinking`
+ * category with `off` and `high`, and its modes are `ask`, `accept-edits` and
+ * `auto-approve`.
+ *
  * `ACP_FAKE_NO_IMAGES=1` makes `initialize` answer with no
  * `promptCapabilities.image`, which is the agent a driver must refuse to send
  * an attachment to. Otherwise the fake advertises image support, and every
@@ -127,6 +131,9 @@ const FAKE_COMMANDS: AvailableCommand[] = [
   { name: 'fake-ping', description: 'Answer pong' },
 ];
 
+/** Mistral Vibe's spelling of the effort option and of its modes. */
+const vibe = process.env['ACP_FAKE_VIBE'] === '1';
+
 const configOptions: SessionConfigOption[] = [
   {
     type: 'select',
@@ -142,30 +149,48 @@ const configOptions: SessionConfigOption[] = [
       { value: 'fake-smart', name: 'Smart' },
     ],
   },
-  {
-    type: 'select',
-    id: 'thought_level',
-    category: 'thought_level',
-    name: 'Thinking',
-    currentValue: 'medium',
-    options: [
-      { value: 'low', name: 'Low' },
-      { value: 'medium', name: 'Medium' },
-      { value: 'high', name: 'High' },
-    ],
-  },
+  vibe
+    ? {
+        type: 'select',
+        id: 'thinking',
+        category: 'thinking',
+        name: 'Thinking',
+        currentValue: 'off',
+        options: [
+          { value: 'off', name: 'Off' },
+          { value: 'high', name: 'High' },
+        ],
+      }
+    : {
+        type: 'select',
+        id: 'thought_level',
+        category: 'thought_level',
+        name: 'Thinking',
+        currentValue: 'medium',
+        options: [
+          { value: 'low', name: 'Low' },
+          { value: 'medium', name: 'Medium' },
+          { value: 'high', name: 'High' },
+        ],
+      },
 ];
 
 /**
  * Ids spelled the three ways real agents spell them: one that matches a Boite
  * mode exactly, one in snake_case, and one that shares no letter with it.
  */
-const MODES: SessionMode[] = [
-  { id: 'default', name: 'Default' },
-  { id: 'accept_edits', name: 'Accept edits' },
-  { id: 'yolo', name: 'YOLO' },
-  { id: 'plan', name: 'Plan' },
-];
+const MODES: SessionMode[] = vibe
+  ? [
+      { id: 'ask', name: 'Ask' },
+      { id: 'accept-edits', name: 'Accept edits' },
+      { id: 'auto-approve', name: 'Auto approve' },
+    ]
+  : [
+      { id: 'default', name: 'Default' },
+      { id: 'accept_edits', name: 'Accept edits' },
+      { id: 'yolo', name: 'YOLO' },
+      { id: 'plan', name: 'Plan' },
+    ];
 
 /** An agent whose modes are the values of a config option, with no `modes` in any answer. */
 const modeOption = process.env['ACP_FAKE_MODE_OPTION'] === '1';
@@ -195,7 +220,7 @@ const hangSmart = process.env['ACP_FAKE_HANG_SMART'] === '1';
 const noModes = process.env['ACP_FAKE_NO_MODES'] === '1' || modeOption;
 /** An agent that never learned to read an image, so a driver has to refuse first. */
 const noImages = process.env['ACP_FAKE_NO_IMAGES'] === '1';
-let currentModeId = 'default';
+let currentModeId = vibe ? 'accept-edits' : 'default';
 
 function modeState(): SessionModeState | undefined {
   return noModes ? undefined : { currentModeId, availableModes: MODES };

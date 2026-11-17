@@ -35,6 +35,7 @@ export const ISOLATION_DEFAULTS: Record<string, string[]> = {
   PI_CODING_AGENT_DIR: ['.pi', 'agent'],
   GEMINI_HOME: ['.gemini'],
   HERMES_HOME: ['.hermes'],
+  VIBE_HOME: ['.vibe'],
 };
 
 /** The file at the root of an account's directory that says what Boite linked and copied there. */
