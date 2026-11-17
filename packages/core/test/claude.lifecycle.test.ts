@@ -1,10 +1,12 @@
 import { describe, expect, test } from 'bun:test';
+import type { ChildProcess } from 'node:child_process';
 import type { MessagePart, RpcEvents } from '@boite/contracts';
 import { waitFor } from './harness.ts';
 import {
   assistant,
   calls,
   claudeThread,
+  type FakeQuery,
   failure,
   harness,
   init,
@@ -264,6 +266,108 @@ describe('claude driver', () => {
     const parts = thread.messages.flatMap((message) => message.parts);
     expect(parts.some((part) => part.type === 'error')).toBe(false);
     expect(thread.messages.filter((message) => message.role === 'assistant')).toHaveLength(2);
+  });
+
+  test('a CLI that never starts is stopped, then the turn runs again on a fresh session with the history', async () => {
+    const client = await harness.connect();
+    const threadId = await claudeThread(client);
+
+    // Query 2 resumes the session and its CLI never says init, the way one
+    // waiting on a server that never answers does; query 3 is the fresh start.
+    let stuck: ChildProcess | null = null;
+    let stuckExitedBeforeRetry = false;
+    scripted((fake, options) => {
+      if (options.resume === 'sess-slow') {
+        stuck = options.spawnClaudeCodeProcess!({
+          command: process.execPath, args: ['-e', 'setInterval(() => {}, 1 << 30)'],
+          env: { ...process.env }, signal: new AbortController().signal,
+        }) as unknown as ChildProcess;
+        return;
+      }
+      if (calls.length === 3) stuckExitedBeforeRetry = stuck !== null && (stuck.exitCode !== null || stuck.signalCode !== null);
+      const id = calls.length === 1 ? 'sess-slow' : 'sess-fresh';
+      fake.emit(init(id));
+      fake.emit(assistant(id, [{ type: 'text', text: calls.length === 1 ? 'first answer' : 'second answer' }]));
+      fake.emit(success(id));
+      fake.end();
+    }, undefined, undefined, { startDeadlineMs: 300 });
+
+    expect(await runTurn(client, threadId, 'first question')).toBe('done');
+    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
+    await client.call('turns.start', { threadId, prompt: 'second question' });
+    const done = await finished;
+    expect(done.status).toBe('done');
+    expect(done.error).toBeNull();
+
+    expect(calls.map((call) => call.options.resume ?? null)).toEqual([null, 'sess-slow', null]);
+    // The stuck CLI was gone before the retry started.
+    expect(stuckExitedBeforeRetry).toBe(true);
+    await waitFor(() => (calls[2]?.prompts.length ?? 0) > 0);
+    expect(calls[2]?.prompts[0]).toContain('first answer');
+    expect(calls[2]?.prompts[0]).toContain('second question');
+
+    const thread = await client.call('threads.get', { threadId });
+    expect(thread.sessionId).toBe('sess-fresh');
+    expect(thread.sessionGeneration).toBe(1);
+    expect(thread.messages.flatMap((message) => message.parts).some((part) => part.type === 'error')).toBe(false);
+  });
+
+  test('a CLI that misses its start twice fails the turn with the reason', async () => {
+    const client = await harness.connect();
+    const threadId = await claudeThread(client);
+
+    scripted(() => undefined, undefined, undefined, { startDeadlineMs: 200 });
+
+    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
+    await client.call('turns.start', { threadId, prompt: 'hello' });
+    const done = await finished;
+    expect(done.status).toBe('error');
+    // One fresh retry, never a third CLI.
+    expect(calls.map((call) => call.options.resume ?? null)).toEqual([null, null]);
+    expect(queries.every((query) => query.closes > 0)).toBe(true);
+
+    const thread = await client.call('threads.get', { threadId });
+    const errors = thread.messages.flatMap((message) => message.parts).filter((part) => part.type === 'error');
+    expect(errors).toEqual([{ type: 'error', message: 'Claude Code did not start within 0.2 s' }]);
+    expect(thread.status).toBe('error');
+  });
+
+  test('a CLI that answers while it is stopped for a missed start cannot start the retry before it exited', async () => {
+    const client = await harness.connect();
+    const threadId = await claudeThread(client);
+    const procs = harness.core.procs;
+    const stopChild = procs.stopChild.bind(procs);
+    let stuck: ChildProcess | null = null;
+    let late: FakeQuery | null = null;
+    let retryBeforeExit = null as boolean | null;
+    // The CLI wakes up just as it is told to stop, and takes a while to exit.
+    procs.stopChild = async (child) => {
+      late?.emit(init('sess-late'));
+      late?.emit(success('sess-late'));
+      await Bun.sleep(250);
+      await stopChild(child);
+    };
+    scripted((fake, options) => {
+      if (late === null) {
+        late = fake;
+        stuck = options.spawnClaudeCodeProcess!({
+          command: process.execPath, args: ['-e', 'setInterval(() => {}, 1 << 30)'],
+          env: { ...process.env }, signal: new AbortController().signal,
+        }) as unknown as ChildProcess;
+        return;
+      }
+      retryBeforeExit = stuck?.exitCode === null && stuck.signalCode === null;
+      fake.emit(init('sess-fresh'));
+      fake.emit(success('sess-fresh'));
+    }, undefined, undefined, { startDeadlineMs: 100 });
+
+    try {
+      expect(await runTurn(client, threadId, 'hello')).toBe('done');
+      expect(calls).toHaveLength(2);
+      expect(retryBeforeExit).toBe(false);
+    } finally {
+      procs.stopChild = stopChild;
+    }
   });
 
   test('a failed resume for any other reason keeps the session', async () => {

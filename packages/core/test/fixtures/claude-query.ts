@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect } from 'bun:test';
 import type { Options, Query, SDKMessage, SDKUserMessage, SlashCommand } from '@anthropic-ai/claude-agent-sdk';
 import type { CoreClient } from '../../src/client.ts';
 import { createClaudeDriver } from '../../src/drivers/claude.ts';
-import type { QueryFn } from '../../src/drivers/claude/query.ts';
+import type { ClaudeDeps, QueryFn } from '../../src/drivers/claude/query.ts';
 import { setDriver } from '../../src/drivers/index.ts';
 import { scriptedClaude, startTestCore } from '../harness.ts';
 import type { TestCore } from '../harness.ts';
@@ -217,6 +217,7 @@ export function scripted(
   script: (fake: FakeQuery, options: Options) => void,
   reply?: (fake: FakeQuery, prompt: string, index: number) => void,
   sdkReady?: Promise<void>,
+  deps: Omit<ClaudeDeps, 'loadQuery'> = {},
 ): void {
   queries.length = 0;
   calls.length = 0;
@@ -230,7 +231,7 @@ export function scripted(
     fake.launchCompaction(options.settings);
     return fake as unknown as Query;
   };
-  restore = setDriver('claude-sdk', createClaudeDriver({ loadQuery: async () => { await sdkReady; return query; } }));
+  restore = setDriver('claude-sdk', createClaudeDriver({ ...deps, loadQuery: async () => { await sdkReady; return query; } }));
 }
 
 /** The CLI exits when its input closes, so the fake ends with the prompt stream. */
