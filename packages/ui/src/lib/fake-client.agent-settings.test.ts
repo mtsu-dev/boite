@@ -218,8 +218,14 @@ test('fake mochis on a provider turned off name the fix in their status and hear
   await client.call('providers.setEnabled', { providerId: 'echo', enabled: true });
   expect((await status()).problem).toBeNull();
   // The thread's provider is the one its wakes start on: moved in the composer to one turned off, it says so.
+  // A move outside the routes its settings allow is refused, so the owner allows a Codex one first.
   const { threadId } = (await client.call('agents.snapshot', {})).sessions.find(s => s.agentId === mira.id)!;
-  await client.call('threads.update', { threadId, accountId: 'a-codex' });
+  await expect(client.call('threads.update', { threadId, accountId: 'a-codex', model: 'codex-demo' })).rejects.toThrow(/Mira runs only on the models its settings allow/);
+  const policy = await client.call('agents.runtime.get', { agentId: mira.id });
+  const saved = (await client.call('agents.snapshot', {})).profiles.find(profile => profile.id === mira.id)!;
+  await client.call('agents.runtime.configure', { agentId: mira.id, expectedRevision: saved.revision, config: { ...policy,
+    allowedRoutes: [...policy.allowedRoutes, { ...policy.allowedRoutes[0]!, id: 'codex', name: 'Codex', providerId: 'codex', accountId: 'a-codex', model: 'codex-demo' }] } });
+  await client.call('threads.update', { threadId, accountId: 'a-codex', model: 'codex-demo' });
   await client.call('providers.setEnabled', { providerId: 'codex', enabled: false });
   expect((await status()).problem).toMatch(/^Codex is turned off on this machine;/);
 });

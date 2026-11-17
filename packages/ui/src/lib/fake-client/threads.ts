@@ -476,6 +476,8 @@ export function threadMethods(ctx: FakeContext) {
       if (ctx.threads.get(thread.id) !== thread) throw ctx.notFound('thread', thread.id);
       if (version !== (thread.selectionVersion ?? 0)) throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'the model selection changed; review the selected model and send again' });
       if (changedModel || speed !== (thread.speed ?? null)) checkSpeed(ctx, nextProviderId, nextAccountId, model, speed);
+      // As the core: a mochi's thread takes only a route its settings allow. After the await, so a settings save that moves it is in first.
+      if (changedModel) ctx.agents.assertPick(thread.id, { providerId: nextProviderId, accountId: nextAccountId, model });
       checkSelection(ctx, thread, params);
       const before = [thread.accountId, thread.model, thread.effort, thread.speed, thread.permissionMode].join('\0');
       const executionBefore = [thread.providerId, thread.accountId, thread.model, thread.effort, thread.speed ?? null].join('\0');

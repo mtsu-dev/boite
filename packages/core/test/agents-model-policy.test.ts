@@ -86,3 +86,32 @@ test('changed models, efforts and newly added routes still require the current c
   const error = await save(config).catch(error => error);
   expect(error.message).toContain('account is not granted');
 });
+
+test("a pick outside a mochi's routes is refused by name, and a turn on one says why it failed", async () => {
+  h.core.providers.require('echo').models = approvedModels;
+  const threadId = h.core.workforce.sessionOf(agent.id)!.threadId;
+  const error = await client.call('threads.update', { threadId, model: 'old-helper' }).catch(error => error);
+  expect(error.message).toContain('Ada runs only on the models its settings allow');
+  expect(h.core.journal.getThread(threadId)!.model).toBe('echo');
+
+  // A route the owner withdrew under a thread: the turn fails before its agent starts, and the chat holds the reason.
+  h.core.threads.update({ threadId, model: 'old-helper' });
+  const turn = await client.call('turns.start', { threadId, prompt: 'Hello' });
+  await waitFor(() => h.core.journal.getTurn(turn.id)?.status === 'error');
+  const parts = [...h.core.journal.walkTurnMessages(threadId, turn.id, { blobs: false })].flatMap(message => message.parts);
+  expect(parts).toContainEqual({ type: 'error', message: 'account/model access was withdrawn from this mochi' });
+
+  // The same for a failure inside the attempt, before its driver streamed anything.
+  h.core.threads.update({ threadId, model: 'echo' });
+  const checkpoints = h.core.threads.codeCheckpoints;
+  const begin = checkpoints.begin;
+  checkpoints.begin = () => { throw new Error('checkpoint preparation failed'); };
+  try {
+    const failed = await client.call('turns.start', { threadId, prompt: 'Again' });
+    await waitFor(() => h.core.journal.getTurn(failed.id)?.status === 'error');
+    const said = [...h.core.journal.walkTurnMessages(threadId, failed.id, { blobs: false })].flatMap(message => message.parts);
+    expect(said.filter(part => part.type === 'error')).toEqual([{ type: 'error', message: 'checkpoint preparation failed' }]);
+  } finally {
+    checkpoints.begin = begin;
+  }
+});

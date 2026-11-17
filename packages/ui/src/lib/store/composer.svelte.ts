@@ -663,6 +663,8 @@ export class Composer {
     if (!thread) return null;
     const current: Choice = { providerId: thread.providerId, accountId: thread.accountId, model: thread.model,
       effort: thread.effort, permissionMode: thread.permissionMode, speed: thread.speed ?? null };
+    // A mochi runs on its settings' route, alias included: its chips save there, a send never moves it.
+    if (thread.agentSessionId) return { target: current, revision: thread.selectionVersion ?? 0, needsUpdate: false };
     const written = request?.choice && request.choice.providerId === current.providerId && request.choice.accountId === current.accountId ? request.choice : null;
     const target = written ? { ...current, model: written.model, effort: written.effort, speed: written.speed ?? null } : s.composerChoice(current);
     const needsUpdate = target.model !== current.model || !!(written && (target.effort !== current.effort || target.speed !== current.speed));

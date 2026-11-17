@@ -189,6 +189,8 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
     const model = params.model === undefined ? account.id !== thread.accountId ? defaultModel(provider) : thread.model : params.model;
     const effort = params.effort === undefined ? changedModel ? null : thread.effort : params.effort;
     const speed = params.speed === undefined ? changedModel ? null : thread.speed ?? null : params.speed;
+    // A mochi's route is its settings': a client's pick outside them would fail every turn after it.
+    if (changedModel) core.workforce.resident.assertPick(thread, { ...thread, providerId: provider.id, accountId: account.id, model, effort });
     if (changedModel || effort !== thread.effort || speed !== (thread.speed ?? null)) {
       await discover(provider.id, account.id, model, effort, speed);
     }

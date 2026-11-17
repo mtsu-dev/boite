@@ -11,6 +11,7 @@ import { markRunning } from './lifecycle.ts';
 import { TurnAttempts, type TurnAttemptState } from './turn-attempts.ts';
 import { stderrTail } from '../drivers/stderr-tail.ts';
 import { turnSwitch } from './switch-notice.ts';
+import { writeTurnError } from './turn-error.ts';
 import { folderPresent, restoreThreadCwd, ThreadCwdGone } from './cwd.ts';
 
 export { STOP_DEADLINE, STOP_DEADLINE_ERROR } from './turn-attempts.ts';
@@ -161,6 +162,11 @@ export class TurnRunner {
       const gone = new ThreadCwdGone(threadId, state.thread.cwd);
       result = { ...result, error: gone.message, diagnosticError: `${gone.message}; the agent said: ${result.diagnosticError ?? result.error ?? 'nothing'}`, cwdGone: true };
     }
+    // A failure no driver wrote (route check, worktree, checkpoint, preparation) still says why, else the turn only reads "failed". A gone folder has its own notice.
+    if (started && result.status === 'error' && !result.cwdGone && !this.#saidWhy(threadId, turnId)) {
+      try { writeTurnError(this.#core, state.running, result.error ?? 'unknown error'); }
+      catch (error) { reportSettlementError(this.#core, threadId, turnId, 'error message', error); }
+    }
 
     const { thread, running } = state;
     try {
@@ -250,5 +256,13 @@ export class TurnRunner {
 
   stopRunning(threadId: ThreadId): boolean {
     return this.#attempts.stopRunning(threadId);
+  }
+
+  /** Whether the turn's transcript already holds an error part, as a driver writes one. */
+  #saidWhy(threadId: ThreadId, turnId: TurnId): boolean {
+    for (const message of this.#core.journal.walkTurnMessages(threadId, turnId, { blobs: false })) {
+      if (message.parts.some(part => part.type === 'error')) return true;
+    }
+    return false;
   }
 }

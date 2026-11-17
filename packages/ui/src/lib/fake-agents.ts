@@ -160,6 +160,13 @@ export class FakeAgents {
   accountAllowed(agentId: string, accountId: string): boolean { const grant = this.grants.find(g => g.accountId === accountId); return !grant || grant.agentIds === null || grant.agentIds.includes(agentId); }
   /** The agent whose own thread this is, as the core's `resident.ownerOf`. */
   ownerOf(threadId: string): string | null { return [...this.sessions.values()].find(s => s.threadId === threadId)?.agentId ?? null; }
+  /** As the core's `resident.assertPick`: a mochi's own thread takes only a route its settings allow. */
+  assertPick(threadId: string, route: Pick<AgentSelection, 'providerId' | 'accountId' | 'model'>): void {
+    const owner = this.ownerOf(threadId); if (!owner) return;
+    const config = this.runtime(owner), model = route.model ?? config.defaultRoute.model;
+    if (this.accountAllowed(owner, route.accountId) && config.allowedRoutes.some(r => r.providerId === route.providerId && r.accountId === route.accountId && r.model === model)) return;
+    this.refuse(`model: ${this.profile(owner).name} runs only on the models its settings allow; change its model in its settings`);
+  }
   /** An applied agent setting card, written as the agent's settings would. */
   writeSetting(agentId: string, change: { profile?: Partial<Pick<AgentProfile, 'name' | 'domain' | 'instructions' | 'avatar' | 'status'>>; selection?: AgentSelection; projectIds?: string[]; config?: AgentRuntimeConfig }): AgentProfile {
     const agent = this.profile(agentId);

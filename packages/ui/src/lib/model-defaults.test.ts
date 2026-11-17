@@ -70,6 +70,24 @@ test('sending on an old alias saves the named preset before starting the turn', 
   expect(store.openThread!.turns.at(-1)?.execution).toMatchObject({ model: 'codex-demo', effort: 'high' });
 });
 
+test("sending to a mochi on the alias keeps its settings' route, and the core refuses a pick outside them", async ({ ready }) => {
+  const { store, client } = await ready({ delayMs: 0 });
+  const account = store.accountsOf('codex')[0]!;
+  await store.probeModels('codex', account.id);
+  store.setModelDefault('codex', account.id, 'codex-demo', 'high');
+  const agent = await client.call('agents.profile.save', { value: { name: 'Standardiste', domain: '', instructions: '', avatar: '', status: 'active', projectIds: [],
+    selection: { providerId: 'codex', accountId: account.id, model: 'default', effort: null, permissionMode: 'default' } } });
+  const { threadId } = await client.call('agents.open', { agentId: agent.id });
+  await store.open(threadId);
+  const call = vi.spyOn(client, 'call');
+  expect(await store.send('j\'autorise', threadId)).toBe(true);
+  // Before: the send moved the thread to the user's named default, which the mochi does not allow, and every turn failed.
+  expect(call.mock.calls.map(([name]) => name)).not.toContain('threads.update');
+  await vi.waitFor(() => expect(store.openThread!.turns.at(-1)?.execution).toMatchObject({ model: 'default' }));
+  await expect(client.call('threads.update', { threadId, model: 'codex-demo' }))
+    .rejects.toMatchObject({ message: expect.stringContaining('Standardiste runs only on the models its settings allow') });
+});
+
 test.each(Object.entries(INITIAL_MODEL_DEFAULTS))('resolves the requested %s default after the account offers it', (provider, choice) => {
   const models: ModelInfo[] = [{ id: 'default', name: 'Default', default: true },
     { id: choice.model, name: choice.model, effort: { levels, default: 'low' } }];
