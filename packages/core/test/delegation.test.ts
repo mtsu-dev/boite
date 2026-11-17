@@ -1347,11 +1347,17 @@ test('two spawns naming the same new model share one re-read, and a cold list is
   served = [...served, { id: 'sol', name: 'Sol' }];
   const first = h.core.delegation.prepareRoutes(threadId, probe, ['twin/sol']);
   const second = h.core.delegation.prepareRoutes(threadId, probe, ['twin/sol']);
+  const resolved: string[] = [];
+  const settle = (prepared: Promise<void>) => prepared.then(() => { resolved.push(h.core.delegation.resolve(threadId, { model: 'twin/sol' }).model ?? 'none'); });
+  const both = Promise.all([settle(first), settle(second)]);
   await waitFor(() => refreshes.length === 2);
+  await new Promise(resolve => setTimeout(resolve, 20));
+  // Neither spawn goes on before the read that lists its model.
+  expect(resolved).toEqual([]);
   release();
-  await Promise.all([first, second]);
+  await both;
   expect(refreshes).toEqual([false, true]);
-  for (let i = 0; i < 2; i++) expect(h.core.delegation.resolve(threadId, { model: 'twin/sol' }).model).toBe('sol');
+  expect(resolved).toEqual(['sol', 'sol']);
 });
 
 test('the parent agent resumes its own stop and a Stop once the owner wrote again, never the Settings pause', async () => {

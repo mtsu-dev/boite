@@ -4,11 +4,11 @@ import { join } from 'node:path';
 import type { SubscriptionProxy } from '@boite/contracts';
 import { checkSettingsPatch } from '@boite/contracts';
 import { connect } from '../src/client.ts';
-import { getDriver, probedModelsOf, setDriver } from '../src/drivers/index.ts';
+import { getDriver, probedModelsOf, rememberExternalModels, setDriver } from '../src/drivers/index.ts';
 import { childEnv } from '../src/drivers/claude/query.ts';
 import { agentEnv } from '../src/providers/resolve.ts';
 import { mergeProxyModels, readSubscriptionProxyModels, subscriptionProxyCodexArgs, subscriptionProxyEnv } from '../src/subscription-proxy.ts';
-import { startTestCore, type TestCore } from './harness.ts';
+import { startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
 import { countEvents } from './event-count.ts';
 
@@ -515,4 +515,52 @@ test('a refresh whose agent fails behind a gateway that answers keeps the agent\
     expect((await owner.call('providers.probe', { providerId: 'codex', accountId: codex.id, refresh: true })).models).toEqual([sol]);
     expect(reads).toBe(2);
   } finally { restore(); }
+});
+
+test('a refresh whose agent fails before this core read it keeps the list on screen instead of saving the gateway rows over it', async () => {
+  gateway = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch() {
+    return Response.json({ data: [{ id: 'codex/gpt-6.2-sol', name: 'GPT-6.2-Sol', supported_endpoint_types: ['openai-response'] }] });
+  } });
+  const sol = { id: 'gpt-6.2-sol', name: 'GPT-6.2 Sol', default: true, speeds: [{ id: 'priority', label: 'Fast' }] };
+  const restore = setDriver('codex-appserver', { ...getDriver('codex-appserver'), probe: async () => { throw new Error('codex app-server did not start'); } });
+  const saved: unknown[] = [];
+  try {
+    harness = await startTestCore({ settings: { subscriptionProxy: config(`http://127.0.0.1:${gateway.port}/v1`) } });
+    const owner = await harness.connect();
+    const codex = await owner.call('accounts.add', { providerId: 'codex', label: 'Gateway Codex' });
+    // What a restart's saved list or a sign-in's own session leaves on screen.
+    rememberExternalModels('codex-appserver', 'codex', codex.id, [sol]);
+    const off = harness.core.bus.onAny((name, payload) => { if (name === 'providers.probed') saved.push(payload); });
+    try {
+      expect((await owner.call('providers.probe', { providerId: 'codex', accountId: codex.id, refresh: true })).models).toEqual([sol]);
+    } finally { off(); }
+    expect(saved).toEqual([]);
+  } finally { restore(); }
+});
+
+test('an agent list read under a gateway that changed meanwhile is never kept for the new one', async () => {
+  const serve = (id: string) => Bun.serve({ hostname: '127.0.0.1', port: 0, fetch() {
+    return Response.json({ data: [{ id, name: id, supported_endpoint_types: ['openai-response'] }] });
+  } });
+  gateway = serve('codex/old-row');
+  const other = serve('codex/new-row');
+  const stale = { id: 'stale-native', name: 'Stale', default: true };
+  const agent = Promise.withResolvers<void>();
+  let reads = 0;
+  const restore = setDriver('codex-appserver', { ...getDriver('codex-appserver'), probe: async () => {
+    if (++reads === 1) { await agent.promise; return { models: [stale], probedAt: 1 }; }
+    throw new Error('codex app-server did not start');
+  } });
+  try {
+    harness = await startTestCore({ settings: { subscriptionProxy: config(`http://127.0.0.1:${gateway.port}/v1`) } });
+    const owner = await harness.connect();
+    const codex = await owner.call('accounts.add', { providerId: 'codex', label: 'Gateway Codex' });
+    const read = owner.call('providers.probe', { providerId: 'codex', accountId: codex.id });
+    await waitFor(() => reads === 1);
+    await owner.call('subscriptionProxy.configure', { subscriptionProxy: config(`http://127.0.0.1:${other.port}/v1`) });
+    agent.resolve();
+    expect(await thrown(read)).toThrow('changed during discovery');
+    const models = (await owner.call('providers.probe', { providerId: 'codex', accountId: codex.id, refresh: true })).models.map(model => model.id);
+    expect(models).not.toContain('stale-native');
+  } finally { restore(); other.stop(true); agent.resolve(); }
 });

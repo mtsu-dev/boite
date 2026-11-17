@@ -53,18 +53,21 @@ async function probeProvider(
     // When the agent fails behind a gateway that answers, the agent's last
     // list stays: the gateway rows alone would drop its models' speed tiers.
     const lane = JSON.stringify([provider.id, account.id]);
-    let native: ModelInfo[] = [];
-    let partial = false;
-    try {
-      native = (await probeNative(core, provider, account.id, cleanups, model)).models;
-      if (model === undefined) natives.set(lane, native);
-    } catch (error) {
-      core.logs.record('warn', logMessageOf(error), { source: provider.id, event: 'provider.probeFailed', threadId: probeThreadId(provider.id, account.id) });
-      partial = true;
-      native = natives.get(lane) ?? [];
-    }
+    let native: ModelInfo[] | null = null;
+    try { native = (await probeNative(core, provider, account.id, cleanups, model)).models; }
+    catch (error) { core.logs.record('warn', logMessageOf(error), { source: provider.id, event: 'provider.probeFailed', threadId: probeThreadId(provider.id, account.id) }); }
     if (!isCurrent()) throw refused('the subscription proxy changed during discovery; refresh models');
-    const models = mergeProxyModels(native, proxyModels);
+    if (native !== null && model === undefined) natives.set(lane, native);
+    const partial = native === null;
+    const kept = natives.get(lane);
+    if (partial && kept === undefined) {
+      // No agent list read since this core started: the one on screen, read
+      // or saved under the same gateway and login, stays rather than the
+      // gateway rows alone, and nothing is saved over it.
+      const shown = probedModelsOf(provider.protocol, provider.id, account.id) ?? readSavedCatalog(core, provider.id, account.id)?.models ?? null;
+      if (shown !== null && shown.length > 0) return { result: { models: shown, probedAt: Date.now() }, partial };
+    }
+    const models = mergeProxyModels(native ?? kept ?? [], proxyModels);
     const probedAt = Date.now();
     rememberExternalModels(provider.protocol, provider.id, account.id, models);
     core.bus.emit('providers.probed', { providerId: provider.id, accountId: account.id, models, probedAt });
