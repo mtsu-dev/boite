@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import { coreFiles, coreShards, parseShard, runnerKey } from '../../../scripts/ci/core-shards.ts';
 import { announce, failedTests, namePattern, quarantined } from '../../../scripts/ci/flaky.ts';
 
 // Fresh processes avoid reusing native runtime state between test files.
@@ -12,6 +13,10 @@ const workers = Number(workerValue);
 if (!Number.isInteger(workers) || workers < 1 || workers > 8) {
   throw new Error(`BOITE_TEST_WORKERS/--workers: expected an integer from 1 to 8, received ${workerValue}`);
 }
+// One CI shard of the files, cut on their recorded seconds on this platform (scripts/ci/core-shards.ts).
+const shardOption = args.indexOf('--shard');
+const shardValue = shardOption < 0 ? process.env.BOITE_TEST_SHARD || undefined : args.splice(shardOption, 2)[1] ?? '';
+const shard = shardValue === undefined ? undefined : parseShard(shardValue);
 if (!args.some(arg => arg === '--timeout' || arg.startsWith('--timeout='))) {
   args.push('--timeout', '60000');
 }
@@ -23,8 +28,11 @@ if (!Number.isInteger(fileDeadlineMs) || fileDeadlineMs < 1000) {
   throw new Error(`BOITE_TEST_FILE_DEADLINE_MS: expected at least 1000, received ${process.env.BOITE_TEST_FILE_DEADLINE_MS}`);
 }
 
-const files = [...new Bun.Glob('**/*.test.ts').scanSync({ cwd: resolve(core, 'test') })].sort();
-if (!files.length) throw new Error(`${resolve(core, 'test')}: expected at least one .test.ts file`);
+const all = coreFiles(resolve(core, 'test'));
+if (!all.length) throw new Error(`${resolve(core, 'test')}: expected at least one .test.ts file`);
+// Longest recorded first, so a slow file does not start last and hold the run alone.
+const files = coreShards(all, shard?.count ?? 1, runnerKey())[(shard?.index ?? 1) - 1]!.files;
+if (shard) console.log(`Core shard ${shard.index}/${shard.count}: ${files.length} of ${all.length} files`);
 const running = new Set<Bun.Subprocess>();
 const failures: string[] = [];
 const retried: string[] = [];
@@ -50,6 +58,7 @@ async function attempt(file: string, extra: string[]) {
   });
   running.add(child);
   let overdue = false;
+  const begun = performance.now();
   const deadline = setTimeout(() => {
     overdue = true;
     child.kill();
@@ -59,7 +68,9 @@ async function attempt(file: string, extra: string[]) {
       new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited,
     ]);
     const label = extra.length ? `${file}, retry` : file;
-    console.log(`\n=== ${label} (exit ${code}${overdue ? `, ended after ${fileDeadlineMs} ms without finishing` : ''}) ===`);
+    // The seconds feed core-durations.json (bun scripts/ci/core-shards.ts refresh <run id>).
+    const seconds = ((performance.now() - begun) / 1000).toFixed(2);
+    console.log(`\n=== ${label} (exit ${code}, ${seconds} s${overdue ? `, ended after ${fileDeadlineMs} ms without finishing` : ''}) ===`);
     if (stdout) process.stdout.write(stdout);
     if (stderr) process.stderr.write(stderr);
     return { code, overdue, output: (stdout + '\n' + stderr).replace(/\x1b\[[0-9;]*m/g, '') };

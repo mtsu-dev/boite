@@ -34,12 +34,13 @@ test('selected child environment excludes live opt-ins and unrelated host variab
 test('additional diagnostic cannot soften or prevent the original two-compiler native suites', () => {
   type Step = {name?: string; if?: string; run?: string; 'continue-on-error'?: boolean; with?: Record<string, unknown>};
   const workflow = loadWorkflow('ci.yml');
-  const steps = (workflow.jobs['core-windows-x64'] as unknown as {steps: Step[]}).steps;
+  const steps = (workflow.jobs['native-windows'] as unknown as {steps: Step[]}).steps;
   const diagnostic = steps.findIndex(step => step.name?.startsWith('Diagnostic DEBUG_PROCESS'));
   const original = steps.findIndex(step => step.name === 'Native Windows protected tools');
   expect(diagnostic).toBeGreaterThan(0); expect(original).toBeGreaterThan(diagnostic);
   expect(steps[diagnostic]!['continue-on-error']).toBe(true);
-  expect(steps[diagnostic]!.if).toBe("runner.os == 'Windows' && needs.changes.outputs.nativeWindows == 'true'");
+  // The job runs only for native Windows changes; the step adds no condition of its own.
+  expect(steps[diagnostic]!.if).toBeUndefined();
   expect(steps[diagnostic]!.run).toContain('$diagnosticExit = $LASTEXITCODE');
   expect(steps[diagnostic]!.run).toContain('exit $diagnosticExit');
   expect(steps[original]!['continue-on-error']).toBeUndefined();
@@ -48,7 +49,7 @@ test('additional diagnostic cannot soften or prevent the original two-compiler n
   expect(steps[original]!.run).toContain('if ($LASTEXITCODE -ne 0) { $failed = $true }');
   expect(steps[original]!.run).toContain('if ($failed) { exit 1 }');
   const artifact = steps.find(step => step.name === 'Preserve DEBUG_PROCESS diagnostic evidence')!;
-  expect(artifact.if).toStartWith('always()');
+  expect(artifact.if).toBe('always()');
   expect(artifact['continue-on-error']).toBe(true);
   expect(artifact.with?.['retention-days']).toBe(3);
 });

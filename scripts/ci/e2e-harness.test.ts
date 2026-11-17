@@ -43,7 +43,7 @@ test('the native shell E2E step keeps test shells and their WebView2 profiles on
 });
 
 test('every E2E shard stops a hung run before its job limit and uploads the report', () => {
-  // A shard cut by its 35 min limit kept no log and no artifact (run
+  // A shard cut by its job limit (35 min then) kept no log and no artifact (run
   // 39321123064): the run must end itself, from a deadline counted from the
   // job's first step, while the upload step can still run.
   const workflow = readFileSync(join(repo, '.github/workflows/ci.yml'), 'utf8');
@@ -53,7 +53,7 @@ test('every E2E shard stops a hung run before its job limit and uploads the repo
   const run = e2e.get('Browser and core end-to-end tests') ?? '';
   const minutes = /bun scripts\/ci\/flaky\.ts --job-started \$env:BOITE_JOB_STARTED_MS --job-minutes (\d+) @files/.exec(run)?.[1];
   expect(minutes).toBeDefined();
-  for (const job of ['e2e-1', 'e2e-2', 'e2e-3']) {
+  for (const job of ['e2e-1', 'e2e-2', 'e2e-3', 'e2e-4', 'e2e-5']) {
     const start = workflow.indexOf(`\n  ${job}:\n`);
     expect(/timeout-minutes: (\d+)/.exec(workflow.slice(start))?.[1], job).toBe(minutes);
   }

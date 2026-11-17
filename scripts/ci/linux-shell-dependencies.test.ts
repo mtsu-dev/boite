@@ -14,7 +14,7 @@ const script = readFileSync(join(import.meta.dir, 'ubuntu-apt.sh'), 'utf8');
 
 test('both Linux apt steps install through the Ubuntu-only script', () => {
   expect(step.startsWith(installer)).toBe(true);
-  const x11 = workflow('ci.yml').jobs['core-linux-x64']!.steps.find(s => s.name === 'X11 window capture and virtual desktop under Xvfb')!.run!;
+  const x11 = workflow('ci.yml').jobs['core-linux-x64-1']!.steps.find(s => s.name === 'X11 window capture and virtual desktop under Xvfb')!.run!;
   expect(x11).toContain(installer);
   expect(x11).not.toContain('apt-get');
 });
