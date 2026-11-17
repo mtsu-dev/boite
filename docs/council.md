@@ -65,7 +65,7 @@ writes is an answer to read: it approves nothing in your place.
 | Agent | Read-only by |
 | --- | --- |
 | Claude Code, Codex, Muse Code, Grok, OpenCode, OpenCode 2 | Plan mode |
-| Antigravity, Hermes Agent | Boite refuses every permission it asks |
+| Antigravity, Hermes Agent, Mistral Vibe | Boite refuses every permission it asks |
 | pi | Only the instruction to change nothing |
 
 Each member is also told to change nothing and start no subagent. OpenCode's

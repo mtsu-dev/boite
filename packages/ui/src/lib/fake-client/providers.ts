@@ -125,5 +125,6 @@ export const PROBE_PROVIDERS: Pick<ProviderSummary, 'id' | 'name' | 'protocol' |
   { id: 'codex', name: 'Codex', protocol: 'codex-appserver', login: { kind: 'device' } },
   { id: 'pi', name: 'pi', protocol: 'pi', login: false },
   { id: 'grok', name: 'Grok', protocol: 'acp', login: { kind: 'command' } },
-  { id: 'muse', name: 'Muse Code', protocol: 'muse', login: { kind: 'command' } }
+  { id: 'muse', name: 'Muse Code', protocol: 'muse', login: { kind: 'command' } },
+  { id: 'vibe', name: 'Mistral Vibe', protocol: 'acp', login: { kind: 'terminal' } }
 ];

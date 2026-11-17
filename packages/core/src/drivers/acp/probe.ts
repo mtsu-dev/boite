@@ -6,7 +6,7 @@ import { messageOf, unavailable } from '../../errors.ts';
 import { agentEnv, profileFor, resolveLaunch } from '../../providers/resolve.ts';
 import { stderrDrained, stderrLines } from '../lines.ts';
 import type { ProbeContext, ProbeResult } from '../types.ts';
-import { agentModelsOf, categoryOption, effortFrom, modelsFrom, selectValues, type AgentModels } from './models.ts';
+import { agentModelsOf, categoryOption, effortFrom, effortOption, modelsFrom, selectValues, type AgentModels } from './models.ts';
 import { acpClientInfo, acpSessionMeta, canDeleteSessions, CLIENT_NAME, discardSession, isGrok, preferExit, STDERR_MAX, type AcpDeps, type Timer } from './protocol.ts';
 import { jsonLinesOnly } from './stdout.ts';
 import { unpacksAtLaunch } from '../launch-temp.ts';
@@ -124,7 +124,7 @@ export async function readModels(ctx: ProbeContext, deps: AcpDeps, noteOptions: 
           value: wanted,
         });
         const listed = (answer as { configOptions?: SessionConfigOption[] | null }).configOptions ?? null;
-        effort = { model: wanted, scale: effortFrom(categoryOption(listed, 'thought_level')) };
+        effort = { model: wanted, scale: effortFrom(effortOption(listed)) };
       }
       await discardSession(open.agent, canDeleteSessions(init), created.sessionId);
       return { options, listed: agentModelsOf(created), effort };

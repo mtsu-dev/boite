@@ -81,6 +81,23 @@ export function categoryOption(
   return options.find((entry) => entry.category === category && entry.type === 'select') ?? null;
 }
 
+/**
+ * The categories an effort select is filed under, best first. `thought_level`
+ * is the protocol's own; Mistral Vibe files its `off` / `high` scale under
+ * `thinking`, a category of its own, which is read when the standard one is
+ * absent.
+ */
+export const EFFORT_CATEGORIES: readonly SessionConfigOptionCategory[] = ['thought_level', 'thinking'];
+
+/** The session's effort select, under whichever category the agent filed it. */
+export function effortOption(options: SessionConfigOption[] | null): SessionConfigOption | null {
+  for (const category of EFFORT_CATEGORIES) {
+    const option = categoryOption(options, category);
+    if (option !== null) return option;
+  }
+  return null;
+}
+
 /** `thought_level` is one scale for the whole session, so every model carries it. */
 export function effortFrom(option: SessionConfigOption | null): ModelInfo['effort'] | null {
   if (option === null) return null;
@@ -150,7 +167,7 @@ function modelsFromList(provider: ProviderDescriptor, listed: AgentModels): Mode
 function modelsFromConfig(provider: ProviderDescriptor, options: SessionConfigOption[] | null): ModelInfo[] {
   const option = categoryOption(options, 'model');
   if (option === null) return provider.models;
-  const effort = effortFrom(categoryOption(options, 'thought_level'));
+  const effort = effortFrom(effortOption(options));
   const current = option.type === 'select' ? String(option.currentValue) : '';
   const withEffort = (model: ModelInfo): ModelInfo => (effort === null || model.id !== current ? model : { ...model, effort });
 

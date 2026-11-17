@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from 'bun:test';
 import type { Message, MessagePart } from '@boite/contracts';
 import { Journal } from '../src/journal.ts';
+import { countEvents } from './event-count.ts';
 
 let dir: string;
 let file: string;
@@ -370,7 +371,7 @@ describe('journal streaming', () => {
       journal.appendDelta('thr_test', 'msg_events', 0, `${i}`);
       journal.flushDeltas();
     }
-    expect(journal.countEvents('message.delta')).toBe(0);
+    expect(countEvents(journal, 'message.delta')).toBe(0);
   });
 
   test('a failing flush from the timer is reported, not thrown, and retried', async () => {

@@ -37,7 +37,7 @@ test('the picker rails the providers as logos and gives the shown one its accoun
   await waitFor(() => shownModels().length === 3);
   // One tile per provider an account answers for, in the core's order: the
   // one still to download or sign into is Settings' business, one tile away.
-  expect(tiles()).toEqual(['favorites', 'claude', 'echo', 'opencode', 'codex', 'pi', 'grok', 'muse', 'more']);
+  expect(tiles()).toEqual(['favorites', 'claude', 'echo', 'opencode', 'codex', 'pi', 'grok', 'muse', 'vibe', 'more']);
   // Claude is the shown one and has two logins: its name is the button that lists them.
   expect(query('[data-testid=picker-account]').getAttribute('aria-expanded')).toBe('false');
   expect(seats()).toEqual([]);
