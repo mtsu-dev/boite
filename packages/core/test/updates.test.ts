@@ -318,6 +318,30 @@ describe('harness updates', () => {
     await waitFor(() => harness?.core.procs.liveCount('update:update-fake') === 0);
   }, 60000);
 
+  test.skipIf(process.platform === 'win32')('an npm release that installs without its program stays skipped when the version before cannot be put back', async () => {
+    let layout!: ReturnType<typeof npmLayout>;
+    const { client } = await start('npm', 'update', undefined, (dataDir) => {
+      layout = npmLayout(dataDir);
+      return { kind: 'file', value: layout.link };
+    });
+    const program = join(layout.scope, 'fake-agent', 'bin', 'agent');
+    const cli = join(harness!.dataDir, 'npm-cli.js');
+    // The registry is gone by the time Boite puts 1.0.0 back.
+    writeFileSync(cli, [
+      "if (process.argv.at(-1).endsWith('@1.0.0')) { console.error('npm error code ETIMEDOUT'); process.exit(1); }",
+      `require('node:fs').rmSync(${JSON.stringify(program)});`,
+    ].join('\n'));
+    harness!.core.updates.npmCli = () => ({ executable: process.execPath, script: cli });
+    expect(only(await client.call('providers.updates', { refresh: true }))).toMatchObject({ current: '1.0.0', latest: '1.1.0', pending: true });
+
+    const failed = client.next('providers.updatesChanged', (list) => list[0]?.state === 'failed', 30000);
+    await client.call('providers.update', { providerId: 'update-fake' });
+    const update = only(await failed);
+    expect(update).toMatchObject({ skipped: '1.1.0', pending: false });
+    expect(update.message).toMatch(/left Fake updating agent unable to start .*, and putting back 1\.0\.0 failed: .*ETIMEDOUT.*; Boite skips 1\.1\.0 until a newer release/);
+    await waitFor(() => harness?.core.procs.liveCount('update:update-fake') === 0);
+  }, 60000);
+
   test('an agent that checks by itself is read, updated by its own updater, and traced', async () => {
     const { client, state } = await start('command');
 

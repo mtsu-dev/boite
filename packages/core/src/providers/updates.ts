@@ -9,7 +9,7 @@ import { notFound, refused } from '../errors.ts';
 import { currentOs } from '../paths.ts';
 import type { InstallOutcome } from './install.ts';
 import { npmCli, npmInstallOf, unwritableDir, type NpmCommand } from './npm.ts';
-import { npmUpdate, putBackUnlessStarting, runNpmUpdate, type NpmUpdate } from './update-npm.ts';
+import { npmLatest, npmUpdate, putBackUnlessStarting, runNpmUpdate, type NpmUpdate } from './update-npm.ts';
 import { profileFor, programBehindWrappers, resolveCommand } from './resolve.ts';
 import { BACKGROUND_LIMIT_MS, backgroundHolders, resumeCut, withCut } from './update-background.ts';
 import { readReadings, readSkips, writeReadings, writeSkips, type Entry } from './update-readings.ts';
@@ -90,17 +90,6 @@ interface Target {
   program: string;
 }
 
-async function npmLatest(name: string): Promise<string> {
-  const response = await fetch(`https://registry.npmjs.org/${name.replaceAll('/', '%2F')}/latest`, {
-    signal: AbortSignal.timeout(VERSION_TIMEOUT_MS),
-    headers: { accept: 'application/json' },
-  });
-  if (!response.ok) throw new Error(`the npm registry answered ${response.status} for ${name}`);
-  const body = (await response.json()) as { version?: unknown };
-  if (typeof body.version !== 'string') throw new Error(`the npm registry named no version for ${name}`);
-  return body.version;
-}
-
 /**
  * Which copy of an agent a reading belongs to: the program with its links
  * followed, so `~/.local/bin/claude` moved from an npm install to a native one
@@ -129,14 +118,15 @@ function whoRuns(): string {
  * is pointed at the prefix the running copy lives in, whatever the user's npm
  * configuration names, so the updater replaces the copy Boite runs.
  */
-function updaterEnv(program: string, updateEnv: Record<string, string>): Record<string, string | undefined> {
+function updaterEnv(program: string, updateEnv: Record<string, string>, npmPrefix?: string): Record<string, string | undefined> {
   const env: Record<string, string | undefined> = {};
-  const install = npmInstallOf(program);
+  // npm's own install keeps the prefix read before it ran: a release that broke the program also breaks reading it.
+  const prefix = npmPrefix ?? npmInstallOf(program)?.prefix ?? null;
   for (const [key, value] of Object.entries(process.env)) {
-    if (install !== null && key.toLowerCase() === 'npm_config_prefix') continue;
+    if (prefix !== null && key.toLowerCase() === 'npm_config_prefix') continue;
     env[key] = value;
   }
-  if (install !== null) env['npm_config_prefix'] = install.prefix;
+  if (prefix !== null) env['npm_config_prefix'] = prefix;
   return { ...env, ...updateEnv };
 }
 
@@ -158,7 +148,7 @@ export class HarnessUpdates {
   /** When the last whole check finished, kept across restarts. */
   #lastCheckAt: number | null = null;
   /** Test seams: the registry read, npm's own CLI, the only providers a check may touch, how long a version read, an updater, a pause and background work may take. */
-  npmLatest: (name: string) => Promise<string> = npmLatest;
+  npmLatest: (name: string) => Promise<string> = (name) => npmLatest(name, VERSION_TIMEOUT_MS);
   npmCli: () => NpmCommand | null = npmCli;
   only: ReadonlySet<ProviderId> | null = null;
   versionTimeoutMs = VERSION_TIMEOUT_MS;
@@ -562,7 +552,7 @@ export class HarnessUpdates {
     const label = via?.label ?? args.join(' ');
     const spawned = this.#core.procs.spawnPiped(updateThreadId(target.descriptor.id), command.executable, [...command.prefix, ...args], {
       cwd: this.#core.dataDir,
-      env: updaterEnv(programBehindWrappers(command.shown), command.updateEnv),
+      env: updaterEnv(programBehindWrappers(command.shown), command.updateEnv, via !== undefined && 'install' in via ? (via as NpmUpdate).install.prefix : undefined),
     });
     spawned.proc.stdin.end();
     const readers = [spawned.proc.stdout.getReader(), spawned.proc.stderr.getReader()] as const;
@@ -643,17 +633,23 @@ export class HarnessUpdates {
     this.#emit();
   }
 
-  /** npm's install. A release that no longer starts is skipped, so neither automatic updates nor Update all retry it, and the one before is put back. */
+  /** npm's install, the release that ran before put back when the new one no longer starts ({@link putBackUnlessStarting}). */
   async #runNpm(target: Target, before: Entry, npm: NpmUpdate): Promise<string> {
-    const install = (via: NpmUpdate): Promise<string> => runNpmUpdate(via, () => this.#run(target, via.args, this.updateTimeoutMs, via), () => this.#core.procs.waitForExit(updateThreadId(target.descriptor.id), undefined, { native: true, stops: true }));
+    const id = target.descriptor.id;
+    const install = (via: NpmUpdate): Promise<string> => runNpmUpdate(via, () => this.#run(target, via.args, this.updateTimeoutMs, via), () => this.#core.procs.waitForExit(updateThreadId(id), undefined, { native: true, stops: true }));
     const said = await install(npm);
-    const restored = await putBackUnlessStarting(npm, before.current, target.descriptor.name, () => this.#current(target), install);
-    if (restored === null) return said;
-    this.skip(target.descriptor.id, npm.version);
-    forgetProbes({ providerId: target.descriptor.id });
-    await this.#core.providers.settle(this.versionTimeoutMs);
-    if (!this.#closed && !this.#core.stopping) this.#core.bus.emit('providers.updated', this.#core.providers.list());
-    throw new Error(`${restored} and skips ${npm.version} until a newer release`);
+    await putBackUnlessStarting(npm, before.current, target.descriptor.name, {
+      starts: () => this.#current(target),
+      install,
+      broken: () => this.skip(id, npm.version),
+      // The program came back or is gone for good: clients list it as it stands.
+      settled: async () => {
+        forgetProbes({ providerId: id });
+        await this.#core.providers.settle(this.versionTimeoutMs);
+        if (!this.#closed && !this.#core.stopping) this.#core.bus.emit('providers.updated', this.#core.providers.list());
+      },
+    });
+    return said;
   }
 
   /**
