@@ -1,4 +1,6 @@
 import { npmInstallOf, npmParked, npmReplacedPaths, restoreNpmParked, type NpmCommand, type NpmInstall } from './npm.ts';
+import { recheckVersions } from './versions.ts';
+import { forgetWhich } from './which.ts';
 import type { ResolvedCommand } from './resolve.ts';
 
 /** `npm install -g` of an agent's package at the version the registry named, run in place of the agent's own updater. */
@@ -9,6 +11,8 @@ export interface NpmUpdate {
   label: string;
   /** The install it replaces. */
   install: NpmInstall;
+  /** The release it installs. */
+  version: string;
 }
 
 /**
@@ -28,7 +32,7 @@ export function npmUpdate(program: string, pkg: string | undefined, latest: stri
   // The agent's program names the install, so the updater environment points npm at its prefix.
   // npm 12 skips install scripts unless allowed, and Claude's copies its native binary over a stub;
   // an older npm warns about the flag and goes on.
-  return { args: ['install', '-g', `--allow-scripts=${pkg}`, spec], command: { executable: cli.executable, prefix: [cli.script], shown: program, updateEnv: {} }, label: `npm install -g ${spec}`, install };
+  return { args: ['install', '-g', `--allow-scripts=${pkg}`, spec], command: { executable: cli.executable, prefix: [cli.script], shown: program, updateEnv: {} }, label: `npm install -g ${spec}`, install, version: latest };
 }
 
 /**
@@ -65,4 +69,42 @@ export async function runNpmUpdate(npm: NpmUpdate, run: () => Promise<string>, e
     if (restored.length === 0) throw error;
     throw new Error(`${message}; npm stopped halfway, and the copy that ran before was put back`);
   }
+}
+
+/**
+ * Puts back the release that ran before (`previous`) when npm installed the
+ * new one and the agent no longer starts. npm exits with zero when an
+ * optional package is missing from the registry, and an agent that ships its
+ * program in one package per platform is then left with nothing to run:
+ * Codex 0.169.1 was published on 2026-11-17 without its Windows x64 package.
+ * Returns null when the agent starts, the reason once `previous` is back, and
+ * throws when it cannot be put back.
+ */
+export async function putBackUnlessStarting(npm: NpmUpdate, previous: string | null, name: string, starts: () => Promise<unknown>, install: (npm: NpmUpdate) => Promise<unknown>): Promise<string | null> {
+  const reread = async (): Promise<void> => {
+    // The install may have moved or removed what PATH and the version cache knew.
+    forgetWhich();
+    recheckVersions();
+    await starts();
+  };
+  let broken: string;
+  try {
+    await reread();
+    return null;
+  } catch (error) {
+    broken = `\`${npm.label}\` left ${name} unable to start (${messageOf(error)})`;
+  }
+  if (previous === null) throw new Error(`${broken}, and Boite did not know the version to put back`);
+  try {
+    const spec = `${npm.install.name}@${previous}`;
+    await install({ ...npm, args: [...npm.args.slice(0, -1), spec], label: `npm install -g ${spec}`, version: previous });
+    await reread();
+  } catch (error) {
+    throw new Error(`${broken}, and putting back ${previous} failed: ${messageOf(error)}`);
+  }
+  return `${broken}; Boite put back ${previous}`;
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

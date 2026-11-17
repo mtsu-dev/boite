@@ -283,6 +283,41 @@ describe('harness updates', () => {
     await waitFor(() => harness?.core.procs.liveCount('update:update-fake') === 0);
   });
 
+  test.skipIf(process.platform === 'win32')('an npm release that installs without its program puts back the version that ran, and stops offering the broken one', async () => {
+    let layout!: ReturnType<typeof npmLayout>;
+    const { client, state } = await start('npm', 'update', undefined, (dataDir) => {
+      layout = npmLayout(dataDir);
+      return { kind: 'file', value: layout.link };
+    });
+    const program = join(layout.scope, 'fake-agent', 'bin', 'agent');
+    const script = readFileSync(program, 'utf8');
+    const calls = join(harness!.dataDir, 'npm-calls.txt');
+    const cli = join(harness!.dataDir, 'npm-cli.js');
+    // Codex 0.169.1 on 2026-11-17: npm exits with zero, but the release lacks the optional package
+    // holding its Windows program, so nothing is left to start. Installing 1.0.0 again brings it back.
+    writeFileSync(cli, [
+      "const { appendFileSync, chmodSync, rmSync, writeFileSync } = require('node:fs');",
+      `appendFileSync(${JSON.stringify(calls)}, process.argv.at(-1) + '\\n');`,
+      "const version = process.argv.at(-1).split('@').at(-1);",
+      `writeFileSync(${JSON.stringify(state)}, version);`,
+      `if (version === '1.1.0') rmSync(${JSON.stringify(program)});`,
+      `else { writeFileSync(${JSON.stringify(program)}, ${JSON.stringify(script)}); chmodSync(${JSON.stringify(program)}, 0o755); }`,
+    ].join('\n'));
+    harness!.core.updates.npmCli = () => ({ executable: process.execPath, script: cli });
+    expect(only(await client.call('providers.updates', { refresh: true }))).toMatchObject({ current: '1.0.0', latest: '1.1.0', pending: true });
+
+    const failed = client.next('providers.updatesChanged', (list) => list[0]?.state === 'failed', 30000);
+    await client.call('providers.update', { providerId: 'update-fake' });
+    const update = only(await failed);
+    expect(update).toMatchObject({ current: '1.0.0', latest: '1.1.0', skipped: '1.1.0', pending: false });
+    expect(update.message).toMatch(/`npm install -g @boite-test\/fake-agent@1\.1\.0` left Fake updating agent unable to start .*; Boite put back 1\.0\.0 and skips 1\.1\.0/);
+    expect(readFileSync(calls, 'utf8').trim().split('\n')).toEqual(['@boite-test/fake-agent@1.1.0', '@boite-test/fake-agent@1.0.0']);
+    expect(readFileSync(layout.link, 'utf8')).toBe(script);
+    // The agent starts again, and a check no longer offers the release that broke it.
+    expect(only(await client.call('providers.updates', { refresh: true }))).toMatchObject({ current: '1.0.0', latest: '1.1.0', state: 'idle', pending: false, skipped: '1.1.0' });
+    await waitFor(() => harness?.core.procs.liveCount('update:update-fake') === 0);
+  }, 60000);
+
   test('an agent that checks by itself is read, updated by its own updater, and traced', async () => {
     const { client, state } = await start('command');
 

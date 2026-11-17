@@ -9,7 +9,7 @@ import { notFound, refused } from '../errors.ts';
 import { currentOs } from '../paths.ts';
 import type { InstallOutcome } from './install.ts';
 import { npmCli, npmInstallOf, unwritableDir, type NpmCommand } from './npm.ts';
-import { npmUpdate, runNpmUpdate } from './update-npm.ts';
+import { npmUpdate, putBackUnlessStarting, runNpmUpdate, type NpmUpdate } from './update-npm.ts';
 import { profileFor, programBehindWrappers, resolveCommand } from './resolve.ts';
 import { BACKGROUND_LIMIT_MS, backgroundHolders, resumeCut, withCut } from './update-background.ts';
 import { readReadings, readSkips, writeReadings, writeSkips, type Entry } from './update-readings.ts';
@@ -496,6 +496,13 @@ export class HarnessUpdates {
     return this.#snapshot();
   }
 
+  /** The version the agent's own program prints: it throws when that program no longer starts. */
+  async #current(target: Target): Promise<string> {
+    const current = readVersion(await this.#run(target, (target.profile.update as ProviderSelfUpdate).versionArgs ?? ['--version'], this.versionTimeoutMs));
+    if (current === null) throw new Error(`${target.descriptor.name} printed no version`);
+    return current;
+  }
+
   /** `maxAgeMs` is how old a publisher's answer may be: a check asks again, a read right after an install need not. */
   async #read(target: Target, maxAgeMs = 0): Promise<{ current: string | null; latest: string | null }> {
     if (target.route === 'managed') {
@@ -504,8 +511,7 @@ export class HarnessUpdates {
       return this.#readManaged(target);
     }
     const spec = target.profile.update as ProviderSelfUpdate;
-    const current = readVersion(await this.#run(target, spec.versionArgs ?? ['--version'], this.versionTimeoutMs));
-    if (current === null) throw new Error(`${target.descriptor.name} printed no version`);
+    const current = await this.#current(target);
     let latest: string | null = null;
     // A copy a prefix package manager installed gets that manager's release, whatever the descriptor reads.
     const pkg = prefixPackageOf(target.program);
@@ -601,9 +607,7 @@ export class HarnessUpdates {
         this.#assertWritable(target);
         const spec = target.profile.update as ProviderSelfUpdate;
         const npm = npmUpdate(target.program, spec.latestNpm, before.latest, this.npmCli());
-        said = npm === null
-          ? await this.#run(target, spec.args, this.updateTimeoutMs)
-          : await runNpmUpdate(npm, () => this.#run(target, npm.args, this.updateTimeoutMs, npm), () => this.#core.procs.waitForExit(updateThreadId(id), undefined, {native: true, stops: true}));
+        said = npm === null ? await this.#run(target, spec.args, this.updateTimeoutMs) : await this.#runNpm(target, before, npm);
       }
       // An updater may have moved the program on PATH.
       forgetWhich();
@@ -637,6 +641,19 @@ export class HarnessUpdates {
     }
     this.#writeReadings();
     this.#emit();
+  }
+
+  /** npm's install. A release that no longer starts is skipped, so neither automatic updates nor Update all retry it, and the one before is put back. */
+  async #runNpm(target: Target, before: Entry, npm: NpmUpdate): Promise<string> {
+    const install = (via: NpmUpdate): Promise<string> => runNpmUpdate(via, () => this.#run(target, via.args, this.updateTimeoutMs, via), () => this.#core.procs.waitForExit(updateThreadId(target.descriptor.id), undefined, { native: true, stops: true }));
+    const said = await install(npm);
+    const restored = await putBackUnlessStarting(npm, before.current, target.descriptor.name, () => this.#current(target), install);
+    if (restored === null) return said;
+    this.skip(target.descriptor.id, npm.version);
+    forgetProbes({ providerId: target.descriptor.id });
+    await this.#core.providers.settle(this.versionTimeoutMs);
+    if (!this.#closed && !this.#core.stopping) this.#core.bus.emit('providers.updated', this.#core.providers.list());
+    throw new Error(`${restored} and skips ${npm.version} until a newer release`);
   }
 
   /**
