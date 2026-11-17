@@ -1,34 +1,6 @@
 import type { MessageId, ProjectId, Thread, ThreadId, ThreadLoad, ThreadSummary } from '@boite/contracts';
-import { resumeAnchor, threadBusy } from '@boite/contracts';
-import { needsUser } from './thread-state';
-export { resumeAnchor } from '@boite/contracts';
-
-/**
- * A parent's delegated agents still at work, a turn under way or a wait on
- * their own background work, and when the first of them started (null before
- * any has); `asking`, those waiting on the user, busy or not.
- */
-export type WorkingChildren = { count: number; since: number | null; asking: number };
-
-/** Each parent with a working or asking child, shared by every row of this machine. */
-export function workingChildren(threads: readonly ThreadSummary[]): Map<ThreadId, WorkingChildren> {
-  const parents = new Map<ThreadId, WorkingChildren>();
-  for (const thread of threads) {
-    const parent = thread.parentThreadId;
-    if (!parent || thread.archived) continue;
-    const busy = threadBusy(thread), asks = needsUser(thread);
-    if (!busy && !asks) continue;
-    const held = parents.get(parent) ?? { count: 0, since: null, asking: 0 };
-    const wait = thread.backgroundWait;
-    const started = busy ? thread.runningSince ?? (wait?.state === 'waiting' ? wait.since : null) : null;
-    parents.set(parent, {
-      count: held.count + (busy ? 1 : 0),
-      since: started === null ? held.since : held.since === null ? started : Math.min(held.since, started),
-      asking: held.asking + (asks ? 1 : 0)
-    });
-  }
-  return parents;
-}
+import { resumeAnchor } from '@boite/contracts';
+export { resumeAnchor, workingChildren, type WorkingChildren } from '@boite/contracts';
 
 /** Same value: primitives by identity, the small objects of a summary (load, context, cache) by content. */
 function same(a: unknown, b: unknown): boolean {

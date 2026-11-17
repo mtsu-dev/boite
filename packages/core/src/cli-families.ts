@@ -24,5 +24,6 @@ export { viewCheckCommand } from './view-cli.ts';
 export { VIEW_EXAMPLE } from './view-example.ts';
 export { agentSettingArg, clipped, pictureDataUrl, settingValue, settingsPlace } from './cli-settings.ts';
 export { pluginAction, pluginCommand } from './plugin-cli.ts';
+export { readSettingsFor, settingsLines, stateCommand } from './cli-state.ts';
 export { connect } from './client.ts';
 export { BOT_CARD_NOTE, VIEW_HELP } from '@boite/contracts';

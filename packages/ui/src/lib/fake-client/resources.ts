@@ -5,7 +5,7 @@ import { addUsage, emptyUsage } from './shared';
 import { fakeUsageHistory } from '../fake-usage';
 import type { FakeContext, FakeMethods } from './context';
 
-function resources(ctx: FakeContext): ThreadResources[] {
+export function resources(ctx: FakeContext): ThreadResources[] {
   const out: ThreadResources[] = [];
   for (const thread of ctx.threads.values()) {
     const live = ctx.processes.filter((p) => p.threadId === thread.id && p.exitedAt === null);

@@ -63,6 +63,7 @@ import { providerCatalogMethods } from './fake-client/provider-catalog';
 import { providerInstallMethods } from './fake-client/provider-installs';
 import { RELEASES } from './fake-client/providers';
 import { clearRequestsOf, requestMethods } from './fake-client/requests';
+import { stateMethods } from './fake-client/state';
 import { closeSecrets, secretMethods } from './fake-client/secrets';
 import { refuseTeamChats, teamMethods } from './fake-client/teams';
 import { councilMethods, seedCouncilDemo } from './fake-client/council';
@@ -648,6 +649,7 @@ export class FakeClient implements ObservableClient {
       ...spawnMethods(ctx, threads['threads.create'], projects['projects.add']),
       ...activityMethods(ctx),
       ...requestMethods(ctx),
+      ...stateMethods(ctx),
       ...secretMethods(ctx),
       ...teamMethods(ctx),
       ...councilMethods(ctx),

@@ -70,7 +70,9 @@ test('the picker changes native protocols in one conversation and carries histor
   await page.type(selector('composer-input'), 'Continue using the release code.');
   await page.click(selector('composer-send'));
   await page.waitFor(`document.querySelectorAll('[data-testid="message"][data-role="assistant"]').length === 2`);
-  await page.waitFor(`Array.from(document.querySelectorAll('[data-testid="message"][data-role="assistant"]')).at(-1)?.textContent.includes('azure-42')`);
+  // The answer echoes the guide and the history, past the 8 KB from which the list cuts a text into
+  // rows (`timeline-rows.ts`): read every row of the last answer's turn, wherever the cut falls.
+  await page.waitFor(`(() => { const rows = Array.from(document.querySelectorAll('article[data-role="assistant"]')); const turn = rows.at(-1)?.dataset.turn; return rows.filter((row) => row.dataset.turn === turn).map((row) => row.textContent).join('').includes('azure-42'); })()`);
   // The turn that first ran on it keeps the change above its prompt, with what the new session was handed.
   await page.waitFor(`document.querySelector('${selector('switch-marker-toggle')}') && !document.querySelector('${selector('switch-pending')}')`);
   expect(await page.evaluate(line('switch-marker'))).toBe('Echo | Smart | context handed over');

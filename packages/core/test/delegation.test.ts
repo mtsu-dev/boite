@@ -331,7 +331,8 @@ test('the parent learns dynamic workflows and coordination within a compact prom
   // Then 47 for "repeat": a parent that never hears of loops chains review and fix rounds by hand, one turn each (4690 measured on Linux 2026-11-07).
   // Then 6 for "mochi", the name bots took, three times in the settings line (4696 measured on Linux 2026-11-13).
   // Then 35 for the page printed after each browser action (4731 measured on Linux 2026-11-14).
-  expect(Buffer.byteLength(prompt.replaceAll(h.dataDir, '<data>'))).toBeLessThan(process.platform === 'linux' ? 4732 : 4698);
+  // Then 119 for `boite state`, what the user sees read-only, so an agent asked about Boite stops guessing (4850 measured on Linux 2026-11-17).
+  expect(Buffer.byteLength(prompt.replaceAll(h.dataDir, '<data>'))).toBeLessThan(process.platform === 'linux' ? 4851 : 4817);
   runs.get(threadId)!.finish();
   await waitFor(() => h.core.threads.require(threadId).status === 'idle');
   await owner.call('turns.start', { threadId, prompt: 'Continue' });

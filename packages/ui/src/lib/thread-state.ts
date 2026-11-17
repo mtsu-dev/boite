@@ -1,66 +1,7 @@
-import { pullRequestWatchWaits, type ThreadSummary } from '@boite/contracts';
+import { threadState, type Delegated, type ThreadState, type ThreadStateFields } from '@boite/contracts';
 
-/**
- * What a thread row says in place of its time: the agent works, needs the
- * user, failed, finished something not read yet, waits for a slot, ended its
- * turn waiting on the agents it delegated to, or ended it with work still
- * running in the background (a monitor, a shell), or watching a pull request
- * whose checks still run. A delegated agent whose
- * background work ended without waking it is `interrupted`. Null for a thread
- * at rest the user has seen, which shows when it was last used.
- */
-export type ThreadState = 'working' | 'waiting' | 'error' | 'interrupted' | 'done' | 'queued' | 'delegating' | 'monitoring' | 'background' | 'watching';
-
-type StateFields = Pick<ThreadSummary, 'status' | 'unread' | 'backgroundWork' | 'openQuestions'> & Partial<Pick<ThreadSummary, 'backgroundWait' | 'pullRequestWatches'>>;
-
-/**
- * The thread waits on the user: a card that stopped its turn, or a question
- * the agent asked without stopping (`boite ask`), which leaves the status at
- * `running` or `idle`.
- */
-export function needsUser(thread: Pick<ThreadSummary, 'status' | 'openQuestions'>): boolean {
-  return thread.status === 'waiting' || (thread.openQuestions ?? 0) > 0;
-}
-
-/** What a parent's delegated agents add to its state: how many are at work, and how many wait on the user. */
-export type Delegated = number | { count: number; asking: number } | null;
-
-/**
- * `delegated`: how many of the thread's delegated agents still have a turn
- * under way, or that count with how many of them ask the user. A sub-agent's
- * question is the user's turn on its parent too, which the sidebar shows when
- * the child has no row of its own; only the parent's own failure outranks it.
- */
-export function threadState(thread: StateFields, delegated: Delegated = 0): ThreadState | null {
-  const working = typeof delegated === 'number' ? delegated : delegated?.count ?? 0;
-  const asking = typeof delegated === 'number' ? 0 : delegated?.asking ?? 0;
-  if (needsUser(thread)) return 'waiting';
-  if (asking > 0 && thread.status !== 'error') return 'waiting';
-  switch (thread.status) {
-    case 'running':
-      return 'working';
-    case 'waiting':
-      return 'waiting';
-    case 'error':
-      return 'error';
-    case 'queued':
-      return 'queued';
-    case 'idle': {
-      // The parent's turn ended, its work did not: its result comes back with the sub-agents'.
-      if (working > 0) return 'delegating';
-      const wait = thread.backgroundWait;
-      if (wait?.state === 'interrupted') return 'interrupted';
-      const kinds = thread.backgroundWork?.kinds ?? [];
-      // Not finished while the agent still watches or runs something, read or not.
-      if (kinds.length > 0) return kinds.every(kind => kind === 'monitor') ? 'monitoring' : 'background';
-      // The work ended a moment ago and its wake turn has not started yet.
-      if (wait?.state === 'waiting') return 'background';
-      // A pull request whose checks still run will wake it: not done yet, read or not.
-      if (thread.pullRequestWatches?.some(pullRequestWatchWaits)) return 'watching';
-      return thread.unread ? 'done' : null;
-    }
-  }
-}
+/** A thread's state and whether it needs the user: Activity's derivation, shared with the core (contracts/src/activity.ts). */
+export { needsUser, threadState, type Delegated, type ThreadState } from '@boite/contracts';
 
 /** What a folded project says for the threads it hides, most urgent first: the user's turn, a failure, work, work waiting for a slot, then news. */
 const ROLLUP_ORDER: ThreadState[] = ['waiting', 'error', 'interrupted', 'working', 'delegating', 'monitoring', 'background', 'watching', 'queued', 'done'];
@@ -70,7 +11,7 @@ const ROLLUP_ORDER: ThreadState[] = ['waiting', 'error', 'interrupted', 'working
  * it; null when every one is at rest. `delegated` gives a thread's delegated
  * agents, as `threadState` takes them.
  */
-export function projectRollup<T extends StateFields>(threads: readonly T[], delegated: (thread: T) => Delegated = () => 0): { kind: ThreadState; count: number } | null {
+export function projectRollup<T extends ThreadStateFields>(threads: readonly T[], delegated: (thread: T) => Delegated = () => 0): { kind: ThreadState; count: number } | null {
   const states = threads.map(thread => threadState(thread, delegated(thread)));
   for (const kind of ROLLUP_ORDER) {
     const count = states.filter(state => state === kind).length;

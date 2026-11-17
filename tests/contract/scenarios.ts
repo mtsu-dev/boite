@@ -13,6 +13,7 @@ import { CONTACTS_BOT_SCENARIOS } from './contacts-bot.ts';
 import { SHARED_SCENARIOS } from './shared-projects.ts';
 import { TEAM_SCENARIOS } from './teams.ts';
 import { COUNCIL_SCENARIOS } from './council.ts';
+import { STATE_SCENARIOS } from './state.ts';
 import {
   GROUP_INVITE_PREFIX,
   PROJECT_NAME_MAX,
@@ -200,6 +201,7 @@ export const SCENARIOS: Record<string, Scenario> = {
     }
   },
   ...COUNCIL_SCENARIOS,
+  ...STATE_SCENARIOS,
   'agent.done refuses another thread, puts an idle one in Done and refuses it there': async (env) => {
     const setup = await echo(env);
     const own = await thread(env, setup, 'own');

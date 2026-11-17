@@ -77,7 +77,7 @@ export function agentGuide(asyncQuestions: boolean, logAccess = false, skills: r
     VIEW_GUIDE_LINE,
     ...(asyncQuestions ? ['`boite ask [--open <url>] "<question>" [option ...]` asks asynchronously. Keep working on independent tasks; the answer arrives as a message. Silence grants no approval. Login wall: `--open <url>`, the site and why, options "Signed in" Skip; never in chat.'] : []),
     'No secrets in chat: `boite secret ask <NAME> --why <reason>`; `boite secret write|run|pipe <ref>`. RAM; one use; 10m or turn end.',
-    '`boite settings [mochi] [request|open|create]` reads Boite settings or a mochi\'s, puts a card in chat for the user to change one, or creates the mochi the user asked for.',
+    '`boite state [settings [page]|limits|machines|updates|inbox|tasks|version|route]` reads what the user sees, read-only. `boite settings [mochi] [request|open|create]` reads Boite settings or a mochi\'s, puts a card in chat for the user to change one, or creates the mochi the user asked for.',
     bot
       ? 'Task tracking is optional. Use it only when steps help you and the user. `boite task add <text>` / `boite task start|done <id>` track those steps.'
       : 'Task tracking is optional. Use it only when steps help you and the user. `boite task add <text>` / `boite task start|done <id>` track those steps. `boite todo list|add <text>|claim <id>` manages project todos; claim marks work done for user confirmation.',

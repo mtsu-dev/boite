@@ -5,7 +5,7 @@
  * are in `packages/contracts/src/setting-requests.ts`, the core's cards in
  * `packages/core/src/threads/cards.ts`.
  */
-import { EXPERIMENT_STAGES, experimentOf, type AutoCompactMoment, type ProviderSummary, type RequestableKey, type RequestableSetting, type SettingAsk, type SettingCardAsk, type SettingsPage } from '@boite/contracts';
+import { COORDINATION_REACH, EXPERIMENT_STAGES, experimentOf, type AutoCompactMoment, type ProviderSummary, type RequestableKey, type RequestableSetting, type SettingAsk, type SettingCardAsk, type SettingsPage } from '@boite/contracts';
 import { experimentCopy } from './experiment-copy';
 import { experimentsShown } from './experiments.svelte';
 import { formatLocale } from './i18n.svelte';
@@ -72,6 +72,63 @@ export function settingLabel(key: RequestableKey): string {
 export function settingHint(key: RequestableKey): string | null {
   const experiment = experimentOf(key);
   return experiment === null ? null : experimentCopy()[experiment]?.hint ?? null;
+}
+
+/**
+ * What a setting does, as its Settings page explains it: the muted line under
+ * it and its hint, joined. Null where the page says nothing more than its
+ * name. `boite state settings` reads the English of this table, which
+ * `packages/contracts/src/setting-help.ts` holds (setting-help.test.ts keeps
+ * the two the same).
+ */
+export function settingHelp(key: RequestableKey): string | null {
+  const experiment = experimentOf(key);
+  const hint = experiment === null ? null : experimentCopy()[experiment]?.hint;
+  if (experiment !== null) return hint ? sentences([hint]) : null;
+  const s = strings.settings;
+  const effects = s.effects;
+  const worktrees = s.worktrees, alone = strings.agentsAlone;
+  // Every setting an agent reads has its page's words: a new one fails to compile until it has them.
+  const parts: Record<RequestableSetting, readonly string[]> = {
+    asyncQuestions: [effects.asyncQuestions],
+    shortAnswers: [effects.shortAnswers, s.shortAnswersHint],
+    toolSummaries: [effects.toolSummaries, s.toolSummariesHint],
+    titleModel: [s.titleModelHint],
+    threadDoneRetentionDays: [s.archived.doneRetentionHint],
+    threadDeletionRetentionDays: [s.deleted.retentionHint],
+    worktreeStorage: [`${worktrees.storageProject}: ${worktrees.storageProjectHint} .boite/worktrees`, `${worktrees.storageShared}: ${worktrees.storageSharedHint}`, worktrees.storageNewOnly],
+    focusGuard: [effects.focusGuard],
+    muteAgents: [effects.muteAgents],
+    agentCpuCapPercent: [s.agentCpuCapHint],
+    agentMemoryBudgetPercent: [s.agentMemoryBudgetHint],
+    threadMemoryCapMb: [s.threadMemoryCapHint],
+    memoryReserveMb: [s.memoryReserveHint],
+    memoryProtection: [effects.memoryProtection, s.memoryProtectionHint],
+    reapOrphans: [effects.reapOrphans, s.reapOrphansHint],
+    autoUpdateHarnesses: [effects.harnessAutoUpdate, strings.harnessUpdates.autoHint],
+    autoInstallUpdates: [effects.appAutoInstall, strings.appUpdate.autoInstallHint],
+    listenOnLan: [effects.listenOnLan, s.listenOnLanHint],
+    publicUrl: [strings.phone.publicUrlHint],
+    browserOrigins: [strings.machines.browserOriginsHint],
+    warmProcessMinutes: [s.warmProcessMinutesHint],
+    autoCompact: [effects.autoCompact, s.autoCompactHint],
+    compactionByType: [s.compactionInheritanceHint],
+    compactionSummary: [s.compactionSummaryHint],
+    autoResumeLimitedThreads: [effects.autoResume, strings.quotas.autoResumeHint],
+    backgroundCompaction: [effects.backgroundCompaction, s.backgroundCompactionHint],
+    deviceStream: [effects.deviceStream, s.deviceStreamHint],
+    groupThreads: [strings.machines.groupThreadsHint],
+    groupBots: [strings.machines.groupBotsHint],
+    agentBotCreation: [`${alone.bots}: ${alone.botsEffect}`],
+    coordinationReach: COORDINATION_REACH.map(step => `${alone.steps[step]}: ${alone.effects[step]}`),
+  };
+  const text = parts[key as RequestableSetting];
+  return text === undefined || text.length === 0 ? null : sentences(text);
+}
+
+/** Parts read as sentences: the muted line under a switch has no final stop, the hint after it does. */
+function sentences(parts: readonly string[]): string {
+  return parts.map(part => (/[.!?:]$/.test(part.trim()) ? part.trim() : `${part.trim()}.`)).join(' ');
 }
 
 /** A value as the card shows it: `60 %`, `On`, `512 MB`, `In D:/worktrees`. */

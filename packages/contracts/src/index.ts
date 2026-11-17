@@ -26,6 +26,7 @@ export * from './context-mode';
 export * from './delegation-input';
 import type { AccountsRpcEvents, AccountsRpcMethods } from './accounts';
 import type { AgentDoorRpcMethods } from './agent-door';
+import type { StateRpcMethods } from './state';
 import type { BrainRpcEvents, BrainRpcMethods } from './brain';
 import type { CoordinationRpcEvents, CoordinationRpcMethods } from './coordination';
 import type { CoreRpcEvents, CoreRpcMethods } from './core';
@@ -83,6 +84,10 @@ export * from './keybindings';
 export * from './imports';
 export * from './core';
 export * from './agent-door';
+export * from './state';
+export * from './activity';
+export * from './harness-updates';
+export * from './setting-help';
 export * from './panel';
 export * from './todos';
 export * from './git';
@@ -155,6 +160,7 @@ export interface RpcMethods extends
   ImportsRpcMethods,
   CoreRpcMethods,
   AgentDoorRpcMethods,
+  StateRpcMethods,
   PanelRpcMethods,
   TodosRpcMethods,
   GitRpcMethods,

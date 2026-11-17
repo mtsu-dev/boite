@@ -281,6 +281,9 @@ export class RelayHub implements RelaySink {
     for (const pipe of [...this.#pipes]) if (pipe.sessionId === sessionId) pipe.close(1008, 'session revoked');
   }
 
+  /** A relayed socket of this session is open and past its hello. */
+  hasSession(sessionId: string): boolean { return [...this.#pipes].some(pipe => pipe.authenticated && pipe.sessionId === sessionId); }
+
   ended(pipe: RelayPipe): void {
     this.#pipes.delete(pipe);
     if (this.size === 0) this.#disarm();

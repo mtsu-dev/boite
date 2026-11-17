@@ -1,4 +1,4 @@
-import type { HarnessUpdate, ServerUpdateStatus } from '@boite/contracts';
+import { harnessOffered, type HarnessUpdate, type ServerUpdateStatus } from '@boite/contracts';
 
 /**
  * What one row of the machine list says about its updates: Boite on that
@@ -7,20 +7,8 @@ import type { HarnessUpdate, ServerUpdateStatus } from '@boite/contracts';
  */
 export type MachineUpdateState = 'failed' | 'updating' | 'available' | 'checking' | 'current';
 
-function newer(update: HarnessUpdate): boolean {
-  return update.latest !== null && update.current !== null && update.latest !== update.current
-    && (update.pending || update.skipped === update.latest || update.state === 'failed');
-}
-
-/** The user chose not to hear about this release again. */
-export function harnessSkipped(update: HarnessUpdate): boolean {
-  return update.skipped !== null && update.skipped === update.latest;
-}
-
-/** The release an agent's row offers: its arrow, its Update button and the machine's summary go together. */
-export function harnessOffered(update: HarnessUpdate): boolean {
-  return !harnessSkipped(update) && (update.pending || (update.state === 'failed' && newer(update)));
-}
+/** Whether an agent's release is offered: shared with the core's `boite state` (contracts/src/harness-updates.ts). */
+export { harnessOffered, harnessSkipped } from '@boite/contracts';
 
 export interface MachineUpdates {
   /** Boite on a machine that updates itself; null on the computer the desktop app runs on, and before the first answer. */

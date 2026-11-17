@@ -768,6 +768,7 @@ export function startServer(options: ServerOptions): RunningServer {
       }
       relays.closeSession(sessionId);
     },
+    sessionConnected: (sessionId: string): boolean => [...connections].some(c => c.authenticated && c.identity.sessionId === sessionId) || relays.hasSession(sessionId),
     closeAgents(threadId: ThreadId): void {
       for (const connection of connections) {
         const identity = connection.identity;
