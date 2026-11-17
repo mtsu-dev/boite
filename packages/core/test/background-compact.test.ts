@@ -293,8 +293,9 @@ describe('background compaction', () => {
         boundary.tokens >= 915 && boundary.checkpoint !== null ? { ...boundary, checkpoint: { ...boundary.checkpoint, sessionId: 'forked-elsewhere' } } : boundary });
       expect(run.steps.some(step => step.tokens >= 1000)).toBe(true);
       expect(run.steps.some(step => step.swapped)).toBe(false);
-      expect(run.background).toEqual([]);
-      expect(run.thread.sessionGeneration ?? 0).toBe(0);
+      // Past the limit at its end, the idle thread takes the copy cut there, on its own session, never the forked one.
+      await waitFor(() => (h.core.journal.getThread(run.childId)!.sessionGeneration ?? 0) === 1);
+      expect(h.core.journal.getThread(run.childId)!.sessionId).toBe(`echo-${run.childId}~${run.turn.id}`);
     } finally { client.close(); }
   });
 
