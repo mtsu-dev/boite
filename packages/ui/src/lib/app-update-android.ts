@@ -1,19 +1,18 @@
 /*
  * The Android app's updater, for the APK installed outside a store. This side
- * reads GitHub's release list and picks the build to offer; the app's
- * `AppUpdates.kt` (`window.BoiteUpdater`) downloads it, checks it is this app
- * signed by the same key and newer, and hands it to Android's installer.
- * docs/internals/android-native.md#updates.
+ * reads GitHub's release list and picks the build to offer, then opens its APK
+ * in the browser, which downloads it and hands it to Android's installer. The
+ * app installs nothing itself: Play Protect refused as harmful the build
+ * that held REQUEST_INSTALL_PACKAGES and installed its own updates. `AppUpdates.kt` (`window.BoiteUpdater`)
+ * only says which build is installed. docs/internals/android-native.md#updates.
  */
 import type { AppUpdateBackend, UpdateChannel, UpdateSnapshot } from './app-update.svelte';
+import { openExternal } from './links';
 import { MOBILE_BUILD, tauriApp } from './shell-platform';
-import { strings } from './strings';
 
-/** The updater `AppUpdates.kt` serves, over the port below. */
+/** What `AppUpdates.kt` serves over the port below: the installed build. */
 export interface AndroidUpdater {
   info(): Promise<{ version: string; code: number }>;
-  download(url: string, version: string): Promise<void>;
-  install(version: string): Promise<'started' | 'permission' | 'missing' | string>;
 }
 
 /**
@@ -25,18 +24,9 @@ export interface AndroidUpdaterPort {
   onmessage: ((event: { data: string }) => void) | null;
 }
 
-/** What `AppUpdates.kt` reports through `window.__boiteAppUpdate`. */
-export type AndroidUpdateEvent =
-  | { kind: 'progress'; received: number; total: number | null }
-  | { kind: 'downloaded'; version: string }
-  | { kind: 'failed'; message: string }
-  | { kind: 'installAborted' }
-  | { kind: 'installFailed'; message: string };
-
 declare global {
   interface Window {
     BoiteUpdater?: AndroidUpdaterPort;
-    __boiteAppUpdate?: (event: AndroidUpdateEvent) => void;
   }
 }
 
@@ -82,15 +72,13 @@ export function portUpdater(port: AndroidUpdaterPort): AndroidUpdater {
     pending.get(reply.id)?.(reply.result);
     pending.delete(reply.id);
   };
-  const call = (cmd: string, args: Record<string, string> = {}) => new Promise<unknown>((resolve) => {
+  const call = (cmd: string) => new Promise<unknown>((resolve) => {
     const id = next += 1;
     pending.set(id, resolve);
-    port.postMessage(JSON.stringify({ id, cmd, ...args }));
+    port.postMessage(JSON.stringify({ id, cmd }));
   });
   return {
-    info: async () => call('info') as Promise<{ version: string; code: number }>,
-    download: async (url, version) => { await call('download', { url, version }); },
-    install: async (version) => String(await call('install', { version }))
+    info: async () => call('info') as Promise<{ version: string; code: number }>
   };
 }
 
@@ -198,7 +186,18 @@ async function releasePages(fetcher: typeof fetch, channel: UpdateChannel): Prom
   return all;
 }
 
-export function androidBackend(bridge: AndroidUpdater, fetcher: typeof fetch = (...args) => fetch(...args)): AppUpdateBackend {
+/**
+ * Nothing downloads in the app: "ready" follows the click at once, and
+ * installing opens the APK in the browser. Once the owner comes back without
+ * the new build, the release is offered again, so a download that failed
+ * there can start over; it never waits as "ready", which the cards word as a
+ * restart.
+ */
+export function androidBackend(
+  bridge: AndroidUpdater,
+  fetcher: typeof fetch = (...args) => fetch(...args),
+  open: (url: string) => Promise<void> = openExternal
+): AppUpdateBackend {
   let installed = { version: '', code: 0 };
   let snapshot: UpdateSnapshot = {
     phase: 'idle', currentVersion: '', currentChannel: 'stable', channel: 'stable',
@@ -212,37 +211,16 @@ export function androidBackend(bridge: AndroidUpdater, fetcher: typeof fetch = (
   });
   let candidate: Candidate | null = null;
   let checkedAt = 0;
-  let waiter: { resolve: (value: UpdateSnapshot) => void; reject: (error: Error) => void } | null = null;
   const handlers = new Set<(snapshot: UpdateSnapshot) => void>();
   const publish = (next: UpdateSnapshot): UpdateSnapshot => {
     snapshot = next;
     for (const handler of handlers) handler(next);
     return next;
   };
-
-  window.__boiteAppUpdate = (event) => {
-    switch (event.kind) {
-      case 'progress':
-        publish({ ...snapshot, phase: 'downloading', received: event.received, total: event.total });
-        return;
-      case 'downloaded':
-        if (event.version !== snapshot.version) return;
-        waiter?.resolve(publish({ ...snapshot, phase: 'ready', received: snapshot.total ?? snapshot.received, error: null }));
-        waiter = null;
-        return;
-      case 'failed':
-        // The download ended: a later check must not read it back as still running.
-        publish({ ...snapshot, phase: 'error', received: 0, error: event.message });
-        waiter?.reject(new Error(event.message));
-        waiter = null;
-        return;
-      case 'installAborted':
-        publish({ ...snapshot, phase: 'ready', error: null });
-        return;
-      case 'installFailed':
-        publish({ ...snapshot, phase: 'error', error: event.message });
-    }
-  };
+  // Android stops the app to replace it: still running on the way back means not installed.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && snapshot.phase === 'installing') publish({ ...snapshot, phase: 'available' });
+  });
 
   return {
     status: async () => {
@@ -252,7 +230,7 @@ export function androidBackend(bridge: AndroidUpdater, fetcher: typeof fetch = (
     check: async (channel, force = false) => {
       await known;
       if (channel !== snapshot.channel) saveChannel(channel);
-      // Only a list just read is reused, never the state of a download or an install.
+      // Only a list just read is reused, never the state of an install.
       if (!force && channel === snapshot.channel && ['available', 'current'].includes(snapshot.phase) && Date.now() - checkedAt < REUSE_MS) return snapshot;
       publish({ ...snapshot, phase: 'checking', channel, error: null });
       const found = candidateOf(await releasePages(fetcher, channel), channel);
@@ -264,22 +242,13 @@ export function androidBackend(bridge: AndroidUpdater, fetcher: typeof fetch = (
         received: 0, total: candidate?.size || null, error: null
       });
     },
-    download: () => {
-      if (!candidate) return Promise.resolve(snapshot);
-      const { url, version } = candidate;
-      publish({ ...snapshot, phase: 'downloading', received: 0, error: null });
-      return new Promise<UpdateSnapshot>((resolve, reject) => {
-        waiter = { resolve, reject };
-        bridge.download(url, version).catch(reject);
-      });
+    download: async () => {
+      if (!candidate) return snapshot;
+      return publish({ ...snapshot, phase: 'ready', received: snapshot.total ?? 0, error: null });
     },
     install: async () => {
-      const answer = snapshot.version ? await bridge.install(snapshot.version) : 'missing';
-      if (answer === 'permission') {
-        publish({ ...snapshot, phase: 'ready', error: null });
-        throw new Error(strings.appUpdate.androidPermission);
-      }
-      if (answer !== 'started') throw new Error(strings.appUpdate.failed);
+      if (!candidate || candidate.version !== snapshot.version) throw new Error(`${snapshot.version ?? 'update'}: no APK to open`);
+      await open(candidate.url);
       publish({ ...snapshot, phase: 'installing', error: null });
     },
     listen: async (handler) => {

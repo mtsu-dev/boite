@@ -4,6 +4,7 @@
   import { strings } from '../lib/strings';
   import { mobileOverlay } from '../lib/mobile-history';
   import { cameraFailure, openCamera, scanVideo, type ScanFailure } from '../lib/qr-scan';
+  import { MOBILE_BUILD } from '../lib/shell-platform';
 
   /**
    * The camera, full screen, until a code `accept` takes is in front of it.
@@ -54,7 +55,7 @@
     <!-- Muted and inline: an iPhone otherwise opens the stream in its own full-screen player. -->
     <video bind:this={video} class:live muted playsinline aria-hidden="true"></video>
     {#if failure}
-      <p class="status" role="alert" data-testid="qr-scanner-error">{strings.machines.scanErrors[failure]}</p>
+      <p class="status" role="alert" data-testid="qr-scanner-error">{failure === 'denied' && MOBILE_BUILD ? strings.machines.scanDeniedApp : strings.machines.scanErrors[failure]}</p>
     {:else}
       <div class="frame" aria-hidden="true"></div>
       {#if !live}<p class="status" role="status">{strings.machines.scanStarting}</p>{/if}
