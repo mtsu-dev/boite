@@ -15,7 +15,7 @@ agents through a subscription gateway.
    on the sign-in page.
 
 Some agents ask their sign-in questions in a terminal, with menus and arrow
-keys: OpenCode and Grok. For those, a terminal opens under the row. Answer its
+keys: OpenCode, Grok and Mistral Vibe. For those, a terminal opens under the row. Answer its
 questions there, then press Close the terminal once you are signed in.
 
 - pi signs in inside pi itself, not from Boite.
@@ -71,6 +71,7 @@ Before each start, Boite takes them from your usual agent folder:
 | pi | `settings.json`, `AGENTS.md`, `extensions`, `skills`, `prompts`, `themes` |
 | OpenCode | `opencode.json`, `opencode.jsonc`, `AGENTS.md`, `package.json`, its plugin, agent, command and skill folders, and `node_modules` |
 | Antigravity | Your user skills from `~/.gemini`; its MCP servers and settings stay out |
+| Mistral Vibe | `config.toml`, `AGENTS.md`, `agents`, `prompts`, `skills`, `skills.toml`, `tools`, `plugins`, `hooks.toml`, `trusted_folders.toml` |
 
 An API key set inside a shared settings file applies to every account that
 uses the file. A path Boite could not share is shown under the account in
