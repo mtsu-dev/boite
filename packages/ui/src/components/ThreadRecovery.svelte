@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PrivateText from './PrivateText.svelte';
   import { PauseCircle } from '@lucide/svelte';
   import Notice from './Notice.svelte';
   import { providerName } from '../lib/format';
@@ -33,7 +34,7 @@
 {#if held}
   <!-- The one notice form: what is held, where it would go, Resume or Discard. -->
   <Notice icon={PauseCircle} testid="thread-recovery" title={strings.thread.recoveryTitle} detail={strings.thread.recoveryBody} docked actions={choices}>
-    {#if target}<span class="target">{target}</span>{/if}
+    {#if target}<span class="target"><PrivateText text={target} /></span>{/if}
   </Notice>
 {/if}
 

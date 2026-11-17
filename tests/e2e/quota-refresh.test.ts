@@ -265,8 +265,9 @@ test('the tray follows account renames immediately and keeps subscriptions separ
   await page.evaluate(`localStorage.removeItem('boite.quotas')`);
   await page.navigate(`${origin}/?fake=1&view=quotas&quotaExtras=1`);
   await page.waitFor(`document.querySelector('[data-testid="quota-refresh"]')?.getAttribute('aria-busy') === 'false' && document.querySelector('[data-testid="quota-provider"][data-account-id="a-codex"] .name')?.textContent === 'you@example.com'`);
-  // The adopted "Default" login reads as its address until it is renamed.
-  expect(await page.evaluate(`document.querySelector('[data-testid="quota-provider"][data-account-id="a-codex"] .name').textContent`)).toBe('you@example.com');
+  // The adopted "Default" login reads as its address until it is renamed, blurred like on the Accounts page.
+  expect(await page.evaluate(`document.querySelector('[data-testid="quota-provider"][data-account-id="a-codex"] .name .private-email').textContent`)).toBe('you@example.com');
+  expect(await page.evaluate(`getComputedStyle(document.querySelector('[data-testid="quota-provider"][data-account-id="a-codex"] .name .private-email')).filter`)).toContain('blur');
   await page.evaluate(`(async () => {
     const { FakeClient } = await import('/src/lib/fake-client.ts');
     const call = FakeClient.prototype.call;

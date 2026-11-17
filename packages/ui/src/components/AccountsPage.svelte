@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PrivateText from './PrivateText.svelte';
   import { accountName } from '../lib/account-name';
   import InfoTip from './InfoTip.svelte';
   import PolicyLock from './PolicyLock.svelte';
@@ -64,7 +65,8 @@
     grok: 'https://grok.com/build',
     hermes: 'https://hermes-agent.nousresearch.com/docs/getting-started/installation',
     muse: 'https://developer.meta.com/ai/products/muse-code/',
-    pi: 'https://github.com/earendil-works/pi'
+    pi: 'https://github.com/earendil-works/pi',
+    vibe: 'https://github.com/mistralai/mistral-vibe#installation'
   };
 
   /** The fold's duration, nothing when the system or the app asks for less motion. */
@@ -263,7 +265,7 @@
     const body = account.isolationDir === null ? strings.accounts.removeDefaultBody : strings.accounts.removeBody;
     const warning = count === 0 ? '' : (count === 1 ? strings.accounts.removeThread : strings.accounts.removeThreads).replace('{count}', String(count));
     const accepted = await confirm.ask({
-      title: fill(strings.accounts.removeTitle, { account: account.label }),
+      title: fill(strings.accounts.removeTitle, { account: accountName(account) }),
       body: warning ? `${warning} ${body}` : body,
       confirmLabel: strings.accounts.remove,
       cancelLabel: strings.install.removeCancel,
@@ -487,7 +489,7 @@
       {:else}
         <div class="account-line">
           <div class="who">
-            <h3>{entry.label}</h3>
+            <h3><PrivateText text={entry.label} /></h3>
             <p class="state">
               <span class="kind ui-label">{entry.isolationDir === null ? strings.providerSettings.default : strings.providerSettings.isolated}</span>
               {#if entry.status !== 'ok'}
@@ -727,8 +729,8 @@
 </div>
 
 <style>
-  .private-email { position: relative; display: inline-block; height: auto; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; filter: blur(5px); cursor: pointer; transition: filter var(--dur-2); overflow-wrap: anywhere; }
-  .private-email:hover, .private-email:focus-visible, .private-email.revealed { filter: none; }
+  /* The blur is the shared `.private-email` (controls.css); here it is a button that keeps the address shown. */
+  .private-email { position: relative; display: inline-block; height: auto; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
   .identity { margin: 0; font-size: var(--text-sm); color: var(--color-muted-foreground); }
   .rename { flex-wrap: wrap; }
 

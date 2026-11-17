@@ -32,7 +32,7 @@ import { existsSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   AGENT_BUILTINS, AGENT_DAILY_BUDGET, AGENT_PICTURE_MAX_BYTES, isAgentPicture, AGENT_ROUTINE_CHECK_MAX, AGENT_ROUTINE_NAME_MAX, AGENT_ROUTINE_PROMPT_MAX, AGENT_ROUTINES_MAX,
-  type AgentBuiltin, type AgentMoveResult, type AgentProfile, type AgentQueuedMove, type AgentRoutine, type AgentRuntimeConfig, type AgentSchedule, type AgentSelection, type AgentSession,
+  type AgentBuiltin, type AgentMoveResult, type AgentProfile, type AgentQueuedMove, type AgentRuntimeConfig, type AgentSchedule, type AgentSelection, type AgentSession,
   type CoordinationPeer, type Message, type MoveNotice, type RpcParams, type ThreadSummary, type Turn,
 } from '@boite/contracts';
 import type { Core } from '../core.ts';
@@ -541,7 +541,7 @@ export class BotMoves {
       // The source's profile replaces the pin with the rest: unpinned there while it moved, it is unpinned here.
       const { pinned: _pinned, ...unpinned } = kept;
       const current = placed === null ? kept : unpinned;
-      const after = this.#store.records.update('profile', before.id, before.revision, { ...current, ...(placed?.value ?? {}), selection });
+      const after = this.#store.records.update('profile', before.id, before.revision, { ...current, ...placed?.value, selection });
       this.#store.group.profileChanged(before, after);
       if (placed !== null) {
         receipt = { ...done, projectIds: placed.projectIds, groupProjects: placed.groupProjects };

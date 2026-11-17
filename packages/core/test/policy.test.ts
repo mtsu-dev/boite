@@ -536,6 +536,7 @@ for (const duringBody of [false, true]) {
     if (duringBody) {
       const http = host.harness.core.group.http.bind(host.harness.core.group);
       const delayed = spyOn(host.harness.core.group, 'http').mockImplementation(request => http(new Request(request, {
+        method: request.method,
         body: request.body!.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
           async transform(chunk, controller) { reading.resolve(); await release.promise; controller.enqueue(chunk); }
         }))
@@ -621,7 +622,7 @@ for (const target of ['proxy', 'plugin'] as const) {
 }
 
 test('gateway boundary: a reload while listing accounts prevents the following credential import', async () => {
-  const { harness, client, policy } = await core();
+  const { client, policy } = await core();
   const listed = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
   const requests: string[] = [];

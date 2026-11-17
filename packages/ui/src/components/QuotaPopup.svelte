@@ -6,7 +6,7 @@
   import Deferred from './Deferred.svelte';
   import { parts } from '../lib/nested-parts';
 
-  let { rows, loading, completed, error = '', outdated = false, owner = true, order = [], reorder, refresh, connect, settings, close, title, actions, testPrefix = 'quota' }: {
+  let { rows, current = null, loading, completed, error = '', outdated = false, owner = true, order = [], reorder, refresh, connect, settings, close, title, actions, testPrefix = 'quota' }: {
     rows: AccountQuota[] | null;
     loading: boolean;
     completed: string[];
@@ -25,6 +25,8 @@
     title?: Snippet;
     actions?: Snippet;
     testPrefix?: string;
+    /** The account the open thread runs on: its row stands out. */
+    current?: string | null;
   } = $props();
 </script>
 
@@ -52,7 +54,7 @@
       <p class="muted" role="status">{strings.quotas.loading}</p>
     {:else if !(error && rows.length === 0)}
       {@const shown = rows}
-      <Deferred part={parts.QuotaOverview}>{#snippet children(QuotaOverview)}<QuotaOverview rows={shown} {loading} {completed} {connect} {order} onreorder={reorder} />{/snippet}</Deferred>
+      <Deferred part={parts.QuotaOverview}>{#snippet children(QuotaOverview)}<QuotaOverview rows={shown} {current} {loading} {completed} {connect} {order} onreorder={reorder} />{/snippet}</Deferred>
     {/if}
   </section>
   <footer>

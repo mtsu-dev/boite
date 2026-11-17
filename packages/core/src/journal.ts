@@ -27,7 +27,7 @@ import { restoreDeletedRows, threadsWhere, VISIBLE_THREADS, writeThread } from '
 import { oneTurn, pageTurns, sumSessionUsage, writeTurn, type SessionUsage } from './journal/turn-rows.ts';
 import type { AccountRow, MessageRow, ProcessRow, ProjectIconRow, ProjectRow, ThreadRow, TurnRow } from './journal/rows.ts';
 import type { DetectedIcon as StoredProjectIcon } from './project-icons.ts';
-import { copyStoredParts, foldStreamingParts, messageOfError, StreamBuffer } from './journal/stream-buffer.ts';
+import { copyStoredParts, foldStreamingParts, StreamBuffer } from './journal/stream-buffer.ts';
 import { requestSince } from './journal/request-since.ts';
 import { threadStats } from './journal/thread-stats.ts';
 import { keepRemovedTurnUsage, usageByBucket, usageByThread, usageOfTree, type UsageGroupRow, type UsageSumRow, type UsageThreadRow } from './journal/usage-sums.ts';
@@ -172,14 +172,6 @@ export class Journal {
 
   analyze(statement: string): void {
     if (!this.closed) analyze(this.db, statement);
-  }
-
-  countEvents(type?: string): number {
-    const row =
-      type === undefined
-        ? (this.db.query('SELECT COUNT(*) AS n FROM events').get() as { n: number } | null)
-        : (this.db.query('SELECT COUNT(*) AS n FROM events WHERE type = ?').get(type) as { n: number } | null);
-    return row?.n ?? 0;
   }
 
   close(): void {
@@ -444,12 +436,9 @@ export class Journal {
     this.db.query('INSERT INTO turn_requests (thread_id, request_id, fingerprint, turn_id, message_id) VALUES (?, ?, ?, ?, ?)').run(threadId, requestId, fingerprint, turnId, messageId);
   }
 
-  listTurns(threadId?: string): Turn[] {
-    const rows =
-      threadId === undefined
-        ? (this.db.query('SELECT * FROM turns ORDER BY rowid').all() as TurnRow[])
-        : (this.db.query('SELECT * FROM turns WHERE thread_id = ? ORDER BY rowid').all(threadId) as TurnRow[]);
-    return rows.map(toTurn);
+  /** One thread's turns, through `turns_by_thread`. Every turn of the journal at once is no read for the event loop. */
+  listTurns(threadId: string): Turn[] {
+    return (this.db.query('SELECT * FROM turns WHERE thread_id = ? ORDER BY rowid').all(threadId) as TurnRow[]).map(toTurn);
   }
 
   /** One turn read without the thread's history (`journal/turn-rows.ts`). */

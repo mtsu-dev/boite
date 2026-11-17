@@ -5,7 +5,7 @@ import {
   loopSpent, renderTask, resolvePath, shapeMismatch, workflowLevels, workflowValues,
 } from '@boite/contracts';
 import type {
-  DelegationConfig, PauseOrigin, Principal, RpcParams, ThreadSummary, Turn, WorkflowInstance, WorkflowNode, WorkflowPlan, WorkflowRun,
+  DelegationConfig, Principal, RpcParams, ThreadSummary, Turn, WorkflowInstance, WorkflowNode, WorkflowPlan, WorkflowRun,
   WorkflowShape, WorkflowStepPlan, WorkflowStepStatus, WorkflowTemplate,
 } from '@boite/contracts';
 import type { Core } from './core.ts';
@@ -84,7 +84,7 @@ export class Workflows {
     for (const run of this.#runsWhere("status IN ('running', 'paused')")) {
       let interrupted = false;
       for (const node of run.nodes) for (const inst of node.instances) {
-        if (inst.status === 'running') Object.assign(inst, { status: 'waiting', error: INTERRUPTED, finishedAt: null }), interrupted = true;
+        if (inst.status === 'running') { Object.assign(inst, { status: 'waiting', error: INTERRUPTED, finishedAt: null }); interrupted = true; }
       }
       if (run.status === 'running' && !handedOver) this.#save({ ...run, status: 'paused', error: 'The core restarted. Resume to continue.', pausedBy: 'restart', pausedAt: Date.now() });
       else if (interrupted) this.#save(run);
@@ -497,7 +497,7 @@ export class Workflows {
       // The root finished a turn of its own: an undelivered result may go now.
       if (!this.#undelivered.has(turn.threadId)) return;
       const pending = this.#runsWhere("root_id = ? AND status IN ('done', 'failed', 'running') AND json_extract(data, '$.delivered') = 0", turn.threadId);
-      if (pending.length) setTimeout(() => { for (const run of pending) run.status === 'running' ? this.#noticeFailures(run.id) : this.#deliver(run.id); }, 0).unref?.();
+      if (pending.length) setTimeout(() => { for (const run of pending) if (run.status === 'running') this.#noticeFailures(run.id); else this.#deliver(run.id); }, 0).unref?.();
       return;
     }
     if (sentBack(this.#core, turn.threadId, turn)) return this.#core.delegation.followUpFinished(turn);

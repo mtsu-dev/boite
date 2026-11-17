@@ -46,7 +46,7 @@ export function workerPrerequisites(result: Captured, marker: string): string {
   requireValue(/^[A-Za-z0-9_-]+$/.test(marker), 'marker');
   const root = result.out.match(new RegExp(`^inspect-start=${marker}\\.generation-0 pid=(\\d+)\\r?$`, 'm'))?.[1];
   requireValue(root && Number(root) > 0, 'root marker identity');
-  const assigned = result.err.split(/\r?\n/).filter(line => /^private-map pid=/.test(line));
+  const assigned = result.err.split(/\r?\n/).filter(line => line.startsWith('private-map pid='));
   requireValue(assigned.length === 1 && assigned[0] === `private-map pid=${root} set=0x00000000`, 'exact root assignment');
   requireValue(result.err.includes(`debug-create pid=${root} job=1 nonbreakaway=1 package/capability=1 lpac=1 attribute=0x00000000`), 'root confinement');
   for (let depth = 0; depth < 3; depth++) {

@@ -112,7 +112,7 @@ test('an Antigravity account reads its limits from the server sign-in, renewing 
       issued += 1;
       return Response.json({ access_token: `fixture-access-${issued}`, expires_in: 3600 });
     }
-    const bearer = String((options?.headers as Record<string, string>)['Authorization']).replace('Bearer ', '');
+    const bearer = String((options!.headers as Record<string, string>)['Authorization']).replace('Bearer ', '');
     expect(bearer).toBe(`fixture-access-${issued}`);
     if (refused.has(bearer) || refused.has('*')) return new Response('', { status: 401 });
     expect(JSON.parse(String(options?.body))).toEqual({ project: 'fixture-project' });

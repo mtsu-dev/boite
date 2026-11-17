@@ -1,7 +1,6 @@
 import { expect, vi } from 'vitest';
 import { flushSync } from 'svelte';
 import type { ThreadId } from '@boite/contracts';
-import { confirm } from '../lib/confirm.svelte';
 import { restoreThread } from '../lib/archive';
 import { store } from '../lib/store.svelte';
 import { openWorkbench, query, test, treePaths, type, waitFor } from '../test/app';

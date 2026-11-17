@@ -54,7 +54,7 @@ export class FakePlugins {
   /** Whether that gateway answers now. */
   gatewayRunning(id: string): boolean { return this.#plugins.find((entry) => entry.id === id)?.gateway?.status === 'running'; }
   private readonly handlers: Handlers = {
-    'plugins.list': (params) => { return structuredClone(this.#plugins).sort((a, b) => (Number(b.origin === 'recommended') - Number(a.origin === 'recommended')) || (a.origin === 'recommended' ? 0 : a.id.localeCompare(b.id))); },
+    'plugins.list': () => { return structuredClone(this.#plugins).sort((a, b) => (Number(b.origin === 'recommended') - Number(a.origin === 'recommended')) || (a.origin === 'recommended' ? 0 : a.id.localeCompare(b.id))); },
     'plugins.inspect': (params) => { return this.#inspectPlugin(params); },
     'plugins.add': (params) => { return this.#addPlugin(params.previewId, params.grants); },
     'plugins.install': (params) => {

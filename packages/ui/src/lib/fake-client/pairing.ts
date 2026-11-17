@@ -61,26 +61,26 @@ export function pairingMethods(ctx: FakeContext) {
       }
       return structuredClone(ctx.firewall);
     },
-    'sessions.list': async (params) => {
+    'sessions.list': async () => {
       if (ctx.bus.principal === 'owner') return structuredClone(ctx.sessions);
       // A paired device sees its own row only, marked current, as on the real core. The fake has no
       // caller session, so the paired phone of the fixture stands for it.
       const own = ctx.sessions.find(session => session.role !== 'owner');
       return structuredClone(own === undefined ? [] : [{ ...own, current: true }]);
     },
-    'push.status': async (params) => {
+    'push.status': async () => {
       return { publicKey: '', subscribed: false };
     },
-    'push.subscribe': async (params) => {
+    'push.subscribe': async () => {
       throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'Web Push needs a paired connection to a real core' });
     },
-    'push.unsubscribe': async (params) => {
+    'push.unsubscribe': async () => {
       throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'Web Push needs a paired connection to a real core' });
     },
-    'push.test': async (params) => {
+    'push.test': async () => {
       throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'Web Push needs a paired connection to a real core' });
     },
-    'push.kinds': async (params) => {
+    'push.kinds': async () => {
       throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'Web Push needs a paired connection to a real core' });
     },
     'sessions.revoke': async (params) => {

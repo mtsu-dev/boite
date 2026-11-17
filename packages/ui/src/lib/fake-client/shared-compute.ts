@@ -1,5 +1,5 @@
 /** Host-owned routes and captured fake jobs. Fixture Git is explicit; no caller result is trusted. */
-import { CONVERSATION_PROFILE_ID, type Protocol, type PermissionMode, type SharedExecutionProtection, type SharedComputeJob, type SharedComputePolicy, type SharedComputeRoute, type SharedProject, type SharedProjectRef, type RpcParams } from '@boite/contracts';
+import { CONVERSATION_PROFILE_ID, type Protocol, type PermissionMode, type SharedExecutionProtection, type SharedComputeJob, type SharedComputeRoute, type SharedProject, type SharedProjectRef, type RpcParams } from '@boite/contracts';
 import type { FakeContext, FakeMethods } from './context';
 import { holdBoundary } from './contact-hold';
 import { contactState, modelTier } from './contacts';

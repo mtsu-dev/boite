@@ -5,7 +5,7 @@
   import { ArrowRight, Check, CircleArrowDown, X } from '@lucide/svelte';
   import MachineIcon from './MachineIcon.svelte';
   import ProviderLogo from './ProviderLogo.svelte';
-  import { appUpdater } from '../lib/app-update.svelte';
+  import { androidApp, appMark, appUpdater } from '../lib/app-update.svelte';
   import { Closing } from '../lib/closing.svelte';
   import { floating } from '../lib/floating';
   import { tourRequested, tourSeen } from '../lib/onboarding.svelte';
@@ -76,7 +76,7 @@
     : failed && startable.every((part) => part.state === 'failed') ? strings.updateAll.retry
     : startable.length === 1 ? strings.harnessUpdates.update : strings.updateAll.run);
   /** Boite's own mark for Boite's rows, the nightly one on that track. */
-  let mark = $derived(appUpdater.snapshot.currentChannel === 'nightly' ? './icons/icon-nightly.svg' : './icons/icon.svg');
+  let mark = $derived(appMark());
   /** The rows grouped by machine, in the order they first appeared. */
   let groups = $derived.by(() => {
     const byMachine = new Map<string, { id: string; label: string; local: boolean; rows: UpdateRow[] }>();
@@ -230,7 +230,8 @@
         {/each}
       </div>
     {/if}
-    {#if appRow && !finished && !underWay}<p class="note">{strings.updateAll.restarts}</p>{/if}
+    <!-- Android restarts nothing: its own installer asks once the browser has the APK. -->
+    {#if appRow && !finished && !underWay && !androidApp()}<p class="note">{strings.updateAll.restarts}</p>{/if}
     {#if !allDone}
       <footer>
         {#if appReady}

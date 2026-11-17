@@ -655,7 +655,7 @@ export class DesktopWindows {
   }
 }
 
-/** The code a refusal from #pixels carries: gone, minimized, lack or ailed. */
+/** The code a refusal from #pixels carries: gone, minimized, black or failed. */
 function failureCode(error: unknown): string | undefined {
   const data = (error as { data?: unknown } | null)?.data;
   return data && typeof data === 'object' ? (data as { code?: string }).code : undefined;

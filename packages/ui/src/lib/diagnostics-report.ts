@@ -117,7 +117,7 @@ export class DiagnosticsReporter {
     const text = message.replace(/[\r\n]+/g, ' ').trim().slice(0, 4096) || event;
     const same = this.#queue.find(record => record.event === event && record.message === text);
     if (same) {
-      same.data = { ...(same.data ?? {}), repeats: Number(same.data?.repeats ?? 1) + 1 };
+      same.data = { ...same.data, repeats: Number(same.data?.repeats ?? 1) + 1 };
       return;
     }
     const record: DiagnosticReportRecord = { level, at: this.#timers.now(), source, event, message: text };
@@ -190,6 +190,7 @@ export class DiagnosticsReporter {
     // A method the class provides is looked up at each call, not kept: code that
     // replaces the class's method later (a test fixture, a hot reload) still runs.
     const own = Object.prototype.hasOwnProperty.call(client, 'call') ? client.call : null;
+    // oxlint-disable-next-line typescript/no-this-alias -- the wrapper is a plain function and reads the reporter's private timers
     const reporter = this;
     const watched: Client['call'] = function (this: unknown, method, params, options) {
       const began = reporter.#timers.now();

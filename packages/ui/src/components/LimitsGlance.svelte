@@ -35,6 +35,17 @@
   /** How long a press waits for the gateway's first answer before opening the glance anyway. */
   const KNOWN_WAIT_MS = 300;
   let rows = $derived(reader.rows === null ? null : shownQuotas(reader.rows, store.accounts, store.providers));
+  /**
+   * The row the open thread spends: its account's own, or, when a gateway stands in for that provider with one
+   * row, that one. Several gateway rows of the provider: Douane picks per call, so none is named.
+   */
+  let current = $derived.by(() => {
+    const thread = store.openThread;
+    if (!thread || !rows) return null;
+    if (rows.some((row) => row.accountId === thread.accountId)) return thread.accountId;
+    const same = rows.filter((row) => row.gateway && row.providerId === thread.providerId);
+    return same.length === 1 ? same[0]!.accountId : null;
+  });
   /** The last read's failure, cleared by the next read that lands. */
   let failed = $state('');
 
@@ -89,6 +100,16 @@
     return () => document.removeEventListener('pointerdown', onpress, true);
   });
 
+  // The rail stays on every page: a move to another one (Settings from the keyboard,
+  // the palette) leaves no glance open over it, waiting for the next press to close.
+  let shownPage = untrack(() => store.page);
+  $effect(() => {
+    const now = store.page;
+    if (now === shownPage) return;
+    shownPage = now;
+    untrack(() => { if (popover.open) popover.hide(); });
+  });
+
   function close() {
     popover.hide();
     near()?.focus({ preventScroll: true });
@@ -134,7 +155,7 @@
 {#if popover.shown}
   <div class="glance" class:closing={popover.closing} bind:this={content} role="dialog" tabindex="-1" aria-label={strings.quotas.glance} data-testid="limits-glance"
     use:popover.attach onanimationend={popover.end} use:floating={{ anchor: near, side, dismiss: close, cap: 460 }}>
-    <QuotaPopup {rows} loading={reader.busy} completed={reader.landed} error={failed} outdated={reader.outdated} owner={store.owner}
+    <QuotaPopup {rows} {current} loading={reader.busy} completed={reader.landed} error={failed} outdated={reader.outdated} owner={store.owner}
       order={store.settings?.quotaOrder ?? []} reorder={store.owner ? (quotaOrder) => store.saveSettings({ quotaOrder }) : undefined}
       refresh={() => read(true)} connect={providersReachable ? () => page('accounts') : undefined} settings={() => page('limits')} {close} testPrefix="limits-glance">
       {#snippet title()}<QuotaMachineScope {store} />{/snippet}

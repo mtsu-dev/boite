@@ -208,7 +208,7 @@ describe('procs', () => {
     const client = await harness.connect();
     const running = await echoThread(harness, client, 'runs a process');
     const done = await echoThread(harness, client, 'ran one, now done');
-    const idle = await echoThread(harness, client, 'never ran one');
+    await echoThread(harness, client, 'never ran one');
     // Windows may also report native descendants. The retained trace must match
     // all starts observed for this thread, including its explicitly spawned root.
     const started = new Set<number>();

@@ -1,7 +1,7 @@
 import {afterEach, describe, expect, test} from 'bun:test';
 import {copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
-import type {PermissionMode, ThreadSummary} from '@boite/contracts';
+import type {ThreadSummary} from '@boite/contracts';
 import {createClaudeDriver} from '../src/drivers/claude.ts';
 import {createCodexDriver} from '../src/drivers/codex.ts';
 import type {Driver, TurnContext} from '../src/drivers/types.ts';

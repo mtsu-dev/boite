@@ -117,7 +117,7 @@ test('every module of a cut feature calls markFeature with its marker, and no fi
     for (const directory of directories) {
       for (const name of readdirSync(join(root, directory))) {
         const file = `${directory}/${name}`;
-        if (/\.test\.ts$/.test(name) || !/\.(?:ts|svelte)$/.test(name)) continue;
+        if (name.endsWith('.test.ts') || !/\.(?:ts|svelte)$/.test(name)) continue;
         expect(listed.has(file) || file in STAYS, `${file} is in the directory of ${id}: list it in feature-modules.ts, or in STAYS with its reason`).toBe(true);
       }
     }

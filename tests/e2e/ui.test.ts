@@ -15,7 +15,6 @@ import { developmentMarkers, ensureProductionUi, UI_DIST } from './lib/prod-ui.t
 const TIMEOUT = 60_000;
 /** The reconnect has its own budget: a backoff that needs a minute is a bug. */
 const RECONNECT_TIMEOUT_MS = 30_000;
-const ROOT = join(import.meta.dir, '..', '..');
 const SCREENSHOT = join(import.meta.dir, '.artifacts', 'ui.png');
 const RELOAD_SCREENSHOT = join(import.meta.dir, '.artifacts', 'ui-permission-reload.png');
 const TOOL_SCREENSHOT = join(import.meta.dir, '.artifacts', 'ui-tool-input.png');

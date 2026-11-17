@@ -82,7 +82,7 @@ class TextSocket {
     switch (opcode) {
       case 0:
       case 1: {
-        if (opcode === 0 !== this.#fragmented) {
+        if ((opcode === 0) !== this.#fragmented) {
           this.#fail(`opcode ${opcode} out of sequence`);
           return;
         }

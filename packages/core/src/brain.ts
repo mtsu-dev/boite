@@ -1,3 +1,4 @@
+// oxlint-disable-next-line typescript/triple-slash-reference -- ambient types for Markdown text imports
 /// <reference path="./text.d.ts" />
 import { lstatSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';

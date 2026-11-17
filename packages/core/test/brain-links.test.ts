@@ -18,7 +18,7 @@ afterEach(() => { rmSync(root, { recursive: true, force: true }); });
 test('all global profiles follow the source through an atomic Git-style replacement', () => {
   const result = links.apply(brain);
   expect(result.every(link => link.state === 'linked')).toBe(true);
-  expect(result.map(link => link.name)).toEqual(['Claude Code', 'Codex', 'OpenCode', 'pi', 'Grok', 'Gemini / Antigravity', 'Muse']);
+  expect(result.map(link => link.name)).toEqual(['Claude Code', 'Codex', 'OpenCode', 'pi', 'Grok', 'Gemini / Antigravity', 'Muse', 'Mistral Vibe']);
   for (const link of result) {
     expect(lstatSync(link.path).isSymbolicLink()).toBe(true);
     expect(readFileSync(link.path, 'utf8')).toBe('Shared rules');

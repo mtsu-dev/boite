@@ -1,4 +1,6 @@
 <script lang="ts">
+  import PrivateText from './PrivateText.svelte';
+  import { accountName } from '../lib/account-name';
   import { tick } from 'svelte';
   import { ChevronDown, Plug, Sparkles } from '@lucide/svelte';
   import { isNamedModel } from '../lib/model-order';
@@ -61,7 +63,7 @@
   let accountLabel = $derived.by(() => {
     if (!choice || !provider || store.accountsOf(provider.id).length < 2) return null;
     const account = store.accountOf(choice.accountId);
-    return account && account.isolationDir !== null ? account.label : null;
+    return account && account.isolationDir !== null ? accountName(account) : null;
   });
 
   /** Opens the popover once its chunk is there (a slash command, a removed account's chip); a read-only chip says why instead. */
@@ -126,7 +128,7 @@
       <Sparkles size={14} strokeWidth={1.75} />
     {/if}
     <span class="label ui-label">{label}</span>
-    {#if accountLabel}<span class="account ui-label" data-testid="composer-picker-account">{accountLabel}</span>{/if}
+    {#if accountLabel}<span class="account ui-label" data-testid="composer-picker-account"><PrivateText text={accountLabel} /></span>{/if}
     <ChevronDown size={12} strokeWidth={2} />
   </button>
   {/if}

@@ -145,7 +145,7 @@ A member keeps to read-only by its provider's strongest means.
 | Provider | Read-only by |
 | --- | --- |
 | Claude, Codex, Muse, Grok, OpenCode, OpenCode v2 | The plan permission mode |
-| Antigravity, Hermes, echo | Boite refuses every permission it asks, and a warning says so |
+| Antigravity, Hermes, Mistral Vibe, echo | Boite refuses every permission it asks, and a warning says so |
 | pi | Nothing: no plan mode and no approvals, and a warning says so |
 
 The members' prompt also tells each to change nothing, start no subagent and not

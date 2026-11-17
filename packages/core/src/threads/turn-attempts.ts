@@ -582,7 +582,8 @@ export class TurnAttempts {
    * meanwhile (archived or switched account).
    */
   #dropLostSession(thread: ThreadSummary, result: TurnResult): ThreadSummary | null {
-    if (thread.sessionId === null) return null;
+    // A new session that never started: nothing to drop, the retry starts another.
+    if (thread.sessionId === null) return thread;
     const current = this.#core.journal.getThread(thread.id);
     if (current === null || current.archived) return null;
     if ((current.sessionGeneration ?? 0) !== (thread.sessionGeneration ?? 0) || current.sessionId !== thread.sessionId) return null;

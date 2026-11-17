@@ -1,4 +1,3 @@
-import type { ThreadSummary } from '@boite/contracts';
 import { agentDirectory } from './agent-directory.svelte';
 import type { FeedSource } from './activity-feed';
 export { feedThread } from './activity-feed';

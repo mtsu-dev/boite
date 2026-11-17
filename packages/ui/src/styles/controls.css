@@ -18,6 +18,13 @@
   text-box: trim-both cap alphabetic;
 }
 
+/* An email address, blurred until the pointer or the keyboard reaches it (PrivateText.svelte, the Accounts page). */
+.private-email {
+  filter: blur(5px);
+  transition: filter var(--dur-2);
+}
+.private-email:hover, .private-email:focus-visible, .private-email.revealed { filter: none; }
+
 /* Label containers keep their line-height and centre icons or padded badges. */
 .ui-label-box {
   display: inline-flex;

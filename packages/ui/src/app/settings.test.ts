@@ -1,6 +1,6 @@
 import { expect, vi } from 'vitest';
 import { store } from '../lib/store.svelte';
-import { press, query, test, type, waitFor } from '../test/app';
+import { query, test, waitFor } from '../test/app';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 

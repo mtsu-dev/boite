@@ -15,7 +15,7 @@ agents through a subscription gateway.
    on the sign-in page.
 
 Some agents ask their sign-in questions in a terminal, with menus and arrow
-keys: OpenCode and Grok. For those, a terminal opens under the row. Answer its
+keys: OpenCode, Grok and Mistral Vibe. For those, a terminal opens under the row. Answer its
 questions there, then press Close the terminal once you are signed in.
 
 - pi signs in inside pi itself, not from Boite.
@@ -46,6 +46,9 @@ has no command-line login in Boite: each of its accounts is a Boite account.
 
 Settings shows each account's name and its email. Emails stay blurred until
 you hover them, tap them on a phone, or press Reveal email.
+Everywhere else in the app, in the limits, menus and dialogs, an email in an
+account's name is blurred the same way and shows when you point at it. A system
+notification cannot blur, so it leaves the address out.
 
 ## What isolated accounts share
 
@@ -68,6 +71,7 @@ Before each start, Boite takes them from your usual agent folder:
 | pi | `settings.json`, `AGENTS.md`, `extensions`, `skills`, `prompts`, `themes` |
 | OpenCode | `opencode.json`, `opencode.jsonc`, `AGENTS.md`, `package.json`, its plugin, agent, command and skill folders, and `node_modules` |
 | Antigravity | Your user skills from `~/.gemini`; its MCP servers and settings stay out |
+| Mistral Vibe | `config.toml`, `AGENTS.md`, `agents`, `prompts`, `skills`, `skills.toml`, `tools`, `plugins`, `hooks.toml`, `trusted_folders.toml` |
 
 An API key set inside a shared settings file applies to every account that
 uses the file. A path Boite could not share is shown under the account in
@@ -106,6 +110,10 @@ While it is on:
 - Limits shows the gateway's limits, or opens its dashboard inside Boite.
   The Use Douane (or Use CLIProxyAPI) switch there turns the gateway on and
   off, from a phone too.
+- Under an account's limit, a red line such as "40% used outside Douane"
+  means part of that limit was spent without going through Douane: someone
+  used the account directly, from the official app, another device or a
+  leaked token.
 - Other agents keep their own configuration.
 
 Turning the proxy off brings your local accounts back unchanged. Use HTTPS

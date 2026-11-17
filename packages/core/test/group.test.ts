@@ -593,7 +593,7 @@ test('a member that stops answering waits longer each time, unless the roster ch
   // A change is offered from a microtask: let it start, then wait for every exchange in flight on both sides.
   const settle = async () => {
     await Bun.sleep(0);
-    for (const side of [store, b.core.group as unknown as Store]) while (side.pending.size > 0) await Promise.allSettled([...side.pending]);
+    for (const side of [store, b.core.group as unknown as Store]) while (side.pending.size > 0) await Promise.allSettled(side.pending);
   };
   await settle();
   type Exchange = (peer: { coreId: string }, operation: string, payload: unknown) => Promise<unknown>;
@@ -654,7 +654,7 @@ test('an offer that fails after the member was heard from does not make it wait'
   const store = a.core.group as unknown as Store;
   const settle = async () => {
     await Bun.sleep(0);
-    for (const side of [store, b.core.group as unknown as Store]) while (side.pending.size > 0) await Promise.allSettled([...side.pending]);
+    for (const side of [store, b.core.group as unknown as Store]) while (side.pending.size > 0) await Promise.allSettled(side.pending);
   };
   await settle();
   type Exchange = (peer: { coreId: string }, operation: string, payload: unknown) => Promise<unknown>;

@@ -19,6 +19,7 @@ export const fr: Translation = {
       missing: 'Aucune caméra trouvée sur cet appareil. Collez le lien à la place.',
       failed: "La caméra n'a pas pu démarrer. Collez le lien à la place."
     },
+    scanDeniedApp: "L'accès à la caméra a été refusé. Autorisez la caméra pour Boite dans les réglages d'Android, ou collez le lien.",
     linkReaches: 'Ce lien connecte à {host}.', linkReplaces: 'Ce lien connecte à {host}, listée ici sous le nom {machine}. Il remplace la clé enregistrée pour elle.', linkConnected: 'Ce lien vise {host}, déjà connectée ici sous le nom {machine}.',
     remove: 'Retirer la machine', removeTitle: 'Retirer {machine} ?',
     removeBody: 'Boite oublie cette machine sur cet appareil.',

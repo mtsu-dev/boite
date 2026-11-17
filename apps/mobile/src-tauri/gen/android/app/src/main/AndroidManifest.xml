@@ -1,10 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- The app updates itself outside a store (AppUpdates.kt); the second
-         lets Android 12+ skip its confirmation once the app installed itself. -->
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
+    <!-- Scanning a pairing QR code: the WebView asks for the camera through
+         wry, and Android refuses a permission the manifest does not declare.
+         A phone without a camera still installs the app and pastes the link. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+    <!-- No REQUEST_INSTALL_PACKAGES: Play Protect refused as harmful the
+         build that installed its own updates. An update downloads in the browser
+         (docs/internals/android-native.md#updates). -->
 
     <application
         android:icon="@mipmap/ic_launcher"
@@ -22,8 +26,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <receiver android:name=".InstallResult" android:exported="false" />
 
         <provider
           android:name="androidx.core.content.FileProvider"

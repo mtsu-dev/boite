@@ -62,6 +62,7 @@ export class BrainLinks {
       { name: 'Grok', path: join(base('GROK_HOME', join(home, '.grok')), 'AGENTS.md') },
       { name: 'Gemini / Antigravity', path: join(base('GEMINI_HOME', join(home, '.gemini')), 'GEMINI.md') },
       { name: 'Muse', path: join(xdg, 'muse', 'AGENTS.md') },
+      { name: 'Mistral Vibe', path: join(base('VIBE_HOME', join(home, '.vibe')), 'AGENTS.md') },
     ];
   }
 

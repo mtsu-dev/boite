@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PrivateText from './PrivateText.svelte';
   import { desktopShell } from '../lib/shell-platform';
   import { MediaQuery } from 'svelte/reactivity';
   import { Inbox, MessageSquare, Plus, Settings, UsersRound } from '@lucide/svelte';
@@ -28,6 +29,7 @@
   import { whipEntry } from '../lib/whip-entry.svelte';
   import FailMark from './FailMark.svelte';
   import Deferred from './Deferred.svelte';
+  import LimitsButton from './LimitsButton.svelte';
   import { parts } from '../lib/deferred-parts';
   import { QuotaReorder } from '../lib/quota-reorder.svelte';
   import { railOrder } from '../lib/rail-order.svelte';
@@ -38,9 +40,8 @@
    * view: where to be (the threads, Activity with what asks, Contacts), then one picture
    * per team and per bot of every machine, in the order the user dragged them, then the machines when there is
    * more than one, and Settings. The open place is the filled tile; a bot's
-   * picture says how it stands: asleep, at work, or with an answer not read. The limits are a line at the foot of
-   * the list column
-   * (QuotaLine.svelte). It stands on the window's chrome from top to bottom;
+   * picture says how it stands: asleep, at work, or with an answer not read. The limits are the ring above
+   * Settings (LimitsButton.svelte). It stands on the window's chrome from top to bottom;
    * a phone keeps its own navigation and never draws it.
    */
   let { store }: { store: Store } = $props();
@@ -218,6 +219,10 @@
   <span class="rail-name" aria-hidden="true"><span class="ui-label">{label}</span>{#if note}<span class="ui-label note">{note}</span>{/if}{#if key}<span class="kbd" id={keyId}>{key}</span>{/if}</span>
 {/snippet}
 {#snippet statusName(label: string, note: string | null)}{@render railName(label, null, note)}{/snippet}
+<!-- The limits' card: the sentence, then a line each for the wait and the use outside Douane; an address in them blurred. -->
+{#snippet limitsName(label: string, lines: string[])}
+  <span class="rail-name stack-name" aria-hidden="true" data-testid="limits-card"><span class="ui-label"><PrivateText text={label} /></span>{#each lines as line, index (index)}<span class="ui-label note"><PrivateText text={line} /></span>{/each}</span>
+{/snippet}
 <!-- The machines' card: its name and what a click does ("Machines · click to filter"), the trouble if any, then each
      machine on a line of its own with the state dot the filter's menu shows. -->
 {#snippet machinesName(label: string, hint: string | null, note: string | null, lines: MachineLine[])}
@@ -316,7 +321,7 @@
 
   <span class="grow"></span>
 
-  <!-- The machines, once there are two or one is in trouble; the limits are the list column's foot. -->
+  <!-- The machines, once there are two or one is in trouble, then the limits' ring, then Settings. -->
   <div class="foot">
     <!-- Lit like the buttons above while it filters the list or its menu is open. -->
     <div class="slot status" class:selected={machineFilter.shown(machines) !== null}>
@@ -325,6 +330,7 @@
     <!-- Each with the same name card as every rail button; a slot with no button (nothing to update) takes no room. -->
     {#if !narrow.current}<div class="slot extra"><Deferred part={parts.UpdatesNotice} quiet>{#snippet children(UpdatesNotice)}<UpdatesNotice name={statusName} />{/snippet}</Deferred></div>{/if}
     {#if experimentOn('whip') && whipEntry.feature}{@const WhipButton = whipEntry.feature.WhipButton}<div class="slot extra"><WhipButton name={statusName} /></div>{/if}
+    <div class="slot extra limits-slot"><LimitsButton {store} name={limitsName} /></div>
     <div class="slot" class:selected={store.page === 'settings'}>
       <button type="button" class="ghost icon" class:on={store.page === 'settings'} aria-current={store.page === 'settings' ? 'page' : undefined}
         aria-label={strings.sidebar.settings} aria-describedby={settingsKey ? 'rail-settings-key' : undefined}
@@ -453,6 +459,8 @@
     transition: opacity var(--dur-1) var(--ease-out-quint), transform var(--dur-1) var(--ease-out-quint);
   }
   .rail-name .note { color: var(--color-muted-foreground); font-weight: 400; }
+  /* A card of several lines (the limits'): each on its own line, left-aligned. */
+  .rail-name.stack-name { flex-direction: column; align-items: flex-start; gap: 6px; padding: 7px 10px; }
   /* The machines' card opens against its button, the way its menu does, so it reads as the button's own: over the
      list's foot while the pointer is on the button, its foot level with the button's, so a long list of machines
      grows up, inside the window. Its name, then one 20 px line per machine: mark, name, state. */

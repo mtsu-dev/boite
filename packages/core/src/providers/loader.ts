@@ -30,6 +30,7 @@ import museShipped from './shipped/muse.json';
 import opencodeShipped from './shipped/opencode.json';
 import opencodeV2Shipped from './shipped/opencode-v2.json';
 import piShipped from './shipped/pi.json';
+import vibeShipped from './shipped/vibe.json';
 import echoShipped from './shipped/echo.json';
 import { detectionLogger, installLogger } from './install-log.ts';
 import { registerLocalCommands } from './local-command.ts';
@@ -54,6 +55,7 @@ const SHIPPED_SOURCES: { file: string; raw: unknown; when?: () => boolean }[] = 
   { file: 'shipped/opencode.json', raw: opencodeShipped },
   { file: 'shipped/opencode-v2.json', raw: opencodeV2Shipped },
   { file: 'shipped/pi.json', raw: piShipped },
+  { file: 'shipped/vibe.json', raw: vibeShipped },
   { file: 'shipped/echo.json', raw: echoShipped, when: echoEnabled },
 ];
 

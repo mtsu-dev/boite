@@ -65,7 +65,7 @@ test('checking a signed-out account reports its connection without probing model
   const calls = vi.spyOn(client, 'call');
   mounted = mount(AccountsPage, { target: document.body, props: { store } });
   flushSync();
-  (row('codex')?.querySelector('[data-testid="provider-details-toggle"]') as HTMLButtonElement).click();
+  (row('codex')!.querySelector('[data-testid="provider-details-toggle"]') as HTMLButtonElement).click();
   flushSync();
   const target = document.querySelector(`[data-testid="account-row"][data-account-id="${signedOut!.id}"]`)!;
   (target.querySelector('[data-testid="account-verify"]') as HTMLButtonElement).click();
@@ -76,13 +76,13 @@ test('checking a signed-out account reports its connection without probing model
 });
 
 test('accounts keep their chosen name and reveal the email on demand', async ({ ready }) => {
-  const { store, client } = await ready({ delayMs: 0 });
+  const { store } = await ready({ delayMs: 0 });
   store.providers = [provider({})];
   store.accounts = [account({ identity: 'work@example.com' })];
   const rename = vi.spyOn(store, 'renameAccount').mockResolvedValue(true);
   mounted = mount(AccountsPage, { target: document.body, props: { store } });
   flushSync();
-  (row('claude')?.querySelector('[data-testid="provider-details-toggle"]') as HTMLButtonElement).click();
+  (row('claude')!.querySelector('[data-testid="provider-details-toggle"]') as HTMLButtonElement).click();
   flushSync();
   expect(document.querySelector('h3')?.textContent).toBe('Default');
   const email = document.querySelector('[data-testid="account-email"]') as HTMLButtonElement;
@@ -113,7 +113,7 @@ test('a proxied provider shows only the gateway account, without actions, and it
   expect(row('grok')?.textContent).not.toContain('via CLIProxyAPI');
   store.settings = await client.call('subscriptionProxy.configure', { subscriptionProxy: douane });
   flushSync();
-  (row('claude')?.querySelector('[data-testid="provider-details-toggle"]') as HTMLButtonElement).click();
+  (row('claude')!.querySelector('[data-testid="provider-details-toggle"]') as HTMLButtonElement).click();
   flushSync();
   const gateway = row('claude')!.querySelector('[data-testid="account-gateway"]')!;
   expect(gateway.querySelector('h3')!.textContent).toBe('Douane');
@@ -263,7 +263,7 @@ test('every account card lays out the same: name and state first with its sign-i
   store.accounts = [account({}), account({ id: 'a2', label: 'Second seat', isolationDir: 'C:/seat', status: 'unauthenticated' })];
   mounted = mount(AccountsPage, { target: document.body, props: { store } });
   flushSync();
-  (row('claude')?.querySelector('[data-testid="provider-details-toggle"]') as HTMLButtonElement).click();
+  (row('claude')!.querySelector('[data-testid="provider-details-toggle"]') as HTMLButtonElement).click();
   flushSync();
   const cards = [...row('claude')!.querySelectorAll('[data-testid="account-row"]')];
   expect(cards.length).toBeGreaterThan(1);

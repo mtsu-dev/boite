@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The night mark of packages/ui/public/icons/icon-nightly.svg without its tile. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+  <group android:translateX="25.875" android:translateY="25.875" android:scaleX="2.34375" android:scaleY="2.34375">
+    <path android:pathData="M5.5,3H18.5A1.5,1.5 0,0 1,20 4.5V19.5A1.5,1.5 0,0 1,18.5 21H5.5A1.5,1.5 0,0 1,4 19.5V4.5A1.5,1.5 0,0 1,5.5 3ZM4,10H20" android:strokeColor="#FFFFFFFF" android:strokeWidth="3.6" android:strokeAlpha="0.08" android:strokeLineCap="round" android:strokeLineJoin="round"/>
+    <path android:pathData="M5.5,3H18.5A1.5,1.5 0,0 1,20 4.5V19.5A1.5,1.5 0,0 1,18.5 21H5.5A1.5,1.5 0,0 1,4 19.5V4.5A1.5,1.5 0,0 1,5.5 3ZM4,10H20" android:strokeColor="#FFFFFFFF" android:strokeWidth="2.7" android:strokeAlpha="0.14" android:strokeLineCap="round" android:strokeLineJoin="round"/>
+    <path android:pathData="M5.5,3H18.5A1.5,1.5 0,0 1,20 4.5V19.5A1.5,1.5 0,0 1,18.5 21H5.5A1.5,1.5 0,0 1,4 19.5V4.5A1.5,1.5 0,0 1,5.5 3ZM4,10H20" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.75" android:strokeAlpha="1" android:strokeLineCap="round" android:strokeLineJoin="round"/>
+    <path android:pathData="M6.25,4.75H8.75A0.5,0.5 0,0 1,9.25 5.25V7.75A0.5,0.5 0,0 1,8.75 8.25H6.25A0.5,0.5 0,0 1,5.75 7.75V5.25A0.5,0.5 0,0 1,6.25 4.75ZM6.35,12.25H11.65A0.6,0.6 0,0 1,12.25 12.85V18.15A0.6,0.6 0,0 1,11.65 18.75H6.35A0.6,0.6 0,0 1,5.75 18.15V12.85A0.6,0.6 0,0 1,6.35 12.25Z" android:fillColor="#FFFFFFFF"/>
+  </group>
+</vector>

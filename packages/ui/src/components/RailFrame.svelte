@@ -10,15 +10,14 @@
   import Deferred from './Deferred.svelte';
   import { parts } from '../lib/deferred-parts';
   import ResizeHandle from './ResizeHandle.svelte';
-  import QuotaLine from './QuotaLine.svelte';
 
   /**
    * The column right of the app rail, for the thread list and the Bots list
    * alike: one width the user drags, one fold from the title bar, the head on
    * top, an optional subhead that stays put (the Bots search) and the rows in
    * one scroll. On a desktop it reaches the window's top, its head level with
-   * the main column's bar, and its foot holds the limits line, the same under
-   * every list; the machines and Settings live on the app rail.
+   * the main column's bar; the limits, the machines and Settings live on the
+   * app rail.
    *
    * `drawer` is the thread list's phone form, a sheet over the chat; the Agents
    * list is a whole screen on a phone and stays in the flow.
@@ -155,8 +154,6 @@
   {#if (store.page === 'chat' || store.page === 'agents') && dockVisible && experimentOn('pinned-quotas') && pinnedQuotas.current.pinned && pinnedQuotas.wantsDock(store)}
     <Deferred part={parts.PinnedQuota} quiet>{#snippet children(PinnedQuota)}<PinnedQuota {store} dock />{/snippet}</Deferred>
   {/if}
-  <!-- A phone reaches the limits from its Settings tab. -->
-  {#if !phone.current}<QuotaLine {store} />{/if}
   <!-- No app rail below 720 pixels: the drawer's foot keeps the update button, and its card opens as a sheet. -->
   {#if drawer && phone.current}
     <div class="foot"><Deferred part={parts.UpdatesNotice} quiet>{#snippet children(UpdatesNotice)}<UpdatesNotice />{/snippet}</Deferred></div>
@@ -246,7 +243,6 @@
        head in that band, level with the main column's title. */
     .rail { padding-top: 6px; }
     .views.scrolled { border-bottom-color: var(--color-border); }
-    .rail.more > :global(.quota-line) { border-top-color: var(--color-border); }
     .rail {
       --slide-room: calc(var(--sidebar-width) + var(--frame-gap));
       /* One motion with the panel that comes in on the other side: the same duration and curve for the slide and the fade. */

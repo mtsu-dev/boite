@@ -26,12 +26,13 @@ export function gatewayQuotas(ctx: FakeContext): SubscriptionProxyQuotas {
   if (!proxy?.enabled) return { status: 'off', providers: [], updatedAt: null, checkedAt: null, error: null };
   if (proxy.kind !== 'douane') return { status: 'unsupported', providers: [], updatedAt: null, checkedAt: null, error: null };
   const now = Date.now();
-  const window = (id: string, label: string, usedPercent: number, hours: number) => ({ id, label, usedPercent, resetsAt: now + hours * 3600_000 });
+  const window = (id: string, label: string, usedPercent: number, hours: number, outsidePercent?: number): QuotaWindow =>
+    ({ id, label, usedPercent, resetsAt: now + hours * 3600_000, ...(outsidePercent === undefined ? {} : { outsidePercent }) });
   const entry = (id: string, label: string, plan: string | null, windows: QuotaWindow[], more: Partial<GatewayQuotaEntry> = {}): GatewayQuotaEntry =>
     ({ id, label, plan, accounts: 1, status: 'ready', error: null, updatedAt: now, windows, credits: [], ...more });
   return { status: 'ready', nativeMuse: true, updatedAt: now, checkedAt: now, error: null, providers: [
     { providerId: 'claude', name: 'Claude', display: 'accounts', entries: [
-      entry('claude-1', 'Claude Max x20 · chris@…', 'Max 20x', [window('five-hour', '5 hours', 11, 2), window('seven-day', 'Weekly', 64, 70)]),
+      entry('claude-1', 'Claude Max x20 · chris@…', 'Max 20x', [window('five-hour', '5 hours', 11, 2), window('seven-day', 'Weekly', 64, 70, 40)]),
       entry('claude-2', 'Claude Pro · work@…', 'Pro', [window('five-hour', '5 hours', 100, 1), window('seven-day', 'Weekly', 82, 30)], { status: 'cooldown' }),
     ] },
     { providerId: 'codex', name: 'Codex', display: 'accounts', entries: [
@@ -85,7 +86,7 @@ function accountQuotas(ctx: FakeContext): AccountQuota[] {
       { id: 'primary', label: '5 hours', usedPercent: 0, resetsAt: null },
       { id: 'secondary', label: 'Weekly', usedPercent: 0, resetsAt: null },
     ] : [
-      { id: 'primary', label: '5 hours', usedPercent: ctx.quotaExtras && ['claude', 'codex'].includes(account.providerId) ? 100 : [32, 87, 14, 48, 71, 6, 23, 40][index % 8]!, resetsAt: Date.now() + (1 + index % 4) * 3600_000 },
+      { id: 'primary', label: '5 hours', usedPercent: ctx.quotaLimit && account.providerId === 'claude' ? (ctx.quotaLimit === 'out' ? 100 : 91) : ctx.quotaExtras && ['claude', 'codex'].includes(account.providerId) ? 100 : [32, 87, 14, 48, 71, 6, 23, 40][index % 8]!, resetsAt: Date.now() + (ctx.quotaLimit && account.providerId === 'claude' ? 102 * 60_000 : (1 + index % 4) * 3600_000) },
       { id: 'secondary', label: 'Weekly', usedPercent: [61, 94, 38, 27, 55, 12, 73, 66][index % 8]!, resetsAt: Date.now() + (1 + index % 6) * 86400_000 },
       // Claude also reports a weekly window per model, which the core names `Weekly · <model>`.
       ...(account.providerId === 'claude' ? [{ id: 'model:Opus', label: 'Weekly · Opus', usedPercent: 44, resetsAt: Date.now() + 3 * 86400_000 }] : []),
@@ -200,7 +201,7 @@ export function accountMethods(ctx: FakeContext) {
       if (params.refresh !== undefined && typeof params.refresh !== 'boolean') throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'subscriptionProxy.quotas refresh must be a boolean' });
       return gatewayQuotas(ctx);
     },
-    'accounts.list': async (params) => {
+    'accounts.list': async () => {
       return structuredClone(ctx.accounts);
     },
     'accounts.add': async (params) => {
@@ -295,7 +296,7 @@ export function accountMethods(ctx: FakeContext) {
       });
       return { ok: true };
     },
-    'accounts.logins': async (params) => {
+    'accounts.logins': async () => {
       return structuredClone([...ctx.logins.values()]);
     },
     'accounts.loginCancel': async (params) => {

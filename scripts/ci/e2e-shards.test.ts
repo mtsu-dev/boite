@@ -36,11 +36,11 @@ test('a job log gives each file the time until the next file or the summary', ()
   expect(mergeDurations([{ 'x.test.ts': 4 }, { 'x.test.ts': 6, 'y.test.ts': 1 }])).toEqual({ 'x.test.ts': 5, 'y.test.ts': 1 });
 });
 
-test('the recorded times split the current E2E files into three shards within 15 %', () => {
+test('the recorded times split the current E2E files into five shards within 15 %', () => {
   const files = e2eFiles();
   expect(files).not.toContain('tests/e2e/shell.test.ts');
   expect(files.every((file) => existsSync(join(import.meta.dir, '../..', file)))).toBe(true);
-  const shards = assignShards(files, readDurations().seconds, 3);
+  const shards = assignShards(files, readDurations().seconds, 5);
   expect(shards.flatMap((shard) => shard.files).sort()).toEqual(files);
   const times = shards.map((shard) => shard.seconds);
   expect(Math.max(...times) / Math.min(...times)).toBeLessThan(1.15);

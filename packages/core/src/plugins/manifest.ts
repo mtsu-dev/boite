@@ -18,7 +18,7 @@ import { BUILTIN_COMMANDS } from '../cli-commands.ts';
 import { RETIRED_PROVIDERS } from '../providers/retired.ts';
 
 /** The shipped providers an account pool may name. `echo` is the tests' fake agent. */
-export const POOL_PROVIDERS: readonly ProviderId[] = ['antigravity', 'claude', 'codex', 'grok', 'hermes', 'muse', 'opencode', 'opencode-v2', 'pi'];
+export const POOL_PROVIDERS: readonly ProviderId[] = ['antigravity', 'claude', 'codex', 'grok', 'hermes', 'muse', 'opencode', 'opencode-v2', 'pi', 'vibe'];
 /** A schema 2 manifest carries its skills and prompts inline; anything past this is not one. */
 export const MANIFEST_MAX_BYTES = 256 * 1024;
 /** Schema 1 keeps the cap it had before skills and prompts could take room. */

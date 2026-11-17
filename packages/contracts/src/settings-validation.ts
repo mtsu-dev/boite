@@ -202,7 +202,7 @@ function worktreeStorageRule(value: unknown): Settings['worktreeStorage'] | Refu
   const directory = typeof storage.directory === 'string' ? storage.directory.trim() : storage.directory;
   // Accept either host's absolute paths; the core checks its own OS before use.
   const absolute = typeof directory === 'string' && directory.length > 0 && !/[\u0000-\u001f]/.test(directory)
-    && (/^\//.test(directory) || /^[a-z]:[\\/]/i.test(directory) || /^\\\\[^\\/]+[\\/][^\\/]+/.test(directory));
+    && (directory.startsWith('/') || /^[a-z]:[\\/]/i.test(directory) || /^\\\\[^\\/]+[\\/][^\\/]+/.test(directory));
   if (!absolute && !(storage.mode === 'project' && directory === null)) {
     return refuse('worktreeStorage.directory must be an absolute folder path, or null in project mode');
   }

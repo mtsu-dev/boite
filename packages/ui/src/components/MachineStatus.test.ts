@@ -23,7 +23,7 @@ test('one connected machine says nothing; a filter brings back the button, its n
   await settle();
   expect(document.querySelector('[data-testid=status-connection]')?.getAttribute('data-state')).toBe('ready');
   expect(document.querySelector('[data-testid=machine-status]')).toBeNull();
-  // The limits left this menu for the list foot (QuotaLine.test.ts).
+  // The limits left this menu for the rail's ring (LimitsButton.test.ts).
   expect(document.querySelector('[data-testid=nav-limits]')).toBeNull();
   await unmount(mounted);
 

@@ -48,8 +48,15 @@ signed-in accounts, such as 5 hours and Weekly, with their reset times.
   reading, dimmed and labelled Last successful reading.
 - With a banked Claude or Codex reset, Use reset consumes the one closest to
   expiring, after a confirmation. It cannot be undone.
-- The tray icon and the sidebar open the same limits in a small popup. Drag a
-  row's handle to reorder accounts.
+- The tray icon and the gauge above Settings in the app rail open the same
+  limits in a small popup. Drag a row's handle to reorder accounts. The
+  account the open thread runs on is highlighted and tagged This thread; behind
+  Douane, only when one Douane account serves that provider.
+- The gauge stays grey while every account has room. When the best account
+  runs low, it becomes a ring of what is left. When every account is out, the
+  ring turns red, fills as the first reset comes near and shows the time left
+  under it. A red dot on the grey gauge means an account behind Douane was
+  used outside it; hover the gauge to see which.
 - A paired device reads the same bars, without the refresh button, the
   switches or the reset.
 

@@ -684,7 +684,7 @@ left for the next of those moments.
 
 ## What ships
 
-Ten descriptors ship, and only the first nine are ever visible to a user: `echo`
+Eleven descriptors ship, and only the first ten are ever visible to a user: `echo`
 is the deterministic fake the tests and the bench run on, loaded only under
 `BOITE_ECHO=1`.
 
@@ -696,6 +696,7 @@ is the deterministic fake the tests and the bench run on, loaded only under
 | Antigravity | `acp` | Managed `agy_acp_server` for the host OS |
 | Grok | `acp` | `grok [permission flags] agent [approval flag] stdio` |
 | Hermes Agent | `acp` | `hermes acp` ([below](#hermes)) |
+| Mistral Vibe | `acp` | `vibe-acp` ([below](#mistral-vibe)) |
 | Codex | `codex-appserver` | `codex app-server` |
 | Muse Code | `muse` | `muse serve --trust-workspace [MUSE_HOST_SETTINGS] [mode flags]` |
 | pi | `pi` | Package bin through Node or `pi --mode rpc` |
@@ -1011,7 +1012,9 @@ a Job Object and in the trace like any other, then asks the protocol's own quest
   `.oauth_refresh.lock`, and the next CLI signs it out with `invalid_grant`.
 - ACP: `initialize` and `session/new`, then whichever of two answers the agent
   sent. The `configOptions` whose category is `model` and `thought_level` win
-  when there is a `model` one, since that option is what a turn sets.
+  when there is a `model` one, since that option is what a turn sets. Mistral
+  Vibe files its effort under `thinking` instead; that category is read, and
+  set by a turn, when no `thought_level` option is listed.
   Otherwise `models.availableModels` is read: each entry is a model of its own,
   and under the `grok` quirk, read there even beside a `model` option, it
   carries its own effort scale out of `_meta.reasoningEfforts`, the level
@@ -1220,7 +1223,8 @@ live inference. The exact release and gate are described under [Muse Code](#muse
   drift and puts the thread's mode back before its prompt goes in.
 - ACP standardises the call, `session/set_mode`, and standardises none of the ids
   inside `availableModes`: the same mode is spelled `acceptEdits`,
-  `accept_edits` and `auto_edit` by three different agents. So each Boite mode
+  `accept_edits` and `auto_edit` by three different agents (Mistral Vibe says
+  `ask`, `accept-edits` and `auto-approve`). So each Boite mode
   carries an ordered candidate list matched without case, `_` or `-`, and the
   first spelling the agent lists wins. It goes out when the session opens and
   again at the start of any turn the agent has drifted from, and it is
@@ -1454,6 +1458,22 @@ phone or touch screen. Tab or a tap writes it in as a draft to edit; it is
 never sent. Esc or the chip's x hides it for that turn, on that page only. It
 hides while text is typed, while sending, during dictation and behind a
 question or permission.
+
+## Claude's start deadline
+
+A Claude CLI that never says `system/init`, for example while a stdio MCP
+server keeps it waiting, would otherwise hold its thread for good. From the
+first message handed to a new process, the session gives the CLI
+`START_DEADLINE_MS` (90 s, `packages/core/src/drivers/claude/start-deadline.ts`)
+to say it. CLI 2.1.326 says it in 0.4 s and waits 30 s for an MCP server that
+never answers before it starts without it (measured on 2026-11-17), so the
+deadline is three times the CLI's own bound. On expiry the session stops the
+CLI through `procs.stopChild` and settles the turn only once it exited, as a
+lost session (`ClaudeTurn.loseSession`): the core runs the turn once more on a
+fresh session whose prompt carries the conversation, the path a refused resume
+takes. A second miss fails the turn with "Claude Code did not start within
+90 s". The deadline is not a setting: a user's `MCP_TIMEOUT` longer than 90 s
+is cut short.
 
 ## Claude's MCP servers on demand
 
@@ -1753,3 +1773,36 @@ runs hosted models and local ones through any OpenAI-compatible server
 - Live test: `BOITE_E2E_HERMES=1 HERMES_E2E_BASE_URL=http://127.0.0.1:8089/v1 HERMES_E2E_MODEL=qwen2.5-0.5b bun test test/hermes.live.test.ts`
   in `packages/core`. It refuses a non-loopback URL, so no turn leaves the
   machine.
+
+### Mistral Vibe
+
+Mistral Vibe speaks ACP through `vibe-acp` on stdio, a binary the
+`mistral-vibe` Python package installs beside `vibe`. Read against Vibe 3.1.2.
+
+- Install: `uv tool install mistral-vibe` (Python 3.12 or 3.13; its `rpds-py`
+  does not build on 3.15 yet). The descriptor looks on PATH, then in
+  `~/.local/bin`. No managed install: the release archives are PyInstaller
+  folders of several hundred files.
+- `VIBE_HOME` moves the whole configuration. Vibe keeps an API key in the
+  system keyring when it can, else in `$VIBE_HOME/.env`. The profile sets
+  `VIBE_TEST_DISABLE_KEYRING=1` on every account, the default one included, so
+  the key always lands in `.env`: one keyring entry would be shared by every
+  isolated account, and a key kept only there is invisible to the session
+  check. A key stored in the keyring by the user's own `vibe` needs one
+  sign-in from Providers.
+- `MISTRAL_API_KEY` is unset at spawn, so the account's `.env` decides which
+  key a turn runs on.
+- Login runs `vibe-acp --setup` in a terminal: it opens Mistral AI Studio in
+  the browser, or takes a key from `chat.mistral.ai/code/extensions`.
+- Models come from `config.toml` and reach the probe as the `model` config
+  option; effort is the `thinking` option, `off` or `high`. A proxy is a
+  `[[providers]]` entry there; keep its `backend` on `mistral` for a Mistral
+  model, since `generic` sends the reasoning back as message text.
+- Modes: `ask` is Boite's `default`, `accept-edits` is `acceptEdits`,
+  `auto-approve` is `bypassPermissions`, `yolo` and `dontAsk`. There is no plan
+  mode. Vibe opens in `accept-edits`, so a thread on `default` moves it to `ask`.
+- `hooks.toml` is shared but not listed as a hook source: its format is Vibe's
+  own.
+- Live test: `BOITE_E2E_VIBE=1 bun test test/vibe.live.test.ts` in
+  `packages/core`, on the default account (`VIBE_HOME`, else `~/.vibe`). It
+  spends tokens.

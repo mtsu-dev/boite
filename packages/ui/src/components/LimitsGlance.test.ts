@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
+import { SvelteMap } from 'svelte/reactivity';
 import type { AccountQuota } from '@boite/contracts';
 import type { Store } from '../lib/store.svelte';
 import { RpcFailure } from '../lib/client';
@@ -95,6 +96,21 @@ test('a second press on the button closes the glance, and a press elsewhere stil
   document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
   await settle();
   expect(document.querySelector('[data-testid="limits-glance"]')).toBeNull();
+});
+
+test('a move to another page with no press outside, Settings from the keyboard, puts the glance away', async () => {
+  const view = new SvelteMap([['page', 'chat']]);
+  const store = { client: { call: async () => [quota], on: () => () => {} }, owner: true, endpointUrl: 'glance-page-core', accounts: [], get page() { return view.get('page'); } } as unknown as Store;
+  const trigger = glance(store);
+  trigger.click();
+  await settle();
+  expect(document.querySelector('[data-testid="limits-glance"]')).not.toBeNull();
+  view.set('page', 'settings');
+  await settle();
+  expect(document.querySelector('[data-testid="limits-glance"]')).toBeNull();
+  trigger.click();
+  await settle();
+  expect(document.querySelector('[data-testid="limits-glance"]')).not.toBeNull();
 });
 
 test('an Escape in a dialog opened over the glance is that dialog\'s, and the glance stays', async () => {

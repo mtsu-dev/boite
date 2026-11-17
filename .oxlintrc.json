@@ -1,0 +1,32 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "warn"
+  },
+  "rules": {
+    "no-unused-vars": [
+      "warn",
+      {
+        "ignoreRestSiblings": true,
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_"
+      }
+    ],
+    "no-control-regex": "off",
+    "unicorn/no-new-array": "off",
+    "unicorn/no-useless-spread": "off"
+  },
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/build/**",
+    "**/target/**",
+    "**/.svelte-kit/**",
+    "**/.svelte-check/**",
+    "apps/shell/src-tauri/gen/**",
+    "apps/shell/src-tauri/binaries/**",
+    "bench/results/**",
+    "tests/e2e/.artifacts/**",
+    "telemetry/.wrangler/**"
+  ]
+}

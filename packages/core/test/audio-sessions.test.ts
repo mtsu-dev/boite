@@ -33,11 +33,7 @@ const FIXTURE = join(import.meta.dir, 'fixtures', 'silent-tone.ts');
  * with the mute, so the clock starts when the session is in the mixer.
  */
 const MUTE_WINDOW_MS = 3000;
-/**
- * How long a session the core muted takes to show in its mutedPids: one poll of
- * the guard Worker (a second) and the message to the main thread, with margin.
- */
-const INHERITED_WINDOW_MS = 2000;
+/** How long a fixture's audio session takes to appear in the mixer once its process starts. */
 const SESSION_WINDOW_MS = 15000;
 
 /** Whether the Boite running these tests mutes the fixture's session itself (`host-mutes.ts`). */

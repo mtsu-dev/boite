@@ -24,6 +24,8 @@ environment variables, with `{isolationDir}` substituted at spawn:
   one variable is enough and the session file is `auth.json` under it.
 - Claude moves with `CLAUDE_CONFIG_DIR`, and files `.credentials.json`.
 - Grok moves with `GROK_HOME`, and files `auth.json`.
+- Mistral Vibe moves with `VIBE_HOME`, and files its API key in `.env`, since
+  its profile turns the system keyring off ([Mistral Vibe](providers.md#mistral-vibe)).
 - Muse Code moves with the three XDG homes, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`
   and `XDG_STATE_HOME`, and files its login at `muse/auth.json` under the config
   one, which is `~/.config/muse/auth.json` for the default account.
@@ -82,6 +84,7 @@ core (`BOITE_HOST_AGENTS=0`) shares nothing.
 | Grok | `config.toml`, `hooks`, `AGENTS.md`, `AGENT.md`, `skills`, `trusted_folders.toml`, `installed-plugins` |
 | pi | `settings.json`, `AGENTS.md`, `extensions`, `skills`, `prompts`, `themes` |
 | OpenCode | `opencode/opencode.json`, `opencode/opencode.jsonc`, `opencode/AGENTS.md`, `opencode/package.json`, plugin/agent/command/skill directories and `opencode/node_modules` |
+| Mistral Vibe | `config.toml`, `AGENTS.md`, `agents`, `prompts`, `skills`, `skills.toml`, `tools`, `plugins`, `hooks.toml`, `trusted_folders.toml` |
 
 These are whole-file copies or linked directories. An API setting or key inside
 a shared settings file applies to every account using that file, as in the
@@ -113,7 +116,7 @@ account and permits automatic adoption again, through an account added with
 The core resolves unset isolation variables to provider defaults: the XDG pair resolve
 under `~/.local/share` and `~/.config`,
 `CODEX_HOME` to `~/.codex`, `CLAUDE_CONFIG_DIR` to `~/.claude`, `GROK_HOME`
-to `~/.grok`, and `PI_CODING_AGENT_DIR` to `.pi/agent` under the home.
+to `~/.grok`, `VIBE_HOME` to `~/.vibe`, and `PI_CODING_AGENT_DIR` to `.pi/agent` under the home.
 A variable the core does not know falls back to `~/.<id>`. A new isolation variable must
 add its default location to that table in the
 same change, or passive checks can report a signed-in account as unauthenticated.
@@ -162,6 +165,13 @@ account, while keeping its ID, login directory and thread references.
 Settings shows the chosen account label and its email separately. Emails stay
 blurred until hovered, focused from the keyboard or tapped on a phone.
 The model picker's account chips and their tooltips show the chosen label only.
+Everywhere else an address shown as an account's name (the adopted
+`Default` login, a gateway's label, a plugin's saved account) renders through
+`PrivateText.svelte`: `emailParts` in the contracts cuts the text around each
+address and the address gets the shared `.private-email` blur (`controls.css`),
+the one the Accounts page uses, lifted under the pointer. Text that cannot
+blur, a limit alert's system notification, drops the address with
+`withoutEmails`.
 
 ## The login flow
 

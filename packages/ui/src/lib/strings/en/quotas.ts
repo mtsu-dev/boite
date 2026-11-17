@@ -35,6 +35,11 @@ export const strings = {
     windowMonthlyCompact: 'Month',
     creditRemaining: 'Credits remaining',
     creditBalance: '{count} credits',
+    /** Under a Douane window: the share of the account's limit no call through Douane explains. */
+    outsideUsed: '{percent}% used outside Douane',
+    /** The rail's limits card: the account the most used outside Douane (LimitsButton.svelte). */
+    outsideNotice: '{percent}% of {account} ({provider}) used outside Douane',
+    outsideHint: 'No call through Douane explains this share of the account\'s limit: someone used the account directly, from the official app, another device or a leaked token.',
 
     /** The tray icon's right-click menu. */
     trayShow: 'Show',
@@ -71,14 +76,14 @@ export const strings = {
     refresh: 'Refresh quotas',
     /** The sidebar's gauge button and the popover it opens. */
     glance: 'Account limits',
+    /** The glance's tag on the account the open thread runs on. */
+    thisThread: 'This thread',
     /** The list column's limits line: whose limit it reads, the account named where its provider has several. */
     lineLeft: '{percent}% of {provider}\'s {window} limit left',
     lineLeftAccount: '{percent}% of {provider}\'s {window} limit left on {account}',
-    /** Nothing left on any account that could serve: whose limit, and when the first account is back. */
+    /** Nothing left on any account that could serve: whose limit. The rail's card adds the wait under it (app.rail.limitsBack). */
     lineOut: '{provider}\'s {window} limit is used up',
-    lineOutUntil: '{provider}\'s {window} limit is used up, back {time}',
     lineOutAll: 'Every {provider} account is out',
-    lineOutAllUntil: 'Every {provider} account is out, first one back {time}',
     /** The popover's way to the Limits page in Settings. */
     allLimits: 'Limits page',
     /** A read of the limits failed; the core's reason follows. */

@@ -1,5 +1,4 @@
 import { pullRequestAddress, type AccountId, type ProviderId, type ThreadId } from '@boite/contracts';
-import type { Connection } from '../router.ts';
 import type { Core } from '../core.ts';
 import { promptOrigin } from '../client-preferences.ts';
 import { invalidParams, refused } from '../errors.ts';

@@ -677,7 +677,7 @@ export class FileTickets {
         return null;
       }
       return { handle, path: entry.path, mime: entry.mime, ...(entry.name ? { name: entry.name } : {}), size: Number(stats.size), ...(entry.view ? { view: true as const } : {}), ...(entry.permit ? {permit: entry.permit} : {}) };
-    } catch (error) {
+    } catch {
       await handle.close();
       this.#held.delete(ticket);
       return null;

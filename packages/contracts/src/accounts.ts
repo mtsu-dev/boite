@@ -16,6 +16,13 @@ export interface QuotaWindow {
   resetsAt: Timestamp | null;
   /** Douane's choice of the window shown first and largest. Missing means the weekly window leads. */
   primary?: true;
+  /**
+   * Douane only: percent points of this account-wide window that no call through
+   * Douane explains, the raw account figure. Someone used the account directly
+   * (the official app, another device, a leaked token). Missing when Douane does
+   * not say.
+   */
+  outsidePercent?: number;
 }
 
 /**
@@ -73,12 +80,39 @@ export interface QuotaAlert {
   at: Timestamp;
 }
 
+/** An address, or a gateway's shortened one (`chris@…`): the local part, then a domain or the ellipsis that stands for it. */
+const EMAIL = /([\p{L}\p{N}._%+-]+)@((?:[\p{L}\p{N}-]+\.)+\p{L}{2,}|\u2026)/gu;
+
+/**
+ * Text that names an account cut around its email addresses, in order: the
+ * interface draws each `email` part blurred, as the Accounts page does, so a
+ * screen share or a glance over a shoulder never reads one.
+ */
+export function emailParts(text: string): { text: string; email: boolean }[] {
+  const parts: { text: string; email: boolean }[] = [];
+  let last = 0;
+  for (const match of text.matchAll(EMAIL)) {
+    if (match.index > last) parts.push({ text: text.slice(last, match.index), email: false });
+    parts.push({ text: match[0], email: true });
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) parts.push({ text: text.slice(last), email: false });
+  return parts;
+}
+
+/** The same text with its addresses left out, for what cannot blur: a system notification on a locked screen. */
+export function withoutEmails(text: string): string {
+  return text.replace(EMAIL, '').replace(/\(\s*\)/g, '').split(' \u00b7 ').map((part) => part.trim()).filter(Boolean).join(' \u00b7 ');
+}
+
 /**
  * An alert's title, the same in a push and a toast: the account, then the
- * model or group a scoped window names (`Weekly · Opus` gives `Opus`).
+ * model or group a scoped window names (`Weekly · Opus` gives `Opus`). An
+ * address in the account's name is left out: a push shows on a locked screen.
  */
 export function quotaAlertTitle(alert: Pick<QuotaAlert, 'label' | 'providerName' | 'window'>): string {
-  const name = alert.label.includes(alert.providerName) ? alert.label : `${alert.providerName} · ${alert.label}`;
+  const label = withoutEmails(alert.label);
+  const name = !label ? alert.providerName : label.includes(alert.providerName) ? label : `${alert.providerName} · ${label}`;
   const scope = alert.window.label.split(' · ').filter((part) => !/week|hour|seven|\b\d+\s*-?[hd]\b/i.test(part)).join(' · ');
   return scope ? `${name} · ${scope}` : name;
 }

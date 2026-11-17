@@ -21,7 +21,7 @@ import type { AgentContact, AgentLetter, Contact, ContactInvite, ContactRequest,
 import { text } from '../coordination-letter.ts';
 import { PeerRefusal, ROUTE } from '../coordination-wire.ts';
 import type { Core } from '../core.ts';
-import { invalidParams, messageOf, refused, RpcFailure, unavailable } from '../errors.ts';
+import { invalidParams, messageOf, refused } from '../errors.ts';
 import { tailnetAddress } from '../group/addresses.ts';
 import { seal, type Sealing } from '../group/seal.ts';
 import { contactsBot, connectByOwner, runPlan } from './bot.ts';

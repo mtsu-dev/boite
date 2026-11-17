@@ -16,6 +16,7 @@ import { createCouncil } from '../council/journal.ts';
 import { createRemovedTurnUsage } from './usage-sums.ts';
 import { createKeptProcesses } from './kept-processes.ts';
 import { createMessageStats } from './thread-stats.ts';
+import { ARTIFACT_ROW } from './artifact-references.ts';
 
 export const SCHEMA_VERSION = 51;
 
@@ -267,7 +268,7 @@ export function migrate(db: Database, file: string): { from: number; to: number 
     // Rebuild only this table to remove NOT NULL; preserve every existing column and row.
     const definition = db.query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'threads'").get() as { sql: string };
     const indexes = db.query("SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'threads' AND sql IS NOT NULL").all() as { sql: string }[];
-    const replacement = definition.sql.replace(/CREATE TABLE (?:IF NOT EXISTS )?["`\[]?threads["`\]]?/i, 'CREATE TABLE threads_next').replace(/project_id TEXT NOT NULL/i, 'project_id TEXT');
+    const replacement = definition.sql.replace(/CREATE TABLE (?:IF NOT EXISTS )?["`[]?threads["`\]]?/i, 'CREATE TABLE threads_next').replace(/project_id TEXT NOT NULL/i, 'project_id TEXT');
     db.exec(replacement);
     db.exec('INSERT INTO threads_next SELECT * FROM threads');
     db.exec('DROP TABLE threads');
@@ -570,4 +571,6 @@ export function ensureIndexes(db: Database): void {
   db.exec("CREATE INDEX IF NOT EXISTS events_questions_asked ON events (id) WHERE type = 'question.asked'");
   db.exec("CREATE INDEX IF NOT EXISTS events_questions_answered ON events (thread_id, id) WHERE type = 'question.answered'");
   db.exec("CREATE INDEX IF NOT EXISTS events_thread_memory ON events (thread_id, id) WHERE type = 'thread.memory'");
+  // The few rows artifact retention reads back (`artifact-references.ts`); built once, by a read of every message.
+  db.exec(`CREATE INDEX IF NOT EXISTS messages_artifacts ON messages (thread_id) WHERE ${ARTIFACT_ROW}`);
 }

@@ -136,6 +136,12 @@ failure. It never quotes the body, which can echo a credential.
   which draws that provider's mark.
   `quotas.configure` refuses a `proxy:` id, because the gateway decides what it
   reports.
+- A window's `outside_percent`, when Douane sends it, becomes `outsidePercent`:
+  the points of that account-wide window no call through Douane explains. A
+  value outside 0 to 100 is dropped rather than clamped, and a missing one stays
+  missing. The sidebar glance prints it in the danger colour from 5 points on
+  (`QuotaOverview.svelte`); `outsideNotice` in `lib/outside-usage.ts` names the
+  account with the largest share from 10 points on.
 - The cadence is the native one. A list within a minute of the last read
   reuses it, and the refresh button reads again. `subscriptionProxy.quotas`
   returns the gateway's state (`ready`, `unavailable`, `unsupported` or `off`)

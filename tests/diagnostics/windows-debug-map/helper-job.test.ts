@@ -4,7 +4,6 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {thrown} from '../../../packages/core/test/settle.ts';
 import {observeHelperJob, parseHold, populatedProof, releasedProof, observation, type HoldFrame, type RootProof, type JobAccounting} from './helper-job.ts';
-import type {Membership} from './target-topology.ts';
 import type {Captured} from './capture.ts';
 import {HelperReferenceSlot, type ReferenceAnchor} from './helper-reference.ts';
 const helper = {pid: 11, created: '100'}, creator = {pid: 22, created: '200'}, root = {pid: 33, created: '300'};

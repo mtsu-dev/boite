@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appMark } from '../lib/app-update.svelte';
   import { needsYou, rowAsks } from '../lib/status-order';
   import { tick } from 'svelte';
   import WindowList from './WindowList.svelte';
@@ -300,7 +301,7 @@
   {:else if store.page === 'settings' && !recover}
     <button class="ghost icon back" data-testid="mobile-settings-leave" aria-label={strings.mobile.settingsLeave} title={strings.mobile.settingsLeave} onclick={leaveSettings}><ArrowLeft size={20} /></button>
   {:else if recover}
-    <img class="brand-icon" src="./icons/icon.svg" alt="" width="30" height="30" />
+    <img class="brand-icon" src={appMark()} alt="" width="30" height="30" />
   {/if}
   {#if chatting && !firstRun && narrow.current}
     <div class="chat-heading">{#key store}<ThreadHeader {store} />{/key}</div>

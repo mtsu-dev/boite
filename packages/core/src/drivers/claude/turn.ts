@@ -336,6 +336,9 @@ export class ClaudeTurn {
       case 'rate_limit_event':
         this.#noteRateLimit(message.rate_limit_info as { status?: unknown; resetsAt?: unknown } | null | undefined);
         break;
+      case 'conversation_reset':
+        this.#resetContext();
+        break;
       default:
         break;
     }
@@ -377,6 +380,20 @@ export class ClaudeTurn {
         postTokens: typeof meta.post_tokens === 'number' ? meta.post_tokens : null,
       });
     }
+  }
+
+  /**
+   * The CLI discarded the conversation (`/clear`, a plan accepted with a
+   * cleared context, a fresh session). Nothing fills the context now: the
+   * meter reads zero at once rather than at the next request. The turn keeps
+   * no reading of the old conversation, so neither its result nor a step
+   * boundary handed to the background compaction brings that count back.
+   */
+  #resetContext(): void {
+    this.#contextTokens = null;
+    this.#addedChars = 0;
+    this.#measuredFor = '';
+    this.ctx.context({ tokens: 0, window: this.#window ?? this.ctx.thread.context?.window ?? null });
   }
 
   #handleStream(event: StreamEvent): void {
@@ -585,11 +602,7 @@ export class ClaudeTurn {
     }
     const refused = this.#resumeRefused(message);
     if (refused !== null) {
-      // No error part: the core starts a fresh session and runs the turn again,
-      // so the conversation shows the answer, not the refusal.
-      this.sessionLost = true;
-      this.#status = 'error';
-      this.#error = refused;
+      this.loseSession(refused);
       return;
     }
     // The CLI answers an interrupt with an error result (`error_during_execution`,
@@ -819,6 +832,20 @@ export class ClaudeTurn {
       if (entry.released) this.#patchTool(entry, { summary: text });
       else this.#emitTool(toolId, entry);
     }
+  }
+
+  /**
+   * The session this turn ran on cannot serve it: a resume the CLI refused, or
+   * a CLI that never finished starting. No error part: the core runs the turn
+   * again once on a fresh session with the thread's history, so the
+   * conversation shows the answer. A retry that fails the same way ends the
+   * turn with `reason`, which the core writes then.
+   */
+  loseSession(reason: string): void {
+    if (this.settled || this.#status === 'error') return;
+    this.sessionLost = true;
+    this.#status = 'error';
+    this.#error = reason;
   }
 
   fail(reason: string): void {

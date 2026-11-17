@@ -1,11 +1,10 @@
 import { expect, vi } from 'vitest';
 import { flushSync } from 'svelte';
 import { type RpcMethodName } from '@boite/contracts';
-import { confirm } from '../lib/confirm.svelte';
 import { store } from '../lib/store.svelte';
 import { workspace } from '../lib/workspace.svelte';
 import { machineFilter } from '../lib/machine-filter.svelte';
-import { mountOnFake, query, test, type, waitFor } from '../test/app';
+import { mountOnFake, query, test, waitFor } from '../test/app';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 

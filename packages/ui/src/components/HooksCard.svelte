@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PrivateText from './PrivateText.svelte';
   import { errorText } from '../lib/errors';
   import { untrack } from 'svelte';
   import { ChevronRight, CircleAlert, RefreshCw } from '@lucide/svelte';
@@ -173,7 +174,7 @@
           {#each problems as problem, index (index)}
             <div class="issue" data-testid="hooks-issue">
               <CircleAlert size={14} strokeWidth={1.75} />
-              <div><p class="issue-title">{problem.title}</p><p>{problem.message}</p></div>
+              <div><p class="issue-title"><PrivateText text={problem.title} /></p><p>{problem.message}</p></div>
             </div>
           {/each}
         </div>

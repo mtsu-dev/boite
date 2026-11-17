@@ -244,7 +244,7 @@ test('SEC-01 legacy contact correspondence cannot use the ordinary local process
 
 test('contact mail outside a shared project holds a full-permission thread until its owner trusts the history',async()=>{
   const {a,b}=await pair();
-  const letter=await a.c.call('collaboration.send',{threadId:a.t.id,to:{coreId:b.id,threadId:b.t.id},text:'Ordinary contact note',requestId:'unassociated'});
+  await a.c.call('collaboration.send',{threadId:a.t.id,to:{coreId:b.id,threadId:b.t.id},text:'Ordinary contact note',requestId:'unassociated'});
   await waitFor(()=>b.h.core.journal.lastTurn(b.t.id)?.finishedAt!=null);
   // The owner's own agent works with every tool, as a bot does; a native provider has no tool-free route.
   await b.c.call('threads.update',{threadId:b.t.id,permissionMode:'bypassPermissions'});

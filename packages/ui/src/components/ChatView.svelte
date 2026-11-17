@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appMark } from '../lib/app-update.svelte';
   import { teamsParts } from '../lib/teams-entry';
   import { untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
@@ -158,7 +159,7 @@
       <MessageList {store} threadId={DRAFT_STASH_KEY} {messages} />
     {:else}
         <div class="mobile-welcome">
-          <img src="./icons/icon.svg" alt="" width="42" height="42" />
+          <img src={appMark()} alt="" width="42" height="42" />
           <h1>{strings.mobile.draftTitle}</h1>
           <p>{strings.mobile.draftHint}</p>
           <span class="mobile-place">

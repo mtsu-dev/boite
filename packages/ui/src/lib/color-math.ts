@@ -43,7 +43,7 @@ export function colorTools() {
   function normalizeHex(value: string): string | undefined {
     const hex = value.trim().replace(/^#?([\da-f]{3}|[\da-f]{6})$/i, '#$1').toLowerCase();
     if (/^#[\da-f]{6}$/.test(hex)) return hex;
-    if (/^#[\da-f]{3}$/.test(hex)) return '#' + [...hex.slice(1)].map(c => c + c).join('');
+    if (/^#[\da-f]{3}$/.test(hex)) return '#' + Array.from(hex.slice(1), c => c + c).join('');
     return undefined;
   }
   function rgb(hex: string): number[] { return [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)); }
