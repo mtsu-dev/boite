@@ -1,9 +1,10 @@
-import { accessSync, constants, existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, realpathSync } from 'node:fs';
+import { dirname, isAbsolute, join, relative } from 'node:path';
+import type { OsProfile } from '@boite/contracts';
 import { npmInstallOf, npmParked, npmReplacedPaths, restoreNpmParked, type NpmCommand, type NpmInstall } from './npm.ts';
 import { recheckVersions } from './versions.ts';
 import { forgetWhich } from './which.ts';
-import type { ResolvedCommand } from './resolve.ts';
+import { programBehindWrappers, resolveCommand, type ResolvedCommand } from './resolve.ts';
 
 /** `npm install -g` of an agent's package at the version the registry named, run in place of the agent's own updater. */
 export interface NpmUpdate {
@@ -94,6 +95,8 @@ export interface PutBack {
   broken: () => unknown;
   /** Called after a confirmed break, put back or not. */
   settled: () => Promise<void>;
+  /** The agent's profile, resolved again after the install to find the program it now runs. */
+  profile: OsProfile;
 }
 
 /** Reads of the version after an install before the release counts as broken: the first start of a fresh program can be slow. */
@@ -107,13 +110,11 @@ const START_TRIES = 2;
  * when an optional package is missing from the registry, and an agent that
  * ships its program in one package per platform is then left with nothing to
  * run: Codex 0.169.1 was published on 2026-11-17 without its Windows x64
- * package. The program npm installed must still be there: another copy that
- * answers on PATH is not the one updated.
+ * package. The program the agent resolves to must sit in the package npm
+ * installed: another copy that answers on PATH is not the one updated.
  */
 export async function installKeepingStart(npm: NpmUpdate, fallback: string | null, name: string, io: PutBack): Promise<string> {
   const previous = npmManifestVersion(npm.install) ?? fallback;
-  // A program that was not executable before (a script run by Node) is only required to be there.
-  const there = runnable(npm.command.shown) ? runnable : (path: string): boolean => existsSync(path);
   const said = await io.install(npm);
   const fails = async (): Promise<string | null> => {
     let reason = '';
@@ -121,40 +122,50 @@ export async function installKeepingStart(npm: NpmUpdate, fallback: string | nul
       // The install may have moved or removed what PATH and the version cache knew.
       forgetWhich();
       recheckVersions();
-      // Another copy on PATH may answer for it: the one npm installed must still be a program.
-      if (!there(npm.command.shown)) return `${npm.command.shown} is gone or no longer executable`;
       try {
         await io.starts();
-        return null;
       } catch (error) {
         reason = messageOf(error);
+        continue;
       }
+      // What answered must be the copy npm installed, wherever the release moved it in its package, not another one on PATH.
+      const now = resolveCommand(io.profile, false, true);
+      if (now !== null && installedBy(npm.install, realpathOr(programBehindWrappers(now.shown)))) return null;
+      reason = `the program that answers is not in ${npm.install.packageDir}`;
     }
     return reason;
   };
   const reason = await fails();
   if (reason === null) return said;
   const broken = `\`${npm.label}\` left ${name} unable to start (${reason})`;
-  const skipped = `Boite skips ${npm.version} until a newer release`;
-  io.broken();
+  let skipped = `Boite skips ${npm.version} until a newer release`;
   try {
-    if (previous === null) throw new AgentGone(`${broken}, and Boite did not know the version to put back; ${skipped}`);
+    io.broken();
+  } catch (error) {
+    skipped = `recording that Boite skips ${npm.version} failed: ${messageOf(error)}`;
+  }
+  try {
+    if (previous === null) throw new UpdateUndone(`${broken}, and Boite did not know the version to put back; ${skipped}`, null);
     const spec = `${npm.install.name}@${previous}`;
     try {
       await io.install({ ...npm, args: [...npm.args.slice(0, -1), spec], label: `npm install -g ${spec}`, version: previous });
     } catch (error) {
-      throw new AgentGone(`${broken}, and putting back ${previous} failed: ${messageOf(error)}; ${skipped}`);
+      throw new UpdateUndone(`${broken}, and putting back ${previous} failed: ${messageOf(error)}; ${skipped}`, null);
     }
     const still = await fails();
-    if (still !== null) throw new AgentGone(`${broken}, and ${previous} put back does not start either (${still}); ${skipped}`);
-    throw new Error(`${broken}; Boite put back ${previous} and skips ${npm.version} until a newer release`);
+    if (still !== null) throw new UpdateUndone(`${broken}, and ${previous} put back does not start either (${still}); ${skipped}`, null);
+    throw new UpdateUndone(`${broken}; Boite put back ${previous}; ${skipped}`, previous);
   } finally {
     await io.settled();
   }
 }
 
-/** An update that left the agent with no version that starts: its row no longer names one. */
-export class AgentGone extends Error {}
+/** An npm update that did not hold: `current` is the version put back, null when none starts. */
+export class UpdateUndone extends Error {
+  constructor(message: string, readonly current: string | null) {
+    super(message);
+  }
+}
 
 /** The version in the installed package's own manifest, read without starting it. */
 function npmManifestVersion(install: NpmInstall): string | null {
@@ -166,13 +177,19 @@ function npmManifestVersion(install: NpmInstall): string | null {
   }
 }
 
-function runnable(program: string): boolean {
+function realpathOr(path: string): string {
   try {
-    accessSync(program, constants.X_OK);
-    return true;
+    return realpathSync(path);
   } catch {
-    return false;
+    return path;
   }
+}
+
+/** True when the program sits in the install's package, or is one of npm's Windows shims in its prefix. */
+function installedBy(install: NpmInstall, program: string): boolean {
+  const inner = relative(install.packageDir, program);
+  if (inner !== '' && !inner.startsWith('..') && !isAbsolute(inner)) return true;
+  return process.platform === 'win32' && relative(install.prefix, dirname(program)) === '';
 }
 
 function messageOf(error: unknown): string {

@@ -306,18 +306,45 @@ describe('harness updates', () => {
     ].join('\n'));
     harness!.core.updates.npmCli = () => ({ executable: process.execPath, script: cli });
     expect(only(await client.call('providers.updates', { refresh: true }))).toMatchObject({ current: '1.0.0', latest: '1.1.0', pending: true });
+    // Something else updated the package since that reading: the version to put back is the one on disk.
+    writeFileSync(join(layout.scope, 'fake-agent', 'package.json'), JSON.stringify({ name: '@boite-test/fake-agent', version: '1.0.5' }));
+    writeFileSync(state, '1.0.5');
 
     const failed = client.next('providers.updatesChanged', (list) => list[0]?.state === 'failed', 30000);
     await client.call('providers.update', { providerId: 'update-fake' });
     await waitFor(() => !existsSync(program));
     await client.call('providers.updates', { refresh: true });
     const update = only(await failed);
-    expect(update).toMatchObject({ current: '1.0.0', latest: '1.1.0', skipped: '1.1.0', pending: false });
-    expect(update.message).toMatch(/`npm install -g @boite-test\/fake-agent@1\.1\.0` left Fake updating agent unable to start .*; Boite put back 1\.0\.0 and skips 1\.1\.0/);
-    expect(readFileSync(calls, 'utf8').trim().split('\n')).toEqual(['@boite-test/fake-agent@1.1.0', '@boite-test/fake-agent@1.0.0']);
+    expect(update).toMatchObject({ current: '1.0.5', latest: '1.1.0', skipped: '1.1.0', pending: false });
+    expect(update.message).toMatch(/`npm install -g @boite-test\/fake-agent@1\.1\.0` left Fake updating agent unable to start .*; Boite put back 1\.0\.5; Boite skips 1\.1\.0/);
+    expect(readFileSync(calls, 'utf8').trim().split('\n')).toEqual(['@boite-test/fake-agent@1.1.0', '@boite-test/fake-agent@1.0.5']);
     expect(readFileSync(layout.link, 'utf8')).toBe(script);
     // The agent starts again, and a check no longer offers the release that broke it.
-    expect(only(await client.call('providers.updates', { refresh: true }))).toMatchObject({ current: '1.0.0', latest: '1.1.0', state: 'idle', pending: false, skipped: '1.1.0' });
+    expect(only(await client.call('providers.updates', { refresh: true }))).toMatchObject({ current: '1.0.5', latest: '1.1.0', state: 'idle', pending: false, skipped: '1.1.0' });
+    await waitFor(() => harness?.core.procs.liveCount('update:update-fake') === 0);
+  }, 60000);
+
+  test.skipIf(process.platform === 'win32')('an npm release that moves its program within the package and starts is kept', async () => {
+    let layout!: ReturnType<typeof npmLayout>;
+    const { client, state } = await start('npm', 'update', undefined, (dataDir) => {
+      layout = npmLayout(dataDir);
+      return { kind: 'file', value: layout.link };
+    });
+    const program = join(layout.scope, 'fake-agent', 'bin', 'agent');
+    const moved = join(layout.scope, 'fake-agent', 'dist', 'agent');
+    const cli = join(harness!.dataDir, 'npm-cli.js');
+    writeFileSync(cli, [
+      "const { mkdirSync, renameSync, rmSync, symlinkSync, writeFileSync } = require('node:fs');",
+      `mkdirSync(${JSON.stringify(dirname(moved))}); renameSync(${JSON.stringify(program)}, ${JSON.stringify(moved)});`,
+      `rmSync(${JSON.stringify(layout.link)}); symlinkSync(${JSON.stringify(moved)}, ${JSON.stringify(layout.link)});`,
+      `writeFileSync(${JSON.stringify(state)}, '1.1.0');`,
+    ].join('\n'));
+    harness!.core.updates.npmCli = () => ({ executable: process.execPath, script: cli });
+    expect(only(await client.call('providers.updates', { refresh: true }))).toMatchObject({ current: '1.0.0', latest: '1.1.0', pending: true });
+
+    const done = client.next('providers.updatesChanged', (list) => list[0]?.state === 'idle' && list[0]?.current === '1.1.0', 30000);
+    await client.call('providers.update', { providerId: 'update-fake' });
+    expect(only(await done)).toMatchObject({ current: '1.1.0', skipped: null, pending: false });
     await waitFor(() => harness?.core.procs.liveCount('update:update-fake') === 0);
   }, 60000);
 

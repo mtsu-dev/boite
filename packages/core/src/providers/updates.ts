@@ -9,7 +9,7 @@ import { notFound, refused } from '../errors.ts';
 import { currentOs } from '../paths.ts';
 import type { InstallOutcome } from './install.ts';
 import { npmCli, npmInstallOf, unwritableDir, type NpmCommand } from './npm.ts';
-import { AgentGone, installKeepingStart, npmLatest, npmUpdate, runNpmUpdate, type NpmUpdate } from './update-npm.ts';
+import { UpdateUndone, installKeepingStart, npmLatest, npmUpdate, runNpmUpdate, type NpmUpdate } from './update-npm.ts';
 import { profileFor, programBehindWrappers, resolveCommand } from './resolve.ts';
 import { BACKGROUND_LIMIT_MS, backgroundHolders, resumeCut, withCut } from './update-background.ts';
 import { readReadings, readSkips, writeReadings, writeSkips, type Entry } from './update-readings.ts';
@@ -628,8 +628,8 @@ export class HarnessUpdates {
       if (this.#closed || this.#core.stopping) return;
       this.#core.bus.emit('providers.updated', this.#core.providers.list());
     } catch (error) {
-      const gone = error instanceof AgentGone ? { current: null } : {};
-      this.#entries.set(id, { ...before, ...gone, state: 'failed', message: error instanceof Error ? error.message : String(error), checkedAt: Date.now(), program: target.program });
+      const undone = error instanceof UpdateUndone ? { current: error.current } : {};
+      this.#entries.set(id, { ...before, ...undone, state: 'failed', message: error instanceof Error ? error.message : String(error), checkedAt: Date.now(), program: target.program });
     }
     this.#writeReadings();
     this.#emit();
@@ -641,6 +641,7 @@ export class HarnessUpdates {
     const install = (via: NpmUpdate): Promise<string> => runNpmUpdate(via, () => this.#run(target, via.args, this.updateTimeoutMs, via), () => this.#core.procs.waitForExit(updateThreadId(id), undefined, { native: true, stops: true }));
     return installKeepingStart(npm, before.current, target.descriptor.name, {
       starts: () => this.#current(target),
+      profile: target.profile,
       install,
       broken: () => {
         this.#skips[id] = npm.version;
