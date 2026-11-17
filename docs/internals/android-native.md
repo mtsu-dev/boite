@@ -16,10 +16,10 @@ What the app does not do yet, or what nobody has checked on a phone:
 | Area | State |
 | --- | --- |
 | Notifications | No push. They arrive only while the app is open. |
-| Updates | From the nightly only: no stable release carries the APK yet. The first build with the updater is installed by hand. |
+| Updates | From the nightly only: no stable release carries the APK yet. The browser downloads and installs each one. |
 | Distribution | No Play listing. No Play bundle (AAB) was built yet, and a Play build must leave the updater out. |
 | CI | A pull request builds the APK only when it changes `apps/mobile`, and no required check waits for it: a UI change that breaks the app fails that night's release. |
-| QR code | The manifest asks for no camera, so pairing is by pasting the link. Scanning was never tried. |
+| QR code | The camera is declared (`CAMERA`, an optional camera feature): wry asks Android for it when the page opens the scanner. A refusal points to Android's settings. |
 | Networks | Tested only through `adb reverse` to a core on a PC. A core on the LAN or a tailnet is untested. |
 | HTML views | Framing a core's `/view/` page is allowed by the policy, never tried on a phone. |
 | Offline | No copy of a thread stays on the phone: each opens from the core. |
@@ -93,14 +93,29 @@ the theme is AppCompat with the app's dark ground as the window background, so
 the launch never flashes white.
 
 `tauri android init` generated `src-tauri/gen/android`, and that project is
-tracked with the edits above. `bunx tauri icon src-tauri/icons/icon.png`
-regenerates the launcher icons from the app icon.
+tracked with the edits above.
+
+## Launcher icon
+
+The launcher icon is an adaptive icon of vector layers, drawn from
+`packages/ui/public/icons/icon.svg`: `drawable/ic_launcher_background.xml` is
+its tile, `ic_launcher_foreground.xml` the mark alone, placed so the 72dp a
+launcher shows of the 108dp layer is the svg's 1024 frame, and
+`ic_launcher_monochrome.xml` the same mark for Android 13 themed icons. The
+`mipmap-*/ic_launcher.png` files are the whole svg for Android 7.x, which has
+no adaptive icons. Do not run `tauri icon` here: it puts the whole tile in the
+foreground layer, and a launcher then crops and enlarges it.
+
+A build whose version contains `-nightly.` adds `src/nightly/res` to the
+release resources (`app/build.gradle.kts`): the same files drawn from
+`icon-nightly.svg`. In the app, the header and the empty draft show
+`icon-nightly.svg` on the nightly channel (`appMark()`).
 
 ## Updates
 
 The UI is inside the APK, so a new UI needs a new APK. Outside a store the app
-updates itself, through the same Updates card as the desktop app
-(Settings, Machines):
+offers each one through the same Updates card as the desktop app
+(Settings, Machines), and the browser installs it:
 
 - `mobile.yml` builds the APK. The nightly runs it with the release's version
   and signs it with the key of the other Android apps (`ANDROID_KEYSTORE`,
@@ -115,33 +130,28 @@ updates itself, through the same Updates card as the desktop app
   the channel. Within a channel only a higher version is offered. Switching
   channel offers the other one's newest build only when it was published after
   this build: an older one has a lower code and Android would refuse it.
+- Installing opens that APK's address in the browser (the opener plugin),
+  which downloads it; opening the file hands it to Android's installer, which
+  asks to confirm. Android stops Boite to replace it. Back in a Boite still
+  running, the card offers the update again, in case the download failed.
+- The app holds no `REQUEST_INSTALL_PACKAGES` and no
+  `UPDATE_PACKAGES_WITHOUT_USER_ACTION`: Google Play Protect blocks an app
+  that holds either as "Harmful app blocked". The nightly of 2026-11-16, which installed its updates
+  itself, was blocked that way on a phone with Google services.
 - `AppUpdates.kt` answers on `window.BoiteUpdater`, a message port
   (`addWebMessageListener`) that Android injects only into
-  `http://tauri.localhost` and that answers only its main frame: an HTML view
-  in a frame cannot reach it. A WebView without that feature gets no Updates
-  card. It downloads the APK to the app's
-  cache, then refuses it unless it is `dev.mtsu.boite`, has a higher version
-  code and is signed by the installed app's key. It then opens a
-  `PackageInstaller` session. Android asks once to let Boite install apps,
-  then shows its own confirmation. Once the app installed itself, Android 12
-  and later skip that confirmation (`UPDATE_PACKAGES_WITHOUT_USER_ACTION`).
-  Google Play Protect, where the phone has it, still offers to scan an app it
-  does not know before each install. Boite stops while it installs; on the
-  OnePlus 8T it reopened on its own both times.
-- The card is the desktop one: Update downloads and checks the APK, then
-  Restart installs it. A failed download leaves the card in error, and the
-  next Update reads the release list again.
-- Android itself refuses an APK signed by another key or with a lower code,
-  whatever the app checks. The release's Minisign signature, which the desktop
-  updater checks, is not read here.
+  `http://tauri.localhost` and that answers only its main frame. It only says
+  the installed version name and code. A WebView without that feature gets
+  no Updates card.
+- Android itself refuses an APK signed by another key or with a lower code.
+  The release's Minisign signature, which the desktop updater checks, is not
+  read here.
 
 A test build can read another release list:
 `VITE_APP_UPDATE_FEED=<url> bunx tauri android build --apk --target aarch64`.
 
-Google Play forbids an app that updates itself (`REQUEST_INSTALL_PACKAGES` for
-that purpose). The Play build must drop both install permissions,
-`AppUpdates.kt` and the `BoiteUpdater` bridge; without the bridge the UI shows
-no Updates card. Play App Signing must use the same key, or a phone that
+The Play build must drop `AppUpdates.kt` and the `BoiteUpdater` bridge: the
+store updates it, and without the bridge the UI shows no Updates card. Play App Signing must use the same key, or a phone that
 installed the APK cannot take Play's updates.
 
 ## Measurements

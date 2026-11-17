@@ -542,3 +542,8 @@ export const appUpdater = new AppUpdater(
 export function appName(): string {
   return appUpdater.snapshot.currentChannel === 'nightly' ? strings.app.nightlyName : strings.app.name;
 }
+
+/** The mark that goes with that name: a nightly shows the night icon, as its launcher does. */
+export function appMark(): string {
+  return appUpdater.snapshot.currentChannel === 'nightly' ? './icons/icon-nightly.svg' : './icons/icon.svg';
+}

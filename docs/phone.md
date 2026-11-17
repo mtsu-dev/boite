@@ -19,10 +19,9 @@ conversations go from the phone to your machines, never to it.
 
 The native app carries its own screens, so each release brings a new APK. It
 looks for one by itself: when Manage machines shows Update available, tap
-Update, then Restart. The first time, Android asks you to let Boite install
-apps and to confirm the update; later updates skip that confirmation, and
-Boite reopens on its own. On a phone with Google Play, Play Protect may still
-offer to scan the app first: Install without scanning goes on.
+Update. The browser downloads the new APK; open it and confirm the install,
+as for the first one. A nightly build carries the night icon, on the home
+screen and in the app.
 
 ## Make your computer reachable
 

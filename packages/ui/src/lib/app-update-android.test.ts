@@ -1,6 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { androidBackend, builtAt, candidateOf, compareVersions, offers, portUpdater, type AndroidUpdater, type AndroidUpdaterPort, type GithubRelease } from './app-update-android';
-import { strings } from './strings';
 
 function release(tag: string, files: string[], extra: Partial<GithubRelease> = {}): GithubRelease {
   return {
@@ -12,23 +11,13 @@ function release(tag: string, files: string[], extra: Partial<GithubRelease> = {
 
 const apk = (version: string) => `boite-mobile_${version}_android.apk`;
 
-function bridge(info = { version: '2.0.0-nightly.20261115.1', code: 3_600_000 }) {
-  const calls: string[] = [];
-  let answer = 'started';
-  const fake: AndroidUpdater & { calls: string[]; answer(value: string): void } = {
-    calls,
-    answer: (value) => { answer = value; },
-    info: async () => info,
-    download: async (url, version) => { calls.push(`download ${version} ${url}`); },
-    install: async (version) => { calls.push(`install ${version}`); return answer; }
-  };
-  return fake;
+function bridge(info = { version: '2.0.0-nightly.20261115.1', code: 3_600_000 }): AndroidUpdater {
+  return { info: async () => info };
 }
 
 const answer = (releases: GithubRelease[]) => vi.fn(async () => new Response(JSON.stringify(releases), { status: 200 }));
 
 afterEach(() => {
-  delete window.__boiteAppUpdate;
   window.localStorage.clear();
 });
 
@@ -68,10 +57,10 @@ test('a channel offers a higher version; a switch only a build published after t
   expect(offers('2.0.0-beta.1', 1, stable(-1_000_000), 'stable')).toBe(true);
 });
 
-test('check, download and install drive the bridge and report each phase', async () => {
-  const fake = bridge();
+test('the offer opens its APK in the browser, and is ready again when the owner comes back', async () => {
+  const opened: string[] = [];
   const fetcher = answer([release('v2.0.0-nightly.20261116.1', [apk('2.0.0-nightly.20261116.1')])]);
-  const backend = androidBackend(fake, fetcher);
+  const backend = androidBackend(bridge(), fetcher, async (url) => { opened.push(url); });
   const seen: string[] = [];
   await backend.listen((snapshot) => seen.push(snapshot.phase));
 
@@ -85,45 +74,24 @@ test('check, download and install drive the bridge and report each phase', async
   await backend.check('nightly', true);
   expect(fetcher).toHaveBeenCalledTimes(2);
 
-  const downloading = backend.download();
-  expect(fake.calls).toEqual([`download 2.0.0-nightly.20261116.1 https://github.com/mtsu-dev/boite/releases/download/v2.0.0-nightly.20261116.1/${apk('2.0.0-nightly.20261116.1')}`]);
-  window.__boiteAppUpdate!({ kind: 'progress', received: 4_000_000, total: 8_000_000 });
-  window.__boiteAppUpdate!({ kind: 'downloaded', version: '2.0.0-nightly.20261116.1' });
-  expect(await downloading).toMatchObject({ phase: 'ready', received: 8_000_000 });
-
+  // Nothing downloads in the app, which may not install packages.
+  expect(await backend.download()).toMatchObject({ phase: 'ready', received: 8_000_000 });
+  expect(opened).toEqual([]);
   await backend.install();
-  expect(fake.calls.at(-1)).toBe('install 2.0.0-nightly.20261116.1');
+  expect(opened).toEqual([`https://github.com/mtsu-dev/boite/releases/download/v2.0.0-nightly.20261116.1/${apk('2.0.0-nightly.20261116.1')}`]);
   expect((await backend.status()).phase).toBe('installing');
-  // The owner dismissed Android's dialog: the build stays ready.
-  window.__boiteAppUpdate!({ kind: 'installAborted' });
+  // Android stops the app to replace it: back and still running, the update can start over.
+  document.dispatchEvent(new Event('visibilitychange'));
   expect((await backend.status()).phase).toBe('ready');
-  expect(seen).toEqual(['checking', 'available', 'checking', 'available', 'downloading', 'downloading', 'ready', 'installing', 'ready']);
+  expect(seen).toEqual(['checking', 'available', 'checking', 'available', 'ready', 'installing', 'ready']);
 });
 
-test('an app not yet allowed to install says so and keeps its download', async () => {
-  const fake = bridge();
-  const backend = androidBackend(fake, answer([release('v2.0.0-nightly.20261116.1', [apk('2.0.0-nightly.20261116.1')])]));
-  await backend.check('nightly');
-  const downloading = backend.download();
-  window.__boiteAppUpdate!({ kind: 'downloaded', version: '2.0.0-nightly.20261116.1' });
-  await downloading;
-  fake.answer('permission');
-  await expect(backend.install()).rejects.toThrow(strings.appUpdate.androidPermission);
-  expect((await backend.status()).phase).toBe('ready');
-});
-
-test('a failed download or list rejects with its reason', async () => {
-  const backend = androidBackend(bridge(), answer([release('v2.0.0-nightly.20261116.1', [apk('2.0.0-nightly.20261116.1')])]));
-  await backend.check('nightly');
-  const downloading = backend.download();
-  window.__boiteAppUpdate!({ kind: 'failed', message: 'The download is signed by another key than this app' });
-  await expect(downloading).rejects.toThrow('signed by another key');
-  expect(await backend.status()).toMatchObject({ phase: 'error', error: 'The download is signed by another key than this app' });
-  // The next try asks the list again instead of reading back a download that ended.
-  expect(await backend.check('nightly')).toMatchObject({ phase: 'available', received: 0 });
-
-  const offline = androidBackend(bridge(), vi.fn(async () => new Response('{}', { status: 403 })));
+test('a failed list rejects with its reason, and nothing opens without an offer', async () => {
+  const opened: string[] = [];
+  const offline = androidBackend(bridge(), vi.fn(async () => new Response('{}', { status: 403 })), async (url) => { opened.push(url); });
   await expect(offline.check('nightly')).rejects.toThrow('the release list answered 403');
+  await expect(offline.install()).rejects.toThrow('no APK to open');
+  expect(opened).toEqual([]);
 });
 
 test('the channel the owner picks is kept for the next start', async () => {
@@ -133,17 +101,17 @@ test('the channel the owner picks is kept for the next start', async () => {
 });
 
 test('the port pairs each answer with its request and ignores anything else', async () => {
-  const sent: { id: number; cmd: string; version?: string }[] = [];
+  const sent: { id: number; cmd: string }[] = [];
   const port: AndroidUpdaterPort = { onmessage: null, postMessage: (message) => { sent.push(JSON.parse(message)); } };
   const updater = portUpdater(port);
-  const info = updater.info();
-  const install = updater.install('2.0.0-nightly.20261116.2');
-  expect(sent.map(({ cmd }) => cmd)).toEqual(['info', 'install']);
-  expect(sent[1]).toMatchObject({ version: '2.0.0-nightly.20261116.2' });
+  const first = updater.info();
+  const second = updater.info();
+  expect(sent.map(({ cmd }) => cmd)).toEqual(['info', 'info']);
   port.onmessage!({ data: 'not json' });
   port.onmessage!({ data: JSON.stringify({ id: 99, result: 'stray' }) });
-  port.onmessage!({ data: JSON.stringify({ id: sent[1]!.id, result: 'permission' }) });
+  port.onmessage!({ data: JSON.stringify({ id: sent[1]!.id, result: { version: '2.0.1', code: 6 } }) });
   port.onmessage!({ data: JSON.stringify({ id: sent[0]!.id, result: { version: '2.0.0', code: 5 } }) });
-  expect(await install).toBe('permission');
-  expect(await info).toEqual({ version: '2.0.0', code: 5 });
+  expect(await second).toEqual({ version: '2.0.1', code: 6 });
+  expect(await first).toEqual({ version: '2.0.0', code: 5 });
+
 });

@@ -22,6 +22,11 @@ val tauriProperties = Properties().apply {
     }
 }
 
+// A nightly carries the night icon, as the desktop nightly does: its
+// src/nightly/res overrides the launcher layers of src/main/res. The version
+// is the one the build was given (mobile.yml passes the release's).
+val nightly = tauriProperties.getProperty("tauri.android.versionName", "").contains("-nightly.")
+
 android {
     compileSdk = 36
     namespace = "dev.mtsu.boite"
@@ -66,6 +71,9 @@ android {
                     .toList().toTypedArray()
             )
         }
+    }
+    sourceSets {
+        if (nightly) getByName("release").res.srcDir("src/nightly/res")
     }
     kotlinOptions {
         jvmTarget = "1.8"

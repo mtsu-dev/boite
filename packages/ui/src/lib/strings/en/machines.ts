@@ -17,6 +17,8 @@ export const strings = {
       missing: 'No camera was found on this device. Paste the link instead.',
       failed: 'The camera could not start. Paste the link instead.'
     },
+    /** `scanErrors.denied` in the Android app, which has no site settings: Android's own page holds the camera switch. */
+    scanDeniedApp: 'Camera access was refused. Allow the camera for Boite in Android settings, or paste the link.',
     linkReaches: 'This link connects to {host}.', linkReplaces: 'This link connects to {host}, listed here as {machine}. It replaces the key held for it.', linkConnected: 'This link is for {host}, already connected here as {machine}.',
     remove: 'Remove machine', removeTitle: 'Remove {machine}?',
     removeBody: 'Boite forgets this machine on this device.',
