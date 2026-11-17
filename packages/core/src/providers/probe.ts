@@ -6,7 +6,7 @@ import { launchTemp, type LaunchTemp } from '../drivers/launch-temp.ts';
 import { mergeProxyModels, readSubscriptionProxyModels } from '../subscription-proxy.ts';
 import { invalidParams, refused } from '../errors.ts';
 import { logMessageOf } from '../log-errors.ts';
-import { forgetSavedCatalog, readSavedCatalog, saveCatalog } from './saved-catalogs.ts';
+import { forgetSavedCatalog, readNativeList, readSavedCatalog, saveCatalog, saveNativeList } from './saved-catalogs.ts';
 
 /** The synthetic thread a probe process runs under, so the trace shows it like a login. */
 export function probeThreadId(providerId: ProviderId, accountId: AccountId): ThreadId {
@@ -57,16 +57,14 @@ async function probeProvider(
     try { native = (await probeNative(core, provider, account.id, cleanups, model)).models; }
     catch (error) { core.logs.record('warn', logMessageOf(error), { source: provider.id, event: 'provider.probeFailed', threadId: probeThreadId(provider.id, account.id) }); }
     if (!isCurrent()) throw refused('the subscription proxy changed during discovery; refresh models');
-    if (native !== null && model === undefined) natives.set(lane, native);
-    const partial = native === null;
-    const kept = natives.get(lane);
-    if (partial && kept === undefined) {
-      // No agent list read since this core started: the one on screen, read
-      // or saved under the same gateway and login, stays rather than the
-      // gateway rows alone, and nothing is saved over it.
-      const shown = probedModelsOf(provider.protocol, provider.id, account.id) ?? readSavedCatalog(core, provider.id, account.id)?.models ?? null;
-      if (shown !== null && shown.length > 0) return { result: { models: shown, probedAt: Date.now() }, partial };
+    if (native !== null && model === undefined) {
+      natives.set(lane, native);
+      try { saveNativeList(core, provider.id, account.id, native); }
+      catch (error) { core.log('warn', `saving the ${provider.id} agent list: ${logMessageOf(error)}`); }
     }
+    const partial = native === null;
+    // Only rows the agent itself listed, never an older gateway-only list.
+    const kept = partial ? natives.get(lane) ?? readNativeList(core, provider.id, account.id) ?? undefined : undefined;
     const models = mergeProxyModels(native ?? kept ?? [], proxyModels);
     const probedAt = Date.now();
     rememberExternalModels(provider.protocol, provider.id, account.id, models);

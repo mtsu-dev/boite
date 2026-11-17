@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import type { SubscriptionProxy } from '@boite/contracts';
 import { checkSettingsPatch } from '@boite/contracts';
 import { connect } from '../src/client.ts';
-import { getDriver, probedModelsOf, rememberExternalModels, setDriver } from '../src/drivers/index.ts';
+import { getDriver, probedModelsOf, setDriver } from '../src/drivers/index.ts';
+import { readNativeList } from '../src/providers/saved-catalogs.ts';
 import { childEnv } from '../src/drivers/claude/query.ts';
 import { agentEnv } from '../src/providers/resolve.ts';
 import { mergeProxyModels, readSubscriptionProxyModels, subscriptionProxyCodexArgs, subscriptionProxyEnv } from '../src/subscription-proxy.ts';
@@ -514,27 +515,29 @@ test('a refresh whose agent fails behind a gateway that answers keeps the agent\
     expect((await owner.call('providers.probe', { providerId: 'codex', accountId: codex.id })).models).toEqual([sol]);
     expect((await owner.call('providers.probe', { providerId: 'codex', accountId: codex.id, refresh: true })).models).toEqual([sol]);
     expect(reads).toBe(2);
+    // Still the list a spawn checks, and a read right after starts no agent.
+    await waitFor(() => probedModelsOf('codex-appserver', 'codex', codex.id)?.some(row => row.id === 'gpt-6.2-sol') === true);
+    expect((await owner.call('providers.probe', { providerId: 'codex', accountId: codex.id })).models).toEqual([sol]);
+    expect(reads).toBe(2);
+    // The agent's part is saved apart from the gateway rows, for the next start.
+    expect(readNativeList(harness.core, 'codex', codex.id)).toEqual([sol]);
   } finally { restore(); }
 });
 
-test('a refresh whose agent fails before this core read it keeps the list on screen instead of saving the gateway rows over it', async () => {
+test('an agent that never answered behind the gateway leaves the gateway\'s new list, not an older gateway-only one', async () => {
+  let id = 'codex/gpt-old';
   gateway = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch() {
-    return Response.json({ data: [{ id: 'codex/gpt-6.2-sol', name: 'GPT-6.2-Sol', supported_endpoint_types: ['openai-response'] }] });
+    return Response.json({ data: [{ id, name: id, supported_endpoint_types: ['openai-response'] }] });
   } });
-  const sol = { id: 'gpt-6.2-sol', name: 'GPT-6.2 Sol', default: true, speeds: [{ id: 'priority', label: 'Fast' }] };
   const restore = setDriver('codex-appserver', { ...getDriver('codex-appserver'), probe: async () => { throw new Error('codex app-server did not start'); } });
-  const saved: unknown[] = [];
   try {
     harness = await startTestCore({ settings: { subscriptionProxy: config(`http://127.0.0.1:${gateway.port}/v1`) } });
     const owner = await harness.connect();
     const codex = await owner.call('accounts.add', { providerId: 'codex', label: 'Gateway Codex' });
-    // What a restart's saved list or a sign-in's own session leaves on screen.
-    rememberExternalModels('codex-appserver', 'codex', codex.id, [sol]);
-    const off = harness.core.bus.onAny((name, payload) => { if (name === 'providers.probed') saved.push(payload); });
-    try {
-      expect((await owner.call('providers.probe', { providerId: 'codex', accountId: codex.id, refresh: true })).models).toEqual([sol]);
-    } finally { off(); }
-    expect(saved).toEqual([]);
+    const ids = async (refresh: boolean) => (await owner.call('providers.probe', { providerId: 'codex', accountId: codex.id, refresh })).models.map(model => model.id);
+    expect(await ids(false)).toEqual(['codex/gpt-old']);
+    id = 'codex/gpt-new';
+    expect(await ids(true)).toEqual(['codex/gpt-new']);
   } finally { restore(); }
 });
 
