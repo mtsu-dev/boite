@@ -84,6 +84,11 @@ export class CodexTurn extends DecidedTurnParts {
     this.sessionId = sessionId;
   }
 
+  /** Codex's id of the turn when it completed, what `thread/prediction/request` takes as `sourceTurnId`. */
+  get completedTurnId(): string | null {
+    return this.#completedTurnId;
+  }
+
   /** `turn/completed`, or a `turn/start` that already answered with a finished turn. */
   finish(record: CodexTurnRecord): void {
     if (this.decided) return;

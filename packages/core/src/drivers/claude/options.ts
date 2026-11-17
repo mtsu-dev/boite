@@ -81,6 +81,9 @@ export function cliOptions(ctx: SessionContext, host: OptionsHost, lazyMcp: Reco
       ...(setup.disableHooks ? { disableAllHooks: true } : {}),
     },
     includePartialMessages: true,
+    // The CLI's own guess at the owner's next message, after each turn but the first
+    // (`prompt_suggestion`). It reuses the turn's prompt cache: no separate request is billed.
+    ...(ctx.promptSuggestions === true ? { promptSuggestions: true } : {}),
     // Every run of the user's own hooks, for the ledger Settings shows.
     includeHookEvents: true,
     // A CLI driven through the SDK asks the API to leave its reasoning out

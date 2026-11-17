@@ -93,6 +93,7 @@ import { journalInspectionMethods } from './fake-client/journal-inspection';
 import { forkReturnMethods } from './fake-client/fork-return';
 import { startLoad } from './fake-client/load';
 import { applyPolicy, policyGate } from './fake-client/policy';
+import { seedSuggestion } from './fake-client/prompt-suggestions';
 
 export type { FakeClientOptions } from './fake-client/context';
 
@@ -150,6 +151,7 @@ export class FakeClient implements ObservableClient {
       ];
     }
     if (options.windowsDemo) seedWindowsDemo(ctx);
+    if (options.suggestDemo) seedSuggestion(ctx);
     if (options.councilDemo) seedCouncilDemo(ctx);
     if (options.pluginArchiveDemo) {
       const at = Date.now() - 3_600_000;

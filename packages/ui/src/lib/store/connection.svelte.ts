@@ -212,6 +212,7 @@ export class Connection {
             subagentsDemo: params.get('subagents') === '1',
             boardDemo: params.get('board') === '1',
             watchDemo: params.get('watch') === '1',
+            suggestDemo: params.get('suggest') === '1',
             windowsDemo: params.get('windows') === '1',
             councilDemo: params.get('council') === '1',
             pluginArchiveDemo: params.get('pluginArchive') === '1',

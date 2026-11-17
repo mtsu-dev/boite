@@ -82,6 +82,8 @@ export const PLUGIN_PERMISSIONS: Readonly<Record<PluginPermission, PluginPermiss
     ],
     events: [
       'thread.created', 'thread.updated', 'thread.removed', 'thread.commands', 'thread.background', 'thread.btw', 'thread.load', 'thread.activity',
+      // The agent's suggested next message: `threads.get` already carries it.
+      'thread.suggestion',
       'turn.started', 'turn.switched', 'turn.finished', 'turn.toolCompleted',
       'message.started', 'message.delta', 'message.part', 'message.completed', 'message.truncated',
       'permission.requested', 'permission.resolved', 'question.asked', 'question.answered',

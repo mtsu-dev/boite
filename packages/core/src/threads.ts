@@ -435,6 +435,7 @@ export class ThreadStore {
     this.#core.scheduler.stop(threadId);
     this.releaseAgent(threadId);
     this.agentState.commands.delete(threadId);
+    this.agentState.clearSuggestion(threadId);
     this.agentState.noteBackground(threadId, []);
     // Nobody answers a card on a thread put away, and no turn should start from one.
     this.cards.clearQuestionsOf(threadId, true, 'archive');

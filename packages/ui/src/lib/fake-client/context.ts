@@ -3,6 +3,7 @@ import { FakeComposerState } from './composer';
 import type { FakeArchiveState, MergedPrFixture } from './merged-pr-archive';
 /** The state one fake core keeps, and the plumbing every domain module shares. */
 import { observeProgress } from './progress';
+import { observeSuggestion } from './prompt-suggestions';
 import type { FakeRoster } from './group';
 import { cancelSecretCards, type FakeSecretCard, type FakeSecretTransit } from './secrets';
 import {
@@ -163,6 +164,8 @@ export interface FakeClientOptions {
   agentsDemo?: boolean;
   /** The project board with cards at work and under review, on `?fake=1&board=1`. */
   boardDemo?: boolean;
+  /** The echo agent suggests the next message as Claude and Codex do, the trace thread holding one already, on `?fake=1&suggest=1`. */
+  suggestDemo?: boolean;
   /** Two pull request watches on the trace thread, one paused by GitHub's rate limit, on `?fake=1&watch=1`. */
   watchDemo?: boolean;
   /** Window captures, consent cards in each state and a watched Unity window on the trace thread, on `?fake=1&windows=1`. */
@@ -433,6 +436,7 @@ export class FakeContext {
   readonly chunkSize: number | undefined;
   readonly long: boolean;
   readonly loopDemo: boolean;
+  readonly suggestDemo: boolean;
   readonly longCopies: number;
   readonly heavy: boolean;
   readonly longRun: number;
@@ -570,6 +574,7 @@ export class FakeContext {
     this.chunkSize = options.chunkSize ?? tokenStream();
     this.long = options.long ?? false;
     this.loopDemo = options.loopDemo ?? false;
+    this.suggestDemo = options.suggestDemo ?? false;
     this.longCopies = options.longCopies ?? 0;
     this.heavy = options.heavy ?? false;
     this.longRun = options.longRun ?? 0;
@@ -704,6 +709,7 @@ export class FakeContext {
       } as RpcEvents[E];
     }
     observeLog(this, event, payload);
+    observeSuggestion(this, event, payload);
     if (event === 'thread.removed') this.agents.threadEnded((payload as RpcEvents['thread.removed']).threadId);
     if (event === 'thread.updated' && (payload as RpcEvents['thread.updated']).archived) this.agents.threadEnded((payload as RpcEvents['thread.updated']).id);
     if (event === 'turn.finished') {

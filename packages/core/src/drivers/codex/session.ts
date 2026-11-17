@@ -45,6 +45,7 @@ import { resumeThread, ThreadLostError } from './resume.ts';
 import { threadConfig } from './config.ts';
 import { updateTurnSettings } from './live-settings.ts';
 import { CodexTurn } from './turn.ts';
+import { CodexPrediction } from './prediction.ts';
 import { CodexRateLimits } from './rate-limits.ts';
 import { SpentWindows, turnError } from './availability.ts';
 import { SessionRetention } from '../session-retention.ts';
@@ -96,6 +97,8 @@ export class CodexSession {
   /** The context the process was opened with, for a hook that runs while no turn is. */
   #opener: SessionContext | null = null;
   #queue: Promise<void> = Promise.resolve();
+  /** The composer prediction asked after each completed turn (`prediction.ts`). */
+  readonly #prediction = new CodexPrediction();
   #running = 0;
   /** `agentMessage` items that are asynchronous questions: drawn as cards, their text deltas dropped. */
   readonly #asyncItems = new Set<string>();
@@ -304,6 +307,7 @@ export class CodexSession {
 
     await turn.finished;
     this.#current = null;
+    this.#prediction.ask(this.#rpc, this.#threadId, turn);
     // Only OpenAI's own endpoint has a published lifetime; Codex never sends a
     // retention option, so the default for the model applies.
     if (this.#served.provider === 'openai') turn.cacheLife = openAiCacheLife(modelOf(ctx) ?? this.#served.model);
@@ -568,10 +572,7 @@ export class CodexSession {
     const params = (raw ?? {}) as Record<string, unknown>;
     // Child threads may share this app-server. Their text, tools and turn endings belong to them.
     if (typeof params['threadId'] === 'string' && this.#threadId !== null && params['threadId'] !== this.#threadId) return;
-    if (method === 'thread/tokenUsage/updated') {
-      this.#reportUsage(params);
-      return;
-    }
+    if (method === 'thread/tokenUsage/updated') return this.#reportUsage(params);
     if (method === 'hook/completed') return this.#onHook(params['run'] as CodexHookRun | undefined);
     if (method === 'skills/changed') return this.skills.changed(this.#opener);
     if (method === 'account/rateLimits/updated') {
@@ -579,6 +580,7 @@ export class CodexSession {
       this.#rateLimits.updated(params);
       return;
     }
+    if (method === 'thread/prediction/updated') return this.#prediction.updated(params);
     const turn = this.#current;
     if (turn === null) return;
     if (typeof params['turnId'] === 'string' && turn.turnId !== null && params['turnId'] !== turn.turnId) return;

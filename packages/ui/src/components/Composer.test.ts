@@ -3150,3 +3150,76 @@ test('copying an image reference carries its picture to another composer, and st
   await waitFor(() => input().value === 'see ' && chips().length === 0);
   expect(store.composerStates['t-trace']!.attachments).toHaveLength(2);
 });
+
+test('the agent\'s suggested next message fills the empty box on Tab without sending, Esc dismisses it for that turn only', async ({ app: _app }) => {
+  // The fake agent suggests after a turn that finished well, as Claude and Codex do; the message sent clears it.
+  store.attach(new FakeClient({ suggestDemo: true }));
+  await store.connect();
+  await openIdle('t-trace');
+  await waitFor(() => !!store.openThread?.suggestion);
+  expect(store.openThread!.suggestion!.text).toContain('trace.get');
+  await send('first request');
+  await waitFor(() => !!store.openThread?.suggestion);
+  const suggestion = store.openThread!.suggestion!;
+  expect(suggestion.turnId).toBe(store.openThread!.turns.at(-1)!.id);
+  await waitFor(() => document.querySelector('[data-testid=composer-suggestion]') !== null);
+  expect(query('[data-testid=composer-suggestion] .ghost-text').textContent).toBe(suggestion.text);
+  expect(input().placeholder).toBe('');
+
+  const sent = vi.spyOn(store, 'send');
+  input().focus();
+  expect(press('Tab')).toBe(false);
+  flushSync();
+  expect(input().value).toBe(suggestion.text);
+  expect(document.querySelector('[data-testid=composer-suggestion]')).toBeNull();
+  await new Promise(resolve => setTimeout(resolve, 20));
+  expect(sent).not.toHaveBeenCalled();
+
+  // Cleared, the draft gives the suggestion back; Esc puts it away.
+  await type('');
+  await waitFor(() => document.querySelector('[data-testid=composer-suggestion]') !== null);
+  input().focus();
+  expect(press('Escape')).toBe(false);
+  flushSync();
+  expect(document.querySelector('[data-testid=composer-suggestion]')).toBeNull();
+  expect(document.querySelector('[data-testid=composer-suggestion-chip]')).toBeNull();
+  expect(press('Tab')).toBe(true);
+  expect(input().value).toBe('');
+
+  // The next turn's suggestion shows again; the message that starts it clears the old one at once.
+  sent.mockRestore();
+  await type('second request');
+  input().focus();
+  press('Enter');
+  await waitFor(() => store.openThread?.suggestion === null || store.openThread?.suggestion?.turnId !== suggestion.turnId);
+  await waitFor(() => !store.busy && !!store.openThread?.suggestion && store.openThread.suggestion.turnId !== suggestion.turnId);
+  await waitFor(() => document.querySelector('[data-testid=composer-suggestion]') !== null);
+});
+
+test('a phone taps the suggestion chip to write it in, and its x dismisses it', async ({ app: _app }) => {
+  await openIdle('t-trace');
+  store.openThread!.suggestion = { turnId: 'turn-phone', text: 'Now update the docs to match', at: Date.now() };
+  flushSync();
+  const chip = query('[data-testid=composer-suggestion-chip]');
+  expect(chip.querySelector('[data-testid=composer-suggestion-use]')!.textContent).toBe('Now update the docs to match');
+  query<HTMLButtonElement>('[data-testid=composer-suggestion-use]').click();
+  flushSync();
+  expect(input().value).toBe('Now update the docs to match');
+  expect(document.querySelector('[data-testid=composer-suggestion-chip]')).toBeNull();
+  await type('');
+  await waitFor(() => document.querySelector('[data-testid=composer-suggestion-chip]') !== null);
+  query<HTMLButtonElement>('[data-testid=composer-suggestion-dismiss]').click();
+  flushSync();
+  expect(document.querySelector('[data-testid=composer-suggestion-chip]')).toBeNull();
+  expect(input().value).toBe('');
+});
+
+test('no suggestion with the setting off', async ({ app: _app }) => {
+  await openIdle('t-trace');
+  store.openThread!.suggestion = { turnId: 'turn-off', text: 'Commit this with a short message', at: Date.now() };
+  flushSync();
+  expect(document.querySelector('[data-testid=composer-suggestion]')).not.toBeNull();
+  store.settings = { ...store.settings!, promptSuggestions: false };
+  flushSync();
+  expect(document.querySelector('[data-testid=composer-suggestion]')).toBeNull();
+});

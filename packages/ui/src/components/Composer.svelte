@@ -794,9 +794,9 @@
     {/if}
 
     <ComposerField bind:box {store} {key} {text} {highlighted} {keywords} command={commandToken} references={previewReferences} {attachments}
-      gutter={inputGutter} scroll={inputScroll} {placeholder} disabled={stopped || accountGone}
+      gutter={inputGutter} scroll={inputScroll} {placeholder} disabled={stopped || accountGone} suggest={boxEmpty && !composer?.sending && !composer?.editing && recall === null && !reply && !permission && !offline ? thread : null}
       onreference={(reference) => { if (box && reference.mention) { box.focus({ preventScroll: true }); box.setSelectionRange(reference.mention.end, reference.mention.end); track(); } }}
-      onopenimage={(attachment) => attachmentStrip?.open(attachment)} onhoverimage={(attachment) => highlightedImage = attachment}
+      onopenimage={(attachment) => attachmentStrip?.open(attachment)} onhoverimage={(attachment) => highlightedImage = attachment} onsuggested={put}
       onbeforeinput={(event) => {
         if (event.inputType === 'historyUndo' || event.inputType === 'historyRedo') { event.preventDefault(); travel(editing(), event.inputType === 'historyUndo'); return; }
         pendingEdit = boxSelection(box);

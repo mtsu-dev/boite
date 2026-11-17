@@ -139,6 +139,14 @@ export interface Settings {
    */
   shortAnswers?: boolean;
   /**
+   * After a turn of a conversation the owner drives, the empty message box
+   * shows the next message the agent itself predicts (`thread.suggestion`):
+   * Claude's `promptSuggestions` option, read when a Claude process starts,
+   * and Codex's composer prediction, asked after each finished turn. Neither
+   * is a separate model call. Missing reads as on.
+   */
+  promptSuggestions?: boolean;
+  /**
    * Claude writes a one-line summary of each batch of tool calls, which the
    * timeline shows in place of the counted calls. Each summary is one request
    * to Claude's small model, billed to the thread's account. Applies when a

@@ -522,6 +522,8 @@ export interface Thread extends ThreadSummary {
    * memory like `commands`; missing on older cores.
    */
   background?: BackgroundTask[];
+  /** The agent's suggested next message (`thread.suggestion`); null or absent when there is none, and on older cores. */
+  suggestion?: import('./prompt-suggestions').PromptSuggestion | null;
   /** Durable native task observations, including terminal observations after restart. */
   backgroundHistory?: BackgroundTaskObservation[];
   /**

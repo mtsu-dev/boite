@@ -256,6 +256,7 @@
     ['general', 'agent-replies', strings.settings.asyncQuestions],
     ['general', 'agent-replies', strings.settings.shortAnswers],
     ['general', 'agent-replies', strings.settings.toolSummaries],
+    ['general', 'agent-replies', strings.settings.promptSuggestions],
     ['general', 'agent-replies', strings.settings.titleModel],
     ['general', 'agent-replies', strings.settings.goalTrackerModel],
     ['general', 'conversations', strings.features.chatArtifacts.title],
