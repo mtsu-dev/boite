@@ -84,18 +84,21 @@ export function catalog(core: Core, parent: Asker, withLegacy = false): Delegati
 /**
  * Read the model lists an agent process owns and nobody asked for yet. Only the
  * providers named, or every installed one; a slow or failing probe is reported,
- * never thrown. `timeoutMs` bounds each read.
+ * never thrown. `timeoutMs` bounds each read. `refresh` reads a list already
+ * held again, as the picker's refresh does: a model released since the last
+ * read only shows up that way.
  */
-export async function discover(core: Core, probe: ProviderProbe, parent: Asker, only?: ProviderId[], timeoutMs = PROBE_TIMEOUT_MS): Promise<{ providerId: ProviderId; reason: string }[]> {
+export async function discover(core: Core, probe: ProviderProbe, parent: Asker, only?: ProviderId[], timeoutMs = PROBE_TIMEOUT_MS, refresh = false): Promise<{ providerId: ProviderId; reason: string }[]> {
   const failures: { providerId: ProviderId; reason: string }[] = [];
   await Promise.all(core.providers.available().filter(summary => !only || only.includes(summary.id)).map(async summary => {
     const provider = core.providers.require(summary.id);
     const account = accountFor(core, parent, summary.id);
-    if (!account || !PROBED_PROTOCOLS.includes(provider.protocol) || probedModelsOf(provider.protocol, provider.id, account.id) !== null) return;
+    if (!account || !PROBED_PROTOCOLS.includes(provider.protocol)) return;
+    if (!refresh && probedModelsOf(provider.protocol, provider.id, account.id) !== null) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([
-        probe({ providerId: provider.id, accountId: account.id }),
+        probe({ providerId: provider.id, accountId: account.id, ...(refresh ? { refresh: true } : {}) }),
         new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timed out reading its models')), timeoutMs); }),
       ]);
     } catch (error) {
@@ -112,15 +115,41 @@ export function providersNamed(core: Core, model: string): ProviderId[] | undefi
   return core.providers.get(head) ? [head] : undefined;
 }
 
-/** Read the lists the named models need, when the catalog does not list them yet. */
+/** How long a list re-read for a missing model answers the next miss on that provider and account. */
+export const MISS_REFRESH_MS = 60_000;
+const missRefreshed = new Map<string, number>();
+
+/**
+ * Read the lists the named models need, when the catalog does not list them yet.
+ * A model still missing from a list already held may have been released since
+ * that read: its named provider's list is read again, at most once a minute per
+ * account, so a spawn on a new model works without the owner's refresh.
+ */
 export async function readNamed(core: Core, probe: ProviderProbe, parent: Asker, models: string[]): Promise<void> {
   if (!models.length) return;
-  const known = catalog(core, parent, true).choices;
-  const missing = models.filter(model => !known.some(c => `${c.providerId}/${c.model}` === model || c.model === model));
+  const absent = (): string[] => {
+    const known = catalog(core, parent, true).choices;
+    return models.filter(model => !known.some(c => `${c.providerId}/${c.model}` === model || c.model === model));
+  };
+  let missing = absent();
   if (!missing.length) return;
   const only = missing.map(model => providersNamed(core, model));
   await discover(core, probe, parent, only.some(list => list === undefined) ? undefined : [...new Set(only.flat() as string[])]);
+  missing = absent();
+  const stale = [...new Set(missing.flatMap(model => providersNamed(core, model) ?? []))].filter(providerId => {
+    const account = accountFor(core, parent, providerId);
+    if (!account) return false;
+    const key = JSON.stringify([providerId, account.id]);
+    const last = missRefreshed.get(key);
+    if (last !== undefined && Date.now() - last < MISS_REFRESH_MS) return false;
+    missRefreshed.set(key, Date.now());
+    return true;
+  });
+  if (stale.length) await discover(core, probe, parent, stale, PROBE_TIMEOUT_MS, true);
 }
+
+/** Tests start each case with no recent re-read. */
+export function forgetMissRefreshes(): void { missRefreshed.clear(); }
 
 const label = (choice: DelegationModelChoice) => `${choice.providerId}/${choice.model}`;
 

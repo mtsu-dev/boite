@@ -116,6 +116,9 @@ async function probeNative(
   }
 }
 
+/** Past this age, a list served from the cache is read again in the background. */
+export const STALE_CATALOG_MS = 6 * 60 * 60 * 1000;
+
 export type ProviderProbe = (params: RpcParams<'providers.probe'>) => Promise<RpcResult<'providers.probe'>>;
 
 export function registerProbeMethods(core: Core): ProviderProbe {
@@ -131,8 +134,10 @@ export function registerProbeMethods(core: Core): ProviderProbe {
   const pending = new Map<string, Promise<RpcResult<'providers.probe'>>>();
   /** When each account's list was last read, for an answer served from the cache. Dropped with the catalog. */
   const answered = new Map<string, number>();
+  /** When this core last read each account's list, by its own clock: an agent's `probedAt` may be its own. */
+  const readAt = new Map<string, number>();
   const forgetAnswered = (accountId?: AccountId): void => {
-    for (const lane of answered.keys()) if (accountId === undefined || (JSON.parse(lane) as string[])[1] === accountId) answered.delete(lane);
+    for (const lane of answered.keys()) if (accountId === undefined || (JSON.parse(lane) as string[])[1] === accountId) { answered.delete(lane); readAt.delete(lane); }
   };
   /** The last probe of each provider and account, settled or not: the next one waits for it. */
   const lanes = new Map<string, Promise<void>>();
@@ -147,7 +152,16 @@ export function registerProbeMethods(core: Core): ProviderProbe {
     const known = answered.get(lane);
     if (!params.refresh && params.model === undefined && known !== undefined) {
       const models = probedModelsOf(core.providers.require(params.providerId).protocol, params.providerId, params.accountId);
-      if (models !== null) return Promise.resolve({ models, probedAt: known });
+      if (models !== null) {
+        // A vendor ships models between reads: a list this old is read again
+        // behind the answer, so a new model and its speeds show up without a
+        // click on refresh.
+        const refreshKey = JSON.stringify([params.providerId, params.accountId, null]);
+        if (Date.now() - (readAt.get(lane) ?? Date.now()) > STALE_CATALOG_MS && !pending.has(refreshKey)) {
+          void probe({ providerId: params.providerId, accountId: params.accountId, refresh: true }).catch(() => undefined);
+        }
+        return Promise.resolve({ models, probedAt: known });
+      }
     }
     const key = JSON.stringify([params.providerId, params.accountId, params.model ?? null]);
     // Nothing read since this core started, or since a change that dropped the
@@ -186,7 +200,7 @@ export function registerProbeMethods(core: Core): ProviderProbe {
       const isCurrent = () => revision === startedAtRevision && accountRevision(params.accountId) === startedAtAccount;
       const answer = probeProvider(core, params.providerId, params.accountId, isCurrent, cleanups, params.model);
       if (params.refresh) void answer.then(() => settleRefresh(params.providerId, params.accountId), () => undefined);
-      if (params.model === undefined) void answer.then((result) => { if (isCurrent()) answered.set(lane, result.probedAt); }, () => undefined);
+      if (params.model === undefined) void answer.then((result) => { if (isCurrent()) { answered.set(lane, result.probedAt); readAt.set(lane, Date.now()); } }, () => undefined);
       return answer;
     }).finally(() => pending.delete(key));
     pending.set(key, request);

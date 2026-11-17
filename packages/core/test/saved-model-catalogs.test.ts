@@ -1,10 +1,11 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expect, test } from 'bun:test';
+import { expect, spyOn, test } from 'bun:test';
 import type { ModelInfo } from '@boite/contracts';
 import { getDriver, probedModelsOf, setDriver } from '../src/drivers/index.ts';
 import { removeDir } from '../src/fs-retry.ts';
+import { STALE_CATALOG_MS } from '../src/providers/probe.ts';
 import type { CoreClient } from '../src/client.ts';
 import { startTestCore } from './harness.ts';
 
@@ -150,6 +151,39 @@ test.each(['descriptor', 'sign-in'] as const)('a saved model list read before a 
     expect((await probe).models).toEqual(after);
   } finally {
     agent.resolve();
+    restore();
+    await harness.stop();
+  }
+});
+
+test('a list read more than six hours ago answers at once and is read again behind the answer, so a model released since shows up', async () => {
+  let reads = 0;
+  let read: ModelInfo[] | null = null;
+  const restore = setDriver('echo', {
+    ...getDriver('echo'),
+    probe: async () => { reads++; read = reads > 1 ? after : before; return { models: read, probedAt: reads }; },
+    probedModels: () => read,
+    forgetProbes: () => { read = null; },
+  });
+  const harness = await startTestCore();
+  const clock = spyOn(Date, 'now');
+  try {
+    const client = await harness.connect();
+    const account = await client.call('accounts.add', { providerId: 'echo', label: 'Old list' });
+    expect((await client.call('providers.probe', { providerId: 'echo', accountId: account.id })).models).toEqual(before);
+    expect((await client.call('providers.probe', { providerId: 'echo', accountId: account.id })).models).toEqual(before);
+    expect(reads).toBe(1);
+    const now = Date.now();
+    clock.mockImplementation(() => now + STALE_CATALOG_MS + 1000);
+    const fresh = client.next('providers.probed', event => event.accountId === account.id, 5000);
+    // The old list answers without waiting for the agent.
+    expect((await client.call('providers.probe', { providerId: 'echo', accountId: account.id })).models).toEqual(before);
+    await fresh;
+    expect(reads).toBe(2);
+    expect((await client.call('providers.probe', { providerId: 'echo', accountId: account.id })).models).toEqual(after);
+    expect(reads).toBe(2);
+  } finally {
+    clock.mockRestore();
     restore();
     await harness.stop();
   }
