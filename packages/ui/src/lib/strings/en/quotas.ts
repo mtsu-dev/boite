@@ -35,6 +35,9 @@ export const strings = {
     windowMonthlyCompact: 'Month',
     creditRemaining: 'Credits remaining',
     creditBalance: '{count} credits',
+    /** Under a Douane window: the share of the account's limit no call through Douane explains. */
+    outsideUsed: '{percent}% used outside Douane',
+    outsideHint: 'No call through Douane explains this share of the account\'s limit: someone used the account directly, from the official app, another device or a leaked token.',
 
     /** The tray icon's right-click menu. */
     trayShow: 'Show',

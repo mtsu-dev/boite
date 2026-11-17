@@ -26,12 +26,13 @@ export function gatewayQuotas(ctx: FakeContext): SubscriptionProxyQuotas {
   if (!proxy?.enabled) return { status: 'off', providers: [], updatedAt: null, checkedAt: null, error: null };
   if (proxy.kind !== 'douane') return { status: 'unsupported', providers: [], updatedAt: null, checkedAt: null, error: null };
   const now = Date.now();
-  const window = (id: string, label: string, usedPercent: number, hours: number) => ({ id, label, usedPercent, resetsAt: now + hours * 3600_000 });
+  const window = (id: string, label: string, usedPercent: number, hours: number, outsidePercent?: number): QuotaWindow =>
+    ({ id, label, usedPercent, resetsAt: now + hours * 3600_000, ...(outsidePercent === undefined ? {} : { outsidePercent }) });
   const entry = (id: string, label: string, plan: string | null, windows: QuotaWindow[], more: Partial<GatewayQuotaEntry> = {}): GatewayQuotaEntry =>
     ({ id, label, plan, accounts: 1, status: 'ready', error: null, updatedAt: now, windows, credits: [], ...more });
   return { status: 'ready', nativeMuse: true, updatedAt: now, checkedAt: now, error: null, providers: [
     { providerId: 'claude', name: 'Claude', display: 'accounts', entries: [
-      entry('claude-1', 'Claude Max x20 · chris@…', 'Max 20x', [window('five-hour', '5 hours', 11, 2), window('seven-day', 'Weekly', 64, 70)]),
+      entry('claude-1', 'Claude Max x20 · chris@…', 'Max 20x', [window('five-hour', '5 hours', 11, 2), window('seven-day', 'Weekly', 64, 70, 40)]),
       entry('claude-2', 'Claude Pro · work@…', 'Pro', [window('five-hour', '5 hours', 100, 1), window('seven-day', 'Weekly', 82, 30)], { status: 'cooldown' }),
     ] },
     { providerId: 'codex', name: 'Codex', display: 'accounts', entries: [
