@@ -137,6 +137,7 @@ describe('claude driver', () => {
   test('the prompt cache clock starts at the last main-loop request, not at a subagent one or the turn end', async () => {
     const { client, threadId } = await openClaudeThread();
     let mainAt = 0;
+    let subAt = 0;
     scripted((fake) => {
       void (async () => {
         fake.emit(init('sess-clock'));
@@ -147,6 +148,7 @@ describe('claude driver', () => {
           message: { id: 'msg_1', role: 'assistant', model: 'claude-opus-5', content: [{ type: 'text', text: 'pong' }], usage: { input_tokens: 5, cache_creation_input_tokens: 900, cache_creation: { ephemeral_5m_input_tokens: 900, ephemeral_1h_input_tokens: 0 } } },
         }));
         await Bun.sleep(100);
+        subAt = Date.now();
         fake.emit(sdk({ type: 'stream_event', session_id: 'sess-clock', parent_tool_use_id: 'toolu_task', event: { type: 'message_start', message: { id: 'msg_sub' } } }));
         await Bun.sleep(100);
         fake.emit(success('sess-clock'));
@@ -157,9 +159,9 @@ describe('claude driver', () => {
     const thread = await client.call('threads.get', { threadId });
     const cache = thread.promptCache!;
     expect(cache.ttlSeconds).toBe(300);
+    // Before the subagent's request, and so before the turn end: a slow runner moves every stamp, never their order.
     expect(cache.at).toBeGreaterThanOrEqual(mainAt);
-    expect(cache.at).toBeLessThan(mainAt + 80);
-    expect(thread.turns.at(-1)!.finishedAt! - cache.at).toBeGreaterThanOrEqual(150);
+    expect(cache.at).toBeLessThan(subAt);
   });
   test('a scripted turn maps deltas, the tool pair, the usage and the session id', async () => {
     const { client, threadId } = await openClaudeThread();
