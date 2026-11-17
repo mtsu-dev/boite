@@ -32,3 +32,9 @@ test('a tie keeps the first account, and an unlabeled or averaged row reads as t
   });
   expect(outsideNotice([average])).toEqual({ account: fill(strings.subscriptionProxy.average, { name: 'Antigravity', count: '10' }), provider: 'Antigravity', percent: 15 });
 });
+
+test('a window whose reset has passed no longer counts: its figure was the past window\'s', () => {
+  const ended = { ...window('weekly', 40), resetsAt: 1_000 };
+  expect(outsideNotice([row('a', 'A', [ended])], 2_000)).toBeNull();
+  expect(outsideNotice([row('a', 'A', [ended])], 500)).toEqual({ account: 'A', provider: 'Claude', percent: 40 });
+});

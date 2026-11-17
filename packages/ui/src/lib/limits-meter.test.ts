@@ -31,12 +31,13 @@ test('the line stays silent while every provider has an account with room', () =
 
 test('a provider spent on every account says so, until the first of them resets', () => {
   expect(limitsNotice([row('Home', ['5 hours', 100, 5000], ['Weekly', 40, 9000])])).toEqual(
-    { kind: 'out', provider: 'Claude', window: '5 hours', scoped: false, left: 0, until: 5000, account: 'Home', accounts: 1 });
-  // Each account waits for the latest of its spent windows; the line gives the earliest account back.
+    { kind: 'out', provider: 'Claude', window: '5 hours', scoped: false, left: 0, until: 5000, untilWindow: '5 hours', account: 'Home', accounts: 1 });
+  // Each account waits for the latest of its spent windows; the line gives the earliest account back,
+  // and the window it waits on (Second's 5 hours), not the named account's week, which the ring measures.
   expect(limitsNotice([
     pooled('Main', 'ready', ['5 hours', 100, 3000], ['Weekly', 100, 9000]),
     pooled('Second', 'cooldown', ['5 hours', 100, 6000], ['Weekly', 50, 8000]),
-  ])).toMatchObject({ kind: 'out', scoped: false, until: 6000, accounts: 2 });
+  ])).toMatchObject({ kind: 'out', scoped: false, window: 'Weekly', until: 6000, untilWindow: '5 hours', accounts: 2 });
   // No reset known for one of them: no time is promised.
   expect(limitsNotice([row('Home', ['Weekly', 100])])).toMatchObject({ kind: 'out', until: null });
   // An entry the gateway cannot use is not counted as room, nor as a reason to stay silent.
@@ -46,13 +47,14 @@ test('a provider spent on every account says so, until the first of them resets'
 test('a model spent on every account is named alone while the provider still works', () => {
   expect(limitsNotice([
     pooled('Main', 'ready', ['Weekly', 30, 9000], ['Fable weekly', 100, 7000]),
+    // Second serves Fable again once its week resets: that week is the wait.
     pooled('Second', 'ready', ['Weekly', 100, 5000], ['Fable weekly', 10, 7000]),
-  ])).toEqual({ kind: 'out', provider: 'Claude', window: 'Fable weekly', scoped: true, left: 0, until: 5000, account: 'Main', accounts: 2 });
+  ])).toEqual({ kind: 'out', provider: 'Claude', window: 'Fable weekly', scoped: true, left: 0, until: 5000, untilWindow: 'Weekly', account: 'Main', accounts: 2 });
 });
 
 test('running low reads what the best account has left, and out comes before low', () => {
   expect(limitsNotice([row('Home', ['Weekly', 95]), row('Work', ['Weekly', 88.4])])).toEqual(
-    { kind: 'low', provider: 'Claude', window: 'Weekly', scoped: false, left: 11, until: null, account: 'Work', accounts: 2 });
+    { kind: 'low', provider: 'Claude', window: 'Weekly', scoped: false, left: 11, until: null, untilWindow: null, account: 'Work', accounts: 2 });
   const codex = { ...row('Plus', ['5 hours', 100, 2000]), providerId: 'codex', providerName: 'Codex' } as AccountQuota;
   expect(limitsNotice([row('Home', ['Weekly', 95]), codex])).toMatchObject({ kind: 'out', provider: 'Codex' });
 });

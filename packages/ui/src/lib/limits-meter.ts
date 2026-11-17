@@ -19,6 +19,8 @@ export interface LimitsNotice {
   left: number;
   /** Out: when the first account serves again, null when no reset is known. */
   until: number | null;
+  /** Out: the window that first account waits on, which may be another account's than `window`. */
+  untilWindow: string | null;
   /** The best account's name. */
   account: string;
   /** How many accounts were counted: the line names the account past one. */
@@ -102,11 +104,12 @@ export function limitsNotice(rows: readonly AccountQuota[], now = Date.now()): L
       const best = known.reduce((a, b) => (b.left > a.left ? b : a));
       const tone = quotaTone(100 - best.left);
       if (tone === 'ok') continue;
-      const resets = known.map((entry) => entry.resetsAt).filter((at): at is number => at !== null);
+      const timed = known.every((entry) => entry.resetsAt !== null);
+      const first = tone === 'out' && timed ? known.reduce((a, b) => (b.resetsAt! < a.resetsAt! ? b : a)) : null;
       if (tone === 'out' && scope === null) wholeOut = true;
       notices.push({
         kind: tone, provider: best.row.providerName, window: best.window, scoped: scope !== null, left: Math.floor(best.left),
-        until: tone === 'out' && resets.length === known.length ? Math.min(...resets) : null,
+        until: first?.resetsAt ?? null, untilWindow: first?.window ?? null,
         account: quotaAccountName(best.row), accounts: known.length,
       });
     }

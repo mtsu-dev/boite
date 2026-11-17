@@ -33,7 +33,7 @@
   let now = $state(Date.now());
   const meter = $derived(shown ? limitsNotice(rows, now) : null);
   /** An account Douane cannot explain the use of: a red dot on the glyph, whatever the limits say. */
-  const leak = $derived(shown ? outsideNotice(rows) : null);
+  const leak = $derived(shown ? outsideNotice(rows, now) : null);
   const leakText = $derived(leak ? fill(strings.quotas.outsideNotice, { percent: tenth(leak.percent), account: leak.account, provider: leak.provider }) : null);
   $effect(() => {
     const client = store.client;
@@ -75,7 +75,7 @@
   const share = $derived.by(() => {
     if (!meter) return 0;
     if (meter.kind === 'low') return Math.max(0.04, meter.left / 100);
-    const span = windowSpan(meter.window);
+    const span = meter.untilWindow === null ? null : windowSpan(meter.untilWindow);
     if (meter.until === null || span === null) return 1;
     return Math.min(1, Math.max(0.04, 1 - (meter.until - now) / span));
   });
