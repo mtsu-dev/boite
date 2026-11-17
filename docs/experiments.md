@@ -48,7 +48,7 @@ Dev only.
 | Teams | Mochis that work together in a shared chat | The desktop app |
 | Council | Several AIs review a piece of work or a plan, each alone and read-only | The desktop app |
 | Keep the prompt cache warm | Short pings that keep the provider's cache while a conversation waits on its agents | The machine |
-| Background compaction | A copy of the session compacts at 85% of the token limit while you keep working | The machine |
+| Background compaction | Automatic compactions run on a copy of the session, out of sight; with a token limit, from 85% of it while you keep working | The machine |
 | Live device stream | The Device panel plays a plugged-in Android phone as live video | The machine |
 
 ## Notes on some experiments

@@ -194,6 +194,8 @@ export class AutoCompaction {
       if (due === null || due.moment === 'copy') return;
       if (due.delay > 0) { this.#arm(threadId, due.delay); return; }
     }
+    // With the setting on, a copy compacts out of sight instead of a compaction turn.
+    if (this.threads.backgroundCompact.startIdle(thread)) return;
     try {
       this.threads.compact(threadId, undefined, true);
     } catch (error) {
