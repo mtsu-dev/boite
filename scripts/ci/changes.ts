@@ -88,11 +88,14 @@ export const PORTABLE_ALL = [LINUX_X64, LINUX_ARM64, MACOS_ARM64, MACOS_X64];
 // The core suite still needs a real Intel Mac, a scarce runner: 322 to 409 s a
 // PR on 2026-10-17. The merge queue skips it like the Intel desktop leg; main
 // pushes, releases and manual runs keep it.
-export type CoreRunner = { os: string; name: string };
+// `shards` splits a runner's files over that many jobs, cut on recorded seconds
+// (scripts/ci/core-shards.ts): Linux x64 gates every pull request and Windows
+// is the slowest suite. Each shard is a job of its own in ci.yml.
+export type CoreRunner = { os: string; name: string; shards?: number };
 const CORE_QUEUE: CoreRunner[] = [
-  { os: 'ubuntu-24.04', name: 'Linux x64' },
+  { os: 'ubuntu-24.04', name: 'Linux x64', shards: 2 },
   { os: 'ubuntu-24.04-arm', name: 'Linux arm64' },
-  { os: 'windows-2025', name: 'Windows x64' },
+  { os: 'windows-2025', name: 'Windows x64', shards: 2 },
   { os: 'macos-15', name: 'macOS arm64' },
 ];
 export const CORE_ALL: CoreRunner[] = [...CORE_QUEUE, { os: 'macos-15-intel', name: 'macOS x64' }];

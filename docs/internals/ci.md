@@ -54,8 +54,8 @@ dependency is required too.
 
 | Change | Selected checks |
 | --- | --- |
-| `docs/*.md` and nested Markdown, listed root policies, issue/PR templates, CODEOWNERS, labeler rules, topics, `.coderabbit.yaml` | Changes job only |
-| `apps/shell/` | Windows installer, Rust and native shell E2E; three browser/core E2E shards; portable desktop jobs |
+| `docs/*.md` and nested Markdown, listed root policies, issue/PR templates, CODEOWNERS, labeler rules, topics, `.coderabbit.yaml` | Plan and repository checks only |
+| `apps/shell/` | Windows installer, Rust and native shell E2E; five browser/core E2E shards; portable desktop jobs |
 | `tests/e2e/` | Desktop and E2E checks plus `check:e2e`; `tests/e2e/lib/` also selects stress |
 | `Dockerfile`, `.dockerignore`, `docker/` | Native x64 and ARM64 Docker smoke tests |
 | `packages/ui/` | Full type checks and UI tests, desktop/E2E without the shell's Rust tests, Docker and stress; `preview-picker.js` and `preview-highlight.js`, which `browser.rs` embeds, add them |
@@ -64,7 +64,7 @@ dependency is required too.
 | `apps/android-server/termux/` | Core tests, type checks and UI tests, desktop/E2E: the release bundle carries it |
 | `telemetry/` | Full type checks and UI tests plus the existing relay behavior suite |
 | `tests/stress/`, `bench/agent-stress.ts`, `bench/lib/` | Full type checks, UI tests and stress |
-| Other `bench/` files, `scripts/architecture/`, `packages/plugin-sdk/`, `examples/plugins/` | Full type checks and UI tests; the changes job runs the SDK's tests |
+| Other `bench/` files, `scripts/architecture/`, `packages/plugin-sdk/`, `examples/plugins/` | Full type checks and UI tests; the repository checks run the SDK's tests |
 | `packages/core/` | All checks except the shell's Rust tests and the APKs |
 | `packages/contracts/` | All checks except the shell's Rust tests and the Boite Server APK |
 | Dependencies, shared builds, other workflows and unknown paths | All checks |
@@ -78,12 +78,15 @@ echo execution must not be reported as external-provider sandbox coverage.
 
 A pull request whose selection includes desktop also runs [Bundle growth](#bundle-growth).
 
-The changes job always installs frozen dependencies, runs `bun audit` (with
-the ignored advisories named and justified in `ci.yml`), local
-link checks, `bun test scripts/ci ./bench ./apps/shell/scripts`, architecture
-checks and their tests, translation validation and the no-em-dash UI copy
-rule (`bun run check:copy`). Changes to workflows,
-composite actions or `scripts/ci/` also run checksum-verified actionlint 1.7.12.
+The `Plan` job only runs `changes.ts`, about 15 s, so the jobs it gates start
+sooner. `Repository checks`, beside it on every change, installs frozen
+dependencies, runs `bun audit` (with the ignored advisories named and justified
+in `ci.yml`), local link checks, `bun test scripts/ci ./bench
+./apps/shell/scripts`, architecture checks and their tests, translation
+validation, the no-em-dash UI copy rule (`bun run check:copy`) and
+checksum-verified actionlint 1.7.12. When one job did both, every other job
+waited about 54 s for it (median of 27 runs, 2026-11-16), 40 of them for the
+script tests.
 
 Architecture checks reject runtime dependency cycles, forbidden package imports
 and production files above 900 lines. The graph reads TypeScript, JavaScript and
@@ -114,10 +117,11 @@ runner (38 runs, 2026-10-19). A skipped matrix job reports its unexpanded templa
 (`Core tests (${{ matrix.name }})`) and a skipped caller of a reusable workflow
 reports its own name (`Desktop`), never the inner ones. So:
 
-- The core suite is one job per runner of `CORE_ALL` (`core-linux-x64` and so
-  on), each skipped unless `coreRunners` lists its label; the E2E suite is
-  `E2E 1/3` to `E2E 3/3`. YAML anchors (`&core-steps`, `&e2e-steps`) keep one
-  step list.
+- The core suite is one job per runner of `CORE_ALL`, or per shard of a runner
+  with `shards` (`core-linux-x64-1`, `Core tests (Linux x64) 1/2`), each
+  skipped unless `coreRunners` lists its label; the UI tests are `Type checks
+  and UI tests 1/2` and `UI tests 2/2`; the E2E suite is `E2E 1/5` to `E2E 5/5`.
+  YAML anchors (`&core-steps`, `&web-steps`, `&e2e-steps`) keep one step list.
 - `desktop.yml`, `server-verify.yml`, `android.yml` and `android-server.yml`
   take an `enabled` input,
   default on. `ci.yml` always calls them and turns it off when their paths did
@@ -129,8 +133,7 @@ reports its own name (`Desktop`), never the inner ones. So:
   `apps/mobile/` or the workflow, unsigned, and the nightly signs and
   publishes it. No ruleset requires it.
 - A job skipped because its dependency failed counts as passed in a ruleset, so
-  the ruleset requires every job of each needs chain (`Plan and repository
-  checks`, `Build UI`).
+  the ruleset requires every job of each needs chain (`Plan`, `Build UI`).
 
 `bun scripts/ci/required-checks.ts` prints the names a pull request
 reports. Its tests pin all of them, refuse a matrix or an expression in a name,
@@ -195,8 +198,8 @@ desktop leg took 14.0 minutes and the Apple Silicon one 8.1 (nightly run
 Core changes run the full core suite on Windows, Linux x64/ARM64 and macOS
 ARM64 in the queue, on main and in full runs, and on Intel macOS outside the
 queue; a pull request runs it on Linux x64, plus Windows for protection
-inputs ([pull request runs](#pull-request-runs)). The two Linux core jobs
-then install `xvfb` and `libxcomposite1` with apt and run
+inputs ([pull request runs](#pull-request-runs)). The Linux arm64 job and the
+first Linux x64 shard then install `xvfb` and `libxcomposite1` with apt and run
 `packages/core/test/window-capture-x11.test.ts` alone under `xvfb-run` at
 1280x1024x24: the X11 backend of `boite window` lists, captures and fails on
 windows the test itself creates, through Composite and without it. The suite
@@ -250,11 +253,12 @@ A job cut by its `timeout-minutes` keeps no artifact, and its log can be lost
 too: E2E 2/3 of run 39321123064 (2026-10-19) left only the annotation
 `exceeded the maximum execution time of 35m0s`. So each E2E shard ends its own
 run first. Its first step notes when the job started; `scripts/ci/flaky.ts
---job-started --job-minutes 35` runs `bun test` with the Bun inspector and
+--job-started --job-minutes 25` runs `bun test` with the Bun inspector and
 stops it 4 minutes before the job's limit (`scripts/ci/hang-watch.ts`). From
 2026-10-12 to 2026-10-19, 2831 passing shards ran their tests in 7.6 min at the
-median and 19.2 min at most, the whole job in 24.5 min at most, so no healthy
-run gets less time. `--job-minutes` must equal the job's `timeout-minutes`
+median and 19.2 min at most, the whole job in 24.5 min at most, with three
+shards and a 35 minute limit. Five shards since 2026-11-17 carry about 3/5 of
+those tests each, and the limit is 25 minutes. `--job-minutes` must equal the job's `timeout-minutes`
 (`e2e-harness.test.ts`).
 
 A stopped run fails with an annotation naming the test that was running and
@@ -281,18 +285,19 @@ inspector answers only when the JavaScript thread is free.
 
 ### Pull request runs
 
-A pull request, draft or ready, runs `pr` mode: the changes job, the Linux x64
-core suite, type checks and UI tests, `Bundle size`, and the focused telemetry
-and E2E type checks, each only when its paths changed. Protection code,
-protected fixtures and shared toolchain inputs also select the existing
-`Core tests (Windows x64)` job.
-It builds the userspace sandbox helper, runs the opt-in native protection fixture
-and keeps the ordinary Windows core suite. No extra required check name is added.
-Other pull requests leave Windows out. macOS, desktop packages, E2E, stress,
+A pull request, draft or ready, runs `pr` mode: the plan, the repository
+checks, the two Linux x64 core shards, the two UI shards, `Bundle size`, and
+the focused telemetry and E2E type checks, each only when its paths changed.
+Protection code, protected fixtures and shared toolchain inputs also select
+the two Windows core shards and `Native Windows protection`. Each Windows core
+shard builds the userspace sandbox helper and runs its half of the ordinary
+suite with it; the native job builds the helper again and runs the opt-in
+native protection fixtures, about 11 minutes, beside them instead of before
+the suite. Other pull requests leave Windows out. macOS, desktop packages, E2E, stress,
 Docker and the APKs skip: the [merge queue](#merge-queue) runs them on top of
 `main`.
 
-The Windows job also archives `windows-null-access-matrix`: a standalone,
+The native job also archives `windows-null-access-matrix`: a standalone,
 opt-in comparison of host and LPAC NUL opens with four requested access masks.
 It derives the frozen historical v1 helper in
 `tests/diagnostics/windows-protected-reference.c` and preserves that reference's
@@ -413,7 +418,7 @@ An agent's pull request flow:
 
 Cargo, Vitest, the Bun store and BuildKit save caches only from `main`. Cargo namespaces
 separate Windows release builds and each portable runner. Vitest stores
-transforms under `node_modules/.vitest-cache`; its namespace includes
+transforms under `node_modules/.vitest-cache`; its namespace includes the shard,
 `bun.lock`, Svelte/Vitest configuration and `packages/ui/icon-plugin.ts`.
 Each Docker architecture has its own BuildKit scope. Agent dependency manifests
 are copied before source files, so a core edit does not reinstall CLIs.
@@ -430,6 +435,36 @@ core has a fresh data directory and port. Full per-file output and nonzero
 exit failures are retained. A file still running after five minutes, its event
 loop blocked where no test timeout can fire, is ended and reported with what it
 printed (`BOITE_TEST_FILE_DEADLINE_MS`).
+
+### Core and UI shards
+
+The Linux x64 and Windows core suites run in two jobs each (`shards` in
+`CORE_ALL`): Windows took 731 s of tests and Linux x64 491 s, the longest core
+job of a group and the one every pull request waits on (medians, 2026-11-16).
+`--shard <i>/<n>` or `BOITE_TEST_SHARD` makes `packages/core/bin/test.ts` run
+one shard, cut by `scripts/ci/core-shards.ts` on the seconds each file took on
+that platform and architecture
+([core-durations.json](../../scripts/ci/core-durations.json)), longest first to
+the lightest shard as for the E2E shards. Each shard starts its longest files
+first, so a slow file does not end a run alone, and a file with no record runs
+last. The runner prints each file's seconds (`=== jobs.test.ts (exit 0, 3.21 s)
+===`); refresh the record from green runs:
+
+```sh
+bun scripts/ci/core-shards.ts refresh <run id> [<run id> ...]
+```
+
+The first record (2026-11-17) was rebuilt from three runs' logs before the
+runner printed seconds, replaying its four workers from each file's end time.
+The Linux arm64 and macOS suites stay single: macOS runners are scarce, and
+neither is on the longest path.
+
+The UI tests run in two jobs; the first also runs the type checks. Vitest's
+own `--shard` cuts by file count in hash order and put 1218 s of tests on one
+side and 825 s on the other. The sequencer in `packages/ui/test-sequencer.ts`
+cuts on [ui-durations.json](../../scripts/ci/ui-durations.json) instead, which
+`bun scripts/ci/ui-shards.ts refresh <run id>...` rebuilds from the per-file
+times Vitest prints. Each shard has its own Vitest cache.
 
 Browser command, sharing and profile scenarios run in separate files so their
 combined Chromium startup time does not consume one five-minute file budget.
@@ -525,7 +560,7 @@ bun scripts/ci/budgets.ts measure sizes.json`.
 
 `BOITE_E2E_PREBUILT_UI=1` tests the built production UI and refuses missing
 artifacts; local E2E rebuilds by default. `shell.test.ts` runs against the
-installer in the desktop job. Every other E2E file enters one of three Windows
+installer in the desktop job. Every other E2E file enters one of five Windows
 shards. Files run sequentially within a shard with separate ports, data and
 browser profiles. Matrix `fail-fast: false` preserves other shards' results
 after a failure.
@@ -547,16 +582,19 @@ Shards are cut by `scripts/ci/e2e-shards.ts` from
 took on recorded green runs: files go longest first to the lightest shard, and
 a file with no record counts as the median. `bun test --shard` cut by file
 count and ran 285 to 317, 410 to 417 and 501 to 519 s of tests; the recorded
-seconds of 2026-10-17 split into 376, 376 and 376 s. Refresh the record after
+seconds of 2026-10-17 split into 376, 376 and 376 s. Three shards held the
+merge queue at about 15 minutes, its longest job (`E2E 2/3`, median of 17
+groups, 2026-11-16); those of 2026-11-17 split 1993 s into five shards of 399 s.
+Refresh the record after
 adding or reshaping heavy files, from one or more green `ci.yml` runs:
 
 ```sh
 bun scripts/ci/e2e-shards.ts refresh <run id> [<run id> ...]
 ```
 
-It reads each run's `E2E n/3` logs with `gh`, where `bun test` opens a group
+It reads each run's `E2E n/5` logs with `gh`, where `bun test` opens a group
 per file, averages the runs and prints the new split. `bun scripts/ci/e2e-shards.ts
-<shard> 3` prints a shard's files. `e2e-shards.test.ts` fails when the record
+<shard> 5` prints a shard's files. `e2e-shards.test.ts` fails when the record
 splits the current files more than 15 % apart.
 
 `tests/e2e/lib/warm.ts` logs phase starts, elapsed times and errors, optimizes

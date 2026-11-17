@@ -57,8 +57,9 @@ env:
   CARGO_BUILD_JOBS: 8
 
 jobs:
+  # The plan alone gates the other jobs; the repository checks run beside them.
   changes:
-    name: Plan and repository checks
+    name: Plan
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -94,6 +95,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           FORCE_CHECKS: ${{ inputs.force || github.ref_type == 'tag' || (github.event_name != 'push' && github.event_name != 'pull_request' && github.event_name != 'merge_group') }}
         run: bun scripts/ci/changes.ts
+
+  checks:
+    name: Repository checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version-file: package.json
       - run: bun install --frozen-lockfile
       - name: Audit frozen dependencies
         # GHSA-gcqx-w48m-w2h4 (low): deepmerge 4.3.1, the latest release, has no fix.
@@ -107,8 +120,8 @@ jobs:
       - run: bun run check:copy
       - run: bun run check:architecture
       - run: bun test scripts/architecture
+      # A few seconds: it runs on every change rather than wait for the plan.
       - name: Validate workflows
-        if: steps.filter.outputs.workflows == 'true'
         run: |
           curl --fail --location --retry 3 https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz -o "$RUNNER_TEMP/actionlint.tar.gz"
           echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/actionlint.tar.gz" | sha256sum --check
@@ -136,23 +149,27 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: bun scripts/ci/required-checks.ts --live
 
-  # One job per runner of CORE_ALL in changes.ts, not a matrix: a skipped job
-  # then reports its own fixed name (docs/internals/ci.md#check-names). Each runs when
-  # coreRunners lists its label; the quotes keep `ubuntu-24.04` from matching
-  # `ubuntu-24.04-arm`. The merge queue leaves out the Intel Mac; pull requests
-  # run the Linux x64 one, plus Windows for protection inputs.
-  core-linux-x64:
-    name: Core tests (Linux x64)
+  # One job per runner of CORE_ALL in changes.ts, or per shard of a runner with
+  # `shards`, not a matrix: a skipped job then reports its own fixed name
+  # (docs/internals/ci.md#check-names). Each runs when coreRunners lists its
+  # label; the quotes keep `ubuntu-24.04` from matching `ubuntu-24.04-arm`. The
+  # merge queue leaves out the Intel Mac; pull requests run Linux x64, plus
+  # Windows and its native fixtures for protection inputs.
+  core-linux-x64-1:
+    name: Core tests (Linux x64) 1/2
     needs: changes
     if: needs.changes.outputs.core == 'true' && contains(needs.changes.outputs.coreRunners, '"os":"ubuntu-24.04"')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      BOITE_TEST_SHARD: 1/2
     steps: &core-steps
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
-      - name: Build userspace native helper
+      - &native-helper
+        name: Build userspace native helper
         id: native_helper
         if: runner.os == 'Windows' && needs.changes.outputs.nativeWindows == 'true'
         shell: pwsh
@@ -166,165 +183,31 @@ jobs:
           & "$env:RUNNER_TEMP\protected-tool.exe" --diagnose-null
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           "BOITE_WINDOWS_SANDBOX_PATH=$env:RUNNER_TEMP\protected-tool.exe" >> $env:GITHUB_ENV
-      - name: LPAC parent creation prerequisite (non-acceptance)
-        if: runner.os == 'Windows' && needs.changes.outputs.nativeWindows == 'true'
-        continue-on-error: true
-        env:
-          BOITE_TEST_LPAC_PARENT_SPIKE: '1'
-          TEMP: ${{ runner.temp }}
-          TMP: ${{ runner.temp }}
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Continue'
-          bun packages/core/test/windows-lpac-parent-spike.ts "$env:RUNNER_TEMP\lpac-parent-spike"
-          $spikeExit = $LASTEXITCODE
-          Write-Host "LPAC parent prerequisite exit=$spikeExit; not production acceptance"
-          exit $spikeExit
-      - name: Preserve LPAC parent prerequisite evidence
-        if: always() && runner.os == 'Windows' && needs.changes.outputs.nativeWindows == 'true'
-        continue-on-error: true
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        with:
-          name: windows-lpac-parent-spike
-          path: ${{ runner.temp }}/lpac-parent-spike/
-          retention-days: 3
-          if-no-files-found: error
-      - name: NUL access matrix (non-acceptance)
-        if: runner.os == 'Windows' && needs.changes.outputs.nativeWindows == 'true'
-        continue-on-error: true
-        env:
-          BOITE_TEST_NULL_ACCESS_MATRIX: '1'
-          TEMP: ${{ runner.temp }}
-          TMP: ${{ runner.temp }}
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Continue'
-          bun packages/core/test/windows-null-access-matrix.ts "$env:RUNNER_TEMP\null-access-matrix"
-          $matrixExit = $LASTEXITCODE
-          Write-Host "NUL access matrix exit=$matrixExit; not production acceptance"
-          exit $matrixExit
-      - name: Preserve NUL access matrix evidence
-        if: always() && runner.os == 'Windows' && needs.changes.outputs.nativeWindows == 'true'
-        continue-on-error: true
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        with:
-          name: windows-null-access-matrix
-          path: ${{ runner.temp }}/null-access-matrix/
-          retention-days: 3
-          if-no-files-found: error
-      - name: Real Null per-open broker falsifier (non-acceptance)
-        if: runner.os == 'Windows' && needs.changes.outputs.nativeWindows == 'true'
-        continue-on-error: true
-        env:
-          BOITE_TEST_NULL_BROKER: '1'
-          TEMP: ${{ runner.temp }}
-          TMP: ${{ runner.temp }}
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Continue'
-          bun packages/core/test/windows-null-broker-spike.ts "$env:RUNNER_TEMP\null-broker-spike"
-          $brokerExit = $LASTEXITCODE
-          Write-Host "Real Null broker falsifier exit=$brokerExit; not production acceptance"
-          exit $brokerExit
-      - name: Preserve real Null broker evidence
-        if: always() && runner.os == 'Windows' && needs.changes.outputs.nativeWindows == 'true'
-        continue-on-error: true
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        with:
-          name: windows-null-broker-spike
-          path: ${{ runner.temp }}/null-broker-spike/
-          retention-days: 3
-          if-no-files-found: error
-      - name: Diagnostic DEBUG_PROCESS descendant marker routing (non-acceptance)
-        if: runner.os == 'Windows' && needs.changes.outputs.nativeWindows == 'true'
-        continue-on-error: true
-        env:
-          BOITE_TEST_DEBUG_MAP: '1'
-          TEMP: ${{ runner.temp }}
-          TMP: ${{ runner.temp }}
-        shell: pwsh
-        run: |
-          # Preserve native status explicitly; stderr is diagnostic output, including on PS 5.
-          $ErrorActionPreference = 'Continue'
-          bun tests/diagnostics/windows-debug-map/run.ts "$env:RUNNER_TEMP\windows-debug-map"
-          $diagnosticExit = $LASTEXITCODE
-          Set-Content -Path "$env:RUNNER_TEMP\windows-debug-map\launcher-exit.txt" -Value $diagnosticExit
-          Write-Host "DEBUG_PROCESS diagnostic exit=$diagnosticExit; not production acceptance"
-          exit $diagnosticExit
-      - name: Preserve DEBUG_PROCESS diagnostic evidence
-        if: always() && runner.os == 'Windows' && needs.changes.outputs.nativeWindows == 'true'
-        continue-on-error: true
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        with:
-          name: windows-debug-map-diagnostic
-          path: ${{ runner.temp }}/windows-debug-map/
-          retention-days: 3
-          if-no-files-found: error
-      - name: Native Windows protected tools
-        if: runner.os == 'Windows' && needs.changes.outputs.nativeWindows == 'true'
-        env:
-          BOITE_TEST_NATIVE_EXECUTION: '1'
-          BOITE_DIAGNOSE_JOB_EVENTS: '1'
-          TEMP: ${{ runner.temp }}
-          TMP: ${{ runner.temp }}
-        shell: pwsh
-        run: |
-          $failed = $false
-          foreach ($helper in @('protected-tool.exe', 'protected-tool-mingw.exe')) {
-            Write-Host "Native fixture helper: $helper"
-            $env:BOITE_WINDOWS_SANDBOX_PATH = "$env:RUNNER_TEMP\$helper"
-            bun test packages/core/test/protected-windows.test.ts --timeout 120000
-            if ($LASTEXITCODE -ne 0) { $failed = $true }
-          }
-          if ($failed) { exit 1 }
-      - name: Preserve native helper comparison
-        if: always() && runner.os == 'Windows' && needs.changes.outputs.nativeWindows == 'true'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        with:
-          name: protected-windows-helper-comparison
-          path: ${{ runner.temp }}/protected-tool*.exe
-          retention-days: 3
-      - name: Prepare synthetic native providers
-        id: native_providers
-        if: ${{ !cancelled() && runner.os == 'Windows' && needs.changes.outputs.nativeWindows == 'true' && steps.native_helper.outcome == 'success' }}
-        env:
-          TEMP: ${{ runner.temp }}
-          TMP: ${{ runner.temp }}
-        run: bun packages/core/test/fixtures/prepare-native-providers.ts
-      - name: Native Windows provider and shared scopes
-        if: ${{ !cancelled() && runner.os == 'Windows' && needs.changes.outputs.nativeWindows == 'true' && steps.native_providers.outcome == 'success' }}
-        env:
-          BOITE_TEST_NATIVE_EXECUTION: '1'
-          BOITE_DIAGNOSE_JOB_EVENTS: '1'
-          TEMP: ${{ runner.temp }}
-          TMP: ${{ runner.temp }}
-        shell: pwsh
-        run: |
-          $failed = $false
-          foreach ($helper in @('protected-tool.exe', 'protected-tool-mingw.exe')) {
-            Write-Host "Native provider/shared fixture helper: $helper"
-            $env:BOITE_WINDOWS_SANDBOX_PATH = "$env:RUNNER_TEMP\$helper"
-            bun test packages/core/test/protected-drivers.test.ts packages/core/test/protected-adapters.test.ts packages/core/test/shared-access.test.ts -t 'native control|useful edits and child|protected .*(remote jobs|scopes retire)' --timeout 120000
-            if ($LASTEXITCODE -ne 0) { $failed = $true }
-            bun test packages/core/test/protected-muse.test.ts --timeout 120000
-            if ($LASTEXITCODE -ne 0) { $failed = $true }
-          }
-          if ($failed) { exit 1 }
       # Core data directories, worktrees and Chrome profiles go to the runner's
       # temp drive (D: on Windows), as in the E2E shards (docs/internals/ci.md#build-cost).
+      # BOITE_TEST_SHARD, set by a sharded job, picks its files (scripts/ci/core-shards.ts).
       - run: bun run --cwd packages/core test
-        if: ${{ !cancelled() && (success() || runner.os == 'Windows' && steps.native_providers.outcome == 'success') }}
         env:
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
       # The suite above has no DISPLAY and skips the X11 window capture test;
       # this runs that one file against a real X server (docs/internals/ci.md#run-modes-and-platforms).
       - name: X11 window capture and virtual desktop under Xvfb
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && (env.BOITE_TEST_SHARD == '' || startsWith(env.BOITE_TEST_SHARD, '1/'))
         run: |
           bash scripts/ci/ubuntu-apt.sh -qq --no-install-recommends xvfb libx11-6 libxcomposite1 dbus-daemon dbus-bin at-spi2-core openbox
           xvfb-run -a -s "-screen 0 1280x1024x24" bun test packages/core/test/window-capture-x11.test.ts
           bun test packages/core/test/desktop.test.ts
+
+  core-linux-x64-2:
+    name: Core tests (Linux x64) 2/2
+    needs: changes
+    if: needs.changes.outputs.core == 'true' && contains(needs.changes.outputs.coreRunners, '"os":"ubuntu-24.04"')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      BOITE_TEST_SHARD: 2/2
+    steps: *core-steps
 
   core-linux-arm64:
     name: Core tests (Linux arm64)
@@ -334,13 +217,24 @@ jobs:
     timeout-minutes: 15
     steps: *core-steps
 
-  core-windows-x64:
-    name: Core tests (Windows x64)
+  core-windows-x64-1:
+    name: Core tests (Windows x64) 1/2
     needs: changes
     if: needs.changes.outputs.core == 'true' && contains(needs.changes.outputs.coreRunners, '"os":"windows-2025"')
     runs-on: windows-2025
-    # Two native compiler/provider matrices follow roughly eight minutes of setup.
-    timeout-minutes: 30
+    timeout-minutes: 20
+    env:
+      BOITE_TEST_SHARD: 1/2
+    steps: *core-steps
+
+  core-windows-x64-2:
+    name: Core tests (Windows x64) 2/2
+    needs: changes
+    if: needs.changes.outputs.core == 'true' && contains(needs.changes.outputs.coreRunners, '"os":"windows-2025"')
+    runs-on: windows-2025
+    timeout-minutes: 20
+    env:
+      BOITE_TEST_SHARD: 2/2
     steps: *core-steps
 
   core-macos-arm64:
@@ -359,13 +253,171 @@ jobs:
     timeout-minutes: 15
     steps: *core-steps
 
-  web:
-    name: Type checks and UI tests
+  # The native protection fixtures, about 11 minutes of compiler and provider
+  # matrices, run beside the Windows core shards rather than before them.
+  native-windows:
+    name: Native Windows protection
+    needs: changes
+    if: needs.changes.outputs.core == 'true' && needs.changes.outputs.nativeWindows == 'true' && contains(needs.changes.outputs.coreRunners, '"os":"windows-2025"')
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - *native-helper
+      - name: LPAC parent creation prerequisite (non-acceptance)
+        continue-on-error: true
+        env:
+          BOITE_TEST_LPAC_PARENT_SPIKE: '1'
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          bun packages/core/test/windows-lpac-parent-spike.ts "$env:RUNNER_TEMP\lpac-parent-spike"
+          $spikeExit = $LASTEXITCODE
+          Write-Host "LPAC parent prerequisite exit=$spikeExit; not production acceptance"
+          exit $spikeExit
+      - name: Preserve LPAC parent prerequisite evidence
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: windows-lpac-parent-spike
+          path: ${{ runner.temp }}/lpac-parent-spike/
+          retention-days: 3
+          if-no-files-found: error
+      - name: NUL access matrix (non-acceptance)
+        continue-on-error: true
+        env:
+          BOITE_TEST_NULL_ACCESS_MATRIX: '1'
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          bun packages/core/test/windows-null-access-matrix.ts "$env:RUNNER_TEMP\null-access-matrix"
+          $matrixExit = $LASTEXITCODE
+          Write-Host "NUL access matrix exit=$matrixExit; not production acceptance"
+          exit $matrixExit
+      - name: Preserve NUL access matrix evidence
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: windows-null-access-matrix
+          path: ${{ runner.temp }}/null-access-matrix/
+          retention-days: 3
+          if-no-files-found: error
+      - name: Real Null per-open broker falsifier (non-acceptance)
+        continue-on-error: true
+        env:
+          BOITE_TEST_NULL_BROKER: '1'
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          bun packages/core/test/windows-null-broker-spike.ts "$env:RUNNER_TEMP\null-broker-spike"
+          $brokerExit = $LASTEXITCODE
+          Write-Host "Real Null broker falsifier exit=$brokerExit; not production acceptance"
+          exit $brokerExit
+      - name: Preserve real Null broker evidence
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: windows-null-broker-spike
+          path: ${{ runner.temp }}/null-broker-spike/
+          retention-days: 3
+          if-no-files-found: error
+      - name: Diagnostic DEBUG_PROCESS descendant marker routing (non-acceptance)
+        continue-on-error: true
+        env:
+          BOITE_TEST_DEBUG_MAP: '1'
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+        shell: pwsh
+        run: |
+          # Preserve native status explicitly; stderr is diagnostic output, including on PS 5.
+          $ErrorActionPreference = 'Continue'
+          bun tests/diagnostics/windows-debug-map/run.ts "$env:RUNNER_TEMP\windows-debug-map"
+          $diagnosticExit = $LASTEXITCODE
+          Set-Content -Path "$env:RUNNER_TEMP\windows-debug-map\launcher-exit.txt" -Value $diagnosticExit
+          Write-Host "DEBUG_PROCESS diagnostic exit=$diagnosticExit; not production acceptance"
+          exit $diagnosticExit
+      - name: Preserve DEBUG_PROCESS diagnostic evidence
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: windows-debug-map-diagnostic
+          path: ${{ runner.temp }}/windows-debug-map/
+          retention-days: 3
+          if-no-files-found: error
+      - name: Native Windows protected tools
+        env:
+          BOITE_TEST_NATIVE_EXECUTION: '1'
+          BOITE_DIAGNOSE_JOB_EVENTS: '1'
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+        shell: pwsh
+        run: |
+          $failed = $false
+          foreach ($helper in @('protected-tool.exe', 'protected-tool-mingw.exe')) {
+            Write-Host "Native fixture helper: $helper"
+            $env:BOITE_WINDOWS_SANDBOX_PATH = "$env:RUNNER_TEMP\$helper"
+            bun test packages/core/test/protected-windows.test.ts --timeout 120000
+            if ($LASTEXITCODE -ne 0) { $failed = $true }
+          }
+          if ($failed) { exit 1 }
+      - name: Preserve native helper comparison
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: protected-windows-helper-comparison
+          path: ${{ runner.temp }}/protected-tool*.exe
+          retention-days: 3
+      - name: Prepare synthetic native providers
+        id: native_providers
+        if: ${{ !cancelled() && steps.native_helper.outcome == 'success' }}
+        env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+        run: bun packages/core/test/fixtures/prepare-native-providers.ts
+      - name: Native Windows provider and shared scopes
+        if: ${{ !cancelled() && steps.native_providers.outcome == 'success' }}
+        env:
+          BOITE_TEST_NATIVE_EXECUTION: '1'
+          BOITE_DIAGNOSE_JOB_EVENTS: '1'
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+        shell: pwsh
+        run: |
+          $failed = $false
+          foreach ($helper in @('protected-tool.exe', 'protected-tool-mingw.exe')) {
+            Write-Host "Native provider/shared fixture helper: $helper"
+            $env:BOITE_WINDOWS_SANDBOX_PATH = "$env:RUNNER_TEMP\$helper"
+            bun test packages/core/test/protected-drivers.test.ts packages/core/test/protected-adapters.test.ts packages/core/test/shared-access.test.ts -t 'native control|useful edits and child|protected .*(remote jobs|scopes retire)' --timeout 120000
+            if ($LASTEXITCODE -ne 0) { $failed = $true }
+            bun test packages/core/test/protected-muse.test.ts --timeout 120000
+            if ($LASTEXITCODE -ne 0) { $failed = $true }
+          }
+          if ($failed) { exit 1 }
+
+  # Two shards written out, like the core jobs; vitest splits the files by
+  # count. The first also runs the type checks.
+  web-1:
+    name: Type checks and UI tests 1/2
     needs: changes
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    steps:
+    env:
+      UI_SHARD: 1
+    steps: &web-steps
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
@@ -375,15 +427,26 @@ jobs:
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: node_modules/.vitest-cache
-          key: vitest-${{ runner.os }}-${{ hashFiles('bun.lock', 'packages/ui/vitest.config.ts', 'packages/ui/svelte.config.js', 'packages/ui/icon-plugin.ts') }}-${{ github.sha }}
-          restore-keys: vitest-${{ runner.os }}-${{ hashFiles('bun.lock', 'packages/ui/vitest.config.ts', 'packages/ui/svelte.config.js', 'packages/ui/icon-plugin.ts') }}-
+          key: vitest-${{ runner.os }}-${{ env.UI_SHARD }}-${{ hashFiles('bun.lock', 'packages/ui/vitest.config.ts', 'packages/ui/svelte.config.js', 'packages/ui/icon-plugin.ts') }}-${{ github.sha }}
+          restore-keys: vitest-${{ runner.os }}-${{ env.UI_SHARD }}-${{ hashFiles('bun.lock', 'packages/ui/vitest.config.ts', 'packages/ui/svelte.config.js', 'packages/ui/icon-plugin.ts') }}-
       - run: bun run check
-      - run: bun run --cwd packages/ui test --maxWorkers=8
+        if: env.UI_SHARD == '1'
+      - run: bun run --cwd packages/ui test --maxWorkers=8 --shard=${{ env.UI_SHARD }}/2
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         if: github.ref == 'refs/heads/main'
         with:
           path: node_modules/.vitest-cache
-          key: vitest-${{ runner.os }}-${{ hashFiles('bun.lock', 'packages/ui/vitest.config.ts', 'packages/ui/svelte.config.js', 'packages/ui/icon-plugin.ts') }}-${{ github.sha }}
+          key: vitest-${{ runner.os }}-${{ env.UI_SHARD }}-${{ hashFiles('bun.lock', 'packages/ui/vitest.config.ts', 'packages/ui/svelte.config.js', 'packages/ui/icon-plugin.ts') }}-${{ github.sha }}
+
+  web-2:
+    name: UI tests 2/2
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      UI_SHARD: 2
+    steps: *web-steps
 
   telemetry:
     name: Telemetry relay tests
@@ -529,14 +592,14 @@ jobs:
     permissions:
       contents: read
 
-  # Three shards written out, not a matrix, for the same fixed names as the
+  # Five shards written out, not a matrix, for the same fixed names as the
   # core jobs. E2E_SHARD picks the shard's files.
   e2e-1:
-    name: E2E 1/3
+    name: E2E 1/5
     needs: [changes, ui]
     if: needs.changes.outputs.desktop == 'true' && needs.changes.outputs.e2e == 'true'
     runs-on: windows-2025
-    timeout-minutes: 35
+    timeout-minutes: 25
     env:
       BOITE_E2E_PREBUILT_UI: '1'
       BOITE_E2E_FAKE_UI: tests/e2e/.artifacts/fake-ui
@@ -576,11 +639,11 @@ jobs:
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
         run: |
-          $files = @(bun scripts/ci/e2e-shards.ts $env:E2E_SHARD 3)
+          $files = @(bun scripts/ci/e2e-shards.ts $env:E2E_SHARD 5)
           if ($LASTEXITCODE -ne 0 -or $files.Count -eq 0) { throw 'No browser or core E2E files for this shard' }
           # A quarantined test that fails runs once more (scripts/ci/quarantine.json).
           # --job-minutes is the job's timeout-minutes (e2e-harness.test.ts).
-          bun scripts/ci/flaky.ts --job-started $env:BOITE_JOB_STARTED_MS --job-minutes 35 @files
+          bun scripts/ci/flaky.ts --job-started $env:BOITE_JOB_STARTED_MS --job-minutes 25 @files
       - uses: ./.github/actions/upload-artifact
         if: failure() || cancelled()
         with:
@@ -590,11 +653,11 @@ jobs:
           retention-days: 7
 
   e2e-2:
-    name: E2E 2/3
+    name: E2E 2/5
     needs: [changes, ui]
     if: needs.changes.outputs.desktop == 'true' && needs.changes.outputs.e2e == 'true'
     runs-on: windows-2025
-    timeout-minutes: 35
+    timeout-minutes: 25
     env:
       BOITE_E2E_PREBUILT_UI: '1'
       BOITE_E2E_FAKE_UI: tests/e2e/.artifacts/fake-ui
@@ -602,15 +665,39 @@ jobs:
     steps: *e2e-steps
 
   e2e-3:
-    name: E2E 3/3
+    name: E2E 3/5
     needs: [changes, ui]
     if: needs.changes.outputs.desktop == 'true' && needs.changes.outputs.e2e == 'true'
     runs-on: windows-2025
-    timeout-minutes: 35
+    timeout-minutes: 25
     env:
       BOITE_E2E_PREBUILT_UI: '1'
       BOITE_E2E_FAKE_UI: tests/e2e/.artifacts/fake-ui
       E2E_SHARD: 3
+    steps: *e2e-steps
+
+  e2e-4:
+    name: E2E 4/5
+    needs: [changes, ui]
+    if: needs.changes.outputs.desktop == 'true' && needs.changes.outputs.e2e == 'true'
+    runs-on: windows-2025
+    timeout-minutes: 25
+    env:
+      BOITE_E2E_PREBUILT_UI: '1'
+      BOITE_E2E_FAKE_UI: tests/e2e/.artifacts/fake-ui
+      E2E_SHARD: 4
+    steps: *e2e-steps
+
+  e2e-5:
+    name: E2E 5/5
+    needs: [changes, ui]
+    if: needs.changes.outputs.desktop == 'true' && needs.changes.outputs.e2e == 'true'
+    runs-on: windows-2025
+    timeout-minutes: 25
+    env:
+      BOITE_E2E_PREBUILT_UI: '1'
+      BOITE_E2E_FAKE_UI: tests/e2e/.artifacts/fake-ui
+      E2E_SHARD: 5
     steps: *e2e-steps
 
   server:
