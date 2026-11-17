@@ -63,8 +63,13 @@ async function probeProvider(
       catch (error) { core.log('warn', `saving the ${provider.id} agent list: ${logMessageOf(error)}`); }
     }
     const partial = native === null;
-    // Only rows the agent itself listed, never an older gateway-only list.
-    const kept = partial ? natives.get(lane) ?? readNativeList(core, provider.id, account.id) ?? undefined : undefined;
+    // Only rows the agent itself listed, never an older gateway-only list. A
+    // list saved before the agent's rows were kept apart gives the rows with
+    // speed tiers, which a gateway row never carries.
+    const kept = partial
+      ? natives.get(lane) ?? readNativeList(core, provider.id, account.id)
+        ?? readSavedCatalog(core, provider.id, account.id)?.models.filter(row => (row.speeds?.length ?? 0) > 0)
+      : undefined;
     const models = mergeProxyModels(native ?? kept ?? [], proxyModels);
     const probedAt = Date.now();
     rememberExternalModels(provider.protocol, provider.id, account.id, models);

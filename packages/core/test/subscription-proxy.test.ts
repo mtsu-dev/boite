@@ -5,7 +5,7 @@ import type { SubscriptionProxy } from '@boite/contracts';
 import { checkSettingsPatch } from '@boite/contracts';
 import { connect } from '../src/client.ts';
 import { getDriver, probedModelsOf, setDriver } from '../src/drivers/index.ts';
-import { readNativeList } from '../src/providers/saved-catalogs.ts';
+import { readNativeList, saveCatalog } from '../src/providers/saved-catalogs.ts';
 import { childEnv } from '../src/drivers/claude/query.ts';
 import { agentEnv } from '../src/providers/resolve.ts';
 import { mergeProxyModels, readSubscriptionProxyModels, subscriptionProxyCodexArgs, subscriptionProxyEnv } from '../src/subscription-proxy.ts';
@@ -538,6 +538,23 @@ test('an agent that never answered behind the gateway leaves the gateway\'s new 
     expect(await ids(false)).toEqual(['codex/gpt-old']);
     id = 'codex/gpt-new';
     expect(await ids(true)).toEqual(['codex/gpt-new']);
+  } finally { restore(); }
+});
+
+test('a list saved before the agent\'s rows were kept apart still gives its rows with speed tiers when the agent fails', async () => {
+  gateway = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch() {
+    return Response.json({ data: [{ id: 'codex/gpt-new', name: 'GPT new', supported_endpoint_types: ['openai-response'] }] });
+  } });
+  const sol = { id: 'gpt-6.2-sol', name: 'GPT-6.2 Sol', default: true, speeds: [{ id: 'priority', label: 'Fast' }] };
+  const restore = setDriver('codex-appserver', { ...getDriver('codex-appserver'), probe: async () => { throw new Error('codex app-server did not start'); } });
+  try {
+    harness = await startTestCore({ settings: { subscriptionProxy: config(`http://127.0.0.1:${gateway.port}/v1`) } });
+    const owner = await harness.connect();
+    const codex = await owner.call('accounts.add', { providerId: 'codex', label: 'Gateway Codex' });
+    // What an earlier version saved: the merged list, with an old gateway row.
+    saveCatalog(harness.core, 'codex', codex.id, { models: [sol, { id: 'codex/gpt-old', name: 'GPT old' }], probedAt: 1 });
+    expect((await owner.call('providers.probe', { providerId: 'codex', accountId: codex.id, refresh: true })).models.map(model => model.id))
+      .toEqual(['gpt-6.2-sol', 'codex/gpt-new']);
   } finally { restore(); }
 });
 
