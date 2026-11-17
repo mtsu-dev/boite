@@ -37,6 +37,8 @@ export const strings = {
     creditBalance: '{count} credits',
     /** Under a Douane window: the share of the account's limit no call through Douane explains. */
     outsideUsed: '{percent}% used outside Douane',
+    /** The rail's limits card: the account the most used outside Douane (LimitsButton.svelte). */
+    outsideNotice: '{percent}% of {account} ({provider}) used outside Douane',
     outsideHint: 'No call through Douane explains this share of the account\'s limit: someone used the account directly, from the official app, another device or a leaked token.',
 
     /** The tray icon's right-click menu. */

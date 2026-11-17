@@ -87,3 +87,15 @@ test('several accounts: silent while one has room, then every account out until 
   expect(document.querySelector<SVGElement>('[data-testid=limits-gauge]')!.dataset.limit).toBe('out');
   expect(document.querySelector('[data-testid=nav-limits]')!.getAttribute('aria-label')).toMatch(/^Every Claude account is out, first one back \S/);
 });
+
+test('an account used outside Douane lights a red dot on the quiet gauge and names the account', async () => {
+  const rows = [{ ...quota, label: 'nefreex2', windows: [{ id: 'month', label: 'Monthly', usedPercent: 84, resetsAt: null, outsidePercent: 40 }] },
+    { ...quota, accountId: 'claude-work', label: 'Work', windows: [{ id: 'week', label: 'Weekly', usedPercent: 20, resetsAt: null }] }];
+  const { store } = storeOf(() => rows, 'limits-button-leak', ['claude-account', 'claude-work']);
+  mounted = mount(LimitsButton, { target: document.body, props: { store } });
+  await settle();
+
+  expect(document.querySelector('[data-testid=limits-gauge]')).toBeNull();
+  expect(document.querySelector('[data-testid=limits-leak]')).not.toBeNull();
+  expect(document.querySelector('[data-testid=nav-limits]')!.getAttribute('aria-label')).toBe('40% of nefreex2 (Claude) used outside Douane');
+});

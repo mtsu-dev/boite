@@ -619,9 +619,11 @@ export class FakeContext {
       ...(closedAgents() ? CLOSED_AGENT_DEFAULTS : OPEN_AGENT_DEFAULTS)
     };
     // `?gateway=douane` or `cliproxyapi`: a gateway the owner saved and turned off, for a paired phone to switch on.
-    const gateway = typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('gateway');
+    // `&gatewayOn=1` starts it on, its accounts in the limits (one used outside Douane lights the rail's limits).
+    const search = typeof location === 'undefined' ? null : new URLSearchParams(location.search);
+    const gateway = search?.get('gateway') ?? null;
     if (gateway === 'douane' || gateway === 'cliproxyapi') {
-      this.settings.subscriptionProxy = { enabled: false, kind: gateway, baseUrl: 'https://gateway.example.test/v1',
+      this.settings.subscriptionProxy = { enabled: search?.get('gatewayOn') === '1', kind: gateway, baseUrl: 'https://gateway.example.test/v1',
         dashboardUrl: gateway === 'douane' ? 'https://gateway.example.test/admin/#quotas' : 'https://gateway.example.test/management.html#/quota' };
     }
     const hostname = options.hostname === undefined ? options.coreName ?? 'studio' : options.hostname;

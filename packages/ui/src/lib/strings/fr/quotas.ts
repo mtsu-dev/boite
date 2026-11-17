@@ -50,6 +50,7 @@ export const fr: Translation = {
     creditRemaining: 'Crédits restants',
     creditBalance: '{count} crédits',
     outsideUsed: '{percent} % consommés hors Douane',
+    outsideNotice: '{percent} % de {account} ({provider}) consommés hors Douane',
     outsideHint: 'Aucun appel passé par Douane n\'explique cette part de la limite du compte : quelqu\'un a utilisé le compte directement, depuis l\'app officielle, un autre appareil ou un jeton qui a fuité.',
 
     trayShow: 'Afficher',

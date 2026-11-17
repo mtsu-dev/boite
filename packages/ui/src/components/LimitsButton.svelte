@@ -6,6 +6,8 @@
   import { quotaLimitName, quotaResetTime } from '../lib/format';
   import { quotaReader, shownQuotas } from '../lib/quota-reader.svelte';
   import { countdown, limitsNotice, windowSpan } from '../lib/limits-meter';
+  import { outsideNotice } from '../lib/outside-usage';
+  import { tenth } from '../lib/format';
   import { work } from '../lib/work-prefs.svelte';
   import { controlMenu } from '../lib/controls';
   import Deferred from './Deferred.svelte';
@@ -30,6 +32,9 @@
   /** The clock the notice reads: a reset that passes drops its stale reading, and the countdown moves. */
   let now = $state(Date.now());
   const meter = $derived(shown ? limitsNotice(rows, now) : null);
+  /** An account Douane cannot explain the use of: a red dot on the glyph, whatever the limits say. */
+  const leak = $derived(shown ? outsideNotice(rows) : null);
+  const leakText = $derived(leak ? fill(strings.quotas.outsideNotice, { percent: tenth(leak.percent), account: leak.account, provider: leak.provider }) : null);
   $effect(() => {
     const client = store.client;
     const current = quotas;
@@ -78,7 +83,10 @@
   const CIRCLE = 2 * Math.PI * RADIUS;
   let button = $state<HTMLButtonElement>();
   let glance = $state<LimitsGlance>();
-  const label = $derived(note ? `${text} · ${note}` : text);
+  /** The name card: the limits' sentence and its note, or the leak alone while the limits say nothing. */
+  const title = $derived(!meter && leakText ? leakText : text);
+  const detail = $derived([note, meter ? leakText : null].filter(Boolean).join(' · ') || null);
+  const label = $derived(detail ? `${title} · ${detail}` : title);
 
   /** The glance is a click-only body in its own chunk: a press before it lands waits for it. */
   async function openGlance() {
@@ -91,7 +99,7 @@
 </script>
 
 {#if shown}
-  <button type="button" class="ghost icon limits" class:low={meter?.kind === 'low'} class:out={meter?.kind === 'out'} bind:this={button} data-testid="nav-limits"
+  <button type="button" class="ghost icon limits" class:low={meter?.kind === 'low'} class:out={meter?.kind === 'out'} class:leak={leak !== null} bind:this={button} data-testid="nav-limits"
     title={name ? undefined : label} aria-label={label} aria-haspopup="dialog"
     onclick={() => void openGlance()} oncontextmenu={(event) => controlMenu(event, store, 'sidebar.limits')}>
     {#if meter}
@@ -102,10 +110,11 @@
       <span class="dot" aria-hidden="true"></span>
     {:else}
       <Gauge size={19} strokeWidth={1.75} aria-hidden="true" />
+      {#if leak}<span class="dot" aria-hidden="true" data-testid="limits-leak"></span>{/if}
     {/if}
   </button>
   {#if left}<span class="countdown" aria-hidden="true" data-testid="limits-countdown">{left}</span>{/if}
-  {@render name?.(text, note)}
+  {@render name?.(title, detail)}
   <Deferred part={parts.LimitsGlance} quiet>{#snippet children(Glance)}<Glance bind:this={glance} {store} side="right" anchor={() => button ?? null} />{/snippet}</Deferred>
 {/if}
 
@@ -121,7 +130,7 @@
   .limits.out .arc { stroke: var(--color-danger); }
   .dot { position: absolute; width: 7px; height: 7px; right: 5px; top: 5px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 2px var(--color-frame); }
   .limits.low .dot { background: var(--color-caution); }
-  .limits.out .dot { background: var(--color-danger); }
+  .limits.out .dot, .limits.leak .dot { background: var(--color-danger); }
   /* The time left, under the ring: the one figure worth reading without a hover. */
   .countdown { margin-top: 2px; color: var(--color-danger); font-family: var(--font-mono); font-size: var(--text-min); font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; pointer-events: none; }
   @media (prefers-reduced-motion: reduce) { .ring .arc { transition: none; } }
