@@ -207,7 +207,7 @@ export function attachVersions(host: VersionHost): () => void {
 
 /** Resolves once no version read is in flight, for a caller that would rather wait than miss a program. */
 export async function versionsSettled(): Promise<void> {
-  while (pending.size > 0) await Promise.allSettled([...pending.values()]);
+  while (pending.size > 0) await Promise.allSettled(pending.values());
 }
 
 /** Every reading and every pending question dropped: a test starts from nothing. */

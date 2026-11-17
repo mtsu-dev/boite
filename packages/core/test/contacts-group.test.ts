@@ -213,7 +213,7 @@ test('a contact still relayed by another member keeps the reply windows when one
 
 
 test('an authenticated group sync refreshes legacy relay copies without trusting missing admissions', async () => {
-  const {host, member, hostClient, memberClient, hostId, guestId, memberId} = await setup();
+  const {member, hostClient, memberClient, hostId, guestId, memberId} = await setup();
   const gamma = await project(member, memberClient, 'legacy');
   await hostClient.call('contacts.grant', {coreId: guestId, projectId: gamma.id, machine: memberId});
   await waitFor(() => member.core.contacts.members.relayedOf(guestId).length === 1);

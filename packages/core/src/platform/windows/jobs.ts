@@ -23,7 +23,7 @@ import { applyCpuCap, applyMemoryLimit, cpuRateOfJob, memoryLimitOfJob as readMe
 import { commandLineOf, consoleHost, cpuMsOf, createdAtOfPid, creationIdentityOf, exitCodeOf, exitStatusOf, imageNameOf,
   ioBytesOf, parentPidOf, peakMemoryOf, startedAs, whenCommandLineReads, workingSetOf } from './process-reads.ts';
 
-import type { NativeProcessInfo, NativeProcessExit, ProcessSample, ProcessEventSink, ProcessLimits } from '../types.ts';
+import type { NativeProcessExit, ProcessSample, ProcessEventSink, ProcessLimits } from '../types.ts';
 
 // -- Win32 constants --------------------------------------------------------
 

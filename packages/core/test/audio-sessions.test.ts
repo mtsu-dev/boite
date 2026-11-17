@@ -37,7 +37,6 @@ const MUTE_WINDOW_MS = 3000;
  * How long a session the core muted takes to show in its mutedPids: one poll of
  * the guard Worker (a second) and the message to the main thread, with margin.
  */
-const INHERITED_WINDOW_MS = 2000;
 const SESSION_WINDOW_MS = 15000;
 
 /** Whether the Boite running these tests mutes the fixture's session itself (`host-mutes.ts`). */

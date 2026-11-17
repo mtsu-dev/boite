@@ -1271,7 +1271,7 @@ describe('WsClient', () => {
       expect(await pending).toEqual([{ title: 'é'.repeat(30) }]);
       expect(seen.map(([, total]) => total)).toEqual([bytes, bytes, bytes]);
       expect(seen.at(-1)).toEqual([bytes, bytes]);
-      expect(seen.map(([received]) => received)).toEqual([...seen.map(([received]) => received)].sort((a, b) => a - b));
+      expect(seen.map(([received]) => received)).toEqual(seen.map(([received]) => received).sort((a, b) => a - b));
       // A call that asked nothing sends no flag.
       void client.call('projects.list', {}).catch(() => undefined);
       expect('progress' in JSON.parse(socket.sent[2]!)).toBe(false);

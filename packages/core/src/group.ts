@@ -26,19 +26,18 @@ import { migrateGroupPeer } from './coordination-group.ts';
 import type { KeyObject } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join as joinPath } from 'node:path';
-import { GRANT_TTL_MS, GROUP_MAX_CORES, GROUP_TICKET_TTL_MS, PAIRING_ROLES } from '@boite/contracts';
-import { deviceAdmitInput, deviceHelloInput, type CoordinationPeer, type DeviceHello, type DeviceInvite, type Group, type GroupDevice, type GroupInvite, type GroupTicket, type PairingRole, type Principal } from '@boite/contracts';
+import { GRANT_TTL_MS, GROUP_MAX_CORES } from '@boite/contracts';
+import { type CoordinationPeer, type Group, type GroupDevice, type GroupInvite, type Principal } from '@boite/contracts';
 import { boundedBody, PeerGone } from './coordination-wire.ts';
 import type { Core } from './core.ts';
-import { invalidParams, messageOf, refused, RpcFailure, unauthorized, unavailable } from './errors.ts';
+import { invalidParams, messageOf, refused, RpcFailure } from './errors.ts';
 import { advertisedAddresses, probeTailnet, tailnetAddress, ticketAddresses, type Tailnet } from './group/addresses.ts';
 import { admissionInput, checkAddress, checkCard, checkRoster, clockOf, CORE_ENTRIES_MAX, DEVICE_ENTRIES_MAX, digestOf, homeOf, liveCores, liveDeviceKeys, liveDevices, memberOrigins, mergeRosters, groupName, homeGone, liveRole, peerOf, reachOf, withRole, type GroupRole } from './group/roster.ts';
-import { deviceAdmissionInput, deviceId, deviceKey, deviceSigned, SERVED_ORIGINS_MAX, type DeviceKeyEntry } from './group/device-keys.ts';
+import { deviceAdmissionInput, SERVED_ORIGINS_MAX, type DeviceKeyEntry } from './group/device-keys.ts';
 import type { CoreCard, CoreEntry, DeviceEntry, Roster } from './group/roster.ts';
 import { boxPublic, boxSigningInput, newBoxKey, open, pack, readBoxKey, seal, SEALED, sealedName, sealResponse, unpack } from './group/seal.ts';
 import type { Sealing } from './group/seal.ts';
-import { encodeInvite, encodeTicket, inviteOf, parseInvite, parseTicket, ticketSigningInput, inviteId, invitePsk } from './group/ticket.ts';
-import type { Invite } from './group/ticket.ts';
+import { encodeInvite, inviteOf, parseInvite, inviteId, invitePsk } from './group/ticket.ts';
 import { DEVICES_MAX, GroupClients } from './group/clients.ts';
 import { askToJoin, JOIN_SIGNING_PREFIX, type JoinReply } from './group/join.ts';
 import { SyncBackoff } from './group/backoff.ts';
@@ -46,7 +45,6 @@ import { LanGate } from './group/lan.ts';
 import { FirewallAccess } from './firewall.ts';
 import { newId, newToken } from './ids.ts';
 import { currentOs, machineName } from './paths.ts';
-import { principalOf as principalOfRole, type ClientIdentity, type Identity } from './sessions.ts';
 
 const SETTING = 'group';
 const SESSIONS_SETTING = 'group:sessions';
@@ -895,6 +893,6 @@ export class GroupStore {
 
   async close(): Promise<void> {
     this.beginClose();
-    await Promise.allSettled([...this.pending]);
+    await Promise.allSettled(this.pending);
   }
 }

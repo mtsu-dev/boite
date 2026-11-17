@@ -1,6 +1,6 @@
 import { writeFileSync, openSync, writeSync, closeSync, renameSync, unlinkSync, linkSync, copyFileSync, constants, lstatSync, realpathSync } from 'node:fs';
 import { dirname, extname, isAbsolute, relative, resolve } from 'node:path';
-import { browserActionError, browserDownloadName, type BrowserNetworkCall, type BrowserNetworkDetail, type BrowserRecipe, BROWSER_DOWNLOAD_CHUNK_BYTES, type BrowserDownload, BROWSER_PRESETS, type BrowserReply, BROWSER_RECORDING_CHUNK_BYTES, BROWSER_RECORDING_CODECS, BROWSER_RECORDING_FRAME_RATES, BROWSER_RECORDING_MAX_BYTES, BROWSER_RECORDING_TYPES, type BrowserAction, type BrowserBlockingCommand, type BrowserPreset, type BrowserStuckAction, type BrowserRecordingCodec, type BrowserRecordingFrameRate } from '@boite/contracts';
+import { browserActionError, browserDownloadName, type BrowserNetworkCall, type BrowserNetworkDetail, type BrowserRecipe, BROWSER_DOWNLOAD_CHUNK_BYTES, type BrowserDownload, BROWSER_PRESETS, type BrowserReply, BROWSER_RECORDING_CHUNK_BYTES, BROWSER_RECORDING_MAX_BYTES, BROWSER_RECORDING_TYPES, type BrowserAction, type BrowserBlockingCommand, type BrowserPreset, type BrowserStuckAction, type BrowserRecordingCodec, type BrowserRecordingFrameRate } from '@boite/contracts';
 import type { CoreClient } from './client.ts';
 import type { CliIo } from './cli.ts';
 import { BROWSER_HEADERS } from './browser/network.ts';
@@ -138,7 +138,7 @@ function parseNoInput(context: BrowserParseContext): BrowserAction {
 }
 
 function parseProfiles(context: BrowserParseContext): BrowserAction {
-  const { rest, need, none } = context;
+  const { rest, need } = context;
   if (rest[0] !== 'add') return parseNoInput(context);
   need(1, 'a profile name');
   const name = rest.splice(0).slice(1).join(' ');

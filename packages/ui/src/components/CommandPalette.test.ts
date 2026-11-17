@@ -67,7 +67,7 @@ test('closed until asked, then the recents come first and the commands after the
   expect(document.activeElement?.getAttribute('data-testid')).toBe('palette-input');
   const ids = rows();
   // Every seeded thread first, then the commands; nothing typed, no project rows.
-  expect([...ids.slice(0, 4)].sort()).toEqual(['thread:t-bench', 'thread:t-descriptors', 'thread:t-scheduler', 'thread:t-trace']);
+  expect(ids.slice(0, 4).sort()).toEqual(['thread:t-bench', 'thread:t-descriptors', 'thread:t-scheduler', 'thread:t-trace']);
   expect(ids).toContain('new-thread');
   expect(ids).toContain('settings');
   expect(ids.some((id) => id.startsWith('project:'))).toBe(false);

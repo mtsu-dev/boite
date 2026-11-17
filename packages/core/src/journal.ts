@@ -27,7 +27,7 @@ import { restoreDeletedRows, threadsWhere, VISIBLE_THREADS, writeThread } from '
 import { oneTurn, pageTurns, sumSessionUsage, writeTurn, type SessionUsage } from './journal/turn-rows.ts';
 import type { AccountRow, MessageRow, ProcessRow, ProjectIconRow, ProjectRow, ThreadRow, TurnRow } from './journal/rows.ts';
 import type { DetectedIcon as StoredProjectIcon } from './project-icons.ts';
-import { copyStoredParts, foldStreamingParts, messageOfError, StreamBuffer } from './journal/stream-buffer.ts';
+import { copyStoredParts, foldStreamingParts, StreamBuffer } from './journal/stream-buffer.ts';
 import { requestSince } from './journal/request-since.ts';
 import { threadStats } from './journal/thread-stats.ts';
 import { keepRemovedTurnUsage, usageByBucket, usageByThread, usageOfTree, type UsageGroupRow, type UsageSumRow, type UsageThreadRow } from './journal/usage-sums.ts';

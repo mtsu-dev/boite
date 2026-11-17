@@ -1,6 +1,6 @@
 import {frame,request,observed,fixture} from './stdio-reference-fixture.ts';
 import {test,expect} from 'bun:test';
-import {encodeStdioReceipt,parseStdioReceipt,type StdioReceipt} from './stdio-root-fence.ts';
+import {encodeStdioReceipt,parseStdioReceipt} from './stdio-root-fence.ts';
 
 test('stdio receipts require exact CRT mappings, distinct originals, successful output flushes and immediate owner closure proofs',()=>{
  for(const role of [1,2]){const f=frame(role);expect(parseStdioReceipt(encodeStdioReceipt(f))).toEqual(f);
@@ -10,11 +10,10 @@ test('stdio receipts require exact CRT mappings, distinct originals, successful 
  }
 });
 
-import {mkdtempSync,rmSync,readFileSync,writeFileSync,mkdirSync,existsSync} from 'node:fs';
+import {mkdtempSync,rmSync,readFileSync,writeFileSync,existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';import {join} from 'node:path';
-import {FaultRootOwner,startFaultRootService,requestRootReference,validateFaultNativeEvidence,type RootRequest,type RootOwned} from './fault-root-reference.ts';
+import {FaultRootOwner,startFaultRootService,requestRootReference,type RootRequest} from './fault-root-reference.ts';
 import {authorizeActiveFence,validateActiveProof} from './live-fence-dispatch.ts';
-import {LiveRootDrainer} from './live-root-drain.ts';
 import {parseLiveReceipt,encodeLiveReceipt} from './live-root-fence.ts';
 import {boundStdioReceipt,stdioLabels} from './stdio-root-fence.ts';
 import {measureStdioRootReferences,runStdioRootHarness} from './stdio-root-reference.ts';

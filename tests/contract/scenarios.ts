@@ -253,7 +253,7 @@ export const SCENARIOS: Record<string, Scenario> = {
     await refusedWith(env.call('providers.removeLocal', { providerId: 'contract-missing' }), RpcErrorCode.NotFound);
     const removed = await env.call('providers.removeLocal', { providerId: 'contract-local' });
     check(!removed.loaded.some((entry) => entry.id === 'contract-local'), 'the removed provider is still listed');
-    check(!(heard.events.at(-1)?.payload as RpcEvents['providers.updated']).loaded.some((entry) => entry.id === 'contract-local'), 'the last providers.updated still lists it');
+    check(!(heard.events.at(-1)!.payload as RpcEvents['providers.updated']).loaded.some((entry) => entry.id === 'contract-local'), 'the last providers.updated still lists it');
     heard.stop();
   },
   'agents.runtime.configure keeps the route it saved, refuses a stale revision and follows the profile': async (env) => {

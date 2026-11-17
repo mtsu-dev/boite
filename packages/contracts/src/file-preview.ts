@@ -35,7 +35,7 @@ export function previewFileData(messages: Message[], previews?: ImagePreviews): 
 export function previewFilePart(part: MessagePart, role: Message['role'], messageId: string, index: number, previews?: ImagePreviews): MessagePart {
   if (part.type !== 'file' || part.dataDeferred) return part;
   const picture = DRAWN_IMAGE.test(part.mimeType);
-  if (role !== 'user' && (picture ? part.data.length <= IMAGE_INLINE_CHARS : /^image\//.test(part.mimeType) || part.mimeType === 'application/pdf')) return part;
+  if (role !== 'user' && (picture ? part.data.length <= IMAGE_INLINE_CHARS : part.mimeType.startsWith('image/') || part.mimeType === 'application/pdf')) return part;
   const size = picture ? imageSize(part.data) : null;
   const preview = picture ? previews?.(messageId, index, part.data) ?? null : null;
   return {

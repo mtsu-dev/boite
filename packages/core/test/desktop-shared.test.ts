@@ -146,7 +146,7 @@ test('an app that keeps one copy per user gets a profile of its own, or is refus
   expect(singleInstanceLaunch('firefox', ['about:blank'], dir, user, [])).toEqual({ args: ['-no-remote', '-profile', join(dir, 'profiles', 'firefox'), 'about:blank'], profile: join(dir, 'profiles', 'firefox') });
   // A profile the command names still keeps Firefox from joining the user's running copy.
   expect(singleInstanceLaunch('firefox', ['-P', 'dev'], dir, user, [])).toEqual({ args: ['-no-remote', '-P', 'dev'], profile: null });
-  expect(singleInstanceLaunch('firefox', ['-no-remote', '-profile', 'X:\p'], dir, user, [])).toEqual({ args: ['-no-remote', '-profile', 'X:\p'], profile: null });
+  expect(singleInstanceLaunch('firefox', ['-no-remote', '-profile', 'X:\\p'], dir, user, [])).toEqual({ args: ['-no-remote', '-profile', 'X:\\p'], profile: null });
   // open would start an app Boite never tracks, in front of the user's windows.
   expect(singleInstanceLaunch('/usr/bin/open', ['-a', 'Safari'], dir, [], [])).toMatchObject({ refused: expect.stringContaining('open starts apps Boite does not track') });
   expect(singleInstanceLaunch('C:\\Windows\\explorer.exe', [], dir, user, [])).toMatchObject({ refused: expect.stringContaining('the user\'s own Explorer') });

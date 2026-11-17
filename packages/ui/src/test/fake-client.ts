@@ -13,6 +13,7 @@ export const test = base.extend<{
   client: FakeClient;
   resources: (() => void)[];
 }>({
+  // oxlint-disable-next-line no-empty-pattern -- Vitest reads fixture dependencies from this pattern
   resources: async ({}, use) => {
     const disposers: (() => void)[] = [];
     try {
@@ -24,6 +25,7 @@ export const test = base.extend<{
         try { dispose(); } catch (error) { errors.push(error); }
       }
       vi.useRealTimers();
+      // oxlint-disable-next-line no-unsafe-finally -- a failed cleanup must fail the test
       if (errors.length) throw new AggregateError(errors, 'Test resources failed to close');
     }
   },

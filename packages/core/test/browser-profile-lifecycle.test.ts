@@ -31,7 +31,6 @@ test('without a Chromium-based browser the status says why and nothing opens', a
 });
 
 test('the browser is found where each OS installs it, and BOITE_BROWSER alone when set', () => {
-  const { agent } = browserFixture;
   const root = mkdtempSync(join(tmpdir(), 'boite-chromium-'));
   try {
     const edge = join(root, 'Microsoft', 'Edge', 'Application', 'msedge.exe');

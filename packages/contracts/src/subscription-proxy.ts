@@ -89,7 +89,7 @@ export function gatewayDashboardReachable(dashboardUrl: string | null | undefine
 export function isLoopbackHost(host: string): boolean {
   const name = host.toLowerCase().replace(/^\[|\]$/g, '');
   return name === 'localhost' || name.endsWith('.localhost') || /^127(?:\.\d{1,3}){3}$/.test(name)
-    || name === '::1' || /^(?:0:){5}ffff:127\./.test(name) || /^::ffff:127\./.test(name);
+    || name === '::1' || /^(?:0:){5}ffff:127\./.test(name) || name.startsWith('::ffff:127.');
 }
 
 /**

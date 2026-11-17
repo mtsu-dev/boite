@@ -101,7 +101,7 @@ test('an effort that reached a running turn still shows on the next turn, from w
   const done: ReturnType<typeof Promise.withResolvers<TurnResult>>[] = [];
   restore = setDriver('echo', {
     protocol: 'echo',
-    startTurn(ctx) {
+    startTurn() {
       const result = Promise.withResolvers<TurnResult>();
       done.push(result);
       return {

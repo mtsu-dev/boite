@@ -111,7 +111,7 @@ export default {
           response = json({ error: "not_found" }, 404);
       }
       return cors(response, request, env);
-    } catch (err) {
+    } catch {
       console.error("telemetry request failed");
       return cors(json({ error: "internal_error" }, 500), request, env);
     }

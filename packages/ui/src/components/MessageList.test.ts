@@ -940,7 +940,7 @@ test('a window opened around the reader pages down as they reach its bottom, and
 
 test('what arrives while the reader is scrolled up is counted on the way back, and the count clears at the bottom', async ({ ready }) => {
   window.localStorage.clear();
-  const { store: live, client } = await ready({ delayMs: 0, long: true });
+  const { store: live } = await ready({ delayMs: 0, long: true });
   await live.open('t-long');
   const messages = live.openThread?.messages ?? [];
   stubLayout(messages.length * ESTIMATE);
@@ -966,7 +966,7 @@ test('what arrives while the reader is scrolled up is counted on the way back, a
 
 test('a thread reopened where the reader left it, above the bottom, counts what arrives after', async ({ ready }) => {
   window.localStorage.clear();
-  const { store: live, client } = await ready({ delayMs: 0, long: true });
+  const { store: live } = await ready({ delayMs: 0, long: true });
   await live.open('t-long');
   const messages = live.openThread?.messages ?? [];
   stubLayout(messages.length * ESTIMATE);
@@ -996,7 +996,7 @@ test('Ctrl+F counts matches in messages the window has not drawn, walks to them,
   window.localStorage.clear();
   // jsdom measures no range; the bar only reads one to decide whether to scroll.
   Range.prototype.getBoundingClientRect ??= () => new DOMRect(0, 0, 0, 0);
-  const { store: live, client } = await ready({ delayMs: 0, long: true });
+  const { store: live } = await ready({ delayMs: 0, long: true });
   await live.open('t-long');
   const messages = live.openThread?.messages ?? [];
   stubLayout(messages.length * ESTIMATE);
@@ -1214,7 +1214,7 @@ test('a thread whose first message is loaded asks for nothing at the top', async
  */
 test.for([false, true])('four hundred messages, two hundred deltas: the window and the pin stay put (inline view: %s)', { timeout: 20_000 }, async (withView, { ready }) => {
   window.localStorage.clear();
-  const { store, client } = await ready({ delayMs: 0, long: true });
+  const { store } = await ready({ delayMs: 0, long: true });
   await store.open('t-long');
   // `threads.get` hands back the last page: the bench wants the whole thread in
   // the list, so the pages above it are pulled in before anything is mounted.
@@ -1306,7 +1306,7 @@ test.for([false, true])('four hundred messages, two hundred deltas: the window a
 
 test('the second receipt waits for the first streamed character of the answer', async ({ ready }) => {
   window.localStorage.clear();
-  const { store, client } = await ready({ delayMs: 0, long: true });
+  const { store } = await ready({ delayMs: 0, long: true });
   await store.open('t-long');
   const messages = store.openThread?.messages ?? [];
   stubLayout(messages.length * ESTIMATE);
@@ -1340,7 +1340,7 @@ test('a page in flight shows one line at the top of the list', async () => {
 
 test('a press holds the pinned list, and a release the window never saw still frees it', async ({ ready }) => {
   window.localStorage.clear();
-  const { store: live, client } = await ready({ delayMs: 0, long: true });
+  const { store: live } = await ready({ delayMs: 0, long: true });
   await live.open('t-long');
   const messages = live.openThread?.messages ?? [];
   stubLayout(messages.length * ESTIMATE);

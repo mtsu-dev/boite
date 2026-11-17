@@ -1,6 +1,6 @@
 /** OpenCode 2's native API, with an ACP fallback to reproduce the old refusal. */
 import { instructionsOf } from './history.ts';
-export {};
+
 if (!process.argv.includes('serve')) {
   await import('./acp-agent.ts');
 } else {

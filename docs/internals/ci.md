@@ -83,8 +83,8 @@ sooner. `Repository checks`, beside it on every change, installs frozen
 dependencies, runs `bun audit` (with the ignored advisories named and justified
 in `ci.yml`), local link checks, `bun test scripts/ci ./bench
 ./apps/shell/scripts`, architecture checks and their tests, translation
-validation, the no-em-dash UI copy rule (`bun run check:copy`) and
-checksum-verified actionlint 1.7.12. When one job did both, every other job
+validation, the no-em-dash UI copy rule (`bun run check:copy`), oxlint
+(`bun run lint`, every file, no warning allowed) and checksum-verified actionlint 1.7.12. When one job did both, every other job
 waited about 54 s for it (median of 27 runs, 2026-11-16), 40 of them for the
 script tests.
 

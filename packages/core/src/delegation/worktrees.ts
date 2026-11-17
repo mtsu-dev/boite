@@ -37,7 +37,7 @@ export class ChildWorktrees {
   /** Called after turn and shared-job producers stop, while their journal is still open. */
   async close(): Promise<void> {
     this.#closed = true;
-    await Promise.allSettled([...this.#settling.values()]);
+    await Promise.allSettled(this.#settling.values());
   }
 
   #save(threadId: ThreadId, worktree: DelegationWorktree): void {

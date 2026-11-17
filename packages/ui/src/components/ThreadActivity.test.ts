@@ -3,7 +3,6 @@ import { flushSync, mount, unmount } from 'svelte';
 import type { Thread, ThreadActivity } from '@boite/contracts';
 import { Store } from '../lib/store.svelte';
 import ThreadActivityView from './ThreadActivity.svelte';
-import { workspace } from '../lib/workspace.svelte';
 
 let view: ReturnType<typeof mount> | undefined;
 afterEach(() => {

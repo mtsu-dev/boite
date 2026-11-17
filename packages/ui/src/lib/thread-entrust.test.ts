@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, test } from 'vitest';
+import { expect, test } from 'vitest';
 import type { AgentsSnapshot, ThreadSummary } from '@boite/contracts';
 import { agentDirectory } from './agent-directory.svelte';
 import { entrustItems } from './thread-entrust';

@@ -9,7 +9,6 @@ import type {
   ProcessRecord,
   Project,
   ThreadSummary,
-  Turn,
   Usage,
 } from '../../packages/contracts/src/index.ts';
 import { connect, type CoreClient } from '../../packages/core/src/client.ts';

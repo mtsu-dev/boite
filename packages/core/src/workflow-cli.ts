@@ -212,7 +212,7 @@ export async function workflowCommand(client: CoreClient, threadId: string, rest
       const name = rest[1];
       if (!name) throw new Error('workflow save needs a name, then a plan or a run id');
       const source = rest.slice(2).join(' ');
-      const plan = /^wfr_/.test(source)
+      const plan = source.startsWith('wfr_')
         ? (await client.call('workflows.get', { threadId, runId: source })).plan
         : readPlan(source, io.cwd, 'workflow save') as WorkflowPlan;
       const template = await client.call('workflows.templates.save', { threadId, name, plan });

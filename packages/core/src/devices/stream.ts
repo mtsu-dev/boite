@@ -6,6 +6,7 @@
  * and control sockets through `adb reverse`. control.ts loads this module on
  * the first stream. See docs/internals/devices.md, "Live stream".
  */
+// oxlint-disable-next-line typescript/triple-slash-reference -- ambient types for Markdown text imports
 /// <reference path="../text.d.ts" />
 import type { LogData, MobileDeviceInput, MobileDeviceStream, MobileDeviceStreamChunk } from '@boite/contracts';
 import { MOBILE_STREAM_SIZE } from '@boite/contracts';

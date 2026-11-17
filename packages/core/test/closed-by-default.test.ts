@@ -200,7 +200,7 @@ test('project reach preserves associated contact directory, read and send',async
 });
 
 test('Contacts mochi keeps its group reach on a new install',async()=>{
- const h=await boot(),owner=await h.connect(),{threadId,accountId}=await echoThread(h,owner);
+ const h=await boot(),owner=await h.connect(),{threadId}=await echoThread(h,owner);
  const bot=await contactsBotOf(h,owner);
  expect(h.core.coordination.scope(bot.threadId).reach).toBe('group');
  expect((await h.core.coordination.directory(bot.threadId)).agents.some(t=>t.threadId===threadId)).toBe(true);
