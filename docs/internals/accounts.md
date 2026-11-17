@@ -163,9 +163,12 @@ Settings shows the chosen account label and its email separately. Emails stay
 blurred until hovered, focused from the keyboard or tapped on a phone.
 The model picker's account chips and their tooltips show the chosen label only.
 Everywhere else an address shown as an account's name (the adopted
-`Default` login, a gateway's label, a plugin's saved account, a limit alert's
-title) goes through `maskEmails` in the contracts: `you@example.com` reads
-`y•••@e•••.com`, so a screen share or a locked phone gives no address away.
+`Default` login, a gateway's label, a plugin's saved account) renders through
+`PrivateText.svelte`: `emailParts` in the contracts cuts the text around each
+address and the address gets the shared `.private-email` blur (`controls.css`),
+the one the Accounts page uses, lifted under the pointer. Text that cannot
+blur, a limit alert's system notification, drops the address with
+`withoutEmails`.
 
 ## The login flow
 

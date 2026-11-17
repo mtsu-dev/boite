@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PrivateText from './PrivateText.svelte';
   import { Bell, BellRing, Clock3, RotateCcw, Wallet } from '@lucide/svelte';
   import QuotaAlerts, { alertPeriods } from './QuotaAlerts.svelte';
   import QuotaExtras from './QuotaExtras.svelte';
@@ -69,7 +70,7 @@
           <span class="logo" title={row.providerName}><ProviderLogo providerId={row.providerId} size={22} /></span>
         {/if}
         <div class="identity">
-          <strong class="name" title={name}>{name}</strong>
+          <strong class="name" title={name}><PrivateText text={name} /></strong>
           {#if row.gateway && (row.gateway.plan || row.gateway.status !== 'ready')}
             <span class="badges">
               {#if row.gateway.plan}<span class="badge" data-testid="usage-limit-plan"><span class="ui-label">{row.gateway.plan}</span></span>{/if}

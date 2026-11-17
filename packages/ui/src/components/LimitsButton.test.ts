@@ -60,7 +60,7 @@ test('out: a red ring filled by the wait already done, the time left under it, a
   expect(ring.dataset.limit).toBe('out');
   expect(ring.dataset.share).toBe('0.70');
   expect(document.querySelector('[data-testid=limits-countdown]')!.textContent).toBe('1h30');
-  expect(document.querySelector('[data-testid=nav-limits]')!.getAttribute('aria-label')).toMatch(/^Claude's 5-hour limit is used up, back \S.* · back in 1h30$/);
+  expect(document.querySelector('[data-testid=nav-limits]')!.getAttribute('aria-label')).toBe("Claude's 5-hour limit is used up · back in 1h30");
 
   vi.advanceTimersByTime(60 * 60_000);
   await settle();
@@ -85,7 +85,7 @@ test('several accounts: silent while one has room, then every account out until 
   update(rows);
   await settle();
   expect(document.querySelector<SVGElement>('[data-testid=limits-gauge]')!.dataset.limit).toBe('out');
-  expect(document.querySelector('[data-testid=nav-limits]')!.getAttribute('aria-label')).toMatch(/^Every Claude account is out, first one back \S/);
+  expect(document.querySelector('[data-testid=nav-limits]')!.getAttribute('aria-label')).toMatch(/^Every Claude account is out · back in \d/);
 });
 
 test('an account used outside Douane lights a red dot on the quiet gauge and names the account', async () => {

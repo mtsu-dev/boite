@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PrivateText from './PrivateText.svelte';
   import Notice from './Notice.svelte';
   import { untrack } from 'svelte';
   import { lockedBy } from '../lib/policy';
@@ -7,7 +8,7 @@
   import PolicyLock from './PolicyLock.svelte';
   import { Download, ExternalLink, Play, Plus, Puzzle, RefreshCw, RotateCw, Search, ShieldAlert, Square, TriangleAlert } from '@lucide/svelte';
   import type { PluginAdds, PluginAppState, PluginGatewayState, PluginManifest, PluginPermission, PluginPool, PluginPreview, PluginRejected, PluginSettingValue, PluginState, PluginUpdates, RpcParams } from '@boite/contracts';
-  import { PLUGIN_ADD_SECTION, PLUGIN_PERMISSIONS, gatewayDashboardReachable, maskEmails } from '@boite/contracts';
+  import { PLUGIN_ADD_SECTION, PLUGIN_PERMISSIONS, gatewayDashboardReachable } from '@boite/contracts';
   import { pluginUi } from '../lib/plugin-ui.svelte';
   import { workspace } from '../lib/workspace.svelte';
   import { besideCore } from '../lib/gateway-dashboard';
@@ -595,7 +596,7 @@
           {#each pool.accounts as account (account.email)}
             <div class="saved-account" class:active={account.active} data-testid="plugin-account" data-email={account.email}>
               <div class="account-head">
-                <strong class="ui-label">{maskEmails(account.email)}</strong>
+                <strong class="ui-label"><PrivateText text={account.email} /></strong>
                 {#if account.active}<span class="tag ui-label-box" data-testid="plugin-account-active"><span class="ui-label">{t.active}</span></span>{/if}
                 <span class="account-actions">
                   {#if !account.active}
@@ -604,7 +605,7 @@
                   <button class="ghost small" disabled={working} onclick={() => void accountAction(plugin, pool.provider, 'remove', account.email)}><span class="ui-label">{t.forget}</span></button>
                 </span>
               </div>
-              <QuotaList rows={[{ accountId: account.email, providerId: pool.provider, providerName: maskEmails(account.email), label: '', enabled: true,
+              <QuotaList rows={[{ accountId: account.email, providerId: pool.provider, providerName: account.email, label: '', enabled: true,
                 status: account.checkedSecondsAgo === null ? 'unavailable' : 'ready', windows: account.windows,
                 checkedAt: account.checkedSecondsAgo === null ? null : Date.now() - account.checkedSecondsAgo * 1000, error: null }]} />
             </div>

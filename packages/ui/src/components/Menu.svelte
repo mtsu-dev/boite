@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PrivateText from './PrivateText.svelte';
   import { tick, type Snippet } from 'svelte';
   import { Check, ChevronRight, Settings } from '@lucide/svelte';
   import { Closing } from '../lib/closing.svelte';
@@ -231,12 +232,12 @@
             {#if item.projectTile}<ProjectTile project={item.projectTile.project} store={item.projectTile.store} size={18} />{/if}
             {#if item.glyph}<span class="glyph" class:live={item.live} aria-hidden="true"><item.glyph size={16} strokeWidth={1.75} /></span>{/if}
             {#if item.status}<span class="status-dot" data-tone={item.status.tone} role="img" aria-label={item.status.label} title={item.status.label}></span>{/if}
-            <span class="ui-label">{item.label}</span>
+            <span class="ui-label"><PrivateText text={item.label} /></span>
             {#if item.submenu}<span class="more" aria-hidden="true"><ChevronRight size={14} strokeWidth={1.75} /></span>{/if}
           </span>
           <!-- A submenu row's chevron stands for the context menu's '›' hint: one mark, not two. -->
           {#if item.hint && !item.submenu}
-            <span class="hint ui-label">{item.hint}</span>
+            <span class="hint ui-label"><PrivateText text={item.hint} /></span>
           {/if}
           {#if switches && item.checked !== undefined && !item.radio}
             <span class="switch" class:on={item.checked} aria-hidden="true"></span>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PrivateText from './PrivateText.svelte';
   import { accountName } from '../lib/account-name';
   import InfoTip from './InfoTip.svelte';
   import PolicyLock from './PolicyLock.svelte';
@@ -10,7 +11,7 @@
   import { onMount } from 'svelte';
   import { slide } from 'svelte/transition';
   import { ChevronRight, Plus, RefreshCw, Terminal } from '@lucide/svelte';
-  import { maskEmails, providerEnabled, type Account, type ProviderSummary } from '@boite/contracts';
+  import { providerEnabled, type Account, type ProviderSummary } from '@boite/contracts';
   import ProviderIcon from './ProviderLogo.svelte';
   import ModelPicker from './ModelPicker.svelte';
   import EffortSlider from './EffortSlider.svelte';
@@ -487,7 +488,7 @@
       {:else}
         <div class="account-line">
           <div class="who">
-            <h3>{maskEmails(entry.label)}</h3>
+            <h3><PrivateText text={entry.label} /></h3>
             <p class="state">
               <span class="kind ui-label">{entry.isolationDir === null ? strings.providerSettings.default : strings.providerSettings.isolated}</span>
               {#if entry.status !== 'ok'}
@@ -727,8 +728,8 @@
 </div>
 
 <style>
-  .private-email { position: relative; display: inline-block; height: auto; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; filter: blur(5px); cursor: pointer; transition: filter var(--dur-2); overflow-wrap: anywhere; }
-  .private-email:hover, .private-email:focus-visible, .private-email.revealed { filter: none; }
+  /* The blur is the shared `.private-email` (controls.css); here it is a button that keeps the address shown. */
+  .private-email { position: relative; display: inline-block; height: auto; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
   .identity { margin: 0; font-size: var(--text-sm); color: var(--color-muted-foreground); }
   .rename { flex-wrap: wrap; }
 

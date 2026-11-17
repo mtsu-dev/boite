@@ -1,25 +1,16 @@
 import { expect, test } from 'vitest';
-import { maskEmails, quotaAlertTitle, type AccountQuota } from '@boite/contracts';
-import { accountName } from './account-name';
-import { namedQuotas, quotaAccountName } from './quota-reader.svelte';
+import { emailParts, quotaAlertTitle, withoutEmails } from '@boite/contracts';
 
-test('an address reads as its first letters, a gateway\'s shortened one too, and other text is left alone', () => {
-  expect(maskEmails('you@example.com')).toBe('y•••@e•••.com');
-  expect(maskEmails('Claude Max x20 · chris@…')).toBe('Claude Max x20 · c•••@…');
-  expect(maskEmails('Work (jean.dupont@mail.company.fr)')).toBe('Work (j•••@m•••.fr)');
-  expect(maskEmails('nefreex2 + mtsu patrol')).toBe('nefreex2 + mtsu patrol');
-  expect(maskEmails('@handle · user@host')).toBe('@handle · user@host');
+test('an address, a gateway\'s shortened one too, is cut out of the text to blur; other text stays one part', () => {
+  expect(emailParts('Claude Pro · work@corp.io')).toEqual([{ text: 'Claude Pro · ', email: false }, { text: 'work@corp.io', email: true }]);
+  expect(emailParts('Claude Max x20 · chris@…')).toEqual([{ text: 'Claude Max x20 · ', email: false }, { text: 'chris@…', email: true }]);
+  expect(emailParts('nefreex2 + mtsu patrol')).toEqual([{ text: 'nefreex2 + mtsu patrol', email: false }]);
+  expect(emailParts('@handle · user@host')).toEqual([{ text: '@handle · user@host', email: false }]);
 });
 
-test('the adopted login, a gateway entry and a limit alert never show an address', () => {
-  expect(accountName({ label: 'Default', identity: 'you@example.com' })).toBe('y•••@e•••.com');
-  expect(accountName({ label: 'Home', identity: 'you@example.com' })).toBe('Home');
-
-  const row = { accountId: 'proxy:claude:1', providerId: 'claude', providerName: 'Claude', label: 'Claude Pro · work@corp.io', enabled: true,
-    status: 'ready', windows: [], checkedAt: null, error: null } as AccountQuota;
-  expect(namedQuotas([row])[0]!.label).toBe('Claude Pro · w•••@c•••.io');
-  expect(quotaAccountName(row)).toBe('Claude Pro · w•••@c•••.io');
-
+test('a limit alert, shown on a locked screen where nothing blurs, leaves the address out', () => {
+  expect(withoutEmails('Work (jean.dupont@mail.company.fr)')).toBe('Work');
   const window = { id: 'five-hour', label: '5 hours', usedPercent: 92, resetsAt: null };
-  expect(quotaAlertTitle({ label: 'you@example.com', providerName: 'Claude', window })).toBe('Claude · y•••@e•••.com');
+  expect(quotaAlertTitle({ label: 'you@example.com', providerName: 'Claude', window })).toBe('Claude');
+  expect(quotaAlertTitle({ label: 'Claude Pro · work@corp.io', providerName: 'Claude', window })).toBe('Claude Pro');
 });

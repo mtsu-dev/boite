@@ -46,8 +46,9 @@ has no command-line login in Boite: each of its accounts is a Boite account.
 
 Settings shows each account's name and its email. Emails stay blurred until
 you hover them, tap them on a phone, or press Reveal email.
-Everywhere else, in the limits, notifications and menus, an email in an
-account's name shows masked, like y•••@e•••.com.
+Everywhere else in the app, in the limits, menus and dialogs, an email in an
+account's name is blurred the same way and shows when you point at it. A system
+notification cannot blur, so it leaves the address out.
 
 ## What isolated accounts share
 

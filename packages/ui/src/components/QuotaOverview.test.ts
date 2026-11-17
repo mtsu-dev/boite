@@ -53,6 +53,18 @@ test('exhausted subscriptions put an available allowance first without claiming 
   for (const id of ['stale', 'empty', 'rounded']) expect(document.querySelector(`[data-account-id="${id}"] .paid`)).toBeNull();
 });
 
+test('the open thread\'s account is tagged, and an address in a name sits in the blurred span', () => {
+  component = mount(QuotaOverview, { target: document.body, props: { rows: [quota('personal', 'Personal', 10), quota('work', 'Claude Pro · work@corp.io', 20)], current: 'work' } });
+  flushSync();
+  const [personal, work] = [...document.querySelectorAll<HTMLElement>('[data-testid="quota-provider"]')];
+  expect(personal!.classList.contains('current')).toBe(false);
+  expect(work!.classList.contains('current')).toBe(true);
+  expect(document.querySelectorAll('[data-testid=quota-current]')).toHaveLength(1);
+  expect(work!.querySelector('[data-testid=quota-current]')!.textContent).toBe('This thread');
+  expect(work!.querySelector('.name .private-email')!.textContent).toBe('work@corp.io');
+  expect(personal!.querySelector('.private-email')).toBeNull();
+});
+
 test('profile labels stay visible even for Default; missing labels fall back to the provider', async () => {
   for (const [label, name] of [['Default', 'Default'], ['Personal', 'Personal'], ['', 'Codex']]) {
     component = mount(QuotaOverview, { target: document.body, props: { rows: [quota('only', label!, 10)], connect: () => {} } });

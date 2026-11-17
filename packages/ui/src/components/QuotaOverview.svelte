@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PrivateText from './PrivateText.svelte';
   import { ChevronDown, RotateCcw } from '@lucide/svelte';
   import type { AccountQuota, QuotaWindow as Limit } from '@boite/contracts';
   import InfoTip from './InfoTip.svelte';
@@ -11,8 +12,8 @@
   import { shownWindows } from '../lib/quota-display';
   import { QuotaReorder } from '../lib/quota-reorder.svelte';
 
-  let { rows, loading = false, completed = [], connect, order = [], onreorder }: {
-    rows: AccountQuota[]; loading?: boolean; completed?: string[]; connect?: () => void;
+  let { rows, current = null, loading = false, completed = [], connect, order = [], onreorder }: {
+    rows: AccountQuota[]; current?: string | null; loading?: boolean; completed?: string[]; connect?: () => void;
     order?: string[]; onreorder?: (order: string[]) => Promise<boolean>;
   } = $props();
 
@@ -58,7 +59,7 @@
     {@const paid = credits !== null && drained}
     {@const outsideMost = mostOutside(windows)}
     {@const percent = credits?.kind === 'budget' ? Math.max(0, Math.min(100, credits.remaining! / credits.limit! * 100)) : null}
-    <article data-testid="quota-provider" data-provider={row.providerId} data-account-id={row.accountId} class:expanded={expanded === row.accountId} class:dragging={reorder.dragging === row.accountId}>
+    <article data-testid="quota-provider" data-provider={row.providerId} data-account-id={row.accountId} class:current={row.accountId === current} class:expanded={expanded === row.accountId} class:dragging={reorder.dragging === row.accountId}>
       <div class="account-heading">
         <button class="summary ghost" class:reorderable={!!onreorder && !reorder.saving} data-testid={onreorder ? 'quota-reorder' : undefined}
           aria-expanded={expanded === row.accountId} aria-controls={`usage-${row.accountId}`} aria-keyshortcuts={onreorder ? 'ArrowUp ArrowDown Home End' : undefined}
@@ -68,7 +69,8 @@
           <span class="logo" title={row.providerName}><ProviderLogo providerId={row.providerId} size={20} /></span>
           <span class="summary-content">
             <span class="headline">
-              <span class="name ui-label" title={name}>{name}</span>
+              <span class="name ui-label" title={name}><PrivateText text={name} /></span>
+              {#if row.accountId === current}<span class="here" data-testid="quota-current">{strings.quotas.thisThread}</span>{/if}
               {#if !paid}<span class="amount ui-label" class:low={used !== null && quotaTone(used) !== 'ok'} title={shown.primary ? quotaWindowName(shown.primary.label) : undefined} data-testid="quota-headline">{used === null ? strings.quotas.noReading : left(used)}</span>{/if}
               {#if windows.length}<ChevronDown size={12} />{/if}
             </span>
@@ -115,6 +117,10 @@
   .overview { display: grid; grid-template-columns: minmax(0, 1fr); }
   article { min-width: 0; padding: 4px 0; }
   article + article { border-top: 1px solid var(--color-border); }
+  /* The open thread's account: a filled row and a tag, so the glance answers "which of these am I spending". */
+  article.current { margin-inline: -4px; padding-inline: 4px; border-radius: var(--radius-md); background: var(--color-active); }
+  article.current + article, article + article.current { border-top-color: transparent; }
+  .here { flex: none; padding: 2px 6px; border-radius: var(--radius-sm); background: var(--color-background); color: var(--color-muted-foreground); font-size: var(--text-min); font-weight: 600; white-space: nowrap; }
   article.dragging { background: var(--color-active); outline: 1px solid var(--color-muted-foreground); }
   .account-heading { display: flex; align-items: stretch; gap: 2px; }
   .summary { flex: 1; min-width: 0; width: 100%; height: auto; min-height: 44px; padding: 2px 4px; line-height: 1.2; display: flex; align-items: start; gap: 8px; text-align: left; border-radius: var(--radius-md); white-space: normal; }

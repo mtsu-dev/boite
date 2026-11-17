@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PrivateText from './PrivateText.svelte';
   import { accountName } from '../lib/account-name';
   import { tick } from 'svelte';
   import { ChevronDown, Plug, Sparkles } from '@lucide/svelte';
@@ -127,7 +128,7 @@
       <Sparkles size={14} strokeWidth={1.75} />
     {/if}
     <span class="label ui-label">{label}</span>
-    {#if accountLabel}<span class="account ui-label" data-testid="composer-picker-account">{accountLabel}</span>{/if}
+    {#if accountLabel}<span class="account ui-label" data-testid="composer-picker-account"><PrivateText text={accountLabel} /></span>{/if}
     <ChevronDown size={12} strokeWidth={2} />
   </button>
   {/if}

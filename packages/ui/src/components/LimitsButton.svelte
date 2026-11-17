@@ -3,7 +3,7 @@
   import { Gauge } from '@lucide/svelte';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
-  import { quotaLimitName, quotaResetTime } from '../lib/format';
+  import { quotaLimitName } from '../lib/format';
   import { quotaReader, shownQuotas } from '../lib/quota-reader.svelte';
   import { countdown, limitsNotice, windowSpan } from '../lib/limits-meter';
   import { outsideNotice } from '../lib/outside-usage';
@@ -23,7 +23,7 @@
    * name card; a click opens the glance; a right click hides it, like the
    * other list controls (`sidebar.limits`).
    */
-  let { store, name }: { store: Store; name?: Snippet<[string, string | null]> } = $props();
+  let { store, name }: { store: Store; name?: Snippet<[string, string[]]> } = $props();
 
   const shown = $derived(work.shows('sidebar.limits'));
   /** The reading every limits view shares: kept from the last run, read once when none is, kept current. */
@@ -56,14 +56,12 @@
     return () => clearTimeout(timer);
   });
 
-  /** Out: whose limit and until when, every account where several were counted. Low: the best account's, named past one. */
+  /** Out: whose limit, every account where several were counted. Low: the best account's, named past one. */
   const text = $derived.by(() => {
     if (!meter) return strings.quotas.glance;
-    const values = { percent: String(meter.left), window: quotaLimitName(meter.window), provider: meter.provider, account: meter.account, time: meter.until === null ? '' : quotaResetTime(meter.until, now) };
+    const values = { percent: String(meter.left), window: quotaLimitName(meter.window), provider: meter.provider, account: meter.account };
     if (meter.kind === 'low') return fill(meter.accounts > 1 ? strings.quotas.lineLeftAccount : strings.quotas.lineLeft, values);
-    const every = meter.accounts > 1 && !meter.scoped;
-    if (meter.until === null) return fill(every ? strings.quotas.lineOutAll : strings.quotas.lineOut, values);
-    return fill(every ? strings.quotas.lineOutAllUntil : strings.quotas.lineOutUntil, values);
+    return fill(meter.accounts > 1 && !meter.scoped ? strings.quotas.lineOutAll : strings.quotas.lineOut, values);
   });
   const left = $derived(meter?.kind === 'out' && meter.until !== null ? countdown(meter.until - now) : null);
   /** Under the sentence: the account when the sentence did not name it, the wait when one is known. */
@@ -84,10 +82,10 @@
   const CIRCLE = 2 * Math.PI * RADIUS;
   let button = $state<HTMLButtonElement>();
   let glance = $state<LimitsGlance>();
-  /** The name card: the limits' sentence and its note, or the leak alone while the limits say nothing. */
+  /** The name card: the limits' sentence, then a line each for its note and the leak; the leak alone while the limits say nothing. */
   const title = $derived(!meter && leakText ? leakText : text);
-  const detail = $derived([note, meter ? leakText : null].filter(Boolean).join(' · ') || null);
-  const label = $derived(detail ? `${title} · ${detail}` : title);
+  const lines = $derived([note, meter ? leakText : null].filter((line): line is string => !!line));
+  const label = $derived([title, ...lines].join(' · '));
 
   /** The glance is a click-only body in its own chunk: a press before it lands waits for it. */
   async function openGlance() {
@@ -103,24 +101,28 @@
   <button type="button" class="ghost icon limits" class:low={meter?.kind === 'low'} class:out={meter?.kind === 'out'} class:leak={leak !== null} bind:this={button} data-testid="nav-limits"
     title={name ? undefined : label} aria-label={label} aria-haspopup="dialog"
     onclick={() => void openGlance()} oncontextmenu={(event) => controlMenu(event, store, 'sidebar.limits')}>
-    {#if meter}
-      <svg class="ring" viewBox="0 0 24 24" aria-hidden="true" data-testid="limits-gauge" data-left={meter.left} data-limit={meter.kind} data-share={share.toFixed(2)}>
-        <circle class="track" cx="12" cy="12" r={RADIUS} />
-        <circle class="arc" cx="12" cy="12" r={RADIUS} stroke-dasharray={`${CIRCLE * share} ${CIRCLE}`} />
-      </svg>
-      <span class="dot" aria-hidden="true"></span>
-    {:else}
-      <Gauge size={19} strokeWidth={1.75} aria-hidden="true" />
-      {#if leak}<span class="dot" aria-hidden="true" data-testid="limits-leak"></span>{/if}
-    {/if}
+    <span class="glyph">
+      {#if meter}
+        <svg class="ring" viewBox="0 0 24 24" aria-hidden="true" data-testid="limits-gauge" data-left={meter.left} data-limit={meter.kind} data-share={share.toFixed(2)}>
+          <circle class="track" cx="12" cy="12" r={RADIUS} />
+          <circle class="arc" cx="12" cy="12" r={RADIUS} stroke-dasharray={`${CIRCLE * share} ${CIRCLE}`} />
+        </svg>
+        <span class="dot" aria-hidden="true"></span>
+      {:else}
+        <Gauge size={19} strokeWidth={1.75} aria-hidden="true" />
+        {#if leak}<span class="dot" aria-hidden="true" data-testid="limits-leak"></span>{/if}
+      {/if}
+    </span>
+    {#if left}<span class="countdown" aria-hidden="true" data-testid="limits-countdown">{left}</span>{/if}
   </button>
-  {#if left}<span class="countdown" aria-hidden="true" data-testid="limits-countdown">{left}</span>{/if}
-  {@render name?.(title, detail)}
+  {@render name?.(title, lines)}
   <Deferred part={parts.LimitsGlance} quiet>{#snippet children(Glance)}<Glance bind:this={glance} {store} side="right" anchor={() => button ?? null} />{/snippet}</Deferred>
 {/if}
 
 <style>
-  .limits { position: relative; flex: none; }
+  /* The glyph, and out the time left under it, both inside the button's square: nothing hangs past its edge. */
+  .limits { position: relative; flex: none; flex-direction: column; gap: 2px; }
+  .glyph { position: relative; display: grid; place-items: center; }
   .ring { width: 21px; height: 21px; transform: rotate(-90deg); overflow: visible; }
   .ring circle { fill: none; stroke-width: 2.5; }
   .ring .track { stroke: color-mix(in srgb, currentColor 22%, transparent); }
@@ -129,10 +131,11 @@
   .limits.out { color: var(--color-danger); }
   .limits.low .arc { stroke: var(--color-caution); }
   .limits.out .arc { stroke: var(--color-danger); }
-  .dot { position: absolute; width: 7px; height: 7px; right: 5px; top: 5px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 2px var(--color-frame); }
+  /* On the glyph's shoulder, not the button's corner: the button's hover fill and focus ring stay clear of it. */
+  .dot { position: absolute; width: 7px; height: 7px; right: -3px; top: -2px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 2px var(--color-frame); }
   .limits.low .dot { background: var(--color-caution); }
   .limits.out .dot, .limits.leak .dot { background: var(--color-danger); }
   /* The time left, under the ring: the one figure worth reading without a hover. */
-  .countdown { margin-top: 2px; color: var(--color-danger); font-family: var(--font-mono); font-size: var(--text-min); font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; pointer-events: none; }
+  .countdown { color: var(--color-danger); font-family: var(--font-mono); font-size: var(--text-min); font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; pointer-events: none; }
   @media (prefers-reduced-motion: reduce) { .ring .arc { transition: none; } }
 </style>

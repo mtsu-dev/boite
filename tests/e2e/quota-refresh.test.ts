@@ -224,8 +224,8 @@ for (const width of [1280, 390]) {
     await page.click('[data-testid="nav-settings"]');
     await openLimitsTab(page);
     await page.waitFor(`document.querySelector('[data-testid="limits-refresh"]')?.getAttribute('aria-busy') === 'false'`);
-    // The adopted "Default" login reads as the address the provider reported for it, masked (maskEmails).
-    expect(await page.evaluate(`document.querySelector('[data-testid="usage-limit-provider"][data-account-id="a-codex"] strong').textContent`)).toBe('y•••@e•••.com');
+    // The adopted "Default" login reads as the address the provider reported for it.
+    expect(await page.evaluate(`document.querySelector('[data-testid="usage-limit-provider"][data-account-id="a-codex"] strong').textContent`)).toBe('you@example.com');
     const tracked = '[data-testid="tracked-account"][data-account-id="a-codex"]';
     await page.click(`${tracked} [data-testid="account-rename"]`);
     await page.waitFor(`document.activeElement?.getAttribute('data-testid') === 'account-name'`);
@@ -264,9 +264,10 @@ test('the tray follows account renames immediately and keeps subscriptions separ
   await page.send('Emulation.setDeviceMetricsOverride', { width: 380, height: 650, deviceScaleFactor: 1, mobile: false });
   await page.evaluate(`localStorage.removeItem('boite.quotas')`);
   await page.navigate(`${origin}/?fake=1&view=quotas&quotaExtras=1`);
-  await page.waitFor(`document.querySelector('[data-testid="quota-refresh"]')?.getAttribute('aria-busy') === 'false' && document.querySelector('[data-testid="quota-provider"][data-account-id="a-codex"] .name')?.textContent === 'y•••@e•••.com'`);
-  // The adopted "Default" login reads as its masked address until it is renamed.
-  expect(await page.evaluate(`document.querySelector('[data-testid="quota-provider"][data-account-id="a-codex"] .name').textContent`)).toBe('y•••@e•••.com');
+  await page.waitFor(`document.querySelector('[data-testid="quota-refresh"]')?.getAttribute('aria-busy') === 'false' && document.querySelector('[data-testid="quota-provider"][data-account-id="a-codex"] .name')?.textContent === 'you@example.com'`);
+  // The adopted "Default" login reads as its address until it is renamed, blurred like on the Accounts page.
+  expect(await page.evaluate(`document.querySelector('[data-testid="quota-provider"][data-account-id="a-codex"] .name .private-email').textContent`)).toBe('you@example.com');
+  expect(await page.evaluate(`getComputedStyle(document.querySelector('[data-testid="quota-provider"][data-account-id="a-codex"] .name .private-email')).filter`)).toContain('blur');
   await page.evaluate(`(async () => {
     const { FakeClient } = await import('/src/lib/fake-client.ts');
     const call = FakeClient.prototype.call;

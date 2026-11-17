@@ -49,7 +49,9 @@ signed-in accounts, such as 5 hours and Weekly, with their reset times.
 - With a banked Claude or Codex reset, Use reset consumes the one closest to
   expiring, after a confirmation. It cannot be undone.
 - The tray icon and the gauge above Settings in the app rail open the same
-  limits in a small popup. Drag a row's handle to reorder accounts.
+  limits in a small popup. Drag a row's handle to reorder accounts. The
+  account the open thread runs on is highlighted and tagged This thread; behind
+  Douane, only when one Douane account serves that provider.
 - The gauge stays grey while every account has room. When the best account
   runs low, it becomes a ring of what is left. When every account is out, the
   ring turns red, fills as the first reset comes near and shows the time left

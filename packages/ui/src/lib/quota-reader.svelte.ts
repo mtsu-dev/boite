@@ -1,6 +1,6 @@
 import { secureId } from './secure-id';
 import { errorText } from './errors';
-import { RpcErrorCode, maskEmails, providerEnabled, type Account, type AccountQuota, type CoreInfo, type QuotaAlertPeriod, type ProviderSummary, type SubscriptionProxyQuotas } from '@boite/contracts';
+import { RpcErrorCode, providerEnabled, type Account, type AccountQuota, type CoreInfo, type QuotaAlertPeriod, type ProviderSummary, type SubscriptionProxyQuotas } from '@boite/contracts';
 import { RpcFailure, type Client } from './client';
 import { fill, strings } from './strings';
 import { accountName } from './account-name';
@@ -49,12 +49,12 @@ export function quotaProviderOff(row: AccountQuota, providers?: readonly Pick<Pr
   return providers?.some((provider) => provider.id === row.providerId && !providerEnabled(provider)) === true;
 }
 
-/** Account labels are current metadata, independent of the cached usage reading; the adopted "Default" login reads as its address (lib/account-name.ts), and a gateway's label has its addresses masked. */
+/** Account labels are current metadata, independent of the cached usage reading; the adopted "Default" login reads as its address (lib/account-name.ts). */
 export function namedQuotas(rows: AccountQuota[], accounts?: Account[]): AccountQuota[] {
   return rows.map((row) => {
     const account = accounts?.find((entry) => entry.id === row.accountId);
-    const label = account && typeof account.label === 'string' ? accountName(account) : maskEmails(row.label);
-    return label !== row.label ? { ...row, label } : row;
+    const label = account && typeof account.label === 'string' ? accountName(account) : undefined;
+    return label !== undefined && label !== row.label ? { ...row, label } : row;
   });
 }
 
@@ -67,7 +67,7 @@ export function quotaAccountName(row: AccountQuota): string {
     const count = row.gateway.accounts;
     return fill(count === 1 ? strings.subscriptionProxy.averageOne : strings.subscriptionProxy.average, { name: row.providerName, count: String(count) });
   }
-  return row.label.trim() ? maskEmails(row.label) : row.providerName;
+  return row.label.trim() ? row.label : row.providerName;
 }
 
 /** What a window has left, clamped and to the tenth: the one rounding every quota view shows. */

@@ -84,28 +84,35 @@ export interface QuotaAlert {
 const EMAIL = /([\p{L}\p{N}._%+-]+)@((?:[\p{L}\p{N}-]+\.)+\p{L}{2,}|\u2026)/gu;
 
 /**
- * Text that names an account, with every email address in it masked to its
- * first letters (`you@example.com` reads `y•••@e•••.com`): enough to tell two
- * logins apart, nothing a screen share or a lock-screen notice gives away.
- * Every place that shows an account's name or a gateway's label goes through
- * it; the address in full is shown only on demand, on the Accounts page.
+ * Text that names an account cut around its email addresses, in order: the
+ * interface draws each `email` part blurred, as the Accounts page does, so a
+ * screen share or a glance over a shoulder never reads one.
  */
-export function maskEmails(text: string): string {
-  return text.replace(EMAIL, (_match, local: string, domain: string) => {
-    if (domain === '\u2026') return `${local[0]}\u2022\u2022\u2022@${domain}`;
-    const dot = domain.lastIndexOf('.');
-    return `${local[0]}\u2022\u2022\u2022@${domain[0]}\u2022\u2022\u2022${domain.slice(dot)}`;
-  });
+export function emailParts(text: string): { text: string; email: boolean }[] {
+  const parts: { text: string; email: boolean }[] = [];
+  let last = 0;
+  for (const match of text.matchAll(EMAIL)) {
+    if (match.index > last) parts.push({ text: text.slice(last, match.index), email: false });
+    parts.push({ text: match[0], email: true });
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) parts.push({ text: text.slice(last), email: false });
+  return parts;
+}
+
+/** The same text with its addresses left out, for what cannot blur: a system notification on a locked screen. */
+export function withoutEmails(text: string): string {
+  return text.replace(EMAIL, '').replace(/\(\s*\)/g, '').split(' \u00b7 ').map((part) => part.trim()).filter(Boolean).join(' \u00b7 ');
 }
 
 /**
  * An alert's title, the same in a push and a toast: the account, then the
  * model or group a scoped window names (`Weekly · Opus` gives `Opus`). An
- * address in the account's name is masked: a push shows on a locked screen.
+ * address in the account's name is left out: a push shows on a locked screen.
  */
 export function quotaAlertTitle(alert: Pick<QuotaAlert, 'label' | 'providerName' | 'window'>): string {
-  const label = maskEmails(alert.label);
-  const name = label.includes(alert.providerName) ? label : `${alert.providerName} · ${label}`;
+  const label = withoutEmails(alert.label);
+  const name = !label ? alert.providerName : label.includes(alert.providerName) ? label : `${alert.providerName} · ${label}`;
   const scope = alert.window.label.split(' · ').filter((part) => !/week|hour|seven|\b\d+\s*-?[hd]\b/i.test(part)).join(' · ');
   return scope ? `${name} · ${scope}` : name;
 }
