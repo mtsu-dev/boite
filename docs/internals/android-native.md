@@ -6,8 +6,9 @@ bundle as the shell and the phone web app, built with
 `vite build --mode mobile`. It has no core of its own: like the
 [Trusted Web Activity](android.md) it is a client of the machines its phone is
 added to, but it needs no Chrome and loads no page from the network. The
-package is `dev.mtsu.boite`. The nightly builds and signs it, and the app
-updates itself from there until it is on Play ([updates](#updates)).
+package is `dev.mtsu.boite`. The nightly builds and signs it; until it is on
+Play, the app offers each new build and the browser downloads it for Android
+to install ([updates](#updates)).
 
 ## Limits
 
