@@ -591,6 +591,11 @@ function handle(method: string, raw: unknown): unknown {
     case 'initialize':
       log('initialize');
       experimentalApi = (params['capabilities'] as Record<string, unknown> | null)?.['experimentalApi'] === true;
+      if (process.env['CODEX_FAKE_INIT_EXIT']) {
+        // What osd's launcher does when it refuses to start the agent: one line, then its own code.
+        process.stderr.write(`${process.env['CODEX_FAKE_INIT_ERROR']}\n`);
+        process.exit(Number(process.env['CODEX_FAKE_INIT_EXIT']));
+      }
       if (process.env['CODEX_FAKE_INIT_FAILURES']) {
         const attempts = readFileSync(process.env['CODEX_FAKE_LOG']!, 'utf8').split('\n').filter(line => line === 'initialize').length;
         if (attempts <= Number(process.env['CODEX_FAKE_INIT_FAILURES'])) {

@@ -470,6 +470,23 @@ describe('codex driver', () => {
     expect(countLines('initialize')).toBe(2);
   });
 
+  test('an agent that exits before it answers initialize fails the turn with its exit code and last stderr line', async () => {
+    const { client, threadId } = await startThread();
+    const said = 'thread new: 1.8 GiB free on / under the 2.0 GiB reserve';
+    process.env['CODEX_FAKE_INIT_EXIT'] = '125';
+    process.env['CODEX_FAKE_INIT_ERROR'] = said;
+    try {
+      const { finished } = await startTurn(client, threadId, 'never answered', 20000);
+      const turn = await finished;
+      expect(turn.status).toBe('error');
+      expect(turn.error).toBe(`the codex agent exited with code 125: ${said}`);
+      expect(countLines('initialize')).toBe(1);
+    } finally {
+      delete process.env['CODEX_FAKE_INIT_EXIT'];
+      delete process.env['CODEX_FAKE_INIT_ERROR'];
+    }
+  });
+
   test('archiving before lazy preparation starts cannot launch an abandoned process', async () => {
     const { client, threadId } = await startThread();
     const contexts = harness!.core.threads.contexts;

@@ -18,6 +18,7 @@ import { openWithCompaction } from './compaction.ts';
 import { cliOptions, lazyServers, type OptionsHost } from './options.ts';
 import { SessionTasks } from './tasks.ts';
 import { SessionCrons } from './crons.ts';
+import { CliStderr } from './cli-stderr.ts';
 import { START_DEADLINE_MS, StartDeadline, stopCli } from './start-deadline.ts';
 
 /** How long `stop()` lets the CLI end its turn before the abort signal takes it. */
@@ -114,6 +115,8 @@ export class ClaudeSession {
   #started = false;
   /** When the CLI was spawned, for the time it took to say init. */
   #spawnedAt: number | null = null;
+  /** The running CLI's last stderr line, for a crash the SDK reports by exit code alone. */
+  #cli: CliStderr | null = null;
   /** The CLI the SDK spawned last, the deadline for its first `init`, and whether it missed it. */
   #child: SpawnedChild | null = null;
   readonly #startDeadline = new StartDeadline();
@@ -567,7 +570,7 @@ export class ClaudeSession {
       }
       this.#finish(null);
     } catch (error) {
-      this.#finish(messageOf(error));
+      this.#finish(await this.#cli?.explain(messageOf(error)) ?? messageOf(error));
     } finally {
       // The CLI is gone: the servers it started through the core go too.
       lazy?.release();
@@ -889,11 +892,7 @@ export class ClaudeSession {
     this.#child = child;
     // The SDK reads stderr only for the process it spawns itself, so with a
     // custom spawner nothing drains that pipe unless we do it here.
-    child.stderr.setEncoding('utf8');
-    child.stderr.on('data', (chunk: string) => {
-      const text = chunk.trim();
-      if (text.length > 0) this.#ctx.log('warn', `claude cli: ${text.slice(0, STDERR_MAX)}`, { kind: 'provider-output', event: 'provider.output' });
-    });
+    this.#cli = new CliStderr(child, text => this.#ctx.log('warn', `claude cli: ${text}`, { kind: 'provider-output', event: 'provider.output' }));
     return child;
   }
 }
