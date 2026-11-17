@@ -63,7 +63,7 @@ export class AgentState {
     const trimmed = text.trim();
     if (trimmed.length === 0) return false;
     const thread = this.core.journal.getThread(threadId);
-    if (thread === null || thread.archivedAt) return false;
+    if (thread === null || thread.archived) return false;
     const last = this.core.journal.lastTurn(threadId);
     if (last !== null && last.id === turnId && (last.status === 'running' || last.status === 'queued')) {
       this.#early.set(threadId, { turnId, text });

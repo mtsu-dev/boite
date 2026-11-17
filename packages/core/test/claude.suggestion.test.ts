@@ -69,6 +69,18 @@ describe('claude prompt suggestions', () => {
     }
   });
 
+  test('a thread an older core archived, with no archivedAt, keeps no suggestion', async () => {
+    harness.core.settings.set({ warmProcessMinutes: 5, promptSuggestions: false });
+    const client = await harness.connect();
+    const threadId = await claudeThread(client);
+    scripted(() => undefined, answerAndSuggest);
+    expect(await runTurn(client, threadId, 'first')).toBe('done');
+    harness.core.journal.db.query('UPDATE threads SET archived = 1, archived_at = NULL WHERE id = ?').run(threadId);
+    expect(harness.core.journal.getThread(threadId)).toMatchObject({ archived: true });
+    expect(harness.core.threads.agentState.noteSuggestion(threadId, harness.core.journal.lastTurn(threadId)!.id, 'try again')).toBe(false);
+    expect(harness.core.threads.agentState.suggestions.has(threadId)).toBe(false);
+  });
+
   test('turned off, the CLI starts without the option and a stray suggestion is dropped', async () => {
     harness.core.settings.set({ warmProcessMinutes: 5, promptSuggestions: false });
     const client = await harness.connect();
