@@ -165,14 +165,14 @@ function eventKind(store: RowSource<Delegated>, thread: ThreadSummary, kind: Thr
 
 /**
  * Activity's rows in its order, each one event: the one derivation behind the page, its sections, the rail's badge,
- * the phone's tab, a project's "Needs you" count and `boite state inbox`, so none of them can disagree. `all` holds
- * the threads `feedThread` keeps. A mochi's own conversation (`agentSessionId`) stays out. A failure or a stop is
+ * the phone's tab, a project's "Needs you" count and `boite state inbox`, so none of them can disagree. It keeps only
+ * the threads `feedThread` keeps, whatever `all` holds. A mochi's own conversation (`agentSessionId`) stays out. A failure or a stop is
  * news until it is read, as a finish is. A sub-agent hangs under its parent's row only when it asks for the same
  * thing (a permission beside a permission, a question beside a question); any other event of it is a row of its
  * own, so a permission never shares a row with a stopped helper.
  */
 export function activityEvents<E extends ActivitySource<{ id: string; store: RowSource<Delegated> }>>(all: readonly E[]): ActivityEvent<E>[] {
-  const entries = all.filter(entry => !entry.thread.agentSessionId);
+  const entries = all.filter(entry => feedThread(entry.thread) && !entry.thread.agentSessionId);
   const stateOf = (entry: E) => threadState(entry.thread, rowAsks(entry.machine.store, entry.thread.id));
   const key = (entry: E, id = entry.thread.id) => `${entry.machine.id}\n${id}`;
   const byKey = new Map(entries.map(entry => [key(entry), entry]));

@@ -1,5 +1,5 @@
 import type { AccountQuota, SubscriptionProxyQuotas } from './accounts';
-import { activityEvents, activityKind, feedThread, NEEDS_RANK, rowAsks, threadState, workingChildren } from './activity';
+import { activityEvents, activityKind, NEEDS_RANK, rowAsks, threadState, workingChildren } from './activity';
 import type { Group } from './group';
 import { harnessOffered } from './harness-updates';
 import type { ThreadId, Timestamp } from './ids';
@@ -231,7 +231,7 @@ export function stateInbox(
       kind, section: rank <= NEEDS_RANK ? 'needs' : 'updates', nested, at: asked ?? thread.updatedAt,
     };
   };
-  return activityEvents(threads.filter(feedThread).map(thread => ({ machine, thread }))).flatMap(({ lead, helpers, rank }) => {
+  return activityEvents(threads.map(thread => ({ machine, thread }))).flatMap(({ lead, helpers, rank }) => {
     const event = kindOf(lead.thread) ?? kindOf(helpers[0]!.thread)!;
     return [row(lead.thread, rank, false, event), ...helpers.map(helper => row(helper.thread, rank, true, event))];
   });

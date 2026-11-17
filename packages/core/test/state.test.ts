@@ -48,6 +48,9 @@ test('S2: the inbox lists what Activity lists: no read failure, no mochi convers
     thread('thr_mochi', { status: 'waiting', agentSessionId: 'ses_1' } as Partial<ThreadSummary>),
     thread('thr_watching', { unread: true, pullRequestWatches: [watching] }),
     thread('thr_done', { unread: true, updatedAt: 4 }),
+    // Passed unfiltered: activityEvents itself keeps only what feedThread keeps.
+    thread('thr_team', { status: 'waiting', teamId: 'team_1' } as Partial<ThreadSummary>),
+    thread('thr_archived', { unread: true, archived: true }),
     thread('thr_waiting', { status: 'waiting', updatedAt: 3 }),
     thread('thr_parent', { status: 'running' }),
     thread('thr_child_failed', { status: 'error', unread: true, parentThreadId: 'thr_parent' } as Partial<ThreadSummary>),

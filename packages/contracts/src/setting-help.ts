@@ -1,9 +1,10 @@
 /**
  * What each setting does, as its Settings page explains it in English
  * (`settingHelp` in packages/ui/src/lib/setting-requests.ts), for
- * `boite state settings`. A setting its page explains only by its name has
- * no entry. Written by packages/ui/src/lib/setting-help.test.ts with
- * UPDATE_SETTING_HELP=1, which fails when this copy and the app part.
+ * `boite state settings`. Every core setting an agent reads has an entry; an
+ * experiment its page explains only by its name has none. Written by
+ * packages/ui/src/lib/setting-help.test.ts with UPDATE_SETTING_HELP=1, which
+ * fails when this copy and the app part.
  */
 export const SETTING_HELP: Readonly<Record<string, string>> = {
   "asyncQuestions": "Agents keep working while their question waits for you.",

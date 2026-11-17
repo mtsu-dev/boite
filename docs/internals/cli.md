@@ -1095,8 +1095,9 @@ text the Settings page shows for that setting, in English: `SETTING_HELP` in
 `packages/contracts/src/setting-help.ts`. That file is a copy of `settingHelp`
 in `packages/ui/src/lib/setting-requests.ts`.
 `packages/ui/src/lib/setting-help.test.ts` fails when the two differ, and
-`UPDATE_SETTING_HELP=1` rewrites the copy. Every setting an agent reads has a
-text: `settingHelp` covers every key or does not compile. `boite settings <page>` takes a page name the same way, through
+`UPDATE_SETTING_HELP=1` rewrites the copy. Every core setting an agent reads
+has an entry (`settingHelp` lists each one, and the test checks the copy); an
+experiment its page explains only by its name has none. `boite settings <page>` takes a page name the same way, through
 the same read (`packages/core/src/cli-state.ts`).
 
 Every other domain is one call to `agent.state`

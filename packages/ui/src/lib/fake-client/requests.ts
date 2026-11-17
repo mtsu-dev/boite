@@ -373,7 +373,6 @@ export function requestMethods(ctx: FakeContext) {
       if (!turn) throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'the thread has no turn to ask in yet', data: { threadId: params.threadId } });
       return requestSetting(ctx, thread, turn, params);
     },
-    // The in-memory core has no quotas, group, updaters or processes: each domain reads empty, as a fresh core does.
     'agent.settings': async () => ({
       app: ctx.clientPreferences === null ? null : { language: ctx.clientPreferences.language, device: null, client: null },
       settings: readSettings(ctx.settingsInForce(), ctx.clientPreferences, ctx.core.version),
