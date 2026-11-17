@@ -1,4 +1,5 @@
-import { existsSync } from 'node:fs';
+import { accessSync, constants, existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { npmInstallOf, npmParked, npmReplacedPaths, restoreNpmParked, type NpmCommand, type NpmInstall } from './npm.ts';
 import { recheckVersions } from './versions.ts';
 import { forgetWhich } from './which.ts';
@@ -84,11 +85,11 @@ export async function runNpmUpdate(npm: NpmUpdate, run: () => Promise<string>, e
   }
 }
 
-/** What {@link putBackUnlessStarting} asks of the updater. */
+/** What {@link installKeepingStart} asks of the updater. */
 export interface PutBack {
   /** Resolves once the agent prints its version, and throws when it does not start. */
   starts: () => Promise<unknown>;
-  install: (npm: NpmUpdate) => Promise<unknown>;
+  install: (npm: NpmUpdate) => Promise<string>;
   /** The new release is known broken: skip it, so neither automatic updates nor Update all install it again. */
   broken: () => unknown;
   /** Called after a confirmed break, put back or not. */
@@ -99,22 +100,29 @@ export interface PutBack {
 const START_TRIES = 2;
 
 /**
- * Puts back the release that ran before (`previous`) when npm installed the
- * new one and the agent no longer starts, and throws why. npm exits with zero
+ * Runs npm's install and returns what it printed, or puts back the release
+ * that ran before when the new one no longer starts, and throws why. The
+ * version to put back is read from the installed package's manifest, and
+ * `fallback`, the last reading, only when it has none. npm exits with zero
  * when an optional package is missing from the registry, and an agent that
  * ships its program in one package per platform is then left with nothing to
  * run: Codex 0.169.1 was published on 2026-11-17 without its Windows x64
  * package. The program npm installed must still be there: another copy that
  * answers on PATH is not the one updated.
  */
-export async function putBackUnlessStarting(npm: NpmUpdate, previous: string | null, name: string, io: PutBack): Promise<void> {
+export async function installKeepingStart(npm: NpmUpdate, fallback: string | null, name: string, io: PutBack): Promise<string> {
+  const previous = npmManifestVersion(npm.install) ?? fallback;
+  // A program that was not executable before (a script run by Node) is only required to be there.
+  const there = runnable(npm.command.shown) ? runnable : (path: string): boolean => existsSync(path);
+  const said = await io.install(npm);
   const fails = async (): Promise<string | null> => {
     let reason = '';
     for (let tries = 0; tries < START_TRIES; tries++) {
       // The install may have moved or removed what PATH and the version cache knew.
       forgetWhich();
       recheckVersions();
-      if (!existsSync(npm.command.shown)) return `${npm.command.shown} is gone`;
+      // Another copy on PATH may answer for it: the one npm installed must still be a program.
+      if (!there(npm.command.shown)) return `${npm.command.shown} is gone or no longer executable`;
       try {
         await io.starts();
         return null;
@@ -125,23 +133,45 @@ export async function putBackUnlessStarting(npm: NpmUpdate, previous: string | n
     return reason;
   };
   const reason = await fails();
-  if (reason === null) return;
+  if (reason === null) return said;
   const broken = `\`${npm.label}\` left ${name} unable to start (${reason})`;
   const skipped = `Boite skips ${npm.version} until a newer release`;
   io.broken();
   try {
-    if (previous === null) throw new Error(`${broken}, and Boite did not know the version to put back; ${skipped}`);
+    if (previous === null) throw new AgentGone(`${broken}, and Boite did not know the version to put back; ${skipped}`);
     const spec = `${npm.install.name}@${previous}`;
     try {
       await io.install({ ...npm, args: [...npm.args.slice(0, -1), spec], label: `npm install -g ${spec}`, version: previous });
     } catch (error) {
-      throw new Error(`${broken}, and putting back ${previous} failed: ${messageOf(error)}; ${skipped}`);
+      throw new AgentGone(`${broken}, and putting back ${previous} failed: ${messageOf(error)}; ${skipped}`);
     }
     const still = await fails();
-    if (still !== null) throw new Error(`${broken}, and ${previous} put back does not start either (${still}); ${skipped}`);
+    if (still !== null) throw new AgentGone(`${broken}, and ${previous} put back does not start either (${still}); ${skipped}`);
     throw new Error(`${broken}; Boite put back ${previous} and skips ${npm.version} until a newer release`);
   } finally {
     await io.settled();
+  }
+}
+
+/** An update that left the agent with no version that starts: its row no longer names one. */
+export class AgentGone extends Error {}
+
+/** The version in the installed package's own manifest, read without starting it. */
+function npmManifestVersion(install: NpmInstall): string | null {
+  try {
+    const parsed = JSON.parse(readFileSync(join(install.packageDir, 'package.json'), 'utf8')) as { version?: unknown };
+    return typeof parsed.version === 'string' ? parsed.version : null;
+  } catch {
+    return null;
+  }
+}
+
+function runnable(program: string): boolean {
+  try {
+    accessSync(program, constants.X_OK);
+    return true;
+  } catch {
+    return false;
   }
 }
 

@@ -9,7 +9,7 @@ import { notFound, refused } from '../errors.ts';
 import { currentOs } from '../paths.ts';
 import type { InstallOutcome } from './install.ts';
 import { npmCli, npmInstallOf, unwritableDir, type NpmCommand } from './npm.ts';
-import { npmLatest, npmUpdate, putBackUnlessStarting, runNpmUpdate, type NpmUpdate } from './update-npm.ts';
+import { AgentGone, installKeepingStart, npmLatest, npmUpdate, runNpmUpdate, type NpmUpdate } from './update-npm.ts';
 import { profileFor, programBehindWrappers, resolveCommand } from './resolve.ts';
 import { BACKGROUND_LIMIT_MS, backgroundHolders, resumeCut, withCut } from './update-background.ts';
 import { readReadings, readSkips, writeReadings, writeSkips, type Entry } from './update-readings.ts';
@@ -439,7 +439,8 @@ export class HarnessUpdates {
       .loaded.map((summary) => this.#targetOf(summary.id))
       .filter((target): target is Target => target !== null);
     for (const id of [...this.#entries.keys()]) {
-      if (!targets.some((target) => target.descriptor.id === id)) this.#entries.delete(id);
+      // An update under way may have the program gone for a moment: its row stays.
+      if (!targets.some((target) => target.descriptor.id === id) && this.#entries.get(id)?.state !== 'updating') this.#entries.delete(id);
     }
     for (const target of targets) {
       const previous = this.#entries.get(target.descriptor.id);
@@ -627,21 +628,24 @@ export class HarnessUpdates {
       if (this.#closed || this.#core.stopping) return;
       this.#core.bus.emit('providers.updated', this.#core.providers.list());
     } catch (error) {
-      this.#entries.set(id, { ...before, state: 'failed', message: error instanceof Error ? error.message : String(error), checkedAt: Date.now(), program: target.program });
+      const gone = error instanceof AgentGone ? { current: null } : {};
+      this.#entries.set(id, { ...before, ...gone, state: 'failed', message: error instanceof Error ? error.message : String(error), checkedAt: Date.now(), program: target.program });
     }
     this.#writeReadings();
     this.#emit();
   }
 
-  /** npm's install, the release that ran before put back when the new one no longer starts ({@link putBackUnlessStarting}). */
+  /** npm's install, the release that ran before put back when the new one no longer starts ({@link installKeepingStart}). */
   async #runNpm(target: Target, before: Entry, npm: NpmUpdate): Promise<string> {
     const id = target.descriptor.id;
     const install = (via: NpmUpdate): Promise<string> => runNpmUpdate(via, () => this.#run(target, via.args, this.updateTimeoutMs, via), () => this.#core.procs.waitForExit(updateThreadId(id), undefined, { native: true, stops: true }));
-    const said = await install(npm);
-    await putBackUnlessStarting(npm, before.current, target.descriptor.name, {
+    return installKeepingStart(npm, before.current, target.descriptor.name, {
       starts: () => this.#current(target),
       install,
-      broken: () => this.skip(id, npm.version),
+      broken: () => {
+        this.#skips[id] = npm.version;
+        writeSkips(this.#core.dataDir, this.#skips);
+      },
       // The program came back or is gone for good: clients list it as it stands.
       settled: async () => {
         forgetProbes({ providerId: id });
@@ -649,7 +653,6 @@ export class HarnessUpdates {
         if (!this.#closed && !this.#core.stopping) this.#core.bus.emit('providers.updated', this.#core.providers.list());
       },
     });
-    return said;
   }
 
   /**

@@ -300,7 +300,8 @@ describe('harness updates', () => {
       `appendFileSync(${JSON.stringify(calls)}, process.argv.at(-1) + '\\n');`,
       "const version = process.argv.at(-1).split('@').at(-1);",
       `writeFileSync(${JSON.stringify(state)}, version);`,
-      `if (version === '1.1.0') rmSync(${JSON.stringify(program)});`,
+      // npm holds the new release a moment with the program gone, long enough for a check to run meanwhile.
+      `if (version === '1.1.0') { rmSync(${JSON.stringify(program)}); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1500); }`,
       `else { writeFileSync(${JSON.stringify(program)}, ${JSON.stringify(script)}); chmodSync(${JSON.stringify(program)}, 0o755); }`,
     ].join('\n'));
     harness!.core.updates.npmCli = () => ({ executable: process.execPath, script: cli });
@@ -308,6 +309,8 @@ describe('harness updates', () => {
 
     const failed = client.next('providers.updatesChanged', (list) => list[0]?.state === 'failed', 30000);
     await client.call('providers.update', { providerId: 'update-fake' });
+    await waitFor(() => !existsSync(program));
+    await client.call('providers.updates', { refresh: true });
     const update = only(await failed);
     expect(update).toMatchObject({ current: '1.0.0', latest: '1.1.0', skipped: '1.1.0', pending: false });
     expect(update.message).toMatch(/`npm install -g @boite-test\/fake-agent@1\.1\.0` left Fake updating agent unable to start .*; Boite put back 1\.0\.0 and skips 1\.1\.0/);
@@ -337,7 +340,7 @@ describe('harness updates', () => {
     const failed = client.next('providers.updatesChanged', (list) => list[0]?.state === 'failed', 30000);
     await client.call('providers.update', { providerId: 'update-fake' });
     const update = only(await failed);
-    expect(update).toMatchObject({ skipped: '1.1.0', pending: false });
+    expect(update).toMatchObject({ current: null, skipped: '1.1.0', pending: false });
     expect(update.message).toMatch(/left Fake updating agent unable to start .*, and putting back 1\.0\.0 failed: .*ETIMEDOUT.*; Boite skips 1\.1\.0 until a newer release/);
     await waitFor(() => harness?.core.procs.liveCount('update:update-fake') === 0);
   }, 60000);
