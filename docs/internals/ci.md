@@ -468,6 +468,11 @@ times Vitest prints. Each shard has its own Vitest cache. A shard also starts
 its longest recorded files first: with no Vitest cache, Vitest starts the
 largest files instead, all transforming at once, and `QuestionCard.test.ts`
 took 18.8 s instead of 2.4 and timed out (2026-11-17).
+The cache keys its transforms on the Vitest config and every file it imports
+(the sequencer, `shards.mts`): a change to one leaves the whole cache cold, and
+each module is then transformed on Vitest's main thread. With eight workers the
+lazy imports of `phone.test.ts` and `editor.test.ts` overran their 8 s waits on
+such a run, so a shard whose cache restore matched no key runs four.
 
 Browser command, sharing and profile scenarios run in separate files so their
 combined Chromium startup time does not consume one five-minute file budget.

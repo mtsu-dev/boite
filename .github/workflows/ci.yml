@@ -425,13 +425,17 @@ jobs:
       # Caches are saved on main only: a pull request's copy is visible to that
       # pull request alone and would evict the ones every pull request restores.
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        id: vitest-cache
         with:
           path: node_modules/.vitest-cache
           key: vitest-${{ runner.os }}-${{ env.UI_SHARD }}-${{ hashFiles('bun.lock', 'packages/ui/vitest.config.ts', 'packages/ui/svelte.config.js', 'packages/ui/icon-plugin.ts') }}-${{ github.sha }}
           restore-keys: vitest-${{ runner.os }}-${{ env.UI_SHARD }}-${{ hashFiles('bun.lock', 'packages/ui/vitest.config.ts', 'packages/ui/svelte.config.js', 'packages/ui/icon-plugin.ts') }}-
       - run: bun run check
         if: env.UI_SHARD == '1'
-      - run: bun run --cwd packages/ui test --maxWorkers=8 --shard=${{ env.UI_SHARD }}/2
+      # A cold cache (a change to the Vitest config or its imports) transforms every
+      # module on the main thread: four workers keep the lazy imports inside the
+      # tests' 8 s waits, which eight overran (docs/internals/ci.md#core-and-ui-shards).
+      - run: bun run --cwd packages/ui test --maxWorkers=${{ steps.vitest-cache.outputs.cache-matched-key && '8' || '4' }} --shard=${{ env.UI_SHARD }}/2
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         if: github.ref == 'refs/heads/main'
         with:
