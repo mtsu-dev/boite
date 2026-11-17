@@ -46,6 +46,9 @@ has no command-line login in Boite: each of its accounts is a Boite account.
 
 Settings shows each account's name and its email. Emails stay blurred until
 you hover them, tap them on a phone, or press Reveal email.
+Everywhere else in the app, in the limits, menus and dialogs, an email in an
+account's name is blurred the same way and shows when you point at it. A system
+notification cannot blur, so it leaves the address out.
 
 ## What isolated accounts share
 
@@ -106,6 +109,10 @@ While it is on:
 - Limits shows the gateway's limits, or opens its dashboard inside Boite.
   The Use Douane (or Use CLIProxyAPI) switch there turns the gateway on and
   off, from a phone too.
+- Under an account's limit, a red line such as "40% used outside Douane"
+  means part of that limit was spent without going through Douane: someone
+  used the account directly, from the official app, another device or a
+  leaked token.
 - Other agents keep their own configuration.
 
 Turning the proxy off brings your local accounts back unchanged. Use HTTPS

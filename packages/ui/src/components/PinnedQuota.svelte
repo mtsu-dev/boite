@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PrivateText from './PrivateText.svelte';
   import { untrack } from 'svelte';
   import { Gauge, PinOff, RefreshCw } from '@lucide/svelte';
   import { chipChoice } from '../lib/composer-target';
@@ -118,7 +119,7 @@
     {:else if rows.length === 0}<p>{strings.quotas.pinnedEmpty}</p>{/if}
     {#each ordered as row (row.accountId)}
       <article data-testid="pinned-quota-account" data-account-id={row.accountId} data-provider={row.providerId} class:stale={row.status === 'unavailable'}>
-        <div class="account"><span class="ui-label" title={quotaAccountName(row)}>{quotaAccountName(row)}</span></div>
+        <div class="account"><span class="ui-label" title={quotaAccountName(row)}><PrivateText text={quotaAccountName(row)} /></span></div>
         {#each row.windows as window (window.id)}
           {@const left = remainingPercent(window.usedPercent)}
           <div class="window" title={window.resetsAt === null ? strings.quotas.noReset : fill(strings.quotas.resets, { time: quotaResetTime(window.resetsAt) })}>

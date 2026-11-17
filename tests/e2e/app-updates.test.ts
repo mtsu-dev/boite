@@ -49,9 +49,9 @@ afterAll(async () => { await server?.close(); }, 30_000);
 
 test('the rail\'s foot button and Machines both reach updates, and the foot fits its controls', async () => {
   await page.navigate(`${base}/?fake=1&open=recent&machines=1&appUpdate=ready&appUpdateChannel=nightly`);
-  // The limits are the list column's foot; the machines, updates and Settings the rail's.
-  const foot = ['machine-status', 'nav-updates', 'nav-settings'];
-  await page.waitFor(`window.__boiteTest?.workspace.machines.length === 2 && ${JSON.stringify(foot)}.every(name => document.querySelector('${id('app-rail')} .foot [data-testid="' + name + '"]')) && document.querySelector('${id('sidebar')} ${id('nav-limits')}')`);
+  // The machines, updates, limits and Settings stand in the rail's foot, in that order.
+  const foot = ['machine-status', 'nav-updates', 'nav-limits', 'nav-settings'];
+  await page.waitFor(`window.__boiteTest?.workspace.machines.length === 2 && ${JSON.stringify(foot)}.every(name => document.querySelector('${id('app-rail')} .foot [data-testid="' + name + '"]'))`);
   // A downloaded release is announced in the app rail's foot, bottom left, above Settings.
   expect(await page.evaluate(`document.querySelector('${id('nav-updates')}') !== null`)).toBe(true);
   // The panels' door is a glyph named by its tooltip, as the rail's controls are icons.
@@ -61,10 +61,7 @@ test('the rail\'s foot button and Machines both reach updates, and the foot fits
   expect(await page.evaluate(`(() => {
     const controls = ${JSON.stringify(foot)}.map(name => document.querySelector('${id('app-rail')} .foot [data-testid="' + name + '"]').getBoundingClientRect());
     const rail = document.querySelector('${id('app-rail')}').getBoundingClientRect();
-    const limits = document.querySelector('${id('sidebar')} ${id('nav-limits')}').getBoundingClientRect();
-    const column = document.querySelector('${id('sidebar')}').getBoundingClientRect();
-    return controls.every((box, index) => box.width >= 26 && box.left >= rail.left && box.right <= rail.right && box.bottom <= innerHeight && (!index || box.top >= controls[index - 1].bottom))
-      && limits.height > 0 && limits.left >= column.left && limits.right <= column.right && limits.bottom <= innerHeight;
+    return controls.every((box, index) => box.width >= 26 && box.left >= rail.left && box.right <= rail.right && box.bottom <= innerHeight && (!index || box.top >= controls[index - 1].bottom));
   })()`)).toBe(true);
   const active = await page.evaluate('window.__boiteTest.workspace.active.machineId');
   await page.evaluate(`document.querySelector('${id('nav-settings')}').focus()`);

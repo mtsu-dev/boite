@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PrivateText from './PrivateText.svelte';
   import { tick, untrack } from 'svelte';
   import { Closing } from '../lib/closing.svelte';
   import { mobileOverlay } from '../lib/mobile-history';
@@ -104,7 +105,7 @@
       bind:this={card}
       data-testid="confirm-dialog"
     >
-      <h2 id="confirm-title">{request.title}</h2>
+      <h2 id="confirm-title"><PrivateText text={request.title} /></h2>
       {#if request.body}
         <p id="confirm-body" class="muted">{request.body}</p>
       {/if}

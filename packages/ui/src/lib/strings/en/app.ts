@@ -34,8 +34,8 @@ export const strings = {
       /** The same with how many: the count on a mochi's picture. */
       unreadOne: '1 new reply',
       unreadMany: '{count} new replies',
-      /** The list foot's limits line, in its tooltip (QuotaLine.svelte): the least left, the window and the account it is on. */
-      limitsLeft: '{percent}% left: {window}, {account}',
+      /** The rail's limits button, in its name card under the sentence (LimitsButton.svelte): how long until the first account serves again. */
+      limitsBack: 'back in {time}',
     }
   }
 } as const;

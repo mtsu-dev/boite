@@ -13,8 +13,8 @@
   import { separator, type MenuItem } from '../lib/menu';
 
   /**
-   * The rail's machines button and its menu; the limits live at the foot of
-   * the list column (QuotaLine.svelte). One
+   * The rail's machines button and its menu; the limits are the ring under it
+   * (LimitsButton.svelte). One
    * machine that is connected says nothing, so nothing is drawn; a second
    * machine, a filter or a connection in trouble brings back one icon, the
    * chosen machine's name beside it only while it filters the list. Its card

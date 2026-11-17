@@ -53,6 +53,18 @@ test('exhausted subscriptions put an available allowance first without claiming 
   for (const id of ['stale', 'empty', 'rounded']) expect(document.querySelector(`[data-account-id="${id}"] .paid`)).toBeNull();
 });
 
+test('the open thread\'s account is tagged, and an address in a name sits in the blurred span', () => {
+  component = mount(QuotaOverview, { target: document.body, props: { rows: [quota('personal', 'Personal', 10), quota('work', 'Claude Pro · work@corp.io', 20)], current: 'work' } });
+  flushSync();
+  const [personal, work] = [...document.querySelectorAll<HTMLElement>('[data-testid="quota-provider"]')];
+  expect(personal!.classList.contains('current')).toBe(false);
+  expect(work!.classList.contains('current')).toBe(true);
+  expect(document.querySelectorAll('[data-testid=quota-current]')).toHaveLength(1);
+  expect(work!.querySelector('[data-testid=quota-current]')!.textContent).toBe('This thread');
+  expect(work!.querySelector('.name .private-email')!.textContent).toBe('work@corp.io');
+  expect(personal!.querySelector('.private-email')).toBeNull();
+});
+
 test('profile labels stay visible even for Default; missing labels fall back to the provider', async () => {
   for (const [label, name] of [['Default', 'Default'], ['Personal', 'Personal'], ['', 'Codex']]) {
     component = mount(QuotaOverview, { target: document.body, props: { rows: [quota('only', label!, 10)], connect: () => {} } });
@@ -107,4 +119,27 @@ test('the headline and reset come from the primary window, weekly first unless D
   component = mount(QuotaOverview, { target: document.body, props: { rows: [unknown], connect: () => {} } });
   flushSync();
   expect(article().querySelector('.caption.reset')).toBeNull();
+});
+
+test('a window Douane cannot fully explain says how much was used outside it, from 5 points on', () => {
+  const limit = (id: string, label: string, outsidePercent?: number) =>
+    ({ id, label, usedPercent: 60, resetsAt: null, ...(outsidePercent === undefined ? {} : { outsidePercent }) });
+  component = mount(QuotaOverview, { target: document.body, props: { rows: [
+    { ...quota('leaked', 'Claude Max', 60), windows: [limit('five-hour', '5 hours', 12), limit('weekly', 'Weekly', 40)] },
+    { ...quota('noise', 'Claude Pro', 60), windows: [limit('weekly', 'Weekly', 4.9)] },
+    quota('plain', 'Codex', 60),
+  ] } });
+  flushSync();
+  const lines = (id: string) => [...document.querySelectorAll<HTMLElement>(`[data-account-id="${id}"] [data-testid=quota-outside]`)];
+  // Collapsed, the row says the largest share once, in the danger colour, with why behind its "i".
+  expect(lines('leaked').map(line => [line.dataset.window, line.querySelector('.ui-label')!.textContent])).toEqual([['weekly', '40% used outside Douane']]);
+  expect(lines('leaked')[0]!.querySelector('[data-testid=info-tip]')!.getAttribute('aria-label')).toContain('40% used outside Douane');
+  expect(lines('noise')).toEqual([]);
+  expect(lines('plain')).toEqual([]);
+  // Expanded, each window over the line carries its own share, weekly first as the row leads with it.
+  document.querySelector<HTMLButtonElement>('[data-account-id="leaked"] button')!.click(); flushSync();
+  expect(lines('leaked').map(line => [line.dataset.window, line.querySelector('.ui-label')!.textContent])).toEqual([
+    ['weekly', '40% used outside Douane'], ['five-hour', '12% used outside Douane'],
+  ]);
+  expect(lines('leaked').every(line => line.parentElement!.classList.contains('details'))).toBe(true);
 });

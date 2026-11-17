@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PrivateText from './PrivateText.svelte';
   import Notice from './Notice.svelte';
   import { untrack } from 'svelte';
   import { lockedBy } from '../lib/policy';
@@ -595,7 +596,7 @@
           {#each pool.accounts as account (account.email)}
             <div class="saved-account" class:active={account.active} data-testid="plugin-account" data-email={account.email}>
               <div class="account-head">
-                <strong class="ui-label">{account.email}</strong>
+                <strong class="ui-label"><PrivateText text={account.email} /></strong>
                 {#if account.active}<span class="tag ui-label-box" data-testid="plugin-account-active"><span class="ui-label">{t.active}</span></span>{/if}
                 <span class="account-actions">
                   {#if !account.active}
