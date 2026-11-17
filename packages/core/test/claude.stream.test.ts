@@ -818,4 +818,38 @@ describe('claude driver', () => {
       { type: 'text', text: 'done' },
     ]);
   });
+
+  test('a cleared conversation empties the context meter at once', async () => {
+    const { client, threadId } = await openClaudeThread();
+
+    scripted(() => undefined, (fake, prompt) => {
+      if (!prompt.includes('/clear')) {
+        fake.emit(init('sess-before'));
+        fake.emit(sdk({
+          type: 'assistant', session_id: 'sess-before', parent_tool_use_id: null,
+          message: { id: 'msg_a', role: 'assistant', model: 'claude-opus-5', content: [{ type: 'text', text: 'long answer' }],
+            usage: { input_tokens: 500, cache_read_input_tokens: 80_000, cache_creation_input_tokens: 0 } },
+        }));
+        const result = success('sess-before') as SDKMessage & { modelUsage: Record<string, unknown> };
+        result.modelUsage = { 'claude-opus-5-20260401': { contextWindow: 200_000 } };
+        fake.emit(result);
+        return;
+      }
+      // What CLI 2.1.326 writes for `/clear`, in this order: the reset, an init on the new session, an empty result.
+      fake.emit(sdk({ type: 'conversation_reset', new_conversation_id: 'conv-after', uuid: 'uuid-reset', session_id: 'sess-before', trigger: 'clear' }));
+      fake.emit(init('sess-after'));
+      fake.emit(sdk({ ...(success('sess-after') as object), result: '' }));
+    });
+
+    expect(await runTurn(client, threadId, 'fill it')).toBe('done');
+    expect((await client.call('threads.get', { threadId })).context).toMatchObject({ tokens: 80_500, window: 200_000 });
+
+    const readings: (number | null)[] = [];
+    client.on('thread.updated', (thread) => { if (thread.id === threadId) readings.push(thread.context?.tokens ?? null); });
+    expect(await runTurn(client, threadId, '/clear')).toBe('done');
+    const thread = await client.call('threads.get', { threadId });
+    // The window stays: only what fills it is gone.
+    expect(thread.context).toMatchObject({ tokens: 0, window: 200_000 });
+    expect(readings).toContain(0);
+  });
 });
