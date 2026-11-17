@@ -101,10 +101,10 @@ export class AutoCompaction {
 
   /**
    * A client shows an idle thread already at its token limit: one that went
-   * quiet before the limit was lowered, or whose timer a restart dropped. A
-   * copy compacted in the background starts only below the limit, and its next
-   * prompt would wait for the agent to compact first, so it compacts now, while
-   * the user reads and types. As after a turn, a stop or a failure is the
+   * quiet before the limit was lowered, or whose timer a restart dropped.
+   * With background compaction on, the recheck starts an idle copy; when no
+   * copy can start, it opens a compaction turn instead, while the user reads
+   * and types. As after a turn, a stop or a failure is the
    * user's to look at, and a compaction never chains into another, even one
    * that kept more than the limit: the last turn decides.
    */

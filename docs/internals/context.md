@@ -362,8 +362,8 @@ last step boundary reported, since Claude reports the thread's own only with
 the turn's final result.
 
 An idle moment that is due (the token limit, `turn-end`, `background`,
-`cache-expiry` or a mochi's cold wake) never opens a compaction turn while the
-setting is on: when no copy runs, `AutoCompaction` starts one cut at the end
+`cache-expiry` or a mochi's cold wake) uses a copy when the setting is on and
+a copy can start: when no copy runs, `AutoCompaction` starts one cut at the end
 of the last done turn, whatever the context's size (`startIdle`), and the copy
 is swapped in as soon as it is ready. The thread stays idle and shows only the
 divider. A prompt sent meanwhile runs on the original session, and the copy
