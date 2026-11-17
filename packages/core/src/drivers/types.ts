@@ -309,6 +309,8 @@ export interface TurnContext {
   spawn(cmd: string, args: string[], opts?: SpawnOptions): SpawnedProcess;
   /** Same registry as `spawn`, node streams and node events, environment as given. */
   spawnChild(cmd: string, args: string[], opts?: SpawnOptions): SpawnedChild;
+  /** Stops a process `spawnChild` returned and what it started; resolves once it exited. */
+  stopChild?(child: SpawnedChild): Promise<void>;
   /** Release the launch priority once the native session has initialized. */
   finishStartup?(): void;
   /**
@@ -331,7 +333,7 @@ export interface TurnContext {
 export type SessionContext = Pick<TurnContext,
   'thread' | 'account' | 'provider' | 'sessionId' | 'resumeAt' | 'sessionBefore' |
   'accountEnv' | 'systemGuide' | 'warmProcessMinutes' | 'toolSummaries' | 'shortAnswers' | 'promptSuggestions' | 'suggestion' | 'autoCompactTokens' | 'backgroundCompaction' | 'compactionSummary' | 'log' | 'diagnostic' | 'authenticationFailed' | 'commands' | 'context' | 'hook' |
-  'background' | 'backgroundFinished' | 'wake' | 'notice' | 'loopWake' | 'spawnChild' | 'finishStartup' | 'killTree' | 'quota' | 'lazyMcp' | 'protectedExecution' | 'modeRequired'>;
+  'background' | 'backgroundFinished' | 'wake' | 'notice' | 'loopWake' | 'spawnChild' | 'stopChild' | 'finishStartup' | 'killTree' | 'quota' | 'lazyMcp' | 'protectedExecution' | 'modeRequired'>;
 
 export type DiagnosticLevel = 'debug' | 'info' | 'warn' | 'error';
 /** Scalars only: never a prompt, a tool input or output, a command line or a token. */

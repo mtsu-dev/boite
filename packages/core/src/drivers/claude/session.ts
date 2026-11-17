@@ -18,6 +18,7 @@ import { openWithCompaction } from './compaction.ts';
 import { cliOptions, lazyServers, type OptionsHost } from './options.ts';
 import { SessionTasks } from './tasks.ts';
 import { SessionCrons } from './crons.ts';
+import { START_DEADLINE_MS, StartDeadline, stopCli } from './start-deadline.ts';
 
 /** How long `stop()` lets the CLI end its turn before the abort signal takes it. */
 const STOP_GRACE_MS = 3_000;
@@ -113,6 +114,10 @@ export class ClaudeSession {
   #started = false;
   /** When the CLI was spawned, for the time it took to say init. */
   #spawnedAt: number | null = null;
+  /** The CLI the SDK spawned last, the deadline for its first `init`, and whether it missed it. */
+  #child: SpawnedChild | null = null;
+  readonly #startDeadline = new StartDeadline();
+  #startMissed = false;
   #closing = false;
   #ended = false;
   #loginRejected = false;
@@ -232,6 +237,7 @@ export class ClaudeSession {
         return;
       }
     }
+    if (this.#beforeInit) this.#startDeadline.arm(this.#deps.startDeadlineMs ?? START_DEADLINE_MS, reason => this.#missedStart(reason));
     if (!this.#started) {
       this.#started = true;
       // The options the query opens on are this turn's: nothing to apply yet.
@@ -605,7 +611,7 @@ export class ClaudeSession {
   #deliver(message: SDKMessage, replayed: boolean): void {
     // A stop makes the CLI write an error result for the interrupt: that is the stop, not a failure.
     if (!replayed && !(message.type === 'result' && (this.#closing || this.#head()?.isStopped === true || this.#head()?.swapping === true))) noteClaudeMessage(this.#head()?.ctx ?? this.#ctx, message, this.#spawnedAt);
-    if (message.type === 'system' && message.subtype === 'init') { this.#spawnedAt = null; this.#totals.started(message.claude_code_version); }
+    if (message.type === 'system' && message.subtype === 'init') { this.#spawnedAt = null; this.#startDeadline.clear(); this.#totals.started(message.claude_code_version); }
     if (message.type === 'system' && message.subtype === 'init') {
       for (const report of this.#fastReports.splice(0)) report(message.fast_mode_state);
     }
@@ -791,9 +797,19 @@ export class ClaudeSession {
     this.#linger = null;
   }
 
+  /** No `init` in time: once the CLI exited, never before, the turn settles lost with its session (`ClaudeTurn.loseSession`). */
+  #missedStart(reason: string): void {
+    if (!this.#beforeInit || this.#closing || this.#ended) return;
+    this.#head()?.loseSession(reason);
+    this.#startMissed = true;
+    this.close(null, 0);
+    void stopCli(this.#child, this.#ctx.stopChild).finally(() => this.#finish(reason, true));
+  }
+
   /** The loop is over: the CLI is gone, so nothing of this session survives. */
-  #finish(reason: string | null): void {
-    if (this.#ended) return;
+  #finish(reason: string | null, cliStopped = false): void {
+    if (this.#ended || (this.#startMissed && !cliStopped)) return;
+    this.#startDeadline.clear();
     // A CLI gone between its `authentication_failed` frame and the result that
     // would have named the status: the label is all there is to go on.
     if ((reason !== null && isAuthenticationFailure(reason)) || this.#authSuspect) (this.#head()?.ctx ?? this.#ctx).authenticationFailed?.();
@@ -868,6 +884,7 @@ export class ClaudeSession {
       cwd: options.cwd,
       env: options.env,
     });
+    this.#child = child;
     // The SDK reads stderr only for the process it spawns itself, so with a
     // custom spawner nothing drains that pipe unless we do it here.
     child.stderr.setEncoding('utf8');

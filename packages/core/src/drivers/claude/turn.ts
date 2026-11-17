@@ -585,11 +585,7 @@ export class ClaudeTurn {
     }
     const refused = this.#resumeRefused(message);
     if (refused !== null) {
-      // No error part: the core starts a fresh session and runs the turn again,
-      // so the conversation shows the answer, not the refusal.
-      this.sessionLost = true;
-      this.#status = 'error';
-      this.#error = refused;
+      this.loseSession(refused);
       return;
     }
     // The CLI answers an interrupt with an error result (`error_during_execution`,
@@ -819,6 +815,20 @@ export class ClaudeTurn {
       if (entry.released) this.#patchTool(entry, { summary: text });
       else this.#emitTool(toolId, entry);
     }
+  }
+
+  /**
+   * The session this turn ran on cannot serve it: a resume the CLI refused, or
+   * a CLI that never finished starting. No error part: the core runs the turn
+   * again once on a fresh session with the thread's history, so the
+   * conversation shows the answer. A retry that fails the same way ends the
+   * turn with `reason`, which the core writes then.
+   */
+  loseSession(reason: string): void {
+    if (this.settled || this.#status === 'error') return;
+    this.sessionLost = true;
+    this.#status = 'error';
+    this.#error = reason;
   }
 
   fail(reason: string): void {

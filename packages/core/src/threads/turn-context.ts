@@ -176,6 +176,7 @@ export class TurnContexts {
       notice: part => this.#notice(threadId, part),
       loopWake: scheduledFor => this.#core.wakes.cliFired(threadId, scheduledFor),
       spawnChild: this.leasedSpawnChild(threadId, provider, { resume: thread.sessionId !== null }),
+      stopChild: child => this.#core.procs.stopChild(child),
       finishStartup: () => this.#core.procs.finishStartup(this.#core.procs.protection.controlScope(threadId) ?? threadId),
       lazyMcp: this.#lazyMcpFor(thread),
     };
@@ -578,6 +579,7 @@ export class TurnContexts {
         return spawned;
       },
       spawnChild: this.leasedSpawnChild(threadId, provider, { resume: thread.sessionId !== null, turnId: turn.id }),
+      stopChild: child => this.#core.procs.stopChild(child),
       finishStartup: () => this.#core.procs.finishStartup(this.#core.procs.protection.controlScope(threadId) ?? threadId),
       lazyMcp: this.#lazyMcpFor(thread),
       killTree: () => {
