@@ -239,12 +239,11 @@ test('dock reserves rail space above the foot and leaves the final thread reacha
   await move('dock');
   expect(await page.evaluate(`(() => {
     const q = document.querySelector('${card}'), list = document.querySelector('[data-project-list]');
-    // The limits moved to the app rail (LimitsButton.svelte): the dock is the column's last part, inside it.
+    // The limits moved to the app rail (LimitsButton.svelte): the dock is the column's last part (the width grip aside), inside it.
     const column = q.parentElement.getBoundingClientRect();
-    return !list.contains(q) && q.previousElementSibling === list && q.nextElementSibling === null
-      && list.getBoundingClientRect().bottom <= q.getBoundingClientRect().top
-      && q.getBoundingClientRect().bottom <= column.bottom;
-  })()`)).toBe(true);
+    return { outside: !list.contains(q), after: q.previousElementSibling === list, last: !q.nextElementSibling || q.nextElementSibling.classList.contains('resize'),
+      below: list.getBoundingClientRect().bottom <= q.getBoundingClientRect().top, inside: q.getBoundingClientRect().bottom <= column.bottom };
+  })()`)).toEqual({ outside: true, after: true, last: true, below: true, inside: true });
   await page.evaluate(`document.querySelector('[data-project-list]').scrollTop = document.querySelector('[data-project-list]').scrollHeight`);
   await page.settleAnimations();
   expect(await page.evaluate(`(() => {
