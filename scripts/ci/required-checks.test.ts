@@ -184,7 +184,9 @@ if ($failed) { exit 1 }
   for (const id of ['core-windows-x64-1', 'core-windows-x64-2']) {
     const steps = (ci.jobs[id] as Job & { steps: Step[] }).steps;
     expect(steps.find(step => step.name === 'Build userspace native helper')).toEqual(helper);
-    expect(steps.some(step => step.name === 'Native Windows protected tools')).toBe(false);
+    for (const name of ['Native Windows protected tools', 'Prepare synthetic native providers', 'Native Windows provider and shared scopes']) {
+      expect(steps.some(step => step.name === name)).toBe(false);
+    }
     expect(steps.find(step => step.run === 'bun run --cwd packages/core test')?.if).toBeUndefined();
   }
 });

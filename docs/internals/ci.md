@@ -464,7 +464,10 @@ own `--shard` cuts by file count in hash order and put 1218 s of tests on one
 side and 825 s on the other. The sequencer in `packages/ui/test-sequencer.ts`
 cuts on [ui-durations.json](../../scripts/ci/ui-durations.json) instead, which
 `bun scripts/ci/ui-shards.ts refresh <run id>...` rebuilds from the per-file
-times Vitest prints. Each shard has its own Vitest cache.
+times Vitest prints. Each shard has its own Vitest cache. A shard also starts
+its longest recorded files first: with no Vitest cache, Vitest starts the
+largest files instead, all transforming at once, and `QuestionCard.test.ts`
+took 18.8 s instead of 2.4 and timed out (2026-11-17).
 
 Browser command, sharing and profile scenarios run in separate files so their
 combined Chromium startup time does not consume one five-minute file budget.
@@ -602,8 +605,8 @@ Vite once with `NODE_ENV=test`, and builds `BOITE_E2E_FAKE_UI` with the same
 fixture plugin used by `startDevUi`; in CI it runs `--prebuilt` on the
 downloaded bundle and refuses a directory without `index.html`. It consumes the optimized dependency body
 before closing Vite. Tests importing or blocking `/src/` URLs still use a dev
-server, warming reachable modules within its 60-second hook. Job deadlines stay
-35 minutes. Failure captures are attempted on cancellation too.
+server, warming reachable modules within its 60-second hook. Job deadlines are
+25 minutes. Failure captures are attempted on cancellation too.
 
 The first Chrome of a hosted Windows runner can take over 30 seconds to open
 its debugging port, which failed the first browser test of a shard on `main`

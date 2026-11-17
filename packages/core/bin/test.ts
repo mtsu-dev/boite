@@ -15,7 +15,7 @@ if (!Number.isInteger(workers) || workers < 1 || workers > 8) {
 }
 // One CI shard of the files, cut on their recorded seconds on this platform (scripts/ci/core-shards.ts).
 const shardOption = args.indexOf('--shard');
-const shardValue = shardOption < 0 ? process.env.BOITE_TEST_SHARD || undefined : args.splice(shardOption, 2)[1];
+const shardValue = shardOption < 0 ? process.env.BOITE_TEST_SHARD || undefined : args.splice(shardOption, 2)[1] ?? '';
 const shard = shardValue === undefined ? undefined : parseShard(shardValue);
 if (!args.some(arg => arg === '--timeout' || arg.startsWith('--timeout='))) {
   args.push('--timeout', '60000');
