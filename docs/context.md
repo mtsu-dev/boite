@@ -60,9 +60,10 @@ left it.
   machine's settings.
 
 Experimental, in Nightly builds only: Background compaction, in Settings,
-Experiments. With a token
-limit, a copy of the session compacts once the conversation reaches 85% of it,
-while you keep working. It works with Claude and Codex; OpenCode 2 uses its
+Experiments. Every automatic compaction then runs on a copy of the session:
+no compaction shows in the conversation, which stays free and takes the
+summary once it is ready, behind a small divider. With a token limit, the copy
+also starts once the conversation reaches 85% of it, while you keep working. It works with Claude and Codex; OpenCode 2 uses its
 own. Copies spend the same account and are not counted in usage.
 
 ## Queue a message while the agent works

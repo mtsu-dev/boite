@@ -205,10 +205,16 @@ describe('background compaction', () => {
       expect(copy.started()).toBe(1);
       expect(inTurn).toBe(1);
       expect(copy.stops()).toBe(1);
+      // The limit reached by the end of the turn starts a second copy, cut at that end, which the idle thread takes.
+      const before = run.thread.sessionId;
+      await waitFor(() => (h.core.journal.getThread(run.childId)!.sessionGeneration ?? 0) === 1);
+      expect(h.core.journal.getThread(run.childId)!.sessionId).toBe(`${before}~${run.turn.id}`);
+      // The dropped copy's late success is thrown away.
       copy.release();
       await Bun.sleep(100);
       expect(run.steps.some(step => step.swapped)).toBe(false);
-      expect(h.core.journal.getThread(run.childId)!.sessionGeneration ?? 0).toBe(0);
+      expect(h.core.journal.getThread(run.childId)!.sessionGeneration ?? 0).toBe(1);
+      expect(h.core.journal.getThread(run.childId)!.sessionId).toBe(`${before}~${run.turn.id}`);
     } finally { copy.release(); client.close(); }
   });
 
@@ -287,8 +293,9 @@ describe('background compaction', () => {
         boundary.tokens >= 915 && boundary.checkpoint !== null ? { ...boundary, checkpoint: { ...boundary.checkpoint, sessionId: 'forked-elsewhere' } } : boundary });
       expect(run.steps.some(step => step.tokens >= 1000)).toBe(true);
       expect(run.steps.some(step => step.swapped)).toBe(false);
-      expect(run.background).toEqual([]);
-      expect(run.thread.sessionGeneration ?? 0).toBe(0);
+      // Past the limit at its end, the idle thread takes the copy cut there, on its own session, never the forked one.
+      await waitFor(() => (h.core.journal.getThread(run.childId)!.sessionGeneration ?? 0) === 1);
+      expect(h.core.journal.getThread(run.childId)!.sessionId).toBe(`echo-${run.childId}~${run.turn.id}`);
     } finally { client.close(); }
   });
 
@@ -519,6 +526,34 @@ describe('background compaction', () => {
       expect(copies[1]!.thread.id).toBe(`${botId}~compact`);
       await client.call('settings.set', { compactionByType: {} });
       expect(stops).toBe(2);
+    } finally { restore(); client.close(); }
+  });
+
+  test('an idle moment compacts a copy out of sight instead of a compaction turn, with no token limit', async () => {
+    const copies: string[] = [];
+    const restore = setDriver('echo', { ...echoDriver, startTurn(ctx) {
+      if (isCopy(ctx)) copies.push(ctx.prompt);
+      return echoDriver.startTurn(ctx);
+    } });
+    const client = await h.connect();
+    try {
+      const threadId = await setUp(client);
+      await client.call('settings.set', { autoCompact: { tokens: null, moments: ['turn-end'] } });
+      await turn(client, threadId, 'short');
+      const source = h.core.journal.getThread(threadId)!;
+      const cut = h.core.journal.lastTurn(threadId)!.id;
+      await waitFor(() => (h.core.journal.getThread(threadId)!.sessionGeneration ?? 0) === (source.sessionGeneration ?? 0) + 1);
+      const swapped = await client.call('threads.get', { threadId });
+      expect(copies).toEqual(['[compact]']);
+      expect(swapped.sessionId).toBe(`${source.sessionId}~${cut}`);
+      // No compaction turn and no busy thread: only the divider marks it.
+      expect(await compactions(client, threadId)).toEqual([]);
+      expect(swapped.messages.flatMap(m => m.parts).filter(p => p.type === 'compaction')).toEqual([
+        expect.objectContaining({ trigger: 'auto', background: true }),
+      ]);
+      // The compacted session's own turn never chains another copy.
+      await Bun.sleep(150);
+      expect(copies.length).toBe(1);
     } finally { restore(); client.close(); }
   });
 

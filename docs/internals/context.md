@@ -237,8 +237,8 @@ A thread can sit idle above its token limit: it went quiet before the owner
 lowered the limit, or a restart dropped its timer. When a client shows it
 (`threads.focus`), the core compacts it at once under the same checks, while
 the user reads and types, instead of letting the next prompt wait for the
-agent's own blocking compaction. A background copy cannot help there, since
-one starts only below the limit. As after a turn, a last turn that stopped or
+agent's own blocking compaction. With background compaction on, that is a
+copy started at once (`startIdle`). As after a turn, a last turn that stopped or
 failed is left to the user (a cache keepalive ping does not count as the last
 turn), and a compaction never chains into another: when
 the last turn is one, even still over the limit, a look starts nothing. An ACP agent names its `compact` command only once its session is
@@ -315,7 +315,7 @@ is the detail its summary drops.
 owner turns on under Settings, Experiments, for the machine picked above the
 card, the one that runs the thread (an agent asks with
 `boite settings request backgroundCompaction true --why "..."`). It works
-with the token limit above and does nothing without one. Like `deviceStream`,
+with the `autoCompact` rule above and does nothing without one. Like `deviceStream`,
 it stays on its machine: the group's settings do not carry it.
 
 The copy is OpenCode 2's background compaction, ported
@@ -360,6 +360,18 @@ thrown away. Compaction and keepalive turns have no step boundary. While a
 turn runs, the context it is judged by, for growth or shrink, is the one its
 last step boundary reported, since Claude reports the thread's own only with
 the turn's final result.
+
+An idle moment that is due (the token limit, `turn-end`, `background`,
+`cache-expiry` or a mochi's cold wake) uses a copy when the setting is on and
+a copy can start: when no copy runs, `AutoCompaction` starts one cut at the end
+of the last done turn, whatever the context's size (`startIdle`), and the copy
+is swapped in as soon as it is ready. The thread stays idle and shows only the
+divider. A prompt sent meanwhile runs on the original session, and the copy
+waits for the next due moment, its tail carried as below. Without a token
+limit, the tail it may leave behind is `tailTokens`. The compaction turn runs
+only when no copy can start: a driver that cannot fork, background work, two
+failures in a row (a failed swap counts), an incognito thread or one waiting
+to resume at an entry.
 
 A driver without `stepSwap` takes a finished copy at the thread's first pause
 instead, under the same conditions as the timer above and after the same 2 s:
