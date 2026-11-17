@@ -918,7 +918,8 @@ test('a part that lands past the end of the copy on screen leaves no gap, and th
   const { messageId, partIndex } = client.streamPastClient(opencode.id, 2);
   await waitFor(() => store.openThread?.messages.some(message => message.id === messageId && message.parts.length > partIndex) ?? false);
   const parts = store.openThread!.messages.find(message => message.id === messageId)!.parts;
-  expect(parts.every(part => part !== undefined)).toBe(true);
+  // Array.from turns a hole into undefined; every() alone skips holes.
+  expect(Array.from(parts).every(part => part !== undefined)).toBe(true);
   // A hole made every reader of the parts throw, which stopped the screen's effects: the
   // box kept the previous thread's model and account and sent them to this one.
   await store.open(claude.id);
