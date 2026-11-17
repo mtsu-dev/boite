@@ -15,7 +15,7 @@ const workspace = process.env.BOITE_SMOKE_WORKSPACE ?? '/workspace/smoke';
 const html = await (await fetch(base)).text();
 assert(html.includes('<script'), 'built UI must be served');
 assert(!html.includes('UI is not built'), 'placeholder UI is not a release');
-const asset = html.match(/src="([^\"]+\.js)"/)?.[1];
+const asset = html.match(/src="([^"]+\.js)"/)?.[1];
 assert(asset, 'UI entry asset missing');
 assert.equal((await fetch(new URL(asset, base))).status, 200);
 

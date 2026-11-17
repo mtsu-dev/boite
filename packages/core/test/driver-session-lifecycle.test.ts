@@ -365,6 +365,7 @@ test('pi: a statistics timeout removes the request and ignores its late response
   let peer: PiPeer | undefined;
   let expiredId: string | undefined;
   const intercepted = spyOn(PiPeer.prototype, 'command').mockImplementation(function (this: PiPeer, ...args) {
+    // oxlint-disable-next-line typescript/no-this-alias -- the spy hands the live peer to the test
     peer = this;
     if (args[0] === 'get_session_stats' && expiredId === undefined) expiredId = `boite-${(this as unknown as { nextId: number }).nextId}`;
     return command.apply(this, args);
@@ -397,6 +398,7 @@ for (const order of ['before-query', 'during-query'] as const) {
     let peer: PiPeer | undefined;
     let stateReads = 0;
     const intercepted = spyOn(PiPeer.prototype, 'command').mockImplementation(function (this: PiPeer, ...args) {
+      // oxlint-disable-next-line typescript/no-this-alias -- the spy hands the live peer to the test
       peer = this;
       if (args[0] === 'get_state') stateReads += 1;
       return command.apply(this, args);

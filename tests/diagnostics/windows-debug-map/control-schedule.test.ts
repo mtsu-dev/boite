@@ -13,7 +13,7 @@ test('diagnostic pairs wait for prior captures and join both concurrent arms bef
   const observe=f.deps.observe,finish=f.deps.finish;
   const control=await measureStdioRootReferences(f.inputs,{...f.deps,
    observe:async(r,path,phase)=>{if(phase==='baseline'){helpers.add(r.helper.pid);if(helpers.size===2)firstObserver.resolve();await firstObserver.promise;}return observe(r,path,phase);},
-   finish:async(r,h)=>{if(blocked){firstEntered.resolve();await firstFinishing.promise;}return finish(r);},
+   finish:async(r)=>{if(blocked){firstEntered.resolve();await firstFinishing.promise;}return finish(r);},
   });
   expect(control.protocolValid,control.error).toBe(true);expect(control.helpersJoined).toBe(true);expect(helpers.size).toBe(2);expect(f.joined).toBe(12);
   expect(control.deadline).toBe(f.frames[0]!.deadline);expect(control.deadline-f.frames[0]!.ready).toBe(3000);

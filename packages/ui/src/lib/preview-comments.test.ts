@@ -144,7 +144,7 @@ test('iframe picking reports invalid geometry and can pick again after failure',
 });
 
 test('an invalid native selection settles the picker, reports failure and permits an immediate retry', async ({ ready }) => {
-  const { store, client } = await ready({ delayMs: 0 });
+  const { store } = await ready({ delayMs: 0 });
   await store.open('t-trace');
   const panel = new RightPanelStore().for('t-trace');
   const surface = panel.open('browser', 'https://example.test');
@@ -184,7 +184,7 @@ test('an invalid native selection settles the picker, reports failure and permit
 });
 
 test('Escape in the address field cancels active picking and restores the current URL', async ({ ready }) => {
-  const { store, client } = await ready({ delayMs: 0 });
+  const { store } = await ready({ delayMs: 0 });
   await store.open('t-trace');
   const panel = new RightPanelStore().for('t-trace');
   const surface = panel.open('browser', 'https://example.test');

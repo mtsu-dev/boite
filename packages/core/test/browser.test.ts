@@ -504,7 +504,6 @@ real('a click right after the viewport changes size lands on its element, and wh
 }, 150_000);
 
 real('an open agent tab does not hold back an update of the core', async () => {
-  const { agent, threadId } = browserFixture;
   let stopping = 0;
   const updating = await startTestCore({ onShutdown: () => { stopping += 1; } });
   const client = await updating.connect();

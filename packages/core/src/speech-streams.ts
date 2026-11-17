@@ -63,7 +63,7 @@ export class SpeechStreams {
     if (44 + samples * 2 > SPEECH_MAX_BYTES) throw invalidParams('speech.audio stream must be at most 120 seconds in total');
     session.busy = true;
     try {
-      const result = await this.local.native.request(finish ? 'finish' : 'chunk', { ...(wav ? { audio: params.audio } : {}) }, session.controller.signal, session.engine);
+      const result = await this.local.native.request(finish ? 'finish' : 'chunk', wav ? { audio: params.audio } : {}, session.controller.signal, session.engine);
       session.controller.signal.throwIfAborted();
       if (!result || typeof result.text !== 'string' || result.text.length > 32_000) throw refused('speech: native decoder returned an invalid transcript');
       session.samples = samples; session.sequence++;

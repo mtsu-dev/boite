@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync } from 'node:fs';
-import { join, delimiter } from 'node:path';
+import { delimiter } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Core } from './core.ts';
 import type { SpawnedPipedProcess } from './procs.ts';

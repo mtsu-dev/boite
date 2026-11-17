@@ -198,7 +198,7 @@ function rangeHolds(range: string, ip: string): boolean {
 export function evaluatePolicy(raw: unknown, device: Pick<Device, 'name' | 'addresses' | 'tags'>, port: number): Policy {
   const policy = raw as { acls?: unknown; grants?: unknown; hosts?: Record<string, unknown> } | null;
   if (!policy || typeof policy !== 'object') return { policy: 'unknown' };
-  const ip = device.addresses.find(address => /^100\./.test(address)) ?? device.addresses[0] ?? '';
+  const ip = device.addresses.find(address => address.startsWith('100.')) ?? device.addresses[0] ?? '';
   const fix = policyFix(ip, port, !Array.isArray(policy.acls) && !Array.isArray(policy.grants));
   // No rule list at all is Tailscale's default policy: everyone reaches everything.
   if (!Array.isArray(policy.acls) && !Array.isArray(policy.grants)) return { policy: 'open', policyFix: fix };

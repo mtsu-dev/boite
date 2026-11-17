@@ -201,7 +201,7 @@ export function accountMethods(ctx: FakeContext) {
       if (params.refresh !== undefined && typeof params.refresh !== 'boolean') throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'subscriptionProxy.quotas refresh must be a boolean' });
       return gatewayQuotas(ctx);
     },
-    'accounts.list': async (params) => {
+    'accounts.list': async () => {
       return structuredClone(ctx.accounts);
     },
     'accounts.add': async (params) => {
@@ -296,7 +296,7 @@ export function accountMethods(ctx: FakeContext) {
       });
       return { ok: true };
     },
-    'accounts.logins': async (params) => {
+    'accounts.logins': async () => {
       return structuredClone([...ctx.logins.values()]);
     },
     'accounts.loginCancel': async (params) => {

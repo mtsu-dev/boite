@@ -123,6 +123,8 @@ jobs:
       - run: bun scripts/ci/translations.ts
       - run: bun run check:copy
       - run: bun run check:architecture
+      # oxlint reads every file in well under a second, so it lints every change here.
+      - run: bun run lint
       - run: bun test scripts/architecture
       # A few seconds: it runs on every change rather than wait for the plan.
       - name: Validate workflows

@@ -299,7 +299,7 @@ test('replication pages bounded deltas and quiesces after acknowledgement; share
 }, 30000);
 
 test('an accepted goal start is not repeated after restarting its host, and a paired device can move a card', async () => {
-  const {a, b, scope} = await board();
+  const {a, scope} = await board();
   const added = await a.client.call('sharedBoard.apply', {...scope, command: command('add', 'add', 'once after restart')});
   const worker = {project: a.ref, threadId: a.threadId, address: {coreId: a.coreId, threadId: a.threadId}};
   const accepted = await a.client.call('sharedBoard.apply', {...scope, command: {kind: 'claim', cardId: 'card_collision', requestId: 'start-once', expectedRevision: added.revision, worker}});

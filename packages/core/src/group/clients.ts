@@ -8,7 +8,7 @@
  * member it is connected to instead, exchanged on another member for a key
  * of that member's own. docs/internals/groups.md describes both.
  */
-import { randomUUID, verify } from 'node:crypto';
+import { verify } from 'node:crypto';
 import { deviceAdmitInput, deviceHelloInput, DEVICE_LINK_JOIN, GROUP_TICKET_TTL_MS, PAIRING_ROLES, ungroupedInput } from '@boite/contracts';
 import type { DeviceHello, DeviceInvite, Group, GroupTicket, PairingRole, UngroupedData } from '@boite/contracts';
 import { invalidParams, messageOf, refused, unauthorized, unavailable } from '../errors.ts';

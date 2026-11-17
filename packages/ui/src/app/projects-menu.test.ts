@@ -1,7 +1,6 @@
 import { expect, vi } from 'vitest';
 import { confirm } from '../lib/confirm.svelte';
 import { store } from '../lib/store.svelte';
-import { work } from '../lib/work-prefs.svelte';
 import { projectMenu } from '../lib/project-menu';
 import { query, test, type, waitFor } from '../test/app';
 

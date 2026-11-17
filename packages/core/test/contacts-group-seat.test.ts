@@ -34,7 +34,7 @@ async function flowsWithoutHolder(sides: Awaited<ReturnType<typeof setup>>): Pro
   remoteOn(x, xThread);
   remoteOn(c, cThread);
   const cBot = await contactsBotOf(c, cClient);
-  const xBot = await contactsBotOf(x, xClient);
+  await contactsBotOf(x, xClient);
   const name = x.core.contacts.find(cId)!.name;
   const asked = await xClient.call('collaboration.ask', { threadId: xThread, contact: name, text: 'Still there without alpha?' });
   const incoming = () => c.core.contacts.requests.list().find(request => request.direction === 'in' && request.text === 'Still there without alpha?');

@@ -268,7 +268,7 @@ export function migrate(db: Database, file: string): { from: number; to: number 
     // Rebuild only this table to remove NOT NULL; preserve every existing column and row.
     const definition = db.query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'threads'").get() as { sql: string };
     const indexes = db.query("SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'threads' AND sql IS NOT NULL").all() as { sql: string }[];
-    const replacement = definition.sql.replace(/CREATE TABLE (?:IF NOT EXISTS )?["`\[]?threads["`\]]?/i, 'CREATE TABLE threads_next').replace(/project_id TEXT NOT NULL/i, 'project_id TEXT');
+    const replacement = definition.sql.replace(/CREATE TABLE (?:IF NOT EXISTS )?["`[]?threads["`\]]?/i, 'CREATE TABLE threads_next').replace(/project_id TEXT NOT NULL/i, 'project_id TEXT');
     db.exec(replacement);
     db.exec('INSERT INTO threads_next SELECT * FROM threads');
     db.exec('DROP TABLE threads');

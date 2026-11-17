@@ -109,5 +109,5 @@ export class SharedWorkflowCompute {
     }
   }
   beginClose(): void {this.#closed = true; this.#off();}
-  async close(): Promise<void> {this.beginClose(); await Promise.allSettled([...this.#pending]);}
+  async close(): Promise<void> {this.beginClose(); await Promise.allSettled(this.#pending);}
 }

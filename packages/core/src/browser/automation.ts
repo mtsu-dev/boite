@@ -75,7 +75,7 @@ export const PAGE_ACTIONS = new Set<BrowserAction['kind']>(['snapshot', 'click',
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 /** A value as a JavaScript literal; the characters JSON leaves unescaped are escaped too. */
-const js = (value: unknown) => (JSON.stringify(value) ?? 'undefined').replace(/[<>\/\u2028\u2029]/g, c => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+const js = (value: unknown) => (JSON.stringify(value) ?? 'undefined').replace(/[<>/\u2028\u2029]/g, c => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
 
 const inContext = (channel: FrameChannel) => channel.contextId === undefined ? {} : { contextId: channel.contextId };
 

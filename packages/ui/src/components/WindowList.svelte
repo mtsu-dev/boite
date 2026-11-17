@@ -34,7 +34,7 @@
     return cached.keys = next;
   });
   const sums = $derived.by(() => {
-    revision;
+    void revision;
     const result = [0];
     for (let i = 0; i < keys.length; i++) result.push(result[i]! + (heights.get(keys[i]!) ?? estimate));
     return result;
@@ -67,7 +67,7 @@
   });
   const bottom = $derived(active ? sums[items.length]! - sums[keys.indexOf(rendered.at(-1)?.key ?? '') + 1]! : 0);
   $effect(() => {
-    rendered;
+    void rendered;
     const node = focusedNode;
     if (node) void tick().then(() => {
       if (focusedNode === node && node.isConnected && document.activeElement === document.body) node.focus({ preventScroll: true });

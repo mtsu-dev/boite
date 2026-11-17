@@ -2,7 +2,6 @@ import { expect, vi } from 'vitest';
 import { flushSync } from 'svelte';
 import { type RpcMethodName } from '@boite/contracts';
 import { store } from '../lib/store.svelte';
-import { work } from '../lib/work-prefs.svelte';
 import { projectMenu } from '../lib/project-menu';
 import { mountOnFake, query, showMobileThreads, test, type, waitFor } from '../test/app';
 

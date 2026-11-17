@@ -419,7 +419,7 @@ test('a relay whose first address of the other member never answers opens the ne
   const held = new Set<Bun.Socket>();
   let closedAt = 0, dialed = 0;
   const dark = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: {
-    data: (socket, bytes) => { if (/^GET \/rpc /.test(bytes.toString()) && /x-boite-relayed-link/i.test(bytes.toString())) { held.add(socket); dialed++; } },
+    data: (socket, bytes) => { if (bytes.toString().startsWith('GET /rpc ') && /x-boite-relayed-link/i.test(bytes.toString())) { held.add(socket); dialed++; } },
     end: (socket) => { if (held.delete(socket)) closedAt = performance.now(); socket.end(); },
   } });
   try {

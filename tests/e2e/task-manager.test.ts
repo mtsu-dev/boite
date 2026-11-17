@@ -99,6 +99,7 @@ test('the real task manager reads owned processes on desktop and a paired phone'
       harness.core.procs.stopAndWait(serverId)]);
     await harness.stop();
     const errors = closed.filter(result => result.status === 'rejected').map(result => result.reason);
+    // oxlint-disable-next-line no-unsafe-finally -- a failed cleanup must fail the test
     if (errors.length) throw new AggregateError(errors, 'Task manager fixture cleanup failed');
   }
 }, 60000);

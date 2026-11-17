@@ -55,7 +55,7 @@ test('a pull request reports the same fixed check names whichever jobs run', () 
 test('every job a needs chain runs through is in the list, so a skip after a failed dependency comes with a failed check', () => {
   const names = requiredChecks(files);
   const ci = loadWorkflow('ci.yml');
-  for (const [id, job] of Object.entries(ci.jobs)) {
+  for (const job of Object.values(ci.jobs)) {
     for (const need of [job.needs ?? []].flat()) {
       for (const check of jobChecks('ci.yml', need, ci.jobs[need]!)) expect(names).toContain(check);
     }

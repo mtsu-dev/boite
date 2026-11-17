@@ -278,10 +278,10 @@ interface Target {
 /** Loopback, Tailscale's 100.64.0.0/10 and its fd7a:115c:a1e0::/48: links that already encrypt or never leave the machine. */
 export function privateLink(hostname: string): boolean {
   const host = hostname.replace(/^\[|\]$/g, '').toLowerCase();
-  if (host === 'localhost' || host === '::1' || /^127\./.test(host)) return true;
+  if (host === 'localhost' || host === '::1' || host.startsWith('127.')) return true;
   const v4 = /^100\.(\d+)\.\d+\.\d+$/.exec(host);
   if (v4) return Number(v4[1]) >= 64 && Number(v4[1]) <= 127;
-  return /^fd7a:115c:a1e0:/.test(host);
+  return host.startsWith('fd7a:115c:a1e0:');
 }
 
 /** The environment first; `--thread` and `core.json` when the command runs outside a thread. */

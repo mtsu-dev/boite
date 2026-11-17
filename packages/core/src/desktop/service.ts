@@ -522,7 +522,7 @@ export class VirtualDesktops {
     for (const start of starting) this.#cancel(start);
     await Promise.allSettled(starting.map(start => start.promise));
     for (const [threadId, session] of this.#sessions) this.#track(this.#teardown(threadId, session, 'Boite stopped'));
-    await Promise.allSettled([...this.#stops]);
+    await Promise.allSettled(this.#stops);
   }
 
   /** The start fails as soon as the part it waits on exits; its catch then clears what remains. */
@@ -691,7 +691,7 @@ export class VirtualDesktops {
   #teardown(threadId: string, session: Session, why: string): Promise<void> {
     session.stopping = true;
     session.stopped ??= (async () => {
-      await Promise.allSettled([...session.launches]);
+      await Promise.allSettled(session.launches);
       await this.#stopOpened(session, session.apps);
       await this.#kill(session.stack, session.apps.map(({ spawned }) => spawned), session.id, session.dir, session.hidden);
       if (this.#sessions.get(threadId) === session) this.#sessions.delete(threadId);

@@ -72,7 +72,7 @@ test('a hidden terminal gives its WebGL context back at once and its xterm after
   timers.mockClear();
   toggle();
   await waitFor(() => document.querySelector('[data-testid=terminal-drawer]') === null);
-  (timers.mock.calls.find(([, delay]) => delay === HIDDEN_RELEASE_MS)?.[0] as () => void)();
+  (timers.mock.calls.find(([, delay]) => delay === HIDDEN_RELEASE_MS)![0] as () => void)();
   toggle();
   await waitFor(drawn);
   expect(attach).toHaveBeenCalledTimes(2);

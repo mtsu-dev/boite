@@ -89,12 +89,6 @@ async function startCore(settings?: Partial<Settings>): Promise<CoreClient> {
   return started.connect();
 }
 
-async function stopCore(): Promise<void> {
-  const open = harness;
-  harness = null;
-  if (open !== null) await open.stop();
-}
-
 function fakeLog(): string {
   return readScriptedLog(logFile);
 }

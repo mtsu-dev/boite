@@ -1,21 +1,13 @@
 // Shared by the app suite under src/app: the fake-core mount, its cleanup and the DOM helpers its tests drive.
-import { afterEach, expect, vi } from 'vitest';
+import { afterEach, vi } from 'vitest';
 import { test as fixtureTest } from './fake-client';
-import { flushSync, mount, unmount } from 'svelte';
-import { type RpcMethodName } from '@boite/contracts';
+import { mount, unmount } from 'svelte';
 import App from '../App.svelte';
-import { type FakeClient } from '../lib/fake-client';
-import { confirm } from '../lib/confirm.svelte';
 import { store } from '../lib/store.svelte';
-import { workspace } from '../lib/workspace.svelte';
-import { BUILD_STORAGE_KEY, setExperiment, writeExperiments } from '../lib/experiments';
-import { storeEndpoint, upsertEnvironment } from '../lib/endpoint';
+import { BUILD_STORAGE_KEY, writeExperiments } from '../lib/experiments';
 import { closeTour } from '../lib/onboarding.svelte';
 import { work } from '../lib/work-prefs.svelte';
 import { rightPanel } from '../lib/right-panel.svelte';
-import { count } from '../lib/format';
-import { projectThreadView } from '../lib/project-threads.svelte';
-import { sidebarRows } from '../lib/sidebar-rows.svelte';
 import { openUrl } from './opener';
 
 let running: Record<string, unknown> | null = null;
@@ -24,6 +16,7 @@ let running: Record<string, unknown> | null = null;
 Element.prototype.scrollIntoView ??= vi.fn();
 
 export const test = fixtureTest.extend<{ app: void }>({
+  // oxlint-disable-next-line no-empty-pattern -- Vitest reads fixture dependencies from this pattern
   app: async ({}, use) => {
     await mountOnFake();
     await use();

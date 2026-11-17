@@ -16,13 +16,12 @@ test('zero-byte receipts require actual zero-byte write evidence and reject ever
  for(const patch of [{crt:'999'},{closeAttempted:1},{invalid:1},{closeAt:1001},{flushResult:-1}]){const f=zeroFrame();Object.assign(f.streams[1]!,patch);expect(()=>parseZeroReceipt(encodeZeroReceipt(f))).toThrow();}
 });
 
-import {fixture,request,assignedStdout,fixtureMarker,observed} from './stdio-reference-fixture.ts';
+import {fixture,assignedStdout,fixtureMarker} from './stdio-reference-fixture.ts';
 import {zeroLabels,boundZeroReceipt} from './stdout-zero-fence.ts';
-import {measureZeroReferences,runZeroHarness,validateZeroCapture} from './stdout-zero-reference.ts';
+import {measureZeroReferences,runZeroHarness} from './stdout-zero-reference.ts';
 import {authorizeActiveFence,validateActiveProof} from './live-fence-dispatch.ts';
 import {FaultRootOwner,startFaultRootService,requestRootReference,type RootRequest} from './fault-root-reference.ts';
-import {writeFileSync,readFileSync,existsSync,mkdtempSync,rmSync} from 'node:fs';import {join} from 'node:path';import {tmpdir} from 'node:os';
-const makeFixture=(absent:(r:RootRequest)=>boolean=r=>r.label===zeroLabels[1])=>fixture({labels:zeroLabels,encode:encodeZeroReceipt,openOriginals:true,barrierPrefix:'zero',stdoutPrefix:assignedStdout,stdoutWrites:()=>false,decorate:f=>{f.zero=f.role===1?{attempted:0,result:0,transferred:0,error:0,at:0}:{attempted:1,result:1,transferred:0,error:0,at:f.ready+1};},comparisonAbsent:absent});
+import {writeFileSync,readFileSync,existsSync} from 'node:fs';import {join} from 'node:path';const makeFixture=(absent:(r:RootRequest)=>boolean=r=>r.label===zeroLabels[1])=>fixture({labels:zeroLabels,encode:encodeZeroReceipt,openOriginals:true,barrierPrefix:'zero',stdoutPrefix:assignedStdout,stdoutWrites:()=>false,decorate:f=>{f.zero=f.role===1?{attempted:0,result:0,transferred:0,error:0,at:0}:{attempted:1,result:1,transferred:0,error:0,at:f.ready+1};},comparisonAbsent:absent});
 test('generated exports and real root transport preserve both original stream sets and release both exact roots before zero-byte comparison',async()=>{
  const f=makeFixture(),service=startFaultRootService(f.controlDirectory,f.owner,g=>g());
  try{const r=await measureZeroReferences(f.inputs,{...f.deps,exchange:r=>requestRootReference(f.controlDirectory,r,g=>g())});

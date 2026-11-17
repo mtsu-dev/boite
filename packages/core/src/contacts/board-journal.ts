@@ -1,6 +1,6 @@
 /** Authority history and replica/outbox state share the existing journal's SQLite transaction. */
 import type { Database } from 'bun:sqlite';
-import type { SharedBoardCard, SharedBoardChange, SharedBoardCommand, SharedBoardPage, SharedBoardReceipt, SharedProjectActor, SharedProjectPeerMethods } from '@boite/contracts';
+import type { SharedBoardChange, SharedBoardCommand, SharedBoardPage, SharedBoardReceipt, SharedProjectActor, SharedProjectPeerMethods } from '@boite/contracts';
 import { invalidParams } from '../errors.ts';
 import { fingerprint } from './project-journal.ts';
 

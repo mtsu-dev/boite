@@ -94,6 +94,7 @@ describe('terminals', () => {
         try { process.kill(job, 'SIGKILL'); }
         catch (error) {
           // The job can disappear between reading /proc and sending the signal.
+          // oxlint-disable-next-line no-unsafe-finally -- a kill failure other than ESRCH must fail the test
           if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
         }
       }

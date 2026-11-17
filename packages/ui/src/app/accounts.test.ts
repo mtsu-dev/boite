@@ -1,5 +1,4 @@
 import { expect, vi } from 'vitest';
-import { confirm } from '../lib/confirm.svelte';
 import { store } from '../lib/store.svelte';
 import { strings } from '../lib/strings';
 import { mountOnFake, openProviderDetails, query, test, type, waitFor } from '../test/app';

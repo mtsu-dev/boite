@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import { ArrowRightLeft } from '@lucide/svelte';
 import type { AgentsSnapshot, ThreadSummary } from '@boite/contracts';
 import { agentDirectory } from './agent-directory.svelte';

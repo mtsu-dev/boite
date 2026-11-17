@@ -64,7 +64,7 @@ export class MachineWorkflowSteps {
     let changed = false;
     for (const node of run.nodes) for (const inst of node.instances) {
       const worktree = inst.machine && this.#core.delegation.remote.record(run.rootThreadId, inst.machine.requestId)?.state?.worktree;
-      if (worktree && JSON.stringify(worktree) !== JSON.stringify(inst.worktree)) inst.worktree = worktree, changed = true;
+      if (worktree && JSON.stringify(worktree) !== JSON.stringify(inst.worktree)) { inst.worktree = worktree; changed = true; }
     }
     if (changed) this.#hooks.save(run);
   }
@@ -325,5 +325,5 @@ export class MachineWorkflowSteps {
   }
 
   beginClose(): void { this.#closed = true; this.#off(); }
-  async close(): Promise<void> { this.beginClose(); await Promise.allSettled([...this.#pending]); }
+  async close(): Promise<void> { this.beginClose(); await Promise.allSettled(this.#pending); }
 }

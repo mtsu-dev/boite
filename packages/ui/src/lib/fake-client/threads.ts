@@ -18,7 +18,7 @@ import { moveToAccount, usableAccount } from './account-fallback';
 import { writeTitle } from './titles';
 import { DATA_DIR, fakeWorktree, refusal, toSummary } from './shared';
 import { closeThreadTerminals } from './terminals';
-import { announceProject, archiveProject, requireFakeFolder } from './project-archive';
+import { announceProject } from './project-archive';
 import { modelsOf, checkSpeed, discoverSelection } from './provider-catalog';
 import { delegationConfig, stopDelegation } from './delegation';
 import { fakeCore } from './coordination';

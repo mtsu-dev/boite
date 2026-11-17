@@ -23,7 +23,6 @@ type DiagramModule = typeof import('./diagram-render');
 
 let mathModule: MathModule | null = null;
 let mathLoading: Promise<MathModule> | null = null;
-let diagramModule: DiagramModule | null = null;
 let diagramLoading: Promise<DiagramModule> | null = null;
 
 /** A failed import is tried again by the next block that needs it: an offline phone may be back online. */
@@ -33,7 +32,7 @@ function loadMath(): Promise<MathModule> {
 }
 
 function loadDiagrams(): Promise<DiagramModule> {
-  diagramLoading ??= import('./diagram-render').then(module => diagramModule = module, (reason: unknown) => { diagramLoading = null; throw reason; });
+  diagramLoading ??= import('./diagram-render').catch((reason: unknown) => { diagramLoading = null; throw reason; });
   return diagramLoading;
 }
 

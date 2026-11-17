@@ -319,7 +319,7 @@ test('the accent persists, the effort track glows brighter as it rises, and a sp
   expect(await page.evaluate<boolean>(`(() => {
     const rules = (list) => [...list].flatMap(rule => rule.cssRules ? [rule, ...rules(rule.cssRules)] : [rule]);
     const all = [...document.styleSheets].flatMap(sheet => { try { return rules(sheet.cssRules); } catch { return []; } });
-    return all.some(rule => rule.parentRule?.conditionText?.includes('hover: hover') && /\.speed[^ ,]*:hover[^,]* svg/.test(rule.selectorText ?? '') && /rotate|scale/.test(rule.style?.transform ?? ''));
+    return all.some(rule => rule.parentRule?.conditionText?.includes('hover: hover') && /\\.speed[^ ,]*:hover[^,]* svg/.test(rule.selectorText ?? '') && /rotate|scale/.test(rule.style?.transform ?? ''));
   })()`)).toBe(true);
   await capture('speed-hover.png');
   // Switching the speed on sends streaks across the popover, then they clear. A runner's own reduced-motion setting must not decide it.

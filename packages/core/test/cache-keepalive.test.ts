@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { DEFAULT_DELEGATION_CONFIG, checkSettingsPatch, type Turn, type Usage } from '@boite/contracts';
-import type { CoreClient } from '../src/client.ts';
 import { SHORT_ANSWERS } from '../src/agent-guide.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnContext, TurnResult } from '../src/drivers/types.ts';

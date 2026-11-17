@@ -216,7 +216,7 @@ test('each member reviews alone, in parallel; the parent gets one message; again
   const again = await boite(h, threadId, ['delegate', 'council', 'again', councilId, 'Added the missing index.', '--request-id', 'second']);
   expect(again.err).toBe('');
   await waitFor(() => d.round(2).length === 3);
-  expect([...d.round(2).map(run => run.threadId)].sort()).toEqual([...threads].sort());
+  expect(d.round(2).map(run => run.threadId).sort()).toEqual([...threads].sort());
   for (const run of d.round(2)) {
     const prompt = d.memberPart(run);
     expect(prompt).not.toContain('Added the missing index.');
@@ -346,7 +346,7 @@ test('each member has its own effort and part, the request comes from a file, an
   // One more round with nothing said: the same threads, efforts and parts.
   expect((await council('again', councilId)).err).toBe('');
   await settled(2);
-  expect([...d.round(2).map(run => run.threadId)].sort()).toEqual([...threads].sort());
+  expect(d.round(2).map(run => run.threadId).sort()).toEqual([...threads].sort());
   expect(told(2, 'Hunt for races.')).toEqual(['gpt-6.1-sol']);
   // What changed is the salon's unless the command sends it; the request can come from another file.
   expect((await council('again', councilId, 'Fixed the race.')).err).toBe('');
