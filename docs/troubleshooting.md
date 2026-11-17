@@ -91,6 +91,10 @@ ones it started. Turn the switch off on the same page to stop it.
   conversation, and a hard crash of the app can leave its core running.
 - The CPU cap, focus protection and audio muting work on Windows only. The
   memory guard works everywhere.
+- "Claude Code did not start within 90 s": Claude Code stayed silent at
+  launch twice in a row, often because one of your MCP servers never answers.
+  Boite stopped it and tried once more with a new conversation that carries
+  the history. Check your MCP servers, then send the message again.
 
 ## Going further
 

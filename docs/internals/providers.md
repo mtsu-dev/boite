@@ -1455,6 +1455,22 @@ never sent. Esc or the chip's x hides it for that turn, on that page only. It
 hides while text is typed, while sending, during dictation and behind a
 question or permission.
 
+## Claude's start deadline
+
+A Claude CLI that never says `system/init`, for example while a stdio MCP
+server keeps it waiting, would otherwise hold its thread for good. From the
+first message handed to a new process, the session gives the CLI
+`START_DEADLINE_MS` (90 s, `packages/core/src/drivers/claude/start-deadline.ts`)
+to say it. CLI 2.1.326 says it in 0.4 s and waits 30 s for an MCP server that
+never answers before it starts without it (measured on 2026-11-17), so the
+deadline is three times the CLI's own bound. On expiry the session stops the
+CLI through `procs.stopChild` and settles the turn only once it exited, as a
+lost session (`ClaudeTurn.loseSession`): the core runs the turn once more on a
+fresh session whose prompt carries the conversation, the path a refused resume
+takes. A second miss fails the turn with "Claude Code did not start within
+90 s". The deadline is not a setting: a user's `MCP_TIMEOUT` longer than 90 s
+is cut short.
+
 ## Claude's MCP servers on demand
 
 Claude Code starts every stdio server of the user's `mcpServers` with each

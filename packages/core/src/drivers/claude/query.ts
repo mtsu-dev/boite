@@ -22,6 +22,8 @@ export type QueryFn = (params: { prompt: AsyncIterable<SDKUserMessage>; options:
 export interface ClaudeDeps {
   /** Resolved on the first turn: importing the SDK costs about 69 MB of resident memory. */
   loadQuery: () => Promise<QueryFn>;
+  /** How long a turn waits for the CLI's `init` before the start counts as failed; `START_DEADLINE_MS` by default. */
+  startDeadlineMs?: number;
 }
 
 /** The native settings a warm or running query can change without another prompt. */
