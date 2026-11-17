@@ -43,13 +43,14 @@
     untrack(() => { if (current.rows === null && !current.loading) void current.read(client, false).catch(() => {}); });
     return off;
   });
-  // Out: a tick each 30 s for the countdown. Otherwise one wake at the next reset, the moment the notice can change.
+  // Out: a tick each 30 s for the countdown. Otherwise one wake at the next reset, the moment the notice or the
+  // leak dot can change; that wake moves `now`, which schedules the one after.
   $effect(() => {
     if (meter?.kind === 'out') {
       const timer = setInterval(() => { now = Date.now(); }, 30_000);
       return () => clearInterval(timer);
     }
-    const resets = rows.flatMap(row => row.windows.map(window => window.resetsAt)).filter((at): at is number => at !== null && at > untrack(() => now));
+    const resets = rows.flatMap(row => row.windows.map(window => window.resetsAt)).filter((at): at is number => at !== null && at > now);
     if (resets.length === 0) return;
     const timer = setTimeout(() => { now = Date.now(); }, Math.min(Math.min(...resets) - Date.now() + 1000, 2 ** 31 - 1));
     return () => clearTimeout(timer);

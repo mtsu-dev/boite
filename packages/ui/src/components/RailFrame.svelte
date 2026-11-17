@@ -16,8 +16,8 @@
    * alike: one width the user drags, one fold from the title bar, the head on
    * top, an optional subhead that stays put (the Bots search) and the rows in
    * one scroll. On a desktop it reaches the window's top, its head level with
-   * the main column's bar, and its foot holds the limits line, the same under
-   * every list; the machines and Settings live on the app rail.
+   * the main column's bar; the limits, the machines and Settings live on the
+   * app rail.
    *
    * `drawer` is the thread list's phone form, a sheet over the chat; the Agents
    * list is a whole screen on a phone and stays in the flow.

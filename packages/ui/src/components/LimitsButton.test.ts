@@ -99,3 +99,26 @@ test('an account used outside Douane lights a red dot on the quiet gauge and nam
   expect(document.querySelector('[data-testid=limits-leak]')).not.toBeNull();
   expect(document.querySelector('[data-testid=nav-limits]')!.getAttribute('aria-label')).toBe('40% of nefreex2 (Claude) used outside Douane');
 });
+
+test('the red dot follows each leaky window to its reset, one wake after another', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'Date'] });
+  const start = new Date('2026-11-17T10:00:00Z').getTime();
+  vi.setSystemTime(start);
+  const rows = [{ ...quota, windows: [
+    { id: '5h', label: '5 hours', usedPercent: 30, resetsAt: start + 60 * 60_000, outsidePercent: 50 },
+    { id: 'week', label: 'Weekly', usedPercent: 30, resetsAt: start + 120 * 60_000, outsidePercent: 20 },
+  ] }];
+  const { store } = storeOf(() => rows, 'limits-button-leak-chain', ['claude-account']);
+  mounted = mount(LimitsButton, { target: document.body, props: { store } });
+  await settle();
+  const label = () => document.querySelector('[data-testid=nav-limits]')!.getAttribute('aria-label');
+  expect(label()).toBe('50% of Home (Claude) used outside Douane');
+
+  vi.advanceTimersByTime(61 * 60_000);
+  await settle();
+  expect(label()).toBe('20% of Home (Claude) used outside Douane');
+
+  vi.advanceTimersByTime(60 * 60_000);
+  await settle();
+  expect(document.querySelector('[data-testid=limits-leak]')).toBeNull();
+});
