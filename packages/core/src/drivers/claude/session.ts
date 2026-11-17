@@ -576,6 +576,8 @@ export class ClaudeSession {
 
   /** `replayed` is an adopted message handed to the turn that opened for it: already diagnosed when it came. */
   #receive(message: SDKMessage, replayed = false): void {
+    // A CLI that missed its start is being stopped: nothing it still writes may settle the turn before it exited.
+    if (this.#startMissed) return;
     if (message.type === 'prompt_suggestion') { this.#suggest(message); return; }
     if (authenticationSuspectOf(message)) this.#authSuspect = true;
     const authFailure = authenticationFailureOf(message, this.#authSuspect);

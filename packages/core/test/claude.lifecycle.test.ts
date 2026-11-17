@@ -6,6 +6,7 @@ import {
   assistant,
   calls,
   claudeThread,
+  type FakeQuery,
   failure,
   harness,
   init,
@@ -329,6 +330,44 @@ describe('claude driver', () => {
     const errors = thread.messages.flatMap((message) => message.parts).filter((part) => part.type === 'error');
     expect(errors).toEqual([{ type: 'error', message: 'Claude Code did not start within 0.2 s' }]);
     expect(thread.status).toBe('error');
+  });
+
+  test('a CLI that answers while it is stopped for a missed start cannot start the retry before it exited', async () => {
+    const client = await harness.connect();
+    const threadId = await claudeThread(client);
+    const procs = harness.core.procs;
+    const stopChild = procs.stopChild.bind(procs);
+    let stuck: ChildProcess | null = null;
+    let late: FakeQuery | null = null;
+    let retryBeforeExit = null as boolean | null;
+    // The CLI wakes up just as it is told to stop, and takes a while to exit.
+    procs.stopChild = async (child) => {
+      late?.emit(init('sess-late'));
+      late?.emit(success('sess-late'));
+      await Bun.sleep(250);
+      await stopChild(child);
+    };
+    scripted((fake, options) => {
+      if (late === null) {
+        late = fake;
+        stuck = options.spawnClaudeCodeProcess!({
+          command: process.execPath, args: ['-e', 'setInterval(() => {}, 1 << 30)'],
+          env: { ...process.env }, signal: new AbortController().signal,
+        }) as unknown as ChildProcess;
+        return;
+      }
+      retryBeforeExit = stuck?.exitCode === null && stuck.signalCode === null;
+      fake.emit(init('sess-fresh'));
+      fake.emit(success('sess-fresh'));
+    }, undefined, undefined, { startDeadlineMs: 100 });
+
+    try {
+      expect(await runTurn(client, threadId, 'hello')).toBe('done');
+      expect(calls).toHaveLength(2);
+      expect(retryBeforeExit).toBe(false);
+    } finally {
+      procs.stopChild = stopChild;
+    }
   });
 
   test('a failed resume for any other reason keeps the session', async () => {
