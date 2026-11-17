@@ -12,7 +12,6 @@ import type { TurnContext, TurnResult } from '../src/drivers/types.ts';
 import { runCli } from '../src/cli.ts';
 import { holdAccountTurns, echoThread, scriptedClaude, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { resumeCut } from '../src/providers/update-background.ts';
-import { forgetMissRefreshes } from '../src/delegation/routes.ts';
 import { thrown } from './settle.ts';
 
 const cores: TestCore[] = [];
@@ -1295,8 +1294,6 @@ test('a model released after the list was read shows up on delegate models --ref
   const { h, owner, threadId } = await setup();
   await twinProvider(h, owner, [{ id: 'luna', name: 'Luna' }], 'pi');
   restores.push(() => forgetProbes({ providerId: 'twin' }));
-  forgetMissRefreshes();
-  restores.push(forgetMissRefreshes);
   // What the agent lists: the vendor ships `sol` with its speed tiers after the first read.
   let served = [{ id: 'luna', name: 'Luna' }] as ModelInfo[];
   const refreshes: boolean[] = [];
@@ -1325,6 +1322,36 @@ test('a model released after the list was read shows up on delegate models --ref
   // A typo right after does not read the agent again within the minute.
   await h.core.delegation.prepareRoutes(threadId, probe, ['twin/nothing-like-this']);
   expect(refreshes).toEqual([false, true, true]);
+});
+
+test('two spawns naming the same new model share one re-read, and a cold list is read once, not twice', async () => {
+  scripted();
+  const { h, owner, threadId } = await setup();
+  await twinProvider(h, owner, [{ id: 'luna', name: 'Luna' }], 'pi');
+  restores.push(() => forgetProbes({ providerId: 'twin' }));
+  let served = [{ id: 'luna', name: 'Luna' }] as ModelInfo[];
+  const refreshes: boolean[] = [];
+  let release = (): void => undefined;
+  const probe: Parameters<typeof h.core.delegation.models>[1] = async params => {
+    if (params.providerId === 'twin') {
+      refreshes.push(params.refresh === true);
+      if (params.refresh) await new Promise<void>(resolve => { release = resolve; });
+      rememberExternalModels('pi', 'twin', params.accountId, served);
+    }
+    return { models: served, probedAt: Date.now() };
+  };
+  // Cold: the first read is fresh, so a model it lacks is not read a second time.
+  await h.core.delegation.prepareRoutes(threadId, probe, ['twin/sol']);
+  expect(refreshes).toEqual([false]);
+  // Held: two spawns at once both wait on the one re-read that brings the model.
+  served = [...served, { id: 'sol', name: 'Sol' }];
+  const first = h.core.delegation.prepareRoutes(threadId, probe, ['twin/sol']);
+  const second = h.core.delegation.prepareRoutes(threadId, probe, ['twin/sol']);
+  await waitFor(() => refreshes.length === 2);
+  release();
+  await Promise.all([first, second]);
+  expect(refreshes).toEqual([false, true]);
+  for (let i = 0; i < 2; i++) expect(h.core.delegation.resolve(threadId, { model: 'twin/sol' }).model).toBe('sol');
 });
 
 test('the parent agent resumes its own stop and a Stop once the owner wrote again, never the Settings pause', async () => {

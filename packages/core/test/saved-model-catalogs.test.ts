@@ -5,7 +5,7 @@ import { expect, spyOn, test } from 'bun:test';
 import type { ModelInfo } from '@boite/contracts';
 import { getDriver, probedModelsOf, setDriver } from '../src/drivers/index.ts';
 import { removeDir } from '../src/fs-retry.ts';
-import { STALE_CATALOG_MS } from '../src/providers/probe.ts';
+import { RETRY_CATALOG_MS, STALE_CATALOG_MS } from '../src/providers/probe.ts';
 import type { CoreClient } from '../src/client.ts';
 import { startTestCore } from './harness.ts';
 
@@ -184,6 +184,70 @@ test('a list read more than six hours ago answers at once and is read again behi
     expect(reads).toBe(2);
   } finally {
     clock.mockRestore();
+    restore();
+    await harness.stop();
+  }
+});
+
+test('a background read that failed is not tried again on every answer, only after the retry delay', async () => {
+  let reads = 0;
+  let read: ModelInfo[] | null = null;
+  const tried = Promise.withResolvers<void>();
+  const restore = setDriver('echo', {
+    ...getDriver('echo'),
+    probe: async () => {
+      reads++;
+      if (reads > 1) { tried.resolve(); throw new Error('the agent did not start'); }
+      read = before;
+      return { models: before, probedAt: reads };
+    },
+    probedModels: () => read,
+    forgetProbes: () => { read = null; },
+  });
+  const harness = await startTestCore();
+  const clock = spyOn(Date, 'now');
+  try {
+    const client = await harness.connect();
+    const account = await client.call('accounts.add', { providerId: 'echo', label: 'Failing refresh' });
+    const ask = () => client.call('providers.probe', { providerId: 'echo', accountId: account.id });
+    expect((await ask()).models).toEqual(before);
+    const now = Date.now();
+    clock.mockImplementation(() => now + STALE_CATALOG_MS + 1000);
+    expect((await ask()).models).toEqual(before);
+    await tried.promise;
+    await new Promise(resolve => setTimeout(resolve, 50));
+    for (let i = 0; i < 3; i++) expect((await ask()).models).toEqual(before);
+    expect(reads).toBe(2);
+    clock.mockImplementation(() => now + STALE_CATALOG_MS + RETRY_CATALOG_MS + 2000);
+    await ask();
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(reads).toBe(3);
+  } finally {
+    clock.mockRestore();
+    restore();
+    await harness.stop();
+  }
+});
+
+test('a refresh asked while a plain read runs reads the agent again after it, never shares its answer', async () => {
+  let reads = 0;
+  const agent = Promise.withResolvers<void>();
+  const restore = setDriver('echo', {
+    ...getDriver('echo'),
+    probe: async () => { reads++; if (reads === 1) await agent.promise; return { models: reads > 1 ? after : before, probedAt: reads }; },
+  });
+  const harness = await startTestCore();
+  try {
+    const client = await harness.connect();
+    const account = await client.call('accounts.add', { providerId: 'echo', label: 'Refresh during a read' });
+    const plain = client.call('providers.probe', { providerId: 'echo', accountId: account.id });
+    const refresh = client.call('providers.probe', { providerId: 'echo', accountId: account.id, refresh: true });
+    agent.resolve();
+    expect((await plain).models).toEqual(before);
+    expect((await refresh).models).toEqual(after);
+    expect(reads).toBe(2);
+  } finally {
+    agent.resolve();
     restore();
     await harness.stop();
   }

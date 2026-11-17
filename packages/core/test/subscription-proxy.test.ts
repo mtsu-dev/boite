@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import type { SubscriptionProxy } from '@boite/contracts';
 import { checkSettingsPatch } from '@boite/contracts';
 import { connect } from '../src/client.ts';
-import { probedModelsOf } from '../src/drivers/index.ts';
+import { getDriver, probedModelsOf, setDriver } from '../src/drivers/index.ts';
 import { childEnv } from '../src/drivers/claude/query.ts';
 import { agentEnv } from '../src/providers/resolve.ts';
 import { mergeProxyModels, readSubscriptionProxyModels, subscriptionProxyCodexArgs, subscriptionProxyEnv } from '../src/subscription-proxy.ts';
@@ -495,4 +495,24 @@ test('a Claude child drops the parent session markers and keeps the account vari
   } finally {
     if (saved === undefined) delete process.env.CLAUDE_CODE_ENTRYPOINT; else process.env.CLAUDE_CODE_ENTRYPOINT = saved;
   }
+});
+
+test('a refresh whose agent fails behind a gateway that answers keeps the agent\'s last list and its speed tiers', async () => {
+  gateway = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch() {
+    return Response.json({ data: [{ id: 'codex/gpt-6.2-sol', name: 'GPT-6.2-Sol', supported_endpoint_types: ['openai-response'] }] });
+  } });
+  const sol = { id: 'gpt-6.2-sol', name: 'GPT-6.2 Sol', default: true, speeds: [{ id: 'priority', label: 'Fast' }, { id: 'ultrafast', label: 'Ultrafast' }] };
+  let reads = 0;
+  const restore = setDriver('codex-appserver', { ...getDriver('codex-appserver'), probe: async () => {
+    if (++reads > 1) throw new Error('codex app-server did not start');
+    return { models: [sol], probedAt: 1 };
+  } });
+  try {
+    harness = await startTestCore({ settings: { subscriptionProxy: config(`http://127.0.0.1:${gateway.port}/v1`) } });
+    const owner = await harness.connect();
+    const codex = await owner.call('accounts.add', { providerId: 'codex', label: 'Gateway Codex' });
+    expect((await owner.call('providers.probe', { providerId: 'codex', accountId: codex.id })).models).toEqual([sol]);
+    expect((await owner.call('providers.probe', { providerId: 'codex', accountId: codex.id, refresh: true })).models).toEqual([sol]);
+    expect(reads).toBe(2);
+  } finally { restore(); }
 });
