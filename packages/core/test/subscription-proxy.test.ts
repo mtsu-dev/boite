@@ -10,6 +10,7 @@ import { agentEnv } from '../src/providers/resolve.ts';
 import { mergeProxyModels, readSubscriptionProxyModels, subscriptionProxyCodexArgs, subscriptionProxyEnv } from '../src/subscription-proxy.ts';
 import { startTestCore, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
+import { countEvents } from './event-count.ts';
 
 let harness: TestCore | undefined;
 let gateway: ReturnType<typeof Bun.serve> | undefined;
@@ -114,7 +115,7 @@ test('configuration and private key roll back together without leaking to events
   const off = owner.on('settings.updated', value => broadcasts.push(value));
   const db = harness.core.journal.db;
   const envKey = () => subscriptionProxyEnv(harness!.core, harness!.core.providers.require('claude')).ANTHROPIC_AUTH_TOKEN;
-  const events = harness.core.journal.countEvents('settings.changed');
+  const events = countEvents(harness.core.journal, 'settings.changed');
   try {
     for (const [name, operation, condition, key] of [
       ['config', 'INSERT', "NEW.key = 'settings'", newKey],
@@ -129,7 +130,7 @@ test('configuration and private key roll back together without leaking to events
       expect(failure?.message).toBe('Subscription proxy configuration could not be saved');
       expect((await owner.call('settings.get', {})).subscriptionProxy).toEqual(previous);
       expect(envKey()).toBe(oldKey);
-      expect(harness.core.journal.countEvents('settings.changed')).toBe(events);
+      expect(countEvents(harness.core.journal, 'settings.changed')).toBe(events);
       expect(broadcasts).toEqual([]);
       db.exec(`DROP TRIGGER refuse_proxy_${name}`);
     }

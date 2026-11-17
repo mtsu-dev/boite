@@ -14,6 +14,7 @@ import { DEFAULT_SETTINGS } from '../src/settings.ts';
 import { echoThread, startTestCore, waitFor } from './harness.ts';
 import type { TestCore } from './harness.ts';
 import { compactAll, schema36Journal } from './fixtures/journal-schema36.ts';
+import { countEvents } from './event-count.ts';
 
 const FORGET_MS = 40;
 const EXIT = { exitCode: 0, cpuMs: 5, peakMemoryBytes: 1024, ioBytes: null };
@@ -194,11 +195,11 @@ test('process diagnostics carry correlation without copying window titles or pla
 });
 
 test('a process is one trace row, with no copy in the event log', () => {
-  const events = harness.core.journal.countEvents();
+  const events = countEvents(harness.core.journal);
   sink.started('plugin:fetch:1', 300, { exe: 'git', commandLine: 'git fetch', parentPid: null });
   sink.exited('plugin:fetch:1', 300, EXIT);
   expect(harness.core.journal.listProcesses('plugin:fetch:1', 10)).toMatchObject([{ pid: 300, exitCode: 0, cpuMs: 5 }]);
-  expect(harness.core.journal.countEvents()).toBe(events);
+  expect(countEvents(harness.core.journal)).toBe(events);
 });
 
 test('an id with no thread behind it leaves no rows once it is forgotten, a thread keeps its trace', async () => {
