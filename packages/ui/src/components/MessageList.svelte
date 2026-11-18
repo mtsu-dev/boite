@@ -28,11 +28,12 @@
   import AssistantMessage from './AssistantMessage.svelte';
   import FailedAttempts from './FailedAttempts.svelte';
   import MoveMarker from './MoveMarker.svelte';
+  import NewConversationMarker from './NewConversationMarker.svelte';
   import SpawnMarker from './SpawnMarker.svelte';
   import SwitchMarker from './SwitchMarker.svelte';
   import MessageActions from './MessageActions.svelte';
   import { workspace } from '../lib/workspace.svelte';
-  import { movedBy, startedFrom, turnAnswer } from '../lib/message-display';
+  import { movedBy, newConversationOf, startedFrom, turnAnswer } from '../lib/message-display';
   import { HistoryPrepare, RowEstimates, SliceWarmth, isSlice, layOut, sliceBox } from '../lib/row-cost';
   import { focusComposer } from '../lib/focus';
   import { isSending } from '../lib/composer-queue';
@@ -680,11 +681,11 @@
   /** One model attribution per turn, independent of the rendered window and streamed parts. */
   const firstAssistantInTurn = $derived(firstAssistantByTurn(messages));
   /** The last row of each turn: a later message of the same turn replaces an earlier one. */
-  const lastInTurn = $derived(new Map(timeline.map((message): [string, string] => [message.turnId, message.id])));
+  const lastInTurn = $derived(new Map(timeline.filter(message => !newConversationOf(message)).map((message): [string, string] => [message.turnId, message.id])));
   const firstInTurn = $derived(firstByTurn(messages));
   /** Each turn end's files and the tool line its count joins (`lib/turn-changes.svelte.ts`). */
   const turnChanges = new TurnChanges(() => store, () => threadId, () => messages,
-    () => timeline.filter(message => !cards.has(message.id) && !grouped.groups.has(message.id) && !shaped.folds.has(message.id) && !movedBy(message) && !startedFrom(message)));
+    () => timeline.filter(message => !cards.has(message.id) && !grouped.groups.has(message.id) && !shaped.folds.has(message.id) && !movedBy(message) && !newConversationOf(message) && !startedFrom(message)));
 
   /**
    * Edit and retry go through the core's rewind, fork through its fork, and only on a thread at rest: a turn still
@@ -756,10 +757,9 @@
             <TimelineCard {store} card={cards.get(message.id)!} {mail} />
           {:else if group}
             <AgentMessageGroup {store} {group} />
-          {:else if movedBy(message)}
-            <MoveMarker notice={movedBy(message)!} />
-          {:else if startedFrom(message)}
-            <SpawnMarker {store} link={startedFrom(message)!} direction="to" />
+          {:else if movedBy(message)}<MoveMarker notice={movedBy(message)!} />
+          {:else if newConversationOf(message)}<NewConversationMarker {store} {threadId} notice={newConversationOf(message)!} />
+          {:else if startedFrom(message)}<SpawnMarker {store} link={startedFrom(message)!} direction="to" />
           {:else if message.role !== 'assistant' && firstInTurn.get(message.turnId) === message.id && wakeKind(turn) && (message.role === 'system' || turn?.execution?.operation === 'routine' || turn?.execution?.operation === 'event')}
             <WakeMarker {message} kind={wakeKind(turn)!} />
           {:else if message.role === 'user'}

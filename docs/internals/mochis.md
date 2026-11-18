@@ -86,8 +86,10 @@ A right click on a row, or a long press on a phone, opens the row's menu
 (`agentMenuItems` and `pickAgentAction`, `lib/agent-menu.ts`). It is cut
 from the thread menu: the same groups in the same order, with the same words
 and glyphs where a thread has the action. A desktop lists Open | Pin | Pause or
-Resume, Archive | Rename, Edit, Move to a machine | Copy path. A phone lists
-Pin, Rename, Edit | Pause or Resume, Archive. A built-in mochi shows Reset in
+Resume, Archive | Rename, Edit, New conversation, Move to a machine | Copy
+path. A phone lists Pin, Rename, Edit, New conversation | Pause or Resume,
+Archive. New conversation shows once the mochi has a thread
+([A new conversation](#a-new-conversation)). A built-in mochi shows Reset in
 Archive's place. Saving a profile is the owner's: a paired desktop keeps Open
 and Copy path, and a paired phone has no menu. Each action goes through the
 machine that holds the mochi:
@@ -577,6 +579,18 @@ conversation it started itself (`MOCHI_NEW_SESSION_GAP_MS`, refused with
 `reason: 'too-soon'`); the owner always may. The guide's line about it is
 plain and suggests nothing automatic: when the conversation has grown long or
 reached a clean stopping point.
+
+In the app, the owner's menus offer New conversation once the mochi has a
+thread: the row menu (`agentMenuItems`, after Edit, on a phone too) and the
+menu at the top of its conversation (`AgentHeader.svelte`). Both go through
+`startNewConversation` (`lib/agent-new-session.ts`), on the mochi's own
+machine like the menu's other actions: one confirm with the optional note
+(`confirm.note`, a text field limited to `AGENT_HANDOFF_MAX` with its count),
+whose button reads After this turn while the thread is active. A paired device
+gets neither entry. The thread draws the system line as
+`NewConversationMarker.svelte` (who asked, the note folded); it never closes
+its turn, so the answer above it keeps its copy and fork bar.
+
 ## Free to act
 
 A mochi's thread may do what any thread may, beyond what needs a project of

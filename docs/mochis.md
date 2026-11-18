@@ -140,6 +140,13 @@ memory, routines, desk and settings stay, and you still see everything above.
 A line in the thread marks where the new conversation starts. If the mochi is
 answering, the new conversation starts once that answer ends. A mochi starts
 one by itself at most every 30 minutes; ask it when you want one sooner.
+
+You can also start one yourself: open the mochi's menu, in the list or at the
+top of its conversation, and choose New conversation. The note is optional and
+the mochi reads it once, with its first message. While the mochi is answering,
+the button reads After this turn. The line in the thread says who asked for it
+and opens on the note.
+
 ## Projects and threads
 
 - In its settings, Projects lists the projects it looks after. It follows

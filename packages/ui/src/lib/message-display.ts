@@ -1,4 +1,4 @@
-import type { Message, MessagePart, MoveNotice, ThreadLink, ThreadSummary } from '@boite/contracts';
+import type { Message, MessagePart, MoveNotice, NewConversationNotice, ThreadLink, ThreadSummary } from '@boite/contracts';
 import { QUOTE } from './markdown';
 import { FenceScan, fenceLanguage, openFence } from './fences';
 
@@ -247,6 +247,13 @@ class DrawingScan {
 export function movedBy(message: Message): MoveNotice | null {
   if (message.role !== 'system') return null;
   for (const part of message.parts) if (part.type === 'text' && part.moved?.by === 'agent') return part.moved;
+  return null;
+}
+
+/** The core's line where a mochi's new conversation began (`agents.session.new`), drawn as a marker, not a message. */
+export function newConversationOf(message: Message): NewConversationNotice | null {
+  if (message.role !== 'system') return null;
+  for (const part of message.parts) if (part.type === 'text' && part.newConversation) return part.newConversation;
   return null;
 }
 
