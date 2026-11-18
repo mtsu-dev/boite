@@ -21,6 +21,9 @@ export const strings = {
       /** The threads at work on every machine: the Threads button's count, in words. */
       workingOne: '1 at work',
       workingMany: '{count} at work',
+      /** The subagents at work beside it, the lighter number on the same button. */
+      subagentsOne: '1 subagent',
+      subagentsMany: '{count} subagents',
       bots: 'Mochis',
       add: 'New mochi or team',
       botWaiting: '{name} needs you',

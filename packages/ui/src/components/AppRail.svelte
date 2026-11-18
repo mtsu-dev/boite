@@ -33,7 +33,7 @@
   import { parts } from '../lib/deferred-parts';
   import { QuotaReorder } from '../lib/quota-reorder.svelte';
   import { railOrder } from '../lib/rail-order.svelte';
-  import { threadsAtWork } from '../lib/work-counts';
+  import { subagentsAtWork, threadsAtWork } from '../lib/work-counts';
 
   /**
    * The column down the window's left edge, on a desktop, the same in every
@@ -87,6 +87,12 @@
   /** The conversations at work on every machine, as the projects' Working counts read them: the Threads button's count. */
   const working = $derived(threadsAtWork(stores));
   const workingLabel = $derived(working === 1 ? strings.app.rail.workingOne : fill(strings.app.rail.workingMany, { count: String(working) }));
+  /** Their subagents at work, the lighter number beside it. */
+  const helpers = $derived(subagentsAtWork(stores));
+  const busyLabel = $derived([
+    working ? workingLabel : null,
+    helpers ? helpers === 1 ? strings.app.rail.subagentsOne : fill(strings.app.rail.subagentsMany, { count: String(helpers) }) : null
+  ].filter(Boolean).join(', ') || null);
   const tally = (value: number) => value > 99 ? '99+' : count(value);
   const unreadLabel = (value: number) => value === 1 ? strings.app.rail.unreadOne : fill(strings.app.rail.unreadMany, { count: String(value) });
   /**
@@ -240,12 +246,14 @@
   <span class="rail-card framed" aria-hidden="true"></span>
   <div class="slot" class:selected={onThreads}>
     <button type="button" class="rail-button" class:on={onThreads} aria-current={onThreads ? 'page' : undefined}
-      aria-label={working ? `${strings.sidebar.threads}, ${workingLabel}` : strings.sidebar.threads}
+      aria-label={busyLabel ? `${strings.sidebar.threads}, ${busyLabel}` : strings.sidebar.threads}
       data-testid="view-threads" onclick={showThreads}>
       <MessageSquare size={19} strokeWidth={1.75} />
-      {#if working}<span class="count work" data-testid="rail-threads-working">{tally(working)}</span>{/if}
+      {#if working || helpers}<span class="count work" class:pair={working && helpers}
+        >{#if working}<span data-testid="rail-threads-working">{tally(working)}</span>{/if}{#if helpers}<span class="helpers" data-testid="rail-threads-subagents">{tally(helpers)}</span>{/if}</span
+      >{/if}
     </button>
-    {@render railName(strings.sidebar.threads, null, working ? workingLabel : null)}
+    {@render railName(strings.sidebar.threads, null, busyLabel)}
   </div>
   <div class="slot" class:selected={onActivity}>
     <button type="button" class="rail-button" class:on={onActivity} aria-current={onActivity ? 'page' : undefined}
@@ -518,6 +526,10 @@
   }
   /* The threads at work: the same pill, the digit in the accent the working rows' arc wears. */
   .count.work { color: var(--color-accent); }
+  /* Their subagents at work: a second number in the same pill, the accent lightened, so it reads as theirs, a step under. */
+  .count .helpers { color: color-mix(in oklch, var(--color-accent) 60%, var(--color-foreground)); }
+  /* Both numbers: side by side, the pill's right edge held a little past the tile's so it stays on the card. */
+  .count.pair { left: auto; right: -6px; display: flex; gap: 4px; }
   .rail-button:hover:not(:disabled) { --count-ring: var(--color-surface-2); }
   .rail-button.on, .rail-button.on:hover:not(:disabled) { --count-ring: var(--color-surface-3); }
   /* A bot's or a team's one overlay, bottom right of its picture, cut out of the card: the amber dot for its turn,
