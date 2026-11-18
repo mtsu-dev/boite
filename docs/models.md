@@ -20,6 +20,8 @@ middle of a conversation without losing it.
   the agent pick its own level for that model.
 - The lightning button goes through the speeds the model offers, such as Fast
   and Ultrafast, then back to Standard speed.
+- With Douane, Codex offers the speeds supported by every subscription that
+  can serve the selected model for your connection.
 - Refresh models reads the agent's list again. The list also refreshes by
   itself when you reopen the picker after five minutes.
 - On a phone, the agent logos form a strip above the models instead of a
