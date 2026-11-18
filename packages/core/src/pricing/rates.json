@@ -83,6 +83,8 @@
     "gpt-6-luna": [0.1,0.5,0.01,0.125],
     "gpt-6-sol": [2,10,0.2,2.5],
     "gpt-6.1-sol": [2,10,0.1,2.5],
+    "gpt-6.2-astra": [8,40,0.4,10],
+    "gpt-6.2-sol": [2,10,0.1,2.5],
     "gpt-daybreak-blue-latest": [4,20,0.4,5],
     "gpt-daybreak-red-latest": [12.5,75,1.25,15.625],
     "grok-4.20-0309-non-reasoning": [1.25,2.5,0.2,null],
