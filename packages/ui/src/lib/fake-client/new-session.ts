@@ -4,8 +4,9 @@
  * same marker in the thread. The fake has no provider session to drop beyond
  * the thread's own fields, and no context block to carry the note.
  */
-import { AGENT_HANDOFF_MAX, threadActive, type Message, type NewConversationNotice, type RpcParams, type RpcResult, type Thread } from '@boite/contracts';
+import { AGENT_HANDOFF_MAX, RpcErrorCode, threadActive, type Message, type NewConversationNotice, type RpcParams, type RpcResult, type Thread } from '@boite/contracts';
 import type { FakeContext } from './context';
+import { RpcFailure } from '../client';
 import { refusal } from './shared';
 
 /** As the core's `MOCHI_NEW_SESSION_GAP_MS` and `NEW_CONVERSATION_TEXT`. */
@@ -56,7 +57,7 @@ export function newSession(ctx: FakeContext, params: RpcParams<'agents.session.n
   const thread = threadId === null ? undefined : ctx.threads.get(threadId);
   if (!thread) throw refusal('agents.session.new: this mochi has no conversation yet; open it first', { field: 'agentId', expected: 'a mochi with a thread' });
   const note = params.note?.trim() || null;
-  if (note !== null && note.length > AGENT_HANDOFF_MAX) throw refusal(`note: expected 0 to ${AGENT_HANDOFF_MAX} characters`, { field: 'note' });
+  if (note !== null && note.length > AGENT_HANDOFF_MAX) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `note: expected 0 to ${AGENT_HANDOFF_MAX} characters`, data: { field: 'note', expected: `1 to ${AGENT_HANDOFF_MAX} characters` } });
   const by: NewConversationNotice['by'] = params.threadId !== undefined ? 'mochi' : 'user';
   const last = state(ctx).last.get(thread.id);
   if (by === 'mochi' && last?.by === 'mochi' && ctx.now() - last.at < MOCHI_GAP_MS) {

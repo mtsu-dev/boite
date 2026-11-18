@@ -290,6 +290,17 @@ export const SCENARIOS: Record<string, Scenario> = {
     same((await refusedWith(env.call('agents.avatar.set', { threadId, avatar: 'img:0123456789abcdef' }), RpcErrorCode.Refused))['field'], 'avatar', 'a picture this machine never stored');
     same((await env.call('agents.avatar.set', { threadId, avatar: '' })).avatar, '', 'back to the robot');
   },
+  'agents.session.new starts an idle mochi over at once, marks who asked with the note, and refuses a note over the limit': async (env) => {
+    const setup = await echo(env);
+    const selection = { providerId: setup.provider.id, accountId: setup.account.id, model: setup.model, effort: null, permissionMode: 'default' as const };
+    const agent = await env.call('agents.profile.save', { value: { name: 'Fresh', domain: '', instructions: '', avatar: '', selection, status: 'active' } });
+    const { threadId } = await env.call('agents.open', { agentId: agent.id });
+    await until('the mochi thread to settle', async () => (await summary(env, threadId)).status === 'idle');
+    await refusedWith(env.call('agents.session.new', { agentId: agent.id, note: 'x'.repeat(4001) }), RpcErrorCode.InvalidParams);
+    same(await env.call('agents.session.new', { agentId: agent.id, note: 'Next: the changelog.' }), { agentId: agent.id, threadId, when: 'done' }, 'an idle thread starts over at once');
+    const marks = (await env.call('threads.get', { threadId })).messages.flatMap(message => message.parts.flatMap(part => part.type === 'text' && part.newConversation ? [part.newConversation] : []));
+    same(marks, [{ by: 'user', note: 'Next: the changelog.' }], 'the owner asked, with the note');
+  },
   'opening snapshots restore questions, replace subscriptions and omit a proven quiet tail': async env => {
     const { setup, threadId, questionId } = await asked(env);
     const previous = await thread(env, setup, 'previous');
