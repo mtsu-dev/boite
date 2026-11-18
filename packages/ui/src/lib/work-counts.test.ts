@@ -76,8 +76,16 @@ test("the Threads button's second number counts the subagents at work, a bot's h
   bot('session-1');
   expect(subagentsAtWork([store])).toBe(0);
   expect(threadsAtWork([store])).toBe(1);
+  // The same helper started from a mochi's desk, outside any project: still the mochi's, not a subagent here.
+  child({ projectId: null });
+  expect(subagentsAtWork([store])).toBe(0);
   bot(null);
   expect(subagentsAtWork([store])).toBe(1);
+  // Under an incognito conversation it stays off the count, as its parent stays off the lists.
+  store.threads = store.threads.map(thread => thread.id === 't-trace' ? { ...thread, incognito: true as const } : thread);
+  expect(subagentsAtWork([store])).toBe(0);
+  store.threads = store.threads.map(thread => thread.id === 't-trace' ? { ...thread, incognito: undefined } : thread);
+  child({ projectId: 'p-boite' });
   store.projects = store.projects.map(entry => entry.id === 'p-boite' ? { ...entry, archived: true } : entry);
   expect(subagentsAtWork([store])).toBe(0);
 });

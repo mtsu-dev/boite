@@ -4,7 +4,6 @@ import { agentDirectory } from './agent-directory.svelte';
 import { threadState } from './thread-state';
 import { workingThread } from './recent.svelte';
 import { rowAsks } from './status-order';
-import { projectThread } from './thread-rows';
 
 /** How many bots are at work, for the phone's Bots tab, and whether one of them waits on the user. */
 export interface WorkCount {
@@ -61,18 +60,28 @@ export function threadsAtWork(stores: readonly Pick<Store, 'projects' | 'threads
 
 /**
  * The subagents at work on every machine: each delegated thread mid-turn or waiting on its own background work, as its
- * parent's row counts it (contracts workingChildren). A bot's helper is a listed thread, already in threadsAtWork, and an
- * archived project's are left out as there. The rail's Threads button and the phone's Threads tab show it beside that count.
+ * parent's row counts it (contracts workingChildren). Left out: a mochi's helper (its desk or the Threads count show
+ * it), anything under an incognito conversation (it stays on its own screen), and an archived project's helpers.
+ * The rail's Threads button and the phone's Threads tab show it beside threadsAtWork.
  */
 export function subagentsAtWork(stores: readonly Pick<Store, 'projects' | 'threads'>[]): number {
   let count = 0;
   for (const store of stores) {
     const archived = new Set(store.projects.filter(project => project.archived).map(project => project.id));
-    const bots = new Map(store.threads.filter(thread => thread.agentSessionId).map(thread => [thread.id, thread]));
+    const byId = new Map(store.threads.map(thread => [thread.id, thread]));
+    // Up the parents to the root conversation: a bot or an incognito one anywhere above keeps the helper off the count.
+    const hidden = (thread: ThreadSummary) => {
+      const seen = new Set<string>();
+      for (let at: ThreadSummary | undefined = thread; at && !seen.has(at.id); at = at.parentThreadId ? byId.get(at.parentThreadId) : undefined) {
+        seen.add(at.id);
+        if (at.incognito || at.parentIsBot || (at !== thread && at.agentSessionId)) return true;
+      }
+      return false;
+    };
     for (const thread of store.threads) {
       if (!thread.parentThreadId || thread.archived || !threadBusy(thread)) continue;
       if (thread.projectId && archived.has(thread.projectId)) continue;
-      if (!projectThread(thread, bots.get(thread.parentThreadId))) count++;
+      if (!hidden(thread)) count++;
     }
   }
   return count;
