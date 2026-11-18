@@ -522,6 +522,7 @@ boite mochi routines
 boite mochi schedule <json>
 boite mochi unschedule <routine-id>
 boite mochi watch|unwatch <thread-id>
+boite mochi new-session [--note <text>]
 boite mochi event <mochi> [--key <key>] <text>
 boite team list|say|dm|read|propose|invite|leave
 boite delegate models [--machine <name>]
@@ -1033,7 +1034,11 @@ routines` lists its routines, `mochi schedule <json>` saves one (`name`,
 `prompt`, `schedule`, with `id` to edit one, keeping what the edit leaves out, and `enabled`), `mochi unschedule
 <routine-id>` removes one. `mochi watch|unwatch <thread-id>` puts a thread of
 its projects on its desk or takes one off; a watched thread wakes the mochi at
-once, one it only wrote to waits for its routines. Use `--json` to
+once, one it only wrote to waits for its routines. `mochi new-session [--note
+<text>]` starts a new conversation in the same thread, at once when the
+thread is idle, else when the running turn ends; every word after `--note` is
+the handoff note (`AGENT_HANDOFF_MAX`, 4,000 characters) the next turn reads
+once ([A new conversation](mochis.md#a-new-conversation)). Use `--json` to
 preserve the structured result.
 
 `mochi event <mochi> [--key <key>] <text>` is the exception: it is for a service

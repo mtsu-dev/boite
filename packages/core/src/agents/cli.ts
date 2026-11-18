@@ -3,7 +3,7 @@ import { memoryHeading, spentAgentRoutine } from '@boite/contracts';
 import type { CoreClient } from '../client.ts';
 import { targetOf } from '../control-cli.ts';
 
-export const BOT_ACTIONS = 'memory, remember, routines, schedule, unschedule, watch or unwatch';
+export const BOT_ACTIONS = 'memory, remember, routines, schedule, unschedule, watch, unwatch or new-session';
 
 
 /** `boite mochi ...` (`boite agent` before) from a bot's own thread. Authentication stays in the existing boite CLI. */
@@ -71,6 +71,20 @@ export async function botCommand(client: CoreClient, threadId: string, args: str
       const { target, machine } = targetOf(need(0, 'a thread id'));
       const watched = await client.call('agents.watch', { threadId, watchThreadId: target, watched: action === 'watch', ...(machine === undefined ? {} : { machine }) });
       return watched ?? { unwatched: rest[0] };
+    }
+    case 'new-session': {
+      // `--note <text>`: every word after it is the handoff note the new conversation's first turn reads.
+      const at = rest.indexOf('--note');
+      const stray = at === -1 ? rest : rest.slice(0, at);
+      if (stray.length > 0) throw new Error(`mochi new-session takes only --note <text>, not ${JSON.stringify(stray.join(' '))}`);
+      const note = at === -1 ? undefined : rest.slice(at + 1).join(' ').trim();
+      if (note !== undefined && !note) throw new Error('mochi new-session --note needs the handoff note');
+      const started = await client.call('agents.session.new', { threadId, ...(note === undefined ? {} : { note }) });
+      return {
+        newConversation: started.when === 'done' ? 'started: the next turn opens a fresh session' : 'once this turn ends: the next turn opens a fresh session',
+        ...(note === undefined ? {} : { handoffNote: `${note.length} characters, read once by the first turn` }),
+        kept: 'memory, routines, desk, settings and the thread\'s history',
+      };
     }
     default: throw new Error(`mochi expects ${BOT_ACTIONS}; boite mochi help lists them`);
   }

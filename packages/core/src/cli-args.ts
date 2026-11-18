@@ -100,8 +100,8 @@ const OWNED: { owns: (positional: string[]) => boolean; help: boolean; text?: (p
   { owns: ([command]) => command === 'secret', help: false, text: positional => positional.includes('--'), terminator: true },
   // `plugin dev --remove <id>`: its flags are its own.
   { owns: ([command]) => command === 'plugin', help: true },
-  // agents/cli.ts: `mochi remember` reads --replace and --section itself, under any of the mochi's names.
-  { owns: ([command, action]) => command !== undefined && MOCHI_WORDS.has(command) && action === 'remember', help: true },
+  // agents/cli.ts: `mochi remember` reads --replace and --section itself, `mochi new-session` --note, under any of the mochi's names.
+  { owns: ([command, action]) => command !== undefined && MOCHI_WORDS.has(command) && (action === 'remember' || action === 'new-session'), help: true },
   // A plugin's command (plugins.command): every word after its name is the plugin's, --json and --help included.
   { owns: ([command]) => isPluginCommandWord(command), help: false, text: () => true, terminator: true },
 ];

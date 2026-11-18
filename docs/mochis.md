@@ -131,6 +131,15 @@ Under Engine settings, Brain folder moves every mochi's brain to a folder you
 choose, a Git repository of your own for example. Each mochi gets a folder named
 after it.
 
+### A new conversation
+
+A mochi keeps one conversation, which grows until it is compacted. When it has
+grown long or a piece of work is finished, the mochi can start a new
+conversation in the same thread, with a short note of what to carry over. Its
+memory, routines, desk and settings stay, and you still see everything above.
+A line in the thread marks where the new conversation starts. If the mochi is
+answering, the new conversation starts once that answer ends. A mochi starts
+one by itself at most every 30 minutes; ask it when you want one sooner.
 ## Projects and threads
 
 - In its settings, Projects lists the projects it looks after. It follows

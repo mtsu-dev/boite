@@ -18,9 +18,10 @@ const QUIET = /^\[quiet\]/i;
 
 /**
  * Agent setting cards live with the threads' questions, and a thread creating a
- * bot resolves its route like a subagent's: `fake-client/agent-settings.ts` answers them.
+ * bot resolves its route like a subagent's, and a new conversation drops the session of a
+ * thread: `fake-client/agent-settings.ts` answers them.
  */
-export type AgentSettingMethod = Extract<keyof AgentsRpcMethods, `agents.settings.${string}` | 'agents.create' | 'agents.create.approve' | 'agents.avatar.set'>;
+export type AgentSettingMethod = Extract<keyof AgentsRpcMethods, `agents.settings.${string}` | 'agents.create' | 'agents.create.approve' | 'agents.avatar.set' | 'agents.session.new'>;
 type AgentHandlers = {
   [M in Exclude<keyof AgentsRpcMethods, AgentSettingMethod>]: (params: RpcParams<M>) => RpcResult<M>;
 };

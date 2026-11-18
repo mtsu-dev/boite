@@ -102,6 +102,13 @@ export const BOT_HELP = `  mochi memory                   a mochi's MEMORY.md an
                                  put a thread of its projects on its desk, or
                                  take one off; <machine>/<thread-id> for a
                                  project another machine entrusted to it
+  mochi new-session              start a new conversation: the next turn opens a
+                                 fresh session without the earlier messages;
+                                 memory, routines, desk and the thread's history
+                                 stay. Asked during a turn, it applies when that
+                                 turn ends. --note <text>: a handoff note (4000
+                                 characters at most) the first turn reads once.
+                                 A mochi may ask again 30 minutes after its last
   mochi event <mochi> <text>     wake a mochi with an event from outside Boite
                                  (--key <key>: a later event with the same key
                                  replaces it while it waits); from a terminal

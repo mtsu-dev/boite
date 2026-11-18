@@ -312,6 +312,7 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['agents.snapshot', 'its own identity, routines, desk and status; no other agent, grant or entrustment'],
   ['agents.brain.get', 'its own AGENTS.md and MEMORY.md, which its context block already carries'],
   ['agents.memory.note', 'a dated line in its own MEMORY.md, at the end, under a heading or in place of one line, refused past the size every turn reads'],
+  ['agents.session.new', 'a fresh provider session for its own thread, applied when its turn ends; memory, routines, desk and history stay, a mochi at most once in 30 minutes'],
   ['agents.routine.save', 'its own routines, the clock its wakes run on; the owner pauses it or caps its daily spend'],
   ['agents.routine.remove', 'removing one of its own routines'],
   ['agents.watch', 'putting a thread of its projects on its own desk, or taking one off; it reads nothing it could not already read through resident.thread'],

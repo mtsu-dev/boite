@@ -1,8 +1,8 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { builtinSettingRefusal, isAgentPicture, turnIsNews } from '@boite/contracts';
+import { AGENT_HANDOFF_MAX, builtinSettingRefusal, isAgentPicture, turnIsNews } from '@boite/contracts';
 import type {
-  AccountId, AgentBrain, AgentBuiltin, AgentProfile, AgentRoutine, AgentSave, AgentSession, AgentStatus, AgentWatch, AgentsSnapshot, ModelInfo, RpcParams, ThreadSummary, Turn,
+  AccountId, AgentBrain, AgentBuiltin, AgentProfile, AgentRoutine, AgentSave, AgentSession, AgentStatus, AgentWatch, AgentsSnapshot, ModelInfo, RpcParams, RpcResult, ThreadSummary, Turn,
 } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { invalidParams, messageOf, refused } from '../errors.ts';
@@ -16,6 +16,7 @@ import { AgentEntrustments } from './entrust.ts';
 import { ResidentAgents } from './resident.ts';
 import { AgentRoutines } from './routines.ts';
 import { AgentProjects } from './projects.ts';
+import { AgentNewSessions } from './new-session.ts';
 import { GroupBots, remoteGrant } from './group-bots.ts';
 import { GroupBotHost } from './group-host.ts';
 import { AgentSettingCards, registerAgentSettingMethods } from './setting-cards.ts';
@@ -76,6 +77,8 @@ export class AgentStore {
   readonly groupHost: GroupBotHost;
   readonly memory: MemoryKeeper;
   readonly settingCards: AgentSettingCards;
+  /** A new conversation on a mochi's thread (new-session.ts). */
+  readonly newSessions: AgentNewSessions;
   /** The bots Boite ships (builtin.ts). */
   readonly builtins: BuiltinBots;
   /** A bot sent to another machine of the group, or taken from one (move.ts). */
@@ -110,6 +113,7 @@ export class AgentStore {
     for (const session of this.records.list('session')) this.#threads.set(session.threadId, session.agentId);
     this.entrusted = new AgentEntrustments(core, this);
     this.projects = new AgentProjects(core, this); this.group = new GroupBots(core, this); this.groupHost = new GroupBotHost(core); this.memory = new MemoryKeeper(core, this); this.settingCards = new AgentSettingCards(core, this);
+    this.newSessions = new AgentNewSessions(core);
     // The status of an agent follows its thread: a step, a card, a title, an answer.
     this.#off = core.bus.onAny((name, payload) => {
       if (core.journal.isClosed()) return;
@@ -352,6 +356,14 @@ export class AgentStore {
   contextFor(thread: ThreadSummary, sessionId: string | null, turnId: string): string {
     const agent = this.agentOfThread(thread.id);
     if (!agent) return '';
+    // A new conversation's first turn: the block whole, since the session is fresh, then the handoff note once.
+    const handoff = this.newSessions.handoffFor(thread.id, turnId);
+    const block = this.#contextBlock(agent, thread, sessionId, turnId);
+    // The block ends with a blank line, as the prefix it joins does (`turn-context.ts`): the handoff keeps it.
+    return handoff ? `${block}${handoff}\n\n` : block;
+  }
+
+  #contextBlock(agent: AgentProfile, thread: ThreadSummary, sessionId: string | null, turnId: string): string {
     const key = `${CONTEXT}${thread.id}`;
     const sent = this.core.journal.getSetting(key) as ContextSent | undefined;
     const generation = thread.sessionGeneration ?? 0;
@@ -376,6 +388,7 @@ export class AgentStore {
    * the rest of the session.
    */
   contextEnded(turn: Turn): void {
+    this.newSessions.handoffEnded(turn);
     const key = `${CONTEXT}${turn.threadId}`;
     const sent = this.core.journal.getSetting(key) as ContextSent | undefined;
     if (!sent) return;
@@ -397,6 +410,19 @@ export class AgentStore {
       ...(params.section === undefined ? {} : { section: text(params.section, 'section', 200) }),
     };
     return this.memory.note(this.#named(params, 'agents.memory.note'), params.text, placement);
+  }
+
+  /** A new conversation on the agent's thread, now or once its turn ends: the caller's token says who asked. */
+  newSession(params: RpcParams<'agents.session.new'>, connection: Connection): RpcResult<'agents.session.new'> {
+    object(params, 'params');
+    const agent = this.#named(params, 'agents.session.new');
+    const session = this.sessionOf(agent.id);
+    const threadId = params.threadId ?? session?.threadId;
+    if (threadId === undefined || this.core.journal.getThread(threadId) === null) {
+      throw refused(`agents.session.new: ${agent.name} has no conversation yet; open it first`, { field: 'agentId', expected: 'a mochi with a thread' });
+    }
+    const note = params.note === undefined ? null : text(params.note, 'note', AGENT_HANDOFF_MAX, true) || null;
+    return this.newSessions.request(agent, threadId, connection.identity.principal === 'agent' ? 'mochi' : 'user', note);
   }
 
   // -- the desk ---------------------------------------------------------------
@@ -661,6 +687,7 @@ export function registerPersistentAgents(core: Core): void {
   core.router.register('agents.brain.save', p => store.resident.saveBrain(p));
   core.router.register('agents.brain.root', p => store.resident.setBrainRoot(p.path));
   core.router.register('agents.memory.note', p => store.noteMemory(p));
+  core.router.register('agents.session.new', (p, ctx) => store.newSession(p, ctx.connection));
   core.router.register('agents.routine.save', p => store.routines.save(p));
   core.router.register('agents.routine.remove', p => store.routines.remove(p));
   core.router.register('agents.routine.run', p => store.routines.run(p));
