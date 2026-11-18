@@ -195,9 +195,11 @@ describe('background compaction', () => {
     const copy = heldCopy();
     const client = await h.connect();
     try {
-      let inTurn = -1;
+      let inTurn = -1, copies = 0;
       // From 940 tokens on, the agent reports less than when the copy started at 865.
-      const run = await longTurn(client, TOOLS(40), { copy: copy.run, boundary: boundary => {
+      // Only the first copy is held: the one the turn's end starts can reach the
+      // driver before or after the turn's driver is put back, and must not hang.
+      const run = await longTurn(client, TOOLS(40), { copy: ctx => (++copies === 1 ? copy.run(ctx) : echoDriver.startTurn(ctx)), boundary: boundary => {
         // The next step: the copy was already stopped, inside the turn.
         if (boundary.tokens === 965) inTurn = copy.stops();
         return boundary.tokens >= 940 ? { ...boundary, tokens: 600 } : boundary;
