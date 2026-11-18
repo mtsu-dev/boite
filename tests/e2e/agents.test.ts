@@ -406,10 +406,10 @@ test('a mochi\'s menu sits in its column on a desktop and on its row\'s long pre
   await page.evaluate(`document.querySelector('${id('right-panel')} ${id('panel-close')}')?.click()`);
   await page.waitFor(`document.querySelectorAll('${pins}').length >= 3 && document.querySelector('${railBot(orion.id)}') && document.querySelector('${railBot(vega.id)}')`);
 
-  // The thread menu's groups, cut to what a bot has, then its brain and the engine, Archive last; alone in no group, it has nowhere to move.
+  // The thread menu's groups, cut to what a bot has, New conversation once it has a thread, then its brain and the engine, Archive last; alone in no group, it has nowhere to move.
   const last = (await page.evaluate<string[]>(order)).filter(agentId => agentId !== orion.id && agentId !== vega.id).at(-1)!;
   await columnMenu(last);
-  expect(await page.evaluate(columnItems)).toEqual(['open', 'rename', 'pin', 'edit', 'pause', 'copy', 'brain', 'engine', 'archive']);
+  expect(await page.evaluate(columnItems)).toEqual(['open', 'rename', 'pin', 'edit', 'new-session', 'pause', 'copy', 'brain', 'engine', 'archive']);
   // Its conversation is the one open.
   expect(await page.evaluate(`document.querySelector('${column} [data-value="open"]').disabled`)).toBe(true);
   await capture('menu-desktop.png');
@@ -496,7 +496,7 @@ test('a mochi\'s menu sits in its column on a desktop and on its row\'s long pre
     await page.click(id('agent-back'));
     await page.waitFor(`document.querySelector('.agents-rail')?.getBoundingClientRect().width === ${PHONE.width} && document.querySelector('${id(`agent-entry-${last}`)}')?.getBoundingClientRect().width > 0`);
     await hold(last);
-    expect(await page.evaluate(items)).toEqual(['rename', 'pin', 'edit', 'pause', 'archive']);
+    expect(await page.evaluate(items)).toEqual(['rename', 'pin', 'edit', 'new-session', 'pause', 'archive']);
     expect(await page.evaluate(`document.querySelector('.agents-main')?.getBoundingClientRect().width > 0`)).toBe(false);
     expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
     await capture('menu-phone.png');
