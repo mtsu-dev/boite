@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { startCore } from '../../../tests/e2e/lib/core.ts';
 import { removeDir } from '../src/fs-retry.ts';
+import { Journal } from '../src/journal.ts';
 import { pluginLaunch } from '../src/plugins/launch.ts';
 
 const entry = join(import.meta.dir, '../src/main.ts');
@@ -75,6 +77,33 @@ test('a refused listen closes the initialized core and releases its data lock', 
     busy.stop(true);
   }
 }, 15_000);
+
+test('the bundled artifact worker scans the journal from beside the Windows sidecar', async () => {
+  const bundle = join(dir, 'core');
+  const build = Bun.spawnSync([process.execPath, join(import.meta.dir, '../bin/build.ts'), '--outdir', bundle], {
+    stdout: 'pipe', stderr: 'pipe', windowsHide: true,
+  });
+  expect(build.stderr.toString()).toBe('');
+  expect(build.exitCode).toBe(0);
+
+  // The installer puts the worker beside the executable and the split chunks in core/.
+  const workerFile = join(dir, 'artifact-retention-worker.js');
+  copyFileSync(join(bundle, 'artifact-retention-worker.js'), workerFile);
+  const journalFile = join(dataDir, 'journal.db');
+  new Journal(journalFile).close();
+
+  const worker = new Worker(pathToFileURL(workerFile));
+  try {
+    const reply = await new Promise<unknown>((resolve, reject) => {
+      worker.onmessage = event => resolve(event.data);
+      worker.onerror = event => reject(new Error(event.message));
+      worker.postMessage(journalFile);
+    });
+    expect(reply).toEqual({ ids: [] });
+  } finally {
+    worker.terminate();
+  }
+});
 
 test('the bytecode compiled launcher runs commands and starts a core that shuts down cleanly', async () => {
   const binary = join(dir, process.platform === 'win32' ? 'core.exe' : 'core');
