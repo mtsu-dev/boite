@@ -260,6 +260,27 @@ test('system coordination messages show their display text outside the user bubb
   expect(document.querySelector('.bubble')).toBeNull();
 });
 
+// The thread's closing line was drawn under a new-conversation marker, cutting the turn the marker follows.
+test('a new conversation that ends the thread comes after its closing line, and a later turn takes the line back to the foot', async () => {
+  stubLayout(400);
+  const message = (id: string, turnId: string, role: Message['role'], parts: MessagePart[]): Message => ({ id, threadId: 't-short', turnId, role, state: 'complete', createdAt: 1, parts });
+  const asked = message('m-ask', 'turn-a', 'user', [{ type: 'text', text: 'Check the welcome screen' }]);
+  const answer = message('m-answer', 'turn-a', 'assistant', [{ type: 'text', text: 'It fits in three lines.' }]);
+  const fresh = message('m-fresh', 'turn-a', 'system', [{ type: 'text', text: 'New conversation', newConversation: { by: 'user' } }]);
+  const order = () => [...document.querySelectorAll('[data-testid=timeline] :is(article[data-role=assistant], [data-testid=thread-closing], [data-testid=new-conversation-marker])')]
+    .map(el => el.matches('article') ? 'answer' : el.matches('[data-testid=thread-closing]') ? 'closing' : 'marker');
+  const owner = { ...store, providerOf: () => undefined, messagesAfter: null, loadingNewer: false } as unknown as Store;
+  running = mount(MessageList, { target: document.body, props: { store: owner, threadId: 't-short', messages: [asked, answer, fresh], closing: 'Done · Worked for 2m 00s' } });
+  flushSync();
+  expect(order()).toEqual(['answer', 'closing', 'marker']);
+  await unmount(running!); running = null;
+  // Once the new conversation has a turn of its own, the line is that turn's again, under it.
+  const next = [asked, answer, fresh, message('m-next', 'turn-b', 'user', [{ type: 'text', text: 'Now the review' }]), message('m-reply', 'turn-b', 'assistant', [{ type: 'text', text: 'Reviewed.' }])];
+  running = mount(MessageList, { target: document.body, props: { store: owner, threadId: 't-short', messages: next, closing: 'Done · Worked for 1m 00s' } });
+  flushSync();
+  expect(order()).toEqual(['answer', 'marker', 'answer', 'closing']);
+});
+
 test('cache pings are one quiet line between the turns they sit in, with no answer, summary or bubble', () => {
   stubLayout(400);
   const ping = (n: number) => ({ id: `turn-ping-${n}`, threadId: 't-short', status: 'done', queuedAt: n, startedAt: n, finishedAt: n, usage: null, error: null, execution: { operation: 'keepalive', automatic: true } });

@@ -4,14 +4,16 @@
   import { agentDirectory } from '../lib/agent-directory.svelte';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
+  import ThreadClosing from './ThreadClosing.svelte';
 
   /**
    * Where a mochi's new conversation began (`agents.session.new`): the turns
    * above it are no longer in its session, those below start fresh. It says
    * who asked, the owner or the mochi itself, and folds the handoff note its
-   * first turn was given.
+   * first turn was given. closing, the thread's last word when this marker
+   * ends it, stands above it: it belongs to the turn the marker follows.
    */
-  let { store, threadId, notice }: { store: Store; threadId: string; notice: NewConversationNotice } = $props();
+  let { store, threadId, notice, closing = null }: { store: Store; threadId: string; notice: NewConversationNotice; closing?: string | null } = $props();
   const labels = $derived(strings.agents.newConversation);
   let open = $state(false);
   const name = $derived(agentDirectory(store).agentOfThread(threadId)?.name ?? null);
@@ -19,6 +21,7 @@
   const note = $derived(notice.note?.trim() ?? '');
 </script>
 
+{#if closing}<ThreadClosing text={closing} />{/if}
 <div class="fresh" data-testid="new-conversation-marker" data-by={notice.by}>
   <div class="line" role="separator" aria-label={`${labels.marker}, ${by}`}>
     <span class="rule"></span>

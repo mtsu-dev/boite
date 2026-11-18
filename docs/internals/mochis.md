@@ -589,7 +589,9 @@ machine like the menu's other actions: one confirm with the optional note
 whose button reads After this turn while the thread is active. A paired device
 gets neither entry. The thread draws the system line as
 `NewConversationMarker.svelte` (who asked, the note folded); it never closes
-its turn, so the answer above it keeps its copy and fork bar.
+its turn, so the answer above it keeps its copy and fork bar. When markers end
+the thread, its closing line stands above the first of them
+(`closingMarkerOf` in `lib/message-display.ts`), with the turn they follow.
 
 ## Free to act
 

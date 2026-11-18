@@ -257,6 +257,17 @@ export function newConversationOf(message: Message): NewConversationNotice | nul
   return null;
 }
 
+/**
+ * The first of the new-conversation markers that end `timeline`, or null. The
+ * thread's closing line belongs to the turn they follow, so it stands above
+ * the first of them rather than under the last.
+ */
+export function closingMarkerOf(timeline: readonly Message[]): string | null {
+  let at: string | null = null;
+  for (let index = timeline.length - 1; index >= 0 && newConversationOf(timeline[index]!); index--) at = timeline[index]!.id;
+  return at;
+}
+
 /** The core's line for a thread the agent started (`boite thread new`). */
 export function startedFrom(message: Message): ThreadLink | null {
   if (message.role !== 'system') return null;

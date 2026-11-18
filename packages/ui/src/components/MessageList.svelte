@@ -33,7 +33,7 @@
   import SwitchMarker from './SwitchMarker.svelte';
   import MessageActions from './MessageActions.svelte';
   import { workspace } from '../lib/workspace.svelte';
-  import { movedBy, newConversationOf, startedFrom, turnAnswer } from '../lib/message-display';
+  import { closingMarkerOf, movedBy, newConversationOf, startedFrom, turnAnswer } from '../lib/message-display';
   import { HistoryPrepare, RowEstimates, SliceWarmth, isSlice, layOut, sliceBox } from '../lib/row-cost';
   import { focusComposer } from '../lib/focus';
   import { isSending } from '../lib/composer-queue';
@@ -661,6 +661,7 @@
 
   /** Only once the loaded window reaches the thread's end: newer history still unread is not its last word. */
   let closingShown = $derived(closing !== null && store.messagesAfter === null && !store.loadingNewer);
+  const closingAt = $derived(closingMarkerOf(timeline)); // A new conversation ending the thread follows its last turn, closing line included.
   /** A line lands at the foot of a pinned list: the bottom takes it in, like a new message. */
   function followFoot(): void {
     const box = viewport;
@@ -705,7 +706,6 @@
     const prompt = messages.find((message) => message.turnId === turnId && message.role === 'user');
     if (prompt) await retryTurn(store, threadId, prompt);
   }
-
 </script>
 
 <div class="timeline-wrap">
@@ -758,7 +758,7 @@
           {:else if group}
             <AgentMessageGroup {store} {group} />
           {:else if movedBy(message)}<MoveMarker notice={movedBy(message)!} />
-          {:else if newConversationOf(message)}<NewConversationMarker {store} {threadId} notice={newConversationOf(message)!} />
+          {:else if newConversationOf(message)}<NewConversationMarker {store} {threadId} notice={newConversationOf(message)!} closing={closingShown && closingAt === message.id ? closing : null} />
           {:else if startedFrom(message)}<SpawnMarker {store} link={startedFrom(message)!} direction="to" />
           {:else if message.role !== 'assistant' && firstInTurn.get(message.turnId) === message.id && wakeKind(turn) && (message.role === 'system' || turn?.execution?.operation === 'routine' || turn?.execution?.operation === 'event')}
             <WakeMarker {message} kind={wakeKind(turn)!} />
@@ -795,7 +795,7 @@
       {/each}
       {#if view.below > 0}<div class="spacer" data-testid="timeline-below" style="height: {view.below}px"></div>{/if}
       {#if store.loadingNewer}<p class="loading-older" data-testid="loading-newer">{strings.chat.loadingNewer}</p>{/if}
-      <TimelineFoot {store} {threadId} pending={!cutBelow && !isSending(timeline.at(-1) ?? { id: '' })} closing={closingShown ? closing : null} onlanded={followFoot} />
+      <TimelineFoot {store} {threadId} pending={!cutBelow && !isSending(timeline.at(-1) ?? { id: '' })} closing={closingShown && !closingAt ? closing : null} onlanded={followFoot} />
     </div>
     {#if promptRoom > 0}<div class="spacer" data-testid="prompt-room" style:height="{promptRoom}px" aria-hidden="true"></div>{/if}
   </div>
