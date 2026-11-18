@@ -336,9 +336,11 @@ real('each action prints the page it leaves: div buttons get refs, a click waits
   // The same for a page reached by a reload or by a link.
   expect(await cli('reload')).toContain('button "Loaded"');
   expect(await cli('click', '#again')).toContain('button "Loaded"');
-  // A click that opens a window: the page printed is that window's, and it stays the current tab.
+  // A click that opens a window: the page printed is that window's, and it stays the current tab,
+  // even when the window is still joining the conversation as the click returns.
   await cli('open', url());
-  const popped = await cli('click', '#pop');
+  harness.core.browser.joining.delayMs = 1500;
+  const popped = await cli('click', '#pop').finally(() => { harness.core.browser.joining.delayMs = 0; });
   expect(popped).toMatch(/a new window is the current tab: browser:/);
   const tabs = ((await agent.call('browser.command', { threadId, action: { kind: 'status' } })).value as { tabs: Array<{ url: string; active: boolean }> }).tabs;
   expect(tabs.find(tab => tab.active)?.url).toBe(url('/popup'));

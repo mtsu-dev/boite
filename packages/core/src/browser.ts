@@ -54,6 +54,7 @@ import { screenTurns, takeTurn } from './browser/frames.ts';
 import { automate, awaitDocument, documentToken, PAGE_ACTIONS, settleLoaded } from './browser/automation.ts';
 import { pageFrames } from './browser/page-frames.ts';
 import { sleepState, TabSleep } from './browser/sleep.ts';
+import { TabsJoining } from './browser/joining.ts';
 import { BrowserDownloads } from './browser/downloads.ts';
 import { BrowserRecipes } from './browser/recipes.ts';
 import { historyChallenge, settleChallenge } from './browser/challenge.ts';
@@ -136,9 +137,8 @@ export class AgentBrowser {
   #running = new Map<ThreadId, Running>();
   /** Each step's bound (`BROWSER_STEP_MS`); tests shorten them. */
   stepMs: Record<BrowserCommandStep, number> = { ...BROWSER_STEP_MS };
-  /** Tabs being attached, by conversation and in all: attaching takes several round trips, and the limits count them. */
-  #attaching = new Map<ThreadId, number>();
-  #attachingAll = 0;
+  /** Tabs being attached: the limits count them, and a command that names no tab waits for a window a page opened. */
+  readonly joining = new TabsJoining();
   #announce = new Map<ThreadId, ReturnType<typeof setTimeout>>();
   #closed = false;
   /** Browsers started to check a page (`probe`): no conversation lists them, so they are closed by name. */
@@ -327,21 +327,9 @@ export class AgentBrowser {
 
   /** Which limit a new tab of `threadId` would cross, counting the tabs still attaching. */
   #full(threadId: ThreadId): 'thread' | 'machine' | null {
-    if ((this.#threads.get(threadId)?.order.length ?? 0) + (this.#attaching.get(threadId) ?? 0) >= TABS_PER_THREAD) return 'thread';
-    if (this.#tabs.size + this.#attachingAll >= TABS_MAX) return 'machine';
+    if ((this.#threads.get(threadId)?.order.length ?? 0) + this.joining.count(threadId) >= TABS_PER_THREAD) return 'thread';
+    if (this.#tabs.size + this.joining.count() >= TABS_MAX) return 'machine';
     return null;
-  }
-
-  /** Holds a tab's place from the limit check until it is attached or failed: a burst of windows sees each other. */
-  #reserve(threadId: ThreadId): () => void {
-    this.#attaching.set(threadId, (this.#attaching.get(threadId) ?? 0) + 1); this.#attachingAll++;
-    let held = true;
-    return () => {
-      if (!held) return;
-      held = false; this.#attachingAll--;
-      const left = (this.#attaching.get(threadId) ?? 1) - 1;
-      if (left > 0) this.#attaching.set(threadId, left); else this.#attaching.delete(threadId);
-    };
   }
 
   /** A window a tab opened joins its conversation as a new tab, or is closed when it has no room. */
@@ -349,13 +337,15 @@ export class AgentBrowser {
     if (info.type !== 'page' || !info.openerId) return;
     const opener = [...engine.tabs].map(id => this.#tabs.get(id)).find(tab => tab?.targetId === info.openerId);
     if (!opener) return;
-    if (this.#full(opener.threadId)) {
-      await engine.cdp.send('Target.closeTarget', { targetId: info.targetId }).catch(() => {});
-      return;
-    }
-    const release = this.#reserve(opener.threadId);
-    try { await this.#attach(engine, opener.threadId, info.targetId, info.url).catch(() => {}); }
-    finally { release(); }
+    return this.joining.window(opener.threadId, async () => {
+      if (this.#full(opener.threadId)) {
+        await engine.cdp.send('Target.closeTarget', { targetId: info.targetId }).catch(() => {});
+        return;
+      }
+      const release = this.joining.reserve(opener.threadId);
+      try { await this.#attach(engine, opener.threadId, info.targetId, info.url).catch(() => {}); }
+      finally { release(); }
+    });
   }
 
   #info(engine: Engine, info: { targetId: string; url: string; title: string }): void {
@@ -560,6 +550,7 @@ export class AgentBrowser {
       }
       default: break;
     }
+    if (tabId === undefined) await this.joining.windows(threadId);
     const tab = this.#tabOf(threadId, tabId);
     const state = this.#thread(threadId);
     if (state.active !== tab.id) { state.active = tab.id; this.#changed(threadId); }
@@ -624,7 +615,7 @@ export class AgentBrowser {
     const full = this.#full(threadId);
     if (full === 'thread') throw refused(`a conversation has at most ${TABS_PER_THREAD} browser tabs; close one first`);
     if (full === 'machine') throw refused(`this machine's agent browser has ${TABS_MAX} tabs open; close one first`);
-    const release = this.#reserve(threadId);
+    const release = this.joining.reserve(threadId);
     let tab: Tab;
     try {
       running?.enter('start');
