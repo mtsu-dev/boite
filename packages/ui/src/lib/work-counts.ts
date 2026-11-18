@@ -1,9 +1,10 @@
-import type { ThreadSummary } from '@boite/contracts';
+import { threadBusy, type ThreadSummary } from '@boite/contracts';
 import type { Store } from './store.svelte';
 import { agentDirectory } from './agent-directory.svelte';
 import { threadState } from './thread-state';
 import { workingThread } from './recent.svelte';
 import { rowAsks } from './status-order';
+import { projectThread } from './thread-rows';
 
 /** How many bots are at work, for the phone's Bots tab, and whether one of them waits on the user. */
 export interface WorkCount {
@@ -53,6 +54,25 @@ export function threadsAtWork(stores: readonly Pick<Store, 'projects' | 'threads
     for (const project of store.projects) {
       if (project.archived) continue;
       for (const thread of store.threadsOf(project.id)) if (workingThread(store, thread)) count++;
+    }
+  }
+  return count;
+}
+
+/**
+ * The subagents at work on every machine: each delegated thread mid-turn or waiting on its own background work, as its
+ * parent's row counts it (contracts workingChildren). A bot's helper is a listed thread, already in threadsAtWork, and an
+ * archived project's are left out as there. The rail's Threads button and the phone's Threads tab show it beside that count.
+ */
+export function subagentsAtWork(stores: readonly Pick<Store, 'projects' | 'threads'>[]): number {
+  let count = 0;
+  for (const store of stores) {
+    const archived = new Set(store.projects.filter(project => project.archived).map(project => project.id));
+    const bots = new Map(store.threads.filter(thread => thread.agentSessionId).map(thread => [thread.id, thread]));
+    for (const thread of store.threads) {
+      if (!thread.parentThreadId || thread.archived || !threadBusy(thread)) continue;
+      if (thread.projectId && archived.has(thread.projectId)) continue;
+      if (!projectThread(thread, bots.get(thread.parentThreadId))) count++;
     }
   }
   return count;

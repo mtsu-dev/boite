@@ -14,7 +14,7 @@ import { fill, strings } from './lib/strings';
 import { clampPanel, rightPanel } from './lib/right-panel.svelte';
 import { contactsRail } from './lib/contacts-rail.svelte';
 import { AgentsView, openAgent } from './lib/agents.svelte';
-import { threadsAtWork } from './lib/work-counts';
+import { subagentsAtWork, threadsAtWork } from './lib/work-counts';
 
 /**
  * The desktop behaviours the UX audit found broken, on the whole app over the
@@ -212,15 +212,18 @@ test('the rail puts teams first, and a picture moved with the keyboard keeps its
   }
 });
 
-test("the rail counts the threads at work and a mochi's unread replies, and the open mochi's working arc follows its squircle", async () => {
+test("the rail counts the threads and subagents at work and a mochi's unread replies, and the open mochi's working arc follows its squircle", async () => {
   writeExperiments(['resident-agents']);
-  await mountOnFake('/?fake=1&agents=1&working=3');
+  await mountOnFake('/?fake=1&agents=1&working=3&team=1');
   try {
-    // The Threads button: how many conversations work, as the projects' Working counts read them.
+    // The Threads button: how many conversations work, as the projects' Working counts read them, then their subagents at work.
     const working = threadsAtWork([store]);
+    const helpers = subagentsAtWork([store]);
     expect(working).toBeGreaterThan(0);
+    expect(helpers).toBeGreaterThan(1);
     await waitFor(() => document.querySelector('[data-testid=rail-threads-working]')?.textContent === String(working));
-    expect(query('[data-testid=view-threads]').getAttribute('aria-label')).toBe(`${strings.sidebar.threads}, ${fill(strings.app.rail.workingMany, { count: String(working) })}`);
+    await waitFor(() => document.querySelector('[data-testid=rail-threads-subagents]')?.textContent === String(helpers));
+    expect(query('[data-testid=view-threads]').getAttribute('aria-label')).toBe(`${strings.sidebar.threads}, ${fill(strings.app.rail.workingMany, { count: String(working) })}, ${fill(strings.app.rail.subagentsMany, { count: String(helpers) })}`);
     // A mochi with replies not read: their number on its picture, where a bare dot stood.
     await waitFor(() => !!document.querySelector('[data-testid=rail-bot-unread]'));
     const unread = query('[data-testid=rail-bot-unread]');
