@@ -33,7 +33,7 @@ export async function titleTurn(ctx: TitleContext): Promise<string | null> {
   let lastStderr = '';
   // No hooks, plugins, connectors or native subagents: a title is one read-only answer.
   const args = [
-    ...subscriptionProxyCodexArgs(profile?.launch?.args ?? [], ctx.accountEnv),
+    ...await subscriptionProxyCodexArgs(profile?.launch?.args ?? [], ctx.accountEnv),
     '--config', 'features.hooks=false', ...NO_NATIVE_SUBAGENTS, ...NO_PLUGINS,
   ];
   const child = ctx.spawnChild(executable, args, {

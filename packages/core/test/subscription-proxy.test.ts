@@ -152,8 +152,13 @@ test('configuration and private key roll back together without leaking to events
 
 test('real RPC discovers gateway models, separates the key and restores native accounts when disabled', async () => {
   const auth: string[] = [], paths: string[] = [];
+  let nativeCatalog = false;
   gateway = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch(request) {
     auth.push(request.headers.get('authorization') ?? ''); paths.push(new URL(request.url).pathname);
+    if (paths.at(-1) === '/v1/codex/models') {
+      expect(request.method).toBe('HEAD');
+      return nativeCatalog ? Response.json({ models: [] }) : new Response(null, { status: 404 });
+    }
     return Response.json({ data: [
       { id: 'pooled-claude', name: 'Claude pool', supported_endpoint_types: ['anthropic'] },
       { id: 'codex/gpt-6.1-sol', name: 'Codex pool', supported_endpoint_types: ['openai-response'],
@@ -190,10 +195,18 @@ test('real RPC discovers gateway models, separates the key and restores native a
   expect(claudeEnv).toMatchObject({ _CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL: '1', CLAUDE_CODE_PROMPT_CACHE_TTL: '1h', CLAUDE_CODE_SKIP_FAST_MODE_ORG_CHECK: '1' });
   expect(childEnv(claudeEnv).CLAUDE_CODE_PROMPT_CACHE_TTL).toBe('1h');
   const codexEnv = subscriptionProxyEnv(harness.core, harness.core.providers.require('codex'));
-  const args = subscriptionProxyCodexArgs(['app-server'], codexEnv);
+  const catalogArg = `model_providers.boite_subscription_proxy.model_catalog_url="http://127.0.0.1:${gateway.port}/v1/codex/models"`;
+  const routeArg = 'model_providers.boite_subscription_proxy.http_headers={"x-douane-model-catalog"="codex"}';
+  expect(await subscriptionProxyCodexArgs(['app-server'], codexEnv)).not.toContain(catalogArg);
+  nativeCatalog = true;
+  const args = await subscriptionProxyCodexArgs(['app-server'], codexEnv);
   expect(args.join(' ')).not.toContain(key);
   expect(args).toContain('model_providers.boite_subscription_proxy.wire_api="responses"');
   expect(args).toContain('model_providers.boite_subscription_proxy.supports_websockets=true');
+  expect(args).toContain(catalogArg);
+  expect(args).toContain(routeArg);
+  expect(paths.slice(-2)).toEqual(['/v1/codex/models', '/v1/codex/models']);
+  expect(auth.slice(-2)).toEqual([`Bearer ${key}`, `Bearer ${key}`]);
   // Douane answers for the limits; this machine's own logins are not listed beside it.
   const quotas = await owner.call('quotas.list', { refresh: true });
   expect(quotas.some(row => row.accountId === claude.id || row.accountId === codex.id)).toBe(false);
