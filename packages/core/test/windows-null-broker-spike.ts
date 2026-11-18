@@ -392,19 +392,21 @@ async function boundedCapture(procs: ProcRegistry, id: string, command: string, 
   try {
     const finished = Promise.all([child.exited.then(code => {result.code = code;}), collect(0), collect(1)]);
     if (await Promise.race([finished.then(() => true), new Promise<false>(resolve => {timer = setTimeout(() => resolve(false), ms);})]) === false) {
-      result.timedOut = true; procs.killTree(id);
+      result.timedOut = true; result.err += `\n${id}: no exit after ${ms} ms`; procs.killTree(id);
       clearTimeout(timer);
       await Promise.race([Promise.allSettled([child.exited, ...readers.map(r => r.cancel()), procs.waitForExit(id)]), new Promise<void>(resolve => {timer = setTimeout(resolve, 6000);})]);
     }
     return result;
   } finally {clearTimeout(timer);}
 }
+/** A C compile of the harness: a few seconds, but past 15 s on a loaded Windows runner. */
+export const CONTRACT_COMPILE_MS = 45_000;
 export async function runLocalContracts(): Promise<{code: number | null; out: string; err: string}> {
   const scratch = mkdtempSync(join(tmpdir(), 'boite-null-contracts-')), journal = new Journal(join(scratch, 'journal.db')), procs = new ProcRegistry(journal, new Bus());
   try {
     const compiler = process.platform === 'win32' ? Bun.which('gcc') || Bun.which('clang') : Bun.which('cc'); if (!compiler) throw new Error('C compiler required for shared native contract harness');
     const binary = join(scratch, process.platform==='win32'?'contracts.exe':'contracts');
-    const compiled = await boundedCapture(procs, 'contracts-build', compiler, ['-std=c11','-O2','-Wall','-Wextra','-Werror',join(diagnostics,'contracts.c'),'-o',binary], scratch, selectedEnvironment(), 15000);
+    const compiled = await boundedCapture(procs, 'contracts-build', compiler, ['-std=c11','-O2','-Wall','-Wextra','-Werror',join(diagnostics,'contracts.c'),'-o',binary], scratch, selectedEnvironment(), CONTRACT_COMPILE_MS);
     if (compiled.code !== 0 || compiled.timedOut) return compiled;
     const contracts=await boundedCapture(procs, 'contracts-run', binary, [], scratch, selectedEnvironment(), 5000);
     if(contracts.code!==0||contracts.timedOut)return contracts;
@@ -415,7 +417,7 @@ export async function runLocalContracts(): Promise<{code: number | null; out: st
     if(start<0||end<start||!arity)throw new Error('fixture dispatch contract: expected actual entry and probe call');
     const dispatch=join(scratch,'dispatch.c'), executable=join(scratch,process.platform==='win32'?'dispatch.exe':'dispatch');
     writeFileSync(dispatch,`#include <stdio.h>\n#include <wchar.h>\n#include <assert.h>\n#define SEM_FAILCRITICALERRORS 1\n#define SEM_NOGPFAULTERRORBOX 2\n#define SEM_NOOPENFILEERRORBOX 4\n#define SetErrorMode(flags) ((void)(flags))\nstatic int nb_resolve(void){return 1;}\nstatic int nb_control_handles(void){return 1;}\nstatic unsigned long GetCurrentProcessId(void){return 1;}\n${fixture.slice(start,end)}  return 125;\n}\nint main(void){wchar_t *args[]={L"fixture",L"--broker-fixture",L"breakaway",NULL};assert(nb_fixture(${arity},args)==0);assert(nb_fixture(2,args)==125);assert(nb_fixture(${Number(arity)+1},args)!=0);args[2]=L"unknown";assert(nb_fixture(${arity},args)==125);puts("NB_LOCAL breakaway-dispatch=1");return 0;}\n`);
-    const built=await boundedCapture(procs,'dispatch-build',compiler,['-std=c11','-O2','-Wall','-Wextra','-Werror',dispatch,'-o',executable],scratch,selectedEnvironment(),15000);
+    const built=await boundedCapture(procs,'dispatch-build',compiler,['-std=c11','-O2','-Wall','-Wextra','-Werror',dispatch,'-o',executable],scratch,selectedEnvironment(),CONTRACT_COMPILE_MS);
     if(built.code!==0||built.timedOut)return built;
     const routed=await boundedCapture(procs,'dispatch-run',executable,[],scratch,selectedEnvironment(),5000);
     return {...routed,out:contracts.out+routed.out,err:contracts.err+routed.err};

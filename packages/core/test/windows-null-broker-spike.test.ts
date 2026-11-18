@@ -2,7 +2,7 @@ import {describe, expect, test} from 'bun:test';
 import {mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {isAbsolute, join, relative, sep} from 'node:path';
-import {createBrokerFixture, credentialHandleAbsent, brokerSource, classifyBroker, combineVerdicts, observeBrokerExpiry, runLocalContracts, type BrokerExpiryReceipt, type BrokerVerdict} from './windows-null-broker-spike.ts';
+import {createBrokerFixture, credentialHandleAbsent, brokerSource, classifyBroker, combineVerdicts, observeBrokerExpiry, runLocalContracts, CONTRACT_COMPILE_MS, type BrokerExpiryReceipt, type BrokerVerdict} from './windows-null-broker-spike.ts';
 import {ExecutionProtections} from '../src/execution-protection.ts';
 
 const bind = 'NB_BIND pid=10 parent=1 generation=root package=S-1-15-2-1-2-3 lpac=1 capabilities=1 registry=1 job=1 dup=1';
@@ -126,7 +126,7 @@ test('shared native scheduler and output-span contracts: queued trap B cannot su
   expect(result.out).toContain('credential-snapshot=1');
   expect(result.out).toContain('breakaway-dispatch=1');
   expect(result.out).toContain('terminating-replay=1');
-});
+}, 2 * CONTRACT_COMPILE_MS + 60_000);
 
 test('source generation pins the historical reference and rejects a second replacement', () => {
   const original = readFileSync(new URL('../../../tests/diagnostics/windows-protected-reference.c', import.meta.url), 'utf8');
