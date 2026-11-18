@@ -337,14 +337,16 @@ export class AgentBrowser {
     if (info.type !== 'page' || !info.openerId) return;
     const opener = [...engine.tabs].map(id => this.#tabs.get(id)).find(tab => tab?.targetId === info.openerId);
     if (!opener) return;
-    return this.joining.window(opener.threadId, async () => {
-      if (this.#full(opener.threadId)) {
-        await engine.cdp.send('Target.closeTarget', { targetId: info.targetId }).catch(() => {});
-        return;
-      }
-      const release = this.joining.reserve(opener.threadId);
-      try { await this.#attach(engine, opener.threadId, info.targetId, info.url).catch(() => {}); }
-      finally { release(); }
+    const { threadId } = opener;
+    const shut = () => engine.cdp.send('Target.closeTarget', { targetId: info.targetId }).then(() => {}, () => {});
+    // Checked and held in the event's own turn: a burst of windows sees each other, and a command never waits on a refusal.
+    if (this.#full(threadId)) return shut();
+    const release = this.joining.reserve(threadId);
+    return this.joining.window(threadId, async () => {
+      // A window nobody can drive is closed, and so is one whose conversation was archived while it attached.
+      const tab = await this.#attach(engine, threadId, info.targetId, info.url).catch(() => null).finally(release);
+      if (!tab) return shut();
+      try { this.#require(threadId); } catch { await this.#closeTab(tab); }
     });
   }
 
@@ -514,6 +516,11 @@ export class AgentBrowser {
     return begun.length ? { ...reply, downloads: begun } : reply;
   }
 
+  /** The current tab is the last window a page opened: a command that names no tab waits for those still joining. */
+  async #joined(threadId: ThreadId): Promise<void> {
+    if (await this.joining.windows(threadId)) this.#require(threadId);
+  }
+
   async #run(threadId: ThreadId, tabId: string | undefined, action: BrowserAction, running: Running | null): Promise<BrowserReply> {
     this.#require(threadId);
     switch (action.kind) {
@@ -543,6 +550,7 @@ export class AgentBrowser {
       case 'recipe-result': return { value: this.#recipes.result(action.name, action.ok, action.error) };
       case 'open': {
         // agent-browser's `open` drives the current tab; a named profile opens a tab of its own.
+        if (action.reuse && action.profile === undefined) await this.#joined(threadId);
         const current = action.reuse && action.profile === undefined ? this.#threads.get(threadId)?.active : null;
         const tab = current ? this.#tabs.get(current) : undefined;
         if (!tab) return this.#open(threadId, action, running);
@@ -550,7 +558,7 @@ export class AgentBrowser {
       }
       default: break;
     }
-    if (tabId === undefined) await this.joining.windows(threadId);
+    if (tabId === undefined) await this.#joined(threadId);
     const tab = this.#tabOf(threadId, tabId);
     const state = this.#thread(threadId);
     if (state.active !== tab.id) { state.active = tab.id; this.#changed(threadId); }

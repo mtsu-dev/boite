@@ -46,12 +46,18 @@ export class TabsJoining {
     return joined;
   }
 
-  /** Waits, within `JOIN_WAIT_MS`, for the windows of `threadId` still joining it. */
-  async windows(threadId: ThreadId): Promise<void> {
-    const pending = this.#windows.get(threadId);
-    if (!pending?.size) return;
+  /**
+   * Waits, within `JOIN_WAIT_MS`, for the windows of `threadId` still joining
+   * it, those announced while it waits included. True when it waited.
+   */
+  async windows(threadId: ThreadId): Promise<boolean> {
+    if (!this.#windows.get(threadId)?.size) return false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    await Promise.race([Promise.all(pending), new Promise<void>(resolve => { timer = setTimeout(resolve, JOIN_WAIT_MS); })]);
+    const out = new Promise<'out'>(resolve => { timer = setTimeout(() => resolve('out'), JOIN_WAIT_MS); });
+    for (let pending = this.#windows.get(threadId); pending?.size; pending = this.#windows.get(threadId)) {
+      if (await Promise.race([Promise.all(pending), out]) === 'out') break;
+    }
     clearTimeout(timer);
+    return true;
   }
 }

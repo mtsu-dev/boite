@@ -374,6 +374,31 @@ real('a window a page opens joins the conversation as a tab of its own', () => t
   expect(tabs.map(tab => tab.url)).toEqual([url(), url('/popup?script')]);
 }), 150_000);
 
+real('a command that names no tab waits for every window still joining, and a window of an archived conversation is closed', async () => {
+  const { agent, threadId, harness } = browserFixture;
+  const browser = harness.core.browser;
+  const run = (action: BrowserAction) => agent.call('browser.command', { threadId, action });
+  const tabs = () => browser.status({ threadId }).tabs.map(tab => [tab.url, tab.active]);
+  await run({ kind: 'open', url: url() });
+  browser.joining.delayMs = 700;
+  // `open` drives the window a click just opened, not the page behind it.
+  await run({ kind: 'click', selector: '#pop' });
+  await run({ kind: 'open', url: url('/popup?next'), reuse: true });
+  expect(tabs()).toEqual([[url(), false], [url('/popup?next'), true]]);
+  // A window opened while a command waits is waited for too.
+  await evaluate(`window.open('/popup?one', 'one'); setTimeout(() => window.open('/popup?two', 'two'), 300); true`);
+  expect((await run({ kind: 'evaluate', expression: 'location.search' })).value).toBe('?two');
+  // Archived while a window joins: the waiting command is refused and the window closes with the rest.
+  await evaluate(`window.open('/popup?late', 'late'); true`);
+  const waiting = run({ kind: 'evaluate', expression: 'location.search' });
+  await Bun.sleep(100);
+  harness.core.journal.putThread({ ...harness.core.threads.require(threadId), archived: true });
+  browser.release(threadId);
+  expect(await thrown(waiting)).toThrow('the agent browser needs an active conversation');
+  for (let i = 0; i < 50 && tabs().length > 0; i++) await Bun.sleep(100);
+  expect(tabs()).toEqual([]);
+}, 60_000);
+
 real('a target that moves away from the native pointer is not clicked, and the next command can reach it', async () => {
   const { agent, threadId } = browserFixture;
   await agent.call('browser.command', { threadId, action: { kind: 'open', url: url() } });
