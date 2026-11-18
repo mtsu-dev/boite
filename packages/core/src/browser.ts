@@ -312,9 +312,12 @@ export class AgentBrowser {
     // Every tab counts as focused, so a page waiting for focus or visibility runs.
     await engine.cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true }, sessionId).catch(() => {});
     // Given up while it attached: the tab is never the conversation's, and the caller closes its target.
-    if (running?.abandoned) {
+    // Archived while it attached: the same, since the archive closed only the tabs it found.
+    let gone: unknown = null;
+    try { this.#require(threadId); } catch (error) { gone = error; }
+    if (running?.abandoned || gone) {
       for (const off of tab.off) off();
-      throw abandoned(running);
+      throw running?.abandoned ? abandoned(running) : gone;
     }
     this.#tabs.set(tab.id, tab);
     engine.tabs.add(tab.id); clearTimeout(engine.idle);
@@ -345,8 +348,7 @@ export class AgentBrowser {
     return this.joining.window(threadId, async () => {
       // A window nobody can drive is closed, and so is one whose conversation was archived while it attached.
       const tab = await this.#attach(engine, threadId, info.targetId, info.url).catch(() => null).finally(release);
-      if (!tab) return shut();
-      try { this.#require(threadId); } catch { await this.#closeTab(tab); }
+      if (!tab) await shut();
     });
   }
 
