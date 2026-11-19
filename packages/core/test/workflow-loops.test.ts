@@ -130,7 +130,7 @@ test('a loop out of rounds fails its closing step, is told to the parent, and a 
   const oldFix = failed.nodes.find(n => n.id === 'fix')!.instances[0]!.threadId!;
   const newFix = done.nodes.find(n => n.id === 'fix')!.instances[0]!;
   expect(newFix.threadId).not.toBe(oldFix);
-  expect(newFix.previousAttempts).toEqual([oldFix]);
+  expect(newFix.previousAttempts).toEqual([expect.objectContaining({ threadId: oldFix })]);
   expect(prompts.filter(p => p.threadId === oldFix).map(p => p.prompt.slice(0, 60))).toEqual([
     expect.stringContaining('You are one step'), expect.stringContaining('round 2 of 2'),
   ]);

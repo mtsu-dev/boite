@@ -125,8 +125,8 @@ export interface WorkflowInstance {
   /** Canonical JSON for an item in a loop, independent of its position. */
   itemIdentity?: string;
   threadId: ThreadId | null;
-  /** Earlier local conversations replaced by an explicit retry. */
-  previousAttempts?: ThreadId[];
+  /** Earlier local conversations replaced by an explicit retry and when their workflow execution stopped. */
+  previousAttempts?: { threadId: ThreadId; finishedAt: number | null }[];
   providerId: ProviderId | null;
   /** The resolved account on the execution machine. Missing before admission and on older runs. */
   accountId?: string;

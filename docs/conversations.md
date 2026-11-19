@@ -99,8 +99,8 @@ keeps its name. The header shows the branch.
   is missing.
 - Remove settled worktrees, in Manage project, deletes a worktree an hour
   after all its conversations are done or archived, only when its last commit
-  is on another branch or in a merged pull request. Uncommitted changes always
-  stay.
+  is on another branch or in a merged pull request. It keeps worktrees with
+  uncommitted changes, including files Git ignores.
 - Ask to finish after merge: once every pull request of a worktree conversation
   is merged or closed, Boite asks its agent whether the conversation is done.
   The agent moves it to Done or keeps it open when it still has something to

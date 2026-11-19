@@ -107,7 +107,7 @@ export function workflowExecutions(run: WorkflowRun, node: WorkflowNode, items: 
 /** The route a round can reuse, or the earlier conversation a fresh round replaces. */
 export function workflowContinuation(previous: WorkflowInstance | undefined, fresh: boolean, available: (threadId: string) => boolean): Partial<WorkflowInstance> {
   if (!previous?.threadId) return {};
-  if (fresh) return { previousAttempts: [...previous.previousAttempts ?? [], previous.threadId] };
+  if (fresh) return { previousAttempts: [...previous.previousAttempts ?? [], { threadId: previous.threadId, finishedAt: previous.finishedAt }] };
   if (!available(previous.threadId)) return {};
   const { threadId, providerId, model, effort, previousAttempts } = previous;
   return { threadId, providerId, model, effort, previousAttempts };
@@ -128,7 +128,7 @@ export function retryWorkflowSteps(run: WorkflowRun, stepId?: string): boolean {
         // A persisted run from an older scheduler may still have untouched executions.
         Object.assign(inst, { status: 'waiting', error: null, finishedAt: null });
       } else if (targets.has(node) && broken(inst.status)) {
-        if (inst.threadId !== null) inst.previousAttempts = [...inst.previousAttempts ?? [], inst.threadId];
+        if (inst.threadId !== null) inst.previousAttempts = [...inst.previousAttempts ?? [], { threadId: inst.threadId, finishedAt: inst.finishedAt }];
         Object.assign(inst, { status: 'waiting', threadId: null, startedAt: null, finishedAt: null });
         delete inst.outputCorrection;
       }

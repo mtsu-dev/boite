@@ -560,6 +560,28 @@ test('a step the parent sends more work after its run finished answers the paren
   }
 });
 
+test('a replaced attempt answers the parent without taking over its workflow step', async () => {
+  const { held } = scripted(ctx => ctx.thread.parentThreadId ? { hold: true } : 'noted');
+  const { h, owner, threadId } = await setup();
+  const run = await owner.call('workflows.start', { threadId, plan: { name: 'Retry', steps: [{ id: 'step', task: 'Run the step.' }] }, requestId: 'replaced-attempt' });
+  const old = run.nodes[0]!.instances[0]!.threadId!;
+  await waitFor(() => held.has(old));
+  held.get(old)!('', 'error');
+  expect((await settled(h, threadId, run.id)).status).toBe('failed');
+  const retry = await owner.call('workflows.control', { threadId, runId: run.id, action: 'retry', stepId: 'step' });
+  const current = retry.nodes[0]!.instances[0]!.threadId!;
+  await waitFor(() => held.has(current));
+  await owner.call('delegation.send', { threadId, toThreadId: old, text: 'Investigate the earlier failure for me.', requestId: 'investigate' });
+  await waitFor(() => held.has(old));
+  expect(h.core.workflows.instructions(old)).toBe('');
+  held.get(old)!('The earlier input was invalid.');
+  const results = () => h.core.delegation.get(threadId).messages.filter(letter => letter.origin === 'result');
+  await waitFor(() => results().some(letter => letter.text.includes('The earlier input was invalid.')));
+  expect(h.core.workflows.get(threadId, run.id).nodes[0]!.instances[0]).toMatchObject({ threadId: current, status: 'running', result: null });
+  held.get(current)!('The retry succeeded.');
+  expect((await settled(h, threadId, run.id)).nodes[0]!.instances[0]).toMatchObject({ threadId: current, status: 'done', result: 'The retry succeeded.' });
+});
+
 test('a step sent back to work whose background work a restart cut tells its parent, not its finished run', async () => {
   const task = { id: 'bg-props', kind: 'shell' as const, description: 'props7 export', toolId: null, startedAt: Date.now() };
   scripted(ctx => {

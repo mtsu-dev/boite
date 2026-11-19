@@ -245,7 +245,8 @@ after the independent work finishes.
 executions in fresh conversations, with the same task and, for a local
 worktree, the previously resolved base commit when available. For a local
 retry, `boite workflow show <run-id> --json` includes the earlier conversation
-IDs under `previousAttempts`. Read one with `boite threads read <thread-id>`.
+IDs under `previousAttempts[].threadId`. Read one with `boite threads read <thread-id>`.
+A message to an earlier attempt starts a follow-up whose answer goes to the parent.
 A step that succeeds on retry can unblock
 its dependents while other failures remain. Omitting the step retries every
 failure. Automatic output correction and restart continuation use the

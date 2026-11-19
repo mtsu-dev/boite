@@ -406,7 +406,7 @@ export class Workflows {
         const key = inst.key;
         threadId = this.#core.delegation.createChild(root, profile, title, id => {
           this.#core.journal.db.query('INSERT INTO workflow_steps VALUES (?, ?, ?)').run(id, run.id, key);
-          const prior = inst.previousAttempts?.at(-1);
+          const prior = inst.previousAttempts?.at(-1)?.threadId;
           const base = (prior ? this.#core.delegation.worktrees.get(prior)?.base : null) ?? inst.worktree?.base;
           const planned = base ? this.#core.delegation.worktrees.get(id) : undefined;
           if (planned && base) this.#core.delegation.worktrees.record(id, { ...planned, base });
@@ -436,6 +436,7 @@ export class Workflows {
         if (!found || found.status !== 'running') return false;
         Object.assign(found, { status: 'failed', error: `${correction ? 'output retry: ' : ''}${messageOf(error)}`, finishedAt: Date.now() });
       });
+      if (correction) this.#ended({ runId: run.id, key: inst.key }, threadId);
     }
   }
 
@@ -804,10 +805,10 @@ export class Workflows {
     this.#compute.stop(run);
     this.#machines.stop(run);
     for (const node of run.nodes) for (const inst of node.instances) {
-      if (inst.status !== 'running' || !inst.threadId || this.#core.scheduler.stop(inst.threadId)) continue;
-      // A step at rest on its checkpoint, its work live or completed unanswered: stopping it ends that work and settles its worktree.
+      if (!inst.threadId || inst.status !== 'running' && inst.status !== 'waiting' || this.#core.scheduler.stop(inst.threadId)) continue;
+      // A checkpoint or pending correction has no active turn left to release its checkout.
       this.#core.threads.releaseAgent(inst.threadId);
-      void this.#core.delegation.worktrees.settle(inst.threadId);
+      this.#ended({ runId: run.id, key: inst.key }, inst.threadId);
     }
     this.#mutate(run.id, current => {
       for (const node of current.nodes) for (const inst of node.instances) if (inst.status === 'running') Object.assign(inst, { status: 'stopped', error: reason, finishedAt: now });
@@ -834,7 +835,10 @@ export class Workflows {
     const entry = this.#stepOf.get(threadId);
     if (!entry) return '';
     const run = this.#load(entry.runId);
-    const shape = run?.plan.steps.find(s => s.id === entry.key.split('#')[0])?.output;
+    if (!run) return '';
+    const inst = this.#instance(run, entry.key);
+    if (inst?.threadId !== threadId || ended(inst.status)) return '';
+    const shape = run.plan.steps.find(s => s.id === entry.key.split('#')[0])?.output;
     return `\n${stepRole(entry.runId, entry.key, shape !== undefined)}\n`;
   }
 
