@@ -103,3 +103,40 @@ test.skipIf(process.platform !== 'linux')('two registries on one Linux backend s
     rmSync(directory, {recursive: true, force: true});
   }
 });
+
+test('stopping or sampling a thread that never ran a process names no native scope', async () => {
+  const named: string[] = [];
+  const backend: ProcessPlatform = {
+    ...createPosixPlatform('linux', null),
+    terminate(scope) {named.push(`terminate ${scope}`); return false;},
+    terminateProcess(scope) {named.push(`terminateProcess ${scope}`); return false;},
+    sample(scope) {named.push(`sample ${scope}`); return null;},
+    hasProcesses(scope) {named.push(`hasProcesses ${scope}`); return false;},
+  };
+  const platform = scopedPlatforms(backend)();
+  for (const id of ['never-a', 'never-b', 'never-c']) {
+    expect(platform.terminate(id)).toBe(false);
+    expect(platform.terminateProcess(id, 4242)).toBe(false);
+    expect(platform.sample(id)).toBeNull();
+    expect(platform.hasProcesses?.(id)).toBe(false);
+  }
+  expect(named).toEqual([]);
+  platform.pidAdded('ran', 4242, true);
+  platform.sample('ran');
+  expect(named).toHaveLength(1);
+  await platform.release();
+});
+
+test('resource detail stays on for one registry while another stops watching or closes', async () => {
+  const watched: boolean[] = [];
+  const hub = scopedPlatforms({...createPosixPlatform('linux', null), watchResources: active => {watched.push(active);}, async release() {}});
+  const first = hub(), second = hub();
+  first.watchResources?.(true);
+  second.watchResources?.(true);
+  first.watchResources?.(false);
+  await first.release();
+  expect(watched).toEqual([true]);
+  second.watchResources?.(false);
+  expect(watched).toEqual([true, false]);
+  await second.release();
+});
