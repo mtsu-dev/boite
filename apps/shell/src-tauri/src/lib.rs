@@ -22,6 +22,7 @@ mod material;
 mod platform;
 mod presence;
 mod quota_window;
+mod quit_confirmation;
 mod resident;
 mod shell_log;
 mod update_stop;
@@ -73,15 +74,6 @@ fn notify(app: AppHandle, webview: Webview, title: String, body: String, thread_
 /// the new one would wake the exiting one and quit, leaving no window. It
 /// waits for the lock instead, and the variable goes no further than here.
 const RESTARTED_AFTER_UPDATE: &str = "BOITE_RESTARTED_AFTER_UPDATE";
-
-fn acquire_after_update(directory: &std::path::Path, restarted: bool) -> std::io::Result<Option<std::fs::File>> {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    loop {
-        let acquired = instance::acquire(directory)?;
-        if acquired.is_some() || !restarted || std::time::Instant::now() >= deadline { return Ok(acquired); }
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
-}
 
 /// The invoke handler, plus the command names the watchdog reports, from one
 /// list so a new command cannot be registered without being timed.
@@ -142,13 +134,17 @@ pub fn run() {
     // Linux and macOS restart through `app.restart()`, which sets the
     // variable; on Windows the installer starts the new shell and says so in
     // its arguments.
-    let restarted = std::env::var_os(RESTARTED_AFTER_UPDATE).is_some()
-        || autostart::restarted_by_installer(std::env::args_os());
+    #[cfg(windows)]
+    let webview_relaunch = platform::watch::take_webview_relaunch();
+    #[cfg(not(windows))]
+    let webview_relaunch: Option<bool> = None;
+    let restarted = webview_relaunch.is_none() && (std::env::var_os(RESTARTED_AFTER_UPDATE).is_some()
+        || autostart::restarted_by_installer(std::env::args_os()));
     std::env::remove_var(RESTARTED_AFTER_UPDATE);
     // Started by the login entry: the core starts, the window waits in the tray.
     // An update that installed by itself restarts into the tray, as a login start does.
-    let at_login = autostart::starts_unasked(std::env::args_os(), &directory, restarted);
-    let _instance = match acquire_after_update(&directory, restarted) {
+    let at_login = autostart::launched_at_login(std::env::args_os(), restarted);
+    let _instance = match instance::acquire_or_wake(&directory, restarted || webview_relaunch.is_some(), !hidden() && !at_login) {
         Ok(Some(file)) => { start_log(instance_started.elapsed()); Some(file) }
         // Another instance already owns this data directory: it shows its
         // window, which may be in the tray or behind others, and this process
@@ -156,12 +152,6 @@ pub fn run() {
         // neither does a login start finding Boite already running.
         Ok(None) => {
             eprintln!("[shell] another shell already owns this data directory; exiting");
-            if !hidden() && !at_login {
-                eprintln!("[shell] asking the running shell to show its window");
-                if let Err(error) = instance::wake(&directory) {
-                    eprintln!("[shell] Boite is already running, but it could not be asked to show its window: {error}");
-                }
-            }
             return;
         }
         Err(error) => {
@@ -177,6 +167,7 @@ pub fn run() {
     // Only the owner of the lock may answer a second launch: without the lock
     // two shells would share one wake file.
     let owns_directory = _instance.is_some();
+    let in_background = webview_relaunch.unwrap_or_else(|| at_login || (owns_directory && autostart::quiet_restart(&directory, restarted)));
     // Every later panic leaves a line where the user can find it.
     let failures = directory.clone();
     let previous_hook = std::panic::take_hook();
@@ -275,7 +266,7 @@ pub fn run() {
             }
             // Decided before anything can reveal the window: the tray is built
             // after it, and a start with no tray shows the window below.
-            let in_tray = autostart::starts_in_tray(at_login, true, hidden());
+            let in_tray = autostart::starts_in_tray(in_background, true, hidden());
             if in_tray { handle.state::<Reveal>().stay_hidden(); }
             let launch = Launch::new(channel, directory.clone(), handle.path().resource_dir().ok(),
                 handle.package_info().version.to_string());
@@ -289,12 +280,6 @@ pub fn run() {
             match tauri::webview_version() {
                 Ok(version) => shell_log::info("startup", "shell.webview", format!("web view runtime {version}"), json!({ "webviewVersion": version })),
                 Err(error) => shell_log::warn("startup", "shell.webview", format!("the web view runtime version is unknown: {error}"), json!({})),
-            }
-            if owns_directory {
-                let waking = handle.clone();
-                if let Err(error) = instance::listen(&directory, move || show_main(&waking)) {
-                    eprintln!("[shell] a second launch will not bring this window back: {error}");
-                }
             }
             #[cfg(target_os = "macos")]
             window::install_macos_menu(&handle, channel)?;
@@ -317,7 +302,7 @@ pub fn run() {
                 phase("tray", tray);
             }
             if in_tray {
-                if autostart::starts_in_tray(at_login, handle.tray_by_id("boite").is_some(), hidden()) {
+                if autostart::starts_in_tray(in_background, handle.tray_by_id("boite").is_some(), hidden()) {
                     // Nothing on screen: the page does not paint until the tray shows it.
                     browser::park_all(&handle);
                     window::main_memory(&handle, true);
@@ -388,6 +373,15 @@ pub fn run() {
                 WindowEvent::ThemeChanged(_) => watchdog::saw(Seen::ThemeChanged),
                 _ => watchdog::saw(Seen::Other),
             });
+            if owns_directory {
+                let waking = handle.clone();
+                if let Err(error) = instance::listen(&directory, move || {
+                    let app = waking.clone();
+                    waking.run_on_main_thread(move || show_main(&app)).is_ok()
+                }) {
+                    eprintln!("[shell] a second launch will not bring this window back: {error}");
+                }
+            }
             phase("setup", setup);
             Ok(())
         })

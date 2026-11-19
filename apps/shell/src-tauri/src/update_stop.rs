@@ -2,12 +2,18 @@
 //! 30 seconds at most, stops, and resumes after the restart. A core too old for that handoff
 //! keeps the earlier rule: it stays usable until it grants an idle stop.
 use std::io::{Read, Write};
+use std::fs::{File, OpenOptions};
 use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use crate::local_core::health::{health, read_core_file, HEALTH_TIMEOUT};
+use fs2::FileExt;
+use serde::Deserialize;
+
+use crate::local_core::health::{health, read_core_file, same_core, CoreStart, HEALTH_TIMEOUT};
+use crate::local_core::starting::read_starting;
+use crate::platform::file_identity;
 use crate::platform::process::Watched;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -16,6 +22,47 @@ pub(crate) enum InstallState { Idle, Waiting, Cancelled, Committed }
 /// The core's grace for a tool call (30 s), its deadline for a turn that ignores its stop (12 s)
 /// and its own shutdown, with a margin.
 pub(crate) const HANDOFF_EXIT: Duration = Duration::from_secs(60);
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LockRecord {
+    pid: u32,
+    started_at: Option<u64>,
+    start_key: Option<String>,
+    #[serde(default)]
+    os_lock: bool,
+}
+
+fn core_is_running(directory: &Path) -> Result<bool, String> {
+    let core = read_core_file(&directory.join("core.json"))?;
+    Ok(core.is_some_and(|core| core.pid.is_some_and(|pid| same_core(pid, &core.start())))
+        || read_starting(directory).is_some())
+}
+
+/// Holds the same lock startup takes. A legacy PID record can still exclude
+/// us even without an OS lock. A live core must use authenticated admission.
+pub(crate) fn lock_without_core(directory: &Path) -> Result<Option<File>, String> {
+    if core_is_running(directory)? { return Ok(None); }
+    let path = directory.join("core.lock");
+    let failed = |error: std::io::Error| format!("cannot lock {} for the update: {error}", path.display());
+    let mut lock = OpenOptions::new().read(true).write(true).create(true).truncate(false).open(&path).map_err(failed)?;
+    match FileExt::try_lock_exclusive(&lock) {
+        Ok(()) => {}
+        Err(error) if error.raw_os_error() == fs2::lock_contended_error().raw_os_error() => return Ok(None),
+        Err(error) => return Err(failed(error)),
+    }
+    if !file_identity::still_at(&lock, &path).map_err(failed)? || core_is_running(directory)? {
+        return Ok(None);
+    }
+    let mut record = Vec::new();
+    (&mut lock).take(4096).read_to_end(&mut record).map_err(failed)?;
+    if serde_json::from_slice::<LockRecord>(&record).ok().is_some_and(|owner|
+        !owner.os_lock && same_core(owner.pid, &CoreStart { at: owner.started_at, key: owner.start_key }))
+    {
+        return Ok(None);
+    }
+    Ok(Some(lock))
+}
 
 enum Admission { Accepted, Busy, Unsupported }
 
@@ -43,19 +90,23 @@ fn request_shutdown(path: &str, port: u16, token: &str, pid: u32) -> Result<Admi
 /// Cancellation and each admission request share the mutex. Once committed, cancellation is too late.
 /// A core with the handoff commits on the first request, busy or not; an older one is polled until idle.
 /// `idle_only`, for an install nobody asked for now, skips the handoff and asks for the idle stop
-/// once: a busy core keeps running and the answer is false. So it is when `still` turns false
-/// before that request: the window came back on screen while the install waited for the core.
-pub(crate) fn stop_for_update(directory: &Path, control: &Mutex<InstallState>, idle_only: bool, still: impl Fn() -> bool, committed: impl Fn()) -> Result<bool, String> {
+/// once: a busy core keeps running and the answer is false. `still` checks
+/// visibility and policy again immediately before every stop request.
+pub(crate) fn stop_for_update(directory: &Path, control: &Mutex<InstallState>, idle_only: bool, still: impl Fn() -> Result<bool, String>, committed: impl Fn()) -> Result<bool, String> {
     let core = read_core_file(&directory.join("core.json"))?.ok_or("core.json is missing; nothing was installed")?;
     let pid = core.pid.ok_or("core.json must identify the core pid; nothing was installed")?;
     let process = Watched::open(pid).ok_or("the expected core process could not be watched; nothing was installed")?;
+    let start = core.start();
     let mut handoff = !idle_only;
     loop {
         let mut state = control.lock().map_err(|_| "update admission state is poisoned")?;
         if *state == InstallState::Cancelled { return Ok(false); }
-        if idle_only && !still() { return Ok(false); }
-        if !process.exited_within(Duration::ZERO) {
-            if health(core.port, pid).is_none() { return Err("the live engine did not answer as the expected core; nothing was installed".into()); }
+        let alive = !process.exited_within(Duration::ZERO);
+        if alive && (!same_core(pid, &start) || health(core.port, pid).is_none() || !same_core(pid, &start)) {
+            return Err("the live engine did not answer as the expected core; nothing was installed".into());
+        }
+        if !still()? { return Ok(false); }
+        if alive {
             if handoff {
                 match request_shutdown("/shutdown-for-update", core.port, &core.token, pid)? {
                     Admission::Accepted => {}
@@ -137,7 +188,7 @@ const server = Bun.serve({ hostname:'127.0.0.1', port:0, fetch(request) {
         let mut fixture = Fixture::new("handoff", "handoff");
         let control = Mutex::new(InstallState::Waiting);
         // No `idle` file: the idle admission would answer busy for ever.
-        assert!(stop_for_update(&fixture.directory, &control, false, || true, || {}).unwrap());
+        assert!(stop_for_update(&fixture.directory, &control, false, || Ok(true), || {}).unwrap());
         assert_eq!(fixture.child.wait().unwrap().code(), Some(0));
         assert!(*control.lock().unwrap() == InstallState::Committed);
     }
@@ -147,7 +198,7 @@ const server = Bun.serve({ hostname:'127.0.0.1', port:0, fetch(request) {
         let mut fixture = Fixture::new("cancel", "current");
         let control = Arc::new(Mutex::new(InstallState::Waiting));
         let other = control.clone(); let directory = fixture.directory.clone();
-        let waiter = std::thread::spawn(move || stop_for_update(&directory, &other, false, || true, || panic!("cancelled install committed")));
+        let waiter = std::thread::spawn(move || stop_for_update(&directory, &other, false, || Ok(true), || panic!("cancelled install committed")));
         std::thread::sleep(Duration::from_millis(100));
         *control.lock().unwrap() = InstallState::Cancelled;
         assert!(!waiter.join().unwrap().unwrap());
@@ -159,7 +210,7 @@ const server = Bun.serve({ hostname:'127.0.0.1', port:0, fetch(request) {
         let mut fixture = Fixture::new("finish", "current");
         let control = Arc::new(Mutex::new(InstallState::Waiting));
         let other = control.clone(); let directory = fixture.directory.clone();
-        let waiter = std::thread::spawn(move || stop_for_update(&directory, &other, false, || true, || {}));
+        let waiter = std::thread::spawn(move || stop_for_update(&directory, &other, false, || Ok(true), || {}));
         std::thread::sleep(Duration::from_millis(100));
         assert!(fixture.child.try_wait().unwrap().is_none());
         std::fs::write(fixture.directory.join("idle"), "").unwrap();
@@ -173,22 +224,37 @@ const server = Bun.serve({ hostname:'127.0.0.1', port:0, fetch(request) {
         let mut fixture = Fixture::new("quiet", "handoff");
         let control = Mutex::new(InstallState::Waiting);
         // The handoff would stop it at once: an automatic install never asks for it.
-        assert!(!stop_for_update(&fixture.directory, &control, true, || true, || panic!("a busy core was stopped")).unwrap());
+        assert!(!stop_for_update(&fixture.directory, &control, true, || Ok(true), || panic!("a busy core was stopped")).unwrap());
         assert!(fixture.child.try_wait().unwrap().is_none());
         std::fs::write(fixture.directory.join("idle"), "").unwrap();
         // The window came back while the install waited: an idle core keeps running too.
-        assert!(!stop_for_update(&fixture.directory, &control, true, || false, || panic!("a shown window was closed")).unwrap());
+        assert!(!stop_for_update(&fixture.directory, &control, true, || Ok(false), || panic!("a shown window was closed")).unwrap());
         assert!(fixture.child.try_wait().unwrap().is_none());
-        assert!(stop_for_update(&fixture.directory, &control, true, || true, || {}).unwrap());
+        assert!(stop_for_update(&fixture.directory, &control, true, || Ok(true), || {}).unwrap());
         assert_eq!(fixture.child.wait().unwrap().code(), Some(0));
         assert!(*control.lock().unwrap() == InstallState::Committed);
+    }
+
+    #[test]
+    fn a_policy_change_while_a_manual_install_waits_leaves_the_core_running() {
+        let _guard = crate::process_test_guard();
+        let mut fixture = Fixture::new("policy-during-admission", "idle");
+        let control = Mutex::new(InstallState::Waiting);
+        let checks = std::cell::Cell::new(0);
+        let stopped = stop_for_update(&fixture.directory, &control, false, || {
+            checks.set(checks.get() + 1);
+            if checks.get() == 1 { Ok(true) } else { Err("updates.app is now off".into()) }
+        }, || panic!("the updated policy prohibits admission"));
+        assert_eq!(stopped.unwrap_err(), "updates.app is now off");
+        assert!(fixture.child.try_wait().unwrap().is_none());
+        assert!(*control.lock().unwrap() == InstallState::Waiting);
     }
     #[test]
     fn an_older_core_without_idle_admission_is_never_killed() {
         let _guard = crate::process_test_guard();
         let mut fixture = Fixture::new("legacy", "legacy");
         let control = Mutex::new(InstallState::Waiting);
-        assert!(stop_for_update(&fixture.directory, &control, false, || true, || {}).unwrap_err().contains("404"));
+        assert!(stop_for_update(&fixture.directory, &control, false, || Ok(true), || {}).unwrap_err().contains("404"));
         assert!(fixture.child.try_wait().unwrap().is_none());
     }
 }

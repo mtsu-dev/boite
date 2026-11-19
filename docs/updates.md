@@ -34,7 +34,9 @@ Turn on Install updates by itself when nothing runs, in Settings, Machines
 and updates, to skip the click. It is off by default. A release found by the
 six-hour check then installs only while the window is hidden in the tray and
 no conversation, queued message or process runs. Boite comes back in the
-tray. Otherwise it tries again at the next check. It does not touch agents.
+tray. Otherwise it tries again at the next check. This setting only updates
+Boite. An organization's policy can require manual installs or pause app
+updates entirely, including an app update already downloaded.
 
 ### Switch between Release and Nightly
 

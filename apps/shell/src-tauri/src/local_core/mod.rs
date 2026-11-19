@@ -18,7 +18,7 @@ pub(crate) mod health;
 mod locate;
 mod resolve;
 mod spawn;
-mod starting;
+pub(crate) mod starting;
 #[cfg(test)]
 mod tests;
 
@@ -41,6 +41,8 @@ const POLL_INTERVAL: Duration = Duration::from_millis(10);
 pub struct CoreEndpoint {
     pub url: String,
     pub token: String,
+    #[serde(skip)]
+    port: u16,
 }
 
 #[derive(Default)]
@@ -126,6 +128,7 @@ pub struct CoreState {
     /// Set while an update installs: the core was stopped so the installer can
     /// replace its files, and nothing may start it again from the old ones.
     held: AtomicBool,
+    offline_install: Mutex<Option<std::fs::File>>,
 }
 
 /// The refusal a caller gets while an update installs.
@@ -143,16 +146,31 @@ impl CoreState {
             adopted: Mutex::new(None),
             launch,
             held: AtomicBool::new(false),
+            offline_install: Mutex::new(None),
         }
     }
 
     /// Waits for startup before holding reconnects, then asks the core to hand its turns to the
     /// next one and stop. A core too old for that is asked for an idle-only stop, which
     /// cancellation can still call off.
-    pub(crate) fn wait_for_install(&self, control: &Mutex<crate::update_stop::InstallState>, idle_only: bool, still: impl Fn() -> bool, committed: impl Fn()) -> Result<bool, String> {
-        current_endpoint(self)?;
-        self.held.store(true, Ordering::SeqCst);
-        let stopped = crate::update_stop::stop_for_update(&self.launch.directory, control, idle_only, still, committed);
+    pub(crate) fn wait_for_install(&self, control: &Mutex<crate::update_stop::InstallState>, idle_only: bool, still: impl Fn() -> Result<bool, String>, committed: impl Fn()) -> Result<bool, String> {
+        use crate::update_stop::{self, InstallState};
+        if self.held.swap(true, Ordering::SeqCst) { return Err(HELD.into()); }
+        let stopped = (|| {
+            // Let an already claimed resolution publish, including a failed
+            // start. New resolutions see the hold and cannot spawn a sidecar.
+            wait_for_endpoint(&self.slot, self.launch.patience())?;
+            reap_child(self);
+            if let Some(lock) = update_stop::lock_without_core(&self.launch.directory)? {
+                let mut state = control.lock().map_err(|_| "update admission state is poisoned")?;
+                if *state == InstallState::Cancelled || !still()? { return Ok(false); }
+                *self.offline_install.lock().unwrap() = Some(lock);
+                *state = InstallState::Committed;
+                committed();
+                return Ok(true);
+            }
+            update_stop::stop_for_update(&self.launch.directory, control, idle_only, still, committed)
+        })();
         // The stop leaves the exit of a core this shell started to its `Child`.
         reap_child(self);
         if !matches!(stopped, Ok(true)) {
@@ -163,6 +181,7 @@ impl CoreState {
 
     /// The install did not happen: the next caller starts the core again.
     pub(crate) fn release_hold(&self) {
+        self.offline_install.lock().unwrap().take();
         self.held.store(false, Ordering::SeqCst);
     }
 
@@ -192,11 +211,11 @@ impl CoreState {
 /// The core token rides in this answer, so the caller is checked like every
 /// other: a page a browser surface loaded asks and is told no.
 #[tauri::command]
-pub(crate) async fn core_endpoint(app: AppHandle, webview: Webview) -> Result<CoreEndpoint, String> {
+pub(crate) async fn core_endpoint(app: AppHandle, webview: Webview, reconnecting: Option<bool>) -> Result<CoreEndpoint, String> {
     quota_window::only_ui(&webview)?;
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.try_state::<CoreState>().ok_or("the shell has not set up its core yet")?;
-        current_endpoint(&state)
+        current_endpoint(&state, reconnecting.unwrap_or_default())
     })
     .await
     .map_err(|error| format!("the endpoint task did not finish: {error}"))?
@@ -232,12 +251,33 @@ impl Settled {
 /// otherwise the caller resolves again, which adopts or starts a core, so a
 /// reload of the UI or its reconnect brings a stopped core back. Of several
 /// callers only the first to see the dead core resolves; the others wait for it.
-fn current_endpoint(state: &CoreState) -> Result<CoreEndpoint, String> {
+fn current_endpoint(state: &CoreState, reconnecting: bool) -> Result<CoreEndpoint, String> {
+    if state.held.load(Ordering::SeqCst) {
+        return Err(HELD.into());
+    }
     let patience = state.launch.patience();
     let settled = wait_for_endpoint(&state.slot, patience)?;
     reap_child(state);
     if !settled.stale() {
-        return settled.outcome;
+        if !reconnecting {
+            return settled.outcome;
+        }
+        if let (Ok(endpoint), Some(pid)) = (&settled.outcome, settled.pid) {
+            let answers = health::health(endpoint.port, pid).is_some()
+                || (!settled.stale() && health::health(endpoint.port, pid).is_some());
+            if answers && !settled.stale() {
+                return settled.outcome;
+            }
+            reap_child(state);
+            if !settled.stale() {
+                if read_starting(&state.launch.directory).is_some_and(|starting| starting.pid == pid) {
+                    return Err(format!("the local core (pid {pid}) is still starting"));
+                }
+                // This process was observed serving before. Leave it alone
+                // when it cannot acknowledge a handoff of its active turns.
+                return Err(format!("the local core (pid {pid}) is running but no longer answers"));
+            }
+        }
     }
     if claim(&state.slot, settled.generation) {
         let reason = match (&settled.outcome, settled.pid) {

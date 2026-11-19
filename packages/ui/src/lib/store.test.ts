@@ -2601,6 +2601,31 @@ describe('the shell core lost under a local store', () => {
     }
   });
 
+  test('a core that keeps the same endpoint is checked again while the socket stays down', async () => {
+    vi.useFakeTimers();
+    const { store, client } = await localStore();
+    const fromTauri = vi.spyOn(endpoints, 'fromTauri')
+      .mockResolvedValueOnce({ url: store.endpointUrl!, token: 'current', local: true })
+      .mockResolvedValue(null);
+    const refused = vi.spyOn(endpoints, 'shellEndpointError').mockReturnValue('the local core is running but no longer answers');
+    try {
+      client.drop();
+      await vi.advanceTimersByTimeAsync(LOCAL_RECOVERY_MS);
+      expect(fromTauri).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(LOCAL_RECOVERY_MS * 2);
+      expect(fromTauri).toHaveBeenCalledTimes(2);
+      expect(store.error).toContain('no longer answers');
+      await client.restore();
+      await vi.advanceTimersByTimeAsync(LOCAL_RECOVERY_MS * 4);
+      expect(fromTauri).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+      fromTauri.mockRestore(); refused.mockRestore();
+      delete window.__TAURI_INTERNALS__;
+      store.detach(); client.close();
+    }
+  });
+
   test('a shell answer that comes back after the core did never starts a second retry chain', async () => {
     vi.useFakeTimers();
     const { store, client } = await localStore();

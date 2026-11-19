@@ -435,11 +435,11 @@ export class Connection {
     const lost = () => this.ctx.client === client && client.state === 'connecting';
     this.#localRecovery = setTimeout(() => {
       if (!lost()) { this.#localRecovery = null; return; }
-      void this.#followLocalCore(client).then((outcome) => {
+      void this.#followLocalCore(client, true).then((outcome) => {
         if (generation !== this.#recoveryGeneration) return;
         this.#localRecovery = null;
-        if (outcome !== 'refused' || !lost() || !this.localCore) return;
-        if (this.ctx.store.error !== null) this.ctx.store.error = `${this.ctx.store.error} ${strings.errors.coreRetrying}`;
+        if (outcome === 'moved' || !lost() || !this.localCore) return;
+        if (outcome === 'refused' && this.ctx.store.error !== null) this.ctx.store.error = `${this.ctx.store.error} ${strings.errors.coreRetrying}`;
         this.#recoverLocalCore(client, Math.min(delay * 2, LOCAL_RECOVERY_MAX_MS));
       });
     }, delay);
@@ -451,16 +451,16 @@ export class Connection {
    * shell's core, or the same address), `refused` when the shell has no core
    * to give, its reason then being the store's error.
    */
-  async #followLocalCore(client: Client): Promise<'moved' | 'same' | 'refused'> {
+  async #followLocalCore(client: Client, reconnecting = false): Promise<'moved' | 'same' | 'refused'> {
     if (!this.localCore || !desktopShell()) return 'same';
-    const local = await fromTauri();
-    if (this.ctx.client !== client) return 'same';
+    const local = await fromTauri(reconnecting);
+    if (this.ctx.client !== client || client.state === 'ready') return 'same';
     if (!local) {
       const refusal = shellEndpointError();
       this.ctx.store.error = refusal ? fill(strings.errors.coreStart, { reason: refusal }) : strings.errors.noEndpoint;
       return 'refused';
     }
-    if (client.state === 'ready' || local.url === this.endpointUrl) return 'same';
+    if (local.url === this.endpointUrl) return 'same';
     this.localEndpointUrl = local.url;
     this.environments = refreshLocalEnvironment(local);
     await this.#switchTo(local);

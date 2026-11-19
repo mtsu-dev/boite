@@ -5,7 +5,7 @@
 //! threads and must never send a message to the main thread.
 
 use std::path::Path;
-use std::sync::atomic::{AtomicIsize, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU32, Ordering};
 
 use serde_json::json;
 use webview2_com::Microsoft::Web::WebView2::Win32::*;
@@ -14,11 +14,23 @@ use webview2_com::{
     ProcessFailedEventHandler, WebResourceRequestedEventHandler,
 };
 use windows::core::{Interface, BOOL, PWSTR};
+use tauri::Manager;
 
 use crate::shell_log::{self, Level};
 
 static MAIN_WINDOW: AtomicIsize = AtomicIsize::new(0);
 static MAIN_THREAD: AtomicU32 = AtomicU32::new(0);
+static RELAUNCHED: AtomicBool = AtomicBool::new(false);
+const WEBVIEW_RELAUNCH: &str = "BOITE_RESTARTED_AFTER_WEBVIEW_FAILURE";
+
+/// The replacement client waits for the old shell's instance lock and
+/// preserves its visibility. Consume the flag before starting the core.
+pub(crate) fn take_webview_relaunch() -> Option<bool> {
+    let value = std::env::var_os(WEBVIEW_RELAUNCH)?;
+    std::env::remove_var(WEBVIEW_RELAUNCH);
+    RELAUNCHED.store(true, Ordering::Relaxed);
+    Some(value == "tray")
+}
 
 /// Called on the main thread at startup, so a dump's reader knows which stack to open.
 pub(crate) fn remember_main_thread() {
@@ -130,7 +142,7 @@ fn reason_name(reason: COREWEBVIEW2_PROCESS_FAILED_REASON) -> &'static str {
     }
 }
 
-fn report(args: &ICoreWebView2ProcessFailedEventArgs) -> windows::core::Result<()> {
+fn report(args: &ICoreWebView2ProcessFailedEventArgs) -> windows::core::Result<COREWEBVIEW2_PROCESS_FAILED_KIND> {
     let mut kind = COREWEBVIEW2_PROCESS_FAILED_KIND::default();
     unsafe { args.ProcessFailedKind(&mut kind)? };
     let (name, level, effect) = kind_name(kind);
@@ -158,18 +170,48 @@ fn report(args: &ICoreWebView2ProcessFailedEventArgs) -> windows::core::Result<(
         format!("WebView2 {}{detail}; {effect}", name.replace('-', " ")), None, data);
     // No flush: this runs on the main thread, which must not wait even 200 ms.
     // The writer thread writes the record as soon as it is queued.
-    Ok(())
+    Ok(kind)
 }
 
 /// Registers the `ProcessFailed` handler on the main window's WebView2. The
 /// browser and GPU processes are shared by every surface, so one is enough.
 /// The main page's navigations are logged too (`watch_navigations`).
 pub(crate) fn watch_webview(window: &tauri::WebviewWindow) {
-    let registered = window.with_webview(|platform| {
+    let main = window.clone();
+    let registered = window.with_webview(move |platform| {
         let added = (|| -> windows::core::Result<()> { unsafe {
             let webview = platform.controller().CoreWebView2()?;
-            let handler = ProcessFailedEventHandler::create(Box::new(|_, args| {
-                if let Some(args) = args { let _ = report(&args); }
+            let reloaded = AtomicBool::new(false);
+            let handler = ProcessFailedEventHandler::create(Box::new(move |_, args| {
+                if let Some(kind) = args.as_ref().and_then(|args| report(args).ok()) {
+                    match kind {
+                        COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED
+                        | COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE
+                            if !reloaded.swap(true, Ordering::Relaxed) =>
+                        {
+                            let window = main.clone();
+                            let _ = main.run_on_main_thread(move || {
+                                if let Err(error) = window.reload() {
+                                    shell_log::warn("webview", "shell.webview.reload-failed",
+                                        format!("the main page could not be reloaded: {error}"), json!({}));
+                                }
+                            });
+                        }
+                        COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED => {
+                            let app = main.app_handle().clone();
+                            let window = main.clone();
+                            let _ = main.run_on_main_thread(move || {
+                                if app.state::<crate::updater::AppUpdater>().install_in_progress()
+                                    || RELAUNCHED.swap(true, Ordering::Relaxed) { return; }
+                                let was_visible = window.is_visible().unwrap_or(true);
+                                std::env::set_var(WEBVIEW_RELAUNCH, if was_visible { "window" } else { "tray" });
+                                shell_log::warn("webview", "shell.webview.restart", "restarting the shell after WebView2 exited", json!({}));
+                                app.request_restart();
+                            });
+                        }
+                        _ => {}
+                    }
+                }
                 Ok(())
             }));
             let mut token = 0;

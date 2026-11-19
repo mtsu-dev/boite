@@ -143,10 +143,10 @@ export function shellEndpointError(): string | null {
   return shellRefusal;
 }
 
-export async function fromTauri(): Promise<Endpoint | null> {
+export async function fromTauri(reconnecting = false): Promise<Endpoint | null> {
   try {
     const { invoke } = await import('@tauri-apps/api/core');
-    const result: unknown = await invoke('core_endpoint');
+    const result: unknown = await invoke('core_endpoint', { reconnecting });
     shellRefusal = isEndpoint(result) ? null : 'the shell answered with no core address';
     return isEndpoint(result) ? { url: withoutTrailingSlashes(result.url), token: result.token, local: true } : null;
   } catch (error) {
