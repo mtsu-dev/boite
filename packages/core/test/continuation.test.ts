@@ -210,3 +210,28 @@ test('a history that leaves messages out names the newest of them with the comma
   expect(Number(fitted[1])).toBeLessThan(OMITTED_IDS);
   expect(Number(fitted[2])).toBe(Number(fitted[1]) - 1);
 });
+
+test('a step tail bounds even its newest message and keeps the most recent tool failure and file', () => {
+  const threadId = 'thr_step';
+  const turnId = 'turn-step';
+  const output = 'result '.repeat(800);
+  journal.putMessage({
+    id: 'step', threadId, turnId, role: 'assistant', state: 'streaming', createdAt: 1,
+    parts: [
+      { type: 'text', text: 'already summarized' },
+      ...Array.from({ length: 1_200 }, (_, n): MessagePart => ({
+        type: 'tool', toolId: `tool-${n}`, name: n === 1_199 ? 'last_failure' : 'read_file',
+        input: { path: 'long-path'.repeat(20) }, output, status: n === 1_199 ? 'error' : 'done',
+      })),
+      { type: 'file', name: 'next.txt', mimeType: 'text/plain', data: 'aGVsbG8=' },
+    ],
+  });
+  const result = stepTail(journal, threadId, { turnId, afterPart: { messageId: 'step', partIndex: 1 } });
+  expect(result.length).toBeLessThan(65_000);
+  expect(result).not.toContain('already summarized');
+  expect(result).toContain('Earlier parts omitted');
+  expect(result).toContain('last_failure');
+  expect(result).toContain('[Tool error]');
+  expect(result).toContain('boite threads read thr_step --entry step --tool tool-1199');
+  expect(result).toContain('[File: next.txt]');
+});

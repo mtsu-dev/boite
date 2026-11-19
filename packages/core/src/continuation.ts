@@ -82,12 +82,15 @@ type ToolPart = Extract<MessagePart, { type: 'tool' }>;
 function toolText(part: ToolPart, room: number, pointer: string | null): string {
   const head = `Tool ${part.name}: ${part.status}`;
   const output = part.output ?? '';
-  if (output.length === 0) return head;
-  if (output.length <= room) return `${head}\n${output}`;
+  return output ? `${head}\n${toolOutput(output, room, pointer)}` : head;
+}
+
+function toolOutput(output: string, room: number, pointer: string | null): string {
+  if (output.length <= room) return output;
   const whole = pointer === null ? '' : `; read it whole with: ${pointer}`;
-  if (room < TOOL_MIN_EXCERPT) return `${head}\n[Output of ${output.length} characters not carried${whole}.]`;
+  if (room < TOOL_MIN_EXCERPT) return `[Output of ${output.length} characters not carried${whole}.]`;
   const half = Math.floor(room / 2);
-  return `${head}\n${output.slice(0, half)}\n[${output.length - 2 * half} of ${output.length} output characters omitted${whole}.]\n${output.slice(-half)}`;
+  return `${output.slice(0, half)}\n[${output.length - 2 * half} of ${output.length} output characters omitted${whole}.]\n${output.slice(-half)}`;
 }
 
 /** The output room of each tool part of `parts`, within `TOOL_ENTRY_LIMIT`, newest first; 0 for the other parts. */
@@ -447,39 +450,46 @@ export function switchBackInput(
   };
 }
 
-/** OpenCode's `TOOL_OUTPUT_MAX_CHARS` (`session/recent-text.ts`): a tool result in a step tail is cut there. */
-export const TAIL_TOOL_OUTPUT_MAX_CHARS = 1_250;
-
-/** `value` cut to `TAIL_TOOL_OUTPUT_MAX_CHARS` code points, so a surrogate pair is never split. */
-function truncateToolOutput(value: string): string {
-  if (value.length <= TAIL_TOOL_OUTPUT_MAX_CHARS) return value;
-  let end = 0;
-  let kept = 0;
-  for (const char of value) {
-    if (kept === TAIL_TOOL_OUTPUT_MAX_CHARS) break;
-    end += char.length;
-    kept += 1;
-  }
-  return end === value.length ? value : `${value.slice(0, end)}\n[truncated]`;
-}
-
-/** One part as a step tail writes it, the way OpenCode writes its recent context. Empty for what it leaves out. */
-function recentText(role: Message['role'], part: MessagePart): string {
+/** One part as a step tail writes it. Empty for what it leaves out. */
+function recentText(role: Message['role'], part: MessagePart, room: number, pointer: string | null): string {
   switch (part.type) {
     case 'text': {
       const text = part.moved ? `${part.moved.note}${part.text}` : part.text;
       return text ? `[${role === 'user' ? 'User' : role === 'assistant' ? 'Assistant' : 'System'}]: ${text}` : '';
     }
     case 'tool': {
-      const call = `[Assistant tool call]: ${part.name}(${typeof part.input === 'string' ? part.input : JSON.stringify(part.input ?? {})})`;
-      if (part.status === 'done') return `${call}\n[Tool result]: ${truncateToolOutput(part.output ?? '')}`;
-      if (part.status === 'error' || part.status === 'denied') return `${call}\n[Tool error]: ${truncateToolOutput(part.output ?? part.status)}`;
+      const input = typeof part.input === 'string' ? part.input : JSON.stringify(part.input ?? {});
+      const call = `[Assistant tool call]: ${part.name}(${excerpt(input, ENTRY_LIMIT / 2)})`;
+      if (part.status === 'done') return `${call}\n[Tool result]: ${toolOutput(part.output ?? '', room, pointer)}`;
+      if (part.status === 'error' || part.status === 'denied') return `${call}\n[Tool error]: ${part.output ? toolOutput(part.output, room, pointer) : part.status}`;
       return call;
     }
     // Reasoning written out as text reads like an attempt to extract it.
     case 'thinking': return '';
     default: return textPart(part);
   }
+}
+
+function stepEntry(message: Message, from: number, fileReference: (file: Extract<MessagePart, { type: 'file' }>, place: PartPlace) => string, pointer: ToolPointer): string {
+  const rooms = toolRooms(message.parts);
+  const lines: string[] = [];
+  const omitted = '[Earlier parts omitted from this message. Read them with: boite threads read ';
+  const reference = `${omitted}${message.threadId} --entry ${word(message.id)}.]\n`;
+  const limit = RECENT_ROOM - Math.min(reference.length, OMITTED_NOTE_LIMIT);
+  let size = 0;
+  for (let partIndex = message.parts.length - 1; partIndex >= from; partIndex--) {
+    const part = message.parts[partIndex]!;
+    const text = part.type === 'file' ? fileReference(part, { messageId: message.id, partIndex })
+      : recentText(message.role, part, rooms[partIndex]!, part.type === 'tool' ? pointer(message.id, part.toolId) : null);
+    if (!text) continue;
+    const next = excerpt(text, ENTRY_LIMIT);
+    if (size + next.length + 1 > limit) {
+      return excerpt(reference, OMITTED_NOTE_LIMIT).trimEnd() + '\n' + lines.reverse().join('\n');
+    }
+    size += next.length + 1;
+    lines.push(next);
+  }
+  return lines.reverse().join('\n');
 }
 
 /**
@@ -499,17 +509,18 @@ export function stepTail(
   const left: OmittedEntry[] = [];
   let size = 0;
   let omitted = 0;
+  const pointer = toolPointer(threadId);
   for (const { message, from } of afterAnchor(journal, threadId, anchor, undefined)) {
-    const text = message.parts.map((part, partIndex) => partIndex < from ? '' : part.type === 'file' ? fileReference(part, { messageId: message.id, partIndex }) : recentText(message.role, part))
-      .filter(Boolean).map((part) => excerpt(part, ENTRY_LIMIT)).join('\n');
+    const text = stepEntry(message, from, fileReference, pointer);
     if (!text) continue;
-    if (omitted > 0 || (entries.length > 0 && size + text.length > RECENT_ROOM)) {
+    const nextSize = size + text.length + (entries.length > 0 ? 2 : 0);
+    if (omitted > 0 || nextSize > RECENT_ROOM) {
       omitted += 1;
       if (left.length < OMITTED_IDS) left.push({ id: message.id, role: message.role });
       continue;
     }
     entries.push(text);
-    size += text.length;
+    size = nextSize;
   }
   if (entries.length === 0) return 'Your context was compacted ahead of time: the summary above covers this conversation up to now.\n\nContinue the current task.';
   entries.reverse();
