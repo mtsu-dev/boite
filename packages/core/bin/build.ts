@@ -2,9 +2,9 @@
  * `bun run build` of the core: the bundle `dist/` holds, compiled for the
  * kind of build its version says (`packages/contracts/src/experiments.ts`).
  * The version is the one `package.json` carries, which the nightly build
- * stamps first; `defineFlags` (`bin/defines.ts`) turns it into `__BOITE_BUILD_KIND__` and one
- * flag per tagged feature, so a Release bundle drops the code of a nightly or
- * dev feature behind its lazy entry (docs/internals/experiments.md#out-of-the-build).
+ * stamps first. `featureDefines` supplies `Bun.build` with `__BOITE_BUILD_KIND__`
+ * and one flag per tagged feature, so a Release bundle drops the code of a
+ * nightly or dev feature behind its lazy entry (docs/internals/experiments.md#out-of-the-build).
  *
  * `--version <version>` and `--outdir <directory>` build another kind beside
  * the real one: `scripts/ci/feature-cut.ts` reads those bundles.

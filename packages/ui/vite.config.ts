@@ -219,7 +219,12 @@ export default defineConfig(({ mode }) => ({
     // modules the boot shares with a lazy chunk (Svelte, the store, Lucide
     // icons) are one chunk rather than dozens of small ones. A module only the
     // boot uses stays in the entry, and one no boot module imports stays lazy.
-    rolldownOptions: { output: { codeSplitting: { groups: [{ name: 'boot', tags: ['$initial'], minShareCount: 2 }] } } }
+    rolldownOptions: {
+      // Keep lazy references visible to the boot group. The redundant-load
+      // pass removes those references and puts shared modules in the entry.
+      experimental: { chunkOptimization: { avoidRedundantChunkLoads: false } },
+      output: { codeSplitting: { groups: [{ name: 'boot', tags: ['$initial'], minShareCount: 2 }] } }
+    }
   },
   server: { port: 5173, strictPort: true }
 }));

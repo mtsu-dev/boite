@@ -851,13 +851,16 @@ describe('pi driver', () => {
 
   test('with background compaction on, pi loads Boite\'s extension with the thread\'s setting, and a changed setting restarts it at the next turn', async () => {
     const { client, threadId } = await startThread({ warmProcessMinutes: 5, autoCompact: { tokens: 100000, moments: [] }, backgroundCompaction: true });
+    const compactionExtensions = () => fakeLog().split('\n')
+      .filter(line => line.startsWith('extension ') && line.endsWith('pi-compaction.mjs'))
+      .map(line => line.slice('extension '.length));
     await runTurn(client, threadId, 'first');
     await runTurn(client, threadId, 'second');
     // One process for both turns, launched with the extension and the setting it reads.
     expect(argvLines()).toHaveLength(1);
-    const extension = fakeLog().split('\n').find(line => line.startsWith('extension '))?.slice('extension '.length) ?? '';
-    expect(extension.endsWith('pi-compaction.mjs')).toBe(true);
-    expect(readFileSync(extension, 'utf8')).toContain("from '@earendil-works/pi-coding-agent'");
+    const extensions = compactionExtensions();
+    expect(extensions).toHaveLength(1);
+    expect(readFileSync(extensions[0]!, 'utf8')).toContain("from '@earendil-works/pi-coding-agent'");
     expect(compactionLines()).toEqual([{ tokens: 100000, background: true, ratios: { ...BACKGROUND_COMPACT } }]);
 
     await client.call('settings.set', { autoCompact: { tokens: 200000, moments: [] } });
@@ -865,12 +868,12 @@ describe('pi driver', () => {
     expect(argvLines()).toHaveLength(2);
     expect(compactionLines().map(setting => setting.tokens)).toEqual([100000, 200000]);
 
-    // Off: the next process runs without the extension.
+    // Off: the next process runs without the compaction extension.
     await client.call('settings.set', { backgroundCompaction: false });
     await runTurn(client, threadId, 'fourth');
     expect(argvLines()).toHaveLength(3);
     expect(compactionLines()).toHaveLength(2);
-    expect(fakeLog().split('\n').filter(line => line.startsWith('extension '))).toHaveLength(2);
+    expect(compactionExtensions()).toHaveLength(2);
   });
 
   test('the copy Boite\'s extension hands pi draws a background divider, at a turn end or at pi\'s threshold', async () => {
