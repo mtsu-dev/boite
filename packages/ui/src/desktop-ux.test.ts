@@ -244,6 +244,33 @@ test("the rail counts the threads and subagents at work and a mochi's unread rep
   }
 });
 
+test("a right click on a mochi's rail picture opens its menu, not the webview's, and its picks reach the mochi", async () => {
+  writeExperiments(['resident-agents']);
+  await mountOnFake('/?fake=1&agents=1');
+  try {
+    await waitFor(() => document.querySelector('[data-testid=rail-bot]') !== null);
+    const bot = query<HTMLButtonElement>('[data-testid=rail-bot]');
+    const id = bot.dataset['agentId']!;
+    const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 30, clientY: 80 });
+    bot.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    await waitFor(() => document.querySelector('[data-testid=context-menu]') !== null);
+    const values = [...document.querySelectorAll<HTMLElement>('[data-testid=context-menu] [data-value]')].map(row => row.dataset['value']);
+    expect(values).toEqual(expect.arrayContaining(['open', 'rename', 'pin', 'edit', 'pause', 'copy']));
+    // Pin goes through the mochi's own machine, even with the Bots page never opened.
+    query<HTMLButtonElement>('[data-testid=context-menu] [data-value=pin]').click();
+    const view = AgentsView.of(store);
+    await waitFor(() => view.snapshot?.profiles.find(profile => profile.id === id)?.pinned === true);
+    // Edit opens its settings on the Bots page.
+    bot.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 30, clientY: 80 }));
+    await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=edit]') !== null);
+    query<HTMLButtonElement>('[data-testid=context-menu] [data-value=edit]').click();
+    await waitFor(() => store.page === 'agents' && bot.getAttribute('aria-current') === 'page');
+  } finally {
+    store.showChat();
+  }
+});
+
 test('typed confirmation supports Enter and cancellation restores focus', async () => {
   await mountOnFake();
   const request = { title: 'Archive Mira?', confirmLabel: 'Archive', cancelLabel: 'Cancel', danger: true, requiredText: 'Mira', inputLabel: 'Agent name' };

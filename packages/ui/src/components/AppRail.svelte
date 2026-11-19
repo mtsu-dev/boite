@@ -9,7 +9,9 @@
   import { machineName, workspace, type Machine } from '../lib/workspace.svelte';
   import { experimentOn } from '../lib/experiments.svelte';
   import { agentDirectory, followAgentDirectories } from '../lib/agent-directory.svelte';
-  import { agentRows, waitingOn, type AgentRowData } from '../lib/agents.svelte';
+  import { AgentsView, agentRows, waitingOn, type AgentRowData } from '../lib/agents.svelte';
+  import { agentMenuItems, pickAgentAction } from '../lib/agent-menu';
+  import type { AgentPane } from '../lib/store/layout.svelte';
   import { watchTeams, type TeamRow } from '../lib/teams.svelte';
   import { contactsShown } from '../lib/contacts-rail.svelte';
   import { contactsParts } from '../lib/contacts-entry';
@@ -185,6 +187,26 @@
       ...(store.owner ? [separator('sep-engine'), { id: 'engine', label: strings.agents.engineSettings }] : [])
     ], id => { if (id === 'bot') newBot(store); else if (id === 'team') newTeam(store); else botEngine(store); }, anchor);
   }
+  /**
+   * A bot's picture has its row's menu (`agentMenuItems`) on a right click, answered through its own machine since
+   * ids can collide between machines. The rail has no name field: Rename opens its settings, as the column's head does.
+   */
+  function botMenu(event: MouseEvent, { machine, row }: Bot) {
+    const agent = row.profile;
+    const items = agentMenuItems(machine.store, agent, { open: machine.store === store && openBot === agent.id, leaving: !!row.status?.leaving });
+    contextMenu.open(event, items, action => void pickBot(machine, agent.id, action));
+  }
+  async function pickBot(machine: Machine, id: string, action: string) {
+    const show = (pane?: AgentPane) => workspace.showAgents(machine.store, id, pane);
+    if (action === 'open') return show();
+    if (action === 'edit' || action === 'rename') return show('settings');
+    // The Bots page's view may never have loaded, or kept the snapshot of its last visit: a save sends the current revision.
+    const owner = AgentsView.of(machine.store);
+    await owner.refresh();
+    const agent = owner.snapshot?.profiles.find(profile => profile.id === id);
+    if (!agent) { store.reportError(new Error(owner.loadError || strings.connection.unavailable), 'minor'); return; }
+    pickAgentAction(owner, agent, action, { open: () => show(), edit: () => show('settings'), rename: () => show('settings'), report: store });
+  }
   function pickMachine(id: string | null) {
     const entries = machines.flatMap(machine => machine.store.projects.map(project => ({ machine, project })));
     const selected = projectView.selected(entries);
@@ -290,7 +312,7 @@
             <button type="button" class="bot" class:dim={state === 'paused'} aria-label={unread && !selected ? `${labelOf(bot.row.profile.name, state)}, ${unreadLabel(unreadCount)}` : labelOf(bot.row.profile.name, state)}
               aria-current={selected ? 'page' : undefined} aria-keyshortcuts="ArrowUp ArrowDown Home End" data-testid="rail-bot" data-agent-id={bot.row.profile.id} data-state={state} data-look={look}
               onpointerdown={(event) => reorder.start(event, entry.key)} onkeydown={(event) => reorder.keyboard(event, entry.key)}
-              onclick={() => workspace.showAgents(bot.machine.store, bot.row.profile.id)}>
+              onclick={() => workspace.showAgents(bot.machine.store, bot.row.profile.id)} oncontextmenu={(event) => botMenu(event, bot)}>
               <AgentAvatar kind="profile" id={bot.row.profile.id} name={bot.row.profile.name} avatar={bot.row.profile.avatar} size={44} squircle={selected} mood={moodOfState(state, look)}
                 lit={look === 'working' || avatarLit({ open: selected, attention: state === 'waiting', failed: state === 'failed', unread })} />
               <!-- At work: an arc of the accent runs around the whole picture, its disc or its squircle. Asleep: a "z" rises beside it. -->
