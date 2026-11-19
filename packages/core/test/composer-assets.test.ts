@@ -36,7 +36,9 @@ test('asset collection preserves shared references and pending uploads through r
   expect(count()).toBe(1); // The other conversation still references it.
   await a.call('composer.asset.put', { attachment: { ...attachment, data: 'bmV4dA==' } });
   await b.call('projects.remove', { projectId: h.core.threads.require(two.threadId).projectId! });
-  expect(count()).toBe(1); // a's pending upload survives deletion of every saved reference.
+  expect(count()).toBe(1); // The hidden project keeps its saved attachment.
+  expect((await b.call('composer.put', { section: 'inputs', id: two.threadId, expectedRevision: 1, value: null })).accepted).toBe(true);
+  expect(count()).toBe(1); // The pending upload survives deletion of every saved reference.
   a.close();
   await waitFor(() => count() === 0, 1000);
   expect(count()).toBe(0);

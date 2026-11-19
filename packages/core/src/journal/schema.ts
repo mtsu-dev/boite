@@ -18,7 +18,7 @@ import { createKeptProcesses } from './kept-processes.ts';
 import { createMessageStats } from './thread-stats.ts';
 import { ARTIFACT_ROW } from './artifact-references.ts';
 
-export const SCHEMA_VERSION = 51;
+export const SCHEMA_VERSION = 52;
 
 /** Raised when the journal was written by a newer core than this one. */
 export class JournalTooNewError extends Error {
@@ -510,6 +510,10 @@ export function migrate(db: Database, file: string): { from: number; to: number 
   if (!hasColumn('turns', 'switched')) {
     db.exec('ALTER TABLE turns ADD COLUMN switched TEXT');
     version = 51;
+  }
+  if (!hasColumn('projects', 'removed_at')) {
+    db.exec('ALTER TABLE projects ADD COLUMN removed_at INTEGER');
+    version = 52;
   }
   createSharedProjects(db);
   createSharedBoard(db);

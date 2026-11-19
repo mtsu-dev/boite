@@ -2,11 +2,14 @@ import type { Database } from 'bun:sqlite';
 import type { ThreadSummary } from '@boite/contracts';
 import { toThread, type ThreadRow } from './rows.ts';
 
+export const REMOVED_PROJECTS = 'SELECT id FROM projects WHERE removed_at IS NOT NULL';
+
 /** Whole thread rows a client can see, with the time of their last prompt. Callers add `AND ...` filters. */
 export const VISIBLE_THREADS = `SELECT *,
   EXISTS (SELECT 1 FROM threads parent WHERE parent.id = threads.parent_thread_id AND parent.agent_session_id IS NOT NULL) AS parent_is_bot,
   (SELECT MAX(created_at) FROM messages WHERE thread_id = threads.id AND role = 'user') AS last_user_message_at
-  FROM threads WHERE id NOT IN (SELECT thread_id FROM thread_deletions)`;
+  FROM threads WHERE id NOT IN (SELECT thread_id FROM thread_deletions)
+    AND (project_id IS NULL OR project_id NOT IN (${REMOVED_PROJECTS}))`;
 
 /**
  * Visible threads matching `filter`, in creation order. Every read of whole

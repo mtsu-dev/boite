@@ -23,7 +23,7 @@ import { PROCESS_COLUMNS, PROCESS_FROM, ProcessRows } from './journal/processes.
 import { cachePages, runWrite } from './journal/statements.ts';
 import { WAL_LIMIT_BYTES, WalCheckpoints, type WalCheckpointOptions } from './journal/wal-checkpoints.ts';
 import { toAccount, toMessage, toProcess, toProject, toThread, toTurn, parseJson } from './journal/rows.ts';
-import { restoreDeletedRows, threadsWhere, VISIBLE_THREADS, writeThread } from './journal/thread-rows.ts';
+import { REMOVED_PROJECTS, restoreDeletedRows, threadsWhere, VISIBLE_THREADS, writeThread } from './journal/thread-rows.ts';
 import { oneTurn, pageTurns, sumSessionUsage, writeTurn, type SessionUsage } from './journal/turn-rows.ts';
 import type { AccountRow, MessageRow, ProcessRow, ProjectIconRow, ProjectRow, ThreadRow, TurnRow } from './journal/rows.ts';
 import type { DetectedIcon as StoredProjectIcon } from './project-icons.ts';
@@ -243,13 +243,26 @@ export class Journal {
   }
 
   getProject(projectId: string): Project | null {
-    const row = this.db.query('SELECT * FROM projects WHERE id = ?').get(projectId) as ProjectRow | null;
+    const row = this.db.query('SELECT * FROM projects WHERE id = ? AND removed_at IS NULL').get(projectId) as ProjectRow | null;
     return row === null ? null : toProject(row);
   }
 
   listProjects(): Project[] {
-    const rows = this.db.query('SELECT * FROM projects ORDER BY rowid').all() as ProjectRow[];
+    const rows = this.db.query('SELECT * FROM projects WHERE removed_at IS NULL ORDER BY rowid').all() as ProjectRow[];
     return rows.map(toProject);
+  }
+
+  listRemovedProjects(): Project[] {
+    const rows = this.db.query('SELECT * FROM projects WHERE removed_at IS NOT NULL ORDER BY removed_at DESC').all() as ProjectRow[];
+    return rows.map(toProject);
+  }
+
+  removeProject(projectId: string, at: number): void {
+    this.db.query('UPDATE projects SET removed_at = ? WHERE id = ?').run(at, projectId);
+  }
+
+  restoreProject(projectId: string, name: string): void {
+    this.db.query('UPDATE projects SET removed_at = NULL, archived = 0, name = ? WHERE id = ?').run(name, projectId);
   }
 
   // -- threads --------------------------------------------------------------
@@ -314,7 +327,8 @@ export class Journal {
   listDeletedThreads(): DeletedThreadSummary[] {
     const rows = this.db.query(`SELECT t.*, d.deleted_at, (SELECT MAX(created_at) FROM messages WHERE thread_id = t.id AND role = 'user') AS last_user_message_at
       FROM threads t JOIN thread_deletions d ON t.id = d.thread_id
-      WHERE d.root_id = t.id ORDER BY d.deleted_at DESC, d.rowid DESC`).all() as (ThreadRow & { deleted_at: number })[];
+      WHERE d.root_id = t.id AND (t.project_id IS NULL OR t.project_id NOT IN (${REMOVED_PROJECTS}))
+      ORDER BY d.deleted_at DESC, d.rowid DESC`).all() as (ThreadRow & { deleted_at: number })[];
     return rows.map(row => ({ ...toThread(row), deletedAt: row.deleted_at }));
   }
 
@@ -372,7 +386,7 @@ export class Journal {
         this.db.query('DELETE FROM workflow_requests WHERE run_id IN (SELECT id FROM workflow_runs WHERE root_id = ?)').run(id);
         this.db.query('DELETE FROM workflow_runs WHERE root_id = ?').run(id);
         deleteComposerInput(this.db, id, this.collectComposerAssets);
-        for (const prefix of ['merged-pr-archive:', 'linked-pull-requests:', 'pr-watches:', 'activity:', 'activity-input:', 'activity-choice:', 'move-note:', 'compaction-tail:', 'session-totals:', 'brain-sent:', 'coordination-sent:', 'account-sessions:', 'memory-notices:', 'coordination:', 'coordination-autopause:', 'delegation:', 'delegation-turns:', 'delegation-episode:', 'delegation-worktree:', 'spawn-origin:', 'spawns:', 'worktree-removed:', 'remote-parent:', 'created-by:']) this.deleteSetting(`${prefix}${id}`);
+        for (const prefix of ['merged-pr-archive:', 'linked-pull-requests:', 'pr-watches:', 'activity:', 'activity-input:', 'activity-choice:', 'move-note:', 'compaction-tail:', 'session-totals:', 'brain-sent:', 'coordination-sent:', 'account-sessions:', 'memory-notices:', 'coordination:', 'coordination-autopause:', 'delegation:', 'delegation-turns:', 'delegation-episode:', 'delegation-worktree:', 'spawn-origin:', 'spawns:', 'worktree-removed:', 'remote-parent:', 'created-by:', 'deferred-answers:']) this.deleteSetting(`${prefix}${id}`);
         this.db.query('DELETE FROM threads WHERE id = ?').run(id);
         this.db.query('DELETE FROM thread_deletions WHERE thread_id = ?').run(id);
       }
@@ -882,5 +896,8 @@ export class Journal {
       .query('INSERT INTO events (thread_id, ts, type, version, payload) VALUES (?, ?, ?, ?, ?)')
       .run(event.threadId, event.ts ?? Date.now(), event.type, event.version, JSON.stringify(payload ?? null));
     projectQuestion(this.db, event.type, event.threadId, event.payload);
+    if (event.threadId && (event.type === 'thread.rewound' || (event.type === 'thread.archived' && (event.payload as ThreadSummary).archived))) {
+      this.deleteSetting(`deferred-answers:${event.threadId}`);
+    }
   }
 }

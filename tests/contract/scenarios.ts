@@ -131,8 +131,8 @@ async function summary(env: ContractEnv, threadId: string): Promise<ThreadSummar
 }
 
 /** One echo turn, run to its end, so the thread has a turn to ask in. */
-async function finishedTurn(env: ContractEnv, threadId: string): Promise<void> {
-  await env.call('turns.start', { threadId, prompt: 'hello' });
+async function finishedTurn(env: ContractEnv, threadId: string, prompt = 'hello'): Promise<void> {
+  await env.call('turns.start', { threadId, prompt });
   await until('the turn to finish', async () => !['queued', 'running', 'waiting'].includes((await summary(env, threadId)).status));
 }
 
@@ -898,8 +898,10 @@ export const SCENARIOS: Record<string, Scenario> = {
     }
     await env.call('threads.remove', { threadId: kept.id });
     await env.call('projects.remove', { projectId: setup.projectId });
-    check(!(await env.call('threads.deleted', {})).some(t => t.id === kept.id), 'project removal left a recoverable deletion');
+    check(!(await env.call('threads.deleted', {})).some(t => t.id === kept.id), 'a removed project still lists its deleted conversations');
     await refusedWith(env.call('threads.restore', { threadId: kept.id }), RpcErrorCode.NotFound, ['threadId']);
+    same((await env.call('projects.add', { path: setup.projectPath })).id, setup.projectId, 'the re-added project id');
+    same((await env.call('threads.restore', { threadId: kept.id })).id, kept.id, 'the conversation stays recoverable');
     await refusedWith(env.call('threads.remove', { threadId: 'thr_missing' }), RpcErrorCode.NotFound, ['threadId']);
   },
   'threads.stats counts the prompts sent and refuses a missing conversation': async env => {
@@ -913,6 +915,7 @@ export const SCENARIOS: Record<string, Scenario> = {
   'projects.remove archives each thread before removing it': async (env) => {
     const setup = await echo(env);
     const created = await thread(env, setup);
+    await finishedTurn(env, created.id, 'Keep this conversation');
     const events = record(env, ['thread.updated', 'thread.removed', 'project.removed']);
     await env.call('projects.remove', { projectId: setup.projectId });
     await until('project.removed', () => events.events.some((event) => event.name === 'project.removed'));
@@ -921,6 +924,11 @@ export const SCENARIOS: Record<string, Scenario> = {
       .filter((event) => event.name === 'project.removed' || (event.payload as { id?: string; threadId?: string }).id === created.id || (event.payload as { threadId?: string }).threadId === created.id)
       .map((event) => (event.name === 'thread.updated' ? `thread.updated archived=${(event.payload as ThreadSummary).archived}` : event.name));
     same(order.filter((entry, index) => index === 0 || entry !== order[index - 1]), ['thread.updated archived=true', 'thread.removed', 'project.removed'], 'the events');
+    await refusedWith(env.call('threads.get', { threadId: created.id }), RpcErrorCode.NotFound);
+    same((await env.call('projects.add', { path: setup.projectPath })).id, setup.projectId, 'the re-added project id');
+    const restored = await env.call('threads.get', { threadId: created.id });
+    check(restored.archived && restored.messages.some(message => message.role === 'user' &&
+      message.parts.some(part => part.type === 'text' && part.text === 'Keep this conversation')), 'the restored project lost its conversation');
   },
   'a group is created, invites, refuses what names the wrong machine, and is left': async (env) => {
     same(await env.call('group.get', {}), null, 'the group before any');

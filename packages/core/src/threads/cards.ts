@@ -238,8 +238,7 @@ export class ThreadCards {
     pending.resolve(answer);
   }
 
-  #recordAnswer(request: QuestionRequest, answer: QuestionAnswer, by: string): void {
-    this.questions.delete(request.id);
+  #recordAnswer(request: QuestionRequest, answer: QuestionAnswer, by: string, persist?: () => void): void {
     this.#core.journal.append(
       {
         type: 'question.answered',
@@ -247,8 +246,9 @@ export class ThreadCards {
         version: 1,
         payload: { questionId: request.id, answer },
       },
-      () => undefined,
+      () => persist?.(),
     );
+    this.#core.bus.whenCommitted(() => this.questions.delete(request.id));
     this.#core.bus.emit('question.answered', { questionId: request.id, threadId: request.threadId, answer });
     logCard(this.#core, request, 'question.answered', `Question answered by ${by} with ${answer.optionIds.length} options${answer.text ? ' and text' : ''}`, { options: answer.optionIds.length, text: Boolean(answer.text), async: request.async === true, by });
   }
@@ -256,12 +256,15 @@ export class ThreadCards {
   /** An asynchronous card answered: folded where it was drawn, and the answer goes to the agent as a message. */
   #settleAsync(pending: PendingQuestion, answer: QuestionAnswer, by: string): void {
     const request = pending.request;
-    this.#recordAnswer(request, answer, by);
-    this.#foldAsyncCard(request.id, answer);
+    const text = request.agentSetting === undefined ? answerTextOf(request, answer) : this.#core.workforce.settingCards.answerText(request.agentSetting, answer);
+    const prompt = `> ${request.text}\n\n${text}`;
+    this.#core.bus.afterCommit(() => this.#core.journal.db.transaction(() => {
+      this.#recordAnswer(request, answer, by, () => this.threads.deferred.saveAnswer(request.threadId, prompt));
+      this.#foldAsyncCard(request.id, answer);
+    })());
     this.#asyncChanged(request.threadId);
     pending.resolve(answer);
-    const text = request.agentSetting === undefined ? answerTextOf(request, answer) : this.#core.workforce.settingCards.answerText(request.agentSetting, answer);
-    this.threads.deferred.deliverAnswer(request.threadId, `> ${request.text}\n\n${text}`);
+    this.threads.deferred.deliverAnswer(request.threadId, prompt);
   }
 
   /**
@@ -400,13 +403,13 @@ export class ThreadCards {
   #foldAsyncCard(questionId: RequestId, answer: QuestionAnswer | null): void {
     const card = this.asyncCards.get(questionId);
     if (card === undefined) return;
-    this.asyncCards.delete(questionId);
     const threadId = card.threadId;
     const part: MessagePart = { ...card.part, answer };
     this.#core.journal.append(
       { type: 'message.part', threadId, version: 1, payload: { messageId: card.messageId, partIndex: card.partIndex, part } },
       () => this.#core.journal.setMessagePart(card.messageId, card.partIndex, part),
     );
+    this.#core.bus.whenCommitted(() => this.asyncCards.delete(questionId));
     this.#core.bus.emit('message.part', { threadId, messageId: card.messageId, partIndex: card.partIndex, part });
   }
 

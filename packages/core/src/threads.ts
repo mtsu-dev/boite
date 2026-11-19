@@ -394,10 +394,11 @@ export class ThreadStore {
   }
 
   archive(threadId: ThreadId, archived: boolean, onlyIfIdle = false, plugin?: { pluginId: string; pluginName: string }): ThreadSummary {
-    this.require(threadId);
-    if (archived && onlyIfIdle) assertIdleFamily(this.#core, threadId, plugin ? 'automatic' : 'explicit');
-    if (!archived && this.#removing.has(threadId)) throw refused('threadId: this conversation is being deleted', { threadId, field: 'threadId', expected: 'a conversation not being deleted' });
     const thread = this.require(threadId);
+    if (archived && onlyIfIdle) assertIdleFamily(this.#core, threadId, plugin ? 'automatic' : 'explicit');
+    if (!archived && (this.#removing.has(threadId) || this.#core.projects.isRemoving(thread.projectId))) {
+      throw refused('threadId: this conversation or its project is being removed', { threadId, field: 'threadId', expected: 'a conversation and project not being removed' });
+    }
     // A subagent reopened by hand is not put away again for the work it already finished.
     if (!archived && thread.archived && thread.parentThreadId) this.#core.delegation.retirements.keep(threadId);
     const saved = this.#core.bus.afterCommit(() => this.#core.journal.db.transaction(() => {
