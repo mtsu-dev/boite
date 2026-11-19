@@ -59,8 +59,7 @@ dependency is required too.
 | `tests/e2e/` | Desktop and E2E checks plus `check:e2e`; `tests/e2e/lib/` also selects stress |
 | `Dockerfile`, `.dockerignore`, `docker/` | Native x64 and ARM64 Docker smoke tests |
 | `packages/ui/` | Full type checks and UI tests, desktop/E2E without the shell's Rust tests, Docker and stress; `preview-picker.js` and `preview-highlight.js`, which `browser.rs` embeds, add them |
-| `apps/android/`, `android.yml`, `scripts/ci/android-apk.ts` | Unsigned APK build; `android-apk.ts` adds the Boite Server APK |
-| `apps/android-server/` outside `termux/`, `android-server.yml`, `scripts/ci/android-server-apk.ts` | Unsigned Boite Server APK build |
+| `apps/android-server/` outside `termux/`, `android-server.yml`, `scripts/ci/android-server-apk.ts`, `scripts/ci/android-version.ts` | Unsigned Boite Server APK build |
 | `apps/android-server/termux/` | Core tests, type checks and UI tests, desktop/E2E: the release bundle carries it |
 | `telemetry/` | Full type checks and UI tests plus the existing relay behavior suite |
 | `tests/stress/`, `bench/agent-stress.ts`, `bench/lib/` | Full type checks, UI tests and stress |
@@ -122,8 +121,8 @@ reports its own name (`Desktop`), never the inner ones. So:
   skipped unless `coreRunners` lists its label; the UI tests are `Type checks
   and UI tests 1/2` and `UI tests 2/2`; the E2E suite is `E2E 1/5` to `E2E 5/5`.
   YAML anchors (`&core-steps`, `&web-steps`, `&e2e-steps`) keep one step list.
-- `desktop.yml`, `server-verify.yml`, `android.yml` and `android-server.yml`
-  take an `enabled` input,
+- `desktop.yml`, `server-verify.yml` and `android-server.yml` take an
+  `enabled` input,
   default on. `ci.yml` always calls them and turns it off when their paths did
   not change: every inner job skips, costs no runner, and reports
   `Desktop / Linux x64` as it would running. The portable jobs are one per
@@ -690,7 +689,7 @@ and the next two were each replaced while pending, 9c974e65's passed at 09:33,
 and the night was lost on `ended cancelled` (run 39226757576). The job writes the commit it passed as
 its `sha` output, and every later job checks out, tags and publishes that
 commit, never `github.sha`; the version step runs that commit's `nightly.ts`
-with `GITHUB_SHA` set to it. `desktop.yml`, `android.yml`, `android-server.yml`,
+with `GITHUB_SHA` set to it. `desktop.yml`, `android-server.yml`, `mobile.yml`,
 `server.yml` and `server-verify.yml` take it as their `ref` input. `app.yml` deploys its own
 checkout, so it does not follow and a cancelled run still fails it. The whole
 wait is bounded at two hours: 35 minutes behind the main run ahead, 35 for the
@@ -772,11 +771,10 @@ stable Docker `latest` or GitHub's latest stable release.
 
 Stable and nightly desktop tracks share the regular install and data; Boite Dev
 is separate ([updates](updates.md)). The server uses `dev`; use separate Compose
-volumes ([server](server.md)). The signed or reused APK, which opens the phone
-app's address, is required too; [Android](android.md) owns the host, signing
-and reuse rules. So is the Boite Server APK, signed with the same key or reused
-while `apps/android-server` outside `termux/` is unchanged
-([Android server](android-server.md#publishing-the-app)).
+volumes ([server](server.md)). The signed native Android app is required too
+([Android app](android-native.md)), and so is the Boite Server APK, signed
+with the same key or reused while `apps/android-server` outside `termux/` is
+unchanged ([Android server](android-server.md#publishing-the-app)).
 
 ## The phone app's address
 

@@ -10,7 +10,6 @@ working on the code. To learn how to use Boite, read the [user guide](../README.
 - [The tour](onboarding.md): first launch, language, appearance and workspace choices.
 - [Accounts](accounts.md): agent sign-ins and isolated accounts on the machine running them.
 - [Phone access](phone.md): pairing, mobile navigation, permissions and offline behavior.
-- [Android client app](android.md): the APK that opens the phone UI and connects to an existing core.
 - [Native Android app](android-native.md): the Tauri client in `apps/mobile`, built for Play and phones without Google services.
 - [Headless server](server.md): run a core with Docker or without the desktop app.
 - [Android server](android-server.md): host a core and agents on a phone with Termux and the separate Boite Server app.

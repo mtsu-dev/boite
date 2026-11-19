@@ -104,4 +104,4 @@ An APK from a newer release installs over the old one.
   without a screen.
 - Technical reference: [desktop updates](internals/updates.md),
   [platform readiness](internals/portability.md),
-  [Android app](internals/android.md).
+  [Android app](internals/android-native.md).

@@ -709,8 +709,8 @@ describe('server', () => {
       expect(manifest.status).toBe(200);
       expect(manifest.headers.get('cache-control')).toBe('no-cache');
 
-      // Android reads it before opening the APK without an address bar
-      // (docs/internals/android.md), and Vite only copies a dot directory on purpose.
+      // A copy of the old Android app, a Trusted Web Activity, still opens full screen while it is served;
+      // the APK pipelines read the signing key from it (scripts/ci/android-version.ts). Vite copies a dot directory only on purpose.
       const assetlinks = await fetch(`${harness.url}/.well-known/assetlinks.json`);
       expect(assetlinks.status).toBe(200);
       expect(assetlinks.headers.get('content-type')).toStartWith('application/json');

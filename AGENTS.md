@@ -157,8 +157,8 @@ and assertions when making the suite faster.
   through coordination letters, the reply envelope and `boite team`.
 - [Model switching](docs/internals/model-switching.md) and [context](docs/internals/context.md):
   session reuse, queued turns and compaction.
-- [Phone](docs/internals/phone.md), [Android app](docs/internals/android.md) and [server](docs/internals/server.md):
-  pairing, the APK and deployment.
+- [Phone](docs/internals/phone.md) and [server](docs/internals/server.md):
+  pairing and deployment.
 - [Android server](docs/internals/android-server.md): the core and agents on a phone in
   Termux, driven by the Boite Server app.
 - [Native Android app](docs/internals/android-native.md): the Tauri client in

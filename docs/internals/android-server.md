@@ -1,6 +1,6 @@
 # Boite on an Android phone
 
-This is the server, separate from the [Android client app](android.md).
+This is the server, separate from the [Android client app](android-native.md).
 Installing the client alone does not install Termux, a core or agent CLIs.
 
 `apps/android-server` turns a phone into a Boite machine: the core and the
@@ -241,21 +241,22 @@ comes out unsigned; `apksigner` signs it.
 
 `ci.yml` builds the APK unsigned, the `Android server / apk` check, when
 `apps/android-server` outside `termux/`, `android-server.yml`,
-`scripts/ci/android-server-apk.ts` or `scripts/ci/android-apk.ts` change.
+`scripts/ci/android-server-apk.ts` or `scripts/ci/android-version.ts` change.
 `termux/` is not in the APK but in the release bundle, so a change there runs
 the core suite, which packs it, the type checks and the desktop jobs, which
 build it.
 
 The nightly runs `android-server.yml` with `release` on, and the release
-attaches `boite-server-android-<MAJOR.MINOR.PATCH>.apk` beside the Boite app's
+attaches `boite-server-android-<MAJOR.MINOR.PATCH>.apk` beside the native app's
 APK and lists it in `SHA256SUMS.txt`. `android-server-apk.ts reuse` takes back
 the newest published one when its tag is in the checkout, nothing under
 `apps/android-server` outside `termux/` changed since that tag, and its
 certificate is still the one `assetlinks.json` publishes. Otherwise the job
-builds the next patch and signs it with the Boite app's key (`ANDROID_KEYSTORE`,
+builds the next patch and signs it with the native app's key (`ANDROID_KEYSTORE`,
 alias `boite`), then checks that certificate the same way: Android refuses an
 update signed with another key.
 
-The version counts like the Boite app's ([Android](android.md#the-app-version)):
-`VERSION` holds MAJOR.MINOR, raised by hand and never below the published one,
-and the patch grows only when the APK is rebuilt.
+The app counts its own version (`scripts/ci/android-version.ts`): `VERSION`
+holds MAJOR.MINOR, raised by hand and never below the published one, and the
+patch grows only when the APK is rebuilt. The version code is
+`MAJOR * 1000000 + MINOR * 1000 + PATCH`, so MINOR and PATCH stay under 1000.
