@@ -6,7 +6,7 @@
 import { untrack } from 'svelte';
 import { contactsRail, contactsShown } from './contacts-rail.svelte';
 import { contactsParts } from './contacts-entry';
-import { operatorOnOpen } from './operator';
+import { operatorHost, operatorOnOpen } from './operator';
 import { strings } from './strings';
 import type { Store } from './store.svelte';
 
@@ -34,10 +34,15 @@ export function contactsViews(current: () => Store, machines: () => readonly { s
     if (!contactsShown(current()) || narrow() || views.ContactsRail) return;
     void contactsParts?.ContactsRail().then(module => { views.ContactsRail = module.default; }).catch(() => {});
   });
+  // Waits for the group's answer, which names the machine that holds the
+  // Operator, and follows that machine: reached again while Contacts stay
+  // open, it gets the Operator then.
   $effect(() => {
     const store = current();
     const open = contactsShown(store) && (store.page === 'home' || (contactsRail.shown(store) && !narrow()));
-    if (open && store.connection === 'ready') untrack(() => operatorOnOpen(store, machines().map(machine => machine.store)));
+    if (!open || store.connection !== 'ready' || !store.groupKnown) return;
+    const stores = machines().map(machine => machine.store);
+    if (operatorHost(store, stores)) untrack(() => operatorOnOpen(store, stores));
   });
   $effect(() => {
     for (const machine of machines()) if (machine.store.page === 'home' && !contactsShown(machine.store)) machine.store.showChat();

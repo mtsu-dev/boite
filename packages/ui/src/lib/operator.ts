@@ -69,12 +69,13 @@ const asked = new WeakSet<Store>();
 
 /**
  * The first time Contacts opens on `home` in this session, its page or its
- * column: `ensureOperator`, never at boot. Once it found or made the
+ * column: `ensureOperator`, never at boot, and never before `home` knows its
+ * group, which says where the Operator lives. Once it found or made the
  * Operator nothing asks again until a reload; a failure, or no machine to
  * hold it yet, lets the next opening try again.
  */
 export function operatorOnOpen(home: Store, stores: readonly Store[]): void {
-  if (asked.has(home) || !operatorHost(home, stores)) return;
+  if (asked.has(home) || !home.groupKnown || !operatorHost(home, stores)) return;
   asked.add(home);
   void ensureOperator(home, stores).then(done => { if (!done) asked.delete(home); });
 }
