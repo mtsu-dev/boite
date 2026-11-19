@@ -6,12 +6,11 @@ live context of its work; the team only carries posts between them. A post
 wakes the mochis it names, and a mochi answers either in the group, which every
 member reads, or privately to one member or the owner.
 
-Teams sit behind the Teams switch in Settings > Experiments
-([experiments](experiments.md)). While it is off on a machine, the `teams.*`
-methods and `boite team` commands on the teams that machine holds refuse with
-the reason `experiment-off`, and no mochi of that machine can enter a team. The
-core reads the desktop app's experiments;
-[across machines](#across-machines) says what each machine's switch decides.
+Teams are finished ([experiments](experiments.md#teams)): the `teams.*`
+methods and `boite team` commands answer in every build, whatever an app
+reports, so a core restart or a headless machine turns nothing off.
+[Across machines](#across-machines) says what an older machine still running
+the Teams switch decides.
 
 Contracts: `packages/contracts/src/teams.ts`; core:
 `packages/core/src/teams/` (store, journal tables, prompt, RPC, what goes
@@ -207,20 +206,14 @@ answer. A final answer waits in the member machine's durable outbox and posts
 once, under the id derived from its turn. Outbox rows older than 30 days are
 dropped at the next start.
 
-**The switch.** Methods are filtered on the machine holding the team:
-
-- While the holder's switch is off, `say`, `dm`, `read` and the owner's changes
-  refuse, with the holder's name when they came from another machine. Final
-  answers of turns under way, letters already flowing, reports and moves
-  continue, as for a local mochi.
-- A machine's own switch decides whether its mochis enter a team: while it is
-  off, naming one of its mochis (`team.bot`) refuses with
-  `<machine>: teams need the Teams experiment…`, and the team is not created or
-  the mochi not added.
-- A machine that turns its switch off after its mochi joined keeps that member.
-  Its letters still arrive, and its mochi's commands on a team held elsewhere
-  still go to the holder, whose switch decides. To take a mochi out, remove it
-  from the team.
+**An older machine with the switch.** A machine of the group that still runs
+a build where Teams were an experiment filters on its own switch while it is
+off: as the holder it refuses `say`, `dm`, `read` and the owner's changes,
+with its name; asked for one of its mochis (`team.bot`) it refuses, and the
+command says `<machine>: teams need the Teams experiment` (reason
+`experiment-off`), so the team is not created or the mochi not added. Final
+answers of turns under way, letters already flowing, reports and moves
+continue. Updating that machine removes the switch.
 
 **Versions.** Every machine of a team needs a version with this feature. An
 older machine answers that it does not know the operation, and the command says
@@ -280,8 +273,7 @@ and an update of the app.
 
 ### In the app
 
-Teams is an experiment of a Nightly or a source build; Mochis, which it builds
-on, is on in every build. With the experiment on, a Teams section heads the
+Teams, like Mochis which they build on, are on in every build. A Teams section heads the
 Mochis page's list, above the mochis, on the desktop and on the phone
 (`components/agents/AgentsRail.svelte`). The heading stays while there is no
 team yet, with one line under it, "No team yet: put a few mochis in one chat.",
@@ -305,8 +297,8 @@ waiting to move, is listed greyed
 with an "i" that says why, and a tap on it says the same under the list. The
 dialog asks for a name, refuses one that starts with `@`, says a taken name as
 it is typed, and asks for at least one mochi of this machine, up to 12 in all: the
-core's own checks, which still answer for themselves, so a machine that has the
-experiment off or does not answer shows its refusal in the dialog. Create, or
+core's own checks, which still answer for themselves, so a machine that
+refuses or does not answer shows its refusal in the dialog. Create, or
 Enter in the name, calls
 `teams.create` on the page's machine without a card, so `createdBy` is the
 owner, then opens the new team's chat. Escape, Cancel or the scrim close it,
@@ -362,12 +354,12 @@ private to one member, which wakes that member only. Both menus show a member's
 machine when it is another one. Reply on a post answers
 it. A post keeps its id until it lands, so a retry after a lost answer returns
 the same post. A paused team still takes posts and says they wait; an archived
-team keeps its chat readable and takes none. With the experiment off, or a
-core that does not answer for the team, a note stands in the composer's place.
+team keeps its chat readable and takes none. With a core that does not answer
+for the team, a note stands in the composer's place.
 
 A paired phone lists the teams and posts as the owner (`teams.list`,
 `teams.post` and the `teams.changed` event in `DEVICE_METHODS` and
-`DEVICE_EVENTS`); the core still gates both on the desktop's experiment.
+`DEVICE_EVENTS`).
 Creating, changing, pausing and archiving a team are not device methods: the
 phone shows New team greyed, whose tap says "Only the computer running Boite
 can create or change teams.", and the chat's menu with every item greyed and
@@ -402,7 +394,7 @@ created it answers them ([across machines](#across-machines)). When it does not
 answer, the refusal says so: send the same command with the same
 `--request-id` to post once.
 
-The mochis' guide gains three lines while the experiment is on: answer
+The mochis' guide has three lines for teams: answer
 `[quiet]` when nothing needs saying, group or private, and when to propose,
 invite or leave.
 
@@ -414,10 +406,6 @@ invite or leave.
 - A machine leaving the group leaves its members in its teams, with their
   posts `unreachable`, until the owner removes them. A team whose holder left
   the group refuses its commands on the members' machines, saying so.
-- The switch lives in memory: a core no app has spoken to since it started
-  (a headless machine, a restart) reads as off, so until an app connects it
-  lets no mochi of its own enter a team and refuses what is asked of the teams it
-  holds.
 - A member of another machine has no page here: its row opens nothing.
 - `@name` wakes every member of that name, so two mochis of one name on two
   machines wake together.
@@ -425,8 +413,6 @@ invite or leave.
 - Posts carry no attachments; long content goes by path.
 - Two mochis that answer each other stop only when one answers `[quiet]`; the
   daily budget is the other bound.
-- The experiment gates the methods and the commands, not delivery: letters
-  already in an inbox still go out after the switch is turned off.
 - Private keeps a post out of the other members' letters and
   `boite team read`. It is not secret from a mochi allowed to read the
   recipient's own conversation (`collaboration.read`), which shows what that

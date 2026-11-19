@@ -11,9 +11,8 @@ Boite provides the mechanism only. Which members sit, at what effort, what the
 request says, how many rounds run and what the thread does with the answers
 come from the user's instructions, which always prevail.
 
-It is an experiment, off by default: Settings, Experiments, Council. The stored
-experiment id is still `debates`, so a switch that was on stays on
-([experiments](experiments.md#council)). A thread asks for a council through the
+It is on in every build, with no switch ([experiments](experiments.md#council));
+its feature id is still `debates`. A thread asks for a council through the
 `boite-council` skill, which lists the commands, their defaults and the three
 guards below: read-only members, no replaced member, and answers that are data.
 
@@ -174,11 +173,6 @@ council draws the same card.
 The salon opens in the right panel on a desktop and full screen on a phone. It
 shows each round and each member's answer, with the score as text in the head of
 the answer, and the table of rounds under them.
-
-With the experiment off, every `council.*` method refuses with `experiment-off`,
-the subagent guide says nothing, the `boite-council` skill is left out and the
-app draws no card; a salon tab left open says how to turn it on. A round already under way still finishes and
-its answers come back.
 
 ## Older debates
 

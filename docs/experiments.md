@@ -3,6 +3,10 @@
 Experiments are features that are not finished yet. They can change or
 disappear, so each one has a switch in Settings, Experiments.
 
+There is no experiment today: every feature is finished and on in every
+build, so Settings has no Experiments page. The page comes back with the next
+experiment.
+
 ## Where they exist
 
 Experiments exist in Nightly builds only. A Release has no Experiments page
@@ -21,56 +25,33 @@ Dev only.
 - The machine your window is connected to decides. A phone or a browser
   paired with a machine on a Release has no Experiments page either.
 - When an experiment is finished, it leaves this page and is on for everyone,
-  in a Release too. Mochis, the Grain theme, Claude Code session import, the
-  prompt cache timer, pinned model quotas and actions shown in recordings
-  were experiments once: they need no switch any more.
+  in a Release too. A finished feature you may want off gets its own switch
+  on the Settings page it belongs to.
 
 ## How the switches work
 
-- Most switches belong to the device you flip them on. They start off and do
-  not change another computer or phone.
+- A switch belongs to the device you flip it on. It starts off and does not
+  change another computer or phone.
 - A phone or a browser starts with the switches of the desktop app on its
   computer, and follows it when they change. Settings on a phone has its own
   Experiments row. Flipping a switch there keeps the phone's own set; Same as
   the computer, at the top, follows the desktop app again.
-- Three settings at the bottom of the page belong to a machine, not to the
-  device. They change how that machine runs its conversations, for every
-  device connected to it. Pick the machine in the bar above them. Only the
-  owner sees them, and only for a machine that runs a Nightly.
 
-## Current experiments
+## Finished experiments
 
-| Experiment | What it adds | Belongs to |
-| --- | --- | --- |
-| Whip | An animated whip that follows your pointer or finger; flick to crack it, click or tap to drop it | This device |
-| Contacts | Link your Boite with another owner's through Tailscale | This device |
-| Automatic goals | A long prompt starts a reviewed goal with its checklist and a board card | This device |
-| Teams | Mochis that work together in a shared chat | The desktop app |
-| Council | Several AIs review a piece of work or a plan, each alone and read-only | The desktop app |
-| Keep the prompt cache warm | Short pings that keep the provider's cache while a conversation waits on its agents | The machine |
-| Background compaction | Automatic compactions run on a copy of the session, out of sight; with a token limit, from 85% of it while you keep working | The machine |
-| Live device stream | The Device panel plays a plugged-in Android phone as live video | The machine |
-
-## Notes on some experiments
-
-- Turning Contacts on creates the Operator, the built-in mochi that carries
-  every request.
-- Teams and Council are also read by the machine, from its desktop app's
-  switches, and a phone follows the desktop app for them. Turning Council off
-  does not stop a review under way.
-- Automatic goals has a Prompt length setting under its switch: a prompt that
-  starts a turn with at least that many characters starts a goal.
-- Whip: with reduced motion turned on in your system settings, the whip is
-  greyed and does nothing.
-- Each keep-warm ping and each compaction counts as usage. Background
-  compaction works with Claude and Codex.
+| Feature | Where it is now |
+| --- | --- |
+| Mochis, the Grain theme, Claude Code session import, the prompt cache timer, pinned model quotas, actions shown in recordings | On, with no switch |
+| Whip | On, with a switch in Settings, Appearance ([first steps](first-steps.md#the-whip)) |
+| Contacts | On, in the app rail ([contacts](contacts.md)) |
+| Automatic goals | On, with a switch in Settings, General ([goals](goals.md#automatic-goals)) |
+| Teams | On, on the Mochis page ([mochis](mochis.md#teams)) |
+| Council | On ([council](council.md)) |
+| Keep the prompt cache warm | Off by default, in Settings, System ([usage](usage.md)) |
+| Background compaction | Off by default, in Settings, System ([context](context.md)) |
+| Live device stream | Off by default, in Settings, System ([devices](devices.md#live-device-stream)) |
 
 ## Going further
 
 - [Updates](updates.md): Release and Nightly.
-- [Contacts](contacts.md) and [council](council.md): the larger experiments.
-- [Mochis](mochis.md): teams.
-- [Goals](goals.md): reviewed goals and automatic goals.
-- [Context](context.md): compaction and the prompt cache.
-- [Devices](devices.md): the Device panel.
 - Technical reference: [experiments](internals/experiments.md).

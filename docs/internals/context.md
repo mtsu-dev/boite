@@ -143,7 +143,7 @@ disables Boite's automatic triggers and restores the driver's native policy
 for that target. Removing a target restores live inheritance, without copying
 thresholds. The override map replaces the previous map on `settings.set` and
 follows the group's settings home alongside `autoCompact`. The common
-`backgroundCompaction` experiment stays local to its machine.
+`backgroundCompaction` setting stays local to its machine.
 
 All drivers resolve the policy at preparation and before each turn. Idle
 compaction and background copies use the same resolver. A policy change
@@ -311,8 +311,8 @@ is the detail its summary drops.
 
 ### Background compaction
 
-`Settings.backgroundCompaction` is an experiment, off by default, that the
-owner turns on under Settings, Experiments, for the machine picked above the
+`Settings.backgroundCompaction` is off by default. The owner turns it on
+under Settings, System, Automatic compaction, for the machine picked above the
 card, the one that runs the thread (an agent asks with
 `boite settings request backgroundCompaction true --why "..."`). It works
 with the `autoCompact` rule above and does nothing without one. Like `deviceStream`,
@@ -419,7 +419,7 @@ and resident mochis use the policy for their own type. Incognito threads and a
 session waiting to resume at an entry take no copy; their token limit still
 applies.
 
-Limits of the experiment: copies are held in memory, so a restart forgets them
+Limits: copies are held in memory, so a restart forgets them
 (the tail marker is persisted). A copy runs outside the scheduler's account
 slots and its usage is recorded on no turn; the running totals it ends on are
 kept for the session that resumes it ([usage](usage.md#the-api-estimate)). An unused Claude copy's transcript

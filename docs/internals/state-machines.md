@@ -423,7 +423,7 @@ Invariants:
 
 | From | Event | Guard | To | Side effects | Writer |
 | --- | --- | --- | --- | --- | --- |
-| none | `council.start` | experiment on, parent may delegate, every named route runnable | `running`, round 1 | salon and member threads created before the first question; a failure leaves no half-made council running | `packages/core/src/council/store.ts:280` `start`, `packages/core/src/council/store.ts:455` `#beginRound` |
+| none | `council.start` | parent may delegate, every named route runnable | `running`, round 1 | salon and member threads created before the first question; a failure leaves no half-made council running | `packages/core/src/council/store.ts:280` `start`, `packages/core/src/council/store.ts:455` `#beginRound` |
 | member pending | its turn finishes with an answer | turn is this round's | member settled, score read from its last line | answer posted in the salon | `packages/core/src/council/store.ts:597` `#turnFinished`, `packages/core/src/council/store.ts:662` `#record` |
 | member pending | turn failed, stopped, empty, or background work lost | as above | settled with what it wrote, or absent with no score | system post says why | `packages/core/src/council/store.ts:655` `#settle`, `packages/core/src/council/store.ts:513` `#absent` |
 | `running` | nobody pending, or deadline, or `council.closeRound` | round above 0 | `waiting`, answers undelivered | answers and table go to the parent once it is idle | `packages/core/src/council/store.ts:576` `#closeRound`, `packages/core/src/council/store.ts:765` `#deliver` |

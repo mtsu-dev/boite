@@ -171,9 +171,6 @@ and the threads it started are done. Its `skills/` folder stays behind.
 
 ## Teams
 
-Experimental: Teams exist in Nightly builds only. Turn them on in Settings,
-Experiments, Teams ([experiments](experiments.md)).
-
 1. Press the `+` under the mochis in the app rail and pick a new team.
 2. Give it a name, an optional brief that every member reads, and its members:
    up to 12 mochis, at least one of this machine.
