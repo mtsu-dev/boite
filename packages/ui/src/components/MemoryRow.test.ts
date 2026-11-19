@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
@@ -110,6 +110,23 @@ test('live stops share one corner card, open the memory settings and stay dismis
     row()!.querySelector<HTMLButtonElement>('[data-testid=memory-row-dismiss]')!.click();
     flushSync();
     expect(row()).toBeNull();
+  } finally { store.detach(); client.close(); }
+});
+
+test('a stop in a thread off screen, or on another page, still reaches the corner once and is put away', async () => {
+  const client = new FakeClient({ delayMs: 0 }); const store = new Store(); store.attach(client);
+  try {
+    await store.connect(); await store.open('t-trace');
+    const other = store.threads.find(thread => thread.id !== 't-trace')!;
+    mounted = mount(MemoryCorner, { target: document.body, props: { store, chat: false } });
+    flushSync();
+    expect(document.querySelector('[data-testid=memory-corner]')).toBeNull();
+    client.emitMemory({ threadId: other.id, kind: 'killed', reason: 'thread-quota', limitBytes: 4096 * 1048576, bytes: 5000 * 1048576, exe: '/usr/bin/cargo', state: 'ok', at: Date.now() });
+    await vi.waitFor(() => expect(document.querySelector('[data-testid=memory-corner] .title')?.textContent).toBe(strings.resources.killTitle));
+    document.querySelector<HTMLButtonElement>('[data-testid=memory-row-dismiss]')!.click();
+    flushSync();
+    expect(document.querySelector('[data-testid=memory-corner]')).toBeNull();
+    expect(store.memoryStop).toBeNull();
   } finally { store.detach(); client.close(); }
 });
 

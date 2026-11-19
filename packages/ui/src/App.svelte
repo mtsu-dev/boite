@@ -140,7 +140,7 @@
     // The project board, in the same drawer: only once it is asked for.
     BoardDrawer: () => import('./components/BoardDrawer.svelte'),
     PluginUpdateNotice: () => import('./components/PluginUpdateNotice.svelte'),
-    // A memory stop's corner card: only once a thread is open.
+    // A memory stop's corner card: only once a thread is open or a stop lands.
     MemoryCorner: () => import('./components/MemoryCorner.svelte'),
     // Plugin interfaces load after startup, on any link: what they add is part of the app.
     PluginUiHost: () => import('./components/PluginUiHost.svelte')
@@ -179,8 +179,8 @@
     if (!store.booted) return;
     return whenIdle(() => { need('PluginUiHost'); if (!prefetchAllowed()) return need('PluginUpdateNotice'); needAll(); prefetchParts(); warmPages(store, experimentOn('resident-agents')); });
   });
-  // With the first open thread, so the corner is there before a stop lands in it.
-  $effect(() => { if (store.openThread) need('MemoryCorner'); });
+  // With the first open thread, so the corner is there before a stop lands in it; a stop elsewhere asks for it too.
+  $effect(() => { if (store.openThread || store.memoryStop) need('MemoryCorner'); });
   // The Whip's control, then its rope, the first time its switch is on (lib/whip-entry.svelte.ts).
   $effect(() => {
     if (store.booted && experimentOn('whip')) whipEntry.need(error => { store.error = String(error); });
@@ -638,7 +638,7 @@
   <ErrorToast {store} pairingScreen={!inShell && (narrow.current || wideRecovery) && store.pairingRequired}
     blocked={mobileRecovery && localNetwork.state === 'denied'} onopen={() => { mobileScreen = 'chat'; }} />
   <UndoToast onerror={(error) => (store.error = errorText(error))} />
-  {#if store.page === 'chat' && deferred.MemoryCorner}{@const MemoryCorner = deferred.MemoryCorner}<MemoryCorner {store} />{/if}
+  {#if (store.page === 'chat' || store.memoryStop) && deferred.MemoryCorner}{@const MemoryCorner = deferred.MemoryCorner}<MemoryCorner {store} chat={store.page === 'chat'} />{/if}
   {#if store.booted && experimentOn('whip') && whipEntry.overlay}{@const WhipOverlay = whipEntry.overlay}
     <WhipOverlay onerror={(error) => (store.error = errorText(error))} />
   {/if}

@@ -10,13 +10,15 @@
    * stop that lands while its thread is open arrives in the notification
    * corner, once, with the way to the memory settings. The stops a thread
    * already had when it was first opened are history and stay out of the way.
+   * A stop anywhere else, in a thread not on screen or on another page
+   * (`chat` false), comes the same way until it is put away.
    */
-  let { store }: { store: Store } = $props();
+  let { store, chat = true }: { store: Store; chat?: boolean } = $props();
 
   /** Per thread, the time of its last stop when this view first saw it; plain, since only first sight writes it. */
   const history = new Map<string, number>();
   let dismissed = $state<string[]>([]);
-  const thread = $derived(store.openThread);
+  const thread = $derived(chat ? store.openThread : null);
   /** The latest stop and the ones just before it that read the same, as the timeline merges them. */
   const group = $derived.by(() => {
     // A thread from the list carries no stops yet: its history is only known once its snapshot lands.
@@ -33,12 +35,22 @@
   const key = $derived(thread && group.length ? `${thread.id}:${group.at(-1)!.at}` : null);
 
   const dismiss = (): void => { if (key !== null) dismissed = [...dismissed, key]; };
+  /** The machine's last stop, unless the thread on screen is the one it hit: that thread's own card above says it. */
+  const stop = $derived(store.memoryStop);
+  const elsewhere = $derived(stop !== null && !(thread !== null && stop.threadId === thread.id) ? stop : null);
+  // Told by the open thread's card, it does not come back once that thread is left.
+  $effect(() => { if (stop !== null && thread !== null && stop.threadId === thread.id) store.dismissMemoryStop(); });
+  /** The way to the memory settings, for the owner: the card goes away on the way. */
+  const configure = (put: () => void): (() => void) | undefined => store.owner ? () => { put(); store.showSettings('resources', 'limits'); } : undefined;
 </script>
 
 {#if key !== null && !dismissed.includes(key)}
   <div class="notify-corner memory-corner" use:notifyCorner data-testid="memory-corner">
-    <MemoryRow event={group[0]!} events={group} ondismiss={dismiss}
-      onconfigure={store.owner ? () => { dismiss(); store.showSettings('resources', 'limits'); } : undefined} />
+    <MemoryRow event={group[0]!} events={group} ondismiss={dismiss} onconfigure={configure(dismiss)} />
+  </div>
+{:else if elsewhere !== null}
+  <div class="notify-corner memory-corner" use:notifyCorner data-testid="memory-corner">
+    <MemoryRow event={elsewhere} ondismiss={() => store.dismissMemoryStop()} onconfigure={configure(() => store.dismissMemoryStop())} />
   </div>
 {/if}
 
