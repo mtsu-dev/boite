@@ -376,6 +376,12 @@
     opacity: 1;
   }
 
+  /* A touch screen has no hover to reveal it: the button stays in view, on the
+     block's own fill so the first line of code does not show through it. */
+  @media (hover: none) {
+    .prose :global(.code-block .copy) { opacity: 1; background: var(--color-code-background); }
+  }
+
   .prose :global(pre code) {
     font-size: inherit;
     padding: 0;

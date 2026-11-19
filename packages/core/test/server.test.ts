@@ -684,48 +684,6 @@ describe('server', () => {
     expect(preauthRefusal(Array(32).fill('127.0.0.1'), '192.168.1.21')).toContain('32 sockets from other machines');
   });
 
-  // Without `bun run build:ui` there is nothing to serve and nothing to assert;
-  // the end to end suite builds the UI before it starts, and proves the same three.
-  test.skipIf(!existsSync(UI_DIST))(
-    'the shell, the worker, a hashed asset and assetlinks.json carry what the PWA and the APK need',
-    async () => {
-      const index = await fetch(`${harness.url}/`);
-      expect(index.status).toBe(200);
-      expect(index.headers.get('cache-control')).toBe('no-cache');
-      const html = await index.text();
-      // Revalidating the shell with the tag it came with costs no body.
-      const again = await fetch(`${harness.url}/`, { headers: { 'if-none-match': index.headers.get('etag')! } });
-      expect(again.status).toBe(304);
-      expect(again.headers.get('cache-control')).toBe('no-cache');
-
-      const worker = await fetch(`${harness.url}/sw.js`);
-      expect(worker.status).toBe(200);
-      expect(worker.headers.get('cache-control')).toBe('no-cache');
-      // Without it a worker served from `/sw.js` may only claim `/`, which is
-      // the same scope here, but the header is what makes that explicit.
-      expect(worker.headers.get('service-worker-allowed')).toBe('/');
-
-      const manifest = await fetch(`${harness.url}/manifest.webmanifest`);
-      expect(manifest.status).toBe(200);
-      expect(manifest.headers.get('cache-control')).toBe('no-cache');
-
-      // Android reads it before opening the APK without an address bar
-      // (docs/internals/android.md), and Vite only copies a dot directory on purpose.
-      const assetlinks = await fetch(`${harness.url}/.well-known/assetlinks.json`);
-      expect(assetlinks.status).toBe(200);
-      expect(assetlinks.headers.get('content-type')).toStartWith('application/json');
-      const statements = (await assetlinks.json()) as { target: { package_name: string } }[];
-      expect(statements[0]?.target.package_name).toBe('com.boite.two');
-
-      // The hashed name is read out of the build rather than guessed.
-      const hashed = /assets\/[A-Za-z0-9._-]+/.exec(html)?.[0];
-      expect(hashed).toBeDefined();
-      const asset = await fetch(`${harness.url}/${hashed}`);
-      expect(asset.status).toBe(200);
-      expect(asset.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
-    },
-  );
-
   test('a foreign origin gets 403', async () => {
     const response = await fetch(`${harness.url}${RPC_PATH}`, {
       headers: { origin: 'http://evil.example' },

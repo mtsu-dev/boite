@@ -19,6 +19,7 @@ import { launchOf } from './git/command.ts';
 import { ExecutionProtections } from './execution-protection.ts';
 import { closeProcessResources, protectionRunner } from './protection-runner.ts';
 import { processEventDiagnostic } from './process-event-diagnostics.ts';
+import { killEntry, running } from './process-entry.ts';
 
 import type { ChildProcess, ManagedStop, ProcessEntry as Entry, SpawnedChild, SpawnedPipedProcess, SpawnedProcess, SpawnedTerminal, SpawnOptions, TerminalSpawnOptions, ProcRegistryOptions } from './process-spawn-types.ts';
 export type { ProcRegistryOptions, ChildProcess, ManagedStop, PipedChildProcess, SpawnedChild, SpawnedPipedProcess, SpawnedProcess, SpawnedTerminal, SpawnOptions, TerminalSpawnOptions } from './process-spawn-types.ts';
@@ -350,11 +351,11 @@ export class ProcRegistry {
   /** Set while the keeper holds agent sessions (`keeper/kept-agents.ts`): a launch with `keep` goes to it, null leaves it here. */
   keptSpawn: ((threadId: ThreadId, cmd: string, executable: string, args: string[], opts: SpawnOptions) => SpawnedChild | null) | null = null;
 
-  /** Lets go of a thread's processes, unstopped and with no exit recorded: the keeper holds them for the next core. */
+  /** Lets go of a thread's processes, unstopped and with no exit recorded: the keeper holds them for the next core. Each pid also leaves `unassigned`, where every POSIX pid sits. */
   disown(threadId: ThreadId): void {
     const byPid = this.#live.get(threadId);
     if (byPid === undefined) return;
-    for (const pid of byPid.keys()) { this.platform.pidRemoved(threadId, pid, !this.#shown.has(threadId)); this.platform.untieGroup?.(pid, false); }
+    for (const pid of byPid.keys()) { this.platform.pidRemoved(threadId, pid, !this.#shown.has(threadId)); this.unassigned.delete(pid); this.platform.untieGroup?.(pid, false); }
     this.#live.delete(threadId);
     this.known.delete(threadId);
   }
@@ -587,6 +588,7 @@ export class ProcRegistry {
     this.platform.startup?.(threadId, false);
   }
 
+  /** Which of `loadOf`'s readings were taken: false is unknown, not zero (CPU on macOS). */ loadAvailableOf(threadId: ThreadId) { return this.#resources.availability(threadId); }
   /** What `ThreadSummary.load` carries. Null when the thread has no process. */
   loadOf(threadId: ThreadId): ThreadLoad | null {
     const processes = this.liveCount(threadId);
@@ -889,12 +891,4 @@ export class ProcRegistry {
       }
     });
   }
-}
-
-/** Whether `proc` runs as its spawner sees it: until it reports the exit it holds the process's handle. */
-const running = (proc: { exitCode: number | null; signalCode: unknown }) => () => proc.exitCode === null && proc.signalCode === null;
-
-/** An entry's own kill, and the group stop that may follow it. */
-function killEntry(entry: Entry): Promise<void> | undefined {
-  try { return entry.kill() ?? undefined; } catch { return undefined; /* already exited */ }
 }

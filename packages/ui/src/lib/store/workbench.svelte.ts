@@ -1,6 +1,7 @@
 import type {
   AgentTask,
   ArtifactContent,
+  KeepAwakeStatus,
   MemoryEvent,
   MemoryState,
   MemoryStatus,
@@ -44,7 +45,14 @@ export function sameProcess(a: ProcessRecord, b: ProcessRecord): boolean {
 export class Workbench {
   memory = $state.raw<MemoryStatus | null>(null);
   memoryState = $state<MemoryState | null>(null);
-  memoryStopped = $state(false);
+  /**
+   * The last process the memory guard stopped, until the user puts its notice
+   * away (`MemoryCorner`): a stop in a thread nobody is looking at is still
+   * news about the machine.
+   */
+  memoryStop = $state.raw<MemoryEvent | null>(null);
+  /** Whether the machine is held awake and can be; null until read, or from a core without `resources.keepAwake`. */
+  keepAwake = $state.raw<KeepAwakeStatus | null>(null);
   private memoryRevision = 0;
   private memoryRead = 0;
 
@@ -53,14 +61,31 @@ export class Workbench {
     this.memoryRevision++;
     this.memory = null;
     this.memoryState = null;
-    this.memoryStopped = false;
+    this.memoryStop = null;
+    this.keepAwake = null;
   }
 
   memoryEvent(event: MemoryEvent): void {
     this.memoryRevision++;
     this.memoryState = event.state;
-    if (event.state === 'ok') this.memoryStopped = false;
-    else if (event.kind === 'killed') this.memoryStopped = true;
+    if (event.kind === 'killed') this.memoryStop = event;
+  }
+
+  dismissMemoryStop(): void {
+    this.memoryStop = null;
+  }
+
+  /** Quiet on failure: an older core has no such method, and the switch then says nothing. */
+  async refreshKeepAwake(): Promise<void> {
+    const client = this.ctx.client;
+    const clientGeneration = this.ctx.clientGeneration;
+    if (!client || !this.ctx.store.owner) return;
+    try {
+      const status = await client.call('resources.keepAwake', {});
+      if (this.ctx.currentClient(client, clientGeneration)) this.keepAwake = status;
+    } catch {
+      if (this.ctx.currentClient(client, clientGeneration)) this.keepAwake = null;
+    }
   }
 
   async refreshMemory(): Promise<void> {
@@ -74,7 +99,6 @@ export class Workbench {
       this.memory = memory;
       if (revision === this.memoryRevision) {
         this.memoryState = memory.state;
-        if (memory.state === 'ok') this.memoryStopped = false;
       }
     } catch (error) {
       if (client === this.ctx.client && read === this.memoryRead) this.ctx.fail(error);
@@ -384,7 +408,7 @@ export class Workbench {
     const clientGeneration = this.ctx.clientGeneration;
     if (!client || !this.ctx.store.owner) return;
     try {
-      const [resources] = await Promise.all([client.call('resources.list', {}), this.refreshMemory()]);
+      const [resources] = await Promise.all([client.call('resources.list', {}), this.refreshMemory(), this.refreshKeepAwake()]);
       if (this.ctx.currentClient(client, clientGeneration)) this.resources = resources;
     } catch (error) {
       if (this.ctx.currentClient(client, clientGeneration)) this.ctx.fail(error);

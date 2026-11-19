@@ -95,9 +95,10 @@ The `PreCompact` callback reads the current policy even in a warm session.
 Explicit instructions in `/compact <text>` take precedence: the callback adds
 nothing in that case. An empty common value installs no summary policy and
 imposes no word count. The setting is `compactionSummary`, also available inside
-`compactionByType`. Other drivers keep their own summary prompt. The offline
-control test (`BOITE_TEST_CLAUDE_CONTROLS=1`) checks that configured guidance
-reaches Claude's summary request.
+`compactionByType`. Other drivers keep their own summary prompt.
+`packages/core/test/claude.compact.test.ts` checks what the callback returns
+for each setting; no test checks that the guidance reaches Claude's summary
+request.
 
 The control is disabled while a turn runs, before a native session exists, or
 when the driver cannot compact. ACP must advertise the command. Compaction can make a provider
