@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, vi } from 'vitest';
 import { test } from '../test/fake-client';
 import { machineKey } from '../test/machine-key';
-import { INITIAL_PAGE_BYTES, PROTOCOL_VERSION, RpcErrorCode, TRACE_LIMIT, type ProcessRecord, type Thread, type ThreadStatus, type ThreadSummary } from '@boite/contracts';
+import { INITIAL_PAGE_BYTES, PROTOCOL_VERSION, RpcErrorCode, TRACE_LIMIT, type ProcessRecord, type RpcMethodName, type RpcParams, type Thread, type ThreadStatus, type ThreadSummary } from '@boite/contracts';
 import { RpcFailure, WsClient, droppedFailure, type SocketLike } from './client';
 import { FakeClient } from './fake-client';
 import { setNotificationSender, type Toast } from './notify';
@@ -9,6 +9,7 @@ import * as endpoints from './endpoint';
 import * as deviceKeys from './device-key';
 import { Store } from './store.svelte';
 import { LOCAL_RECOVERY_MS } from './store/connection.svelte';
+import { IDLE_PROBE_MS, PROBE_DEADLINE_MS } from './ws-client-utils';
 import { resumeAnchor } from './thread-rows';
 import { strings } from './strings';
 import { compareThreads } from './thread-order';
@@ -2544,6 +2545,92 @@ describe('the shell core lost under a local store', () => {
     return { store, client };
   }
 
+  test('a silent local socket offers a restart after 30 seconds and keeps the private draft', async () => {
+    vi.useFakeTimers();
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    const endpoint = { url: 'http://127.0.0.1:41000', token: 'test', local: true };
+    const invoke = vi.fn().mockRejectedValue({ message: 'the core no longer answers', restartGeneration: 0 });
+    window.__TAURI_INTERNALS__ = { invoke };
+    const fromTauri = vi.spyOn(endpoints, 'fromTauri');
+    const frames: { id: number; method: string; progress?: boolean }[] = [];
+    const replacement = new FakeClient({ delayMs: 0 });
+    let restarted = false;
+    vi.stubGlobal('WebSocket', class implements SocketLike {
+      onopen: SocketLike['onopen'] = null;
+      onmessage: SocketLike['onmessage'] = null;
+      onclose: SocketLike['onclose'] = null;
+      onerror: SocketLike['onerror'] = null;
+      constructor() { void Promise.resolve().then(() => this.onopen?.()); }
+      send(raw: string) {
+        const frame = JSON.parse(raw) as { id: number; method: RpcMethodName; params: RpcParams<RpcMethodName>; progress?: boolean };
+        frames.push(frame);
+        const answer = (body: object) => this.onmessage?.({ data: JSON.stringify({ id: frame.id, ...body }) });
+        if (restarted) void replacement.call(frame.method, frame.params).then(
+          result => answer({ result }),
+          (error: RpcFailure) => answer({ error: { code: error.code, message: error.message } })
+        );
+        else if (frames.length === 1) answer({ result: { core: { protocolVersion: PROTOCOL_VERSION }, principal: 'owner' } });
+      }
+      close() {}
+    });
+    const store = new Store();
+    const connecting = store.connectEndpoint(endpoint);
+    const client = store.client!;
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(client.state).toBe('ready');
+      const call = client.call('threads.list', {}).catch(() => undefined);
+      expect(frames.find((frame) => frame.method === 'threads.list')?.progress).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(IDLE_PROBE_MS + PROBE_DEADLINE_MS);
+      expect(client.state).toBe('connecting');
+      await vi.advanceTimersByTimeAsync(LOCAL_RECOVERY_MS);
+      expect(fromTauri).toHaveBeenCalledWith(true);
+      await fromTauri.mock.results[0]!.value;
+      expect(invoke).toHaveBeenCalledWith('core_endpoint', { reconnecting: true }, undefined);
+      await vi.advanceTimersByTimeAsync(29_999 - IDLE_PROBE_MS - PROBE_DEADLINE_MS - LOCAL_RECOVERY_MS);
+      expect(store.canForceCoreRestart).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(store.canForceCoreRestart).toBe(true);
+      expect(invoke).not.toHaveBeenCalledWith('core_restart', expect.anything(), undefined);
+      const cancelled = store.forceCoreRestart();
+      confirm.answer(false);
+      await cancelled;
+      expect(invoke).not.toHaveBeenCalledWith('core_restart', expect.anything(), undefined);
+      store.startDraft(null);
+      store.setDraftIncognito(true);
+      const draftId = store.draft!.id;
+      expect(store.draft?.incognito).toBe(true);
+      const unsent = 'An unsent private draft';
+      store.editComposerText('draft', unsent);
+      const confirmed = store.forceCoreRestart();
+      invoke.mockImplementationOnce(async () => {
+        await replacement.connect();
+        restarted = true;
+        return { url: endpoint.url, token: 'replacement' };
+      });
+      confirm.answer(true);
+      await vi.dynamicImportSettled();
+      await vi.advanceTimersByTimeAsync(0);
+      await confirmed;
+      expect(invoke).toHaveBeenCalledWith('core_restart', { generation: 0 }, undefined);
+      expect(store.endpointUrl).toBe(endpoint.url);
+      expect(store.client).not.toBe(client);
+      expect(store.connection).toBe('ready');
+      expect(store.canForceCoreRestart).toBe(false);
+      expect(store.composerStates.draft?.text).toBe(unsent);
+      expect(store.draft).toMatchObject({ id: draftId, incognito: true });
+      expect(Object.values(localStorage).join('')).not.toContain(unsent);
+      await call;
+    } finally {
+      store.client?.close();
+      store.detach(); client.close(); replacement.close();
+      await connecting;
+      fromTauri.mockRestore(); visibility.mockRestore();
+      vi.unstubAllGlobals(); vi.useRealTimers();
+      delete window.__TAURI_INTERNALS__;
+    }
+  });
+
   test('a core unreachable for a while is asked of the shell again, and the store follows it to its new address', async () => {
     vi.useFakeTimers();
     const { store, client } = await localStore();
@@ -2598,6 +2685,31 @@ describe('the shell core lost under a local store', () => {
       fromTauri.mockRestore(); refused.mockRestore(); connect.mockRestore(); open.mockRestore();
       delete window.__TAURI_INTERNALS__;
       store.client?.close(); store.detach(); client.close();
+    }
+  });
+
+  test('a core that keeps the same endpoint is checked again while the socket stays down', async () => {
+    vi.useFakeTimers();
+    const { store, client } = await localStore();
+    const fromTauri = vi.spyOn(endpoints, 'fromTauri')
+      .mockResolvedValueOnce({ url: store.endpointUrl!, token: 'current', local: true })
+      .mockResolvedValue(null);
+    const refused = vi.spyOn(endpoints, 'shellEndpointError').mockReturnValue('the local core is running but no longer answers');
+    try {
+      client.drop();
+      await vi.advanceTimersByTimeAsync(LOCAL_RECOVERY_MS);
+      expect(fromTauri).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(LOCAL_RECOVERY_MS * 2);
+      expect(fromTauri).toHaveBeenCalledTimes(2);
+      expect(store.error).toContain('no longer answers');
+      await client.restore();
+      await vi.advanceTimersByTimeAsync(LOCAL_RECOVERY_MS * 4);
+      expect(fromTauri).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+      fromTauri.mockRestore(); refused.mockRestore();
+      delete window.__TAURI_INTERNALS__;
+      store.detach(); client.close();
     }
   });
 

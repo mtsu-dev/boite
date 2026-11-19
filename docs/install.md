@@ -62,6 +62,13 @@ xattr -cr /Applications/Boite.app
 Boite keeps its data in `$XDG_DATA_HOME/boite2` when that variable names an
 absolute folder, otherwise in `~/.local/share/boite2`.
 
+## When the desktop window stops responding
+
+On Windows, Boite tries to reload the window after a rendering failure. If
+the window still stays blank, choose Quit from the Boite icon in the
+notification area, then open Boite again. Quitting the window leaves your
+local engine running.
+
 ## Stable and nightly channels
 
 Boite has two channels, chosen in Settings, Machines and updates, under

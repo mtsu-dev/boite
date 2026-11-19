@@ -185,7 +185,7 @@ export class Drafts {
     // draft, id included, so one input never shows as two drafts.
     const current = s.draft;
     const saved = current && (this.saved[draftKey(current)] ?? this.#latest(current.projectId));
-    if (current && saved && vacant(this.ctx.composer.composerStates.draft)) {
+    if (current && !current.incognito && saved && vacant(this.ctx.composer.composerStates.draft)) {
       this.ctx.composer.composerStates.draft = saved.input;
       s.draft = current.worktreeExplicit ? { ...current, id: saved.draft.id, ...(saved.draft.createdAt === undefined ? {} : { createdAt: saved.draft.createdAt }) } : { ...saved.draft };
       if (!s.draftChoice && saved.choice) s.draftChoice = { ...saved.choice };

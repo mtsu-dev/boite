@@ -89,6 +89,8 @@ export interface WsClientOptions {
   /** HTTP origin of the core, for instance `http://127.0.0.1:8777`. */
   url: string;
   token: string;
+  /** Probe the desktop's local core while the window is active, even on loopback. */
+  monitorLocal?: boolean;
   /**
    * A one-time pairing grant, used on the first hello instead of the token.
    * The session it becomes replaces the token for every hello after, and

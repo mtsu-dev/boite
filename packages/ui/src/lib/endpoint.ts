@@ -133,6 +133,7 @@ export function relayKeyFor(url: string): string | DeviceHello | null {
 }
 
 let shellRefusal: string | null = null;
+let shellRestart: number | null = null;
 
 /**
  * Why the shell gave no endpoint the last time it was asked: its own sentence
@@ -143,14 +144,30 @@ export function shellEndpointError(): string | null {
   return shellRefusal;
 }
 
-export async function fromTauri(): Promise<Endpoint | null> {
+export function takeShellRestartGeneration(): number | null {
+  const generation = shellRestart;
+  shellRestart = null;
+  return generation;
+}
+
+export async function restartTauriCore(generation: number): Promise<Endpoint> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  const result: unknown = await invoke('core_restart', { generation });
+  if (!isEndpoint(result)) throw new Error('the shell answered with no core address');
+  return { url: withoutTrailingSlashes(result.url), token: result.token, local: true };
+}
+
+export async function fromTauri(reconnecting = false): Promise<Endpoint | null> {
   try {
     const { invoke } = await import('@tauri-apps/api/core');
-    const result: unknown = await invoke('core_endpoint');
+    const result: unknown = await invoke('core_endpoint', { reconnecting });
+    shellRestart = null;
     shellRefusal = isEndpoint(result) ? null : 'the shell answered with no core address';
     return isEndpoint(result) ? { url: withoutTrailingSlashes(result.url), token: result.token, local: true } : null;
   } catch (error) {
-    shellRefusal = errorText(error);
+    const refusal = error as { message?: unknown; restartGeneration?: unknown } | null;
+    shellRestart = typeof refusal?.restartGeneration === 'number' ? refusal.restartGeneration : null;
+    shellRefusal = typeof refusal?.message === 'string' ? refusal.message : errorText(error);
     return null;
   }
 }

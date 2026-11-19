@@ -91,3 +91,29 @@ test('a release only found downloads after the answer, then installs once verifi
   expect(backend.install).toHaveBeenCalledOnce();
   stop();
 });
+
+test('a retryable install failure keeps the verified release available to the install button', async () => {
+  const { backend, updater, publish, stop } = setup();
+  try {
+    const message = 'The installer could not start';
+    const retry = { ...ready, error: message };
+    vi.mocked(backend.install).mockImplementationOnce(async () => {
+      publish(retry);
+      throw new Error(message);
+    });
+    await updater.settled();
+    vi.mocked(backend.status).mockResolvedValue(retry);
+    const install = new AppUpdateInstall();
+    const first = install.request(updater);
+    confirm.answer(true);
+    expect(await first).toBe(true);
+    await updater.settled();
+    expect(updater.snapshot).toMatchObject({ phase: 'ready', error: message });
+    const second = install.request(updater);
+    confirm.answer(true);
+    expect(await second).toBe(true);
+    expect(backend.install).toHaveBeenCalledTimes(2);
+    expect(backend.check).not.toHaveBeenCalled();
+    expect(backend.download).not.toHaveBeenCalled();
+  } finally { stop(); }
+});

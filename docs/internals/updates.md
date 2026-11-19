@@ -138,16 +138,24 @@ true`, whose card flips it in the chat.
 
 When it is on, each automatic check (eight seconds after start, then every six
 hours) that finds a release downloads it at once, then asks the shell to
-install it quietly (`app_update_install_quietly`). The shell installs only
-when both hold:
+install it quietly (`app_update_install_quietly`). The shell checks machine
+policy again just before asking the core to stop and after it exits, before
+launching the installer. It installs quietly only if
+policy permits automatic installation and both conditions hold:
 
 - the main window is not on screen: hidden in the tray. A window on screen may
   be in use even with nothing running, and its restart would take it away. It
   is checked again right before the core is asked, so a window restored from
   the tray while the install waited calls it off;
-- the core grants `POST /shutdown-if-idle`, asked once: no turn, queued
-  execution, RPC, peer request, tracked process or provider background work.
-  The handoff that ends running turns, which Update uses, is never asked.
+- a running core grants `POST /shutdown-if-idle`, asked once. No turn,
+  queued execution, RPC, peer request, tracked process or provider background
+  work can be in flight. A quiet update never asks for a turn handoff.
+
+On Linux and macOS the shell takes `core.lock` after an acknowledged stop
+and holds it through installation, until restart or failure. It can also
+repair a failed startup if it can take the lock and confirm no core is
+starting or running. Windows still requires authenticated admission. The
+shell exits as NSIS launches, and NSIS does not hold the lock during copying.
 
 Otherwise the release stays downloaded and ready, offered as before,
 and the next check tries again without downloading it a second time. An
