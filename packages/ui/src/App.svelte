@@ -543,8 +543,7 @@
     {:else if wideRecovery}
       <div class="wide-recovery" data-testid="wide-recovery"><MobileConnect {store} onpaired={() => {}} /></div>
     {:else if store.page === 'settings' && !phoneSettings}
-      <!-- Its pages' list takes the thread list's column, connected or not. -->
-      {@render settingsPage()}
+      <!-- Settings alone: its layer below takes the page. -->
     {:else if store.connection === 'closed' && !store.core}
       <Sidebar {store} />
       <div class="notice framed">
@@ -622,12 +621,15 @@
            Not on the Contacts page: the list column's Contacts side holds the same rows there. -->
       {#if contacts.ContactsRail && contactsShown(store) && !narrow.current && store.page !== 'home'}<contacts.ContactsRail {store} />{/if}
     {/if}
-    {#if booted && phoneSettings}<div class="settings-layer">{@render settingsPage()}</div>{/if}
+    <!-- One place for Settings at every width: a resize that turns it into a layer over the chat, or back, keeps it
+         built, so its screens keep their history entries in the order they were opened. Its pages' list takes the
+         thread list's column, connected or not. -->
+    {#if booted && store.page === 'settings'}
+      <div class="settings-layer" class:over={phoneSettings}>
+        {#if SettingsShell}<SettingsShell {store} onopenthread={() => { mobileScreen = 'chat'; }} />{:else}<p class="empty">{settingsLoadError || strings.app.loading}</p>{/if}
+      </div>
+    {/if}
   </div>
-
-  {#snippet settingsPage()}
-    {#if SettingsShell}<SettingsShell {store} onopenthread={() => { mobileScreen = 'chat'; }} />{:else}<p class="empty">{settingsLoadError || strings.app.loading}</p>{/if}
-  {/snippet}
 
   {#if store.dropping}
     <DropOverlay kind={store.dropping} />
@@ -682,6 +684,9 @@
   .app.ready {
     animation: fade var(--dur-3) var(--ease-out-quint);
   }
+
+  /* Settings lays out as the body's own child, unless it is the phone's layer over the chat. */
+  .settings-layer { display: contents; }
 
   .body {
     display: flex;
@@ -841,7 +846,7 @@
     .body.mobile-covered { visibility: hidden; pointer-events: none; content-visibility: hidden; transition: content-visibility 0s var(--dur-whip) allow-discrete; }
     /* Settings over the chat it keeps: the chat is skipped like under the list, the layer takes the body's box. */
     .body.under-settings > :global(:not(.settings-layer)) { visibility: hidden; pointer-events: none; content-visibility: hidden; }
-    .settings-layer { position: absolute; inset: 0; display: flex; min-height: 0; padding: inherit; box-sizing: border-box; }
+    .settings-layer.over { position: absolute; inset: 0; display: flex; min-height: 0; padding: inherit; box-sizing: border-box; }
     .scrim {
       display: block;
       position: fixed;

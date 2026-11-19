@@ -373,7 +373,8 @@
 {#if narrow.current && (listShown || listKept)}
   <section class="mobile-list scroll-edges" class:recent={inRecent} class:tabbed={tabbed || leaving} class:covered={!listShown} inert={leaving || !listShown} aria-hidden={listShown ? undefined : 'true'} bind:this={scrollRoot} style:--cut={cut ? `${cut}px` : undefined} onscroll={() => { if (scrollRoot) scrollPositions.set(listKey, scrollRoot.scrollTop); }} data-testid={listShown ? 'mobile-list' : 'mobile-list-kept'} aria-label={listScreen === 'activity' ? strings.mobile.activity : strings.sidebar.threads}>
     {#if recover && narrow.current}
-      <MobileConnect {store} onpaired={() => show('threads')} />
+      <!-- Only on screen: kept under a page, its pairing would answer the page's own (Machines) and leave it. -->
+      {#if listShown}<MobileConnect {store} onpaired={() => show('threads')} />{/if}
     {:else}
     <!-- Recent's filters are the display menu's, counted on its button: the list starts with its rows. -->
     {#snippet threadRow(row: typeof rows[number], grouped = false, helpers: typeof rows = [])}
