@@ -216,7 +216,12 @@ for (const restart of [false, true]) test(`stopping the run${restart ? ' after a
   const followUpPrompt = 'Follow up.';
   const isFollowUp = (prompt: string): boolean => prompt.includes(followUpPrompt);
   const isInitial = (prompt: string): boolean => !isFollowUp(prompt) && prompt.includes('step slow');
-  const { held } = scripted(prompt => isInitial(prompt) ? null : 'ok', prompt => isFollowUp(prompt) ? followUpUsage : isInitial(prompt) ? usage : null);
+  let stoppedContext: TurnContext | undefined;
+  const { held } = scripted((prompt, ctx) => {
+    if (!isInitial(prompt)) return 'ok';
+    stoppedContext = ctx;
+    return null;
+  }, prompt => isFollowUp(prompt) ? followUpUsage : isInitial(prompt) ? usage : null);
   const deskDir = restartable();
   const { desk, pc, owner, threadId, pcId, machine, onPc, run } = await setup(true, { desk: deskDir });
   const started = await owner.call('workflows.start', { threadId, requestId: 'stop-1', plan: { name: 'Stop', steps: [{ id: 'slow', machine, project: 'notes', task: 'Read every page.' }] } });
@@ -255,6 +260,12 @@ for (const restart of [false, true]) test(`stopping the run${restart ? ' after a
   expect(state()?.lastTurn).toMatchObject({ id: followUp.id, usage: followUpUsage });
   expect(state()?.workflowStop?.turn.id).toBe(stopped?.id);
   expect(step().usage).toMatchObject(usage);
+
+  const revised = { ...usage, outputTokens: 12 };
+  stoppedContext!.reportLateUsage!(revised);
+  await pc.core.delegation.remote.flush(caller.core.coordination.card().coreId);
+  await waitFor(() => state()?.workflowStop?.turn.usage?.outputTokens === 12);
+  expect(step().usage).toMatchObject(revised);
 });
 
 test('a run stopped before the start answer came stops its subagent there once a report names it', async () => {

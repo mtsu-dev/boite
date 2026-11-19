@@ -4,6 +4,9 @@ import { addCounts, countsOf, mapUsage, usageDelta, type CodexTokenCounts } from
 import type { CodexTokenUsage } from './protocol.ts';
 import type { CodexTurn } from './turn.ts';
 
+/** A terminal turn update does not mark the end of its usage notifications. */
+const USAGE_DRAIN_MS = 250;
+
 interface Tally {
   usageCounts: CodexTokenCounts | null;
   usageTotal: CodexTokenCounts | null;
@@ -17,12 +20,12 @@ function sameCounts(a: CodexTokenCounts | null, b: CodexTokenCounts): boolean {
 /** Usage may arrive while another turn runs. Keep each finished turn's tally and journal sink for this native session. */
 export class CodexUsageReports {
   readonly #finished = new Map<string, Tally & { report: NonNullable<TurnContext['reportLateUsage']> }>();
-  #pendingTurnId: string | null = null;
+  #drainUntil = 0;
 
-  get pending(): boolean { return this.#pendingTurnId !== null; }
+  get drainMs(): number { return Math.max(0, this.#drainUntil - performance.now()); }
 
   finish(turn: CodexTurn): void {
-    this.#pendingTurnId = turn.usage === null ? turn.completedTurnId : null;
+    this.#drainUntil = turn.nativeFinished ? performance.now() + USAGE_DRAIN_MS : 0;
     if (turn.turnId === null || !turn.ctx.reportLateUsage) return;
     const { usageCounts, usageTotal, usageLast } = turn;
     this.#finished.set(turn.turnId, { usageCounts, usageTotal, usageLast, report: turn.ctx.reportLateUsage });
@@ -35,7 +38,6 @@ export class CodexUsageReports {
     if (!usage?.last) return null;
     const { last, total } = usage;
     const turnId = params['turnId'];
-    if (turnId === this.#pendingTurnId) this.#pendingTurnId = null;
     const turn = typeof turnId === 'string' && turnId === current?.turnId ? current : null;
     const finished = typeof turnId === 'string' && !turn ? this.#finished.get(turnId) : undefined;
     const tally = turn ?? finished;

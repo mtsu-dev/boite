@@ -1,12 +1,11 @@
 <script lang="ts">
   import { resolveContext, type DelegationProfile, type WorkflowInstance, type WorkflowNode, type WorkflowStepPlan } from '@boite/contracts';
   import type { Snippet } from 'svelte';
-  import { totalTokens } from '../lib/usage';
   import { executionRoute, requestedExecutionRoute } from '../lib/execution-route';
   import { workflowTone } from '../lib/status-tone';
   import type { Store } from '../lib/store.svelte';
   import { strings } from '../lib/strings';
-  import { executionTokenLabel, nodeTiming, routeOf, stepTitle, workflowTokenLabel } from '../lib/workflow-view';
+  import { nodeTiming, routeOf, stepTitle, workflowTokenLabel } from '../lib/workflow-view';
   import { workspace } from '../lib/workspace.svelte';
   import AgentExecutionRow from './AgentExecutionRow.svelte';
 
@@ -27,9 +26,9 @@
   const status = $derived(instance?.status ?? node.status);
   const measured = $derived(instance ? [instance] : node.instances);
   const prior = $derived(instance ? undefined : node.usage);
-  const tokens = $derived(measured.some(entry => entry.startedAt !== null || entry.usage != null)
-    ? workflowTokenLabel(measured, prior, !!prior)
-    : prior ? executionTokenLabel(totalTokens(prior)) : null);
+  const partial = $derived(!instance && node.usagePartial);
+  const tokens = $derived(prior || partial || measured.some(entry => entry.startedAt !== null || entry.usage != null)
+    ? workflowTokenLabel(measured, prior, { measured: !!prior, partial }) : null);
 </script>
 
 <AgentExecutionRow title={instance ? instance.label || instance.key : stepTitle(node)} subtitle={step?.model}

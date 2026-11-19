@@ -56,7 +56,8 @@ it read the first results.
 - A loop draws a dashed arc back to the step it starts from. It is amber while
   the loop runs, green once its condition held, red once it ran out of rounds.
   The closing step shows the round, such as `2/3`. Cards keep the reported
-  tokens from earlier rounds while the next round waits.
+  tokens from earlier rounds while the next round waits. A missing measurement
+  from an earlier round keeps the total partial.
 - A phase with more steps than fit turns the run into a plain list of phases.
 - The header totals the reported tokens. It marks a total as partial when some
   started executions still have no measurement, or unknown when none reported.

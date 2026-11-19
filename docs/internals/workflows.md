@@ -379,9 +379,9 @@ Counts include input, output, cache reads, cache writes and previous attempts,
 including a retry that replaced an archived child. Step cards retain measured
 usage across loop rounds. Fan-out details show each execution's tokens.
 The UI displays reported counts, including Codex usage that arrives after a
-turn finishes. Group-machine reports store each counted turn once, including
-output corrections. A stop receipt identifies the turn stopped on the member
-even if another turn starts in its conversation.
+turn finishes. A revised group-machine report replaces the measurement for
+that turn. A stop receipt identifies the turn stopped on the member even if
+another turn starts in its conversation.
 
 The plan checks and the path rules are shared by the core and the UI in
 `packages/contracts/src/workflow-plan.ts`. The core's runner is

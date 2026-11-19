@@ -54,7 +54,6 @@ import {PROTECTED_TOOL, protectedTool, PROTECTED_COMMIT, protectedCommit} from '
 
 /** How long a stopped turn waits for the agent to end it before its process is stopped. */
 const STOP_GRACE_MS = 3_000;
-const USAGE_DRAIN_MS = 250;
 const SQLITE_INIT_ATTEMPTS = 3;
 const SQLITE_INIT_BACKOFF_MS = 500;
 const SQLITE_INIT_CLOSE_MS = 2_000;
@@ -232,20 +231,19 @@ export class CodexSession {
   /** Archive, shutdown, an idle window, a changed setup: the process goes. */
   close(reason: string | null, ctx?: SessionContext): Promise<void> {
     if (this.#ended) return this.#writer.closed;
-    // A replacement already waits for this writer. Let an in-flight usage report finish draining.
-    if (ctx && this.#drainingUsage) return this.#writer.closed;
-    this.#closing = true;
     if (reason !== null && ctx !== undefined) ctx.log('warn', `codex session: ${reason}`);
-    this.#drop();
+    if (ctx && !this.busy()) this.release();
+    else this.#drop();
     return this.#writer.closed;
   }
 
   /** A cold turn or retired step can still be receiving its final usage report. */
   release(): void {
     if (this.#ended || this.#drainingUsage) return;
-    if (!this.#usage.pending || this.#closing) return this.#drop();
+    const remaining = this.#usage.drainMs;
+    if (remaining === 0 || this.#closing) return this.#drop();
     this.#drainingUsage = true;
-    this.#armIdle(USAGE_DRAIN_MS);
+    this.#armIdle(remaining);
   }
 
   async #runTurn(turn: CodexTurn): Promise<void> {
@@ -321,7 +319,7 @@ export class CodexSession {
     // Only OpenAI's own endpoint has a published lifetime; Codex never sends a
     // retention option, so the default for the model applies.
     if (this.#served.provider === 'openai') turn.cacheLife = openAiCacheLife(modelOf(ctx) ?? this.#served.model);
-    this.#endTurn(turn, turn.isStopped);
+    this.#endTurn(turn, false);
   }
 
   #endTurn(turn: CodexTurn, drop: boolean): void {
@@ -330,7 +328,7 @@ export class CodexSession {
     this.#running = Math.max(0, this.#running - 1);
     if (drop || this.#closing) {
       this.#drop();
-    } else if (this.#retention.idleMs(this.warmMs) <= 0) {
+    } else if (turn.isStopped || this.#retention.idleMs(this.warmMs) <= 0) {
       this.release();
     } else if (this.#running === 0 && !this.#retention.viewed) this.#armIdle();
     turn.settle();
@@ -738,7 +736,6 @@ export class CodexSession {
     if (params['threadId'] !== this.#threadId) return;
     const use = this.#usage.update(params, this.#current);
     if (use) this.#contextSink?.(use);
-    if (this.#drainingUsage && !this.#usage.pending) this.#drop();
   }
 
   async #onRequest(ctx: SessionContext, method: string, raw: unknown): Promise<unknown> {

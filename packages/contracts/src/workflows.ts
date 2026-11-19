@@ -158,7 +158,12 @@ export interface WorkflowInstance {
    * result in its answer, and that result as it was read then; that work was stopped there, and the step ends on
    * that result once its worktree there is kept or removed, with no second read.
    */
-  machine?: { name: string; coreId: string | null; requestId: string; childId: string | null; turnId: string | null; corrections: number; correction?: { requestId: string; text: string }; accepted?: { turnId: string; result: string | null; output: unknown }; usageTurnIds?: string[] };
+  machine?: { name: string; coreId: string | null; requestId: string; childId: string | null; turnId: string | null; corrections: number; correction?: { requestId: string; text: string }; accepted?: { turnId: string; result: string | null; output: unknown };
+    /** IDs of measurements saved as a single total by an older core. */
+    usageTurnIds?: string[];
+    /** The current attempt's revisable snapshots, plus usage from earlier attempts and legacy totals. */
+    usageLedger?: { prior: Usage | null; turns: { id: string; usage: Usage }[] };
+  };
 }
 
 export interface WorkflowNode {
@@ -182,6 +187,8 @@ export interface WorkflowNode {
   previous?: WorkflowInstance[];
   /** Measured usage across every round of this step, when it has run more than one round. */
   usage?: Usage;
+  /** Some of the step's finished turns across all its rounds reported no usage. */
+  usagePartial?: boolean;
   /** Closes a loop that ran out of rounds: a retry runs one round more. */
   exhausted?: boolean;
 }

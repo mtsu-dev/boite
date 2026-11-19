@@ -1212,6 +1212,26 @@ describe('codex driver', () => {
     expect(thread.turns.at(-1)?.usage).toMatchObject({inputTokens:60,cacheReadTokens:20,outputTokens:10});
   });
 
+  test('a cold Codex turn keeps a second usage snapshot after completion', async () => {
+    const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
+    const { finished } = await startTurn(client, threadId, '[partial-usage]', 20000);
+    const ended = await finished;
+    expect(ended.usage).toMatchObject({ inputTokens: 10, outputTokens: 2 });
+    await waitFor(() => harness!.core.journal.getTurn(ended.id)?.usage?.outputTokens === 12, 1500);
+    expect(harness!.core.journal.getTurn(ended.id)?.usage).toMatchObject({ inputTokens: 70, cacheReadTokens: 20, outputTokens: 12 });
+  });
+
+  test('a stopped Codex turn keeps usage sent after the interrupt completes', async () => {
+    const { client, threadId } = await startThread({ warmProcessMinutes: 1 });
+    const { finished } = await startTurn(client, threadId, '[slow-usage]', 20000);
+    await waitFor(() => fakeLog().includes('waiting for interrupt'));
+    await client.call('turns.stop', { threadId });
+    const ended = await finished;
+    expect(ended.status).toBe('stopped');
+    await waitFor(() => harness!.core.journal.getTurn(ended.id)?.usage?.outputTokens === 10, 1500);
+    expect(harness!.core.journal.getTurn(ended.id)?.usage).toMatchObject({ inputTokens: 60, cacheReadTokens: 20, outputTokens: 10 });
+  });
+
   test('late usage from a previous turn does not overwrite the current turn', async () => {
     const { client, threadId } = await startThread({ warmProcessMinutes: 1 });
     const gate = join(harness!.dataDir, 'usage-ready');
