@@ -543,6 +543,10 @@ Node path supplies no POSIX exit usage. `TraceCapability.mode: 'poll'` names
 this fallback, not complete process-tree event tracking.
 
 Linux samples procfs on each load tick for registered processes and their descendants.
+Descendants come from each task's `/proc/<pid>/task/<tid>/children`, so a tick
+reads only the thread's tree; a kernel without those files falls back to one
+scan of every process's stat line, shared for 500 ms. A stop by pid still scans the
+whole machine beside the children files before it signals anything.
 CPU uses `/proc/<pid>/stat`; memory uses `RssAnon + RssShmem`, falling back to
 `VmRSS` on older kernels. The latter includes shared library mappings and can
 overcount a parallel workload. A process name is read from `/proc/<pid>/comm`

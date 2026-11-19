@@ -172,9 +172,9 @@ describe('a thread load on Linux', () => {
       // cached-topology samples and the samples that refresh that topology.
       expect(load.sample('thr')?.cpuPercent).toBe(50);
     }
+    // No children files here: the shared scan answers, and reads the root's stat again when it refreshes.
     expect(reads.filter(path => path === '/proc')).toHaveLength(3);
-    expect(reads.filter(path => path === '/proc/100/stat')).toHaveLength(8);
-    expect(reads.some(path => path.includes('/task'))).toBe(false);
+    expect(reads.filter(path => path === '/proc/100/stat')).toHaveLength(8 + 3);
   });
 
   test('one parent snapshot supplies stat reads across threads and refreshes after 500 ms', () => {
@@ -193,8 +193,8 @@ describe('a thread load on Linux', () => {
     expect(load.sample('first')?.processes).toBe(2);
     expect(load.sample('second')?.processes).toBe(1);
     expect(reads.filter(path => path === '/proc')).toHaveLength(1);
-    expect(reads.filter(path => path.endsWith('/stat'))).toHaveLength(3);
-    expect(reads.some(path => path.includes('/task'))).toBe(false);
+    // The scan's three, and each root's own, read before its children are looked up.
+    expect(reads.filter(path => path.endsWith('/stat'))).toHaveLength(3 + 2);
     proc.files.set('/proc', '100 101 102 200');
     proc.files.set('/proc/102/stat', stat(102, 10, 0, 'new-child', 100));
     proc.files.set('/proc/102/status', status(4000));
@@ -397,19 +397,23 @@ describe('a thread load on Linux', () => {
     expect(load.sample('thr')?.workingSets).toContainEqual({ pid: 102, bytes: 3000 * 1024, exe: 'cargo' });
   });
 
-  test('a child missing from a readable children file still counts through the parent scan', () => {
+  test('a thread whose kernel has children files is sampled from its own tree, never from a listing of every process', () => {
     const proc = new FakeProc();
     proc.set(100, 10, 0, 1000);
     proc.files.set('/proc/101/stat', stat(101, 10, 0, 'cc', 100));
     proc.files.set('/proc/101/status', status(2000));
-    proc.files.set('/proc/102/stat', stat(102, 10, 0, 'rustc', 100));
-    proc.files.set('/proc/102/status', status(5000));
-    proc.files.set('/proc', '100 101 102 self');
+    proc.files.set('/proc/200/stat', stat(200, 10, 0, 'other', 1));
+    proc.files.set('/proc/200/status', status(5000));
+    proc.files.set('/proc', '100 101 200 self');
     proc.files.set('/proc/100/task/100/children', '101');
-    const load = new LinuxLoad(2, proc.read, proc.now);
+    proc.files.set('/proc/101/task/101/children', '');
+    const reads: string[] = [];
+    const load = new LinuxLoad(2, path => { reads.push(path); return proc.read(path); }, proc.now);
     load.add('thr', 100);
 
-    expect(load.sample('thr')).toMatchObject({ processes: 3, memoryBytes: 8000 * 1024 });
+    expect(load.sample('thr')).toMatchObject({ processes: 2, memoryBytes: 3000 * 1024 });
+    expect(reads).not.toContain('/proc');
+    expect(reads.filter(path => path.startsWith('/proc/200/'))).toEqual([]);
   });
 
   test('stopping a descendant signals its own children too, and fails only when it cannot be signalled', () => {
