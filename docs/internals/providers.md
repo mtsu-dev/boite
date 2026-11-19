@@ -49,8 +49,10 @@ Douane's default dashboard path is `/admin/#quotas`; CLIProxyAPI uses
 proprietary model stays in its own harness: Claude lists Claude models and
 Codex lists OpenAI models, whatever routing prefix the gateway gives them, while
 Grok and Muse models are listed by neither. Grok's models are listed by Grok
-alone, behind Douane. Gemini models are offered to both,
-because Antigravity, their own harness, cannot run through a gateway. Open
+alone, behind Douane. Gemini models are offered to both:
+Antigravity, their own harness, runs through Douane alone and lists them itself
+from the Gemini API (`/v1beta/models`), so behind CLIProxyAPI Claude and Codex
+are the only way to reach them. Open
 models (`gpt-oss`, Kimi, Qwen, Llama, DeepSeek, Mistral, GLM) are offered to
 each harness whose API the gateway advertises for them, under any routing
 prefix. A name the rules do not recognize takes its vendor from the routing
