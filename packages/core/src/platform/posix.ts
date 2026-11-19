@@ -74,9 +74,10 @@ export function createPosixPlatform(
     pidRemoved: (threadId, pid) => {
       load?.remove(threadId, pid);
       cgroups?.forget(pid);
-      groups.remove(pid);
     },
+    readyGroups: () => groups.ready(),
     tieGroup: (pid) => groups.add(pid),
+    untieGroup: (pid, leaderExited) => leaderExited ? groups.leaderExited(pid) : groups.remove(pid),
     killTiedGroups: () => groups.killAll(),
     warm() {},
     forget(threadId) { load?.forget?.(threadId); },

@@ -117,6 +117,12 @@ export function composerPage(source: Iterable<ComposerRecord>, bytes = composerB
   return { records };
 }
 
+const PRIVATE_TERMINAL_PREFIX = 'terminal-private:';
+
+/** An internal memory queue separate from a connection's private draft. */
+export const privateTerminalComposerId = (threadId: string): string => `${PRIVATE_TERMINAL_PREFIX}${threadId}`;
+export const composerInputThreadId = (id: string): string => id.startsWith(PRIVATE_TERMINAL_PREFIX) ? id.slice(PRIVATE_TERMINAL_PREFIX.length) : id;
+
 export interface ComposerRpcMethods {
   'composer.list': { params: {}; result: ComposerRecord[] };
   'composer.listPage': { params: { after?: ComposerCursor }; result: ComposerPage };

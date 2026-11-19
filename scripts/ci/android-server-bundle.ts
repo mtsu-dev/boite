@@ -11,6 +11,6 @@ if (import.meta.main) {
   if (!directory) throw new Error('usage: android-server-bundle.ts <artifact directory>');
   mkdirSync(directory, { recursive: true });
   const file = join(directory, `boite-server_${pkg.version}_android.zip`);
-  writeFileSync(file, androidServerBundle('packages/core/dist', 'packages/ui/dist', 'apps/android-server/termux', pkg.version));
+  writeFileSync(file, await androidServerBundle('packages/core/dist', 'packages/ui/dist', 'apps/android-server/termux', pkg.version));
   console.log(file);
 }

@@ -24,6 +24,7 @@ import type {
   TurnInFlightData,
 } from '@boite/contracts';
 import type { Core } from './core.ts';
+import { waitForMailReceipt, type MailDelivery } from './threads/steering.ts';
 import { notFound, refused } from './errors.ts';
 import { newId } from './ids.ts';
 import { assertDriverRunnable, releaseThread } from './drivers/index.ts';
@@ -54,7 +55,7 @@ import { messagePage, threadSnapshot, type MessagePage } from './threads/snapsho
 import { checkEffort, checkModel, checkSpeed, checkStoredEffort, checkStoredSpeed, defaultModel } from './threads/selection.ts';
 import { TurnContexts } from './threads/turn-context.ts';
 import { TurnRunner } from './threads/turn-runner.ts';
-import { markQueuedStopped } from './threads/turn-settlement.ts';
+import { markQueuedStopped, userStopKey } from './threads/turn-settlement.ts';
 import { ThreadFocus } from './threads/focus.ts';
 import { ThreadListLog } from './threads/list-changes.ts';
 import { ProgressState } from './threads/progress.ts';
@@ -334,7 +335,7 @@ export class ThreadStore {
       const modeChanged = next.permissionMode !== thread.permissionMode;
       if (modeChanged) next.selectionVersion = (thread.selectionVersion ?? 0) + 1;
       const saved = this.#save(next, 'thread.updated');
-      if (modeChanged) this.runner.changePermissionMode(thread.id, next.permissionMode, thread, next);
+      if (modeChanged) this.runner.selectionChanged(thread, next);
       return saved;
     }
     const account = this.#core.accounts.require(params.accountId ?? thread.accountId);
@@ -757,10 +758,12 @@ export class ThreadStore {
 
   stopTurn(threadId: ThreadId): boolean {
     this.require(threadId);
-    this.handoff.forget(threadId);
+    const running = this.#core.journal.runningTurn(threadId);
+    if (running) this.#core.journal.setSetting(userStopKey(running.id), true);
+    const handoffCancelled = this.handoff.forget(threadId);
     this.cacheKeepalive.forget(threadId);
     // Stop on a thread waiting for a usage limit to reset, or for the wake its agent scheduled, means: do not resume it.
-    const planned = [this.resumes.cancel(threadId, 'the thread was stopped'), this.#core.wakes.cancel(threadId, 'the thread was stopped')].includes(true);
+    const planned = [handoffCancelled, this.resumes.cancel(threadId, 'the thread was stopped'), this.#core.wakes.cancel(threadId, 'the thread was stopped')].includes(true);
     this.#core.coordination.pause(threadId);
     // Runs first: once they are stopped, a team with no child has nothing left to pause.
     const childrenStopped = this.#core.workflows.stopRoot(threadId, 'Stopped with its thread') + this.#core.delegation.stop(threadId);
@@ -780,7 +783,7 @@ export class ThreadStore {
    * its exit, and with no `turn.finished` to follow nothing else would sweep it.
    */
   releaseAgent(threadId: ThreadId): void {
-    void this.#core.procs.protection.revoke(threadId).catch(() => {});
+    void this.#core.sharedAccess.execution.revoke(threadId).catch(() => {});
     this.agentState.cancelBackground(threadId);
     releaseThread(threadId);
     this.#core.procs.sweepSoon(threadId);
@@ -796,29 +799,36 @@ export class ThreadStore {
     return typeof this.runner.handles.get(threadId)?.steer === 'function' && operation !== 'compact' && !this.cacheKeepalive.pinging(threadId);
   }
 
-  async steer(threadId: string, text: string): Promise<boolean> {
+  async steer(threadId: string, text: string, delivery?: MailDelivery): Promise<boolean> {
     const handle = this.runner.handles.get(threadId);
     if (!handle?.steer || this.runner.steering.has(threadId)) return false;
     const turn = this.#core.journal.runningTurn(threadId);
     if (!turn || turn.execution?.operation === 'keepalive' || turn.execution?.operation === 'compact') return false;
-    this.runner.steering.add(threadId);
+    const steering = this.runner.beginSteering(threadId, handle);
+    if (!steering) return false;
     try {
-      const submitted = await handle.steer(text);
-      if (submitted && !this.#core.journal.isClosed()) this.noteCoordination(threadId, turn.id, text);
+      delivery?.signal.throwIfAborted();
+      // A late receipt can settle mail from a finished turn. The transport can
+      // still cancel its request when the attempt releases its steering slot.
+      const receipt = handle.steer(text, undefined, undefined, steering.signal);
+      const submitted = await waitForMailReceipt(receipt, steering.signal, steering.turnStopSignal, delivery);
+      if (submitted && !this.#core.stopping && !this.#core.journal.isClosed()) this.noteCoordination(threadId, turn.id, text);
       return submitted;
     } finally {
-      this.runner.steering.delete(threadId);
-      void this.deferred.flushRunning(threadId);
+      if (!steering.signal.aborted) {
+        steering.release();
+        void this.deferred.flushRunning(threadId);
+      }
     }
   }
 
   noteCoordination(threadId: string, turnId: string, text: string): void { this.noteSystem(threadId, turnId, text, 'Agent coordination', 'coordination.context'); }
 
-  /** A line of Boite's own inside a running turn: what the agent was told, under a short label. */
+  /** A line of Boite's own, attached to the turn that received it. */
   noteSystem(threadId: string, turnId: string, text: string, displayText: string, eventType: 'coordination.context' | 'turn.pausedForUpdate' | 'turn.resumedAfterUpdate' | 'turn.cutByUpdate'): void {
     const message: Message = { id: newId('msg_'), threadId, turnId, role: 'system', parts: [{ type: 'text', text, displayText }], state: 'complete', createdAt: Date.now() };
     this.#core.journal.append({ type: eventType, threadId, version: 1, payload: message }, () => this.#core.journal.putMessage(message));
-    this.runner.noteMail(threadId, message.createdAt);
+    this.runner.noteMail(threadId, message.createdAt, turnId);
     this.#core.bus.emit('message.started', message);
     this.#core.bus.emit('message.completed', { threadId, messageId: message.id, state: 'complete' });
   }

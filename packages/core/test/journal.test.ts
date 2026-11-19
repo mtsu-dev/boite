@@ -104,9 +104,19 @@ describe('journal', () => {
     expect(journal.turnRequest('thr_test', 'uncertain_request')?.fingerprint).toBe('steer:pending:uncertain');
   });
 
+  test('the last stated turn skips cache pings and the current turn, with rowid breaking timestamp ties', () => {
+    const put = journal.db.query("INSERT INTO turns (id, thread_id, status, queued_at, started_at, execution) VALUES (?, 'thr_test', 'done', 0, ?, ?)");
+    put.run('first', 1, null);
+    put.run('second', 1, null);
+    put.run('ping', 2, '{"operation":"keepalive"}');
+    put.run('never-started', null, null);
+    put.run('current', 3, null);
+    expect(journal.statedTurn('thr_test', 'current')?.id).toBe('second');
+  });
+
   test.each([0, 25])('index failure rolls back schema %i and a later open retries the entire migration', (version) => {
     const target = join(dir, 'index-failure.db');
-    const indexes = ['thread_deletions_by_date', 'processes_by_started', 'turns_by_status', 'messages_by_turn', 'turns_by_finished', 'turns_by_thread_queue'];
+    const indexes = ['thread_deletions_by_date', 'processes_by_started', 'turns_by_status', 'messages_by_turn', 'turns_by_finished', 'turns_by_thread_queue', 'turns_stated_by_thread'];
     if (version === 25) {
       const previous = new Journal(target);
       try {
@@ -163,7 +173,7 @@ describe('journal', () => {
       .replace(/project_id TEXT/i, 'project_id TEXT NOT NULL'));
     journal.db.exec('INSERT INTO threads_legacy SELECT * FROM threads; DROP TABLE threads; ALTER TABLE threads_legacy RENAME TO threads');
     for (const index of indexes) journal.db.exec(index.sql);
-    journal.db.exec('DROP INDEX threads_done_expiry');
+    journal.db.exec('DROP INDEX threads_done_expiry; DROP INDEX threads_cwd_branch; DROP INDEX turns_stated_by_thread');
     const addedColumns = [[2, 'threads', 'effort'], [3, 'threads', 'pinned'], [5, 'threads', 'branch'], [6, 'threads', 'title_source'], [7, 'threads', 'context'], [9, 'threads', 'session_generation'], [9, 'threads', 'selection_version'], [9, 'turns', 'execution'], [10, 'threads', 'speed'], [15, 'threads', 'agent_session_id'], [29, 'threads', 'done_at']] as const;
     for (const [since, table, column] of addedColumns) {
       if (version < since) journal.db.exec(`ALTER TABLE ${table} DROP COLUMN ${column}`);

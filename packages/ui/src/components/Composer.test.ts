@@ -1,7 +1,7 @@
 import { afterEach, expect, vi } from 'vitest';
 import { test as fixtureTest } from '../test/fake-client';
 import { flushSync, mount, unmount } from 'svelte';
-import { RpcErrorCode } from '@boite/contracts';
+import { RpcErrorCode, type RpcParams } from '@boite/contracts';
 import App from '../App.svelte';
 import { FakeClient } from '../lib/fake-client';
 import { TestComposerCore } from '../test/composer-core';
@@ -245,6 +245,13 @@ async function send(prompt: string): Promise<void> {
   input().focus();
   press('Enter');
   await waitFor(() => (store.openThread?.messages.length ?? 0) >= before + 2 && !store.busy);
+}
+
+/** Set up an agent question without starting the composer's typing pause. */
+async function openQuestionReply(): Promise<void> {
+  await openIdle('t-trace');
+  expect(await store.send('check this [ask]')).toBe(true);
+  await waitFor(() => !store.busy && document.querySelector('[data-testid=composer-reply]') !== null);
 }
 
 test.for([false, true])('editing replaces the sent message and later turns without leaving the thread (Ctrl: %s)', async (ctrlKey, { app: _app }) => {
@@ -1098,9 +1105,7 @@ test('the permission waits on its command row in the timeline, the field says a 
 });
 
 test('a question in the field keeps Enter and Escape from a permission waiting beside it, and so does a machine out of reach', async ({ app: _app }) => {
-  await store.open('t-trace');
-  await send('check this [ask]');
-  await waitFor(() => document.querySelector('[data-testid=composer-reply]') !== null);
+  await openQuestionReply();
   const ask = { id: 'perm-beside', threadId: 't-trace', turnId: store.openThread!.turns.at(-1)?.id ?? 'turn', toolName: 'Bash', input: { command: 'ls' }, description: null, createdAt: Date.now() };
   store.pendingPermissions = [...store.pendingPermissions, ask];
   flushSync();
@@ -1623,9 +1628,7 @@ test('a waiting question takes the composer as its free answer, with the card pi
 });
 
 test('while a question takes the field during a turn, its button is Answer alone and the foot\'s line holds Stop', async ({ app: _app }) => {
-  await store.open('t-trace');
-  await send('check this [ask]');
-  await waitFor(() => document.querySelector('[data-testid=composer-reply]') !== null);
+  await openQuestionReply();
   store.openThread!.status = 'running';
   flushSync();
   // No Stop in the field: an empty field shows Answer, disabled, with its reason.
@@ -1674,9 +1677,7 @@ test('while a turn runs, typed words take the round button for Send and the turn
 });
 
 test('an ignored async question stays docked while an ordinary message goes out as a turn', async ({ app: _app }) => {
-  await store.open('t-trace');
-  await send('check this [ask]');
-  await waitFor(() => document.querySelector('[data-testid=composer-reply]') !== null);
+  await openQuestionReply();
   const asked = store.pendingQuestions.find((question) => question.threadId === 't-trace')!;
   expect(query('[data-testid=composer-reply]').dataset.question).toBe(asked.id);
   query<HTMLButtonElement>('[data-testid=activity-question-toggle]').click();
@@ -1732,9 +1733,7 @@ test('a question asked while the user types takes the emptied composer only afte
 });
 
 test('a question card\'s own submit never answers with a file still being read', async ({ app: _app }) => {
-  await store.open('t-trace');
-  await send('check this [ask]');
-  await waitFor(() => document.querySelector('[data-testid=composer-reply]') !== null);
+  await openQuestionReply();
   const asked = store.pendingQuestions.find((question) => question.threadId === 't-trace')!;
   await type('here are the notes');
   let release!: () => void;
@@ -1755,9 +1754,7 @@ test('a question card\'s own submit never answers with a file still being read',
 });
 
 test('a question card does not take a sent message being edited as its answer', async ({ app: _app }) => {
-  await store.open('t-trace');
-  await send('check this [ask]');
-  await waitFor(() => document.querySelector('[data-testid=composer-reply]') !== null);
+  await openQuestionReply();
   const row = Array.from(document.querySelectorAll('[data-testid=message][data-role=user]')).find(row => row.querySelector('[data-testid=text-part]')?.textContent === 'check this [ask]')!;
   row.querySelector<HTMLButtonElement>('[data-testid=message-edit]')!.click();
   await waitFor(() => input().value === 'check this [ask]');
@@ -2759,6 +2756,15 @@ test('thirty pasted screenshots over the byte total show at once, and Send press
   }));
   // jsdom's 5 MB storage cannot back up the 10 MB the box holds before its fit; a browser keeps it in its journal.
   const save = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {});
+  const client = store.client!;
+  const call = client.call.bind(client);
+  // The codec above simulates the encoded sizes. Its output has no pixels for the thumbnail decoder to read.
+  const preview = vi.spyOn(client, 'call').mockImplementation((method, params) => {
+    if (method === 'messages.attachment' && (params as RpcParams<'messages.attachment'>).previewMax !== undefined) {
+      return Promise.resolve({ data: PIXEL, mimeType: 'image/png', bytes: decodedBytes(PIXEL) });
+    }
+    return call(method, params as never);
+  });
   try {
     await openIdle('t-trace');
     const before = store.openThread!.messages.length;
@@ -2773,13 +2779,16 @@ test('thirty pasted screenshots over the byte total show at once, and Send press
     expect(loaded()).toBe(false);
     press('Enter');
     await waitFor(() => (store.openThread?.messages.length ?? 0) > before, 8000);
-    const sent = store.openThread!.messages.filter((message) => message.role === 'user').at(-1)!;
+    const thread = await client.call('threads.get', { threadId: 't-trace' });
+    const sent = thread.messages.filter((message) => message.role === 'user').at(-1)!;
     const images = sent.parts.filter((part) => part.type === 'image');
     expect(images).toHaveLength(30);
-    expect(images.reduce((sum, part) => sum + decodedBytes(part.type === 'image' ? part.data : ''), 0)).toBeLessThanOrEqual(ATTACHMENTS_TOTAL_MAX_BYTES);
+    const sizes = images.map(part => decodedBytes(part.data));
+    expect(sizes.every(bytes => bytes > 0)).toBe(true);
+    expect(sizes.reduce((sum, bytes) => sum + bytes, 0)).toBeLessThanOrEqual(ATTACHMENTS_TOTAL_MAX_BYTES);
     expect(store.error).toBeNull();
     expect(input().value).toBe('');
-  } finally { decode.mockRestore(); save.mockRestore(); }
+  } finally { decode.mockRestore(); save.mockRestore(); preview.mockRestore(); }
 });
 
 test('a pasted copy that stays over the byte total at its smallest says to remove pictures, and keeps them', async ({ app: _app }) => {

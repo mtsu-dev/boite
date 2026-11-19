@@ -736,13 +736,12 @@ export function startServer(options: ServerOptions): RunningServer {
   // the caller's own setup: `main` writes `core.json` right behind this call.
   setTimeout(() => {
     if (stopping) return;
-    // A provider told from another by its program's version is not installed,
-    // as far as a turn is concerned, until that program has answered: on the
-    // first start after an update there is no kept reading, and a turn resumed
-    // before it would be refused for good.
+    core.scheduler.startupReady();
+    core.threads.handoff.resume();
+    // Give the installed provider list time to settle before resuming teams,
+    // workflows and councils, each of which may use several providers.
     void core.providers.settle().finally(() => {
       if (stopping) return;
-      core.threads.handoff.resume();
       // The children and steps the handoff cut go on with their conversations.
       core.delegation.resumeAfterRestart();
       core.workflows.resumeAfterRestart();
@@ -764,10 +763,11 @@ export function startServer(options: ServerOptions): RunningServer {
       return false;
     },
     closeSession(sessionId: string): void {
+      const code = core.group.clients.deviceSessionWasRevoked(sessionId) ? RpcCloseCode.DeviceRevoked : RpcCloseCode.Unauthorized;
       for (const connection of connections) {
-        if (connection.identity.sessionId === sessionId) connection.close(RpcCloseCode.Unauthorized, 'session revoked');
+        if (connection.identity.sessionId === sessionId) connection.close(code, 'session revoked');
       }
-      relays.closeSession(sessionId);
+      relays.closeSession(sessionId, code === RpcCloseCode.DeviceRevoked);
     },
     sessionConnected: (sessionId: string): boolean => [...connections].some(c => c.authenticated && c.identity.sessionId === sessionId) || relays.hasSession(sessionId),
     closeAgents(threadId: ThreadId): void {

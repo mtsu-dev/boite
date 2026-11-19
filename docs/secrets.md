@@ -55,8 +55,9 @@ cannot send a value: answer from the PC or over HTTPS.
 
 ## What masking does not cover
 
-Boite replaces the value with `•••• (NAME)` in the conversation's text,
-reasoning, tool output, terminal, logs and diagnostic exports, as long as
+Boite replaces the value with `•••• (NAME)` in the text, reasoning, tool
+output and terminal of every conversation, the one that asked and any other
+that reads the file, and in logs and diagnostic exports, as long as
 Boite runs. Masking works only inside Boite, and it has gaps:
 
 - A value shorter than eight bytes is not masked.

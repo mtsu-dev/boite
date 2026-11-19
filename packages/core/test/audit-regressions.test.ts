@@ -2,12 +2,15 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, expect, test } from 'bun:test';
+import { afterEach, expect, spyOn, test } from 'bun:test';
 import type { ProviderInstall } from '@boite/contracts';
+import { setDriver } from '../src/drivers/index.ts';
+import type { TurnResult } from '../src/drivers/types.ts';
 import { readTreeSide } from '../src/git/read.ts';
 import { InstallManager } from '../src/providers/install.ts';
 import { extractRelease } from '../src/providers/install-unpack.ts';
 import { snapshot } from '../src/threads/checkpoint-files.ts';
+import { ThreadStore } from '../src/threads.ts';
 import { echoThread, holdAccountTurns, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
 
@@ -139,6 +142,57 @@ test.each([
   await waitFor(() => (harness!.core.journal.getThread(threadId)?.status ?? '') === 'idle');
   expect(harness.core.journal.listMessages(threadId).filter(message => message.role === 'user' &&
     message.parts.some(part => part.type === 'text' && part.text === text))).toHaveLength(1);
+  expect((await restarted.call('threads.get', { threadId })).pendingAnswers).toEqual([]);
+});
+
+test.each(['idle card', 'completed turn', 'stopped turn', 'refused dispatch'] as const)('a durable async answer survives an interrupted dispatch (%s)', async point => {
+  const dataDir = outside('boite-held-answer-dispatch-');
+  harness = await startTestCore({ dataDir });
+  const client = await harness.connect();
+  const { threadId } = await echoThread(harness, client);
+  spyOn(harness.core.threads.deferred, 'flushDeferred').mockImplementation(() => {});
+  const result = Promise.withResolvers<TurnResult>();
+  const settle = (status: 'done' | 'stopped') => result.resolve({ status, usage: null, sessionId: null });
+  const restore = setDriver('echo', { protocol: 'echo', startTurn: () => ({ done: result.promise, stop: () => settle('stopped') }) });
+  try {
+    const first = await client.call('turns.start', { threadId, prompt: 'First prompt' });
+    await waitFor(() => harness!.core.threads.runner.handles.has(threadId));
+    const { questionId } = await client.call('questions.ask', { threadId, text: 'Which option?' });
+    if (point === 'idle card' || point === 'refused dispatch') {
+      await client.call('turns.stop', { threadId });
+      await waitFor(() => harness!.core.journal.getTurn(first.id)?.status === 'stopped');
+    }
+    await client.call('questions.answer', { threadId, questionId, optionIds: [], text: 'Keep this answer' });
+    if (point === 'stopped turn') await client.call('turns.stop', { threadId });
+    if (point === 'completed turn') settle('done');
+    await waitFor(() => harness!.core.journal.getTurn(first.id)?.finishedAt != null);
+  } finally {
+    settle('stopped');
+    restore();
+  }
+  const text = '> Which option?\n\nKeep this answer';
+  expect((await client.call('threads.get', { threadId })).pendingAnswers).toEqual([text]);
+  await harness.stop();
+
+  const refusal = point === 'refused dispatch' ? spyOn(ThreadStore.prototype, 'startTurn').mockImplementationOnce(() => {
+    throw new Error('Test admission refusal');
+  }) : undefined;
+  try {
+    harness = await startTestCore({ dataDir });
+    if (refusal) expect(refusal).toHaveBeenCalledTimes(1);
+  } finally { refusal?.mockRestore(); }
+  const restarted = await harness.connect();
+  const delivered = () => harness!.core.journal.listMessages(threadId).filter(message => message.role === 'user' &&
+    message.parts.some(part => part.type === 'text' && part.text === text));
+  if (point === 'stopped turn' || point === 'refused dispatch') {
+    expect(delivered()).toHaveLength(0);
+    expect((await restarted.call('threads.get', { threadId })).pendingAnswers).toEqual([text]);
+    const turn = await restarted.call('turns.start', { threadId, prompt: 'Continue' });
+    await waitFor(() => harness!.core.journal.getTurn(turn.id)?.status === 'done');
+  } else {
+    await waitFor(() => delivered().length > 0);
+  }
+  expect(delivered()).toHaveLength(1);
   expect((await restarted.call('threads.get', { threadId })).pendingAnswers).toEqual([]);
 });
 

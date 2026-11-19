@@ -1,5 +1,7 @@
 <script lang="ts">
-  import InfoTip from './InfoTip.svelte';
+  import SettingField from './SettingField.svelte';
+  import SettingSwitch from './SettingSwitch.svelte';
+  import SettingsSection from './SettingsSection.svelte';
   import CardScope from './CardScope.svelte';
   import SyncMark from './SyncMark.svelte';
   import TitleModelSetting from './TitleModelSetting.svelte';
@@ -13,7 +15,12 @@
    * keep its checklist. Saved on the machine, so it has its own card under General.
    */
   let { store }: { store: Store } = $props();
-  const uid = $props.id();
+  const fields = [
+    { key: 'asyncQuestions', testid: 'setting-async-questions', fallback: true },
+    { key: 'shortAnswers', testid: 'setting-short-answers', fallback: true, help: 'shortAnswersHint' },
+    { key: 'toolSummaries', testid: 'setting-tool-summaries', fallback: false, help: 'toolSummariesHint' },
+    { key: 'promptSuggestions', testid: 'setting-prompt-suggestions', fallback: true, help: 'promptSuggestionsHint' },
+  ] as const;
 
   /** A switch saves when it flips, as every other switch in Settings does; a refusal puts it back. */
   async function toggle(key: 'asyncQuestions' | 'shortAnswers' | 'toolSummaries' | 'promptSuggestions', input: HTMLInputElement) {
@@ -22,39 +29,16 @@
   }
 </script>
 
-<section class="card" id="settings-agent-replies" data-testid="agent-replies">
-  <h2 class="ui-label-box"><span class="ui-label">{strings.settings.agentReplies}</span><CardScope {store} /></h2>
-  <label for="{uid}-async" class="switch-row">
-    <span class="text">
-      <span class="ui-label-box"><span class="ui-label" id="{uid}-async-name">{strings.settings.asyncQuestions}</span><SyncMark {store} key="asyncQuestions" /></span>
-      <span class="hint" id="{uid}-async-effect">{strings.settings.effects.asyncQuestions}</span>
-    </span>
-    <input id="{uid}-async" aria-labelledby="{uid}-async-name" aria-describedby="{uid}-async-effect" type="checkbox" role="switch" data-testid="setting-async-questions"
-      checked={store.settings?.asyncQuestions ?? true} disabled={!store.settings} onchange={(event) => void toggle('asyncQuestions', event.currentTarget)} />
-  </label>
-  <label for="{uid}-short" class="switch-row">
-    <span class="text">
-      <span class="ui-label-box"><span class="ui-label" id="{uid}-short-name">{strings.settings.shortAnswers}</span><InfoTip topic={strings.settings.shortAnswers} text={strings.settings.shortAnswersHint} /><SyncMark {store} key="shortAnswers" /></span>
-      <span class="hint" id="{uid}-short-effect">{strings.settings.effects.shortAnswers}</span>
-    </span>
-    <input id="{uid}-short" aria-labelledby="{uid}-short-name" aria-describedby="{uid}-short-effect" type="checkbox" role="switch" data-testid="setting-short-answers"
-      checked={store.settings?.shortAnswers ?? true} disabled={!store.settings} onchange={(event) => void toggle('shortAnswers', event.currentTarget)} />
-  </label>
-  <label for="{uid}-tool-summaries" class="switch-row">
-    <span class="text">
-      <span class="ui-label-box"><span class="ui-label" id="{uid}-tool-summaries-name">{strings.settings.toolSummaries}</span><InfoTip topic={strings.settings.toolSummaries} text={strings.settings.toolSummariesHint} /><SyncMark {store} key="toolSummaries" /></span>
-      <span class="hint" id="{uid}-tool-summaries-effect">{strings.settings.effects.toolSummaries}</span>
-    </span>
-    <input id="{uid}-tool-summaries" aria-labelledby="{uid}-tool-summaries-name" aria-describedby="{uid}-tool-summaries-effect" type="checkbox" role="switch" data-testid="setting-tool-summaries"
-      checked={store.settings?.toolSummaries ?? false} disabled={!store.settings} onchange={(event) => void toggle('toolSummaries', event.currentTarget)} />
-  </label>
-  <label for="{uid}-suggest" class="switch-row">
-    <span class="text">
-      <span class="ui-label-box"><span class="ui-label" id="{uid}-suggest-name">{strings.settings.promptSuggestions}</span><InfoTip topic={strings.settings.promptSuggestions} text={strings.settings.promptSuggestionsHint} /></span>
-      <span class="hint" id="{uid}-suggest-effect">{strings.settings.effects.promptSuggestions}</span>
-    </span>
-    <input id="{uid}-suggest" aria-labelledby="{uid}-suggest-name" aria-describedby="{uid}-suggest-effect" type="checkbox" role="switch" data-testid="setting-prompt-suggestions"
-      checked={store.settings?.promptSuggestions ?? true} disabled={!store.settings} onchange={(event) => void toggle('promptSuggestions', event.currentTarget)} />
-  </label>
+<SettingsSection id="settings-agent-replies" testid="agent-replies" title={strings.settings.agentReplies}>
+  {#snippet actions()}<CardScope {store} />{/snippet}
+  {#each fields as field (field.key)}
+    <SettingField title={strings.settings[field.key]} hint={strings.settings.effects[field.key]} help={'help' in field ? strings.settings[field.help] : undefined}>
+      {#snippet actions()}{#if field.key !== 'promptSuggestions'}<SyncMark {store} key={field.key} />{/if}{/snippet}
+      {#snippet control(attributes)}
+        <SettingSwitch {...attributes} data-testid={field.testid} checked={store.settings?.[field.key] ?? field.fallback}
+          disabled={!store.settings} onchange={(event) => void toggle(field.key, event.currentTarget)} />
+      {/snippet}
+    </SettingField>
+  {/each}
   {#if store.settings}<TitleModelSetting {store} /><GoalTrackerSetting {store} />{/if}
-</section>
+</SettingsSection>

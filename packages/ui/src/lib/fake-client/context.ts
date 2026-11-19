@@ -1,5 +1,6 @@
 import { secureId } from '../secure-id';
 import { FakeComposerState } from './composer';
+import { FakeImagePreviews } from './image-preview';
 import type { FakeArchiveState, MergedPrFixture } from './merged-pr-archive';
 /** The state one fake core keeps, and the plumbing every domain module shares. */
 import { observeProgress } from './progress';
@@ -11,9 +12,7 @@ import {
   type ExperimentId,
   type QuotaAlerts,
   ChangeLog,
-  DEFAULT_AUTO_COMPACT,
-  DEFAULT_THREAD_DELETION_RETENTION_DAYS,
-  DEFAULT_THREAD_DONE_RETENTION_DAYS,
+  defaultSettings,
   PROTOCOL_VERSION,
   SPEECH_DEFAULT_MODEL,
   normalizeCoreLogText,
@@ -23,6 +22,7 @@ import {
   processAgentCommand,
   type Attachment,
   type Account,
+  type ArtifactContent,
   type BackgroundTask,
   type AgentLetter,
   type BrainStatus,
@@ -332,7 +332,9 @@ export class FakeContext {
   queuedExperiments: readonly string[] | null = null;
   /** The working tree `files.list`, `files.read` and `files.write` share. */
   readonly files = new Map<string, string>(Object.entries(FAKE_TREE));
+  readonly artifacts = new Map<string, ArtifactContent>();
   readonly artifactUrls = new Set<string>();
+  readonly imagePreviews = new FakeImagePreviews();
   private storedSettings!: Settings;
 
   /** As in the core, policy values are read over the saved choices, never saved over them. */
@@ -555,7 +557,7 @@ export class FakeContext {
         this.delegationConfigs.set(rootId, { ...delegationConfig(this, rootId), paused: false });
         this.emit('delegation.changed', { threadId: rootId });
       },
-      child: (root, profile, title, task) => workflowChild(this, root, profile, title, task),
+      child: (root, profile, title, task, context) => workflowChild(this, root, profile, title, task, context),
       answer: (threadId, text, ok) => workflowAnswer(this, threadId, text, ok),
       again: (threadId, task) => workflowAgain(this, threadId, task),
       member: (query, field) => void fakeMember(this, query, field),
@@ -564,7 +566,7 @@ export class FakeContext {
         const there = fakeCore(coreId);
         if (!there?.threads.has(threadId)) return null;
         workflowAnswer(there, threadId, text, ok);
-        return there.thread(threadId).turns.at(-1)?.id ?? null;
+        return there.thread(threadId).turns.at(-1) ?? null;
       },
       changed: (rootId, runId, templatesProjectId) => {
         if (templatesProjectId !== undefined) this.emit('workflows.changed', { threadId: rootId, runId, templatesProjectId });
@@ -600,21 +602,7 @@ export class FakeContext {
       publicKey: `fake-public-key-${coreId}`
     };
     this.settings = {
-      threadDeletionRetentionDays: DEFAULT_THREAD_DELETION_RETENTION_DAYS,
-      threadDoneRetentionDays: DEFAULT_THREAD_DONE_RETENTION_DAYS,
-      warmProcessMinutes: 0,
-      worktreeStorage: { mode: 'project', directory: null },
-      listenOnLan: false,
-      agentCpuCapPercent: 75,
-      agentMemoryBudgetPercent: 60,
-      threadMemoryCapMb: 0,
-      memoryReserveMb: 0,
-      memoryProtection: true,
-      focusGuard: true,
-      muteAgents: true,
-      reapOrphans: true,
-      autoUpdateHarnesses: false,
-      autoCompact: DEFAULT_AUTO_COMPACT,
+      ...defaultSettings(),
       // The demo machine reads as an install older than these two settings, as the core leaves one: open.
       // `?agents=closed` shows a new install.
       ...(closedAgents() ? CLOSED_AGENT_DEFAULTS : OPEN_AGENT_DEFAULTS)

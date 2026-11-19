@@ -155,16 +155,20 @@ test("an agent's deferred picture shows its blur, then its light copy near the s
   } as unknown as typeof IntersectionObserver;
   try {
     const loadDisplayImage = vi.fn(async () => 'data:image/webp;base64,COPY');
-    const loadMessageAttachment = vi.fn(async () => photo.data);
+    const loadMediaAttachment = vi.fn(async () => 'http://localhost/file/original');
     running = mount(ChatFile, { target: document.body, props: {
       file: { ...photo, data: '', dataDeferred: true, bytes: 1_400_000, width: 1280, height: 720, preview: 'data:image/png;base64,BLUR' },
-      store: { loadDisplayImage, loadMessageAttachment } as unknown as Store, threadId: 'thread', messageId: 'message', partIndex: 0
+      store: { loadDisplayImage, loadMediaAttachment } as unknown as Store, threadId: 'thread', messageId: 'message', partIndex: 0
     } });
     flushSync();
     const waiting = query<HTMLElement>('[data-testid=artifact-open-original]');
+    Object.defineProperty(waiting, 'clientWidth', { value: 560 });
     // As wide as the picture, or as its height capped at min(480px, 65vh) allows.
     const width = waiting.style.width;
-    expect(width).toMatch(/^min\(1280px, calc\(min\(480px, 65vh\) ?\* ?1280 ?\/ ?720\)\)$/);
+    const expected = document.createElement('div').style;
+    expected.width = 'min(1280px, calc(min(480px, 65vh) * 1280 / 720))';
+    expect(width).not.toBe('');
+    expect(width).toBe(expected.width);
     expect(waiting.style.aspectRatio).toBe('1280 / 720');
     expect(query('[data-testid=artifact-blur]').getAttribute('src')).toBe('data:image/png;base64,BLUR');
     expect(query('[data-testid=artifact-launch]').textContent).toContain('1280 × 720');
@@ -173,14 +177,15 @@ test("an agent's deferred picture shows its blur, then its light copy near the s
 
     for (const { callback, nodes } of observers) callback([...nodes].map(target => ({ target, isIntersecting: true }) as IntersectionObserverEntry), {} as IntersectionObserver);
     await vi.waitFor(() => expect(document.querySelector('[data-testid=artifact-copy]')?.getAttribute('src')).toBe('data:image/webp;base64,COPY'));
-    expect(loadDisplayImage).toHaveBeenCalledWith('thread', 'message', 0, 'image/png');
-    expect(loadMessageAttachment).not.toHaveBeenCalled();
+    expect(loadDisplayImage).toHaveBeenCalledWith('thread', 'message', 0, 'image/png', 576);
+    expect(loadMediaAttachment).not.toHaveBeenCalled();
 
-    // A click fetches the original, which takes the copy's place in a box of the same size.
+    // The original lands in the viewer while the copy and its box stay in the timeline.
     waiting.click();
-    await vi.waitFor(() => expect(document.querySelector('[data-testid=artifact-enlarge] img:not(.blur)')?.getAttribute('src')).toBe('blob:attachment'));
-    expect(loadMessageAttachment).toHaveBeenCalledWith('thread', 'message', 0);
-    const shown = query<HTMLElement>('[data-testid=artifact-enlarge]');
+    await vi.waitFor(() => expect(document.querySelector('[data-testid=image-viewer] img')?.getAttribute('src')).toBe('http://localhost/file/original'));
+    expect(loadMediaAttachment).toHaveBeenCalledWith('thread', 'message', 0, 'image/png');
+    expect(query('[data-testid=artifact-copy]').getAttribute('src')).toBe('data:image/webp;base64,COPY');
+    const shown = query<HTMLElement>('[data-testid=artifact-open-original]');
     expect(shown.style.width).toBe(width);
     expect(shown.style.aspectRatio).toBe('1280 / 720');
   } finally {

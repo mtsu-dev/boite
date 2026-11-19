@@ -53,6 +53,7 @@ export class CodexTurn extends DecidedTurnParts {
   #flushTimer: ReturnType<typeof setTimeout> | null = null;
 
   #completedTurnId: string | null = null;
+  nativeFinished = false;
   #status: TurnResult['status'] = 'done';
   #error: string | null = null;
   #diagnosticError: string | undefined;
@@ -65,6 +66,7 @@ export class CodexTurn extends DecidedTurnParts {
   usageCounts: CodexTokenCounts | null = null;
   /** The thread's cumulative `total` at this turn's latest usage update. */
   usageTotal: CodexTokenCounts | null = null;
+  usageLast: CodexTokenCounts | null = null;
   /** The published prompt cache lifetime of the model this turn ran on. */
   cacheLife: PromptCacheLife | null = null;
   /** `thread/resume` said the Codex thread is gone. */
@@ -100,12 +102,14 @@ export class CodexTurn extends DecidedTurnParts {
         this.#status = 'stopped';
         break;
       case 'failed':
+        this.nativeFinished = true;
         this.#refusal = codexRefusal(record.error?.codexErrorInfo ?? this.lastErrorInfo, record.error?.message, this.spentWindowResetsAt);
         this.fail(record.error?.message ?? 'the codex agent failed the turn');
         return;
       default:
         return;
     }
+    this.nativeFinished = true;
     this.decided = true;
     this.decide();
   }

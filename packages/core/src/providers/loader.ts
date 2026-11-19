@@ -16,7 +16,7 @@ import type { Core } from '../core.ts';
 import { writesTitles } from '../drivers/index.ts';
 import { InstallManager } from './install.ts';
 import { compareVersions, INSTALL_LATEST_MAX_AGE_MS, LATEST_MAX_AGE_MS, resolveLatestInstall } from './install-latest.ts';
-import { detectResolves, HOST_CANDIDATES, hostAgentsEnabled, launcherScriptOnly, profileFor, resolveCommand } from './resolve.ts';
+import { detectResolves, HOST_CANDIDATES, hostAgentsEnabled, launcherScriptOnly, pendingCommandVersion, profileFor, resolveCommand } from './resolve.ts';
 import { Rejection, validateDescriptor } from './validate.ts';
 import { attachVersions, loadVersions, readVersion, versionsSettled } from './versions.ts';
 import { programName } from '../threads/provider-process-log.ts';
@@ -366,6 +366,14 @@ export class ProviderRegistry {
     const waited = new Promise<void>((resolve) => { timer = setTimeout(resolve, waitMs); });
     try { await Promise.race([versionsSettled(), waited]); }
     finally { clearTimeout(timer); }
+  }
+
+  /** A version read still needed to resolve this enabled provider's executable. */
+  pendingVersion(id: ProviderId): Promise<void> | undefined {
+    const entry = this.entries.get(id);
+    if (entry === undefined || !this.#enabledEntry(entry)) return undefined;
+    const profile = profileFor(entry.descriptor);
+    return profile === undefined ? undefined : pendingCommandVersion(profile);
   }
 
   /** What the journal kept of the user's choices. Anything that is not a boolean is dropped. */

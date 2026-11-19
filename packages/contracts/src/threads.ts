@@ -4,6 +4,7 @@ import type { AgentLetter } from './coordination';
 import type { AccountId, MessageId, ProjectId, ProviderId, ThreadId, Timestamp, TurnId } from './ids';
 import type { AgentShape } from './imports';
 import type { Attachment, Message, MoveNotice, PendingMove, PreviewReference } from './messages';
+import type { OwnerThreadRequest } from './owner-thread';
 import type { PermissionRequest } from './permissions';
 import type { PluginActor } from './plugins';
 import type { ThreadCapabilities } from './providers';
@@ -690,6 +691,8 @@ export interface ThreadsRpcMethods {
     };
     result: ThreadSummary;
   };
+  /** Owner terminal only. Retries resolve the same creation and first turn before choosing defaults again. */
+  'threads.createFromPrompt': { params: OwnerThreadRequest; result: { thread: ThreadSummary; turn: Turn; project: string } };
   /** The system prompt, tools and parameters of a Claude thread's last request, read from its transcript. Refused on other providers. */
   'threads.agentShape': { params: { threadId: ThreadId }; result: AgentShape };
   /** Supported operations and their current availability for this thread. */

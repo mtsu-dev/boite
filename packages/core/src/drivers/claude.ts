@@ -105,7 +105,7 @@ export function createClaudeDriver(deps: ClaudeDeps): Driver {
         done: turn.done,
         setPermissionMode: mode => turn.session?.setPermissionMode(turn, mode) ?? Promise.resolve(false),
         applySettings: change => turn.session?.applySettings(turn, change) ?? Promise.resolve({}),
-        steerUser: (message, attachments) => turn.session?.steer(turn, message, attachments) ?? Promise.resolve(false),
+        steerUser: (message, attachments, onAccepted) => turn.session?.steer(turn, message, attachments, onAccepted) ?? Promise.resolve(false),
         stop: (): void => {
           // The session that holds it, which is not always the one it started on.
           turn.session?.stopTurn(turn);

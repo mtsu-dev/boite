@@ -12,6 +12,7 @@
 import { readdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { assignShards } from './shards.mts';
+import { readShardJobLogs } from './shard-logs.ts';
 
 export { assignShards, type Shard } from './shards.mts';
 
@@ -68,23 +69,8 @@ export function mergeDurations(logs: Record<string, number>[]): Record<string, n
   }));
 }
 
-function gh(args: string[]): string {
-  const result = Bun.spawnSync(['gh', ...args], { stdout: 'pipe', stderr: 'pipe', cwd: ROOT, windowsHide: true });
-  if (result.exitCode !== 0) throw new Error(`gh ${args.join(' ')}: ${result.stderr.toString().trim()}`);
-  return result.stdout.toString();
-}
-
-/** The logs of a run's E2E shard jobs; the run must have passed, or a file cut short skews its time. */
 function runLogs(run: string): string[] {
-  const view = JSON.parse(gh(['run', 'view', run, '--json', 'conclusion,jobs'])) as {
-    conclusion: string; jobs: { databaseId: number; name: string; conclusion: string }[];
-  };
-  const shards = view.jobs.filter((job) => /^E2E \d+\/\d+$/.test(job.name));
-  if (shards.length === 0) throw new Error(`run ${run}: no E2E shard job`);
-  const failed = shards.filter((job) => job.conclusion !== 'success');
-  if (failed.length) throw new Error(`run ${run}: ${failed.map((job) => `${job.name} ${job.conclusion}`).join(', ')}; refresh from a green run`);
-  const repo = process.env.GITHUB_REPOSITORY || gh(['repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner']).trim();
-  return shards.map((job) => gh(['api', '--allow-escape-sequences', `repos/${repo}/actions/jobs/${job.databaseId}/logs`]));
+  return readShardJobLogs(run, 'E2E shard', job => /^E2E \d+\/\d+$/.test(job.name), true).map(({ log }) => log);
 }
 
 export function readDurations(path = DURATIONS): Durations {

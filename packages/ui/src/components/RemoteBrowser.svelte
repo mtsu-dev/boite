@@ -4,6 +4,7 @@
   import { Pause, Play, ArrowUp, ArrowDown, Copy, MonitorSmartphone, Send } from '@lucide/svelte';
   import { REMOTE_PRESS_MAX, REMOTE_TEXT_MAX, type RemoteBrowserFrame, type RemoteBrowserInput, type RemoteBrowserPicker } from '@boite/contracts';
   import { browserKey, hasKeyboard, liveInput, writeClipboardLater } from '../lib/live-input';
+  import { keyCap } from '../lib/keybindings';
   import type { Store } from '../lib/store.svelte';
   import { strings } from '../lib/strings';
   import BrowserNav from './BrowserNav.svelte';
@@ -532,7 +533,7 @@
   {#if !desk}
   <footer>
     <div class="keys"><button type="button" class="ghost small icon" disabled={!usable} onclick={() => void input({ kind: 'scroll', x: 0, y: -500 })} aria-label={strings.remoteBrowser.scrollUp}><ArrowUp size={16} /></button><button type="button" class="ghost small icon" disabled={!usable} onclick={() => void input({ kind: 'scroll', x: 0, y: 500 })} aria-label={strings.remoteBrowser.scrollDown}><ArrowDown size={16} /></button>
-      {#each (['Tab', 'Enter', 'Escape', 'Backspace'] as const) as key}<button type="button" class="ghost small" disabled={!usable} onclick={() => void input({ kind: 'key', key })}><span class="ui-label">{key === 'Backspace' ? '⌫' : key === 'Escape' ? 'Esc' : key}</span></button>{/each}
+      {#each (['Tab', 'Enter', 'Escape', 'Backspace'] as const) as key}<button type="button" class="ghost small" disabled={!usable} onclick={() => void input({ kind: 'key', key })}><span class="ui-label">{key === 'Backspace' ? '⌫' : keyCap(key)}</span></button>{/each}
       <button type="button" class="ghost small icon" data-testid="remote-browser-copy" disabled={!usable} aria-label={strings.remoteBrowser.copy} title={strings.remoteBrowser.copy} onclick={() => void copySelection()}><Copy size={15} /></button>
     </div>
     <form onsubmit={e => { e.preventDefault(); void sendText(false); }}><input bind:value={text} data-testid="remote-browser-text" maxlength="2000" enterkeyhint="send" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label={strings.remoteBrowser.text} placeholder={strings.remoteBrowser.text} onkeydown={textKey} /><button type="submit" class="ghost small icon" disabled={!usable || !text} aria-label={strings.remoteBrowser.send}><Send size={16} /></button></form>

@@ -2,14 +2,32 @@ import { open, mkdir, rename, unlink, readFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { basename, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { ARTIFACT_MAX_BYTES, ATTACHMENT_MAX_BYTES, FILE_ROUTE, VIEW_ROUTE, type ArtifactContent, type Message, type MessagePart, type RpcParams } from '@boite/contracts';
+import { ARTIFACT_MAX_BYTES, ATTACHMENT_MAX_BYTES, CHAT_PREVIEW_IMAGES, FILE_ROUTE, VIEW_ROUTE, chatPreviewSizeProblem, type ArtifactContent, type Message, type MessagePart, type RpcParams } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { existingInside, mediaOf } from './workdir.ts';
-import { refused } from './errors.ts';
+import { invalidParams, refused } from './errors.ts';
 import { newId } from './ids.ts';
 import type { SharedFilePermit } from './contacts/access-policy.ts';
 
 const tooLarge = (path: string) => refused('artifacts.publish file must be at most 512 MB', { path });
+
+/** A capture already encoded by the core, stored with the same lifecycle as a published file. */
+export async function snapshotWindowCapture(core: Core, name: string, bytes: Uint8Array): Promise<{ part: Extract<MessagePart, { type: 'artifact' }>; discard(): Promise<void> }> {
+  if (bytes.length > ARTIFACT_MAX_BYTES) throw tooLarge(name);
+  const id = randomUUID();
+  const directory = join(core.dataDir, 'artifacts');
+  await mkdir(directory, { recursive: true });
+  const path = join(directory, id);
+  const descriptor = await open(path, 'wx');
+  const discard = () => unlink(path).catch(() => {});
+  try {
+    try { await descriptor.writeFile(bytes); } finally { await descriptor.close(); }
+  } catch (error) {
+    await discard();
+    throw error;
+  }
+  return { part: { type: 'artifact', id, mimeType: 'image/png', name, bytes: bytes.length, windowCapture: true }, discard };
+}
 
 /** Copy in bounded chunks; even a source that grows during the copy cannot exceed the cap. */
 async function snapshot(core: Core, cwd: string, path: string, permit?: SharedFilePermit): Promise<{ part: MessagePart; stored: string | null }> {
@@ -102,14 +120,23 @@ export async function publishArtifact(core: Core, params: RpcParams<'artifacts.p
 }
 
 /** Authorization names the message as well as the thread; an id alone is never a file capability. */
-export function readArtifact(core: Core, params: RpcParams<'artifacts.read'>): ArtifactContent {
-  core.threads.require(params.threadId);
+export async function readArtifact(core: Core, params: RpcParams<'artifacts.read'>): Promise<ArtifactContent> {
+  const problem = chatPreviewSizeProblem(params.previewMax);
+  if (problem) throw invalidParams(`artifacts.read.previewMax: expected one of ${problem.expected}`, problem);
+  const thread = core.threads.require(params.threadId);
   const message = core.journal.getMessage(params.messageId);
   const part = message?.threadId === params.threadId
     ? message.parts.find((p) => p.type === 'artifact' && p.id === params.artifactId) : null;
   if (part?.type !== 'artifact' || !/^[a-f0-9-]{36}$/.test(part.id)) throw refused('artifacts.read needs an artifact from this message and thread');
   const permit = core.sharedAccess.publication(params.threadId, params.messageId);
   const found = existingInside(join(core.dataDir, 'artifacts'), part.id, 'file', 'artifacts.read snapshot');
+  if (params.previewMax !== undefined) {
+    const parent = thread.parentThreadId ? core.journal.getThread(thread.parentThreadId) : null;
+    const copy = await core.media.chatPreview(thread.id, message!.id, message!.parts.indexOf(part), params.previewMax,
+      () => CHAT_PREVIEW_IMAGES.test(part.mimeType) ? { data: Bun.file(found.absolute), mimeType: part.mimeType } : null,
+      { ticket: true, permit, noStore: thread.incognito || parent?.incognito });
+    return { name: part.name, mimeType: copy.mimeType, bytes: part.bytes, url: copy.url ?? (copy.data ? `data:${copy.mimeType};base64,${copy.data}` : '') };
+  }
   if (params.view) {
     if (!part.view) throw refused('artifacts.read view needs an artifact published with boite view');
     // A page keeps the address it was loaded from: each frame takes a ticket of its own.

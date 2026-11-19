@@ -4,6 +4,13 @@ When something goes wrong, Boite keeps a log of its own problems on each
 machine. This page shows where to read it, how to send an anonymized report,
 and the known problems of each system.
 
+## Restart an unresponsive desktop app
+
+If Boite on this computer stops answering for 30 seconds, the desktop app can
+offer **Force restart**. Confirm to restart the local engine. Boite interrupts
+running turns and resumes those it can recover from their last saved state.
+An open incognito draft stays in the desktop app during the restart.
+
 ## Read the log
 
 Open Settings, Diagnostics. Each machine keeps its own log. The page works

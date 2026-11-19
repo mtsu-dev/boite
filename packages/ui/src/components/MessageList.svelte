@@ -146,7 +146,10 @@
   });
   let scrollTop = $state(savedTop);
   let column = $state<HTMLDivElement | undefined>(undefined);
-  function rememberAnchor() { anchors.remember(viewport, column); }
+  function rememberAnchor() {
+    const id = lastView && rows[lastView.first]?.id;
+    anchors.remember(viewport, column, id ? anchors.nodes.get(id) : undefined);
+  }
   /** Typing in a field never leaves the thread: a chord, Enter, Escape or a key outside a field reads the anchor. */
   function rememberBeforeKey(event: KeyboardEvent) { if (!typingKey(event)) rememberAnchor(); }
   function restoreAnchor(anchor: RowAnchor | undefined = anchors.current) {
@@ -169,6 +172,7 @@
   });
   let restoredReading = false;
   onDestroy(() => {
+    anchors.cancelPending();
     if (!viewport || !store.readingPositions) return;
     store.readingPositions.delete(threadId);
     store.readingPositions.set(threadId, { top: scrollTop, pinned, heights: new Map(heights), anchor: anchors.saved(), height: viewHeight, reservePrompt, followPrompt: promptTarget });
@@ -479,8 +483,6 @@
         frame = 0;
         const batch = measurable([...pending.values()], id => slots.indexOf(rows, id) >= 0);
         pending.clear();
-        // Estimated rows can be taller than their slot totals. Keep the actual
-        // visible message, then align it after Svelte updates the spacers.
         rememberAnchor();
         const anchor = anchors.current;
         onMeasured(batch);
@@ -518,8 +520,7 @@
     scrollTop = box.scrollTop;
     viewHeight = box.clientHeight;
     if (navigationTarget || promptTarget) return;
-    // Read the anchor after the render, before another navigation can restore it.
-    void tick().then(rememberAnchor);
+    anchors.schedule(rememberAnchor);
     if (glide.active) {
       if (distance > 1) return;
       endGlide(false);
@@ -685,7 +686,7 @@
   const branchable = $derived(store.openThread?.id === threadId && (!!store.openThread.agentSessionId || store.openThread.projectId !== null));
   const forkable = $derived(branchable && !store.openThread?.agentSessionId);
   // A prompt still waiting in the queue would run after the edit, on the rewound thread, as would an edit started under a prompt still on its way to the core.
-  const atRest = $derived(branchable && !store.busy && (store.composerStates[threadId]?.queued.length ?? 0) === 0 && !store.composerStates[threadId]?.sending);
+  const atRest = $derived(branchable && !store.openThread?.archived && !store.busy && (store.composerStates[threadId]?.queued.length ?? 0) === 0 && !store.composerStates[threadId]?.sending);
 
   async function editMessage(message: Message): Promise<void> {
     if (await editWhole(store, threadId, message)) focusComposer({ typing: true });

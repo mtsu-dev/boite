@@ -267,8 +267,12 @@ minutes per pass. A worktree qualifies when all of these hold:
 - No live, non-archived thread linked an open pull request whose head is the
   worktree's branch. A delegated worker often runs from another folder and
   makes its worktree with `git worktree add`; its `boite pr link` keeps it.
-- `git status` lists nothing, untracked files included. Ignored files such as
-  dependencies and build output leave with the folder.
+- `git status` lists nothing, including ignored and untracked files. During
+  removal Boite records the move, checks the checkout in a private sibling
+  directory and sets aside its tracked files. The directory must be empty
+  when removed, so a process with an open directory handle can still leave a
+  file that stops cleanup. Boite restores that checkout, or recovers the
+  recorded move on the next open after a crash.
 - HEAD is on another local branch or remote-tracking ref, or a merged, non-fork
   GitHub pull request has that exact commit as its head. The proof is the one
   [merged pull requests](#merged-pull-requests) use, so a squash

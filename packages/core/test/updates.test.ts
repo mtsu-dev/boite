@@ -842,13 +842,13 @@ describe('harness updates', () => {
     // An agent with no session to resume: the history is the whole context.
     const thread = { ...core.threads.require(threadId), sessionId: null };
     const note = 'Boite paused this turn between two tool calls (test note).';
-    const context = core.threads.contexts.makeContext(thread, core.providers.require(thread.providerId), core.accounts.require(thread.accountId), core.journal.getTurn(turn.id)!, { memory: '', deferred: '', letters: '' }, note);
+    const context = await core.threads.contexts.makeContext(thread, core.providers.require(thread.providerId), core.accounts.require(thread.accountId), core.journal.getTurn(turn.id)!, { memory: '', deferred: '', letters: '' }, note);
     core.threads.noteSystem(threadId, turn.id, note, 'Resumed', 'turn.resumedAfterUpdate');
     const times = (text: string): number => text.split(note).length - 1;
     expect(context.prompt).toContain('build the release');
     expect(times(context.prompt)).toBe(1);
     // A driver that starts another fresh session later gets the same history, not the note again.
-    expect(times(context.continuation!().prompt)).toBe(1);
+    expect(times((await context.continuation!()).prompt)).toBe(1);
   });
 
   test("an update releases the provider's idle threads and sweeps what their agents left", async () => {

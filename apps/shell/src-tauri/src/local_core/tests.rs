@@ -13,25 +13,34 @@ use std::process::{Child, Command, Stdio};
 /// its work in `core.starting.json` until the time its test wrote in
 /// `compact-until`, however long Bun took to start, then serves 300 ms later.
 const FAKE_CORE: &str = r#"
+import { existsSync, readFileSync } from 'node:fs';
 const [version, mode] = process.argv.slice(2);
 const dir = process.argv[process.argv.indexOf('--data-dir') + 1];
 if (mode === 'fail') {
   console.error(`error: another core is already running on ${dir} (pid 1)`);
   process.exit(3);
 }
-if (mode === 'compact') {
+if (mode === 'compact' || mode === 'compact-gated') {
   const status = `${dir}/core.starting.json`;
   await Bun.write(status, JSON.stringify({ pid: process.pid, phase: 'compacting', startedAt: Date.now(), bytes: 1 }));
-  await Bun.sleep(Math.max(0, Number(await Bun.file(`${dir}/compact-until`).text()) - Date.now()));
+  if (mode === 'compact-gated') {
+    while (!await Bun.file(`${dir}/finish-compaction`).exists()) await Bun.sleep(20);
+  } else {
+    await Bun.sleep(Math.max(0, Number(await Bun.file(`${dir}/compact-until`).text()) - Date.now()));
+  }
   (await import('node:fs')).rmSync(status);
   // The real core opens its journal between the end of that work and `core.json`.
   await Bun.sleep(300);
 }
-if (mode === 'serve' || mode === 'compact') {
+if (mode !== 'hang') {
   const token = 'test-token';
   const server = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch(request) {
     const url = new URL(request.url);
-    if (url.pathname === '/health') return Response.json({ ok: true, version, pid: process.pid });
+    if (url.pathname === '/health') {
+      const mute = `${dir}/mute`;
+      if (existsSync(mute) && readFileSync(mute, 'utf8') === String(process.pid)) return new Promise(() => {});
+      return Response.json({ ok: true, version, pid: process.pid });
+    }
     if ((url.pathname === '/shutdown' || url.pathname === '/shutdown-if-idle' && url.searchParams.get('pid') === String(process.pid)) && request.method === 'POST' && request.headers.get('authorization') === `Bearer ${token}`) {
       setTimeout(() => process.exit(0), 20);
       return Response.json({ ok: true, pid: process.pid }, { status: 202 });
@@ -88,6 +97,75 @@ fn running_core(directory: &Path, version: &str) -> (Child, u32) {
 
 fn spawned_pid(state: &CoreState) -> Option<u32> {
     state.child.lock().unwrap().as_ref().map(|spawned| spawned.child.id())
+}
+
+#[test]
+fn a_running_core_without_health_is_refused_without_replacing_it() {
+    let directory = scratch("lost-health");
+    let state = state(&directory, "2.0.0", fake_command(&directory, "2.0.0", "fail"), false, Duration::from_secs(2));
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let (start, _) = health::own_start_and_an_earlier_one();
+    publish(&state.slot, Ok((
+        CoreEndpoint { url: format!("http://127.0.0.1:{port}"), token: "test-token".into(), port },
+        Some(std::process::id()),
+        start,
+    )));
+    let outcome = current_endpoint(&state, true);
+    std::fs::remove_dir_all(directory).unwrap();
+    assert!(matches!(outcome, Err(EndpointError::Message(error)) if error.contains("no longer answers")));
+    assert!(force_restart(&state, 0).is_err(), "a PID the shell did not spawn cannot be stopped");
+    assert!(spawned_pid(&state).is_none());
+}
+
+#[test]
+fn force_restart_replaces_only_the_owned_core_that_is_still_unresponsive() {
+    let _process_guard = crate::process_test_guard();
+    let directory = scratch("force-restart");
+    let state = state(&directory, "2.0.0", fake_command(&directory, "2.0.0", "serve"), false, Duration::from_secs(30));
+    publish(&state.slot, resolve_core(&state));
+    let first_pid = spawned_pid(&state).unwrap();
+    assert!(matches!(force_restart(&state, 0), Err(error) if error.contains("responding")));
+    std::fs::write(directory.join("mute"), first_pid.to_string()).unwrap();
+    let generation = match current_endpoint(&state, true) {
+        Err(EndpointError::Unresponsive { restart_generation, .. }) => restart_generation,
+        _ => panic!("the unresponsive child must be eligible for confirmed restart"),
+    };
+    assert!(platform::process::alive(first_pid));
+    let replacement = force_restart(&state, generation);
+    let second_pid = spawned_pid(&state).unwrap();
+    let repeated = force_restart(&state, generation);
+    state.kill_child();
+    std::fs::remove_dir_all(directory).unwrap();
+    assert!(replacement.is_ok());
+    assert_ne!(first_pid, second_pid);
+    assert!(!platform::process::alive(first_pid));
+    assert!(matches!(repeated, Err(error) if error.contains("already changed")));
+}
+
+#[cfg(unix)]
+#[test]
+fn an_update_can_repair_a_failed_start_only_when_it_owns_the_idle_core_lock() {
+    let _process_guard = crate::process_test_guard();
+    let directory = scratch("repair-offline");
+    let state = state(&directory, "2.0.0", fake_command(&directory, "2.0.0", "fail"), false, Duration::from_secs(2));
+    publish(&state.slot, Err("the sidecar does not start".into()));
+    use crate::update_stop::InstallState;
+    let control = Mutex::new(InstallState::Waiting);
+    let path = directory.join("core.lock");
+    let other = std::fs::File::create(&path).unwrap();
+    fs2::FileExt::lock_exclusive(&other).unwrap();
+    let blocked = state.wait_for_install(&control, false, || Ok(true), || panic!("another process holds the core lock"));
+    assert!(blocked.is_err());
+    assert!(spawned_pid(&state).is_none(), "admission must not try to start the broken sidecar");
+    drop(other);
+    assert!(state.wait_for_install(&control, false, || Ok(true), || {}).unwrap());
+    let retry = std::fs::OpenOptions::new().read(true).write(true).open(&path).unwrap();
+    assert!(fs2::FileExt::try_lock_exclusive(&retry).is_err(), "startup stays blocked until the installer can take over");
+    state.release_hold();
+    fs2::FileExt::try_lock_exclusive(&retry).unwrap();
+    drop(retry);
+    std::fs::remove_dir_all(directory).unwrap();
 }
 
 #[test]
@@ -172,9 +250,9 @@ fn a_core_that_died_is_replaced_by_the_next_caller() {
     let directory = scratch("restart");
     let state = state(&directory, "2.0.0", fake_command(&directory, "2.0.0", "serve"), false, Duration::from_secs(30));
     publish(&state.slot, resolve_core(&state));
-    let first = current_endpoint(&state).expect("the first core answers");
+    let first = current_endpoint(&state, false).expect("the first core answers");
     let first_pid = spawned_pid(&state).unwrap();
-    assert_eq!(current_endpoint(&state).unwrap().url, first.url, "a live core is kept");
+    assert_eq!(current_endpoint(&state, false).unwrap().url, first.url, "a live core is kept");
     {
         let mut guard = state.child.lock().unwrap();
         let spawned = guard.as_mut().unwrap();
@@ -194,7 +272,7 @@ fn a_core_that_died_is_replaced_by_the_next_caller() {
         #[cfg(windows)]
         spawned.child.wait().unwrap();
     }
-    let second = current_endpoint(&state);
+    let second = current_endpoint(&state, false);
     let second_pid = spawned_pid(&state);
     state.kill_child();
     let second = second.expect("a new core is started for the next caller");
@@ -209,17 +287,32 @@ fn a_core_stopped_for_an_install_stays_stopped_until_the_hold_is_released() {
     let directory = scratch("hold");
     let state = state(&directory, "2.0.0", fake_command(&directory, "2.0.0", "serve"), false, Duration::from_secs(30));
     publish(&state.slot, resolve_core(&state));
-    let first = current_endpoint(&state).expect("the first core answers");
+    let first = current_endpoint(&state, false).expect("the first core answers");
     let first_pid = spawned_pid(&state).unwrap();
     let control = Mutex::new(crate::update_stop::InstallState::Waiting);
-    assert!(state.wait_for_install(&control, false, || true, || {}).expect("the idle core stops on request"));
+    assert!(state.wait_for_install(&control, false, || Ok(true), || {}).expect("the idle core stops on request"));
     assert!(!platform::process::alive(first_pid), "the core outlived the stop");
     // The window asks again once it lost the core: nothing may start.
-    assert_eq!(current_endpoint(&state).err().as_deref(), Some(HELD));
+    assert!(matches!(current_endpoint(&state, false), Err(EndpointError::Message(error)) if error == HELD));
     assert!(spawned_pid(&state).is_none_or(|pid| pid == first_pid), "a core was started during the install");
+    #[cfg(unix)]
+    let competing_lock = || {
+        let lock = std::fs::File::open(directory.join("core.lock")).unwrap();
+        fs2::FileExt::try_lock_exclusive(&lock).is_ok()
+    };
+    #[cfg(unix)]
+    assert!(!competing_lock(), "the install must exclude a new core after the original core exits");
+    #[cfg(target_os = "linux")]
+    {
+        let mut contender = Command::new("flock");
+        contender.args(["-n", "-E", "77"]).arg(directory.join("core.lock")).arg("true");
+        assert_eq!(contender.status().unwrap().code(), Some(77));
+    }
     // The installer never ran: the next ask brings the engine back.
     state.release_hold();
-    let second = current_endpoint(&state);
+    #[cfg(unix)]
+    assert!(competing_lock(), "an aborted installation must release the data directory");
+    let second = current_endpoint(&state, false);
     state.kill_child();
     assert_ne!(second.expect("a new core after the hold").url, first.url);
     std::fs::remove_dir_all(directory).unwrap();
@@ -339,6 +432,39 @@ fn a_core_another_shell_started_that_dies_while_compacting_is_replaced_at_once()
 }
 
 #[test]
+fn a_foreign_core_from_an_older_install_is_replaced_after_it_finishes_compacting() {
+    let _process_guard = crate::process_test_guard();
+    let directory = scratch("compacting-old");
+    let old = fake_command(&directory, "1.0.0", "compact-gated");
+    let mut command = Command::new(&old.program);
+    command.args(&old.args).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    platform::prepare_command(&mut command);
+    let mut earlier = command.spawn().expect("bun runs the fake core");
+    let state = std::sync::Arc::new(state(&directory, "2.0.0", fake_command(&directory, "2.0.0", "serve"), false, Duration::from_secs(15)));
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while starting::read_starting(&directory).is_none() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let resolution = { let state = state.clone(); std::thread::spawn(move || resolve_core(&state)) };
+    while state.slot.0.lock().unwrap().announced.is_none() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let waited = state.slot.0.lock().unwrap().announced.is_some();
+    std::fs::write(directory.join("finish-compaction"), "").unwrap();
+    let outcome = resolution.join().unwrap();
+    let status = earlier.try_wait().unwrap();
+    if status.is_none() { let _ = earlier.kill(); }
+    let _ = earlier.wait();
+    let replacement = spawned_pid(&state);
+    state.kill_child();
+    std::fs::remove_dir_all(directory).unwrap();
+    assert!(waited, "the shell must have observed the foreign core announcing its start");
+    assert_eq!(status.and_then(|status| status.code()), Some(0), "the old core should stop through /shutdown");
+    assert!(replacement.is_some());
+    assert_eq!(outcome.unwrap().1, replacement);
+}
+
+#[test]
 fn a_caller_waits_a_whole_patience_past_the_last_time_the_resolution_saw_the_core_at_work() {
     // Patience from the later of the caller's start and the last sighting.
     let begun = Instant::now();
@@ -380,7 +506,7 @@ fn a_caller_waits_a_whole_patience_past_the_last_time_the_resolution_saw_the_cor
             until(Instant::now() + Duration::from_secs(10), "the caller never woke to its first deadline", &|slot| slot.extended > 0);
         }
         let read_the_move = slot.0.lock().unwrap().extended > 0;
-        let endpoint = CoreEndpoint { url: "http://127.0.0.1:1".to_string(), token: "t".to_string() };
+        let endpoint = CoreEndpoint { url: "http://127.0.0.1:1".to_string(), token: "t".to_string(), port: 1 };
         publish(&slot, Ok((endpoint, None, health::CoreStart::default())));
         let outcome = caller.join().unwrap().and_then(|outcome| outcome);
         if moved < entered + Duration::from_secs(2) {
@@ -403,7 +529,7 @@ fn a_settled_core_whose_pid_now_names_a_later_process_is_stale() {
     // This test's own process stands for the one that got the dead core's number.
     let pid = std::process::id();
     let (own, earlier) = health::own_start_and_an_earlier_one();
-    let endpoint = CoreEndpoint { url: "http://127.0.0.1:1".to_string(), token: "t".to_string() };
+    let endpoint = CoreEndpoint { url: "http://127.0.0.1:1".to_string(), token: "t".to_string(), port: 1 };
     let settled = |start| Settled { outcome: Ok(endpoint.clone()), pid: Some(pid), start, generation: 0 };
     assert!(settled(earlier).stale(), "a process that started after the core is not that core");
     assert!(!settled(own).stale());

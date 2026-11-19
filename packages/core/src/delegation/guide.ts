@@ -1,6 +1,7 @@
 /** What an agent reads about its team: the mail Boite hands it and the manual of a parent. */
 import type { AgentLetter, DelegationConfig } from '@boite/contracts';
 import type { Core } from '../core.ts';
+import { sessionHoldsGuide } from '../threads/coordination-context.ts';
 import type { TurnOrigin } from '../threads/turn-origin.ts';
 import { anyModel } from './routes.ts';
 import { pauseLine } from './pauses.ts';
@@ -69,10 +70,11 @@ export function subagentRole(parentId: string, worktree: { path: string; branch:
  * a fresh session or when their policy changes. The prompt composer keeps
  * the guide in the session and uses a short pointer on relevant turns.
  */
-export function teamInstructions(core: Core, threadId: string, request: string | undefined, fresh: boolean): string {
+export function teamInstructions(core: Core, threadId: string, request: string | undefined, guideEnabled: boolean, sessionId: string | null = null): string {
   const thread = core.threads.require(threadId);
   const root = thread.parentThreadId ? core.threads.require(thread.parentThreadId) : thread, config = core.delegation.config(root.id);
-  if (thread.parentThreadId && core.workflows.owns(threadId)) return core.workflows.instructions(threadId);
+  const workflow = thread.parentThreadId ? core.workflows.instructions(threadId) : '';
+  if (workflow) return workflow;
   // A memory pass's or a `/goal2` checklist pass's prompt says everything it needs; it neither delegates nor writes mail.
   if (thread.parentThreadId && (core.workforce.memory.owns(threadId) || core.activity.ownsTracker(threadId))) return '';
   if (thread.parentThreadId && core.activity.ownsReviewer(threadId)) return '\nYou are a Boite goal reviewer. Your final answer and its VERDICT line go to the goal automatically; do not message the parent, start subagents or edit project files.\n';
@@ -82,10 +84,12 @@ export function teamInstructions(core: Core, threadId: string, request: string |
     if (!link && !config.enabled) return '';
     return `\n${subagentRole(link?.parentId ?? root.id, core.delegation.worktrees.get(threadId), link?.machine)}\n`;
   }
-  // With delegation off, only a workflow or council request is worth the words; spawn would be refused anyway.
   const council = core.council.enabled();
   const asked = request === undefined || /workflow/i.test(request) || (council && COUNCIL_WORDS.test(request)) || (config.enabled && DELEGATION_WORDS.test(request));
-  // A persistent agent splits its work like a thread: the guide joins a fresh session while its subagents are on.
-  if ((!fresh || (thread.agentSessionId && !config.enabled)) && !asked && !config.paused) return '';
+  // A mochi skips the disabled guide until it needs the commands. A session
+  // that already learned them still needs to hear about policy changes.
+  const mochi = thread.agentSessionId != null;
+  if ((!guideEnabled || (mochi && !config.enabled)) && !asked && !config.paused
+    && !(mochi && sessionHoldsGuide(core, thread, sessionId, 'delegation'))) return '';
   return `\n${subagentGuide(config, core.group.peers().length > 0, council)}\n`;
 }

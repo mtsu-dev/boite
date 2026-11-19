@@ -335,9 +335,9 @@ export class AcpSession {
     }
   }
 
-  async steerOpenCode(turn: AcpTurn, text: string, attachments: import('@boite/contracts').ImageAttachment[] = [], onAccepted?: () => void): Promise<boolean> {
+  async steerOpenCode(turn: AcpTurn, text: string, attachments: import('@boite/contracts').ImageAttachment[] = [], onAccepted?: () => void, signal?: AbortSignal): Promise<boolean> {
     if (this.#current !== turn || turn.isStopped || !(this.#connection instanceof OpenCodeConnection)) return false;
-    return this.#connection.steer([{ type: 'text', text }, ...imageBlocksOf(attachments)], onAccepted);
+    return this.#connection.steer([{ type: 'text', text }, ...imageBlocksOf(attachments)], onAccepted, signal);
   }
 
   #cancel(): void {
@@ -424,13 +424,19 @@ export class AcpSession {
     if (this.#replaces !== null && this.#replaces === turn.ctx.sessionId) {
       this.#replaces = null;
       try {
-        const carried = turn.ctx.continuation?.();
+        const carried = await turn.ctx.continuation?.();
+        if (turn.isStopped) {
+          turn.stopNow();
+          this.#endTurn(turn, true);
+          return;
+        }
         if (carried !== undefined) {
           prompt = carried.prompt;
           attachments = carried.attachments;
         }
       } catch (error) {
-        turn.fail(messageOf(error));
+        if (turn.isStopped) turn.stopNow();
+        else turn.fail(messageOf(error));
         this.#endTurn(turn, true);
         return;
       }
@@ -458,7 +464,17 @@ export class AcpSession {
       this.#endTurn(turn, turn.isStopped);
       return;
     }
-    const judged = this.#costBaseline(turn);
+    let judged = false;
+    const connection = this.#connection;
+    if (connection instanceof OpenCodeConnection) {
+      // A failed read at the end of the previous turn leaves the native total unknown.
+      turn.costBefore = connection.sessionCost ?? await connection.readSessionCost(turn);
+      if (turn.isStopped) {
+        turn.stopNow();
+        this.#endTurn(turn, true);
+        return;
+      }
+    } else judged = this.#costBaseline(turn);
     this.#current = turn;
     let response: PromptResponse;
     try {
@@ -473,6 +489,7 @@ export class AcpSession {
       // more without a word on the wire, which must not read as a start.
       else turn.ctx.reportProgress?.('waiting');
       response = await pending;
+      if (this.#canLoad) turn.ctx.sessionAccepted?.(sessionId);
     } catch (error) {
       this.#current = null;
       if (turn.isStopped) {
@@ -491,7 +508,7 @@ export class AcpSession {
     // A resumed session whose first total came in below what the session
     // already cost: this agent counts each process from zero.
     const total = turn.costUsdEquivalent;
-    if (judged && total !== null && total < turn.costBefore && !this.#memory.costPerProcess.has(turn.ctx.provider.id)) {
+    if (judged && total !== null && turn.costBefore !== null && total < turn.costBefore && !this.#memory.costPerProcess.has(turn.ctx.provider.id)) {
       this.#memory.costPerProcess.add(turn.ctx.provider.id);
       turn.ctx.log('info', `acp: ${turn.ctx.provider.id} reports a resumed session's cost from zero; its cold turns are charged their whole total`);
     }
@@ -503,8 +520,7 @@ export class AcpSession {
    * total is measured from. A total this process already reported is exact. A
    * session it created starts at zero. A session it loaded and that has said
    * nothing yet starts where the journal left it, since the protocol defines
-   * the cost as the session's and OpenCode computes it from the session's
-   * stored messages; an agent seen to count from zero again starts at zero.
+   * the cost as the session's. An agent seen to count from zero starts at zero.
    * True when the turn's reading has to tell which of the two the agent does.
    */
   #costBaseline(turn: AcpTurn): boolean {
@@ -851,6 +867,10 @@ export class AcpSession {
     }
     const turn = this.#current;
     if (turn === null) return;
+    if (this.#canLoad && this.#sessionId !== null && params.sessionId === this.#sessionId
+      && (update.sessionUpdate === 'agent_message_chunk' || update.sessionUpdate === 'agent_thought_chunk' || update.sessionUpdate === 'tool_call')) {
+      turn.ctx.sessionAccepted?.(this.#sessionId);
+    }
     drawUpdate(turn, update);
   }
 }

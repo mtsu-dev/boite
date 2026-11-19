@@ -6,6 +6,7 @@ import { FAKE_FILES, scoreFakeFile } from './files';
 import { IMPORT_LIST_MS } from './providers';
 import { DATA_DIR, FAKE_DRAFTS_PATH, toSummary } from './shared';
 import { putAway } from './threads';
+import { closeThreadTerminals } from './terminals';
 import { archiveProject, describedProject, requireFakeFolder } from './project-archive';
 import type { FakeContext, FakeMethods } from './context';
 
@@ -37,11 +38,17 @@ export function folderToAdd(value: unknown, method: string): { path: string; nam
   return name === '' ? { path } : { path, name };
 }
 
-/** The core's `assertDeviceProjectFolder`, without links to follow: not boite's data folder, not under a folder of keys. */
+/** The fake machine's home folder, which holds `DATA_DIR`. */
+const HOME = 'C:\\Users\\you';
+
+/** The core's `assertDeviceProjectFolder`, without links to follow: not boite's data folder, not the home folder or above, not a folder that holds keys. */
 function deviceProjectFolder(path: string): void {
-  const key = pathKey(path), data = pathKey(DATA_DIR);
+  const key = pathKey(path), data = pathKey(DATA_DIR), home = pathKey(HOME);
   if (key === data || key.startsWith(`${data}/`)) {
     throw new RpcFailure({ code: RpcErrorCode.Refused, message: `a paired device does not add boite's data folder, or a folder inside it, as a project: ${path}`, data: { field: 'path', path, expected: 'a folder outside boite\'s data folder' } });
+  }
+  if (home === key || home.startsWith(`${key}/`) || !key.includes('/')) {
+    throw new RpcFailure({ code: RpcErrorCode.Refused, message: `a paired device does not add the home folder, a folder that contains it or a disk root as a project, since it holds every login on this machine; add a folder inside it, or add ${path} on the owner's machine`, data: { field: 'path', path, expected: `a folder inside ${HOME}, not ${HOME} itself or a parent of it` } });
   }
   if (key.split('/').some(part => DEVICE_SECRET_DIRS.has(part))) {
     throw new RpcFailure({ code: RpcErrorCode.Refused, message: `a paired device does not add a folder that holds keys or tokens as a project; add ${path} on the owner's machine`, data: { field: 'path', path, expected: `a folder outside ${[...DEVICE_SECRET_DIRS].join(', ')}` } });
@@ -93,7 +100,8 @@ export function projectMethods(ctx: FakeContext) {
       if (typeof id !== 'string' || !id) throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'projects.git.projectId must be a registered project id', data: { field: 'projectId' } });
       const project = ctx.projects.find(row => row.id === id);
       if (!project) throw ctx.notFound('project', id);
-      return { ...(project.repository === undefined ? {} : { repository: project.repository }), ...(project.missing ? { missing: true } : {}) };
+      if (ctx.goneFolders.has(pathKey(project.path))) return { repository: false, missing: true };
+      return project.repository === undefined ? {} : { repository: project.repository };
     },
     'projects.rename': async (params) => {
       const project = ctx.projects.find(p => p.id === params.projectId);
@@ -198,11 +206,18 @@ export function projectMethods(ctx: FakeContext) {
       const threads = [...ctx.threads.values()].filter((thread) => thread.projectId === params.projectId);
       const incognito = new Set(threads.filter(thread => thread.incognito).map(thread => thread.id));
       const retained = (thread: Thread) => !incognito.has(thread.id) && (!thread.parentThreadId || !incognito.has(thread.parentThreadId));
-      for (const thread of threads) {
+      const archived = threads.filter(thread => thread.archived);
+      const open = threads.filter(thread => !thread.archived);
+      for (const thread of open) {
         thread.archived = true;
+        thread.archivedAt = ctx.now();
         ctx.touch(thread);
       }
-      await Promise.all(threads.map((thread) => putAway(ctx, thread)));
+      await Promise.all(open.map(thread => putAway(ctx, thread)));
+      await Promise.all(archived.map(async thread => {
+        await ctx.stopTurn(thread.id);
+        closeThreadTerminals(ctx, thread.id);
+      }));
       ctx.removedProjects.set(pathKey(project.path), { project, threads: threads.filter(retained) });
       ctx.projects = ctx.projects.filter(p => p.id !== project.id);
       for (const thread of threads) {

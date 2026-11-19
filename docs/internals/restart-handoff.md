@@ -54,7 +54,9 @@ the continuation starts or the entry is explicitly excluded. Repeated recovery
 reuses an accepted continuation rather than creating another turn. A second
 restart retains pending entries; a repeated resume note does not quote itself.
 Each admission rechecks ownership and stopping state, including a user Stop
-triggered while an earlier continuation starts.
+triggered while an earlier continuation starts. A new turn on the thread
+cancels its pending continuation while the provider's version check runs.
+Cache pings leave that continuation pending.
 
 An unreadable record or one older than one hour resumes nothing. Archived,
 deleted or non-runnable threads are excluded; failed admission logs its reason.
@@ -96,6 +98,14 @@ a crash paused the conversation's subagent team or workflow runs, the prompt
 asks the agent to check them and run `boite delegate resume`; a parent that had
 no turn running gets a resume for that alone.
 
+After a recent crash, an unsent conversation prompt returns to the queue with
+its original input and selection. A planned resume stays in the journal while
+its provider's version check runs, and an admitted turn waits with its existing
+ID. Stop cancels a plan or queued turn while it waits. Long-idle or explicitly
+held prompts stay held for an owner decision. If the provider acknowledged the
+first prompt or emitted its first native response, the running turn and
+conversation already record the resumable session ID.
+
 Nothing resumes for a turn that answered, a turn the user stopped, a refusal
 at capacity or at a usage limit, which retries on its own
 ([usage](usage.md#when-a-provider-refuses-a-turn)), a compaction or coordination turn, a
@@ -111,8 +121,9 @@ event over an hour ago, or when it was stopped on purpose without a handoff
 
 Each plan sits in the journal setting `resumes` with the usage limit resumes
 (`threads/resume.ts`; a core that still has the older `auto-continues` or
-`limit-resumes` reads them into it once), so a restart arms it
-again; one caught while dispatching is dropped. The row shows it as `retry`
+`limit-resumes` reads them into it once), so a restart arms it again. A plan that
+was dispatching can be rearmed if there is no admission receipt. An admitted
+continuation keeps its existing turn ID. The row shows an armed plan as `retry`
 (`kind: 'auto-continue'`) with Do not resume. When it fires it is dropped
 instead if the thread was archived, answered or is busy, a card waits for the
 user, or the user paused its team. A cache ping in the way stops and lets it go.

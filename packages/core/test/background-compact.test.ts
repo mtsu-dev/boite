@@ -120,7 +120,7 @@ describe('background compaction', () => {
         return decision;
       } });
     } });
-    const finished = spyOn(h.core.threads.spawns, 'finished');
+    const staged = spyOn(h.core.threads.spawns, 'stageResult');
     const client = await h.connect();
     try {
       const done = client.next('turn.finished', t => t.threadId !== undefined && h.core.journal.getThread(t.threadId)?.parentThreadId != null);
@@ -149,11 +149,11 @@ describe('background compaction', () => {
       expect(thread.context?.tokens).toBeLessThan(850);
       expect(await compactions(client, childId)).toEqual([]);
       expect(turn.status).toBe('done');
-      expect(finished.mock.calls.filter(([t]) => t.threadId === childId)).toHaveLength(1);
+      expect(staged.mock.calls.filter(([t]) => t.threadId === childId)).toHaveLength(1);
       // Only one prompt opened the turn: the tail was not held back for the next one.
       expect(prompts.filter(p => p.threadId === childId)).toHaveLength(1);
       expect(h.core.journal.getSetting(`compaction-tail:${childId}`)).toBeUndefined();
-    } finally { finished.mockRestore(); restore(); client.close(); }
+    } finally { staged.mockRestore(); restore(); client.close(); }
   });
 
   test('a copy still running when the context reaches the limit is awaited, then taken', async () => {

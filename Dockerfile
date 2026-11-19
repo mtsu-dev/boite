@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM oven/bun:1.4.4@sha256:1d22548f177f4ff38e0c15baa3c2c46c6c2060ba2d1bc573bb4720b407548f1d AS build
+FROM oven/bun:1.4.5@sha256:3aa040e5445efa09d75bb428a64ba50db13e2b3ac9b6b0c7f145615f62b2ee18 AS build
 WORKDIR /app
 COPY package.json bun.lock ./
 COPY packages/contracts/package.json packages/contracts/package.json
@@ -12,6 +12,7 @@ COPY packages/contracts packages/contracts
 COPY packages/core packages/core
 COPY packages/ui packages/ui
 COPY apps/shell/src-tauri/tauri.conf.json apps/shell/src-tauri/tauri.conf.json
+COPY apps/android-server/termux/minisign.ts apps/android-server/termux/minisign.ts
 ARG BOITE_VERSION
 RUN if [ -n "$BOITE_VERSION" ]; then bun -e 'const v=process.env.BOITE_VERSION; if (!/^\d+\.\d+\.\d+-nightly\.\d{8}\.[1-9]\d*$/.test(v)) throw Error("invalid nightly version"); const p="packages/core/package.json"; const j=await Bun.file(p).json(); j.version=v; await Bun.write(p,JSON.stringify(j));'; fi
 # Set by server.yml for a published image only; empty leaves the core without

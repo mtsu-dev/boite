@@ -107,8 +107,9 @@ export interface StepDecision {
   swap: {
     /** The compacted session the thread now names. */
     sessionId: string;
-    /** The first message to send on it: what happened since the copy, as text, ending with a request to go on. */
+    /** The first message to send on it, ending with a request to go on. */
     tail: string;
+    attachments: import('@boite/contracts').ImageAttachment[];
     /** The context the compacted session holds, when the copy reported it. */
     postTokens: number | null;
     /**
@@ -193,7 +194,7 @@ export interface TurnContext {
    * a new session instead. Built on demand; it throws what the core's own
    * continuation throws (historical images for an agent that takes none).
    */
-  continuation?(): { prompt: string; attachments: ImageAttachment[] };
+  continuation?(): { prompt: string; attachments: ImageAttachment[] } | Promise<{ prompt: string; attachments: ImageAttachment[] }>;
   /**
    * What this agent session already used, for an agent whose running totals
    * survive a resume: the last `Turn.agentTotals` the session recorded, else
@@ -245,8 +246,12 @@ export interface TurnContext {
   reportProgress?(phase: import('@boite/contracts').ThreadProgress['phase'], detail?: string | null): void;
   /** A provider signal that need not mean execution advanced. */
   reportProviderEvent?(): void;
+  /** A revised usage total received after the driver has returned the turn result. */
+  reportLateUsage?(usage: Usage): void;
   /** The running turn can now accept native user input. Does not report model progress. */
   inputReady?(): void;
+  /** Native output or acknowledgement proves the first prompt belongs to this resumable session. */
+  sessionAccepted?(sessionId: string): void;
   /** A native authentication refusal invalidates the account's passive status. */
   authenticationFailed?(): void;
   /**
@@ -418,9 +423,9 @@ export interface TurnHandle {
    * False means not ready, rejection means uncertain dispatch and must not be replayed.
    * A transport may call `onAccepted` at acknowledgement, before dispatching following output.
    */
-  steer?(message: string, attachments?: ImageAttachment[], onAccepted?: () => void): Promise<boolean>;
+  steer?(message: string, attachments?: ImageAttachment[], onAccepted?: () => void, signal?: AbortSignal): Promise<boolean>;
   /** Native user input, when system coordination uses a separate tool-boundary hook. */
-  steerUser?(message: string, attachments?: ImageAttachment[], onAccepted?: () => void): Promise<boolean>;
+  steerUser?(message: string, attachments?: ImageAttachment[], onAccepted?: () => void, signal?: AbortSignal): Promise<boolean>;
 }
 
 /**

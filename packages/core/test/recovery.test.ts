@@ -43,6 +43,7 @@ describe('crash recovery', () => {
     const input = { threadId: first.threadId, prompt: 'retained input', clientRequestId: 'recovery_request_01' };
     const turn = await client.call('turns.start', input);
     const discarded = await client.call('turns.start', { threadId: second.threadId, prompt: 'not sent' });
+    for (const queued of [turn, discarded]) harness.core.journal.putTurn({ ...queued, queuedAt: Date.now() - 3_600_001 });
     crash(harness);
     client.close();
     await stopWithoutCleanup(harness);
@@ -141,7 +142,7 @@ describe('crash recovery', () => {
     }
   });
 
-  test('an unsent turn is held after a crash without losing its identity or input', async () => {
+  test('a recent unsent turn restarts without losing its identity or input', async () => {
     // Account login admission keeps the second turn queued until the crash.
     const harness = await startTestCore();
     const client = await harness.connect();
@@ -162,20 +163,16 @@ describe('crash recovery', () => {
     await stopWithoutCleanup(harness);
 
     const next = new Core({ dataDir: harness.dataDir, token: harness.token });
+    const server = startServer({ core: next, host: '127.0.0.1', port: 0 });
     try {
+      expect(next.scheduler.state().running).toEqual([]);
+      await waitFor(() => next.journal.getTurn(turn.id)?.status === 'done');
       const thread = next.threads.get(waiting.threadId);
       const recovered = turnOf(thread.turns, turn.id);
-      expect(recovered?.status).toBe('queued');
-      expect(recovered?.queueHold?.reason).toBe('core-restarted');
+      expect(recovered?.queueHold ?? null).toBeNull();
       expect(recovered?.execution).toEqual(turn.execution);
-      expect(recovered?.startedAt).toBeNull();
-      expect(thread.status).toBe('queued');
-      expect(thread.messages).toHaveLength(1);
-      expect(lastMessage(thread.messages)?.role).toBe('user');
-      expect(next.scheduler.state().running).toEqual([]);
-      expect(next.scheduler.state().queued).toMatchObject([{ turnId: turn.id, queueHold: { reason: 'core-restarted' } }]);
-      next.scheduler.onSettingsChanged();
-      expect(next.threads.get(waiting.threadId).turns[0]?.status).toBe('queued');
+      expect(thread.turns).toHaveLength(1);
+      expect(thread.messages.filter(message => message.role === 'user')).toHaveLength(1);
 
       // Work that may have reached the provider is still recovered as an error.
       const other = next.threads.get(running.threadId);
@@ -183,6 +180,7 @@ describe('crash recovery', () => {
       expect(other.turns[0]?.error).toContain('while this turn was running');
       expect(other.status).toBe('error');
     } finally {
+      await server.stop();
       await next.close();
       await removeDir(harness.dataDir);
     }

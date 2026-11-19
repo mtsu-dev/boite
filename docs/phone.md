@@ -51,6 +51,7 @@ offline need HTTPS.
 
 - The code works once, for ten minutes: treat it like a password.
 - To take a phone out, press Remove from the group on its row there.
+  A fresh link adds it again, including when the phone was offline during removal.
 - On iPhone, add the Home Screen app from inside it, with its Scan button:
   it does not share Safari's storage, and the Camera app opens Safari.
 - A link to a machine without an HTTPS address opens that machine's own page
@@ -76,15 +77,15 @@ the VPN or the Wi-Fi.
   finished work. Questions and permissions stay until you answer them.
 - The gear at the end of each list's header opens Settings; Back, or the
   system's back gesture, returns to the list.
-- Slide a row left for Pin and Archive. Tap a conversation's title for its
-  menu: the side panel, pin, rename, find, archive and delete.
+- Slide a row left for Pin and Archive. In a conversation, tap the three dots
+  to pin, rename, find, archive or delete. Tap Panels to open the side panel.
 - Enter writes a new line and the send button sends. With a physical
   keyboard, Ctrl+Enter or Cmd+Enter sends. Back closes the open sheet first.
 - Pictures shrink to 2000 px on the long edge before they leave the phone.
 - In the [agent's browser](browser.md), press Show, tap to click, drag to
   scroll and type in the field below the preview.
 
-Tap a conversation's title to move it when the menu offers Move. Its plan
+Open the three-dot menu to move a conversation when it offers Move. Its plan
 appears in the chat. On a phone connected as the owner, Settings includes
 Accounts, Providers, Brain, Worktrees, Voice and Diagnostics. The task manager
 is in Diagnostics for the owner and has its own Settings entry on a paired
@@ -98,7 +99,7 @@ A paired phone is limited to this:
 | It can | It cannot |
 | --- | --- |
 | Read, start and answer conversations and the agents' cards | Change settings or sign agents in |
-| Add a project on a machine of the group | Use Boite's data folder or folders like `.git` and `.ssh` as one |
+| Add a project on a machine of the group | Use the home folder, Boite's data folder or folders like `.git` and `.ssh` as one |
 | Read the plan in a conversation, the task manager in Settings and the Changes and Files panels | Edit files or open the terminal |
 | Click and type in the agent's browser, on sites signed in on that machine | Run scripts in it |
 | See the devices in Machines | Add or remove machines and devices |

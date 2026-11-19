@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { PassThrough } from 'node:stream';
+import { PassThrough, Writable } from 'node:stream';
 import type { CoreLogContext } from '@boite/contracts';
 import { CodexRpc } from '../src/drivers/codex/rpc.ts';
 import { MspError, MuseRpc } from '../src/drivers/muse/rpc.ts';
@@ -183,6 +183,45 @@ test('request cancellation and timeout release only that request and keep the pe
   const count = f.sent.length;
   expect(await outcome(peer.command('get_state', {}, { signal: controller.signal }))).toMatchObject({ message: 'pi agent: request cancelled' });
   expect(f.sent).toHaveLength(count);
+});
+
+test('Stop passes queued steering under backpressure, preserving the prompt and discarding aborted input', async () => {
+  const stdout = new PassThrough();
+  const received: string[] = [];
+  const large = 'x'.repeat(2 * 1024 * 1024);
+  let stopAt = 0;
+  let sentAt = 0;
+  const stdin = new Writable({
+    highWaterMark: 16 * 1024,
+    write(line: Buffer, _encoding, complete) {
+      const message = JSON.parse(line.toString()) as { type: string; id: string; message?: string };
+      setTimeout(() => {
+        received.push(message.type);
+        if (message.type === 'abort') stopAt = performance.now() - sentAt;
+        stdout.write(`${JSON.stringify({ type: 'response', id: message.id, success: true })}\n`);
+        complete();
+      }, message.message ? 40 : 0);
+    },
+  });
+  const peer = new PiPeer({ stdin, stdout } as unknown as SpawnedChild, { log() {}, event() {} });
+  const controller = new AbortController();
+  try {
+    const first = peer.command('prompt', { message: large });
+    const buffered = peer.command('steer', { message: large }, { writeKind: 'steer' });
+    const cancelled = outcome(peer.command('steer-that-was-cancelled', { message: large }, { signal: controller.signal, writeKind: 'steer' }));
+    const transportBytes = stdin.writableLength;
+    controller.abort();
+    sentAt = performance.now();
+    const stop = peer.command('abort', {}, { writeKind: 'stop' });
+    await Promise.all([first, buffered, stop]);
+    expect(await cancelled).toMatchObject({ message: 'pi agent: request cancelled' });
+    console.info(`slow reader: Stop received after ${stopAt.toFixed(1)} ms, ${transportBytes} bytes submitted before Stop`);
+    expect(received).toEqual(['prompt', 'abort', 'steer']);
+    expect(transportBytes).toBeLessThan(large.length + 1_024);
+  } finally {
+    stdin.destroy();
+    stdout.destroy();
+  }
 });
 
 test('pipe errors and handler exceptions fail pending requests without exposing raw errors', async () => {

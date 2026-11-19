@@ -187,15 +187,20 @@ describe('procs', () => {
         const agent = procs.spawn('crashed', 'sh', ['-c', 'sleep 60 & echo $!; wait']);
         const reader = agent.proc.stdout.getReader();
         const tool = new TextDecoder().decode((await reader.read()).value).trim();
-        console.log(JSON.stringify({ agent: agent.record.pid, tool: Number(tool) }));
+        // A leader that exits leaves its tool in the group: the group, not the leader, ends with the core.
+        const gone = procs.spawn('leader-gone', 'sh', ['-c', 'sleep 61 & echo $!']);
+        const left = new TextDecoder().decode((await gone.proc.stdout.getReader().read()).value).trim();
+        await gone.exited;
+        if (procs.liveCount('leader-gone') !== 0) throw new Error('the leader exit was not recorded');
+        console.log(JSON.stringify({ agent: agent.record.pid, tool: Number(tool), left: Number(left) }));
         process.kill(process.pid, 'SIGKILL');`],
       stdout: 'pipe', stderr: 'inherit',
     });
-    const pids = JSON.parse((await new Response(crashed.stdout).text()).trim()) as { agent: number; tool: number };
+    const pids = JSON.parse((await new Response(crashed.stdout).text()).trim()) as { agent: number; tool: number; left: number };
     await crashed.exited;
     expect(crashed.signalCode).toBe('SIGKILL');
     try {
-      await waitFor(() => !isAlive(pids.agent) && !isAlive(pids.tool), 5000);
+      await waitFor(() => !isAlive(pids.agent) && !isAlive(pids.tool) && !isAlive(pids.left), 5000);
       const before = new Journal(join(dataDir, 'journal.db'));
       expect(before.listProcesses('crashed', 10).map(row => row.exitedAt)).toEqual([null]);
       before.close();
@@ -207,7 +212,36 @@ describe('procs', () => {
         expect(row?.exitCode).toBeNull();
       } finally { await next.stop(); }
     } finally {
-      for (const pid of [pids.agent, pids.tool]) { try { process.kill(pid, 'SIGKILL'); } catch { /* gone, as it should be */ } }
+      for (const pid of [pids.agent, pids.tool, pids.left]) { try { process.kill(pid, 'SIGKILL'); } catch { /* gone, as it should be */ } }
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  }, 20000);
+
+  test.skipIf(process.platform === 'win32')('off Windows a core that dies while it registers a spawn still takes that group with it', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'boite-crash-'));
+    const src = join(import.meta.dir, '..', 'src');
+    const pidFile = join(dataDir, 'pid');
+    const crashed = Bun.spawn({
+      cmd: [process.execPath, '-e', `
+        const { writeFileSync } = await import('node:fs');
+        const { Journal } = await import(${JSON.stringify(join(src, 'journal.ts'))});
+        const { Bus } = await import(${JSON.stringify(join(src, 'bus.ts'))});
+        const { ProcRegistry } = await import(${JSON.stringify(join(src, 'procs.ts'))});
+        const { registryPlatform } = await import(${JSON.stringify(join(src, 'platform', 'index.ts'))});
+        // The first native read of a new pid is where registration starts: the core dies there.
+        const platform = { ...registryPlatform(), startedAt: (pid) => { writeFileSync(${JSON.stringify(pidFile)}, String(pid)); process.kill(process.pid, 'SIGKILL'); return null; } };
+        const procs = new ProcRegistry(new Journal(${JSON.stringify(join(dataDir, 'journal.db'))}), new Bus(), platform);
+        procs.spawn('crashed', 'sleep', ['60']);`],
+      stdout: 'ignore', stderr: 'inherit',
+    });
+    await crashed.exited;
+    expect(crashed.signalCode).toBe('SIGKILL');
+    const pid = Number(readFileSync(pidFile, 'utf8'));
+    try {
+      expect(pid).toBeGreaterThan(0);
+      await waitFor(() => !isAlive(pid), 5000);
+    } finally {
+      try { process.kill(pid, 'SIGKILL'); } catch { /* gone, as it should be */ }
       rmSync(dataDir, { recursive: true, force: true });
     }
   }, 20000);

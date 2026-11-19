@@ -543,10 +543,14 @@ Node path supplies no POSIX exit usage. `TraceCapability.mode: 'poll'` names
 this fallback, not complete process-tree event tracking.
 
 Linux samples procfs on each load tick for registered processes and their descendants.
-Descendants come from each task's `/proc/<pid>/task/<tid>/children`, so a tick
-reads only the thread's tree; a kernel without those files falls back to one
-scan of every process's stat line, shared for 500 ms. A stop by pid still scans the
-whole machine beside the children files before it signals anything.
+Descendants come from each task's `/proc/<pid>/task/<tid>/children`, read on
+every tick. Those files can leave a live child out, so `/proc` is still listed
+at the old 500 ms pace, but only a pid new to the listing has its stat line
+read; every stat line is read again each 5 s. A descendant only the listing
+names counts only while its own stat line names a process already counted.
+Without those files, a scan of every stat line answers alone, reused for 500 ms.
+A stop by pid still scans the whole machine beside the children files before
+it signals anything.
 CPU uses `/proc/<pid>/stat`; memory uses `RssAnon + RssShmem`, falling back to
 `VmRSS` on older kernels. The latter includes shared library mappings and can
 overcount a parallel workload. A process name is read from `/proc/<pid>/comm`
@@ -628,13 +632,22 @@ on Linux/macOS.
 
 A core that dies without stopping its agents takes their groups with it on
 Linux and macOS too (`platform/posix-group-watch.ts`). One `sh` per core
-process, started with the first spawn, reads the group leaders on a pipe from
-the core: a pid is added at spawn and removed once its exit is recorded or the
-keeper takes it over. When the pipe closes, after a crash, SIGKILL, the OOM
-killer or any exit, the watcher sends each group it still holds SIGTERM,
-probes them every 100 ms and sends SIGKILL to what remains after two seconds.
-A shutdown past its deadline sends SIGKILL to those groups itself before it
-exits. Processes the keeper adopted are never added. At startup the core
+process, started before the first spawn, reads the groups on a pipe from the
+core. A group is added right after its spawn, before anything else is read
+about it. Its leader's exit marks it, and it is removed once a probe every
+second finds it empty, or at once when the keeper takes it over: tools a
+leader left behind stay held. A group id is its leader's pid, which the
+kernel does not reuse while the group has a member, so a live process with
+that pid means the group emptied: it is dropped and never signalled. After the
+core, the watcher signals such a group only when the probe of that pid says
+"No such process"; a refused probe counts as a live stranger. A new spawn that
+gets the pid back is watched again as a running group. When the
+pipe closes, after a crash, SIGKILL, the OOM killer or any exit, the watcher
+sends each group it still holds SIGTERM, probes them every 100 ms and sends
+SIGKILL to what remains after two seconds. A shutdown past its deadline sends
+SIGKILL to those groups itself before it exits. Processes the keeper adopted
+are never added. If the watcher cannot start, the core logs
+`groups.untied` once and agents run as they did before it. At startup the core
 closes every trace row a previous core left open (`exited_at` set, no exit
 code), through the partial index `processes_live`, before anything spawns; a
 process the keeper still holds is written live again when it is adopted.

@@ -242,6 +242,11 @@ export class Journal {
     return row === null ? null : toThread(row);
   }
 
+  /** A removed project's conversations still own their checkpoints. */
+  retainsThread(threadId: string): boolean {
+    return this.db.query('SELECT 1 FROM threads WHERE id = ?1 AND NOT EXISTS (SELECT 1 FROM thread_deletions WHERE thread_id = ?1)').get(threadId) !== null;
+  }
+
   listThreads(projectId?: string, { includeArchived = true } = {}): ThreadSummary[] {
     const visible = includeArchived ? '' : 'AND archived = 0';
     return projectId === undefined ? threadsWhere(this.db, visible) : threadsWhere(this.db, `${visible} AND project_id = ?`, projectId);

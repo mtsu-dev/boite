@@ -38,11 +38,14 @@ test('coordination steers a running pi turn over its RPC connection', async () =
   expect(await harness!.core.threads.steer(threadId, 'Boite agent coordination. Wait for the VM.')).toBe(true);
   expect(fakeLog()).toContain('steering Boite agent coordination');
   const turn = harness!.core.journal.listTurns(threadId)[0]!;
-  expect(await client.call('turns.steer', { threadId, turnId: turn.id, prompt: 'User correction',
+  expect(await client.call('turns.steer', { threadId, turnId: turn.id, prompt: 'User correction [steer-delta]',
     attachments: [{ kind: 'image', mimeType: 'image/png', data: 'aGVsbG8=', name: 'sample.png' }], clientRequestId: 'pi_steer_01' })).toEqual({ accepted: true });
   expect(fakeLog()).toContain('steering User correction');
   expect(fakeLog()).toContain('steer-image image/png 8');
   expect(harness!.core.journal.listTurns(threadId)).toHaveLength(1);
+  const replied = () => harness!.core.journal.listMessages(threadId).findIndex(m => m.parts.some(part => part.type === 'text' && part.text.includes('Steer answered')));
+  await waitFor(() => replied() >= 0);
+  expect(replied()).toBeGreaterThan(harness!.core.journal.listMessages(threadId).findLastIndex(m => m.role === 'user'));
   await client.call('turns.stop', { threadId });
   await waitFor(() => fakeLog().includes('clear_queue\nabort'));
   expect(fakeLog()).toContain('clear_queue\nabort');
@@ -779,15 +782,26 @@ describe('pi driver', () => {
     }
   });
 
-  test('a refused clear_queue after a steer still ends the turn stopped', async () => {
+  test.each(['noclear', 'hang-clear'])('Stop closes a steered pi when clear_queue is uncertain (%s)', async condition => {
     const { client, threadId } = await startThread();
-    const { finished } = await startTurn(client, threadId, '[slow][noclear] Deploy', 10000);
+    const { finished } = await startTurn(client, threadId, `[slow][${condition}] Deploy`, 2000);
     await waitFor(() => fakeLog().includes('waiting for abort'));
     await waitFor(() => harness!.core.journal.listMessages(threadId).some((m) => m.role === 'assistant'));
     expect(await harness!.core.threads.steer(threadId, 'Boite agent coordination. Wait.')).toBe(true);
     await client.call('turns.stop', { threadId });
     expect((await finished).status).toBe('stopped');
-    expect(fakeLog()).toContain('clear_queue\nabort');
+    expect(fakeLog()).toContain('clear_queue\n');
+    expect(fakeLog()).not.toMatch(/^abort$/m);
+    await waitFor(() => harness?.core.procs.liveCount(threadId) === 0);
+  });
+
+  test('a stopped pi turn settles while the context read is still unanswered', async () => {
+    const { client, threadId } = await startThread();
+    const { finished } = await startTurn(client, threadId, '[hang-stats] Deploy', 2000);
+    await waitFor(() => fakeLog().includes('get_session_stats'));
+    expect(await client.call('turns.stop', { threadId })).toEqual({ stopped: true });
+    expect((await finished).status).toBe('stopped');
+    await waitFor(() => harness?.core.procs.liveCount(threadId) === 0);
   });
 
   test('a notify is drawn in the turn and no fire-and-forget method gets an answer', async () => {
@@ -837,13 +851,16 @@ describe('pi driver', () => {
 
   test('with background compaction on, pi loads Boite\'s extension with the thread\'s setting, and a changed setting restarts it at the next turn', async () => {
     const { client, threadId } = await startThread({ warmProcessMinutes: 5, autoCompact: { tokens: 100000, moments: [] }, backgroundCompaction: true });
+    const compactionExtensions = () => fakeLog().split('\n')
+      .filter(line => line.startsWith('extension ') && line.endsWith('pi-compaction.mjs'))
+      .map(line => line.slice('extension '.length));
     await runTurn(client, threadId, 'first');
     await runTurn(client, threadId, 'second');
     // One process for both turns, launched with the extension and the setting it reads.
     expect(argvLines()).toHaveLength(1);
-    const extension = fakeLog().split('\n').find(line => line.startsWith('extension '))?.slice('extension '.length) ?? '';
-    expect(extension.endsWith('pi-compaction.mjs')).toBe(true);
-    expect(readFileSync(extension, 'utf8')).toContain("from '@earendil-works/pi-coding-agent'");
+    const extensions = compactionExtensions();
+    expect(extensions).toHaveLength(1);
+    expect(readFileSync(extensions[0]!, 'utf8')).toContain("from '@earendil-works/pi-coding-agent'");
     expect(compactionLines()).toEqual([{ tokens: 100000, background: true, ratios: { ...BACKGROUND_COMPACT } }]);
 
     await client.call('settings.set', { autoCompact: { tokens: 200000, moments: [] } });
@@ -851,12 +868,12 @@ describe('pi driver', () => {
     expect(argvLines()).toHaveLength(2);
     expect(compactionLines().map(setting => setting.tokens)).toEqual([100000, 200000]);
 
-    // Off: the next process runs without the extension.
+    // Off: the next process runs without the compaction extension.
     await client.call('settings.set', { backgroundCompaction: false });
     await runTurn(client, threadId, 'fourth');
     expect(argvLines()).toHaveLength(3);
     expect(compactionLines()).toHaveLength(2);
-    expect(fakeLog().split('\n').filter(line => line.startsWith('extension '))).toHaveLength(2);
+    expect(compactionExtensions()).toHaveLength(2);
   });
 
   test('the copy Boite\'s extension hands pi draws a background divider, at a turn end or at pi\'s threshold', async () => {

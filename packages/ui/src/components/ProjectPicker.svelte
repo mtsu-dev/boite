@@ -4,7 +4,7 @@
   import { ArrowUp, ChevronDown, ChevronRight, Folder, FolderOpen, Monitor, X } from '@lucide/svelte';
   import { Closing } from '../lib/closing.svelte';
   import { mobileOverlay } from '../lib/mobile-history';
-  import { focusInitial, restoreFocus } from '../lib/focus';
+  import { focusInitial, restoreFocus, trapModalTab } from '../lib/focus';
   import { workspace } from '../lib/workspace.svelte';
   import { strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
@@ -99,17 +99,11 @@
   }
   function keydown(event: KeyboardEvent) {
     if (!store.projectPickerOpen) return;
-    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); }
-    if (event.key !== 'Tab') return;
-    const stops = Array.from(card?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled)') ?? []);
-    const first = stops[0]; const last = stops.at(-1);
-    if (!first || !last) return;
-    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    if (event.key === 'Escape' && !event.defaultPrevented) { event.preventDefault(); event.stopPropagation(); close(); }
   }
 </script>
 
-<svelte:window onkeydown={keydown} />
+<svelte:window onkeydown={keydown} onkeydowncapture={event => { if (store.projectPickerOpen) trapModalTab(event, card); }} />
 {#if overlay.shown}
   <div class="scrim" class:closing={overlay.closing} use:overlay.attach onanimationend={overlay.end} role="presentation" onclick={e => { if (e.target === e.currentTarget) close(); }}>
     <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="project-picker-title" tabindex="-1" bind:this={card} data-testid="project-picker">

@@ -1,10 +1,10 @@
 // Owns the WebSocket client lifecycle, authentication and reconnect state.
 import { secureId } from './secure-id';
 import { RELEASE_VERSION } from './release';
-import { signedUngrouped, type DeviceKey } from './device-key';
+import { signedDeviceRevocation, signedUngrouped, type DeviceKey } from './device-key';
 import {
   PROTOCOL_VERSION, RPC_CHUNK_BYTES, RPC_MAX_FRAME_BYTES, RpcCloseCode, RpcErrorCode,
-  type ClientName, type CoreInfo, type DeviceHello, type Principal, type UngroupedData,
+  type ClientName, type CoreInfo, type DeviceHello, type DeviceRevokedData, type Principal, type UngroupedData,
   type RpcEventName, type RpcMethodName, type RpcParams, type RpcResult, type StreamChannel, type ThreadId
 } from '@boite/contracts';
 import type { CallOptions, ClientState, EventHandler, FrameSocket, ObservableClient, Session, SocketLike, WsClientOptions } from './client';
@@ -26,6 +26,8 @@ interface Candidate {
   /** Set by `#open`: ends the attempt and closes its socket without a word to the client. */
   cancel: () => void;
 }
+
+type Signer = Omit<NonNullable<WsClientOptions['signer']>, 'key'> & { key: DeviceKey | null; ready: Promise<DeviceKey> };
 
 const NO_HANDLERS = new Map<string, Set<(payload: unknown) => void>>();
 const RESUMED = 'connection resumed; check the conversation before resending';
@@ -58,7 +60,8 @@ export class WsClient implements ObservableClient {
   /** The token is a pairing's session key, so a hello it no longer opens is a revoke. */
   #paired: boolean;
   #relay: (() => string | DeviceHello | null) | null;
-  #signer: { key: DeviceKey | null; ready: Promise<DeviceKey>; coreId: string | null } | null;
+  #signer: Signer | null;
+  #replacedRevokedKey = false;
   #onDevice: ((device: string, coreId: string) => unknown) | null;
   #onSession: ((session: Session) => unknown) | null;
   #onRevoked: (() => void) | null;
@@ -84,9 +87,9 @@ export class WsClient implements ObservableClient {
   #manuallyClosed = false;
   #opening: Promise<CoreInfo> | null = null;
   #cancelOpen: (() => void) | null = null;
-  /** Remote sockets are probed when silent; a loopback one never goes half-open. */
+  /** Remote sockets request sliced answers and race the old link on resume. */
   #remote: boolean;
-  #lastFrameAt = 0;
+  #lastFrameAt = Date.now();
   /** Frames received on this client: a call compares it with the count it was sent at, two of which may share a millisecond. */
   #framesReceived = 0;
   /** Bytes sent since the last frame arrived: the core answers nothing before it has read them. */
@@ -110,6 +113,7 @@ export class WsClient implements ObservableClient {
       device: options.device ?? (() => null),
       socketFactory: options.socketFactory ?? browserSocket,
       reconnect: options.reconnect ?? true,
+      monitorLocal: options.monitorLocal ?? false,
       backoff: options.backoff ?? defaultBackoff,
       openDeadline: options.openDeadline ?? openDeadline
     };
@@ -118,8 +122,9 @@ export class WsClient implements ObservableClient {
     this.#nonce = this.#grant === null ? '' : secureId();
     this.#signer = null;
     if (options.signer !== undefined) {
-      const signer: { key: DeviceKey | null; ready: Promise<DeviceKey>; coreId: string | null } = { key: null, ready: options.signer.key(), coreId: options.signer.coreId };
-      void signer.ready.then((key) => { signer.key = key; }, () => undefined);
+      const { key, ...identity } = options.signer;
+      const signer: Signer = { ...identity, key: null, ready: key() };
+      void signer.ready.then((device) => { signer.key = device; }, () => undefined);
       this.#signer = signer;
     }
     this.#onDevice = options.onDevice ?? null;
@@ -136,7 +141,12 @@ export class WsClient implements ObservableClient {
     return this.#state;
   }
 
-  /** A socket to another machine, which can go half-open; the shell's own core and a page on its machine cannot. */
+  /** The last received frame, or when this client first began waiting for one. */
+  get lastFrameAt(): number {
+    return this.#lastFrameAt;
+  }
+
+  /** A socket whose origin is outside loopback. */
   get remote(): boolean {
     return this.#remote;
   }
@@ -482,6 +492,11 @@ export class WsClient implements ObservableClient {
       socket.onclose = (event) => {
         if (aside()) { dropAside('connection closed'); return; }
         const wasReady = this.#state === 'ready';
+        if (wasReady && event?.code === RpcCloseCode.DeviceRevoked && this.#signer !== null) {
+          this.close();
+          this.#onRevoked?.();
+          return;
+        }
         const incompatible = event?.code === RpcCloseCode.ProtocolMismatch;
         if (incompatible) this.#manuallyClosed = true;
         const reason = event?.code === MESSAGE_TOO_BIG
@@ -586,9 +601,26 @@ export class WsClient implements ObservableClient {
               resolve(result.core);
             }
           },
-          (error: unknown) => {
+          async (error: unknown) => {
             // A candidate refused is no verdict on the client: the reconnect after a dead probe hears it again.
             if (aside()) { dropAside(error instanceof Error ? error.message : String(error)); return; }
+            if (settled || this.#socket !== socket) return;
+            const replacing = grant !== null && this.#replaceRevokedKey(error, signer);
+            if (replacing) {
+              // The core closes this socket after refusing the hello. Keep the current
+              // connect promise open until the replacement hello answers on a new socket.
+              closeQuietly(socket);
+              const replacement = await replacing;
+              if (settled || this.#socket !== socket) return;
+              if (replacement !== null && signer !== null) {
+                signer.key = replacement;
+                this.#replacedRevokedKey = true;
+                settled = true;
+                clearTimeout(timeout);
+                void this.#open().then(resolve, reject);
+                return;
+              }
+            }
             if (!settled) {
               settled = true;
               clearTimeout(timeout);
@@ -626,6 +658,16 @@ export class WsClient implements ObservableClient {
         );
       };
     });
+  }
+
+  #replaceRevokedKey(error: unknown, signer: Signer | null): Promise<DeviceKey | null> | false {
+    if (this.#replacedRevokedKey || !signer?.coreId || !signer.key || !signer.replaceRevokedKey) return false;
+    if (!(error instanceof RpcFailure) || error.code !== RpcErrorCode.Unauthorized || (error.data as Partial<DeviceRevokedData> | undefined)?.reason !== 'device-revoked') return false;
+    const id = signer.key.id;
+    const replace = signer.replaceRevokedKey;
+    return signedDeviceRevocation(signer.coreId, this.#nonce, id, error.data)
+      .then(verified => verified ? replace(id) : null)
+      .catch(() => null);
   }
 
   /**
@@ -739,9 +781,9 @@ export class WsClient implements ObservableClient {
     this.#scheduleRetry('probe');
   }
 
-  /** One timer per ready remote socket, re-armed from its own callback rather than on every frame. */
+  /** One timer per watched socket, re-armed from its own callback rather than on every frame. */
   #armLiveness(delayMs: number): void {
-    if (!this.#remote || this.#liveness !== null) return;
+    if ((!this.#remote && !this.#options.monitorLocal) || this.#liveness !== null) return;
     this.#liveness = setTimeout(() => {
       this.#liveness = null;
       const socket = this.#socket;
@@ -750,9 +792,9 @@ export class WsClient implements ObservableClient {
       if (pageHidden()) { this.#armLiveness(IDLE_PROBE_MS); return; }
       const quiet = Date.now() - this.#lastFrameAt;
       if (quiet < IDLE_PROBE_MS) { this.#armLiveness(IDLE_PROBE_MS - quiet); return; }
-      // A core that answers in one frame may still be downloading the answer a call waits for:
-      // that call's own timeout asks the socket instead.
-      if (!this.#sliced() && this.#awaitingAnswer()) { this.#armLiveness(IDLE_PROBE_MS); return; }
+      // Over a remote link an unsliced answer may still be downloading. The
+      // local core's socket also needs a deadline when an RPC is outstanding.
+      if (!this.#options.monitorLocal && !this.#sliced() && this.#awaitingAnswer()) { this.#armLiveness(IDLE_PROBE_MS); return; }
       void this.#probeSocket(socket, PROBE_DEADLINE_MS).then((alive) => {
         if (alive) this.#armLiveness(IDLE_PROBE_MS);
         else this.#lost(socket);

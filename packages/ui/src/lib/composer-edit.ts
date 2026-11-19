@@ -45,6 +45,7 @@ export async function rewindComposerEdit(
  * behind words typed meanwhile, held at the head of the queue.
  */
 export async function retryTurn(store: Store, threadId: string, prompt: Message): Promise<void> {
+  if (store.openThread?.id !== threadId || store.openThread.archived) return;
   const again = sentPrompt(prompt);
   const local = store.stageSend(threadId, again.text, again.attachments, again.previewReferences);
   const rewound = await store.rewind(prompt.id, threadId);

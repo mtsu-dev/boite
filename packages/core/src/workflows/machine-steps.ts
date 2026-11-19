@@ -12,6 +12,7 @@ import { memberNamed } from '../threads/group-spawn.ts';
 import { INTERRUPTION_TEXT } from '../delegation/interruption.ts';
 import { stepPrompt } from './prompt.ts';
 import { shapedOutput } from './step-result.ts';
+import { recordMachineUsage } from './usage.ts';
 
 interface Hooks {
   load: (id: string) => WorkflowRun | null;
@@ -57,14 +58,22 @@ export class MachineWorkflowSteps {
     });
   }
 
-  /** A worktree settled there after its step ended is shown as it is. */
+  /** A worktree or turn report can arrive after its step ended. */
   #reconcile(snapshot: WorkflowRun): void {
     const run = this.#hooks.load(snapshot.id);
     if (!run) return;
     let changed = false;
     for (const node of run.nodes) for (const inst of node.instances) {
-      const worktree = inst.machine && this.#core.delegation.remote.record(run.rootThreadId, inst.machine.requestId)?.state?.worktree;
+      const record = inst.machine && this.#core.delegation.remote.record(run.rootThreadId, inst.machine.requestId);
+      const state = record?.state;
+      const worktree = state?.worktree;
       if (worktree && JSON.stringify(worktree) !== JSON.stringify(inst.worktree)) { inst.worktree = worktree; changed = true; }
+      const last = state?.lastTurn;
+      const receipt = state?.workflowStop;
+      const stopped = run.status === 'stopped' && record?.workflowStop !== undefined;
+      const measured = stopped && receipt && receipt.seq === record.workflowStop ? receipt.turn
+        : last && (last.id === inst.machine?.turnId || stopped && last.id === record.workflowStopTurnId) ? last : null;
+      if (recordMachineUsage(inst, measured)) changed = true;
     }
     if (changed) this.#hooks.save(run);
   }
@@ -163,10 +172,14 @@ export class MachineWorkflowSteps {
     const state = record.state;
     if (state === null || record.childId === null) return;
     const turn = state.lastTurn;
-    const seen = { providerId: state.thread.providerId, model: state.thread.model, effort: state.thread.effort, ...(state.worktree ? { worktree: state.worktree } : {}) };
-    const fresh = machine.childId !== record.childId || inst.providerId !== seen.providerId || inst.model !== seen.model || inst.effort !== seen.effort || JSON.stringify(inst.worktree) !== JSON.stringify(state.worktree ?? inst.worktree);
+    const seen = {
+      providerId: state.thread.providerId, accountId: state.thread.accountId, model: state.thread.model,
+      effort: state.thread.effort, contextMode: state.thread.contextMode ?? null, ...(state.worktree ? { worktree: state.worktree } : {}),
+    };
+    const fresh = machine.childId !== record.childId || inst.providerId !== seen.providerId || inst.accountId !== seen.accountId || inst.model !== seen.model || inst.effort !== seen.effort
+      || JSON.stringify(inst.contextMode) !== JSON.stringify(seen.contextMode) || JSON.stringify(inst.worktree) !== JSON.stringify(state.worktree ?? inst.worktree);
     Object.assign(inst, seen, { machine: { ...machine, childId: record.childId, coreId: record.coreId } });
-    if (fresh) this.#hooks.save(run!);
+    if (recordMachineUsage(inst, turn) || fresh) this.#hooks.save(run!);
     if (turn === null && state.thread.status === 'error') return this.#fail(runId, key, machine.requestId, `the subagent on ${machine.name} could not start its first turn`);
     // A correction decided before it was taken there: it goes again under its request id, and its turn settles the step.
     if (machine.correction) {

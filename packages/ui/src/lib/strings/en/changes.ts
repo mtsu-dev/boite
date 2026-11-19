@@ -13,6 +13,7 @@ export const strings = {
     binary: 'Binary file, nothing to show line by line',
     truncated: 'This file was cut short: the diff below is not the whole file.',
     loading: 'Reading the working tree',
+    outsideRepository: 'This folder is outside a Git repository.',
     renamedFrom: 'Renamed from {path}',
     /** The toolbar's chip: every changed file, a pick scrolls the diff to it. */
     fileList: 'Changed files',

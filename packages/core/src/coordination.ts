@@ -11,7 +11,7 @@ import { askContact, CoordinationBridge } from './coordination-bridge.ts';
 import { dropGroupRead, policedRoutes, policyAllowsLetter } from './coordination-group.ts';
 import { address, coordinationGuide, coordinationUrl, LETTER_TTL_MS, letterPrompt, RESIDENT_LETTER_TTL_MS, same, text, SWEEP_PROBES } from './coordination-letter.ts';
 import { withProjects, withRelations } from './coordination-relation.ts';
-import { pauseInterruptedCoordination } from './coordination-recovery.ts';
+import { pauseInterruptedCoordination, replaceAutoPause, wakesAfterRestart, wakesOnNewLetter, type AutoPauseReason } from './coordination-recovery.ts';
 import { firstAnswer, PeerGone, PeerRefusal, post, settle, type Answer, type Envelope, type Operation } from './coordination-wire.ts';
 import { checkTailnetName } from './contacts/invite.ts';
 import { outgoingContact, incomingContact } from './contacts/human-letters.ts';
@@ -51,10 +51,9 @@ export class Coordination {
   #publicKey = '';
   #coreId = '';
   #closed = false;
-  /** Releases local acknowledgement waits before driver teardown can reject them. */
-  readonly #localWaits = new Set<() => void>();
+  readonly #closing = new AbortController();
   readonly #pending = new Set<Promise<unknown>>();
-  readonly #delivering = new Set<string>();
+  readonly #delivering = new Map<string, symbol>();
   /** The letters `admit` let through, while their sink records them. */
   #admitting: Set<string> | null = null;
   /** Answers other cores' signed requests. */
@@ -196,15 +195,15 @@ export class Coordination {
    * A pause the core applies by itself (Stop, a restart, a failed wake). It lasts until the user's next message;
    * after a restart or a failed wake, another agent's next letter ends it too, so a crashed thread can be woken.
    */
-  pause(threadId: string, reason: 'stop' | 'restart' | 'failure' = 'stop'): void {
+  pause(threadId: string, reason: AutoPauseReason = 'stop'): void {
     const config = this.config(threadId);
     if (config.mode === 'off') return;
+    const pauseKey = `${AUTO_PAUSE_PREFIX}${threadId}`;
     if (config.paused) {
-      // Stop over a restart's or a failed wake's pause makes it Stop's; the owner's pause carries no reason and stays as it is.
-      if (reason === 'stop' && this.#wakesForAgent(threadId)) this.#core.journal.setSetting(`${AUTO_PAUSE_PREFIX}${threadId}`, reason);
+      replaceAutoPause(this.#core.journal, pauseKey, reason);
       return;
     }
-    this.#core.journal.setSetting(`${AUTO_PAUSE_PREFIX}${threadId}`, reason);
+    this.#core.journal.setSetting(pauseKey, reason);
     this.#saveConfig(threadId, { ...config, paused: true });
   }
   /** The user wrote to the thread again: a pause the core applied by itself ends, the owner's stays. */
@@ -216,10 +215,8 @@ export class Coordination {
   }
   /** Paused by Stop or by the owner: what holds a thread's own scheduled wake (`threads/scheduled-wakes.ts`). */
   heldByUser(threadId: string): boolean { return this.config(threadId).paused && !this.#wakesForAgent(threadId); }
-  /** A pause another agent's letter ends: a restart's or a failed wake's, not Stop's or the owner's. One saved before reasons were recorded reads as a restart's. */
   #wakesForAgent(threadId: string): boolean {
-    const reason = this.#core.journal.getSetting(`${AUTO_PAUSE_PREFIX}${threadId}`);
-    return Boolean(reason) && reason !== 'stop';
+    return wakesOnNewLetter(this.#core.journal.getSetting(`${AUTO_PAUSE_PREFIX}${threadId}`));
   }
   /**
    * The owner trusted the contact mail a held wake refused, or let held mail through: a failure's pause ends,
@@ -627,7 +624,7 @@ export class Coordination {
     const resident = this.#core.workforce.projects.mayReceive(letter, letter.from.coreId === this.#self('').coreId);
     if (resident !== null) return resident;
     const recipient = this.config(letter.to.threadId);
-    if (recipient.mode === 'off' || recipient.paused) return false;
+    if (recipient.mode === 'off' || (recipient.paused && !wakesAfterRestart(this.#core, letter, this.#self('').coreId, AUTO_PAUSE_PREFIX + letter.to.threadId))) return false;
     if (letter.from.coreId !== this.#self('').coreId) {
       if (!recipient.remote) return false;
       const routed = this.mailboxes.mayReceive(letter);
@@ -661,18 +658,6 @@ export class Coordination {
       return true;
     }, undefined, true);
   }
-  async #steer(threadId: string, prompt: string): Promise<{ submitted: boolean } | null> {
-    if (this.#closed) return null;
-    const stopped = Promise.withResolvers<null>();
-    const cancel = () => stopped.resolve(null);
-    this.#localWaits.add(cancel);
-    try {
-      return await Promise.race([
-        this.#core.threads.steer(threadId, prompt).then(submitted => ({ submitted })),
-        stopped.promise,
-      ]);
-    } finally { this.#localWaits.delete(cancel); }
-  }
   /** Restore on actual provider delivery, after pause, expiry and permission checks. */
   #restoreProject(threadId: string): void {
     const projectId = this.#core.threads.require(threadId).projectId;
@@ -685,7 +670,9 @@ export class Coordination {
     if (!thread || thread.archived || thread.status === 'waiting' || thread.status === 'queued') return;
     const ready = this.#ready(threadId, BATCH);
     if (!ready.length) return;
-    this.#delivering.add(threadId);
+    const delivery = Symbol();
+    this.#delivering.set(threadId, delivery);
+    const release = () => { if (this.#delivering.get(threadId) === delivery) this.#delivering.delete(threadId); };
     const local = () => this.#ready(threadId, BATCH, null, true);
     try {
       if (thread.status === 'running') {
@@ -699,11 +686,11 @@ export class Coordination {
         }, local);
         if (!steered) return;
         try {
-          const result = await this.#steer(threadId, steered.prompt);
-          if (result === null || this.#closed || this.#core.journal.isClosed()) return;
+          const submitted = await this.#core.threads.steer(threadId, steered.prompt, { release, signal: this.#closing.signal });
+          if (this.#closed || this.#core.journal.isClosed()) return;
           for (const letter of steered.letters) {
             const current = this.#find(letter.id, 'in');
-            if (current?.status === 'uncertain' && current.error === 'Awaiting provider acknowledgement') this.update(current, result.submitted ? 'delivered' : 'received');
+            if (current?.status === 'uncertain' && current.error === 'Awaiting provider acknowledgement') this.update(current, submitted ? 'delivered' : 'received');
           }
         } catch (error) {
           if (this.#closed || this.#core.journal.isClosed()) return;
@@ -737,7 +724,7 @@ export class Coordination {
         this.pause(threadId, 'failure'); this.#core.log('warn', `coordination ${threadId}: ${messageOf(error)}`);
       }
     }
-    finally { this.#delivering.delete(threadId); }
+    finally { release(); }
   }
   /** A scheduled coordination turn reached its driver; no claim that the model read it. */
   submitted(threadId: string, turnId: string): void {
@@ -887,8 +874,7 @@ export class Coordination {
   beginClose(): void {
     if (this.#closed) return;
     this.#closed = true;
-    for (const cancel of this.#localWaits) cancel();
-    this.#localWaits.clear();
+    this.#closing.abort();
     this.bridge.close();
     this.mailboxes.beginClose();
     clearInterval(this.#timer); this.#off();

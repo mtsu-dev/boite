@@ -1,4 +1,5 @@
 <script lang="ts">
+  import SettingsSection from './SettingsSection.svelte';
   import PrivateText from './PrivateText.svelte';
   import Notice from './Notice.svelte';
   import { untrack } from 'svelte';
@@ -617,9 +618,6 @@
 {/snippet}
 
 <div class="page" data-testid="plugins-page">
-  <header>
-    <div><h1 class="ui-label-box"><span class="ui-label">{t.heading}</span><InfoTip topic={t.heading} text={t.intro} /></h1></div>
-  </header>
   {#if error}<p class="bad" role="alert">{error}</p>{/if}
 
   <div class="toolbar">
@@ -640,8 +638,8 @@
   </div>
 
   {#if addShown}
-    <section id="settings-{PLUGIN_ADD_SECTION}" class="card add" aria-labelledby="plugins-add" data-testid="plugins-add">
-      <h2 id="plugins-add" class="section-label"><span class="ui-label">{t.addHeading}</span><InfoTip topic={t.addHeading} text={t.addHint} /><PolicyLock {store} keys={['plugins.install']} /></h2>
+    <SettingsSection id="settings-{PLUGIN_ADD_SECTION}" class="add" testid="plugins-add" title={t.addHeading} info={t.addHint}>
+      {#snippet actions()}<PolicyLock {store} keys={['plugins.install']} />{/snippet}
       <!-- Text, not url: owner/repo and a page copied without https are read by the core. -->
       <form onsubmit={submit}>
         <!-- svelte-ignore a11y_autofocus: the button that opens the form asks for the address next. -->
@@ -703,7 +701,7 @@
           </div>
         </div>
       {/if}
-    </section>
+    </SettingsSection>
   {/if}
 
   {#if shown.length > 0}
@@ -810,8 +808,7 @@
   .account-actions { display: flex; margin-left: auto; gap: 4px; flex: none; }
 
   /* The URL form opens between the toolbar and the grid. */
-  .add { display: grid; gap: 12px; padding: 14px; margin-bottom: 14px; animation: rise var(--dur-3) var(--ease-out-quint); }
-  .add > h2 { margin: 0; display: flex; align-items: center; gap: 6px; }
+  .page :global(.add) { display: grid; gap: 12px; padding: 14px; margin-bottom: 14px; animation: rise var(--dur-3) var(--ease-out-quint); }
   form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 160px) auto; align-items: center; gap: 8px; }
   form input { width: 100%; }
   /* The button lines up with the fields beside it. */
@@ -833,5 +830,5 @@
     .facts dd + dt { margin-top: 8px; }
     .pools-head { align-items: flex-start; }
   }
-  @media (prefers-reduced-motion: reduce) { .add, .preview, .spinning :global(svg) { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .page :global(.add), .preview, .spinning :global(svg) { animation: none; } }
 </style>

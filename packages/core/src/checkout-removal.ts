@@ -1,5 +1,6 @@
-import { realpath } from 'node:fs/promises';
-import { basename, dirname, join, resolve } from 'node:path';
+import { existsSync, lstatSync, mkdtempSync } from 'node:fs';
+import { link, lstat, mkdir, readdir, readFile, realpath, rename, rm, rmdir, unlink } from 'node:fs/promises';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import type { Project, ThreadId, ThreadSummary } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { inside, keyOf } from './checkouts.ts';
@@ -77,6 +78,190 @@ export async function withVacantCheckout<T>(core: Core, project: Project, path: 
     core.worktrees.reservations.assertFree(path, 'another checkout removal');
     const release = core.worktrees.reservations.reserve(path, keys);
     try { return await remove(); }
+    finally { release(); }
+  }
+}
+
+interface GitResult { code: number; stdout: string; stderr: string }
+type Git = (args: string[]) => Promise<GitResult>;
+
+interface CheckoutMove { path: string; staged: string; admin: string }
+const TEMPORARY_PREFIX = '.boite-removing-';
+const moveKey = async (path: string) => `checkout-removal:${keyOf(join(await realKey(dirname(path)), basename(path)))}`;
+const savedAt = (staged: string) => join(dirname(staged), 'saved');
+
+/** An interrupted cleanup must be restored by its owner before the sweep can see it. */
+export function stagedForRemoval(path: string): boolean {
+  return basename(path) === 'checkout' && basename(dirname(path)).startsWith(TEMPORARY_PREFIX);
+}
+
+async function checkoutAdmin(path: string): Promise<string | null> {
+  try {
+    const dotGit = join(path, '.git');
+    if (!(await lstat(dotGit)).isFile()) return null;
+    const pointer = /^gitdir: (.+)$/.exec((await readFile(dotGit, 'utf8')).trimEnd())?.[1];
+    return pointer ? realKey(resolve(path, pointer)) : null;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+const failure = (stderr: string): GitResult => ({ code: 1, stdout: '', stderr });
+const statusArgs = (path: string) => ['-C', path, '-c', 'core.fsmonitor=', 'status', '--porcelain=v1', '-z', '--untracked-files=normal', '--ignored=matching'];
+
+/** Resolves directory aliases without following a tracked symlink itself. */
+async function containedParent(root: string, file: string): Promise<void> {
+  if (!inside(root, await realKey(dirname(file)))) throw refused(`path ${file} leaves ${root}`, { path: file });
+}
+
+/** Empty directories with rmdir. An unexpected node or a late file stops retirement. */
+async function emptyDirectories(root: string): Promise<void> {
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const dir = join(root, entry.name);
+    if ((await lstat(dir)).isDirectory()) await emptyDirectories(dir);
+  }
+  await rmdir(root);
+}
+
+/** Only these Git index entries can leave the staged checkout. No recursive file deletion. */
+async function setAside(staged: string, saved: string, files: string[]): Promise<void> {
+  const root = await realKey(staged);
+  for (const name of files) {
+    const from = resolve(staged, name);
+    if (!inside(keyOf(staged), keyOf(from)) || from === staged) throw refused(`invalid tracked path ${name}`, { path: staged });
+    await containedParent(root, from);
+    const info = await lstat(from).catch(error => {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw error;
+    });
+    // An absent sparse entry needs no move. Gitlinks and replaced directories keep their checkout.
+    if (!info) continue;
+    if (!info.isFile() && !info.isSymbolicLink()) throw refused(`checkout entry ${from} is not a file or symlink`, { path: from });
+    const to = join(saved, name);
+    await mkdir(dirname(to), { recursive: true });
+    await rename(from, to);
+  }
+}
+
+/** A hard link publishes each saved file only if its old name is still free. */
+async function restoreFile(from: string, to: string): Promise<void> {
+  try { await link(from, to); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    const [source, target] = await Promise.all([lstat(from, { bigint: true }), lstat(to, { bigint: true })]);
+    // The last recovery may have stopped between publishing and dropping the old link.
+    if (source.ino === 0n || source.ino !== target.ino || source.dev !== target.dev) throw error;
+  }
+  await unlink(from);
+}
+
+async function putBack(saved: string, staged: string): Promise<void> {
+  const root = await realKey(staged);
+  for (const entry of await readdir(saved, { withFileTypes: true, recursive: true })) {
+    if (entry.isDirectory()) continue;
+    const from = join(entry.parentPath, entry.name);
+    const to = join(staged, relative(saved, from));
+    await containedParent(root, to);
+    await mkdir(dirname(to), { recursive: true });
+    await restoreFile(from, to);
+  }
+  await emptyDirectories(saved);
+}
+
+async function restoreCheckout(move: CheckoutMove, git: Git): Promise<void> {
+  const { path, staged, admin } = move;
+  const saved = savedAt(staged);
+  if (await checkoutAdmin(staged) !== admin && await checkoutAdmin(saved) !== admin) {
+    throw refused(`cannot prove the checkout staged for ${path} still belongs to ${admin}`, { path, staged });
+  }
+  if (lstatSync(path, { throwIfNoEntry: false })) throw refused(`cannot restore ${path}: it already exists; the checkout stays at ${staged}`, { path, staged });
+  if (!existsSync(staged)) await mkdir(staged);
+  if (existsSync(saved)) await putBack(saved, staged);
+  const restored = await git(['worktree', 'move', staged, path]);
+  if (restored.code !== 0) throw refused(`cannot restore ${path} from ${staged}: ${restored.stderr.trim() || `git exited ${restored.code}`}`, { path, staged });
+}
+
+/** The caller holds the repository's registration gate while resuming a recorded move. */
+export async function restoreInterruptedCheckout(core: Core, project: Project, path: string, branch: string, git: Git): Promise<void> {
+  const key = await moveKey(path);
+  const move = core.journal.getSetting(key) as CheckoutMove | undefined;
+  if (!move) return;
+  const listed = await git(['worktree', 'list', '--porcelain', '-z']);
+  if (listed.code !== 0) throw refused(`cannot inspect the checkout staged for ${path}: ${listed.stderr}`, { path });
+  const registered = listed.stdout.split('\0\0').map(record => record.split('\0'))
+    .filter(entry => entry.includes(`branch refs/heads/${branch}`))
+    .flatMap(entry => entry.find(field => field.startsWith('worktree '))?.slice(9) ?? []);
+  const [keys, stagedKey, originalKey] = await Promise.all([Promise.all(registered.map(realKey)), realKey(move.staged), realKey(move.path)]);
+  const atStaged = keys.includes(stagedKey);
+  const atOriginal = keys.includes(originalKey);
+  const halfMoved = atOriginal && !existsSync(move.path) && await checkoutAdmin(move.staged) === move.admin;
+  if (atStaged || halfMoved) {
+    await withVacantCheckout(core, project, move.staged, async () => {
+      if (halfMoved) {
+        const repair = await git(['worktree', 'repair', move.staged]);
+        if (repair.code !== 0) throw refused(`cannot repair ${move.staged}: ${repair.stderr.trim()}`, { path, staged: move.staged });
+      }
+      await restoreCheckout(move, git);
+    });
+  } else if (existsSync(move.staged) || atOriginal && await checkoutAdmin(move.path) !== move.admin) {
+    throw refused(`cannot verify the registered checkout at ${move.staged} for ${path}`, { path, staged: move.staged });
+  }
+  const saved = savedAt(move.staged);
+  if (existsSync(saved)) {
+    // Git had already removed its registration. Recovery can check out the surviving ref.
+    core.log('warn', `kept files saved before removing ${path} at ${saved}`, { source: 'worktrees' });
+  } else if (existsSync(dirname(move.staged))) {
+    await rmdir(dirname(move.staged));
+  }
+  core.journal.deleteSetting(key);
+}
+
+/** Reclaims a clean directory only by rmdir, then asks Git to remove its obsolete registration. */
+export async function removeCleanCheckout(core: Core, path: string, git: Git): Promise<GitResult> {
+  if (!existsSync(path)) return git(['worktree', 'remove', path]);
+  const admin = await checkoutAdmin(path);
+  if (!admin) return failure(`cannot verify the Git directory of ${path}`);
+  const key = await moveKey(path);
+  const temporary = mkdtempSync(join(dirname(path), TEMPORARY_PREFIX));
+  const staged = join(temporary, 'checkout');
+  const saved = savedAt(staged);
+  const move = { path, staged, admin };
+  const release = core.worktrees.reservations.reserve(staged, [await realKey(temporary)]);
+  let removed = false;
+  try {
+    core.journal.setSetting(key, move);
+    const moved = await git(['worktree', 'move', path, staged]);
+    if (moved.code !== 0) return moved;
+    const status = await git(statusArgs(staged));
+    if (status.code !== 0) return status;
+    if (status.stdout || status.stderr) return failure('the checkout has uncommitted files, including ignored files');
+    const tracked = await git(['-C', staged, 'ls-files', '-z']);
+    if (tracked.code !== 0) return tracked;
+    const files = [...new Set(tracked.stdout.split('\0').filter(Boolean)), '.git'];
+    await setAside(staged, saved, files);
+    if (await checkoutAdmin(saved) !== admin) return failure('the Git directory changed during cleanup');
+    const savedStatus = await git(statusArgs(saved));
+    if (savedStatus.code !== 0) return savedStatus;
+    if (savedStatus.stdout || savedStatus.stderr) return failure('the tracked files changed during cleanup');
+    try { await emptyDirectories(staged); }
+    catch (error) {
+      if (['ENOTEMPTY', 'EEXIST'].includes((error as NodeJS.ErrnoException).code ?? '')) return failure('a file appeared during cleanup');
+      throw error;
+    }
+    const result = await git(['worktree', 'remove', staged]);
+    if (result.code !== 0) return result;
+    removed = true;
+    for (const file of files) await rm(join(saved, file), { force: true });
+    await emptyDirectories(saved);
+    return result;
+  } finally {
+    try {
+      if (!removed && (existsSync(staged) || existsSync(saved))) await restoreCheckout(move, git);
+      await rmdir(temporary);
+      core.journal.deleteSetting(key);
+    }
     finally { release(); }
   }
 }

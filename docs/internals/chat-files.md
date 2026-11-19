@@ -40,10 +40,14 @@ keeps its place.
 Published images, videos and audio appear directly in the conversation
 whatever the switch says. Media keeps its aspect ratio in a bounded card; videos have
 playback, seeking and fullscreen controls and never autoplay. Images open in a
-keyboard-accessible viewer with zoom, fit and download controls. Images larger
-than 5 MB show their name, size and download first. Click Load image or the
-filename to load them; opening a conversation does not fetch them automatically.
-If decoding fails, the card keeps its download and offers a retry. Published PDFs
+keyboard-accessible viewer with zoom, fit and download controls. Near the
+visible chat, the client asks `messages.attachment` or `artifacts.read` for a
+WebP preview sized for the card and the device's pixel ratio. The core caches
+each preset for the message until the message is removed. If the encoder cannot
+convert the image, the browser can draw its original when the header fits the
+requested size and its base64 stays within 8 KiB. Larger images that could
+not be converted still open in the viewer. The viewer requests the original
+on selection and requests a current link when saving. Published PDFs
 have an inline preview while the switch is on; other types remain
 downloadable. Mutable file editing and viewing belong to the
 [right panel](panel.md).
@@ -78,8 +82,15 @@ Chat files and previews: Markdown file links, bare web URLs, absolute paths,
 parsing; enabling both adds no further link types.
 
 On the owning local desktop, this switch also makes an explicit click open a
-file or folder in its associated application, including Windows shortcuts and
-absolute paths outside the checkout, instead of Boite's preview. On a remote
+folder, or a document inside the thread's folder, in its associated application
+instead of Boite's preview. The shell's `open_chat_file` resolves the link inside
+that folder, links included, and opens only the document types its
+`CHAT_DOCUMENTS` list names (text, data, office files, pictures, sound, video),
+never a file with an execute bit or a macOS bundle. A program, script, shortcut
+(`.lnk`, `.url`, `.desktop`) or a path outside the folder is refused, and the
+answer shows it in the preview instead. A link to `.exe`, `.com`, `.bat`, `.cmd`,
+`.msi` or `.AppImage` inside the folder still launches it with `open_local_file`,
+as without the switch. On a remote
 machine or phone, links still use the inline preview and its existing owner
 and working-directory checks. They never open a file on the device displaying
 the conversation.

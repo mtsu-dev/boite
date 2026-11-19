@@ -20,8 +20,6 @@ import type { CoreClient } from './client.ts';
 import { contactLine, INACTIVE_CONTACT_WARNING, inactiveContact, NO_CONTACT, resolveAgent } from './agents-cli.ts';
 import { requiredText, Usage, type Parsed } from './cli-args.ts';
 import { THREAD_ACTIONS } from './cli-commands.ts';
-import { loggedInAccount } from './delegation/routes.ts';
-import { defaultModel } from './threads/selection.ts';
 
 type Printer = (lines: string[], value: unknown) => void;
 export type Caller = 'owner' | 'agent';
@@ -498,36 +496,12 @@ export async function ownerThreadNew(client: CoreClient, parsed: Parsed, rest: s
   const query = rest[1];
   if (query === undefined) throw new Usage('thread new needs a project name, id or folder');
   const prompt = requiredText(rest, 2, 'thread new needs a brief after the project');
-  const projects = await client.call('projects.list', {});
-  const project = projectOf(projects, query);
-  const threads = (await client.call('threads.list', { includeArchived: true }))
-    .filter(thread => !thread.parentThreadId && !thread.agentSessionId).sort((a, b) => b.updatedAt - a.updatedAt);
-  const base = parsed.thread === undefined ? threads.find(thread => thread.projectId === project.id) ?? threads[0]
-    : threads.find(thread => thread.id === parsed.thread);
-  if (parsed.thread !== undefined && !base) throw new Error(`no source conversation ${parsed.thread}; boite threads lists them`);
-  const [{ loaded }, accounts] = await Promise.all([client.call('providers.list', {}), client.call('accounts.list', {})]);
-  const slash = parsed.model?.indexOf('/') ?? -1;
-  const qualified = slash > 0 ? loaded.find(provider => provider.id === parsed.model!.slice(0, slash)) : undefined;
-  const model = qualified ? parsed.model!.slice(slash + 1) : parsed.model ?? base?.model ?? undefined;
-  if (model === '') throw new Usage('--model needs a model after the provider');
-  const available = loaded.filter(provider => provider.available && provider.enabled !== false);
-  const providerId = qualified?.id ?? base?.providerId;
-  const eligible = accounts.filter(account => providerId === undefined
-    ? available.some(provider => provider.id === account.providerId && (model === undefined || provider.models.some(entry => entry.id === model)))
-    : account.providerId === providerId);
-  const account = eligible.find(entry => entry.id === base?.accountId && entry.status !== 'unauthenticated') ?? loggedInAccount(eligible);
-  if (!account) throw new Error(`no usable account${providerId ? ` for ${providerId}` : model ? ` for model ${model}` : ''}; sign in to an installed agent in Accounts`);
-  const provider = loaded.find(entry => entry.id === account.providerId);
-  const selected = model ?? (provider ? defaultModel(provider) ?? undefined : undefined);
   const requestId = parsed.requestId ?? crypto.randomUUID();
   if (!/^[A-Za-z0-9_-]{8,128}$/.test(requestId)) throw new Usage('--request-id needs 8 to 128 URL-safe characters');
-  const created = await client.call('threads.create', {
-    projectId: project.id, providerId: account.providerId, accountId: account.id, title: parsed.title ?? prompt.trim().split('\n')[0]!.slice(0, 80),
-    ...(selected === undefined ? {} : { model: selected }), effort: parsed.effort ?? (parsed.model === undefined ? base?.effort ?? null : null), permissionMode: base?.permissionMode ?? 'default',
-    ...(parsed.speed === undefined ? {} : { speed: parsed.speed }),
-    ...(parsed.worktree ? { worktree: {} } : {}), ...(context === undefined ? {} : { context: context as RpcParams<'threads.create'>['context'] }),
-    clientRequestId: requestId,
+  const { thread, turn, project } = await client.call('threads.createFromPrompt', {
+    project: query, prompt, clientRequestId: requestId, sourceThreadId: parsed.thread, title: parsed.title,
+    model: parsed.model, effort: parsed.effort, speed: parsed.speed, ...(parsed.worktree ? { worktree: true } : {}),
+    ...(context === undefined ? {} : { context: context as RpcParams<'threads.createFromPrompt'>['context'] }),
   });
-  const turn = await client.call('turns.start', { threadId: created.id, prompt, clientRequestId: requestId });
-  print([`thread: ${created.id}`, `title: ${created.title}`, `project: ${project.name}`, `cwd: ${created.cwd}`, `agent: ${created.providerId} ${created.model ?? 'default'}`, `turn: ${turn.id}`], { thread: created, turn });
+  print([`thread: ${thread.id}`, `title: ${thread.title}`, `project: ${project}`, `cwd: ${thread.cwd}`, `agent: ${thread.providerId} ${thread.model ?? 'default'}`, `turn: ${turn.id}`], { thread, turn });
 }

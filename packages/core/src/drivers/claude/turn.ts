@@ -41,6 +41,13 @@ const IMAGE_CONTEXT_CHARS = 1600 * CHARS_PER_TOKEN;
 /** What the CLI answers a `resume` whose transcript is gone (CLI 2.1.282, probed offline). */
 const MISSING_SESSION = /^No conversation found with session ID: /;
 
+/** The maximum number of consumed prompt UUIDs a Claude SDK result carries. */
+const RESULT_PROMPT_IDS_LIMIT = 64;
+
+function resultPromptIds(result: SDKResultMessage): string[] {
+  return result.user_message_uuids ?? (result.user_message_uuid === undefined ? [] : [result.user_message_uuid]);
+}
+
 interface ToolEntry {
   index: number;
   name: string;
@@ -130,6 +137,7 @@ export class ClaudeTurn {
   #lastIsResult = false;
   /** The tool calls whose result entry the turn read on its current session. */
   readonly #answered = new Set<string>();
+  readonly #pendingPromptIds = new Set<string>();
   #entryWaiters: (() => void)[] = [];
   /** What the CLI wrote since the request `contextTokens` measured, in characters. */
   #addedChars = 0;
@@ -238,6 +246,33 @@ export class ClaudeTurn {
     this.#swap = swap;
   }
 
+  promptSent(id: string): void {
+    this.#pendingPromptIds.add(id);
+  }
+
+  /** The result names a prompt the CLI folded into the run that just ended. */
+  answersPrompt(result: Extract<SDKMessage, { type: 'result' }>): boolean {
+    return resultPromptIds(result).some(id => this.#pendingPromptIds.has(id));
+  }
+
+  waitsForPromptResult(result: Extract<SDKMessage, { type: 'result' }>): boolean {
+    if (this.isStopped || this.failed) return false;
+    const answered = resultPromptIds(result);
+    if (answered.length === 0) return false;
+    if (result.user_message_uuids == null || answered.length >= RESULT_PROMPT_IDS_LIMIT) {
+      // A legacy or capped result can cover earlier prompts it does not name.
+      // The host consumes prompts in send order, including a merged batch.
+      const last = answered.findLast(id => this.#pendingPromptIds.has(id));
+      if (last !== undefined) for (const id of this.#pendingPromptIds) {
+        this.#pendingPromptIds.delete(id);
+        if (id === last) break;
+      }
+    } else {
+      for (const id of answered) this.#pendingPromptIds.delete(id);
+    }
+    return this.#pendingPromptIds.size > 0;
+  }
+
   /**
    * The turn goes on with the compacted session: the CLI that takes it over
    * resumes `swap.sessionId` on the thread's next generation, and its first
@@ -251,7 +286,7 @@ export class ClaudeTurn {
     const { prompt: _prompt, attachments: _attachments, continuation: _continuation, ...kept } = this.ctx;
     const generation = (kept.thread.sessionGeneration ?? 0) + 1;
     this.ctx = {
-      ...kept, prompt: swap.tail, attachments: [], sessionId: swap.sessionId, resumeAt: null,
+      ...kept, prompt: swap.tail, attachments: swap.attachments, sessionId: swap.sessionId, resumeAt: null,
       // The CLI resuming the copy restores the totals the copy's compaction left; a copy that
       // reported none leaves the new generation with no finished turn yet (`sessionUsage`).
       sessionBefore: swap.totals ?? { costUsd: 0, tokens: 0 },
@@ -262,6 +297,7 @@ export class ClaudeTurn {
     this.#lastEntry = null;
     this.#lastIsResult = false;
     this.#answered.clear();
+    this.#pendingPromptIds.clear();
     this.#contextTokens = swap.postTokens;
     this.#addedChars = 0;
     this.#measuredFor = '';
@@ -274,6 +310,8 @@ export class ClaudeTurn {
     this.isStopped = true;
     this.#wake();
   }
+
+  get failed(): boolean { return this.#status === 'error'; }
 
   settle(): void {
     if (this.settled) return;
@@ -591,6 +629,7 @@ export class ClaudeTurn {
   #handleResult(message: SDKResultMessage): void {
     const usage = mapUsage(message, this.#costBefore, this.#heldBefore);
     this.#usage = this.#usageBefore === null ? usage : sumUsage(this.#usageBefore, usage);
+    this.#usageBefore = this.#usage;
     const totals = agentTotalsOf(message, this.#restores);
     // Totals of the compacted session are what the next turn on its generation resumes from.
     this.#agentTotals = totals !== null && this.#swappedTo !== null ? { ...totals, sessionGeneration: this.#swappedTo } : totals;

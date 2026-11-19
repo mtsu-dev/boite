@@ -1,5 +1,5 @@
 /**
- * What a mochi's next turn is told when only its MEMORY.md changed since its
+ * What a mochi's next turn is told when its MEMORY.md changed since its
  * session last read it: the lines gone and the lines new, instead of the whole
  * context block again (`context.ts`).
  */
@@ -35,7 +35,7 @@ export function memoryChange(before: string, after: string): { removed: string[]
 export function memoryChangeText(path: string, before: string, after: string): string {
   const { removed, added } = memoryChange(before, after);
   if (!removed.length && !added.length) return '';
-  const parts = [`Boite: your memory changed since this session last read it (${path}); the rest of who you are is as it was.`];
+  const parts = [`Boite: your memory changed since this session last read it (${path}).`];
   if (removed.length) parts.push(`Lines removed:\n${removed.join('\n')}`);
   let group: { heading: string | null; lines: string[] } | null = null;
   const groups: { heading: string | null; lines: string[] }[] = [];

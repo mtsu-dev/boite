@@ -17,6 +17,7 @@ import { createRemovedTurnUsage } from './usage-sums.ts';
 import { createKeptProcesses } from './kept-processes.ts';
 import { createMessageStats } from './thread-stats.ts';
 import { ARTIFACT_ROW } from './artifact-references.ts';
+import { STATED_TURN } from './turn-rows.ts';
 
 export const SCHEMA_VERSION = 52;
 
@@ -575,6 +576,8 @@ export function ensureIndexes(db: Database): void {
   db.exec('CREATE INDEX IF NOT EXISTS turns_by_finished ON turns (finished_at)');
   // `requestSince` walks a busy thread's turns back from the newest on every summary.
   db.exec('CREATE INDEX IF NOT EXISTS turns_by_thread_queue ON turns (thread_id, queued_at, id) WHERE started_at IS NOT NULL');
+  // Read it backwards: SQLite includes rowid as the final key for equal timestamps.
+  db.exec(`CREATE INDEX IF NOT EXISTS turns_stated_by_thread ON turns (thread_id, started_at) WHERE ${STATED_TURN}`);
   // The few event types read back. Without them, restoring asynchronous questions
   // at startup read the whole events table, and every thread open walked all of
   // its thread's events for memory notices.

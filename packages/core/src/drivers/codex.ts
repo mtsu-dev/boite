@@ -73,7 +73,7 @@ export function createCodexDriver(): Driver {
       running.attach(turn, warmMs);
       return {
         done: turn.done,
-        steer: (text, attachments) => running.steer(turn, text, attachments),
+        steer: (text, attachments, onAccepted, signal) => running.steer(turn, text, attachments, onAccepted, signal),
         applySettings: change => running.applySettings(turn, change),
         stop: (): void => {
           running.stopTurn(turn);
@@ -84,7 +84,7 @@ export function createCodexDriver(): Driver {
     releaseThread(threadId: ThreadId): void {
       const session = sessions.get(threadId);
       if (session === undefined || session.busy()) return;
-      void session.close(null);
+      session.release();
     },
 
     shutdown(): void {

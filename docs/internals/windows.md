@@ -50,7 +50,8 @@ boite window close
     folder, its project or that temporary folder.
 
   The core writes the file, after checking again that its folder still
-  resolves to the same place. The image goes nowhere else.
+  resolves to the same place. For regular conversations, it also saves a
+  private copy of the PNG for the card's viewer.
 - `watch` opens the window in the conversation's Window panel. `close`
   empties the panel.
 
@@ -96,7 +97,9 @@ The checks run in this order. The first one that fails refuses the capture:
 
 Every capture leaves a `window_capture` item in the conversation, with a JPEG
 thumbnail of at most 320 pixels. This applies to screenshots, clips and the
-first picture of each viewing in the panel. Settings, General, Allowed windows
+first picture of each viewing in the panel. Opening a screenshot or clip in
+a regular conversation loads the saved PNG. Older cards and live views open
+their JPEG thumbnail. Settings, General, Allowed windows
 (also reached from a project's menu) lists the allowed apps of each project;
 removing one asks for confirmation first. The next capture of that app asks again, and a panel
 showing it closes on its next frame.

@@ -2,7 +2,7 @@ import { appendFileSync, closeSync, existsSync, fstatSync, lstatSync, mkdirSync,
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { BRANCH_NAME_MAX, type Project, type ThreadId, type WorktreeStorage } from '@boite/contracts';
 import { CheckoutReservations } from './checkouts.ts';
-import { withVacantCheckout } from './checkout-removal.ts';
+import { removeCleanCheckout, restoreInterruptedCheckout, withVacantCheckout } from './checkout-removal.ts';
 import type { Core } from './core.ts';
 import { folderGone, messageOf, refused } from './errors.ts';
 import { newId } from './ids.ts';
@@ -169,7 +169,11 @@ export class Worktrees {
 
   async #reattach(threadId: ThreadId, project: Project, branch: string, path: string, preparation?: WorktreePreparation): Promise<PlacedWorktree | null> {
     preparation?.assertActive();
-    const listed = await this.#registeredGit(threadId, project.path, ['worktree', 'list', '--porcelain', '-z'], preparation?.timeoutMs, preparation?.assertActive);
+    const listed = await withRegistration(project.path, async remaining => {
+      const git = (args: string[]) => this.git(threadId, project.path, args, remaining);
+      await restoreInterruptedCheckout(this.#core, project, path, branch, git);
+      return git(['worktree', 'list', '--porcelain', '-z']);
+    }, { timeoutMs: preparation?.timeoutMs, assertActive: preparation?.assertActive });
     preparation?.assertActive();
     if (listed.code !== 0) throw refused(`cannot inspect worktrees in ${project.path}: ${listed.stderr.trim()}`);
     for (const entry of listed.stdout.split('\0\0')) {
@@ -407,6 +411,7 @@ export class Worktrees {
     const ref = `refs/heads/${placed.branch}`;
     return withRegistration(project.path, async () => {
       const git = (args: string[]) => this.git(threadId, project.path, args, remaining());
+      await restoreInterruptedCheckout(this.#core, project, placed.path, placed.branch, git);
       const keep = (why: string) => {
         this.#core.log('warn', `kept ${placed.path} or its branch ${placed.branch}: ${why}`, { threadId });
         return false;
@@ -441,7 +446,7 @@ export class Worktrees {
             const unlocked = await git(['worktree', 'unlock', location]);
             if (unlocked.code !== 0) return unlocked;
           }
-          return git(['worktree', 'remove', location]);
+          return removeCleanCheckout(this.#core, location, git);
         }, [location], retiringThreadId);
         if (removed.code !== 0) return keep(removed.stderr.trim() || `git worktree remove exited ${removed.code}`);
       }

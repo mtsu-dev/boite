@@ -1,5 +1,5 @@
 import type { ComposerChoice, ComposerQueuedPrompt, ComposerRecord, ComposerValue, RpcParams, ThreadSummary, Turn } from '@boite/contracts';
-import { effectiveExperiments, isComposerKey } from '@boite/contracts';
+import { composerInputThreadId, effectiveExperiments, isComposerKey, privateTerminalComposerId } from '@boite/contracts';
 import type { Core } from './core.ts';
 import type { Connection } from './router.ts';
 import { promptOrigin } from './client-preferences.ts';
@@ -13,6 +13,7 @@ import { admissionRefusal } from './threads/admission.ts';
 import { composerActivity, isComposerActivity, startsAutoGoal } from './composer-activity.ts';
 import { composerBatch } from './composer-batch.ts';
 import { checkTurnRequest } from './threads/inputs.ts';
+import { ensureThreadCwd } from './threads/cwd.ts';
 
 const choiceOf = (thread: ThreadSummary): ComposerChoice => ({ providerId: thread.providerId, accountId: thread.accountId, model: thread.model, effort: thread.effort, speed: thread.speed ?? null, permissionMode: thread.permissionMode });
 const sameChoice = (a: ComposerChoice, b: ComposerChoice): boolean => a.providerId === b.providerId && a.accountId === b.accountId && a.model === b.model && a.effort === b.effort && (a.speed ?? null) === (b.speed ?? null);
@@ -45,12 +46,15 @@ export class Composer {
         this.#schedule([{ section: 'inputs', id: boundary.threadId }]);
       } else if (['turn.finished', 'thread.updated', 'permission.resolved', 'question.answered'].includes(name)) {
         const thread = payload as { threadId?: string; id?: string };
-        this.#schedule([{ section: 'inputs', id: thread.threadId ?? thread.id! }]);
+        const id = thread.threadId ?? thread.id!;
+        this.#schedule([{ section: 'inputs', id }, { section: 'inputs', id: privateTerminalComposerId(id) }]);
       } else if (name === 'project.updated') this.#schedule(this.storage.queued.values());
       else if (name === 'thread.removed' && !(payload as { undoable?: boolean }).undoable) {
         const { threadId } = payload as { threadId: string };
         this.storage.forgetThread(threadId);
-        this.#pending.delete(recordKey('inputs', threadId)); this.#dirty.delete(recordKey('inputs', threadId));
+        for (const id of [threadId, privateTerminalComposerId(threadId)]) {
+          this.#pending.delete(recordKey('inputs', id)); this.#dirty.delete(recordKey('inputs', id));
+        }
         this.#boundaries.delete(threadId);
         this.#forced.delete(threadId);
       }
@@ -111,12 +115,12 @@ export class Composer {
     const thread = this.#core.threads.require(threadId);
     const { turn } = checkTurnRequest(this.#core.journal, threadId, prompt, [], [], requestId);
     if (turn) return { requestId, status: 'sent' as const, turnId: turn.id };
-    // Private queues are tied to the originating socket. A terminal disconnects after its reply.
-    if (thread.incognito || this.#core.delegation.retirements.revivable(thread)) {
+    if (this.#core.delegation.retirements.revivable(thread)) {
       const started = await this.#core.router.dispatch('turns.start', params, { connection }) as Turn;
       return { requestId, status: 'sent' as const, turnId: started.id };
     }
-    const record = this.storage.get('inputs', threadId);
+    const recordId = thread.incognito ? privateTerminalComposerId(threadId) : threadId;
+    const record = this.storage.get('inputs', recordId);
     const id = `cli_${digest([threadId, requestId])}`;
     const queued = record.value?.input.queued.find(item => item.id === id);
     const delivery = this.storage.delivery(id);
@@ -124,23 +128,39 @@ export class Composer {
     if (delivery?.status === 'delivered') return { requestId, status: 'sent' as const };
     if (queued) {
       const reason = queued.request?.failed;
+      // A private terminal queue has no composer UI. An explicit retry may resume
+      // its held first item only when delivery never reached the turn ledger.
+      if (thread.incognito && reason && !delivery && record.value?.input.queued[0] === queued) {
+        delete queued.request!.failed;
+        record.value.input.paused = false;
+        this.storage.save('inputs', recordId, record.value, this.#connection);
+        this.#schedule([record]);
+        return { requestId, status: 'queued' as const };
+      }
       return { requestId, status: record.value?.input.paused ? 'held' as const : 'queued' as const, ...(reason ? { reason } : {}) };
     }
     if (delivery) throw refused('delivery of this message is unconfirmed; review the conversation before sending again');
     if (this.#closed || this.#core.stopping) throw refused('the core is stopping; reconnect before sending another prompt');
-    const choice = choiceOf(thread);
-    const refusal = admissionRefusal(this.#core, thread, choice);
+    const refusal = admissionRefusal(this.#core, thread);
     if (refusal !== null) throw refused(refusal);
     if (thread.projectId && this.#core.projects.require(thread.projectId).archived) throw refused('cannot send a prompt in an archived project');
     const value: ComposerValue = record.value ?? { input: { text: '', attachments: [], queued: [], paused: false } };
-    value.input.queued.push({ id, text: prompt, attachments: [], choice, request: { id: requestId, choice, queuedAt: Date.now() } });
-    const saved = this.put({ section: 'inputs', id: threadId, expectedRevision: record.revision, value }, connection, false);
-    if (!saved.accepted) throw refused('the composer changed; retry with the same clientRequestId');
+    const preferences = this.#core.clients.use(connection);
+    value.input.queued.push({ id, text: prompt, attachments: [], request: { id: requestId, choice: null, queuedAt: Date.now() },
+      experiments: preferences?.experiments ?? [], sentFrom: promptOrigin(connection, preferences) });
+    if (thread.incognito) {
+      this.storage.save('inputs', recordId, value, this.#connection);
+      this.#schedule([record]);
+    } else {
+      const saved = this.put({ section: 'inputs', id: recordId, expectedRevision: record.revision, value }, connection, false);
+      if (!saved.accepted) throw refused('the composer changed; retry with the same clientRequestId');
+    }
     return { requestId, status: value.input.paused ? 'held' as const : 'queued' as const };
   }
 
   put(params: RpcParams<'composer.put'>, connection: Connection, returnsRecord = true): { accepted: boolean; record: ComposerRecord } {
     if (!params || !['inputs', 'drafts'].includes(params.section) || typeof params.id !== 'string' || !params.id || !Number.isSafeInteger(params.expectedRevision) || params.expectedRevision < 0) throw invalidParams('composer.put: expected section inputs/drafts, non-empty id and non-negative expectedRevision');
+    if (params.section === 'inputs' && composerInputThreadId(params.id) !== params.id) throw notFound('composer.id: expected an existing thread');
     // Soft-deleted rows remain undoable. Missing rows cannot adopt an offline
     // client's old input again, regardless of its remembered CAS revision.
     if (params.section === 'inputs' && params.value !== null && !this.#core.journal.db.query('SELECT 1 FROM threads WHERE id = ?').get(params.id)) {
@@ -212,23 +232,24 @@ export class Composer {
     });
   }
 
-  async #pump(section: ComposerRecord['section'], id: string): Promise<void> {
-    const key = recordKey(section, id);
+  async #pump(section: ComposerRecord['section'], recordId: string): Promise<void> {
+    const key = recordKey(section, recordId);
+    const id = section === 'inputs' ? composerInputThreadId(recordId) : recordId;
     while (!this.#closed && !this.#core.stopping) {
-      const record = this.storage.get(section, id), value = record.value;
-      if (!value || !value.input.queued.length) { this.storage.queued.delete(key); if (section === 'inputs') { this.#boundaries.delete(id); this.#forced.delete(id); } return; }
+      const record = this.storage.get(section, recordId), value = record.value;
+      if (!value || !value.input.queued.length) { this.storage.queued.delete(key); if (section === 'inputs') { this.#boundaries.delete(recordId); this.#forced.delete(recordId); } return; }
       if (value.input.paused) return;
       const item = value.input.queued[0]!;
       const delivery = this.storage.delivery(item.id);
-      if (delivery?.status === 'delivered') { this.#complete(section, id, item.id); continue; }
+      if (delivery?.status === 'delivered') { this.#complete(section, recordId, item.id); continue; }
       // An app that sent this prompt itself and died before the answer queues it
       // again under the same request id: the receipt says whether it arrived.
       // None means it never did, and its start goes once, as the receipt dedups
       // a late copy of the first request; a pending one stays held.
       const receipt = section === 'inputs' && item.request?.sent && !item.request.failed ? this.#core.journal.turnRequest(id, item.request.id) : null;
-      if (receipt && !/^(start|steer):pending:/.test(receipt.fingerprint)) { this.#complete(section, id, item.id); continue; }
+      if (receipt && !/^(start|steer):pending:/.test(receipt.fingerprint)) { this.#complete(section, recordId, item.id); continue; }
       if (delivery?.status === 'uncertain' || item.request?.failed || (item.request?.sent && (section !== 'inputs' || receipt))) {
-        this.#hold(section, id, item.id, item.request?.failed ?? 'Delivery is unconfirmed; review before sending a new request.'); return;
+        this.#hold(section, recordId, item.id, item.request?.failed ?? 'Delivery is unconfirmed; review before sending a new request.'); return;
       }
       this.#captured.set(key, section === 'drafts' ? value.input.queued : [item]);
       try {
@@ -236,25 +257,26 @@ export class Composer {
         const thread = this.#core.journal.getThread(id);
         if (!thread || thread.archived || (thread.projectId && this.#core.projects.require(thread.projectId).archived)) return;
         if (this.#core.threads.listPermissions(id).length || this.#core.threads.listQuestions(id).some(question => !question.async)) return;
-        const boundary = this.#boundaries.get(id);
-        const choice = item.choice;
-        if (!choice) throw refused('No agent selection was saved for this queued prompt. Choose an agent and enqueue it again.');
+        const boundary = this.#boundaries.get(recordId);
+        const followsThread = item.id.startsWith('cli_');
+        const choice = followsThread ? undefined : item.choice;
+        if (!followsThread && !choice) throw refused('No agent selection was saved for this queued prompt. Choose an agent and enqueue it again.');
         const refusal = admissionRefusal(this.#core, thread, choice);
         if (refusal !== null) throw refused(refusal);
         const active = this.#core.threads.isBusy(id);
-        const forced = this.#forced.get(id) === item.id;
+        const forced = this.#forced.get(recordId) === item.id;
         // Startup may be awaiting native preparation without a stoppable handle.
         // inputReady wakes us as soon as that handle exists, before any tool output.
         const runner = this.#core.threads.runner;
         if (active && forced && this.#core.journal.runningTurn(id) && !runner.handles.has(id) && !runner.retryOf(id) && !runner.isPaused(id)) return;
-        this.#forced.delete(id);
+        this.#forced.delete(recordId);
         if (active && forced) {
           // Only the current turn stops. Its children and coordination remain available to the new user turn.
           await Promise.race([this.#stopped, this.#core.scheduler.stopAndWait(id)]);
           continue;
         }
         const running = active ? this.#core.journal.runningTurn(id) : null;
-        if (active && (!boundary || boundary === item.afterBoundary || item.request || isComposerActivity(item.text) || !sameChoice(choice, choiceOf({ ...thread, ...running?.execution })) || userSteeringUnavailable(this.#core, this.#core.threads, id, running) !== null)) return;
+        if (active && (!boundary || boundary === item.afterBoundary || item.request || isComposerActivity(item.text) || !choice || !sameChoice(choice, choiceOf({ ...thread, ...running?.execution })) || userSteeringUnavailable(this.#core, this.#core.threads, id, running) !== null)) return;
         const batch = composerBatch(value.input.queued, this.storage);
         const attachments = batch.attachments;
         this.#captured.set(key, batch.entries);
@@ -265,33 +287,39 @@ export class Composer {
           const accepted = await Promise.race([this.#stopped, steerUser(this.#core, this.#core.threads, { threadId: id, turnId: turn.id, prompt: batch.text, attachments, previewReferences: batch.previewReferences, clientRequestId: batch.requestId, expectedSelectionVersion: thread.selectionVersion ?? 0 }, batch.entries[0]!.sentFrom ?? null)]);
           if (!accepted || this.#closed) return;
           if (!accepted.accepted) { for (const entry of batch.entries) this.storage.release(entry.id); return; }
-          this.#complete(section, id, batch.entries.map(entry => entry.id)); continue;
+          this.#complete(section, recordId, batch.entries.map(entry => entry.id)); continue;
         }
-        this.#boundaries.delete(id);
-        await this.#discover(choice);
+        this.#boundaries.delete(recordId);
+        if (choice) await this.#discover(choice);
         // A discovery RPC can yield while the user archives the target or stops the core.
         const current = this.#core.journal.getThread(id);
         if (this.#closed || this.#core.stopping || !current || current.archived || (current.projectId && this.#core.projects.require(current.projectId).archived)) return;
         if (current.projectId) await this.#core.projects.requireFolder(current.projectId);
+        await ensureThreadCwd(this.#core, current);
         const activity = composerActivity(item.text);
         this.#atomic(() => {
           const target = this.#core.journal.getThread(id);
-          if (!target || target.archived || (target.projectId && this.#core.projects.require(target.projectId).archived)) return;
+          if (this.#core.stopping || this.#closed || !this.storage.queued.has(key) || !target || target.archived || target.cwd !== current.cwd || this.#core.threads.isBusy(id)
+            || (target.projectId && this.#core.projects.require(target.projectId).archived)) return;
           for (const entry of batch.entries) this.#reserve(record, entry, id, batch.requestId);
           if (activity) {
             if (item.previewReferences?.length) throw refused('Activity commands do not accept page references.');
             this.#core.activity.set({ threadId: id, ...activity, attachments }, undefined, choice);
-          } else this.#core.threads.startTurn(id, { prompt: batch.text, attachments, previews: batch.previewReferences }, { kind: 'user', requestId: batch.requestId, sentFrom: batch.entries[0]!.sentFrom ?? null }, { expectedSelectionVersion: current.selectionVersion ?? 0, choice,
+          } else this.#core.threads.startTurn(id, { prompt: batch.text, attachments, previews: batch.previewReferences }, { kind: 'user', requestId: batch.requestId, sentFrom: batch.entries[0]!.sentFrom ?? null }, { expectedSelectionVersion: (followsThread ? target : current).selectionVersion ?? 0, choice,
             // Decided from the experiments the prompt was queued with, so a restart keeps what it meant.
             autoGoal: startsAutoGoal(batch.text, effectiveExperiments(item.experiments ?? [], this.#core.version), this.#core.settings.get().autoGoalMinChars) ? batch.text : undefined });
-          this.#complete(section, id, batch.entries.map(entry => entry.id));
+          this.#complete(section, recordId, batch.entries.map(entry => entry.id));
         });
       } catch (error) {
         for (const entry of this.#captured.get(key) ?? [item]) {
           const pending = this.storage.delivery(entry.id);
-          if (pending?.status === 'submitting') this.storage.status(entry.id, 'uncertain');
+          if (pending?.status !== 'submitting') continue;
+          // This memory-only queue starts turns synchronously, but its reservations
+          // are outside the transaction. Release one if no turn was admitted.
+          if (recordId !== id && !isComposerActivity(item.text) && !this.#core.journal.turnRequest(id, pending.request_id)) this.storage.release(entry.id);
+          else this.storage.status(entry.id, 'uncertain');
         }
-        this.#hold(section, id, item.id, messageOf(error)); return;
+        this.#hold(section, recordId, item.id, messageOf(error)); return;
       } finally { this.#captured.delete(key); }
     }
   }

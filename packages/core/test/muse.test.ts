@@ -2,13 +2,14 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import type { MessagePart, PermissionMode, ProviderDescriptor, RpcEvents, Settings } from '@boite/contracts';
 import type { CoreClient } from '../src/client.ts';
 import { getDriver } from '../src/drivers/index.ts';
 import { choiceFor, mintUuidV7, museExecutable, museHostArgs } from '../src/drivers/muse.ts';
 import { setMuseStartupDeadlineForTests } from '../src/drivers/muse/session.ts';
-import { startTestCore, startTurn, waitFor } from './harness.ts';
+import { StdioTransport } from '../src/drivers/stdio.ts';
+import { removeDir, startTestCore, startTurn, waitFor } from './harness.ts';
 import type { TestCore } from './harness.ts';
 import { countLogLines, countProcesses, readScriptedLog, writeScriptedProvider } from './scripted-provider.ts';
 
@@ -404,6 +405,30 @@ describe('muse driver', () => {
     await client.call('turns.stop', { threadId });
   });
 
+  test('a warm Muse host frees steering requests at turn end and ignores late acknowledgements', async () => {
+    const { client, threadId } = await startThread({ warmProcessMinutes: 5 });
+    const taken = spyOn(StdioTransport.prototype, 'take');
+    const steersTaken = () => taken.mock.results.filter(result => result.type === 'return' && result.value?.method === 'turn/steer').length;
+    try {
+      for (let index = 1; index <= 2; index++) {
+        const finished = client.next('turn.finished', event => event.threadId === threadId, 6000);
+        const turn = await client.call('turns.start', { threadId, prompt: 'working [steer]' });
+        await waitFor(() => countLines('steer waiting') === index);
+        const delivery = client.call('turns.steer', { threadId, turnId: turn.id, prompt: 'Finish before acknowledging', clientRequestId: `muse_held_${index}` })
+          .then(result => result, error => String(error));
+        expect((await finished).status).toBe('done');
+        expect(await delivery).toContain('delivery of this message is unconfirmed');
+      }
+      const releasedBeforeReplies = steersTaken();
+      expect((await runTurn(client, threadId, 'next [release-steer-acks]')).status).toBe('done');
+      expect(fakeLog()).toContain('late steer acknowledgements sent');
+      expect(releasedBeforeReplies).toBe(2);
+      expect(steersTaken()).toBe(2);
+      expect(fakeLog().match(/^initialize /gm)).toHaveLength(1);
+      expect((await client.call('threads.get', { threadId })).messages.filter(message => message.role === 'user')).toHaveLength(3);
+    } finally { taken.mockRestore(); }
+  }, 12_000);
+
   test('a stop while the host never answers initialize ends the turn stopped and closes the host', async () => {
     process.env['MUSE_FAKE_INIT'] = 'never';
     const { client, threadId } = await startThread({ warmProcessMinutes: 5 });
@@ -472,6 +497,46 @@ describe('muse driver', () => {
     expect(again.status).toBe('done');
     expect(fakeLog()).toContain(`session/resume ${sessionId} excludeItems=true`);
   });
+
+  test('a crash after Muse starts streaming but before turn/start replies keeps the native session', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'boite-muse-restart-'));
+    const recoveredDir = mkdtempSync(join(tmpdir(), 'boite-muse-recovered-'));
+    const first = await startTestCore({ dataDir });
+    harness = first;
+    logFile = join(dataDir, 'muse-fake.log');
+    process.env['MUSE_FAKE_LOG'] = logFile;
+    process.env['MUSE_FAKE_TURN_ACK'] = 'never';
+    let reopened: TestCore | undefined;
+    try {
+      const client = await first.connect();
+      const threadId = await museThread(client);
+      const turn = await client.call('turns.start', { threadId, prompt: 'halfway through [slow]' });
+      await waitFor(() => first.core.threads.get(threadId).messages.some(message => message.turnId === turn.id && message.role === 'assistant'));
+      const saved = first.core.journal.getThread(threadId)?.sessionId;
+      expect(saved).toEqual(expect.any(String));
+      expect(first.core.journal.getTurn(turn.id)?.execution?.sessionId).toBe(saved!);
+      expect(first.core.journal.getTurn(turn.id)?.status).toBe('running');
+
+      // Take the journal at the crash boundary, then clean up the live test process.
+      first.core.journal.flushDeltas();
+      first.core.journal.db.query('VACUUM INTO ?').run(join(recoveredDir, 'journal.db'));
+      first.core.procs.killTree(threadId);
+      await first.stop();
+      delete process.env['MUSE_FAKE_TURN_ACK'];
+      writeDescriptor(recoveredDir);
+      reopened = await startTestCore({ dataDir: recoveredDir });
+      await waitFor(() => reopened!.core.journal.listTurns(threadId)[1]?.status === 'done', 10_000);
+      expect(fakeLog()).toContain(`session/resume ${saved} excludeItems=true`);
+      expect(reopened.core.journal.getThread(threadId)?.sessionId).toBe(saved!);
+      expect(fakeLog().match(/^session\/start /gm)).toHaveLength(1);
+    } finally {
+      delete process.env['MUSE_FAKE_TURN_ACK'];
+      await reopened?.stop();
+      await first.stop();
+      await removeDir(dataDir);
+      await removeDir(recoveredDir);
+    }
+  }, 20_000);
 
   test('a missing login fails the turn with the sentence that fixes it', async () => {
     const { client, threadId } = await startThread();

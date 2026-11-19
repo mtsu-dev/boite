@@ -1,18 +1,19 @@
-import type { PermissionMode, ProviderId, ThreadId, ThreadRetry, ThreadSummary, Turn, TurnId } from '@boite/contracts';
+import type { ProviderId, ThreadId, ThreadRetry, ThreadSummary, Turn, TurnId } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { assertDriverRunnable, getDriver, releaseThread } from '../drivers/index.ts';
-import type { TurnResult } from '../drivers/types.ts';
+import type { TurnHandle, TurnResult } from '../drivers/types.ts';
 import { messageOf, refused, RpcFailure } from '../errors.ts';
 import { logMessageOf } from '../log-errors.ts';
-import { reportSettlementError, settleTurn } from './turn-settlement.ts';
+import { reportSettlementError, settleTurn, userStopKey } from './turn-settlement.ts';
 import type { ThreadStore } from '../threads.ts';
 import { withLoad } from './records.ts';
 import { markRunning } from './lifecycle.ts';
-import { TurnAttempts, type TurnAttemptState } from './turn-attempts.ts';
+import { STOP_DEADLINE, TurnAttempts, type TurnAttemptState } from './turn-attempts.ts';
 import { stderrTail } from '../drivers/stderr-tail.ts';
 import { turnSwitch } from './switch-notice.ts';
 import { writeTurnError } from './turn-error.ts';
 import { folderPresent, restoreThreadCwd, ThreadCwdGone } from './cwd.ts';
+import { abortable } from '../abortable.ts';
 
 export { STOP_DEADLINE, STOP_DEADLINE_ERROR } from './turn-attempts.ts';
 
@@ -24,7 +25,7 @@ export { STOP_DEADLINE, STOP_DEADLINE_ERROR } from './turn-attempts.ts';
 export class TurnRunner {
   readonly #attempts: TurnAttempts;
   readonly handles: TurnAttempts['handles'];
-  readonly steering = new Set<ThreadId>();
+  readonly steering: Pick<TurnAttempts['steering'], 'has' | 'size'>;
   /**
    * Standalone messages inserted during a running answer, with their timestamps.
    * The turn's emitter starts its next segment after the latest one.
@@ -37,12 +38,17 @@ export class TurnRunner {
     this.#core = core;
     this.#attempts = new TurnAttempts(core, threads);
     this.handles = this.#attempts.handles;
+    this.steering = this.#attempts.steering;
+  }
+
+  beginSteering(threadId: ThreadId, handle: TurnHandle) {
+    return this.#attempts.beginSteering(threadId, handle);
   }
 
   /** Mail is a timeline boundary even when the provider has not accepted it yet. */
-  noteMail(threadId: ThreadId, at: number): void {
+  noteMail(threadId: ThreadId, at: number, turnId?: TurnId): void {
     const turn = this.#core.journal.runningTurn(threadId);
-    if (turn) this.answerAfter.set(turn.id, Math.max(at, this.answerAfter.get(turn.id) ?? 0));
+    if (turn && (turnId === undefined || turn.id === turnId)) this.answerAfter.set(turn.id, Math.max(at, this.answerAfter.get(turn.id) ?? 0));
   }
 
   /** Asks a running turn to pause at its next tool boundary for an agent update. False when the thread runs no turn. */
@@ -70,14 +76,9 @@ export class TurnRunner {
     return this.#attempts.isPaused(threadId);
   }
 
-  changePermissionMode(threadId: ThreadId, mode: PermissionMode, before: ThreadSummary, next: ThreadSummary): void {
-    this.#attempts.changePermissionMode(threadId, mode, before, next);
-  }
-
   /** What a saved selection means for the turn that is running: its mode, its effort and its speed. */
   selectionChanged(before: ThreadSummary, next: ThreadSummary): void {
-    if (next.permissionMode !== before.permissionMode) this.#attempts.changePermissionMode(next.id, next.permissionMode, before, next);
-    if (next.effort !== before.effort || next.speed !== before.speed) this.#attempts.changeSettings(next.id, next);
+    this.#attempts.selectionChanged(before, next);
   }
 
   /**
@@ -106,6 +107,7 @@ export class TurnRunner {
     }
     const state: TurnAttemptState = {
       threadId, turnId,
+      stop: new AbortController(), finishing: false,
       thread: { ...selected, ...queued.execution, permissionMode: selected.permissionMode },
       running: { ...queued, status: 'running', startedAt: Date.now() },
     };
@@ -129,7 +131,7 @@ export class TurnRunner {
       started = true;
       // A delegated agent with a worktree of its own: made from its parent's HEAD before the agent starts in it.
       const entering = this.#core.delegation.worktrees.enter(threadId, () => {
-        if (this.#attempts.preparationStopped(threadId)) throw refused('worktree preparation was stopped');
+        if (state.stop.signal.aborted) throw refused('worktree preparation was stopped');
       });
       if (entering) await entering;
       // Turns Boite starts by itself (a subagent's result, a resume) skip `turns.start`, which does this too.
@@ -148,11 +150,12 @@ export class TurnRunner {
       result = await this.#attempts.run(queued, state, { provider, account, driver }, permissions);
       if (state.running.execution?.operation === 'coordination' && result.status === 'done') this.#core.coordination.submitted(threadId, turnId);
     } catch (error) {
-      result = this.#attempts.preparationStopped(threadId)
+      result = state.stop.signal.aborted
         ? { status: 'stopped', sessionId: state.thread.sessionId, usage: null }
         : { status: 'error', sessionId: state.thread.sessionId, usage: null, error: messageOf(error), diagnosticError: logMessageOf(error) };
     } finally {
-      try { this.#attempts.close(threadId); }
+      state.finishing = true;
+      try { this.#attempts.finishAttempts(threadId); }
       catch (error) { reportSettlementError(this.#core, threadId, turnId, 'attempt cleanup', error); }
       this.answerAfter.delete(turnId);
     }
@@ -169,11 +172,13 @@ export class TurnRunner {
     }
 
     const { thread, running } = state;
-    try {
-      const checkpoint = this.threads.codeCheckpoints.end(turnId);
-      if (checkpoint) await checkpoint;
-    } catch (error) { reportSettlementError(this.#core, threadId, turnId, 'checkpoint', error); }
+    try { await this.#finishCheckpoint(state); }
+    catch (error) { reportSettlementError(this.#core, threadId, turnId, 'checkpoint', error); }
+    finally { this.#attempts.close(threadId); }
     if (this.#core.journal.isClosed()) return;
+    if (state.stop.signal.aborted && result.status !== 'stopped' && this.#core.journal.getSetting(userStopKey(turnId)) === true) {
+      result = { ...result, status: 'stopped', error: undefined };
+    }
     try { this.#core.delegation.submitted(threadId, turnId, result.status === 'done'); }
     catch (error) { reportSettlementError(this.#core, threadId, turnId, 'delegation submission', error); }
     const finished: Turn = {
@@ -216,7 +221,7 @@ export class TurnRunner {
     if (!threadOwned) {
       // This completion still belongs to its parent, even if the child thread
       // now names a newer execution. Do not run work against that execution.
-      await this.threads.spawns.finished(finished);
+      await this.threads.spawns.sendResult(threadId);
       return;
     }
     if (next.archived) releaseThread(threadId);
@@ -227,7 +232,7 @@ export class TurnRunner {
     // Done the agent asked for during the turn, now that its answer is written. A move asked in the same turn went first.
     this.threads.agentDone.applyWaiting(threadId);
     // A thread an agent started answers it before a failure pauses its coordination.
-    await this.threads.spawns.finished(finished);
+    await this.threads.spawns.sendResult(threadId);
     // A stopped turn pauses coordination until the user's next message. A failed one pauses nothing: another agent
     // can wake the crashed thread, and a letter that arrived during the turn reaches it now. A keepalive was only waiting.
     const keepalive = queued.execution?.operation === 'keepalive';
@@ -256,6 +261,27 @@ export class TurnRunner {
 
   stopRunning(threadId: ThreadId): boolean {
     return this.#attempts.stopRunning(threadId);
+  }
+
+  async #finishCheckpoint(state: TurnAttemptState): Promise<void> {
+    const { stop, threadId, turnId } = state;
+    const capture = new AbortController();
+    const checkpoint = this.threads.codeCheckpoints.end(turnId, capture.signal);
+    if (!checkpoint) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onStop = () => {
+      timer = setTimeout(() => capture.abort(new Error('file checkpoint did not finish within the Stop deadline')), STOP_DEADLINE.forceMs);
+    };
+    if (stop.signal.aborted) onStop();
+    else stop.signal.addEventListener('abort', onStop, { once: true });
+    try { await abortable(checkpoint, capture.signal); }
+    catch (error) {
+      if (!capture.signal.aborted) throw error;
+      this.#core.logs.warn(messageOf(error), { source: 'turns', event: 'turn.checkpoint.stop-timeout', threadId, turnId });
+    } finally {
+      clearTimeout(timer);
+      stop.signal.removeEventListener('abort', onStop);
+    }
   }
 
   /** Whether the turn's transcript already holds an error part, as a driver writes one. */

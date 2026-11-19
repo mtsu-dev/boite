@@ -1,7 +1,7 @@
 <script lang="ts">
   import { errorText } from '../lib/errors';
   import type { Project, ProjectId, WorktreeEntry } from '@boite/contracts';
-  import InfoTip from './InfoTip.svelte';
+  import SettingsSection from './SettingsSection.svelte';
   import WorktreeStorageSetting from './WorktreeStorageSetting.svelte';
   import { confirm } from '../lib/confirm.svelte';
   import { projectName } from '../lib/format';
@@ -15,7 +15,7 @@
    * card is where a person clears them. The sweep takes only the ones with
    * nothing to lose; one holding changes or lone commits asks first.
    */
-  let { store }: { store: Store } = $props();
+  let { store, showTitle = true }: { store: Store; showTitle?: boolean } = $props();
   const s = strings.settings.worktrees;
 
   let projects = $derived(store.projects.filter((p) => p.kind !== 'drafts' && p.repository !== false));
@@ -99,8 +99,7 @@
 </script>
 
 {#if store.owner}
-  <section class="card" id="settings-worktrees" data-testid="worktrees-card">
-    <h2 class="ui-label-box"><span class="ui-label">{s.heading}</span><InfoTip topic={s.heading} text={s.intro} /></h2>
+  <SettingsSection id="settings-worktrees" testid="worktrees-card" title={showTitle ? s.heading : undefined} info={s.intro}>
     <WorktreeStorageSetting {store} />
     {#if lists === null}
       <button type="button" data-testid="worktrees-show" disabled={busy || store.connection !== 'ready'} onclick={() => void load()}><span class="ui-label">{s.show}</span></button>
@@ -147,7 +146,7 @@
         </div>
       {/each}
     {/if}
-  </section>
+  </SettingsSection>
 {/if}
 
 <style>

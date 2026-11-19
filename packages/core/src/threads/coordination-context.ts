@@ -23,9 +23,28 @@ type GuideKind = 'coordination' | 'delegation';
 type GuidesSent = Partial<Record<GuideKind, GuideSent>>;
 interface Pending { turnId: string; guides: GuidesSent }
 
+function storedGuides(core: Core, threadId: string): GuideSent | GuidesSent {
+  return (core.journal.getSetting(`${COORDINATION_SENT_PREFIX}${threadId}`) as GuideSent | GuidesSent | undefined) ?? {};
+}
+
 function sentGuides(core: Core, threadId: string): GuidesSent {
-  const value = core.journal.getSetting(`${COORDINATION_SENT_PREFIX}${threadId}`) as (GuideSent | GuidesSent) | undefined;
-  return value && 'hash' in value ? { coordination: value } : value ?? {};
+  const value = storedGuides(core, threadId);
+  return 'hash' in value ? { coordination: value } : value;
+}
+
+function guideHeldBy(core: Core, thread: ThreadSummary, sessionId: string | null, kind: GuideKind): GuideSent | undefined {
+  if (sessionId === null) return undefined;
+  const sent = sentGuides(core, thread.id)[kind];
+  return sent?.sessionGeneration === (thread.sessionGeneration ?? 0) ? sent : undefined;
+}
+
+/** Whether this native session may already know the guide and needs policy updates. */
+export function sessionHoldsGuide(core: Core, thread: ThreadSummary, sessionId: string | null, kind: GuideKind): boolean {
+  if (sessionId === null) return false;
+  const value = storedGuides(core, thread.id);
+  // Legacy receipts recorded coordination alone. The same session may already know delegation.
+  const sent = 'hash' in value ? value : value[kind];
+  return sent?.sessionGeneration === (thread.sessionGeneration ?? 0);
 }
 
 /** What a running turn carried, by thread, until that turn ends; in memory, so a core that stops mid-turn marks nothing. */
@@ -40,14 +59,12 @@ function carriedBy(core: Core): Map<string, Pending> {
 /** The guide for one composed prompt: `text` whole, or '' when this session already holds it. */
 export function coordinationGuideFor(core: Core, thread: ThreadSummary, sessionId: string | null, turnId: string, text: string, kind: GuideKind = 'coordination'): string {
   if (!text) return '';
-  const sent = sentGuides(core, thread.id)[kind];
-  const sessionGeneration = thread.sessionGeneration ?? 0;
   const hash = createHash('sha256').update(text).digest('hex');
-  if (sessionId !== null && sent?.hash === hash && sent.sessionGeneration === sessionGeneration) return '';
+  if (guideHeldBy(core, thread, sessionId, kind)?.hash === hash) return '';
   const map = carriedBy(core);
   const pending = map.get(thread.id);
   const guides = pending?.turnId === turnId ? pending.guides : {};
-  map.set(thread.id, { turnId, guides: { ...guides, [kind]: { hash, sessionGeneration } } });
+  map.set(thread.id, { turnId, guides: { ...guides, [kind]: { hash, sessionGeneration: thread.sessionGeneration ?? 0 } } });
   return text;
 }
 

@@ -23,6 +23,7 @@
   const uid = $props.id();
   let checking = $state(false);
   const app = $derived(native ? updater.snapshot : null);
+  const appError = $derived(app?.phase === 'error' || (app?.phase === 'ready' && app.error !== null));
   const supported = $derived(app?.supported === true);
   /** In a browser, Boite is the machine the page shows. */
   const current = $derived(supported ? app!.currentVersion : workspace.active.core?.version ?? '');
@@ -69,7 +70,7 @@
         return app.total === null
           ? fill(strings.appUpdate.downloaded, { received: bytes(app.received) })
           : fill(strings.appUpdate.downloading, { received: bytes(app.received), total: bytes(app.total) });
-      case 'ready': return strings.updateAll.ready;
+      case 'ready': return app.error ?? strings.updateAll.ready;
       // On Android nothing waits for agents: the system's own dialog confirms.
       case 'waiting': return androidApp() ? strings.appUpdate.androidInstalling : strings.appUpdate.waiting;
       case 'installing': return androidApp() ? strings.appUpdate.androidInstalling : strings.appUpdate.installing;
@@ -136,7 +137,8 @@
     {/if}
   </div>
   <div class="line">
-    <p class="status" class:offer={app?.phase !== 'error' && (app?.phase === 'available' || app?.phase === 'ready' || othersStartable)} class:error={app?.phase === 'error'} role="status" aria-live="polite" data-testid="app-update-status">
+    <p class="status" class:offer={!appError && (app?.phase === 'available' || app?.phase === 'ready' || othersStartable)}
+      class:error={appError} role="status" aria-live="polite" data-testid="app-update-status">
       <span>{status()}</span>
       {#if appPolicy === 'off'}<PolicyLock store={local!} keys={['updates.app']} />{/if}
       {#if supported && updater.lastCheckedAt !== null && app!.phase !== 'checking'}<span class="subtle">{fill(strings.appUpdate.lastChecked, { time: time(updater.lastCheckedAt) })}</span>{/if}

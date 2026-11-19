@@ -396,7 +396,7 @@ test('Appearance in French at 360 px keeps every label beside its choices readab
     await navigateMobile('mobile-settings');
     await page.click('[data-testid=settings-tab-appearance]');
     await page.click('[data-testid=locale-fr]');
-    await page.waitFor(`document.querySelector('[data-testid=appearance-page] h1')?.textContent.includes('Style et langue')`);
+    await page.waitFor(`document.querySelector('[data-testid=mobile-settings-header] h1')?.textContent.includes('Style et langue')`);
     // Language and theme are segmented choices, the text and code faces a choice list (ChoiceSelect).
     const rows = await page.evaluate<Array<{ text: string; clipped: boolean; overlap: boolean; narrow: boolean }>>(`[...document.querySelectorAll('[data-testid=appearance-page] .switch-row')].filter(row => row.querySelector('.segmented, [data-testid=font-current], [data-testid=font-mono-current]')).map(row => {
       const text = row.querySelector('.text'), t = text.getBoundingClientRect(), s = row.querySelector('.segmented, [data-testid=font-current], [data-testid=font-mono-current]').getBoundingClientRect();

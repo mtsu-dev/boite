@@ -66,7 +66,9 @@ test('a project counter loads only its project when externally expanded', async 
 });
 
 test('a late archive read for a previous project or machine never replaces the selected machine', async () => {
-  const first = await ready('first'); await ready('second');
+  const first = await ready('first'), second = await ready('second');
+  await first.client.call('threads.update', { threadId: 't-trace', title: 'First machine archive' });
+  await second.client.call('threads.update', { threadId: 't-trace', title: 'Second machine archive' });
   const answer = await first.client.call('threads.list', { includeArchived: true });
   let release!: (value: ThreadSummary[]) => void;
   const pending = new Promise<ThreadSummary[]>(resolve => { release = resolve; });
@@ -76,9 +78,10 @@ test('a late archive read for a previous project or machine never replaces the s
   mounted = mount(RecentDone, { target: document.body, props });
   click('[data-testid=recent-done-toggle]'); await settle();
   props.entries = [entries()[1]!]; await settle();
-  expect(document.querySelectorAll('[data-testid=done-thread]')).toHaveLength(1);
+  const titles = () => [...document.querySelectorAll('[data-testid=done-thread] [data-testid=done-thread-open] .title')].map(row => row.textContent);
+  expect(titles()).toEqual(['Second machine archive']);
   release(answer); await settle();
-  expect([...document.querySelectorAll('[data-testid=done-thread]')].every(row => (row as HTMLElement).dataset.machineId === 'second')).toBe(true);
+  expect(titles()).toEqual(['Second machine archive']);
 });
 
 test('a done row names its machine only while two machines are connected', async () => {
@@ -154,8 +157,8 @@ test('a done thread is deleted from its own menu, opened by right click or a lon
   expect(rightClick.defaultPrevented).toBe(true);
   expect(contextMenu.current?.items.filter(item => !item.separator).map(item => item.id)).toEqual(['open', 'restore', 'pr', 'copy', 'delete']);
   contextMenu.close();
-  // No menu button on the row: a finger held on it opens the same menu, and the click that ends the press opens nothing.
-  expect(row.querySelector('[data-testid=done-thread-menu]')).toBeNull();
+  // The actions button is available alongside the long press. The click that ends the press opens nothing.
+  expect(row.querySelector('[data-testid=done-thread-menu]')).not.toBeNull();
   vi.useFakeTimers();
   const touch = (type: string) => {
     const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: 14, clientY: 14 });

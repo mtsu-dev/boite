@@ -47,6 +47,7 @@ export const strings = {
     removeKey: 'Remove', saveKeys: 'Save keys',
     fallback: 'Fall back to the other provider', fallbackHint: 'When the first provider fails. Needs both keys. Local never falls back to an API.',
     language: 'Language', languageHint: 'Empty detects the language. A two-letter code such as en or fr fixes it.',
+    languageAuto: 'Auto',
     saved: 'Saved', ownerOnly: 'The owner of this machine manages it.',
   }
 } as const;

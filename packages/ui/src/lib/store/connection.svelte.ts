@@ -4,8 +4,8 @@ import { RpcFailure, WsClient, type Client, type ClientState, type ObservableCli
 import { confirm } from '../confirm.svelte';
 import { deviceLabel, noteThisComputer } from '../device';
 import { appPage } from '../app-origin';
-import { deviceKey, dropDeviceKey } from '../device-key';
-import { clearStoredEndpoint, droppedSince, relayKeyFor, rememberDevice, forgetGroupOf, readStoredEndpoint, rememberSession, refreshLocalEnvironment, removeBrought, fromTauri, shellEndpointError, parsePairingLink, readEnvironments, removeEnvironment, resolveEndpoint, servesThisPage, storeEndpoint, upsertEnvironment, type Endpoint, type StoredEnvironment } from '../endpoint';
+import { deviceKey, dropDeviceKey, heldDeviceKey } from '../device-key';
+import { clearStoredEndpoint, droppedSince, relayKeyFor, rememberDevice, forgetGroupOf, readStoredEndpoint, rememberSession, refreshLocalEnvironment, removeBrought, fromTauri, shellEndpointError, takeShellRestartGeneration, restartTauriCore, parsePairingLink, readEnvironments, removeEnvironment, resolveEndpoint, servesThisPage, storeEndpoint, upsertEnvironment, type Endpoint, type StoredEnvironment } from '../endpoint';
 import { onboardingSeen } from '../onboarding';
 import { rightPanel } from '../right-panel.svelte';
 import { fill, strings } from '../strings';
@@ -32,6 +32,7 @@ export const UI_VERSION: string = RELEASE_VERSION;
 export const LOCAL_RECOVERY_MS = 4_000;
 /** The longest wait between two asks while the shell's core keeps failing to start. */
 export const LOCAL_RECOVERY_MAX_MS = 60_000;
+const FORCE_RESTART_SILENCE_MS = 30_000;
 
 export function observable(client: Client): client is ObservableClient {
   return 'onState' in client;
@@ -96,6 +97,9 @@ export class Connection {
   /** Moves each time a list keeps no cursor, so a list asked before then keeps none either. */
   #listDrops = 0;
   #localRecovery: ReturnType<typeof setTimeout> | null = null;
+  #restartOfferTimer: ReturnType<typeof setTimeout> | null = null;
+  #restartOffer = $state<number | null>(null);
+  #restarting = $state(false);
   /** Moves on every stop, so an ask still out from an earlier loss never reschedules. */
   #recoveryGeneration = 0;
   /** The endpoint came with neither a token nor a grant: the page's own origin, asked with nothing. */
@@ -318,11 +322,22 @@ export class Connection {
     const began = Date.now();
     // A phone or a browser is a device of its group: one key, signed for each machine. The desktop app is its machine's own.
     const admitting = !desktopShell() && endpoint.grant !== undefined;
+    const knownCore = admitting ? readEnvironments().find(env => env.url === url)?.signs : undefined;
     this.#signed = endpoint.signs !== undefined || admitting;
     const client = new WsClient({
       url,
       token: endpoint.token,
-      ...(endpoint.signs !== undefined || admitting ? { signer: { key: deviceKey, coreId: endpoint.signs ?? null } } : {}),
+      monitorLocal: this.localCore && desktopShell(),
+      ...(endpoint.signs !== undefined || admitting ? { signer: {
+        key: deviceKey,
+        coreId: endpoint.signs ?? knownCore ?? null,
+        replaceRevokedKey: async (id) => {
+          dropDeviceKey(id);
+          const replacement = await deviceKey();
+          if (replacement.id === id) throw new Error(strings.errors.revoked);
+          return replacement;
+        },
+      } } : {}),
       onDevice: (_device, coreId) => {
         if (this.ctx.client !== client) return;
         this.environments = rememberDevice(url, coreId);
@@ -362,7 +377,21 @@ export class Connection {
         if (this.ctx.client !== client) return;
         // Only the key this connection presented is dead: another window may have paired this machine anew meanwhile.
         // A device key a machine of its group refuses was removed from that group: the app makes a new one when it is added again.
-        if (client.deviceId !== null) dropDeviceKey(client.deviceId);
+        const deviceId = client.deviceId;
+        if (deviceId !== null) {
+          dropDeviceKey(deviceId);
+          const held = heldDeviceKey();
+          if (held !== null && held.id !== deviceId) {
+            this.environments = readEnvironments();
+            const coreId = endpoint.signs ?? client.core?.coreId;
+            const saved = coreId === undefined ? undefined : this.environments.find(env => env.url === url && env.signs === coreId);
+            if (saved !== undefined) {
+              this.attachEndpoint(saved, rememberActive);
+              void this.ctx.store.connect();
+              return;
+            }
+          }
+        }
         const stored = readStoredEndpoint();
         if (rememberActive && stored?.url === url && stored.token === key) clearStoredEndpoint();
         this.environments = removeEnvironment(url, key);
@@ -377,16 +406,19 @@ export class Connection {
     this.ctx.store.attach(client);
   }
 
-  /** Drops everything the last core said, then connects to the next one. */
-  async #switchTo(endpoint: Endpoint): Promise<void> {
+  /** Drops the last client's data, then connects to the next core. */
+  async #switchTo(endpoint: Endpoint, reconnectingLocal = false): Promise<void> {
     const s = this.ctx.store;
+    // A private draft lives only here in memory. Keep it while reconnecting to this machine.
+    const privateDraft = reconnectingLocal && s.draft?.incognito ? s.draft : null;
+    const draftInput = privateDraft ? s.composerStates.draft : undefined;
     this.ctx.client?.close();
     s.detach();
-    s.composerStates = {};
+    s.composerStates = draftInput ? { draft: draftInput } : {};
     this.ctx.composer.previewUndo.clear();
     this.ctx.composer.composerInsertions.clear();
     s.openThread = null;
-    s.draft = null;
+    s.draft = privateDraft;
     s.closeDeviceInvite();
     s.sessions = [];
     s.group = null;
@@ -421,6 +453,7 @@ export class Connection {
    */
   watchLocalCore(client: Client, state: ClientState): void {
     if (state !== 'connecting' || !this.localCore) {
+      this.#clearRestartOffer();
       if (this.#localRecovery !== null) clearTimeout(this.#localRecovery);
       this.#localRecovery = null;
       this.#recoveryGeneration += 1;
@@ -430,16 +463,63 @@ export class Connection {
     this.#recoverLocalCore(client, LOCAL_RECOVERY_MS);
   }
 
+  #clearRestartOffer(): void {
+    if (this.#restartOfferTimer !== null) clearTimeout(this.#restartOfferTimer);
+    this.#restartOfferTimer = null;
+    this.#restartOffer = null;
+  }
+
+  #offerRestart(client: Client, generation: number): void {
+    if (!(client instanceof WsClient) || this.#restartOffer === generation) return;
+    this.#clearRestartOffer();
+    const offer = () => {
+      this.#restartOfferTimer = null;
+      if (this.localCore && this.ctx.client === client && client.state === 'connecting') this.#restartOffer = generation;
+    };
+    const remaining = FORCE_RESTART_SILENCE_MS - (Date.now() - client.lastFrameAt);
+    if (remaining > 0) this.#restartOfferTimer = setTimeout(offer, remaining);
+    else offer();
+  }
+
+  get canForceCoreRestart(): boolean {
+    return this.localCore && this.#restartOffer !== null && !this.#restarting;
+  }
+
+  async forceCoreRestart(): Promise<void> {
+    const client = this.ctx.client;
+    const offer = this.#restartOffer;
+    const outage = this.#recoveryGeneration;
+    if (!client || offer === null || !this.canForceCoreRestart) return;
+    const accepted = await confirm.ask({
+      title: strings.errors.forceCoreRestart,
+      body: strings.errors.forceCoreRestartBody,
+      confirmLabel: strings.errors.forceCoreRestart,
+      cancelLabel: strings.common.cancel,
+      danger: true
+    });
+    if (!accepted || !this.canForceCoreRestart || this.#restartOffer !== offer
+      || this.ctx.client !== client || this.#recoveryGeneration !== outage) return;
+    this.#restarting = true;
+    try {
+      const local = await restartTauriCore(offer);
+      if (this.ctx.client === client && this.localCore) await this.#moveLocalCore(local);
+    } catch (error) {
+      if (this.ctx.client === client) this.ctx.fail(error);
+    } finally {
+      this.#restarting = false;
+    }
+  }
+
   #recoverLocalCore(client: Client, delay: number): void {
     const generation = this.#recoveryGeneration;
     const lost = () => this.ctx.client === client && client.state === 'connecting';
     this.#localRecovery = setTimeout(() => {
       if (!lost()) { this.#localRecovery = null; return; }
-      void this.#followLocalCore(client).then((outcome) => {
+      void this.#followLocalCore(client, true).then((outcome) => {
         if (generation !== this.#recoveryGeneration) return;
         this.#localRecovery = null;
-        if (outcome !== 'refused' || !lost() || !this.localCore) return;
-        if (this.ctx.store.error !== null) this.ctx.store.error = `${this.ctx.store.error} ${strings.errors.coreRetrying}`;
+        if (outcome === 'moved' || !lost() || !this.localCore) return;
+        if (outcome === 'refused' && this.ctx.store.error !== null) this.ctx.store.error = `${this.ctx.store.error} ${strings.errors.coreRetrying}`;
         this.#recoverLocalCore(client, Math.min(delay * 2, LOCAL_RECOVERY_MAX_MS));
       });
     }, delay);
@@ -451,20 +531,31 @@ export class Connection {
    * shell's core, or the same address), `refused` when the shell has no core
    * to give, its reason then being the store's error.
    */
-  async #followLocalCore(client: Client): Promise<'moved' | 'same' | 'refused'> {
+  async #followLocalCore(client: Client, reconnecting = false): Promise<'moved' | 'same' | 'refused'> {
     if (!this.localCore || !desktopShell()) return 'same';
-    const local = await fromTauri();
-    if (this.ctx.client !== client) return 'same';
+    const local = await fromTauri(reconnecting);
+    if (this.ctx.client !== client || client.state === 'ready') return 'same';
     if (!local) {
+      const restart = takeShellRestartGeneration();
+      if (restart !== null) {
+        this.#offerRestart(client, restart);
+        return 'same';
+      }
+      this.#clearRestartOffer();
       const refusal = shellEndpointError();
       this.ctx.store.error = refusal ? fill(strings.errors.coreStart, { reason: refusal }) : strings.errors.noEndpoint;
       return 'refused';
     }
-    if (client.state === 'ready' || local.url === this.endpointUrl) return 'same';
+    this.#clearRestartOffer();
+    if (local.url === this.endpointUrl) return 'same';
+    await this.#moveLocalCore(local);
+    return 'moved';
+  }
+
+  async #moveLocalCore(local: Endpoint): Promise<void> {
     this.localEndpointUrl = local.url;
     this.environments = refreshLocalEnvironment(local);
-    await this.#switchTo(local);
-    return 'moved';
+    await this.#switchTo(local, true);
   }
 
   async connect(): Promise<void> {

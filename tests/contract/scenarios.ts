@@ -165,6 +165,32 @@ export const SCENARIOS: Record<string, Scenario> = {
   ...CONTACT_MAIL_SCENARIOS,
   ...CONTACTS_BOT_SCENARIOS,
   ...TEAM_SCENARIOS,
+  'terminal creation retries keep the first thread and turn after its selection changes': async env => {
+    const setup = await echo(env);
+    const request = { project: setup.projectId, model: `${setup.provider.id}/${setup.model}`, prompt: 'Open a conversation', clientRequestId: 'contract-create-prompt' };
+    const first = await env.call('threads.createFromPrompt', request);
+    const threadId = first.thread.id;
+    check(first.thread.projectId === setup.projectId && first.turn.threadId === threadId, 'the first turn did not start in the selected project');
+    await env.call('threads.update', { threadId, permissionMode: 'yolo' });
+    const retry = await env.call('threads.createFromPrompt', request);
+    same([retry.thread.id, retry.turn.id], [threadId, first.turn.id], 'the original creation receipt');
+    await refusedWith(env.call('threads.createFromPrompt', { ...request, prompt: 'Different content' }), RpcErrorCode.Refused);
+    const created = (await env.call('threads.list', {})).filter(entry => entry.projectId === setup.projectId);
+    same(created.map(entry => entry.id), [threadId], 'the threads created by retries');
+    await until('the first turn to finish', async () => (await summary(env, threadId)).status === 'idle');
+    same((await env.call('threads.get', { threadId })).turns.map(turn => turn.id), [first.turn.id], 'the turns created by retries');
+  },
+  'concurrent task changes preserve distinct ids and let one task change independently': async env => {
+    const { id: threadId } = await thread(env, await echo(env));
+    const texts = ['Read the contract', 'Check the receipt'];
+    await Promise.all(texts.map(text => env.call('threads.tasks.change', { threadId, action: 'add', text })));
+    const tasks = await env.call('threads.tasks.get', { threadId });
+    same(tasks.map(task => task.text).sort(), [...texts].sort(), 'the atomically added tasks');
+    same(new Set(tasks.map(task => task.id)).size, 2, 'distinct task ids');
+    const chosen = tasks.find(task => task.text === texts[0])!;
+    await env.call('threads.tasks.change', { threadId, action: 'done', id: chosen.id });
+    same(await env.call('threads.tasks.get', { threadId }), tasks.map(task => task.id === chosen.id ? { ...task, status: 'completed' } : task), 'the task plan after completing one task');
+  },
   'where mochi creation asks first, a thread gets a card: Approve creates the mochi with full access, Decline creates none': async (env) => {
     const before = await env.call('settings.get', {});
     const setup = await echo(env);
@@ -664,9 +690,13 @@ export const SCENARIOS: Record<string, Scenario> = {
     const created = await thread(env, setup);
     const listedBefore = (await env.call('projects.list', {})).find((entry) => entry.id === setup.projectId);
     check(listedBefore?.missing !== true, 'a folder that is there is not missing');
+    const gitBefore = await env.call('projects.git', { projectId: setup.projectId });
+    check(gitBefore.missing !== true, 'Git status found the registered folder missing');
     const updates = record(env, ['project.updated']);
     try {
       await env.removeFolder(setup.projectPath);
+      const gitAfter = await env.call('projects.git', { projectId: setup.projectId });
+      same([gitAfter.repository, gitAfter.missing], [false, true], 'Git status for the deleted folder');
       const listed = (await env.call('projects.list', {})).find((entry) => entry.id === setup.projectId);
       same(listed?.missing, true, 'the listed project');
       same(listed?.repository, false, 'a folder that is gone is no repository');
@@ -916,6 +946,9 @@ export const SCENARIOS: Record<string, Scenario> = {
     const setup = await echo(env);
     const created = await thread(env, setup);
     await finishedTurn(env, created.id, 'Keep this conversation');
+    const archived = await thread(env, setup);
+    const done = await env.call('threads.archive', { threadId: archived.id, archived: true, onlyIfIdle: true });
+    check(typeof done.doneAt === 'number', 'the second conversation was marked done');
     const events = record(env, ['thread.updated', 'thread.removed', 'project.removed']);
     await env.call('projects.remove', { projectId: setup.projectId });
     await until('project.removed', () => events.events.some((event) => event.name === 'project.removed'));
@@ -924,11 +957,16 @@ export const SCENARIOS: Record<string, Scenario> = {
       .filter((event) => event.name === 'project.removed' || (event.payload as { id?: string; threadId?: string }).id === created.id || (event.payload as { threadId?: string }).threadId === created.id)
       .map((event) => (event.name === 'thread.updated' ? `thread.updated archived=${(event.payload as ThreadSummary).archived}` : event.name));
     same(order.filter((entry, index) => index === 0 || entry !== order[index - 1]), ['thread.updated archived=true', 'thread.removed', 'project.removed'], 'the events');
+    check(!events.events.some(event => event.name === 'thread.updated' && (event.payload as ThreadSummary).id === done.id),
+      'the already archived conversation was archived again');
     await refusedWith(env.call('threads.get', { threadId: created.id }), RpcErrorCode.NotFound);
-    same((await env.call('projects.add', { path: setup.projectPath })).id, setup.projectId, 'the re-added project id');
+    const project = await env.call('projects.add', { path: setup.projectPath });
+    same(project.id, setup.projectId, 'the re-added project id');
+    same(project.doneThreads, 1, 'the restored project keeps its Done count');
     const restored = await env.call('threads.get', { threadId: created.id });
     check(restored.archived && restored.messages.some(message => message.role === 'user' &&
       message.parts.some(part => part.type === 'text' && part.text === 'Keep this conversation')), 'the restored project lost its conversation');
+    same((await env.call('threads.get', { threadId: done.id })).doneAt, done.doneAt, 'the re-added conversation keeps its Done time');
   },
   'a group is created, invites, refuses what names the wrong machine, and is left': async (env) => {
     same(await env.call('group.get', {}), null, 'the group before any');

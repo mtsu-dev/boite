@@ -529,6 +529,8 @@ export class Core {
     queueMicrotask(() => this.threads.titles.recover());
     this.agentRuntime = new AgentRuntime(this);
     queueMicrotask(() => {
+      try { this.threads.deferred.recoverAnswers(); }
+      catch (error) { this.log('warn', `async answer recovery failed: ${String(error)}`); }
       void this.threads.spawns.recoverResults().catch(error => this.log('warn', `thread result recovery failed: ${String(error)}`));
     });
     queueMicrotask(() => this.composer.start());

@@ -1,5 +1,5 @@
 import type { DelegationWorktree, PauseOrigin, ProjectId, ProviderId, ThreadId, Timestamp, Usage } from './index';
-import type { ContextPreset, ContextRequest } from './context-mode';
+import type { ContextPreset, ContextRequest, ThreadContextMode } from './context-mode';
 import type { SharedComputeResult, SharedProjectRef, SharedThreadRef } from './shared-projects';
 
 /**
@@ -125,12 +125,16 @@ export interface WorkflowInstance {
   /** Canonical JSON for an item in a loop, independent of its position. */
   itemIdentity?: string;
   threadId: ThreadId | null;
-  /** Earlier local conversations replaced by an explicit retry. */
-  previousAttempts?: ThreadId[];
+  /** Earlier local conversations replaced by an explicit retry and when their workflow execution stopped. */
+  previousAttempts?: { threadId: ThreadId; finishedAt: number | null }[];
   providerId: ProviderId | null;
+  /** The resolved account on the execution machine. Missing before admission and on older runs. */
+  accountId?: string;
   model: string | null;
   /** The reasoning level it runs at; null or missing on older runs: the model's default. */
   effort?: string | null;
+  /** The context of the admitted child. Null for its full context. */
+  contextMode?: ThreadContextMode | null;
   /** All reported turns of this execution, retries and cache included. Null when none reported; missing on older cores. */
   usage?: Usage | null;
   status: WorkflowStepStatus;
@@ -158,7 +162,12 @@ export interface WorkflowInstance {
    * result in its answer, and that result as it was read then; that work was stopped there, and the step ends on
    * that result once its worktree there is kept or removed, with no second read.
    */
-  machine?: { name: string; coreId: string | null; requestId: string; childId: string | null; turnId: string | null; corrections: number; correction?: { requestId: string; text: string }; accepted?: { turnId: string; result: string | null; output: unknown } };
+  machine?: { name: string; coreId: string | null; requestId: string; childId: string | null; turnId: string | null; corrections: number; correction?: { requestId: string; text: string }; accepted?: { turnId: string; result: string | null; output: unknown };
+    /** IDs of measurements saved as a single total by an older core. */
+    usageTurnIds?: string[];
+    /** The current attempt's revisable snapshots, plus usage from earlier attempts and legacy totals. */
+    usageLedger?: { prior: Usage | null; turns: { id: string; usage: Usage }[] };
+  };
 }
 
 export interface WorkflowNode {
@@ -182,6 +191,10 @@ export interface WorkflowNode {
   previous?: WorkflowInstance[];
   /** An explicit retry of an exhausted loop starts fresh conversations for its next round. */
   freshRound?: boolean;
+  /** Measured usage across every round of this step, when it has run more than one round. */
+  usage?: Usage;
+  /** Some of the step's finished turns across all its rounds reported no usage. */
+  usagePartial?: boolean;
   /** Closes a loop that ran out of rounds: a retry runs one round more. */
   exhausted?: boolean;
 }

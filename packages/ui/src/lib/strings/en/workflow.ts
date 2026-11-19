@@ -32,6 +32,10 @@ export const strings = {
     skipped: 'Skipped: its condition did not hold.',
     show: 'Show the workflow',
     tokens: '{tokens} tokens',
+    tokensPartial: '{tokens} tokens (partial)',
+    tokensUnknown: 'Tokens unknown',
+    contextRequested: '{label} (requested)',
+    routeRequested: 'Requested',
     tokensHelp: 'Reported usage from completed turns, including cache reads, cache writes and retries.'
   }
 } as const;

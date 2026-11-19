@@ -1,4 +1,4 @@
-import { FILE_ROUTE, type MessagePart, type RpcParams, type RpcResult } from '@boite/contracts';
+import { CHAT_PREVIEW_IMAGES, FILE_ROUTE, chatPreviewSizeProblem, type MessagePart, type RpcParams, type RpcResult } from '@boite/contracts';
 import type { Core } from '../core';
 import { invalidParams, notFound } from '../errors';
 import { DISPLAY_TYPES, type DisplaySize } from '../media';
@@ -16,12 +16,21 @@ export async function readMessageAttachment(core: Core, params: RpcParams<'messa
   const thread = core.threads.require(threadId);
   const permit = core.sharedAccess.publication(threadId, messageId);
   if (!Number.isSafeInteger(partIndex) || partIndex < 0) throw invalidParams('messages.attachment.partIndex: expected a nonnegative integer', { field: 'partIndex', expected: 'a nonnegative integer' });
+  const problem = chatPreviewSizeProblem(params.previewMax);
+  if (problem) throw invalidParams(`messages.attachment.previewMax: expected one of ${problem.expected}`, problem);
   // An incognito family leaves nothing behind, a browser's disk cache included.
   const parent = thread.parentThreadId ? core.journal.getThread(thread.parentThreadId) : null;
   const noStore = thread.incognito === true || parent?.incognito === true ? { noStore: true as const } : {};
   // The original is read only when no kept copy answers: it is often megabytes of base64.
   let read: Attachment | undefined;
   const original = (): Attachment => read ??= attachmentOf(core, threadId, messageId, partIndex);
+  if (params.previewMax !== undefined) {
+    if (partIndex >= 2 ** 32 - 1) throw notFound(`part ${partIndex} is not an attachment of message ${messageId}`, { messageId, partIndex });
+    return await core.media.chatPreview(threadId, messageId, partIndex, params.previewMax, () => {
+      const part = original();
+      return CHAT_PREVIEW_IMAGES.test(part.mimeType) ? part : null;
+    }, { ticket: params.ticket === true, permit, ...noStore });
+  }
   if (params.display === true) {
     const copy = await displayed(core, threadId, messageId, partIndex, params.thumb === true ? 'thumb' : 'large', original);
     permit?.check();

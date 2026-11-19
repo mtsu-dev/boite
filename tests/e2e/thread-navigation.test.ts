@@ -113,7 +113,7 @@ test('closing an image and dragging chat text or a thread link preserves the con
       context.fillStyle = style.color; context.font = '16px sans-serif'; context.fillText('Selection reference', 12, 52);
       const parts = [
         { type: 'text', text: 'Select these words after closing the reference image. The conversation should stay open. [Launch game](build/game.exe)' },
-        { type: 'file', name: 'reference.png', mimeType: 'image/png', bytes: 100, data: canvas.toDataURL().split(',')[1] }
+        { type: 'file', name: 'reference.png', mimeType: 'image/png', data: canvas.toDataURL().split(',')[1] }
       ];
       s.openThread.messages = [
         { id:'selection-message', threadId:'t-trace', turnId:'selection-turn', role:'assistant', state:'complete', createdAt:Date.now(), parts },

@@ -176,7 +176,7 @@ test('retrying one of two failed steps opens only that step in a new conversatio
   expect(retried.status).toBe('running');
   expect(retried.nodes.map(node => node.status)).toEqual(['running', 'failed']);
   expect(retried.nodes[0]!.instances[0]!.threadId).not.toBe(old);
-  expect(retried.nodes[0]!.instances[0]!.previousAttempts).toEqual([old]);
+  expect(retried.nodes[0]!.instances[0]!.previousAttempts).toEqual([expect.objectContaining({ threadId: old })]);
 });
 
 test('a failed step lets an independent step launch, and a paused run still ends its running steps', async ({ createClient }) => {

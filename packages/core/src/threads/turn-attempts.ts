@@ -1,4 +1,4 @@
-import type { Account, MessageId, PermissionMode, ProviderDescriptor, ProviderId, RpcEvents, ThreadId, ThreadRetry, ThreadSummary, Turn, TurnId, Usage } from '@boite/contracts';
+import type { Account, MessageId, ProviderDescriptor, ProviderId, RpcEvents, ThreadId, ThreadRetry, ThreadSummary, Turn, TurnId, Usage } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { assertDriverRunnable, releaseThread } from '../drivers/index.ts';
 import type { Driver, StepDecision, TurnContext, TurnHandle, TurnResult } from '../drivers/types.ts';
@@ -13,11 +13,15 @@ import { RESUME_TEXT, modeRestartPrompt } from './resume-text.ts';
 import { forgetBrainContext } from './brain-context.ts';
 import { coordinationGuideUnsent } from './coordination-context.ts';
 import type { CarriedInput } from './turn-context.ts';
+import { TurnSteering } from './steering.ts';
+import { abortable } from '../abortable.ts';
 
 /** The current attempt snapshots, shared with live controls and final settlement. */
 export interface TurnAttemptState {
   readonly threadId: ThreadId;
   readonly turnId: TurnId;
+  readonly stop: AbortController;
+  finishing: boolean;
   thread: ThreadSummary;
   running: Turn;
 }
@@ -54,16 +58,21 @@ interface StopDeadline {
   timer: ReturnType<typeof setTimeout> | null;
 }
 
+function sameSelectionTarget(a: ThreadSummary, b: ThreadSummary): boolean {
+  return a.providerId === b.providerId && a.accountId === b.accountId && a.model === b.model
+    && (a.sessionGeneration ?? 0) === (b.sessionGeneration ?? 0);
+}
+
 /** Native attempts and their active controls belong to one visible turn. */
 export class TurnAttempts {
   readonly handles = new Map<ThreadId, TurnHandle>();
+  readonly steering = new TurnSteering();
   readonly #livePermissions = new Map<ThreadId, LivePermissions>();
-  readonly #liveSettings = new Map<ThreadId, { state: TurnAttemptState; settings: LiveSettings }>();
+  readonly #liveSettings = new Map<ThreadId, { state: TurnAttemptState; settings: LiveSettings; selectionVersion: number }>();
   /** Per running turn: what settles it when its driver never answers a stop. */
   readonly #stopDeadlines = new Map<ThreadId, StopDeadline>();
-  /** Threads whose running turn the user stopped: a lost session is not retried for them. */
-  readonly #stopRequested = new Set<ThreadId>();
-  readonly #preparing = new Set<ThreadId>();
+  /** Stop covers preparation, every native attempt, and the final checkpoint. */
+  readonly #turns = new Map<ThreadId, TurnAttemptState>();
   /** Turns an agent update asked to pause at their next tool boundary. */
   readonly #pauseWanted = new Map<ThreadId, ProviderId>();
   /** Turns whose driver was stopped to pause them, not by the user, by the provider they pause for. */
@@ -82,10 +91,16 @@ export class TurnAttempts {
     });
   }
 
+  beginSteering(threadId: ThreadId, handle: TurnHandle) {
+    const state = this.#turns.get(threadId);
+    if (!state || this.handles.get(threadId) !== handle || state.stop.signal.aborted) return null;
+    const steering = this.steering.begin(threadId);
+    return steering && { ...steering, turnStopSignal: state.stop.signal };
+  }
+
   open(state: TurnAttemptState): LivePermissions {
     const { threadId } = state;
-    this.#stopRequested.delete(threadId);
-    this.#preparing.add(threadId);
+    this.#turns.set(threadId, state);
     const permissions = new LivePermissions(state.thread.permissionMode, handle => {
       this.threads.cards.clearPermissionsOf(threadId, 'mode change');
       this.threads.cards.clearQuestionsOf(threadId, false, 'mode change');
@@ -104,7 +119,7 @@ export class TurnAttempts {
       if (state.running.execution) state.running.execution = { startedOn: { effort: state.running.execution.effort, speed: state.running.execution.speed ?? null }, ...state.running.execution, ...taken };
       this.#core.journal.putTurn(state.running);
     });
-    this.#liveSettings.set(threadId, { state, settings });
+    this.#liveSettings.set(threadId, { state, settings, selectionVersion: state.running.execution?.selectionVersion ?? 0 });
     return permissions;
   }
 
@@ -113,67 +128,83 @@ export class TurnAttempts {
    * something on the model the turn started on: a selection that also changed
    * the model or the account waits for the next turn whole.
    */
-  changeSettings(threadId: ThreadId, selection: Pick<ThreadSummary, 'accountId' | 'model' | 'effort' | 'speed'>): void {
+  selectionChanged(before: ThreadSummary, next: ThreadSummary): void {
+    if (before.selectionVersion === next.selectionVersion) return;
+    const threadId = next.id;
+    const modeChanged = before.permissionMode !== next.permissionMode;
+    const settingsChanged = before.effort !== next.effort || (before.speed ?? null) !== (next.speed ?? null);
+    const targetUnchanged = sameSelectionTarget(before, next);
+    const modeOnly = modeChanged && targetUnchanged && !settingsChanged;
     const live = this.#liveSettings.get(threadId);
-    if (live === undefined) return;
-    if (live.state.running.execution?.frozenSelection) return;
-    if (selection.accountId !== live.state.thread.accountId || selection.model !== live.state.thread.model) return;
-    live.settings.change({ effort: selection.effort, speed: selection.speed ?? null });
-  }
-
-  changePermissionMode(threadId: ThreadId, mode: PermissionMode, before: ThreadSummary, next: ThreadSummary): void {
-    const state = this.#liveSettings.get(threadId)?.state;
-    const modeOnly = before.providerId === next.providerId && before.accountId === next.accountId && before.model === next.model
-      && before.effort === next.effort && (before.speed ?? null) === (next.speed ?? null);
     const permissions = this.#livePermissions.get(threadId);
-    if (!permissions) {
+    if (!live || !permissions) {
       // Queued turns have no native controller yet. Retain only an unbroken
       // mode-only version chain; startup will pass the live mode to the driver.
       if (modeOnly) for (const turn of this.#core.journal.listTurnsFor(threadId, [])) {
         if (turn.status !== 'queued' || !turn.execution || (turn.execution.selectionVersion ?? 0) !== (before.selectionVersion ?? 0)) continue;
-        turn.execution = { ...turn.execution, permissionMode: mode, selectionVersion: next.selectionVersion ?? 0 };
+        turn.execution = { ...turn.execution, permissionMode: next.permissionMode, selectionVersion: next.selectionVersion ?? 0 };
         this.#core.journal.putTurn(turn);
       }
       return;
     }
-    permissions.change(mode, () => {
-      const execution = state?.running.execution;
-      // Mode is live; other picker changes, including a change and return, stay fenced.
-      if (!modeOnly || !state || !execution || (execution.selectionVersion ?? 0) !== (before.selectionVersion ?? 0)) return;
-      state.thread.selectionVersion = next.selectionVersion;
-      state.running.execution = { ...execution, selectionVersion: next.selectionVersion ?? 0 };
+    const frozen = live.state.running.execution?.frozenSelection === true;
+    // The candidate follows consecutive changes for this model and account, even while the driver has several settings to apply.
+    if (targetUnchanged && sameSelectionTarget(live.state.thread, next) && (!frozen || modeOnly)
+      && live.selectionVersion === (before.selectionVersion ?? 0)) live.selectionVersion = next.selectionVersion ?? 0;
+    if (modeChanged) permissions.change(next.permissionMode);
+    if (settingsChanged && !frozen && sameSelectionTarget(live.state.thread, next)) {
+      live.settings.change({ effort: next.effort, speed: next.speed ?? null });
+    }
+    this.#reconcileSelection(live.state, permissions);
+  }
+
+  #reconcileSelection(state: TurnAttemptState, permissions: LivePermissions): void {
+    const live = this.#liveSettings.get(state.threadId);
+    const handle = this.handles.get(state.threadId);
+    if (!live || !handle || live.selectionVersion === (state.running.execution?.selectionVersion ?? 0)) return;
+    const candidate = live.selectionVersion;
+    // Until both queues are idle, even a return to an already applied value can be followed by an older native write.
+    void Promise.all([permissions.settled(), live.settings.settled()]).then(() => {
+      if (this.handles.get(state.threadId) !== handle || state.stop.signal.aborted || live.selectionVersion !== candidate) return;
+      const execution = state.running.execution;
+      const picking = this.#core.journal.getThread(state.threadId);
+      if (!execution || !picking || candidate !== (picking.selectionVersion ?? 0) || !sameSelectionTarget(state.thread, picking)
+        || execution.effort !== picking.effort || (execution.speed ?? null) !== (picking.speed ?? null) || execution.permissionMode !== picking.permissionMode) return;
+      state.thread.selectionVersion = candidate;
+      state.running.execution = { ...execution, selectionVersion: candidate };
       this.#core.journal.putTurn(state.running);
-      const current = this.#core.journal.getThread(threadId);
-      if (current) this.#core.bus.emit('thread.updated', current);
-    });
+      this.#core.bus.emit('thread.updated', picking);
+    }).catch(error => quiet(() => this.#core.logs.warn(`could not confirm live selection: ${String(error)}`, { source: 'turns', threadId: state.threadId })));
   }
 
   async run(queued: Turn, state: TurnAttemptState, target: TurnAttemptTarget, permissions: LivePermissions): Promise<TurnResult> {
     const { threadId, turnId } = state;
     const { provider, driver } = target;
     const accountId = target.account.id;
-    if (this.#stopRequested.has(threadId)) return { status: 'stopped', sessionId: state.thread.sessionId, usage: null };
+    const { signal } = state.stop;
+    signal.throwIfAborted();
     try {
       const protection = this.#core.sharedAccess.execution.prepare(threadId);
-      if (protection) await protection;
-      const checkpoint = this.threads.codeCheckpoints.begin(state.thread, turnId);
+      if (protection) await abortable(protection, signal);
+      signal.throwIfAborted();
+      const checkpoint = this.threads.codeCheckpoints.begin(state.thread, turnId, signal);
       if (checkpoint && driver.prepare) {
         const account = this.#core.accounts.require(accountId);
         assertDriverRunnable(provider.protocol, this.#core.providers.summary(provider.id), account);
         const context = this.threads.contexts.makeSessionContext(state.thread, provider, account);
         void driver.prepare(context, { forTurn: true }).catch(error => {
-          if (!this.#stopRequested.has(threadId)) this.#core.log('warn', `preparing the turn failed: ${String(error)}`, { source: provider.id, threadId, event: 'provider.prepareFailed' });
+          if (!signal.aborted) this.#core.log('warn', `preparing the turn failed: ${String(error)}`, { source: provider.id, threadId, event: 'provider.prepareFailed' });
         });
       }
-      if (checkpoint) await checkpoint;
+      if (checkpoint) await abortable(checkpoint, signal);
     } catch (error) {
-      releaseThread(threadId);
-      void this.#core.procs.protection.revoke(threadId).catch(() => {});
-      this.#core.procs.killTree(threadId);
-      if (this.#stopRequested.has(threadId)) return { status: 'stopped', sessionId: state.thread.sessionId, usage: null };
+      if (!signal.aborted) {
+        releaseThread(threadId);
+        void this.#core.sharedAccess.execution.revoke(threadId).catch(() => {});
+        this.#core.procs.killTree(threadId);
+      }
       throw error;
-    } finally { this.#preparing.delete(threadId); }
-    if (this.#stopRequested.has(threadId)) return { status: 'stopped', sessionId: state.thread.sessionId, usage: null };
+    }
 
     // Keep consumed input so a retry on a fresh session sends it too.
     const carried: CarriedInput = {};
@@ -193,23 +224,31 @@ export class TurnAttempts {
     let wroteBefore = false;
     let afterCapacity = false;
     for (;;) {
+      signal.throwIfAborted();
       attempt += 1;
       // A retry or delayed provider preparation cannot outlive shared host consent.
       this.#core.sharedCompute?.assertTurn(threadId);
       this.#core.sharedAccess?.assertTurn(threadId);
       const protection = this.#core.sharedAccess.execution.prepare(threadId);
-      if (protection) await protection;
-      // Preparation can yield while the user changes modes. Read it only
-      // once the native context and handle can be constructed without yielding.
+      if (protection) await abortable(protection, signal);
+      signal.throwIfAborted();
       state.thread.permissionMode = permissions.mode;
       const note = afterUpdate;
       afterUpdate = null;
       // The resumed session already holds what the first attempt took from the thread.
       const continuing = afterCapacity && wroteBefore;
       afterCapacity = false;
+      const prepared = this.threads.contexts.makeContext(
+        state.thread, provider, this.#core.accounts.require(accountId), state.running,
+        note || continuing ? { memory: '', deferred: '', letters: '' } : carried, note?.prompt, signal,
+      );
+      const context = prepared instanceof Promise ? await abortable(prepared, signal) : prepared;
+      signal.throwIfAborted();
+      this.#core.sharedCompute?.assertTurn(threadId);
+      this.#core.sharedAccess?.assertTurn(threadId);
+      state.thread.permissionMode = context.thread.permissionMode = permissions.mode;
       // Preparation, capacity waits and lost-session retries can all outlive an admin edit or sign-out.
       const account = this.#core.accounts.require(accountId);
-      const context = this.threads.contexts.makeContext(state.thread, provider, account, state.running, note || continuing ? { memory: '', deferred: '', letters: '' } : carried, note?.prompt);
       // Whether this attempt writes anything but an error: the agent's session then holds work a new try must not repeat.
       let wrote = false;
       const sink = context.emit;
@@ -218,6 +257,12 @@ export class TurnAttempts {
       // after that belongs to no turn the journal still holds open, so it
       // reaches no message.
       let listening = true;
+      const generation = context.thread.sessionGeneration ?? 0;
+      if (context.sessionId === null) {
+        context.sessionAccepted = sessionId => {
+          if (listening && !signal.aborted) this.#acceptSession(state, generation, sessionId);
+        };
+      }
       // Messages this attempt opened: its end closes any the driver left open
       // (a driver cut off by its forced stop completes nothing). Completing one
       // already closed through the sink changes nothing.
@@ -288,11 +333,13 @@ export class TurnAttempts {
       assertDriverRunnable(provider.protocol, this.#core.providers.summary(provider.id), account);
       const settings = this.#liveSettings.get(threadId)?.settings;
       try {
+        signal.throwIfAborted();
         const handle = driver.startTurn(context);
         this.handles.set(threadId, handle);
-        this.#core.composer.inputReady(threadId);
         permissions.attach(handle);
         settings?.attach(handle);
+        this.#reconcileSelection(state, permissions);
+        this.#core.composer.inputReady(threadId);
         const forced = Promise.withResolvers<TurnResult>();
         this.#stopDeadlines.set(threadId, { handle, forced, timer: null });
         // A turn that starts while its agent waits to update pauses at its first tool boundary too.
@@ -306,6 +353,8 @@ export class TurnAttempts {
         throw error;
       } finally {
         listening = false;
+        this.handles.delete(threadId);
+        this.steering.end(threadId);
       }
       totals = result.agentTotals ?? totals;
       logAttemptEnd(this.#core, threadId, turnId, attempt, result, performance.now() - attemptAt);
@@ -318,7 +367,7 @@ export class TurnAttempts {
       const fresh = !retriedLostSession && result.sessionLost === true ? this.#dropLostSession(state.thread, result) : null;
       // Cut by the restart: a stop the next core resumes, not a failure. A refusal stays one.
       const cut = result.status === 'error' && result.refusal === undefined && this.threads.handoff.active;
-      const stopped = cut || this.#stopRequested.has(threadId);
+      const stopped = cut || signal.aborted;
       // Only the death that cut the attempt is dropped; anything else held goes out as the agent wrote it.
       // Drained: a later attempt writes through this wrapper too, and must not release them again.
       for (const args of held.errors.splice(0)) if (!cut) sink.part(...args);
@@ -395,28 +444,24 @@ export class TurnAttempts {
     return result;
   }
 
-  /** A preparation process killed by an accepted Stop can reject before run starts. */
-  preparationStopped(threadId: ThreadId): boolean {
-    return this.#preparing.has(threadId) && this.#stopRequested.has(threadId);
-  }
-
-  close(threadId: ThreadId): void {
+  finishAttempts(threadId: ThreadId): void {
     this.#livePermissions.get(threadId)?.detach();
     this.#livePermissions.delete(threadId);
     this.#liveSettings.get(threadId)?.settings.detach();
     this.#liveSettings.delete(threadId);
     this.handles.delete(threadId);
+    this.steering.end(threadId);
     const deadline = this.#stopDeadlines.get(threadId);
     if (deadline?.timer) clearTimeout(deadline.timer);
     this.#stopDeadlines.delete(threadId);
-    this.#stopRequested.delete(threadId);
-    this.#preparing.delete(threadId);
     this.#pauseWanted.delete(threadId);
     this.#pausing.delete(threadId);
     this.#paused.delete(threadId);
     this.#retryWaits.get(threadId)?.leave('stop');
     this.#retryWaits.delete(threadId);
   }
+
+  close(threadId: ThreadId): void { this.#turns.delete(threadId); }
 
   /** The capacity retry a turn of this thread waits for, or null. */
   retryOf(threadId: ThreadId): ThreadRetry | null {
@@ -451,7 +496,7 @@ export class TurnAttempts {
     this.#announce(threadId);
     try {
       const outcome = await left.promise;
-      const final = this.#stopRequested.has(threadId) || this.#core.stopping || this.#core.journal.isClosed() ? 'stop' : outcome;
+      const final = state.stop.signal.aborted || this.#core.stopping || this.#core.journal.isClosed() ? 'stop' : outcome;
       quiet(() => this.#core.logs.info(final === 'retry' ? `Capacity retry ${attempt} starts` : `Capacity retry ${attempt} ${final === 'stop' ? 'ended by a stop' : 'cancelled'}`, {
         source: 'turns', event: 'turn.capacity-retry.ended', threadId, turnId, data: { attempt, outcome: final },
       }));
@@ -478,6 +523,31 @@ export class TurnAttempts {
     if (current && current.providerId === state.thread.providerId && current.accountId === state.thread.accountId && (current.sessionGeneration ?? 0) === (state.thread.sessionGeneration ?? 0)) {
       saveThread(this.#core, { ...current, sessionId: state.thread.sessionId, sessionResumeAt: null }, 'thread.updated');
     }
+  }
+
+  /** Journal the first usable session with the running turn, before a result can be lost to a crash. */
+  #acceptSession(state: TurnAttemptState, generation: number, sessionId: string): void {
+    const { threadId, turnId, thread, running } = state;
+    const { journal } = this.#core;
+    const execution = running.execution;
+    if (!sessionId || execution?.sessionId !== null || execution.sessionGeneration !== generation
+      || this.#turns.get(threadId) !== state || journal.isClosed()) return;
+    const current = journal.getThread(threadId);
+    const stored = journal.getTurn(turnId);
+    if (current === null || !sameSelectionTarget(current, thread) || (current.sessionGeneration ?? 0) !== generation
+      || (current.sessionId !== null && current.sessionId !== sessionId)
+      || stored?.status !== 'running' || stored.startedAt !== running.startedAt || stored.threadId !== threadId
+      || stored.execution?.sessionId !== null || stored.execution.sessionGeneration !== generation
+      || stored.execution.accountId !== execution.accountId || stored.execution.providerId !== execution.providerId) return;
+    const next = { ...current, sessionId, sessionResumeAt: null };
+    const accepted = { ...running, execution: { ...execution, sessionId, sessionResumeAt: null } };
+    journal.append({ type: 'turn.session-accepted', threadId, version: 1, payload: { turnId, sessionId, generation } }, () => {
+      journal.putThread(next);
+      journal.putTurn(accepted);
+    });
+    state.thread = { ...thread, sessionId, sessionResumeAt: null };
+    state.running = accepted;
+    this.#announce(threadId);
   }
 
   /**
@@ -566,7 +636,7 @@ export class TurnAttempts {
       quiet(() => this.#core.logs.info(resume === null ? 'Turn paused for an update was stopped before the update ended' : `Turn resumes after ${provider.id} updated`, {
         source: 'turns', event: 'turn.resumed-after-update', threadId, turnId, durationMs: performance.now() - pausedAt, data: { resumed: resume !== null },
       }));
-      return resume === null || this.#stopRequested.has(threadId) || this.#core.stopping || this.#core.journal.isClosed() ? null : resume;
+      return resume === null || this.#turns.get(threadId)?.stop.signal.aborted || this.#core.stopping || this.#core.journal.isClosed() ? null : resume;
     } finally {
       this.#paused.delete(threadId);
     }
@@ -594,26 +664,28 @@ export class TurnAttempts {
   }
 
   stopRunning(threadId: ThreadId): boolean {
-    void this.#core.procs.protection.revoke(threadId).catch(() => {});
+    const state = this.#turns.get(threadId);
+    if (!state) return false;
+    if (state.stop.signal.aborted) return true;
+    state.stop.abort(new Error('the turn was stopped'));
+    void this.#core.sharedAccess.execution.revoke(threadId).catch(() => {});
     const waiting = this.#retryWaits.get(threadId);
     if (waiting !== undefined) {
-      this.#stopRequested.add(threadId);
       waiting.leave('stop');
       return true;
     }
     const paused = this.#paused.get(threadId);
     if (paused !== undefined) {
-      this.#stopRequested.add(threadId);
       paused.leave();
       return true;
     }
     this.#pauseWanted.delete(threadId);
     const handle = this.handles.get(threadId);
     if (handle === undefined) {
-      if (!this.#preparing.has(threadId)) return false;
-      this.#stopRequested.add(threadId);
-      releaseThread(threadId);
-      this.#core.procs.killTree(threadId);
+      if (!state.finishing) {
+        releaseThread(threadId);
+        this.#core.procs.killTree(threadId);
+      }
       return true;
     }
     // An open card is what the driver is parked on. Aborting without answering
@@ -621,7 +693,7 @@ export class TurnAttempts {
     // thread stays `waiting`, and Stop does nothing the user can see.
     this.threads.cards.clearPermissionsOf(threadId, 'stop');
     this.threads.cards.clearQuestionsOf(threadId, false, 'stop');
-    this.#stopRequested.add(threadId);
+    this.steering.end(threadId);
     // A background copy still running stops with the turn, and a step parked on it goes on.
     this.threads.backgroundCompact.turnStopped(threadId);
     handle.stop();

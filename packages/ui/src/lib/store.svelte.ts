@@ -242,6 +242,8 @@ export class Store {
   set paired(value) { this.#ctx.connection.paired = value; }
   get localCore() { return this.#ctx.connection.localCore; }
   set localCore(value) { this.#ctx.connection.localCore = value; }
+  get canForceCoreRestart() { return this.#ctx.connection.canForceCoreRestart; }
+  forceCoreRestart() { return this.#ctx.connection.forceCoreRestart(); }
   get localEndpointUrl() { return this.#ctx.connection.localEndpointUrl; }
   set localEndpointUrl(value) { this.#ctx.connection.localEndpointUrl = value; }
   get environments() { return this.#ctx.connection.environments; }
