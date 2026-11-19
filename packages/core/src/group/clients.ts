@@ -208,6 +208,14 @@ export class GroupClients {
     this.#group.commit({ ...roster, deviceKeys: roster.deviceKeys!.map((device) => (device === entry ? { ...entry, push: this.#group.selfId(), rev: clockOf(roster) + 1 } : device)) });
   }
 
+  /** A departing machine also closes device sessions. Only a recorded removal invalidates the device key. */
+  deviceSessionWasRevoked(sessionId: string): boolean {
+    const member = this.#group.issuedFor(sessionId);
+    if (!member?.startsWith('key:')) return false;
+    const id = member.slice('key:'.length);
+    return this.#group.roster?.deviceKeys?.some(device => device.id === id && device.removed) ?? false;
+  }
+
   /** Takes a device out of the group, by its key's id or its older pairing's id. */
   revokeDevice(id: unknown): Group {
     const roster = this.#group.require();
