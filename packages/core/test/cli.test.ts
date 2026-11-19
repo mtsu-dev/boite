@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { mkdirSync, readFileSync, rmdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { AGENT_ENV } from '@boite/contracts';
+import { AGENT_ENV, privateTerminalComposerId } from '@boite/contracts';
 import { runCli, splitLine } from '../src/cli.ts';
 import { parse } from '../src/cli-args.ts';
 import { continuationInput } from '../src/continuation.ts';
@@ -694,6 +694,51 @@ test('owner CLI queues incognito sends across a reconnect without publishing the
   await waitFor(() => harness.core.journal.turnRequest(privateThread.id, 'cli-private-turn') !== null);
   expect(JSON.parse((await ownerBoite(args)).out).status).toBe('sent');
   expect(harness.core.journal.listMessages(privateThread.id).filter(message => message.role === 'user')).toHaveLength(2);
+});
+
+test('owner CLI resumes its incognito queue after the account signs back in', async () => {
+  const client = await harness.connect();
+  const project = await client.call('projects.drafts', {});
+  const { accountId } = harness.core.threads.require(threadId);
+  const account = harness.core.accounts.require(accountId);
+  const thread = await client.call('threads.create', { projectId: project.id, accountId, providerId: 'echo', incognito: true });
+  harness.core.journal.putAccount({ ...account, status: 'unauthenticated' });
+  const first = ['thread', 'send', thread.id, 'First private prompt', '--request-id', 'cli-private-held', '--json'];
+  const next = ['thread', 'send', thread.id, 'Next private prompt', '--request-id', 'cli-private-next', '--json'];
+  expect(JSON.parse((await ownerBoite(first)).out).status).toBe('queued');
+  await waitFor(() => harness.core.composer.storage.get('inputs', privateTerminalComposerId(thread.id)).value?.input.paused === true);
+  expect(harness.core.journal.listTurns(thread.id)).toEqual([]);
+  expect(JSON.parse((await ownerBoite(next)).out).status).toBe('held');
+
+  harness.core.journal.putAccount(account);
+  expect(JSON.parse((await ownerBoite(first)).out).status).toBe('queued');
+  await waitFor(() => harness.core.journal.turnRequest(thread.id, 'cli-private-next') !== null);
+  expect(JSON.parse((await ownerBoite(first)).out).status).toBe('sent');
+  expect(JSON.parse((await ownerBoite(next)).out).status).toBe('sent');
+  const prompts = harness.core.journal.listMessages(thread.id).filter(message => message.role === 'user').map(message => message.parts[0]);
+  expect(prompts).toMatchObject([{ text: 'First private prompt' }, { text: 'Next private prompt' }]);
+});
+
+test('owner CLI follows a selection change during the folder check', async () => {
+  const client = await harness.connect();
+  const { projects, journal, composer } = harness.core;
+  const requireFolder = projects.requireFolder.bind(projects);
+  const release = Promise.withResolvers<void>();
+  let checking = false;
+  const check = spyOn(projects, 'requireFolder').mockImplementation(async projectId => {
+    checking = true;
+    await release.promise;
+    return requireFolder(projectId);
+  });
+  try {
+    const sent = await ownerBoite(['thread', 'send', threadId, 'Use current permission', '--request-id', 'cli-folder-selection', '--json']);
+    expect(JSON.parse(sent.out).status).toBe('queued');
+    await waitFor(() => checking);
+    await client.call('threads.update', { threadId, permissionMode: 'yolo' });
+    release.resolve();
+    await waitFor(() => journal.lastTurn(threadId) !== null || composer.storage.get('inputs', threadId).value?.input.paused === true);
+    expect(journal.listTurns(threadId)).toMatchObject([{ execution: { permissionMode: 'yolo' } }]);
+  } finally { release.resolve(); check.mockRestore(); }
 });
 
 test('owner CLI sends using the fallback account when the thread account is signed out', async () => {

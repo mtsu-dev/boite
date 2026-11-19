@@ -301,7 +301,7 @@ export class Composer {
           if (activity) {
             if (item.previewReferences?.length) throw refused('Activity commands do not accept page references.');
             this.#core.activity.set({ threadId: id, ...activity, attachments }, undefined, choice);
-          } else this.#core.threads.startTurn(id, { prompt: batch.text, attachments, previews: batch.previewReferences }, { kind: 'user', requestId: batch.requestId, sentFrom: batch.entries[0]!.sentFrom ?? null }, { expectedSelectionVersion: current.selectionVersion ?? 0, choice,
+          } else this.#core.threads.startTurn(id, { prompt: batch.text, attachments, previews: batch.previewReferences }, { kind: 'user', requestId: batch.requestId, sentFrom: batch.entries[0]!.sentFrom ?? null }, { expectedSelectionVersion: (followsThread ? target : current).selectionVersion ?? 0, choice,
             // Decided from the experiments the prompt was queued with, so a restart keeps what it meant.
             autoGoal: startsAutoGoal(batch.text, effectiveExperiments(item.experiments ?? [], this.#core.version), this.#core.settings.get().autoGoalMinChars) ? batch.text : undefined });
           this.#complete(section, recordId, batch.entries.map(entry => entry.id));
@@ -309,7 +309,11 @@ export class Composer {
       } catch (error) {
         for (const entry of this.#captured.get(key) ?? [item]) {
           const pending = this.storage.delivery(entry.id);
-          if (pending?.status === 'submitting') this.storage.status(entry.id, 'uncertain');
+          if (pending?.status !== 'submitting') continue;
+          // This memory-only queue starts turns synchronously, but its reservations
+          // are outside the transaction. Release one if no turn was admitted.
+          if (recordId !== id && !isComposerActivity(item.text) && !this.#core.journal.turnRequest(id, pending.request_id)) this.storage.release(entry.id);
+          else this.storage.status(entry.id, 'uncertain');
         }
         this.#hold(section, recordId, item.id, messageOf(error)); return;
       } finally { this.#captured.delete(key); }
