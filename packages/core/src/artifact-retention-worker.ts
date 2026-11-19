@@ -1,12 +1,13 @@
 import { Database } from 'bun:sqlite';
 import { ARTIFACT_REFERENCES } from './journal/artifact-references.ts';
-import type { JournalReadsReply, JournalReadsRequest } from './journal-reads.ts';
+import { searchChat } from './chat-search.ts';
+import type { ChatSearchReply, ChatSearchRequest } from './journal-reads.ts';
 
 export type ArtifactScanReply = { ids: string[] } | { error: string };
 
 const scope = globalThis as unknown as {
-  onmessage: ((event: { data: string | JournalReadsRequest }) => void) | null;
-  postMessage(message: ArtifactScanReply | JournalReadsReply): void;
+  onmessage: ((event: { data: string | ChatSearchRequest }) => void) | null;
+  postMessage(message: ArtifactScanReply | ChatSearchReply): void;
   close(): void;
 };
 
@@ -24,8 +25,7 @@ scope.onmessage = ({ data }): void => {
       const rows = db.query(ARTIFACT_REFERENCES).all() as { id: string }[];
       scope.postMessage({ ids: rows.map(row => row.id) });
     } else {
-      const reader = db;
-      scope.postMessage({ rows: data.reads.map(read => reader.query(read.sql).all(...read.params)) });
+      scope.postMessage({ hits: searchChat(db, data.search) });
     }
   } catch (error) {
     scope.postMessage({ error: error instanceof Error ? error.message : String(error) });
