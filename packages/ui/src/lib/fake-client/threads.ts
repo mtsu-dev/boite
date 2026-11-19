@@ -395,7 +395,7 @@ export function threadMethods(ctx: FakeContext) {
         ...(tail !== null ? { messagesFrom: params.after } : {}), ...(proof ? { messagesSync: proof } : {}), ...(unchanged ? { messagesUnchanged: true as const } : {}) };
       if (!params.open) return pagingReply(snapshot);
       ctx.bus.subscribed.add(thread.id);
-      ctx.bus.transport = { compactTools: params.compactTools, compactToolParts: params.compactToolParts };
+      ctx.bus.transport = { compactTools: params.compactTools, compactToolParts: params.compactToolParts, compactFiles: params.compactFiles, compactImages: params.compactImages };
       setStreamChannels(ctx, thread.id, params.channels);
       if (params.open.previous && params.open.previous !== thread.id) {
         ctx.bus.subscribed.delete(params.open.previous);

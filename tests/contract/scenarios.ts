@@ -318,8 +318,15 @@ export const SCENARIOS: Record<string, Scenario> = {
   'deferred attachment metadata downloads the original bytes and rejects a different conversation': async env => {
     const setup = await echo(env), created = await thread(env, setup);
     const data = btoa('attachment bytes preserved');
-    await env.call('turns.start', { threadId: created.id, prompt: 'read the file', attachments: [{ kind: 'file', name: 'fixture.txt', mimeType: 'text/plain', data }] });
-    await until('the attachment turn to finish', async () => (await summary(env, created.id)).status === 'idle');
+    await env.call('threads.get', { threadId: created.id, compactFiles: true, open: {} });
+    const live: RpcEvents['message.started'][] = [];
+    const off = env.on('message.started', message => live.push(message));
+    try {
+      await env.call('turns.start', { threadId: created.id, prompt: 'read the file', attachments: [{ kind: 'file', name: 'fixture.txt', mimeType: 'text/plain', data }] });
+      await until('the attachment turn to finish', async () => (await summary(env, created.id)).status === 'idle');
+    } finally { off(); }
+    const liveFile = live.flatMap(message => message.parts).find(part => part.type === 'file');
+    check(liveFile?.dataDeferred === true && liveFile.data === '' && liveFile.bytes === atob(data).length, 'the live file included its bytes or lost its metadata');
     const compact = await env.call('threads.get', { threadId: created.id, compactFiles: true, sync: true });
     const message = compact.messages.find(message => message.parts.some(part => part.type === 'file'));
     check(message !== undefined, 'the attachment disappeared');
@@ -340,8 +347,15 @@ export const SCENARIOS: Record<string, Scenario> = {
     // A PNG header for 640 by 360, padded past the 8 KiB a light page keeps inline: the size comes from the header alone.
     const header = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 2, 0x80, 0, 0, 1, 0x68, 8, 2, 0, 0, 0];
     const data = btoa(String.fromCharCode(...header, ...new Array(9000).fill(0)));
-    await env.call('turns.start', { threadId: created.id, prompt: 'see', attachments: [{ kind: 'image', name: 'shot.png', mimeType: 'image/png', data }] });
-    await until('the picture turn to finish', async () => (await summary(env, created.id)).status === 'idle');
+    await env.call('threads.get', { threadId: created.id, compactImages: true, open: {} });
+    const live: RpcEvents['message.started'][] = [];
+    const off = env.on('message.started', message => live.push(message));
+    try {
+      await env.call('turns.start', { threadId: created.id, prompt: 'see', attachments: [{ kind: 'image', name: 'shot.png', mimeType: 'image/png', data }] });
+      await until('the picture turn to finish', async () => (await summary(env, created.id)).status === 'idle');
+    } finally { off(); }
+    const liveImage = live.flatMap(message => message.parts).find(part => part.type === 'image');
+    check(liveImage?.dataDeferred === true && liveImage.data === '' && liveImage.width === 640 && liveImage.height === 360, 'the live picture included its bytes or lost its dimensions');
     const light = await env.call('threads.get', { threadId: created.id, compactImages: true });
     const message = light.messages.find(message => message.parts.some(part => part.type === 'image'));
     const part = message?.parts.find(part => part.type === 'image');

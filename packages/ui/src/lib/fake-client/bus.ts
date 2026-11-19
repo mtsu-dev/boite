@@ -1,5 +1,5 @@
 /** The socket's side of the fake: its state, the event handlers, thread subscriptions and the calls it holds. */
-import { RpcErrorCode, SUBSCRIBED_EVENTS, StreamGate, agentHearsEvent, eventThreadId, mayHearEvent, previewToolPart, type MessagePart, type Principal, type RpcEventName, type RpcEvents, type StreamChannel, type ThreadId, type Todo, type TransportOptions } from '@boite/contracts';
+import { RpcErrorCode, SUBSCRIBED_EVENTS, StreamGate, agentHearsEvent, eventThreadId, mayHearEvent, projectLiveMessage, projectLivePart, type MessagePart, type Principal, type RpcEventName, type RpcEvents, type StreamChannel, type ThreadId, type Todo, type TransportOptions } from '@boite/contracts';
 import { RpcFailure, droppedFailure, type ClientState, type EventHandler } from '../client';
 
 export class FakeBus {
@@ -105,9 +105,12 @@ export class FakeBus {
       if (gated === null) return;
       payload = gated;
     }
-    if (event === 'message.part' && (this.transport.compactTools || this.transport.compactToolParts)) {
+    if (event === 'message.started') {
+      payload = projectLiveMessage(payload as RpcEvents['message.started'], this.transport) as RpcEvents[E];
+    } else if (event === 'message.part') {
       const live = payload as RpcEvents['message.part'];
-      if (live.part.type === 'tool') payload = { ...live, part: previewToolPart(live.part, { inputs: !!this.transport.compactToolParts }) } as RpcEvents[E];
+      const part = projectLivePart(live.part, this.transport, 'assistant', live.messageId, live.partIndex);
+      if (part !== live.part) payload = { ...live, part } as RpcEvents[E];
     }
     const set = this.handlers.get(event);
     if (!set) return;
