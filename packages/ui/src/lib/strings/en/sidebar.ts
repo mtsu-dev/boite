@@ -132,7 +132,7 @@ export const strings = {
     projectMissingBody: 'The folder {path} does not exist any more: it was deleted, moved or renamed. Put it back to keep working here, or remove the project from Boite.',
     projectMissingCheck: 'Check again',
     removeProjectTitle: 'Remove {project} from Boite?',
-    removeProjectBody: 'Its threads go with it. Files on disk stay where they are.',
+    removeProjectBody: 'Its conversations stop. Add the same folder again to recover them. Files on disk stay in place.',
     remove: 'Remove',
     threadMenu: 'Thread actions',
     /** A pencil on a thread's row: something typed in its box and not sent. */

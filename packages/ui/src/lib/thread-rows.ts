@@ -1,5 +1,6 @@
 import type { MessageId, MessagePart, ProjectId, Thread, ThreadId, ThreadLoad, ThreadSummary } from '@boite/contracts';
 import { resumeAnchor } from '@boite/contracts';
+import { sameValue } from './plain-data';
 export { resumeAnchor, workingChildren, type WorkingChildren } from '@boite/contracts';
 
 /** Same value: primitives by identity, the small objects of a summary (load, context, cache) by content. */
@@ -146,16 +147,6 @@ export function mergeResumed(held: Thread, fetched: Thread): void {
   fetched.messagesBefore = held.messagesBefore;
   delete fetched.messagesFrom;
   delete fetched.messagesUnchanged;
-}
-
-/** JSON wire values compared without allocating another copy of a large tool payload. */
-function sameValue(a: unknown, b: unknown): boolean {
-  if (Object.is(a, b)) return true;
-  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false;
-  if (Array.isArray(a) !== Array.isArray(b)) return false;
-  const left = Object.keys(a), right = Object.keys(b);
-  if (left.length !== right.length) return false;
-  return left.every(key => Object.hasOwn(b, key) && sameValue(Reflect.get(a, key), Reflect.get(b, key)));
 }
 
 /** Keep unchanged messages and turns; a preview cannot certify a previously loaded suffix. */

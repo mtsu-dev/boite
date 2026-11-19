@@ -62,8 +62,11 @@
     opening = true;
     void located(written).then(path => {
       const directory = localFileDirectory(store, threadId);
-      if (directory && (directLinks || (executableLink(path) && !line))) return (directLinks ? openChatFile : openLocalFile)(directory, path);
-      selected = { path, ...(line ? { line: Number(line) } : {}) };
+      const preview = (): void => { selected = { path, ...(line ? { line: Number(line) } : {}) }; };
+      if (directory && executableLink(path) && !line) return openLocalFile(directory, path);
+      // The shell opens only a folder or a document inside the thread's folder; what it refuses is previewed here.
+      if (directory && directLinks) return openChatFile(directory, path).catch(preview);
+      preview();
     }).catch(reason => {
       store?.reportError(reason, 'minor');
     }).finally(() => { opening = false; });

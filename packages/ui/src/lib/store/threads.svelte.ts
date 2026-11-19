@@ -11,7 +11,7 @@ import type {
   ThreadRewind,
   ThreadSummary
 } from '@boite/contracts';
-import { ReadingCache, readingCacheBytes } from '../reading-cache';
+import { ReadingCache } from '../reading-cache';
 import { DeviceSnapshots, readingPage } from './device-snapshots';
 import { INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, READING_PAGE_BYTES } from '@boite/contracts';
 import { DeferredParts } from './deferred-parts';
@@ -146,11 +146,9 @@ export class Threads {
     const thread = this.openThread;
     // A bare row whose page never came holds nothing (navigation clears `loadingThreadId` before this runs): reopened, it loads.
     if (!thread || (thread.messages.length === 0 && this.#unloaded.has(thread.id))) return;
-    const kept = readingPage(this.ctx, thread); // Lighter, so more small visits fit the same 16 MiB budget.
-    // The deep proxy on screen weighs several times its data: once the next thread is painted, plain data replaces it.
-    this.readingThreads.remember(thread.id, kept, readingCacheBytes(kept.messages), held => $state.snapshot(held) as Thread,
+    const kept = this.readingThreads.defer(thread, held => readingPage(this.ctx, held), held => $state.snapshot(held) as Thread,
       () => this.openThread?.id !== thread.id && this.preloads.waitingThreadId !== thread.id);
-    this.snapshots.schedule(thread.id); // What the visit ended on, read back from the reading cache, is its snapshot for the next start too.
+    if (kept) this.snapshots.schedule(thread.id);
   }
 
   #unreadCount = $derived(this.threads.filter((t) => t.unread).length);

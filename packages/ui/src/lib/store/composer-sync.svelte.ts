@@ -80,8 +80,8 @@ export class ComposerSync {
   /** The first list after the journal was read: a cache killed mid-write may still hold the record before the last one synced. */
   #startup = false;
   #bytes = new Map<string, string>();
-  #fetching = new Map<string, Promise<void>>();
-  #byteHashes = new Map<string, string>();
+  #fetching = new Map<string, Promise<string | undefined>>();
+  #byteHashes = new WeakMap<Pick<Attachment, 'data'>, { data: string; hash: string }>();
   #meta: Meta = { entries: {}, assets: {} };
   #metaKey: string | null = null;
   /** Queued ids by the thread whose record holds them: a draft the core started hands its queue to that thread. */
@@ -174,6 +174,7 @@ export class ComposerSync {
       this.#dirty.add(key);
     }
     for (const { section, id } of this.ctx.drafts.localSources()) this.#dirty.add(entryKey(section, id));
+    this.#pruneAssets();
     this.#flushSoon(true);
   }
 
@@ -260,7 +261,8 @@ export class ComposerSync {
     this.#forced.clear();
     this.#listed = false;
     this.#early.clear(); this.#private.clear(); this.#privateEntries.clear(); this.#launching.clear(); this.#known.clear(); this.#remoteAssets.clear(); this.#dirty.clear(); this.#inflight.clear(); this.#stashed.clear();
-    this.#assetIds.clear(); this.#bytes.clear(); this.#fetching.clear(); this.#byteHashes.clear(); this.#homes.clear(); this.#left.clear();
+    this.#assetIds.clear(); this.#bytes.clear(); this.#fetching.clear(); this.#homes.clear(); this.#left.clear();
+    this.#byteHashes = new WeakMap();
     this.#metaKey = client && this.ctx.drafts.storageKey ? `${this.ctx.drafts.storageKey}:composer` : null;
     this.#meta = { entries: {}, assets: {} };
     if (!this.#metaKey) return;
@@ -275,6 +277,7 @@ export class ComposerSync {
   }
 
   #saveMeta(): void {
+    this.#pruneAssets();
     if (!this.#metaKey) return;
     const entries: Record<string, Known> = {};
     const used = new Set<string>();
@@ -289,6 +292,18 @@ export class ComposerSync {
     for (const [hash, id] of Object.entries(this.#meta.assets)) if (used.has(id)) assets[hash] = id;
     this.#meta = { entries, assets };
     try { localStorage.setItem(this.#metaKey, JSON.stringify(this.#meta)); } catch { /* The next sync merges instead. */ }
+  }
+
+  /** Pending puts can still claim uploads. Uploaded and fetched bodies otherwise follow the records that use them. */
+  #pruneAssets(): void {
+    if (this.#inflight.size || this.#bytes.size === 0) return;
+    const retained = new Set(this.#fetching.keys());
+    for (const known of this.#known.values()) for (const id of known.assets) retained.add(id);
+    for (const id of this.#bytes.keys()) if (!retained.has(id)) this.#bytes.delete(id);
+    for (const [data, ids] of this.#assetIds) {
+      for (const [shape, id] of ids) if (!retained.has(id)) ids.delete(shape);
+      if (ids.size === 0) this.#assetIds.delete(data);
+    }
   }
 
   #remote(assetId: string): boolean { return this.#remoteAssets.has(assetId); }
@@ -335,9 +350,13 @@ export class ComposerSync {
   }
 
   #byteHash(file: Pick<Attachment, 'kind' | 'mimeType' | 'name' | 'data'>): string {
-    let hash = this.#byteHashes.get(file.data);
-    if (hash === undefined) { hash = digest(file.data) + file.data.length.toString(36); this.#byteHashes.set(file.data, hash); }
-    return `${hash}:${digest(fileMeta(file))}`;
+    const data = file.data;
+    let known = this.#byteHashes.get(file);
+    if (known?.data !== data) {
+      known = { data, hash: digest(data) + data.length.toString(36) };
+      this.#byteHashes.set(file, known);
+    }
+    return `${known.hash}:${digest(fileMeta(file))}`;
   }
 
   #remember(file: Pick<Attachment, 'kind' | 'mimeType' | 'name' | 'data'>, assetId: string): void {
@@ -653,7 +672,7 @@ export class ComposerSync {
     let failed = false;
     try {
       for (let attempt = 0; attempt < 3; attempt++) {
-        await this.#upload(client, files, privateMode);
+        await this.#upload(client, files, privateMode, epoch);
         if (epoch !== this.#epoch) return;
         local = this.#localOf(this.#source(key));
         value = this.#shape(local);
@@ -729,6 +748,7 @@ export class ComposerSync {
         // Under a list still on its way, the record waits for it like any early push.
         if (stashed && !this.#listed) { if ((this.#early.get(key)?.revision ?? -1) < stashed.revision) this.#early.set(key, stashed); }
         else if (stashed) this.#receive(stashed);
+        this.#pruneAssets();
         // A failed put waits for the retry; typing meanwhile still saves at the usual pause.
         if (this.#dirty.has(key) && !failed) this.#flushSoon(false);
       }
@@ -749,35 +769,41 @@ export class ComposerSync {
   }
 
   /** Each file's bytes once per session, under the id the core derives from them. */
-  async #upload(client: Client, files: Attachment[], privateMode: boolean): Promise<void> {
+  async #upload(client: Client, files: Attachment[], privateMode: boolean, epoch: number): Promise<void> {
     for (const file of files) {
       if (unresolvedAssetId(file) !== undefined || this.#assetOf(file, privateMode) !== undefined) continue;
       const { assetId } = await client.call('composer.asset.put', { attachment: { kind: file.kind, mimeType: file.mimeType, data: file.data, name: file.name } as Attachment, ...(privateMode ? { incognito: true } : {}) });
+      if (epoch !== this.#epoch) return;
       this.#remember(file, assetId);
     }
   }
 
   async #fetch(client: Client, assetId: string, input: Local['input']): Promise<void> {
-    if (!this.#bytes.has(assetId)) {
+    const epoch = this.#epoch;
+    let data = this.#bytes.get(assetId);
+    if (data === undefined) {
       let pending = this.#fetching.get(assetId);
       if (!pending) {
-        const epoch = this.#epoch;
         pending = client.call('composer.asset.get', { assetId }).then(attachment => {
           if (epoch !== this.#epoch) return;
           this.#remember(attachment, assetId);
           // Kept like an upload's, so a restart does not send these bytes back up.
           this.#saveMeta();
-        }).catch(() => undefined).finally(() => this.#fetching.delete(assetId));
+          return attachment.data;
+        }).catch(() => undefined).finally(() => {
+          if (this.#fetching.get(assetId) === pending) this.#fetching.delete(assetId);
+          this.#pruneAssets();
+        });
         this.#fetching.set(assetId, pending);
       }
-      await pending;
+      data = await pending;
     }
-    const data = this.#bytes.get(assetId);
-    if (data === undefined) return;
+    if (epoch !== this.#epoch || data === undefined) return;
+    const bytes = data;
     const resolve = (files: Attachment[]) => files.map(file => {
       if (unresolvedAssetId(file) !== assetId) return file;
       const { pendingDraftAsset: _id, ...rest } = file as DraftAttachment;
-      return { ...rest, data };
+      return { ...rest, data: bytes };
     });
     if (input.attachments.some(file => unresolvedAssetId(file) === assetId)) input.attachments = resolve(input.attachments);
     for (const entry of input.queued) if (entry.attachments.some(file => unresolvedAssetId(file) === assetId)) entry.attachments = resolve(entry.attachments);

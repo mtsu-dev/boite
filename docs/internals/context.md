@@ -575,13 +575,15 @@ text is retained as a separate draft instead of overwritten.
 
 Typing sends only the changed record, coalesced over 400 ms. Attachments upload
 once as content-addressed assets; records and broadcasts carry their IDs and
-metadata. Other devices fetch bytes when that composer opens. The core validates
-metadata and byte limits without reading attachment bodies on each text edit.
+metadata. Other devices fetch bytes when that composer opens. The client drops
+cached bodies once the records and in-flight operations release them. The core
+validates metadata and byte limits without reading attachment bodies on each
+text edit.
 
 IndexedDB remains the device's offline cache and migration source, with strict
 transaction durability and a synchronous text backup in `localStorage` on each
-keystroke. The journal writes 800 ms after
-typing pauses and at least every five seconds while it continues. Attachments,
+keystroke. The client builds the full journal when the write is due, 800 ms
+after typing pauses and at least every five seconds while it continues. Attachments,
 failed backups, explicit flush, page hiding and navigation flush immediately.
 A local core changing port retains the same drafts. When attachment bytes push
 the backup past the `localStorage` quota, the backup keeps the text and

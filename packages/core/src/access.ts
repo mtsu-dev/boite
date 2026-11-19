@@ -10,7 +10,11 @@
  *
  * An agent holds the per-thread token the core put in the environment of a
  * process its thread launched. It is the narrowest of the three: it reaches
- * `AGENT_METHODS` and only ever on its own thread.
+ * `AGENT_METHODS` and only ever on its own thread. That holds for an agent
+ * that goes through `boite`; its shell runs as the owner's user and can read
+ * `core.json`, whose token is the owner's, unless its own sandbox or the
+ * permission mode keeps it from the data directory. The lists below bound a
+ * confused agent, not one written to get out, as for plugins.
  *
  * The device and agent lists live in `packages/contracts/src/access.ts`, with
  * the decision below them, so the in-memory client refuses what the core
@@ -27,8 +31,10 @@
  * speech.streamStart/Chunk/Finish permit phone dictation only through the
  * owner's configured engine; sessions and cancellation belong to one connection.
  * threads.archive lets a paired phone mark an idle conversation done under the
- * owner's retention policy. Direct removal and policy changes stay owner-only;
- * restoring an archive cancels its expiry before recoverable cleanup.
+ * owner's retention policy. threads.remove and threads.restore reach paired
+ * devices and plugins too, since a removal is recoverable for the retention
+ * period; purging and the retention policy stay owner-only. Restoring an
+ * archive cancels its expiry before recoverable cleanup.
  * quotas.list and subscriptionProxy.quotas let a phone draw the same limit bars
  * as the owner without a dashboard embed; a forced refresh reaches the
  * providers and stays the owner's, as do monitoring switches and resets.
