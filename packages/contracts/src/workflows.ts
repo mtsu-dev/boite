@@ -117,12 +117,16 @@ export type WorkflowStepStatus = 'waiting' | 'running' | 'done' | 'failed' | 'sk
 
 /** One execution of a step: the step itself, or one item of its `forEach`. */
 export interface WorkflowInstance {
-  /** `scan`, or `review#2` for the third item of `review`. */
+  /** Stable execution key, for example `scan` or `review#2`. The current list position is `index`. */
   key: string;
   index: number | null;
   /** A short preview of the item, empty for a step without `forEach`. */
   label: string;
+  /** Canonical JSON for an item in a loop, independent of its position. */
+  itemIdentity?: string;
   threadId: ThreadId | null;
+  /** Earlier local conversations replaced by an explicit retry. */
+  previousAttempts?: ThreadId[];
   providerId: ProviderId | null;
   model: string | null;
   /** The reasoning level it runs at; null or missing on older runs: the model's default. */
@@ -176,6 +180,8 @@ export interface WorkflowNode {
   spent?: number;
   /** In a loop: the executions of its last round, whose conversations the next round reuses. */
   previous?: WorkflowInstance[];
+  /** An explicit retry of an exhausted loop starts fresh conversations for its next round. */
+  freshRound?: boolean;
   /** Closes a loop that ran out of rounds: a retry runs one round more. */
   exhausted?: boolean;
 }

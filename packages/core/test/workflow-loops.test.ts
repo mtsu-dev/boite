@@ -86,6 +86,30 @@ test('a loop runs its steps again in their own conversations, told why, until it
   expect(prompts.find(p => p.threadId === threadId && p.prompt.includes('Boite workflow done'))!.prompt).toContain('"id":"review","title":"review","status":"done","round":2');
 });
 
+test('a loop matches unique items across reordering and opens fresh conversations for replacements and duplicates', async () => {
+  const rounds = [['a.ts', 'b.ts', 'd.ts', 'd.ts'], ['b.ts', 'a.ts', 'c.ts', 'd.ts']];
+  scripted((ctx, turn) => {
+    if (!ctx.thread.parentThreadId) return 'noted';
+    if (taskOf(ctx.prompt) === 'List.') return '```json\n' + JSON.stringify({ files: rounds[turn] }) + '\n```';
+    return verdict('APPROVE');
+  });
+  const { h, owner, threadId } = await setup();
+  const plan: WorkflowPlan = { name: 'Review files', steps: [
+    { id: 'list', task: 'List.', output: { files: ['string'] } },
+    { id: 'review', forEach: 'list.files', task: 'Review {{item}}.' },
+    { id: 'judge', after: ['review'], task: 'Judge.', output: { verdict: 'string' },
+      repeat: { from: 'list', until: { path: 'judge.verdict', equals: 'MISSING' }, max: 2 } },
+  ] };
+  const run = await owner.call('workflows.start', { threadId, plan, requestId: 'reordered-items' });
+  const failed = await settled(h, threadId, run.id);
+  const review = failed.nodes.find(node => node.id === 'review')!;
+  const old = review.previous!.map(inst => inst.threadId);
+  const current = review.instances.map(inst => inst.threadId);
+  expect(current.slice(0, 2)).toEqual([old[1]!, old[0]!]);
+  expect(current.slice(2).every(id => id !== null && !old.includes(id))).toBe(true);
+  expect(review.instances.map(inst => inst.usage?.inputTokens)).toEqual([20, 20, 10, 10]);
+});
+
 test('a loop out of rounds fails its closing step, is told to the parent, and a retry runs one round more', async () => {
   let approve = false;
   const prompts = scripted(ctx => !ctx.thread.parentThreadId ? 'noted' : taskOf(ctx.prompt) === 'Review.' ? verdict(approve ? 'APPROVE' : 'CHANGES') : 'ok');
@@ -103,10 +127,14 @@ test('a loop out of rounds fails its closing step, is told to the parent, and a 
   await owner.call('workflows.control', { threadId, runId: run.id, action: 'retry', stepId: 'review' });
   const done = await settled(h, threadId, run.id);
   expect([done.status, done.nodes.find(n => n.id === 'review')!.round, done.nodes.find(n => n.id === 'report')!.status]).toEqual(['done', 3, 'done']);
-  const fixThread = done.nodes.find(n => n.id === 'fix')!.instances[0]!.threadId!;
-  expect(prompts.filter(p => p.threadId === fixThread).map(p => p.prompt.slice(0, 60))).toEqual([
-    expect.stringContaining('You are one step'), expect.stringContaining('round 2 of 2'), expect.stringContaining('round 3 of 2'),
+  const oldFix = failed.nodes.find(n => n.id === 'fix')!.instances[0]!.threadId!;
+  const newFix = done.nodes.find(n => n.id === 'fix')!.instances[0]!;
+  expect(newFix.threadId).not.toBe(oldFix);
+  expect(newFix.previousAttempts).toEqual([oldFix]);
+  expect(prompts.filter(p => p.threadId === oldFix).map(p => p.prompt.slice(0, 60))).toEqual([
+    expect.stringContaining('You are one step'), expect.stringContaining('round 2 of 2'),
   ]);
+  expect(prompts.find(p => p.threadId === newFix.threadId)?.prompt).toContain('round 3 of 2');
 });
 
 test('a closing step fanned out over an empty list still checks its condition, and its retry runs another round', async () => {

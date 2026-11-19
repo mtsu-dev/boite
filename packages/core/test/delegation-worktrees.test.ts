@@ -224,6 +224,28 @@ test('a workflow step with worktree runs on its own branch and the summary names
   expect(s.parentPrompts.find(prompt => prompt.includes('Boite workflow done'))).toContain(JSON.stringify(`Worktree kept: ${inst.worktree!.path} on branch ${inst.worktree!.branch}`).slice(1, -1));
 }, 90_000);
 
+test('a workflow retry keeps the original worktree base in a fresh conversation', async () => {
+  const s = await setup();
+  const base = git(s.repo, 'rev-parse', 'HEAD');
+  const run = await s.client.call('workflows.start', {
+    threadId: s.threadId, requestId: 'retry-original-base',
+    plan: { name: 'Isolated retry', steps: [{ id: 'edit', task: 'Edit.', worktree: true, output: { valid: 'boolean' } }] },
+  });
+  const current = () => s.h.core.workflows.get(s.threadId, run.id);
+  await waitFor(() => current().status === 'failed', SLOW_GIT_MS);
+  const first = current().nodes[0]!.instances[0]!;
+  expect(first.worktree?.base).toBe(base);
+  expect(s.h.core.journal.listTurns(first.threadId!)).toHaveLength(2);
+  git(s.repo, 'commit', '-q', '--allow-empty', '-m', 'new parent commit');
+  await s.client.call('workflows.control', { threadId: s.threadId, runId: run.id, action: 'retry', stepId: 'edit' });
+  await waitFor(() => current().status === 'failed', SLOW_GIT_MS);
+  const second = current().nodes[0]!.instances[0]!;
+  expect(second.threadId).not.toBe(first.threadId);
+  expect(second.previousAttempts).toEqual([first.threadId!]);
+  expect(second.worktree?.base).toBe(base);
+  expect(second.worktree?.branch).not.toBe(first.worktree?.branch);
+}, 90_000);
+
 test.each(['partial checkout', 'branch only', 'reserved ref', 'absent ref', 'index lock', 'foreign index lock', 'foreign ref'])('a child stopped during worktree preparation preserves %s on the next instruction', async leftover => {
   const filesAtDriver: string[][] = [];
   const s = await setup(ctx => {

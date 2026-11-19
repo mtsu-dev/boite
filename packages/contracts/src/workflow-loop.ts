@@ -42,10 +42,12 @@ export function lastRound(run: WorkflowRun, closing: string): unknown {
 }
 
 /** Every step of the loop waits again, one round further, its executions kept to reuse their conversations. */
-function rewind(run: WorkflowRun, body: Set<string>): void {
+function rewind(run: WorkflowRun, body: Set<string>, fresh = false): void {
   for (const node of run.nodes) {
     if (!body.has(node.id)) continue;
     node.previous = node.instances;
+    if (fresh) node.freshRound = true;
+    else delete node.freshRound;
     delete node.exhausted;
     Object.assign(node, { spent: (node.spent ?? 0) + node.instances.length, round: (node.round ?? 1) + 1, instances: [], status: 'waiting', error: null, startedAt: null, finishedAt: null });
   }
@@ -75,7 +77,67 @@ export function loopSpent(run: WorkflowRun, node: WorkflowNode): boolean {
 }
 
 /** A retry of a loop that ran out of rounds: one round more. */
-export function loopAgain(run: WorkflowRun, node: WorkflowNode): void {
+function loopAgain(run: WorkflowRun, node: WorkflowNode): void {
   const step = run.plan.steps.find(s => s.id === node.id)!;
-  rewind(run, loopBody(run.nodes, step.repeat!.from, step.id));
+  rewind(run, loopBody(run.nodes, step.repeat!.from, step.id), true);
+}
+
+function canonicalItem(item: unknown): string | undefined {
+  return JSON.stringify(item, (_key, value: unknown) => value && typeof value === 'object' && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value).sort(([left], [right]) => left < right ? -1 : left === right ? 0 : 1))
+    : value);
+}
+
+/** Only an item unique in both rounds can inherit a conversation and its usage key. */
+export function workflowExecutions(run: WorkflowRun, node: WorkflowNode, items: unknown[] | null) {
+  if (items === null) return [{ key: node.id, previous: node.previous?.[0], itemIdentity: undefined }];
+  const identities = loopOf(run, node.id) ? items.map(canonicalItem) : [];
+  const previous = new Map<string, WorkflowInstance | undefined>();
+  for (const execution of node.previous ?? []) if (execution.itemIdentity !== undefined) {
+    const identity = execution.itemIdentity;
+    previous.set(identity, previous.has(identity) ? undefined : execution);
+  }
+  return items.map((_item, index) => {
+    const itemIdentity = identities[index];
+    const matched = itemIdentity !== undefined && identities.indexOf(itemIdentity) === identities.lastIndexOf(itemIdentity) ? previous.get(itemIdentity) : undefined;
+    return { key: matched?.key ?? `${node.id}#${(node.spent ?? 0) + index}`, previous: matched, itemIdentity };
+  });
+}
+
+/** The route a round can reuse, or the earlier conversation a fresh round replaces. */
+export function workflowContinuation(previous: WorkflowInstance | undefined, fresh: boolean, available: (threadId: string) => boolean): Partial<WorkflowInstance> {
+  if (!previous?.threadId) return {};
+  if (fresh) return { previousAttempts: [...previous.previousAttempts ?? [], previous.threadId] };
+  if (!available(previous.threadId)) return {};
+  const { threadId, providerId, model, effort, previousAttempts } = previous;
+  return { threadId, providerId, model, effort, previousAttempts };
+}
+
+const broken = (status: WorkflowInstance['status']) => status === 'failed' || status === 'stopped';
+const NOT_STARTED = 'Not started: another step of the run failed';
+
+/** Reopen selected failures while keeping unrelated outcomes, including failures, in the run. */
+export function retryWorkflowSteps(run: WorkflowRun, stepId?: string): boolean {
+  const targets = new Set(run.nodes.filter(node =>
+    (stepId === undefined || node.id === stepId) && (broken(node.status) || node.instances.some(inst => broken(inst.status)))));
+  if (targets.size === 0) return false;
+  for (const node of targets) if (loopSpent(run, node)) loopAgain(run, node);
+  for (const node of run.nodes) {
+    for (const inst of node.instances) {
+      if (inst.status === 'stopped' && inst.error === NOT_STARTED) {
+        // A persisted run from an older scheduler may still have untouched executions.
+        Object.assign(inst, { status: 'waiting', error: null, finishedAt: null });
+      } else if (targets.has(node) && broken(inst.status)) {
+        if (inst.threadId !== null) inst.previousAttempts = [...inst.previousAttempts ?? [], inst.threadId];
+        Object.assign(inst, { status: 'waiting', threadId: null, startedAt: null, finishedAt: null });
+        delete inst.outputCorrection;
+      }
+    }
+    if (!node.instances.length && ((targets.has(node) && broken(node.status)) || node.status === 'stopped' && run.status === 'stopped')) {
+      Object.assign(node, { status: 'waiting', error: null, startedAt: null, finishedAt: null });
+    } else if (node.instances.some(inst => inst.status === 'waiting')) {
+      Object.assign(node, { status: 'running', error: null, finishedAt: null });
+    }
+  }
+  return true;
 }

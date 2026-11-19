@@ -1,9 +1,9 @@
 # Workflows
 
 A workflow is a plan of steps that Boite runs for a conversation. Each step is
-a child agent, and a step starts once every step it depends on has ended. Use
-one when a task has a fixed shape: scan, then review each file, then fix, then
-report.
+a child agent. It starts once all its dependencies succeed or are skipped.
+Use a workflow when a task has a fixed shape: scan, review each file, fix,
+then report.
 
 No model sits in the middle deciding what runs next, so a plan behaves the
 same whichever agent wrote it or runs its steps. Nothing has to be turned on
@@ -66,8 +66,9 @@ its output, with Open conversation. Back to the graph returns to the run.
 - Pause starts nothing new; steps already running finish. Resume picks up.
 - Stop asks first, then stops the running steps. The rest never starts and
   finished steps keep their results.
-- A failed step stops new launches and the agent hears of it at once. Retry
-  runs the failed step again in its own conversation, with the previous error.
+- A failed step blocks steps that depend on it. Independent steps and other
+  items keep running. Retry starts a fresh conversation for the failed step
+  with the previous error and keeps the earlier conversation's history.
 - Stopping or archiving the conversation stops its runs too.
 - An update or a restart from the app hands the run over: the next start of
   Boite runs the cut steps again. After a crash, or when Boite stayed stopped
