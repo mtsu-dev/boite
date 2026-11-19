@@ -126,7 +126,8 @@ export class ResumePlanner {
   /** A queued automatic resume already has its own journalled prompt and receipt. */
   admitted(turn: Turn): boolean {
     if (turn.execution?.operation !== 'resume') return false;
-    const source = this.#load()[turn.threadId]?.plan?.turnId ?? this.#core.journal.lastEndedTurn(turn.threadId)?.id;
+    const entry = this.#load()[turn.threadId];
+    const source = entry?.plan?.turnId ?? entry?.handled;
     return source !== undefined && [false, true].some(limit =>
       this.#core.journal.turnRequest(turn.threadId, requestId(source, limit))?.turn_id === turn.id);
   }

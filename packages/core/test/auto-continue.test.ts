@@ -19,7 +19,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   Object.assign(AUTO_CONTINUE, { ...defaults, delaysMs: [...defaults.delaysMs] });
-  for (const restore of restores.splice(0)) restore();
+  for (const restore of restores.splice(0).reverse()) restore();
   setSystemTime();
 });
 
@@ -505,7 +505,7 @@ test('a crash that paused the subagent team of an answered thread wakes its agen
   } finally { setSystemTime(); await next.stop(); }
 });
 
-test.each(['planned', 'dispatching', 'admitted'])('a resume survives a crash while %s', async (stage) => {
+test.each(['planned', 'dispatching', 'admitted', 'settled after a cache ping'])('a resume survives a crash while %s', async (stage) => {
   // Long enough to crash first; the plan keeps its time across the restart.
   AUTO_CONTINUE.delaysMs = [1_500, 1_500];
   const h = await startTestCore();
@@ -518,12 +518,16 @@ test.each(['planned', 'dispatching', 'admitted'])('a resume survives a crash whi
   if (stage !== 'planned') {
     const entry = h.core.threads.resumes.entry(threadId)!;
     h.core.journal.setSetting('resumes', { [threadId]: { ...entry, plan: { ...entry.plan, dispatching: true } } });
-    if (stage === 'admitted') {
+    if (stage === 'admitted' || stage === 'settled after a cache ping') {
       holdAccountTurns(h);
       const input = h.core.threads.handoff.continuation(source, entry.plan!.prompt);
       const admitted = h.core.threads.startTurn(threadId, input, { kind: 'resume', reason: 'carry-on', requestId: `auto-continue_${source.id}` });
       expect(admitted.status).toBe('queued');
       admittedId = admitted.id;
+      if (stage === 'settled after a cache ping') {
+        h.core.journal.putTurn({ ...source, id: 'cache-ping', status: 'done', finishedAt: Date.now(), execution: { ...source.execution!, operation: 'keepalive' } });
+        h.core.journal.setSetting('resumes', { [threadId]: { handled: source.id, streak: 1, resumeTurnId: admitted.id } });
+      }
     }
   }
   client.close();
@@ -531,9 +535,11 @@ test.each(['planned', 'dispatching', 'admitted'])('a resume survives a crash whi
   const asked = scripted(done);
   const next = await restart(h);
   try {
-    await waitFor(() => next.core.threads.get(threadId).turns.length === 2 && next.core.threads.get(threadId).turns[1]!.status === 'done');
+    await waitFor(() => asked.length === 1 && next.core.journal.runningTurn(threadId) === null);
     expect(asked[0]!.prompt).toContain('API Error: 503');
     expect(asked).toHaveLength(1);
-    if (admittedId) expect(next.core.journal.turnRequest(threadId, `auto-continue_${source.id}`)?.turn_id).toBe(admittedId);
+    const receipt = next.core.journal.turnRequest(threadId, `auto-continue_${source.id}`);
+    if (admittedId) expect(receipt?.turn_id).toBe(admittedId);
+    expect(next.core.journal.getTurn(receipt!.turn_id)?.status).toBe('done');
   } finally { await next.stop(); }
 });

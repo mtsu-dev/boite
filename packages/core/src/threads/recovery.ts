@@ -72,7 +72,7 @@ export class ThreadRecovery {
         }
         // An expired automatic continuation has nothing new for the owner to resume.
         if (target.operation) {
-          this.#closeStopped(turn, 'handed-over');
+          this.#core.threads.markQueuedStopped(turn.id);
           counts.stopped += 1;
           continue;
         }
