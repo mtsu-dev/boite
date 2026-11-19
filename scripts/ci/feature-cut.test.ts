@@ -53,12 +53,15 @@ test('a bundle that lost the marker of a feature it must hold fails too, and so 
   expect(() => scanBundle(bundle({ 'assets/app.js.br': 'x', 'assets/font.woff2': 'x' }), 'ui', 'release', cuts, stages)).toThrow('holds no bundle');
 });
 
-test('no feature is cut today, the lazy entries still write their flag in full, and the contracts name no marker', () => {
+test('the five finished features are cut no more, their lazy entries still write their flag in full, and the contracts name no marker', () => {
   const root = join(import.meta.dir, '..', '..');
   const read = (path: string) => readFileSync(join(root, path), 'utf8');
   // The five that were cut are finished: every build holds them, so nothing is left to prove a bundle lacks.
-  expect(FEATURE_CUTS).toEqual({});
-  for (const id of ['whip', 'debates', 'contacts', 'teams', 'auto-goal'] as const) expect(EXPERIMENT_STAGES[id], id).toBe('release');
+  // Another feature may be cut meanwhile; only these five must be out of the registry.
+  for (const id of ['whip', 'debates', 'contacts', 'teams', 'auto-goal'] as const) {
+    expect(EXPERIMENT_STAGES[id], id).toBe('release');
+    expect(FEATURE_CUTS[id], id).toBeUndefined();
+  }
   // Their entries stay, with the flag no build defines any more: the import runs, and a feature tagged below release again is cut by one line.
   const entries: [ExperimentId, string][] = [
     ['whip', 'packages/ui/src/lib/whip-entry.svelte.ts'],
