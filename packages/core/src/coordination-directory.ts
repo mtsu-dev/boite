@@ -137,11 +137,11 @@ export class CoordinationLookups {
     const config = this.side.config(threadId);
     if (this.core.threads.require(threadId).archived || config.mode === 'off') return { matches: [], unavailable: [] };
     const own = this.side.localReach(threadId).filter(a => a.threadId !== threadId);
-    const matches = await searchContacts(this.core.journal.db, own, words);
-    const collect = await this.remoteAll(threadId, 'search', { words, partial: PARTIAL }, (answer, peer) => {
+    // Both start now: the other machines are asked under the rights this search began with, not ones opened during the local scan.
+    const [matches, collect] = await Promise.all([searchContacts(this.core.journal.db, own, words), this.remoteAll(threadId, 'search', { words, partial: PARTIAL }, (answer, peer) => {
       const list = partialList(answer);
       return { peer, missing: list.unavailable, matches: list.entries.map(match => ({ ...checkRemoteContact(match as AgentContact, peer), ...checkMatchExtras(match as { matched?: unknown; excerpts?: unknown }) })) };
-    });
+    })]);
     const routed = config.remote && config.reach === 'group' ? await this.side.mailboxes.search(threadId, words) : { entries: [], unavailable: [] };
     const hide = this.hidden(threadId);
     routed.entries = routed.entries.filter(entry => !hide(entry.coreId));

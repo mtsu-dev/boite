@@ -756,6 +756,20 @@ test('two linked cores search and read each other\'s agents through signed reque
 }, 25000);
 
 
+test('a search that starts local stays local when the machines open during its scan', async () => {
+  const one = await setup(); const two = await setup();
+  const cardA = one.h.core.coordination.identity(), cardB = two.h.core.coordination.identity();
+  one.h.core.coordination.trust(cardB); two.h.core.coordination.trust({ ...cardA, readThreads: true });
+  say(two.h, two.b, 'user', 'the nightly backup to the NAS failed again');
+  const mine = one.h.core.coordination.get(one.a).config;
+  one.h.core.coordination.configure(one.a, { ...mine, remote: false });
+  const pending = one.h.core.coordination.search(one.a, 'nas backup');
+  one.h.core.coordination.configure(one.a, { ...mine, remote: true });
+  expect((await pending).matches.filter(m => m.coreId === cardB.coreId)).toEqual([]);
+  expect((await one.h.core.coordination.search(one.a, 'nas backup')).matches.map(m => m.coreId)).toContain(cardB.coreId);
+}, 25000);
+
+
 test('old local letters gain project names without requiring enabled contacts', async () => {
   const { h, a, b } = await setup();
   h.core.coordination.pause(b);
