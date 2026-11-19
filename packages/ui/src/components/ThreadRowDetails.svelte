@@ -9,9 +9,13 @@
   } = $props();
 </script>
 
-{#if offline}<span class="offline-chip" data-testid="thread-offline">{strings.connection.offline}</span>{/if}
-{#if pullRequest}<PullRequestBadge {pullRequest} />{/if}
-{#if branch}<span class="branch" data-testid="thread-branch" title={branch}><GitBranch size={12} /><span class="ui-label">{branch}</span></span>{/if}
+{#if offline}
+  <span class="offline-chip" data-testid="thread-offline">{strings.connection.offline}</span>
+{/if}{#if pullRequest}
+  <PullRequestBadge {pullRequest} />
+{/if}{#if branch}
+  <span class="branch" data-testid="thread-branch" title={branch}><GitBranch size={12} /><span class="ui-label">{branch}</span></span>
+{/if}
 
 <style>
   .offline-chip { flex: none; padding: 0 6px; border: 1px solid var(--color-edge); border-radius: var(--radius-sm); }
