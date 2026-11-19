@@ -82,3 +82,15 @@ test('another group\'s Operator does not stand in for this group\'s', async () =
   await vi.waitFor(() => expect(home.client!.call).toHaveBeenCalledWith('agents.builtin.ensure', expect.objectContaining({ kind: 'contacts' })));
   expect(other.client!.call).not.toHaveBeenCalled();
 });
+
+test('a machine whose group is still loading may hold the Operator: none is made until it answers', async () => {
+  const none = (method: string) => method === 'contacts.get' ? { bot: null } : {};
+  const home = machine('core-a', { id: 'loading' }, true, none);
+  const peer = { ...machine('core-b', { id: 'loading' }, true, () => ({ bot: { id: 'operator' } })), groupKnown: false, group: null } as unknown as Store;
+  expect(await ensureOperator(home, [peer])).toBe(false);
+  expect(home.client!.call).not.toHaveBeenCalled();
+  // Its group known, it is asked and its Operator is the group's.
+  const known = machine('core-b', { id: 'loading' }, true, () => ({ bot: { id: 'operator' } }));
+  expect(await ensureOperator(home, [known])).toBe(true);
+  expect(vi.mocked(home.client!.call).mock.calls.filter(([method]) => method === 'agents.builtin.ensure')).toHaveLength(0);
+});

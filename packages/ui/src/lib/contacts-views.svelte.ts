@@ -6,7 +6,7 @@
 import { untrack } from 'svelte';
 import { contactsRail, contactsShown } from './contacts-rail.svelte';
 import { contactsParts } from './contacts-entry';
-import { operatorHost, operatorOnOpen } from './operator';
+import { groupLoading, operatorHost, operatorOnOpen } from './operator';
 import { strings } from './strings';
 import type { Store } from './store.svelte';
 
@@ -42,6 +42,8 @@ export function contactsViews(current: () => Store, machines: () => readonly { s
     const open = contactsShown(store) && (store.page === 'home' || (contactsRail.shown(store) && !narrow()));
     if (!open || store.connection !== 'ready' || !store.groupKnown) return;
     const stores = machines().map(machine => machine.store);
+    // A machine whose group is still loading may hold the Operator: wait for it, then ask.
+    if (groupLoading(store, stores)) return;
     if (operatorHost(store, stores)) untrack(() => operatorOnOpen(store, stores));
   });
   $effect(() => {

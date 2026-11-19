@@ -40,6 +40,11 @@ export function operatorHost(home: Store, stores: readonly Store[]): Store | nul
   return member(home, stores, home.group?.settingsHome) ?? (owned(home) ? home : null);
 }
 
+/** A machine this window owns, other than `home`, that has not said which group it is in yet. */
+export function groupLoading(home: Store, stores: readonly Store[]): boolean {
+  return stores.some(store => store !== home && owned(store) && !store.groupKnown);
+}
+
 /**
  * Contacts opened: the group gets its one Operator. When a connected owner
  * machine already has one, nothing is made; else it is made on
@@ -50,7 +55,10 @@ export function operatorHost(home: Store, stores: readonly Store[]): Store | nul
 export async function ensureOperator(home: Store, stores: readonly Store[]): Promise<boolean> {
   const host = operatorHost(home, stores);
   if (!host) return false;
-  // Another group's Operator is not this group's: only members are asked.
+  // Another group's Operator is not this group's: only members are asked. A
+  // reached machine whose group is still loading may be a member holding it:
+  // wait for its answer rather than make a second one.
+  if (groupLoading(home, stores)) return false;
   const machines = [home, ...stores.filter(store => store !== home && !!home.group && store.group?.id === home.group.id)].filter(owned);
   const found = await Promise.all(machines.map(async store => {
     try { return !!(await store.client!.call('contacts.get', {})).bot; } catch { return false; }

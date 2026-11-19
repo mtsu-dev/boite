@@ -55,3 +55,19 @@ test('the Bots machine reconnecting while the Contacts column stays open gets th
   await vi.waitFor(() => expect(bots.ensured()).toBe(1));
   expect(home.ensured()).toBe(0);
 });
+
+test('a machine of the window whose group is still loading is waited for, then asked before any Operator is made', async () => {
+  const home = machine('core-a', 'ready', {}, true);
+  const peer = machine('core-c', 'ready', null, false);
+  home.store.group = { id: 'other-session', self: 'core-a', cores };
+  peer.call.mockImplementation(async (method: string) => method === 'contacts.get' ? { bot: { id: 'operator' } } : {});
+  open(home, [peer]);
+  await new Promise(resolve => setTimeout(resolve, 10));
+  expect(home.call).not.toHaveBeenCalled();
+  peer.store.group = { id: 'other-session', self: 'core-c', cores };
+  peer.store.groupKnown = true;
+  flushSync();
+  await vi.waitFor(() => expect(peer.call).toHaveBeenCalledWith('contacts.get', {}));
+  await new Promise(resolve => setTimeout(resolve, 10));
+  expect(home.ensured() + peer.ensured()).toBe(0);
+});
