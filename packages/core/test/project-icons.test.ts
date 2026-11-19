@@ -14,6 +14,7 @@ import { ICON_MAX_BYTES, assetCandidates, detectProjectIcon, htmlIconHrefs, type
 import { ProjectStore } from '../src/projects.ts';
 import { startTestCore, waitFor } from './harness.ts';
 import type { TestCore } from './harness.ts';
+import { thrown } from './settle.ts';
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
 const ICO = new Uint8Array([0, 0, 1, 0, 1, 0, 16, 16, 0, 0, 1, 0, 32, 0]);
@@ -285,7 +286,7 @@ describe('the project store', () => {
     const icon = await client.call('projects.icon', { projectId: added.id });
     await client.call('projects.remove', { projectId: added.id });
     expect(harness.core.journal.projectIcons().has(added.id)).toBe(false);
-    await expect(client.call('projects.icon', { projectId: added.id })).rejects.toThrow();
+    expect(await thrown(client.call('projects.icon', { projectId: added.id }))).toThrow();
     const restored = await client.call('projects.add', { path: added.path });
     expect(restored.id).toBe(added.id);
     expect(await client.call('projects.icon', { projectId: restored.id })).toEqual(icon);

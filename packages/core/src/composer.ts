@@ -4,7 +4,7 @@ import type { Core } from './core.ts';
 import type { Connection } from './router.ts';
 import { promptOrigin } from './client-preferences.ts';
 import { invalidParams, messageOf, notFound, refused } from './errors.ts';
-import { ComposerStorage, digest, recordKey, type Delivery } from './composer-storage.ts';
+import { ComposerStorage, digest, recordKey } from './composer-storage.ts';
 import { composerValue } from './composer-validation.ts';
 import { steerUser, userSteeringUnavailable } from './threads/user-steering.ts';
 import { DraftReservationLedger, type DraftOwnership } from './threads/draft-reservation-ledger.ts';

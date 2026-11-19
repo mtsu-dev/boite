@@ -1,8 +1,8 @@
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, randomUUID, sign } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { threadActive, defaultCoordinationConfig, reachRefusal, TEAM_LETTERS_PER_BATCH } from '@boite/contracts';
-import type { AgentAddress, AgentContact, AgentLetter, AgentMatch, AgentTranscript, CoordinationBridgeResponse, CoordinationConfig, CoordinationPeer, CoordinationView, RpcParams, ThreadStatus } from '@boite/contracts';
+import { defaultCoordinationConfig, reachRefusal, TEAM_LETTERS_PER_BATCH } from '@boite/contracts';
+import type { AgentAddress, AgentContact, AgentLetter, AgentMatch, AgentTranscript, CoordinationBridgeResponse, CoordinationConfig, CoordinationPeer, CoordinationView, RpcParams } from '@boite/contracts';
 import { checkRemoteContact } from './coordination-lookup.ts';
 import { coordinationScope, type CoordinationScope } from './coordination-scope.ts';
 import { CoordinationLookups } from './coordination-directory.ts';
@@ -11,6 +11,7 @@ import { askContact, CoordinationBridge } from './coordination-bridge.ts';
 import { dropGroupRead, policedRoutes, policyAllowsLetter } from './coordination-group.ts';
 import { address, coordinationGuide, coordinationUrl, LETTER_TTL_MS, letterPrompt, RESIDENT_LETTER_TTL_MS, same, text, SWEEP_PROBES } from './coordination-letter.ts';
 import { withProjects, withRelations } from './coordination-relation.ts';
+import { pauseInterruptedCoordination } from './coordination-recovery.ts';
 import { firstAnswer, PeerGone, PeerRefusal, post, settle, type Answer, type Envelope, type Operation } from './coordination-wire.ts';
 import { checkTailnetName } from './contacts/invite.ts';
 import { outgoingContact, incomingContact } from './contacts/human-letters.ts';
@@ -83,22 +84,8 @@ export class Coordination {
       closed: () => this.#closed, selfId: () => this.#self('').coreId, trusted: () => this.trusted(), peers: () => this.peers(), signature: input => this.signature(input),
       directory: () => this.localDirectory(), contactDirectory: coreId => this.contactDirectory(coreId), receive: (letter, peer) => this.mailboxes.receive(letter, peer) ?? this.#receive(letter, peer), received: id => this.#find(id, 'in') ?? this.mailboxes.received(id),
     });
-    // A restart keeps idle contacts reachable, but never replays pending work automatically.
     if (!threadJsonChecked) core.journal.validateVisibleThreadJson();
-    const candidates = core.journal.db.query(`SELECT settings.key, settings.value, threads.rowid FROM settings JOIN threads ON settings.key = 'coordination:' || threads.id
-      WHERE threads.id NOT IN (SELECT thread_id FROM thread_deletions) AND (typeof(settings.value) <> 'text' OR NOT json_valid(settings.value))
-      ORDER BY threads.rowid`).all() as { key: string; value: string; rowid: number }[];
-    // Find the real parser error now; report it after the preceding recovery writes.
-    const invalidConfig = candidates.find(({ value }) => { try { JSON.parse(value); return false; } catch { return true; } });
-    const interrupted = core.journal.db.query(`SELECT id, status, rowid FROM threads WHERE id NOT IN (SELECT thread_id FROM thread_deletions)
-      AND (? IS NULL OR rowid <= ?) AND (status IN ('queued', 'running', 'waiting') OR rowid = ?
-        OR id IN (SELECT thread_id FROM coordination_letters WHERE status IN ('queued', 'received', 'uncertain')))
-      ORDER BY rowid`).all(invalidConfig?.rowid ?? null, invalidConfig?.rowid ?? null, invalidConfig?.rowid ?? null) as { id: string; status: ThreadStatus; rowid: number }[];
-    for (const thread of interrupted) {
-      if (thread.rowid === invalidConfig?.rowid) core.journal.getSetting(invalidConfig.key);
-      const pending = core.journal.db.query("SELECT 1 FROM coordination_letters WHERE thread_id = ? AND (status IN ('queued', 'received') OR (status = 'uncertain' AND json_extract(data, '$.error') = 'Queued for provider delivery')) LIMIT 1").get(thread.id);
-      if (pending || threadActive(thread.status)) this.pause(thread.id, 'restart');
-    }
+    pauseInterruptedCoordination(core.journal, threadId => this.pause(threadId, 'restart'));
     // A thread that finishes a turn can take its waiting letters now, not at the next sweep.
     this.#off = core.bus.onAny((name, payload) => {
       if (name === 'turn.finished' && !this.#closed) this.#kick((payload as { threadId: string }).threadId);
