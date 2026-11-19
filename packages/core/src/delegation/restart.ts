@@ -68,9 +68,10 @@ export function resumeRestartCuts(core: Core): number {
     }
     // Its turns open with the parent's brief or letters, not a prompt of the user's: the brief goes along.
     const task = (core.journal.db.query('SELECT task FROM delegated_agents WHERE thread_id = ?').get(childId) as { task: string } | null)?.task;
-    const prompt = `${core.threads.handoff.continuation(turn)}${task ? `\n\nYour task from the parent agent, supplied as JSON data:\n${JSON.stringify(task)}` : ''}`;
+    const continuation = core.threads.handoff.continuation(turn);
+    const prompt = `${continuation.prompt}${task ? `\n\nYour task from the parent agent, supplied as JSON data:\n${JSON.stringify(task)}` : ''}`;
     try {
-      core.threads.startTurn(childId, prompt, { kind: 'resume', reason: 'delegation-restart', requestId: `restart_${turnId}` });
+      core.threads.startTurn(childId, { ...continuation, prompt }, { kind: 'resume', reason: 'delegation-restart', requestId: `restart_${turnId}` });
       resumed += 1;
     } catch (error) {
       core.log('warn', `subagent ${childId} was not resumed after the restart: ${messageOf(error)}`);

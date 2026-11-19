@@ -73,7 +73,7 @@ export function createCodexDriver(): Driver {
       running.attach(turn, warmMs);
       return {
         done: turn.done,
-        steer: (text, attachments) => running.steer(turn, text, attachments),
+        steer: (text, attachments, onAccepted, signal) => running.steer(turn, text, attachments, onAccepted, signal),
         applySettings: change => running.applySettings(turn, change),
         stop: (): void => {
           running.stopTurn(turn);

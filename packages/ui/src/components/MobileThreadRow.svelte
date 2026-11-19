@@ -1,6 +1,6 @@
 <script lang="ts">
   import { rowAsks, rowSaysState, stateForm } from '../lib/status-order';
-  import { Archive, Ellipsis, GitBranch, Pin, PinOff } from '@lucide/svelte';
+  import { Archive, Ellipsis, Pin, PinOff } from '@lucide/svelte';
   import { trackThreadPullRequest } from '../lib/thread-pull-request.svelte';
   import type { Project, ThreadSummary } from '@boite/contracts';
   import type { Machine } from '../lib/workspace.svelte';
@@ -13,7 +13,7 @@
   import MachinePlace from './MachinePlace.svelte';
   import type { RowPlace } from '../lib/row-place';
   import ThreadHeadline from './ThreadHeadline.svelte';
-  import PullRequestBadge from './PullRequestBadge.svelte';
+  import ThreadRowDetails from './ThreadRowDetails.svelte';
   import ThreadState from './ThreadState.svelte';
   import { wordFit } from '../lib/word-fit';
   import { threadState } from '../lib/thread-state';
@@ -98,7 +98,7 @@
 </script>
 
 {#snippet placeLine(since?: number)}
-  <span class="meta" data-testid="mobile-row-meta"><span class="where" data-testid="mobile-row-where" title={where?.text}>{#if where?.project}<span class="ui-label" use:wordFit={where.project}></span>{/if}{#if where?.host}<MachinePlace host={where.host} />{/if}{#if chip}<span class="away" data-testid="thread-offline">{strings.connection.offline}</span>{/if}{#if pullRequest}<PullRequestBadge {pullRequest} />{/if}{#if branch}<span class="branch" data-testid="thread-branch" title={branch}><GitBranch size={12} /><span class="ui-label">{branch}</span></span>{/if}</span>{#if since !== undefined}<time class="since ui-label" title={exactTime(since)}>{ago(since, now)}</time>{/if}</span>
+  <span class="meta" data-testid="mobile-row-meta"><span class="where" data-testid="mobile-row-where" title={where?.text}>{#if where?.project}<span class="ui-label" use:wordFit={where.project}></span>{/if}{#if where?.host}<MachinePlace host={where.host} />{/if}<ThreadRowDetails offline={chip} {pullRequest} {branch} /></span>{#if since !== undefined}<time class="since ui-label" title={exactTime(since)}>{ago(since, now)}</time>{/if}</span>
 {/snippet}
 {#snippet why()}{@render placeLine(verb || !feedKind ? at : undefined)}{/snippet}
 
@@ -188,14 +188,11 @@
      moving the line ("atlas-api" lost its p). */
   .meta .where { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; min-width: 0; padding-block: 0.3em; margin-block: -0.3em; overflow: hidden; white-space: nowrap; }
   .meta .where > .ui-label { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  .where > .branch { display: flex; align-items: center; gap: 4px; flex: 0 1 auto; min-width: 0; overflow: hidden; }
-  .where > .branch :global(svg) { flex: none; }
-  .where > .branch > .ui-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   /* The room the list row's place line takes in its button, and the line laid over it inside the button's 1 px border and padding. */
   .meta-room { visibility: hidden; }
   .list-meta { position: absolute; left: 13px; right: 13px; bottom: 10px; pointer-events: none; }
   /* "Offline" when nothing above says it: MachinePlace's state mark, alone. */
-  .where > .away { flex: none; padding: 0 6px; border: 1px solid var(--color-edge); border-radius: var(--radius-sm); font-size: var(--text-xs); line-height: 1.5; }
+  .where > :global(.offline-chip) { font-size: var(--text-xs); line-height: 1.5; }
   /* Activity's since when, last on the place line: the title keeps its line whole. */
   .meta .since { flex: none; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
   /* The title line's end: the mark, then the time, centred on the first line's capitals (the title's box is trimmed

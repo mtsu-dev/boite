@@ -661,7 +661,8 @@ export class BackgroundCompaction {
    */
   #swapInTurn(thread: ThreadSummary, turn: Turn, copy: Copy, ready: NonNullable<Copy['ready']>, live: Live, fileReference: Parameters<typeof stepTail>[3]): StepDecision {
     // Read before the divider is written: the tail is what the agent did since the copy.
-    const tail = stepTail(this.#core.journal, thread.id, copy.source.anchor, fileReference);
+    const tail = stepTail(this.#core.journal, thread.id, copy.source.anchor, fileReference, this.#core.providers.require(thread.providerId));
+    this.#core.sharedAccess.uploads(thread.id, tail.attachments);
     const now = Date.now();
     const generation = (thread.sessionGeneration ?? 0) + 1;
     const next = this.#swapped(thread, ready, generation, now);
@@ -687,7 +688,7 @@ export class BackgroundCompaction {
     // The answer goes on in a new message after the divider.
     this.threads.runner.answerAfter.set(turn.id, Math.max(divider.createdAt, this.threads.runner.answerAfter.get(turn.id) ?? 0));
     this.#core.log('info', `thread ${thread.id}: swapped to a session compacted in the background, inside turn ${turn.id}`, { source: thread.providerId, threadId: thread.id, turnId: turn.id });
-    return { swap: { sessionId: ready.sessionId, tail, postTokens: ready.postTokens, ...(ready.totals ? { totals: ready.totals } : {}) } };
+    return { swap: { sessionId: ready.sessionId, tail: tail.prompt, attachments: tail.attachments, postTokens: ready.postTokens, ...(ready.totals ? { totals: ready.totals } : {}) } };
   }
 
   /**

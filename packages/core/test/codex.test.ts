@@ -79,13 +79,16 @@ test('coordination steers the current Codex turn without creating a user turn', 
   expect(await harness!.core.threads.steer(threadId, 'Boite agent coordination. Wait for the VM.')).toBe(true);
   expect(fakeLog()).toContain('turn/steer codex-fake-turn-1 Boite agent coordination');
   const turn = harness!.core.journal.listTurns(threadId)[0]!;
-  expect(await client.call('turns.steer', { threadId, turnId: turn.id, prompt: 'User correction',
+  expect(await client.call('turns.steer', { threadId, turnId: turn.id, prompt: 'User correction [steer-delta]',
     attachments: [{ kind: 'image', mimeType: 'image/png', data: 'aGVsbG8=', name: 'sample.png' }], clientRequestId: 'codex_steer_01' })).toEqual({ accepted: true });
   expect(fakeLog()).toContain('turn/steer codex-fake-turn-1 User correction');
   expect(fakeLog()).toContain('steer-images 1 data:image/png;base64,');
   expect(harness!.core.journal.listTurns(threadId)).toHaveLength(1);
   expect(harness!.core.journal.listMessages(threadId).filter(m => m.role === 'user')).toHaveLength(2);
   expect(harness!.core.journal.listMessages(threadId).some(m => m.role === 'system')).toBe(true);
+  const replied = () => harness!.core.journal.listMessages(threadId).findIndex(m => m.parts.some(part => part.type === 'text' && part.text.includes('Steer answered')));
+  await waitFor(() => replied() >= 0);
+  expect(replied()).toBeGreaterThan(harness!.core.journal.listMessages(threadId).findLastIndex(m => m.role === 'user'));
   await client.call('turns.stop', { threadId });
 });
 

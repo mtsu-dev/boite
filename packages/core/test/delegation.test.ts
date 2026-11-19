@@ -107,7 +107,8 @@ test('an unclosed CLI trace stays in history with unknown status after core rest
   try {
     expect(restarted.procs.liveOf(threadId)).toEqual([]);
     expect(restarted.delegation.get(threadId).nativeAgents).toEqual([expect.objectContaining({ source: 'process', status: 'unknown' })]);
-    expect(restarted.journal.listProcesses(threadId, 10).find(record => record.pid === child.pid)?.exitedAt).toBeNull();
+    // Startup closes the rows the previous core left open, with no exit code to claim.
+    expect(restarted.journal.listProcesses(threadId, 10).find(record => record.pid === child.pid)).toMatchObject({ exitedAt: expect.any(Number), exitCode: null });
   } finally { await restarted.close(); }
 });
 
@@ -657,7 +658,8 @@ test('a child that ends its turn on background work waits, wakes on it, then fin
   expect(list.split('\n')[0]).toBe('subagents: on; 0 running, 1 waiting, 0 done, 0 failed, 0 stopped');
   expect(list).toContain(`${childId} waiting `);
   expect(list).toMatch(/waiting for: test_emotes \(\d+s\)/);
-  expect(list).toContain('checkpoint: Started test_emotes in the background.');
+  expect(list).toContain('checkpoint: boite delegate list --details');
+  expect(await cli(['delegate', 'list', '--details'])).toContain('checkpoint: Started test_emotes in the background.');
   // A wait for the result never returns the checkpoint as the answer.
   expect(await owner.call('delegation.wait', { threadId, agentId: childId, timeoutMs: 150 })).toMatchObject({ state: 'waiting_for_children', timedOut: true });
   // The parent reads the checkpoint on its own turn; let that turn end.
@@ -693,7 +695,8 @@ test('a child that ends its turn on background work waits, wakes on it, then fin
   expect(final.checkpoint).toBeUndefined();
   const after = await cli(['delegate', 'list']);
   expect(after.split('\n')[0]).toBe('subagents: on; 0 running, 0 waiting, 1 done, 0 failed, 0 stopped');
-  expect(after).toContain('result: All 12 emote tests passed.');
+  expect(after).toContain(`result: boite delegate result ${childId} ${result.agents[0]!.resultRef!.turnId}`);
+  expect(await cli(['delegate', 'list', '--details'])).toContain('result: All 12 emote tests passed.');
 });
 
 test('a checkpoint letter with a long head keeps its note on the rest of a long answer', async () => {
@@ -896,15 +899,14 @@ test('late steering acknowledgement after stop stays uncertain and cannot resume
   expect(h.core.threads.require(child.thread.id).status).toBe('idle');
 });
 
-test('a legacy deadline does not stop a child and project removal deletes delegation records', async () => {
+test('a legacy deadline does not stop a child and project removal keeps delegation records', async () => {
   scripted(); const { h, owner, threadId, spawn } = await setup(); const child = await spawn();
   h.core.journal.setSetting(`delegation:${threadId}`, { ...h.core.delegation.config(threadId), maxMinutes: 1 });
   const now = Date.now(); const clock = spyOn(Date, 'now').mockReturnValue(now + 61_000);
   try { await Bun.sleep(1100); expect(h.core.threads.require(child.thread.id).status).toBe('running'); }
   finally { clock.mockRestore(); }
   await owner.call('projects.remove', { projectId: h.core.threads.require(threadId).projectId! });
-  expect(h.core.journal.db.query('SELECT count(*) AS n FROM delegated_agents').get()).toEqual({ n: 0 });
-  expect(h.core.journal.db.query('SELECT count(*) AS n FROM delegation_messages').get()).toEqual({ n: 0 });
+  expect(h.core.journal.db.query('SELECT count(*) AS n FROM delegated_agents').get()).toEqual({ n: 1 });
 });
 
 test('results held while the parent waits join its next manual prompt without steering or hooks', async () => {
@@ -1372,9 +1374,10 @@ test('the parent agent resumes its own stop and a Stop once the owner wrote agai
   const child = JSON.parse(await cli(['delegate', 'spawn', 'worker', 'Write the parser', '--json'])) as DelegatedAgent;
   await waitFor(() => running.has(child.thread.id));
   // Its own stop: before, only the owner's Settings lifted the pause it left.
-  expect(await cli(['delegate', 'stop'])).toContain('boite delegate resume continues it');
+  const paused = 'subagents: paused by its agent (boite delegate resume)';
+  expect(await cli(['delegate', 'stop'])).toContain(paused);
   expect(h.core.delegation.config(threadId)).toMatchObject({ paused: true, pausedBy: 'agent' });
-  expect((await cli(['delegate', 'list'])).split('\n')[0]).toStartWith('subagents: paused by you (boite delegate resume)');
+  expect((await cli(['delegate', 'list'])).split('\n')[0]).toStartWith(paused);
   running.delete(child.thread.id);
   const resumed = await cli(['delegate', 'resume']);
   expect(resumed).toContain('The team is no longer paused.');

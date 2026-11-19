@@ -8,7 +8,7 @@ import {ProcRegistry} from '../src/procs.ts';
 import {createPosixPlatform} from '../src/platform/posix.ts';
 import {startTestCore, waitFor} from './harness.ts';
 
-for (const state of ['drained', 'revoked', 'occupied'] as const) {
+for (const state of ['drained', 'revoked', 'stopped', 'occupied'] as const) {
   test(`shared native preparation drains untraced worktree processes: ${state}`, async () => {
     const harness = await startTestCore(), client = await harness.connect();
     const root = join(realpathSync(harness.dataDir), 'project'); mkdirSync(root);
@@ -41,6 +41,7 @@ for (const state of ['drained', 'revoked', 'occupied'] as const) {
         source: {project: {ownerCoreId: 'source', coreId: 'source', projectId: 'source'}, threadId: 'source', address: {coreId: 'source', threadId: 'source'}}},
     }), () => {if (closed) throw new Error('captured scope was revoked');});
     let outcome: Promise<unknown> | undefined;
+    let next: Promise<void> | undefined;
     let clock: ReturnType<typeof spyOn<typeof Date, 'now'>> | undefined;
     try {
       const prelude = procs.spawn(thread.id, 'git', ['--version'], {cwd: root});
@@ -53,10 +54,23 @@ for (const state of ['drained', 'revoked', 'occupied'] as const) {
       await Bun.sleep(50);
       expect(opens).toBe(0);
       closed = state === 'revoked';
+      if (state === 'stopped') {
+        const access = harness.core.sharedAccess;
+        const original = access.execution;
+        Object.assign(access, {execution});
+        try {harness.core.threads.releaseAgent(thread.id);}
+        finally {Object.assign(access, {execution: original});}
+        next = execution.prepare(thread.id);
+      }
       if (state !== 'occupied') nativePending = false;
       else clock = spyOn(Date, 'now').mockReturnValue(Date.now() + 5001);
       const error = await outcome;
-      if (state === 'revoked') {
+      if (state === 'stopped') {
+        expect(String(error)).toContain('protection preparation was revoked');
+        await next;
+        expect(opens).toBe(1);
+        expect(execution.context(thread.id)).toBeDefined();
+      } else if (state === 'revoked') {
         expect(error).toBeInstanceOf(Error);
         expect(String(error)).toContain('captured scope was revoked');
         expect(opens).toBe(0);
@@ -75,6 +89,7 @@ for (const state of ['drained', 'revoked', 'occupied'] as const) {
       clock?.mockRestore();
       nativePending = false;
       await outcome;
+      await next?.catch(() => undefined);
       await procs.close(); await harness.stop();
     }
   });

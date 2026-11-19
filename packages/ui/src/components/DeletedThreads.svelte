@@ -1,4 +1,5 @@
 <script lang="ts">
+  import SettingsSection from './SettingsSection.svelte';
   import { errorText } from '../lib/errors';
   import { DEFAULT_THREAD_DELETION_RETENTION_DAYS, DEFAULT_THREAD_DONE_RETENTION_DAYS, type DeletedThreadSummary, type ThreadId, type ThreadSummary } from '@boite/contracts';
   import { exactTime, projectName } from '../lib/format';
@@ -6,7 +7,7 @@
   import type { Store } from '../lib/store.svelte';
   import SettingDays from './SettingDays.svelte';
 
-  let { store, eager = false }: { store: Store; eager?: boolean } = $props();
+  let { store }: { store: Store } = $props();
   let threads = $state<DeletedThreadSummary[] | null>(null);
   let loading = $state(false);
   let restoring = $state<ThreadId | null>(null);
@@ -15,7 +16,7 @@
   let retention = $derived(store.settings?.threadDeletionRetentionDays ?? DEFAULT_THREAD_DELETION_RETENTION_DAYS);
 
   $effect(() => {
-    if (store.owner && store.connection === 'ready' && (eager || asked)) void load();
+    if (store.owner && store.connection === 'ready' && asked) void load();
   });
   $effect(() => store.client?.on('thread.deletionsUpdated', () => { if (asked) void load(); }));
 
@@ -46,8 +47,7 @@
 </script>
 
 {#if store.owner}
-  <section class="card" data-testid="deleted-threads">
-    <h2>{strings.settings.deleted.heading}</h2>
+  <SettingsSection id="settings-thread-retention" testid="deleted-threads" title={strings.settings.deleted.heading}>
     <!-- How long a thread stays, done then deleted: two rows that save when left, out of the archive's list. -->
     <SettingDays {store} key="threadDoneRetentionDays" label={strings.settings.archived.doneRetentionLabel} hint={strings.settings.archived.doneRetentionHint}
       fallback={DEFAULT_THREAD_DONE_RETENTION_DAYS} testid="done-retention-days" />
@@ -77,12 +77,12 @@
         {/each}
       </ul>
     {/if}
-  </section>
+  </SettingsSection>
 {/if}
 
 <style>
   ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-  section > :is(button, p, ul) { margin-top: var(--space-3); }
+  :global(#settings-thread-retention) > :is(button, p, ul) { margin-top: var(--space-3); }
   li { display: flex; align-items: center; gap: 10px; min-height: var(--row); padding: 4px 4px 4px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-md); }
   .conversation { flex: 1; min-width: 0; }
   .title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

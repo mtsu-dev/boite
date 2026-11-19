@@ -92,8 +92,6 @@ export class ClaudeSession {
    * took over before that run finished: they close that run, not the turn.
    */
   #foreignResults = 0;
-  /** The uuids of the messages each turn put in the prompt stream: its prompt and its steers. */
-  readonly #promptIds = new WeakMap<ClaudeTurn, Set<string>>();
   /** No `init` yet: what the CLI writes before it is about an earlier process. */
   #beforeInit = true;
   /**
@@ -261,26 +259,16 @@ export class ClaudeSession {
   }
 
   /** User follow-ups enter the active query's stream with its existing setup. */
-  async steer(turn: ClaudeTurn, text: string, attachments: TurnContext['attachments'] = []): Promise<boolean> {
+  async steer(turn: ClaudeTurn, text: string, attachments: TurnContext['attachments'] = [], onAccepted?: () => void): Promise<boolean> {
     if (this.#head() !== turn || !this.#steerable.has(turn) || turn.settled || turn.isStopped || !this.#query || this.#closing || this.#ended) return false;
     // The CLI reads this live stream while working, without interrupting its agent loop.
     this.#send(turn, text, attachments);
+    onAccepted?.();
     return true;
   }
 
   #send(turn: ClaudeTurn, text: string, attachments: TurnContext['attachments']): void {
-    const id = this.#prompts.push(text, attachments);
-    const ids = this.#promptIds.get(turn);
-    if (ids === undefined) this.#promptIds.set(turn, new Set([id]));
-    else ids.add(id);
-  }
-
-  /** The result names one of this turn's messages: the CLI took it into the run this result ends. */
-  #answers(turn: ClaudeTurn, result: Extract<SDKMessage, { type: 'result' }>): boolean {
-    const ids = this.#promptIds.get(turn);
-    if (ids === undefined) return false;
-    const named = result.user_message_uuids ?? (result.user_message_uuid === undefined ? [] : [result.user_message_uuid]);
-    return named.some(id => ids.has(id));
+    turn.promptSent(this.#prompts.push(text, attachments));
   }
 
   async setPermissionMode(turn: ClaudeTurn, mode: PermissionMode): Promise<boolean> {
@@ -601,7 +589,7 @@ export class ClaudeSession {
       this.#native = null;
       const head = this.#head();
       // The CLI folded the attached turn's prompt into the run: its result answers that turn, so the run is the turn's.
-      if (head !== null && this.#answers(head, message)) {
+      if (head?.answersPrompt(message)) {
         for (const frame of [...run, message]) this.#deliver(frame, false);
         return;
       }
@@ -636,13 +624,13 @@ export class ClaudeSession {
     if (message.type === 'result' && this.#native === 'beside') {
       this.#native = null;
       // A prompt folded into the wake's run is answered by its result, as below.
-      if (!this.#answers(turn, message)) { this.#totals.counted(message); return; }
+      if (!turn.answersPrompt(message)) { this.#totals.counted(message); return; }
     }
     if (message.type === 'result' && this.#foreignResults > 0) {
       // A prompt that reaches the CLI while its own run is still between tool
       // rounds is folded into that run (CLI 2.1.300): one result answers both,
       // and it names the prompt. Without that name it is the CLI's own result.
-      if (this.#answers(turn, message)) {
+      if (turn.answersPrompt(message)) {
         this.#foreignResults = 0;
       } else {
         this.#foreignResults -= 1;
@@ -653,10 +641,11 @@ export class ClaudeSession {
     // The turn is told what earlier turns account for before it reads the result.
     if (message.type === 'result') turn.noteCostBefore(...this.#totals.before(message));
     turn.handle(message);
-    // One result per user message: that is the end of this turn, not of the CLI.
+    // A result can answer several prompts. The query stays open after the turn.
     if (message.type === 'result') {
       this.#totals.counted(message);
       if (turn.swapping && !turn.isStopped && !this.#closing) { this.#handOver(turn); return; }
+      if (!this.#closing && !this.#loginRejected && turn.waitsForPromptResult(message)) return;
       // A CLI that could not resume holds no session worth keeping warm: the
       // retry the core sends next must get a query of its own, with no resume.
       if (turn.sessionLost || this.#loginRejected) this.close(null);

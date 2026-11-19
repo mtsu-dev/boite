@@ -73,7 +73,8 @@ export function subagentRole(parentId: string, worktree: { path: string; branch:
 export function teamInstructions(core: Core, threadId: string, request: string | undefined, guideEnabled: boolean, sessionId: string | null = null): string {
   const thread = core.threads.require(threadId);
   const root = thread.parentThreadId ? core.threads.require(thread.parentThreadId) : thread, config = core.delegation.config(root.id);
-  if (thread.parentThreadId && core.workflows.owns(threadId)) return core.workflows.instructions(threadId);
+  const workflow = thread.parentThreadId ? core.workflows.instructions(threadId) : '';
+  if (workflow) return workflow;
   // A memory pass's or a `/goal2` checklist pass's prompt says everything it needs; it neither delegates nor writes mail.
   if (thread.parentThreadId && (core.workforce.memory.owns(threadId) || core.activity.ownsTracker(threadId))) return '';
   if (thread.parentThreadId && core.activity.ownsReviewer(threadId)) return '\nYou are a Boite goal reviewer. Your final answer and its VERDICT line go to the goal automatically; do not message the parent, start subagents or edit project files.\n';

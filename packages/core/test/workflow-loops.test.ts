@@ -130,7 +130,7 @@ test('a loop out of rounds fails its closing step, is told to the parent, and a 
   const oldFix = failed.nodes.find(n => n.id === 'fix')!.instances[0]!.threadId!;
   const newFix = done.nodes.find(n => n.id === 'fix')!.instances[0]!;
   expect(newFix.threadId).not.toBe(oldFix);
-  expect(newFix.previousAttempts).toEqual([oldFix]);
+  expect(newFix.previousAttempts).toEqual([expect.objectContaining({ threadId: oldFix })]);
   expect(prompts.filter(p => p.threadId === oldFix).map(p => p.prompt)).toEqual([
     expect.stringContaining(`Boite workflow step fix (run ${run.id}).`), expect.stringContaining('round 2 of 2'),
   ]);

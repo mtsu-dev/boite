@@ -4,6 +4,12 @@ export interface AgentTask {
   status: 'pending' | 'in_progress' | 'completed';
 }
 
+const MAX_AGENT_TASKS = 200;
+
+export function agentTaskLimitProblem(count: number): string | null {
+  return count > MAX_AGENT_TASKS ? `threads.tasks.set takes at most ${MAX_AGENT_TASKS} tasks, got ${count}` : null;
+}
+
 export type AgentTaskChange =
   | { action: 'add'; text: string }
   | { action: 'start' | 'done' | 'remove'; id: string }

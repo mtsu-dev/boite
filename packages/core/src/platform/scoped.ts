@@ -53,7 +53,15 @@ class PlatformScopes {
     }
     return scope;
   }
+  /** The registries asking for disk and network detail: the backend has one switch, on while any of them asks. */
+  private readonly watchers = new Set<Owner>();
+  watch(owner: Owner, active: boolean): void {
+    const before = this.watchers.size > 0;
+    if (active) this.watchers.add(owner); else this.watchers.delete(owner);
+    if (this.watchers.size > 0 !== before) this.backend.watchResources?.(!before);
+  }
   async release(owner: Owner): Promise<void> {
+    this.watch(owner, false);
     owner.closed = true; this.owners.delete(owner);
     const errors: unknown[] = [];
     for (const scope of owner.scopes.values()) this.scopes.delete(scope);
@@ -91,17 +99,20 @@ function scopedPlatform(hub: PlatformScopes): ProcessPlatform {
   const backend = hub.backend;
   const owner: Owner = {id: ++nextOwner, closed: false, scopes: new Map(), pids: new Map()};
   const scope = (id: string) => hub.scope(owner, id);
+  /** Only `attach` and `pidAdded` create a scope: a stop or a read of a thread that never ran a process has none to name. */
+  const existing = (id: string) => owner.closed ? undefined : owner.scopes.get(id);
   const platform: ProcessPlatform = {
     ...backend,
     retain: (jobs, guards) => hub.retain(owner, jobs, guards),
     release: () => owner.closing ??= hub.release(owner),
     attach: (id, pid) => backend.attach(scope(id), pid),
-    ...(backend.hasProcesses ? {hasProcesses: (id: string) => !owner.closed && backend.hasProcesses!(scope(id))} : {}),
-    ...(backend.startup ? {startup: (id: string, active: boolean) => {if (!owner.closed) backend.startup!(scope(id), active);}} : {}),
+    ...(backend.hasProcesses ? {hasProcesses: (id: string) => {const native = existing(id); return native !== undefined && backend.hasProcesses!(native);}} : {}),
+    ...(backend.startup ? {startup: (id: string, active: boolean) => {const native = existing(id); if (native !== undefined) backend.startup!(native, active);}} : {}),
     // A repeated shutdown must not fall back to killing an unscoped, possibly reused PID.
-    terminate: id => owner.closed || backend.terminate(scope(id)),
-    terminateProcess: (id, pid, startedAt) => !owner.closed && backend.terminateProcess(scope(id), pid, startedAt),
-    sample: id => owner.closed ? null : backend.sample(scope(id)),
+    terminate: id => {if (owner.closed) return true; const native = existing(id); return native !== undefined && backend.terminate(native);},
+    terminateProcess: (id, pid, startedAt) => {const native = existing(id); return native !== undefined && backend.terminateProcess(native, pid, startedAt);},
+    sample: id => {const native = existing(id); return native === undefined ? null : backend.sample(native);},
+    ...(backend.watchResources ? {watchResources: (active: boolean) => {if (!owner.closed) hub.watch(owner, active);}} : {}),
     pidAdded(id, pid, guarded) {
       const native = scope(id); owner.pids.set(pid, {scope: native, guarded}); hub.pids.set(pid, native); backend.pidAdded(native, pid, guarded);
     },

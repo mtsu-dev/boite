@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, expect, setSystemTime, spyOn, test } from 'bun:test';
 import { ATTENTION_LEASE_MS, notificationExcerpt, type RpcEvents, type Turn, type TurnExecution } from '@boite/contracts';
 import { createECDH, randomBytes } from 'node:crypto';
+import { request, type IncomingMessage, type RequestOptions } from 'node:http';
+import https from 'node:https';
 import { connect } from '../src/client.ts';
 import { validateSubscription } from '../src/push.ts';
 import { echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';
@@ -63,6 +65,36 @@ test('test delivery uses the device subscription and drops an expired destinatio
   harness.core.push.send = async () => { throw Object.assign(new Error('private endpoint material'), { statusCode: 410 }); };
   expect(await thrown(harness.core.push.test(paired.id))).toThrow('Web Push delivery failed (410)');
   expect((await harness.core.push.status(paired.id)).subscribed).toBe(false);
+});
+
+test('the default sender encrypts a test delivery with the persisted VAPID identity', async () => {
+  const paired = session();
+  const { publicKey } = await harness.core.push.status(paired.id);
+  harness.core.push.subscribe(paired.id, subscription());
+  await harness.core.push.close();
+  const restarted = new PushStore(harness.core);
+  const deliveries: { authorization: string | null; encoding: string | null; size: number }[] = [];
+  const receiver = Bun.serve({ hostname: '127.0.0.1', port: 0, async fetch(req) {
+    deliveries.push({ authorization: req.headers.get('authorization'), encoding: req.headers.get('content-encoding'), size: (await req.arrayBuffer()).byteLength });
+    return new Response(null, { status: 201 });
+  } });
+  // Keep the package's request construction and body handling, but route the
+  // push service request to a local receiver.
+  const transport = spyOn(https, 'request').mockImplementation((...args: unknown[]) => {
+    const [options, callback] = args as [RequestOptions, (response: IncomingMessage) => void];
+    return request({ ...options, hostname: '127.0.0.1', port: receiver.port }, callback);
+  });
+  try {
+    expect(await restarted.test(paired.id)).toEqual({ ok: true });
+    expect(deliveries).toHaveLength(1);
+    expect(deliveries[0]?.authorization).toEndWith(`, k=${publicKey}`);
+    expect(deliveries[0]?.encoding).toBe('aes128gcm');
+    expect(deliveries[0]?.size).toBeGreaterThan(0);
+  } finally {
+    transport.mockRestore();
+    await receiver.stop(true);
+    await restarted.close();
+  }
 });
 
 test('revocation deletes the subscription and cannot deliver another test', async () => {

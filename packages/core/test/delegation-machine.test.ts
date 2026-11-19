@@ -270,7 +270,8 @@ test('delegation.get and delegate list show the child on the other machine with 
   const list = (await cli(['delegate', 'list'])).out;
   expect(list).toContain(`${child.thread.id} `);
   expect(list).toContain(` on ${pcName} "Read the notes"`);
-  expect(list).toContain('  result: Done in notes');
+  expect(list).toContain(`  result: boite delegate result ${child.thread.id} ${agents[0]!.resultRef!.turnId}`);
+  expect((await cli(['delegate', 'list', '--details'])).out).toContain('  result: Done in notes');
   // Its full result is read from that machine.
   const page = await cli(['delegate', 'result', child.thread.id, agents[0]!.resultRef!.turnId]);
   expect(page.out).toContain('Done in notes');

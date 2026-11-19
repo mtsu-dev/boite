@@ -69,6 +69,7 @@ export const strings = {
     reopenThread: 'Move to Recent',
     reopenNamedThread: 'Move "{title}" to Recent',
     doneNotice: 'This thread is done',
+    archivedNotice: 'This thread was set aside',
     /** Above the composer, or the done notice, of a thread whose worktree Boite removed. */
     contactHold: {
       title: 'Contact mail holds this thread',
@@ -132,7 +133,7 @@ export const strings = {
     projectMissingBody: 'The folder {path} does not exist any more: it was deleted, moved or renamed. Put it back to keep working here, or remove the project from Boite.',
     projectMissingCheck: 'Check again',
     removeProjectTitle: 'Remove {project} from Boite?',
-    removeProjectBody: 'Its threads go with it. Files on disk stay where they are.',
+    removeProjectBody: 'Its conversations stop. Add the same folder again to recover them. Files on disk stay in place.',
     remove: 'Remove',
     threadMenu: 'Thread actions',
     /** A pencil on a thread's row: something typed in its box and not sent. */

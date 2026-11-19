@@ -1,6 +1,6 @@
 <script lang="ts">
   import TelemetrySettings from './TelemetrySettings.svelte';
-  import { ArrowLeft, ChevronRight, Monitor, MonitorSmartphone } from '@lucide/svelte';
+  import { ArrowLeft, ChevronRight, Monitor } from '@lucide/svelte';
   import CardScope from './CardScope.svelte';
   import { SETTINGS_ICONS, SETTINGS_ICON_SIZE, SETTINGS_ICON_STROKE } from '../lib/settings-icons';
   import type { SettingsTab, Store } from '../lib/store.svelte';
@@ -28,10 +28,14 @@
   import BrainPage from './BrainPage.svelte';
   import PluginsPage from './PluginsPage.svelte';
   import ArchivedThreads from './ArchivedThreads.svelte';
+  import DeletedThreads from './DeletedThreads.svelte';
+  import { openArchived } from '../lib/archived-view.svelte';
   import WorktreesCard from './WorktreesCard.svelte';
   import CompactionSettings from './CompactionSettings.svelte';
-  import InfoTip from './InfoTip.svelte';
+  import SettingsPageHeader from './SettingsPageHeader.svelte';
+  import SettingsSection from './SettingsSection.svelte';
   import PolicyBanner from './PolicyBanner.svelte';
+  import PolicyLock from './PolicyLock.svelte';
   import PolicySettings from './PolicySettings.svelte';
   import { tick, type Snippet } from 'svelte';
   import { holdSettingsCard, revealSettingsCard } from '../lib/settings-flash';
@@ -92,11 +96,6 @@
     : page === 'task-manager' ? strings.taskManager.title
     : page === 'diagnostics' ? strings.diagnostics.heading
     : page === 'experiments' ? strings.settings.tabs.experiments : strings.settings.tabs.machines;
-  /** The page's own title and its info mark step aside for the bar, so the bar carries the mark. */
-  const infoOf = (page: string): string => page === 'usage' ? `${strings.usage.intro} ${strings.usage.note}`
-    : page === 'worktrees' ? strings.settings.worktrees.intro
-    : page === 'plugins' ? strings.plugins.intro
-    : page === 'experiments' ? strings.settings.experiments.intro : '';
   let detail = $derived(page !== 'home');
   /** The pages that change one machine whole, its bar under their header. */
   const MACHINE_PAGES = ['accounts', 'plugins', 'brain', 'voice', 'limits', 'diagnostics', 'worktrees', 'archived'];
@@ -104,11 +103,11 @@
    * A page of one machine's agent settings says so under its header, the machine's name the picker
    * where there are several; other pages show their title alone. Limits names its machine in its title already.
    */
-  const scopeOf = (page: string): string | null => {
+  const scopeOf = (page: string, template: string): string | null => {
     if (scopes.line === 'device') return strings.settings.scopeDevice;
-    if (scopes.line !== 'machine' || page === 'limits' || (bar && !pick)) return null;
+    if (scopes.line !== 'machine' || page === 'limits' || (page !== 'archived' && bar && !pick)) return null;
     const shown = workspace.machines.find((m) => m.store === target);
-    return shown ? fill(strings.settings.scopeMachine, { machine: machineName(shown) }) : null;
+    return shown ? fill(template, { machine: machineName(shown) }) : null;
   };
   /** The phone's pages by where they save: on a mixed one (Conversations, with the machine's card) only the card that differs tags itself (`lib/page-scope.svelte.ts`). */
   const DEVICE_PAGES = ['appearance', 'browser', 'conversations'];
@@ -266,20 +265,16 @@
     </div>
   {:else}
     {@const title = titleOf(shown)}
-    {@const info = infoOf(shown)}
-    {@const scope = scopeOf(shown)}
+    {@const scopeTemplate = shown === 'archived' ? strings.settings.scopeArchives : strings.settings.scopeMachine}
+    {@const scope = scopeOf(shown, scopeTemplate)}
     <!-- Usage and Limits are one screen on a phone, two tabs of it. -->
     {@const quota = shown === 'usage' || shown === 'limits'}
-    <header class:limits={shown === 'limits'} data-testid="mobile-settings-header">
+    <header data-testid="mobile-settings-header">
       <button class="ghost icon" data-testid="mobile-settings-back" aria-label={strings.mobile.settingsBack} onclick={back}><ArrowLeft size={20} /></button>
-      <!-- The thread header's grammar: back, the title, one context line under it (where these settings apply). -->
-      <div class="heading">
-        <h1>{#if shown === 'limits'}<QuotaMachineScope store={target} fallback={title} />{:else}{title}{/if}{#if info}<InfoTip topic={title} text={info} testid="mobile-settings-info" />{/if}</h1>
-        {#if scope}
-          {@const picks = scopes.line === 'machine' && pick && bar}
-          <p class="scope page-scope" class:picks data-testid="mobile-settings-page-scope" data-scope={scopes.line}>{#if scopes.line === 'device'}<MonitorSmartphone size={14} strokeWidth={1.75} aria-hidden="true" />{:else if !picks}<Monitor size={14} strokeWidth={1.75} aria-hidden="true" />{/if}{#if picks && pick}{@render pick(strings.settings.scopeMachine)}{:else}<span class="ui-label">{scope}</span>{/if}</p>
-        {/if}
-      </div>
+      <SettingsPageHeader mobile {title} page={shown} {scope} {scopeTemplate} kind={scopes.line} picker={bar ? pick : undefined} {quota}
+        heading={shown === 'limits' ? limitsHeading : undefined} actions={shown === 'voice' ? voicePolicy : undefined} />
+      {#snippet limitsHeading()}<QuotaMachineScope store={target} fallback={title} />{/snippet}
+      {#snippet voicePolicy()}<PolicyLock store={target} keys={['dictation']} />{/snippet}
     </header>
     <div class="detail" data-testid="mobile-settings-detail">
       {#if bar && MACHINE_PAGES.includes(shown)}<div class="bar">{@render (pick && shown !== 'limits' && notes ? notes : bar)()}</div>{/if}
@@ -295,7 +290,7 @@
           <div class="rows">
             {@render row('mobile-settings-conversations', strings.settings.conversations, () => store.showSettings('general', 'conversations'), 'conversations')}
             {@render row('mobile-settings-phone', strings.mobile.settingsPhone, () => openLocal('phone'), 'phone')}
-            {@render row('mobile-settings-archived', strings.settings.archived.heading, () => store.showSettings('general', 'archived'), 'archived')}
+            {@render row('mobile-settings-archived', strings.settings.archived.heading, () => openArchived(store), 'archived')}
             <!-- The keys agents ask for live under Providers, the windows agents may see under Machines. -->
             {#if store.owner}
               {@render row('mobile-settings-worktrees', strings.settings.worktrees.heading, () => store.showSettings('general', 'worktrees'), 'worktrees')}
@@ -318,7 +313,10 @@
         <BrowserPage />
       {:else if shown === 'conversations'}
         <!-- General's Conversations card, the switches this phone keeps; the list groups from its own display options. -->
-        <div class="page"><section class="card" id="settings-conversations"><h2><span class="ui-label">{strings.settings.inConversation}</span><CardScope /></h2><ConversationSwitches part="conversation" phone /></section>
+        <div class="page"><SettingsSection id="settings-conversations" title={strings.settings.inConversation}>
+          {#snippet actions()}<CardScope />{/snippet}
+          <ConversationSwitches part="conversation" phone />
+        </SettingsSection>
           <!-- How agents answer and Quiet change one machine: the first one's scope phrase holds the picker, the bar above keeps its notes. -->
           {#if target.owner}{#if bar}<div class="bar inline">{@render (pick && notes ? notes : bar)()}</div>{/if}<AgentRepliesSettings store={target} /><QuietCard store={target} /><AgentsAloneCard store={target} />{/if}
         </div>
@@ -337,7 +335,7 @@
       {:else if shown === 'appearance'}
         <AppearancePage {store} phone />
       {:else if shown === 'usage'}
-        <UsagePage {store} />
+        <UsagePage {store} showTitle={false} />
       {:else if shown === 'limits'}
         <LimitsPage store={target} showTitle={false} />
       {:else if shown === 'task-manager'}
@@ -350,16 +348,17 @@
         <div class="stack">
           <DiagnosticsPage store={target} {onopenthread} />
           <div class="merged" id="settings-resources"><ResourcesPage store={target} /></div>
-          <div class="merged" id="settings-task-manager"><TaskManagerLoader store={target} {onopenthread} /></div>
+          <div class="merged" id="settings-task-manager"><TaskManagerLoader store={target} {onopenthread} section /></div>
         </div>
       {:else if shown === 'worktrees'}
-        <div class="page worktrees-page"><WorktreesCard store={target} /></div>
+        <div class="page"><WorktreesCard store={target} showTitle={false} /></div>
       {:else if shown === 'archived'}
         <div class="page archived-page">
-          <ArchivedThreads store={target} eager />
+          <ArchivedThreads store={target} place="phone" onopen={onopenthread} />
+          <DeletedThreads store={target} />
         </div>
       {:else}
-        <MachinesPage mobile {onopenthread} {store} />
+        <MachinesPage mobile {onopenthread} {store} showTitle={false} />
       {/if}
       {/key}
     </div>
@@ -402,14 +401,11 @@
   /* The screen's one header: the app's own steps aside over a page (App.svelte), so this one takes the top inset. */
   header { flex: none; display: flex; align-items: center; gap: var(--space-2); min-height: 52px; padding: max(var(--space-2), env(safe-area-inset-top)) max(var(--space-3), env(safe-area-inset-right)) var(--space-2) max(var(--space-3), env(safe-area-inset-left)); border-bottom: 1px solid var(--color-border); }
   header .icon { width: 44px; min-height: 44px; }
-  header h1 { margin: 0; font-size: var(--text-md); font-weight: 600; }
-  header.limits h1 { flex: 1; min-width: 0; }
   .phone-page { padding: var(--space-4); }
   /* Usage and Limits: two tabs of one screen, in one track, the chosen one filled. */
   .tabs { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px; margin: var(--space-4) var(--space-4) 0; padding: 2px; border: 1px solid var(--color-edge); border-radius: var(--radius-lg); background: var(--color-surface-2); }
   .tab { min-width: 0; min-height: var(--touch-target); gap: var(--space-2); border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 400; transition: background var(--dur-2) var(--ease-out-quint), color var(--dur-2) var(--ease-out-quint); }
   .tab.on { background: var(--color-foreground); border-color: var(--color-foreground); color: var(--color-on-foreground); }
-  .scope { overflow-wrap: anywhere; margin-top: 0; }
   .phone-page :global(.card) { padding: var(--space-4); }
   .detail :global(.page), .detail :global(.machines-page) { padding: var(--space-4); }
   /* The header already names the screen: its first card starts close under it, its title's room and no more;
@@ -421,33 +417,13 @@
   /* Diagnostics then the task manager, one scroll: neither page scrolls on its own. */
   .stack > :global(.page), .stack > .merged > :global(.page) { height: auto; overflow: visible; }
   .stack > .merged > :global(.page) { padding-top: 0; }
-  /* A merged page's title is its section's title. */
-  .detail .stack > .merged > :global(.page > header) { display: flex; }
-  .stack > .merged :global(.page > header h1) { font-size: var(--text-md); }
+  .stack > .merged :global([data-testid='resources-page'] > header h1) { font-size: var(--text-md); }
   .bar + :global(.page) { padding-top: var(--space-3); }
-  /* The bar above already names the page, so its own title steps aside. */
-  .detail :global(.page:not(.machines-page):not(.limits-page):not(.usage) > header),
-  .detail :global(.machines-page .head h1),
-  .detail :global(.limits-page > header h1),
-  .detail :global(.usage > header h1) { display: none; }
+  .detail :global([data-testid='experiments-page'] > header) { display: none; }
   /* Their refresh joins the bar, at the right end: alone on a row it pushed the cards down. */
-  .detail :global(.limits-page > header),
-  .detail :global(.usage > header) { position: absolute; top: max(8px, env(safe-area-inset-top)); right: 12px; margin: 0; }
-  .detail :global(.limits-page > header .refresh),
-  .detail :global(.usage > header .refresh) { width: 44px; height: 44px; }
+  .detail :global(.quota-actions) { position: absolute; top: max(8px, env(safe-area-inset-top)); right: 12px; margin: 0; }
+  .detail :global(.quota-actions .refresh) { width: 44px; height: 44px; }
   .detail :global(.switch-row) { flex-wrap: wrap; gap: var(--space-3); }
-  /* The bar names the page and the line above says what it holds: the card's own heading and tip step aside. */
-  .archived-page :global(#settings-archived > h2) { display: none; }
-  .worktrees-page :global(#settings-worktrees > h2) { display: none; }
-  /* Its title stepped aside, the card keeps no room above it for one. */
-  .archived-page :global(#settings-archived),
-  .worktrees-page :global(#settings-worktrees) { margin-top: 0; }
-  /* The title and its one context line, stacked as the thread header's (ThreadHeader.svelte). */
-  .heading { display: flex; flex-direction: column; flex: 1; min-width: 0; }
-  header.limits .heading h1 { margin-right: 54px; }
-  .page-scope { display: flex; align-items: center; gap: 6px; min-width: 0; margin: 2px 0 0; color: var(--color-subtle); font-size: var(--text-meta); line-height: 1.3; }
-  .page-scope > .ui-label { min-width: 0; }
-  .page-scope > :global(svg) { flex: none; }
   /* A row's icon leads it in the grey of the chrome's icons; the chevron at its end stays the quietest. */
   .row :global(svg.lead) { color: var(--color-muted-foreground); }
   /* A bar inside a page, above the one card that changes a machine. */

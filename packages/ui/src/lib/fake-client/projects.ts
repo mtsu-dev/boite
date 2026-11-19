@@ -37,11 +37,17 @@ export function folderToAdd(value: unknown, method: string): { path: string; nam
   return name === '' ? { path } : { path, name };
 }
 
-/** The core's `assertDeviceProjectFolder`, without links to follow: not boite's data folder, not under a folder of keys. */
+/** The fake machine's home folder, which holds `DATA_DIR`. */
+const HOME = 'C:\\Users\\you';
+
+/** The core's `assertDeviceProjectFolder`, without links to follow: not boite's data folder, not the home folder or above, not a folder that holds keys. */
 function deviceProjectFolder(path: string): void {
-  const key = pathKey(path), data = pathKey(DATA_DIR);
+  const key = pathKey(path), data = pathKey(DATA_DIR), home = pathKey(HOME);
   if (key === data || key.startsWith(`${data}/`)) {
     throw new RpcFailure({ code: RpcErrorCode.Refused, message: `a paired device does not add boite's data folder, or a folder inside it, as a project: ${path}`, data: { field: 'path', path, expected: 'a folder outside boite\'s data folder' } });
+  }
+  if (home === key || home.startsWith(`${key}/`) || !key.includes('/')) {
+    throw new RpcFailure({ code: RpcErrorCode.Refused, message: `a paired device does not add the home folder, a folder that contains it or a disk root as a project, since it holds every login on this machine; add a folder inside it, or add ${path} on the owner's machine`, data: { field: 'path', path, expected: `a folder inside ${HOME}, not ${HOME} itself or a parent of it` } });
   }
   if (key.split('/').some(part => DEVICE_SECRET_DIRS.has(part))) {
     throw new RpcFailure({ code: RpcErrorCode.Refused, message: `a paired device does not add a folder that holds keys or tokens as a project; add ${path} on the owner's machine`, data: { field: 'path', path, expected: `a folder outside ${[...DEVICE_SECRET_DIRS].join(', ')}` } });
@@ -57,6 +63,18 @@ export function addFakeProject(ctx: FakeContext, folder: { path: string; name?: 
   // As the core on Windows: the same folder in another case is the project already there.
   const existing = ctx.projects.find((p) => pathKey(p.path) === pathKey(path));
   if (existing) return { project: describedProject(ctx, existing), added: false };
+  const removed = ctx.removedProjects.get(pathKey(path));
+  if (removed) {
+    const project = { ...removed.project, name: folder.name ?? removed.project.name, archived: false };
+    ctx.removedProjects.delete(pathKey(path));
+    ctx.projects.push(project);
+    for (const thread of removed.threads) ctx.threads.set(thread.id, thread);
+    const summary = describedProject(ctx, project);
+    ctx.emit('project.added', summary);
+    for (const thread of removed.threads) ctx.emit('thread.created', toSummary(thread));
+    ctx.emit('thread.deletionsUpdated', {});
+    return { project: summary, added: true };
+  }
   const project: Project = {
     id: `p-${++ctx.seq}`,
     name: folder.name ?? path.split(/[\\/]/).filter(Boolean).pop() ?? path,
@@ -174,7 +192,8 @@ export function projectMethods(ctx: FakeContext) {
       return summary;
     },
     'projects.remove': async (params) => {
-      if (!ctx.projects.some((p) => p.id === params.projectId)) throw ctx.notFound('project', params.projectId);
+      const project = ctx.projects.find(p => p.id === params.projectId);
+      if (!project) throw ctx.notFound('project', params.projectId);
       if (ctx.agents.referencesProject(params.projectId)) {
         throw new RpcFailure({
           code: RpcErrorCode.Refused,
@@ -182,26 +201,22 @@ export function projectMethods(ctx: FakeContext) {
           data: { projectId: params.projectId }
         });
       }
-      ctx.projects = ctx.projects.filter((p) => p.id !== params.projectId);
-      for (const [id, family] of ctx.deletedThreads) if (family.threads.some(t => t.projectId === params.projectId)) {
-        for (const thread of family.threads) { ctx.mergedPrFixtures.delete(thread.id); ctx.mergedPrArchive.delete(thread.id); }
-        ctx.deletedThreads.delete(id);
-      }
-      ctx.emit('thread.deletionsUpdated', {});
       const threads = [...ctx.threads.values()].filter((thread) => thread.projectId === params.projectId);
-      // As the core: each thread is archived, and says so, before the records go.
+      const incognito = new Set(threads.filter(thread => thread.incognito).map(thread => thread.id));
+      const retained = (thread: Thread) => !incognito.has(thread.id) && (!thread.parentThreadId || !incognito.has(thread.parentThreadId));
       for (const thread of threads) {
         thread.archived = true;
         ctx.touch(thread);
       }
       await Promise.all(threads.map((thread) => putAway(ctx, thread)));
+      ctx.removedProjects.set(pathKey(project.path), { project, threads: threads.filter(retained) });
+      ctx.projects = ctx.projects.filter(p => p.id !== project.id);
       for (const thread of threads) {
-        ctx.mergedPrFixtures.delete(thread.id);
-        ctx.mergedPrArchive.delete(thread.id);
         ctx.threads.delete(thread.id);
-        ctx.emit('thread.removed', { threadId: thread.id });
+        ctx.emit('thread.removed', { threadId: thread.id, undoable: retained(thread) });
       }
       ctx.emit('project.removed', { projectId: params.projectId });
+      ctx.emit('thread.deletionsUpdated', {});
       return { ok: true };
     },
     'projects.files': async (params) => {

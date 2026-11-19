@@ -82,14 +82,21 @@ export class Router {
   }
 
   /** RPCs and signed peer HTTP requests share idle update admission. */
-  async trackRequest<T>(work: () => T | Promise<T>): Promise<T> {
+  trackRequest<T>(work: () => Promise<T>): Promise<T>;
+  trackRequest<T>(work: () => T | Promise<T>): T | Promise<T>;
+  trackRequest<T>(work: () => T | Promise<T>): T | Promise<T> {
     if (!this.accepting) throw new RpcFailure(RpcErrorCode.InvalidRequest, 'the core is stopping; reconnect before sending another request');
     this.active += 1;
-    try { return await work(); }
-    finally { this.active -= 1; }
+    let pending = false;
+    try {
+      const result = work();
+      if (!(result instanceof Promise)) return result;
+      pending = true;
+      return result.finally(() => { this.active -= 1; });
+    } finally { if (!pending) this.active -= 1; }
   }
 
-  async dispatch(method: string, params: unknown, ctx: RpcContext): Promise<unknown> {
+  dispatch(method: string, params: unknown, ctx: RpcContext): unknown {
     if (!this.accepting) throw new RpcFailure(RpcErrorCode.InvalidRequest, 'the core is stopping; reconnect before sending another request');
     const handler = this.handlers.get(method as RpcMethodName);
     if (handler === undefined) {
@@ -104,8 +111,12 @@ export class Router {
     if (!checked.ok) throw invalidParams(checked.message, { field: checked.field });
     this.policy?.(method as RpcMethodName, checked.params);
     this.guard?.(method as RpcMethodName, checked.params, ctx);
-    const result = await this.trackRequest(() => handler(checked.params as never, ctx));
-    if (ctx.connection.identity.principal === 'plugin') this.pluginCall?.(method as RpcMethodName, checked.params, ctx);
-    return result;
+    const result = this.trackRequest(() => handler(checked.params as never, ctx));
+    if (ctx.connection.identity.principal !== 'plugin') return result;
+    const record = (value: unknown) => {
+      this.pluginCall?.(method as RpcMethodName, checked.params, ctx);
+      return value;
+    };
+    return result instanceof Promise ? result.then(record) : record(result);
   }
 }

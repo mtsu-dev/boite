@@ -10,8 +10,8 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { assignShards } from './shards.mts';
+import { readShardJobLogs } from './shard-logs.ts';
 
-const ROOT = join(import.meta.dir, '..', '..');
 const DURATIONS = join(import.meta.dir, 'ui-durations.json');
 
 /**
@@ -28,21 +28,8 @@ export function fileDurations(log: string): Record<string, number> {
   return seconds;
 }
 
-function gh(args: string[]): string {
-  const result = Bun.spawnSync(['gh', ...args], { stdout: 'pipe', stderr: 'pipe', cwd: ROOT, windowsHide: true });
-  if (result.exitCode !== 0) throw new Error(`gh ${args.join(' ')}: ${result.stderr.toString().trim()}`);
-  return result.stdout.toString();
-}
-
-/** The logs of a run's UI test jobs; they must have passed, or a file cut short skews its time. */
 function runLogs(run: string): string[] {
-  const view = JSON.parse(gh(['run', 'view', run, '--json', 'jobs'])) as { jobs: { databaseId: number; name: string; conclusion: string }[] };
-  const jobs = view.jobs.filter((job) => /UI tests/.test(job.name) && job.conclusion !== 'skipped');
-  if (jobs.length === 0) throw new Error(`run ${run}: no UI test job ran`);
-  const failed = jobs.filter((job) => job.conclusion !== 'success');
-  if (failed.length) throw new Error(`run ${run}: ${failed.map((job) => `${job.name} ${job.conclusion}`).join(', ')}; refresh from a green run`);
-  const repo = process.env.GITHUB_REPOSITORY || gh(['repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner']).trim();
-  return jobs.map((job) => gh(['api', `repos/${repo}/actions/jobs/${job.databaseId}/logs`]));
+  return readShardJobLogs(run, 'UI test', job => /UI tests/.test(job.name) && job.conclusion !== 'skipped').map(({ log }) => log);
 }
 
 if (import.meta.main) {

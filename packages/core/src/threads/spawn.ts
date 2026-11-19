@@ -27,7 +27,8 @@ const BOT_LEDGER = 'bot-spawns:';
  * event of its desk.
  */
 /** `answer`: the id of the letter that carries its first answer back, which the reach does not stop. */
-interface Origin { origin: ThreadLink; reported: boolean; coreId?: string; bot?: true; answer?: string }
+interface Origin { origin: ThreadLink; reported: boolean; coreId?: string; bot?: true; answer?: string; pending?: { turnId: string; text: string } }
+type PendingOrigin = Required<Pick<Origin, 'answer' | 'pending'>>;
 /** `spawned`: what a member answered, for a thread started on another machine. */
 interface Started { at: number; requestId: string; fingerprint: string; threadId: ThreadId; turnId: string; spawned?: AgentSpawn }
 
@@ -470,26 +471,51 @@ export class ThreadSpawns {
     const key = `${ORIGIN}${turn.threadId}`;
     const saved = this.#core.journal.getSetting(key) as Origin | undefined;
     if (saved === undefined || saved.reported) return;
-    this.#core.journal.setSetting(key, { ...saved, reported: true } satisfies Origin);
     const thread = this.#core.journal.getThread(turn.threadId);
     if (thread === null) return;
     // A persistent agent hears it as an event: the threads it started are on its desk, here or on another machine.
-    if (saved.bot === true || (saved.coreId === undefined && this.#core.journal.getThread(saved.origin.threadId)?.agentSessionId)) return;
-    const head = `${thread.title}: ${turn.status}`;
-    // The thread that started it reads the rest of a cut answer with `boite threads read`.
-    const body = `${head}\n${this.#core.delegation.result(turn, 'thread', Math.max(1000, 4000 - head.length - 1)) ?? 'No text result was returned.'}`;
-    // The reach of this machine bounds what a thread asks for, not the answer to a start it allowed.
-    const answer = randomUUID();
-    this.#core.journal.setSetting(key, { ...saved, reported: true, answer } satisfies Origin);
+    if (saved.bot === true || (saved.coreId === undefined && this.#core.journal.getThread(saved.origin.threadId)?.agentSessionId)) {
+      this.#core.journal.setSetting(key, { ...saved, reported: true } satisfies Origin);
+      return;
+    }
+    const staged = saved.pending && saved.answer ? { pending: saved.pending, answer: saved.answer } : this.#stageResult(key, saved, thread, turn);
     try {
       await this.#core.coordination.send({
         threadId: thread.id,
         to: { coreId: saved.coreId ?? this.#core.coordination.identity().coreId, threadId: saved.origin.threadId },
-        text: body.length > 4000 ? `${body.slice(0, 3900)}\n[Truncated. Open the thread for the complete answer.]` : body,
-        requestId: `spawn-result:${turn.id}`,
-      }, false, undefined, answer);
+        text: staged.pending.text,
+        requestId: `spawn-result:${staged.pending.turnId}`,
+      }, false, undefined, staged.answer);
+      if (this.#core.journal.isClosed()) return;
+      const latest = this.#core.journal.getSetting(key) as Origin | undefined;
+      if (latest?.answer === staged.answer) this.#core.journal.setSetting(key, { ...latest, reported: true, pending: undefined } satisfies Origin);
     } catch (error) {
       this.#core.log('warn', `thread ${thread.id}: its answer did not go back to ${saved.origin.threadId}: ${messageOf(error)}`);
+    }
+  }
+
+  #stageResult(key: string, saved: Origin, thread: ThreadSummary, turn: Turn): PendingOrigin {
+    const head = `${thread.title}: ${turn.status}`;
+    const body = `${head}\n${this.#core.delegation.result(turn, 'thread', Math.max(1000, 4000 - head.length - 1)) ?? 'No text result was returned.'}`;
+    const text = body.length > 4000 ? `${body.slice(0, 3900)}\n[Truncated. Open the thread for the complete answer.]` : body;
+    const staged = { ...saved, answer: randomUUID(), pending: { turnId: turn.id, text } };
+    this.#core.journal.setSetting(key, staged);
+    return staged;
+  }
+
+  /** Retry the staged letter, or rebuild it from the committed turn if the core stopped before staging. */
+  async recoverResults(): Promise<void> {
+    const journal = this.#core.journal;
+    const rows = journal.db.query(`SELECT key FROM settings WHERE key >= ? AND key < ? AND json_extract(value, '$.reported') = 0`)
+      .all(ORIGIN, 'spawn-origin;') as { key: string }[];
+    for (const { key } of rows) {
+      if (this.#core.stopping || journal.isClosed()) return;
+      const threadId = key.slice(ORIGIN.length);
+      const saved = journal.getSetting(key) as Origin | undefined;
+      if (!saved || saved.reported || !journal.getThread(threadId)) continue;
+      const turn = saved.pending ? journal.getTurn(saved.pending.turnId) : journal.listTurns(threadId).find(turn =>
+        turn.finishedAt !== null && turn.execution?.operation !== 'compact' && turn.execution?.operation !== 'keepalive');
+      if (turn) await this.finished(turn);
     }
   }
 

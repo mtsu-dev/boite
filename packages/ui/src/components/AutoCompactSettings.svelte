@@ -1,4 +1,5 @@
 <script lang="ts">
+  import SettingField from './SettingField.svelte';
   import { untrack } from 'svelte';
   import { CircleCheck, Hourglass, Ruler, Timer } from '@lucide/svelte';
   import { AUTO_COMPACT_MOMENTS, AUTO_COMPACT_TOKENS, type AutoCompact, type AutoCompactMoment, type CompactionPolicy, type CompactionTarget } from '@boite/contracts';
@@ -178,18 +179,21 @@
       </div>
     {/if}
     <div class="summary">
-      <span class="name"><label for="{uid}-summary">{strings.settings.compactionSummary}</label><InfoTip topic={strings.settings.compactionSummary} text={strings.settings.compactionSummaryHint} /><SaveStatus save={summarySave} /><SyncMark {store} key={target ? 'compactionByType' : 'compactionSummary'} /></span>
-      <textarea id="{uid}-summary" data-testid="compaction-summary" rows="3" bind:value={summary} disabled={!store.settings}
-        placeholder={strings.settings.compactionSummaryPlaceholder}
-        oninput={() => { summaryDirty = true; summaryFor = { store, target }; summarySave.change('', TYPING_MS); }}
-        onblur={() => void summarySave.flush()}></textarea>
+      <SettingField title={strings.settings.compactionSummary} help={strings.settings.compactionSummaryHint}>
+        {#snippet actions()}<SaveStatus save={summarySave} /><SyncMark {store} key={target ? 'compactionByType' : 'compactionSummary'} />{/snippet}
+        {#snippet control(attributes)}
+          <textarea {...attributes} data-testid="compaction-summary" rows="3" bind:value={summary} disabled={!store.settings}
+            placeholder={strings.settings.compactionSummaryPlaceholder}
+            oninput={() => { summaryDirty = true; summaryFor = { store, target }; summarySave.change('', TYPING_MS); }}
+            onblur={() => void summarySave.flush()}></textarea>
+        {/snippet}
+      </SettingField>
     </div>
   </section>
 {/if}
 
 <style>
-  .summary { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; margin-top: 22px; }
-  .summary .name { grid-column: auto; grid-row: auto; }
+  .summary { margin-top: var(--space-5); }
   textarea { width: 100%; min-height: 80px; resize: vertical; }
   .master { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; cursor: pointer; }
   .master .words { display: grid; gap: 6px; flex: 1; min-width: 0; }

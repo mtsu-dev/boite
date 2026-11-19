@@ -82,6 +82,34 @@ export const COMPOSER_SCENARIOS: Record<string, Scenario> = {
   },
   'composer batches equal choices, splits distinct choices and auto-goal flags, and replays accepted ids once': env => batching(env, false),
   'composer incognito batching and attachment delivery match ordinary queues': env => batching(env, true),
+  'terminal composer receipt survives disconnect while an incognito turn is active': async env => {
+    const { thread } = await target(env, true);
+    const threadId = thread.id;
+    await env.call('turns.start', { threadId, prompt: '[question]' });
+    await until(async () => (await env.call('questions.list', { threadId })).length === 1);
+    const [question] = await env.call('questions.list', { threadId });
+    const request = { threadId, prompt: 'A private follow-up', clientRequestId: 'contract-private-follow-up' };
+    const sender = await env.peer();
+    try {
+      const receipt = await sender.call('composer.enqueue', request);
+      check(receipt.requestId === request.clientRequestId && receipt.status === 'queued', 'an active private turn did not queue its follow-up');
+      check((await sender.call('composer.enqueue', request)).status === 'queued', 'the queued receipt was not replayed');
+      await refused(sender.call('composer.enqueue', { ...request, prompt: 'Different content' }), RpcErrorCode.Refused);
+    } finally { sender.disconnect(); }
+    const records = await env.call('composer.list', {});
+    check(!records.some(row => row.value?.input.queued.some(item => item.text === request.prompt)), 'another connection listed the private prompt');
+    await env.call('questions.answer', { threadId, questionId: question!.id, optionIds: [question!.options[0]!.id] });
+    await until(async () => {
+      const { turns } = await env.call('threads.get', { threadId });
+      return turns.length >= 2 && turns.every(turn => turn.status === 'done');
+    });
+    const delivered = await env.call('composer.enqueue', request);
+    check(delivered.status === 'sent', 'a delivered request did not return a sent receipt');
+    const { turns, messages } = await env.call('threads.get', { threadId });
+    check(turns.length === 2 && turns[1]?.id === delivered.turnId, 'the follow-up did not retain its single turn receipt');
+    const prompts = messages.filter(message => message.role === 'user').flatMap(message => message.parts.flatMap(part => part.type === 'text' ? [part.text] : []));
+    check(JSON.stringify(prompts) === JSON.stringify(['[question]', request.prompt]), 'the private follow-up was lost or duplicated');
+  },
   'composer private records and assets are restricted to the originating connection': async env => {
     const peer = await env.peer();
     const { thread } = await target(env, true);

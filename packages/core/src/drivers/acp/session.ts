@@ -335,9 +335,9 @@ export class AcpSession {
     }
   }
 
-  async steerOpenCode(turn: AcpTurn, text: string, attachments: import('@boite/contracts').ImageAttachment[] = [], onAccepted?: () => void): Promise<boolean> {
+  async steerOpenCode(turn: AcpTurn, text: string, attachments: import('@boite/contracts').ImageAttachment[] = [], onAccepted?: () => void, signal?: AbortSignal): Promise<boolean> {
     if (this.#current !== turn || turn.isStopped || !(this.#connection instanceof OpenCodeConnection)) return false;
-    return this.#connection.steer([{ type: 'text', text }, ...imageBlocksOf(attachments)], onAccepted);
+    return this.#connection.steer([{ type: 'text', text }, ...imageBlocksOf(attachments)], onAccepted, signal);
   }
 
   #cancel(): void {
@@ -458,7 +458,17 @@ export class AcpSession {
       this.#endTurn(turn, turn.isStopped);
       return;
     }
-    const judged = this.#costBaseline(turn);
+    let judged = false;
+    const connection = this.#connection;
+    if (connection instanceof OpenCodeConnection) {
+      // A failed read at the end of the previous turn leaves the native total unknown.
+      turn.costBefore = connection.sessionCost ?? await connection.readSessionCost(turn);
+      if (turn.isStopped) {
+        turn.stopNow();
+        this.#endTurn(turn, true);
+        return;
+      }
+    } else judged = this.#costBaseline(turn);
     this.#current = turn;
     let response: PromptResponse;
     try {
@@ -491,7 +501,7 @@ export class AcpSession {
     // A resumed session whose first total came in below what the session
     // already cost: this agent counts each process from zero.
     const total = turn.costUsdEquivalent;
-    if (judged && total !== null && total < turn.costBefore && !this.#memory.costPerProcess.has(turn.ctx.provider.id)) {
+    if (judged && total !== null && turn.costBefore !== null && total < turn.costBefore && !this.#memory.costPerProcess.has(turn.ctx.provider.id)) {
       this.#memory.costPerProcess.add(turn.ctx.provider.id);
       turn.ctx.log('info', `acp: ${turn.ctx.provider.id} reports a resumed session's cost from zero; its cold turns are charged their whole total`);
     }
@@ -503,8 +513,7 @@ export class AcpSession {
    * total is measured from. A total this process already reported is exact. A
    * session it created starts at zero. A session it loaded and that has said
    * nothing yet starts where the journal left it, since the protocol defines
-   * the cost as the session's and OpenCode computes it from the session's
-   * stored messages; an agent seen to count from zero again starts at zero.
+   * the cost as the session's. An agent seen to count from zero starts at zero.
    * True when the turn's reading has to tell which of the two the agent does.
    */
   #costBaseline(turn: AcpTurn): boolean {

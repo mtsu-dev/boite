@@ -4,6 +4,7 @@
   import { onDestroy, tick, untrack } from 'svelte';
   import { ConnectionGroup } from '../lib/connection-group.svelte';
   import { GroupLinks } from '../lib/group-links.svelte';
+  import SettingsPageHeader from './SettingsPageHeader.svelte';
   import InfoTip from './InfoTip.svelte';
   import PolicyLock from './PolicyLock.svelte';
   import { ArrowUpRight, Check, Ellipsis, Trash2, ScanLine } from '@lucide/svelte';
@@ -25,7 +26,7 @@
   import WindowExclusionsCard from './WindowExclusionsCard.svelte';
   import type { Store } from '../lib/store.svelte';
   /** `store`: the machine whose windows the page's last cards change, this window's own. */
-  let { mobile = false, onopenthread, store: here }: { mobile?: boolean; onopenthread?: () => void; store?: Store } = $props();
+  let { mobile = false, showTitle = true, onopenthread, store: here }: { mobile?: boolean; showTitle?: boolean; onopenthread?: () => void; store?: Store } = $props();
   /**
    * The switches a machine of a group holds for itself: whether the agents of
    * the other machines may start threads there (`groupThreads`), and whether
@@ -182,9 +183,7 @@
 <div class="page machines-page" data-testid="machines-page">
   <!-- The title and its button belong to the section: a link to the machines lands on them, not under them. -->
   <section class="connections-section" id="settings-machines" aria-label={strings.machines.heading}>
-  <header class="head">
-    <h1 class="ui-label-box"><span class="ui-label">{strings.settings.tabs.machines}</span><InfoTip topic={strings.settings.tabs.machines} text={strings.machines.intro} /></h1>
-  </header>
+  {#if showTitle}<SettingsPageHeader title={strings.settings.tabs.machines} page="machines" />{/if}
 
   <UpdatesCard />
 
@@ -302,17 +301,6 @@
   .cards-scope { display: flex; margin: var(--space-8) 0 0; }
   .connections-section { scroll-margin-top: 24px; }
   .connections-section > :global(.card) { margin-bottom: 20px; }
-  .head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    margin-bottom: 16px;
-  }
-  h1 {
-    font-size: var(--text-lg);
-    margin: 0;
-  }
 
   .machines {
     list-style: none;
@@ -482,7 +470,6 @@
     .machines-page {
       padding: 16px;
     }
-    .head { flex-wrap: wrap; gap: 8px 12px; }
     /* The name keeps the first line; what else the row offers goes under it. */
     .main {
       flex-wrap: wrap;

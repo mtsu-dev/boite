@@ -10,6 +10,9 @@
   import { browserProfiles } from './lib/browser-profiles.svelte';
   import UndoToast from './components/UndoToast.svelte';
   import ErrorToast from './components/ErrorToast.svelte';
+  import Notice from './components/Notice.svelte';
+  import { CircleAlert } from '@lucide/svelte';
+  import { toastSlot } from './lib/notify-corner';
   import ChatView from './components/ChatView.svelte';
   import Deferred from './components/Deferred.svelte';
   import { inbox } from './lib/inbox.svelte';
@@ -637,6 +640,15 @@
   <!-- A missing or revoked phone pairing has its own recovery screen; Chrome refuses every socket until "Local network" is allowed, which that screen says too. -->
   <ErrorToast {store} pairingScreen={!inShell && (narrow.current || wideRecovery) && store.pairingRequired}
     blocked={mobileRecovery && localNetwork.state === 'denied'} onopen={() => { mobileScreen = 'chat'; }} />
+  {#if inShell && store.canForceCoreRestart}
+    <div class="toast-slot" use:toastSlot>
+      <Notice icon={CircleAlert} tone="danger" floating role="alert" detail={strings.errors.coreUnresponsive} testid="core-recovery">
+        {#snippet actions()}
+          <button type="button" class="small" onclick={() => void store.forceCoreRestart()}>{strings.errors.forceCoreRestart}</button>
+        {/snippet}
+      </Notice>
+    </div>
+  {/if}
   <UndoToast onerror={(error) => (store.error = errorText(error))} />
   {#if store.page === 'chat' && deferred.MemoryCorner}{@const MemoryCorner = deferred.MemoryCorner}<MemoryCorner {store} />{/if}
   {#if store.booted && experimentOn('whip') && whipEntry.overlay}{@const WhipOverlay = whipEntry.overlay}

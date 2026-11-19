@@ -1,4 +1,4 @@
-import { partChannel, permissionAutoDecision, type StreamChannel, type ThreadId } from '@boite/contracts';
+import { ownerThreadRequestKey, ownerThreadSelection, partChannel, permissionAutoDecision, type RpcResult, type StreamChannel, type ThreadId } from '@boite/contracts';
 import { noteUserMessage } from './checklist';
 import { startAutoGoal, startsAutoGoal } from './activity';
 import { createFakeThread, publishFakeThread } from './create-thread';
@@ -25,7 +25,7 @@ import { fakeCore } from './coordination';
 import type { FakeContext, FakeMethods } from './context';
 import { registerFakeWorktree, requireFakeCwd } from './worktrees';
 import { boundedMessageWindow, listCursorProblem, pageBytes, pageBytesProblem, projectMessage, resumeAnchor, snapshotOptionsProblem, type TransportOptions } from '@boite/contracts';
-import { dropWaitingMove, fakeMoveNote } from './thread-move';
+import { dropWaitingMove, fakeMoveNote, resolveProject } from './thread-move';
 import { cancelFamilySideQuestions, cancelSide, sideQuestionMethods } from './side-questions';
 
 /**
@@ -319,6 +319,7 @@ export async function deleteExpiredDoneThreads(ctx: FakeContext, remove: (id: st
 
 export function threadMethods(ctx: FakeContext) {
   const creations = new Map<string, { key: string; created: Promise<string> }>();
+  const promptCreations = new Map<string, { key: string; created: Promise<string> }>();
   const removing = new Set<string>();
   const methods = {
     ...sideQuestionMethods(ctx, (source, messages) => writeFakeFork(ctx, source, messages)),
@@ -367,6 +368,34 @@ export function threadMethods(ctx: FakeContext) {
       }
       return creating;
     },
+    'threads.createFromPrompt': async (params: RpcParams<'threads.createFromPrompt'>): Promise<RpcResult<'threads.createFromPrompt'>> => {
+      const { clientRequestId, prompt } = params;
+      if (typeof clientRequestId !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(clientRequestId)) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'clientRequestId must contain 8 to 128 URL-safe characters' });
+      if (typeof prompt !== 'string' || !prompt.trim()) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'threads.createFromPrompt.prompt: expected non-empty text' });
+      const key = ownerThreadRequestKey(params);
+      const previous = promptCreations.get(clientRequestId);
+      if (previous && previous.key !== key) throw refusal('clientRequestId was already used for different content');
+      const create = async () => {
+        const project = resolveProject(ctx, params.sourceThreadId, params.project, 'threads.createFromPrompt');
+        let selection;
+        try { selection = ownerThreadSelection(params, project.id, [...ctx.threads.values()], ctx.providers, ctx.accounts); }
+        catch (error) { throw refusal(error instanceof Error ? error.message : String(error)); }
+        return publishFakeThread(ctx, await createFakeThread(ctx, selection), false).id;
+      };
+      const receipt = previous ?? { key, created: create() };
+      if (!previous) {
+        promptCreations.set(clientRequestId, receipt);
+        while (promptCreations.size > 512) promptCreations.delete(promptCreations.keys().next().value!);
+        receipt.created.catch(() => { if (promptCreations.get(clientRequestId) === receipt) promptCreations.delete(clientRequestId); });
+      }
+      const threadId = await receipt.created;
+      const made = ctx.threads.get(threadId);
+      if (!made) throw refusal('the conversation this request started was deleted since', { threadId });
+      const thread = structuredClone(toSummary(made));
+      const turn = ctx.turnRequests.get(`${threadId}:${clientRequestId}`)?.turn
+        ?? await methods['turns.start']({ threadId, prompt, clientRequestId });
+      return { thread, turn, project: ctx.projects.find(project => project.id === thread.projectId)!.name };
+    },
     'threads.get': async (params) => {
       const thread = ctx.thread(params.threadId);
       const problem = snapshotOptionsProblem(params) ?? pageBytesProblem(params.maxBytes);
@@ -395,7 +424,7 @@ export function threadMethods(ctx: FakeContext) {
         ...(tail !== null ? { messagesFrom: params.after } : {}), ...(proof ? { messagesSync: proof } : {}), ...(unchanged ? { messagesUnchanged: true as const } : {}) };
       if (!params.open) return pagingReply(snapshot);
       ctx.bus.subscribed.add(thread.id);
-      ctx.bus.transport = { compactTools: params.compactTools, compactToolParts: params.compactToolParts };
+      ctx.bus.transport = { compactTools: params.compactTools, compactToolParts: params.compactToolParts, compactFiles: params.compactFiles, compactImages: params.compactImages };
       setStreamChannels(ctx, thread.id, params.channels);
       if (params.open.previous && params.open.previous !== thread.id) {
         ctx.bus.subscribed.delete(params.open.previous);
@@ -606,14 +635,17 @@ export function threadMethods(ctx: FakeContext) {
     },
     'threads.deleted': async () => {
       purgeDeletedThreads(ctx);
-      return [...ctx.deletedThreads.values()].reverse().map(family => ({ ...structuredClone(toSummary(family.threads[0]!)), deletedAt: family.deletedAt }));
+      return [...ctx.deletedThreads.values()].reverse()
+        .filter(family => family.threads[0]!.projectId === null || ctx.projects.some(project => project.id === family.threads[0]!.projectId))
+        .map(family => ({ ...structuredClone(toSummary(family.threads[0]!)), deletedAt: family.deletedAt }));
     },
     'threads.restore': async ({ threadId }) => {
       purgeDeletedThreads(ctx);
       const family = ctx.deletedThreads.get(threadId);
-      if (!family) throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `threadId: no recoverable deletion for ${threadId}`, data: { threadId } });
-      const root = family.threads.find(t => t.id === threadId)!;
-      if (root.projectId !== null && !ctx.projects.some(p => p.id === root.projectId)) throw ctx.notFound('project', root.projectId);
+      const root = family?.threads.find(t => t.id === threadId);
+      if (!family || !root || (root.projectId !== null && !ctx.projects.some(p => p.id === root.projectId))) {
+        throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `threadId: no recoverable deletion for ${threadId}`, data: { threadId } });
+      }
       for (const [index, thread] of family.threads.entries()) {
         thread.archived = family.archived[index]!;
         ctx.threads.set(thread.id, thread);
@@ -807,6 +839,9 @@ export function threadMethods(ctx: FakeContext) {
     },
     'turns.stop': async (params) => {
       const thread = ctx.thread(params.threadId);
+      const target = thread.turns.findLast(turn => turn.status === 'running') ?? thread.turns.find(turn => turn.status === 'queued');
+      if (params.expectedTurnId !== undefined && target?.id !== params.expectedTurnId) return { stopped: false };
+      const targetedStop = params.expectedTurnId === undefined ? undefined : ctx.stopTurn(params.threadId);
       const root = thread.parentThreadId ?? thread.id;
       let childrenStopped = 0;
       if (thread.parentThreadId || (ctx.delegationAgents.get(root)?.length ?? 0) > 0) {
@@ -819,7 +854,7 @@ export function threadMethods(ctx: FakeContext) {
       if (plannedRetry) { thread.retry = null; ctx.touch(thread); }
       const unwatched = thread.pullRequestWatches?.length ?? 0;
       if (unwatched > 0) { thread.pullRequestWatches = []; ctx.emit('thread.updated', structuredClone(toSummary(thread))); }
-      const stopped = await ctx.stopTurn(params.threadId) || childrenStopped > 0 || plannedRetry || unwatched > 0;
+      const stopped = await (targetedStop ?? ctx.stopTurn(params.threadId)) || childrenStopped > 0 || plannedRetry || unwatched > 0;
       // As the core: Stop on an idle thread ends what it still runs in the background.
       if (!stopped && (thread.background?.length ?? 0) > 0) {
         ctx.setBackground(thread, [], 'session-ended');

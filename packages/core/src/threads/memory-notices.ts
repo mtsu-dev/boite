@@ -53,7 +53,8 @@ export class MemoryNotices {
     const runner = this.#threads.runner;
     const handle = runner.handles.get(threadId);
     if (!handle?.steer || runner.steering.has(threadId)) return;
-    runner.steering.add(threadId);
+    const steering = runner.beginSteering(threadId, handle);
+    if (!steering) return;
     try {
       // More than one limit event can arrive while the driver's steer is out.
       for (;;) {
@@ -62,16 +63,16 @@ export class MemoryNotices {
         if (notice === undefined) break;
         this.#sending.add(notice.id);
         try {
-          if (!await handle.steer(notice.text)) break;
+          if (!await steering.send(handle.steer.bind(handle), notice.text)) break;
           this.#remove(threadId, new Set([notice.id]));
         } finally {
           this.#sending.delete(notice.id);
         }
       }
     } catch (error) {
-      this.#core.log('warn', `thread ${threadId}: memory notice waits for the next turn: ${String(error)}`);
+      if (!steering.signal.aborted) this.#core.log('warn', `thread ${threadId}: memory notice waits for the next turn: ${String(error)}`);
     } finally {
-      runner.steering.delete(threadId);
+      steering.release();
     }
   }
 

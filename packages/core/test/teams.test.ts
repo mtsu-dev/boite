@@ -265,7 +265,7 @@ test('a wake that errors or is stopped releases its posts without a second wake;
   }
 }, 30_000);
 
-for (const order of ['steer first', 'wake first'] as const) test(`a steer during a wake shows only new posts, and ${order} leaves each post seen once`, async () => {
+for (const order of ['steer first', 'wake first', 'missing acknowledgement'] as const) test(`a steer during a wake shows only new posts and allows the next delivery (${order})`, async () => {
   const { h, team, bots: [ada], key, post } = await setup();
   const driver = teamDriver(() => ({ text: '[quiet]', hold: true }));
   post('Plan the migration');
@@ -280,10 +280,34 @@ for (const order of ['steer first', 'wake first'] as const) test(`a steer during
   const acknowledge = async () => { steer.ack.resolve(true); await waitFor(() => teamLetters(h, ada!.threadId)[1]?.status === 'delivered'); };
   const finish = async () => { driver.running[0]!.finish('done'); await waitFor(() => teamLetters(h, ada!.threadId)[0]?.status === 'delivered' && settledWakes(h, ada!.threadId)); };
   if (order === 'steer first') { await acknowledge(); expect(low(h, team.id, key(ada!))).toBe(0); await finish(); }
-  else { await finish(); expect(low(h, team.id, key(ada!))).toBe(1); await acknowledge(); }
-  expect(low(h, team.id, key(ada!))).toBe(2);
+  else {
+    await finish();
+    expect(low(h, team.id, key(ada!))).toBe(1);
+    post('Check the rollback plan');
+    await waitFor(() => driver.running.length === 2);
+    const [original, next] = wakes(h, ada!.threadId);
+    const nextPrompt = driver.of(ada!.threadId)[1]!;
+    expect(nextPrompt).toContain('Check the rollback plan');
+    expect(nextPrompt).not.toContain('Also the backups');
+    if (order === 'wake first') {
+      await acknowledge();
+      const received = h.core.journal.listMessages(ada!.threadId).find(message => message.role === 'system' &&
+        message.parts.some(part => part.type === 'text' && part.text.includes('Also the backups')));
+      expect(received?.turnId).toBe(original!.id);
+      expect(h.core.threads.runner.answerAfter.has(next!.id)).toBe(false);
+    }
+    driver.running[1]!.finish('done');
+    await waitFor(() => teamLetters(h, ada!.threadId)[2]?.status === 'delivered' && settledWakes(h, ada!.threadId));
+  }
+  if (order === 'missing acknowledgement') {
+    await waitFor(() => seenRows(h, team.id).every(row => row.seq !== 2), 8_000);
+    expect(teamLetters(h, ada!.threadId)[1]?.status).toBe('uncertain');
+    expect(wakes(h, ada!.threadId)).toHaveLength(2);
+    return;
+  }
+  expect(low(h, team.id, key(ada!))).toBe(order === 'steer first' ? 2 : 3);
   expect(seenRows(h, team.id)).toEqual([]);
-  expect(wakes(h, ada!.threadId)).toHaveLength(1);
+  expect(wakes(h, ada!.threadId)).toHaveLength(order === 'steer first' ? 1 : 2);
 }, 30_000);
 
 test('a private post to one mochi never pins a third mochi\'s cursor', async () => {

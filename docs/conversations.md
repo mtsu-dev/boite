@@ -99,8 +99,8 @@ keeps its name. The header shows the branch.
   is missing.
 - Remove settled worktrees, in Manage project, deletes a worktree an hour
   after all its conversations are done or archived, only when its last commit
-  is on another branch or in a merged pull request. Uncommitted changes always
-  stay.
+  is on another branch or in a merged pull request. It keeps worktrees with
+  uncommitted changes, including files Git ignores.
 - Ask to finish after merge: once every pull request of a worktree conversation
   is merged or closed, Boite asks its agent whether the conversation is done.
   The agent moves it to Done or keeps it open when it still has something to
@@ -132,19 +132,22 @@ above the message box or the bottom tabs.
 
 - Mark done moves a thread to the Done group. Archive puts it aside to pick up
   later; the toast offers Undo, or press Ctrl+Z.
-- The agent of an archived thread stops. Restore it from Archived threads in
-  the Filter menu or in a project's menu, which list them in place of the
-  thread list, or from Settings, General, Archived threads. Its agent starts
-  again with your first message.
+- Open Archived threads from Filter, a project's menu or Settings > General.
+  Select a conversation to read it. Restore it from the row or from the open
+  conversation before sending a message. Restoring brings back your message
+  draft. Its agent starts again with your first message.
 - A project's Done list shows ten rows at a time; scroll it for the rest.
 - Delete done threads after (days) defaults to 3. Manual archives are kept.
 - The owner can restore a deleted conversation from Show deleted conversations
-  in Settings, General, Archived threads, for the number of days set in Keep
-  deleted conversations for. On a paired phone, use Undo in the confirmation
-  toast immediately after deleting a conversation.
+  for the number of days set in Keep deleted conversations for. Find both under
+  Settings > General on desktop and Settings > General > Archived threads on
+  a phone. Pick a machine in Archived threads to change its retention settings.
+  On a paired phone, use Undo in the confirmation toast immediately after
+  deleting a conversation.
 - Archive project takes a project out of the list. Its threads keep running,
-  and a new thread brings it back. Remove from Boite removes the project and
-  its threads; the files on disk stay.
+  and a new thread brings it back. Remove from Boite stops its threads and hides
+  the project. Add the same folder again to recover its history in Archived
+  threads. Files on disk stay in place.
 
 ## Import a Claude Code or Codex session
 

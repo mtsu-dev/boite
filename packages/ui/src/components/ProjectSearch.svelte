@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick, untrack } from 'svelte';
-  import { Check, FolderOpen, Search } from '@lucide/svelte';
+  import { Check, FolderOpen } from '@lucide/svelte';
   import type { Closing } from '../lib/closing.svelte';
   import { focusInitial } from '../lib/focus';
   import { mobileOverlay } from '../lib/mobile-history';
@@ -9,6 +9,7 @@
   import { fill, strings } from '../lib/strings';
   import MachineIcon from './MachineIcon.svelte';
   import ProjectTile from './ProjectTile.svelte';
+  import SearchField from './SearchField.svelte';
 
   /**
    * The project search both pickers open: the draft's "Change project"
@@ -169,25 +170,19 @@
     {onkeydown}
     data-testid="{testid}-menu"
   >
-    <label class="search">
-      <Search size={14} strokeWidth={1.75} />
-      <input
-        bind:this={input}
+    <div class="search">
+      <SearchField
+        bind:input
         bind:value={query}
-        type="search"
         role="combobox"
         aria-expanded="true"
         aria-controls={listId}
         aria-activedescendant={order[highlight] ? `${listId}-${highlight}` : undefined}
         aria-autocomplete="list"
-        autocomplete="off"
-        autocapitalize="off"
-        spellcheck="false"
         {placeholder}
-        aria-label={placeholder}
         data-testid="{testid}-search"
       />
-    </label>
+    </div>
 
     <div class="rows" role="listbox" id={listId} aria-label={label} bind:this={list} data-testid="{testid}-list">
       {#each shown as group (group.id)}
@@ -283,39 +278,7 @@
     pointer-events: none;
   }
 
-  .search {
-    flex: none;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    height: var(--control);
-    padding: 0 10px;
-    margin-bottom: 6px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    color: var(--color-subtle);
-    transition: border-color var(--dur-2) var(--ease-out-quint);
-  }
-
-  .search:focus-within {
-    border-color: var(--color-edge);
-    color: var(--color-muted-foreground);
-  }
-
-  .search input {
-    flex: 1;
-    min-width: 0;
-    height: 100%;
-    padding: 0;
-    border: none;
-    background: transparent;
-    color: var(--color-foreground);
-    font-size: var(--text-sm);
-  }
-
-  .search input:focus {
-    outline: none;
-  }
+  .search { flex: none; margin-bottom: 6px; }
 
   /* Only the rows scroll: the field above and the footer's action below stay put. */
   .rows {
@@ -453,7 +416,6 @@
 
   @media (max-width: 720px) {
     .scrim { padding-top: 12px; }
-    .search { height: var(--control-touch); }
     .row { min-height: var(--touch-target); }
   }
 </style>

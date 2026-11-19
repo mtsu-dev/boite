@@ -428,7 +428,9 @@ and `thread new` need no `--thread` from a terminal. There they use the owner
 methods. `thread send` adds the owner's prompt to the conversation's outbox,
 behind an active turn. Its status is `queued`, `held` if the outbox is paused,
 or `sent` once delivered. Repeat the same `--request-id` to check or retry an
-accepted submission. Incognito and retired conversations use direct submission.
+accepted submission. Incognito prompts wait in the core's memory and survive
+the terminal closing. Retired conversations use direct submission. A prompt
+whose conversation folder cannot be recovered stays held with the reason.
 The owner can list and restore recoverable conversations with `thread deleted`
 and `thread restore <id>`.
 
@@ -437,8 +439,11 @@ recent thread or the most recent thread on this core. An explicit `--thread`
 must exist. With no source, the command picks a usable account. Use
 `--model <provider/model>` to select another provider or `--model <model>`
 for a model of the source provider. `--effort` and `--speed` set its reasoning
-level and service tier. From a terminal, use `--core`
-to reach another machine; `--machine` is for an agent inside a thread.
+level and service tier. Repeating the original arguments with the same
+`--request-id` returns the same conversation and first turn during the
+creation receipt's lifetime, up to one hour on the same running core. From a
+terminal, use `--core` to reach another machine. `--machine` is for an agent
+inside a thread.
 Inside the thread of
 a [mochi](mochis.md#projects-entrusted-to-a-mochi) the same words
 reach the threads of the projects the owner entrusted to it and the threads

@@ -4,7 +4,11 @@
   import CardScope from './CardScope.svelte';
   import ShellSettings from './ShellSettings.svelte';
   import TelemetrySettings from './TelemetrySettings.svelte';
-  import ArchivedThreads from './ArchivedThreads.svelte';
+  import DeletedThreads from './DeletedThreads.svelte';
+  import { openArchived } from '../lib/archived-view.svelte';
+  import SettingsSection from './SettingsSection.svelte';
+  import SettingField from './SettingField.svelte';
+  import SettingSwitch from './SettingSwitch.svelte';
   import WorktreesCard from './WorktreesCard.svelte';
   import { strings } from '../lib/strings';
   import { openTour } from '../lib/onboarding.svelte';
@@ -25,63 +29,60 @@
    */
   /** `store` is the machine whose settings these are; `here`, this window's, holds its notifications and tour. */
   let { store, here = store }: { store: Store; here?: Store } = $props();
-  const uid = $props.id();
   const inShell = desktopShell();
   let terminalGpu = $state(untrack(() => readTerminalGpu()));
 </script>
 
 <div class="page" data-testid="settings-page">
-  <header>
-    <h1>{strings.settings.tabs.general}</h1>
-  </header>
-
   <!-- This device's switches by topic, then the machine's: each card saying where it applies. -->
-  <section class="card" id="settings-thread-list" data-testid="settings-card-thread-list">
-    <h2><span class="ui-label">{strings.settings.threadList}</span><CardScope /></h2>
+  <SettingsSection id="settings-thread-list" testid="settings-card-thread-list" title={strings.settings.threadList}>
+    {#snippet actions()}<CardScope />{/snippet}
     <ConversationSwitches part="list" />
-  </section>
-  <section class="card" id="settings-conversations" data-testid="settings-card-conversation">
-    <h2><span class="ui-label">{strings.settings.inConversation}</span><CardScope /></h2>
+  </SettingsSection>
+  <SettingsSection id="settings-conversations" testid="settings-card-conversation" title={strings.settings.inConversation}>
+    {#snippet actions()}<CardScope />{/snippet}
     <ConversationSwitches part="conversation" />
-  </section>
-  <section class="card" id="settings-notifications" data-testid="settings-card-notifications">
-    <h2><span class="ui-label">{strings.settings.notificationsHeading}</span><CardScope /></h2>
-    <label for="{uid}-notifications" class="switch-row">
-      <span class="text">
-        <span class="ui-label" id="{uid}-notifications-name">{strings.settings.notifications}</span>
-        <span class="hint" id="{uid}-notifications-effect">{strings.settings.effects.notifications}</span>
-      </span>
-      <input id="{uid}-notifications" aria-labelledby="{uid}-notifications-name" aria-describedby="{uid}-notifications-effect" type="checkbox" role="switch" data-testid="setting-notifications"
-        checked={here.notifications} onchange={(event) => void here.setNotifications(event.currentTarget.checked)} />
-    </label>
+  </SettingsSection>
+  <SettingsSection id="settings-notifications" testid="settings-card-notifications" title={strings.settings.notificationsHeading}>
+    {#snippet actions()}<CardScope />{/snippet}
+    <SettingField title={strings.settings.notifications} hint={strings.settings.effects.notifications}>
+      {#snippet control(attributes)}
+        <SettingSwitch {...attributes} data-testid="setting-notifications" checked={here.notifications}
+          onchange={(event) => void here.setNotifications(event.currentTarget.checked)} />
+      {/snippet}
+    </SettingField>
     <NotificationKinds store={here} />
-  </section>
+  </SettingsSection>
 
   {#if store.owner}<AgentRepliesSettings {store} />{/if}
 
   <!-- Notifications above, the sound and the windows of the machine here: what reaches the person at it. -->
   {#if store.owner}<QuietCard {store} /><AgentsAloneCard {store} />{/if}
   <WorkspaceCard />
-  <ArchivedThreads {store} />
+  <SettingsSection id="settings-archived" testid="settings-archived-entry" title={strings.settings.archived.heading} info={strings.settings.archived.intro}>
+    <button type="button" data-testid="archived-show" onclick={() => openArchived(here)}><span class="ui-label">{strings.settings.archived.show}</span></button>
+  </SettingsSection>
+  <DeletedThreads {store} />
   <WorktreesCard {store} />
   <!-- The keys agents ask for live under Providers, the windows agents may see under Machines, the browser logins under Browser. -->
 
-  <section class="card" id="settings-app">
-    <h2><span class="ui-label">{strings.settings.app}</span><CardScope /></h2>
+  <SettingsSection id="settings-app" title={strings.settings.app}>
+    {#snippet actions()}<CardScope />{/snippet}
     {#if inShell}<ShellSettings />{/if}
     <!-- How this device draws a terminal: a renderer choice, once under Appearance. -->
-    <label for="{uid}-terminal-gpu" class="switch-row">
-      <span class="text"><span class="ui-label" id="{uid}-terminal-gpu-name">{strings.settings.terminalGpu}</span><span class="hint" id="{uid}-terminal-gpu-effect">{strings.settings.terminalGpuHint}</span></span>
-      <input id="{uid}-terminal-gpu" aria-labelledby="{uid}-terminal-gpu-name" aria-describedby="{uid}-terminal-gpu-effect" type="checkbox" role="switch" checked={terminalGpu} data-testid="terminal-gpu"
-        onchange={(event) => { terminalGpu = event.currentTarget.checked; setTerminalGpu(terminalGpu); }} />
-    </label>
+    <SettingField title={strings.settings.terminalGpu} hint={strings.settings.terminalGpuHint}>
+      {#snippet control(attributes)}
+        <SettingSwitch {...attributes} data-testid="terminal-gpu" checked={terminalGpu}
+          onchange={(event) => { terminalGpu = event.currentTarget.checked; setTerminalGpu(terminalGpu); }} />
+      {/snippet}
+    </SettingField>
     <div class="switch-row">
       <span class="text">
         <span>{strings.onboarding.label}</span>
       </span>
       <button type="button" data-testid="settings-tour" onclick={() => { here.showChat(); openTour(); }}><span class="ui-label">{strings.settings.tourReplay}</span></button>
     </div>
-  </section>
+  </SettingsSection>
 
   <TelemetrySettings {store} />
   <PolicySettings {store} />

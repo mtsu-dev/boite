@@ -8,7 +8,7 @@ import { readTreeSide } from '../src/git/read.ts';
 import { InstallManager } from '../src/providers/install.ts';
 import { extractRelease } from '../src/providers/install-unpack.ts';
 import { snapshot } from '../src/threads/checkpoint-files.ts';
-import { echoThread, startTestCore, type TestCore } from './harness.ts';
+import { echoThread, holdAccountTurns, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
 
 let harness: TestCore | undefined;
@@ -105,6 +105,41 @@ test('held answers are journaled once and still prefix the next prompt', async (
   expect(harness.core.threads.deferred.takeDeferred(threadId)).toBe('held once\n\n');
   expect(harness.core.threads.deferred.takeDeferred(threadId)).toBe('');
   expect((await client.call('threads.get', { threadId })).pendingAnswers).toEqual([]);
+});
+
+test.each([
+  { name: 'survives a core restart', archived: false },
+  { name: 'does not reappear after archive and restart', archived: true },
+])('an answer held behind a queued turn $name', async ({ archived }) => {
+  const dataDir = outside('boite-held-answer-');
+  harness = await startTestCore({ dataDir });
+  const client = await harness.connect();
+  const { threadId, accountId } = await echoThread(harness, client);
+  holdAccountTurns(harness, accountId);
+  await client.call('turns.start', { threadId, prompt: 'queued before the answer' });
+  const { questionId } = await client.call('questions.ask', { threadId, text: 'Which option?' });
+  await client.call('questions.answer', { threadId, questionId, optionIds: [], text: 'Keep this answer' });
+  const text = '> Which option?\n\nKeep this answer';
+  expect((await client.call('threads.get', { threadId })).pendingAnswers).toEqual([text]);
+  if (archived) await client.call('threads.archive', { threadId });
+  await harness.stop();
+
+  harness = await startTestCore({ dataDir });
+  const restarted = await harness.connect();
+  if (archived) {
+    await restarted.call('threads.archive', { threadId, archived: false });
+    expect((await restarted.call('threads.get', { threadId })).pendingAnswers).toEqual([]);
+    return;
+  }
+  expect((await restarted.call('threads.get', { threadId })).pendingAnswers).toEqual([text]);
+  expect(await restarted.call('questions.list', { threadId })).toEqual([]);
+  const turn = await restarted.call('turns.start', { threadId, prompt: 'continue after restart' });
+  await waitFor(() => harness!.core.journal.getTurn(turn.id)?.finishedAt != null);
+  expect(harness.core.journal.getTurn(turn.id)).toMatchObject({ status: 'done', error: null });
+  await waitFor(() => (harness!.core.journal.getThread(threadId)?.status ?? '') === 'idle');
+  expect(harness.core.journal.listMessages(threadId).filter(message => message.role === 'user' &&
+    message.parts.some(part => part.type === 'text' && part.text === text))).toHaveLength(1);
+  expect((await restarted.call('threads.get', { threadId })).pendingAnswers).toEqual([]);
 });
 
 const binaryInstall = (path: string): ProviderInstall => ({

@@ -112,7 +112,7 @@ export class AutoContinues {
     const resumed = new Set<ThreadId>();
     for (const turn of this.#crashed.splice(0)) {
       if (this.#resumes.planned(turn.threadId)) continue;
-      const prompt = this.#withHeldWork(turn.threadId, this.threads.handoff.continuation(turn, RESUME_TEXT.crash.prompt));
+      const prompt = this.#withHeldWork(turn.threadId, RESUME_TEXT.crash.prompt);
       if (this.#plan(turn.threadId, turn, 'crash', prompt, AUTO_CONTINUE.startDelayMs)) resumed.add(turn.threadId);
     }
     if (!cut) return;

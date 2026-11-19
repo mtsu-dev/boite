@@ -127,8 +127,8 @@ export class AcpTurn extends TurnParts {
    * `costBefore`.
    */
   costUsdEquivalent: number | null = null;
-  /** What the session had already cost when this turn began: see `AcpSession.costBaseline`. */
-  costBefore = 0;
+  /** The session's cost before this turn, or null when the native total was unavailable. */
+  costBefore: number | null = 0;
   /** `used` and `size` of the last `usage_update`, reported once when the turn ends. */
   contextUse: { tokens: number; window: number | null } | null = null;
   /**
@@ -186,7 +186,7 @@ export class AcpTurn extends TurnParts {
   /** The turn's share of the session's running cost; a total below what came before is a session that started over. */
   #turnCost(): number | null {
     const total = this.costUsdEquivalent;
-    if (total === null) return null;
+    if (total === null || this.costBefore === null) return null;
     return total >= this.costBefore ? total - this.costBefore : total;
   }
 
