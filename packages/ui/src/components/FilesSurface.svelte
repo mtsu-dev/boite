@@ -11,7 +11,7 @@
   import type { BoundPanel, Surface } from '../lib/right-panel.svelte';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
-  import { fileListings } from '../lib/file-listings';
+  import { atOrUnder, fileListings } from '../lib/file-listings';
   import { whenIdle } from '../lib/idle';
   import SurfaceHead from './SurfaceHead.svelte';
 
@@ -110,8 +110,11 @@
     try {
       const answer = await owner.listings.read(owner.id, owner.cwd, path);
       if (visit !== owner || threadId !== owner.id || (store.openThread?.cwd ?? '') !== owner.cwd || fileListings(store) !== owner.listings) return;
-      if (answer.ok) loaded.set(path, answer.value);
-      else problem = answer.error;
+      if (answer.ok) { loaded.set(path, answer.value); problem = null; }
+      else {
+        if (answer.inaccessible) for (const directory of loaded.keys()) if (atOrUnder(directory, path)) loaded.delete(directory);
+        problem = answer.error;
+      }
     } finally { reading -= 1; }
   }
 

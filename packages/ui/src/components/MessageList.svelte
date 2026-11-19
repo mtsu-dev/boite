@@ -42,6 +42,7 @@
   import { rowIndexOf, seam, type TimelineRow } from '../lib/timeline-rows';
   import { reactiveTimelineRows } from '../lib/timeline-rows.svelte';
   import { LiveWeights } from '../lib/store/live-weights.svelte';
+  import { READING_CACHE_MESSAGES } from '../lib/reading-cache';
   import { GapRows, NO_GAPS, READ_AHEAD, RangeAsk, gapHeight, heldNear, loadKeepingReader, wantedRange } from '../lib/history-gaps';
   import TimelineGap from './TimelineGap.svelte';
   import { latest } from '../lib/latest.svelte';
@@ -629,11 +630,14 @@
   }
 
   $effect(() => () => { glide.stop(); hold.release(); });
-
+  // Keep the block weights subscribed separately from scroll following.
+  $effect.pre(() => {
+    if (store.openThread?.id === threadId && pinned && messages.length <= READING_CACHE_MESSAGES) liveWeights.total(messages);
+    else liveWeights.reset();
+  });
   /** Follow new messages and measured tail growth, never text deltas. */
   $effect(() => {
     void timeline.length;
-    // A long answer being written gains rows as it is cut: the bottom is still its last one.
     void rows.length;
     void tail.value;
     const box = viewport;
@@ -644,9 +648,7 @@
       behind = false;
       untrack(markSeen);
     } else if (opened || pinned) {
-      // Held by the reader or on its way down, the list is still at the bottom: it takes the new height once free.
       if (opened || untrack(following)) {
-        // Followed, the live end lets go of the messages far above it, and the heights measured for them; never those within reach of the view.
         if (untrack(following) && untrack(() => store.releaseOlder(threadId, () => heldNear(totals(rows), rows, messages, viewHeight * (READ_AHEAD + 1), views), liveWeights)) > 0) void tick().then(() => keepOnly([heights, risen], rows, messages));
         scrolledHeight = box.scrollHeight; edge.follow(box); scrollTop = box.scrollTop;
       }
@@ -659,7 +661,6 @@
 
   /** Only once the loaded window reaches the thread's end: newer history still unread is not its last word. */
   let closingShown = $derived(closing !== null && store.messagesAfter === null && !store.loadingNewer);
-  /** A line lands at the foot of a pinned list: the bottom takes it in, like a new message. */
   function followFoot(): void {
     const box = viewport;
     if (box && following()) void tick().then(() => { if (following()) edge.follow(box); });

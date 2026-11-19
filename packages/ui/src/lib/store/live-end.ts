@@ -3,8 +3,8 @@ import { READING_CACHE_BYTES, READING_CACHE_MESSAGES, messageChars } from '../re
 import type { StoreContext } from './context';
 import type { LiveWeights } from './live-weights.svelte';
 
-/** The message count each open thread was last weighed at, so a delta weighs nothing. */
-const weighed = new WeakMap<Thread, number>();
+/** The last checked count for each window, so a replacement page gets its own check. */
+const weighed = new WeakMap<Thread['messages'], number>();
 
 /**
  * The live end of the open thread, followed by the reader, lets its head go
@@ -23,8 +23,8 @@ export function releaseOlder(ctx: StoreContext, threadId: ThreadId, near: () => 
   const open = ctx.threads.openThread;
   if (!open || open.id !== threadId || ctx.threads.loadingOlder || ctx.positions.loading || (open.messagesAfter ?? null) !== null) return 0;
   const messages = open.messages;
-  if (weighed.get(open) === messages.length) return 0;
-  weighed.set(open, messages.length);
+  if (weighed.get(messages) === messages.length) return 0;
+  weighed.set(messages, messages.length);
   if (messages.length <= READING_CACHE_MESSAGES &&
     (weights?.total(messages) ?? messages.reduce((sum, message) => sum + messageChars(message), 0)) <= READING_CACHE_BYTES) return 0;
   let kept = 0, chars = 0;
@@ -39,8 +39,10 @@ export function releaseOlder(ctx: StoreContext, threadId: ThreadId, near: () => 
   const first = messages[gone]!;
   const turn = open.turns.findIndex((held) => held.id === first.turnId);
   open.messages = messages.slice(gone);
+  weights?.reset();
+  delete open.messagesSync;
   if (turn > 0) open.turns = open.turns.slice(turn);
   open.messagesBefore = first.id;
-  weighed.set(open, open.messages.length);
+  weighed.set(open.messages, open.messages.length);
   return gone;
 }

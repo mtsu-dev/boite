@@ -9,6 +9,11 @@ export class LiveWeights {
   #page: readonly Message[] | undefined;
   #blocks: (() => number)[] = [];
 
+  reset(): void {
+    this.#page = undefined;
+    this.#blocks = [];
+  }
+
   message(message: Message): number {
     let read = this.#messages.get(message);
     if (!read) {

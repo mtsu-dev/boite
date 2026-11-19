@@ -94,7 +94,7 @@ export interface PickPatch {
  * that asked prints instead. A refused path belongs to that surface, not to the
  * app's toast, so these calls hand the message back rather than raising it.
  */
-export type FileAnswer<T> = { ok: true; value: T } | { ok: false; error: string };
+export type FileAnswer<T> = { ok: true; value: T } | { ok: false; error: string; inaccessible?: true };
 
 /**
  * The state of one machine's UI and every action on it, the object components

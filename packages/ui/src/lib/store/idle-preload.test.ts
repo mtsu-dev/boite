@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { Thread, ThreadId } from '@boite/contracts';
 import { FakeClient } from '../fake-client';
 import { Store } from '../store.svelte';
-import { READING_CACHE_THREADS, ReadingCache } from '../reading-cache';
+import { READING_CACHE_BYTES, READING_CACHE_THREADS, ReadingCache } from '../reading-cache';
 import { IDLE_PRELOAD_WAIT_MS } from './thread-preload';
 
 /** A gate the test opens. */
@@ -226,4 +226,27 @@ test('a departure delays its projection, a quick return reuses it, and a forgott
   cache.forget(thread.id);
   expect(cache.get(thread.id)).toBeUndefined();
   expect(prepare).toHaveBeenCalledOnce();
+});
+
+test('ready visits and visits waiting for idle share the same byte budget', () => {
+  const waiting = new Map<number, IdleRequestCallback>();
+  let sequence = 0;
+  vi.stubGlobal('requestIdleCallback', (run: IdleRequestCallback) => { waiting.set(++sequence, run); return sequence; });
+  vi.stubGlobal('cancelIdleCallback', (id: number) => waiting.delete(id));
+  const cache = new ReadingCache();
+  const page = (id: string) => ({ id, messages: [{ parts: [{ type: 'text', text: 'x'.repeat(READING_CACHE_BYTES / 2) }] }] }) as Thread;
+  try {
+    cache.remember('first', page('first'), READING_CACHE_BYTES, thread => thread);
+    for (const id of ['second', 'third', 'fourth']) expect(cache.defer(page(id), thread => thread, thread => thread, () => true)).toBe(true);
+    const mark = cache.mark();
+    expect(cache.get('second')?.id).toBe('second');
+    expect(cache.droppedSince('second', mark)).toBe(false);
+    expect(cache.defer(page('fifth'), thread => thread, thread => thread, () => true)).toBe(true);
+    expect(cache.has('first')).toBe(false);
+    expect(waiting.size).toBe(4);
+  } finally {
+    cache.clear();
+    expect(waiting.size).toBe(0);
+    vi.unstubAllGlobals();
+  }
 });

@@ -44,3 +44,35 @@ test('a directory expanded after remount shows its cached rows and refreshes onc
     vi.unstubAllGlobals();
   }
 });
+
+test.each([true, false])('a failed revalidation invalidates rows only for a confirmed refusal (%s)', async inaccessible => {
+  const callbacks = new Map<number, IdleRequestCallback>();
+  let sequence = 0;
+  vi.stubGlobal('requestIdleCallback', (run: IdleRequestCallback) => { callbacks.set(++sequence, run); return sequence; });
+  vi.stubGlobal('cancelIdleCallback', (id: number) => callbacks.delete(id));
+  const entry: FileEntry = { name: 'old.txt', path: 'old.txt', kind: 'file', bytes: 1, modifiedAt: 0 };
+  let failure = false;
+  const listFiles = vi.fn(async () => failure ? { ok: false, error: 'Directory unavailable', ...(inaccessible ? { inaccessible: true } : {}) } : { ok: true, value: [entry] });
+  const props = { store: { openThread: { id: 't', cwd: '/work' }, clientGeneration: 0, listFiles },
+    surface: { id: 'files', kind: 'files' }, panel: {} } as unknown as NonNullable<Parameters<typeof FilesSurface>[1]>;
+  const shown = () => document.querySelector('[data-path="old.txt"]') !== null;
+  let app = mount(FilesSurface, { target: document.body, props });
+  try {
+    await vi.waitFor(() => expect(shown()).toBe(true));
+    await unmount(app);
+    failure = true;
+    app = mount(FilesSurface, { target: document.body, props });
+    await tick();
+    expect(shown()).toBe(true);
+    for (const [id, run] of callbacks) { callbacks.delete(id); run({ didTimeout: false, timeRemaining: () => 50 }); }
+    await vi.waitFor(() => expect(document.querySelector('[data-testid="files-error"]')).not.toBeNull());
+    expect(shown()).toBe(!inaccessible);
+    await unmount(app);
+    app = mount(FilesSurface, { target: document.body, props });
+    await tick();
+    expect(shown()).toBe(!inaccessible);
+  } finally {
+    await unmount(app);
+    vi.unstubAllGlobals();
+  }
+});

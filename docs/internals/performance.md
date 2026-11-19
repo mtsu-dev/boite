@@ -1688,7 +1688,7 @@ What the UI held without bound:
   the reading cache. Now, while the list follows the bottom,
   `store/live-end.ts` checks the budget on message arrival. It reuses the
   weights of unchanged messages in blocks of 64. Past the reading cache's
-  per-thread bound (4 MiB or 2,000 messages), it keeps the newest 2 MiB or
+  live window bound (8 MiB of UTF-16 data or 2,000 messages), it keeps the newest 4 MiB or
   1,000 messages with their turns
   and sets `messagesBefore` to the first one kept: scrolling up reads the rest
   again from the core. The heights and rises the list measured for the rows
