@@ -28,7 +28,7 @@ export async function readMessageAttachment(core: Core, params: RpcParams<'messa
     if (partIndex >= 2 ** 32 - 1) throw notFound(`part ${partIndex} is not an attachment of message ${messageId}`, { messageId, partIndex });
     return await core.media.chatPreview(threadId, messageId, partIndex, params.previewMax, () => {
       const part = original();
-      return CHAT_PREVIEW_IMAGES.test(part.mimeType) ? part.data : null;
+      return CHAT_PREVIEW_IMAGES.test(part.mimeType) ? part : null;
     }, { ticket: params.ticket === true, permit, ...noStore });
   }
   if (params.display === true) {

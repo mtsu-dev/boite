@@ -143,7 +143,7 @@
       }
       return await owner.loadMediaAttachment(thread, message, index, attachment.mimeType);
     };
-    return { src: '', name: filename, mimeType: attachment.mimeType, kind: 'image', load, save: src => { void savePicture(src, filename); } };
+    return { src: '', name: filename, mimeType: attachment.mimeType, kind: 'image', load, save: src => savePicture(src, filename) };
   }
 
   function openOriginal(): void {

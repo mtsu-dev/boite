@@ -1,4 +1,4 @@
-import { DISPLAY_IMAGE_MAX, DISPLAY_THUMB_MAX, FILE_ROUTE, type ChatPreviewSize, type ImagePreviews } from '@boite/contracts';
+import { DISPLAY_IMAGE_MAX, DISPLAY_THUMB_MAX, FILE_ROUTE, IMAGE_INLINE_CHARS, decodedBytes, imageSize, type ChatPreviewSize, type ImagePreviews } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { messageOf } from './errors.ts';
 import { mediaDisplay, mediaPreviews, putMediaDisplay, putMediaPreview } from './journal/media-previews.ts';
@@ -18,6 +18,7 @@ export const DISPLAY_TYPES = /^image\/(png|jpeg|webp)$/;
 /** Which copy: the one the timeline draws, or the one a prompt's thumbnail draws. */
 export type DisplaySize = 'large' | 'thumb' | ChatPreviewSize;
 type ImageSource = string | Uint8Array | Blob;
+type ChatImageSource = { data: ImageSource; mimeType: string };
 const DISPLAY_SIZES = {
   large: { max: DISPLAY_IMAGE_MAX, quality: 80 },
   thumb: { max: DISPLAY_THUMB_MAX, quality: 75 },
@@ -54,6 +55,17 @@ export async function makeDisplay(source: ImageSource, size: DisplaySize = 'larg
   } catch {
     return null;
   }
+}
+
+/** A codec the browser supports can pass through when the source already fits the preview. */
+async function smallChatSource(source: ChatImageSource | null, size: ChatPreviewSize): Promise<string | null> {
+  if (source === null) return null;
+  const { data } = source;
+  const bytes = typeof data === 'string' ? Math.ceil(data.length / 4) * 3 : data instanceof Blob ? data.size : data.length;
+  if (bytes > IMAGE_INLINE_CHARS / 4 * 3) return null;
+  const encoded = typeof data === 'string' ? data : Buffer.from(data instanceof Blob ? new Uint8Array(await data.arrayBuffer()) : data).toString('base64');
+  const dimensions = imageSize(encoded);
+  return dimensions && Math.max(dimensions.width, dimensions.height) <= size ? encoded : null;
 }
 
 interface Job {
@@ -151,15 +163,21 @@ export class MediaPreviews {
   }
 
   /** A chat preview can only serve its own bounded copy, including when the original compresses better. */
-  async chatPreview(threadId: string, messageId: string, partIndex: number, size: ChatPreviewSize, source: () => ImageSource | null,
-    options: { ticket: boolean; permit?: { check(): void }; noStore?: boolean }): Promise<{ data: string; url?: string; bytes: number; mimeType: 'image/webp' }> {
+  async chatPreview(threadId: string, messageId: string, partIndex: number, size: ChatPreviewSize, source: () => ChatImageSource | null,
+    options: { ticket: boolean; permit?: { check(): void }; noStore?: boolean }): Promise<{ data: string; url?: string; bytes: number; mimeType: string }> {
     const cached = this.kept(threadId, messageId, partIndex, size);
-    const original = cached === null ? source() : null;
-    const copy = original === null ? { data: cached ?? new Uint8Array(0), kept: true } : await this.display(threadId, messageId, partIndex, size, original);
+    const original = cached === null ? source() : undefined;
+    const copy = !original ? { data: cached ?? new Uint8Array(0), kept: true } : await this.display(threadId, messageId, partIndex, size, original.data);
     options.permit?.check();
     const mimeType = 'image/webp';
     const bytes = copy.data.length;
-    if (!options.ticket || !copy.kept || !bytes) return { data: Buffer.from(copy.data).toString('base64'), bytes, mimeType };
+    if (!bytes) {
+      const fallback = original === undefined ? source() : original;
+      const data = await smallChatSource(fallback, size);
+      options.permit?.check();
+      return data && fallback ? { data, bytes: decodedBytes(data), mimeType: fallback.mimeType } : { data: '', bytes, mimeType };
+    }
+    if (!options.ticket || !copy.kept) return { data: Buffer.from(copy.data).toString('base64'), bytes, mimeType };
     const ticket = this.#core.fileTickets.mintBytes(`${threadId}:${messageId}:${partIndex}:preview:${size}`, () => {
       options.permit?.check();
       const data = this.kept(threadId, messageId, partIndex, size);

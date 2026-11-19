@@ -508,7 +508,7 @@ export interface MessagesRpcMethods {
    * the answers to decoded pictures in 93 ms and 12 ms.
    */
   'messages.attachment': {
-    /** `previewMax` requests a chat-sized copy and never falls back to original bytes. */
+    /** `previewMax` requests a chat-sized copy. A small original may answer if it already fits. */
     params: { threadId: ThreadId; messageId: MessageId; partIndex: number; display?: boolean; thumb?: boolean; ticket?: boolean; previewMax?: ChatPreviewSize };
     result: { data: string; mimeType?: string; url?: string; bytes?: number };
   };

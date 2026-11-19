@@ -232,6 +232,12 @@
     }
   }
 
+  async function download(current: MediaItem): Promise<void> {
+    notice = '';
+    try { await saveMedia(current); }
+    catch { if (ready?.src === current.src) notice = strings.artifacts.mediaFailed; }
+  }
+
   /**
    * Hands the file to the share sheet. iOS opens the sheet only when it is
    * called straight from the tap, so a file already fetched is shared at once;
@@ -242,21 +248,21 @@
     const current = ready;
     if (!current) return;
     notice = '';
-    if (!shareable) { saveMedia(current); return; }
+    if (!shareable) { await download(current); return; }
     let file = files.get(current.src);
     try {
       if (!file) {
-        file = await mediaFile(current);
+        file = await mediaFile(current.load ? { ...current, src: await current.load() } : current);
         files.set(current.src, file);
       }
-      if (!navigator.canShare({ files: [file] })) { saveMedia(current); return; }
+      if (!navigator.canShare({ files: [file] })) { await download(current); return; }
       await navigator.share({ files: [file], title: current.name });
     } catch (error) {
       const name = error instanceof DOMException ? error.name : '';
       if (name === 'AbortError') return;
       if (name === 'NotAllowedError' && file) { notice = fill(strings.media.shareReady, { name: current.name }); return; }
       if (!file) { notice = fill(strings.media.shareFailed, { name: current.name }); return; }
-      saveMedia(current);
+      await download(current);
     }
   }
 
@@ -326,7 +332,7 @@
       <button type="button" class="ghost icon zoom" onclick={() => zoomTo(view.scale + 0.5)} disabled={view.scale >= MAX_SCALE} aria-label={strings.artifacts.zoomIn} title={strings.artifacts.zoomIn}><Plus size={17} /></button>
     {/if}
     {#if shareable}<button type="button" class="ghost icon" disabled={!ready} onclick={share} aria-label={strings.media.share} title={strings.media.share} data-testid="image-viewer-share"><Share size={17} /></button>{/if}
-    <button type="button" class="ghost icon download" disabled={!ready} onclick={() => ready && saveMedia(ready)} aria-label={strings.artifacts.download} title={strings.artifacts.download} data-testid="image-viewer-download"><Download size={17} /></button>
+    <button type="button" class="ghost icon download" disabled={!ready} onclick={() => ready && download(ready)} aria-label={strings.artifacts.download} title={strings.artifacts.download} data-testid="image-viewer-download"><Download size={17} /></button>
     <button type="button" class="ghost icon" bind:this={close} aria-label={strings.artifacts.closeImage} title={strings.artifacts.closeImage} onclick={onclose} data-testid="image-viewer-close"><X size={18} /></button>
   </div>
   <!-- svelte-ignore a11y_no_static_element_interactions -->

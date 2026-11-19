@@ -190,10 +190,17 @@ test('remote file previews load under the shell content security policy', async 
     }
     // A streamed attachment uses the same remote ticket route, including its full-size viewer.
     const large = 'Array.from(document.querySelectorAll("[data-testid=chat-file]")).find(card => card.textContent.includes("large-picture.png"))';
-    await page.evaluate(`${large}.querySelector('[data-testid=artifact-load-image]').click()`);
-    await page.waitFor(`${large}.querySelector('img')?.naturalWidth === 192`);
-    await page.evaluate(`${large}.querySelector('[data-testid=artifact-launch]').click()`);
-    await page.waitFor('document.querySelector("[data-testid=image-viewer] img")?.naturalWidth === 192');
+    await page.evaluate(`${large}.scrollIntoView({ block: 'center' })`);
+    await page.waitFor(`${large}.querySelector('[data-testid=artifact-copy]')?.naturalWidth === 192`);
+    const copyUrl = await page.evaluate<string>(`${large}.querySelector('[data-testid=artifact-copy]').src`);
+    expect(copyUrl).toStartWith(`${remote}/file/`);
+    await page.evaluate(`${large}.querySelector('[data-testid=artifact-open-original]').click()`);
+    const viewerImage = '[data-testid=image-viewer] img';
+    await page.waitFor(`document.querySelector('${viewerImage}')?.naturalWidth === 192`);
+    const originalUrl = await page.evaluate<string>(`document.querySelector('${viewerImage}').src`);
+    expect(originalUrl).toStartWith(`${remote}/file/`);
+    expect(originalUrl).not.toBe(copyUrl);
+    expect((await (await fetch(originalUrl)).arrayBuffer()).byteLength).toBe(picture.length + 6 * 1024 * 1024);
     await page.click('[data-testid=image-viewer-close]');
     await page.click('a[data-file-path="preview.wav"]');
     await page.waitFor('document.querySelector("[data-testid=artifact-content] audio")?.readyState >= 1 || document.querySelector("[data-testid=media-fallback]")');

@@ -196,6 +196,20 @@ test('fake history refuses an oversized next message before the page byte bounda
     .resolves.toMatchObject({ code: RpcErrorCode.Refused, data: { field: 'messages', messageId: oversized.id } });
 });
 
+test('fake chat preview reads reuse the copy without allocating object URLs', async () => {
+  const ctx = new FakeContext({ delayMs: 0 });
+  seed(ctx);
+  const thread = ctx.thread('t-parser');
+  const data = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+rKPkAAAAASUVORK5CYII=';
+  thread.messages.push({ ...thread.messages[0]!, id: 'preview-image', parts: [{ type: 'image', mimeType: 'image/png', data, alt: null }] });
+  const methods = threadMethods(ctx);
+  const request = { threadId: thread.id, messageId: 'preview-image', partIndex: 0, previewMax: 192 as const, ticket: true as const };
+  const first = await methods['messages.attachment'](request);
+  expect(first.data).not.toBe('');
+  expect(await methods['messages.attachment'](request)).toEqual(first);
+  expect(ctx.artifactUrls.size).toBe(0);
+});
+
 test('fake pages keep a complete legal attachment bundle above the byte budget and refuse an oversized message', async ({ createClient }) => {
   const client = await createClient({ delayMs: 0 });
   const thread = await client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: 'a-echo', title: 'Single message' });

@@ -1,5 +1,6 @@
 import { secureId } from '../secure-id';
 import { FakeComposerState } from './composer';
+import { FakeImagePreviews } from './image-preview';
 import type { FakeArchiveState, MergedPrFixture } from './merged-pr-archive';
 /** The state one fake core keeps, and the plumbing every domain module shares. */
 import { observeProgress } from './progress';
@@ -334,6 +335,7 @@ export class FakeContext {
   readonly files = new Map<string, string>(Object.entries(FAKE_TREE));
   readonly artifacts = new Map<string, ArtifactContent>();
   readonly artifactUrls = new Set<string>();
+  readonly imagePreviews = new FakeImagePreviews();
   private storedSettings!: Settings;
 
   /** As in the core, policy values are read over the saved choices, never saved over them. */

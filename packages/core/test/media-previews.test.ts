@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import { crc32, deflateSync } from 'node:zlib';
 import { INITIAL_PAGE_BYTES, type Message, type RpcResult } from '@boite/contracts';
 import { echoThread, startTestCore, waitFor } from './harness.ts';
@@ -96,6 +97,34 @@ const previews = (threadId: string) =>
   (harness.core.journal.db.query('SELECT COUNT(*) AS n FROM media_previews WHERE thread_id = ?').get(threadId) as { n: number }).n;
 
 describe('deferred pictures', () => {
+  test.each([
+    ['image/avif', 'media-preview.avif', 96, 54],
+    ['image/webp', 'media-preview-animated.webp', 96, 54],
+    ['image/avif', 'media-preview-large.avif', 640, 360],
+  ] as const)('%s with unavailable decoder serves only a source that fits (%s)', async (mimeType, fixture, width, height) => {
+    const client = await harness.connect();
+    const { threadId } = await echoThread(harness, client);
+    const data = readFileSync(new URL(`./fixtures/${fixture}`, import.meta.url)).toString('base64');
+    const messageId = 'msg_bounded_fallback';
+    harness.core.journal.putMessage({
+      id: messageId, threadId, turnId: 'trn_seed', role: 'user', state: 'complete', createdAt: 1000,
+      parts: [{ type: 'file', data, mimeType, name: fixture }],
+    });
+    const { messages } = await client.call('threads.get', { threadId, compactFiles: true });
+    expect(messages[0]?.parts[0]).toMatchObject({ data: '', dataDeferred: true, width, height });
+    const encode = Bun.Image.prototype.bytes;
+    Bun.Image.prototype.bytes = async () => { throw new Error('codec unavailable'); };
+    const request = { threadId, messageId, partIndex: 0 };
+    try {
+      const copy = await client.call('messages.attachment', { ...request, previewMax: 192, ticket: true });
+      expect(copy.url).toBeUndefined();
+      const accepted = width <= 192;
+      expect(copy.data).toBe(accepted ? data : '');
+      if (accepted) expect(copy.mimeType).toBe(mimeType);
+      expect(await client.call('messages.attachment', request)).toEqual({ data });
+    } finally { Bun.Image.prototype.bytes = encode; }
+  });
+
   test('a large compressed picture stays on the core and only its requested preview is sent', async () => {
     const client = await harness.connect();
     const { threadId } = await echoThread(harness, client);

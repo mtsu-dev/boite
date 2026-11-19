@@ -133,7 +133,7 @@ export async function readArtifact(core: Core, params: RpcParams<'artifacts.read
   if (params.previewMax !== undefined) {
     const parent = thread.parentThreadId ? core.journal.getThread(thread.parentThreadId) : null;
     const copy = await core.media.chatPreview(thread.id, message!.id, message!.parts.indexOf(part), params.previewMax,
-      () => CHAT_PREVIEW_IMAGES.test(part.mimeType) ? Bun.file(found.absolute) : null,
+      () => CHAT_PREVIEW_IMAGES.test(part.mimeType) ? { data: Bun.file(found.absolute), mimeType: part.mimeType } : null,
       { ticket: true, permit, noStore: thread.incognito || parent?.incognito });
     return { name: part.name, mimeType: copy.mimeType, bytes: part.bytes, url: copy.url ?? (copy.data ? `data:${copy.mimeType};base64,${copy.data}` : '') };
   }

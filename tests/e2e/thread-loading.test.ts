@@ -229,10 +229,10 @@ describe('deferred pictures on a real core', () => {
     console.log(`opened at the bottom: ${sent} pictures fetched of ${SHOTS}, ${mounted} mounted`);
     expect(sent).toBeLessThan(SHOTS / 2);
     expect(sent).toBeLessThanOrEqual(mounted);
-    // A thumbnail 156 px wide on this 1x screen draws the 320 px copy, from an address on the core's file route.
+    // A thumbnail 156 px wide on this 1x screen draws the 192 px copy, from an address on the core's file route.
     const drawn = await page.evaluate<{ src: string; width: number }>(`(() => { const img = document.querySelector('${timeline} [data-testid=image-box][data-state=shown] [data-testid=image-part]'); return { src: img.src, width: img.naturalWidth }; })()`);
     expect(drawn.src).toStartWith(`${core.url}/file/`);
-    expect(drawn.width).toBe(320);
+    expect(drawn.width).toBe(192);
     await page.screenshot(join(artifacts, 'media-desktop-loaded.png'));
   }, 60_000);
 

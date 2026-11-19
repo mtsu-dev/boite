@@ -17,7 +17,7 @@ export interface MediaItem {
   /** Resolves the original when this item becomes active in the viewer. */
   load?: () => Promise<string>;
   /** Saves the file the way its owner does (the shell writes it into Downloads); a browser download otherwise. */
-  save?: (src: string) => void;
+  save?: (src: string) => void | Promise<void>;
 }
 
 const registered = new WeakMap<Element, () => MediaItem | null>();
@@ -73,9 +73,10 @@ export function viewerHost(): ViewerHost | null {
 }
 
 /** The item's own way to save, else a browser download. */
-export function saveMedia(item: MediaItem): void {
-  if (item.save) item.save(item.src);
-  else browserDownload(item.src, item.name);
+export async function saveMedia(item: MediaItem): Promise<void> {
+  const src = item.load ? await item.load() : item.src;
+  if (item.save) await item.save(src);
+  else browserDownload(src, item.name);
 }
 
 /** A name with the extension its type implies, for a file handed to the share sheet. */

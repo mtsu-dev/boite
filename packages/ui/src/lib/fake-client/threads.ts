@@ -1,5 +1,4 @@
-import { chatPreviewSizeProblem, partChannel, permissionAutoDecision, type StreamChannel, type ThreadId } from '@boite/contracts';
-import { fakeImagePreview } from './image-preview';
+import { chatPreviewSizeProblem, decodedBytes, partChannel, permissionAutoDecision, type StreamChannel, type ThreadId } from '@boite/contracts';
 import { noteUserMessage } from './checklist';
 import { startAutoGoal, startsAutoGoal } from './activity';
 import { createFakeThread, publishFakeThread } from './create-thread';
@@ -455,22 +454,12 @@ export function threadMethods(ctx: FakeContext) {
       if (!message) throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `message ${params.messageId} is not a message of thread ${params.threadId}`, data: { threadId: params.threadId, messageId: params.messageId } });
       const part = message.parts[params.partIndex];
       if (part?.type !== 'file' && part?.type !== 'image') throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `part ${params.partIndex} is not an attachment of message ${params.messageId}`, data: { messageId: params.messageId, partIndex: params.partIndex } });
-      if (params.ticket !== true && params.previewMax === undefined) return { data: part.data };
-      const original = new Blob([decodeBase64(part.data)], { type: part.mimeType });
-      const copy = params.previewMax === undefined ? original : await fakeImagePreview(original, params.previewMax);
-      if (!copy) return { data: '', mimeType: 'image/webp', bytes: 0 };
-      if (params.ticket !== true) {
-        const data = (await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(String(reader.result));
-          reader.onerror = () => reject(reader.error);
-          reader.readAsDataURL(copy);
-        })).split(',')[1] ?? '';
-        return { data, mimeType: copy.type, bytes: copy.size };
+      if (params.previewMax === undefined) {
+        return { data: part.data, ...(params.ticket === true ? { mimeType: part.mimeType, bytes: decodedBytes(part.data) } : {}) };
       }
-      const url = URL.createObjectURL(copy);
-      ctx.artifactUrls.add(url);
-      return { data: '', url, mimeType: copy.type, bytes: copy.size };
+      const key = JSON.stringify([thread.id, message.id, params.partIndex, params.previewMax]);
+      const copy = await ctx.imagePreviews.read(key, params.previewMax, () => new Blob([decodeBase64(part.data)], { type: part.mimeType }));
+      return copy ?? { data: '', mimeType: 'image/webp', bytes: 0 };
     },
     'threads.update': async (params) => {
       const thread = ctx.thread(params.threadId);

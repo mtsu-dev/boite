@@ -1,6 +1,5 @@
 /** A thread's working directory: files, git, the panel and published artifacts. */
 import { ARTIFACT_MAX_BYTES, ATTACHMENT_MAX_BYTES, PANEL_SURFACE_KINDS, RpcErrorCode, VIEW_BLOCK_MAX_BYTES, VIEW_DEFAULT_HEIGHT, VIEW_MAX_BYTES, VIEW_TITLE_MAX, chatPreviewSizeProblem, viewDocument, viewTitleOf, type FileContent, type FileEntry, type GitDiff, type GitStatus, type Message, type PanelSurface } from '@boite/contracts';
-import { fakeImagePreview } from './image-preview';
 import { RpcFailure } from '../client';
 import { FAKE_CHANGES, FAKE_DIFFS, FAKE_MEDIA, FAKE_MEDIA_PATHS, fakeBytes, fakeLanguage } from './files';
 import { seededArtifact } from './agents-demo';
@@ -155,12 +154,13 @@ export function workdirMethods(ctx: FakeContext, all: () => Pick<FakeMethods, 'b
       const part = message?.parts.find(p => p.type === 'artifact' && p.id === artifactId);
       if (!value || part?.type !== 'artifact') throw refusal('artifacts.read needs an artifact from this message and thread');
       if (previewMax !== undefined) {
-        const response = await fetch(value.url);
-        const copy = response.ok ? await fakeImagePreview(await response.blob(), previewMax) : null;
+        const key = JSON.stringify([threadId, messageId, artifactId, previewMax]);
+        const copy = await ctx.imagePreviews.read(key, previewMax, async () => {
+          const response = await fetch(value.url);
+          return response.ok ? response.blob() : null;
+        });
         if (!copy) return { ...value, url: '', mimeType: 'image/webp' };
-        const url = URL.createObjectURL(copy);
-        ctx.artifactUrls.add(url);
-        return { ...value, url, mimeType: copy.type };
+        return { ...value, url: `data:${copy.mimeType};base64,${copy.data}`, mimeType: copy.mimeType };
       }
       if (view && !part.view) throw refusal('artifacts.read view needs an artifact published with boite view');
       return { ...value };

@@ -167,6 +167,19 @@ test('without a share sheet the file downloads the way its owner saves it', () =
   expect(save).toHaveBeenCalledTimes(1);
 });
 
+test('downloading a ticketed picture asks for a current URL even when the viewer is still open', async () => {
+  const load = vi.fn()
+    .mockResolvedValueOnce('https://core.example/file/expired')
+    .mockResolvedValueOnce('https://core.example/file/current');
+  const save = vi.fn();
+  open([{ ...item('shot.png'), src: '', load, save }]);
+  const download = query<HTMLButtonElement>('[data-testid=image-viewer-download]');
+  await vi.waitFor(() => expect(download.disabled).toBe(false));
+  expect(query<HTMLImageElement>('[data-testid=image-viewer] img').src).toBe('https://core.example/file/expired');
+  download.click();
+  await vi.waitFor(() => expect(save).toHaveBeenCalledWith('https://core.example/file/current'));
+});
+
 test('the pictures and videos of a thread make one gallery, in reading order', async () => {
   const thread = document.createElement('div');
   thread.dataset.mediaGallery = '';
