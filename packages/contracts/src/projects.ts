@@ -103,6 +103,8 @@ export interface ProjectsRpcMethods {
   'projects.setAutoRemoveWorktrees': { params: { projectId: ProjectId; enabled: boolean }; result: Project };
 
   'projects.list': { params: Record<string, never>; result: Project[] };
+  /** A fresh Git and folder-presence check for the project selected in the draft composer. */
+  'projects.git': { params: { projectId: ProjectId }; result: Pick<Project, 'repository' | 'missing'> };
   /**
    * Registers an existing folder of the machine running this core as a
    * project. `path` is absolute on that machine, checked there, and must be a

@@ -210,3 +210,20 @@ test('a page read ahead goes into the reading cache only where it fits, never ov
   expect(cache.size).toBe(READING_CACHE_THREADS);
   expect(cache.get('v0')).toBeDefined();
 });
+
+test('a departure delays its projection, a quick return reuses it, and a forgotten visit stays gone', () => {
+  const cache = new ReadingCache();
+  const thread = { id: 'left', messages: [] } as unknown as Thread;
+  const prepare = vi.fn(() => thread);
+  const copy = (held: Thread) => held;
+  cache.defer(thread, prepare, copy, () => false);
+  expect(cache.has(thread.id)).toBe(true);
+  expect(cache.prefill(thread.id, thread, 0)).toBe(false);
+  expect(prepare).not.toHaveBeenCalled();
+  expect(cache.get(thread.id)).toBe(thread);
+  expect(prepare).toHaveBeenCalledOnce();
+  cache.defer(thread, prepare, copy, () => false);
+  cache.forget(thread.id);
+  expect(cache.get(thread.id)).toBeUndefined();
+  expect(prepare).toHaveBeenCalledOnce();
+});

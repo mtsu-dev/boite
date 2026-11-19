@@ -17,6 +17,7 @@ import type { Delegation } from './store/delegation.svelte';
 import { listen } from './store/events';
 import { loadAttachments } from './store/reading-pages.svelte';
 import { releaseOlder } from './store/live-end';
+import type { LiveWeights } from './store/live-weights.svelte';
 import type { Imports } from './store/imports.svelte';
 import type { Layout } from './store/layout.svelte';
 import type { Models } from './store/models.svelte';
@@ -608,7 +609,7 @@ export class Store {
   loadRange(from: number, limit: number, landing?: () => void, below?: MessageId) { return this.#ctx.positions.loadRange(from, limit, landing, below); }
   loadAttachments(threadId: ThreadId, message: Message) { return loadAttachments(this.#ctx, threadId, message); }
   loadOlder(...args: Parameters<Threads['loadOlder']>) { return this.#ctx.threads.loadOlder(...args); }
-  releaseOlder(threadId: ThreadId, near?: () => number) { return releaseOlder(this.#ctx, threadId, near); }
+  releaseOlder(threadId: ThreadId, near?: () => number, weights?: LiveWeights) { return releaseOlder(this.#ctx, threadId, near, weights); }
   createThread(...args: Parameters<Threads['createThread']>) { return this.#ctx.threads.createThread(...args); }
   update(...args: Parameters<Threads['update']>) { return this.#ctx.threads.update(...args); }
   recoverTurn(...args: Parameters<Threads['recoverTurn']>) { return this.#ctx.threads.recoverTurn(...args); }
@@ -687,6 +688,7 @@ export class Store {
   get permissionRequests() { return this.#ctx.requests.permissionRequests; }
   set permissionRequests(value) { this.#ctx.requests.permissionRequests = value; }
   get pendingQuestions() { return this.#ctx.requests.pendingQuestions; }
+  hasRequest(...args: Parameters<Requests['hasRequest']>) { return this.#ctx.requests.hasRequest(...args); }
   get pendingSecrets() { return this.#ctx.requests.pendingSecrets; }
   set pendingQuestions(value) { this.#ctx.requests.pendingQuestions = value; }
   get questionRequests() { return this.#ctx.requests.questionRequests; }

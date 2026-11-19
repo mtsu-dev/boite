@@ -64,6 +64,23 @@ test('the first projects.list after a git init already says repository', async (
   expect((await client.call('projects.list', {})).find((entry) => entry.id === project.id)?.repository).toBe(true);
 });
 
+test('refreshing a draft project finds its new Git marker and probes only its own folder', async () => {
+  const client = await harness.connect();
+  const path = join(harness.dataDir, 'selected');
+  const other = join(harness.dataDir, 'other');
+  mkdirSync(path, { recursive: true });
+  mkdirSync(other, { recursive: true });
+  const project = await client.call('projects.add', { path });
+  await client.call('projects.add', { path: other });
+  await client.call('projects.list', {});
+  const probed: string[] = [];
+  harness.core.projects.gitProbe = folder => { probed.push(folder); return probeGit(folder); };
+  expect(await client.call('projects.git', { projectId: project.id })).toEqual({ repository: false });
+  mkdirSync(join(path, '.git'));
+  expect(await client.call('projects.git', { projectId: project.id })).toEqual({ repository: true });
+  expect(probed).toEqual([path, path]);
+});
+
 test('a check with no clear answer keeps the last one, and a restart checks every project', async () => {
   const client = await harness.connect();
   const path = join(harness.dataDir, 'repo');

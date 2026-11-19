@@ -216,7 +216,7 @@ export function idlePreloadAllowed(): boolean {
 
 /** What the read-ahead reads of the thread store, beside what a press reads. */
 export interface ReadAheadSource extends Opener {
-  readonly readingThreads: { get(threadId: string): Thread | undefined; prefill(threadId: string, thread: Thread, bytes: number): boolean; mark(): number; droppedSince(threadId: string, mark: number): boolean };
+  readonly readingThreads: Opener['readingThreads'] & { has(threadId: string): boolean; prefill(threadId: string, thread: Thread, bytes: number): boolean; mark(): number; droppedSince(threadId: string, mark: number): boolean };
   /** A project's rows as its card lists them: no archived, incognito or helper thread. */
   threadsOf(projectId: ProjectId): readonly ThreadSummary[];
 }
@@ -305,7 +305,7 @@ export class IdlePreloads {
   #wanted(row: ThreadSummary): boolean {
     const id = row.id;
     const { source } = this;
-    return !row.archived && !row.incognito && !this.#asked.has(id) && source.readingThreads.get(id) === undefined
+    return !row.archived && !row.incognito && !this.#asked.has(id) && !source.readingThreads.has(id)
       && source.openThread?.id !== id && source.subscribedThreadId !== id && source.openTarget !== id && !this.pressed(id);
   }
 
@@ -364,7 +364,7 @@ export class IdlePreloads {
   /** Into the reading cache, unless the thread came in meanwhile another way. */
   #keep(threadId: ThreadId, thread: Thread): void {
     const { source } = this;
-    if (source.readingThreads.get(threadId) || source.openThread?.id === threadId || source.openTarget === threadId || this.pressed(threadId)) return;
+    if (source.readingThreads.has(threadId) || source.openThread?.id === threadId || source.openTarget === threadId || this.pressed(threadId)) return;
     source.readingThreads.prefill(threadId, thread, readingCacheBytes(thread.messages));
   }
 }

@@ -76,6 +76,13 @@ export function projectMethods(ctx: FakeContext) {
     'projects.list': async () => {
       return ctx.projects.map((project) => describedProject(ctx, project));
     },
+    'projects.git': async (params) => {
+      const id = params?.projectId;
+      if (typeof id !== 'string' || !id) throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'projects.git.projectId must be a registered project id', data: { field: 'projectId' } });
+      const project = ctx.projects.find(row => row.id === id);
+      if (!project) throw ctx.notFound('project', id);
+      return { ...(project.repository === undefined ? {} : { repository: project.repository }), ...(project.missing ? { missing: true } : {}) };
+    },
     'projects.rename': async (params) => {
       const project = ctx.projects.find(p => p.id === params.projectId);
       if (!project) throw ctx.notFound('project', params.projectId);
