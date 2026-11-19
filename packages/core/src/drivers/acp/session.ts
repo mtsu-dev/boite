@@ -335,6 +335,11 @@ export class AcpSession {
     }
   }
 
+  /** Whether this session talks to OpenCode 2's native server, the only transport that steers. */
+  steersOpenCode(): boolean {
+    return this.#connection instanceof OpenCodeConnection;
+  }
+
   async steerOpenCode(turn: AcpTurn, text: string, attachments: import('@boite/contracts').ImageAttachment[] = [], onAccepted?: () => void): Promise<boolean> {
     if (this.#current !== turn || turn.isStopped || !(this.#connection instanceof OpenCodeConnection)) return false;
     return this.#connection.steer([{ type: 'text', text }, ...imageBlocksOf(attachments)], onAccepted);

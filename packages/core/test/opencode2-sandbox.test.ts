@@ -29,7 +29,10 @@ function shimLayout(): { root: string; shim: string; linked: string; real: strin
   return { root, shim, linked, real };
 }
 
-test('only an OpenCode 2 behind the BoiteOS agent shim counts as out of reach', () => {
+// BoiteOS is Linux only, and the fixtures below are shell scripts and symlinks.
+const linuxOnly = test.skipIf(process.platform === 'win32');
+
+linuxOnly('only an OpenCode 2 behind the BoiteOS agent shim counts as out of reach', () => {
   const { shim, linked, real } = shimLayout();
   expect(openCodeServerReachable(linked, shim)).toBe(false);
   expect(openCodeServerReachable(shim, shim)).toBe(false);
@@ -38,7 +41,7 @@ test('only an OpenCode 2 behind the BoiteOS agent shim counts as out of reach', 
   expect(openCodeServerReachable(real, join(shim, 'missing'))).toBe(true);
 });
 
-test('OpenCode 2 through the BoiteOS shim answers over ACP when its server port is out of reach', async () => {
+linuxOnly('OpenCode 2 through the BoiteOS shim answers over ACP when its server port is out of reach', async () => {
   const { root, shim, linked } = shimLayout();
   const launches = join(root, 'launches.log');
   const fixture = join(import.meta.dir, 'fixtures/opencode2-server.ts');
@@ -67,6 +70,12 @@ test('OpenCode 2 through the BoiteOS shim answers over ACP when its server port 
     const current = harness.core.threads.get(thread.id);
     expect(current.turns.at(-1)?.status).toBe('done');
     expect(current.messages.some(message => message.role === 'assistant' && message.parts.some(part => part.type === 'text' && part.text.length > 0))).toBe(true);
+    // Over ACP the warm session takes no input mid-turn, so the core must not offer it.
+    await owner.call('turns.start', { threadId: thread.id, prompt: 'slow' });
+    await waitFor(() => harness!.core.threads.get(thread.id).turns.at(-1)?.status === 'running' && harness!.core.threads.get(thread.id).turns.length === 2, 20_000);
+    expect(harness.core.threads.canSteer(thread.id)).toBe(false);
+    await owner.call('turns.stop', { threadId: thread.id });
+    await waitFor(() => harness!.core.threads.get(thread.id).turns.at(-1)?.status !== 'running', 20_000);
     expect(readFileSync(launches, 'utf8').trim().split('\n').every(line => line.split(' ')[0] === 'acp')).toBe(true);
   } finally {
     driver.shutdown?.();
