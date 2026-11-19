@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, setSystemTime, test } from 'bun:test';
 import { Database } from 'bun:sqlite';
-import { mkdirSync, rmSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ImageAttachment, Message, Turn } from '@boite/contracts';
 import { Core } from '../src/core.ts';
@@ -58,11 +58,15 @@ function openingOf(h: TestCore, threadId: string, turnId: string): { text: strin
   return part.type === 'text' ? { text: part.text, label: part.displayText } : { text: '', label: undefined };
 }
 
-test('a turn that ends on an API error resumes by itself with the error and a carry-on prompt', async () => {
+test.each(['native', 'cold', 'lost'] as const)('a turn that ends on an API error resumes with the error and its attachments (%s session)', async session => {
   const h = await startTestCore();
   const fail = Promise.withResolvers<TurnResult>();
-  const image: ImageAttachment = { kind: 'image', mimeType: 'image/png', data: 'aGVsbG8=', name: 'target.png' };
-  const asked = scripted(() => fail.promise, done);
+  const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+  const original = Buffer.from(await new Bun.Image(pixel).resize(2000, 1125, { fit: 'fill' }).png().bytes());
+  const image: ImageAttachment = { kind: 'image', mimeType: 'image/png', data: original.toString('base64'), name: 'target.png' };
+  const asked = scripted(() => fail.promise, ...(session === 'lost' ? [{
+    status: 'error' as const, sessionId: null, usage: null, sessionLost: true, error: 'native session lost',
+  }] : []), done);
   try {
     const client = await h.connect();
     const { threadId } = await echoThread(h, client);
@@ -72,16 +76,24 @@ test('a turn that ends on an API error resumes by itself with the error and a ca
     await waitFor(() => h.core.threads.runner.handles.has(threadId));
     expect(await client.call('turns.steer', { threadId, turnId: first.id, prompt: 'keep the contrast', clientRequestId: 'resume_steer_1' })).toEqual({ accepted: true });
     expect(await client.call('turns.steer', { threadId, turnId: first.id, prompt: 'use this target', attachments: [image], clientRequestId: 'resume_steer_2' })).toEqual({ accepted: true });
-    fail.resolve(failed('API Error: Connection refused (ECONNREFUSED)'));
+    fail.resolve({ ...failed('API Error: Connection refused (ECONNREFUSED)'), sessionId: session === 'cold' ? null : 'native' });
     await waitFor(() => turns(h, threadId).length === 2 && turns(h, threadId)[1]!.status === 'done');
     const resume = turns(h, threadId)[1]!;
     expect(resume.execution?.operation).toBe('resume');
-    expect(asked).toHaveLength(2);
+    expect(asked).toHaveLength(session === 'lost' ? 3 : 2);
     expect(asked[1]!.prompt).toContain('ECONNREFUSED');
     expect(asked[1]!.prompt).toContain('Continue the current task from where it stopped');
-    expect(asked[1]!.thread.sessionId).toBe('native');
+    expect(asked[1]!.thread.sessionId).toBe(session === 'cold' ? null : 'native');
     expect(asked[1]!.prompt).toMatch(/port the shader[\s\S]*keep the contrast[\s\S]*use this target/);
-    expect(asked[1]!.attachments).toEqual([image]);
+    if (session === 'lost') expect(asked[2]!.sessionId).toBeNull();
+    for (const context of asked.slice(1)) {
+      expect(context.attachments).toHaveLength(1);
+      const preview = context.attachments[0]!;
+      expect(preview.name).toBe(image.name);
+      expect(await new Bun.Image(Buffer.from(preview.data, 'base64')).metadata()).toMatchObject({ width: 1280, height: 720 });
+      const reference = context.prompt.split('\n').find(line => line.startsWith('{"name":"target.png","path":'))!;
+      expect(readFileSync(JSON.parse(reference).path).equals(original)).toBe(true);
+    }
     expect(openingOf(h, threadId, resume.id).label).toBe(AUTO_CONTINUE_LABEL.error);
     expect(h.core.journal.getTurn(first.id)?.status).toBe('error');
     expect(retries).toContain('auto-continue 1/2');

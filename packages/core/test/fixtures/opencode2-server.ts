@@ -1,5 +1,5 @@
 /** OpenCode 2's native API, with an ACP fallback to reproduce the old refusal. */
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { instructionsOf } from './history.ts';
 
 if (!process.argv.includes('serve')) {
@@ -8,8 +8,15 @@ if (!process.argv.includes('serve')) {
   const streams = new Set<ReadableStreamDefaultController<Uint8Array>>();
   const encoder = new TextEncoder();
   const sessionID = 'ses_fixture';
-  let cost = 0;
+  const costFile = process.env['OPENCODE_FIXTURE_COST'];
+  let cost = costFile && existsSync(costFile) ? Number(readFileSync(costFile, 'utf8')) : 0;
+  const charge = (amount: number) => {
+    cost += amount;
+    if (costFile) writeFileSync(costFile, String(cost));
+  };
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let ended = false;
+  let failCostRead = false;
   let inboxSequence = 0;
   let lateAdmission = false;
   let cancelAdmission = false;
@@ -40,7 +47,7 @@ if (!process.argv.includes('serve')) {
     if (url.pathname === '/api/agent') return Response.json({ data: [{ id: 'build', name: 'Build' }, { id: 'plan', name: 'Plan' }] });
     if (url.pathname === '/api/command') return Response.json({ data: [] });
     if (url.pathname === `/api/session/${sessionID}` && request.method === 'GET') {
-      if (process.env['OPENCODE_FIXTURE_COST_ERROR']) return new Response('Unavailable', { status: 503 });
+      if (failCostRead || process.env['OPENCODE_FIXTURE_COST_ERROR']) return new Response('Unavailable', { status: 503 });
       return Response.json({ data: session() });
     }
     if (url.pathname === '/api/session') return Response.json({ data: session() });
@@ -86,6 +93,7 @@ if (!process.argv.includes('serve')) {
         return Response.json({ data: inbox });
       }
       if (instructions.includes('[slow]')) {
+        ended = false;
         lateAdmission = instructions.includes('[late-admission]');
         cancelAdmission = instructions.includes('[cancelled]');
         event('session.execution.started', {});
@@ -95,12 +103,25 @@ if (!process.argv.includes('serve')) {
           event('session.tool.input.started', { id: 'shell-1', name: 'shell' });
           event('session.tool.called', { id: 'shell-1', input: { command: 'git status', cwd: process.cwd() } });
           event('session.tool.success', { id: 'shell-1', content: [{ type: 'text', text: 'working tree clean' }], metadata: { exit: 0 } });
+          if (instructions.includes('[usage-after-tool]')) {
+            charge(0.01);
+            failCostRead = instructions.includes('[fail-cost-read]');
+            event('session.step.ended', { tokens: { input: 17, output: 3 } });
+            trace('step ended');
+          }
+          if (instructions.includes('[finish-after-tool]')) {
+            clearTimeout(timer);
+            ended = true;
+            event('session.execution.succeeded', {});
+            trace('execution ended');
+          }
         };
         setTimeout(() => void tool(), 400);
-        if (!process.env['OPENCODE_FIXTURE_TOOL_GATE']) timer = setTimeout(() => { cost += 0.01; event('session.execution.succeeded', {}); }, 4000);
+        if (!process.env['OPENCODE_FIXTURE_TOOL_GATE']) timer = setTimeout(() => { charge(0.01); event('session.execution.succeeded', {}); }, 4000);
       } else {
         event('session.text.delta', { delta: `Received: ${body.text}; images: ${body.files?.length ?? 0}\n` });
         if (body.text.includes('[done]')) {
+          if (costFile) charge(0.02);
           event('session.step.ended', { tokens: { input: 17, output: 3 } });
           event('session.execution.succeeded', {});
         }
@@ -109,7 +130,8 @@ if (!process.argv.includes('serve')) {
     }
     if (url.pathname.endsWith('/interrupt')) {
       trace('interrupt');
-      clearTimeout(timer); event('session.execution.interrupted', {});
+      clearTimeout(timer);
+      if (!ended) event('session.execution.interrupted', {});
       const admit = admitAfterInterrupt;
       admitAfterInterrupt = undefined;
       admit?.();

@@ -41,6 +41,9 @@ const IMAGE_CONTEXT_CHARS = 1600 * CHARS_PER_TOKEN;
 /** What the CLI answers a `resume` whose transcript is gone (CLI 2.1.282, probed offline). */
 const MISSING_SESSION = /^No conversation found with session ID: /;
 
+/** The maximum number of consumed prompt UUIDs a Claude SDK result carries. */
+const RESULT_PROMPT_IDS_LIMIT = 64;
+
 function resultPromptIds(result: SDKResultMessage): string[] {
   return result.user_message_uuids ?? (result.user_message_uuid === undefined ? [] : [result.user_message_uuid]);
 }
@@ -256,7 +259,17 @@ export class ClaudeTurn {
     if (this.isStopped || this.failed) return false;
     const answered = resultPromptIds(result);
     if (answered.length === 0) return false;
-    for (const id of answered) this.#pendingPromptIds.delete(id);
+    if (result.user_message_uuids == null || answered.length >= RESULT_PROMPT_IDS_LIMIT) {
+      // A legacy or capped result can cover earlier prompts it does not name.
+      // The host consumes prompts in send order, including a merged batch.
+      const last = answered.findLast(id => this.#pendingPromptIds.has(id));
+      if (last !== undefined) for (const id of this.#pendingPromptIds) {
+        this.#pendingPromptIds.delete(id);
+        if (id === last) break;
+      }
+    } else {
+      for (const id of answered) this.#pendingPromptIds.delete(id);
+    }
     return this.#pendingPromptIds.size > 0;
   }
 
