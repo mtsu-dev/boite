@@ -421,7 +421,8 @@ Detached descendants and launcher children can qualify even when intentionally
 left running; `reapOrphans` controls that policy. Release paths include archive,
 Stop, account/provider changes, child cleanup and resident-agent checkpoints.
 The sweep is linear in live processes. POSIX tracks direct core children only,
-so orphan reaping finds no additional descendants there.
+so orphan reaping finds no additional descendants there, and Resources greys
+the `reapOrphans` switch out off Windows (`ResourcesPage.svelte`).
 
 ## The focus guard
 

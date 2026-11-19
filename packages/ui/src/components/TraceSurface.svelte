@@ -5,10 +5,15 @@
   import type { Store } from '../lib/store.svelte';
   import TraceTable from './TraceTable.svelte';
   import SurfaceHead from './SurfaceHead.svelte';
+  import { panelTools } from '../lib/panel-tools.svelte';
 
   let { store }: { store: Store } = $props();
 
   let load = $derived(store.openThread?.load ?? null);
+  const tools = panelTools();
+  /** In a desktop panel's strip, eight tabs leave the head no width: the totals go above the list there. */
+  const inStrip = $derived(!!tools?.slot);
+  const active = $derived(load?.processes ?? store.trace.filter(record => record.exitedAt === null).length);
   /** A macOS core reads no CPU per thread: its 0 is unknown, as the Task manager says. */
   const cpuUnknown = $derived(store.core?.os === 'macos');
 
@@ -28,7 +33,7 @@
 
 <div class="trace-surface" data-testid="trace-panel">
   <SurfaceHead>
-    <span class="totals ui-label">{store.trace.length} {strings.trace.recorded} · {load?.processes ?? store.trace.filter(record => record.exitedAt === null).length} {strings.trace.active}</span>
+    {#if !inStrip}{@render totals()}{/if}
     <span class="spacer"></span>
     <button
       type="button"
@@ -41,8 +46,12 @@
       <RefreshCw size={14} strokeWidth={1.75} />
     </button>
   </SurfaceHead>
-  {#if load}
-    <div class="load"><span>{strings.trace.cpu} <b>{cpuUnknown ? strings.resources.unknown : percent(load.cpuPercent)}</b></span><span>{strings.trace.currentMemory} <b>{bytes(load.memoryBytes)}</b></span></div>
+  {#snippet totals()}<span class="totals" data-testid="trace-totals">{store.trace.length} {strings.trace.recorded} · {active} {strings.trace.active}</span>{/snippet}
+  {#if inStrip || load}
+    <div class="load" class:strip={inStrip}>
+    {#if inStrip}{@render totals()}{/if}
+    {#if load}<span>{strings.trace.cpu} <b>{cpuUnknown ? strings.resources.unknown : percent(load.cpuPercent)}</b></span><span>{strings.trace.currentMemory} <b>{bytes(load.memoryBytes)}</b></span>{/if}
+    </div>
   {/if}
   <div class="scroll">
     <TraceTable records={store.trace} capability={store.core?.trace ?? null} />
@@ -62,7 +71,9 @@
   }
 
   .totals, .load { font-size: var(--text-xs); color: var(--color-muted-foreground); }
-  .load { display: flex; flex-wrap: wrap; gap: 14px; padding: 0 12px 8px; }
+  .load { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 0 12px 8px; }
+  .load.strip { padding-top: 8px; }
+  .totals, .load > span { white-space: nowrap; }
   .load b { color: var(--color-foreground); font-weight: 500; margin-left: 4px; }
 
   .scroll {

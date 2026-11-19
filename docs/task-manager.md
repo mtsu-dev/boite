@@ -87,8 +87,8 @@ button, whichever page or conversation is open. Close it with its X. Only the ow
 ## On Linux and macOS
 
 - The memory guard works everywhere. The CPU cap, the foreground guard, the
-  audio mute and Stop what agents leave running are Windows only. The first
-  three are greyed out there, with "Works only on a Windows machine".
+  audio mute and Stop what agents leave running are Windows only. All four
+  are greyed out there, with "Works only on a Windows machine".
 - Boite tracks the processes it starts directly. A program that leaves its
   process group can keep running after its conversation stops.
 - On Linux, when a system memory limit slows a conversation's processes

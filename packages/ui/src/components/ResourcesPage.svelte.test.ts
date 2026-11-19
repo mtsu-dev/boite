@@ -42,3 +42,16 @@ test('the task list reads itself again while the page is open, and stops once it
   await vi.advanceTimersByTimeAsync(6000);
   expect(store.refreshResources).toHaveBeenCalledTimes(2);
 });
+
+test('the sweep of what agents leave running is greyed out off Windows, where it can stop nothing', async () => {
+  for (const os of ['windows', 'linux', 'macos'] as const) {
+    const store = $state({ connection: 'idle', core: { os }, settings: null, resources: [] as ThreadResources[], refreshResources: vi.fn() });
+    mounted = mount(ResourcesPage, { target: document.body, props: { store: store as unknown as Store } });
+    await settle();
+    const sweep = document.querySelector<HTMLInputElement>('[data-testid="setting-reap-orphans"]')!;
+    expect(sweep.disabled).toBe(os !== 'windows');
+    expect(document.querySelector('[data-testid="reap-orphans-windows-only"]') !== null).toBe(os !== 'windows');
+    await unmount(mounted);
+    mounted = undefined;
+  }
+});
