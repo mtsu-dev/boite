@@ -107,7 +107,8 @@ test('an unclosed CLI trace stays in history with unknown status after core rest
   try {
     expect(restarted.procs.liveOf(threadId)).toEqual([]);
     expect(restarted.delegation.get(threadId).nativeAgents).toEqual([expect.objectContaining({ source: 'process', status: 'unknown' })]);
-    expect(restarted.journal.listProcesses(threadId, 10).find(record => record.pid === child.pid)?.exitedAt).toBeNull();
+    // Startup closes the rows the previous core left open, with no exit code to claim.
+    expect(restarted.journal.listProcesses(threadId, 10).find(record => record.pid === child.pid)).toMatchObject({ exitedAt: expect.any(Number), exitCode: null });
   } finally { await restarted.close(); }
 });
 

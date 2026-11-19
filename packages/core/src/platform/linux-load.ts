@@ -136,26 +136,44 @@ function pidsIn(text: string): number[] {
 interface ProcSnapshot {
   at: number;
   children: Map<number, number[]>;
+  /** Only the stat lines this walk read. */
   stats: Map<number, string>;
+  parents: Map<number, number>;
   available: boolean;
 }
 
-/** Parent links and raw stat lines from the same procfs walk. */
-function scanProc(read: ProcRead): Omit<ProcSnapshot, 'at'> {
+/**
+ * Parent links and raw stat lines from the same procfs walk. A pid in `known`
+ * keeps the parent it had there and its stat file is not read.
+ */
+function scanProc(read: ProcRead, known?: Map<number, number>): Omit<ProcSnapshot, 'at'> {
   const children = new Map<number, number[]>();
   const stats = new Map<number, string>();
+  const parents = new Map<number, number>();
   const directory = read('/proc');
   for (const pid of pidsIn(directory ?? '')) {
-    const stat = read(`/proc/${pid}/stat`);
-    if (stat !== null) stats.set(pid, stat);
-    const parent = stat === null ? null : statField(stat, 4);
+    let parent = known?.get(pid) ?? null;
+    if (parent === null) {
+      const stat = read(`/proc/${pid}/stat`);
+      if (stat !== null) stats.set(pid, stat);
+      parent = stat === null ? null : statField(stat, 4);
+    }
     if (parent === null) continue;
+    parents.set(pid, parent);
     const siblings = children.get(parent) ?? [];
     siblings.push(pid);
     children.set(parent, siblings);
   }
-  return { children, stats, available: directory !== null };
+  return { children, stats, parents, available: directory !== null };
 }
+
+/**
+ * Where the kernel has `children` files, they can still leave a live child
+ * out, so `/proc` is listed on every tick as before, but only a pid new to
+ * the listing has its stat file read. Every stat file is read again this
+ * often, for a parent that changed under a pid the listing already knew.
+ */
+export const BACKSTOP_SCAN_MS = 5000;
 
 export class LinuxLoad {
   readonly #pids = new Map<string, Set<number>>();
@@ -166,6 +184,9 @@ export class LinuxLoad {
   readonly #last = new Map<string, { ticks: Map<number, number>; births: Map<number, number | null>; at: number }>();
   /** One parent scan serves every thread sampled in the same tick. */
   #scan: ProcSnapshot | null = null;
+  /** The listing of `/proc` beside the children files, and when it last read every stat file. */
+  #listing: ProcSnapshot | null = null;
+  #listingFullAt = -Infinity;
   /**
    * Each sampled process's name, per thread, while it stays in the sample.
    * `/proc/<pid>/comm` is read again only for a new birth or when the stat
@@ -195,10 +216,19 @@ export class LinuxLoad {
     return this.#scan;
   }
 
+  /** `/proc` listed at the scan's 500 ms pace, its stat files read only for new pids between full reads. */
+  #listed(): ProcSnapshot {
+    const at = this.now();
+    if (this.#listing !== null && at - this.#listing.at < 500) return this.#listing;
+    const full = at - this.#listingFullAt >= BACKSTOP_SCAN_MS;
+    if (full) this.#listingFullAt = at;
+    return this.#listing = { at, ...scanProc(this.read, full ? undefined : this.#listing?.parents) };
+  }
+
   /**
    * A process's children from each of its tasks' `children` files, without
    * listing `/proc`. Null when the kernel has none (built without
-   * CONFIG_PROC_CHILDREN) or the process is gone: the parent scan answers then.
+   * CONFIG_PROC_CHILDREN) or the process is gone: the parent scan answers alone then.
    */
   #taskChildren(pid: number): number[] | null {
     const found: number[] = [];
@@ -300,8 +330,12 @@ export class LinuxLoad {
     let memoryBytes = 0;
     const workingSets: NonNullable<ProcessSample['workingSets']> = [];
     let processes = 0;
-    // The machine-wide scan only where the kernel has no `children` files: its cost grows with every process on the host.
+    // Without `children` files, a stat read per process on the host every 500 ms;
+    // with them, the listing only reads the stat files of new pids.
     let scan: ProcSnapshot | null = null;
+    /** Descendants only the listing named: a parent it remembers may be stale, so their own stat line must name a counted parent. */
+    const scanOnly = new Set<number>();
+    const counted = new Set<number>();
     const at = this.now();
     const pending = new Set(pids);
     let owners = this.#owners;
@@ -323,11 +357,13 @@ export class LinuxLoad {
         : this.read(`/proc/${pid}/stat`);
       const used = stat === null ? null : cpuTicks(stat);
       if (used === null) continue;
+      if (scanOnly.has(pid) && !counted.has(statField(stat ?? '', 4) ?? -1)) continue;
       const birth = stat === null ? null : statField(stat, 22);
       const expectedBirth = this.#births.get(threadId)?.get(pid);
       if (pids.has(pid) && expectedBirth != null && birth !== expectedBirth) continue;
       if (birth !== null && Number.isSafeInteger(birth) && (!pids.has(pid) || expectedBirth === birth)) members.push({ pid, birth });
       processes += 1;
+      counted.add(pid);
       ticks.set(pid, used);
       sampledBirths.set(pid, birth);
       const bytes = status === null ? null : residentBytes(status);
@@ -338,7 +374,13 @@ export class LinuxLoad {
       if (bytes !== null) workingSets.push({ pid, bytes, ...(exe ? { exe } : {}) });
       memoryBytes += bytes ?? 0;
       // A separately registered agent owns its own subtree, even when nested.
-      for (const child of this.#taskChildren(pid) ?? this.#children(pid, scan ??= this.#snapshot())) if (!owners.has(child) || owners.get(child) === threadId) pending.add(child);
+      const listed = this.#taskChildren(pid);
+      scan ??= listed === null ? this.#snapshot() : this.#listed();
+      for (const child of [...listed ?? [], ...scan.children.get(pid) ?? []]) {
+        if (owners.has(child) && owners.get(child) !== threadId) continue;
+        if (listed?.includes(child)) scanOnly.delete(child); else if (!pending.has(child)) scanOnly.add(child);
+        pending.add(child);
+      }
     }
     if (processes === 0) { this.#resources.forget(threadId); this.#names.delete(threadId); return null; }
     this.#names.set(threadId, sampledNames);

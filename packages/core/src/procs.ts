@@ -90,6 +90,8 @@ export class ProcRegistry {
   /** The options a launch runs with, its folder written as it was checked: `..` read by name, never after a link. */
   #admitted<T extends { cwd?: string }>(opts: T): T {
     if (!this.#accepting || this.#closing !== null) throw new Error('the core is stopping; no new process may start');
+    const untied = this.platform.readyGroups?.() ?? null; // The watcher that ends agent groups with the core starts before them.
+    if (untied !== null) this.#bus.emit('core.log', { level: 'warn', message: `agent process groups will outlive a core that dies: ${untied}`, source: 'process', event: 'groups.untied', at: Date.now() });
     if (opts.cwd === undefined) return opts;
     const cwd = resolve(opts.cwd);
     this.admitCwd(cwd);
@@ -352,7 +354,7 @@ export class ProcRegistry {
   disown(threadId: ThreadId): void {
     const byPid = this.#live.get(threadId);
     if (byPid === undefined) return;
-    for (const pid of byPid.keys()) this.platform.pidRemoved(threadId, pid, !this.#shown.has(threadId));
+    for (const pid of byPid.keys()) { this.platform.pidRemoved(threadId, pid, !this.#shown.has(threadId)); this.platform.untieGroup?.(pid, false); }
     this.#live.delete(threadId);
     this.known.delete(threadId);
   }
@@ -397,8 +399,7 @@ export class ProcRegistry {
     this.#childStops.set(child, this.#managedStop(record.pid, running(child), kill, exited));
 
     child.once('exit', (code) => this.onExit(threadId, record.pid, code, undefined, record));
-    // A started child may still emit 'error' and no 'exit'; without this it
-    // would stay in the live registry for the rest of the session.
+    // A started child may emit 'error' and no 'exit'; without this it would stay live all session.
     child.once('error', (error) => {
       forgetOnMissing(command, executable, error);
       this.onExit(threadId, record.pid, null, undefined, record);
@@ -437,9 +438,9 @@ export class ProcRegistry {
     control: Omit<Entry, 'record' | 'identity'>,
     spawned = true,
   ): ProcessRecord {
-    const nativeStartedAt = this.platform.startedAt(pid);
-    // Its group ends with this core; what the keeper holds outlives it on purpose.
+    // First, so the group ends with this core even if it dies here; what the keeper holds outlives it on purpose.
     if (spawned) this.platform.tieGroup?.(pid);
+    const nativeStartedAt = this.platform.startedAt(pid);
     const record: ProcessRecord = {
       pid,
       parentPid: process.pid,
@@ -767,7 +768,7 @@ export class ProcRegistry {
       }
     }
     this.#forgetWhenIdle(threadId);
-    this.platform.pidRemoved(threadId, pid, !this.#shown.has(threadId));
+    this.platform.pidRemoved(threadId, pid, !this.#shown.has(threadId)); this.platform.untieGroup?.(pid, true);
     if (this.#journal.isClosed()) return;
     const record = entry.record;
     const usage = entry.usage();
