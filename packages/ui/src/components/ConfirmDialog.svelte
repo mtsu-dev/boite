@@ -4,9 +4,7 @@
   import { Closing } from '../lib/closing.svelte';
   import { mobileOverlay } from '../lib/mobile-history';
   import { confirm, type ConfirmRequest } from '../lib/confirm.svelte';
-  import { focusInitial, focusedElement, restoreFocus } from '../lib/focus';
-
-  const FOCUSABLE = 'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
+  import { focusInitial, focusedElement, restoreFocus, trapModalTab } from '../lib/focus';
 
   const overlay = new Closing();
   /** The request is nulled the moment it is answered, so the exit plays on a copy. */
@@ -56,7 +54,7 @@
       confirm.answer(false);
       return;
     }
-    if (event.key === 'Tab') trap(event);
+    trapModalTab(event, card);
     if (event.key === 'Enter' && !event.isComposing && event.target instanceof HTMLInputElement && card?.contains(event.target)) {
       event.preventDefault();
       event.stopPropagation();
@@ -64,20 +62,6 @@
     }
   }
 
-  /** While the dialog is up the keyboard cannot leave it. */
-  function trap(event: KeyboardEvent) {
-    const el = card;
-    if (!el) return;
-    const stops = Array.from(el.querySelectorAll<HTMLElement>(FOCUSABLE));
-    const first = stops[0];
-    const last = stops[stops.length - 1];
-    if (!first || !last) return;
-    const active = document.activeElement;
-    const inside = active instanceof Node && el.contains(active);
-    if (active !== el && (event.shiftKey ? inside && active !== first : inside && active !== last)) return;
-    event.preventDefault();
-    (event.shiftKey ? last : first).focus({ preventScroll: true });
-  }
 </script>
 
 <svelte:window onkeydowncapture={onkeydown} />
