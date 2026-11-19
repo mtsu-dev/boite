@@ -23,9 +23,13 @@ type GuideKind = 'coordination' | 'delegation';
 type GuidesSent = Partial<Record<GuideKind, GuideSent>>;
 interface Pending { turnId: string; guides: GuidesSent }
 
+function storedGuides(core: Core, threadId: string): GuideSent | GuidesSent {
+  return (core.journal.getSetting(`${COORDINATION_SENT_PREFIX}${threadId}`) as GuideSent | GuidesSent | undefined) ?? {};
+}
+
 function sentGuides(core: Core, threadId: string): GuidesSent {
-  const value = core.journal.getSetting(`${COORDINATION_SENT_PREFIX}${threadId}`) as (GuideSent | GuidesSent) | undefined;
-  return value && 'hash' in value ? { coordination: value } : value ?? {};
+  const value = storedGuides(core, threadId);
+  return 'hash' in value ? { coordination: value } : value;
 }
 
 function guideHeldBy(core: Core, thread: ThreadSummary, sessionId: string | null, kind: GuideKind): GuideSent | undefined {
@@ -34,9 +38,13 @@ function guideHeldBy(core: Core, thread: ThreadSummary, sessionId: string | null
   return sent?.sessionGeneration === (thread.sessionGeneration ?? 0) ? sent : undefined;
 }
 
-/** Whether this native session has read a version of the guide. */
+/** Whether this native session may already know the guide and needs policy updates. */
 export function sessionHoldsGuide(core: Core, thread: ThreadSummary, sessionId: string | null, kind: GuideKind): boolean {
-  return guideHeldBy(core, thread, sessionId, kind) !== undefined;
+  if (sessionId === null) return false;
+  const value = storedGuides(core, thread.id);
+  // Legacy receipts recorded coordination alone. The same session may already know delegation.
+  const sent = 'hash' in value ? value : value[kind];
+  return sent?.sessionGeneration === (thread.sessionGeneration ?? 0);
 }
 
 /** What a running turn carried, by thread, until that turn ends; in memory, so a core that stops mid-turn marks nothing. */

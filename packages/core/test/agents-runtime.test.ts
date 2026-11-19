@@ -16,6 +16,7 @@ import { runCheck } from '../src/agents/checks.ts';
 import { botCommand } from '../src/agents/cli.ts';
 import { LIMIT_RESUME } from '../src/threads/limit-resume.ts';
 import { AUTO_CONTINUE } from '../src/threads/auto-continue.ts';
+import { COORDINATION_SENT_PREFIX } from '../src/threads/coordination-context.ts';
 import { costing, makeAgent, scripted, settled, turnsOf } from './agent-fixture.ts';
 import { startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
@@ -86,7 +87,13 @@ test('a mochi\'s Boite guide is the thread guide less the project-bound commands
 
 test('a warm mochi gets each delegation policy change once and a fresh disabled mochi skips the guide', async () => {
   await client.call('brain.configure', { path: null, enabled: false, boiteGuide: true });
-  const driver = scripted(() => ({ text: 'Noted.' })); restore = driver.restore;
+  let fail = false;
+  const nativeSessions: (string | null)[] = [];
+  const driver = scripted(ctx => {
+    nativeSessions.push(ctx.sessionId);
+    return { text: 'Noted.', status: fail ? 'error' : 'done' };
+  });
+  restore = driver.restore;
   const { agent, threadId } = await makeAgent(h, client);
   const prompts = () => driver.prompts.get(threadId)!;
   const guide = 'Boite subagents';
@@ -118,10 +125,27 @@ test('a warm mochi gets each delegation policy change once and a fresh disabled 
   expect(await ask()).not.toContain(guide);
   expect(h.core.threads.require(threadId).sessionId).toBe(sessionId);
 
+  // Older cores recorded only the coordination guide, even after sending the delegation guide.
+  const key = `${COORDINATION_SENT_PREFIX}${threadId}`;
+  const receipt = (h.core.journal.getSetting(key) as { coordination: unknown }).coordination;
+  expect(receipt).toMatchObject({ sessionGeneration: h.core.threads.require(threadId).sessionGeneration ?? 0 });
+  h.core.journal.setSetting(key, receipt);
   await configure(false);
+  fail = true;
+  expect(await ask()).toContain('the owner turned them off');
+  expect(nativeSessions.at(-1)).toBe(sessionId);
+  expect(h.core.journal.getSetting(key)).toEqual(receipt);
+  fail = false;
+  expect(await ask()).toContain('the owner turned them off');
+  expect(nativeSessions.at(-1)).toBe(sessionId);
+  expect(h.core.journal.getSetting(key)).toMatchObject({ coordination: receipt, delegation: { hash: expect.any(String) } });
+  expect(await ask()).not.toContain(guide);
+
+  h.core.journal.setSetting(key, receipt);
   const thread = h.core.threads.require(threadId);
   h.core.journal.putThread({ ...thread, sessionId: null, sessionGeneration: (thread.sessionGeneration ?? 0) + 1 });
   expect(await ask()).not.toContain(guide);
+  expect(nativeSessions.at(-1)).toBeNull();
 });
 
 test('the context block is sent once, then again only on a fresh session or a compaction; a change to MEMORY.md alone goes as its lines', async () => {
