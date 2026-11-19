@@ -247,6 +247,13 @@ async function send(prompt: string): Promise<void> {
   await waitFor(() => (store.openThread?.messages.length ?? 0) >= before + 2 && !store.busy);
 }
 
+/** Set up an agent question without starting the composer's typing pause. */
+async function openQuestionReply(): Promise<void> {
+  await openIdle('t-trace');
+  expect(await store.send('check this [ask]')).toBe(true);
+  await waitFor(() => !store.busy && document.querySelector('[data-testid=composer-reply]') !== null);
+}
+
 test.for([false, true])('editing replaces the sent message and later turns without leaving the thread (Ctrl: %s)', async (ctrlKey, { app: _app }) => {
   await store.open('t-trace');
   await send('original request');
@@ -1098,9 +1105,7 @@ test('the permission waits on its command row in the timeline, the field says a 
 });
 
 test('a question in the field keeps Enter and Escape from a permission waiting beside it, and so does a machine out of reach', async ({ app: _app }) => {
-  await store.open('t-trace');
-  await send('check this [ask]');
-  await waitFor(() => document.querySelector('[data-testid=composer-reply]') !== null);
+  await openQuestionReply();
   const ask = { id: 'perm-beside', threadId: 't-trace', turnId: store.openThread!.turns.at(-1)?.id ?? 'turn', toolName: 'Bash', input: { command: 'ls' }, description: null, createdAt: Date.now() };
   store.pendingPermissions = [...store.pendingPermissions, ask];
   flushSync();
@@ -1623,9 +1628,7 @@ test('a waiting question takes the composer as its free answer, with the card pi
 });
 
 test('while a question takes the field during a turn, its button is Answer alone and the foot\'s line holds Stop', async ({ app: _app }) => {
-  await store.open('t-trace');
-  await send('check this [ask]');
-  await waitFor(() => document.querySelector('[data-testid=composer-reply]') !== null);
+  await openQuestionReply();
   store.openThread!.status = 'running';
   flushSync();
   // No Stop in the field: an empty field shows Answer, disabled, with its reason.
@@ -1674,9 +1677,7 @@ test('while a turn runs, typed words take the round button for Send and the turn
 });
 
 test('an ignored async question stays docked while an ordinary message goes out as a turn', async ({ app: _app }) => {
-  await store.open('t-trace');
-  await send('check this [ask]');
-  await waitFor(() => document.querySelector('[data-testid=composer-reply]') !== null);
+  await openQuestionReply();
   const asked = store.pendingQuestions.find((question) => question.threadId === 't-trace')!;
   expect(query('[data-testid=composer-reply]').dataset.question).toBe(asked.id);
   query<HTMLButtonElement>('[data-testid=activity-question-toggle]').click();
@@ -1732,9 +1733,7 @@ test('a question asked while the user types takes the emptied composer only afte
 });
 
 test('a question card\'s own submit never answers with a file still being read', async ({ app: _app }) => {
-  await store.open('t-trace');
-  await send('check this [ask]');
-  await waitFor(() => document.querySelector('[data-testid=composer-reply]') !== null);
+  await openQuestionReply();
   const asked = store.pendingQuestions.find((question) => question.threadId === 't-trace')!;
   await type('here are the notes');
   let release!: () => void;
@@ -1755,9 +1754,7 @@ test('a question card\'s own submit never answers with a file still being read',
 });
 
 test('a question card does not take a sent message being edited as its answer', async ({ app: _app }) => {
-  await store.open('t-trace');
-  await send('check this [ask]');
-  await waitFor(() => document.querySelector('[data-testid=composer-reply]') !== null);
+  await openQuestionReply();
   const row = Array.from(document.querySelectorAll('[data-testid=message][data-role=user]')).find(row => row.querySelector('[data-testid=text-part]')?.textContent === 'check this [ask]')!;
   row.querySelector<HTMLButtonElement>('[data-testid=message-edit]')!.click();
   await waitFor(() => input().value === 'check this [ask]');
