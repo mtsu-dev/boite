@@ -104,9 +104,19 @@ describe('journal', () => {
     expect(journal.turnRequest('thr_test', 'uncertain_request')?.fingerprint).toBe('steer:pending:uncertain');
   });
 
+  test('the last stated turn skips cache pings and the current turn, with rowid breaking timestamp ties', () => {
+    const put = journal.db.query("INSERT INTO turns (id, thread_id, status, queued_at, started_at, execution) VALUES (?, 'thr_test', 'done', 0, ?, ?)");
+    put.run('first', 1, null);
+    put.run('second', 1, null);
+    put.run('ping', 2, '{"operation":"keepalive"}');
+    put.run('never-started', null, null);
+    put.run('current', 3, null);
+    expect(journal.statedTurn('thr_test', 'current')?.id).toBe('second');
+  });
+
   test.each([0, 25])('index failure rolls back schema %i and a later open retries the entire migration', (version) => {
     const target = join(dir, 'index-failure.db');
-    const indexes = ['thread_deletions_by_date', 'processes_by_started', 'turns_by_status', 'messages_by_turn', 'turns_by_finished', 'turns_by_thread_queue'];
+    const indexes = ['thread_deletions_by_date', 'processes_by_started', 'turns_by_status', 'messages_by_turn', 'turns_by_finished', 'turns_by_thread_queue', 'turns_stated_by_thread'];
     if (version === 25) {
       const previous = new Journal(target);
       try {

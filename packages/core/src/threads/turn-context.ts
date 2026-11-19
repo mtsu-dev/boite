@@ -150,7 +150,7 @@ export class TurnContexts {
       modeRequired: thread.permissionMode === 'plan' && this.#core.council?.owns(threadId) === true,
       sessionId: thread.sessionId,
       resumeAt: thread.sessionResumeAt ?? null,
-      sessionBefore: this.#sessionBefore(thread, ''),
+      sessionBefore: provider.protocol === 'claude-sdk' ? this.#sessionBefore(thread, '') : undefined,
       accountEnv: this.#core.accounts.accountEnv(account, provider, thread),
       systemGuide: this.#systemGuide(thread, provider),
       warmProcessMinutes: this.#core.settings.get().warmProcessMinutes,
@@ -328,13 +328,14 @@ export class TurnContexts {
           && (answerAfter.has(turn.id) || slot.segment !== answer.segments.at(-1))) {
           slot = continueText(driverId, driverIndex, slot);
         }
+        const firstText = text.length > 0 && slot?.type === 'text' && slot.length === 0 && answer?.role === 'assistant';
         if (slot) slot.length += raw.length;
         const { messageId, partIndex } = route(driverId, driverIndex);
         finishThinking(messageId, partIndex);
         const last = partProgress.get(`${messageId}:${partIndex}`);
         if (text.length) progress(last?.phase ?? 'working', last?.detail ?? null);
         this.#core.journal.appendDelta(threadId, messageId, partIndex, text);
-        this.#core.bus.emit('message.delta', { threadId, messageId, partIndex, text });
+        this.#core.bus.emit('message.delta', { threadId, messageId, partIndex, text }, firstText);
       },
       part: (driverId: MessageId, driverIndex: number, raw: MessagePart): void => {
         const answer = answers.get(driverId);
@@ -485,6 +486,8 @@ export class TurnContexts {
       const roleInBody = role && input.prompt.startsWith(role) && body.includes(role);
       return prefix + (prefix ? 'User request:\n' : '') + said + deferred + body + coordinationGuide + (roleInBody ? '' : delegationGuide) + reminder + carried.letters + this.#threads.cards.askInstructions({ ...thread, sessionId }, provider, turn, body);
     };
+    let sessionBefore: AgentTotals | undefined;
+    const readSessionBefore = () => this.#sessionBefore(thread, turn.id);
     return {
       thread,
       protectedExecution,
@@ -514,7 +517,8 @@ export class TurnContexts {
       attachments: prepared.attachments,
       sessionId: thread.sessionId,
       resumeAt: thread.sessionId === null ? null : thread.sessionResumeAt ?? null,
-      sessionBefore: this.#sessionBefore(thread, turn.id),
+      get sessionBefore() { return sessionBefore ??= readSessionBefore(); },
+      set sessionBefore(totals) { sessionBefore = totals; },
       accountEnv: env,
       warmProcessMinutes: this.#core.settings.get().warmProcessMinutes,
       toolSummaries: this.#core.settings.get().toolSummaries === true,
