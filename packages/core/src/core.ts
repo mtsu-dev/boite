@@ -499,7 +499,9 @@ export class Core {
     this.procs.applySettings(this.settings.get());
     // `BOITE_KEEP_AWAKE=0`: tests and a host that must never be held awake by this core.
     const platformHold = this.procs.platform.keepAwake;
-    this.keepAwake = new KeepAwake(this, options.keepAwake ?? (process.env.BOITE_KEEP_AWAKE === '0' || !platformHold ? null : onLost => platformHold(onLost)));
+    const platformAvailable = this.procs.platform.keepAwakeAvailable;
+    this.keepAwake = new KeepAwake(this, options.keepAwake ?? (process.env.BOITE_KEEP_AWAKE === '0' || !platformHold ? null : onLost => platformHold(onLost)),
+      undefined, options.keepAwake === undefined && platformAvailable ? () => platformAvailable() : undefined);
     dropRetiredAccounts(this);
     this.accounts.ensureDefaults();
     this.accounts.recheckSignedOut();

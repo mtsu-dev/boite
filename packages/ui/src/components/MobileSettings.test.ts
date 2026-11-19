@@ -263,6 +263,8 @@ test('on a phone too, a page of one machine is picked above it without moving th
   running = mount(App, { target });
   await waitFor(() => store.booted && workspace.machines.length === 2 && workspace.machines.every((machine) => machine.store.connection === 'ready'));
   const remote = workspace.machines.find((machine) => machine.store !== store)!;
+  // The fake's second machine is a Linux builder, where Mute agents is greyed out: make it a Windows one.
+  remote.store.core!.os = 'windows';
   await remote.store.client!.call('settings.set', { muteAgents: true });
   await store.client!.call('settings.set', { muteAgents: true });
   store.showSettings('general', 'quiet');

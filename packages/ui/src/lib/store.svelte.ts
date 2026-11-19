@@ -771,7 +771,10 @@ export class Store {
   get resources() { return this.#ctx.workbench.resources; }
   get memory() { return this.#ctx.workbench.memory; }
   get memoryState() { return this.#ctx.workbench.memoryState; }
-  get memoryStopped() { return this.#ctx.workbench.memoryStopped; }
+  get memoryStop() { return this.#ctx.workbench.memoryStop; }
+  dismissMemoryStop() { this.#ctx.workbench.dismissMemoryStop(); }
+  get keepAwake() { return this.#ctx.workbench.keepAwake; }
+  refreshKeepAwake() { return this.#ctx.workbench.refreshKeepAwake(); }
   refreshMemory() { return this.#ctx.workbench.refreshMemory(); }
   set resources(value) { this.#ctx.workbench.resources = value; }
   get trace() { return this.#ctx.workbench.trace; }
