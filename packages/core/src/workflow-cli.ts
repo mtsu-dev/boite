@@ -205,7 +205,10 @@ export async function workflowCommand(client: CoreClient, threadId: string, rest
     }
     case 'list': {
       const runs = await client.call('workflows.list', { threadId });
-      print(runs.length === 0 ? ['workflows: none'] : runs.map(r => `${r.id} ${r.status} ${JSON.stringify(r.name)} ${r.nodes.filter(n => n.status === 'done' || n.status === 'skipped').length}/${r.nodes.length} steps`), runs);
+      const rows = runs.map(run => ({ id: run.id, name: run.name, status: run.status,
+        completedSteps: run.nodes.filter(node => node.status === 'done' || node.status === 'skipped').length,
+        totalSteps: run.nodes.length, updatedAt: run.updatedAt, error: shortError(run.error) }));
+      print(rows.length === 0 ? ['workflows: none'] : rows.map(row => `${row.id} ${row.status} ${JSON.stringify(row.name)} ${row.completedSteps}/${row.totalSteps} steps`), rows);
       return;
     }
     case 'show': {

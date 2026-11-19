@@ -10,7 +10,7 @@
  */
 
 import { delimiter } from 'node:path';
-import { AGENT_ENV, PANEL_SURFACE_KINDS, applyAgentTaskChange } from '@boite/contracts';
+import { AGENT_ENV, PANEL_SURFACE_KINDS, agentTaskLimitProblem, applyAgentTaskChange } from '@boite/contracts';
 import type { AgentTask, AgentWhere, PanelSurface, RpcParams, ThreadActivity, ThreadId, ThreadSummary } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { refused } from './errors.ts';
@@ -22,7 +22,6 @@ import { publishArtifact, readArtifact } from './artifacts.ts';
 import { checkView, publishView, viewBlock } from './views.ts';
 
 /** More than a plan, and the tasks surface stops being readable anyway. */
-export const TASKS_MAX = 200;
 const TASK_STATUSES: readonly AgentTask['status'][] = ['pending', 'in_progress', 'completed'];
 
 /** One token per thread, in memory, minted on demand and forgotten with the thread. */
@@ -184,9 +183,8 @@ export function checkSurface(cwd: string, surface: PanelSurface): PanelSurface {
 
 export function checkTasks(tasks: unknown): AgentTask[] {
   if (!Array.isArray(tasks)) throw refused('threads.tasks.set takes a list of tasks', {});
-  if (tasks.length > TASKS_MAX) {
-    throw refused(`threads.tasks.set takes at most ${TASKS_MAX} tasks, got ${tasks.length}`, { count: tasks.length });
-  }
+  const problem = agentTaskLimitProblem(tasks.length);
+  if (problem) throw refused(problem, { count: tasks.length });
   return tasks.map((value, index) => {
     const task = value as Partial<AgentTask> | null;
     if (typeof task?.id !== 'string' || task.id.length === 0) throw refused(`task ${index} needs an id`, { index });

@@ -1,6 +1,6 @@
 /** A thread's goal, loop and task list, and the timer that runs them. */
 import { errorText } from '../errors';
-import { AUTO_GOAL_MIN_CHARS, applyAgentTaskChange, attachmentError, effectiveExperiments, RpcErrorCode, threadActive, type AgentTask, type Thread, type ThreadActivity, type Turn } from '@boite/contracts';
+import { AUTO_GOAL_MIN_CHARS, agentTaskLimitProblem, applyAgentTaskChange, attachmentError, effectiveExperiments, RpcErrorCode, threadActive, type AgentTask, type Thread, type ThreadActivity, type Turn } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { refusal } from './shared';
 import { workflowAnswer, workflowChild } from './delegation';
@@ -297,6 +297,8 @@ function lastPrompt(thread: Thread): { turnId: string; messageId: string; text: 
 
 export function activityMethods(ctx: FakeContext) {
   function setTasks(thread: Thread, tasks: AgentTask[]): ThreadActivity {
+    const problem = agentTaskLimitProblem(tasks.length);
+    if (problem) throw refusal(problem, { count: tasks.length });
     const activity: ThreadActivity = structuredClone(thread.activity ?? { goal: null, loop: null, tasks: [] });
     activity.tasks = tasks.map(({ id, text, status }) => ({ id, text, status }));
     // A fresh list is something new to look at, so a dismissal does not hold.
