@@ -113,17 +113,23 @@ static int nb_patch(NB_PROCESS *p, uintptr_t address, BYTE byte) {
   if (!VirtualProtectEx(p->handle, (void *)address, 1, protection, &ignored)) ok = 0;
   return ok;
 }
+static int nb_within(const NB_PROCESS *p, ULONGLONG rva, ULONGLONG length) {
+  return rva <= p->ntdll_size && length <= p->ntdll_size - rva;
+}
 static int nb_export(NB_PROCESS *p, const IMAGE_NT_HEADERS64 *nt, const char *wanted, uintptr_t *out) {
   IMAGE_DATA_DIRECTORY range = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT]; IMAGE_EXPORT_DIRECTORY exports;
   if (!range.VirtualAddress || range.Size < sizeof(exports) || range.Size > p->ntdll_size || range.VirtualAddress > p->ntdll_size - range.Size ||
-      !nb_read(p, p->ntdll + range.VirtualAddress, &exports, sizeof(exports)) || exports.NumberOfNames > 4096 || exports.NumberOfFunctions > 4096) return 0;
+      !nb_read(p, p->ntdll + range.VirtualAddress, &exports, sizeof(exports)) || exports.NumberOfNames > 4096 || exports.NumberOfFunctions > 4096 ||
+      !nb_within(p, exports.AddressOfNames, (ULONGLONG)exports.NumberOfNames * 4) ||
+      !nb_within(p, exports.AddressOfNameOrdinals, (ULONGLONG)exports.NumberOfNames * 2) ||
+      !nb_within(p, exports.AddressOfFunctions, (ULONGLONG)exports.NumberOfFunctions * 4)) return 0;
   for (DWORD i = 0; i < exports.NumberOfNames; ++i) {
     DWORD name_rva = 0, fn_rva = 0; WORD ordinal = 0; char name[64];
-    if (!nb_read(p, p->ntdll + exports.AddressOfNames + i * 4, &name_rva, 4) || name_rva > p->ntdll_size - sizeof(name) ||
+    if (!nb_read(p, p->ntdll + exports.AddressOfNames + i * 4, &name_rva, 4) || !nb_within(p, name_rva, sizeof(name)) ||
         !nb_read(p, p->ntdll + name_rva, name, sizeof(name)) || !memchr(name, 0, sizeof(name))) return 0;
     if (strcmp(name, wanted)) continue;
     if (!nb_read(p, p->ntdll + exports.AddressOfNameOrdinals + i * 2, &ordinal, 2) || ordinal >= exports.NumberOfFunctions ||
-        !nb_read(p, p->ntdll + exports.AddressOfFunctions + ordinal * 4, &fn_rva, 4) || fn_rva >= p->ntdll_size ||
+        !nb_read(p, p->ntdll + exports.AddressOfFunctions + ordinal * 4, &fn_rva, 4) || !nb_within(p, fn_rva, 8) ||
         (fn_rva >= range.VirtualAddress && fn_rva < range.VirtualAddress + range.Size)) return 0;
     *out = p->ntdll + fn_rva; return 1;
   }
@@ -269,21 +275,23 @@ static int nb_delegate(NB_DEBUG *d, NB_PROCESS *p, DWORD tid, CONTEXT *c, int ap
 }
 
 /* A debugged process raises its first breakpoint in the loader, before any
- * image entry point or TLS callback runs. Accept it only on an INT3 that the
- * host's own mapping of the same ntdll holds inside one of its functions, so
- * padding between functions and bytes the target changed both fail. */
-static int nb_loader_break(NB_PROCESS *p, uintptr_t address) {
+ * image entry point or TLS callback runs. Accept it only as a first-chance
+ * INT3 that the host's own mapping of the same ntdll holds inside one of its
+ * functions with code after it, so padding between or at the end of functions
+ * and bytes the target changed all fail. */
+static int nb_loader_break(NB_PROCESS *p, uintptr_t address, DWORD first_chance) {
   const BYTE *host = (const BYTE *)GetModuleHandleW(L"ntdll.dll"); DWORD64 owner = 0; BYTE byte = 0;
-  if (!host || address < p->ntdll || address - p->ntdll >= p->ntdll_size) return 0;
-  const BYTE *local = host + (address - p->ntdll);
-  return RtlLookupFunctionEntry((DWORD64)(uintptr_t)local, &owner, NULL) && owner == (DWORD64)(uintptr_t)host &&
+  if (!first_chance || !host || address < p->ntdll || address - p->ntdll >= p->ntdll_size) return 0;
+  DWORD rva = (DWORD)(address - p->ntdll); const BYTE *local = host + rva;
+  PRUNTIME_FUNCTION function = RtlLookupFunctionEntry((DWORD64)(uintptr_t)local, &owner, NULL);
+  return function && owner == (DWORD64)(uintptr_t)host && rva >= function->BeginAddress && rva + 1 < function->EndAddress &&
     *local == 0xcc && nb_read(p, address, &byte, 1) && byte == 0xcc;
 }
 static int nb_exception(NB_DEBUG *d, NB_PROCESS *p, DEBUG_EVENT *e, DWORD *continuation) {
   DWORD code = e->u.Exception.ExceptionRecord.ExceptionCode; uintptr_t address = (uintptr_t)e->u.Exception.ExceptionRecord.ExceptionAddress;
   HANDLE thread = nb_thread_handle(p, e->dwThreadId); CONTEXT c; ZeroMemory(&c, sizeof(c)); c.ContextFlags = CONTEXT_FULL;
   *continuation = DBG_EXCEPTION_NOT_HANDLED;
-  if (code == EXCEPTION_BREAKPOINT && p->image && !p->startup && e->dwThreadId == p->first && nb_loader_break(p, address)) {
+  if (code == EXCEPTION_BREAKPOINT && p->image && !p->startup && e->dwThreadId == p->first && nb_loader_break(p, address, e->u.Exception.dwFirstChance)) {
     p->startup = 1; p->startup_deadline = 0; *continuation = DBG_CONTINUE;
     return 1;
   }
