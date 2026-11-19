@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BrowserPage } from './lib/cdp.ts';
 import { pairingUrlOf, startCore, type RunningCore } from './lib/core.ts';
+import { mobileAction, screensSettled } from './lib/mobile.ts';
 import { connect } from '../../packages/core/src/client.ts';
 
 /*
@@ -36,7 +37,7 @@ function writeState(serve: Record<string, unknown> = {}): void {
 }
 
 async function capture(page: BrowserPage, name: string): Promise<void> {
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+  await page.evaluate(`document.fonts.ready.then(() => true)`);
   await page.screenshot(join(captures, name));
 }
 
@@ -169,6 +170,9 @@ test('the installed phone app is added with a pasted link, and a removed one get
       const devices = (await owner.call('group.get', {}))?.devices ?? [];
       expect(devices.map((device) => device.name)).toEqual(['phone']);
 
+      // Reload so the active socket uses the signed device key saved by admission.
+      await phone.reload();
+      await phone.waitFor(`document.querySelector('${id('status-connection')}')?.dataset.state === 'ready'`);
       // Removed from the group on the computer: the recovery screen, not a stale page.
       await owner.call('group.revokeDevice', { id: devices[0]!.id });
       await phone.waitFor(`document.querySelector('${id('mobile-connect')}')`, 20_000);
@@ -186,7 +190,31 @@ test('the installed phone app is added with a pasted link, and a removed one get
       await phone.waitFor(`document.querySelector('${id('machine-paste-form')} ${id('machine-link')}')`);
       await phone.type(id('machine-link'), again.url);
       await phone.click(id('machine-add'));
-      await phone.waitFor(`!document.querySelector('${id('wide-recovery')}')`, 20_000);
+      await phone.waitFor(`!document.querySelector('${id('wide-recovery')}') || document.querySelector('${id('machine-paste-form')} [role=alert]')`, 20_000);
+      expect(await phone.evaluate(`document.querySelector('${id('machine-paste-form')} [role=alert]')?.textContent ?? null`)).toBeNull();
+      const replacement = (await owner.call('group.get', {}))?.devices ?? [];
+      expect(replacement).toHaveLength(1);
+      expect(replacement[0]?.id).not.toBe(devices[0]!.id);
+
+      // Settings offers the link form the moment the active device disconnects.
+      // It must not try to admit the old key, even before a reconnect can run.
+      await phone.send('Emulation.setDeviceMetricsOverride', PHONE);
+      await mobileAction(phone, 'mobile-settings');
+      await phone.waitFor(screensSettled);
+      await phone.click(id('mobile-settings-connection'));
+      await phone.waitFor(`document.querySelector('${id('group-device')}')`);
+      await phone.waitFor(screensSettled);
+      const fresh = await owner.call('group.addDevice', {});
+      await owner.call('group.revokeDevice', { id: replacement[0]!.id });
+      await phone.waitFor(`document.querySelector('${id('machine-paste-open')}')`);
+      await capture(phone, 'repair-while-in-settings-phone.png');
+      expect(await phone.evaluate("localStorage.getItem('boite.device') === null")).toBe(true);
+      await phone.click(id('machine-paste-open'));
+      await phone.waitFor(`document.querySelector('${id('machine-paste-form')} ${id('machine-link')}')`);
+      await phone.type(id('machine-link'), fresh.url);
+      await phone.click(id('machine-add'));
+      await phone.waitFor(`document.querySelector('${id('machine-card-status')}')?.classList.contains('ready') || document.querySelector('${id('machine-paste-form')} [role=alert]')`);
+      expect(await phone.evaluate(`document.querySelector('${id('machine-paste-form')} [role=alert]')?.textContent ?? null`)).toBeNull();
     } finally {
       owner.close();
     }

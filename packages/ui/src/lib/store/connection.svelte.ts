@@ -4,7 +4,7 @@ import { RpcFailure, WsClient, type Client, type ClientState, type ObservableCli
 import { confirm } from '../confirm.svelte';
 import { deviceLabel, noteThisComputer } from '../device';
 import { appPage } from '../app-origin';
-import { deviceKey, dropDeviceKey } from '../device-key';
+import { deviceKey, dropDeviceKey, heldDeviceKey } from '../device-key';
 import { clearStoredEndpoint, droppedSince, relayKeyFor, rememberDevice, forgetGroupOf, readStoredEndpoint, rememberSession, refreshLocalEnvironment, removeBrought, fromTauri, shellEndpointError, parsePairingLink, readEnvironments, removeEnvironment, resolveEndpoint, servesThisPage, storeEndpoint, upsertEnvironment, type Endpoint, type StoredEnvironment } from '../endpoint';
 import { onboardingSeen } from '../onboarding';
 import { rightPanel } from '../right-panel.svelte';
@@ -362,7 +362,11 @@ export class Connection {
         if (this.ctx.client !== client) return;
         // Only the key this connection presented is dead: another window may have paired this machine anew meanwhile.
         // A device key a machine of its group refuses was removed from that group: the app makes a new one when it is added again.
-        if (client.deviceId !== null) dropDeviceKey(client.deviceId);
+        const deviceId = client.deviceId;
+        if (deviceId !== null) {
+          dropDeviceKey(deviceId);
+          if (heldDeviceKey() !== null) return;
+        }
         const stored = readStoredEndpoint();
         if (rememberActive && stored?.url === url && stored.token === key) clearStoredEndpoint();
         this.environments = removeEnvironment(url, key);

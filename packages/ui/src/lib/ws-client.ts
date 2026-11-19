@@ -482,6 +482,11 @@ export class WsClient implements ObservableClient {
       socket.onclose = (event) => {
         if (aside()) { dropAside('connection closed'); return; }
         const wasReady = this.#state === 'ready';
+        if (wasReady && event?.code === RpcCloseCode.DeviceRevoked && this.#signer !== null) {
+          this.#onRevoked?.();
+          this.close();
+          return;
+        }
         const incompatible = event?.code === RpcCloseCode.ProtocolMismatch;
         if (incompatible) this.#manuallyClosed = true;
         const reason = event?.code === MESSAGE_TOO_BIG

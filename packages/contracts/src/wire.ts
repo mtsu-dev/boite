@@ -88,6 +88,8 @@ export const RpcCloseCode = {
   Unauthorized: 4001,
   BadOrigin: 4003,
   ProtocolMismatch: 4010,
+  /** The device key was removed from the group and must be replaced before pairing. */
+  DeviceRevoked: 4011,
 } as const;
 
 /** Path of the RPC WebSocket on the core's HTTP server. */

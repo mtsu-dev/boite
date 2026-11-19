@@ -763,8 +763,12 @@ export function startServer(options: ServerOptions): RunningServer {
       return false;
     },
     closeSession(sessionId: string): void {
+      const member = core.group.issuedFor(sessionId);
+      // A departing machine also closes device sessions. Only a recorded removal invalidates the device key.
+      const removed = member?.startsWith('key:') && core.group.roster?.deviceKeys?.some(device => device.removed && device.id === member.slice(4));
+      const code = removed ? RpcCloseCode.DeviceRevoked : RpcCloseCode.Unauthorized;
       for (const connection of connections) {
-        if (connection.identity.sessionId === sessionId) connection.close(RpcCloseCode.Unauthorized, 'session revoked');
+        if (connection.identity.sessionId === sessionId) connection.close(code, 'session revoked');
       }
       relays.closeSession(sessionId);
     },
