@@ -78,7 +78,7 @@
       "version": "2.0.0-beta.1",
       "dependencies": {
         "@boite/contracts": "workspace:*",
-        "@lucide/svelte": "1.64.0",
+        "@lucide/svelte": "1.76.0",
         "@noble/ed25519": "3.2.0",
         "@noble/hashes": "2.4.0",
         "@tauri-apps/api": "2.12.5",
@@ -170,7 +170,7 @@
 
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
 
-    "@lucide/svelte": ["@lucide/svelte@1.64.0", "", { "peerDependencies": { "svelte": "^5" } }, "sha512-PSFui8Gkk0JcU4nXljZzy+MnBhXeY4DIblvvcDNPIvL6r5NIngeDfAvBs4C/XDlz+dTth9+LcHy6/zdhEmxEwQ=="],
+    "@lucide/svelte": ["@lucide/svelte@1.76.0", "", { "peerDependencies": { "svelte": "^5" } }, "sha512-cDlhnZsqXm/ktY7ZBir7baKJhvSRRADQe7iZyMYks5qeZeQqTfeH9M+BVsyInt3DrERBYiPrfxf5RmRSgPnUzA=="],
 
     "@modelcontextprotocol/core": ["@modelcontextprotocol/core@2.4.0", "", { "dependencies": { "zod": "^4.2.0" } }, "sha512-z8QBKqdfXLPzkLQuG4xp8hrVEMm1PZ1IgxMN2sMbJiFiAKOWXnAzogXn2W4aqIBlP1ea6U5yiqVquvUNM1Cj6Q=="],
 

@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@boite/contracts": "workspace:*",
-    "@lucide/svelte": "1.64.0",
+    "@lucide/svelte": "1.76.0",
     "@noble/ed25519": "3.2.0",
     "@noble/hashes": "2.4.0",
     "@tauri-apps/api": "2.12.5",
