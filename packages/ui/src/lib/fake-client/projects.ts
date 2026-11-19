@@ -40,7 +40,7 @@ export function folderToAdd(value: unknown, method: string): { path: string; nam
 /** The fake machine's home folder, which holds `DATA_DIR`. */
 const HOME = 'C:\\Users\\you';
 
-/** The core's `assertDeviceProjectFolder`, without links to follow: not boite's data folder, not the home folder or above, not where logins live. */
+/** The core's `assertDeviceProjectFolder`, without links to follow: not boite's data folder, not the home folder or above, not a folder that holds keys. */
 function deviceProjectFolder(path: string): void {
   const key = pathKey(path), data = pathKey(DATA_DIR), home = pathKey(HOME);
   if (key === data || key.startsWith(`${data}/`)) {
@@ -49,10 +49,8 @@ function deviceProjectFolder(path: string): void {
   if (home === key || home.startsWith(`${key}/`) || !key.includes('/')) {
     throw new RpcFailure({ code: RpcErrorCode.Refused, message: `a paired device does not add the home folder, a folder that contains it or a disk root as a project, since it holds every login on this machine; add a folder inside it, or add ${path} on the owner's machine`, data: { field: 'path', path, expected: `a folder inside ${HOME}, not ${HOME} itself or a parent of it` } });
   }
-  const entry = key.startsWith(`${home}/`) ? key.slice(home.length + 1).split('/')[0] ?? '' : '';
-  const login = entry.startsWith('.') || entry === 'appdata' || entry === 'library';
-  if (login || key.split('/').some(part => DEVICE_SECRET_DIRS.has(part))) {
-    throw new RpcFailure({ code: RpcErrorCode.Refused, message: `a paired device does not add a folder that holds keys or tokens as a project${login ? ` (the home folder's ${entry} holds logins)` : ''}; add ${path} on the owner's machine`, data: { field: 'path', path, expected: `a folder outside ${[...DEVICE_SECRET_DIRS].join(', ')} and the home folder's hidden entries` } });
+  if (key.split('/').some(part => DEVICE_SECRET_DIRS.has(part))) {
+    throw new RpcFailure({ code: RpcErrorCode.Refused, message: `a paired device does not add a folder that holds keys or tokens as a project; add ${path} on the owner's machine`, data: { field: 'path', path, expected: `a folder outside ${[...DEVICE_SECRET_DIRS].join(', ')}` } });
   }
 }
 

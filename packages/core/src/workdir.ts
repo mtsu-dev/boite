@@ -74,12 +74,13 @@ const DEVICE_SECRET_FILE =
  * CLI, gh, rclone, keyrings, shell history) and the per-user stores of Windows
  * and macOS. Denied as a whole rather than by a list of known names, since a
  * new CLI brings a new folder. The temporary folder, which Windows keeps
- * under AppData, holds no login. The answer names the entry, for the refusal.
+ * under AppData, holds no login, nor do the cloud drives macOS keeps under
+ * Library. The answer names the entry, for the refusal.
  */
-function homeCredentialEntry(real: string): string | null {
-  const home = realOf(homePath());
+function homeCredentialEntry(home: string, real: string): string | null {
   if (!contains(home, real) || contains(realOf(tmpdir()), real)) return null;
-  const first = relative(home, real).split(sep)[0] ?? '';
+  const [first = '', second = ''] = relative(home, real).split(sep);
+  if (/^library$/i.test(first) && /^(cloudstorage|mobile documents)$/i.test(second)) return null;
   return first.startsWith('.') || /^(appdata|library)$/i.test(first) ? first : null;
 }
 
@@ -88,7 +89,10 @@ function homeCredentialEntry(real: string): string | null {
  * The core's own data (journal, accounts, tokens) when a project contains it,
  * which happens when a project is a home or desktop folder; a project or
  * worktree folder kept under the data folder stays readable. The home folder's
- * hidden entries, where every CLI keeps its login. And files that
+ * hidden entries, where every CLI keeps its login, when the thread's folder or
+ * project is the home folder or holds it; a folder the owner chose inside one
+ * (a shared worktree folder in `~/.worktrees`, a drive in `~/Library`) keeps
+ * its reads. And files that
  * hold credentials, since a phone that is lost or borrowed should not carry a
  * key away. A path outside the tree is left to the read itself to refuse.
  */
@@ -101,7 +105,8 @@ export function assertDeviceFile(core: Core, threadId: ThreadId, cwd: string, pa
     throw refused(`a paired device does not read boite's data folder: ${path ?? ''}`, { threadId });
   }
   const parts = relative(base, target).split(sep).filter(Boolean);
-  const entry = homeCredentialEntry(target);
+  const home = realOf(homePath());
+  const entry = [base, ...deviceRoots(core, threadId)].some((root) => contains(root, home)) ? homeCredentialEntry(home, target) : null;
   if (entry !== null || parts.some((part) => DEVICE_SECRET_DIRS.has(part.toLowerCase())) || DEVICE_SECRET_FILE.test(basename(target))) {
     throw refused(`a paired device does not read credential files${entry === null ? '' : ` (the home folder's ${entry} holds logins)`}; open ${path ?? ''} on the owner's machine`, { threadId });
   }
@@ -111,8 +116,10 @@ export function assertDeviceFile(core: Core, threadId: ThreadId, cwd: string, pa
  * A folder a paired device adds as a project becomes a root the checks above
  * read from, so it is held to the same rules first: not boite's data folder or
  * inside it, not the home folder, one of its parents or a disk root (they hold
- * every login), not a hidden entry of the home folder, and not a folder that
- * holds keys or tokens or one inside it. Its links are followed, as a read follows them.
+ * every login), and not a folder that holds keys or tokens or one inside it.
+ * A folder inside a hidden entry of the home folder is allowed: it is a root
+ * of its own, and the entry's other folders stay out of it. Its links are
+ * followed, as a read follows them.
  */
 export function assertDeviceProjectFolder(core: Core, folder: string): void {
   const real = realOf(folder);
@@ -123,9 +130,8 @@ export function assertDeviceProjectFolder(core: Core, folder: string): void {
   if (contains(real, home) || dirname(real) === real) {
     throw refused(`a paired device does not add the home folder, a folder that contains it or a disk root as a project, since it holds every login on this machine; add a folder inside it, or add ${folder} on the owner's machine`, { field: 'path', path: folder, expected: `a folder inside ${home}, not ${home} itself or a parent of it` });
   }
-  const entry = homeCredentialEntry(real);
-  if (entry !== null || real.split(sep).some((part) => DEVICE_SECRET_DIRS.has(part.toLowerCase()))) {
-    throw refused(`a paired device does not add a folder that holds keys or tokens as a project${entry === null ? '' : ` (the home folder's ${entry} holds logins)`}; add ${folder} on the owner's machine`, { field: 'path', path: folder, expected: `a folder outside ${[...DEVICE_SECRET_DIRS].join(', ')} and the home folder's hidden entries` });
+  if (real.split(sep).some((part) => DEVICE_SECRET_DIRS.has(part.toLowerCase()))) {
+    throw refused(`a paired device does not add a folder that holds keys or tokens as a project; add ${folder} on the owner's machine`, { field: 'path', path: folder, expected: `a folder outside ${[...DEVICE_SECRET_DIRS].join(', ')}` });
   }
 }
 
