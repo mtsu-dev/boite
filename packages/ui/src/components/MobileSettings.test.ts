@@ -83,7 +83,7 @@ test('a thread archived on the phone comes back from its own settings list', asy
   const mergedReason = query(`[data-thread-id="${merged.id}"] [data-testid=archive-merged-reason]`);
   expect(mergedReason.textContent).toContain('Archived after PR #7 merged');
   expect(mergedReason.querySelector('a')?.getAttribute('href')).toBe('https://github.com/example/repo/pull/7');
-  expect(mergedReason.querySelector('time')?.getAttribute('datetime')).not.toBeNull();
+  expect(mergedReason.closest('li')?.querySelector('time')?.getAttribute('datetime')).not.toBeNull();
   query<HTMLButtonElement>('[data-thread-id=t-trace] [data-testid=archived-restore]').click();
   await waitFor(() => store.threads.find((t) => t.id === 't-trace')?.archived === false);
 

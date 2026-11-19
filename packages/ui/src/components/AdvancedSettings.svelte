@@ -1,4 +1,7 @@
 <script lang="ts">
+  import SettingField from './SettingField.svelte';
+  import SettingSwitch from './SettingSwitch.svelte';
+  import SettingsSection from './SettingsSection.svelte';
   import { untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { readTerminalCursor, setTerminalCursor, type TerminalCursor } from '../lib/terminal-cursor';
@@ -22,7 +25,6 @@
    * on a desktop the terminal's cursor and the scrollbars' manner.
    */
   let { store }: { store: Store } = $props();
-  const uid = $props.id();
   const narrow = new MediaQuery('(max-width: 720px)');
 
   let terminalCursor = $state<TerminalCursor>(untrack(() => readTerminalCursor()));
@@ -73,8 +75,8 @@
 
   {#if !narrow.current}
     <!-- Desktop details few people change, once under Appearance. -->
-    <section class="card" id="settings-details">
-      <h2><span class="ui-label">{strings.settings.terminalAndScrollbars}</span><CardScope /></h2>
+    <SettingsSection id="settings-details" title={strings.settings.terminalAndScrollbars}>
+      {#snippet actions()}<CardScope />{/snippet}
       <div class="switch-row">
         <span class="text ui-label">{strings.settings.terminalCursor}</span>
         <div class="segmented" role="group" aria-label={strings.settings.terminalCursor}>
@@ -83,16 +85,16 @@
           {/each}
         </div>
       </div>
-      <label class="switch-row" for="{uid}-edge-scrollbars">
-        <span class="text"><span class="ui-label" id="{uid}-edge-scrollbars-name">{strings.features.edgeScrollbars.title}</span><span class="hint" id="{uid}-edge-scrollbars-effect">{strings.features.edgeScrollbars.hint}</span></span>
-        <input id="{uid}-edge-scrollbars" aria-labelledby="{uid}-edge-scrollbars-name" aria-describedby="{uid}-edge-scrollbars-effect" type="checkbox" role="switch" checked={featureOn('edge-scrollbars')} data-testid="setting-edge-scrollbars"
-          onchange={event => setFeature('edge-scrollbars', event.currentTarget.checked)} />
-      </label>
-    </section>
+      <SettingField title={strings.features.edgeScrollbars.title} hint={strings.features.edgeScrollbars.hint}>
+        {#snippet control(attributes)}
+          <SettingSwitch {...attributes} checked={featureOn('edge-scrollbars')} data-testid="setting-edge-scrollbars"
+            onchange={(event) => setFeature('edge-scrollbars', event.currentTarget.checked)} />
+        {/snippet}
+      </SettingField>
+    </SettingsSection>
   {/if}
 
-  <section class="card" id="settings-core">
-    <h2>{strings.settings.core}</h2>
+  <SettingsSection id="settings-core" title={strings.settings.core}>
     {#if store.core}
       <dl>
         <dt>{strings.settings.version}</dt>
@@ -111,7 +113,7 @@
     {:else}
       <p class="hint">{strings.settings.noCore}</p>
     {/if}
-  </section>
+  </SettingsSection>
 </div>
 
 <style>

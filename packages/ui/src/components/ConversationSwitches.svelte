@@ -5,7 +5,8 @@
   import { setFeature } from '../lib/features';
   import { recentPreferences } from '../lib/recent.svelte';
   import { strings } from '../lib/strings';
-  import InfoTip from './InfoTip.svelte';
+  import SettingField from './SettingField.svelte';
+  import SettingSwitch from './SettingSwitch.svelte';
 
   /**
    * The conversation switches kept on this device, by topic: `list`, how the
@@ -17,7 +18,6 @@
    * what is typed (In the conversation, on the desktop and on a phone's own page).
    */
   let { part, phone = false }: { part: 'list' | 'conversation'; phone?: boolean } = $props();
-  const uid = $props.id();
   const inShell = desktopShell();
   /** Each row says what turning it on does; the "i" stays where that needs more than a line. */
   type Option = { id: string; testid?: string; label: string; effect: string; tip?: string; checked: boolean; set: (value: boolean) => void };
@@ -38,16 +38,10 @@
 </script>
 
 {#each options as option (option.id)}
-  <label for="{uid}-{option.id}" class="switch-row">
-    <span class="text">
-      <span class="ui-label-box"><span class="ui-label" id="{uid}-{option.id}-name">{option.label}</span>{#if option.tip}<InfoTip topic={option.label} text={option.tip} />{/if}</span>
-      <span class="hint" id="{uid}-{option.id}-effect">{option.effect}</span>
-    </span>
-    <input id="{uid}-{option.id}" aria-labelledby="{uid}-{option.id}-name" aria-describedby="{uid}-{option.id}-effect" type="checkbox" role="switch" data-testid={option.testid ?? `setting-${option.id}`}
-      checked={option.checked} onchange={event => option.set(event.currentTarget.checked)} />
-  </label>
+  <SettingField title={option.label} hint={option.effect} help={option.tip}>
+    {#snippet control(attributes)}
+      <SettingSwitch {...attributes} data-testid={option.testid ?? `setting-${option.id}`}
+        checked={option.checked} onchange={(event) => option.set(event.currentTarget.checked)} />
+    {/snippet}
+  </SettingField>
 {/each}
-
-<style>
-  input { flex: none; }
-</style>

@@ -131,14 +131,14 @@ above the message box or the bottom tabs.
 
 - Mark done moves a thread to the Done group. Archive puts it aside to pick up
   later; the toast offers Undo, or press Ctrl+Z.
-- The agent of an archived thread stops. Restore it from Archived threads in
-  the Filter menu or in a project's menu, which list them in place of the
-  thread list, or from Settings, General, Archived threads. Its agent starts
-  again with your first message.
+- Open Archived threads from Filter, a project's menu or Settings > General.
+  Select a conversation to read it. Restore it from the row or from the open
+  conversation before sending a message. Its agent starts again with your
+  first message.
 - A project's Done list shows ten rows at a time; scroll it for the rest.
 - Delete done threads after (days) defaults to 3. Manual archives are kept.
 - A deleted conversation can be restored from Show deleted conversations in
-  Settings, General, Archived threads, for the number of days set in Keep
+  Settings > General, for the number of days set in Keep
   deleted conversations for.
 - Archive project takes a project out of the list. Its threads keep running,
   and a new thread brings it back. Remove from Boite removes the project and

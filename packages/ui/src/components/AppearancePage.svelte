@@ -1,4 +1,6 @@
 <script lang="ts">
+  import SettingField from './SettingField.svelte';
+  import SettingsSection from './SettingsSection.svelte';
   import { errorText } from '../lib/errors';
   import InfoTip from './InfoTip.svelte';
   import { Minus, Plus } from '@lucide/svelte';
@@ -166,8 +168,8 @@
     <h1>{strings.settings.tabs.appearance}</h1>
   </header>
 
-  <section class="card" id="settings-theme">
-    <h2 class="ui-label-box"><span class="ui-label">{strings.settings.display}</span><InfoTip gather topic={strings.settings.display} text="" testid="section-info" /></h2>
+  <SettingsSection id="settings-theme" title={strings.settings.display}>
+    {#snippet actions()}<InfoTip gather topic={strings.settings.display} text="" testid="section-info" />{/snippet}
     <!-- Two to four options show every one of them, in place, on a phone as on a desktop: the value in use is the one lit. -->
     <div class="switch-row">
       <span class="text ui-label">{strings.settings.language}</span>
@@ -233,10 +235,10 @@
         </div>
       </div>
     {/if}
-  </section>
+  </SettingsSection>
 
-  <section class="card" id="settings-reading">
-    <h2 class="ui-label-box"><span class="ui-label">{strings.settings.reading}</span><InfoTip gather topic={strings.settings.reading} text="" testid="section-info" /></h2>
+  <SettingsSection id="settings-reading" title={strings.settings.reading}>
+    {#snippet actions()}<InfoTip gather topic={strings.settings.reading} text="" testid="section-info" />{/snippet}
     <!-- Each face's name is drawn in that face in its list, and a line under the row shows the one in use
          at the size it is read at: a reply's for the text, a code block's for the code. -->
     <div class="switch-row choice-row sampled" class:value={phone}>
@@ -250,17 +252,17 @@
       <span class="sample code" style:font-family="var(--face-mono-{mono})" data-testid="font-mono-sample" aria-hidden="true">{strings.settings.monoSample}</span>
     </div>
     {#if zoomable}
-      <div class="switch-row">
-        <span class="text ui-label-box"><span class="ui-label">{strings.settings.zoom}</span><InfoTip topic={strings.settings.zoom} text={strings.settings.zoomHint} /></span>
-        <div class="segmented zoom" role="group" aria-label={strings.settings.zoom}>
-          <button type="button" aria-label={strings.settings.zoomOut} title={strings.settings.zoomOut} disabled={zoom <= smallest} data-testid="zoom-out" onclick={() => zoomTo(stepZoom(wantedZoom(), -1))}><Minus size={14} strokeWidth={2} /></button>
-          <button type="button" class="zoom-value" title={strings.settings.zoomReset} aria-label={strings.settings.zoomReset} data-testid="zoom-reset" onclick={() => zoomTo(ZOOM_DEFAULT)}><span class="ui-label">{percent(zoom * 100)}</span></button>
-          <button type="button" aria-label={strings.settings.zoomIn} title={strings.settings.zoomIn} disabled={zoom >= largest} data-testid="zoom-in" onclick={() => zoomTo(stepZoom(wantedZoom(), 1))}><Plus size={14} strokeWidth={2} /></button>
-        </div>
-      </div>
-      {#if zoomError}<p class="zoom-error" role="alert" data-testid="zoom-error">{zoomError}</p>{/if}
+      <SettingField title={strings.settings.zoom} help={strings.settings.zoomHint} error={zoomError || undefined} errorTestid="zoom-error" field={false}>
+        {#snippet control({ id, 'aria-labelledby': labelledBy, 'aria-describedby': describedBy })}
+          <div {id} class="segmented zoom" role="group" aria-labelledby={labelledBy} aria-describedby={describedBy}>
+            <button type="button" aria-label={strings.settings.zoomOut} title={strings.settings.zoomOut} disabled={zoom <= smallest} data-testid="zoom-out" onclick={() => zoomTo(stepZoom(wantedZoom(), -1))}><Minus size={14} strokeWidth={2} /></button>
+            <button type="button" class="zoom-value" title={strings.settings.zoomReset} aria-label={strings.settings.zoomReset} data-testid="zoom-reset" onclick={() => zoomTo(ZOOM_DEFAULT)}><span class="ui-label">{percent(zoom * 100)}</span></button>
+            <button type="button" aria-label={strings.settings.zoomIn} title={strings.settings.zoomIn} disabled={zoom >= largest} data-testid="zoom-in" onclick={() => zoomTo(stepZoom(wantedZoom(), 1))}><Plus size={14} strokeWidth={2} /></button>
+          </div>
+        {/snippet}
+      </SettingField>
     {/if}
-  </section>
+  </SettingsSection>
 
   {#if !phone}
   <!-- Every optional button in one place, grouped by where it sits: the presets,
@@ -341,7 +343,6 @@
   .sample-reply { color: var(--color-muted-foreground); }
   .glyph.buttons i { width: 2.5px; height: 2.5px; border-radius: 50%; background: currentColor; }
   .zoom button { display: inline-flex; align-items: center; justify-content: center; padding: 0 8px; }
-  .zoom-error { margin: 0; color: var(--color-danger); font-size: var(--text-xs); overflow-wrap: anywhere; }
   .zoom .zoom-value { min-width: 56px; font-variant-numeric: tabular-nums; color: var(--color-foreground); }
   .control-group .switch-row :global(svg) { flex: none; color: var(--color-muted-foreground); }
   .control-group .switch-row .ui-label-box { gap: var(--space-3); }
