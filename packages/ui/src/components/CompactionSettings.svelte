@@ -2,7 +2,7 @@
   import type { CompactionTarget } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
   import { strings } from '../lib/strings';
-  import { compactionPolicy } from '../lib/compaction-settings';
+  import { CompactionWrites, compactionPolicy } from '../lib/compaction-settings';
   import AutoCompactSettings from './AutoCompactSettings.svelte';
   import BackgroundCompactionSettings from './BackgroundCompactionSettings.svelte';
   import InfoTip from './InfoTip.svelte';
@@ -16,6 +16,8 @@
   let saving = $state(false);
   let editor = $state<{ flush: () => Promise<void> }>();
   let background = $state<{ flush: () => Promise<void> }>();
+  /** One queue for both halves: each write starts from the answer to the one before. */
+  const writes = new CompactionWrites();
   /** Both halves save what they hold before the card changes type or customization. */
   const flush = () => Promise.all([editor?.flush(), background?.flush()]);
   const uid = $props.id();
@@ -65,8 +67,8 @@
     {/if}
     {#key `${target ?? 'common'}:${customized}`}
       <fieldset disabled={saving || (target !== undefined && !customized)}>
-        <AutoCompactSettings bind:this={editor} {store} {target} embedded />
-        <div class="background"><BackgroundCompactionSettings bind:this={background} {store} {target} embedded /></div>
+        <AutoCompactSettings bind:this={editor} {store} {target} {writes} embedded />
+        <div class="background"><BackgroundCompactionSettings bind:this={background} {store} {target} {writes} embedded /></div>
       </fieldset>
     {/key}
   </section>
