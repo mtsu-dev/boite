@@ -346,8 +346,10 @@ start of a step:
   session's first message (`stepTail` in `continuation.ts`): user and
   assistant text, each tool call with its input and its result, every tool
   output cut at 1 250 characters, in a `<recent-history>` block that ends
-  with `Continue the current task.`. It is never sent again with the next
-  prompt;
+  with `Continue the current task.`. Providers that accept images receive the
+  newest images after the fork point within the turn's attachment limits.
+  Other images in the included history stay as references. The tail is sent
+  once, with the swap;
 - `null` instead, whenever the copy failed, ran out of time or no longer
   matches: the driver goes on, and its own blocking compaction handles the
   limit.
@@ -378,7 +380,8 @@ instead, under the same conditions as the timer above and after the same 2 s:
 a new session generation, no model call, its process released, and the same
 divider. The thread's next prompt then carries what was said after the fork
 point in a `<recent-history>` block before the request (`tailInput` in
-`continuation.ts`); the `compaction-tail:<thread>` marker clears once a turn
+`continuation.ts`). Images after the fork point share that prompt's attachment
+count and byte limits. The `compaction-tail:<thread>` marker clears once a turn
 that carried it ends `done`. The `autoCompact` moments govern these idle
 pauses only.
 

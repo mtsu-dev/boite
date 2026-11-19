@@ -13,6 +13,7 @@ export { sharedBlob };
 const FILE_LIMIT = 20_000;
 const BYTE_LIMIT = 128 * 1024 * 1024;
 const FILE_BYTE_LIMIT = BLOB_BYTE_LIMIT;
+const METADATA_BATCH = 16;
 const SKIP = new Set(['.git', '.boite', '.agents', 'node_modules']);
 
 /**
@@ -84,12 +85,18 @@ export async function checkedPath(root: string, name: string, verified?: Set<str
 
 /** One file at a time, bounded before allocation. Never follows a file symlink. */
 export async function readEntry(path: string, cached?: CachedFile, permit?: SharedFilePermit): Promise<(CachedFile & { bytes?: Buffer }) | null> {
-  let info;
-  try { info = await lstat(path, { bigint: true }); } catch (error) {
+  return readEntryAt(path, await fileMetadata(path), cached, permit);
+}
+
+async function fileMetadata(path: string): Promise<BigIntStats | null> {
+  try { return await lstat(path, { bigint: true }); } catch (error) {
     if (['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')) return null;
     throw error;
   }
-  if (info.isDirectory()) return null;
+}
+
+async function readEntryAt(path: string, info: BigIntStats | null, cached?: CachedFile, permit?: SharedFilePermit): Promise<(CachedFile & { bytes?: Buffer }) | null> {
+  if (!info || info.isDirectory()) return null;
   const metadata = metadataOf(info);
   if (cached?.metadata === metadata) return cached;
   if (info.isSymbolicLink()) {
@@ -120,12 +127,29 @@ export async function readEntry(path: string, cached?: CachedFile, permit?: Shar
   } finally { await handle.close(); }
 }
 
+/** Validate parents in order, then recheck metadata in small parallel batches. */
+async function* scanPaths(root: string, names: string[], protectedScope: boolean, signal?: AbortSignal) {
+  const verified = new Set<string>();
+  const batchSize = protectedScope ? 1 : METADATA_BATCH;
+  for (let offset = 0; offset < names.length; offset += batchSize) {
+    signal?.throwIfAborted();
+    const batch = [];
+    for (const name of names.slice(offset, offset + batchSize)) {
+      batch.push({ name, path: await checkedPath(root, name, verified) });
+    }
+    // The shared-file policy must authorize each path before it is statted.
+    const infos = protectedScope ? undefined : await Promise.all(batch.map(({ path }) => fileMetadata(path)));
+    for (const [index, entry] of batch.entries()) yield { ...entry, info: infos?.[index] };
+  }
+}
+
 /** Without git there are no reliable ignore rules; walk only bounded, ordinary project files. */
-async function plainFiles(root: string): Promise<string[]> {
+async function plainFiles(root: string, signal?: AbortSignal): Promise<string[]> {
   const files: string[] = [];
   const pending = [''];
   let entries = 0;
   while (pending.length) {
+    signal?.throwIfAborted();
     const parent = pending.pop()!;
     for (const entry of await readdir(join(root, parent), { withFileTypes: true })) {
       if (SKIP.has(entry.name) || entry.name === 'AGENTS.md' || entry.name.startsWith('.env')) continue;
@@ -143,29 +167,30 @@ async function plainFiles(root: string): Promise<string[]> {
  * folder then holds hard links to it, so each folder stays enough for a
  * rewind on its own. Without `shared`, blobs are written into `objects`.
  */
-export async function snapshot(core: Core, threadId: string, root: string, objects: string, previous?: SnapshotCache, shared?: string): Promise<FileSnapshot> {
+export async function snapshot(core: Core, threadId: string, root: string, objects: string, previous?: SnapshotCache, shared?: string, signal?: AbortSignal): Promise<FileSnapshot> {
+  signal?.throwIfAborted();
   if (contains(root, core.dataDir)) throw new Error('workspace contains the core data directory');
   // Fixed host bookkeeping belongs to provider control, never the model's tool sandbox.
   const scope = core.procs.protection.policy(threadId) ? core.procs.protection.control(threadId) : threadId;
   const listed = await git(core, scope, root, ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], 5000);
-  const names = listed.code === 0 ? [...new Set(listed.stdout.split('\0').filter(Boolean))] : await plainFiles(root);
+  signal?.throwIfAborted();
+  const names = listed.code === 0 ? [...new Set(listed.stdout.split('\0').filter(Boolean))] : await plainFiles(root, signal);
   if (names.length > FILE_LIMIT) throw new Error('workspace exceeds the 20000 file checkpoint limit');
   await mkdir(objects, { recursive: true, mode: 0o700 });
   const result: FileSnapshot = Object.create(null) as FileSnapshot;
   const next: SnapshotCache = new Map();
-  const verified = new Set<string>();
   const folders = new Set<string>();
   let bytes = 0;
   const protectedScope = core.sharedAccess.bound(threadId) !== null;
-  for (const name of names) {
-    const path = await checkedPath(root, name, verified);
+  for await (const { name, path, info } of scanPaths(root, names, protectedScope, signal)) {
+    signal?.throwIfAborted();
     const cached = previous?.get(name);
     // Without a shared store, a hash cached for another folder has no blob here.
     let saved;
     try {
       const permit = protectedScope ? core.sharedAccess.file(threadId, relative(core.threads.require(threadId).cwd, path).split(sep).join('/'), 'read', false, true) : undefined;
       // A local cache may contain a credential under an ordinary name. Shared snapshots inspect the actual bytes.
-      saved = await readEntry(path, !protectedScope && (shared || cached?.objects === objects) ? cached : undefined, permit);
+      saved = await readEntryAt(path, info === undefined ? await fileMetadata(path) : info, !protectedScope && (shared || cached?.objects === objects) ? cached : undefined, permit);
     } catch (error) {
       if (error instanceof RpcFailure && error.message.startsWith('shared file policy:')) continue;
       throw error;
@@ -186,6 +211,7 @@ export async function snapshot(core: Core, threadId: string, root: string, objec
     }
     next.set(name, { entry: saved.entry, metadata: saved.metadata, size: saved.size, objects });
   }
+  signal?.throwIfAborted();
   if (previous) { previous.clear(); for (const [name, entry] of next) previous.set(name, entry); }
   return result;
 }

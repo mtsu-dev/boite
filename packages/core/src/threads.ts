@@ -54,7 +54,7 @@ import { messagePage, threadSnapshot, type MessagePage } from './threads/snapsho
 import { checkEffort, checkModel, checkSpeed, checkStoredEffort, checkStoredSpeed, defaultModel } from './threads/selection.ts';
 import { TurnContexts } from './threads/turn-context.ts';
 import { TurnRunner } from './threads/turn-runner.ts';
-import { markQueuedStopped } from './threads/turn-settlement.ts';
+import { markQueuedStopped, userStopKey } from './threads/turn-settlement.ts';
 import { ThreadFocus } from './threads/focus.ts';
 import { ThreadListLog } from './threads/list-changes.ts';
 import { ProgressState } from './threads/progress.ts';
@@ -334,7 +334,7 @@ export class ThreadStore {
       const modeChanged = next.permissionMode !== thread.permissionMode;
       if (modeChanged) next.selectionVersion = (thread.selectionVersion ?? 0) + 1;
       const saved = this.#save(next, 'thread.updated');
-      if (modeChanged) this.runner.changePermissionMode(thread.id, next.permissionMode, thread, next);
+      if (modeChanged) this.runner.selectionChanged(thread, next);
       return saved;
     }
     const account = this.#core.accounts.require(params.accountId ?? thread.accountId);
@@ -757,6 +757,8 @@ export class ThreadStore {
 
   stopTurn(threadId: ThreadId): boolean {
     this.require(threadId);
+    const running = this.#core.journal.runningTurn(threadId);
+    if (running) this.#core.journal.setSetting(userStopKey(running.id), true);
     this.handoff.forget(threadId);
     this.cacheKeepalive.forget(threadId);
     // Stop on a thread waiting for a usage limit to reset, or for the wake its agent scheduled, means: do not resume it.
@@ -801,13 +803,14 @@ export class ThreadStore {
     if (!handle?.steer || this.runner.steering.has(threadId)) return false;
     const turn = this.#core.journal.runningTurn(threadId);
     if (!turn || turn.execution?.operation === 'keepalive' || turn.execution?.operation === 'compact') return false;
-    this.runner.steering.add(threadId);
+    const steering = this.runner.beginSteering(threadId, handle);
+    if (!steering) return false;
     try {
-      const submitted = await handle.steer(text);
+      const submitted = await steering.send(handle.steer.bind(handle), text);
       if (submitted && !this.#core.journal.isClosed()) this.noteCoordination(threadId, turn.id, text);
       return submitted;
     } finally {
-      this.runner.steering.delete(threadId);
+      steering.release();
       void this.deferred.flushRunning(threadId);
     }
   }

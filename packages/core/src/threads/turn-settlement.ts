@@ -20,7 +20,10 @@ interface Settlement {
 interface Completion { next: ThreadSummary | null; sameSession: boolean; threadOwned: boolean }
 
 /** How a turn came to close: its runner settled it, it never started, or a restarted core closes what the last one left. */
-export type TurnClose = 'settled' | 'never-started' | 'crashed' | 'handed-over';
+export type TurnClose = 'settled' | 'never-started' | 'crashed' | 'handed-over' | 'user-stop';
+
+/** Explicit Stop survives the gap between its acknowledgement and native settlement. */
+export function userStopKey(turnId: TurnId): string { return `turn-user-stop:${turnId}`; }
 
 interface Finished { thread: ThreadSummary | null; owned: boolean; toolsClosed: number }
 
@@ -37,6 +40,7 @@ export function finishTurn(core: Core, finished: Turn, cause: TurnClose, patch?:
   const toolsClosed = finished.status !== 'done' ? closeTools(core, threadId, finished.id) : 0;
   const type = cause !== 'settled' && finished.status === 'stopped' ? 'turn.stopped' : 'turn.finished';
   core.journal.append({ type, threadId, version: 1, payload: finished }, () => core.journal.putTurn(finished));
+  if (finished.startedAt !== null) core.journal.deleteSetting(userStopKey(finished.id));
   // In the same transaction: the next turn knows whether the brain's instructions go again.
   brainContextEnded(core, finished);
   coordinationGuideEnded(core, finished);

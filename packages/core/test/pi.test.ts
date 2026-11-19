@@ -38,11 +38,14 @@ test('coordination steers a running pi turn over its RPC connection', async () =
   expect(await harness!.core.threads.steer(threadId, 'Boite agent coordination. Wait for the VM.')).toBe(true);
   expect(fakeLog()).toContain('steering Boite agent coordination');
   const turn = harness!.core.journal.listTurns(threadId)[0]!;
-  expect(await client.call('turns.steer', { threadId, turnId: turn.id, prompt: 'User correction',
+  expect(await client.call('turns.steer', { threadId, turnId: turn.id, prompt: 'User correction [steer-delta]',
     attachments: [{ kind: 'image', mimeType: 'image/png', data: 'aGVsbG8=', name: 'sample.png' }], clientRequestId: 'pi_steer_01' })).toEqual({ accepted: true });
   expect(fakeLog()).toContain('steering User correction');
   expect(fakeLog()).toContain('steer-image image/png 8');
   expect(harness!.core.journal.listTurns(threadId)).toHaveLength(1);
+  const replied = () => harness!.core.journal.listMessages(threadId).findIndex(m => m.parts.some(part => part.type === 'text' && part.text.includes('Steer answered')));
+  await waitFor(() => replied() >= 0);
+  expect(replied()).toBeGreaterThan(harness!.core.journal.listMessages(threadId).findLastIndex(m => m.role === 'user'));
   await client.call('turns.stop', { threadId });
   await waitFor(() => fakeLog().includes('clear_queue\nabort'));
   expect(fakeLog()).toContain('clear_queue\nabort');
@@ -779,15 +782,26 @@ describe('pi driver', () => {
     }
   });
 
-  test('a refused clear_queue after a steer still ends the turn stopped', async () => {
+  test.each(['noclear', 'hang-clear'])('Stop closes a steered pi when clear_queue is uncertain (%s)', async condition => {
     const { client, threadId } = await startThread();
-    const { finished } = await startTurn(client, threadId, '[slow][noclear] Deploy', 10000);
+    const { finished } = await startTurn(client, threadId, `[slow][${condition}] Deploy`, 2000);
     await waitFor(() => fakeLog().includes('waiting for abort'));
     await waitFor(() => harness!.core.journal.listMessages(threadId).some((m) => m.role === 'assistant'));
     expect(await harness!.core.threads.steer(threadId, 'Boite agent coordination. Wait.')).toBe(true);
     await client.call('turns.stop', { threadId });
     expect((await finished).status).toBe('stopped');
-    expect(fakeLog()).toContain('clear_queue\nabort');
+    expect(fakeLog()).toContain('clear_queue\n');
+    expect(fakeLog()).not.toMatch(/^abort$/m);
+    await waitFor(() => harness?.core.procs.liveCount(threadId) === 0);
+  });
+
+  test('a stopped pi turn settles while the context read is still unanswered', async () => {
+    const { client, threadId } = await startThread();
+    const { finished } = await startTurn(client, threadId, '[hang-stats] Deploy', 2000);
+    await waitFor(() => fakeLog().includes('get_session_stats'));
+    expect(await client.call('turns.stop', { threadId })).toEqual({ stopped: true });
+    expect((await finished).status).toBe('stopped');
+    await waitFor(() => harness?.core.procs.liveCount(threadId) === 0);
   });
 
   test('a notify is drawn in the turn and no fire-and-forget method gets an answer', async () => {
