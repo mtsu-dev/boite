@@ -85,6 +85,18 @@ jobs:
         with:
           workspaces: apps/mobile/src-tauri -> target
           shared-key: mobile-release-v1
+      - name: Verify the Android Rust minimum
+        run: |
+          cargo metadata --locked --format-version 1 --filter-platform aarch64-linux-android \
+            --manifest-path apps/mobile/src-tauri/Cargo.toml | jq -e '
+              def version: split(".") | map(tonumber) | (. + [0, 0])[:3];
+              . as $graph
+              | (.packages[] | select(.id == $graph.resolve.root) | .rust_version | version) as $minimum
+              | (.resolve.nodes | map({key: .id, value: true}) | from_entries) as $active
+              | [.packages[] | select($active[.id] and .rust_version != null)
+                  | select((.rust_version | version) > $minimum) | "\(.name) \(.version) requires Rust \(.rust_version)"]
+              | if length == 0 then true else error(join(", ")) end
+            '
       - run: bun install --frozen-lockfile
       - name: Choose the version
         id: meta
