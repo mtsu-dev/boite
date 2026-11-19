@@ -339,7 +339,7 @@ test('the parent learns dynamic workflows and coordination within a compact prom
   await owner.call('turns.start', { threadId, prompt: 'Continue' });
   const resumed = runs.get(threadId)!.ctx;
   expect(resumed.prompt).not.toContain('boite where');
-  expect(resumed.continuation!().prompt).toContain('boite where');
+  expect((await resumed.continuation!()).prompt).toContain('boite where');
 });
 
 test('agent tokens can only delegate inside their own owner-enabled family, never change policy or nest', async () => {

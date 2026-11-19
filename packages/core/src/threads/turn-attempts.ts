@@ -232,17 +232,23 @@ export class TurnAttempts {
       const protection = this.#core.sharedAccess.execution.prepare(threadId);
       if (protection) await abortable(protection, signal);
       signal.throwIfAborted();
-      // Preparation can yield while the user changes modes. Read it only
-      // once the native context and handle can be constructed without yielding.
       state.thread.permissionMode = permissions.mode;
       const note = afterUpdate;
       afterUpdate = null;
       // The resumed session already holds what the first attempt took from the thread.
       const continuing = afterCapacity && wroteBefore;
       afterCapacity = false;
+      const prepared = this.threads.contexts.makeContext(
+        state.thread, provider, this.#core.accounts.require(accountId), state.running,
+        note || continuing ? { memory: '', deferred: '', letters: '' } : carried, note?.prompt, signal,
+      );
+      const context = prepared instanceof Promise ? await abortable(prepared, signal) : prepared;
+      signal.throwIfAborted();
+      this.#core.sharedCompute?.assertTurn(threadId);
+      this.#core.sharedAccess?.assertTurn(threadId);
+      state.thread.permissionMode = context.thread.permissionMode = permissions.mode;
       // Preparation, capacity waits and lost-session retries can all outlive an admin edit or sign-out.
       const account = this.#core.accounts.require(accountId);
-      const context = this.threads.contexts.makeContext(state.thread, provider, account, state.running, note || continuing ? { memory: '', deferred: '', letters: '' } : carried, note?.prompt);
       // Whether this attempt writes anything but an error: the agent's session then holds work a new try must not repeat.
       let wrote = false;
       const sink = context.emit;
@@ -251,6 +257,12 @@ export class TurnAttempts {
       // after that belongs to no turn the journal still holds open, so it
       // reaches no message.
       let listening = true;
+      const generation = context.thread.sessionGeneration ?? 0;
+      if (context.sessionId === null) {
+        context.sessionAccepted = sessionId => {
+          if (listening && !signal.aborted) this.#acceptSession(state, generation, sessionId);
+        };
+      }
       // Messages this attempt opened: its end closes any the driver left open
       // (a driver cut off by its forced stop completes nothing). Completing one
       // already closed through the sink changes nothing.
@@ -511,6 +523,31 @@ export class TurnAttempts {
     if (current && current.providerId === state.thread.providerId && current.accountId === state.thread.accountId && (current.sessionGeneration ?? 0) === (state.thread.sessionGeneration ?? 0)) {
       saveThread(this.#core, { ...current, sessionId: state.thread.sessionId, sessionResumeAt: null }, 'thread.updated');
     }
+  }
+
+  /** Journal the first usable session with the running turn, before a result can be lost to a crash. */
+  #acceptSession(state: TurnAttemptState, generation: number, sessionId: string): void {
+    const { threadId, turnId, thread, running } = state;
+    const { journal } = this.#core;
+    const execution = running.execution;
+    if (!sessionId || execution?.sessionId !== null || execution.sessionGeneration !== generation
+      || this.#turns.get(threadId) !== state || journal.isClosed()) return;
+    const current = journal.getThread(threadId);
+    const stored = journal.getTurn(turnId);
+    if (current === null || !sameSelectionTarget(current, thread) || (current.sessionGeneration ?? 0) !== generation
+      || (current.sessionId !== null && current.sessionId !== sessionId)
+      || stored?.status !== 'running' || stored.startedAt !== running.startedAt || stored.threadId !== threadId
+      || stored.execution?.sessionId !== null || stored.execution.sessionGeneration !== generation
+      || stored.execution.accountId !== execution.accountId || stored.execution.providerId !== execution.providerId) return;
+    const next = { ...current, sessionId, sessionResumeAt: null };
+    const accepted = { ...running, execution: { ...execution, sessionId, sessionResumeAt: null } };
+    journal.append({ type: 'turn.session-accepted', threadId, version: 1, payload: { turnId, sessionId, generation } }, () => {
+      journal.putThread(next);
+      journal.putTurn(accepted);
+    });
+    state.thread = { ...thread, sessionId, sessionResumeAt: null };
+    state.running = accepted;
+    this.#announce(threadId);
   }
 
   /**

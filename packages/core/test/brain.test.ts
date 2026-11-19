@@ -373,7 +373,7 @@ test('the brain goes once a native session: again when it changes, after a compa
   let directive = 'Hello';
   const restore = setDriver('echo', { ...echoDriver, startTurn(ctx) {
     prompts.push(ctx.prompt);
-    if (ctx.prompt.includes('Continue me')) continuation = ctx.continuation?.().prompt ?? null;
+    if (ctx.prompt.includes('Continue me')) void Promise.resolve(ctx.continuation?.()).then(value => { continuation = value?.prompt ?? null; });
     if (directive === 'background compaction') {
       // A compaction the agent ran in its own session, flagged as background, as pi reports one.
       const id = ctx.emit.startMessage('assistant');

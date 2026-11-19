@@ -640,6 +640,8 @@ export class ClaudeSession {
     }
     // The turn is told what earlier turns account for before it reads the result.
     if (message.type === 'result') turn.noteCostBefore(...this.#totals.before(message));
+    if (!replayed && this.#native === null && this.#foreignResults === 0 && this.#sessionId !== null
+      && message.type === 'assistant' && !message.error && subagentOf(message) === null) turn.ctx.sessionAccepted?.(this.#sessionId);
     turn.handle(message);
     // A result can answer several prompts. The query stays open after the turn.
     if (message.type === 'result') {

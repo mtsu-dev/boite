@@ -1,6 +1,7 @@
 import { effectiveCompaction } from '@boite/contracts';
 import type { Account, AgentTotals, ContextUse, Message, MessagePart, ProviderDescriptor, ThreadId, ThreadSummary, Turn, TurnId } from '@boite/contracts';
-import { stepTail, type PartPlace, type TailAnchor } from '../continuation.ts';
+import { prepareHistoryImages } from '../attachments.ts';
+import { stepTail, type HistoryInput, type PartPlace, type TailAnchor } from '../continuation.ts';
 import type { Core } from '../core.ts';
 import { getDriver, releaseThread } from '../drivers/index.ts';
 import type { EmitSink, PermissionTicket, QuestionTicket, SessionContext, StepBoundary, StepDecision, TurnContext, TurnHandle, TurnResult } from '../drivers/types.ts';
@@ -398,7 +399,22 @@ export class BackgroundCompaction {
     if (this.#backgroundWork(thread.id)) { this.#drop(thread.id, 'background work is running'); return null; }
     let decision: StepDecision;
     try {
-      decision = this.#swapInTurn(thread, turn, copy, ready, live, fileReference);
+      // Read the tail before writing the divider. Only images from older turns
+      // are previews; the current turn may still need its original images.
+      let tail = stepTail(this.#core.journal, thread.id, copy.source.anchor, fileReference, this.#core.providers.require(thread.providerId), turn.id);
+      this.#core.sharedAccess.uploads(thread.id, tail.attachments);
+      if (tail.historicalImages?.length) {
+        tail = await prepareHistoryImages(this.#core.dataDir, tail);
+        if (this.#closed || this.#core.journal.isClosed() || this.#copies.get(thread.id) !== copy) return null;
+        const current = this.#core.journal.getThread(thread.id);
+        if (current === null || this.#core.journal.runningTurn(thread.id)?.id !== turn.id) return null;
+        stale = !this.enabled(current) ? 'the setting is off'
+          : this.#stale(current, copy, this.limit(current), live) ?? (this.#backgroundWork(thread.id) ? 'background work is running' : null);
+        if (stale !== null) { this.#drop(thread.id, stale); return null; }
+        thread = current;
+        this.#core.sharedAccess.uploads(thread.id, tail.attachments);
+      }
+      decision = this.#swapInTurn(thread, turn, copy, ready, live, tail);
     } catch (error) {
       this.#drop(thread.id, `the swap failed: ${messageOf(error)}`);
       return null;
@@ -659,10 +675,7 @@ export class BackgroundCompaction {
    * turn the answer goes on after. What happened since the copy goes to the
    * agent now (`StepDecision.swap.tail`), never with the next prompt.
    */
-  #swapInTurn(thread: ThreadSummary, turn: Turn, copy: Copy, ready: NonNullable<Copy['ready']>, live: Live, fileReference: Parameters<typeof stepTail>[3]): StepDecision {
-    // Read before the divider is written: the tail is what the agent did since the copy.
-    const tail = stepTail(this.#core.journal, thread.id, copy.source.anchor, fileReference, this.#core.providers.require(thread.providerId));
-    this.#core.sharedAccess.uploads(thread.id, tail.attachments);
+  #swapInTurn(thread: ThreadSummary, turn: Turn, copy: Copy, ready: NonNullable<Copy['ready']>, live: Live, tail: HistoryInput): StepDecision {
     const now = Date.now();
     const generation = (thread.sessionGeneration ?? 0) + 1;
     const next = this.#swapped(thread, ready, generation, now);
@@ -688,7 +701,7 @@ export class BackgroundCompaction {
     // The answer goes on in a new message after the divider.
     this.threads.runner.answerAfter.set(turn.id, Math.max(divider.createdAt, this.threads.runner.answerAfter.get(turn.id) ?? 0));
     this.#core.log('info', `thread ${thread.id}: swapped to a session compacted in the background, inside turn ${turn.id}`, { source: thread.providerId, threadId: thread.id, turnId: turn.id });
-    return { swap: { sessionId: ready.sessionId, tail: tail.prompt, attachments: tail.attachments, postTokens: ready.postTokens, ...(ready.totals ? { totals: ready.totals } : {}) } };
+    return { swap: { sessionId: ready.sessionId, tail: tail.prompt, attachments: tail.attachments.filter(part => part.kind === 'image'), postTokens: ready.postTokens, ...(ready.totals ? { totals: ready.totals } : {}) } };
   }
 
   /**

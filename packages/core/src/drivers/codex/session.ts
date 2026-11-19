@@ -61,10 +61,6 @@ const SQLITE_INIT_ATTEMPTS = 3;
 const SQLITE_INIT_BACKOFF_MS = 500;
 const SQLITE_INIT_CLOSE_MS = 2_000;
 
-// ---------------------------------------------------------------------------
-// The session: one agent process per thread
-// ---------------------------------------------------------------------------
-
 /**
  * One app-server per thread, initialized and opened once. Warm retention reuses
  * it between turns until idle expiry, a stop, an archive, shutdown or new setup.
@@ -205,12 +201,12 @@ export class CodexSession {
     const rpc = this.#rpc;
     const threadId = this.#threadId;
     if (rpc === null || threadId === null || turn.turnId === null) return;
-    void rpc.request('turn/interrupt', { threadId, turnId: turn.turnId }).catch(() => undefined);
+    void rpc.request('turn/interrupt', { threadId, turnId: turn.turnId }, { writeKind: 'stop' }).catch(() => undefined);
   }
 
   async steer(turn: CodexTurn, text: string, attachments: TurnContext['attachments'] = [], onAccepted?: () => void, signal?: AbortSignal): Promise<boolean> {
     if (this.#current !== turn || turn.settled || turn.isStopped || !this.#rpc || !this.#threadId || !turn.turnId) return false;
-    await this.#rpc.request('turn/steer', { threadId: this.#threadId, expectedTurnId: turn.turnId, input: [...this.skills.steer(text), ...imageInputsOf(attachments)] }, { onAccepted, signal });
+    await this.#rpc.request('turn/steer', { threadId: this.#threadId, expectedTurnId: turn.turnId, input: [...this.skills.steer(text), ...imageInputsOf(attachments)] }, { onAccepted, signal, writeKind: 'steer' });
     return true;
   }
 
@@ -288,7 +284,9 @@ export class CodexSession {
           ...(ctx.thread.effort === null ? {} : { effort: ctx.thread.effort }),
           serviceTier: ctx.thread.speed ?? "default",
         });
-        turn.turnId = started.turn.id; ctx.inputReady?.();
+        turn.turnId = started.turn.id;
+        ctx.sessionAccepted?.(threadId);
+        ctx.inputReady?.();
         if (turn.isStopped) this.#interrupt(turn);
         // A server that answers with a turn already finished settles it here;
         // the one that answers `inProgress` settles on `turn/completed`.
@@ -566,8 +564,6 @@ export class CodexSession {
     this.#idle = null;
   }
 
-  // -- what the agent sends -------------------------------------------------
-
   #onNotification(method: string, raw: unknown): void {
     const params = (raw ?? {}) as Record<string, unknown>;
     // Child threads may share this app-server. Their text, tools and turn endings belong to them.
@@ -588,7 +584,11 @@ export class CodexSession {
     switch (method) {
       case 'turn/started': {
         const record = params['turn'] as CodexTurnRecord | undefined;
-        if (record) { turn.turnId = record.id; if (turn.isStopped) this.#interrupt(turn); }
+        if (record) {
+          turn.turnId = record.id;
+          if (typeof record.id === 'string' && this.#threadId !== null) turn.ctx.sessionAccepted?.(this.#threadId);
+          if (turn.isStopped) this.#interrupt(turn);
+        }
         break;
       }
       case 'turn/completed': {

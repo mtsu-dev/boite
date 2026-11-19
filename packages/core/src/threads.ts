@@ -760,10 +760,10 @@ export class ThreadStore {
     this.require(threadId);
     const running = this.#core.journal.runningTurn(threadId);
     if (running) this.#core.journal.setSetting(userStopKey(running.id), true);
-    this.handoff.forget(threadId);
+    const handoffCancelled = this.handoff.forget(threadId);
     this.cacheKeepalive.forget(threadId);
     // Stop on a thread waiting for a usage limit to reset, or for the wake its agent scheduled, means: do not resume it.
-    const planned = [this.resumes.cancel(threadId, 'the thread was stopped'), this.#core.wakes.cancel(threadId, 'the thread was stopped')].includes(true);
+    const planned = [handoffCancelled, this.resumes.cancel(threadId, 'the thread was stopped'), this.#core.wakes.cancel(threadId, 'the thread was stopped')].includes(true);
     this.#core.coordination.pause(threadId);
     // Runs first: once they are stopped, a team with no child has nothing left to pause.
     const childrenStopped = this.#core.workflows.stopRoot(threadId, 'Stopped with its thread') + this.#core.delegation.stop(threadId);

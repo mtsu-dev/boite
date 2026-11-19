@@ -194,7 +194,7 @@ export interface TurnContext {
    * a new session instead. Built on demand; it throws what the core's own
    * continuation throws (historical images for an agent that takes none).
    */
-  continuation?(): { prompt: string; attachments: ImageAttachment[] };
+  continuation?(): { prompt: string; attachments: ImageAttachment[] } | Promise<{ prompt: string; attachments: ImageAttachment[] }>;
   /**
    * What this agent session already used, for an agent whose running totals
    * survive a resume: the last `Turn.agentTotals` the session recorded, else
@@ -248,6 +248,8 @@ export interface TurnContext {
   reportProviderEvent?(): void;
   /** The running turn can now accept native user input. Does not report model progress. */
   inputReady?(): void;
+  /** Native output or acknowledgement proves the first prompt belongs to this resumable session. */
+  sessionAccepted?(sessionId: string): void;
   /** A native authentication refusal invalidates the account's passive status. */
   authenticationFailed?(): void;
   /**

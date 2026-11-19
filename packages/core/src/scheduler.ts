@@ -13,6 +13,7 @@ interface Entry {
   queuedAt: Timestamp;
   reportedQueued: boolean;
   queueHold?: Turn['queueHold'];
+  recovering?: true;
   /** Why the turn last waited, so the log says it once per change rather than on every pump. */
   waiting?: string;
 }
@@ -33,6 +34,8 @@ export class Scheduler {
   readonly #queue = new Map<TurnId, Entry>();
   private readonly running = new Map<ThreadId, RunningEntry>();
   #pendingUpdate = false;
+  #startupReady = false;
+  readonly #versionReads = new Set<Promise<void>>();
 
   readonly #core: Core;
 
@@ -44,13 +47,23 @@ export class Scheduler {
     return [...new Set([...this.#queue.values(), ...this.running.values()].map((entry) => entry.accountId))];
   }
 
-  enqueue(turn: Turn, accountId: AccountId): void {
+  enqueue(turn: Turn, accountId: AccountId, options: { recovering?: true } = {}): void {
     if (this.running.get(turn.threadId)?.turnId === turn.id) return;
-    const parentThreadId = this.#core.journal.getThread(turn.threadId)?.parentThreadId ?? null;
-    const entry = { turnId: turn.id, threadId: turn.threadId, parentThreadId, accountId, providerId: turn.execution?.providerId, queuedAt: turn.queuedAt, reportedQueued: false, queueHold: turn.queueHold };
+    const thread = this.#core.journal.getThread(turn.threadId);
+    const entry: Entry = {
+      turnId: turn.id, threadId: turn.threadId, parentThreadId: thread?.parentThreadId ?? null, accountId,
+      providerId: turn.execution?.providerId ?? thread?.providerId, queuedAt: turn.queuedAt,
+      reportedQueued: false, queueHold: turn.queueHold, ...options,
+    };
     this.#queue.set(turn.id, entry);
     this.#pump([entry]);
     this.#emitUpdated();
+  }
+
+  /** Recovered admissions can start once the server listens and their own providers are ready. */
+  startupReady(): void {
+    this.#startupReady = true;
+    this.onSettingsChanged();
   }
 
   state(): SchedulerState {
@@ -142,12 +155,28 @@ export class Scheduler {
   /** Why a queued turn cannot start now, in words; null when it can. */
   #waitReason(entry: Entry, configs: Map<ThreadId, DelegationConfig>): string | null {
     if (entry.queueHold) return `held until the user resumes it (${entry.queueHold.reason})`;
+    if (entry.recovering && !this.#startupReady) return 'the core is starting';
     if (!this.#core.delegation.canRun(entry.threadId, entry.parentThreadId, configs)) return 'its team or parent is paused';
     if (this.#core.plugins.blocksAccount(entry.accountId)) return 'a plugin is changing the saved login of its account';
     // A program being replaced cannot start a turn; it starts once the updater is done.
     if (this.#core.updates.holds(entry.providerId)) return `${entry.providerId ?? 'its provider'} is being updated`;
     if (this.running.has(entry.threadId)) return 'another turn of the thread is running';
+    if (entry.recovering && this.#waitForVersion(entry.providerId)) return `${entry.providerId} is being detected`;
     return null;
+  }
+
+  #waitForVersion(providerId: ProviderId | undefined): boolean {
+    const read = providerId === undefined ? undefined : this.#core.providers.pendingVersion(providerId);
+    if (read === undefined) return false;
+    if (!this.#versionReads.has(read)) {
+      this.#versionReads.add(read);
+      const retry = (): void => {
+        this.#versionReads.delete(read);
+        if (!this.#core.journal.isClosed()) this.onSettingsChanged();
+      };
+      void read.then(retry, retry);
+    }
+    return true;
   }
 
   #start(entry: Entry): void {
