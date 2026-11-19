@@ -46,6 +46,33 @@ test('limits identify the owning machine in the desktop glance and desktop and p
     const scope = '[data-testid="quota-machine-scope"]';
     if (width === 1280) {
       const trigger = '[data-testid=nav-limits]';
+      const railPanel = async (button: string, panel: string, footerLabel: string) => {
+        await page.evaluate(`document.querySelector('${button}').focus()`);
+        await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowDown', code: 'ArrowDown', windowsVirtualKeyCode: 40 });
+        await page.waitFor(`document.activeElement.closest('${panel}')`);
+        expect(await page.evaluate(`document.activeElement.matches('${panel}')`)).toBe(true);
+        await page.waitFor(`document.querySelector('${panel} footer button')`);
+        expect(await page.text(`${panel} footer button`)).toBe(footerLabel);
+        const appearance = await page.evaluate<{ positiveGap: boolean; style: string[]; left: number; width: number; aligned: boolean }>(`(() => {
+          const trigger = document.querySelector('${button}');
+          const panel = document.querySelector('${panel}');
+          const css = getComputedStyle(panel);
+          const left = parseFloat(panel.style.left);
+          const bottom = parseFloat(panel.style.top) + panel.offsetHeight;
+          return { positiveGap: left > trigger.closest('.app-rail').getBoundingClientRect().right,
+            style: [css.borderRadius, css.boxShadow, css.padding], left, width: panel.offsetWidth,
+            aligned: Math.abs(bottom - trigger.getBoundingClientRect().bottom) < 1 };
+        })()`);
+        expect(appearance.positiveGap && appearance.aligned).toBe(true);
+        await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+        await page.waitFor(`document.activeElement.matches('${panel} header button')`);
+        await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+        await page.waitFor(`document.activeElement.matches('${button}') && document.activeElement.getAttribute('aria-expanded') === 'false'`);
+        return appearance;
+      };
+      const machinesPanel = await railPanel('[data-testid=machine-status]', '[data-testid=machine-status-menu]', 'Manage machines');
+      const limitsPanel = await railPanel(trigger, '[data-testid=limits-glance]', 'Limits page');
+      expect(machinesPanel).toEqual(limitsPanel);
       await page.click(trigger);
       await page.waitFor(`document.querySelector('[data-testid=limits-glance]')`);
       expect(await page.evaluate(`document.querySelector('${trigger}').getAttribute('aria-expanded')`)).toBe('true');

@@ -113,7 +113,7 @@
 
 {#if shown}
   <div class="limits" class:low={meter?.kind === 'low'} class:out={meter?.kind === 'out'} class:leak={leak !== null}>
-  <Menu variant="ghost" side="right" align="end" cap={460} testid="nav-limits" popupTestid="limits-glance"
+  <Menu variant="ghost" testid="nav-limits" popupTestid="limits-glance"
     {label} titled={!name} panelLabel={strings.quotas.glance} beforeopen={beforeOpen}
     oncontextmenu={(event) => controlMenu(event, store, 'sidebar.limits')}>
     {#snippet panel(close)}

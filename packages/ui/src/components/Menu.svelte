@@ -20,7 +20,6 @@
     titled = true,
     heading,
     cap,
-    side,
     panel,
     panelLabel,
     popupTestid,
@@ -47,9 +46,8 @@
     heading?: string;
     /** The list's tallest desktop height in px, where the room exists for a long list to show whole (lib/floating.ts). */
     cap?: number;
-    side?: 'right';
-    /** A dialog shares the trigger and popover without adopting menu-item keyboard navigation. */
-    panel?: Snippet<[(restoreFocus?: boolean) => void]>;
+    /** The rail's side-aligned dialog can render the menu items in its body. */
+    panel?: Snippet<[(restoreFocus?: boolean) => void, Snippet]>;
     panelLabel?: string;
     popupTestid?: string;
     beforeopen?: () => boolean | Promise<boolean>;
@@ -162,7 +160,6 @@
       if (!opening) void show();
       return;
     }
-    if (panel) return;
     const list = rows();
     if (list.length === 0) return;
     const active = document.activeElement as HTMLElement | null;
@@ -183,7 +180,7 @@
     event.preventDefault();
     let next = 0;
     if (event.key === 'ArrowDown') next = (index + 1) % list.length;
-    else if (event.key === 'ArrowUp') next = (index - 1 + list.length) % list.length;
+    else if (event.key === 'ArrowUp') next = (Math.max(0, index) - 1 + list.length) % list.length;
     else if (event.key === 'End') next = list.length - 1;
     list[next]?.focus({ preventScroll: true });
   }
@@ -222,7 +219,6 @@
       class="popover"
       class:switches
       class:panel={panel !== undefined}
-      class:side={side !== undefined}
       class:end={align === 'end'}
       class:below={placement === 'bottom'}
       class:closing={popover.closing}
@@ -232,17 +228,13 @@
       bind:this={surface}
       {onkeydown}
       use:popover.attach
-      use:floating={{ anchor: () => trigger ?? null, placement, align, side, cap, dismiss: () => close(false) }}
+      use:floating={{ anchor: () => trigger ?? null, placement, align: panel ? 'end' : align,
+        side: panel ? 'right' : undefined, sideAnchor: panel ? () => trigger?.closest<HTMLElement>('.app-rail') ?? null : undefined,
+        cap: panel ? 460 : cap, dismiss: () => close(false) }}
       onanimationend={popover.end}
       data-testid={popupTestid ?? (testid ? `${testid}-menu` : undefined)}
     >
-      {#if panel}
-        {@render panel(close)}
-      {:else}
-      <!-- A phone sheet titles every menu the same way, switches included. -->
-      {#if switches && !sheet}<div class="heading ui-label" aria-hidden="true">{label}</div>
-      <!-- A second level's back row names it: no sheet title over it. -->
-      {:else if sheet && !ordered[0]?.back}<div class="sheet-title" aria-hidden="true">{heading ?? label}</div>{/if}
+      {#snippet itemRows()}
       {#each ordered as item (item.id)}
         {#if item.separator && item.label}
           <!-- A labelled rule opens a section: its words, no line. -->
@@ -292,6 +284,14 @@
         </button>
         {/if}
       {/each}
+      {/snippet}
+      {#if panel}
+        {@render panel(close, itemRows)}
+      {:else}
+        <!-- A second level's back row names it: no sheet title over it. -->
+        {#if switches && !sheet}<div class="heading ui-label" aria-hidden="true">{label}</div>
+        {:else if sheet && !ordered[0]?.back}<div class="sheet-title" aria-hidden="true">{heading ?? label}</div>{/if}
+        {@render itemRows()}
       {/if}
     </div>
   {/if}
@@ -387,9 +387,8 @@
 
   /* A capped list scrolls: a row that shrank instead let its hint run over the next one. */
   .popover > * { flex: none; }
-  .popover.side { overflow-y: auto; }
-  .popover.panel { width: min(360px, calc(100vw - 24px)); max-width: none; padding: 0; color: var(--color-foreground); overflow: hidden; }
-  .popover.panel > :global(.quota-popup) { flex: 1; min-height: 0; }
+  .popover.panel { width: min(360px, calc(100vw - 24px)); max-width: none; padding: 0; color: var(--color-foreground); overflow: hidden; transform-origin: bottom left; }
+  .popover.panel > :global(.popover-frame) { flex: 1; }
 
   .popover.closing {
     animation: pop-out var(--motion-duration) var(--motion-curve);
@@ -411,8 +410,6 @@
   .popover.below.end {
     transform-origin: top right;
   }
-
-  .popover.side { transform-origin: bottom left; }
 
   /* A one-line item is as tall as a context menu row; a hint below grows it.
      Labels are trimmed to their capitals, so the gap keeps descenders off the hint. */
