@@ -8,7 +8,6 @@
   import { featureOn } from '../lib/features.svelte';
   import { setFeature } from '../lib/features';
   import { checkSettingsPatch } from '@boite/contracts';
-  import InfoTip from './InfoTip.svelte';
   import CardScope from './CardScope.svelte';
   import SaveStatus from './SaveStatus.svelte';
   import { Autosave, typed } from '../lib/autosave.svelte';
@@ -57,9 +56,6 @@
 </script>
 
 <div class="page" data-testid="advanced-page">
-  <header>
-    <h1>{strings.settings.tabs.advanced}</h1>
-  </header>
 
   <SchedulerSettings {store} />
   <CompactionSettings {store} />
@@ -67,24 +63,25 @@
   <PhoneSettings {store} />
 
   {#if store.owner}
-    <section class="card" id="settings-origins" data-testid="browser-origins">
-      <h2 class="ui-label-box"><span class="ui-label">{strings.machines.browserOrigins}</span><InfoTip topic={strings.machines.browserOrigins} text={strings.machines.browserOriginsHint} /><CardScope {store} /><SaveStatus {save} /></h2>
+    <SettingsSection id="settings-origins" testid="browser-origins" title={strings.machines.browserOrigins} info={strings.machines.browserOriginsHint}>
+      {#snippet actions()}<CardScope {store} /><SaveStatus {save} />{/snippet}
       <textarea bind:value={origins} oninput={() => { dirty = true; typed(save).oninput(); }} onchange={() => void save.flush()} disabled={!store.settings} aria-label={strings.machines.browserOrigins} rows="3" spellcheck="false" placeholder="https://boite.example.com"></textarea>
-    </section>
+    </SettingsSection>
   {/if}
 
   {#if !narrow.current}
     <!-- Desktop details few people change, once under Appearance. -->
     <SettingsSection id="settings-details" title={strings.settings.terminalAndScrollbars}>
       {#snippet actions()}<CardScope />{/snippet}
-      <div class="switch-row">
-        <span class="text ui-label">{strings.settings.terminalCursor}</span>
-        <div class="segmented" role="group" aria-label={strings.settings.terminalCursor}>
-          {#each cursors as option (option.id)}
-            <button type="button" class:on={terminalCursor === option.id} aria-pressed={terminalCursor === option.id} data-testid="terminal-cursor-{option.id}" onclick={() => pickTerminalCursor(option.id)}><span class="ui-label">{option.label}</span></button>
-          {/each}
-        </div>
-      </div>
+      <SettingField title={strings.settings.terminalCursor} field={false}>
+        {#snippet control()}
+          <div class="segmented" role="group" aria-label={strings.settings.terminalCursor}>
+            {#each cursors as option (option.id)}
+              <button type="button" class:on={terminalCursor === option.id} aria-pressed={terminalCursor === option.id} data-testid="terminal-cursor-{option.id}" onclick={() => pickTerminalCursor(option.id)}><span class="ui-label">{option.label}</span></button>
+            {/each}
+          </div>
+        {/snippet}
+      </SettingField>
       <SettingField title={strings.features.edgeScrollbars.title} hint={strings.features.edgeScrollbars.hint}>
         {#snippet control(attributes)}
           <SettingSwitch {...attributes} checked={featureOn('edge-scrollbars')} data-testid="setting-edge-scrollbars"

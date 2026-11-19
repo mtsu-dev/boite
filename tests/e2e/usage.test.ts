@@ -186,10 +186,9 @@ test('the phone page fits 390 px and is reachable from the phone settings list',
   await viewport(390, 844, true);
   await page.waitFor(`document.querySelector('[data-testid=mobile-settings-detail] [data-testid=usage-chart] svg path')`);
   expect(await fits()).toBe(true);
-  // The bar above names the page and carries its info mark; the page's own title steps aside,
-  // and its refresh joins the bar's right end rather than taking a row of its own.
+  // One heading names the page. The info mark and refresh button are in the same bar.
   expect(await page.evaluate(`document.querySelector('[data-testid=mobile-settings-info]').getBoundingClientRect().height > 0`)).toBe(true);
-  expect(await page.evaluate(`document.querySelector('[data-testid=usage-page] > header h1').getBoundingClientRect().height`)).toBe(0);
+  expect(await count('[data-testid=usage-page] h1')).toBe(0);
   expect(await page.evaluate(`(() => {
     const info = document.querySelector('[data-testid=mobile-settings-info]').getBoundingClientRect();
     const refresh = document.querySelector('[data-testid=usage-refresh]').getBoundingClientRect();

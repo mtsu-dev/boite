@@ -35,6 +35,7 @@
   import SettingsPageHeader from './SettingsPageHeader.svelte';
   import SettingsSection from './SettingsSection.svelte';
   import PolicyBanner from './PolicyBanner.svelte';
+  import PolicyLock from './PolicyLock.svelte';
   import PolicySettings from './PolicySettings.svelte';
   import { tick, type Snippet } from 'svelte';
   import { holdSettingsCard, revealSettingsCard } from '../lib/settings-flash';
@@ -270,9 +271,10 @@
     {@const quota = shown === 'usage' || shown === 'limits'}
     <header data-testid="mobile-settings-header">
       <button class="ghost icon" data-testid="mobile-settings-back" aria-label={strings.mobile.settingsBack} onclick={back}><ArrowLeft size={20} /></button>
-      <SettingsPageHeader mobile {title} page={shown} {scope} {scopeTemplate} kind={scopes.line} picker={bar ? pick : undefined} limits={shown === 'limits'}
-        heading={shown === 'limits' ? limitsHeading : undefined} />
+      <SettingsPageHeader mobile {title} page={shown} {scope} {scopeTemplate} kind={scopes.line} picker={bar ? pick : undefined} {quota}
+        heading={shown === 'limits' ? limitsHeading : undefined} actions={shown === 'voice' ? voicePolicy : undefined} />
       {#snippet limitsHeading()}<QuotaMachineScope store={target} fallback={title} />{/snippet}
+      {#snippet voicePolicy()}<PolicyLock store={target} keys={['dictation']} />{/snippet}
     </header>
     <div class="detail" data-testid="mobile-settings-detail">
       {#if bar && MACHINE_PAGES.includes(shown)}<div class="bar">{@render (pick && shown !== 'limits' && notes ? notes : bar)()}</div>{/if}
@@ -296,7 +298,6 @@
           </div>
           <!-- Privacy is two switches: a card at the index's foot, not a page of its own. -->
           <TelemetrySettings {store} />
-          <DeletedThreads store={target} />
         </div>
       {:else if shown === 'advanced'}
         <div class="page index" data-testid="mobile-settings-advanced">
@@ -334,7 +335,7 @@
       {:else if shown === 'appearance'}
         <AppearancePage {store} phone />
       {:else if shown === 'usage'}
-        <UsagePage {store} />
+        <UsagePage {store} showTitle={false} />
       {:else if shown === 'limits'}
         <LimitsPage store={target} showTitle={false} />
       {:else if shown === 'task-manager'}
@@ -347,13 +348,14 @@
         <div class="stack">
           <DiagnosticsPage store={target} {onopenthread} />
           <div class="merged" id="settings-resources"><ResourcesPage store={target} /></div>
-          <div class="merged" id="settings-task-manager"><TaskManagerLoader store={target} {onopenthread} /></div>
+          <div class="merged" id="settings-task-manager"><TaskManagerLoader store={target} {onopenthread} section /></div>
         </div>
       {:else if shown === 'worktrees'}
-        <div class="page worktrees-page"><WorktreesCard store={target} /></div>
+        <div class="page"><WorktreesCard store={target} showTitle={false} /></div>
       {:else if shown === 'archived'}
         <div class="page archived-page">
           <ArchivedThreads store={target} place="phone" onopen={onopenthread} />
+          <DeletedThreads store={target} />
         </div>
       {:else}
         <MachinesPage mobile {onopenthread} {store} showTitle={false} />
@@ -415,24 +417,13 @@
   /* Diagnostics then the task manager, one scroll: neither page scrolls on its own. */
   .stack > :global(.page), .stack > .merged > :global(.page) { height: auto; overflow: visible; }
   .stack > .merged > :global(.page) { padding-top: 0; }
-  /* A merged page's title is its section's title. */
-  .detail .stack > .merged > :global(.page > header) { display: flex; }
-  .stack > .merged :global(.page > header h1) { font-size: var(--text-md); }
+  .stack > .merged :global([data-testid='resources-page'] > header h1) { font-size: var(--text-md); }
   .bar + :global(.page) { padding-top: var(--space-3); }
-  /* The bar above already names the page, so its own title steps aside. */
-  .detail :global(.page:not(.machines-page):not(.limits-page):not(.usage) > header),
-  .detail :global(.limits-page > header h1),
-  .detail :global(.usage > header h1) { display: none; }
+  .detail :global([data-testid='experiments-page'] > header) { display: none; }
   /* Their refresh joins the bar, at the right end: alone on a row it pushed the cards down. */
-  .detail :global(.limits-page > header),
-  .detail :global(.usage > header) { position: absolute; top: max(8px, env(safe-area-inset-top)); right: 12px; margin: 0; }
-  .detail :global(.limits-page > header .refresh),
-  .detail :global(.usage > header .refresh) { width: 44px; height: 44px; }
+  .detail :global(.quota-actions) { position: absolute; top: max(8px, env(safe-area-inset-top)); right: 12px; margin: 0; }
+  .detail :global(.quota-actions .refresh) { width: 44px; height: 44px; }
   .detail :global(.switch-row) { flex-wrap: wrap; gap: var(--space-3); }
-  /* The bar names the page and the line above says what it holds: the card's own heading and tip step aside. */
-  .worktrees-page :global(#settings-worktrees > h2) { display: none; }
-  /* Its title stepped aside, the card keeps no room above it for one. */
-  .worktrees-page :global(#settings-worktrees) { margin-top: 0; }
   /* A row's icon leads it in the grey of the chrome's icons; the chevron at its end stays the quietest. */
   .row :global(svg.lead) { color: var(--color-muted-foreground); }
   /* A bar inside a page, above the one card that changes a machine. */

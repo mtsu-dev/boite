@@ -46,6 +46,33 @@ test('limits identify the owning machine in the desktop glance and desktop and p
     const scope = '[data-testid="quota-machine-scope"]';
     if (width === 1280) {
       const trigger = '[data-testid=nav-limits]';
+      const railPanel = async (button: string, panel: string, footerLabel: string) => {
+        await page.evaluate(`document.querySelector('${button}').focus()`);
+        await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowDown', code: 'ArrowDown', windowsVirtualKeyCode: 40 });
+        await page.waitFor(`document.activeElement.closest('${panel}')`);
+        expect(await page.evaluate(`document.activeElement.matches('${panel}')`)).toBe(true);
+        await page.waitFor(`document.querySelector('${panel} footer button')`);
+        expect(await page.text(`${panel} footer button`)).toBe(footerLabel);
+        const appearance = await page.evaluate<{ positiveGap: boolean; style: string[]; left: number; width: number; aligned: boolean }>(`(() => {
+          const trigger = document.querySelector('${button}');
+          const panel = document.querySelector('${panel}');
+          const css = getComputedStyle(panel);
+          const left = parseFloat(panel.style.left);
+          const bottom = parseFloat(panel.style.top) + panel.offsetHeight;
+          return { positiveGap: left > trigger.closest('.app-rail').getBoundingClientRect().right,
+            style: [css.borderRadius, css.boxShadow, css.padding], left, width: panel.offsetWidth,
+            aligned: Math.abs(bottom - trigger.getBoundingClientRect().bottom) < 1 };
+        })()`);
+        expect(appearance.positiveGap && appearance.aligned).toBe(true);
+        await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+        await page.waitFor(`document.activeElement.matches('${panel} header button')`);
+        await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+        await page.waitFor(`document.activeElement.matches('${button}') && document.activeElement.getAttribute('aria-expanded') === 'false'`);
+        return appearance;
+      };
+      const machinesPanel = await railPanel('[data-testid=machine-status]', '[data-testid=machine-status-menu]', 'Manage machines');
+      const limitsPanel = await railPanel(trigger, '[data-testid=limits-glance]', 'Limits page');
+      expect(machinesPanel).toEqual(limitsPanel);
       await page.click(trigger);
       await page.waitFor(`document.querySelector('[data-testid=limits-glance]')`);
       expect(await page.evaluate(`document.querySelector('${trigger}').getAttribute('aria-expanded')`)).toBe('true');
@@ -73,17 +100,16 @@ test('limits identify the owning machine in the desktop glance and desktop and p
       await page.click('[data-testid="limits-glance-page"]');
     }
     await page.waitFor(`document.querySelector('[data-testid="limits-page"]')`);
-    // On the desktop the settings bar carries the page's title and, under it, the
-    // machine its settings apply on; the page's own heading steps aside.
+    // The desktop header names the machine in its picker. The phone names it in the title.
     const heading = width === 1280 ? '[data-testid="settings-scope"]' : '[data-testid="mobile-settings-header"] h1';
     if (width === 1280) {
       expect((await page.text('[data-testid="settings-crumb"] h1')).trim()).toBe('Limits');
       expect((await page.text(heading)).trim()).toBe('Agent settings apply on Builder');
     } else expect((await page.text(heading)).trim()).toBe('Account limits for Builder');
     expect(await page.evaluate(`document.querySelector('${heading}')?.getClientRects().length > 0`)).toBe(true);
+    expect(await page.evaluate(`document.querySelector('[data-testid=limits-page] h1') === null`)).toBe(true);
     // A renamed machine remains identifiable even on a narrow phone.
     await page.evaluate(`globalThis.__boiteTest.workspace.customize('http://builder.test', 'Build server for shared development projects')`);
-    await page.waitFor(`document.querySelector('${scope}')?.textContent.includes('Build server for shared development projects')`);
     await page.waitFor(`document.querySelector('${heading}')?.textContent.includes('Build server for shared development projects')`);
     expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
     await capture(`quota-remote-page-${width}.png`);
@@ -92,8 +118,8 @@ test('limits identify the owning machine in the desktop glance and desktop and p
       await workspace.select(workspace.machines[0].store);
       workspace.active.showSettings('limits');
     })()`);
-    await page.waitFor(`document.querySelector('${scope}')?.dataset.remote === 'false'`);
-    expect(await page.text(scope)).not.toContain('Build server');
+    await page.waitFor(`document.querySelector('${heading}')?.textContent.includes('studio')`);
+    expect(await page.text(heading)).not.toContain('Build server');
     expect(page.errors()).toEqual([]);
     await page.evaluate(`localStorage.removeItem('boite.machine-profiles')`);
   }

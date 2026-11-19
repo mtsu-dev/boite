@@ -15,7 +15,7 @@
    * to while open, keeps the last reading on screen while the next loads, and
    * sends monitoring and accounts to the Limits page.
    */
-  let { store, close }: { store: Store; close: (restoreFocus?: boolean) => void } = $props();
+  let { store, close, open }: { store: Store; close: (restoreFocus?: boolean) => void; open: boolean } = $props();
   /** Providers is a desktop settings page and the owner's: a phone is offered no way to it. */
   const phoneWidth = new MediaQuery('(max-width: 720px)');
   let providersReachable = $derived(store.owner && desktopSettings(phoneWidth.current));
@@ -51,7 +51,7 @@
   // A slow gateway can answer while the glance is open. If it only has a dashboard, show that page.
   $effect(() => {
     const proxy = store.settings?.subscriptionProxy;
-    if (proxy?.enabled && proxy.kind === 'douane' && gateway.state?.status === 'unsupported') untrack(() => page('limits'));
+    if (open && proxy?.enabled && proxy.kind === 'douane' && gateway.state?.status === 'unsupported') untrack(() => page('limits'));
   });
 
   const shownPage = untrack(() => store.page);

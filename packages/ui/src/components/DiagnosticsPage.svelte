@@ -1,4 +1,5 @@
 <script lang="ts">
+  import SettingsSection from './SettingsSection.svelte';
   import SettingField from './SettingField.svelte';
   import SettingSwitch from './SettingSwitch.svelte';
   import { lockedBy } from '../lib/policy';
@@ -252,16 +253,10 @@
 
 {#if store.owner}
 <div class="page diagnostics" data-testid="diagnostics-page">
-  <header>
-    <div>
-      <h1 class="ui-label-box"><span class="ui-label">{s.heading}</span><InfoTip topic={s.heading} text={s.intro} /></h1>
-    </div>
-  </header>
 
   {#if failure}<p class="hint alert" role="alert">{failure}</p>{/if}
 
-  <section class="card" id="settings-diagnostics-status" data-testid="diagnostics-status">
-    <h2 class="ui-label-box"><span class="ui-label">{s.status}</span><InfoTip gather topic={s.status} text="" testid="section-info" /></h2>
+  <SettingsSection id="settings-diagnostics-status" testid="diagnostics-status" title={s.status} info="" infoTestid="section-info">
     {#if environment && summary}
       <dl class="facts">
         <div><dt>{s.version}</dt><dd>{environment.version} · {environment.channel}</dd></div>
@@ -300,11 +295,10 @@
       {/if}
     </div>
     {#if exportNote}<p class="hint note" data-testid="diagnostics-export-note">{exportNote}</p>{/if}
-  </section>
+  </SettingsSection>
 
   {#if !outdated}
-  <section class="card" id="settings-diagnostics-problems" data-testid="diagnostics-problems">
-    <h2 class="ui-label-box"><span class="ui-label">{s.problems}</span><InfoTip topic={s.problems} text={s.problemsHint} /></h2>
+  <SettingsSection id="settings-diagnostics-problems" testid="diagnostics-problems" title={s.problems} info={s.problemsHint}>
     {#if summary && errorsFirst.length === 0}
       <p class="hint">{s.problemsEmpty}</p>
     {:else}
@@ -343,11 +337,10 @@
         {/each}
       </ul>
     {/if}
-  </section>
+  </SettingsSection>
   {/if}
 
-  <section class="card log-card" id="settings-diagnostics-log" data-testid="diagnostics-log">
-    <h2 class="ui-label-box"><span class="ui-label">{s.log}</span><InfoTip topic={s.log} text={s.live} /></h2>
+  <SettingsSection class="log-card" id="settings-diagnostics-log" testid="diagnostics-log" title={s.log} info={s.live}>
     <div class="filters">
       <Menu items={levelItems} label={s.level} placement="bottom" testid="diagnostics-level" onpick={id => { minLevel = id as CoreLogLevel; }}>
         <span class="ui-label">{s.atLeast[minLevel]}</span><ChevronDown size={13} />
@@ -402,7 +395,7 @@
         </div>
       {/each}
     </div>
-  </section>
+  </SettingsSection>
 
   <section class="card" id="settings-diagnostics-agents">
     <SettingField title={s.agentAccess} hint={strings.settings.effects.agentAccess}>
@@ -459,7 +452,7 @@
   .level[data-level='warn'] { color: color-mix(in srgb, var(--color-danger) 55%, var(--color-muted-foreground)); font-weight: 600; }
   .level[data-level='debug'] { color: var(--color-subtle); }
 
-  .log-card { padding-bottom: 0; }
+  .page :global(.log-card) { padding-bottom: 0; }
   .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 12px; }
   .thread-pick { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .search { flex: 1 1 160px; min-width: 0; height: var(--control-sm); font-size: var(--text-sm); }

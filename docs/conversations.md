@@ -139,9 +139,11 @@ above the message box or the bottom tabs.
 - A project's Done list shows ten rows at a time; scroll it for the rest.
 - Delete done threads after (days) defaults to 3. Manual archives are kept.
 - The owner can restore a deleted conversation from Show deleted conversations
-  in Settings, General, Archived threads, for the number of days set in Keep
-  deleted conversations for. On a paired phone, use Undo in the confirmation
-  toast immediately after deleting a conversation.
+  for the number of days set in Keep deleted conversations for. Find both under
+  Settings > General on desktop and Settings > General > Archived threads on
+  a phone. Pick a machine in Archived threads to change its retention settings.
+  On a paired phone, use Undo in the confirmation toast immediately after
+  deleting a conversation.
 - Archive project takes a project out of the list. Its threads keep running,
   and a new thread brings it back. Remove from Boite stops its threads and hides
   the project. Add the same folder again to recover its history in Archived

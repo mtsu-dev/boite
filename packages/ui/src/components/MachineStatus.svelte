@@ -10,7 +10,8 @@
   import type { Snippet } from 'svelte';
   import type { Store } from '../lib/store.svelte';
   import Menu from './Menu.svelte';
-  import { separator, type MenuItem } from '../lib/menu';
+  import PopoverFrame from './PopoverFrame.svelte';
+  import type { MenuItem } from '../lib/menu';
 
   /**
    * The rail's machines button and its menu; the limits are the ring under it
@@ -52,24 +53,22 @@
   const note = $derived(issues > 0 ? `${trouble}. ${states}` : states);
   const label = $derived(`${name} · ${note}`);
   const lines = $derived<MachineLine[]>(machines.map(m => ({ id: m.id, name: machineName(m), state: stateOf(m), tone: tones[health.get(m)!] })));
-  const items = $derived<MenuItem[]>([
-    ...(machines.length > 1 ? [
-      { id: 'all', label: strings.machines.all, checked: filter === null, radio: true },
-      ...machines.map(m => ({ id: m.id, label: tones[health.get(m)!] === 'offline' ? fill(strings.connection.nameOffline, { name: listedName(m) }) : listedName(m), status: { tone: tones[health.get(m)!], label: stateOf(m) }, checked: m.id === filter, radio: true })),
-      separator('manage-separator')
-    ] : []),
-    { id: 'manage', label: strings.connection.manage, icon: 'settings' }
-  ]);
-  function choose(id: string) {
-    if (id === 'manage') store.showSettings('machines');
-    else onfilter?.(id === 'all' ? null : id);
-  }
+  const items = $derived<MenuItem[]>(machines.length > 1 ? [
+    { id: 'all', label: strings.machines.all, checked: filter === null, radio: true },
+    ...machines.map(m => ({ id: m.id, label: tones[health.get(m)!] === 'offline' ? fill(strings.connection.nameOffline, { name: listedName(m) }) : listedName(m), status: { tone: tones[health.get(m)!], label: stateOf(m) }, checked: m.id === filter, radio: true }))
+  ] : []);
 </script>
 
 <!-- The wrapper stays, empty, so the connection state is always readable on it. -->
 <div class="machines" class:filtered={chosen !== null} data-testid={testid === 'machine-status' ? 'status-connection' : `${testid}-status`} data-state={store.connection} aria-live="polite">
   {#if shown}
-    <Menu {items} onpick={choose} {label} variant="ghost" {testid} titled={!card} side="right" align="end">
+    <Menu {items} onpick={(id) => onfilter?.(id === 'all' ? null : id)} {label} variant="ghost" {testid} titled={!card} panelLabel={name}>
+      {#snippet panel(close, rows)}
+        <PopoverFrame actionLabel={strings.connection.manage} onaction={() => { close(false); store.showSettings('machines'); }} close={() => close()}>
+          {#snippet heading()}<Monitor size={17} /><span>{name}</span>{/snippet}
+          {#if items.length}<div class="choices" role="menu" aria-label={strings.machines.filterHint}>{@render rows()}</div>{/if}
+        </PopoverFrame>
+      {/snippet}
       <!-- The rail's optical size and stroke (the chat icon's): the crossed monitor when none answers, else the monitor and one mark, the offline ring while one is away, green while all answer. -->
       <Monitor size={19} />{#if down > 0 && down === machines.length}<span class="strike" data-testid="machine-all-offline" aria-hidden="true"></span>{:else if down > 0}<span class="dot off" data-testid="machine-offline" aria-hidden="true"></span>{:else if store.connection === 'ready'}<span class="dot on" data-testid="machine-online" aria-hidden="true"></span>{/if}
       {#if chosen}<span class="name ui-label">{machineName(chosen)}</span>{/if}
@@ -79,6 +78,7 @@
 </div>
 
 <style>
+  .choices { display: grid; gap: 1px; }
   .machines { min-width: 0; color: var(--color-muted-foreground); }
   .machines :global(.trigger) { font-size: var(--text-xs); }
   /* A filter hides threads, so while one is on the button says which machine. */

@@ -279,4 +279,20 @@ test('on a phone too, a page of one machine is picked above it without moving th
   store.showSettings('voice');
   await waitFor(() => document.querySelector('[data-testid=mobile-settings-page-scope] [data-testid=settings-machine]') !== null);
   expect(document.querySelectorAll('[data-testid=settings-machine]')).toHaveLength(1);
+
+  store.showSettings('general', 'archived');
+  await waitFor(() => document.querySelector('[data-testid=archived-list]') !== null);
+  expect(query('[data-testid=mobile-settings-page-scope] [data-testid=settings-machine]').textContent).toContain(remote.label);
+  const retention = query<HTMLInputElement>('[data-testid=done-retention-days]');
+  retention.value = '5';
+  retention.dispatchEvent(new Event('input', { bubbles: true }));
+  retention.dispatchEvent(new Event('change', { bubbles: true }));
+  await waitFor(() => remote.store.settings?.threadDoneRetentionDays === 5);
+  expect(store.settings?.threadDoneRetentionDays).not.toBe(5);
+  store.showSettings('general');
+  await waitFor(() => document.querySelector('[data-testid=mobile-settings-general]') !== null);
+  expect(document.querySelector('[data-testid=done-retention-days]')).toBeNull();
+  store.showSettings('general', 'thread-retention');
+  await waitFor(() => document.querySelector('[data-testid=done-retention-days]') !== null);
+  expect(query('[data-testid=mobile-settings-page-scope] [data-testid=settings-machine]').textContent).toContain(remote.label);
 });

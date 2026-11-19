@@ -56,6 +56,7 @@ const SECTION_PAGES: Partial<Record<SettingsTab, Record<string, { page: PhoneSec
     // How agents answer is the machine's card under the same page, under its bar.
     'agent-replies': { page: 'conversations', owner: true },
     archived: { page: 'archived' },
+    'thread-retention': { page: 'archived', owner: true },
     worktrees: { page: 'worktrees', owner: true }
   }
 };

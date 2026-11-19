@@ -6,6 +6,7 @@
   import MobileSettings from './MobileSettings.svelte';
   import BrainPage from './BrainPage.svelte';
   import SettingsPageHeader from './SettingsPageHeader.svelte';
+  import PolicyLock from './PolicyLock.svelte';
   import { ChevronDown, ChevronLeft, ChevronRight, Search } from '@lucide/svelte';
   import { SETTINGS_ICONS, SETTINGS_ICON_SIZE, SETTINGS_ICON_STROKE } from '../lib/settings-icons';
   import KeyboardPage from './KeyboardPage.svelte';
@@ -483,7 +484,9 @@
         <div class="found">{@render searchResults()}</div>
       {:else}
         <header class="screen" data-testid="settings-crumb">
-          <SettingsPageHeader {title} page={tab} {scope} kind={scopeKind} picker={scopePicks ? scopePicker : undefined} />
+          <SettingsPageHeader {title} page={tab} {scope} kind={scopeKind} picker={scopePicks ? scopePicker : undefined}
+            actions={tab === 'voice' ? voicePolicy : undefined} />
+          {#snippet voicePolicy()}<PolicyLock store={target} keys={['dictation']} />{/snippet}
         </header>
         {#if bar && tab !== 'experiments'}{@render machineNotes()}{/if}
         {#key target}
@@ -521,11 +524,11 @@
       {:else if page === 'browser'}
         <BrowserPage />
       {:else if page === 'usage'}
-        <UsagePage {store} />
+        <UsagePage {store} showTitle={false} />
       {:else if page === 'limits'}
-        <LimitsPage store={target} />
+        <LimitsPage store={target} showTitle={false} />
       {:else if page === 'task-manager'}
-        <TaskManagerLoader store={page === tab ? store : target} {onopenthread} />
+        <TaskManagerLoader store={page === tab ? store : target} {onopenthread} section={page !== tab} />
       {:else if page === 'plugins'}
         <PluginsPage store={target} />
       {:else if page === 'experiments'}
@@ -616,14 +619,8 @@
   .merged > :global(.page) { height: auto; overflow: visible; padding-top: 0; padding-inline: max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)); }
   .merged > :global(.page > header h1) { font-size: var(--text-md); }
 
-  /* The bar carries the page's title and its "i": the page's own heading steps aside, and
-     its header with it unless it holds an action. A lock or another mark in the title stays. */
-  .framed > :global(.page > header h1 > .ui-label),
-  .framed > :global(.page > header h1 > .ui-label + .info-tip),
-  .framed > :global(.page > header h1:not(:has(> :not(.ui-label, .ui-label + .info-tip)))),
-  .framed > :global(.limits-page > header h1) { display: none; }
-  .framed > :global(.page > header:not(:has(button:not(.ui-label + .info-tip), [role='status'], .policy-lock))) { display: none; }
-  .framed > :global(.page > header) { justify-content: flex-end; }
+  .framed > :global([data-testid='experiments-page'] > header) { display: none; }
+  .framed > :global(.page > .quota-actions) { justify-content: flex-end; }
 
   /* The pages' list is a column of its own width, on the chrome: every page's name fits it,
      so it does not follow the thread list's, which a long title can pull to a third of the
