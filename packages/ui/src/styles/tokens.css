@@ -208,6 +208,10 @@
   --color-activity-surface: var(--color-surface);
   --color-composer-edge: var(--color-edge);
   --color-composer-focus: rgba(255, 255, 255, 0.2);
+  /* The agent's suggested next message, in the empty box or its phone chip: an offer, not the owner's words,
+     so it sits well under the text tiers and never passes for a typed draft, still 4.5:1 on the composer's
+     fill in both default themes and 3:1 in every curated palette (lib/contrast.test.ts). */
+  --color-suggestion: color-mix(in oklab, var(--color-foreground) 55%, var(--color-surface-2));
   --radius-composer: 18px;
   --composer-glaze: none;
   /* The one soft elevation for the composer card and a sheet: a top light no stronger than the
