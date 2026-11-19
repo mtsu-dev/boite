@@ -51,16 +51,18 @@ function deviceProjectFolder(path: string): void {
 /** A checked folder registered on `ctx`, as the core's `ProjectStore.add`: the project already there answers as it is. */
 export function addFakeProject(ctx: FakeContext, folder: { path: string; name?: string }): { project: Project; added: boolean } {
   const { path } = folder;
+  const key = pathKey(path);
+  const isDrafts = key === pathKey(FAKE_DRAFTS_PATH);
   if (missingFolder(path)) {
     throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'a project path must be an existing directory', data: { path } });
   }
   // As the core on Windows: the same folder in another case is the project already there.
-  const existing = ctx.projects.find((p) => pathKey(p.path) === pathKey(path));
+  const existing = ctx.projects.find((p) => pathKey(p.path) === key);
   if (existing) return { project: describedProject(ctx, existing), added: false };
   // As the core: a removed folder comes back under its id, with every thread it had.
-  const removed = ctx.removedProjects.get(pathKey(path));
+  const removed = ctx.removedProjects.get(key);
   if (removed) {
-    ctx.removedProjects.delete(pathKey(path));
+    ctx.removedProjects.delete(key);
     const back: Project = { ...removed.project, ...(folder.name ? { name: folder.name } : {}) };
     delete back.archived;
     ctx.projects.push(back);
@@ -79,8 +81,9 @@ export function addFakeProject(ctx: FakeContext, folder: { path: string; name?: 
     name: folder.name ?? path.split(/[\\/]/).filter(Boolean).pop() ?? path,
     path,
     createdAt: ctx.now(),
-    // No disk here: a folder the fake is handed counts as a repository.
-    repository: true
+    // The fake treats user-added folders as repositories. Drafts are a system folder.
+    repository: !isDrafts,
+    ...(isDrafts ? { kind: 'drafts' as const } : {}),
   };
   ctx.projects.push(project);
   const summary = describedProject(ctx, project);
@@ -168,20 +171,7 @@ export function projectMethods(ctx: FakeContext) {
       return addFakeProject(ctx, folder).project;
     },
     'projects.drafts': async () => {
-      const existing = ctx.projects.find((p) => p.kind === 'drafts');
-      if (existing) return describedProject(ctx, existing);
-      const project: Project = {
-        id: `p-${++ctx.seq}`,
-        name: 'Drafts',
-        path: FAKE_DRAFTS_PATH,
-        createdAt: ctx.now(),
-        repository: false,
-        kind: 'drafts'
-      };
-      ctx.projects.push(project);
-      const summary = describedProject(ctx, project);
-      ctx.emit('project.added', summary);
-      return summary;
+      return addFakeProject(ctx, { path: FAKE_DRAFTS_PATH, name: 'Drafts' }).project;
     },
     'projects.remove': async (params) => {
       if (!ctx.projects.some((p) => p.id === params.projectId)) throw ctx.notFound('project', params.projectId);

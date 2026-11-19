@@ -127,10 +127,11 @@ An event-retention error keeps the pending statement and pass state for a
 retry after 30 s. Waiting for the WAL to catch up uses the same delay before
 any statistics or pruning work, without changing the batch size. Stopping
 retention or closing the journal prevents further ticks.
-Project removal deletes no row: it sets `projects.removed_at`, archives the
-project's threads and hides both from every list, so audits and usage keep the
-whole history. Adding the same folder again clears `removed_at` and reopens the
-threads that were open. Only its incognito threads are erased, as on any close.
+Project removal sets `projects.removed_at`, archives the project's saved threads
+and hides the project and its threads from the app's lists. The saved history
+stays available for audits and usage. Adding the same folder again clears
+`removed_at` and reopens the saved threads that were open. Removal erases
+incognito threads and their transcripts, as on any close.
 Foreign keys are disabled, so a purge clears thread-keyed tables explicitly.
 The purge of deleted conversations first keeps each finished turn's time,
 provider, model and usage in `removed_turn_usage`, so

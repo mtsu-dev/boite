@@ -460,9 +460,11 @@ describe('journal', () => {
     journal.setSetting('todos:prj_gone', [{ id: 'a' }]);
     journal.db.query('INSERT INTO workflow_templates VALUES (?, ?, ?, ?, ?, ?)').run('tpl_gone', 'prj_gone', 'gone', 1, 1, '{}');
     journal.markProjectRemoved('prj_gone', 5);
+    const [removed] = journal.listRemovedProjects();
+    journal.putProject({ ...removed!, name: 'updated while removed' });
     expect(journal.getProject('prj_gone')).toBeNull();
     expect(journal.listProjects().map((project) => project.id)).toEqual(['prj_keep']);
-    expect(journal.listRemovedProjects().map((project) => project.id)).toEqual(['prj_gone']);
+    expect(journal.listRemovedProjects().map(({ id, name }) => ({ id, name }))).toEqual([{ id: 'prj_gone', name: 'updated while removed' }]);
     expect(journal.getThread('thr_gone')).toBeNull();
     expect(journal.listThreads().map((entry) => entry.id)).not.toContain('thr_gone');
     expect(journal.getSetting('todos:prj_gone')).toEqual([{ id: 'a' }]);

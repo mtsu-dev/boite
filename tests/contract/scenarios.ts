@@ -917,6 +917,15 @@ export const SCENARIOS: Record<string, Scenario> = {
       .map((event) => (event.name === 'thread.updated' ? `thread.updated archived=${(event.payload as ThreadSummary).archived}` : event.name));
     same(order.filter((entry, index) => index === 0 || entry !== order[index - 1]), ['thread.updated archived=true', 'thread.removed', 'project.removed'], 'the events');
   },
+  'projects.drafts reopens the same drafts project and its open threads after removal': async (env) => {
+    const setup = await echo(env);
+    const drafts = await env.call('projects.drafts', {});
+    const created = await thread(env, { ...setup, projectId: drafts.id });
+    await env.call('projects.remove', { projectId: drafts.id });
+    const restored = await env.call('projects.drafts', {});
+    same([restored.id, restored.kind], [drafts.id, 'drafts'], 'the restored drafts project');
+    same((await summary(env, created.id)).archived, false, 'the restored thread');
+  },
   'a group is created, invites, refuses what names the wrong machine, and is left': async (env) => {
     same(await env.call('group.get', {}), null, 'the group before any');
     await refusedWith(env.call('group.invite', {}), RpcErrorCode.Refused);

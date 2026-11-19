@@ -119,9 +119,10 @@ export interface ProjectsRpcMethods {
     result: { path: string; parent: string | null; directories: { name: string; path: string }[] };
   };
   /**
-   * Take a project out of every list. Its running threads stop and are archived;
-   * nothing is deleted: threads, messages, turns, usage and traces stay on disk,
-   * and `projects.add` on the same folder brings the project back with them.
+   * Hide a project and stop its running threads. Saved threads are archived and
+   * their messages, turns, usage and traces stay on disk. Incognito threads and
+   * their transcripts are erased. Adding the same folder restores the project
+   * and reopens the saved threads that were open.
    */
   'projects.remove': { params: { projectId: ProjectId }; result: { ok: true } };
   /**

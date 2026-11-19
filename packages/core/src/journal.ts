@@ -192,7 +192,8 @@ export class Journal {
 
   putProject(project: Project): void {
     this.db
-      .query('INSERT OR REPLACE INTO projects (id, name, path, created_at, archived, worktree_default) VALUES (?, ?, ?, ?, ?, ?)')
+      .query(`INSERT OR REPLACE INTO projects (id, name, path, created_at, archived, worktree_default, removed_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, (SELECT removed_at FROM projects WHERE id = ?1))`)
       .run(project.id, project.name, project.path, project.createdAt, project.archived === true ? 1 : 0, project.worktreeDefault === true ? 1 : 0);
   }
 
@@ -246,7 +247,7 @@ export class Journal {
     return rows.map(toProject);
   }
 
-  /** The projects `projects.remove` took out of the lists, newest first: every row they had is still here. */
+  /** The projects `projects.remove` took out of the lists, newest first. */
   listRemovedProjects(): Project[] {
     const rows = this.db.query('SELECT * FROM projects WHERE removed_at IS NOT NULL ORDER BY removed_at DESC').all() as ProjectRow[];
     return rows.map(toProject);
@@ -257,7 +258,7 @@ export class Journal {
     this.db.query('UPDATE projects SET removed_at = ? WHERE id = ?').run(at, projectId);
   }
 
-  /** Lists a removed project again, unarchived, under `name`, with every thread it had. */
+  /** Lists a removed project again, unarchived, under `name`, with its saved threads. */
   restoreRemovedProject(projectId: string, name: string): void {
     this.db.query('UPDATE projects SET removed_at = NULL, archived = 0, name = ? WHERE id = ?').run(name, projectId);
   }
