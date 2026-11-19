@@ -38,6 +38,7 @@ import { nativeCommandPrompt, systemOperation } from './operations.ts';
 import { stoppedInput } from './stopped-input.ts';
 import { brainContextFor, forgetBrainContext } from './brain-context.ts';
 import { coordinationGuideFor, forgetCoordinationGuide } from './coordination-context.ts';
+import { delegationReminder } from '../delegation/guide.ts';
 import { sessionUsage } from '../usage.ts';
 import { pluginGuideLines } from '../plugins/extensions.ts';
 
@@ -443,12 +444,9 @@ export class TurnContexts {
     carried.memory ??= operation === 'keepalive' ? '' : this.#threads.deferred.memory.take(threadId);
     carried.letters ??= bare ? '' : this.#core.delegation.initialInput(threadId, turn.id);
     const deferred = carried.deferred;
-    // The subagent guide comes with the Boite guide on a fresh session, and on any turn about delegation.
-    // Core-woken turns (results, workflow summaries) bring no request of their own.
     // A context mode without guides gets its brief and the letters meant for it, nothing from the brain, Boite or the team.
     const mode = thread.contextMode ?? null;
     const noGuides = mode !== null && !mode.guides;
-    const tail = (fresh: boolean): string => bare ? '' : (noGuides ? '' : this.#core.delegation.instructions(threadId, operation ? '' : preparedPrompt, fresh)) + carried.letters;
     const origin = input.sentFrom;
     const systemGuide = this.#systemGuide(thread, provider);
     // Skills the harness already names to its model stay out of the brain's catalog.
@@ -463,9 +461,13 @@ export class TurnContexts {
         ? sentFromNote(origin.from) : '';
       // The coordination guide and an entrusted thread's instructions: whole on a fresh session or once they changed, else nothing (`coordination-context.ts`).
       const coordinationGuide = inject && !bare && guideEnabled ? coordinationGuideFor(this.#core, thread, sessionId, turn.id, this.#core.coordination.instructions(threadId) + this.#core.workforce.entrusted.instructions(threadId)) : '';
+      const request = operation ? '' : preparedPrompt;
+      const delegationText = inject && !bare && !noGuides ? this.#core.delegation.instructions(threadId, request, guideEnabled) : '';
+      const delegationGuide = coordinationGuideFor(this.#core, thread, sessionId, turn.id, delegationText, 'delegation');
+      const reminder = delegationText && !delegationGuide && !thread.parentThreadId && !this.#core.delegation.remote.parentOf(threadId) ? delegationReminder(request) : '';
       // A driver that takes the guide in its system prompt keeps it there, compaction included.
       const guide = inject && sessionId === null && guideEnabled && systemGuide === undefined ? this.#boiteGuide(thread, provider) : '';
-      // Custom rules lead every fresh session, whatever the guides, on every provider.
+      // Custom rules still apply when the guide is off.
       const rules = inject && sessionId === null && mode?.rules ? `${contextRulesBlock(mode.rules)}\n\n` : '';
       // Every turn, not once a session: a style said once fades after a few answers.
       // Boite's own text, so the guide switch turns it off with the rest.
@@ -474,8 +476,14 @@ export class TurnContexts {
       const agent = bare || nativeCommandPrompt(body) ? '' : this.#core.workforce.contextFor(thread, sessionId, turn.id);
       // The brain's instructions: whole on a fresh session or once they changed, else nothing (`brain-context.ts`).
       const brain = inject && !noGuides ? brainContextFor(this.#core, thread, sessionId, turn.id, this.#core.brain.instructions(provider.id, listedSkills)) : '';
-      const prefix = rules + brain + guide + agent + style;
-      return carried.memory + prefix + (prefix ? 'User request:\n' : '') + said + deferred + body + coordinationGuide + tail(inject && sessionId === null && guideEnabled) + this.#threads.cards.askInstructions({ ...thread, sessionId }, provider, turn, body);
+      // The shared guide is the reusable prefix. The following rules name the
+      // user's instructions, independently of their position in the prompt.
+      const prefix = guide + carried.memory + rules + brain + agent + style;
+      // A generated child brief starts with the same role. Resume history can
+      // include old briefs, so only skip the role when the current input has it.
+      const role = delegationGuide.trim();
+      const roleInBody = role && input.prompt.startsWith(role) && body.includes(role);
+      return prefix + (prefix ? 'User request:\n' : '') + said + deferred + body + coordinationGuide + (roleInBody ? '' : delegationGuide) + reminder + carried.letters + this.#threads.cards.askInstructions({ ...thread, sessionId }, provider, turn, body);
     };
     return {
       thread,

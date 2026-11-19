@@ -24,7 +24,7 @@ import { askFinal, childEnd, unwoken } from './delegation/completion.ts';
 import { workflowUsage } from './workflows/usage.ts';
 import { SharedWorkflowCompute } from './workflows/shared-compute.ts';
 import { MachineWorkflowSteps } from './workflows/machine-steps.ts';
-import { loopPrompt, stepPrompt } from './workflows/prompt.ts';
+import { loopPrompt, stepPrompt, stepRole } from './workflows/prompt.ts';
 import { reused } from './workflows/loops.ts';
 import { sentBack } from './workflows/follow-up.ts';
 import { delivered, endLeftovers, shapedOutput, stepAnswer } from './workflows/step-result.ts';
@@ -855,7 +855,7 @@ export class Workflows {
     if (!entry) return '';
     const run = this.#load(entry.runId);
     const shape = run?.plan.steps.find(s => s.id === entry.key.split('#')[0])?.output;
-    return `\nYou are a Boite workflow step (run ${entry.runId}, step ${entry.key}). Your final answer is collected automatically; do not message the parent or start workflows.${shape ? ` Return the structured output with boite workflow output '<json>' or a final \`\`\`json block.` : ''}\n`;
+    return `\n${stepRole(entry.runId, entry.key, shape !== undefined)}\n`;
   }
 
   #forget(threadId: string): void {

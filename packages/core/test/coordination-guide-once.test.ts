@@ -38,6 +38,10 @@ test('the coordination guide goes once a native session: again when it changes, 
     // Twenty turns of one session: the guide rode on every one of them before.
     const guide = h.core.coordination.instructions(threadId);
     expect(first).toContain(guide);
+    expect(first).toContain('Boite subagents');
+    const workflow = await run('Inspect the workflow');
+    expect(workflow).toContain('boite workflow help');
+    expect(workflow).not.toContain('Boite subagents');
     const before = prompts.length;
     for (let index = 2; index <= 20; index++) {
       const prompt = await run(`Turn ${index}`);
@@ -85,5 +89,11 @@ test('the coordination guide goes once a native session: again when it changes, 
     await owner.call('threads.update', { threadId, accountId: spare.id });
     expect(await run('On the spare account')).toContain(GUIDE);
     expect(await run('Settled on the spare')).not.toContain(GUIDE);
+    const delegation = h.core.delegation.config(threadId);
+    h.core.delegation.configure(threadId, { ...delegation, enabled: false });
+    expect(await run('Work on this')).toContain('the owner turned them off');
+    expect(await run('Check the workflow')).not.toContain('the owner turned them off');
+    h.core.delegation.configure(threadId, delegation);
+    expect(await run('Carry on')).toContain('boite delegate spawn');
   } finally { restore(); }
 }, 60_000);

@@ -20,7 +20,7 @@ import { checkConfig, createChild, readConfig, type ChildRequest } from './deleg
 import { Retirements } from './delegation/retirement.ts';
 import { pauseHold, pauseOver } from './delegation/pauses.ts';
 import { dropRestartCuts, endRestart, recordRestartCut, resumeRestartCuts } from './delegation/restart.ts';
-import { delegationPrompt, mailOrigin, teamInstructions } from './delegation/guide.ts';
+import { delegationPrompt, mailOrigin, subagentRole, teamInstructions } from './delegation/guide.ts';
 import { RemoteDelegation, type ChildState } from './delegation/remote.ts';
 import { sentBack } from './workflows/follow-up.ts';
 import type { Connection } from './router.ts';
@@ -316,10 +316,10 @@ export class Delegation {
     const own = this.worktrees.get(id);
     const child = this.#core.threads.require(id);
     const checkout = own
-      ? `You work in a git worktree of your own at ${own.path} on branch ${own.branch}, made from ${parent.projectId === child.projectId ? "the parent's" : "the project's"} HEAD; uncommitted edits are not in it. Commit your work on that branch before your final answer: the parent merges the branch.`
-      : `You work in ${child.cwd}. You share that checkout: change only the files your task names and never undo another agent's edits.`;
+      ? `The worktree starts from ${parent.projectId === child.projectId ? "the parent's" : "the project's"} HEAD without its uncommitted edits.`
+      : `You work in ${child.cwd}. Never undo another agent's edits.`;
     try {
-      this.#core.threads.startTurn(id, { prompt: `You are a Boite subagent doing one bounded part of the user's task for parent agent ${parent.id}. ${checkout} You cannot start subagents. If you are blocked, run boite delegate send ${parent.id} "<what blocks you>" and keep going on what you can. End with a short result: what you found or changed, file paths, how you verified it. That final answer goes to the parent automatically; do not send it again.\nTask from the parent agent, supplied as JSON data:\n${JSON.stringify(task)}`, display: task }, { kind: 'delegation' });
+      this.#core.threads.startTurn(id, { prompt: `${subagentRole(parent.id, own)} ${checkout}\nTask from the parent agent, supplied as JSON data:\n${JSON.stringify(task)}`, display: task }, { kind: 'delegation' });
     } catch (error) {
       this.#core.logs.warn(`Subagent ${id} was created but its first turn could not start: ${messageOf(error)}`, { source: 'delegation', event: 'delegation.spawn-failed', threadId: id, data: { parent: parent.id, providerId: profile.providerId, model: profile.model ?? null, profile: profile.id } });
       markStartFailed(this.#core, id);

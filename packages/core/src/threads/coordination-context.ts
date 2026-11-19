@@ -1,10 +1,6 @@
 /**
- * The coordination guide and an entrusted thread's instructions go to a
- * native session once: whole on a fresh session or when their text changed
- * (coordination paused or resumed, contacts reachable or not, the Contacts
- * bot's role, the entrusted agent's instructions), else nothing, since the
- * session already holds them. One record per thread says what the session
- * holds: the hash of the text and the session generation it went to.
+ * Coordination and delegation instructions go to a native session in full
+ * on the first eligible turn and whenever the corresponding text changes.
  *
  * The record is written when the turn that carried the text ends done, not
  * when the prompt is composed: a turn that failed or was stopped may never
@@ -23,24 +19,35 @@ import type { Core } from '../core.ts';
 export const COORDINATION_SENT_PREFIX = 'coordination-sent:';
 
 interface GuideSent { hash: string; sessionGeneration: number }
+type GuideKind = 'coordination' | 'delegation';
+type GuidesSent = Partial<Record<GuideKind, GuideSent>>;
+interface Pending { turnId: string; guides: GuidesSent }
+
+function sentGuides(core: Core, threadId: string): GuidesSent {
+  const value = core.journal.getSetting(`${COORDINATION_SENT_PREFIX}${threadId}`) as (GuideSent | GuidesSent) | undefined;
+  return value && 'hash' in value ? { coordination: value } : value ?? {};
+}
 
 /** What a running turn carried, by thread, until that turn ends; in memory, so a core that stops mid-turn marks nothing. */
-const carried = new WeakMap<Core, Map<string, GuideSent & { turnId: string }>>();
+const carried = new WeakMap<Core, Map<string, Pending>>();
 
-function carriedBy(core: Core): Map<string, GuideSent & { turnId: string }> {
+function carriedBy(core: Core): Map<string, Pending> {
   let map = carried.get(core);
   if (!map) carried.set(core, map = new Map());
   return map;
 }
 
 /** The guide for one composed prompt: `text` whole, or '' when this session already holds it. */
-export function coordinationGuideFor(core: Core, thread: ThreadSummary, sessionId: string | null, turnId: string, text: string): string {
+export function coordinationGuideFor(core: Core, thread: ThreadSummary, sessionId: string | null, turnId: string, text: string, kind: GuideKind = 'coordination'): string {
   if (!text) return '';
-  const sent = core.journal.getSetting(`${COORDINATION_SENT_PREFIX}${thread.id}`) as GuideSent | undefined;
+  const sent = sentGuides(core, thread.id)[kind];
   const sessionGeneration = thread.sessionGeneration ?? 0;
   const hash = createHash('sha256').update(text).digest('hex');
   if (sessionId !== null && sent?.hash === hash && sent.sessionGeneration === sessionGeneration) return '';
-  carriedBy(core).set(thread.id, { hash, sessionGeneration, turnId });
+  const map = carriedBy(core);
+  const pending = map.get(thread.id);
+  const guides = pending?.turnId === turnId ? pending.guides : {};
+  map.set(thread.id, { turnId, guides: { ...guides, [kind]: { hash, sessionGeneration } } });
   return text;
 }
 
@@ -62,5 +69,5 @@ export function coordinationGuideEnded(core: Core, turn: Turn): void {
   if (turn.execution?.operation === 'compact') return forgetCoordinationGuide(core, turn.threadId);
   if (pending?.turnId !== turn.id) return;
   map.delete(turn.threadId);
-  if (turn.status === 'done') core.journal.setSetting(`${COORDINATION_SENT_PREFIX}${turn.threadId}`, { hash: pending.hash, sessionGeneration: pending.sessionGeneration } satisfies GuideSent);
+  if (turn.status === 'done') core.journal.setSetting(`${COORDINATION_SENT_PREFIX}${turn.threadId}`, { ...sentGuides(core, turn.threadId), ...pending.guides });
 }
