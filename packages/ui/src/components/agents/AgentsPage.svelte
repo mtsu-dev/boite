@@ -80,6 +80,9 @@
   });
   /** The dialog that creates a team by hand is open (`docs/internals/teams.md`, In the app). */
   let creatingTeam = $state(false);
+  /** The team the window's rail asked to edit, on this page's machine. */
+  let editingTeam = $state<string | null>(null);
+  const teamToEdit = $derived(editingTeam ? teamsOf(store).teams.find(row => row.id === editingTeam) ?? null : null);
   const directory = $derived(agentDirectory(store));
   const threadId = $derived(thread?.id ?? teamThread?.id ?? null);
   const agent = $derived(thread ? agentOfThread(snapshot, thread.id) ?? directory.ownerOf(thread) : null);
@@ -128,14 +131,15 @@
     if (!id || !threadId || narrow.current) return;
     untrack(() => { if (!store.panel.isOpen && store.panel.surfaces.length === 0 && firstDeskVisit(id)) store.panel.open('desk'); });
   });
-  // The window's rail asks for a new bot, a new team or the engine settings: the page owns those forms.
+  // The window's rail asks for a new bot, a new team, a team's edit or the engine settings: the page owns those forms.
   $effect(() => {
     void agentsIntent.request;
     untrack(() => {
-      const kind = takeAgentsIntent(store);
-      if (kind === 'new-bot') focus = { kind: 'new' };
-      else if (kind === 'engine') focus = { kind: 'engine' };
-      else if (kind === 'new-team' && experimentOn('teams') && store.owner) creatingTeam = true;
+      const intent = takeAgentsIntent(store);
+      if (intent?.kind === 'new-bot') focus = { kind: 'new' };
+      else if (intent?.kind === 'engine') focus = { kind: 'engine' };
+      else if (intent?.kind === 'new-team' && experimentOn('teams') && store.owner) creatingTeam = true;
+      else if (intent?.kind === 'edit-team' && experimentOn('teams') && store.owner) editingTeam = intent.teamId;
     });
   });
   /** The desktop's default agent was opened, or gave way to one named on the way in. */
@@ -232,6 +236,9 @@
   onopen={open} onteam={openTeam} oncreate={() => { focus = { kind: 'new' }; }} onnewteam={() => { creatingTeam = true; }} onengine={() => { focus = focus?.kind === 'engine' ? null : { kind: 'engine' }; }}
   onpane={next => { focus = null; pane = pane === next ? null : next; }} />
 
+{#if teamToEdit && TeamDialog}
+  <TeamDialog {view} {others} team={teamToEdit} onclose={() => { editingTeam = null; }} ondone={() => {}} />
+{/if}
 {#if creatingTeam && TeamDialog}
   <TeamDialog {view} {others} onclose={() => { creatingTeam = false; }} ondone={created => { if (here) openTeam(here, created); }} />
 {/if}

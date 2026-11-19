@@ -324,7 +324,11 @@ team's name, the chevron of its menu and "Team chat · N mochis and you", or
 Paused or Archived; on a phone over the chat, with the way back and the team's
 pictures. It has no terminal or panel. Its menu holds Edit the team,
 Pause or Resume, and Archive, which asks first; an archived team's menu holds
-Edit the team and Restore. Edit opens the same dialog on the team: its name and
+Edit the team and Restore (`teamMenuItems` and `pickTeamAction`,
+`lib/team-menu.ts`). A right click on the team's picture in the window's rail
+opens that menu after Open; its Edit opens the team's chat with the dialog over
+it, a request the Mochis page answers (`editTeam`, `lib/agents-view.svelte.ts`).
+Edit opens the same dialog on the team: its name and
 brief go through `teams.update`, then each mochi taken out through
 `teams.members.remove`, then each new one through `teams.members.add`, worked
 out against the team `teams.list` returns at that moment; a refusal stops

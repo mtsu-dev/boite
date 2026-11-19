@@ -15,6 +15,7 @@ import { clampPanel, rightPanel } from './lib/right-panel.svelte';
 import { contactsRail } from './lib/contacts-rail.svelte';
 import { AgentsView, openAgent } from './lib/agents.svelte';
 import { saveAgent } from './lib/agent-menu';
+import { teamsOf } from './lib/teams.svelte';
 import { subagentsAtWork, threadsAtWork } from './lib/work-counts';
 
 /**
@@ -273,6 +274,42 @@ test("a right click on a mochi's rail picture opens its menu, not the webview's,
     await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=edit]') !== null);
     query<HTMLButtonElement>('[data-testid=context-menu] [data-value=edit]').click();
     await waitFor(() => store.page === 'agents' && bot.getAttribute('aria-current') === 'page');
+  } finally {
+    store.showChat();
+  }
+});
+
+test("a right click on a team's rail picture opens the team's menu, and its picks reach the team", async () => {
+  writeExperiments(['resident-agents', 'teams']);
+  await mountOnFake('/?fake=1&agents=1');
+  try {
+    const view = AgentsView.of(store);
+    await view.refresh();
+    const [first] = view.snapshot!.profiles;
+    const created = await store.client!.call('teams.create', { name: 'Menu crew', members: [first!.id] });
+    const teamId = created.id;
+    await waitFor(() => document.querySelector(`[data-testid=rail-team][data-team-id="${teamId}"]`) !== null);
+    const picture = query<HTMLButtonElement>(`[data-testid=rail-team][data-team-id="${teamId}"]`);
+    const menu = () => {
+      const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 30, clientY: 80 });
+      picture.dispatchEvent(event);
+      return event;
+    };
+    expect(menu().defaultPrevented).toBe(true);
+    await waitFor(() => document.querySelector('[data-testid=context-menu]') !== null);
+    const values = [...document.querySelectorAll<HTMLElement>('[data-testid=context-menu] [data-value]')].map(row => row.dataset['value']);
+    expect(values).toEqual(expect.arrayContaining(['open', 'edit', 'pause', 'archive']));
+    // Pause reaches the team on its machine.
+    query<HTMLButtonElement>('[data-testid=context-menu] [data-value=pause]').click();
+    await waitFor(() => teamsOf(store).teams.find(team => team.id === teamId)?.paused === true);
+    // Edit opens the team's chat with its dialog, filled with the team.
+    menu();
+    await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=edit]') !== null);
+    query<HTMLButtonElement>('[data-testid=context-menu] [data-value=edit]').click();
+    await waitFor(() => document.querySelector<HTMLInputElement>('[data-testid=team-dialog-name]')?.value === 'Menu crew');
+    expect(store.page).toBe('agents');
+    await waitFor(() => picture.getAttribute('aria-current') === 'page');
+    query<HTMLButtonElement>('[data-testid=team-dialog-close]').click();
   } finally {
     store.showChat();
   }

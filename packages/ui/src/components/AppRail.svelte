@@ -19,7 +19,8 @@
   import { contactsParts } from '../lib/contacts-entry';
   import { machineFilter } from '../lib/machine-filter.svelte';
   import { projectView } from '../lib/project-view.svelte';
-  import { botEngine, newBot, newTeam } from '../lib/agents-view.svelte';
+  import { botEngine, editTeam, newBot, newTeam } from '../lib/agents-view.svelte';
+  import { pickTeamAction, teamMenuItems } from '../lib/team-menu';
   import { separator } from '../lib/menu';
   import { contextMenu } from '../lib/context-menu.svelte';
   import { dragWindow } from '../lib/window-drag';
@@ -179,6 +180,20 @@
   function openTeamChat({ machine, team }: TeamRow) {
     workspace.showAgents(machine.store);
     void workspace.select(machine.store, team.threadId);
+  }
+  /**
+   * A team's picture has the menu of its chat's head (`teamMenuItems`) on a right click, after Open, answered through
+   * its own machine. Edit opens its chat with the team's dialog over it.
+   */
+  function teamMenu(event: MouseEvent, row: TeamRow) {
+    const open = row.machine.store === store && openTeam === row.team.id;
+    const items = [{ id: 'open', label: strings.common.open, glyph: MessageSquare, disabled: open }, separator('sep-open'), ...teamMenuItems(row.machine.store, row.team)];
+    contextMenu.open(event, items, action => {
+      if (action === 'open') openTeamChat(row);
+      // The request first: showing the page again after the select would drop the chat it opens.
+      else if (action === 'edit') { editTeam(row.machine.store, row.team.id); openTeamChat(row); }
+      else void pickTeamAction(row.machine.store, row.team, action);
+    });
   }
   /** What the Bots page's head offers, from anywhere: the page owns the forms (agents-view.svelte.ts). */
   function addMenu(anchor: HTMLElement) {
@@ -357,7 +372,7 @@
             <button type="button" class="bot team" aria-label={news ? `${row.team.name}, ${strings.app.rail.unread}` : row.team.name} aria-current={selected ? 'page' : undefined}
               aria-keyshortcuts="ArrowUp ArrowDown Home End" data-testid="rail-team" data-team-id={row.team.id}
               onpointerdown={(event) => reorder.start(event, entry.key)} onkeydown={(event) => reorder.keyboard(event, entry.key)}
-              onclick={() => openTeamChat(row)}>
+              onclick={() => openTeamChat(row)} oncontextmenu={(event) => teamMenu(event, row)}>
               <AgentAvatar kind="team" id={row.team.id} name={row.team.name} members={pictures(row)} size={44} squircle lit={avatarLit({ open: selected, unread: news })} />
               {#if news}<span class="badge" aria-hidden="true"><span class="news"></span></span>{/if}
             </button>
