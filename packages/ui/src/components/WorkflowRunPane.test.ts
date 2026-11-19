@@ -10,6 +10,7 @@ test('the workflow distinguishes partial, unknown and measured zero usage', asyn
   store.attach(client);
   await store.connect();
   await store.open('t-trace');
+  await store.probeModels('claude', 'a-claude-main');
   const [run] = await client.call('workflows.list', { threadId: 't-trace' });
   const review = run!.nodes.find(node => node.id === 'review')!;
   Object.assign(review.instances[0]!, { effort: 'high', usage: { inputTokens: 100, outputTokens: 20, cacheReadTokens: 200, cacheWriteTokens: 30, costUsdEquivalent: null } });
