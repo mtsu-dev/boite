@@ -9,7 +9,7 @@ import { revealRequested } from '../reveal';
 import { appUpdateRequested } from '../desktop-update.svelte';
 import { rightPanel } from '../right-panel.svelte';
 import { undo } from '../undo.svelte';
-import { lastIndexById, patchFields, patchLoad } from '../thread-rows';
+import { lastIndexById, patchFields, patchLoad, placePart } from '../thread-rows';
 import { strings } from '../strings';
 import { needsUser } from '../thread-state';
 import { installStatesOf } from './accounts.svelte';
@@ -258,13 +258,13 @@ export function listen(ctx: StoreContext, client: Client): void {
       if (part && (part.type === 'text' || part.type === 'thinking')) appendText(part, text);
       // On a tool part it is the input's JSON, still being typed by the model.
       else if (part && part.type === 'tool') part.inputText = (part.inputText ?? '') + text;
-      else if (!part) message.parts[partIndex] = { type: 'text', text };
+      else if (!part) placePart(message.parts, partIndex, { type: 'text', text });
     }
   });
 
   on('message.part', ({ threadId, messageId, partIndex, part }) => {
     threads.invalidateSync(threadId);
-    for (const message of threads.messages(threadId, messageId)) message.parts[partIndex] = part;
+    for (const message of threads.messages(threadId, messageId)) placePart(message.parts, partIndex, part);
   });
 
   on('message.completed', ({ threadId, messageId, state }) => {

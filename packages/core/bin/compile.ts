@@ -38,8 +38,7 @@ const result = Bun.spawnSync([
   '--minify-whitespace', '--minify-syntax', '--bytecode', '--format=esm', '--env=BOITE_RELEASE_*',
   // The build's kind and its features' flags: `--version=<version>` compiles another kind (scripts/ci/feature-cut.ts).
   ...defineFlags(option('version')),
-  'src/compiled-main.ts', 'src/artifact-retention-worker.ts', 'src/coordination-search-worker.ts', 'src/platform/linux-tcp-worker.ts',
-  '--outfile', option('outfile') ?? `dist/boite-core${suffix}`,
+  'src/compiled-main.ts', 'src/artifact-retention-worker.ts', 'src/platform/linux-tcp-worker.ts', '--outfile', option('outfile') ?? `dist/boite-core${suffix}`,
 ], {
   stdout: 'inherit', stderr: 'inherit', windowsHide: true, timeout: COMPILE_TIMEOUT_MS,
 });

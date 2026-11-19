@@ -8,6 +8,7 @@ import { Core } from '../src/core.ts';
 import { Coordination, coordinationUrl, LETTER_RETENTION_MS, letterPrompt, SWEEP_PROBES } from '../src/coordination.ts';
 import { senderContext } from '../src/coordination-relation.ts';
 import { contactAnswer } from '../src/contacts/answers.ts';
+import { searchJournalChat, type ChatSearchReply } from '../src/journal-reads.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import { echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { rejection, thrown } from './settle.ts';
@@ -58,6 +59,42 @@ test('a cancelled queued search releases its caller before the active reader fin
     expect(finished).toBe(false);
   } finally { await active; }
   expect((await h.core.coordination.search(a, 'deployment')).matches).toMatchObject([{ threadId: b }]);
+});
+
+test('an interrupted reader keeps its slot until the worker closes', async () => {
+  const { h } = await setup();
+  const workers: PausedWorker[] = [];
+  class PausedWorker extends EventTarget {
+    onmessage?: (event: MessageEvent<ChatSearchReply>) => void;
+    constructor() { super(); workers.push(this); }
+    postMessage(): void {}
+    terminate(): void {}
+  }
+  const original = globalThis.Worker;
+  globalThis.Worker = PausedWorker as unknown as typeof Worker;
+  const db = h.core.journal.db;
+  const query = { candidates: [], words: ['test'], redact: false, results: 1 };
+  const caller = new AbortController();
+  const next = new AbortController();
+  const wait = thrown(searchJournalChat(db, query, { signal: caller.signal }));
+  const waiting = searchJournalChat(db, query, { signal: next.signal });
+  try {
+    await waitFor(() => workers.length === 1);
+    caller.abort();
+    expect(await wait).toThrow('Conversation search cancelled');
+    await Bun.sleep(0);
+    expect(workers).toHaveLength(1);
+    workers[0]!.dispatchEvent(new Event('close'));
+    await waitFor(() => workers.length === 2);
+    workers[1]!.onmessage?.(new MessageEvent('message', { data: { hits: [] } }));
+    expect(await waiting).toEqual([]);
+  } finally {
+    caller.abort();
+    next.abort();
+    await waiting.catch(() => {});
+    for (const worker of workers) worker.dispatchEvent(new Event('close'));
+    globalThis.Worker = original;
+  }
 });
 
 test('contact answer letters distinguish automatic decisions from explicit owner decisions', async () => {
@@ -682,7 +719,12 @@ test('search finds a contact by words of its chat, fields or both, and reading r
   const { h, a, b } = await setup();
   say(h, b, 'user', 'the login page shows a blank screen after the redirect', 1000);
   say(h, b, 'assistant', 'I changed the OAuth callback in auth.ts', 2000);
+  const workerRequests = spyOn(Worker.prototype, 'postMessage');
+  restores.push(() => workerRequests.mockRestore());
   const found = await h.core.coordination.search(a, 'blank deployment');
+  expect(workerRequests).toHaveBeenCalledWith(expect.objectContaining({
+    search: expect.objectContaining({ words: ['blank', 'deployment'] }),
+  }));
   expect(found.matches.map(m => m.threadId)).toEqual([b]);
   expect(found.matches[0]?.matched).toEqual(['title', 'chat']);
   expect(found.matches[0]?.excerpts[0]).toContain('blank screen');
@@ -781,20 +823,19 @@ test('two linked cores search and read each other\'s agents through signed reque
   expect(await thrown(one.h.core.coordination.read(one.a, { coreId: cardB.coreId, threadId: two.b }))).toThrow('not a thread open to other machines');
 }, 25000);
 
-test('a local search stays local when remote coordination opens while history is read', async () => {
+
+test('a search that starts local stays local when the machines open during its scan', async () => {
   const one = await setup(); const two = await setup();
   const cardA = one.h.core.coordination.identity(), cardB = two.h.core.coordination.identity();
-  one.h.core.coordination.trust(cardB); two.h.core.coordination.trust(cardA);
-  enable(one.h, one.a, one.b);
-  const receive = spyOn(two.h.core.coordination, 'http');
-  try {
-    const local = one.h.core.coordination.search(one.a, 'deployment');
-    one.h.core.coordination.configure(one.a, { ...brief, remote: true });
-    expect((await local).matches).toMatchObject([{ coreId: cardA.coreId, threadId: one.b }]);
-    expect(receive).not.toHaveBeenCalled();
-    expect((await one.h.core.coordination.search(one.a, 'deployment')).matches.some(match => match.coreId === cardB.coreId)).toBe(true);
-  } finally { receive.mockRestore(); }
-});
+  one.h.core.coordination.trust(cardB); two.h.core.coordination.trust({ ...cardA, readThreads: true });
+  say(two.h, two.b, 'user', 'the nightly backup to the NAS failed again');
+  const mine = one.h.core.coordination.get(one.a).config;
+  one.h.core.coordination.configure(one.a, { ...mine, remote: false });
+  const pending = one.h.core.coordination.search(one.a, 'nas backup');
+  one.h.core.coordination.configure(one.a, { ...mine, remote: true });
+  expect((await pending).matches.filter(m => m.coreId === cardB.coreId)).toEqual([]);
+  expect((await one.h.core.coordination.search(one.a, 'nas backup')).matches.map(m => m.coreId)).toContain(cardB.coreId);
+}, 25000);
 
 
 test('old local letters gain project names without requiring enabled contacts', async () => {

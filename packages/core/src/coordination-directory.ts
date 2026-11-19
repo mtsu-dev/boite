@@ -1,13 +1,13 @@
 import { reachRefusal, type AgentAddress, type AgentContact, type AgentMatch, type AgentTranscript, type CoordinationConfig, type CoordinationPeer, type CoordinationReach, type Message } from '@boite/contracts';
 import type { Core } from './core.ts';
-import { checkMatchExtras, checkRemoteContact, remoteTranscript, PARTIAL, partialList, partialName, queryPayload, readTranscript, searchWords, toolOutputEntry, transcriptQuery, type TranscriptQuery } from './coordination-lookup.ts';
-import { searchLocalContacts } from './coordination-search.ts';
+import { checkMatchExtras, checkRemoteContact, remoteTranscript, PARTIAL, partialList, partialName, queryPayload, readTranscript, searchContacts, searchWords, toolOutputEntry, transcriptQuery, type TranscriptQuery } from './coordination-lookup.ts';
 import { address, same } from './coordination-letter.ts';
 import { PeerRefusal } from './coordination-wire.ts';
 import { contactsBot } from './contacts/bot.ts';
 import type { ContactMailboxes } from './contacts/mailboxes.ts';
 import { projectCoordination } from './contacts/project-coordination.ts';
-import { invalidParams, messageOf, refused, unavailable } from './errors.ts';
+import { invalidParams, messageOf, refused } from './errors.ts';
+import { assertSearchActive, waitForSearch } from './journal-reads.ts';
 
 /** What the lookups read from the coordination that owns them. */
 export interface LookupSide {
@@ -134,26 +134,24 @@ export class CoordinationLookups {
   }
   /** Contacts here and on trusted machines whose fields or chat contain every word of the query. */
   async search(threadId: string, query: string, signal?: AbortSignal): Promise<{ matches: AgentMatch[]; unavailable: string[] }> {
+    assertSearchActive(signal);
     const words = searchWords(query);
     const config = this.side.config(threadId);
     if (this.core.threads.require(threadId).archived || config.mode === 'off') return { matches: [], unavailable: [] };
-    const peers = config.remote ? new Set(this.peers(threadId).map(peer => peer.coreId)) : new Set<string>();
     const own = this.side.localReach(threadId).filter(a => a.threadId !== threadId);
-    const matches = await searchLocalContacts(this.core, own, words, true, false, signal);
-    if (signal?.aborted) throw unavailable('Conversation search cancelled');
-    this.side.checkLookupAccess(threadId, config.remote);
-    const collect = config.remote ? await this.remoteAll(threadId, 'search', { words, partial: PARTIAL }, (answer, peer) => {
+    // Both start now: the other machines are asked under the rights this search began with, not ones opened during the local scan.
+    const [matches, collect] = await waitForSearch(Promise.all([searchContacts(this.core.journal.db, own, words, true, false, signal), this.remoteAll(threadId, 'search', { words, partial: PARTIAL }, (answer, peer) => {
       const list = partialList(answer);
       return { peer, missing: list.unavailable, matches: list.entries.map(match => ({ ...checkRemoteContact(match as AgentContact, peer), ...checkMatchExtras(match as { matched?: unknown; excerpts?: unknown }) })) };
-    }, this.peers(threadId).filter(peer => peers.has(peer.coreId)), signal) : null;
-    if (signal?.aborted) throw unavailable('Conversation search cancelled');
+    }, undefined, signal)]), signal);
     const routed = config.remote && config.reach === 'group' && this.side.config(threadId).reach === 'group'
-      ? await this.side.mailboxes.search(threadId, words) : { entries: [], unavailable: [] };
+      ? await this.side.mailboxes.search(threadId, words, signal) : { entries: [], unavailable: [] };
+    assertSearchActive(signal);
     const hide = this.hidden(threadId);
     routed.entries = routed.entries.filter(entry => !hide(entry.coreId));
     if (this.side.config(threadId).reach !== 'group') { routed.entries = []; routed.unavailable = []; }
     this.side.checkLookupAccess(threadId, config.remote);
-    const remote = collect?.() ?? { results: [], unavailable: [] };
+    const remote = collect();
     const reachable = new Set(this.side.localReach(threadId).map(contact => contact.threadId));
     const trusted = new Set(this.side.trusted().map(peer => peer.coreId));
     const remoteMatches = remote.results.flatMap(result => result.matches);

@@ -546,6 +546,23 @@ export class FakeClient implements ObservableClient {
     return { messageId: message.id, partIndex };
   }
 
+  /**
+   * `unseen` text parts written to `threadId`'s streaming answer that never
+   * reach this client, as deltas a congested socket dropped, then one more
+   * part that does: it lands past the end of the client's copy.
+   */
+  streamPastClient(threadId: ThreadId, unseen: number): { messageId: MessageId; partIndex: number } {
+    const ctx = this.#ctx;
+    const message = ctx.thread(threadId).messages.at(-1);
+    if (message?.state !== 'streaming') throw new Error(`${threadId} has no streaming answer: redrawCommand opens one`);
+    for (let left = unseen; left > 0; left--) message.parts.push({ type: 'text', text: 'Lost on the way. ' });
+    const partIndex = message.parts.length;
+    const part = { type: 'text' as const, text: 'Arrived.' };
+    message.parts.push(part);
+    ctx.emitToThread(threadId, 'message.part', { threadId, messageId: message.id, partIndex, part: structuredClone(part) });
+    return { messageId: message.id, partIndex };
+  }
+
   emitMemory(event: MemoryEvent): void {
     const ctx = this.#ctx;
     ctx.memoryState = event.state;

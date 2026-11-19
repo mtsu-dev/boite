@@ -245,11 +245,8 @@ test('both owners keep model tiers and source/target communication, archive and 
 
 test('closing a search RPC cancels its shared project lookup', async () => {
   const { a } = await associated();
-  const completed = Promise.withResolvers<{ matches: []; unavailable: [] }>();
-  const lookup = spyOn(a.h.core.sharedProjects, 'search').mockImplementation((_query, _connection, signal) => {
-    signal?.addEventListener('abort', () => completed.resolve({ matches: [], unavailable: [] }), { once: true });
-    return completed.promise;
-  });
+  const completed = Promise.withResolvers<never>();
+  const lookup = spyOn(a.h.core.sharedProjects, 'request').mockImplementation(() => completed.promise);
   try {
     const search = thrown(a.client.call('collaboration.search', { threadId: a.threadId, query: 'bravo' }));
     await waitFor(() => lookup.mock.calls.length > 0);
@@ -258,7 +255,7 @@ test('closing a search RPC cancels its shared project lookup', async () => {
     await search;
     await waitFor(() => a.h.core.router.activeRequests === 0, 1000);
   } finally {
-    completed.resolve({ matches: [], unavailable: [] });
+    completed.reject(unavailable('Fixture released'));
     lookup.mockRestore();
   }
 });

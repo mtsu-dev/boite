@@ -116,7 +116,7 @@ test('the bytecode compiled launcher runs commands and starts a core that shuts 
   const build = Bun.spawnSync([
     process.execPath, 'build', '--compile',
     '--minify-whitespace', '--minify-syntax', '--bytecode', '--format=esm', '--env=BOITE_RELEASE_*',
-    'src/compiled-main.ts', 'src/artifact-retention-worker.ts', 'src/coordination-search-worker.ts', 'src/platform/linux-tcp-worker.ts', '--outfile', binary,
+    'src/compiled-main.ts', 'src/artifact-retention-worker.ts', 'src/platform/linux-tcp-worker.ts', '--outfile', binary,
   ], { cwd: join(import.meta.dir, '..'), stdout: 'pipe', stderr: 'pipe', windowsHide: true });
   expect({ code: build.exitCode, stderr: build.stderr.toString().slice(-2000), ms: Date.now() - started }).toMatchObject({ code: 0 });
   if (process.platform === 'win32') {

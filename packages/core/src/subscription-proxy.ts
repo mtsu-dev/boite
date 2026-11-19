@@ -1,11 +1,12 @@
 import { join } from 'node:path';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { MODEL_ROUTE_FAMILIES, nativeModelId, subscriptionProxyName, subscriptionProxyOf, type ModelFamily, type ModelInfo, type ProviderDescriptor, type ProviderId, type SubscriptionProxy } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { invalidParams, refused, unavailable, RpcFailure } from './errors.ts';
 import { isOpenCode, OPENCODE_V2 } from './providers/opencode.ts';
-import { profileFor } from './providers/resolve.ts';
+import { hostAgentsEnabled, profileFor } from './providers/resolve.ts';
+import { shareProfile } from './profile-share.ts';
 import { ensureLocalProxyKey, prepareLocalProxyKey, hasProxyKey, proxyKey, validateProxyKey as validateKey, writeProxyKey as writeKey, PROXY_AUTH_ERROR } from './subscription-proxy-auth.ts';
 export { proxyKey } from './subscription-proxy-auth.ts';
 
@@ -21,6 +22,7 @@ const CODEX_CATALOG_ENV = 'BOITE_SUBSCRIPTION_PROXY_CODEX_CATALOG';
  */
 export const PROXY_PREFIX_ENV = 'BOITE_SUBSCRIPTION_PROXY_PREFIX';
 const GROK: ProviderId = 'grok';
+const ANTIGRAVITY: ProviderId = 'antigravity';
 
 export function activeSubscriptionProxy(core: Core, provider: ProviderDescriptor): SubscriptionProxy | null {
   return subscriptionProxyOf(core.settings.get(), provider, core.quotas?.gateway.state());
@@ -138,6 +140,7 @@ export function subscriptionProxyEnv(core: Core, provider: ProviderDescriptor): 
   if (provider.id === 'muse') return museGatewayEnv(core, proxy, key);
   if (isOpenCode(provider.id)) return openCodeGatewayEnv(core, provider, proxy, key);
   if (provider.id === GROK) return grokGatewayEnv(core, proxy, key);
+  if (provider.id === ANTIGRAVITY) return antigravityGatewayEnv(core, provider, proxy, key);
   if (provider.protocol === 'claude-sdk') return {
     ANTHROPIC_BASE_URL: proxyApiUrl(proxy).replace(/\/v1$/, ''),
     ANTHROPIC_AUTH_TOKEN: key, ANTHROPIC_API_KEY: '',
@@ -170,6 +173,49 @@ function museGatewayEnv(core: Core, proxy: SubscriptionProxy, key: string): Reco
   if (!existsSync(settings)) writeFileSync(settings, JSON.stringify({ schema_version: 1, endpoint_transport: { base_url: api, auth: 'bearer' } }));
   // META_API_KEY overrides a saved login and is deliberately supplied after the profile's unsetEnv.
   return { XDG_CONFIG_HOME: directory, META_API_KEY: key };
+}
+
+/**
+ * Antigravity's server has a gateway mode of its own: `auth.type: "gateway"` in
+ * `<GEMINI_HOME>/antigravity-acp/settings.json`, the gateway's origin in
+ * `AGY_LLM_GATEWAY_URL` (no `/v1`: it calls `/v1beta/models` and
+ * `/v1beta/models/<model>:streamGenerateContent` under it) and the key, sent as
+ * a bearer token, in `AGY_LLM_GATEWAY_API_KEY`. It then lists the gateway's
+ * models itself. The settings live in a home of their own per gateway, so the
+ * account's home keeps its `oauth-personal` settings and its sign-in for when
+ * the proxy is off. The profile's shared paths (skills) are mirrored into that
+ * home as into an account's. Applied after the profile's unsetEnv and isolation.
+ */
+const gatewayShareLog = new Map<string, string>();
+
+function antigravityGatewayEnv(core: Core, provider: ProviderDescriptor, proxy: SubscriptionProxy, key: string): Record<string, string> {
+  const origin = proxyApiUrl(proxy).replace(/\/v1$/, '');
+  const identity = createHash('sha256').update(origin).digest('hex').slice(0, 24);
+  const home = join(core.dataDir, 'subscription-proxy', 'antigravity', identity);
+  const settings = join(home, 'antigravity-acp', 'settings.json');
+  mkdirSync(join(home, 'antigravity-acp'), { recursive: true });
+  let current: Record<string, unknown> = {};
+  try {
+    const read: unknown = JSON.parse(readFileSync(settings, 'utf8'));
+    if (read !== null && typeof read === 'object' && !Array.isArray(read)) current = read as Record<string, unknown>;
+  } catch {
+    // Missing or not JSON: written anew below.
+  }
+  const auth = current['auth'];
+  if (auth === null || typeof auth !== 'object' || (auth as Record<string, unknown>)['type'] !== 'gateway') {
+    // What the agent keeps beside the auth type stays.
+    writeFileSync(settings, JSON.stringify({ ...current, auth: { type: 'gateway' } }));
+  }
+  const profile = profileFor(provider);
+  if (profile !== undefined && hostAgentsEnabled()) {
+    const said = shareProfile(home, profile, provider.shared ?? []).map((problem) => `${problem.path}: ${problem.message}`).join('; ');
+    // Said once per change, as for an account: this runs before every spawn.
+    if (said !== (gatewayShareLog.get(home) ?? '')) {
+      gatewayShareLog.set(home, said);
+      if (said.length > 0) core.log('warn', `subscription proxy: the Antigravity gateway home does not share ${said}`);
+    }
+  }
+  return { GEMINI_HOME: home, AGY_LLM_GATEWAY_URL: origin, AGY_LLM_GATEWAY_API_KEY: key };
 }
 
 /** Only addresses go on the command line; Codex reads the key from its environment. */
@@ -272,6 +318,8 @@ export async function readSubscriptionProxyModels(core: Core, provider: Provider
   }
   // Grok's CLI reads the gateway's list itself and takes no model outside it: its discovery is the whole catalog.
   if (provider.id === GROK) return null;
+  // Antigravity lists the gateway's Gemini API models itself (`/v1beta/models`): an OpenAI catalog would add nothing it can run.
+  if (provider.id === ANTIGRAVITY) return null;
   let response: Response;
   try {
     response = await fetch(`${proxyApiUrl(proxy)}/models`, {
@@ -297,7 +345,7 @@ export async function readSubscriptionProxyModels(core: Core, provider: Provider
     const own = provider.protocol === 'claude-sdk' ? 'anthropic' : 'openai';
     const family = proprietaryFamily(row.id);
     // A gateway can translate any model to any API; a proprietary model still stays in its own harness.
-    // Gemini's harness, Antigravity, cannot go through a gateway, so its models stay usable in both.
+    // Gemini's models stay usable in both: Antigravity, their harness, goes through Douane alone and by its own API.
     if (family !== null && family !== 'google' && family !== own) continue;
     if (Array.isArray(endpoints) && !endpoints.includes(provider.protocol === 'claude-sdk' ? 'anthropic' : 'openai-response')) continue;
     // Older gateways omit endpoint metadata; their known native model families remain selectable.
