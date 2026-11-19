@@ -20,6 +20,7 @@ import { hydrate, hydratePart } from './journal/part-blobs.ts';
 import { migrate } from './journal/schema.ts';
 import { openAsyncQuestions, projectQuestion } from './journal/questions.ts';
 import { PROCESS_COLUMNS, PROCESS_FROM, ProcessRows } from './journal/processes.ts';
+import { projectIconImage, projectIcons, putProjectIcon, type ProjectIconImage } from './journal/project-icons.ts';
 import { cachePages, runWrite } from './journal/statements.ts';
 import { WAL_LIMIT_BYTES, WalCheckpoints, type WalCheckpointOptions } from './journal/wal-checkpoints.ts';
 import { toAccount, toMessage, toProcess, toProject, toThread, toTurn, parseJson } from './journal/rows.ts';
@@ -212,34 +213,10 @@ export class Journal {
     this.db.query('DELETE FROM workflow_templates WHERE project_id = ?').run(projectId);
   }
 
-  /** What every project's icon reads as, bytes left out: one small query per list. */
-  projectIcons(): Map<string, ProjectIconRow> {
-    const rows = this.db.query('SELECT project_id, kind, tech, version FROM project_icons').all() as (ProjectIconRow & { project_id: string })[];
-    return new Map(rows.map(({ project_id, ...row }) => [project_id, row]));
-  }
-
-  /** The stored image of a project, or null when its icon is not one. */
-  projectIconImage(projectId: string): { mime: string; data: Uint8Array; version: string } | null {
-    const row = this.db
-      .query("SELECT mime, data, version FROM project_icons WHERE project_id = ? AND kind = 'image'")
-      .get(projectId) as { mime: string | null; data: Uint8Array | null; version: string | null } | null;
-    if (row === null || row.mime === null || row.data === null || row.version === null) return null;
-    return { mime: row.mime, data: row.data, version: row.version };
-  }
-
+  projectIcons(): Map<string, ProjectIconRow> { return projectIcons(this.db); }
+  projectIconImage(projectId: string): ProjectIconImage | null { return projectIconImage(this.db, projectId); }
   putProjectIcon(projectId: string, icon: StoredProjectIcon, checkedAt: number): void {
-    this.db
-      .query('INSERT OR REPLACE INTO project_icons (project_id, kind, tech, mime, data, version, source, checked_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(
-        projectId,
-        icon.kind,
-        icon.kind === 'tech' ? icon.id : null,
-        icon.kind === 'image' ? icon.mime : null,
-        icon.kind === 'image' ? icon.bytes : null,
-        icon.kind === 'image' ? icon.version : null,
-        icon.kind === 'image' ? icon.source : null,
-        checkedAt,
-      );
+    putProjectIcon(this.db, projectId, icon, checkedAt);
   }
 
   getProject(projectId: string): Project | null {

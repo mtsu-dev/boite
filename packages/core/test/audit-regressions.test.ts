@@ -107,7 +107,10 @@ test('held answers are journaled once and still prefix the next prompt', async (
   expect((await client.call('threads.get', { threadId })).pendingAnswers).toEqual([]);
 });
 
-test('an answer held behind a queued turn survives a core restart', async () => {
+test.each([
+  { name: 'survives a core restart', archived: false },
+  { name: 'does not reappear after archive and restart', archived: true },
+])('an answer held behind a queued turn $name', async ({ archived }) => {
   const dataDir = outside('boite-held-answer-');
   harness = await startTestCore({ dataDir });
   const client = await harness.connect();
@@ -118,10 +121,16 @@ test('an answer held behind a queued turn survives a core restart', async () => 
   await client.call('questions.answer', { threadId, questionId, optionIds: [], text: 'Keep this answer' });
   const text = '> Which option?\n\nKeep this answer';
   expect((await client.call('threads.get', { threadId })).pendingAnswers).toEqual([text]);
+  if (archived) await client.call('threads.archive', { threadId });
   await harness.stop();
 
   harness = await startTestCore({ dataDir });
   const restarted = await harness.connect();
+  if (archived) {
+    await restarted.call('threads.archive', { threadId, archived: false });
+    expect((await restarted.call('threads.get', { threadId })).pendingAnswers).toEqual([]);
+    return;
+  }
   expect((await restarted.call('threads.get', { threadId })).pendingAnswers).toEqual([text]);
   expect(await restarted.call('questions.list', { threadId })).toEqual([]);
   const turn = await restarted.call('turns.start', { threadId, prompt: 'continue after restart' });

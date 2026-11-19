@@ -475,6 +475,7 @@ export function migrate(db: Database, file: string): { from: number; to: number 
       ) WITHOUT ROWID;`);
     version = 44;
   }
+  db.exec('CREATE INDEX IF NOT EXISTS composer_deliveries_thread ON composer_deliveries (thread_id, request_id)');
   if (version < 45) {
     // A new journal has no events to read; reading them anyway marks `events` for ANALYZE on SQLite before 3.46.
     createPendingQuestions(db, (row?.user_version ?? 0) > 0);
@@ -567,7 +568,6 @@ export function ensureIndexes(db: Database): void {
   db.exec('CREATE INDEX IF NOT EXISTS threads_status ON threads (status)');
   db.exec('CREATE INDEX IF NOT EXISTS processes_by_started ON processes (thread_id, started_at DESC)');
   db.exec('CREATE INDEX IF NOT EXISTS turns_by_status ON turns (status)');
-  db.exec('CREATE INDEX IF NOT EXISTS composer_deliveries_thread ON composer_deliveries (thread_id, request_id)');
   db.exec("CREATE INDEX IF NOT EXISTS turns_active_by_thread ON turns (thread_id) WHERE status IN ('running', 'queued')");
   db.exec('CREATE INDEX IF NOT EXISTS messages_by_turn ON messages (thread_id, turn_id)');
   db.exec('CREATE INDEX IF NOT EXISTS turns_by_finished ON turns (finished_at)');
