@@ -224,12 +224,16 @@ export interface ProcessPlatform {
   pidAdded(threadId: string, pid: number, guarded: boolean): void;
   pidRemoved(threadId: string, pid: number, guarded: boolean): void;
   /**
-   * The registry spawned `pid` as the leader of a process group of its own:
-   * have that group end with the core, even a core that dies without stopping
-   * it, until `pidRemoved` names the pid. Linux and macOS; on Windows the
-   * thread's job does it.
+   * Linux and macOS; on Windows the thread's job does it. `readyGroups` runs
+   * before a spawn and says, once, why groups cannot be tied. `tieGroup`: the
+   * registry spawned `pid` as the leader of a process group of its own, which
+   * then ends with the core, even a core that dies without stopping it.
+   * `untieGroup` after the leader's exit (`leaderExited`: the group stays tied
+   * until it is empty) or when the keeper takes it over.
    */
+  readyGroups?(): string | null;
   tieGroup?(pid: number): void;
+  untieGroup?(pid: number, leaderExited: boolean): void;
   /** SIGKILL to every tied group at once, for a shutdown out of time. */
   killTiedGroups?(): void;
   /** A turn is starting: have the process drain and the protections ready before its first process. */

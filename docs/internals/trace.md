@@ -628,13 +628,19 @@ on Linux/macOS.
 
 A core that dies without stopping its agents takes their groups with it on
 Linux and macOS too (`platform/posix-group-watch.ts`). One `sh` per core
-process, started with the first spawn, reads the group leaders on a pipe from
-the core: a pid is added at spawn and removed once its exit is recorded or the
-keeper takes it over. When the pipe closes, after a crash, SIGKILL, the OOM
-killer or any exit, the watcher sends each group it still holds SIGTERM,
-probes them every 100 ms and sends SIGKILL to what remains after two seconds.
-A shutdown past its deadline sends SIGKILL to those groups itself before it
-exits. Processes the keeper adopted are never added. At startup the core
+process, started before the first spawn, reads the groups on a pipe from the
+core. A group is added right after its spawn, before anything else is read
+about it. Its leader's exit marks it, and it is removed once a probe every
+second finds it empty, or at once when the keeper takes it over: tools a
+leader left behind stay held. A group id is its leader's pid, which the
+kernel does not reuse while the group has a member, so a live process with
+that pid means the group emptied: it is dropped and never signalled. When the
+pipe closes, after a crash, SIGKILL, the OOM killer or any exit, the watcher
+sends each group it still holds SIGTERM, probes them every 100 ms and sends
+SIGKILL to what remains after two seconds. A shutdown past its deadline sends
+SIGKILL to those groups itself before it exits. Processes the keeper adopted
+are never added. If the watcher cannot start, the core logs
+`groups.untied` once and agents run as they did before it. At startup the core
 closes every trace row a previous core left open (`exited_at` set, no exit
 code), through the partial index `processes_live`, before anything spawns; a
 process the keeper still holds is written live again when it is adopted.
