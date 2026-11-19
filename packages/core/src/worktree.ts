@@ -2,7 +2,7 @@ import { appendFileSync, closeSync, existsSync, fstatSync, lstatSync, mkdirSync,
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { BRANCH_NAME_MAX, type Project, type ThreadId, type WorktreeStorage } from '@boite/contracts';
 import { CheckoutReservations } from './checkouts.ts';
-import { withVacantCheckout } from './checkout-removal.ts';
+import { removeCleanCheckout, withVacantCheckout } from './checkout-removal.ts';
 import type { Core } from './core.ts';
 import { folderGone, messageOf, refused } from './errors.ts';
 import { newId } from './ids.ts';
@@ -441,7 +441,7 @@ export class Worktrees {
             const unlocked = await git(['worktree', 'unlock', location]);
             if (unlocked.code !== 0) return unlocked;
           }
-          return git(['worktree', 'remove', location]);
+          return removeCleanCheckout(this.#core, location, git);
         }, [location], retiringThreadId);
         if (removed.code !== 0) return keep(removed.stderr.trim() || `git worktree remove exited ${removed.code}`);
       }

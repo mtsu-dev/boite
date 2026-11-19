@@ -1,4 +1,4 @@
-import { mkdir, access, rm } from 'node:fs/promises';
+import { mkdir, access, readFile, rm } from 'node:fs/promises';
 import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test';
@@ -197,22 +197,28 @@ test('draft cleanup reserves its checkout until git removal exits', async () => 
   const hold = 'const [signal, ...args] = process.argv.slice(1); while (!require("node:fs").existsSync(signal)) Bun.sleepSync(20);'
     + ' process.exit(Bun.spawnSync(["git", ...args], { stdout: "inherit", stderr: "inherit" }).exitCode ?? 1);';
   const spawn = h.core.procs.spawn.bind(h.core.procs);
-  let deleting = false;
+  let deleting: string | undefined;
   const held = spyOn(h.core.procs, 'spawn').mockImplementation((id, command, args, options) => {
     if (command !== 'git' || !args.includes('remove')) return spawn(id, command, args, options);
-    deleting = true;
+    deleting = args.at(-1);
     return spawn(id, process.execPath, ['-e', hold, signal, ...args], options);
   });
   const releasing = client.call('drafts.release', { preparationId: reservation.preparationId });
+  const note = join(checkout, 'late-note.txt');
   try {
-    await waitFor(() => deleting);
+    await waitFor(() => deleting !== undefined);
+    expect(await exists(checkout)).toBe(false);
+    expect(await exists(deleting!)).toBe(true);
+    await mkdir(checkout);
+    writeFileSync(note, 'written after the isolated status check');
     expect((await rejection(client.call('threads.create', {
       projectId: project.id, providerId: choice.providerId, accountId: choice.accountId, cwd: checkout,
     }))).reason).toMatchObject({ rpc: { message: expect.stringContaining('is being removed') } });
     expect(() => h.core.procs.spawnChild('cleanup-arrival', process.execPath, ['-e', ''], { cwd: checkout })).toThrow('is being removed');
-    expect(await exists(checkout)).toBe(true);
+    expect(() => h.core.procs.spawnChild('cleanup-arrival', process.execPath, ['-e', ''], { cwd: deleting! })).toThrow('is being removed');
   } finally { writeFileSync(signal, ''); await releasing; held.mockRestore(); }
-  expect(await exists(checkout)).toBe(false);
+  expect(await exists(deleting!)).toBe(false);
+  expect(await readFile(note, 'utf8')).toBe('written after the isolated status check');
 });
 
 for (const kind of ['worktree', 'draft', 'incognito'] as const) {

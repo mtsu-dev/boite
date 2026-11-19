@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import type { ThreadSummary } from '@boite/contracts';
@@ -200,6 +200,49 @@ describe('settled worktree cleanup', () => {
     expect(updated.autoRemoveWorktrees).toBe(false);
     expect(await cleanup.run()).toEqual([]);
     expect(existsSync(off.cwd)).toBe(true);
+  });
+
+  test.each([false, true])('keeps ignored files in archived worktrees, written at removal: %s', async late => {
+    const project = await repoProject();
+    writeFileSync(join(project.path, '.gitignore'), 'notes.txt\n');
+    git(project.path, 'add', '.gitignore');
+    git(project.path, 'commit', '-qm', 'ignore notes');
+    const thread = await worktreeThread(project, 'Ignored notes');
+    const note = join(thread.cwd, 'notes.txt');
+    if (!late) writeFileSync(note, 'keep me');
+    if (late) {
+      const spawn = harness.core.procs.spawn.bind(harness.core.procs);
+      const removing = spyOn(harness.core.procs, 'spawn').mockImplementation((id, command, args, options) => {
+        if (command === 'git' && args[0] === 'worktree' && (args[1] === 'move' || args[1] === 'remove') && args.at(args[1] === 'move' ? -2 : -1) === thread.cwd) {
+          writeFileSync(note, 'keep me');
+        }
+        return spawn(id, command, args, options);
+      });
+      restoreSpawn = () => removing.mockRestore();
+    }
+    await client.call('threads.archive', { threadId: thread.id });
+    expect(await cleanup.run()).toEqual([]);
+    expect(readFileSync(note, 'utf8')).toBe('keep me');
+    expect(branches(project)).toContain(thread.branch!);
+  });
+
+  test('keeps a branch that advances to another merged commit during cleanup', async () => {
+    const project = await repoProject();
+    const thread = await worktreeThread(project, 'Advancing branch');
+    const ref = `refs/heads/${thread.branch}`;
+    git(project.path, 'commit', '--allow-empty', '-qm', 'advance main');
+    const head = git(project.path, 'rev-parse', 'HEAD');
+    const spawn = harness.core.procs.spawn.bind(harness.core.procs);
+    const deleting = spyOn(harness.core.procs, 'spawn').mockImplementation((id, command, args, options) => {
+      if (command === 'git' && args[1] === '-d' && (args[0] === 'branch' && args[2] === thread.branch || args[0] === 'update-ref' && args[2] === ref)) {
+        git(project.path, 'update-ref', ref, head);
+      }
+      return spawn(id, command, args, options);
+    });
+    restoreSpawn = () => deleting.mockRestore();
+    await client.call('threads.archive', { threadId: thread.id });
+    expect(await cleanup.run()).toEqual([expect.objectContaining({ branch: thread.branch, branchDeleted: false })]);
+    expect(git(project.path, 'rev-parse', ref)).toBe(head);
   });
 
   test('a worktree no thread stands in goes only on a boite branch, outside a reservation, an hour after git last touched it', async () => {

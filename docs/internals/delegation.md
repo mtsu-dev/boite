@@ -595,9 +595,10 @@ A fork in its own worktree starts from the source conversation's commit.
 
 The child is told to commit its work on that branch. When one of its turns ends
 (and it is not waiting on background work), Boite keeps any worktree with
-commits beyond its base or uncommitted changes. Before cleanup, it waits for
-the agent to exit and checks again. Git removes a clean checkout and deletes
-its branch only if the branch still points to the reserved commit. The
+commits beyond its base or uncommitted files, including ignored files. Before
+cleanup, it waits for the agent to exit and checks again after moving the
+checkout to a private sibling directory. Git removes a clean checkout and
+deletes its branch only if the branch still points to the reserved commit. The
 result ends with `Worktree kept: <path> on branch <branch>, N commits beyond
 <base>`, uncommitted changes noted, and the `git merge <branch>` to run.
 Boite does not merge for the parent. A removed worktree is made again, from

@@ -585,8 +585,8 @@ export class Delegation {
       return;
     }
     const live = end.kind === 'checkpoint' ? end.live : [];
-    const settling = live.length > 0 ? null : this.worktrees.settle(thread.id);
-    // A workflow step's answer goes to its run, and a goal reviewer's to its goal, never to the parent as mail.
+    const settling = live.length > 0 || !followUp && this.#core.workflows.owns(thread.id) ? null : this.worktrees.settle(thread.id);
+    // A workflow owns its step's result and checkout. Other core-owned steps report to their own listeners.
     if (!followUp && this.#stepOwned(thread.id)) return;
     const root = link ? undefined : this.#core.journal.getThread(thread.parentThreadId!);
     if (!link && !root) return;

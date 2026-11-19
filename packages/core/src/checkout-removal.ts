@@ -1,9 +1,10 @@
+import { existsSync, mkdtempSync, rmdirSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import type { Project, ThreadId, ThreadSummary } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { inside, keyOf } from './checkouts.ts';
-import { refused } from './errors.ts';
+import { messageOf, refused } from './errors.ts';
 import { occupiesCheckout } from './threads/occupancy.ts';
 
 /** Resolve aliases, including a vanished folder through its nearest existing parent. */
@@ -77,6 +78,40 @@ export async function withVacantCheckout<T>(core: Core, project: Project, path: 
     core.worktrees.reservations.assertFree(path, 'another checkout removal');
     const release = core.worktrees.reservations.reserve(path, keys);
     try { return await remove(); }
+    finally { release(); }
+  }
+}
+
+interface GitResult { code: number; stdout: string; stderr: string }
+
+async function restoreCheckout(path: string, staged: string, git: (args: string[]) => Promise<GitResult>): Promise<void> {
+  const temporary = dirname(staged);
+  try {
+    if (existsSync(staged)) {
+      const restored = await git(['worktree', 'move', staged, path]);
+      if (restored.code !== 0) throw new Error(restored.stderr.trim() || `git worktree move exited ${restored.code}`);
+    }
+    rmdirSync(temporary);
+  } catch (error) {
+    throw refused(`could not finish cleanup of ${path} in ${temporary}: ${messageOf(error)}`, { path, staged });
+  }
+}
+
+/** Move within the parent directory, then check the isolated checkout. Git's removal ignores ignored files. */
+export async function removeCleanCheckout(core: Core, path: string, git: (args: string[]) => Promise<GitResult>): Promise<GitResult> {
+  if (!existsSync(path)) return git(['worktree', 'remove', path]);
+  const temporary = mkdtempSync(join(dirname(path), '.boite-removing-'));
+  const staged = join(temporary, 'checkout');
+  const release = core.worktrees.reservations.reserve(staged, [await realKey(staged)]);
+  try {
+    const moved = await git(['worktree', 'move', path, staged]);
+    if (moved.code !== 0) return moved;
+    const status = await git(['-C', staged, '-c', 'core.fsmonitor=', 'status', '--porcelain=v1', '-z', '--untracked-files=normal', '--ignored=matching']);
+    if (status.code !== 0) return status;
+    if (status.stdout) return { code: 1, stdout: '', stderr: 'the checkout has uncommitted files, including ignored files' };
+    return await git(['worktree', 'remove', staged]);
+  } finally {
+    try { await restoreCheckout(path, staged, git); }
     finally { release(); }
   }
 }

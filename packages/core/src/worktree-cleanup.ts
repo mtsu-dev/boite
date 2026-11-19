@@ -3,8 +3,8 @@
  * worktree goes when every thread standing in it has been archived (or done,
  * or deleted) for an hour, nothing in it is uncommitted, and either its head is
  * on another branch or a merged pull request names that exact head. The
- * removal itself is `WorktreeSweep.removeSettled`: the refusals of a manual
- * removal without force, read again at that moment.
+ * removal itself is `WorktreeSweep.removeSettled`: a final check of the
+ * checkout, ignored files included, and a branch deletion at the verified SHA.
  *
  * Only worktrees under a folder the core places them in are considered: the
  * project's `.boite/worktrees`, or the shared storage folder of that project.
@@ -235,7 +235,7 @@ export class WorktreeCleanup {
   /** The removal when its work is proved safe, else null. */
   private async settle(project: Project, worktree: Listed, standing: Holder[], claimed: Claims, budget: { proofs: number }): Promise<WorktreeCleanupResult | null> {
     // The cheap reads first; `removeSettled` reads everything again before it removes.
-    if (await this.sweep.dirty(project, worktree.path)) return null;
+    if (await this.sweep.dirty(project, worktree.path, true)) return null;
     let reason: ThreadWorktreeRemoval['reason'] = 'clean';
     let merged: { sha: string; branch: string | null; number: number; url: string } | null = null;
     if (await this.sweep.unmerged(project, worktree)) {

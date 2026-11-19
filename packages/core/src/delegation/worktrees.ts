@@ -171,9 +171,10 @@ export class ChildWorktrees {
       const afterStop = await this.#core.worktrees.changes(threadId, record.path, record.base);
       if (afterStop.commits > 0 || afterStop.dirty) return this.#save(threadId, { ...record, ...afterStop, state: 'kept' });
       const removed = await this.#core.worktrees.remove(threadId, project, { branch: record.branch, path: record.path, base: record.base }, undefined, threadId);
+      const retained = !removed && existsSync(record.path) ? await this.#core.worktrees.changes(threadId, record.path, record.base) : afterStop;
       this.#save(threadId, removed
         ? { branch: record.branch, path: record.path, base: record.base, state: 'removed', commits: 0, dirty: false }
-        : { ...record, state: 'kept', commits: 0, dirty: false, error: 'git could not remove it; the log says why' });
+        : { ...record, ...retained, state: 'kept', error: 'git could not remove it; the log says why' });
     } catch (error) {
       this.#save(threadId, { ...record, state: 'kept', error: messageOf(error) });
     }
