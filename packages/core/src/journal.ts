@@ -23,7 +23,7 @@ import { PROCESS_COLUMNS, PROCESS_FROM, ProcessRows } from './journal/processes.
 import { cachePages, runWrite } from './journal/statements.ts';
 import { WAL_LIMIT_BYTES, WalCheckpoints, type WalCheckpointOptions } from './journal/wal-checkpoints.ts';
 import { toAccount, toMessage, toProcess, toProject, toThread, toTurn, parseJson } from './journal/rows.ts';
-import { REMOVED_PROJECTS, restoreDeletedRows, threadsWhere, VISIBLE_THREADS, writeThread } from './journal/thread-rows.ts';
+import { REMOVED_PROJECTS, restoreDeletedRows, threadsWhere, VISIBLE_THREAD_ROWS, VISIBLE_THREADS, writeThread } from './journal/thread-rows.ts';
 import { oneTurn, pageTurns, sumSessionUsage, writeTurn, type SessionUsage } from './journal/turn-rows.ts';
 import type { AccountRow, MessageRow, ProcessRow, ProjectIconRow, ProjectRow, ThreadRow, TurnRow } from './journal/rows.ts';
 import type { DetectedIcon as StoredProjectIcon } from './project-icons.ts';
@@ -284,6 +284,24 @@ export class Journal {
   listThreads(projectId?: string, { includeArchived = true } = {}): ThreadSummary[] {
     const visible = includeArchived ? '' : 'AND archived = 0';
     return projectId === undefined ? threadsWhere(this.db, visible) : threadsWhere(this.db, `${visible} AND project_id = ?`, projectId);
+  }
+
+  /** The root and its direct children, using the thread and parent indexes. */
+  listThreadFamily(threadId: string): ThreadSummary[] {
+    return threadsWhere(this.db, 'AND (id = ? OR parent_thread_id = ?)', threadId, threadId);
+  }
+
+  listChildren(threadId: string, projectId: string | null): ThreadSummary[] {
+    return projectId === null ? threadsWhere(this.db, 'AND parent_thread_id = ?', threadId)
+      : threadsWhere(this.db, 'AND parent_thread_id = ? AND project_id = ?', threadId, projectId);
+  }
+
+  listThreadsOnBranch(cwd: string, branch: string): ThreadSummary[] {
+    return threadsWhere(this.db, 'AND cwd = ? AND branch = ?', cwd, branch);
+  }
+
+  hasThreadsWithStatus(statuses: readonly ThreadSummary['status'][]): boolean {
+    return this.db.query(`SELECT 1 ${VISIBLE_THREAD_ROWS} AND status IN (SELECT value FROM json_each(?)) LIMIT 1`).get(JSON.stringify(statuses)) !== null;
   }
 
   /** Startup reads: only the threads each recovery acts on, not every thread's JSON. */

@@ -77,18 +77,16 @@ export class Composer {
     }
     // Existing recovery holds every never-started turn. Server-owned accepted
     // queues may resume those safe rows; legacy client queues remain held.
-    const delivered = this.#core.journal.db.query("SELECT * FROM composer_deliveries WHERE status = 'delivered'").all() as Delivery[];
-    for (const delivery of delivered) {
-      if (!delivery.thread_id) continue;
-      const thread = this.#core.journal.getThread(delivery.thread_id);
+    const held = this.#core.journal.db.query(`SELECT t.id, t.thread_id FROM turns t
+      WHERE t.status = 'queued' AND t.started_at IS NULL AND t.queue_hold IS NOT NULL AND EXISTS (
+        SELECT 1 FROM turn_requests r JOIN composer_deliveries d ON d.thread_id = r.thread_id AND d.request_id = r.request_id
+        WHERE r.thread_id = t.thread_id AND r.turn_id = t.id AND d.status = 'delivered')`).all() as { id: string; thread_id: string }[];
+    for (const { id, thread_id } of held) {
+      const thread = this.#core.journal.getThread(thread_id);
       const project = thread?.projectId ? this.#core.journal.getProject(thread.projectId) : null;
       if (!thread || thread.archived || (thread.projectId && (!project || project.archived))) continue;
-      const receipt = this.#core.journal.turnRequest(delivery.thread_id, delivery.request_id);
-      const turn = receipt && this.#core.journal.getTurn(receipt.turn_id);
-      if (turn?.queueHold && turn.startedAt === null) {
-        try { this.#core.threads.recoverTurn({ threadId: thread.id, turnId: turn.id, action: 'resume' }); }
-        catch (error) { this.#core.log('warn', `queued composer input remains held: ${messageOf(error)}`); }
-      }
+      try { this.#core.threads.recoverTurn({ threadId: thread.id, turnId: id, action: 'resume' }); }
+      catch (error) { this.#core.log('warn', `queued composer input remains held: ${messageOf(error)}`); }
     }
     this.#schedule(this.storage.queued.values());
   }

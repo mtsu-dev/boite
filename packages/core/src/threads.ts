@@ -456,7 +456,7 @@ export class ThreadStore {
    */
   async #endArchivedWork(threadId: ThreadId): Promise<void> {
     try {
-      const family = this.#core.journal.listThreads().filter(t => t.id === threadId || t.parentThreadId === threadId).map(t => t.id);
+      const family = this.#core.journal.listThreadFamily(threadId).map(t => t.id);
       await Promise.all(family.map(id => this.#core.scheduler.stopAndWait(id)));
       if (this.#core.stopping || this.#core.journal.isClosed() || this.#removing.has(threadId)) return;
       if (this.#core.journal.getThread(threadId)?.archived !== true) return;
@@ -482,7 +482,7 @@ export class ThreadStore {
       throw refused('threadId: delete a conversation from its parent; a mochi\'s thread goes when the mochi is archived', { threadId, field: 'threadId', expected: 'a top-level conversation without agentSessionId' });
     }
     if (this.#removing.has(threadId)) throw refused('threadId: this conversation is already being deleted', { threadId, field: 'threadId', expected: 'a conversation not being deleted' });
-    const family = this.#core.journal.listThreads().filter(t => t.id === threadId || t.parentThreadId === threadId);
+    const family = this.#core.journal.listThreadFamily(threadId);
     for (const thread of family) this.#removing.add(thread.id);
     try {
       // One write hides the family; until it commits, its runs and steps go on.

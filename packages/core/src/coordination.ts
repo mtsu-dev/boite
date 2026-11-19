@@ -295,8 +295,8 @@ export class Coordination {
   }
   /** Reachable threads, the most recently active first: an old thread never hides a live one. */
   private localDirectory(projectId?: string): AgentContact[] {
-    return this.#core.journal.listThreads(projectId)
-      .filter(t => !t.archived && !t.teamId && !t.councilId && this.config(t.id).mode !== 'off' && (projectId !== undefined || this.config(t.id).remote))
+    return this.#core.journal.listThreads(projectId, { includeArchived: false })
+      .filter(t => !t.teamId && !t.councilId && this.config(t.id).mode !== 'off' && (projectId !== undefined || this.config(t.id).remote))
       .sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 100).map(t => this.#contact(t.id));
   }
   /** What this thread may reach on its own core: its project, and every remote-enabled thread when it is one too. */

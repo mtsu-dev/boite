@@ -562,8 +562,12 @@ function bindLegacyTurnRequests(db: Database): void {
 export function ensureIndexes(db: Database): void {
   db.exec("CREATE INDEX IF NOT EXISTS agent_message_reading ON agent_entities (json_extract(data, '$.scope.kind'), json_extract(data, '$.scope.id'), created_at, id) WHERE kind = 'message'");
   db.exec('CREATE INDEX IF NOT EXISTS thread_deletions_by_date ON thread_deletions (deleted_at)');
+  db.exec('CREATE INDEX IF NOT EXISTS threads_project ON threads (project_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS threads_cwd_branch ON threads (cwd, branch)');
+  db.exec('CREATE INDEX IF NOT EXISTS threads_status ON threads (status)');
   db.exec('CREATE INDEX IF NOT EXISTS processes_by_started ON processes (thread_id, started_at DESC)');
   db.exec('CREATE INDEX IF NOT EXISTS turns_by_status ON turns (status)');
+  db.exec('CREATE INDEX IF NOT EXISTS composer_deliveries_thread ON composer_deliveries (thread_id, request_id)');
   db.exec("CREATE INDEX IF NOT EXISTS turns_active_by_thread ON turns (thread_id) WHERE status IN ('running', 'queued')");
   db.exec('CREATE INDEX IF NOT EXISTS messages_by_turn ON messages (thread_id, turn_id)');
   db.exec('CREATE INDEX IF NOT EXISTS turns_by_finished ON turns (finished_at)');
