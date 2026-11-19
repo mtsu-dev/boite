@@ -20,6 +20,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { Project, ThreadId, ThreadSummary, ThreadWorktreeRemoval } from '@boite/contracts';
 import type { Core } from './core.ts';
+import { stagedForRemoval } from './checkout-removal.ts';
 import { messageOf } from './errors.ts';
 import { claimsBranch, openLinkedHeads, type LinkedHead } from './linked-pull-requests.ts';
 import { occupiesCheckout } from './threads/occupancy.ts';
@@ -199,7 +200,7 @@ export class WorktreeCleanup {
     const done: WorktreeCleanupResult[] = [];
     for (const worktree of listed) {
       if (this.#stopped(deadline) || budget.removals === 0) break;
-      if (worktree.main) continue;
+      if (worktree.main || stagedForRemoval(worktree.path)) continue;
       const key = await realKey(worktree.path);
       if (key === own || !roots.some((root) => key !== root && inside(root, key))) continue;
       const memo = `${key}\0${worktree.head ?? ''}`;

@@ -208,7 +208,7 @@ test('draft cleanup reserves its checkout until git removal exits', async () => 
   try {
     await waitFor(() => deleting !== undefined);
     expect(await exists(checkout)).toBe(false);
-    expect(await exists(deleting!)).toBe(true);
+    expect(await exists(deleting!)).toBe(false);
     await mkdir(checkout);
     writeFileSync(note, 'written after the isolated status check');
     expect((await rejection(client.call('threads.create', {

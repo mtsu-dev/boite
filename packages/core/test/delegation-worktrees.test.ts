@@ -1,6 +1,7 @@
 import { afterEach, expect, spyOn, test } from 'bun:test';
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmdirSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { DEFAULT_DELEGATION_CONFIG, checkSteps } from '@boite/contracts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnContext, TurnResult } from '../src/drivers/types.ts';
@@ -59,6 +60,10 @@ async function setup(work: (ctx: TurnContext) => void | Promise<void> = () => {}
 test('a child spawned with worktree works on its own branch from the parent HEAD and removes it when it leaves nothing', async () => {
   const s = await setup();
   // A commit the main checkout makes after the project was added: the child starts from it, not from the first one.
+  if (process.platform !== 'win32') {
+    symlinkSync('missing-target', join(s.repo, 'tracked-link'));
+    git(s.repo, 'add', 'tracked-link');
+  }
   git(s.repo, 'commit', '-q', '--allow-empty', '-m', 'parent work');
   const head = git(s.repo, 'rev-parse', 'HEAD');
   const child = await s.client.call('delegation.spawn', { threadId: s.threadId, task: 'Read the code. Do not edit files.', worktree: true, requestId: 'reader' });
@@ -130,6 +135,94 @@ test.each(['during stop', 'ignored during stop', 'ignored after the last status'
     expect(readFileSync(join(path, 'late-note.txt'), 'utf8')).toBe('keep me');
     expect(branchExists(s.repo, branch)).toBe(true);
   } finally { removing.mockRestore(); stopped.mockRestore(); }
+}, 90_000);
+
+test.skipIf(process.platform !== 'linux')('cleanup keeps an ignored file written through an open directory after the last status', async () => {
+  let directory: number | undefined;
+  const s = await setup(ctx => { directory = openSync(ctx.thread.cwd, 'r'); });
+  writeFileSync(join(s.repo, '.gitignore'), 'late-note.txt\n');
+  git(s.repo, 'add', '.gitignore');
+  git(s.repo, 'commit', '-qm', 'ignore notes');
+  let staged: string | undefined;
+  let wrote = false;
+  const spawn = s.h.core.procs.spawn.bind(s.h.core.procs);
+  const observed = spyOn(s.h.core.procs, 'spawn').mockImplementation((id, command, args, options) => {
+    if (command === 'git' && args[0] === 'worktree' && args[1] === 'move' && !staged) staged = args.at(-1);
+    if (command === 'git' && staged && directory !== undefined && !wrote &&
+      (args[1] === join(dirname(staged), 'saved') && args.includes('status') || args[0] === 'worktree' && args[1] === 'remove' && args.at(-1) === staged)) {
+      writeFileSync(`/proc/self/fd/${directory}/late-note.txt`, 'keep me');
+      wrote = true;
+    }
+    return spawn(id, command, args, options);
+  });
+  try {
+    const child = await s.client.call('delegation.spawn', { threadId: s.threadId, task: 'Read.', worktree: true, requestId: 'open-directory' });
+    await waitFor(() => s.results().length === 1, SLOW_GIT_MS);
+    const { path, branch } = child.worktree!;
+    expect(wrote).toBe(true);
+    expect(s.h.core.delegation.worktrees.get(child.thread.id)).toMatchObject({ state: 'kept', dirty: true });
+    expect(readFileSync(join(path, 'late-note.txt'), 'utf8')).toBe('keep me');
+    expect(readFileSync(join(path, '.gitignore'), 'utf8')).toBe('late-note.txt\n');
+    expect(branchExists(s.repo, branch)).toBe(true);
+  } finally { observed.mockRestore(); if (directory !== undefined) closeSync(directory); }
+}, 90_000);
+
+test.each(['move', 'tracked files staged'] as const)('an abruptly exited cleanup restores its checkout after %s', async phase => {
+  const s = await setup();
+  writeFileSync(join(s.repo, 'readme.txt'), 'tracked file');
+  git(s.repo, 'add', 'readme.txt');
+  git(s.repo, 'commit', '-qm', 'tracked file');
+  const root = s.h.core.threads.require(s.threadId);
+  const project = s.h.core.projects.require(root.projectId!);
+  const thread = await s.client.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: root.accountId, title: 'Recover me', worktree: {} });
+  // Archive so this process can retire the checkout. Its data directory and repo are test-owned.
+  await s.client.call('threads.archive', { threadId: thread.id });
+  const source = `
+    import { writeFileSync } from 'node:fs';
+    import { dirname, join } from 'node:path';
+    import { Core } from ${JSON.stringify(fileURLToPath(new URL('../src/core.ts', import.meta.url)))};
+    const core = new Core({ dataDir: ${JSON.stringify(s.h.dataDir)}, token: 'checkout-crash-fixture' });
+    const thread = core.threads.require(${JSON.stringify(thread.id)});
+    const project = core.projects.require(thread.projectId);
+    const spawn = core.procs.spawn.bind(core.procs);
+    let staged;
+    const stop = () => {
+      writeFileSync(join(staged, 'survivor.txt'), 'keep me');
+      console.log(JSON.stringify({ staged }));
+      process.exit(0);
+    };
+    core.procs.spawn = (id, command, args, options) => {
+      if (command === 'git' && args[0] === 'worktree' && args[1] === 'move') {
+        staged = args.at(-1);
+        if (${phase === 'move'}) {
+          const moved = Bun.spawnSync({ cmd: ['git', ...args], cwd: options.cwd, stdout: 'pipe', stderr: 'pipe', windowsHide: true });
+          if (!moved.success) throw new Error(moved.stderr.toString());
+          stop();
+        }
+      }
+      if (command === 'git' && staged && args[1] === join(dirname(staged), 'saved') && args.includes('status')) stop();
+      return spawn(id, command, args, options);
+    };
+    await core.worktrees.remove(thread.id, project, { path: thread.cwd, branch: thread.branch });
+    process.exit(1);
+  `;
+  const crashed = s.h.core.procs.spawn('checkout_crash_fixture', process.execPath, ['-e', source], { cwd: s.h.dataDir, env: { BOITE_DATA_DIR: s.h.dataDir, BOITE_DRAFTS_DIR: join(s.h.dataDir, 'drafts'), BOITE_ECHO: '1', BOITE_HOST_AGENTS: '0', BOITE_TAILNET: '0' } });
+  const [out, err, code] = await Promise.all([new Response(crashed.proc.stdout).text(), new Response(crashed.proc.stderr).text(), crashed.exited]);
+  expect({ code, err }).toEqual({ code: 0, err: '' });
+  const { staged } = JSON.parse(out.trim()) as { staged: string };
+  expect(existsSync(thread.cwd)).toBe(false);
+  expect(readFileSync(join(staged, 'survivor.txt'), 'utf8')).toBe('keep me');
+  mkdirSync(thread.cwd);
+  writeFileSync(join(thread.cwd, 'competing.txt'), 'other work');
+  expect(await thrown(s.h.core.worktrees.recover(thread.id, project, thread.branch!, thread.cwd))).toThrow('already exists');
+  expect(readFileSync(join(thread.cwd, 'competing.txt'), 'utf8')).toBe('other work');
+  expect(readFileSync(join(staged, 'survivor.txt'), 'utf8')).toBe('keep me');
+  unlinkSync(join(thread.cwd, 'competing.txt'));
+  rmdirSync(thread.cwd);
+  expect(await s.h.core.worktrees.recover(thread.id, project, thread.branch!, thread.cwd)).toBe(true);
+  expect(readFileSync(join(thread.cwd, 'survivor.txt'), 'utf8')).toBe('keep me');
+  expect(readFileSync(join(thread.cwd, 'readme.txt'), 'utf8')).toBe('tracked file');
+  expect(existsSync(staged)).toBe(false);
 }, 90_000);
 
 test('a kept child reattaches only its surviving branch after its worktree is removed', async () => {
