@@ -38,8 +38,10 @@ estimate](#the-api-estimate)).
   measure, the first drawn larger. A click opens the thread's page
   (`UsageThreadPage.svelte`, `usage.thread`): its totals, a chart by model
   (golden-angle hues), its models with their rates, its subagents, and its
-  turns newest first, 50 at a time. Open the conversation shows only for a
-  thread still in that machine's list.
+  turns newest first, 50 at a time. Totals and reporting coverage count the
+  entire filtered range. The chart, model breakdown and turn list keep up to
+  the latest 2,000 matching turns and the chart names that limit. Open the
+  conversation shows only for a thread still in that machine's list.
 - Projects ranks what each project spent (`UsageHistory.projects`, which
   ignores the project filter); a click narrows the page to it.
 - Breakdown lists each model with its turns, tokens, input, output, cache and

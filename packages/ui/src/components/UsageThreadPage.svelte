@@ -32,6 +32,7 @@
   let {
     machine,
     threadId,
+    providerId,
     range,
     metric,
     refresh,
@@ -44,6 +45,7 @@
   }: {
     machine: Machine;
     threadId: string;
+    providerId: string | null;
     range: UsageRange;
     metric: UsageMetric;
     /** Bumped by the page's refresh button. */
@@ -65,10 +67,10 @@
   let shown = $state(PAGE);
   let latest = 0;
 
-  async function load(days: UsageRange, id: string, from: Machine) {
+  async function load(days: UsageRange, id: string, from: Machine, provider: string | null) {
     const request = ++latest;
     const nextEdges = dayEdges(days);
-    const key = `${id}\u0000${days}`;
+    const key = `${id}\u0000${days}\u0000${provider ?? ''}`;
     const cached = seen.get(from.store)?.get(key);
     if (cached) { detail = cached; edges = nextEdges; }
     loading = true;
@@ -76,7 +78,7 @@
     try {
       const client = from.store.client;
       if (!client) throw new Error(strings.usage.offline);
-      const result = await client.call('usage.thread', { threadId: id, edges: nextEdges });
+      const result = await client.call('usage.thread', { threadId: id, edges: nextEdges, ...(provider === null ? {} : { providerId: provider }) });
       if (request !== latest) return;
       const kept = seen.get(from.store) ?? new Map<string, UsageThreadDetail>();
       kept.set(key, result);
@@ -98,7 +100,7 @@
     const from = machine;
     shown = PAGE;
     detail = null;
-    void load(days, id, from);
+    void load(days, id, from, providerId);
     return () => { latest += 1; };
   });
 
@@ -107,9 +109,7 @@
   let newest = $derived(detail === null ? [] : [...detail.turns].reverse());
   let totals = $derived.by(() => {
     if (detail === null || thread === null) return null;
-    const reported = detail.turns.filter((turn) => turn.usage !== null).length;
-    const priced = detail.turns.filter((turn) => turn.usage?.costUsdEquivalent != null).length;
-    return { turns: thread.turns, reported, priced, usage: thread.usage };
+    return { turns: thread.turns, reported: detail.reported, priced: detail.priced, usage: thread.usage };
   });
   let perTurn = $derived(totals === null || totals.turns === 0 ? 0 : (metric === 'cost' ? totals.usage.costUsdEquivalent ?? 0 : metric === 'tokens' ? totalTokens(totals.usage) : totals.turns) / totals.turns);
   let colors = $derived(new Map(view?.series.map((serie) => [serie.key, serie.color]) ?? []));
@@ -169,7 +169,10 @@
       {:else}
         <section class="card">
           <h2>{strings.usage.threadChart}</h2>
-          {#if (metric === 'cost' && totals.priced === 0) || (metric === 'tokens' && totals.reported === 0)}
+          {#if detail.truncated}
+            <p class="muted note" data-testid="usage-thread-chart-note">{fill(strings.usage.truncated, { count: formatMetric('turns', detail.turns.length) })}</p>
+          {/if}
+          {#if (metric === 'cost' && !view.buckets.some((bucket) => bucket.priced > 0)) || (metric === 'tokens' && !view.buckets.some((bucket) => bucket.reported > 0))}
             <p class="muted">{metric === 'cost' ? strings.usage.noPrice : strings.usage.noUsage}</p>
           {:else}
             <UsageChart
@@ -243,7 +246,6 @@
               {fill(strings.usage.showMore, { count: formatMetric('turns', Math.min(PAGE, newest.length - shown)) })}
             </button>
           {/if}
-          {#if detail.truncated}<p class="muted note">{fill(strings.usage.truncated, { count: formatMetric('turns', detail.turns.length) })}</p>{/if}
         </section>
       {/if}
     </div>

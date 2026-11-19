@@ -336,11 +336,10 @@ export function mergeHistories<T extends UsageHistoryThread, P extends UsageHist
   };
 }
 
-/** The projects that spent the most by this metric, largest first, the ones with nothing dropped. */
-export function topProjects<P extends UsageHistoryProject>(projects: P[], metric: UsageMetric): (P & { value: number })[] {
+/** Projects ordered by the selected measure, with unmeasured projects still available to the picker. */
+export function rankProjects<P extends UsageHistoryProject>(projects: P[], metric: UsageMetric): (P & { value: number })[] {
   return projects
     .map((project) => ({ ...project, value: measure(metric, project.turns, project.usage) }))
-    .filter((project) => project.value > 0)
     .sort((a, b) => b.value - a.value || b.turns - a.turns);
 }
 

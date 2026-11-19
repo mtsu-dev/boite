@@ -269,12 +269,14 @@ test('the machine menu reads one machine or adds every connected one, and names 
 
 test('a project row narrows the page to that project, and a thread row opens its own page and comes back', async () => {
   const spent = { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0, costUsdEquivalent: 0.25 };
-  const call = vi.fn(async (method: string, params: { edges: number[]; projectId?: string | null; threadId?: string }) => {
+  const call = vi.fn(async (method: string, params: { edges: number[]; projectId?: string | null; threadId?: string; providerId?: string }) => {
     if (method === 'usage.thread') {
       return {
-        thread: { threadId: 'big', projectId: 'gone', title: 'Big thread', providerId: 'claude', archived: true, turns: 1, usage: spent },
-        turns: [{ turnId: 'turn-1', finishedAt: params.edges[0]! + 1, providerId: 'claude', model: 'opus', usage: spent, price: null }],
-        truncated: false,
+        thread: { threadId: 'big', projectId: 'gone', title: 'Big thread', providerId: 'claude', archived: true, turns: 2001, usage: spent },
+        turns: [{ turnId: 'turn-1', finishedAt: params.edges[0]! + 1, providerId: 'claude', model: 'opus', usage: null, price: null }],
+        reported: 1,
+        priced: 1,
+        truncated: true,
         children: []
       };
     }
@@ -282,11 +284,17 @@ test('a project row narrows the page to that project, and a thread row opens its
     read.threads = [{ threadId: 'big', projectId: 'gone', title: 'Big thread', providerId: 'claude', archived: true, turns: 2, usage: spent }];
     read.projects = [
       { projectId: 'live', name: 'live', removed: false, turns: 1, usage: spent },
-      { projectId: 'gone', name: 'gone', removed: true, turns: 2, usage: spent }
+      { projectId: 'gone', name: 'gone', removed: true, turns: 2, usage: spent },
+      { projectId: 'silent', name: 'silent', removed: true, turns: 1, usage: { ...spent, inputTokens: 0, outputTokens: 0, costUsdEquivalent: null } }
     ];
     return read;
   });
   mounted = page({ store: store(call) });
+  await settle();
+  click('[data-testid=usage-project-filter]');
+  await settle();
+  expect(document.querySelector('[data-testid=usage-project-filter-menu]')?.textContent).toContain('silent (Removed)');
+  click('[data-testid=usage-project-filter]');
   await settle();
   const rows = [...document.querySelectorAll<HTMLButtonElement>('[data-testid=usage-projects] button')];
   // A removed project still counts, named as removed.
@@ -299,10 +307,16 @@ test('a project row narrows the page to that project, and a thread row opens its
   expect(document.querySelector('[data-testid=usage-project-filter]')?.textContent).toContain('gone');
   expect(document.querySelector('[data-testid=usage-projects]')).toBeNull();
 
+  click('[data-testid=usage-provider-filter]');
+  await settle();
+  click('[data-testid=usage-provider-filter-menu] [data-value=claude]');
+  await settle();
   click('[data-testid=usage-threads] li button');
   await settle();
-  expect(call).toHaveBeenLastCalledWith('usage.thread', expect.objectContaining({ threadId: 'big' }));
+  expect(call).toHaveBeenLastCalledWith('usage.thread', expect.objectContaining({ threadId: 'big', providerId: 'claude' }));
   expect(document.querySelector('[data-testid=usage-thread-title]')?.textContent).toContain('Big thread');
+  expect(document.querySelector('[data-testid=usage-thread-total]')?.textContent).toBe('15');
+  expect(document.querySelector('[data-testid=usage-thread-chart-note]')?.textContent).toContain('latest');
   expect(document.querySelectorAll('[data-testid=usage-thread-turns] tbody tr')).toHaveLength(1);
   // A thread whose conversation is not on this machine's list has nothing to open.
   expect(document.querySelector('[data-testid=usage-thread-open]')).toBeNull();

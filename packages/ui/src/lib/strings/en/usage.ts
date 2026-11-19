@@ -91,7 +91,7 @@ export const strings = {
     threadTurnsList: 'Turns, newest first',
     threadEmpty: 'This thread finished no turn in the last {days} days.',
     showMore: 'Show {count} more',
-    truncated: 'Only the newest {count} turns of the range are listed.',
+    truncated: 'Showing the latest {count} turns.',
     subagents: 'Subagents',
     noUsageTurn: 'No count',
     threadFailed: 'Could not read this thread: {error}',

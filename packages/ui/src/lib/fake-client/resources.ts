@@ -13,6 +13,14 @@ function usageEdges(edges: unknown): number[] {
   return edges as number[];
 }
 
+function usageProvider(providerId: unknown): string | undefined {
+  if (providerId === undefined) return undefined;
+  if (typeof providerId !== 'string' || !providerId.trim()) {
+    throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'providerId: expected a non-empty provider id', data: { field: 'providerId' } });
+  }
+  return providerId;
+}
+
 export function resources(ctx: FakeContext): ThreadResources[] {
   const out: ThreadResources[] = [];
   for (const thread of ctx.threads.values()) {
@@ -114,21 +122,20 @@ export function resourceMethods(ctx: FakeContext) {
     },
     'usage.history': async (params) => {
       const edges = usageEdges(params?.edges);
-      if (params.providerId !== undefined && (typeof params.providerId !== 'string' || !params.providerId.trim())) {
-        throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'providerId: expected a non-empty provider id' });
-      }
+      const providerId = usageProvider(params.providerId);
       if (params.projectId !== undefined && params.projectId !== null && (typeof params.projectId !== 'string' || !params.projectId.trim())) {
         throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'projectId: expected a project id or null' });
       }
-      return fakeUsageHistory(edges, { seeded: ctx.usageSeeded, finished: ctx.finished, providerId: params.providerId, projectId: params.projectId });
+      return fakeUsageHistory(edges, { seeded: ctx.usageSeeded, finished: ctx.finished, providerId, projectId: params.projectId });
     },
     'usage.thread': async (params) => {
       const edges = usageEdges(params?.edges);
       if (typeof params.threadId !== 'string' || !params.threadId.trim()) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'threadId: expected a thread id' });
+      const providerId = usageProvider(params.providerId);
       if (!ctx.threads.has(params.threadId) && !fakeUsageKnows(params.threadId, ctx.finished)) {
         throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `threadId: no thread ${params.threadId}` });
       }
-      return fakeUsageThread(params.threadId, edges, { seeded: ctx.usageSeeded, finished: ctx.finished });
+      return fakeUsageThread(params.threadId, edges, { seeded: ctx.usageSeeded, finished: ctx.finished, providerId });
     },
   } satisfies Partial<FakeMethods>;
 }

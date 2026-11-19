@@ -171,6 +171,9 @@ export interface UsageThreadTurn {
 
 export interface UsageThreadDetail {
   thread: UsageHistoryThread;
+  /** Turns that reported usage and turns that have a price across the entire filtered range. */
+  reported: number;
+  priced: number;
   /** Finished turns in the range, oldest first, at most `USAGE_THREAD_TURNS_MAX` (the newest). */
   turns: UsageThreadTurn[];
   /** True when older turns in the range were left out. */
@@ -198,6 +201,7 @@ export interface UsageRpcMethods {
   /**
    * One thread's finished turns over `[edges[0], edges[last])`, each priced,
    * for the page of a thread that spent much. Removed projects' threads too.
+   * Optional `providerId` filters its turns and subagents by execution provider.
    */
-  'usage.thread': { params: { threadId: ThreadId; edges: Timestamp[] }; result: UsageThreadDetail };
+  'usage.thread': { params: { threadId: ThreadId; edges: Timestamp[]; providerId?: ProviderId }; result: UsageThreadDetail };
 }

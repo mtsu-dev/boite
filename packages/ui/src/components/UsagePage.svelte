@@ -38,10 +38,10 @@
     modelName,
     priceNote,
     providerColor,
+    rankProjects,
     reportedValue,
     seriesFor,
     summarize,
-    topProjects,
     topThreads,
     totalTokens,
     USAGE_METRICS,
@@ -280,7 +280,8 @@
     ...machines.map((machine) => ({ id: machine.id, label: machine.label, active: !all && machine === chosen }))
   ]);
   /** The projects of the machines in scope, from their latest answers, biggest first. */
-  let projectList = $derived(topProjects(scoped.flatMap((machine) => catalog.get(machine) ?? []), metric));
+  let projectList = $derived(rankProjects(scoped.flatMap((machine) => catalog.get(machine) ?? []), metric));
+  let rankedProjects = $derived(projectList.filter((entry) => entry.value > 0));
   let projectItems = $derived([
     { id: '', label: strings.usage.allProjects, active: project === null },
     ...projectList.map((entry) => ({
@@ -292,7 +293,7 @@
   let chosenProject = $derived(project === null ? null : projectList.find((entry) => entry.machine === project!.machine && entry.projectId === project!.projectId) ?? null);
   let threads = $derived(history === null ? [] : topThreads(history.threads, metric));
   let threadPeak = $derived(threads[0]?.value ?? 0);
-  let projectPeak = $derived(projectList[0]?.value ?? 0);
+  let projectPeak = $derived(rankedProjects[0]?.value ?? 0);
   let dayRows = $derived(view?.days.filter((day) => day.turns > 0) ?? []);
   let pricing = $derived(history?.pricing ?? null);
 
@@ -431,6 +432,7 @@
     <UsageThreadPage
       machine={detail.machine}
       threadId={detail.threadId}
+      providerId={provider}
       {range}
       {metric}
       refresh={refreshes}
@@ -531,11 +533,11 @@
           </ol>
         </section>
 
-        {#if project === null && projectList.length > 0}
+        {#if project === null && rankedProjects.length > 0}
           <section class="card" id="settings-usage-projects">
             <h2>{strings.usage.projects}</h2>
             <ol class="projects" data-testid="usage-projects">
-              {#each projectsOpen ? projectList : projectList.slice(0, PROJECTS_SHOWN) as entry (projectKey(entry.machine, entry.projectId))}
+              {#each projectsOpen ? rankedProjects : rankedProjects.slice(0, PROJECTS_SHOWN) as entry (projectKey(entry.machine, entry.projectId))}
                 <li>
                   <button type="button" class="ghost project" data-removed={entry.removed || undefined} onclick={() => { project = { machine: entry.machine, projectId: entry.projectId }; }}>
                     <span class="title">
@@ -551,9 +553,9 @@
                 </li>
               {/each}
             </ol>
-            {#if projectList.length > PROJECTS_SHOWN}
+            {#if rankedProjects.length > PROJECTS_SHOWN}
               <button type="button" class="quiet more" onclick={() => { projectsOpen = !projectsOpen; }}>
-                {projectsOpen ? strings.usage.projectsLess : fill(strings.usage.projectsMore, { count: String(projectList.length) })}
+                {projectsOpen ? strings.usage.projectsLess : fill(strings.usage.projectsMore, { count: String(rankedProjects.length) })}
               </button>
             {/if}
           </section>

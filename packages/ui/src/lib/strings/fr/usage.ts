@@ -90,7 +90,7 @@ export const fr: Translation = {
     threadTurnsList: 'Tours, du plus récent',
     threadEmpty: "Ce fil n'a terminé aucun tour sur les {days} derniers jours.",
     showMore: 'En voir {count} de plus',
-    truncated: 'Seuls les {count} tours les plus récents de la période sont listés.',
+    truncated: 'Les {count} derniers tours sont affichés.',
     subagents: 'Sous-agents',
     noUsageTurn: 'Non compté',
     threadFailed: 'Lecture de ce fil impossible : {error}',

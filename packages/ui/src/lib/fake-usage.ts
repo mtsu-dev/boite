@@ -308,11 +308,16 @@ export function fakeUsageHistory(edges: number[], options: LedgerOptions & { pro
  * `usage.thread` over the ledger: each group's turns spread one minute apart
  * from its time, the group's usage shared between its reported turns.
  */
-export function fakeUsageThread(threadId: ThreadId, edges: number[], options: LedgerOptions): UsageThreadDetail {
-  const groups = ledger(edges, options);
+export function fakeUsageThread(threadId: ThreadId, edges: number[], options: LedgerOptions & { providerId?: string }): UsageThreadDetail {
+  const { providerId } = options;
+  const groups = ledger(edges, options).filter((group) => providerId === undefined || group.providerId === providerId);
   const own = groups.filter((group) => group.threadId === threadId);
   const turns: UsageThreadTurn[] = [];
+  let reported = 0;
+  let priced = 0;
   for (const group of own) {
+    reported += group.reported;
+    priced += group.priced;
     for (let index = 0; index < group.turns; index++) {
       const share = (count: number) => Math.round(count / Math.max(1, group.reported));
       const usage: Usage | null = index >= group.reported ? null : {
@@ -330,18 +335,18 @@ export function fakeUsageThread(threadId: ThreadId, edges: number[], options: Le
   const truncated = turns.length > USAGE_THREAD_TURNS_MAX;
   const finished = options.finished.find((turn) => turn.threadId === threadId);
   const named = PROFILES.flatMap((profile) => profile.threads.map((thread) => ({ ...thread, providerId: profile.providerId }))).find((thread) => thread.id === threadId);
-  const thread = threadTotals(own).get(threadId) ?? {
+  const thread = threadTotals(own, providerId).get(threadId) ?? {
     threadId,
     title: named?.title ?? finished?.title ?? '',
     projectId: named === undefined ? finished?.projectId ?? null : named.project === undefined ? 'p-boite' : named.project,
-    providerId: named?.providerId ?? finished?.providerId ?? '',
+    providerId: providerId ?? named?.providerId ?? finished?.providerId ?? '',
     archived: threadId.startsWith('u-'),
     turns: 0,
     usage: emptyUsage(),
   };
   const cost = (entry: UsageHistoryThread) => entry.usage.costUsdEquivalent ?? 0;
   const tokens = (entry: UsageHistoryThread) => entry.usage.inputTokens + entry.usage.outputTokens + entry.usage.cacheReadTokens + entry.usage.cacheWriteTokens;
-  const children = [...threadTotals(groups.filter((group) => group.parentId === threadId)).values()]
+  const children = [...threadTotals(groups.filter((group) => group.parentId === threadId), providerId).values()]
     .sort((a, b) => cost(b) - cost(a) || tokens(b) - tokens(a) || b.turns - a.turns);
-  return { thread, turns: truncated ? turns.slice(-USAGE_THREAD_TURNS_MAX) : turns, truncated, children };
+  return { thread, reported, priced, turns: truncated ? turns.slice(-USAGE_THREAD_TURNS_MAX) : turns, truncated, children };
 }

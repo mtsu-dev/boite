@@ -15,9 +15,10 @@ Open Settings, Usage.
 3. Read the overview for the total, each provider's share and the chart by
    day, Biggest threads for the ten threads that spent the most, Projects for
    what each project spent, and Breakdown for each model or each day.
-4. Press a thread to open its own page: its total, its models, its subagents
-   and every turn, newest first. Open the conversation takes you to it. Press
-   a project to narrow the page to it.
+4. Press a thread to open its own page. Its totals and subagents follow the
+   provider and date filters. The chart and turn list show up to the latest
+   2,000 turns in that selection. Open the conversation takes you to it.
+   Press a project to narrow the page to it.
 
 - Tokens include cache reads and writes. A turn that reported no usage counts
   as a turn only.

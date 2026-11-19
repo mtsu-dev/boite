@@ -201,11 +201,18 @@ test('usage.thread lists a thread\'s turns oldest first, keeps the newest when c
   expect(detail.thread.usage.inputTokens).toBe(3);
   expect(detail.children.map((thread) => [thread.threadId, thread.turns])).toEqual([[child.id, 1], [small.id, 1]]);
 
+  const codex = turn(echo, D0 + 25, usage(10, 10), 'gpt-5', 'turn_codex');
+  journal.putTurn({ ...codex, execution: { ...codex.execution!, providerId: 'codex' } });
+  const filtered = await client.call('usage.thread', { threadId: echo.id, edges: EDGES, providerId: 'codex' });
+  expect(filtered.thread).toMatchObject({ providerId: 'codex', turns: 1 });
+  expect(filtered.turns.map((entry) => entry.turnId)).toEqual(['turn_codex']);
+  expect(filtered.children).toEqual([]);
+
   expect(await thrown(client.call('usage.thread', { threadId: 'thr_missing', edges: EDGES }))).toThrow('threadId: no thread thr_missing');
   expect(await thrown(client.call('usage.thread', { threadId: echo.id, edges: [D0] }))).toThrow('edges: expected 2 to');
 
   journal.db.transaction(() => {
-    for (let index = 0; index < USAGE_THREAD_TURNS_MAX + 5; index++) journal.putTurn(turn(child, D0 + DAY + index, usage(1, 1)));
+    for (let index = 0; index < USAGE_THREAD_TURNS_MAX + 5; index++) journal.putTurn(turn(child, D0 + DAY + index, null));
   })();
   const capped = await client.call('usage.thread', { threadId: child.id, edges: EDGES });
   expect(capped.truncated).toBe(true);
@@ -213,4 +220,7 @@ test('usage.thread lists a thread\'s turns oldest first, keeps the newest when c
   expect(capped.turns[0]?.finishedAt).toBe(D0 + DAY + 5);
   expect(capped.turns.at(-1)?.finishedAt).toBe(D0 + DAY + USAGE_THREAD_TURNS_MAX + 4);
   expect(capped.thread.turns).toBe(USAGE_THREAD_TURNS_MAX + 6);
+  expect(capped.thread.usage.inputTokens).toBe(500);
+  expect(capped.turns.every((entry) => entry.usage === null)).toBe(true);
+  expect(capped).toMatchObject({ reported: 1, priced: 1 });
 });

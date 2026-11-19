@@ -166,6 +166,7 @@ export const PLUGIN_CLOSED: readonly { name: string; reason: string }[] = [
   { name: 'providers.update', reason: 'updating an agent runs its installer on this machine' },
   { name: 'providers.uninstall', reason: 'removing an agent is the owner\'s' },
   { name: 'subscriptionProxy.setEnabled', reason: 'it routes the owner\'s provider traffic' },
+  { name: 'usage.thread', reason: 'a conversation\'s per-turn usage is for the owner and their paired devices' },
   { name: 'secrets.', reason: 'secrets reach only the agent that asked for one' },
   { name: 'secret.', reason: 'secrets reach only the agent that asked for one' },
   { name: 'plugins.', reason: 'installing, removing, granting, turning off and setting up plugins is the owner\'s' },
