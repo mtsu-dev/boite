@@ -1,5 +1,5 @@
 /*
- * Agent sessions on the keeper (`BOITE_KEEPER=1`). The process of a thread's
+ * Agent sessions on the keeper (on unless `BOITE_KEEPER=0`). The process of a thread's
  * agent session runs in the keeper, on pipes, and its driver reads it through
  * a `KeptChild` as it would read its own child. Probes, titles and shared
  * executions stay on this core's pipes: only a launch with `keep` comes here.

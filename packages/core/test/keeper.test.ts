@@ -263,6 +263,45 @@ describe.skipIf(!keeperEnabled({ BOITE_KEEPER: '1' }))('keeper', () => {
       await removeDir(h.dataDir);
     }
   }, 60_000);
+
+  test('a keeper that does not start leaves the thread shell on the core', async () => {
+    const blocked = mkdtempSync(join(tmpdir(), 'boite-keeper-blocked-'));
+    writeFileSync(join(blocked, 'file'), '');
+    const runtime = process.env.XDG_RUNTIME_DIR;
+    // Under a file: the keeper cannot make its socket's directory and exits.
+    process.env.XDG_RUNTIME_DIR = join(blocked, 'file', 'runtime');
+    const h = await startTestCore({ onShutdown: () => undefined });
+    try {
+      const client = await h.connect();
+      const { threadId } = await echoThread(h, client);
+      const id = threadTerminalId(threadId);
+      const shell = watch(client, id);
+      await client.call('terminals.open', { threadId, cols: 80, rows: 24 });
+      expect(h.core.terminals.keeper!.connected).toBe(false);
+      // Its parent is this core, not a keeper.
+      h.core.terminals.write(id, `echo $PPID-parent-$((70+7))\r`);
+      await waitFor(() => shell.text().includes(`${process.pid}-parent-77`), SHELL_MS);
+      const warned = await h.core.logs.query({ source: 'keeper', threadId, minLevel: 'warn' });
+      expect(warned.some((log) => log.event === 'keeper.terminal-direct')).toBe(true);
+      await client.call('terminals.close', { id });
+      client.close();
+    } finally {
+      await h.core.drain();
+      await h.server.stop();
+      await h.core.close();
+      if (runtime === undefined) delete process.env.XDG_RUNTIME_DIR; else process.env.XDG_RUNTIME_DIR = runtime;
+      delete process.env.BOITE_DATA_DIR;
+      await removeDir(h.dataDir);
+      rmSync(blocked, { recursive: true, force: true });
+    }
+  }, 30_000);
+});
+
+test('the keeper is on by default on Linux and macOS, and BOITE_KEEPER=0 turns it off', () => {
+  expect(keeperEnabled({}, 'linux')).toBe(true);
+  expect(keeperEnabled({}, 'darwin')).toBe(true);
+  expect(keeperEnabled({ BOITE_KEEPER: '0' }, 'linux')).toBe(false);
+  expect(keeperEnabled({}, 'win32')).toBe(false);
 });
 
 test('the keeper keeps the last bytes of a shell, whatever the chunks', () => {

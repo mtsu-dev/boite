@@ -5,7 +5,8 @@
  * closes only lets go of the socket: what the keeper holds keeps running for
  * the next core.
  *
- * Off by default: `BOITE_KEEPER=1` turns it on, Linux and macOS only.
+ * On by default on Linux and macOS; `BOITE_KEEPER=0` turns it off. Windows
+ * keeps every process in the shell's job and has no keeper.
  */
 
 import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -27,7 +28,7 @@ const LAUNCH_POLL_MS = 50;
 const ANSWER_MS = 5_000;
 
 export function keeperEnabled(env: Record<string, string | undefined> = process.env, platform: NodeJS.Platform = process.platform): boolean {
-  return env['BOITE_KEEPER'] === '1' && (platform === 'linux' || platform === 'darwin');
+  return env['BOITE_KEEPER'] !== '0' && (platform === 'linux' || platform === 'darwin');
 }
 
 /** The token the keeper checks, created on first use, owner only. */
