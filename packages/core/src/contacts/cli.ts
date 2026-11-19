@@ -25,8 +25,9 @@ export const CONTACTS_HELP = `Contacts mochi (only its own thread):
                                  put a contact's asking thread in relation with
                                  one thread here: letters only
   contacts start <request-id> <project> <brief>
-                                 start a thread there for it (--model, --effort,
-                                 --worktree) in relation with the asking thread
+                                 start a thread for it in a project open to that
+                                 contact (--model, --effort, --worktree), in
+                                 relation with the asking thread
   contacts share <request-id> <project> <reason>
                                  ask the owner to open a project to the contact
   contacts ask-owner <request-id> connect <thread-id> [note]

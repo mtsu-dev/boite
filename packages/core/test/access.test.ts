@@ -7,13 +7,14 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import { dirname, join, parse } from 'node:path';
 import type { RpcMethodName } from '@boite/contracts';
 import { connect } from '../src/client.ts';
 import { AGENT_METHODS, DEVICE_METHODS, assertAllowed } from '../src/access.ts';
 import type { Connection } from '../src/router.ts';
+import { assertDeviceFile } from '../src/workdir.ts';
 import { echoThread, startTestCore, testProject } from './harness.ts';
 import type { TestCore } from './harness.ts';
 import { rejection, thrown } from './settle.ts';
@@ -291,6 +292,12 @@ describe('the access gate', () => {
       expect(await thrown(phone.call('projects.add', { path: join(home, '.SSH', 'keys') }))).toThrow('a paired device does not add a folder that holds keys or tokens');
       // The owner's own app is not held to the device's rules.
       expect((await owner.call('projects.add', { path: join(home, '.ssh', 'keys') })).path).toBe(join(home, '.ssh', 'keys'));
+      // This machine's home folder, a parent of it and a disk root hold every login; its hidden entries hold one each.
+      for (const path of [homedir(), dirname(homedir()), parse(homedir()).root]) {
+        expect(await thrown(phone.call('projects.add', { path }))).toThrow('a paired device does not add the home folder');
+      }
+      const cliHome = [join(homedir(), '.codex'), join(homedir(), '.config'), join(homedir(), '.local', 'share')].find(path => existsSync(path));
+      if (cliHome) expect(await thrown(phone.call('projects.add', { path: cliHome }))).toThrow('the home folder\'s .');
 
       const failures: string[] = [];
       const attempts: (() => Promise<unknown>)[] = [
@@ -428,6 +435,16 @@ describe('a paired device reads a thread\'s changes and files', () => {
     } finally {
       phone.close();
     }
+  });
+
+  test('a project the owner made at the home folder keeps every hidden entry of it from the device', () => {
+    // The check resolves paths and reads nothing, so the real home folder is safe to name here.
+    const home = homedir();
+    const core = { dataDir: harness.dataDir, threads: { require: () => ({ cwd: home, projectId: 'p' }) }, projects: { require: () => ({ id: 'p', path: home }) }, settings: { get: () => ({}) } } as unknown as Parameters<typeof assertDeviceFile>[0];
+    for (const path of ['.codex/auth.json', '.config/gh/hosts.yml', '.gemini/oauth_creds.json', '.local/share/opencode/auth.json', '.pi/agent/auth.json', '.bash_history', 'AppData/Roaming/rclone/rclone.conf']) {
+      expect(() => assertDeviceFile(core, 't', home, path)).toThrow('credential files');
+    }
+    expect(() => assertDeviceFile(core, 't', home, 'notes/todo.md')).not.toThrow();
   });
 
   test('a project that holds boite\'s data folder does not open it to the device', async () => {

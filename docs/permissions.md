@@ -77,6 +77,15 @@ an agent that never asks for permission can still ask a question.
 - A question never takes over a message box you are typing in. It waits until
   the box is empty.
 
+## What a mode does not hold
+
+An agent's commands run as you, on your computer. Boite keeps an agent to its
+own conversation when it asks Boite for something, but a command that reads
+Boite's data folder can find the key that lets anything act as you in Boite.
+A mode that asks before commands, or the agent's own sandbox, is what stops
+that: give the modes that never ask only to agents you would let use your
+account.
+
 ## Going further
 
 - [Supported agents](supported-agents.md): which agents have plan mode and
