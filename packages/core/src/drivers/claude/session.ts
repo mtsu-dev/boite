@@ -92,7 +92,6 @@ export class ClaudeSession {
    * took over before that run finished: they close that run, not the turn.
    */
   #foreignResults = 0;
-  /** The uuids of the messages each turn put in the prompt stream: its prompt and its steers. */
   /** No `init` yet: what the CLI writes before it is about an earlier process. */
   #beforeInit = true;
   /**
@@ -642,7 +641,7 @@ export class ClaudeSession {
     // The turn is told what earlier turns account for before it reads the result.
     if (message.type === 'result') turn.noteCostBefore(...this.#totals.before(message));
     turn.handle(message);
-    // One result per user message: that is the end of this turn, not of the CLI.
+    // A result can answer several prompts. The query stays open after the turn.
     if (message.type === 'result') {
       this.#totals.counted(message);
       if (turn.swapping && !turn.isStopped && !this.#closing) { this.#handOver(turn); return; }
