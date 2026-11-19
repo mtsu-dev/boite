@@ -2,11 +2,29 @@ import { threadActive, type AgentLetter, type ThreadStatus } from '@boite/contra
 import type { Core } from './core.ts';
 import type { Journal } from './journal.ts';
 
+export type AutoPauseReason = 'stop' | 'restart' | 'failure';
+
+function isRestartPause(reason: unknown): boolean {
+  return reason === 'restart' || reason === true;
+}
+
+/** A new agent letter can lift a restart or failed wake, including an older automatic pause. */
+export function wakesOnNewLetter(reason: unknown): boolean {
+  return Boolean(reason) && reason !== 'stop';
+}
+
+/** Stop supersedes automatic pauses. A refused wake ends the restart delivery exception. */
+export function replaceAutoPause(journal: Journal, pauseKey: string, reason: AutoPauseReason): void {
+  if (reason === 'restart') return;
+  const previous = journal.getSetting(pauseKey);
+  if (reason === 'stop' ? wakesOnNewLetter(previous) : isRestartPause(previous)) journal.setSetting(pauseKey, reason);
+}
+
 /** The receipt survived before its wake. A restart pause holds the rest of the inbox. */
 export function wakesAfterRestart(core: Core, letter: AgentLetter, localCoreId: string, pauseKey: string): boolean {
   if (letter.from.coreId !== localCoreId) return false;
   const reason = core.journal.getSetting(pauseKey);
-  return (reason === 'restart' || reason === true)
+  return isRestartPause(reason)
     && core.threads.spawns.answers(letter.from.threadId, letter.to, letter.id);
 }
 

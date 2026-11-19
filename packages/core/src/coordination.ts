@@ -11,7 +11,7 @@ import { askContact, CoordinationBridge } from './coordination-bridge.ts';
 import { dropGroupRead, policedRoutes, policyAllowsLetter } from './coordination-group.ts';
 import { address, coordinationGuide, coordinationUrl, LETTER_TTL_MS, letterPrompt, RESIDENT_LETTER_TTL_MS, same, text, SWEEP_PROBES } from './coordination-letter.ts';
 import { withProjects, withRelations } from './coordination-relation.ts';
-import { pauseInterruptedCoordination, wakesAfterRestart } from './coordination-recovery.ts';
+import { pauseInterruptedCoordination, replaceAutoPause, wakesAfterRestart, wakesOnNewLetter, type AutoPauseReason } from './coordination-recovery.ts';
 import { firstAnswer, PeerGone, PeerRefusal, post, settle, type Answer, type Envelope, type Operation } from './coordination-wire.ts';
 import { checkTailnetName } from './contacts/invite.ts';
 import { outgoingContact, incomingContact } from './contacts/human-letters.ts';
@@ -196,15 +196,15 @@ export class Coordination {
    * A pause the core applies by itself (Stop, a restart, a failed wake). It lasts until the user's next message;
    * after a restart or a failed wake, another agent's next letter ends it too, so a crashed thread can be woken.
    */
-  pause(threadId: string, reason: 'stop' | 'restart' | 'failure' = 'stop'): void {
+  pause(threadId: string, reason: AutoPauseReason = 'stop'): void {
     const config = this.config(threadId);
     if (config.mode === 'off') return;
+    const pauseKey = `${AUTO_PAUSE_PREFIX}${threadId}`;
     if (config.paused) {
-      // Stop over a restart's or a failed wake's pause makes it Stop's; the owner's pause carries no reason and stays as it is.
-      if (reason === 'stop' && this.#wakesForAgent(threadId)) this.#core.journal.setSetting(`${AUTO_PAUSE_PREFIX}${threadId}`, reason);
+      replaceAutoPause(this.#core.journal, pauseKey, reason);
       return;
     }
-    this.#core.journal.setSetting(`${AUTO_PAUSE_PREFIX}${threadId}`, reason);
+    this.#core.journal.setSetting(pauseKey, reason);
     this.#saveConfig(threadId, { ...config, paused: true });
   }
   /** The user wrote to the thread again: a pause the core applied by itself ends, the owner's stays. */
@@ -216,10 +216,8 @@ export class Coordination {
   }
   /** Paused by Stop or by the owner: what holds a thread's own scheduled wake (`threads/scheduled-wakes.ts`). */
   heldByUser(threadId: string): boolean { return this.config(threadId).paused && !this.#wakesForAgent(threadId); }
-  /** A pause another agent's letter ends: a restart's or a failed wake's, not Stop's or the owner's. One saved before reasons were recorded reads as a restart's. */
   #wakesForAgent(threadId: string): boolean {
-    const reason = this.#core.journal.getSetting(`${AUTO_PAUSE_PREFIX}${threadId}`);
-    return Boolean(reason) && reason !== 'stop';
+    return wakesOnNewLetter(this.#core.journal.getSetting(`${AUTO_PAUSE_PREFIX}${threadId}`));
   }
   /**
    * The owner trusted the contact mail a held wake refused, or let held mail through: a failure's pause ends,

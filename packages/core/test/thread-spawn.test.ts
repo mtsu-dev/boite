@@ -7,6 +7,7 @@ import type { AgentProjectAdded, AgentSpawn } from '@boite/contracts';
 import { runCli } from '../src/cli.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnContext, TurnResult } from '../src/drivers/types.ts';
+import { refused } from '../src/errors.ts';
 import { echoThread, removeDir, startTestCore, waitFor, type TestCore } from './harness.ts';
 
 const cores: TestCore[] = [];
@@ -177,7 +178,7 @@ test('a first result interrupted before settlement comes back from the resumed t
   }
 });
 
-test.each(['reported', 'pending', 'stopped', 'owner paused', 'legacy restart pause'] as const)('a received first result survives restart (%s)', async state => {
+test.each(['reported', 'pending', 'stopped', 'owner paused', 'legacy restart pause', 'admission refused'] as const)('a received first result survives restart (%s)', async state => {
   const dataDir = mkdtempSync(join(tmpdir(), 'boite-spawn-received-'));
   const prompts = answering();
   try {
@@ -202,9 +203,18 @@ test.each(['reported', 'pending', 'stopped', 'owner paused', 'legacy restart pau
     const restarted = await startTestCore({ dataDir }); cores.push(restarted);
     const receipt = () => restarted.core.coordination.get(threadId).messages.find(candidate => candidate.id === letter.id);
     const deliveries = () => prompts.get(threadId)?.filter(text => text.includes('Done in notes')) ?? [];
-    if (state === 'stopped' || state === 'owner paused') {
-      const inbox = restarted.core.coordination as unknown as { deliver(threadId: string): Promise<void> };
-      await inbox.deliver(threadId);
+    const inbox = restarted.core.coordination as unknown as { tick(): Promise<void> };
+    if (state === 'admission refused') {
+      const admission = spyOn(restarted.core.threads, 'startTurn').mockImplementation(() => { throw refused('Test account unavailable'); });
+      try {
+        await inbox.tick();
+        expect(admission).toHaveBeenCalledTimes(1);
+        await inbox.tick();
+        expect(admission).toHaveBeenCalledTimes(1);
+      } finally { admission.mockRestore(); }
+    }
+    if (state === 'stopped' || state === 'owner paused' || state === 'admission refused') {
+      await inbox.tick();
       expect(receipt()?.status).toBe('received');
       expect(deliveries()).toHaveLength(0);
       await (await restarted.connect()).call('collaboration.configure', { threadId, config: { ...restarted.core.coordination.config(threadId), paused: false } });
