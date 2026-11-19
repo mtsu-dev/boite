@@ -280,7 +280,18 @@ for (const order of ['steer first', 'wake first'] as const) test(`a steer during
   const acknowledge = async () => { steer.ack.resolve(true); await waitFor(() => teamLetters(h, ada!.threadId)[1]?.status === 'delivered'); };
   const finish = async () => { driver.running[0]!.finish('done'); await waitFor(() => teamLetters(h, ada!.threadId)[0]?.status === 'delivered' && settledWakes(h, ada!.threadId)); };
   if (order === 'steer first') { await acknowledge(); expect(low(h, team.id, key(ada!))).toBe(0); await finish(); }
-  else { await finish(); expect(low(h, team.id, key(ada!))).toBe(1); await acknowledge(); }
+  else {
+    await finish();
+    expect(low(h, team.id, key(ada!))).toBe(1);
+    const next = h.core.threads.startTurn(ada!.threadId, 'New work');
+    await waitFor(() => driver.running.length === 2);
+    await acknowledge();
+    const received = h.core.journal.listMessages(ada!.threadId).find(message => message.role === 'system' &&
+      message.parts.some(part => part.type === 'text' && part.text.includes('Also the backups')));
+    expect(received?.turnId).toBe(wakes(h, ada!.threadId)[0]!.id);
+    expect(h.core.threads.runner.answerAfter.has(next.id)).toBe(false);
+    driver.running[1]!.finish('done');
+  }
   expect(low(h, team.id, key(ada!))).toBe(2);
   expect(seenRows(h, team.id)).toEqual([]);
   expect(wakes(h, ada!.threadId)).toHaveLength(1);

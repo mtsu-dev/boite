@@ -92,8 +92,10 @@ export class TurnAttempts {
   }
 
   beginSteering(threadId: ThreadId, handle: TurnHandle) {
-    if (this.handles.get(threadId) !== handle || this.#turns.get(threadId)?.stop.signal.aborted) return null;
-    return this.steering.begin(threadId);
+    const state = this.#turns.get(threadId);
+    if (!state || this.handles.get(threadId) !== handle || state.stop.signal.aborted) return null;
+    const steering = this.steering.begin(threadId);
+    return steering && { ...steering, turnStopSignal: state.stop.signal };
   }
 
   open(state: TurnAttemptState): LivePermissions {

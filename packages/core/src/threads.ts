@@ -24,6 +24,7 @@ import type {
   TurnInFlightData,
 } from '@boite/contracts';
 import type { Core } from './core.ts';
+import { abortable } from './abortable.ts';
 import { notFound, refused } from './errors.ts';
 import { newId } from './ids.ts';
 import { assertDriverRunnable, releaseThread } from './drivers/index.ts';
@@ -805,8 +806,11 @@ export class ThreadStore {
     const steering = this.runner.beginSteering(threadId, handle);
     if (!steering) return false;
     try {
-      const submitted = await steering.send(handle.steer.bind(handle), text);
-      if (submitted && !this.#core.journal.isClosed()) this.noteCoordination(threadId, turn.id, text);
+      // A late receipt can settle mail from a finished turn. The transport can
+      // still cancel its request when the attempt releases its steering slot.
+      const receipt = handle.steer(text, undefined, undefined, steering.signal);
+      const submitted = await abortable(receipt, steering.turnStopSignal);
+      if (submitted && !this.#core.stopping && !this.#core.journal.isClosed()) this.noteCoordination(threadId, turn.id, text);
       return submitted;
     } finally {
       steering.release();
@@ -816,11 +820,11 @@ export class ThreadStore {
 
   noteCoordination(threadId: string, turnId: string, text: string): void { this.noteSystem(threadId, turnId, text, 'Agent coordination', 'coordination.context'); }
 
-  /** A line of Boite's own inside a running turn: what the agent was told, under a short label. */
+  /** A line of Boite's own, attached to the turn that received it. */
   noteSystem(threadId: string, turnId: string, text: string, displayText: string, eventType: 'coordination.context' | 'turn.pausedForUpdate' | 'turn.resumedAfterUpdate' | 'turn.cutByUpdate'): void {
     const message: Message = { id: newId('msg_'), threadId, turnId, role: 'system', parts: [{ type: 'text', text, displayText }], state: 'complete', createdAt: Date.now() };
     this.#core.journal.append({ type: eventType, threadId, version: 1, payload: message }, () => this.#core.journal.putMessage(message));
-    this.runner.noteMail(threadId, message.createdAt);
+    this.runner.noteMail(threadId, message.createdAt, turnId);
     this.#core.bus.emit('message.started', message);
     this.#core.bus.emit('message.completed', { threadId, messageId: message.id, state: 'complete' });
   }
