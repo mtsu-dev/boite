@@ -1,10 +1,10 @@
 <script lang="ts">
   import { Bot, CloudOff, Square } from '@lucide/svelte';
-  import { pullRequestWatchWaits, type ThreadSummary } from '@boite/contracts';
+  import type { ThreadSummary } from '@boite/contracts';
   import { backgroundLabel } from '../lib/background';
   import { secondClock } from '../lib/clock.svelte';
   import { ago, elapsed, exactTime } from '../lib/format';
-  import { watchStatus } from '../lib/pull-request-watch';
+  import { pullRequestWait, watchStatus } from '../lib/pull-request-watch';
   import { fill, strings } from '../lib/strings';
   import { threadState } from '../lib/thread-state';
   import { stateForm } from '../lib/status-order';
@@ -51,9 +51,7 @@
   let wait = $derived(thread.backgroundWait ?? null);
   /** The states that count time: the turn, its sub-agents, or the work it left running. */
   let live = $derived(form === 'work' && kind !== 'queued');
-  /** The pull requests the row still waits on: their checks run. */
-  let watches = $derived((thread.pullRequestWatches ?? []).filter(pullRequestWatchWaits));
-  let pausedWatch = $derived(thread.pullRequestWatches?.find(watch => watch.paused));
+  let { active: watches, paused: pausedWatch } = $derived(pullRequestWait(thread.pullRequestWatches));
   /** What was under way when the machine went away is only its last known state. */
   let stale = $derived(away && (live || kind === 'queued'));
   /**

@@ -1,5 +1,5 @@
-import { pullRequestWatchWaits, rowAsks, threadActive, threadState, type BackgroundTask, type PermissionRequest, type QuestionRequest, type RowSource, type ThreadSummary, type WorkingChildren } from '@boite/contracts';
-import { watchStatus } from './pull-request-watch';
+import { rowAsks, threadActive, threadState, type BackgroundTask, type PermissionRequest, type QuestionRequest, type RowSource, type ThreadSummary, type WorkingChildren } from '@boite/contracts';
+import { pullRequestWait, watchStatus } from './pull-request-watch';
 import { fill, strings } from './strings';
 
 /** `1 shell still running`, `2 shells, 1 monitor still running`; empty for no task. */
@@ -50,10 +50,9 @@ export function threadWait(thread: ThreadSummary | null, store: Requests & RowSo
     return { label: children.count === 1 ? words.subagentsOne : fill(words.subagentsMany, { count: String(children.count) }), since: children.since };
   }
   if (thread.backgroundWait?.state === 'waiting') return namedWait(thread.backgroundWait.for, thread.backgroundWait.since);
-  const paused = thread.pullRequestWatches?.find(watch => watch.paused !== null);
+  const { active: watches, paused } = pullRequestWait(thread.pullRequestWatches);
   if (paused) return { label: watchStatus(paused), since: null };
-  const watches = thread.pullRequestWatches?.filter(pullRequestWatchWaits);
-  if (watches?.length) {
+  if (watches.length) {
     const words = strings.sidebar.state.workWord;
     const queue = watches.every(watch => watch.seen?.queue && watch.seen.checks.running === 0);
     return { label: [queue ? words.mergeQueue : words.ci, ...watches.map(watch => `#${watch.number}`)].join(' '), since: Math.min(...watches.map(watch => watch.since)) };

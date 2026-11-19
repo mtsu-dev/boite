@@ -1,6 +1,13 @@
-import type { PullRequestWatch } from '@boite/contracts';
+import { pullRequestWatchWaits, type PullRequestWatch } from '@boite/contracts';
 import { dayClock } from './format';
 import { fill, strings } from './strings';
+
+/** An individual pause never hides checks or queue work another watch is still following. */
+export function pullRequestWait(watches: readonly PullRequestWatch[] | undefined) {
+  const active = (watches ?? []).filter(watch => !watch.paused && pullRequestWatchWaits(watch));
+  const paused = active.length === 0 ? watches?.find(watch => watch.paused) : undefined;
+  return { active, paused };
+}
 
 /** What a pull request watch last saw, or why it waits: the line beside its number in the panel and the header's menu. */
 export function watchStatus(watch: PullRequestWatch): string {

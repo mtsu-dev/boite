@@ -82,10 +82,18 @@ test('a paused pull request watch shows its reason and next read instead of its 
   await settle();
   const wait = () => document.querySelector('[data-testid=thread-header] [data-testid=thread-wait]');
   expect(wait()?.textContent).toContain('CI running #12');
-  store.openThread = { ...thread, pullRequestWatches: [{ ...watch, paused: { reason: 'rate-limit', until: Date.now() + 60_000, message: 'rate limit' } }] };
+  const paused = { ...watch, paused: { reason: 'rate-limit' as const, until: Date.now() + 60_000, message: 'rate limit' } };
+  store.openThread = { ...thread, pullRequestWatches: [paused] };
   await settle();
   expect(wait()?.textContent).toMatch(/GitHub rate limit · retry .+/);
   expect(wait()?.querySelector('[data-testid=agent-elapsed]')).toBeNull();
+
+  const active = { ...watch, url: 'https://github.com/example/repo/pull/34', number: 34, since: Date.now() - 120_000 };
+  store.openThread = { ...thread, pullRequestWatches: [paused, active] };
+  await settle();
+  expect(wait()?.textContent).toContain('CI running #34');
+  expect(wait()?.textContent).not.toContain('#12');
+  expect(wait()?.querySelector('[data-testid=agent-elapsed]')?.textContent).toMatch(/^2m \d\ds$/);
 });
 
 test('a rename begun on one thread writes to that thread after another surface opens a different one', async () => {

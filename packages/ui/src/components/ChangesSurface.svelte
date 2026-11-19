@@ -59,19 +59,22 @@
 
   /** Bumped by the refresh button, so the status and the diffs are all read again. */
   let asked = $state(0);
+  /** Status and visible diffs start a fresh read when the connection comes back. */
+  let readRound = $derived(store.connection === 'ready' ? `${store.clientGeneration}:${store.returns}:${finished}:${asked}` : null);
   /** The last status request; an older answer that lands after it is dropped. */
   let latest = 0;
   /** The thread the list on screen belongs to. */
   let listed: ThreadId | null = null;
 
-  async function refresh(id: ThreadId): Promise<void> {
+  async function refresh(id: ThreadId, round: string): Promise<void> {
     const mine = ++latest;
+    const clientGeneration = store.clientGeneration;
     loading = true;
     try {
       const answer = await store.gitStatus(id);
       // The thread may have changed, or a newer read gone out, while the call
       // was out: an answer about another working tree must not land in this list.
-      if (mine === latest && threadId === id) {
+      if (mine === latest && threadId === id && round === readRound && clientGeneration === store.clientGeneration) {
         status = answer.ok ? answer.value : null;
         error = answer.ok ? null : answer.error;
       }
@@ -167,15 +170,14 @@
   // agent is changing, so the list is stale the moment a turn finishes.
   $effect(() => {
     const id = threadId;
-    void finished;
-    void asked;
+    const round = readRound;
     // Another thread's files never stay on screen while this one's are read.
     if (id !== listed) {
       listed = id;
       status = null;
       error = null;
     }
-    if (id !== null) void refresh(id);
+    if (id !== null && round !== null) void refresh(id, round);
   });
 
   /** The rename origin the list gives a file: null for none, undefined while the list does not hold it. */
@@ -192,7 +194,7 @@
   // another thread starts from blank.
   $effect(() => {
     const id = threadId;
-    const round = `${finished}:${asked}`;
+    const round = readRound;
     // Another thread wants none of the last one's files, and its file asked for is still to be scrolled to.
     if (id !== diffThread) {
       diffThread = id;
@@ -202,9 +204,10 @@
       jumped = null;
       pinned = null;
     }
+    if (id === null || round === null) return;
     const paths = new Set(Object.keys(wanted));
     if (selected !== null) paths.add(selected);
-    if (id === null) return;
+    const clientGeneration = store.clientGeneration;
     for (const path of paths) {
       const from = originOf(path);
       // A status that lands re-runs this. The read of this round still holds when
@@ -213,10 +216,9 @@
       const last = reads.get(path);
       if (last && last.round === round && (last.from === from || last.from === undefined || from === undefined)) continue;
       const mine = ++diffSeq;
-      const clientGeneration = store.clientGeneration;
       reads.set(path, { round, from, seq: mine });
       void store.gitDiff(id, path, undefined, from).then((answer) => {
-        if (reads.get(path)?.seq !== mine || threadId !== id || round !== `${finished}:${asked}` || clientGeneration !== store.clientGeneration) return;
+        if (reads.get(path)?.seq !== mine || threadId !== id || round !== readRound || clientGeneration !== store.clientGeneration) return;
         if (!answer.ok) {
           diffs = { ...diffs, [path]: { error: answer.error, source: null } };
           return;

@@ -147,6 +147,16 @@ test('work names what it waits on: the heaviest background task, CI or the merge
   expect(paused.querySelector('.word')?.textContent).toBe('Watching PR');
   expect(paused.querySelector('[data-testid=thread-elapsed]')).toBeNull();
   expect(paused.title).toContain('GitHub rate limit');
+  unmount(running!, { outro: false });
+  running = null;
+  const mixed = draw({ pullRequestWatches: [
+    { ...watch, paused: { reason: 'unreachable', until: NOW + 60_000, message: 'no response' } },
+    { ...watch, url: 'https://github.com/example/repo/pull/34', number: 34, since: NOW - 120_000, seen: { ...seen, checks: { total: 3, running: 1, failed: 0 }, queue: undefined } },
+  ] });
+  expect(mixed.querySelector('.word')?.textContent).toBe('CI running');
+  expect(mixed.querySelector('[data-testid=thread-elapsed]')?.textContent).toBe('2m 00s');
+  expect(mixed.title).toContain('#34');
+  expect(mixed.title).not.toContain('#7');
 });
 
 test('a delegated agent waiting on its own background work says what and since when; work that never woke it reads interrupted', () => {
