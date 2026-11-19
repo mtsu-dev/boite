@@ -157,6 +157,14 @@ function scanProc(read: ProcRead): Omit<ProcSnapshot, 'at'> {
   return { children, stats, available: directory !== null };
 }
 
+/**
+ * How old the machine-wide parent scan may get where the kernel has `children`
+ * files. Those files list a task's children only while it runs and never a
+ * child its thread's exit hands over, so the scan still runs, five times less
+ * often than the 500 ms it lives without them, and catches every descendant they left out.
+ */
+export const BACKSTOP_SCAN_MS = 5000;
+
 export class LinuxLoad {
   readonly #pids = new Map<string, Set<number>>();
   /** Rebuilt in registry insertion order, so duplicate roots retain the same winner. */
@@ -189,16 +197,16 @@ export class LinuxLoad {
 
   forget(threadId: string): void { this.#resources.forget(threadId); this.#names.delete(threadId); }
 
-  #snapshot(fresh = false): ProcSnapshot {
+  #snapshot(fresh = false, maxAgeMs = 500): ProcSnapshot {
     const at = this.now();
-    if (fresh || this.#scan === null || at - this.#scan.at >= 500) this.#scan = { at, ...scanProc(this.read) };
+    if (fresh || this.#scan === null || at - this.#scan.at >= maxAgeMs) this.#scan = { at, ...scanProc(this.read) };
     return this.#scan;
   }
 
   /**
    * A process's children from each of its tasks' `children` files, without
    * listing `/proc`. Null when the kernel has none (built without
-   * CONFIG_PROC_CHILDREN) or the process is gone: the parent scan answers then.
+   * CONFIG_PROC_CHILDREN) or the process is gone: the parent scan answers alone then.
    */
   #taskChildren(pid: number): number[] | null {
     const found: number[] = [];
@@ -300,8 +308,11 @@ export class LinuxLoad {
     let memoryBytes = 0;
     const workingSets: NonNullable<ProcessSample['workingSets']> = [];
     let processes = 0;
-    // The machine-wide scan only where the kernel has no `children` files: its cost grows with every process on the host.
+    // The machine-wide scan costs a read per process on the host: every 500 ms
+    // without `children` files, every BACKSTOP_SCAN_MS with them.
     let scan: ProcSnapshot | null = null;
+    /** The parent the scan alone named for a descendant: a scan seconds old may name a pid that went elsewhere since. */
+    const parents = new Map<number, number>();
     const at = this.now();
     const pending = new Set(pids);
     let owners = this.#owners;
@@ -323,6 +334,7 @@ export class LinuxLoad {
         : this.read(`/proc/${pid}/stat`);
       const used = stat === null ? null : cpuTicks(stat);
       if (used === null) continue;
+      if (parents.has(pid) && statField(stat ?? '', 4) !== parents.get(pid)) continue;
       const birth = stat === null ? null : statField(stat, 22);
       const expectedBirth = this.#births.get(threadId)?.get(pid);
       if (pids.has(pid) && expectedBirth != null && birth !== expectedBirth) continue;
@@ -338,7 +350,13 @@ export class LinuxLoad {
       if (bytes !== null) workingSets.push({ pid, bytes, ...(exe ? { exe } : {}) });
       memoryBytes += bytes ?? 0;
       // A separately registered agent owns its own subtree, even when nested.
-      for (const child of this.#taskChildren(pid) ?? this.#children(pid, scan ??= this.#snapshot())) if (!owners.has(child) || owners.get(child) === threadId) pending.add(child);
+      const listed = this.#taskChildren(pid);
+      scan ??= this.#snapshot(false, listed === null ? 500 : BACKSTOP_SCAN_MS);
+      for (const child of [...listed ?? [], ...scan.children.get(pid) ?? []]) {
+        if ((owners.has(child) && owners.get(child) !== threadId) || pending.has(child)) continue;
+        if (!listed?.includes(child)) parents.set(child, pid);
+        pending.add(child);
+      }
     }
     if (processes === 0) { this.#resources.forget(threadId); this.#names.delete(threadId); return null; }
     this.#names.set(threadId, sampledNames);
