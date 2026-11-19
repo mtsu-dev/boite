@@ -11,6 +11,7 @@
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import SurfaceHead from './SurfaceHead.svelte';
+  import PanelListRow from './PanelListRow.svelte';
 
   let { store, surface, panel }: { store: Store; surface: Surface; panel: BoundPanel } = $props();
 
@@ -253,10 +254,9 @@
     {onkeydown}
   >
     {#each rows as row, index (row.entry.path)}
-      <button
-        type="button"
-        class="row"
-        class:on={placing === 0 && index === cursor}
+      <PanelListRow
+        kind="file"
+        selected={placing === 0 && index === cursor}
         role="treeitem"
         aria-level={row.depth + 1}
         aria-selected={index === cursor}
@@ -302,7 +302,7 @@
         {#if row.entry.kind === 'file'}
           <span class="size ui-label" data-testid="files-size">{bytes(row.entry.bytes)}</span>
         {/if}
-      </button>
+      </PanelListRow>
     {/each}
 
     {#if rows.length === 0 && problem === null}
@@ -365,39 +365,6 @@
     padding: 6px;
   }
 
-  .row {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    width: 100%;
-    height: var(--row);
-    /* The depth is an indent, not a nested box: every row scrolls as one line. */
-    padding: 0 6px 0 calc(6px + var(--depth) * 12px);
-    border: none;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--color-muted-foreground);
-    font-size: var(--text-sm);
-    font-weight: 400;
-    text-align: left;
-    /* The mark and the hover land at once: a fading fill read as a second thing moving beside the panel's own fade. */
-    transition: color var(--dur-2) var(--ease-out-quint);
-  }
-
-  .row:hover:not(:disabled),
-  .row:focus-visible {
-    background: var(--color-hover);
-  }
-
-  .row:active:not(:disabled) {
-    transform: none;
-  }
-
-  .row.on {
-    background: var(--color-active);
-    color: var(--color-foreground);
-  }
-
   .chev {
     align-items: center;
     justify-content: center;
@@ -428,7 +395,7 @@
     white-space: nowrap;
   }
 
-  .row.on .name {
+  :global(.row.on) > .name {
     color: var(--color-foreground);
   }
 

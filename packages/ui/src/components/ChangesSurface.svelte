@@ -10,6 +10,7 @@
   import { changeCount, changeText } from '../lib/change-count';
   import { onView } from '../lib/on-view';
   import SurfaceHead from './SurfaceHead.svelte';
+  import PanelListRow from './PanelListRow.svelte';
   import ChangeCount from './ChangeCount.svelte';
   import DiffView, { SPLIT_MIN_WIDTH } from './DiffView.svelte';
   import Menu from './Menu.svelte';
@@ -261,7 +262,7 @@
   let codeWidth = $state(0);
 </script>
 
-<div class="changes-surface" class:narrow data-testid="changes-panel" bind:clientWidth={width}>
+<div class="changes-surface" data-testid="changes-panel" bind:clientWidth={width}>
   <!-- Its head: the files and their one count (the chip lists them), the layout, the refresh. -->
   <SurfaceHead>
     {#if status && changes.length > 0}
@@ -301,10 +302,10 @@
       {@const read = diffs[path]}
       {@const open = !folded[path]}
       <section class="file" data-file={path} use:near={path}>
-        <button
-          type="button"
-          class="row"
-          class:on={path === selected}
+        <PanelListRow
+          kind="change"
+          selected={path === selected}
+          touch={narrow}
           aria-expanded={open}
           aria-current={path === selected ? 'true' : undefined}
           data-testid="changes-row"
@@ -329,7 +330,7 @@
             <span class="count added ui-label">{count.added ?? ''}</span>
             <span class="count removed ui-label">{count.removed ?? ''}</span>
           {/if}
-        </button>
+        </PanelListRow>
         {#if open}
           {#if !read}
             <!-- Read as it nears the screen: a quiet block holds its place meanwhile. -->
@@ -385,43 +386,6 @@
   .pending { height: 48px; }
 
   .file + .file { border-top: 1px solid var(--color-border); }
-
-  /* A file's header stays at the top while its diff scrolls under it, then the next one takes its place. */
-  .row {
-    position: sticky;
-    top: 0;
-    z-index: 2;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    width: 100%;
-    height: var(--row);
-    padding: 0 10px 0 6px;
-    border: none;
-    border-bottom: 1px solid var(--color-border);
-    border-radius: 0;
-    background: var(--color-surface-3);
-    color: var(--color-muted-foreground);
-    font-size: var(--text-sm);
-    font-weight: 400;
-    text-align: left;
-  }
-  /* Fingers, not a pointer: every header is a full target. */
-  .narrow .row { height: auto; min-height: var(--touch-target); }
-
-  .row:hover:not(:disabled),
-  .row:focus-visible {
-    background: color-mix(in srgb, var(--color-hover) 60%, var(--color-surface-3));
-  }
-  .row:focus-visible { outline-offset: -2px; }
-
-  .row:active:not(:disabled) {
-    transform: none;
-  }
-
-  .row.on {
-    color: var(--color-foreground);
-  }
 
   .fold { display: inline-flex; flex: none; color: var(--color-subtle); transform: rotate(-90deg); transition: transform var(--motion-duration, var(--dur-2)) var(--ease-out-quint); }
   .fold.open { transform: none; }
