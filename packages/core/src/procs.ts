@@ -352,7 +352,11 @@ export class ProcRegistry {
   disown(threadId: ThreadId): void {
     const byPid = this.#live.get(threadId);
     if (byPid === undefined) return;
-    for (const pid of byPid.keys()) this.platform.pidRemoved(threadId, pid, !this.#shown.has(threadId));
+    for (const pid of byPid.keys()) {
+      this.platform.pidRemoved(threadId, pid, !this.#shown.has(threadId));
+      // On POSIX every pid is unassigned: left here, each kept process leaked one entry per core lifetime.
+      this.unassigned.delete(pid);
+    }
     this.#live.delete(threadId);
     this.known.delete(threadId);
   }
