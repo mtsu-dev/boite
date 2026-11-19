@@ -12,7 +12,8 @@
   let { store, threadId, removal = null }: { store: Store; threadId: ThreadId; removal?: ThreadWorktreeRemoval | null } = $props();
   const lock = new ThreadRestore();
 
-  let words = $derived(removal ? strings.sidebar.worktreeGone.done : strings.sidebar.doneNotice);
+  let done = $derived(store.openThread?.doneAt != null);
+  let words = $derived(!done ? strings.sidebar.archivedNotice : removal ? strings.sidebar.worktreeGone.done : strings.sidebar.doneNotice);
 
   async function reopen(): Promise<void> {
     const owner = store;
