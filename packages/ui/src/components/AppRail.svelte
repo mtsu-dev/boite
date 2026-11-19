@@ -22,6 +22,7 @@
   import { botEngine, newBot, newTeam } from '../lib/agents-view.svelte';
   import { separator } from '../lib/menu';
   import { contextMenu } from '../lib/context-menu.svelte';
+  import { longPress } from '../lib/long-press';
   import { dragWindow } from '../lib/window-drag';
   import { isMac } from '../lib/keybindings';
   import { railBotState, threadsNeedingYou, type RailBotState } from '../lib/app-rail';
@@ -190,13 +191,23 @@
     ], id => { if (id === 'bot') newBot(store); else if (id === 'team') newTeam(store); else botEngine(store); }, anchor);
   }
   /**
-   * A bot's picture has its row's menu (`agentMenuItems`) on a right click, answered through its own machine since
+   * A bot's picture has its row's menu (`agentMenuItems`), answered through its own machine since
    * ids can collide between machines. The rail has no name field: Rename opens its settings, as the column's head does.
    */
   function botMenu(event: MouseEvent, { machine, row }: Bot) {
+    if (reorder.dragging !== null) { event.preventDefault(); return; }
     const agent = row.profile;
     const items = agentMenuItems(machine.store, agent, { open: machine.store === store && openBot === agent.id, leaving: !!row.status?.leaving });
     contextMenu.open(event, items, action => void pickBot(machine, agent, action));
+  }
+
+  function botKeys(event: KeyboardEvent, id: string) {
+    if (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey)) {
+      event.preventDefault();
+      event.currentTarget?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+      return;
+    }
+    reorder.keyboard(event, id);
   }
   /**
    * `agent` is the profile the menu was drawn from: Pin and Pause do what their label said, and each save reads the
@@ -334,8 +345,9 @@
           {@const look = lookOf(state, unread, selected)}
           <div class="slot" class:selected class:dragging={reorder.dragging === entry.key} role="listitem" data-rail-id={entry.key}>
             <button type="button" class="bot" class:dim={state === 'paused'} aria-label={unread && !selected ? `${labelOf(bot.row.profile.name, state)}, ${unreadLabel(unreadCount)}` : labelOf(bot.row.profile.name, state)}
-              aria-current={selected ? 'page' : undefined} aria-keyshortcuts="ArrowUp ArrowDown Home End" data-testid="rail-bot" data-agent-id={bot.row.profile.id} data-state={state} data-look={look}
-              onpointerdown={(event) => reorder.start(event, entry.key)} onkeydown={(event) => reorder.keyboard(event, entry.key)}
+              aria-current={selected ? 'page' : undefined} aria-keyshortcuts="ArrowUp ArrowDown Home End Shift+F10 ContextMenu" aria-haspopup="menu"
+              data-testid="rail-bot" data-agent-id={bot.row.profile.id} data-state={state} data-look={look}
+              use:longPress onpointerdown={(event) => reorder.start(event, entry.key)} onkeydown={(event) => botKeys(event, entry.key)}
               onclick={() => workspace.showAgents(bot.machine.store, bot.row.profile.id)} oncontextmenu={(event) => botMenu(event, bot)}>
               <AgentAvatar kind="profile" id={bot.row.profile.id} name={bot.row.profile.name} avatar={bot.row.profile.avatar} size={44} squircle={selected} mood={moodOfState(state, look)}
                 lit={look === 'working' || avatarLit({ open: selected, attention: state === 'waiting', failed: state === 'failed', unread })} />

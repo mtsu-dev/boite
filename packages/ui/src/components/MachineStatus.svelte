@@ -69,7 +69,7 @@
 <!-- The wrapper stays, empty, so the connection state is always readable on it. -->
 <div class="machines" class:filtered={chosen !== null} data-testid={testid === 'machine-status' ? 'status-connection' : `${testid}-status`} data-state={store.connection} aria-live="polite">
   {#if shown}
-    <Menu {items} onpick={choose} {label} variant="ghost" {testid} titled={!card}>
+    <Menu {items} onpick={choose} {label} variant="ghost" {testid} titled={!card} side="right" align="end">
       <!-- The rail's optical size and stroke (the chat icon's): the crossed monitor when none answers, else the monitor and one mark, the offline ring while one is away, green while all answer. -->
       <Monitor size={19} />{#if down > 0 && down === machines.length}<span class="strike" data-testid="machine-all-offline" aria-hidden="true"></span>{:else if down > 0}<span class="dot off" data-testid="machine-offline" aria-hidden="true"></span>{:else if store.connection === 'ready'}<span class="dot on" data-testid="machine-online" aria-hidden="true"></span>{/if}
       {#if chosen}<span class="name ui-label">{machineName(chosen)}</span>{/if}

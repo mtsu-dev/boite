@@ -104,7 +104,7 @@ export function floating(node: HTMLElement, options: { anchor: () => HTMLElement
     let left: number;
     if (options.matchWidth) node.style.width = `${Math.min(options.cap ?? 420, box.width, width - margin * 2)}px`;
     if (options.side === 'right') {
-      node.style.maxHeight = `${height - margin * 2}px`;
+      node.style.maxHeight = `${Math.max(0, Math.min(height - margin * 2, options.cap ?? Infinity))}px`;
       left = box.right + gap;
       if (left + node.offsetWidth > width - margin) left = box.left - node.offsetWidth - gap;
       // `end`: the card's foot on its anchor's, growing upward, as a button low on a rail wants.

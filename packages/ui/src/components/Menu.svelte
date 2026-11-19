@@ -9,7 +9,7 @@
   import BackRow from './BackRow.svelte';
 
   let {
-    items,
+    items = [],
     onpick,
     align = 'start',
     placement = 'top',
@@ -20,12 +20,18 @@
     titled = true,
     heading,
     cap,
+    side,
+    panel,
+    panelLabel,
+    popupTestid,
+    beforeopen,
+    oncontextmenu,
     testid,
     onclose,
     children
   }: {
-    items: MenuItem[];
-    onpick: (id: string) => void;
+    items?: MenuItem[];
+    onpick?: (id: string) => void;
     align?: 'start' | 'end';
     /** Where the popover sits: above the trigger, the composer's way, or under it. */
     placement?: 'top' | 'bottom';
@@ -41,11 +47,19 @@
     heading?: string;
     /** The list's tallest desktop height in px, where the room exists for a long list to show whole (lib/floating.ts). */
     cap?: number;
+    side?: 'right';
+    /** A dialog shares the trigger and popover without adopting menu-item keyboard navigation. */
+    panel?: Snippet<[(restoreFocus?: boolean) => void]>;
+    panelLabel?: string;
+    popupTestid?: string;
+    beforeopen?: () => boolean | Promise<boolean>;
+    oncontextmenu?: (event: MouseEvent) => void;
     testid?: string;
     /** The list closed: a caller that swapped in a submenu's rows puts its first list back. */
     onclose?: () => void;
     children: Snippet;
   } = $props();
+  const surfaceId = $props.id();
 
   const popover = new Closing();
   /** The rows a row's own `items` opened in place, until its way back or the close. */
@@ -54,6 +68,9 @@
   let ordered = $derived(dangerLast(shownItems));
   let root = $state<HTMLDivElement | undefined>(undefined);
   let trigger = $state<HTMLButtonElement | undefined>(undefined);
+  let surface = $state<HTMLDivElement>();
+  let request = 0;
+  let opening = false;
   /** The list opened as a phone sheet (lib/floating.ts marks it), which shows a title. */
   let sheet = $state(false);
 
@@ -71,9 +88,9 @@
     }
     wasOpen = true;
     void tick().then(() => {
-      const list = root?.querySelector<HTMLElement>('[role=menu]');
-      sheet = !!list?.dataset['mobileSheet'];
-      if (sheet) list?.focus({ preventScroll: true });
+      if (!popover.open) return;
+      sheet = !!surface?.dataset['mobileSheet'];
+      if (sheet || panel) surface?.focus({ preventScroll: true });
       else rows()[0]?.focus({ preventScroll: true });
     });
   });
@@ -85,7 +102,26 @@
   function toggle(event: MouseEvent) {
     event.stopPropagation();
     if (disabled) return;
-    popover.toggle();
+    if (popover.open || opening) close();
+    else void show();
+  }
+
+  async function show() {
+    if (!beforeopen) { popover.show(); return; }
+    const current = ++request;
+    opening = true;
+    try {
+      if (await beforeopen() && current === request && trigger?.isConnected && !disabled) popover.show();
+    } finally {
+      if (current === request) opening = false;
+    }
+  }
+
+  function close(restoreFocus = true) {
+    request += 1;
+    opening = false;
+    popover.hide();
+    if (restoreFocus) trigger?.focus({ preventScroll: true });
   }
 
   function pick(item: MenuItem) {
@@ -96,36 +132,37 @@
     if (item.submenu || item.back) {
       if (item.items) nested = item.items;
       else if (item.back && nested) nested = null;
-      else onpick(item.id);
+      else onpick?.(item.id);
       void tick().then(() => rows()[0]?.focus({ preventScroll: true }));
       return;
     }
-    if (!switches || item.checked === undefined) { popover.hide(); trigger?.focus({ preventScroll: true }); }
-    onpick(item.id);
+    if (!switches || item.checked === undefined) close();
+    onpick?.(item.id);
   }
 
   /** A press, not a click: another menu's trigger stops its click from bubbling here. */
   function onWindowPointerdown(event: PointerEvent) {
-    if (!popover.open) return;
+    if (!popover.open && !opening) return;
     if (root && event.target instanceof Node && root.contains(event.target)) return;
-    popover.hide();
+    close(false);
   }
 
   function onkeydown(event: KeyboardEvent) {
     if (disabled) return;
     if (event.key === 'Escape') {
-      if (!popover.open) return;
+      if (!popover.open && !opening) return;
+      event.preventDefault();
       event.stopPropagation();
-      popover.hide();
-      trigger?.focus({ preventScroll: true });
+      close();
       return;
     }
     if (!popover.open) {
       if (event.key !== 'ArrowDown') return;
       event.preventDefault();
-      popover.show();
+      if (!opening) void show();
       return;
     }
+    if (panel) return;
     const list = rows();
     if (list.length === 0) return;
     const active = document.activeElement as HTMLElement | null;
@@ -164,14 +201,16 @@
     class:icon={variant === 'ghost'}
     class:text={variant === 'text'}
     class:icon-button={variant === 'icon'}
-    aria-haspopup="menu"
+    aria-haspopup={panel ? 'dialog' : 'menu'}
     aria-expanded={popover.open}
+    aria-controls={popover.open ? surfaceId : undefined}
     aria-label={label}
     title={titled ? label : undefined}
     data-testid={testid}
     bind:this={trigger}
     {disabled}
     onclick={toggle}
+    {oncontextmenu}
     {onkeydown}
   >
     {@render children()}
@@ -179,19 +218,27 @@
 
   {#if popover.shown}
     <div
+      id={surfaceId}
       class="popover"
       class:switches
+      class:panel={panel !== undefined}
+      class:side={side !== undefined}
       class:end={align === 'end'}
       class:below={placement === 'bottom'}
       class:closing={popover.closing}
-      role="menu"
+      role={panel ? 'dialog' : 'menu'}
+      aria-label={panelLabel}
       tabindex="-1"
+      bind:this={surface}
       {onkeydown}
       use:popover.attach
-      use:floating={{ anchor: () => trigger ?? null, placement, align, cap, dismiss: () => popover.hide() }}
+      use:floating={{ anchor: () => trigger ?? null, placement, align, side, cap, dismiss: () => close(false) }}
       onanimationend={popover.end}
-      data-testid={testid ? `${testid}-menu` : undefined}
+      data-testid={popupTestid ?? (testid ? `${testid}-menu` : undefined)}
     >
+      {#if panel}
+        {@render panel(close)}
+      {:else}
       <!-- A phone sheet titles every menu the same way, switches included. -->
       {#if switches && !sheet}<div class="heading ui-label" aria-hidden="true">{label}</div>
       <!-- A second level's back row names it: no sheet title over it. -->
@@ -245,6 +292,7 @@
         </button>
         {/if}
       {/each}
+      {/if}
     </div>
   {/if}
 </div>
@@ -339,6 +387,9 @@
 
   /* A capped list scrolls: a row that shrank instead let its hint run over the next one. */
   .popover > * { flex: none; }
+  .popover.side { overflow-y: auto; }
+  .popover.panel { width: min(360px, calc(100vw - 24px)); max-width: none; padding: 0; color: var(--color-foreground); overflow: hidden; }
+  .popover.panel > :global(.quota-popup) { flex: 1; min-height: 0; }
 
   .popover.closing {
     animation: pop-out var(--motion-duration) var(--motion-curve);
@@ -360,6 +411,8 @@
   .popover.below.end {
     transform-origin: top right;
   }
+
+  .popover.side { transform-origin: bottom left; }
 
   /* A one-line item is as tall as a context menu row; a hint below grows it.
      Labels are trimmed to their capitals, so the gap keeps descenders off the hint. */

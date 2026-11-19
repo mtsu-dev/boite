@@ -1,4 +1,6 @@
 <script lang="ts">
+  import SettingField from './SettingField.svelte';
+  import SettingSwitch from './SettingSwitch.svelte';
   import { workspace } from '../lib/workspace.svelte';
   import { untrack } from 'svelte';
   import { RefreshCw } from '@lucide/svelte';
@@ -20,6 +22,7 @@
   import GatewayOpenButton from './GatewayOpenButton.svelte';
   import SubscriptionProxySettings from './SubscriptionProxySettings.svelte';
   import GatewaySwitch from './GatewaySwitch.svelte';
+  import QuotaLoadState from './QuotaLoadState.svelte';
   import QuotaPin from './QuotaPin.svelte';
 
   /**
@@ -29,7 +32,6 @@
    * read: the one place monitoring is turned on or off.
    */
   let { store, showTitle = true }: { store: Store; showTitle?: boolean } = $props();
-  const uid = $props.id();
   /** Providers is a desktop settings page and the owner's: a phone is offered no way to it. */
   const phoneWidth = new MediaQuery('(max-width: 720px)');
   let providersReachable = $derived(store.owner && desktopSettings(phoneWidth.current));
@@ -135,73 +137,66 @@
     <GatewayOpenButton {store} />
   </div>{/if}
 
-  {#if reader.error}
-    <div class="card failed" role="alert" data-testid="limits-error">
-      <p>{fill(strings.quotas.readFailed, { error: reader.error })}</p>
-      <button type="button" class="ghost small" disabled={reader.loading} data-testid="limits-retry" onclick={refresh}><span class="ui-label">{strings.common.retry}</span></button>
-    </div>
-  {/if}
-  {#if gatewayError}
-    <div class="card failed" role="alert" data-testid="gateway-quotas-error">
-      <p>{fill(strings.subscriptionProxy.quotasFailed, { name: proxyName, error: gatewayError })}</p>
-      <button type="button" class="ghost small" disabled={reader.loading} onclick={refresh}><span class="ui-label">{strings.common.retry}</span></button>
-    </div>
-  {/if}
-  {#if gatewayNative}
-    {#each gatewayGroups as group (group.providerId)}
-      <section class="gateway-group" data-testid="gateway-quotas" data-provider={group.providerId}>
-        <h2 class="group-head"><ProviderLogo providerId={group.providerId} size={16} /><span class="ui-label">{group.name}</span><small class="ui-label">{fill(strings.subscriptionProxy.via, { name: proxyName })}</small></h2>
-        <UsageLimits rows={group.rows} {store} loading={reader.busy} completed={reader.landed} onalert={alert} />
-      </section>
-    {/each}
-    {#if gateway.state?.status === 'ready' && gatewayGroups.length === 0 && shown !== null}
-      <p class="muted gateway-empty" data-testid="gateway-quotas-empty">{fill(strings.subscriptionProxy.quotasEmpty, { name: proxyName })}</p>
-    {/if}
-  {/if}
-  {#if reader.outdated}
-    <p class="muted" data-testid="limits-outdated">{strings.quotas.outdated}</p>
-  {:else if rows === null}
-    <div class="skeleton" role="status" aria-label={strings.quotas.loading}>
-      {#each [0, 1] as index (index)}<div class="card ghost-card"></div>{/each}
-    </div>
-  {:else if gatewayNative && rows.length === 0 && tracked.length === 0}
-    <!-- Everything this machine reads goes through the gateway. -->
-  {:else if rows.length === 0 && tracked.length === 0}
-    <!-- A failed read never passes for "no provider connected". -->
-    {#if !reader.error}<div class="card empty" data-testid="limits-empty">
-      <p>{strings.quotas.empty}</p>
-      {#if providersReachable}<button type="button" onclick={() => workspace.active.showSettings('accounts')}><span class="ui-label">{strings.settings.connectProvider}</span></button>{/if}
-    </div>{/if}
-  {:else}
-    <!-- The priority the popup, the tray and the pinned card follow: the owner reorders it here too, on a phone as well. -->
-    {#if rows.length > 0}<UsageLimits {rows} {store} loading={reader.busy} completed={reader.landed} onalert={alert}
-      order={store.settings?.quotaOrder ?? []} onreorder={store.owner ? (quotaOrder) => store.saveSettings({ quotaOrder }) : undefined} />{/if}
-    {#if store.owner}<section class="card tracked" data-testid="limits-tracked">
-      <h2 class="ui-label-box"><span class="ui-label">{strings.quotas.tracked}</span><InfoTip topic={strings.quotas.tracked} text={strings.quotas.trackedHint} /></h2>
-      {#each tracked as row (row.accountId)}
-        {@const account = row.label}
-        {@const entry = store.accounts?.find((entry) => entry.id === row.accountId)}
-        <div class="tracked-account" data-testid="tracked-account" data-account-id={row.accountId}>
-          <label class="track-row">
-            <ProviderLogo providerId={row.providerId} size={16} />
-            <span class="who"><span class="provider">{row.providerName}</span><span class="account">{account}</span></span>
-            <input type="checkbox" role="switch" data-testid="quota-monitor" data-account-id={row.accountId} aria-label="{row.providerName} · {account}" checked={row.enabled} onchange={(event) => void monitor(row.accountId, event.currentTarget.checked)} />
-          </label>
-          {#if entry}<AccountRename {store} account={entry} />{/if}
+  <QuotaLoadState error={reader.error} outdated={reader.outdated} pending={rows === null} busy={reader.loading} retry={refresh} testPrefix="limits" size="page">
+    {#snippet beforeRows()}
+      {#if gatewayError}
+        <div class="card failed" role="alert" data-testid="gateway-quotas-error">
+          <p>{fill(strings.subscriptionProxy.quotasFailed, { name: proxyName, error: gatewayError })}</p>
+          <button type="button" class="ghost small" disabled={reader.loading} onclick={refresh}><span class="ui-label">{strings.common.retry}</span></button>
         </div>
-      {/each}
-    </section>{/if}
-  {/if}
+      {/if}
+      {#if gatewayNative}
+        {#each gatewayGroups as group (group.providerId)}
+          <section class="gateway-group" data-testid="gateway-quotas" data-provider={group.providerId}>
+            <h2 class="group-head"><ProviderLogo providerId={group.providerId} size={16} /><span class="ui-label">{group.name}</span><small class="ui-label">{fill(strings.subscriptionProxy.via, { name: proxyName })}</small></h2>
+            <UsageLimits rows={group.rows} {store} loading={reader.busy} completed={reader.landed} onalert={alert} />
+          </section>
+        {/each}
+        {#if gateway.state?.status === 'ready' && gatewayGroups.length === 0 && shown !== null}
+          <p class="muted gateway-empty" data-testid="gateway-quotas-empty">{fill(strings.subscriptionProxy.quotasEmpty, { name: proxyName })}</p>
+        {/if}
+      {/if}
+    {/snippet}
+    {#if rows === null || (gatewayNative && rows.length === 0 && tracked.length === 0)}
+      <!-- Everything this machine reads goes through the gateway. -->
+    {:else if rows.length === 0 && tracked.length === 0}
+      <!-- A failed read never passes for "no provider connected". -->
+      {#if !reader.error}<div class="card empty" data-testid="limits-empty">
+        <p>{strings.quotas.empty}</p>
+        {#if providersReachable}<button type="button" onclick={() => workspace.active.showSettings('accounts')}><span class="ui-label">{strings.settings.connectProvider}</span></button>{/if}
+      </div>{/if}
+    {:else}
+      <!-- The priority the popup, the tray and the pinned card follow: the owner reorders it here too, on a phone as well. -->
+      {#if rows.length > 0}<UsageLimits {rows} {store} loading={reader.busy} completed={reader.landed} onalert={alert}
+        order={store.settings?.quotaOrder ?? []} onreorder={store.owner ? (quotaOrder) => store.saveSettings({ quotaOrder }) : undefined} />{/if}
+      {#if store.owner}<section class="card tracked" data-testid="limits-tracked">
+        <h2 class="ui-label-box"><span class="ui-label">{strings.quotas.tracked}</span><InfoTip topic={strings.quotas.tracked} text={strings.quotas.trackedHint} /></h2>
+        {#each tracked as row (row.accountId)}
+          {@const account = row.label}
+          {@const entry = store.accounts?.find((entry) => entry.id === row.accountId)}
+          <div class="tracked-account" data-testid="tracked-account" data-account-id={row.accountId}>
+            <label class="track-row">
+              <ProviderLogo providerId={row.providerId} size={16} />
+              <span class="who"><span class="provider">{row.providerName}</span><span class="account">{account}</span></span>
+              <input type="checkbox" role="switch" data-testid="quota-monitor" data-account-id={row.accountId} aria-label="{row.providerName} · {account}" checked={row.enabled} onchange={(event) => void monitor(row.accountId, event.currentTarget.checked)} />
+            </label>
+            {#if entry}<AccountRename {store} account={entry} />{/if}
+          </div>
+        {/each}
+      </section>{/if}
+    {/if}
+  </QuotaLoadState>
   {#if store.owner && store.settings && !dashboard}
-    <section class="card resume" id="settings-limit-resume">
-      <label for="{uid}-resume" class="switch-row">
-        <span class="text"><span class="ui-label-box"><span class="ui-label" id="{uid}-resume-name">{strings.quotas.autoResume}</span><InfoTip topic={strings.quotas.autoResume} text={strings.quotas.autoResumeHint} /></span><span class="hint" id="{uid}-resume-effect">{strings.settings.effects.autoResume}</span></span>
-        <input id="{uid}-resume" type="checkbox" role="switch" data-testid="setting-auto-resume" aria-labelledby="{uid}-resume-name" aria-describedby="{uid}-resume-effect"
-          checked={store.settings.autoResumeLimitedThreads === true} onchange={(event) => void toggleAutoResume(event.currentTarget)} />
-      </label>
-    </section>
-  {/if}
-  {#if store.owner}<details class="disclosure"><summary><span class="ui-label">{strings.subscriptionProxy.configure}</span></summary><SubscriptionProxySettings {store} /></details>{/if}
+      <section class="card resume" id="settings-limit-resume">
+        <SettingField title={strings.quotas.autoResume} help={strings.quotas.autoResumeHint} hint={strings.settings.effects.autoResume}>
+          {#snippet control(attributes)}
+            <SettingSwitch {...attributes} data-testid="setting-auto-resume" checked={store.settings?.autoResumeLimitedThreads === true}
+              onchange={(event) => void toggleAutoResume(event.currentTarget)} />
+          {/snippet}
+        </SettingField>
+      </section>
+    {/if}
+    {#if store.owner}<details class="disclosure"><summary><span class="ui-label">{strings.subscriptionProxy.configure}</span></summary><SubscriptionProxySettings {store} /></details>{/if}
   {/if}
 </div>
 
@@ -231,10 +226,7 @@
   .failed p { margin: 0; min-width: 0; overflow-wrap: anywhere; }
   .empty { display: flex; align-items: center; justify-content: space-between; gap: 16px; max-width: var(--settings-width); padding: var(--settings-padding); }
   .empty p { margin: 0; color: var(--color-muted-foreground); font-size: var(--text-sm); }
-  .skeleton { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; max-width: var(--settings-width); }
-  .ghost-card { height: 150px; margin: 0; animation: ghost-breathe 1.4s var(--ease-out-quint) infinite alternate var(--loops); }
-  @keyframes ghost-breathe { from { opacity: 0.45; } to { opacity: 0.9; } }
   @media (prefers-reduced-motion: reduce) {
-    .refresh :global(.spinning), .ghost-card { animation: none; }
+    .refresh :global(.spinning) { animation: none; }
   }
 </style>

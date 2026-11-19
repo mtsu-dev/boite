@@ -1,8 +1,5 @@
 <script lang="ts">
-  import { errorText } from '../lib/errors';
   import { untrack } from 'svelte';
-  import { Closing } from '../lib/closing.svelte';
-  import { floating } from '../lib/floating';
   import { gatewayReader, quotaReader, shownQuotas } from '../lib/quota-reader.svelte';
   import type { Store } from '../lib/store.svelte';
   import { strings } from '../lib/strings';
@@ -18,22 +15,13 @@
    * to while open, keeps the last reading on screen while the next loads, and
    * sends monitoring and accounts to the Limits page.
    */
-  /**
-   * No button of its own: the rail's one menu of machines and limits calls
-   * `open()`, and the glance opens beside `anchor`, the menu's button, on its
-   * `side`.
-   */
-  let { store, side, anchor: near }: { store: Store; side?: 'right'; anchor: () => HTMLElement | null } = $props();
+  let { store, close }: { store: Store; close: (restoreFocus?: boolean) => void } = $props();
   /** Providers is a desktop settings page and the owner's: a phone is offered no way to it. */
   const phoneWidth = new MediaQuery('(max-width: 720px)');
   let providersReachable = $derived(store.owner && desktopSettings(phoneWidth.current));
 
-  const popover = new Closing();
-  let content = $state<HTMLDivElement>();
   let reader = $derived(quotaReader(store.endpointUrl ?? 'here', store.core));
   let gateway = $derived(gatewayReader(store.endpointUrl ?? 'here'));
-  /** How long a press waits for the gateway's first answer before opening the glance anyway. */
-  const KNOWN_WAIT_MS = 300;
   let rows = $derived(reader.rows === null ? null : shownQuotas(reader.rows, store.accounts, store.providers));
   /**
    * The row the open thread spends: its account's own, or, when a gateway stands in for that provider with one
@@ -46,126 +34,38 @@
     const same = rows.filter((row) => row.gateway && row.providerId === thread.providerId);
     return same.length === 1 ? same[0]!.accountId : null;
   });
-  /** The last read's failure, cleared by the next read that lands. */
-  let failed = $state('');
-
   /** A paired device reads what the core holds: forcing the providers is the owner's. */
   function read(refresh = false) {
-    const client = store.client;
-    if (!client) return;
-    const current = reader;
-    void current.read(client, refresh && store.owner).then(() => { if (current === reader) failed = ''; }, (error) => { if (current === reader) failed = current.outdated ? '' : errorText(error); });
+    if (store.client) void reader.read(store.client, refresh && store.owner).catch(() => {});
   }
 
   $effect(() => {
     const client = store.client;
     const current = reader;
-    if (!popover.open || !client) return;
+    if (!client) return;
     const off = client.on('quotas.updated', (value) => current.accept(value));
     untrack(() => read());
     return off;
   });
 
-  /** The Douane this machine reads, by address: a press goes to its bars or to its dashboard. */
-  let douane = $derived.by(() => {
+  // A slow gateway can answer while the glance is open. If it only has a dashboard, show that page.
+  $effect(() => {
     const proxy = store.settings?.subscriptionProxy;
-    return proxy?.enabled && proxy.kind === 'douane' ? proxy.baseUrl : null;
+    if (proxy?.enabled && proxy.kind === 'douane' && gateway.state?.status === 'unsupported') untrack(() => page('limits'));
   });
 
-  // Known before the first press, and kept current, since it decides where that press goes.
-  $effect(() => {
-    const client = store.client;
-    const current = gateway;
-    if (!client || douane === null) return;
-    const off = client.on('subscriptionProxy.quotasUpdated', (value) => current.accept(value));
-    untrack(() => void current.read(client));
-    return off;
-  });
-
-  // A Douane found without the route while the glance is open: its dashboard instead.
-  $effect(() => {
-    if (popover.open && douane !== null && gateway.state?.status === 'unsupported') untrack(() => page('limits'));
-  });
-
-  // A press anywhere else puts it away.
-  $effect(() => {
-    if (!popover.open) return;
-    const onpress = (event: PointerEvent) => {
-      const target = event.target as Node | null;
-      // The anchor's own click toggles it: hiding here first would make that click reopen it.
-      if (target && (near()?.contains(target) || content?.contains(target))) return;
-      popover.hide();
-    };
-    document.addEventListener('pointerdown', onpress, true);
-    return () => document.removeEventListener('pointerdown', onpress, true);
-  });
-
-  // The rail stays on every page: a move to another one (Settings from the keyboard,
-  // the palette) leaves no glance open over it, waiting for the next press to close.
-  let shownPage = untrack(() => store.page);
-  $effect(() => {
-    const now = store.page;
-    if (now === shownPage) return;
-    shownPage = now;
-    untrack(() => { if (popover.open) popover.hide(); });
-  });
-
-  function close() {
-    popover.hide();
-    near()?.focus({ preventScroll: true });
-  }
-
-  /**
-   * Captured on the window: the focus stays on the trigger after a press, so
-   * the Escape that shuts the glance never reaches the dialog, and it is
-   * spent here rather than also stopping the running turn. Only from the
-   * trigger, the glance or no focus at all: the palette opened over it keeps
-   * its own Escape.
-   */
-  function closeOnEscape(event: KeyboardEvent) {
-    if (event.key !== 'Escape' || !popover.open) return;
-    const target = event.target;
-    if (target !== document.body && target !== near() && !(target instanceof Node && content?.contains(target))) return;
-    event.preventDefault();
-    event.stopPropagation();
-    close();
-  }
-
+  const shownPage = untrack(() => store.page);
+  $effect(() => { if (store.page !== shownPage) untrack(() => close(false)); });
 
   function page(tab: 'limits' | 'accounts') {
-    popover.hide();
+    close(false);
     store.showSettings(tab);
-  }
-
-  /** A gateway without native quotas has only its dashboard, on the Limits page. */
-  export async function open() {
-    if (popover.open) { close(); return; }
-    const proxy = store.settings?.subscriptionProxy;
-    const client = store.client;
-    // A slow gateway does not hold the press: the glance opens, and the effect above
-    // moves it to the page if the answer turns out to be `unsupported`.
-    if (douane !== null && client) await Promise.race([gateway.known(client), new Promise((resolve) => setTimeout(resolve, KNOWN_WAIT_MS))]);
-    if (proxy?.enabled && (proxy.kind !== 'douane' || gateway.state?.status === 'unsupported')) { page('limits'); return; }
-    popover.show();
   }
 </script>
 
-<svelte:window onkeydowncapture={closeOnEscape} />
-
-{#if popover.shown}
-  <div class="glance" class:closing={popover.closing} bind:this={content} role="dialog" tabindex="-1" aria-label={strings.quotas.glance} data-testid="limits-glance"
-    use:popover.attach onanimationend={popover.end} use:floating={{ anchor: near, side, dismiss: close, cap: 460 }}>
-    <QuotaPopup {rows} {current} loading={reader.busy} completed={reader.landed} error={failed} outdated={reader.outdated} owner={store.owner}
-      order={store.settings?.quotaOrder ?? []} reorder={store.owner ? (quotaOrder) => store.saveSettings({ quotaOrder }) : undefined}
-      refresh={() => read(true)} connect={providersReachable ? () => page('accounts') : undefined} settings={() => page('limits')} {close} testPrefix="limits-glance">
-      {#snippet title()}<QuotaMachineScope {store} />{/snippet}
-      {#snippet actions()}<QuotaPin />{/snippet}
-    </QuotaPopup>
-  </div>
-{/if}
-
-<style>
-  .glance { display: flex; flex-direction: column; width: 360px; padding: 0; color: var(--color-foreground); background: var(--overlay-surface); border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); box-shadow: var(--shadow-overlay); overflow: hidden; animation: pop var(--dur-2) var(--ease-out-quint); }
-  .glance.closing { animation-name: pop-out; pointer-events: none; }
-  .glance :global(.quota-popup) { flex: 1; }
-</style>
+<QuotaPopup {rows} {current} loading={reader.busy} completed={reader.landed} error={reader.error ?? ''} outdated={reader.outdated} owner={store.owner}
+  order={store.settings?.quotaOrder ?? []} reorder={store.owner ? (quotaOrder) => store.saveSettings({ quotaOrder }) : undefined}
+  refresh={() => read(true)} connect={providersReachable ? () => page('accounts') : undefined} settings={() => page('limits')} close={() => close()} testPrefix="limits-glance">
+  {#snippet title()}<QuotaMachineScope {store} />{/snippet}
+  {#snippet actions()}<QuotaPin />{/snippet}
+</QuotaPopup>
