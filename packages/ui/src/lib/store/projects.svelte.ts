@@ -1,5 +1,5 @@
-import type { Project, ProjectId } from '@boite/contracts';
-import { wasDropped } from '../client';
+import { RpcErrorCode, type Project, type ProjectId } from '@boite/contracts';
+import { RpcFailure, wasDropped } from '../client';
 import { strings } from '../strings';
 import { work } from '../work-prefs.svelte';
 import type { Draft } from '../store.svelte';
@@ -24,6 +24,9 @@ export class Projects {
    */
   bootListAt = 0;
   #landing = false;
+  #byId = $derived(new Map(this.projects.map(project => [project.id, project])));
+  readonly #gitReads = new Map<ProjectId, { generation: number }>();
+  #gitUnsupportedAt: number | null = null;
 
   constructor(private readonly ctx: StoreContext) {}
 
@@ -217,6 +220,35 @@ export class Projects {
     } catch {
       /* the list the app holds stays */
     } finally { read.cancel(); }
+  }
+
+  async #refreshDraftProject(id: ProjectId | null): Promise<void> {
+    const { client, clientGeneration } = this.ctx;
+    if (!client || this.ctx.store.connection !== 'ready' || (this.#landing && Date.now() - this.bootListAt < 5_000)) return;
+    const project = id === null ? undefined : this.#byId.get(id);
+    if (!project || this.#gitUnsupportedAt === clientGeneration) return this.refreshProjects();
+    if (this.#gitReads.get(project.id)?.generation === clientGeneration) return;
+    const pending = { generation: clientGeneration };
+    this.#gitReads.set(project.id, pending);
+    const read = this.ctx.projectReads.begin(project.id, false);
+    try {
+      const { repository, missing } = await client.call('projects.git', { projectId: project.id });
+      if (!this.ctx.currentClient(client, clientGeneration) || !read.active || read.changes.has(project.id) || read.protected.has('all')) return;
+      const current = this.#byId.get(project.id);
+      if (!current) return;
+      // Preserve the fields the composer just refreshed when an earlier list lands.
+      this.ctx.projectReads.patch(project.id, { repository, missing });
+      current.repository = repository;
+      current.missing = missing;
+    } catch (error) {
+      if (this.ctx.currentClient(client, clientGeneration) && error instanceof RpcFailure && error.code === RpcErrorCode.MethodNotFound) {
+        this.#gitUnsupportedAt = clientGeneration;
+        await this.refreshProjects();
+      }
+    } finally {
+      read.cancel();
+      if (this.#gitReads.get(project.id) === pending) this.#gitReads.delete(project.id);
+    }
   }
 
   /**
@@ -546,7 +578,7 @@ export class Projects {
     this.ctx.drafts.persist();
     if (target !== null) this.unfold(target);
     if (target !== null) this.rememberProject(target);
-    if (options.refresh !== false) void this.refreshProjects();
+    if (options.refresh !== false) void this.#refreshDraftProject(target);
     s.page = 'chat';
     s.sidebarOpen = false;
   }

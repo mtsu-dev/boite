@@ -78,6 +78,8 @@ export const DEVICE_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>
   'push.kinds',
   // The sidebar and the composer's `@`.
   'projects.list',
+  // A paired phone opens drafts like the desktop: read the selected registered project's Git state.
+  'projects.git',
   // The logo the list announces: a bounded image already stored in the journal, no path and no disk read.
   'projects.icon',
   'projects.files',

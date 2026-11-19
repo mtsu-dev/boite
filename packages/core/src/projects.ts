@@ -168,25 +168,7 @@ export class ProjectStore {
    */
   async listFresh(): Promise<Project[]> {
     const projects = this.#core.journal.listProjects();
-    const checks: Promise<void>[] = [];
-    for (const project of projects) {
-      const check = this.#freshGit(project.path);
-      if (check !== null) checks.push(check);
-    }
-    if (checks.length > 0) {
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const deadline = new Promise<void>((resolve) => {
-        timer = setTimeout(resolve, this.gitWaitMs);
-        timer.unref?.();
-      });
-      await Promise.race([Promise.all(checks), deadline]);
-      clearTimeout(timer);
-      // A check still pending was waited for once: the next lists answer without it.
-      for (const project of projects) {
-        const pending = this.git.get(project.path)?.pending;
-        if (pending !== undefined) pending.overdue = true;
-      }
-    }
+    await this.#waitForGit(projects.map(project => project.path));
     // Every folder was just checked or is still being checked: no second probe.
     const counts = this.#core.journal.archivedThreadCounts();
     const icons = this.#core.journal.projectIcons();
@@ -202,6 +184,38 @@ export class ProjectStore {
       }
     }
     return answer;
+  }
+
+  /** A draft needs the Git state of its own project; the rest of the list is already on screen. */
+  async gitStatus(projectId: ProjectId): Promise<Pick<Project, 'repository' | 'missing'>> {
+    if (typeof projectId !== 'string' || !projectId) throw refused('projects.git.projectId must be a registered project id', { field: 'projectId' });
+    if (this.#removing.has(projectId)) throw refused('this project is being removed', { projectId });
+    const project = this.#core.journal.getProject(projectId);
+    if (project === null) throw notFound(`unknown project ${projectId}`, { projectId });
+    await this.#waitForGit([project.path]);
+    const flag = this.git.get(project.path);
+    return { ...(flag?.value === undefined ? {} : { repository: flag.value }), ...(flag?.missing ? { missing: true } : {}) };
+  }
+
+  async #waitForGit(paths: readonly string[]): Promise<void> {
+    const checks: Promise<void>[] = [];
+    for (const path of paths) {
+      const check = this.#freshGit(path);
+      if (check !== null) checks.push(check);
+    }
+    if (!checks.length) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<void>(resolve => {
+      timer = setTimeout(resolve, this.gitWaitMs);
+      timer.unref?.();
+    });
+    await Promise.race([Promise.all(checks), deadline]);
+    clearTimeout(timer);
+    // A check still pending was waited for once: later requests read its last answer.
+    for (const path of paths) {
+      const pending = this.git.get(path)?.pending;
+      if (pending) pending.overdue = true;
+    }
   }
 
   /**
@@ -608,6 +622,7 @@ export function registerProjectMethods(core: Core): void {
     }
   });
   core.router.register('projects.list', () => core.projects.listFresh());
+  core.router.register('projects.git', (params) => core.projects.gitStatus(params?.projectId));
   core.router.register('projects.add', (params, ctx) => {
     const { path, name } = folderToAdd(params);
     // A device or a plugin names any folder of this machine; the reads it is then allowed start from there.
