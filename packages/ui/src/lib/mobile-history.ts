@@ -103,10 +103,11 @@ export function mobileOverlay(close: () => void): () => void {
     depth = depthOf(history.state) + 1;
     history.pushState({ ...history.state, boiteOverlay: id, boiteDepth: depth }, '');
     live.add(id);
-    stack.push({ id, close });
     pushed = true;
     window.addEventListener('popstate', back);
   };
+  // On the stack at once, even while its entry waits for the pops in flight: a Back meanwhile closes it.
+  stack.push({ id, close });
   if (pops > 0) queued.push(push);
   else push();
   return () => {

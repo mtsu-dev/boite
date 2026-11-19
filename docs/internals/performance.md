@@ -1541,9 +1541,13 @@ What makes a Back quick:
 - The thread or activity list stays built under a conversation and under
   Settings (`.mobile-list.covered`: hidden, inert, `content-visibility:
   hidden`). Back shows it instead of building every row again. A phone that
-  lands in a conversation builds it once the page is idle.
-- On a phone, Settings is a layer over the chat (`.settings-layer`), which
-  stays built under it. Leaving Settings used to build the whole chat again.
+  lands in a conversation builds it once the page is idle. Kept, it answers
+  to `mobile-list-kept`, so what looks for the list on screen (toasts, the
+  return from Activity) never finds the hidden one.
+- On a phone, Settings opened from the chat is a layer over it
+  (`.settings-layer`), which stays built under it. Leaving Settings used to
+  build the whole chat again. Opened from Mochis or Contacts, Settings still
+  replaces the page, so no chat is built for nothing.
 - The Android app answers Back in the page, without a round trip through the
   WebView's history.
 

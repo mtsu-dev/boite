@@ -251,7 +251,7 @@
         await workspace.select(owner, thread.id);
         if (workspace.active === owner && owner.openThread?.id === thread.id) owner.renameRequested = true;
       },
-      anchor: () => Array.from(document.querySelectorAll<HTMLElement>('.mobile-list [data-thread-id][data-machine-id]'))
+      anchor: () => Array.from(document.querySelectorAll<HTMLElement>('[data-testid=mobile-list] [data-thread-id][data-machine-id]'))
         .find(row => row.dataset.threadId === thread.id && row.dataset.machineId === machineId)
         ?.querySelector<HTMLElement>('[aria-haspopup=menu]')
     });
@@ -371,7 +371,7 @@
 {/snippet}
 
 {#if narrow.current && (listShown || listKept)}
-  <section class="mobile-list scroll-edges" class:recent={inRecent} class:tabbed={tabbed || leaving} class:covered={!listShown} inert={leaving || !listShown} aria-hidden={listShown ? undefined : 'true'} bind:this={scrollRoot} style:--cut={cut ? `${cut}px` : undefined} onscroll={() => { if (scrollRoot) scrollPositions.set(listKey, scrollRoot.scrollTop); }} data-testid="mobile-list" aria-label={listScreen === 'activity' ? strings.mobile.activity : strings.sidebar.threads}>
+  <section class="mobile-list scroll-edges" class:recent={inRecent} class:tabbed={tabbed || leaving} class:covered={!listShown} inert={leaving || !listShown} aria-hidden={listShown ? undefined : 'true'} bind:this={scrollRoot} style:--cut={cut ? `${cut}px` : undefined} onscroll={() => { if (scrollRoot) scrollPositions.set(listKey, scrollRoot.scrollTop); }} data-testid={listShown ? 'mobile-list' : 'mobile-list-kept'} aria-label={listScreen === 'activity' ? strings.mobile.activity : strings.sidebar.threads}>
     {#if recover && narrow.current}
       <MobileConnect {store} onpaired={() => show('threads')} />
     {:else}

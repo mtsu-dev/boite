@@ -10,17 +10,17 @@
  * stays loaded.
  */
 import { answerBack } from './mobile-history';
-import { go, trail } from './view-history.svelte';
+import { go } from './view-history.svelte';
 
 type Bridge = { leave?(): void };
 
+const leave = (): void => (window as { BoiteAndroid?: Bridge }).BoiteAndroid?.leave?.();
+
 export function answerAndroidBack(): void {
   if (answerBack()) return;
-  if (!matchMedia('(max-width: 720px)').matches && trail.behind) {
-    void go(-1);
-    return;
-  }
-  (window as { BoiteAndroid?: Bridge }).BoiteAndroid?.leave?.();
+  // The views behind may all be gone: only the walk itself knows whether one is left.
+  if (!matchMedia('(max-width: 720px)').matches) void go(-1).then((moved) => { if (!moved) leave(); });
+  else leave();
 }
 
 export function startAndroidBack(): void {

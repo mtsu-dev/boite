@@ -75,6 +75,7 @@ press runs in the page at once:
    entry is popped behind it, so a browser's Back and the app's agree.
 2. Wider than a phone, where nothing is an overlay, Back walks the views the
    window showed (`lib/view-history.svelte.ts`), as a mouse's back button does.
+   Views closed since are skipped.
 3. With nothing left, `BoiteAndroid.leave()` calls `moveTaskToBack(true)`: the
    app goes to the background, as Android's own Back does on its root
    screen, and the page stays loaded for the next launch.

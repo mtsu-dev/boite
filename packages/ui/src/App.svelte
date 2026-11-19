@@ -40,6 +40,7 @@
   import { contactsShown, contactsViews } from './lib/contacts-views.svelte';
   import { whipEntry } from './lib/whip-entry.svelte';
   import { rightPanel } from './lib/right-panel.svelte';
+  import type { Page } from './lib/store.svelte';
   import { workspace } from './lib/workspace.svelte';
   import { listAbsent } from './lib/list-absent';
   import { hostLocalAgentBrowser } from './lib/agent-browser-host.svelte';
@@ -120,11 +121,15 @@
   // Wider than a phone (an iPhone on its side, a tablet, a desktop browser)
   // a lost or revoked pairing gets the same screen rather than a stale page.
   const wideRecovery = $derived(!narrow.current && mobileRecovery && store.pairingRequired && store.page !== 'settings');
+  /** The page Settings was opened from, or the one on screen. */
+  let settingsFrom = $state<Page>('chat');
+  $effect.pre(() => { if (store.page !== 'settings') settingsFrom = store.page; });
   /**
-   * A phone's Settings is a layer over the chat, which stays built under it, hidden: leaving Settings shows the list
-   * and the conversation as they were instead of building them again.
+   * A phone's Settings opened from the chat is a layer over it, which stays built under it, hidden: leaving Settings
+   * shows the list and the conversation as they were instead of building them again. From another page, Settings
+   * replaces it as on a desktop, so no chat is built for nothing.
    */
-  const phoneSettings = $derived(!inShell && narrow.current && store.page === 'settings');
+  const phoneSettings = $derived(!inShell && narrow.current && store.page === 'settings' && settingsFrom === 'chat');
   let documentVisible = $state(!document.hidden);
   // What the first screen does not draw stays out of the first chunk: the right
   // panel and its six surfaces, the palette and the two dialogs were a third of

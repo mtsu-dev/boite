@@ -6,7 +6,6 @@
   "permissions": [
     "core:event:default",
     "core:app:allow-register-listener",
-    "core:app:allow-remove-listener",
     { "identifier": "opener:allow-open-url", "allow": [{ "url": "http://*" }, { "url": "https://*" }] }
   ]
 }

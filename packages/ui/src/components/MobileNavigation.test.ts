@@ -284,7 +284,8 @@ test('a parent on another machine shows its working sub-agents, counted, and Rec
     document.querySelector<HTMLButtonElement>(`[data-testid="mobile-thread-${parent.id}"]`)!.click(); await settle();
     expect(document.querySelector('.mobile-list:not(.covered)')).toBeNull();
     // The list stays drawn under the conversation, hidden and out of reach, so Back reveals it instead of building it again.
-    const kept = document.querySelector<HTMLElement>('.mobile-list.covered');
+    // Under another name, so what looks for the list on screen (toasts, Activity's return, tests) never finds it.
+    const kept = document.querySelector<HTMLElement>('[data-testid=mobile-list-kept]');
     expect([kept?.inert, kept?.getAttribute('aria-hidden'), kept?.querySelector(`[data-thread-id="${parent.id}"]`) !== null]).toEqual([true, 'true', true]);
     document.querySelector<HTMLButtonElement>('[data-testid=mobile-back]')!.click(); await settle();
     expect(count()).toBe('Working');

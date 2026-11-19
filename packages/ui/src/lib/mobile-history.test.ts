@@ -126,12 +126,16 @@ describe('mobileOverlay', () => {
     expect(answerBack()).toBe(true);
     // No wait for the WebView's history: the sheet is gone before Back returns.
     expect(closed).toEqual(['sheet']);
+    // A picker opened while that pop is in flight waits to push its entry, yet the next Back closes it, not the app.
+    const picker: () => void = mobileOverlay(() => { closed.push('picker'); picker(); });
+    expect(answerBack()).toBe(true);
+    expect(closed).toEqual(['sheet', 'picker']);
     await popped;
     expect(history.state?.boiteDepth).toBe(start + 1);
     const second = landed();
     expect(answerBack()).toBe(true);
     await second;
-    expect(closed).toEqual(['sheet', 'conversation']);
+    expect(closed).toEqual(['sheet', 'picker', 'conversation']);
     expect(history.state?.boiteDepth ?? 0).toBe(start);
     // Nothing open: Back leaves the app.
     expect(answerBack()).toBe(false);
