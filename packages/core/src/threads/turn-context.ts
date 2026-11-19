@@ -183,14 +183,15 @@ export class TurnContexts {
     };
   }
 
-  async makeContext(
+  makeContext(
     thread: ThreadSummary,
     provider: ProviderDescriptor,
     account: Account,
     turn: Turn,
     carried: CarriedInput = {},
     resumePrompt?: string,
-  ): Promise<TurnContext> {
+    signal?: AbortSignal,
+  ): TurnContext | Promise<TurnContext> {
     const hostContextMode = thread.contextMode;
     thread = this.#core.sharedAccess.contextThread(thread);
     const threadId = thread.id;
@@ -438,172 +439,177 @@ export class TurnContexts {
       recordHandover(this.#core, turn, 'resumed', continued.carried ?? { full: 0, cut: 0, omitted: 0, chars: 0 });
     }
     this.#core.sharedAccess.uploads(threadId, continued.attachments);
-    if (continued.historicalImages?.length) continued = await prepareHistoryImages(this.#core.dataDir, continued);
-    const prepared = prepareAttachments(this.#core.dataDir, continued, provider);
-    const operation = turn.execution?.operation;
-    // A compaction or a cache keepalive goes to the agent as its command alone: nothing taken rides on it.
-    const bare = operation === 'compact' || operation === 'keepalive';
-    // Both are taken once per turn: a second context for the same turn (the
-    // core's retry on a fresh session) and a driver's `continuation` get what
-    // the first one took.
-    const preparedPrompt = prepared.prompt;
-    carried.deferred ??= operation || nativeCommandPrompt(preparedPrompt) ? '' : this.#threads.deferred.takeDeferred(threadId);
-    carried.memory ??= operation === 'keepalive' ? '' : this.#threads.deferred.memory.take(threadId);
-    carried.letters ??= bare ? '' : this.#core.delegation.initialInput(threadId, turn.id);
-    const deferred = carried.deferred;
-    // A context mode without guides gets its brief and the letters meant for it, nothing from the brain, Boite or the team.
-    const mode = thread.contextMode ?? null;
-    const noGuides = mode !== null && !mode.guides;
-    const origin = input.sentFrom;
-    const systemGuide = this.#systemGuide(thread, provider);
-    // Skills the harness already names to its model stay out of the brain's catalog.
-    const listedSkills = nativeSkillFiles(provider.protocol, env, { cwd: thread.cwd, skillTool: !mode?.tools || mode.tools.includes('Skill') });
-    const compose = (body: string, sessionId: string | null): string => {
-      const inject = !((operation && sessionId !== null) || nativeCommandPrompt(body));
-      // Echo treats "question" as a test directive, including in injected help.
-      const guideEnabled = !noGuides && this.#core.brain.config().boiteGuide !== false;
-      // Said when a session starts and when the user changes app or computer, not on every turn.
-      // Boite's own text, so the guide switch turns it off with the rest.
-      const said = origin && inject && guideEnabled && (sessionId === null || !sameOrigin(origin, this.#sentFromBefore(threadId, origin.messageId)))
-        ? sentFromNote(origin.from) : '';
-      // The coordination guide and an entrusted thread's instructions: whole on a fresh session or once they changed, else nothing (`coordination-context.ts`).
-      const coordinationGuide = inject && !bare && guideEnabled ? coordinationGuideFor(this.#core, thread, sessionId, turn.id, this.#core.coordination.instructions(threadId) + this.#core.workforce.entrusted.instructions(threadId)) : '';
-      const request = operation ? '' : preparedPrompt;
-      const delegationText = inject && !bare && !noGuides ? this.#core.delegation.instructions(threadId, request, guideEnabled) : '';
-      const delegationGuide = coordinationGuideFor(this.#core, thread, sessionId, turn.id, delegationText, 'delegation');
-      const reminder = delegationText && !delegationGuide && !thread.parentThreadId && !this.#core.delegation.remote.parentOf(threadId) ? delegationReminder(request) : '';
-      // A driver that takes the guide in its system prompt keeps it there, compaction included.
-      const guide = inject && sessionId === null && guideEnabled && systemGuide === undefined ? this.#boiteGuide(thread, provider) : '';
-      // Custom rules still apply when the guide is off.
-      const rules = inject && sessionId === null && mode?.rules ? `${contextRulesBlock(mode.rules)}\n\n` : '';
-      // Every turn, not once a session: a style said once fades after a few answers.
-      // Boite's own text, so the guide switch turns it off with the rest.
-      const style = inject && guideEnabled && !bare && this.#core.settings.get().shortAnswers !== false ? `${SHORT_ANSWERS}\n\n` : '';
-      // A persistent agent's identity: whole on a fresh session or once it changed, else nothing (`agents/context.ts`).
-      const agent = bare || nativeCommandPrompt(body) ? '' : this.#core.workforce.contextFor(thread, sessionId, turn.id);
-      // The brain's instructions: whole on a fresh session or once they changed, else nothing (`brain-context.ts`).
-      const brain = inject && !noGuides ? brainContextFor(this.#core, thread, sessionId, turn.id, this.#core.brain.instructions(provider.id, listedSkills)) : '';
-      // The shared guide is the reusable prefix. The following rules name the
-      // user's instructions, independently of their position in the prompt.
-      const prefix = guide + carried.memory + rules + brain + agent + style;
-      // A generated child brief starts with the same role. Resume history can
-      // include old briefs, so only skip the role when the current input has it.
-      const role = delegationGuide.trim();
-      const roleInBody = role && input.prompt.startsWith(role) && body.includes(role);
-      return prefix + (prefix ? 'User request:\n' : '') + said + deferred + body + coordinationGuide + (roleInBody ? '' : delegationGuide) + reminder + carried.letters + this.#threads.cards.askInstructions({ ...thread, sessionId }, provider, turn, body);
-    };
-    let sessionBefore: AgentTotals | undefined;
-    const readSessionBefore = () => this.#sessionBefore(thread, turn.id);
-    return {
-      thread,
-      protectedExecution,
-      modeRequired: thread.permissionMode === 'plan' && this.#core.council?.owns(thread.id) === true,
-      account,
-      provider,
-      turn,
-      prompt: compose(preparedPrompt, thread.sessionId),
-      systemGuide,
-      continuation: freshStart(this.#core.dataDir, carry, compose, provider),
-      // At each step boundary, the core may move the thread to a session compacted in the background.
-      ...(bare || operation === 'background' ? {} : {
-        step: async (boundary: StepBoundary): Promise<StepDecision | null> => {
-          const decision = await this.#threads.backgroundCompact.step(threadId, turn, boundary, fileReference);
-          const current = this.#core.journal.getThread(threadId);
-          // What the thread runs on now: a later check of this context compares with the compacted session.
-          if (decision !== null && current !== null) {
-            thread = { ...thread, sessionId: current.sessionId, sessionResumeAt: null, sessionGeneration: current.sessionGeneration ?? 0 };
-            backgroundOwner.sessionGeneration = current.sessionGeneration ?? 0;
-          }
-          return decision;
+    const build = (history: HistoryInput): TurnContext => {
+      signal?.throwIfAborted();
+      const prepared = prepareAttachments(this.#core.dataDir, history, provider);
+      const operation = turn.execution?.operation;
+      // A compaction or a cache keepalive goes to the agent as its command alone: nothing taken rides on it.
+      const bare = operation === 'compact' || operation === 'keepalive';
+      // Both are taken once per turn: a second context for the same turn (the
+      // core's retry on a fresh session) and a driver's `continuation` get what
+      // the first one took.
+      const preparedPrompt = prepared.prompt;
+      carried.deferred ??= operation || nativeCommandPrompt(preparedPrompt) ? '' : this.#threads.deferred.takeDeferred(threadId);
+      carried.memory ??= operation === 'keepalive' ? '' : this.#threads.deferred.memory.take(threadId);
+      carried.letters ??= bare ? '' : this.#core.delegation.initialInput(threadId, turn.id);
+      const deferred = carried.deferred;
+      // A context mode without guides gets its brief and the letters meant for it, nothing from the brain, Boite or the team.
+      const mode = thread.contextMode ?? null;
+      const noGuides = mode !== null && !mode.guides;
+      const origin = input.sentFrom;
+      const systemGuide = this.#systemGuide(thread, provider);
+      // Skills the harness already names to its model stay out of the brain's catalog.
+      const listedSkills = nativeSkillFiles(provider.protocol, env, { cwd: thread.cwd, skillTool: !mode?.tools || mode.tools.includes('Skill') });
+      const compose = (body: string, sessionId: string | null): string => {
+        const inject = !((operation && sessionId !== null) || nativeCommandPrompt(body));
+        // Echo treats "question" as a test directive, including in injected help.
+        const guideEnabled = !noGuides && this.#core.brain.config().boiteGuide !== false;
+        // Said when a session starts and when the user changes app or computer, not on every turn.
+        // Boite's own text, so the guide switch turns it off with the rest.
+        const said = origin && inject && guideEnabled && (sessionId === null || !sameOrigin(origin, this.#sentFromBefore(threadId, origin.messageId)))
+          ? sentFromNote(origin.from) : '';
+        // The coordination guide and an entrusted thread's instructions: whole on a fresh session or once they changed, else nothing (`coordination-context.ts`).
+        const coordinationGuide = inject && !bare && guideEnabled ? coordinationGuideFor(this.#core, thread, sessionId, turn.id, this.#core.coordination.instructions(threadId) + this.#core.workforce.entrusted.instructions(threadId)) : '';
+        const request = operation ? '' : preparedPrompt;
+        const delegationText = inject && !bare && !noGuides ? this.#core.delegation.instructions(threadId, request, guideEnabled) : '';
+        const delegationGuide = coordinationGuideFor(this.#core, thread, sessionId, turn.id, delegationText, 'delegation');
+        const reminder = delegationText && !delegationGuide && !thread.parentThreadId && !this.#core.delegation.remote.parentOf(threadId) ? delegationReminder(request) : '';
+        // A driver that takes the guide in its system prompt keeps it there, compaction included.
+        const guide = inject && sessionId === null && guideEnabled && systemGuide === undefined ? this.#boiteGuide(thread, provider) : '';
+        // Custom rules still apply when the guide is off.
+        const rules = inject && sessionId === null && mode?.rules ? `${contextRulesBlock(mode.rules)}\n\n` : '';
+        // Every turn, not once a session: a style said once fades after a few answers.
+        // Boite's own text, so the guide switch turns it off with the rest.
+        const style = inject && guideEnabled && !bare && this.#core.settings.get().shortAnswers !== false ? `${SHORT_ANSWERS}\n\n` : '';
+        // A persistent agent's identity: whole on a fresh session or once it changed, else nothing (`agents/context.ts`).
+        const agent = bare || nativeCommandPrompt(body) ? '' : this.#core.workforce.contextFor(thread, sessionId, turn.id);
+        // The brain's instructions: whole on a fresh session or once they changed, else nothing (`brain-context.ts`).
+        const brain = inject && !noGuides ? brainContextFor(this.#core, thread, sessionId, turn.id, this.#core.brain.instructions(provider.id, listedSkills)) : '';
+        // The shared guide is the reusable prefix. The following rules name the
+        // user's instructions, independently of their position in the prompt.
+        const prefix = guide + carried.memory + rules + brain + agent + style;
+        // A generated child brief starts with the same role. Resume history can
+        // include old briefs, so only skip the role when the current input has it.
+        const role = delegationGuide.trim();
+        const roleInBody = role && input.prompt.startsWith(role) && body.includes(role);
+        return prefix + (prefix ? 'User request:\n' : '') + said + deferred + body + coordinationGuide + (roleInBody ? '' : delegationGuide) + reminder + carried.letters + this.#threads.cards.askInstructions({ ...thread, sessionId }, provider, turn, body);
+      };
+      let sessionBefore: AgentTotals | undefined;
+      const readSessionBefore = () => this.#sessionBefore(thread, turn.id);
+      return {
+        thread,
+        protectedExecution,
+        modeRequired: thread.permissionMode === 'plan' && this.#core.council?.owns(thread.id) === true,
+        account,
+        provider,
+        turn,
+        prompt: compose(preparedPrompt, thread.sessionId),
+        systemGuide,
+        continuation: freshStart(this.#core.dataDir, carry, compose, provider),
+        // At each step boundary, the core may move the thread to a session compacted in the background.
+        ...(bare || operation === 'background' ? {} : {
+          step: async (boundary: StepBoundary): Promise<StepDecision | null> => {
+            const decision = await this.#threads.backgroundCompact.step(threadId, turn, boundary, fileReference);
+            const current = this.#core.journal.getThread(threadId);
+            // What the thread runs on now: a later check of this context compares with the compacted session.
+            if (decision !== null && current !== null) {
+              thread = { ...thread, sessionId: current.sessionId, sessionResumeAt: null, sessionGeneration: current.sessionGeneration ?? 0 };
+              backgroundOwner.sessionGeneration = current.sessionGeneration ?? 0;
+            }
+            return decision;
+          },
+        }),
+        // A keepalive takes nothing while it runs: a result or a note waits for the turn after it.
+        coordination: () => bare ? null : this.#core.delegation.take(threadId, turn.id) ?? this.#core.coordination.take(threadId, turn.id)
+          ?? this.#threads.deferred.takeForRunningTurn(threadId),
+        attachments: prepared.attachments,
+        sessionId: thread.sessionId,
+        resumeAt: thread.sessionId === null ? null : thread.sessionResumeAt ?? null,
+        get sessionBefore() { return sessionBefore ??= readSessionBefore(); },
+        set sessionBefore(totals) { sessionBefore = totals; },
+        accountEnv: env,
+        warmProcessMinutes: this.#core.settings.get().warmProcessMinutes,
+        toolSummaries: this.#core.settings.get().toolSummaries === true,
+        shortAnswers: this.#core.settings.get().shortAnswers !== false,
+        ...(bare || operation === 'background' ? { promptSuggestions: false, suggestion: undefined } : this.#suggestions(thread)),
+        autoCompactTokens: () => effectiveCompaction(this.#core.settings.get(), this.#core.journal.getThread(threadId) ?? thread).autoCompact?.tokens ?? null,
+        backgroundCompaction: () => backgroundSetting(effectiveCompaction(this.#core.settings.get(), this.#core.journal.getThread(threadId) ?? thread)),
+        compactionSummary: () => effectiveCompaction(this.#core.settings.get(), this.#core.journal.getThread(threadId) ?? thread).compactionSummary ?? null,
+        emit,
+        reportProgress: progress,
+        inputReady: () => {
+          this.#core.composer.inputReady(threadId);
+          if (!bare) void this.#threads.deferred.flushRunning(threadId);
         },
-      }),
-      // A keepalive takes nothing while it runs: a result or a note waits for the turn after it.
-      coordination: () => bare ? null : this.#core.delegation.take(threadId, turn.id) ?? this.#core.coordination.take(threadId, turn.id)
-        ?? this.#threads.deferred.takeForRunningTurn(threadId),
-      attachments: prepared.attachments,
-      sessionId: thread.sessionId,
-      resumeAt: thread.sessionId === null ? null : thread.sessionResumeAt ?? null,
-      get sessionBefore() { return sessionBefore ??= readSessionBefore(); },
-      set sessionBefore(totals) { sessionBefore = totals; },
-      accountEnv: env,
-      warmProcessMinutes: this.#core.settings.get().warmProcessMinutes,
-      toolSummaries: this.#core.settings.get().toolSummaries === true,
-      shortAnswers: this.#core.settings.get().shortAnswers !== false,
-      ...(bare || operation === 'background' ? { promptSuggestions: false, suggestion: undefined } : this.#suggestions(thread)),
-      autoCompactTokens: () => effectiveCompaction(this.#core.settings.get(), this.#core.journal.getThread(threadId) ?? thread).autoCompact?.tokens ?? null,
-      backgroundCompaction: () => backgroundSetting(effectiveCompaction(this.#core.settings.get(), this.#core.journal.getThread(threadId) ?? thread)),
-      compactionSummary: () => effectiveCompaction(this.#core.settings.get(), this.#core.journal.getThread(threadId) ?? thread).compactionSummary ?? null,
-      emit,
-      reportProgress: progress,
-      inputReady: () => {
-        this.#core.composer.inputReady(threadId);
-        if (!bare) void this.#threads.deferred.flushRunning(threadId);
-      },
-      reportProviderEvent: () => this.#threads.progress.contact(threadId, turn.id),
-      authenticationFailed: () => this.#core.accounts.authenticationFailed(account.id),
-      log: (level, message, context) => {
-        if (context?.kind === 'provider-output') noteStderr(threadId, message);
-        this.#core.log(level, message, { ...context, source: provider.id, threadId, turnId: turn.id });
-      },
-      diagnostic: (level, message, context) => { try { this.#core.logs.record(level, message, { ...context, source: provider.id, threadId, turnId: turn.id }); } catch { /* A diagnostic storage failure must not break a turn. */ } },
-      commands: (list: AgentCommand[]) => {
-        if ((this.#threads.require(threadId).sessionGeneration ?? 0) === (thread.sessionGeneration ?? 0)) this.#threads.agentState.noteCommands(threadId, list);
-      },
-      context: (use) => {
-        if ((this.#threads.require(threadId).selectionVersion ?? 0) === (thread.selectionVersion ?? 0)) this.#threads.agentState.noteContext(threadId, use);
-      },
-      quota: (reading, observedAt) => this.#core.quotas.observe(account.id, reading, observedAt),
-      tasks: (list) => this.#core.activity.tasks(threadId, list),
-      hook: (report) => {
-        this.#core.hooks.record({ providerId: provider.id, accountId: account.id, threadId }, report);
-      },
-      background: list => this.#threads.agentState.noteBackground(threadId, list, backgroundOwner),
-      backgroundFinished: (id, state) => this.#threads.agentState.finishBackground(threadId, id, backgroundOwner, state),
-      wake: (text, display) => this.#threads.deferred.wake(threadId, text, display),
-      notice: part => this.#notice(threadId, part),
-      loopWake: scheduledFor => this.#core.wakes.cliFired(threadId, scheduledFor),
-      requestPermission: (toolName: string, input: unknown, description: string | null): PermissionTicket => {
-        // Shared contexts hide native tools. Approval of the attested protected
-        // facade still follows the host's original context and permission mode.
-        let permissionThread = thread;
-        if (protectedExecution?.toolsAllowed && (toolName === 'boite_exec' || toolName === 'boite_commit')) {
-          protectedExecution.check();
-          permissionThread = {...thread, contextMode: hostContextMode};
-        }
-        return this.#threads.cards.requestPermission(permissionThread, turn, toolName, input, description);
-      },
-      askQuestion: (ask: QuestionAsk): QuestionTicket => this.#threads.cards.askQuestion(thread, turn, ask),
-      withdrawQuestion: (questionId) => {
-        this.#threads.cards.withdrawQuestion(threadId, questionId);
-      },
-      // Every driver reaches the launcher through these two, so this is the one
-      // place a lease on the provider's managed files can be held for the life
-      // of an agent process, warm sessions included. `providers.uninstall`
-      // refuses while the count is above zero. It is also where the thread's
-      // own door goes into the environment: everything a thread launches finds
-      // the core, its token and the `boite` CLI, grandchildren included.
-      spawn: (cmd: string, args: string[], opts?: SpawnOptions) => {
-        this.#core.sharedAccess.denyTool(threadId);
-        this.#core.sharedCompute?.assertSpawn(threadId);
-        const spawned = this.#core.procs.spawn(threadId, cmd, args, {
-          ...opts,
-          env: agentEnvOf(this.#core, threadId, { ...(opts?.env ?? process.env), ...env }),
-        });
-        const installs = this.#core.providers.installs;
-        installs.acquire(provider.id);
-        void spawned.exited.finally(() => {
-          installs.release(provider.id);
-        });
-        return spawned;
-      },
-      spawnChild: this.leasedSpawnChild(threadId, provider, { resume: thread.sessionId !== null, turnId: turn.id }),
-      stopChild: child => this.#core.procs.stopChild(child),
-      finishStartup: () => this.#core.procs.finishStartup(this.#core.procs.protection.controlScope(threadId) ?? threadId),
-      lazyMcp: this.#lazyMcpFor(thread),
-      killTree: () => {
-        this.#core.procs.killTree(threadId);
-      },
+        reportProviderEvent: () => this.#threads.progress.contact(threadId, turn.id),
+        authenticationFailed: () => this.#core.accounts.authenticationFailed(account.id),
+        log: (level, message, context) => {
+          if (context?.kind === 'provider-output') noteStderr(threadId, message);
+          this.#core.log(level, message, { ...context, source: provider.id, threadId, turnId: turn.id });
+        },
+        diagnostic: (level, message, context) => { try { this.#core.logs.record(level, message, { ...context, source: provider.id, threadId, turnId: turn.id }); } catch { /* A diagnostic storage failure must not break a turn. */ } },
+        commands: (list: AgentCommand[]) => {
+          if ((this.#threads.require(threadId).sessionGeneration ?? 0) === (thread.sessionGeneration ?? 0)) this.#threads.agentState.noteCommands(threadId, list);
+        },
+        context: (use) => {
+          if ((this.#threads.require(threadId).selectionVersion ?? 0) === (thread.selectionVersion ?? 0)) this.#threads.agentState.noteContext(threadId, use);
+        },
+        quota: (reading, observedAt) => this.#core.quotas.observe(account.id, reading, observedAt),
+        tasks: (list) => this.#core.activity.tasks(threadId, list),
+        hook: (report) => {
+          this.#core.hooks.record({ providerId: provider.id, accountId: account.id, threadId }, report);
+        },
+        background: list => this.#threads.agentState.noteBackground(threadId, list, backgroundOwner),
+        backgroundFinished: (id, state) => this.#threads.agentState.finishBackground(threadId, id, backgroundOwner, state),
+        wake: (text, display) => this.#threads.deferred.wake(threadId, text, display),
+        notice: part => this.#notice(threadId, part),
+        loopWake: scheduledFor => this.#core.wakes.cliFired(threadId, scheduledFor),
+        requestPermission: (toolName: string, input: unknown, description: string | null): PermissionTicket => {
+          // Shared contexts hide native tools. Approval of the attested protected
+          // facade still follows the host's original context and permission mode.
+          let permissionThread = thread;
+          if (protectedExecution?.toolsAllowed && (toolName === 'boite_exec' || toolName === 'boite_commit')) {
+            protectedExecution.check();
+            permissionThread = {...thread, contextMode: hostContextMode};
+          }
+          return this.#threads.cards.requestPermission(permissionThread, turn, toolName, input, description);
+        },
+        askQuestion: (ask: QuestionAsk): QuestionTicket => this.#threads.cards.askQuestion(thread, turn, ask),
+        withdrawQuestion: (questionId) => {
+          this.#threads.cards.withdrawQuestion(threadId, questionId);
+        },
+        // Every driver reaches the launcher through these two, so this is the one
+        // place a lease on the provider's managed files can be held for the life
+        // of an agent process, warm sessions included. `providers.uninstall`
+        // refuses while the count is above zero. It is also where the thread's
+        // own door goes into the environment: everything a thread launches finds
+        // the core, its token and the `boite` CLI, grandchildren included.
+        spawn: (cmd: string, args: string[], opts?: SpawnOptions) => {
+          this.#core.sharedAccess.denyTool(threadId);
+          this.#core.sharedCompute?.assertSpawn(threadId);
+          const spawned = this.#core.procs.spawn(threadId, cmd, args, {
+            ...opts,
+            env: agentEnvOf(this.#core, threadId, { ...(opts?.env ?? process.env), ...env }),
+          });
+          const installs = this.#core.providers.installs;
+          installs.acquire(provider.id);
+          void spawned.exited.finally(() => {
+            installs.release(provider.id);
+          });
+          return spawned;
+        },
+        spawnChild: this.leasedSpawnChild(threadId, provider, { resume: thread.sessionId !== null, turnId: turn.id }),
+        stopChild: child => this.#core.procs.stopChild(child),
+        finishStartup: () => this.#core.procs.finishStartup(this.#core.procs.protection.controlScope(threadId) ?? threadId),
+        lazyMcp: this.#lazyMcpFor(thread),
+        killTree: () => {
+          this.#core.procs.killTree(threadId);
+        },
+      };
     };
+    return continued.historicalImages?.length
+      ? prepareHistoryImages(this.#core.dataDir, continued).then(build)
+      : build(continued);
   }
 
   /** The thread's MCP servers through the core, unless `BOITE_LAZY_MCP=0` turned that off. */

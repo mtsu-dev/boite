@@ -236,10 +236,11 @@ export class TurnAttempts {
       // The resumed session already holds what the first attempt took from the thread.
       const continuing = afterCapacity && wroteBefore;
       afterCapacity = false;
-      const context = await this.threads.contexts.makeContext(
+      const prepared = this.threads.contexts.makeContext(
         state.thread, provider, this.#core.accounts.require(accountId), state.running,
-        note || continuing ? { memory: '', deferred: '', letters: '' } : carried, note?.prompt,
+        note || continuing ? { memory: '', deferred: '', letters: '' } : carried, note?.prompt, signal,
       );
+      const context = prepared instanceof Promise ? await abortable(prepared, signal) : prepared;
       signal.throwIfAborted();
       this.#core.sharedCompute?.assertTurn(threadId);
       this.#core.sharedAccess?.assertTurn(threadId);
