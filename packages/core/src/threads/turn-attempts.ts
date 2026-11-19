@@ -183,7 +183,7 @@ export class TurnAttempts {
     signal.throwIfAborted();
     try {
       const protection = this.#core.sharedAccess.execution.prepare(threadId);
-      if (protection) await protection;
+      if (protection) await abortable(protection, signal);
       signal.throwIfAborted();
       const checkpoint = this.threads.codeCheckpoints.begin(state.thread, turnId, signal);
       if (checkpoint && driver.prepare) {
@@ -198,7 +198,7 @@ export class TurnAttempts {
     } catch (error) {
       if (!signal.aborted) {
         releaseThread(threadId);
-        void this.#core.procs.protection.revoke(threadId).catch(() => {});
+        void this.#core.sharedAccess.execution.revoke(threadId).catch(() => {});
         this.#core.procs.killTree(threadId);
       }
       throw error;
@@ -228,7 +228,7 @@ export class TurnAttempts {
       this.#core.sharedCompute?.assertTurn(threadId);
       this.#core.sharedAccess?.assertTurn(threadId);
       const protection = this.#core.sharedAccess.execution.prepare(threadId);
-      if (protection) await protection;
+      if (protection) await abortable(protection, signal);
       signal.throwIfAborted();
       // Preparation can yield while the user changes modes. Read it only
       // once the native context and handle can be constructed without yielding.
@@ -628,8 +628,8 @@ export class TurnAttempts {
     const state = this.#turns.get(threadId);
     if (!state) return false;
     if (state.stop.signal.aborted) return true;
-    state.stop.abort(new Error('the turn was stopped before its file checkpoint finished'));
-    void this.#core.procs.protection.revoke(threadId).catch(() => {});
+    state.stop.abort(new Error('the turn was stopped'));
+    void this.#core.sharedAccess.execution.revoke(threadId).catch(() => {});
     const waiting = this.#retryWaits.get(threadId);
     if (waiting !== undefined) {
       waiting.leave('stop');
