@@ -424,6 +424,7 @@ export class SharedProjects {
   async search(p: SharedProjectScope & { query: string }, connection?: Connection): Promise<{ matches: AgentMatch[]; unavailable: SharedProjectRef[] }> {
     const ctx = this.scope(p, connection);
     searchWords(p.query);
+    const revisions = ctx.shared.access.map(access => access.revision);
     let remote: AgentMatch[] = [];
     const unavailable: SharedProjectRef[] = [];
     try {
@@ -438,7 +439,10 @@ export class SharedProjects {
         return { ...agent, ...checkMatchExtras(row), sharedThread: ref };
       });
     } catch (error) { if (error instanceof RpcFailure && error.code !== RpcErrorCode.Unavailable) throw error; unavailable.push(ctx.remote); }
-    return { matches: [...await this.#localSearch(this.scope(p, connection), p.query, () => this.scope(p, connection)), ...remote], unavailable };
+    const local = await this.#localSearch(this.scope(p, connection), p.query, () => this.scope(p, connection));
+    // The remote matches were read under the grants of the start: a grant changed during the local scan refuses them.
+    if (this.scope(p, connection).shared.access.some((access, i) => access.revision !== revisions[i])) throw refused('sharedProjectId: grant changed during request');
+    return { matches: [...local, ...remote], unavailable };
   }
   #localRead(ctx: SharedPeerContext, p: SharedProjectPeerMethods['read']['params']): AgentTranscript {
     const target = threadRef(p?.target);
