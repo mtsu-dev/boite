@@ -71,6 +71,19 @@ describe('projects', () => {
     expect(harness.core.journal.listTurns(threadId)).toHaveLength(1);
     expect(harness.core.journal.listMessages(threadId)).toHaveLength(messages);
   });
+  test('a thread archived before its project is removed comes back as it was, and an add during the removal is refused before any write', async () => {
+    const client = await harness.connect();
+    const { threadId } = await echoThread(harness, client);
+    const project = harness.core.projects.require(harness.core.threads.require(threadId).projectId);
+    await client.call('threads.archive', { threadId, archived: true });
+    const before = harness.core.journal.getThread(threadId)!;
+    const removing = harness.core.projects.remove(project.id);
+    expect(() => harness.core.projects.add(project.path)).toThrow('this project is being removed');
+    await removing;
+    expect((await client.call('projects.list', {})).some((listed) => listed.id === project.id)).toBe(false);
+    await client.call('projects.add', { path: project.path });
+    expect(harness.core.journal.getThread(threadId)).toEqual(before);
+  });
   test('removing a project stops remaining processes and keeps their trace', async () => {
     const client = await harness.connect();
     const { threadId } = await echoThread(harness, client);

@@ -67,9 +67,11 @@ export function addFakeProject(ctx: FakeContext, folder: { path: string; name?: 
     const summary = describedProject(ctx, back);
     ctx.emit('project.added', summary);
     for (const thread of removed.threads) {
+      if (removed.open.includes(thread.id)) thread.archived = false;
       ctx.threads.set(thread.id, thread);
       ctx.emit('thread.created', structuredClone(toSummary(thread)));
     }
+    ctx.emit('thread.deletionsUpdated', {});
     return { project: summary, added: true };
   }
   const project: Project = {
@@ -193,17 +195,20 @@ export function projectMethods(ctx: FakeContext) {
       const project = ctx.projects.find((p) => p.id === params.projectId)!;
       ctx.projects = ctx.projects.filter((p) => p.id !== params.projectId);
       const threads = [...ctx.threads.values()].filter((thread) => thread.projectId === params.projectId);
-      // As the core: each thread is archived, and says so, then leaves the lists; nothing is deleted.
-      for (const thread of threads) {
+      // As the core: each open thread is archived, and says so, then leaves the lists; an incognito one is erased, nothing else.
+      const open = threads.filter((thread) => !thread.archived && !thread.incognito).map((thread) => thread.id);
+      const shown = threads.filter((thread) => !thread.archived);
+      for (const thread of shown) {
         thread.archived = true;
         ctx.touch(thread);
       }
-      await Promise.all(threads.map((thread) => putAway(ctx, thread)));
-      ctx.removedProjects.set(pathKey(project.path), { project, threads });
+      await Promise.all(shown.map((thread) => putAway(ctx, thread)));
+      ctx.removedProjects.set(pathKey(project.path), { project, threads: threads.filter((thread) => !thread.incognito), open });
       for (const thread of threads) {
         ctx.threads.delete(thread.id);
-        ctx.emit('thread.removed', { threadId: thread.id, undoable: true });
+        ctx.emit('thread.removed', { threadId: thread.id, undoable: !thread.incognito });
       }
+      ctx.emit('thread.deletionsUpdated', {});
       ctx.emit('project.removed', { projectId: params.projectId });
       return { ok: true };
     },

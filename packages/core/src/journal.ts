@@ -317,7 +317,8 @@ export class Journal {
   listDeletedThreads(): DeletedThreadSummary[] {
     const rows = this.db.query(`SELECT t.*, d.deleted_at, (SELECT MAX(created_at) FROM messages WHERE thread_id = t.id AND role = 'user') AS last_user_message_at
       FROM threads t JOIN thread_deletions d ON t.id = d.thread_id
-      WHERE d.root_id = t.id ORDER BY d.deleted_at DESC, d.rowid DESC`).all() as (ThreadRow & { deleted_at: number })[];
+      WHERE d.root_id = t.id AND NOT EXISTS (SELECT 1 FROM projects p WHERE p.id = t.project_id AND p.removed_at IS NOT NULL)
+      ORDER BY d.deleted_at DESC, d.rowid DESC`).all() as (ThreadRow & { deleted_at: number })[];
     return rows.map(row => ({ ...toThread(row), deletedAt: row.deleted_at }));
   }
 
@@ -326,17 +327,14 @@ export class Journal {
   /**
    * Incognito conversations and the sub-threads they started. Their native
    * sessions wait in `takeIncognitoSessions` for the core, which alone knows
-   * which account directories it may clean. `projectId` limits it to the
-   * conversations of a project being removed.
+   * which account directories it may clean.
    */
-  purgeIncognitoThreads(projectId?: string): void {
+  purgeIncognitoThreads(): void {
     // Almost always none: then the family query is never run.
-    const roots = (projectId === undefined
-      ? this.db.query('SELECT id FROM threads WHERE incognito = 1').all()
-      : this.db.query('SELECT id FROM threads WHERE incognito = 1 AND project_id = ?').all(projectId)) as { id: string }[];
+    const roots = (this.db.query('SELECT id FROM threads WHERE incognito = 1').all() as { id: string }[]).map(row => row.id);
     if (roots.length === 0) return;
-    const children = this.db.query(`SELECT id FROM threads WHERE parent_thread_id IN (${roots.map(() => '?').join(', ')})`).all(...roots.map(row => row.id)) as { id: string }[];
-    const ids = [...roots, ...children].map(row => row.id);
+    const children = this.db.query(`SELECT id FROM threads WHERE parent_thread_id IN (${roots.map(() => '?').join(', ')})`).all(...roots) as { id: string }[];
+    const ids = [...roots, ...children.map(row => row.id)];
     this.#incognitoSessions.push(...threadSessions(this.db, ids));
     this.deleteThreads(ids);
   }

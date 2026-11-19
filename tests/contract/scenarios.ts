@@ -882,10 +882,19 @@ export const SCENARIOS: Record<string, Scenario> = {
       check((await env.call('threads.get', { threadId: created.id })).messages.some(m => m.role === 'user' && m.parts.some(p => p.type === 'text' && p.text === 'a conversation to delete')), 'undo lost the conversation history');
       check(!(await env.call('threads.deleted', {})).some(t => t.id === created.id), 'the restored conversation is still offered for undo');
     }
+    const open = await thread(env, setup);
+    const done = await thread(env, setup);
+    await env.call('threads.archive', { threadId: done.id });
     await env.call('threads.remove', { threadId: kept.id });
     await env.call('projects.remove', { projectId: setup.projectId });
-    check(!(await env.call('threads.deleted', {})).some(t => t.id === kept.id), 'project removal left a recoverable deletion');
+    check(!(await env.call('threads.deleted', {})).some(t => t.id === kept.id), 'a removed project still offers its deletion');
     await refusedWith(env.call('threads.restore', { threadId: kept.id }), RpcErrorCode.NotFound, ['threadId']);
+    // The folder added again brings the project back whole: its deletion, its open thread, its archive.
+    same((await env.call('projects.add', { path: setup.projectPath })).id, setup.projectId, 'the project added again');
+    check(!(await env.call('threads.get', { threadId: open.id })).archived, 'the open thread did not reopen');
+    check((await env.call('threads.get', { threadId: done.id })).archived, 'the archived thread reopened');
+    check((await env.call('threads.deleted', {})).some(t => t.id === kept.id), 'the deletion did not come back with its project');
+    same((await env.call('threads.restore', { threadId: kept.id })).id, kept.id, 'the deletion restored after the project came back');
     await refusedWith(env.call('threads.remove', { threadId: 'thr_missing' }), RpcErrorCode.NotFound, ['threadId']);
   },
   'threads.stats counts the prompts sent and refuses a missing conversation': async env => {
