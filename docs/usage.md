@@ -10,16 +10,22 @@ Open Settings, Usage.
 
 1. Pick the range, 7, 30 or 90 days, and the measure: Tokens, API estimate or
    Turns. Every card follows them.
-2. Filter by provider, and with several machines connected, pick one machine
-   or All machines.
-3. Read Overview for the totals per provider, Per day for a chart by day,
-   Breakdown for each model, and Top threads for the ten threads that spent
-   the most.
+2. The page opens on All machines. Pick one machine, one project or one
+   provider from the menus to narrow it.
+3. Read the overview for the total, each provider's share and the chart by
+   day, Biggest threads for the ten threads that spent the most, Projects for
+   what each project spent, and Breakdown for each model or each day.
+4. Press a thread to open its own page: its total, its models, its subagents
+   and every turn, newest first. Open the conversation takes you to it. Press
+   a project to narrow the page to it.
 
 - Tokens include cache reads and writes. A turn that reported no usage counts
   as a turn only.
-- The page counts only what Boite ran. Removing a project or purging deleted
-  conversations keeps their totals. An incognito conversation keeps nothing.
+- The page counts only what Boite ran. Removing a project keeps its
+  conversations and their totals, tagged Removed in the project menu; adding
+  the folder again brings them back. Purging deleted conversations keeps their
+  totals. An incognito conversation keeps nothing.
+- Each provider keeps its own colour on every chart.
 - A machine that is not connected is named above the page and left out of
   the totals.
 - On a phone, Usage and Limits sit under Settings, Machines.
@@ -29,6 +35,10 @@ Open Settings, Usage.
 The cost is the tokens at each model's public API rates, from models.dev. On a
 subscription it is what the same tokens would cost on the API, not an
 invoice.
+
+Boite reads the current rates from models.dev about once a day, so a new
+model gets its price without an update. Offline, it uses the table it shipped
+with. The line under Breakdown says which one priced the page.
 
 - The "i" beside a model gives the rates it was priced at.
 - A model with no listed rate uses the cost its agent reported. A model with

@@ -1,4 +1,4 @@
-import type { ProjectId, ProviderId, ThreadId, Timestamp } from './ids';
+import type { ProjectId, ProviderId, ThreadId, Timestamp, TurnId } from './ids';
 
 /**
  * Tokens as four disjoint buckets, whatever the provider counts: `inputTokens`
@@ -118,6 +118,28 @@ export interface UsageHistoryThread {
   usage: Usage;
 }
 
+/** What one project spent over a `usage.history` range. */
+export interface UsageHistoryProject {
+  /** Null for turns of threads that belong to no project. */
+  projectId: ProjectId | null;
+  /** The project's name, kept after it is removed; null when no row names it. */
+  name: string | null;
+  /** True when the project was removed from the list: its turns still count. */
+  removed: boolean;
+  turns: number;
+  usage: Usage;
+}
+
+/** Where the public rates of a `usage.history` answer came from. */
+export interface UsagePricing {
+  /** `live`: fetched from `source` at `updatedAt`; `bundled`: the table shipped with this core. */
+  origin: 'live' | 'bundled';
+  source: string;
+  updatedAt: Timestamp;
+  /** Models the table prices. */
+  models: number;
+}
+
 export interface UsageHistory {
   edges: Timestamp[];
   rows: UsageHistoryRow[];
@@ -126,7 +148,38 @@ export interface UsageHistory {
    * and by turns, so a client can rank by any of the three. Unordered.
    */
   threads: UsageHistoryThread[];
+  /**
+   * Every project with a finished turn in the range, with its totals, removed
+   * projects included. Ignores the `projectId` filter so a client can offer
+   * the others. Absent from an older core.
+   */
+  projects?: UsageHistoryProject[];
+  /** Absent from an older core. */
+  pricing?: UsagePricing;
 }
+
+/** One finished turn of a `usage.thread` answer. */
+export interface UsageThreadTurn {
+  turnId: TurnId;
+  finishedAt: Timestamp;
+  providerId: ProviderId;
+  model: string | null;
+  /** Its own usage, priced like a history row; null when the agent reported none. */
+  usage: Usage | null;
+  price: UsagePrice | null;
+}
+
+export interface UsageThreadDetail {
+  thread: UsageHistoryThread;
+  /** Finished turns in the range, oldest first, at most `USAGE_THREAD_TURNS_MAX` (the newest). */
+  turns: UsageThreadTurn[];
+  /** True when older turns in the range were left out. */
+  truncated: boolean;
+  /** The thread's subagents with their own totals over the range, biggest first. */
+  children: UsageHistoryThread[];
+}
+
+export const USAGE_THREAD_TURNS_MAX = 2000;
 
 export interface UsageRpcMethods {
   'usage.get': {
@@ -138,6 +191,13 @@ export interface UsageRpcMethods {
    * ascending timestamps chosen by the client, usually its local midnights, so
    * a day follows the reader's calendar whatever the core's time zone.
    * Optional `providerId` filters execution snapshots before ranking threads.
+   * Optional `projectId` keeps the turns of one project's threads; `null`
+   * keeps the turns of threads in no project.
    */
-  'usage.history': { params: { edges: Timestamp[]; providerId?: ProviderId }; result: UsageHistory };
+  'usage.history': { params: { edges: Timestamp[]; providerId?: ProviderId; projectId?: ProjectId | null }; result: UsageHistory };
+  /**
+   * One thread's finished turns over `[edges[0], edges[last])`, each priced,
+   * for the page of a thread that spent much. Removed projects' threads too.
+   */
+  'usage.thread': { params: { threadId: ThreadId; edges: Timestamp[] }; result: UsageThreadDetail };
 }

@@ -1,14 +1,16 @@
-import type { TokenRates, Usage, UsagePrice } from '@boite/contracts';
-import list from './rates.json';
+import type { TokenRates, Usage, UsagePrice, UsagePricing } from '@boite/contracts';
+import { noteMissing, ratesOrigin, ratesTable } from './live.ts';
+
+export { initPricing, pricingIdle, resetPricing, type PricingInit } from './live.ts';
 
 /**
- * Public API rates per model, from `rates.json`, which `scripts/model-rates.ts`
- * regenerates from models.dev: `[input, output, cacheRead, cacheWrite]` in USD
- * per million tokens at the base tier, null where the list gives no rate. A
- * request over a long-context threshold costs more on some models, and the
- * journal keeps one sum per turn, not each request's size.
+ * Public API rates per model: `[input, output, cacheRead, cacheWrite]` in USD
+ * per million tokens at the base tier, null where the list gives no rate. The
+ * table is the bundled `rates.json`, which `scripts/model-rates.ts` regenerates
+ * from models.dev, overlaid by the catalogue this core last fetched
+ * (`live.ts`). A request over a long-context threshold costs more on some
+ * models, and the journal keeps one sum per turn, not each request's size.
  */
-const MODELS: Record<string, (number | null)[]> = list.models;
 
 /** A reasoning effort or a release date a harness appends to the model id. */
 const EFFORT = /-(?:minimal|low|medium|high|xhigh|max)$/;
@@ -16,16 +18,25 @@ const DATED = /-(?:\d{8}|\d{4}-\d{2}-\d{2})$/;
 /** OpenAI prices a Codex build of a model, and its `max` reasoning mode, as the model itself. */
 const CODEX = /-codex(?:-max)?$/;
 
+/** Where the rates `priceOf` reads now came from: the fetched table once there is one, else the bundled one. */
+export function pricingStatus(): UsagePricing {
+  return ratesOrigin();
+}
+
 function listed(model: string): [string, (number | null)[]] | null {
   // `claude/claude-opus-5-5`, `anthropic.claude-opus-5-5`, `claude-opus-5-5@20260922`, `claude-opus-5-5[1m]`.
   let id = model.trim().toLowerCase().replace(/\[[^\]]*\]$/, '').replace(/@[^/]*$/, '');
   id = id.slice(id.lastIndexOf('/') + 1).replace(/^(?:anthropic|openai|google|xai|meta)\./, '');
+  const models = ratesTable();
+  const asked = id;
   for (const strip of [null, EFFORT, DATED, CODEX]) {
     if (strip !== null) id = id.replace(strip, '');
     // `toString` or `constructor` must not find Object.prototype's.
-    const found = Object.hasOwn(MODELS, id) ? MODELS[id] : undefined;
+    const found = Object.hasOwn(models, id) ? models[id] : undefined;
     if (found !== undefined) return [id, found];
   }
+  // A model released after the table: the catalogue may list it now.
+  noteMissing(asked);
   return null;
 }
 

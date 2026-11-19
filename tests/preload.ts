@@ -6,6 +6,9 @@ import './e2e/lib/hang-report.ts';
 // Tests never send production analytics. Telemetry tests inject their own relay.
 process.env.BOITE_TELEMETRY_URL = '';
 
+// Tests never fetch model prices. Pricing tests inject their own fetch.
+process.env.BOITE_MODEL_PRICES_URL = '';
+
 // Tests never hold the machine awake. Keep-awake tests inject their own hold.
 process.env.BOITE_KEEP_AWAKE = '0';
 

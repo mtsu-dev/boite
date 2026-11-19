@@ -50,7 +50,8 @@ export const strings = {
       'network.groups': 'Groups',
       'network.contacts': 'Contacts',
       'network.push': 'Push notifications',
-      pullRequests: 'Pull requests'
+      pullRequests: 'Pull requests',
+      modelPrices: 'Model price updates'
     },
     values: {
       on: 'Allowed',

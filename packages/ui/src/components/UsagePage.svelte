@@ -1,12 +1,34 @@
+<script module lang="ts">
+  import type { UsageHistory, UsageHistoryProject, UsageHistoryThread } from '@boite/contracts';
+  import type { Store } from '../lib/store.svelte';
+
+  type Answer = Omit<UsageHistory, 'threads' | 'projects'> & { threads: UsageHistoryThread[]; projects?: UsageHistoryProject[] };
+  /**
+   * The last answer per machine and filters, kept while the app runs: coming
+   * back to the page, or to a range already read, draws at once and dims
+   * until the fresh read lands. Keyed by the Store, never by a machine's
+   * label or address, which two machines can share.
+   */
+  const answers = new WeakMap<Store, Map<string, Answer>>();
+  const ANSWERS_PER_MACHINE = 24;
+
+  function remember(store: Store, key: string, answer: Answer): void {
+    const kept = answers.get(store) ?? new Map<string, Answer>();
+    kept.delete(key);
+    kept.set(key, answer);
+    if (kept.size > ANSWERS_PER_MACHINE) kept.delete(kept.keys().next().value!);
+    answers.set(store, kept);
+  }
+</script>
+
 <script lang="ts">
   import { errorText } from '../lib/errors';
   import { untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
-  import { ChevronDown, RefreshCw } from '@lucide/svelte';
-  import type { UsageHistory, UsageHistoryThread } from '@boite/contracts';
-  import type { Store } from '../lib/store.svelte';
+  import { ChevronDown, ChevronRight, RefreshCw, X } from '@lucide/svelte';
   import { fill, strings } from '../lib/strings';
   import { formatLocale } from '../lib/i18n.svelte';
+  import { relativeTime } from '../lib/format';
   import { titleSlot } from '../lib/title-slot.svelte';
   import { workspace, type Machine } from '../lib/workspace.svelte';
   import {
@@ -15,9 +37,11 @@
     mergeHistories,
     modelName,
     priceNote,
+    providerColor,
     reportedValue,
     seriesFor,
     summarize,
+    topProjects,
     topThreads,
     totalTokens,
     USAGE_METRICS,
@@ -30,23 +54,36 @@
   import Menu from './Menu.svelte';
   import ProviderLogo from './ProviderLogo.svelte';
   import UsageChart from './UsageChart.svelte';
+  import UsageThreadPage from './UsageThreadPage.svelte';
 
   let { store }: { store: Store } = $props();
 
   type MachineThread = UsageHistoryThread & { machine: Machine };
-  type MachineHistory = Omit<UsageHistory, 'threads'> & { threads: MachineThread[] };
+  type MachineProject = UsageHistoryProject & { machine: Machine };
+  type MachineHistory = Omit<UsageHistory, 'threads' | 'projects'> & { threads: MachineThread[]; projects: MachineProject[] };
   const ALL = '\u0000all';
+  const PROJECTS_SHOWN = 6;
 
   let range = $state<UsageRange>(30);
   let metric = $state<UsageMetric>('tokens');
   let breakdown = $state<'model' | 'day'>('model');
   let provider = $state<string | null>(null);
-  /** Null follows the machine the window is on; `ALL` reads every connected machine. */
-  let scope = $state<string | null>(null);
+  /** `ALL` reads every connected machine, the default; null follows the machine the window is on. */
+  let scope = $state<string | null>(ALL);
+  /** One project of one machine: its machine alone is read, with the project's filter. */
+  let project = $state.raw<{ machine: Machine; projectId: string | null } | null>(null);
+  /** A thread's own page, opened from the ranking. */
+  let detail = $state.raw<{ machine: Machine; threadId: string } | null>(null);
+  let refreshes = $state(0);
+  let projectsOpen = $state(false);
   let historicalProviders = $state<string[]>([]);
-  let history = $state<MachineHistory | null>(null);
-  let loading = $state(false);
-  let failures = $state<string[]>([]);
+  /** Each machine's answer for the filters on screen; merged into one history. */
+  let parts = $state.raw(new Map<Machine, MachineHistory>());
+  let failed = $state.raw(new Map<Machine, string>());
+  let reading = $state.raw(new Set<Machine>());
+  let edges = $state.raw<number[]>([]);
+  /** Every project each machine answered with, so the project menu still lists the others once one is chosen. */
+  let catalog = $state.raw(new Map<Machine, MachineProject[]>());
   /** Only the newest request writes, so a slow 90-day answer never lands over a 7-day one. */
   let latest = 0;
 
@@ -59,60 +96,102 @@
   let all = $derived(scope === ALL && machines.length > 1);
   /** Every machine of the workspace that answers; one still connecting joins once it is ready. */
   let ready = $derived(machines.filter((machine) => machine.store.client !== null && machine.store.connection === 'ready'));
-  let sources = $derived(all ? ready : [chosen]);
-  let offline = $derived(all ? machines.filter((machine) => !ready.includes(machine)) : chosen.store.client ? [] : [chosen]);
+  let scoped = $derived(all ? ready : [chosen]);
+  let sources = $derived(project !== null ? [project.machine] : scoped);
+  let offline = $derived(project !== null ? (project.machine.store.client ? [] : [project.machine]) : all ? machines.filter((machine) => !ready.includes(machine)) : chosen.store.client ? [] : [chosen]);
   /** Nothing to ask: the page says which machine is missing instead of reading forever. */
   let unreadable = $derived(sources.length === 0 || sources.some((source) => !source.store.client));
+  let loading = $derived(reading.size > 0);
+  let history = $derived<MachineHistory | null>(parts.size === 0 ? null : mergeHistories(edges, [...parts.values()]));
+  let failures = $derived([...failed.values()]);
 
-  async function read(source: Machine, edges: number[], providerId: string | null): Promise<MachineHistory> {
+  function filterKey(days: UsageRange, providerId: string | null, projectId: string | null | undefined): string {
+    return `${days}\u0000${providerId ?? ''}\u0000${projectId === undefined ? '*' : projectId ?? ''}`;
+  }
+
+  async function read(source: Machine, at: number[], providerId: string | null, projectId: string | null | undefined): Promise<MachineHistory> {
     const client = source.store.client;
     if (!client) throw new Error(strings.usage.offline);
-    const result = await client.call('usage.history', { edges, ...(providerId === null ? {} : { providerId }) });
+    const result = await client.call('usage.history', { edges: at, ...(providerId === null ? {} : { providerId }), ...(projectId === undefined ? {} : { projectId }) });
     if (providerId !== null && (
       result.rows.some((row) => row.providerId !== providerId) ||
       result.threads.some((thread) => thread.providerId !== providerId)
     )) {
       throw new Error(strings.usage.filterUnsupported);
     }
-    return { ...result, threads: result.threads.map((thread) => ({ ...thread, machine: source })) };
+    return tag(source, result);
+  }
+
+  function tag(source: Machine, result: Answer): MachineHistory {
+    return {
+      ...result,
+      threads: result.threads.map((thread) => ({ ...thread, machine: source })),
+      projects: (result.projects ?? []).map((entry) => ({ ...entry, machine: source }))
+    };
   }
 
   /** No result at all rather than totals from machines this read did not count. */
   function clear() {
     latest += 1;
-    history = null;
-    failures = [];
-    loading = false;
+    parts = new Map();
+    failed = new Map();
+    reading = new Set();
   }
 
-  async function load(days: UsageRange, providerId = provider, from: Machine[] = sources) {
+  /**
+   * Reads every source at once and draws each answer as it lands, a remembered
+   * one standing in meanwhile. `only` reads one machine again (a turn finished
+   * there) and keeps the others' answers.
+   */
+  function load(from: Machine[] = sources, only?: Machine) {
     if (from.length === 0 || from.some((source) => !source.store.client)) {
       clear();
       return;
     }
-    const request = ++latest;
-    loading = true;
-    failures = [];
-    const edges = dayEdges(days);
-    // All machines names each failure, even when only one of them could be asked.
-    const named = all;
-    try {
-      const results = await Promise.allSettled(from.map((source) => read(source, edges, providerId)));
-      if (request !== latest) return;
-      const answered = results.flatMap((result) => result.status === 'fulfilled' ? [result.value] : []);
-      failures = results.flatMap((result, index) => {
-        if (result.status === 'fulfilled') return [];
-        const message = errorText(result.reason);
-        return [named ? `${from[index]!.label}: ${message}` : message];
-      });
-      if (answered.length === 0) {
-        history = null;
-        return;
+    const days = range;
+    const providerId = provider;
+    const scopeProject = project;
+    const at = dayEdges(days);
+    // Past midnight the days moved: every machine is read again on the new edges.
+    if (only !== undefined && at[0] !== edges[0]) only = undefined;
+    const request = only === undefined ? ++latest : latest;
+    const targets = only === undefined ? from : [only];
+    const key = filterKey(days, providerId, scopeProject?.projectId);
+    if (only === undefined) {
+      edges = at;
+      const shown = new Map<Machine, MachineHistory>();
+      for (const source of from) {
+        const kept = answers.get(source.store)?.get(key);
+        if (kept && kept.edges[0] === at[0]) shown.set(source, tag(source, kept));
       }
-      history = mergeHistories(edges, answered);
-      historicalProviders = [...new Set([...historicalProviders, ...history.rows.map((row) => row.providerId)])];
-    } finally {
-      if (request === latest) loading = false;
+      parts = shown;
+      failed = new Map();
+    }
+    reading = new Set([...(only === undefined ? [] : reading), ...targets]);
+    // All machines names each failure, even when only one of them could be asked.
+    const named = all && project === null;
+    for (const source of targets) {
+      read(source, at, providerId, scopeProject?.projectId).then((result) => {
+        if (request !== latest) return;
+        remember(source.store, key, result);
+        parts = new Map(parts).set(source, result);
+        if (failed.has(source)) failed = new Map([...failed].filter(([machine]) => machine !== source));
+        catalog = new Map(catalog).set(source, result.projects);
+        historicalProviders = [...new Set([...historicalProviders, ...result.rows.map((row) => row.providerId)])];
+      }, (error: unknown) => {
+        if (request !== latest) return;
+        answers.get(source.store)?.delete(key);
+        const next = new Map(parts);
+        next.delete(source);
+        parts = next;
+        const message = errorText(error);
+        failed = new Map(failed).set(source, named ? `${source.label}: ${message}` : message);
+      }).finally(() => {
+        if (request !== latest) return;
+        const next = new Set(reading);
+        next.delete(source);
+        reading = next;
+      });
     }
   }
 
@@ -121,38 +200,37 @@
     void store;
     untrack(() => {
       if (scope === ALL) return;
-      provider = null; scope = null; historicalProviders = []; history = null;
+      provider = null; scope = null; project = null; detail = null; historicalProviders = []; catalog = new Map();
+      clear();
     });
   });
 
   $effect(() => {
-    const days = range;
-    const selected = provider;
+    void range;
+    void provider;
+    void project;
+    void refreshes;
     // One machine reloads on its own client; the whole workspace when a machine joins or leaves it.
-    const from = all ? ready : [chosen];
-    if (!all) void chosen.store.client;
-    if (from.length === 0 || from.some((source) => !source.store.client)) {
-      untrack(clear);
-      return;
-    }
-    untrack(() => { history = null; void load(days, selected, from); });
+    const from = sources;
+    for (const source of from) void source.store.client;
+    untrack(() => load(from));
     return () => { latest += 1; };
   });
 
   $effect(() => {
-    const clients = sources.flatMap((source) => source.store.client ? [source.store.client] : []);
-    if (clients.length === 0) return;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    // A finished turn changes today's column; a burst of them reloads once.
-    const offs = clients.map((client) => client.on('turn.finished', () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => void load(range), 1500);
+    const watched = sources.flatMap((source) => source.store.client ? [{ source, client: source.store.client }] : []);
+    if (watched.length === 0) return;
+    const timers = new Map<Machine, ReturnType<typeof setTimeout>>();
+    // A finished turn changes today's column on its machine; a burst of them reloads that machine once.
+    const offs = watched.map(({ source, client }) => client.on('turn.finished', () => {
+      clearTimeout(timers.get(source));
+      timers.set(source, setTimeout(() => load(sources, source), 1500));
     }));
-    return () => { clearTimeout(timer); offs.forEach((off) => off()); };
+    return () => { timers.forEach((timer) => clearTimeout(timer)); offs.forEach((off) => off()); };
   });
 
   function refresh() {
-    void load(range);
+    refreshes += 1;
   }
 
   /** Wider than a phone, the band carries the page's title, so the refresh stands in the band's actions. */
@@ -166,19 +244,33 @@
 
   function pickMachine(id: string) {
     const next = id === ALL ? ALL : id === current.id ? null : id;
-    if (next === scope) return;
+    if (next === scope && project === null) return;
     scope = next;
     provider = null;
+    project = null;
     historicalProviders = [];
+  }
+
+  const projectKey = (machine: Machine, projectId: string | null) => `${machine.id}\u0000${projectId ?? ''}`;
+
+  function pickProject(id: string) {
+    if (id === '') { project = null; return; }
+    const entry = projectList.find((item) => projectKey(item.machine, item.projectId) === id);
+    if (entry) project = { machine: entry.machine, projectId: entry.projectId };
+  }
+
+  function openDetail(thread: { machine: Machine; threadId: string }) {
+    detail = { machine: thread.machine, threadId: thread.threadId };
+    document.querySelector('[data-testid=usage-page]')?.scrollIntoView?.({ block: 'start' });
   }
 
   let providers = $derived(sources.flatMap((source) => source.store.providers));
   let providerIds = $derived([...new Set([...providers.map((entry) => entry.id), ...historicalProviders, ...(provider === null ? [] : [provider])])]);
   let view = $derived(history === null ? null : summarize(history, metric, provider === null ? providerIds : [provider]));
-  let chartSeries = $derived(view?.series.filter((serie) => view!.bySeries[serie.key]!.turns > 0) ?? []);
+  /** Only the providers that ran a turn in the range: a row of zeros says nothing. */
+  let active = $derived(view?.series.filter((serie) => view!.bySeries[serie.key]!.turns > 0) ?? []);
   let names = $derived(new Map(providers.map((provider) => [provider.id, provider.name])));
   let modelNames = $derived(new Map(providers.flatMap((entry) => entry.models.map((model) => [`${entry.id}\u0000${model.id}`, model.name] as const))));
-  let colors = $derived(new Map(seriesFor(providerIds).series.map((serie) => [serie.key, serie.color])));
   let providerItems = $derived([
     { id: '', label: strings.usage.allProviders, active: provider === null },
     ...seriesFor(providerIds).series.filter((serie) => serie.key.trim()).map((serie) => ({ id: serie.key, label: providerName(serie.key), active: provider === serie.key }))
@@ -187,27 +279,41 @@
     { id: ALL, label: strings.usage.allMachines, active: all },
     ...machines.map((machine) => ({ id: machine.id, label: machine.label, active: !all && machine === chosen }))
   ]);
+  /** The projects of the machines in scope, from their latest answers, biggest first. */
+  let projectList = $derived(topProjects(scoped.flatMap((machine) => catalog.get(machine) ?? []), metric));
+  let projectItems = $derived([
+    { id: '', label: strings.usage.allProjects, active: project === null },
+    ...projectList.map((entry) => ({
+      id: projectKey(entry.machine, entry.projectId),
+      label: `${projectName(entry)}${entry.removed ? ` (${strings.usage.removed})` : ''}${all ? ` · ${entry.machine.label}` : ''}`,
+      active: project !== null && project.machine === entry.machine && project.projectId === entry.projectId
+    }))
+  ]);
+  let chosenProject = $derived(project === null ? null : projectList.find((entry) => entry.machine === project!.machine && entry.projectId === project!.projectId) ?? null);
   let threads = $derived(history === null ? [] : topThreads(history.threads, metric));
   let threadPeak = $derived(threads[0]?.value ?? 0);
+  let projectPeak = $derived(projectList[0]?.value ?? 0);
   let dayRows = $derived(view?.days.filter((day) => day.turns > 0) ?? []);
+  let pricing = $derived(history?.pricing ?? null);
 
-  function known(thread: MachineThread): boolean {
-    return thread.machine.store.threads.some((entry) => entry.id === thread.threadId);
+  function projectName(entry: { machine: Machine; projectId: string | null; name: string | null; removed: boolean }): string {
+    if (entry.projectId === null) return strings.usage.noProject;
+    return entry.name ?? entry.machine.store.projects.find((item) => item.id === entry.projectId)?.name ?? strings.usage.removedProject;
   }
 
-  function openThread(thread: MachineThread) {
+  function known(machine: Machine, threadId: string): boolean {
+    return machine.store.threads.some((entry) => entry.id === threadId);
+  }
+
+  function openThread(machine: Machine, threadId: string) {
     // A thread of another machine opens through the workspace, which makes that machine the active one.
-    if (thread.machine.store === store) void store.open(thread.threadId);
-    else void workspace.select(thread.machine.store, thread.threadId);
+    if (machine.store === store) void store.open(threadId);
+    else void workspace.select(machine.store, threadId);
   }
 
   function providerName(providerId: string): string {
     if (!providerId.trim()) return strings.usage.unknownProvider;
     return names.get(providerId) ?? providerId;
-  }
-
-  function colorOf(providerId: string): string {
-    return colors.get(providerId) ?? 'var(--series-other)';
   }
 
   function money(totals: UsageTotals): string {
@@ -241,8 +347,16 @@
     return formatMetric(metric, totals.value);
   }
 
+  /** A share the measure can state: a provider with no count or no price has none. */
+  function shareOf(totals: UsageTotals & { value: number }, total: number): number | null {
+    if (total <= 0 || totals.turns === 0) return null;
+    if (metric !== 'turns' && (metric === 'tokens' ? totals.reported : totals.priced) === 0) return null;
+    return totals.value / total;
+  }
+
   // In the language the app speaks, not the system's.
   const dayName = $derived(new Intl.DateTimeFormat(formatLocale(), { weekday: 'short', day: 'numeric', month: 'short' }));
+  const calendarDate = $derived(new Intl.DateTimeFormat(formatLocale(), { day: 'numeric', month: 'long', year: 'numeric' }));
   const percent = $derived(new Intl.NumberFormat(formatLocale(), { style: 'percent', maximumFractionDigits: 0 }));
 </script>
 
@@ -294,16 +408,40 @@
         </button>
       {/each}
     </div>
-    {#if machines.length > 1}
-      <Menu items={machineItems} label={strings.usage.machine} placement="bottom" testid="usage-machine-filter" onpick={pickMachine}>
-        <span class="filter-name ui-label">{all ? strings.usage.allMachines : chosen.label}</span><ChevronDown size={13} />
-      </Menu>
+    {#if detail === null}
+      <div class="menus">
+        {#if machines.length > 1}
+          <Menu items={machineItems} label={strings.usage.machine} placement="bottom" testid="usage-machine-filter" onpick={pickMachine}>
+            <span class="filter-name ui-label">{all ? strings.usage.allMachines : chosen.label}</span><ChevronDown size={13} />
+          </Menu>
+        {/if}
+        {#if projectItems.length > 1 || project !== null}
+          <Menu items={projectItems} label={strings.usage.project} placement="bottom" testid="usage-project-filter" onpick={pickProject}>
+            <span class="filter-name ui-label">{project === null ? strings.usage.allProjects : chosenProject ? projectName(chosenProject) : strings.usage.project}</span><ChevronDown size={13} />
+          </Menu>
+        {/if}
+        <Menu items={providerItems} label={strings.usage.provider} placement="bottom" testid="usage-provider-filter" onpick={(id) => { provider = id || null; }}>
+          <span class="filter-name ui-label">{provider === null ? strings.usage.allProviders : providerName(provider)}</span><ChevronDown size={13} />
+        </Menu>
+      </div>
     {/if}
-    <Menu items={providerItems} label={strings.usage.provider} placement="bottom" testid="usage-provider-filter" onpick={(id) => { provider = id || null; }}>
-      <span class="filter-name ui-label">{provider === null ? strings.usage.allProviders : providerName(provider)}</span><ChevronDown size={13} />
-    </Menu>
   </div>
 
+  {#if detail !== null}
+    <UsageThreadPage
+      machine={detail.machine}
+      threadId={detail.threadId}
+      {range}
+      {metric}
+      refresh={refreshes}
+      showMachine={machines.length > 1}
+      {providerName}
+      {modelNames}
+      onback={() => { detail = null; }}
+      onthread={(threadId) => { detail = { machine: detail!.machine, threadId }; }}
+      onopen={known(detail.machine, detail.threadId) ? (threadId) => openThread(detail!.machine, threadId) : null}
+    />
+  {:else}
   {#each failures as failure (failure)}
     <p class="failure" role="alert">{fill(strings.usage.failed, { error: failure })}</p>
   {/each}
@@ -316,6 +454,12 @@
       <section class="card"><p class="muted">{strings.usage.loading}</p></section>
     {:else if view !== null}
       <section class="card overview" id="settings-usage-overview" data-testid="usage-overview">
+        {#if chosenProject}
+          <div class="scope">
+            <span class="scope-name">{projectName(chosenProject)}{#if chosenProject.removed}<span class="tag">{strings.usage.removed}</span>{/if}</span>
+            <button type="button" class="quiet icon" aria-label={strings.usage.clearProject} title={strings.usage.clearProject} data-testid="usage-project-clear" onclick={() => { project = null; }}><X size={14} /></button>
+          </div>
+        {/if}
         <div class="hero">
           <span class="section-label">{fill(strings.usage.totalOf[metric], { days: String(range) })}</span>
           <strong data-testid="usage-total">{valueOf(view.total)}</strong>
@@ -328,51 +472,93 @@
             <small class="coverage" data-testid="usage-coverage"><span data-testid={metric === 'cost' ? 'usage-partial-cost' : undefined}>{counts(strings.usage.gapsTotal[metric], gap(view.total), {})}</span></small>
           {/if}
         </div>
-        {#if view.series.length > 0}
+        {#if active.length > 0}
+          {@const shares = active.map((serie) => ({ serie, share: shareOf(view.bySeries[serie.key]!, view.total.value) }))}
+          {#if shares.some((entry) => (entry.share ?? 0) > 0)}
+            <div class="share-bar" role="img" aria-label={strings.usage.shareBar} data-testid="usage-share-bar">
+              {#each shares as { serie, share } (serie.key)}
+                {#if share !== null && share > 0}<span style:flex-grow={share} style:background={serie.color} title={`${providerName(serie.key)}: ${percent.format(share)}`}></span>{/if}
+              {/each}
+            </div>
+          {/if}
           <ul class="providers" data-testid="usage-providers">
-            {#each view.series as serie (serie.key)}
+            {#each shares as { serie, share } (serie.key)}
               {@const totals = view.bySeries[serie.key]!}
-              {@const share = view.total.value > 0 ? totals.value / view.total.value : 0}
               <li data-provider={serie.key}>
                 <span class="swatch" style:background={serie.color}></span>
-                <span class="provider"><ProviderLogo providerId={serie.key} size={14} /><span>{providerName(serie.key)}{#if totals.turns > 0}<small>{@render pairs(counted(totals))}</small>{/if}</span></span>
-                <span class="value" class:muted={totals.turns === 0}>{totals.turns === 0 ? strings.usage.noActivity : valueOf(totals)}</span>
-                <span class="share" title={fill(strings.usage.share, { percent: percent.format(share) })}>{totals.turns > 0 && (metric === 'turns' || (metric === 'tokens' ? totals.reported : totals.priced) > 0) ? percent.format(share) : ''}</span>
-                <span class="bar"><span style:width="{share * 100}%" style:background={serie.color}></span></span>
+                <span class="provider"><ProviderLogo providerId={serie.key} size={14} /><span>{providerName(serie.key)}<small>{@render pairs(counted(totals))}</small></span></span>
+                <span class="value">{valueOf(totals)}</span>
+                <span class="share" title={share === null ? undefined : fill(strings.usage.share, { percent: percent.format(share) })}>{share === null ? '' : percent.format(share)}</span>
               </li>
             {/each}
           </ul>
         {/if}
-      </section>
 
-      <section class="card" id="settings-usage-chart">
-        <h2>{strings.usage.chart}</h2>
-        {#if view.total.turns === 0}
-          <p class="muted" data-testid="usage-empty">{fill(strings.usage.emptyRange, { days: String(range) })}</p>
-        {:else if metric === 'cost' && view.total.priced === 0}
-          <p class="muted" data-testid="usage-empty">{strings.usage.noPrice}</p>
-        {:else if metric === 'tokens' && view.total.reported === 0}
-          <p class="muted" data-testid="usage-empty">{strings.usage.noUsage}</p>
-        {:else}
-          <UsageChart
-            buckets={view.buckets}
-            series={chartSeries.map((serie) => ({ key: serie.key, color: serie.color, label: providerName(serie.key) }))}
-            {metric}
-            days={range}
-            label={fill(strings.usage.chartLabel, { metric: strings.usage.metrics[metric] })}
-          />
-          <ul class="legend" aria-hidden="true">
-            {#each chartSeries as serie (serie.key)}
-              <li><span class="swatch" style:background={serie.color}></span><span class="ui-label">{providerName(serie.key)}</span></li>
-            {/each}
-          </ul>
-        {/if}
-        {#if metric === 'cost' && view.unpriced.length > 0}
-          <p class="aside" data-testid="usage-unpriced">{fill(strings.usage.unpriced, { providers: view.unpriced.map(providerName).join(', ') })}</p>
-        {/if}
+        <div class="chart" id="settings-usage-chart">
+          {#if view.total.turns === 0}
+            <p class="muted" data-testid="usage-empty">{fill(strings.usage.emptyRange, { days: String(range) })}</p>
+          {:else if metric === 'cost' && view.total.priced === 0}
+            <p class="muted" data-testid="usage-empty">{strings.usage.noPrice}</p>
+          {:else if metric === 'tokens' && view.total.reported === 0}
+            <p class="muted" data-testid="usage-empty">{strings.usage.noUsage}</p>
+          {:else}
+            <UsageChart
+              buckets={view.buckets}
+              series={active.map((serie) => ({ key: serie.key, color: serie.color, label: providerName(serie.key) }))}
+              {metric}
+              days={range}
+              label={fill(strings.usage.chartLabel, { metric: strings.usage.metrics[metric] })}
+            />
+          {/if}
+          {#if metric === 'cost' && view.unpriced.length > 0}
+            <p class="aside" data-testid="usage-unpriced">{fill(strings.usage.unpriced, { providers: view.unpriced.map(providerName).join(', ') })}</p>
+          {/if}
+        </div>
       </section>
 
       {#if view.total.turns > 0}
+        <section class="card" id="settings-usage-threads">
+          <h2>{strings.usage.threads}</h2>
+          {#if threads.length === 0}<p class="muted">{strings.usage.noRankedThreads}</p>{/if}
+          <ol class="threads" data-testid="usage-threads">
+            {#each threads as thread, index (`${thread.machine.id}\u0000${thread.threadId}`)}
+              <li class:first={index === 0}>
+                <button type="button" class="ghost thread" aria-label={fill(strings.usage.openDetails, { thread: thread.title || strings.usage.untitled })} onclick={() => openDetail(thread)}>
+                  {@render threadRow(thread, index === 0)}
+                </button>
+              </li>
+            {/each}
+          </ol>
+        </section>
+
+        {#if project === null && projectList.length > 0}
+          <section class="card" id="settings-usage-projects">
+            <h2>{strings.usage.projects}</h2>
+            <ol class="projects" data-testid="usage-projects">
+              {#each projectsOpen ? projectList : projectList.slice(0, PROJECTS_SHOWN) as entry (projectKey(entry.machine, entry.projectId))}
+                <li>
+                  <button type="button" class="ghost project" data-removed={entry.removed || undefined} onclick={() => { project = { machine: entry.machine, projectId: entry.projectId }; }}>
+                    <span class="title">
+                      <span class="name">{projectName(entry)}{#if entry.removed}<span class="tag">{strings.usage.removed}</span>{/if}</span>
+                      <small>{fill(strings.usage.threadTurns, { turns: formatMetric('turns', entry.turns) })}{#if all} · {entry.machine.label}{/if}</small>
+                    </span>
+                    <span class="amount">
+                      <span class="value">{formatMetric(metric, entry.value)}</span>
+                      <span class="bar"><span style:width="{projectPeak > 0 ? (entry.value / projectPeak) * 100 : 0}%"></span></span>
+                    </span>
+                    <ChevronRight size={14} class="chevron" />
+                  </button>
+                </li>
+              {/each}
+            </ol>
+            {#if projectList.length > PROJECTS_SHOWN}
+              <button type="button" class="quiet more" onclick={() => { projectsOpen = !projectsOpen; }}>
+                {projectsOpen ? strings.usage.projectsLess : fill(strings.usage.projectsMore, { count: String(projectList.length) })}
+              </button>
+            {/if}
+          </section>
+        {/if}
+
         <section class="card breakdown" id="settings-usage-breakdown">
           <div class="card-head">
             <h2>{strings.usage.breakdown}</h2>
@@ -389,7 +575,7 @@
                   {#each view.models as row (`${row.providerId}:${row.model}`)}
                     <tr>
                       <td class="who">
-                        <span class="swatch" style:background={colorOf(row.providerId)}></span>
+                        <span class="swatch" style:background={providerColor(row.providerId)}></span>
                         <span>
                           <span class="model-line"><span class="model">{modelName(row.model, modelNames, row.providerId)}</span><InfoTip topic={fill(strings.usage.priceOf, { model: modelName(row.model, modelNames, row.providerId) })} text={priceNote(row)} testid="usage-price" /></span>
                           <small>{providerName(row.providerId)}</small>
@@ -412,28 +598,16 @@
               {/if}
             </table>
           </div>
-        </section>
-
-        <section class="card" id="settings-usage-threads">
-          <h2>{strings.usage.threads}</h2>
-          {#if threads.length === 0}<p class="muted">{strings.usage.noRankedThreads}</p>{/if}
-          <ol class="threads" data-testid="usage-threads">
-            {#each threads as thread (`${thread.machine.id}\u0000${thread.threadId}`)}
-              <li>
-                {#if known(thread)}
-                  <button type="button" class="ghost thread" onclick={() => openThread(thread)}>
-                    {@render threadRow(thread)}
-                  </button>
-                {:else}
-                  <div class="thread">{@render threadRow(thread)}</div>
-                {/if}
-              </li>
-            {/each}
-          </ol>
+          {#if pricing}
+            <p class="aside pricing" data-testid="usage-pricing">{pricing.origin === 'live'
+              ? fill(strings.usage.pricingLive, { source: pricing.source.replace(/^https?:\/\//, '').replace(/\/.*$/, ''), when: relativeTime(pricing.updatedAt) })
+              : fill(strings.usage.pricingBundled, { when: calendarDate.format(pricing.updatedAt) })}</p>
+          {/if}
         </section>
       {/if}
     {/if}
   </div>
+  {/if}
 </div>
 
 <!-- A line break falls between the pieces a dot separates, never inside one: "Cost" stays beside its count. -->
@@ -442,9 +616,10 @@
   {#each parts as part, index (index)}{#if index > 0}{' '}{/if}<span class="pair">{part}{index < parts.length - 1 ? ' ·' : ''}</span>{/each}
 {/snippet}
 
-{#snippet threadRow(thread: (typeof threads)[number])}
-  <ProviderLogo providerId={thread.providerId} size={16} />
+{#snippet threadRow(thread: (typeof threads)[number], first: boolean)}
+  <span class="logo" style:--tint={providerColor(thread.providerId)}><ProviderLogo providerId={thread.providerId} size={first ? 20 : 16} /></span>
   <span class="title">
+    {#if first}<span class="badge">{strings.usage.top}</span>{/if}
     <span class="name">{thread.title || strings.usage.untitled}</span>
     <small>
       {fill(strings.usage.threadTurns, { turns: formatMetric('turns', thread.turns) })}{#if all} · {thread.machine.label}{/if}
@@ -453,14 +628,16 @@
   </span>
   <span class="amount">
     <span class="value">{formatMetric(metric, thread.value)}</span>
-    <span class="bar"><span style:width="{threadPeak > 0 ? (thread.value / threadPeak) * 100 : 0}%" style:background={colorOf(thread.providerId)}></span></span>
+    <span class="bar"><span style:width="{threadPeak > 0 ? (thread.value / threadPeak) * 100 : 0}%" style:background={providerColor(thread.providerId)}></span></span>
   </span>
+  <ChevronRight size={14} class="chevron" />
 {/snippet}
 
 <style>
   /* On a phone the refresh sits on the title's line; wider, it stands in the band. */
   .usage > header { align-items: center; gap: 8px; max-width: var(--settings-width); }
   .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: var(--settings-width); margin-bottom: 20px; }
+  .menus { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   .refresh { margin-left: auto; width: var(--control); height: var(--control); padding: 0; }
   .filter-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 190px; }
   .refresh :global(.spinning) { animation: spin 900ms linear infinite var(--loops); }
@@ -468,14 +645,19 @@
   .body { max-width: var(--settings-width); transition: opacity var(--dur-2) var(--ease-out-quint); }
   .body.stale { opacity: 0.6; }
 
+  .scope { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: -4px 0 12px; }
+  .scope-name { font-weight: 600; overflow-wrap: anywhere; }
   .hero { display: grid; gap: 4px; }
-  .hero strong { font-size: calc(var(--text-lg) * 1.6); line-height: 1.1; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+  .hero strong { font-size: calc(var(--text-lg) * 1.9); line-height: 1.05; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
   .hero small, .aside, .muted { color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .pair { white-space: nowrap; }
   .aside { margin: 10px 0 0; line-height: 1.5; }
 
-  .providers { display: grid; gap: 8px; margin: 16px 0 0; padding: 14px 0 0; list-style: none; border-top: 1px solid var(--color-border); }
-  .providers li { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto 44px minmax(60px, 160px); align-items: center; gap: 10px; font-size: var(--text-sm); }
+  /* One bar for the whole range, each provider its share: the overview at a glance. */
+  .share-bar { display: flex; gap: 2px; height: 10px; margin: 16px 0 0; border-radius: 5px; overflow: hidden; background: var(--color-surface-3); }
+  .share-bar span { min-width: 3px; transition: flex-grow var(--dur-3) var(--ease-out-quint); }
+  .providers { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px 28px; margin: 14px 0 0; padding: 0; list-style: none; font-size: var(--text-sm); }
+  .providers li { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto 38px; align-items: center; gap: 8px; }
   .swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
   .provider { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .provider > span { display: grid; min-width: 0; overflow-wrap: anywhere; }
@@ -484,15 +666,13 @@
   .share { font-variant-numeric: tabular-nums; color: var(--color-muted-foreground); text-align: right; }
   .bar { display: block; height: 4px; border-radius: 2px; background: var(--color-surface-3); overflow: hidden; }
   .bar span { transition: width var(--dur-3) var(--ease-out-quint); display: block; height: 100%; border-radius: 2px; }
-
-  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 10px 0 0; padding: 0; list-style: none; font-size: var(--text-sm); color: var(--color-muted-foreground); }
-  .legend li { display: inline-flex; align-items: center; gap: 6px; }
+  .chart { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--color-border); }
 
   .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
   .card-head h2 { margin: 0; }
   .breakdown .card-head h2 { margin-bottom: 0; }
   .breakdown { container-type: inline-size; }
-  .table { overflow-x: auto; margin: 0 calc(-1 * var(--settings-padding)) calc(-1 * var(--settings-padding)); border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
+  .table { overflow-x: auto; margin: 0 calc(-1 * var(--settings-padding)); }
   /* Ninety days is ninety rows: the day view scrolls under its sticky header. */
   .table.scroll { max-height: 420px; overflow-y: auto; }
   table { font-size: var(--text-sm); }
@@ -507,26 +687,47 @@
   .model-line { min-width: 0; overflow-wrap: anywhere; }
   .who small { color: var(--color-muted-foreground); font-size: var(--text-xs); }
   tbody tr:hover td { background: var(--color-hover); }
+  .pricing { margin-top: 14px; font-size: var(--text-xs); }
   @container (max-width: 560px) { .wide { display: none; } }
   @container (max-width: 420px) { .mid { display: none; } }
 
-  .threads { display: grid; gap: 2px; margin: 0 -8px; padding: 0; list-style: none; }
-  .thread { display: grid; grid-template-columns: 16px minmax(0, 1fr) minmax(88px, 150px); align-items: center; gap: 10px; width: 100%; height: auto; min-height: var(--row); padding: 6px 8px; border-radius: var(--radius-md); color: var(--color-foreground); text-align: left; font-weight: 400; }
+  .threads, .projects { display: grid; gap: 2px; margin: 0 -8px; padding: 0; list-style: none; }
+  .thread, .project { display: grid; grid-template-columns: 28px minmax(0, 1fr) minmax(88px, 150px) 14px; align-items: center; gap: 10px; width: 100%; height: auto; min-height: var(--row); padding: 6px 8px; border-radius: var(--radius-md); color: var(--color-foreground); text-align: left; font-weight: 400; }
+  .project { grid-template-columns: minmax(0, 1fr) minmax(88px, 150px) 14px; }
+  .thread :global(.chevron), .project :global(.chevron) { color: var(--color-muted-foreground); opacity: 0; transition: opacity var(--dur-1) var(--ease-out-quint), transform var(--dur-1) var(--ease-out-quint); }
+  .thread:hover :global(.chevron), .project:hover :global(.chevron), .thread:focus-visible :global(.chevron), .project:focus-visible :global(.chevron) { opacity: 1; transform: translateX(2px); }
+  .logo { display: grid; place-items: center; width: 28px; height: 28px; border-radius: var(--radius-sm); background: color-mix(in oklch, var(--tint) 20%, transparent); }
   .title { display: grid; min-width: 0; }
   .title .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .title small { color: var(--color-muted-foreground); font-size: var(--text-xs); }
-  .tag { margin-left: 6px; padding: 0 5px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); }
+  .tag { margin-left: 6px; padding: 0 5px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); }
   .amount { display: grid; gap: 4px; justify-items: end; }
+  .amount .value { font-weight: 600; }
   .amount .bar { width: 100%; }
+  .project .bar span { background: color-mix(in oklch, var(--color-foreground) 45%, transparent); }
+  .project[data-removed] .name { color: var(--color-muted-foreground); }
+  /* The biggest thread leads the list: larger, on its provider's tint. */
+  .threads li.first { margin-bottom: 6px; }
+  .threads li.first .thread { grid-template-columns: 40px minmax(0, 1fr) minmax(110px, 180px) 14px; padding: 12px; background: color-mix(in oklch, var(--color-surface-2) 70%, transparent); border: 1px solid var(--color-border); }
+  .threads li.first .logo { width: 40px; height: 40px; border-radius: var(--radius-md); }
+  .threads li.first .name { font-size: var(--text-base); font-weight: 600; white-space: normal; overflow-wrap: anywhere; }
+  .threads li.first .amount .value { font-size: var(--text-lg); }
+  .threads li.first .amount .bar { height: 6px; }
+  .badge { justify-self: start; margin-bottom: 2px; font-size: var(--text-xs); color: var(--color-muted-foreground); }
+  .more { margin-top: 8px; }
 
   @media (max-width: 720px) {
     /* Each group of options takes the row, its options sharing it evenly, as on Appearance. */
     .filters .segmented { flex: 1 1 100%; }
     .segmented button { flex: 1; min-width: 0; }
-    .hero strong { font-size: calc(var(--text-lg) * 1.4); }
-    .providers li { grid-template-columns: 10px minmax(0, 1fr) auto 40px; }
-    .providers .bar { grid-column: 2 / -1; }
-    .thread { grid-template-columns: 16px minmax(0, 1fr) 80px; }
+    .hero strong { font-size: calc(var(--text-lg) * 1.5); }
+    .providers { grid-template-columns: 1fr; }
+    .thread { grid-template-columns: 28px minmax(0, 1fr) 80px; }
+    .project { grid-template-columns: minmax(0, 1fr) 80px; }
+    .thread :global(.chevron), .project :global(.chevron) { display: none; }
+    .threads li.first .thread { grid-template-columns: 40px minmax(0, 1fr); }
+    .threads li.first .amount { grid-column: 1 / -1; justify-items: stretch; }
+    .threads li.first .amount .value { justify-self: end; }
   }
   @media (prefers-reduced-motion: reduce) { .refresh :global(.spinning) { animation: none; } }
 </style>

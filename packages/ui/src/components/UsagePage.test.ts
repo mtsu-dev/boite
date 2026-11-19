@@ -198,11 +198,20 @@ test('the machine menu reads one machine or adds every connected one, and names 
   try {
     mounted = page({ store: here.store });
     await settle();
-    expect(document.querySelector('[data-testid=usage-machine-filter]')?.textContent).toContain('Here');
+    // The page opens on every connected machine.
+    expect(document.querySelector('[data-testid=usage-machine-filter]')?.textContent).toContain('All machines');
     expect(document.querySelector('[data-testid=usage-total]')?.textContent).toBe('Not reported');
+    expect(builderCall).toHaveBeenCalled();
+    expect(document.querySelector('[data-provider=claude]')).not.toBeNull();
+    expect(document.querySelector('[data-provider=codex]')).not.toBeNull();
+
+    click('[data-testid=usage-machine-filter]');
+    await settle();
+    click('[data-testid=usage-machine-filter-menu] [data-value="http://here"]');
+    await settle();
+    expect(document.querySelector('[data-testid=usage-machine-filter]')?.textContent).toContain('Here');
     expect(document.querySelector('[data-provider=claude]')).not.toBeNull();
     expect(document.querySelector('[data-provider=codex]')).toBeNull();
-    expect(builderCall).not.toHaveBeenCalled();
 
     click('[data-testid=usage-machine-filter]');
     await settle();
@@ -256,4 +265,49 @@ test('the machine menu reads one machine or adds every connected one, and names 
   } finally {
     workspace.machines = [];
   }
+});
+
+test('a project row narrows the page to that project, and a thread row opens its own page and comes back', async () => {
+  const spent = { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0, costUsdEquivalent: 0.25 };
+  const call = vi.fn(async (method: string, params: { edges: number[]; projectId?: string | null; threadId?: string }) => {
+    if (method === 'usage.thread') {
+      return {
+        thread: { threadId: 'big', projectId: 'gone', title: 'Big thread', providerId: 'claude', archived: true, turns: 1, usage: spent },
+        turns: [{ turnId: 'turn-1', finishedAt: params.edges[0]! + 1, providerId: 'claude', model: 'opus', usage: spent, price: null }],
+        truncated: false,
+        children: []
+      };
+    }
+    const read = history(params.edges, 'claude');
+    read.threads = [{ threadId: 'big', projectId: 'gone', title: 'Big thread', providerId: 'claude', archived: true, turns: 2, usage: spent }];
+    read.projects = [
+      { projectId: 'live', name: 'live', removed: false, turns: 1, usage: spent },
+      { projectId: 'gone', name: 'gone', removed: true, turns: 2, usage: spent }
+    ];
+    return read;
+  });
+  mounted = page({ store: store(call) });
+  await settle();
+  const rows = [...document.querySelectorAll<HTMLButtonElement>('[data-testid=usage-projects] button')];
+  // A removed project still counts, named as removed.
+  expect(rows).toHaveLength(2);
+  const gone = rows.find((row) => row.textContent?.includes('gone'))!;
+  expect(gone.textContent).toContain('Removed');
+  gone.click();
+  await settle();
+  expect(call).toHaveBeenLastCalledWith('usage.history', expect.objectContaining({ projectId: 'gone' }));
+  expect(document.querySelector('[data-testid=usage-project-filter]')?.textContent).toContain('gone');
+  expect(document.querySelector('[data-testid=usage-projects]')).toBeNull();
+
+  click('[data-testid=usage-threads] li button');
+  await settle();
+  expect(call).toHaveBeenLastCalledWith('usage.thread', expect.objectContaining({ threadId: 'big' }));
+  expect(document.querySelector('[data-testid=usage-thread-title]')?.textContent).toContain('Big thread');
+  expect(document.querySelectorAll('[data-testid=usage-thread-turns] tbody tr')).toHaveLength(1);
+  // A thread whose conversation is not on this machine's list has nothing to open.
+  expect(document.querySelector('[data-testid=usage-thread-open]')).toBeNull();
+  click('[data-testid=usage-thread-back]');
+  await settle();
+  expect(document.querySelector('[data-testid=usage-thread-page]')).toBeNull();
+  expect(document.querySelector('[data-testid=usage-project-filter]')?.textContent).toContain('gone');
 });
