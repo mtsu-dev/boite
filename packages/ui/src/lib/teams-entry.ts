@@ -1,6 +1,7 @@
 /**
  * The way to the Teams' screens: the team chat with its composer, the dialog
- * that creates or edits a team and the header of a team's conversation. The
+ * that creates or edits a team, the header of a team's conversation and the
+ * team's menu the window's rail opens. The
  * card of a team's request is a deferred part (`lib/deferred-parts.ts`) and
  * carries the same flag there. The flag is written in full because a bundler
  * folds nothing less direct (`packages/contracts/src/experiments.ts`): in a
@@ -21,6 +22,7 @@ export const teamsParts = typeof __BOITE_HAS_TEAMS__ === 'undefined' || __BOITE_
   ? {
       TeamChat: () => import('../components/teams/TeamChat.svelte'),
       TeamDialog: () => import('../components/teams/TeamDialog.svelte'),
-      TeamHeader: () => import('../components/teams/TeamHeader.svelte')
+      TeamHeader: () => import('../components/teams/TeamHeader.svelte'),
+      teamMenu: () => import('./team-menu')
     }
   : null;

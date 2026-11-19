@@ -40,7 +40,8 @@ of the thread list. The column stays when the mochi's Desk opens beside the
 conversation. The head of that column shows what it does right now,
 what it waits on, an error, or its next wake. Its more menu holds Edit,
 Pause or Resume, Archive and the rest of the mochi's menu, plus Brain and the
-mochi engine. Archive asks you to type the mochi's exact name; its conversation
+mochi engine. A right click on its picture in the app rail opens the same
+menu. Archive asks you to type the mochi's exact name; its conversation
 stays readable.
 
 ## Routines and wakes
@@ -184,8 +185,9 @@ answers from its own conversation, in the group or privately to you.
 - A mochi's post wakes no other mochi; teammates read it the next time they wake.
 - A mochi can propose a team, a new member or its own leaving on a card: Create
   the team, Add to the team or Remove from the team, or Refuse.
-- The menu holds Edit the team, Pause, Archive and Restore. A paused team
-  keeps your posts until it resumes.
+- The menu holds Edit the team, Pause, Archive and Restore. A right click on
+  the team's picture in the app rail opens it too. A paused team keeps your
+  posts until it resumes.
 - A team can take mochis of the other machines of your group. The machine that
   created it holds its chat.
 - A post holds up to 4,000 characters and no attachment. Private posts are
