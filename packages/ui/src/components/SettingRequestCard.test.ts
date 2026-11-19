@@ -152,6 +152,7 @@ test('Show in Settings opens the card it names without answering, and Refuse tel
 });
 
 test.each([
+  ['cacheKeepalive', 'cache-keepalive', 'System › Keep the prompt cache warm'],
   ['backgroundCompaction', 'background-compaction', 'System › Background compaction'],
   ['deviceStream', 'device-stream', 'System › Live device stream'],
 ] as const)('a card asked when %s was an experiment leads to System, where its switch is now', async (key, section, place) => {

@@ -252,11 +252,12 @@ const PHONE_CARDS: Partial<Record<SettingsPage, readonly string[]>> = {
 };
 
 /**
- * Where a card's setting is now. A card asked while background compaction
- * and the live device stream were experiments still names the Experiments
+ * Where a card's setting is now. A card asked while the prompt cache
+ * keepalive, background compaction and the live device stream were
+ * experiments still names the Experiments
  * page; their switches are in System since, and no build lists that page.
  */
-const MOVED_TO_SYSTEM: readonly string[] = ['background-compaction', 'device-stream'];
+const MOVED_TO_SYSTEM: readonly string[] = ['cache-keepalive', 'background-compaction', 'device-stream'];
 export function settingPlace(setting: SettingAsk): Pick<SettingAsk, 'page' | 'section'> {
   if (setting.page === 'experiments' && setting.section !== null && MOVED_TO_SYSTEM.includes(setting.section)) return { page: 'advanced', section: setting.section };
   return { page: setting.page, section: setting.section };

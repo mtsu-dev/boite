@@ -3,7 +3,7 @@ import { botsHost, botsHostAway, ensureOperator, operatorHost, operatorOnOpen } 
 import type { Store } from './store.svelte';
 
 /** A machine as `operatorHost` reads it: its owner, its link, its client and its place in the group. */
-function machine(self: string, group: { settingsHome?: string; botsHome?: string } = {}, connected = true, call: (method: string) => unknown = () => ({})): Store {
+function machine(self: string, group: { id?: string; settingsHome?: string; botsHome?: string } = {}, connected = true, call: (method: string) => unknown = () => ({})): Store {
   const cores = ['core-a', 'core-b', 'core-c'].map(coreId => ({ coreId, name: coreId.toUpperCase() }));
   return { owner: true, connection: connected ? 'ready' : 'closed', groupKnown: true, client: { call: vi.fn(async (method: string) => call(method)) }, group: { id: 'grp', self, cores, ...group } } as unknown as Store;
 }
@@ -60,11 +60,25 @@ test('Contacts opened gives the group its Operator once a session, and a failure
   operatorOnOpen(home, []);
   await new Promise(resolve => setTimeout(resolve, 10));
   expect(vi.mocked(home.client!.call).mock.calls.length).toBe(4);
+  // The group got its Operator: another of its machines opening Contacts asks nothing either.
+  const sibling = machine('core-b', {}, true, none);
+  operatorOnOpen(sibling, [home]);
+  await new Promise(resolve => setTimeout(resolve, 10));
+  expect(sibling.client!.call).not.toHaveBeenCalled();
   // A machine of the group already has one: this one makes none.
   const other = machine('core-b', {}, true, () => ({ bot: { id: 'operator' } }));
   const fresh = machine('core-a', {}, true, none);
-  operatorOnOpen(fresh, [other]);
-  await vi.waitFor(() => expect(vi.mocked(other.client!.call)).toHaveBeenCalledWith('contacts.get', {}));
-  await new Promise(resolve => setTimeout(resolve, 10));
+  expect(await ensureOperator(fresh, [other])).toBe(true);
+  expect(vi.mocked(other.client!.call)).toHaveBeenCalledWith('contacts.get', {});
   expect(ensures(fresh) + ensures(other)).toBe(0);
+});
+
+test('another group\'s Operator does not stand in for this group\'s', async () => {
+  const has = (method: string) => method === 'contacts.get' ? { bot: { id: 'theirs' } } : {};
+  const none = (method: string) => method === 'contacts.get' ? { bot: null } : {};
+  const home = machine('core-a', { id: 'ours' }, true, none);
+  const other = machine('core-x', { id: 'other-grp' }, true, has);
+  operatorOnOpen(home, [other]);
+  await vi.waitFor(() => expect(home.client!.call).toHaveBeenCalledWith('agents.builtin.ensure', expect.objectContaining({ kind: 'contacts' })));
+  expect(other.client!.call).not.toHaveBeenCalled();
 });

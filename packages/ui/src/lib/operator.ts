@@ -50,7 +50,8 @@ export function operatorHost(home: Store, stores: readonly Store[]): Store | nul
 export async function ensureOperator(home: Store, stores: readonly Store[]): Promise<boolean> {
   const host = operatorHost(home, stores);
   if (!host) return false;
-  const machines = [home, ...stores.filter(store => store !== home)].filter(owned);
+  // Another group's Operator is not this group's: only members are asked.
+  const machines = [home, ...stores.filter(store => store !== home && !!home.group && store.group?.id === home.group.id)].filter(owned);
   const found = await Promise.all(machines.map(async store => {
     try { return !!(await store.client!.call('contacts.get', {})).bot; } catch { return false; }
   }));
@@ -64,8 +65,8 @@ export async function ensureOperator(home: Store, stores: readonly Store[]): Pro
   }
 }
 
-/** The windows' machines whose group was given its Operator, or is being given it, in this session. */
-const asked = new WeakSet<Store>();
+/** The groups given their Operator, or being given it, in this session: by group id, or the machine itself when it has no group. */
+const asked = new Set<string | Store>();
 
 /**
  * The first time Contacts opens on `home` in this session, its page or its
@@ -75,7 +76,9 @@ const asked = new WeakSet<Store>();
  * hold it yet, lets the next opening try again.
  */
 export function operatorOnOpen(home: Store, stores: readonly Store[]): void {
-  if (asked.has(home) || !home.groupKnown || !operatorHost(home, stores)) return;
-  asked.add(home);
-  void ensureOperator(home, stores).then(done => { if (!done) asked.delete(home); });
+  if (!home.groupKnown || !operatorHost(home, stores)) return;
+  const key = home.group?.id ?? home;
+  if (asked.has(key)) return;
+  asked.add(key);
+  void ensureOperator(home, stores).then(done => { if (!done) asked.delete(key); });
 }
