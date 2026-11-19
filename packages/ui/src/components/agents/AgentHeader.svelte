@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { ArrowLeft, Brain, ChevronDown, Ellipsis, Archive, Pause, Play, RotateCcw, Search, Settings2 } from '@lucide/svelte';
+  import { ArrowLeft, Brain, ChevronDown, Ellipsis, Search, Settings2 } from '@lucide/svelte';
   import type { AgentProfile, AgentStatus, ThreadSummary } from '@boite/contracts';
-  import { moodOf, liveState, liveStep, resetBuiltin, waitingOn, type AgentsView } from '../../lib/agents.svelte';
-  import { confirmArchive } from '../../lib/agent-menu';
+  import { moodOf, liveState, liveStep, waitingOn, type AgentsView } from '../../lib/agents.svelte';
+  import { agentLifecycleItems, pickAgentLifecycle } from '../../lib/agent-menu';
   import { dateTime } from '../../lib/schedule';
   import type { AgentPane } from '../../lib/store/layout.svelte';
   import type { Store } from '../../lib/store.svelte';
@@ -78,27 +78,15 @@
     ...(thread ? [{ id: 'find', label: strings.palette.find, glyph: Search }, separator('sep-find')] : []),
     { id: 'settings', label: labels.settings, glyph: Settings2 },
     { id: 'brain', label: labels.brain, glyph: Brain },
-    ...(store.owner && agent.status !== 'archived' ? [
-      agent.status === 'paused' ? { id: 'resume', label: labels.resume, glyph: Play } : { id: 'pause', label: labels.pause, glyph: Pause },
-      // A built-in bot is never archived: Reset takes the place of Archive.
-      agent.builtin ? { id: 'reset', label: labels.builtin.reset, glyph: RotateCcw, danger: true } : { id: 'archive', label: labels.archive, glyph: Archive, danger: true },
-    ] : []),
+    ...(store.owner && agent.status !== 'archived' ? agentLifecycleItems(agent) : []),
   ]);
 
-  async function setStatus(next: AgentProfile['status']) {
-    const latest = view.snapshot?.profiles.find(p => p.id === agent.id) ?? agent;
-    const { id, revision, createdAt: _created, updatedAt: _updated, ...value } = latest;
-    await view.call('agents.profile.save', { id, expectedRevision: revision, value: { ...value, status: next } });
-  }
-  async function pick(id: string) {
+  function pick(id: string) {
     if (id === 'find') {
       store.findOpen = true;
       store.findRequest += 1;
     } else if (id === 'settings' || id === 'brain') onpane(id);
-    else if (id === 'pause') await setStatus('paused');
-    else if (id === 'resume') await setStatus('active');
-    else if (id === 'reset') await resetBuiltin(view, agent);
-    else if (id === 'archive' && await confirmArchive(agent.name)) await setStatus('archived');
+    else pickAgentLifecycle(view, agent, id, store);
   }
 </script>
 
@@ -142,7 +130,7 @@
   {#if !onback}
     <!-- The view menu right after the name, as a thread's chevron after its title. -->
     <span class="agent-head-menu">
-      <Menu placement="bottom" variant="text" label={labels.more} heading={agent.name} testid="agent-menu" items={menuItems} onpick={id => void pick(id)}>
+      <Menu placement="bottom" variant="text" label={labels.more} heading={agent.name} testid="agent-menu" items={menuItems} onpick={pick}>
         <ChevronDown size={16} />
       </Menu>
     </span>
@@ -150,7 +138,7 @@
   <nav class="agent-head-actions" aria-label={agent.name}>
     <PanelDoor {store} count={panelCount} ontoggle={togglePanel} testid="agent-desk-toggle" />
     {#if onback}
-      <Menu placement="bottom" align="end" variant="ghost" label={labels.more} heading={agent.name} testid="agent-menu" items={menuItems} onpick={id => void pick(id)}>
+      <Menu placement="bottom" align="end" variant="ghost" label={labels.more} heading={agent.name} testid="agent-menu" items={menuItems} onpick={pick}>
         <Ellipsis size={18} strokeWidth={1.75} />
       </Menu>
     {/if}
