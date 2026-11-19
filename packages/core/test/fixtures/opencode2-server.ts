@@ -1,4 +1,5 @@
 /** OpenCode 2's native API, with an ACP fallback to reproduce the old refusal. */
+import { appendFileSync } from 'node:fs';
 import { instructionsOf } from './history.ts';
 
 if (!process.argv.includes('serve')) {
@@ -12,6 +13,9 @@ if (!process.argv.includes('serve')) {
   let inboxSequence = 0;
   let lateAdmission = false;
   let cancelAdmission = false;
+  let admitAfterInterrupt: (() => void) | undefined;
+  const traceFile = process.env['OPENCODE_FIXTURE_TRACE'];
+  const trace = (line: string) => { if (traceFile) appendFileSync(traceFile, `${line}\n`); };
   const event = (type: string, data: Record<string, unknown>) => {
     const bytes = encoder.encode(`data: ${JSON.stringify({ type, data: { sessionID, ...data } })}\n\n`);
     for (const stream of streams) stream.enqueue(bytes);
@@ -35,12 +39,30 @@ if (!process.argv.includes('serve')) {
     if (url.pathname === '/api/model/default') return Response.json({ data: { providerID: model.providerID, id: model.id } });
     if (url.pathname === '/api/agent') return Response.json({ data: [{ id: 'build', name: 'Build' }, { id: 'plan', name: 'Plan' }] });
     if (url.pathname === '/api/command') return Response.json({ data: [] });
-    if (url.pathname === '/api/session' || (url.pathname === `/api/session/${sessionID}` && request.method === 'GET')) return Response.json({ data: session() });
+    if (url.pathname === `/api/session/${sessionID}` && request.method === 'GET') {
+      if (process.env['OPENCODE_FIXTURE_COST_ERROR']) return new Response('Unavailable', { status: 503 });
+      return Response.json({ data: session() });
+    }
+    if (url.pathname === '/api/session') return Response.json({ data: session() });
     if (url.pathname.endsWith('/prompt')) {
       const body = await request.json() as { text: string; delivery: string; files?: unknown[] };
       const instructions = instructionsOf(body.text);
       if (body.delivery !== 'steer') return new Response('delivery must be steer', { status: 400 });
       const inbox = { id: `msg_fixture_${++inboxSequence}`, delivery: 'steer' };
+      if (instructions.includes('[hold-ack]')) {
+        trace('steer waiting');
+        await new Promise<void>(resolve => request.signal.addEventListener('abort', () => resolve(), { once: true }));
+      }
+      if (instructions.includes('[early-interrupt]')) {
+        const admission = Promise.withResolvers<void>();
+        admitAfterInterrupt = admission.resolve;
+        trace('initial prompt waiting');
+        await admission.promise;
+        trace('admitted');
+        event('session.inbox.delivered', { inboxID: inbox.id });
+        event('session.execution.started', {});
+        return Response.json({ data: inbox });
+      }
       if (lateAdmission) {
         clearTimeout(timer);
         event('session.execution.succeeded', {});
@@ -86,7 +108,11 @@ if (!process.argv.includes('serve')) {
       return Response.json({ data: inbox });
     }
     if (url.pathname.endsWith('/interrupt')) {
+      trace('interrupt');
       clearTimeout(timer); event('session.execution.interrupted', {});
+      const admit = admitAfterInterrupt;
+      admitAfterInterrupt = undefined;
+      admit?.();
     }
     if (url.pathname === '/api/session/ses_child/permission/permission_child/reply') {
       const body = await request.json() as { decision: string };

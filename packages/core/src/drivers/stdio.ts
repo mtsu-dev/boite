@@ -12,7 +12,6 @@ export interface StdioRequestOptions {
 
 interface Pending {
   method: string;
-  onAccepted?(): void;
   resolve(value: unknown): void;
   reject(error: Error): void;
   cleanup(): void;
@@ -68,7 +67,12 @@ export class StdioTransport<Id extends string | number> {
       let timer: ReturnType<typeof setTimeout> | undefined;
       const cancel = () => this.take(id)?.reject(new Error(`${this.#label}: request cancelled`));
       this.pending.set(id, {
-        method, onAccepted: options.onAccepted, resolve: resolve as (value: unknown) => void, reject,
+        method, reject,
+        resolve: value => {
+          // One read can carry both the acknowledgement and ensuing output.
+          try { options.onAccepted?.(); resolve(value as T); }
+          catch (error) { reject(error); }
+        },
         cleanup: () => { clearTimeout(timer); options.signal?.removeEventListener('abort', cancel); },
       });
       options.signal?.addEventListener('abort', cancel, { once: true });

@@ -62,6 +62,8 @@ let streaming = false;
 let deaf = false;
 /** Set by `[noclear]`: `clear_queue` is refused. */
 let noClear = false;
+let hangClear = false;
+let hangStats = false;
 /** Set by `set_thinking_level`, reported by `get_state`. */
 let thinkingLevel = 'medium';
 /** Resolves when an `abort` arrives, for the one directive that waits on it. */
@@ -473,6 +475,7 @@ function handle(message: Record<string, unknown>): void {
       return;
     }
     case 'clear_queue': {
+      if (hangClear) return;
       if (noClear) {
         send({ id, type: 'response', command: 'clear_queue', success: false, error: 'the fake queue is locked' });
         return;
@@ -497,6 +500,7 @@ function handle(message: Record<string, unknown>): void {
       return;
     }
     case 'get_session_stats': {
+      if (hangStats) return;
       send({
         id,
         type: 'response',
@@ -510,7 +514,11 @@ function handle(message: Record<string, unknown>): void {
       if (!waitingAbort) { send({ id, type: 'response', command: 'steer', success: false, error: 'no active turn' }); return; }
       log(`steering ${textOf(message['message'])}`);
       if (Array.isArray(message['images'])) for (const image of message['images']) log(`steer-image ${image.mimeType} ${image.data.length}`);
-      send({ id, type: 'response', command: 'steer', success: true });
+      const response = { id, type: 'response', command: 'steer', success: true };
+      if (textOf(message['message']).includes('[steer-delta]')) {
+        const delta = { type: 'message_update', usage: zeroUsage(), assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: 'Steer answered' } };
+        process.stdout.write(`${JSON.stringify(response)}\n${JSON.stringify(delta)}\n`);
+      } else send(response);
       return;
     }
     case 'prompt': {
@@ -540,6 +548,8 @@ function handle(message: Record<string, unknown>): void {
       streaming = true;
       deaf = instructions.includes('[deaf]');
       noClear = instructions.includes('[noclear]');
+      hangClear = instructions.includes('[hang-clear]');
+      hangStats = instructions.includes('[hang-stats]');
       send({ id, type: 'response', command: 'prompt', success: true });
       // After the response is written, never before: the real mode answers the
       // command and streams the run afterwards.
