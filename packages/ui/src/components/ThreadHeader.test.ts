@@ -51,6 +51,44 @@ test('the open thread names the work it is waiting on and shows when the wait be
   expect(document.querySelector('[data-testid=thread-header] [data-testid=thread-wait]')).toBeNull();
 });
 
+test('an idle parent shows its active children until they finish, and a child question takes priority', async () => {
+  await start();
+  const parent = { ...store.openThread!, status: 'idle' as const, openQuestions: 0, backgroundWait: null, backgroundWork: null, pullRequestWatches: [] };
+  store.openThread = parent;
+  const before = store.threads;
+  const children = ['one', 'two'].map(id => ({ ...parent, id, parentThreadId: parent.id, status: 'running' as const, runningSince: Date.now() - 60_000 }));
+  const wait = () => document.querySelector('[data-testid=thread-header] [data-testid=thread-wait]');
+  store.threads = [...before, ...children];
+  await settle();
+  expect(wait()?.textContent).toContain(strings.sidebar.state.delegatingMany.replace('{count}', '2'));
+  expect(wait()?.querySelector('[data-testid=agent-elapsed]')?.textContent).toMatch(/^1m \d\ds$/);
+  store.threads = [...before, children[0]!, { ...children[1]!, status: 'waiting' }];
+  await settle();
+  expect(wait()?.textContent?.trim()).toBe(strings.sidebar.state.waiting);
+  store.threads = before;
+  await settle();
+  expect(wait()).toBeNull();
+});
+
+test('a paused pull request watch shows its reason and next read instead of its last CI result', async () => {
+  await start();
+  const since = Date.now() - 600_000;
+  const watch = {
+    url: 'https://github.com/example/repo/pull/12', repository: 'example/repo', number: 12, since,
+    seen: { checkedAt: since, head: 'abc', base: 'main', checks: { total: 2, running: 2, failed: 0 }, conflicting: false }, paused: null,
+  };
+  const thread = { ...store.openThread!, status: 'idle' as const, backgroundWait: null, backgroundWork: null };
+  store.openThread = { ...thread, pullRequestWatches: [watch] };
+  await settle();
+  const wait = () => document.querySelector('[data-testid=thread-header] [data-testid=thread-wait]');
+  expect(wait()?.textContent).toContain('CI running #12');
+  store.openThread = { ...thread, pullRequestWatches: [{ ...watch, paused: { reason: 'rate-limit', until: Date.now() + 60_000, message: 'rate limit' } }] };
+  await settle();
+  expect(wait()?.textContent).toMatch(/GitHub rate limit, next read .+/);
+  expect(wait()?.textContent).toContain('#12');
+  expect(wait()?.querySelector('[data-testid=agent-elapsed]')).toBeNull();
+});
+
 test('a rename begun on one thread writes to that thread after another surface opens a different one', async () => {
   const rename = await start();
   const input = await renameOpen('Title for the trace thread');

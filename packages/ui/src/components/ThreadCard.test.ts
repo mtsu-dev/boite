@@ -50,6 +50,17 @@ test('a thread row names the work it is waiting on without a hover', async () =>
   expect(document.querySelector('[data-testid=thread-elapsed]')).toBeNull();
 });
 
+test('a parent row shows its delegated work and time since the first child started', async () => {
+  const { project, thread } = await connectBranched();
+  const parent = { ...thread, status: 'idle' as const, openQuestions: 0, backgroundWork: null, backgroundWait: null };
+  store.threads = [...store.threads, { ...parent, id: 'active-child', parentThreadId: parent.id, status: 'running', runningSince: Date.now() - 60_000 }];
+  await show(project, parent);
+  const wait = document.querySelector('[data-testid=thread-row] [data-testid=thread-wait]');
+  expect(wait?.textContent).toContain('Waiting on 1 sub-agent');
+  expect(wait?.querySelector('[data-testid=agent-elapsed]')?.textContent).toMatch(/^1m \d\ds$/);
+  expect(document.querySelector('[data-testid=thread-elapsed]')).toBeNull();
+});
+
 test('child question links stay out of sidebar thread rows', async () => {
   await connect();
   const thread = store.threads.find(row => !row.parentThreadId && row.projectId)!;

@@ -1,4 +1,5 @@
-import { needsUser, pullRequestWatchWaits, threadActive, type BackgroundTask, type PermissionRequest, type QuestionRequest, type ThreadSummary } from '@boite/contracts';
+import { pullRequestWatchWaits, rowAsks, threadActive, threadState, type BackgroundTask, type PermissionRequest, type QuestionRequest, type RowSource, type ThreadSummary, type WorkingChildren } from '@boite/contracts';
+import { watchStatus } from './pull-request-watch';
 import { fill, strings } from './strings';
 
 /** `1 shell still running`, `2 shells, 1 monitor still running`; empty for no task. */
@@ -30,9 +31,11 @@ export function pendingWait(store: Requests, threadId: string | null | undefined
 }
 
 /** Use the known start of the wait. A turn's start says only how long the turn has run. */
-export function threadWait(thread: ThreadSummary | null, store: Requests): ThreadWait | null {
+export function threadWait(thread: ThreadSummary | null, store: Requests & RowSource<WorkingChildren | null>): ThreadWait | null {
   if (!thread || thread.archived) return null;
-  if (needsUser(thread)) {
+  const children = rowAsks(store, thread.id);
+  const state = threadState(thread, children);
+  if (state === 'waiting') {
     const pending = pendingWait(store, thread.id);
     if (pending?.what) return { label: pending.what, since: pending.since };
     const progress = thread.progress?.phase === 'waiting' ? thread.progress : null;
@@ -42,7 +45,13 @@ export function threadWait(thread: ThreadSummary | null, store: Requests): Threa
     return { label: strings.agents.activity.provider, since: thread.progress.since ?? thread.progress.at };
   }
   if (threadActive(thread.status)) return null;
+  if (state === 'delegating' && children !== null) {
+    const words = strings.sidebar.state;
+    return { label: children.count === 1 ? words.delegatingOne : fill(words.delegatingMany, { count: String(children.count) }), since: children.since };
+  }
   if (thread.backgroundWait?.state === 'waiting') return namedWait(thread.backgroundWait.for, thread.backgroundWait.since);
+  const paused = thread.pullRequestWatches?.find(watch => watch.paused !== null);
+  if (paused) return { label: `#${paused.number} · ${watchStatus(paused)}`, since: null };
   const watches = thread.pullRequestWatches?.filter(pullRequestWatchWaits);
   if (watches?.length) {
     const words = strings.sidebar.state.workWord;
