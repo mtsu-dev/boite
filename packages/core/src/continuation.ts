@@ -510,7 +510,7 @@ export function stepTail(
   journal: Journal,
   threadId: string,
   anchor: TailAnchor,
-  fileReference: FileReference,
+  fileReference: FileReference = plainFile,
   provider: ProviderDescriptor,
 ): { prompt: string; attachments: ImageAttachment[] } {
   const tail = collectTail(journal, threadId, anchor, null, fileReference, { images: tailImageBudget(provider), render: stepTailEntry });

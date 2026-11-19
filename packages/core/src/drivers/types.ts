@@ -109,7 +109,7 @@ export interface StepDecision {
     sessionId: string;
     /** The first message to send on it, ending with a request to go on. */
     tail: string;
-    attachments: Attachment[];
+    attachments: import('@boite/contracts').ImageAttachment[];
     /** The context the compacted session holds, when the copy reported it. */
     postTokens: number | null;
     /**
