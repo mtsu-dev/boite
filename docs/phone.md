@@ -97,7 +97,7 @@ A paired phone is limited to this:
 | It can | It cannot |
 | --- | --- |
 | Read, start and answer conversations and the agents' cards | Change settings or sign agents in |
-| Add a project on a machine of the group | Use Boite's data folder or folders like `.git` and `.ssh` as one |
+| Add a project on a machine of the group | Use the home folder, Boite's data folder or folders like `.git`, `.ssh` and `.config` as one |
 | Read the Changes and Files panels | Edit files, open the terminal or Tasks |
 | Click and type in the agent's browser, on sites signed in on that machine | Run scripts in it |
 | See the devices in Machines | Add or remove machines and devices |
