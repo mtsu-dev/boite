@@ -77,6 +77,11 @@ export interface ComposerRecord {
 
 export interface ComposerRpcMethods {
   'composer.list': { params: {}; result: ComposerRecord[] };
+  /** Owner terminal submission. The request id also names the turn when the queue delivers it. */
+  'composer.enqueue': {
+    params: { threadId: string; prompt: string; clientRequestId: string };
+    result: { requestId: string; status: 'queued' | 'held' | 'sent'; turnId?: string; reason?: string };
+  };
   /** sendNow interrupts the active turn before delivering queued input as a new turn. Pending cards still hold delivery. */
   'composer.put': { params: Pick<ComposerRecord, 'section' | 'id' | 'value'> & { expectedRevision: number; sendNow?: true }; result: { accepted: boolean; record: ComposerRecord } };
   'composer.asset.put': { params: { attachment: Attachment; incognito?: true }; result: { assetId: string } };

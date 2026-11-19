@@ -21,6 +21,7 @@ export class FakeComposerState {
   readonly assets = new Map<string, Attachment>();
   readonly clients = new Set<FakeContext>();
   readonly consumed = new Map<string, Set<string>>();
+  readonly cliPrompts = new Map<string, string>();
   readonly delivering = new Map<string, ComposerQueuedPrompt[]>();
   readonly owners = new Map<string, FakeContext>();
   readonly assetOwners = new Map<string, FakeContext>();
@@ -50,6 +51,7 @@ export class FakeComposerState {
     this.records.delete(key); this.consumed.delete(key);
     this.boundaries.delete(id);
     this.forced.delete(id);
+    for (const request of this.cliPrompts.keys()) if (request.startsWith(`${id}:`)) this.cliPrompts.delete(request);
   }
 
   write(section: ComposerRecord['section'], id: string, value: ComposerValue | null, owner?: FakeContext): ComposerRecord {
@@ -209,11 +211,41 @@ function choiceOf(thread: ComposerChoice): ComposerChoice {
   return { providerId: thread.providerId, accountId: thread.accountId, permissionMode: thread.permissionMode, model: thread.model, effort: thread.effort, speed: thread.speed ?? null };
 }
 
-export function composerMethods(ctx: FakeContext, methods: () => FakeMethods): Pick<FakeMethods, 'composer.list' | 'composer.put' | 'composer.asset.put' | 'composer.asset.get'> {
+export function composerMethods(ctx: FakeContext, methods: () => FakeMethods): Pick<FakeMethods, 'composer.list' | 'composer.put' | 'composer.enqueue' | 'composer.asset.put' | 'composer.asset.get'> {
   const state = ctx.composer;
   state.attach(ctx, methods);
   return {
     'composer.list': async () => copy([...state.records].filter(([key]) => state.visible(key, ctx)).map(([, row]) => row)),
+    'composer.enqueue': async params => {
+      const { threadId, prompt, clientRequestId: requestId } = params;
+      if (!prompt?.trim() || !/^[A-Za-z0-9_-]{8,128}$/.test(requestId)) throw refusal('composer.enqueue: expected a non-empty prompt and an 8 to 128 character request id');
+      const thread = ctx.thread(threadId);
+      const id = `${threadId}:${requestId}`;
+      const previous = ctx.turnRequests.get(id);
+      if (previous) {
+        if (previous.content !== JSON.stringify([prompt, []])) throw refusal('clientRequestId was already used for different content');
+        return { requestId, status: 'sent', turnId: previous.turn.id };
+      }
+      if (thread.incognito) {
+        const turn = await methods()['turns.start'](params);
+        return { requestId, status: 'sent', turnId: turn.id };
+      }
+      const key = keyOf('inputs', threadId);
+      const record = state.records.get(key);
+      const queued = record?.value?.input.queued.find(item => item.id === id);
+      const consumed = state.consumed.get(key)?.has(id);
+      if ((queued && queued.text !== prompt) || (consumed && state.cliPrompts.get(id) !== prompt)) throw refusal('clientRequestId was already used for different content');
+      if (consumed) return { requestId, status: 'sent' };
+      if (queued) return { requestId, status: record?.value?.input.paused ? 'held' : 'queued', ...(queued.request?.failed ? { reason: queued.request.failed } : {}) };
+      if (thread.archived || ctx.projects.some(project => project.id === thread.projectId && project.archived)) throw refusal('cannot send a prompt in an archived conversation or project');
+      const value: ComposerValue = copy(record?.value ?? { input: { text: '', attachments: [], queued: [], paused: false } });
+      const choice = choiceOf(thread);
+      value.input.queued.push({ id, text: prompt, attachments: [], choice, request: { id: requestId, choice, queuedAt: Date.now() } });
+      const saved = await methods()['composer.put']({ section: 'inputs', id: threadId, expectedRevision: record?.revision ?? 0, value });
+      if (!saved.accepted) throw refusal('the composer changed; retry with the same clientRequestId');
+      state.cliPrompts.set(id, prompt);
+      return { requestId, status: value.input.paused ? 'held' : 'queued' };
+    },
     'composer.put': async params => {
       if (params.section === 'inputs' && params.value !== null && !ctx.threads.has(params.id)
         && ![...ctx.deletedThreads.values()].some(family => family.threads.some(thread => thread.id === params.id))) {

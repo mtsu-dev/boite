@@ -10,7 +10,7 @@
  */
 
 import { delimiter } from 'node:path';
-import { AGENT_ENV, PANEL_SURFACE_KINDS } from '@boite/contracts';
+import { AGENT_ENV, PANEL_SURFACE_KINDS, applyAgentTaskChange } from '@boite/contracts';
 import type { AgentTask, AgentWhere, PanelSurface, RpcParams, ThreadActivity, ThreadId, ThreadSummary } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { refused } from './errors.ts';
@@ -304,6 +304,16 @@ export function registerAgentMethods(core: Core): void {
     return { ok: true } as const;
   });
   core.router.register('threads.tasks.set', (params) => setTasks(core, params));
+  core.router.register('threads.tasks.change', (params) => {
+    core.threads.require(params.threadId);
+    let tasks: AgentTask[];
+    try {
+      tasks = applyAgentTaskChange(core.activity.get(params.threadId).tasks, params);
+    } catch (error) {
+      throw refused((error as Error).message, {});
+    }
+    return setTasks(core, { threadId: params.threadId, tasks });
+  });
   core.router.register('threads.tasks.get', (params) => {
     core.threads.require(params.threadId);
     return core.activity.get(params.threadId).tasks;

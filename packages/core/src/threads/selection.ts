@@ -122,7 +122,7 @@ export function checkStoredEffort(
   checkEffort(provider, accountId, model, effort);
 }
 
-export function defaultModel(provider: ProviderDescriptor): string | null {
+export function defaultModel(provider: Pick<ProviderDescriptor, 'models'>): string | null {
   const preferred = provider.models.find((model) => model.default === true);
   if (preferred !== undefined) return preferred.id;
   return provider.models[0]?.id ?? null;

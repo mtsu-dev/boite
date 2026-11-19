@@ -1,4 +1,4 @@
-import type { ComposerChoice, ComposerQueuedPrompt, ComposerRecord, ComposerValue, RpcParams, ThreadSummary } from '@boite/contracts';
+import type { ComposerChoice, ComposerQueuedPrompt, ComposerRecord, ComposerValue, RpcParams, ThreadSummary, Turn } from '@boite/contracts';
 import { effectiveExperiments } from '@boite/contracts';
 import type { Core } from './core.ts';
 import type { Connection } from './router.ts';
@@ -12,6 +12,7 @@ import { needsModelDiscovery } from './threads/selection.ts';
 import { admissionRefusal } from './threads/admission.ts';
 import { composerActivity, isComposerActivity, startsAutoGoal } from './composer-activity.ts';
 import { composerBatch } from './composer-batch.ts';
+import { checkTurnRequest } from './threads/inputs.ts';
 
 const choiceOf = (thread: ThreadSummary): ComposerChoice => ({ providerId: thread.providerId, accountId: thread.accountId, model: thread.model, effort: thread.effort, speed: thread.speed ?? null, permissionMode: thread.permissionMode });
 const sameChoice = (a: ComposerChoice, b: ComposerChoice): boolean => a.providerId === b.providerId && a.accountId === b.accountId && a.model === b.model && a.effort === b.effort && (a.speed ?? null) === (b.speed ?? null);
@@ -55,6 +56,8 @@ export class Composer {
       }
     });
     core.router.register('composer.list', (_params, ctx) => this.storage.list(ctx.connection.id));
+    // The owner terminal has no shared draft state. It appends one prompt through the same outbox.
+    core.router.register('composer.enqueue', (params, ctx) => this.enqueue(params, ctx.connection));
     core.router.register('composer.asset.put', (params, ctx) => this.storage.putAsset(params.attachment, params.incognito === true, ctx.connection));
     core.router.register('composer.asset.get', (params, ctx) => this.storage.getAsset(params.assetId, ctx.connection.id));
     core.router.register('composer.put', (params, ctx) => this.put(params, ctx.connection));
@@ -95,6 +98,42 @@ export class Composer {
 
   /** Retry requested input once the native turn can accept it, before any tool output. */
   inputReady(threadId: string): void { this.#schedule([{ section: 'inputs', id: threadId }]); }
+
+  async enqueue(params: RpcParams<'composer.enqueue'>, connection: Connection) {
+    if (typeof params?.threadId !== 'string' || typeof params.prompt !== 'string' || !params.prompt.trim() || typeof params.clientRequestId !== 'string') {
+      throw invalidParams('composer.enqueue: expected threadId, a non-empty prompt and clientRequestId');
+    }
+    const { threadId, prompt, clientRequestId: requestId } = params;
+    const thread = this.#core.threads.require(threadId);
+    const { turn } = checkTurnRequest(this.#core.journal, threadId, prompt, [], [], requestId);
+    if (turn) return { requestId, status: 'sent' as const, turnId: turn.id };
+    // Private queues are tied to the originating socket. A terminal disconnects after its reply.
+    if (thread.incognito || this.#core.delegation.retirements.revivable(thread)) {
+      const started = await this.#core.router.dispatch('turns.start', params, { connection }) as Turn;
+      return { requestId, status: 'sent' as const, turnId: started.id };
+    }
+    const record = this.storage.get('inputs', threadId);
+    const id = `cli_${digest([threadId, requestId])}`;
+    const queued = record.value?.input.queued.find(item => item.id === id);
+    const delivery = this.storage.delivery(id);
+    if ((queued && queued.text !== prompt) || (delivery && delivery.fingerprint !== digest(prompt))) throw refused('clientRequestId was already used for different content');
+    if (delivery?.status === 'delivered') return { requestId, status: 'sent' as const };
+    if (queued) {
+      const reason = queued.request?.failed;
+      return { requestId, status: record.value?.input.paused ? 'held' as const : 'queued' as const, ...(reason ? { reason } : {}) };
+    }
+    if (delivery) throw refused('delivery of this message is unconfirmed; review the conversation before sending again');
+    if (this.#closed || this.#core.stopping) throw refused('the core is stopping; reconnect before sending another prompt');
+    const choice = choiceOf(thread);
+    const refusal = admissionRefusal(this.#core, thread, choice);
+    if (refusal !== null) throw refused(refusal);
+    if (thread.projectId && this.#core.projects.require(thread.projectId).archived) throw refused('cannot send a prompt in an archived project');
+    const value: ComposerValue = record.value ?? { input: { text: '', attachments: [], queued: [], paused: false } };
+    value.input.queued.push({ id, text: prompt, attachments: [], choice, request: { id: requestId, choice, queuedAt: Date.now() } });
+    const saved = this.put({ section: 'inputs', id: threadId, expectedRevision: record.revision, value }, connection);
+    if (!saved.accepted) throw refused('the composer changed; retry with the same clientRequestId');
+    return { requestId, status: value.input.paused ? 'held' as const : 'queued' as const };
+  }
 
   put(params: RpcParams<'composer.put'>, connection: Connection): { accepted: boolean; record: ComposerRecord } {
     if (!params || !['inputs', 'drafts'].includes(params.section) || typeof params.id !== 'string' || !params.id || !Number.isSafeInteger(params.expectedRevision) || params.expectedRevision < 0) throw invalidParams('composer.put: expected section inputs/drafts, non-empty id and non-negative expectedRevision');
@@ -263,7 +302,8 @@ export class Composer {
   #requestId(item: ComposerQueuedPrompt): string { return `composer_${digest(item.id)}`; }
 
   #reserve(record: ComposerRecord, item: ComposerQueuedPrompt, threadId: string, requestId: string): void {
-    this.storage.reserve({ id: item.id, section: record.section, record_id: record.id, status: 'submitting', thread_id: threadId, request_id: requestId, fingerprint: digest(item) }, this.storage.privateMode(record.section, record.id, record.value));
+    const fingerprint = digest(item.id.startsWith('cli_') ? item.text : item);
+    this.storage.reserve({ id: item.id, section: record.section, record_id: record.id, status: 'submitting', thread_id: threadId, request_id: requestId, fingerprint }, this.storage.privateMode(record.section, record.id, record.value));
   }
 
   #complete(section: ComposerRecord['section'], id: string, itemId: string | string[]): void {

@@ -7,8 +7,8 @@
 import { experimentOn } from './experiments.svelte';
 
 /**
- * Whether this machine's contacts have a way in: the experiment is on and the
- * client is the owner. A paired device may call none of `contacts.*`.
+ * The rail is available to the owner while the Contacts experiment is on.
+ * A paired device can send a human reply from a shared conversation.
  */
 export function contactsShown(store: { owner: boolean }): boolean {
   return experimentOn('contacts') && store.owner;
