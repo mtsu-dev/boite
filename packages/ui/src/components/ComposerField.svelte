@@ -196,6 +196,7 @@
 
   @media (max-width: 720px) {
     textarea, .input-mirror { font-size: var(--text-md); }
+    textarea, .input-paint { min-height: max(var(--icon-button-target), calc(var(--composer-input-height, 44px) - var(--composer-input-gap, 6px))); }
     /* The gap under the field stays outside it, so a scrolled line stops short of the bar, but it is the wrap's
        padding: a finger landing there still reaches the field (`reach`), the whole height a target. */
     .input-wrap { margin-bottom: 0; padding-bottom: var(--composer-input-gap, 6px); }
