@@ -7,7 +7,7 @@
  * table in `opencode.db`.
  */
 import { Database } from 'bun:sqlite';
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ProviderId } from '@boite/contracts';
 
@@ -15,6 +15,25 @@ export const OPENCODE_V2: ProviderId = 'opencode-v2';
 
 export function isOpenCode(providerId: ProviderId): boolean {
   return providerId === 'opencode' || providerId === OPENCODE_V2;
+}
+
+/** BoiteOS's agent shim: `/usr/lib/boiteos/agents/bin/<cli>` all link to it. */
+export const BOITEOS_AGENT_SHIM = '/usr/lib/boiteos/agents/shim';
+
+/**
+ * Whether the core can connect to an OpenCode 2 server it starts through
+ * `executable`. BoiteOS puts its agent shim first on the core's PATH, and the
+ * shim runs the real CLI in the thread's sandbox, whose network namespace
+ * forwards no port in: the `http://127.0.0.1:<port>` that `opencode serve`
+ * reports is the thread's own loopback, and the core's connect is refused.
+ * Such a process is driven over ACP on its stdio instead.
+ */
+export function openCodeServerReachable(executable: string, shim = BOITEOS_AGENT_SHIM): boolean {
+  try {
+    return realpathSync(executable) !== realpathSync(shim);
+  } catch {
+    return true;
+  }
 }
 
 /**

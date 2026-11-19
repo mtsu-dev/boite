@@ -31,7 +31,7 @@ import { errorCodeOf, noteReady } from '../driver-log.ts';
 import { SessionRetention } from '../session-retention.ts';
 import { releaseChild } from '../session-close.ts';
 import { OpenCodeConnection } from './opencode-connection.ts';
-import { OPENCODE_V2, withOpenCodeCompactionBuffer } from '../../providers/opencode.ts';
+import { OPENCODE_V2, openCodeServerReachable, withOpenCodeCompactionBuffer } from '../../providers/opencode.ts';
 import { noteCompactionModel, wantedCompactionBuffer, type CompactionCaches } from './opencode-compaction.ts';
 import {protectedAcp} from './protected.ts';
 
@@ -571,7 +571,10 @@ export class AcpSession {
     this.#protection = protectedAcp(ctx, () => this.#current, profile?.launch?.args ?? []);
     const temp = launchTemp(ctx.provider, ctx.account.isolationDir);
     let child: SpawnedChild;
-    const native = ctx.provider.id === 'opencode-v2';
+    // OpenCode 2 runs its own server, unless the core cannot reach its port:
+    // then it speaks ACP like version 1, without mid-turn steering.
+    const native = ctx.provider.id === OPENCODE_V2 && openCodeServerReachable(launch.executable, this.#deps.agentShim);
+    if (ctx.provider.id === OPENCODE_V2 && !native) ctx.log('info', `acp: ${launch.executable} runs OpenCode 2 in a sandbox the core cannot connect to; it speaks ACP on its stdio`);
     const password = native ? randomBytes(32).toString('base64url') : null;
     const args = launchArgs(profile, launch.prefix, ctx.provider, ctx.thread.permissionMode);
     // Preserve executable wrappers and fixture prefixes, replace only the ACP
