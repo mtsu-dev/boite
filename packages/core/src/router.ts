@@ -82,6 +82,8 @@ export class Router {
   }
 
   /** RPCs and signed peer HTTP requests share idle update admission. */
+  trackRequest<T>(work: () => Promise<T>): Promise<T>;
+  trackRequest<T>(work: () => T | Promise<T>): T | Promise<T>;
   trackRequest<T>(work: () => T | Promise<T>): T | Promise<T> {
     if (!this.accepting) throw new RpcFailure(RpcErrorCode.InvalidRequest, 'the core is stopping; reconnect before sending another request');
     this.active += 1;
