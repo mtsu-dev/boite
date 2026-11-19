@@ -6,7 +6,7 @@
  */
 
 import { Archive, ArchiveRestore, Pause, PenLine, Play } from '@lucide/svelte';
-import type { Team } from '@boite/contracts';
+import { markFeature, type Team } from '@boite/contracts';
 import { confirm } from './confirm.svelte';
 import { separator, type MenuItem } from './menu';
 import type { Store } from './store.svelte';
@@ -31,13 +31,14 @@ export function teamMenuItems(store: Store, team: Team): MenuItem[] {
 
 /**
  * Runs a pick of `teamMenuItems` other than Edit, which the caller opens, on `store`, the team's machine. Archive asks
- * first. A failure is reported as a minor error; the machine's teams are read again either way.
+ * first. A failure is reported on `report`, the window's own Store, as a minor error; the machine's teams are read
+ * again either way.
  */
-export async function pickTeamAction(store: Store, team: Team, id: string): Promise<void> {
+export async function pickTeamAction(store: Store, team: Team, id: string, report: Store = store): Promise<void> {
   const labels = strings.teamChat;
   const client = store.client;
   if (!store.owner) return;
-  if (!client) { store.reportError(new Error(strings.connection.unavailable), 'minor'); return; }
+  if (!client) { report.reportError(new Error(strings.connection.unavailable), 'minor'); return; }
   try {
     if (id === 'pause' || id === 'resume') await client.call('teams.pause', { teamId: team.id, paused: id === 'pause' });
     else if (id === 'restore') await client.call('teams.archive', { teamId: team.id, archived: false });
@@ -46,8 +47,11 @@ export async function pickTeamAction(store: Store, team: Team, id: string): Prom
       if (sure) await client.call('teams.archive', { teamId: team.id, archived: true });
     } else return;
   } catch (error) {
-    store.reportError(error, 'minor');
+    report.reportError(error, 'minor');
   } finally {
     void teamsOf(store).refresh();
   }
 }
+
+// Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
+markFeature('boite-feature:teams');

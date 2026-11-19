@@ -131,7 +131,7 @@
     if (!id || !threadId || narrow.current) return;
     untrack(() => { if (!store.panel.isOpen && store.panel.surfaces.length === 0 && firstDeskVisit(id)) store.panel.open('desk'); });
   });
-  // The window's rail asks for a new bot, a new team, a team's edit or the engine settings: the page owns those forms.
+  // The window's rail asks for a new bot, a new team, a team's chat or edit, or the engine settings: the page owns those forms.
   $effect(() => {
     void agentsIntent.request;
     untrack(() => {
@@ -139,7 +139,10 @@
       if (intent?.kind === 'new-bot') focus = { kind: 'new' };
       else if (intent?.kind === 'engine') focus = { kind: 'engine' };
       else if (intent?.kind === 'new-team' && experimentOn('teams') && store.owner) creatingTeam = true;
-      else if (intent?.kind === 'edit-team' && experimentOn('teams') && store.owner) editingTeam = intent.teamId;
+      else if (intent?.kind === 'team' && experimentOn('teams')) {
+        showTeamChat(intent.threadId);
+        if (intent.edit && store.owner) editingTeam = intent.teamId;
+      }
     });
   });
   /** The desktop's default agent was opened, or gave way to one named on the way in. */
@@ -211,10 +214,14 @@
   }
   /** A team's row: its chat, on the machine that holds it. The desktop's default agent gives way to it. */
   function openTeam(machine: Machine, chosen: Team) {
+    if (machine.store === store) showTeamChat(chosen.threadId);
+    else void workspace.select(machine.store, chosen.threadId);
+  }
+  /** A team's chat on this page's machine, in place of a form or a pane. */
+  function showTeamChat(threadId: string) {
     tried = true;
     focus = null; pane = null; listShown = false;
-    if (machine.store === store && teamThread?.id === chosen.threadId) return;
-    void workspace.select(machine.store, chosen.threadId);
+    if (teamThread?.id !== threadId) void workspace.select(store, threadId);
   }
   /** One step out: a form, then the conversation, then the list. */
   function back() {

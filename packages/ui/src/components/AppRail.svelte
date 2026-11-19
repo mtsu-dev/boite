@@ -19,8 +19,8 @@
   import { contactsParts } from '../lib/contacts-entry';
   import { machineFilter } from '../lib/machine-filter.svelte';
   import { projectView } from '../lib/project-view.svelte';
-  import { botEngine, editTeam, newBot, newTeam } from '../lib/agents-view.svelte';
-  import { pickTeamAction, teamMenuItems } from '../lib/team-menu';
+  import { botEngine, newBot, newTeam, showTeam } from '../lib/agents-view.svelte';
+  import { teamsParts } from '../lib/teams-entry';
   import { separator } from '../lib/menu';
   import { contextMenu } from '../lib/context-menu.svelte';
   import { dragWindow } from '../lib/window-drag';
@@ -177,24 +177,34 @@
     if (!onList || store.openThread) store.startDraft(undefined, { refresh: false });
     store.sidebarCollapsed = false;
   }
-  function openTeamChat({ machine, team }: TeamRow) {
+  /** A team's chat, in place of any form the Mochis page shows; with `edit` its edit dialog over it. */
+  function openTeamChat({ machine, team }: TeamRow, edit = false) {
     workspace.showAgents(machine.store);
-    void workspace.select(machine.store, team.threadId);
+    showTeam(machine.store, team, edit);
   }
   /**
    * A team's picture has the menu of its chat's head (`teamMenuItems`) on a right click, after Open, answered through
-   * its own machine. Edit opens its chat with the team's dialog over it.
+   * its own machine; a refusal shows in this window. Edit opens its chat with the team's dialog over it. The menu's
+   * module comes with the Teams' screens (`lib/teams-entry.ts`), fetched once a team shows.
    */
   function teamMenu(event: MouseEvent, row: TeamRow) {
-    const open = row.machine.store === store && openTeam === row.team.id;
-    const items = [{ id: 'open', label: strings.common.open, glyph: MessageSquare, disabled: open }, separator('sep-open'), ...teamMenuItems(row.machine.store, row.team)];
-    contextMenu.open(event, items, action => {
-      if (action === 'open') openTeamChat(row);
-      // The request first: showing the page again after the select would drop the chat it opens.
-      else if (action === 'edit') { editTeam(row.machine.store, row.team.id); openTeamChat(row); }
-      else void pickTeamAction(row.machine.store, row.team, action);
-    });
+    const parts = teamsParts;
+    if (!parts) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const opener = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+    const rect = opener?.getBoundingClientRect();
+    const at = event.clientX === 0 && event.clientY === 0 && rect ? { x: rect.left + 8, y: rect.bottom } : { x: event.clientX, y: event.clientY };
+    void parts.teamMenu().then(({ pickTeamAction, teamMenuItems }) => {
+      const items = [{ id: 'open', label: strings.common.open, glyph: MessageSquare }, separator('sep-open'), ...teamMenuItems(row.machine.store, row.team)];
+      contextMenu.show(at, items, action => {
+        if (action === 'open') openTeamChat(row);
+        else if (action === 'edit') openTeamChat(row, true);
+        else void pickTeamAction(row.machine.store, row.team, action, store);
+      }, opener);
+    }).catch(error => store.reportError(error, 'minor'));
   }
+  $effect(() => { if (teams.length) void teamsParts?.teamMenu().catch(() => {}); });
   /** What the Bots page's head offers, from anywhere: the page owns the forms (agents-view.svelte.ts). */
   function addMenu(anchor: HTMLElement) {
     const rect = anchor.getBoundingClientRect();
