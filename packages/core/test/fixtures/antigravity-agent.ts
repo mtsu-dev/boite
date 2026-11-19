@@ -27,7 +27,7 @@ import { Readable, Writable } from 'node:stream';
 import { agent, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk/unstable';
 
 /** The variables a test asserts on: the isolation, the harness, the browser suppression and where it unpacks. */
-const WATCHED = ['GEMINI_HOME', 'AGY_ACP_FORCE_FILE_STORAGE', 'ANTIGRAVITY_HARNESS_PATH', 'BROWSER', 'GEMINI_API_KEY', 'TEMP', 'TMP', 'TMPDIR', 'SSL_CERT_FILE'];
+const WATCHED = ['GEMINI_HOME', 'AGY_LLM_GATEWAY_URL', 'AGY_ACP_FORCE_FILE_STORAGE', 'ANTIGRAVITY_HARNESS_PATH', 'BROWSER', 'GEMINI_API_KEY', 'TEMP', 'TMP', 'TMPDIR', 'SSL_CERT_FILE'];
 
 /**
  * The models 1.4.5 answers `session/new` with (2026-11-04): Gemini for any
