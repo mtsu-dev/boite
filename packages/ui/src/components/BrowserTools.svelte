@@ -105,7 +105,7 @@
         <ol data-testid="browser-diagnostics">{#each report.entries as entry}<li class:error={entry.level === 'error'}><small>{entry.kind} · {entry.level}</small><pre>{entry.text}</pre>{#if entry.url}<small>{entry.url}</small>{/if}</li>{/each}</ol>
         <h3>{strings.browserTools.actions}</h3>
         {#if !report.history.length}<p class="muted">{strings.browserTools.noActions}</p>{/if}
-        <ol>{#each report.history as entry}<li class:error={!entry.ok}><span>{entry.ok ? '✓' : '×'} {entry.action} · {entry.durationMs} ms</span>{#if entry.error}<pre>{entry.error}</pre>{/if}</li>{/each}</ol>
+        <ol>{#each report.history as entry}<li class:error={!entry.ok}><span>{entry.ok ? '✓' : '×'} {entry.action} · {entry.durationMs} {strings.units.milliseconds}</span>{#if entry.error}<pre>{entry.error}</pre>{/if}</li>{/each}</ol>
       {:else if toolsState.result && toolsState.url}
         <!-- svelte-ignore a11y_media_has_caption -->
         {#if playable}<video controls src={toolsState.url} data-testid="browser-recording-preview" onerror={() => { unplayable = toolsState.result?.id ?? null; }}></video>
