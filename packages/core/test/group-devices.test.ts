@@ -1,12 +1,12 @@
 import { afterEach, expect, test } from 'bun:test';
-import { deviceAdmitInput, deviceHelloInput, RpcErrorCode, ungroupedInput, type PushPayload, type RpcEvents } from '@boite/contracts';
+import { deviceAdmitInput, deviceHelloInput, deviceRevokedInput, groupRelayUrl, RpcCloseCode, RpcErrorCode, ungroupedInput, type DeviceRevokedData, type PushPayload, type RpcEvents } from '@boite/contracts';
 import { createECDH, createPublicKey, generateKeyPairSync, randomBytes, sign, verify, type KeyObject } from 'node:crypto';
 import { connect, type CoreClient } from '../src/client.ts';
 import { appOrigin, isAllowedOrigin } from '../src/server.ts';
 import { APP_ORIGIN } from '@boite/contracts';
 import { mergeDeviceKeys } from '../src/group/device-keys.ts';
 import { echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';
-import { thrown } from './settle.ts';
+import { rejection, thrown } from './settle.ts';
 
 const cores: TestCore[] = [];
 const clients: CoreClient[] = [];
@@ -94,8 +94,14 @@ test('a phone added on one member says hello on every member with one key, and o
   clients.push(await connect(a.url, '', { device: once }));
   await refused(a, connect(a.url, '', { device: once }), 'already used');
   await refused(a, open(a.url, { device: helloFor(phone, deviceId, id(a), Date.now() - 10 * 60_000) }), 'two minutes');
+  const viaB = await open(groupRelayUrl(b.url, id(a)), {
+    device: helloFor(phone, deviceId, id(a)),
+    relay: helloFor(phone, deviceId, id(b)),
+  });
+  const relayClose = rejection(viaB.next('question.asked', () => false));
   // The owner revokes it on b: a closes its socket and refuses its next hello.
   b.core.group.clients.revokeDevice(deviceId);
+  expect((await relayClose).reason).toMatchObject({ code: RpcCloseCode.DeviceRevoked });
   await waitFor(() => a.core.group.view('owner')?.devices.length === 0);
   await waitFor(() => a.core.journal.listSessions().length === 0);
   // The revocation closed the phone's sockets on both machines: let them finish before the next one opens.
@@ -244,9 +250,20 @@ test('a key handed over on two members keeps both older pairings, a removed key 
   await waitFor(() => (a.core.group.view('owner')?.devices.length ?? 1) === 0);
   // The removed key opens a new link b drew: refused, and the link still admits the next key.
   const link = new URL((await b.core.group.clients.addDevice()).url).searchParams.get('grant')!;
-  await refused(b, open(b.url, { grant: link, device: { publicKey: phone.publicKey, sig: phone.sign(deviceAdmitInput(link, phone.publicKey)) } }), 'removed from the group');
+  const nonce = randomBytes(16).toString('hex');
+  const sockets = b.server.connections();
+  const { reason } = await rejection(open(b.url, { grant: link, nonce, device: { publicKey: phone.publicKey, sig: phone.sign(deviceAdmitInput(link, phone.publicKey)) } }));
+  const refusal = (reason as { rpc: { code: number; data: DeviceRevokedData } }).rpc;
+  await settled(b, sockets);
+  expect(refusal).toMatchObject({ code: RpcErrorCode.Unauthorized, data: { reason: 'device-revoked', publicKey: b.core.coordination.card().publicKey } });
+  const proof = refusal.data;
+  const signed = (coreId: string, challenge: string, deviceId: string) => verify(null, Buffer.from(deviceRevokedInput(coreId, challenge, deviceId)), createPublicKey(proof.publicKey), Buffer.from(proof.sig, 'base64'));
+  expect(signed(id(b), nonce, admitted.device!)).toBe(true);
+  expect(signed(id(a), nonce, admitted.device!)).toBe(false);
+  expect(signed(id(b), randomBytes(16).toString('hex'), admitted.device!)).toBe(false);
+  expect(signed(id(b), nonce, 'f'.repeat(64))).toBe(false);
   const next = phoneKey();
-  const again = await open(b.url, { grant: link, device: { publicKey: next.publicKey, sig: next.sign(deviceAdmitInput(link, next.publicKey)) } });
+  const again = await open(b.url, { grant: link, nonce, device: { publicKey: next.publicKey, sig: next.sign(deviceAdmitInput(link, next.publicKey)) } });
   expect(again.device).toMatch(/^[0-9a-f]{64}$/);
   // An origin the roster could not read back is never written into it.
   a.core.group.servedFrom('null');

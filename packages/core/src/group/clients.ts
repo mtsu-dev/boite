@@ -9,8 +9,8 @@
  * of that member's own. docs/internals/groups.md describes both.
  */
 import { verify } from 'node:crypto';
-import { deviceAdmitInput, deviceHelloInput, DEVICE_LINK_JOIN, GROUP_TICKET_TTL_MS, PAIRING_ROLES, ungroupedInput } from '@boite/contracts';
-import type { DeviceHello, DeviceInvite, Group, GroupTicket, PairingRole, UngroupedData } from '@boite/contracts';
+import { deviceAdmitInput, deviceHelloInput, deviceRevokedInput, DEVICE_LINK_JOIN, GROUP_TICKET_TTL_MS, PAIRING_ROLES, ungroupedInput } from '@boite/contracts';
+import type { DeviceHello, DeviceInvite, DeviceRevokedData, Group, GroupTicket, PairingRole, UngroupedData } from '@boite/contracts';
 import { invalidParams, messageOf, refused, unauthorized, unavailable } from '../errors.ts';
 import type { GroupStore } from '../group.ts';
 import { newToken } from '../ids.ts';
@@ -99,7 +99,12 @@ export class GroupClients {
     const id = deviceId(publicKey);
     // Before the grant is spent: a removed key gets a refusal that leaves the link good for the key the app makes next.
     if (this.#group.roster?.deviceKeys?.some((device) => device.id === id && device.removed)) {
-      throw unauthorized('this device was removed from the group: it needs a new key, which the app makes when it is added again');
+      const { coreId, publicKey } = this.#group.core.coordination.card();
+      const data = nonce === null ? undefined : {
+        reason: 'device-revoked', publicKey,
+        sig: this.#group.core.coordination.signature(Buffer.from(deviceRevokedInput(coreId, nonce, id))).toString('base64'),
+      } satisfies DeviceRevokedData;
+      throw unauthorized('this device was removed from the group: it needs a new key, which the app makes when it is added again', data);
     }
     const role = this.#group.core.sessions.redeem(grant, id, nonce);
     await this.#ensureGroup();
@@ -206,6 +211,14 @@ export class GroupClients {
     const entry = roster === null ? undefined : liveDeviceKeys(roster).find((device) => device.id === deviceIdValue);
     if (roster === null || entry === undefined || entry.push === this.#group.selfId()) return;
     this.#group.commit({ ...roster, deviceKeys: roster.deviceKeys!.map((device) => (device === entry ? { ...entry, push: this.#group.selfId(), rev: clockOf(roster) + 1 } : device)) });
+  }
+
+  /** A departing machine also closes device sessions. Only a recorded removal invalidates the device key. */
+  deviceSessionWasRevoked(sessionId: string): boolean {
+    const member = this.#group.issuedFor(sessionId);
+    if (!member?.startsWith('key:')) return false;
+    const id = member.slice('key:'.length);
+    return this.#group.roster?.deviceKeys?.some(device => device.id === id && device.removed) ?? false;
   }
 
   /** Takes a device out of the group, by its key's id or its older pairing's id. */

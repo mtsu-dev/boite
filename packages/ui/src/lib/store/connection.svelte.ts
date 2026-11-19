@@ -4,7 +4,7 @@ import { RpcFailure, WsClient, type Client, type ClientState, type ObservableCli
 import { confirm } from '../confirm.svelte';
 import { deviceLabel, noteThisComputer } from '../device';
 import { appPage } from '../app-origin';
-import { deviceKey, dropDeviceKey } from '../device-key';
+import { deviceKey, dropDeviceKey, heldDeviceKey } from '../device-key';
 import { clearStoredEndpoint, droppedSince, relayKeyFor, rememberDevice, forgetGroupOf, readStoredEndpoint, rememberSession, refreshLocalEnvironment, removeBrought, fromTauri, shellEndpointError, takeShellRestartGeneration, restartTauriCore, parsePairingLink, readEnvironments, removeEnvironment, resolveEndpoint, servesThisPage, storeEndpoint, upsertEnvironment, type Endpoint, type StoredEnvironment } from '../endpoint';
 import { onboardingSeen } from '../onboarding';
 import { rightPanel } from '../right-panel.svelte';
@@ -322,12 +322,22 @@ export class Connection {
     const began = Date.now();
     // A phone or a browser is a device of its group: one key, signed for each machine. The desktop app is its machine's own.
     const admitting = !desktopShell() && endpoint.grant !== undefined;
+    const knownCore = admitting ? readEnvironments().find(env => env.url === url)?.signs : undefined;
     this.#signed = endpoint.signs !== undefined || admitting;
     const client = new WsClient({
       url,
       token: endpoint.token,
       monitorLocal: this.localCore && desktopShell(),
-      ...(endpoint.signs !== undefined || admitting ? { signer: { key: deviceKey, coreId: endpoint.signs ?? null } } : {}),
+      ...(endpoint.signs !== undefined || admitting ? { signer: {
+        key: deviceKey,
+        coreId: endpoint.signs ?? knownCore ?? null,
+        replaceRevokedKey: async (id) => {
+          dropDeviceKey(id);
+          const replacement = await deviceKey();
+          if (replacement.id === id) throw new Error(strings.errors.revoked);
+          return replacement;
+        },
+      } } : {}),
       onDevice: (_device, coreId) => {
         if (this.ctx.client !== client) return;
         this.environments = rememberDevice(url, coreId);
@@ -367,7 +377,21 @@ export class Connection {
         if (this.ctx.client !== client) return;
         // Only the key this connection presented is dead: another window may have paired this machine anew meanwhile.
         // A device key a machine of its group refuses was removed from that group: the app makes a new one when it is added again.
-        if (client.deviceId !== null) dropDeviceKey(client.deviceId);
+        const deviceId = client.deviceId;
+        if (deviceId !== null) {
+          dropDeviceKey(deviceId);
+          const held = heldDeviceKey();
+          if (held !== null && held.id !== deviceId) {
+            this.environments = readEnvironments();
+            const coreId = endpoint.signs ?? client.core?.coreId;
+            const saved = coreId === undefined ? undefined : this.environments.find(env => env.url === url && env.signs === coreId);
+            if (saved !== undefined) {
+              this.attachEndpoint(saved, rememberActive);
+              void this.ctx.store.connect();
+              return;
+            }
+          }
+        }
         const stored = readStoredEndpoint();
         if (rememberActive && stored?.url === url && stored.token === key) clearStoredEndpoint();
         this.environments = removeEnvironment(url, key);

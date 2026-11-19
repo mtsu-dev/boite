@@ -29,6 +29,7 @@
   let { store, surface, panel }: { store: Store; surface: Surface; panel: BoundPanel } = $props();
 
   let status = $state<GitStatus | null>(null);
+  let error = $state<string | null>(null);
   let loading = $state(false);
 
   let threadId = $derived(store.openThread?.id ?? null);
@@ -60,19 +61,25 @@
 
   /** Bumped by the refresh button, so the status and the diffs are all read again. */
   let asked = $state(0);
+  /** Status and visible diffs start a fresh read when the connection comes back. */
+  let readRound = $derived(store.connection === 'ready' ? `${store.clientGeneration}:${store.returns}:${finished}:${asked}` : null);
   /** The last status request; an older answer that lands after it is dropped. */
   let latest = 0;
   /** The thread the list on screen belongs to. */
   let listed: ThreadId | null = null;
 
-  async function refresh(id: ThreadId): Promise<void> {
+  async function refresh(id: ThreadId, round: string): Promise<void> {
     const mine = ++latest;
+    const clientGeneration = store.clientGeneration;
     loading = true;
     try {
       const answer = await store.gitStatus(id);
       // The thread may have changed, or a newer read gone out, while the call
       // was out: an answer about another working tree must not land in this list.
-      if (mine === latest && threadId === id) status = answer;
+      if (mine === latest && threadId === id && round === readRound && clientGeneration === store.clientGeneration) {
+        status = answer.ok ? answer.value : null;
+        error = answer.ok ? null : answer.error;
+      }
     } finally {
       if (mine === latest) loading = false;
     }
@@ -129,7 +136,7 @@
   }
 
   /** A read diff, with the text pair it is drawn from: one object per answer, so its rows and counts are read once. */
-  type Read = { diff: GitDiff | null; source: DiffSource | null };
+  type Read = { diff: GitDiff; source: DiffSource | null } | { error: string; source: null };
   let diffs = $state.raw<Record<string, Read>>({});
   /** The files whose diff is wanted: seen near the screen. The file asked for always is. */
   let wanted = $state<Record<string, true>>({});
@@ -165,14 +172,14 @@
   // agent is changing, so the list is stale the moment a turn finishes.
   $effect(() => {
     const id = threadId;
-    void finished;
-    void asked;
+    const round = readRound;
     // Another thread's files never stay on screen while this one's are read.
     if (id !== listed) {
       listed = id;
       status = null;
+      error = null;
     }
-    if (id !== null) void refresh(id);
+    if (id !== null && round !== null) void refresh(id, round);
   });
 
   /** The rename origin the list gives a file: null for none, undefined while the list does not hold it. */
@@ -189,7 +196,7 @@
   // another thread starts from blank.
   $effect(() => {
     const id = threadId;
-    const round = `${finished}:${asked}`;
+    const round = readRound;
     // Another thread wants none of the last one's files, and its file asked for is still to be scrolled to.
     if (id !== diffThread) {
       diffThread = id;
@@ -199,9 +206,10 @@
       jumped = null;
       pinned = null;
     }
+    if (id === null || round === null) return;
     const paths = new Set(Object.keys(wanted));
     if (selected !== null) paths.add(selected);
-    if (id === null) return;
+    const clientGeneration = store.clientGeneration;
     for (const path of paths) {
       const from = originOf(path);
       // A status that lands re-runs this. The read of this round still holds when
@@ -212,9 +220,14 @@
       const mine = ++diffSeq;
       reads.set(path, { round, from, seq: mine });
       void store.gitDiff(id, path, undefined, from).then((answer) => {
-        if (reads.get(path)?.seq !== mine || diffThread !== id) return;
-        const source = answer && !answer.binary ? { oldText: answer.oldText ?? '', newText: answer.newText ?? '' } : null;
-        diffs = { ...diffs, [path]: { diff: answer, source } };
+        if (reads.get(path)?.seq !== mine || threadId !== id || round !== readRound || clientGeneration !== store.clientGeneration) return;
+        if (!answer.ok) {
+          diffs = { ...diffs, [path]: { error: answer.error, source: null } };
+          return;
+        }
+        const diff = answer.value;
+        const source = diff.binary ? null : { oldText: diff.oldText ?? '', newText: diff.newText ?? '' };
+        diffs = { ...diffs, [path]: { diff, source } };
       });
     }
   });
@@ -275,7 +288,7 @@
       </span>
     {:else if status}
       <span class="total" data-testid="changes-count"><ChangeCount files={0} added={0} removed={0} /></span>
-    {:else}
+    {:else if loading}
       <span class="total" data-testid="changes-count">{strings.changes.loading}</span>
     {/if}
     <span class="spacer"></span>
@@ -296,7 +309,9 @@
   <!-- The reader's own wheel, touch, press or key lets go of a jump's hold; the scroll itself is no control. -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="detail" bind:this={body} bind:clientWidth={codeWidth} onwheel={release} ontouchstart={release} onpointerdown={release} onkeydown={release}>
-    {#if status && status.changes.length === 0 && entries.length === 0}
+    {#if error}
+      <p class="empty" role="status" data-testid="changes-error">{error}</p>
+    {:else if status && status.changes.length === 0 && entries.length === 0}
       <EmptyState compact testid="changes-empty" line={strings.changes.clean} />
     {/if}
     {#each entries as { path, change } (path)}
@@ -336,8 +351,8 @@
           {#if !read}
             <!-- Read as it nears the screen: a quiet block holds its place meanwhile. -->
             <div class="pending" aria-busy="true"></div>
-          {:else if !read.diff}
-            <EmptyState compact line={strings.changes.clean} />
+          {:else if 'error' in read}
+            <p class="empty" role="status" data-testid="changes-diff-error">{read.error}</p>
           {:else if read.diff.binary}
             <EmptyState compact testid="changes-binary" line={strings.changes.binary} />
           {:else}
@@ -385,6 +400,7 @@
     border-top: 1px solid var(--color-border);
   }
   .pending { height: 48px; }
+  .empty { margin: 0; padding: 10px 12px; font-size: var(--text-sm); color: var(--color-muted-foreground); }
 
   .file + .file { border-top: 1px solid var(--color-border); }
 

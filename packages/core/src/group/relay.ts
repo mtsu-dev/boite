@@ -34,7 +34,7 @@
  */
 
 import type { ServerWebSocket } from 'bun';
-import { BROWSER_STREAM_ROUTE, BROWSER_STREAM_TICKET, FILE_ROUTE, GROUP_RELAY_ROUTE, PROTOCOL_VERSION, RPC_PATH, RpcErrorCode, VIEW_ROUTE } from '@boite/contracts';
+import { BROWSER_STREAM_ROUTE, BROWSER_STREAM_TICKET, FILE_ROUTE, GROUP_RELAY_ROUTE, PROTOCOL_VERSION, RPC_PATH, RpcCloseCode, RpcErrorCode, VIEW_ROUTE } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { messageOf } from '../errors.ts';
 import { TextSocket } from '../ws-client.ts';
@@ -277,8 +277,8 @@ export class RelayHub implements RelaySink {
   }
 
   /** A session revoked here carries nobody any more: its relayed sockets close with it. */
-  closeSession(sessionId: string): void {
-    for (const pipe of [...this.#pipes]) if (pipe.sessionId === sessionId) pipe.close(1008, 'session revoked');
+  closeSession(sessionId: string, deviceRevoked: boolean): void {
+    for (const pipe of [...this.#pipes]) if (pipe.sessionId === sessionId) pipe.close(deviceRevoked ? RpcCloseCode.DeviceRevoked : 1008, 'session revoked');
   }
 
   /** A relayed socket of this session is open and past its hello. */

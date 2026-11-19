@@ -1,9 +1,9 @@
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import type { GitDiff, GitStatus } from '@boite/contracts';
 import { FakeClient } from '../lib/fake-client';
 import type { BoundPanel, Surface } from '../lib/right-panel.svelte';
-import { Store } from '../lib/store.svelte';
+import { Store, type FileAnswer } from '../lib/store.svelte';
 import { strings } from '../lib/strings';
 import ChangesSurface from './ChangesSurface.svelte';
 
@@ -21,11 +21,13 @@ function gate(store: Store) {
   const realStatus = store.gitStatus.bind(store);
   const realDiff = store.gitDiff.bind(store);
   store.gitStatus = (id) =>
-    new Promise<GitStatus | null>((resolve) => held.push({ kind: 'status', release: () => resolve(realStatus(id).then((status) => (status === null ? null : edit(status)))) }));
+    new Promise<FileAnswer<GitStatus>>((resolve) => held.push({
+      kind: 'status', release: () => resolve(realStatus(id).then(answer => answer.ok ? { ...answer, value: edit(answer.value) } : answer)),
+    }));
   store.gitDiff = (id, path, ref, oldPath) => {
     origins.push(oldPath);
     diffs.push({ id, path });
-    return new Promise<GitDiff | null>((resolve) => held.push({ kind: 'diff', release: () => resolve(realDiff(id, path, ref, oldPath)) }));
+    return new Promise<FileAnswer<GitDiff>>((resolve) => held.push({ kind: 'diff', release: () => resolve(realDiff(id, path, ref, oldPath)) }));
   };
   return {
     origins,
@@ -43,6 +45,46 @@ function gate(store: Store) {
 function detail(): string {
   return document.querySelector('.detail')?.textContent ?? '';
 }
+
+test('a replacement connection finishes the first diff for the file already on screen', async () => {
+  const first = new FakeClient({ delayMs: 0 });
+  const second = new FakeClient({ delayMs: 0 });
+  const store = new Store();
+  store.attach(first);
+  let component;
+  let resolveOld!: (answer: FileAnswer<GitDiff>) => void;
+  const old = new Promise<FileAnswer<GitDiff>>(resolve => { resolveOld = resolve; });
+  try {
+    await store.connect();
+    await store.open('t-trace');
+    const diff = vi.spyOn(store, 'gitDiff').mockReturnValueOnce(old);
+    const surface: Surface = { id: 'changes', kind: 'changes', path: PATH };
+    const panel = { update() {} } as unknown as BoundPanel;
+    component = mount(ChangesSurface, { target: document.body, props: { store, surface, panel } });
+    await vi.waitFor(() => expect(document.querySelector('[data-file] [aria-busy=true]')).not.toBeNull());
+    expect(diff).toHaveBeenCalledTimes(1);
+
+    store.attach(second);
+    flushSync();
+    expect(diff).toHaveBeenCalledTimes(1);
+    await store.connect();
+    expect(store.connection).toBe('ready');
+    expect(store.openThread?.id).toBe('t-trace');
+    await vi.waitFor(() => {
+      expect(diff).toHaveBeenCalledTimes(2);
+      expect(document.querySelector('[data-testid=diff-view]')?.getAttribute('data-path')).toBe(PATH);
+    });
+
+    resolveOld({ ok: false, error: 'The old connection is gone' });
+    await old;
+    flushSync();
+    expect(document.querySelector('[data-testid=diff-view]')?.getAttribute('data-path')).toBe(PATH);
+    expect(document.querySelector('[data-testid=changes-diff-error]')).toBeNull();
+  } finally {
+    if (component) await unmount(component);
+    store.detach(); first.close(); second.close(); document.body.innerHTML = '';
+  }
+});
 
 test('a refresh reads the diff beside the status and keeps the old diff on screen until the new one lands', async () => {
   const client = new FakeClient({ delayMs: 0 });

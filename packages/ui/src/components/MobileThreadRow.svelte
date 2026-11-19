@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { threadWait } from '../lib/background';
+  import WaitLine from './WaitLine.svelte';
   import { rowAsks, rowSaysState, stateForm } from '../lib/status-order';
   import { Archive, Ellipsis, Pin, PinOff } from '@lucide/svelte';
   import { trackThreadPullRequest } from '../lib/thread-pull-request.svelte';
@@ -65,6 +67,7 @@
   /** A dot when the user must act or a turn failed, the arc for work, each with its word; "Done" for news; the time alone otherwise (ThreadState draws it then). */
   const form = $derived(stateForm(kind));
   const away = $derived(owner.connection !== 'ready');
+  const wait = $derived(!away && reason === undefined ? threadWait(thread, owner) : null);
   const pr = trackThreadPullRequest(() => ({ owner, thread }));
   /** A list row's pull request and branch; Activity's cards keep their own lines. */
   const pullRequest = $derived(reason === undefined ? pr.value : null);
@@ -121,9 +124,10 @@
       {#if reason !== undefined}
         <span class="title-line" data-row-title>{#if !feedKind && form !== null}<span class="lone-mark"><ThreadState {thread} {now} subagents={rowAsks(owner, thread.id)} {away} mark /></span>{/if}<ThreadHeadline {owner} {thread} offline={away} ask={why} /></span>
       {:else}
-        <ThreadHeadline {owner} {thread} {now} tile={compact && where === undefined ? project : undefined} offline={away}
+        <ThreadHeadline {owner} {thread} {now} tile={compact && where === undefined ? project : undefined} offline={away} elapsedShownSince={wait?.since}
           at={rowSaysState(kind) ? thread.lastUserMessageAt ?? thread.createdAt : undefined} />
       {/if}
+      {#if wait}<WaitLine {wait} />{/if}
       {#if listLine}<span class="meta meta-room" aria-hidden="true"><span class="ui-label">&nbsp;</span></span>{/if}
     </button>
     <!-- A list row's place line over the room kept for it: the pull request's link cannot sit inside the row's button. -->

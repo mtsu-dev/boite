@@ -8,6 +8,7 @@ import { experimentOn } from './experiments.svelte';
 import { noteUpkeep } from './agent-upkeep';
 import { agentDirectory } from './agent-directory.svelte';
 import { confirm } from './confirm.svelte';
+import { pendingWait } from './background';
 
 /**
  * A persistent agent is a thread with an identity: its conversation is its
@@ -136,11 +137,7 @@ export function liveStep(status: AgentStatus | null, thread: ThreadSummary | nul
 
 /** What the agent's thread waits on: the question it asked, else the permission it needs. */
 export function waitingOn(store: Pick<Store, 'pendingQuestions' | 'pendingPermissions'>, threadId: string | null | undefined): string | null {
-  if (!threadId) return null;
-  const question = store.pendingQuestions.find(q => q.threadId === threadId);
-  if (question) return question.text.split('\n')[0]!.trim();
-  const permission = store.pendingPermissions.find(p => p.threadId === threadId);
-  return permission ? permission.description ?? permission.toolName : null;
+  return pendingWait(store, threadId)?.what ?? null;
 }
 
 /**

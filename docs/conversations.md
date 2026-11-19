@@ -16,6 +16,10 @@ draft folder when you have no project yet.
 
 The chat shows Starting agent while the agent launches, then Working for once
 it starts working. The startup timer counts the current turn.
+The conversation header and list show what it is waiting on and how long the
+wait has lasted when the start time is available. They show how many sub-agents
+are still working after the conversation's turn ends. When a pull request watch
+pauses, the header gives the reason and the next check time.
 
 An agent can warn that something went wrong beside its work while it carries
 on: the disk was full and part of the conversation was not saved, attached

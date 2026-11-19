@@ -7,6 +7,7 @@ import type {
   FileContent,
   FileEntry,
   GitDiff,
+  GitOutsideRepository,
   GitStatus,
   ProcessRecord,
   ProjectId,
@@ -18,6 +19,7 @@ import type {
 import { TRACE_LIMIT } from '@boite/contracts';
 import { untrack } from 'svelte';
 import { strings } from '../strings';
+import { RpcFailure } from '../rpc-error';
 import { coreHref } from '../endpoint';
 import { titleFrom } from '../format';
 import type { FileAnswer } from '../store.svelte';
@@ -122,31 +124,36 @@ export class Workbench {
     return s.threads.find((thread) => thread.id === threadId)?.projectId ?? null;
   }
 
-  async gitStatus(threadId: ThreadId): Promise<GitStatus | null> {
+  async gitStatus(threadId: ThreadId): Promise<FileAnswer<GitStatus>> {
     const client = this.ctx.client;
     const clientGeneration = this.ctx.clientGeneration;
-    if (!client) return null;
+    if (!client) return { ok: false, error: strings.errors.noEndpoint };
     try {
-      const result = await client.call('git.status', { threadId });
-      return this.ctx.currentClient(client, clientGeneration) ? result : null;
+      const value = await client.call('git.status', { threadId });
+      if (!this.ctx.currentClient(client, clientGeneration)) return { ok: false, error: strings.errors.noEndpoint };
+      return { ok: true, value };
     } catch (error) {
-      if (this.ctx.currentClient(client, clientGeneration)) this.ctx.fail(error);
-      return null;
+      return { ok: false, error: this.#gitReadError(error) };
     }
   }
 
   /** `oldPath` is the origin `git.status` gave the path, null for none; undefined lets the core ask git. */
-  async gitDiff(threadId: ThreadId, path: string, ref?: string, oldPath?: string | null): Promise<GitDiff | null> {
+  async gitDiff(threadId: ThreadId, path: string, ref?: string, oldPath?: string | null): Promise<FileAnswer<GitDiff>> {
     const client = this.ctx.client;
     const clientGeneration = this.ctx.clientGeneration;
-    if (!client) return null;
+    if (!client) return { ok: false, error: strings.errors.noEndpoint };
     try {
       const result = await client.call('git.diff', { threadId, path, ...(ref === undefined ? {} : { ref }), ...(oldPath === undefined ? {} : { oldPath }) });
-      return this.ctx.currentClient(client, clientGeneration) ? result : null;
+      if (!this.ctx.currentClient(client, clientGeneration)) return { ok: false, error: strings.errors.noEndpoint };
+      return { ok: true, value: result };
     } catch (error) {
-      if (this.ctx.currentClient(client, clientGeneration)) this.ctx.fail(error);
-      return null;
+      return { ok: false, error: this.#gitReadError(error) };
     }
+  }
+
+  #gitReadError(error: unknown): string {
+    const outside = error instanceof RpcFailure && (error.data as Partial<GitOutsideRepository> | undefined)?.reason === 'not-a-repository';
+    return outside ? strings.changes.outsideRepository : this.ctx.reason(error);
   }
 
   async listFiles(threadId: ThreadId, path?: string): Promise<FileAnswer<FileEntry[]>> {

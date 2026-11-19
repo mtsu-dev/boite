@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { threadWait } from '../lib/background';
+  import WaitLine from './WaitLine.svelte';
   import { tick, type Snippet } from 'svelte';
   import { Check, Ellipsis, Folder, FolderInput } from '@lucide/svelte';
   import { type Project, type ThreadSummary } from '@boite/contracts';
@@ -68,6 +70,7 @@
   } = $props();
   let owner = $derived(machine.store);
   const away = $derived(owner.connection !== 'ready');
+  const wait = $derived(away ? null : threadWait(thread, owner));
   const kind = $derived(thread.archived ? null : threadState(thread, rowAsks(owner, thread.id)));
   /** "Offline" said once: on the place line, unless the card's head, the place's machine or the row's own state
       (work it last saw, ThreadState.svelte) already says it. */
@@ -177,10 +180,11 @@
       {#if detail}
         <span class="title-line">{#if !lead && stateForm(kind) !== null}<span class="lone-mark"><ThreadState {thread} {now} subagents={rowAsks(owner, thread.id)} {away} mark /></span>{/if}<ThreadHeadline {owner} {thread} {open} {pullRequest} offline={away} /></span>
       {:else if classic}
-        <ThreadHeadline {owner} {thread} {now} {open} fit offline={away} />
+        <ThreadHeadline {owner} {thread} {now} {open} fit offline={away} elapsedShownSince={wait?.since} />
       {:else}
-        <ThreadHeadline {owner} {thread} {now} {open} tile={compact && !where ? project : undefined} {pullRequest} fit offline={away} at={thread.lastUserMessageAt ?? thread.createdAt} />
+        <ThreadHeadline {owner} {thread} {now} {open} tile={compact && !where ? project : undefined} {pullRequest} fit offline={away} at={thread.lastUserMessageAt ?? thread.createdAt} elapsedShownSince={wait?.since} />
       {/if}
+      {#if wait}<WaitLine {wait} />{/if}
       <!-- Where the row lives, under the title: the project, the machine among several, Offline once. -->
       {#if !classic && (where || chip || (detail && at !== undefined))}
         <span class="where" data-testid="thread-where" title={where?.text}>{#if where?.project}<span class="ui-label" use:wordFit={where.project}></span>{/if}{#if where?.host}<MachinePlace host={where.host} />{/if}<ThreadRowDetails offline={chip} />{#if detail && at !== undefined}<time class="since ui-label" title={exactTime(at)}>{ago(at, now)}</time>{/if}</span>

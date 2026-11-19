@@ -1,4 +1,4 @@
-import type { ThreadId } from '@boite/contracts';
+import type { GitOutsideRepository, ThreadId } from '@boite/contracts';
 import { refused } from '../errors.ts';
 import { gitSubcommand } from './git-log.ts';
 
@@ -17,7 +17,7 @@ export function notARepository(threadId: ThreadId, stderr: string): never {
   const detail = firstLine(stderr);
   throw refused(
     `the working directory of thread ${threadId} is not inside a git repository${detail.length === 0 ? '' : `: ${detail}`}`,
-    { threadId },
+    { reason: 'not-a-repository', threadId } satisfies GitOutsideRepository,
   );
 }
 

@@ -36,8 +36,8 @@ export const strings = {
     watchFailed: '{count} failed',
     watchConflict: 'Conflicts with {base}',
     watchQueued: 'Merge queue, position {position}',
-    watchRateLimited: 'GitHub rate limit, next read {time}',
-    watchUnreachable: 'GitHub out of reach, next read {time}',
+    watchRateLimited: 'GitHub rate limit · retry {time}',
+    watchUnreachable: 'GitHub unreachable · retry {time}',
     stopWatch: 'Stop watching',
     stopWatchOf: 'Stop watching #{number}'
   }

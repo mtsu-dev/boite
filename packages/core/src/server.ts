@@ -762,10 +762,11 @@ export function startServer(options: ServerOptions): RunningServer {
       return false;
     },
     closeSession(sessionId: string): void {
+      const code = core.group.clients.deviceSessionWasRevoked(sessionId) ? RpcCloseCode.DeviceRevoked : RpcCloseCode.Unauthorized;
       for (const connection of connections) {
-        if (connection.identity.sessionId === sessionId) connection.close(RpcCloseCode.Unauthorized, 'session revoked');
+        if (connection.identity.sessionId === sessionId) connection.close(code, 'session revoked');
       }
-      relays.closeSession(sessionId);
+      relays.closeSession(sessionId, code === RpcCloseCode.DeviceRevoked);
     },
     sessionConnected: (sessionId: string): boolean => [...connections].some(c => c.authenticated && c.identity.sessionId === sessionId) || relays.hasSession(sessionId),
     closeAgents(threadId: ThreadId): void {

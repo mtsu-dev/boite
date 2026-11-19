@@ -6,6 +6,30 @@ import { strings } from '../../lib/strings';
 import AgentHeader from './AgentHeader.svelte';
 import BotColumnHead from './BotColumnHead.svelte';
 
+test('a pause from the conversation menu reaches the mochi while its view is busy', async ({ ready }) => {
+  const { store } = await ready({ delayMs: 0, agentsDemo: true });
+  const view = AgentsView.of(store);
+  await view.refresh();
+  const nova = view.snapshot!.profiles.find(profile => profile.name === 'Nova')!;
+  const head = mount(AgentHeader, {
+    target: document.body,
+    props: { store, view, agent: nova, status: null, thread: null, onpane: () => {} },
+  });
+  try {
+    view.pending = true;
+    flushSync();
+    document.querySelector<HTMLButtonElement>('button[data-testid=agent-menu]')!.click();
+    flushSync();
+    document.querySelector<HTMLButtonElement>('[data-value=pause]')!.click();
+    await vi.waitFor(() => {
+      expect(view.snapshot?.profiles.find(profile => profile.id === nova.id)?.status).toBe('paused');
+    });
+  } finally {
+    view.pending = false;
+    await unmount(head);
+  }
+});
+
 // A bot whose account was removed read "Its last turn failed" under its name, a cause the banner
 // beside it contradicted: the line now says what it needs.
 test('a mochi whose account is gone says it needs an account, not that its last turn failed', async ({ ready }) => {

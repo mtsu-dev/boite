@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { namedWait } from '../lib/background';
+  import WaitLine from './WaitLine.svelte';
   import { untrack } from 'svelte';
   import AgentExecutionRow from './AgentExecutionRow.svelte';
   import MachineIcon from './MachineIcon.svelte';
@@ -13,7 +15,6 @@
   import EffortSlider from './EffortSlider.svelte';
   import ModelPicker from './ModelPicker.svelte';
   import { threadTone, workflowTone } from '../lib/status-tone';
-  import Elapsed from './Elapsed.svelte';
   import NativeAgents from './NativeAgents.svelte';
   import WorkflowRunPane from './WorkflowRunPane.svelte';
   import SurfaceHead from './SurfaceHead.svelte';
@@ -184,7 +185,7 @@
         {#if there}<span class="machine" title={fill(strings.delegation.runsOn, { machine: there.name })}><MachineIcon icon={there.machine?.icon} os={there.machine?.store.core?.os} size={12} /><span class="ui-label" data-testid="delegation-member-machine">{there.name}</span></span>{/if}
       {/snippet}
       {#if wait?.state === 'waiting'}
-        <span class="note" data-testid="delegation-member-wait"><span class="ui-label">{fill(strings.sidebar.state.awaiting, { what: wait.for })}</span><Elapsed startedAt={wait.since} finishedAt={null} active /></span>
+        <span class="note"><WaitLine wait={namedWait(wait.for, wait.since)} testid="delegation-member-wait" /></span>
       {:else if wait?.state === 'interrupted'}
         <span class="note interrupted" data-testid="delegation-member-wait"><span class="ui-label">{fill(strings.sidebar.state.interruptedBy, { what: wait.for, reason: strings.sidebar.state.interruption[wait.reason] })}</span></span>
       {/if}
