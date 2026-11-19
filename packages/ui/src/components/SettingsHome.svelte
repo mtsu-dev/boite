@@ -67,8 +67,6 @@
     return null;
   }
 
-  /** Each tile's place in the whole grid, so they rise one after the other across the families. */
-  let order = $derived(new Map(families.flatMap((family) => family.pages).map((page, index) => [page.id, index])));
 </script>
 
 <div class="page home" data-testid="settings-home-page">
@@ -76,10 +74,10 @@
     <section class="family" aria-labelledby="settings-home-family-{family.id}" data-testid="settings-home-family" data-family={family.id}>
       <h2 class="ui-label" id="settings-home-family-{family.id}">{family.label}</h2>
       <div class="tiles">
-        {#each family.pages as page (page.id)}
+        {#each family.pages as page, index (page.id)}
           {@const Icon = SETTINGS_ICONS[page.id]}
           {@const line = status(page.id)}
-          <button type="button" class="tile" style:--i={order.get(page.id) ?? 0} data-testid="settings-home-{page.id}" onclick={() => onopen(page.id)}>
+          <button type="button" class="tile" style:--i={index} data-testid="settings-home-{page.id}" onclick={() => onopen(page.id)}>
             <span class="glyph"><Icon size={18} strokeWidth={1.75} aria-hidden="true" /></span>
             <span class="text">
               <span class="label ui-label">{page.label}</span>
@@ -133,9 +131,9 @@
     font-weight: normal;
     color: var(--color-foreground);
     transition: background var(--dur-2), border-color var(--dur-2), transform var(--dur-2) var(--ease-out-quint);
-    /* One after the other, a fifth of the short step apart: with motion reduced the steps are gone with it. */
+    /* Families rise together, with at most one short step of stagger per family. */
     animation: rise var(--dur-3) var(--ease-out-quint) backwards;
-    animation-delay: calc(var(--i) * var(--dur-1) / 5);
+    animation-delay: min(var(--dur-1), calc(var(--i) * var(--dur-1) / 5));
   }
   @media (hover: hover) {
     .tile:hover:not(:disabled) { background: var(--color-surface-3); border-color: var(--color-edge); transform: translateY(calc(-2px * var(--motion))); }

@@ -26,6 +26,7 @@ export class ReadingAnchor {
   held = false;
   /** The rows on the page by id, kept by the list as it mounts them: an anchor is found without searching every node of the thread. */
   readonly nodes = new Map<string, HTMLElement>();
+  #frame = 0;
 
   constructor(saved: ReadingPosition | undefined) {
     this.current = saved?.anchor ? { id: saved.anchor.row ?? saved.anchor.id, offset: saved.anchor.offset, message: saved.anchor.id } : undefined;
@@ -33,17 +34,34 @@ export class ReadingAnchor {
   }
 
   /** Reads the anchor: the first row of `column`, whose children the rows are, that reaches the viewport. */
-  remember(viewport: HTMLElement | undefined, column: HTMLElement | undefined): void {
+  remember(viewport: HTMLElement | undefined, column: HTMLElement | undefined, estimate?: HTMLElement): void {
+    this.cancelPending();
     if (!viewport?.isConnected || !viewport.clientHeight || this.restoring || this.held || !column) return;
     const top = viewport.getBoundingClientRect().top;
-    for (let node = column.firstElementChild as HTMLElement | null; node; node = node.nextElementSibling as HTMLElement | null) {
-      const id = node.dataset['mid'];
-      if (!id) continue;
-      const box = node.getBoundingClientRect();
-      if (box.bottom <= top) continue;
-      this.current = { id, offset: box.top - top, message: node.dataset['message'] ?? id };
+    const start = estimate?.parentElement === column ? estimate : column.firstElementChild;
+    for (let node = start; node; node = node.nextElementSibling) {
+      const visible = visibleRow(node, top);
+      if (!visible) continue;
+      this.current = visible;
+      // The slot uses estimated heights. Check back in case it put the first
+      // visible row before the candidate. Spacers and gap rows cannot anchor.
+      for (let previous = node.previousElementSibling; previous; previous = previous.previousElementSibling) {
+        if (!(previous instanceof HTMLElement) || !previous.dataset['mid']) continue;
+        const earlier = visibleRow(previous, top);
+        if (!earlier) break;
+        this.current = earlier;
+      }
       return;
     }
+  }
+
+  schedule(remember: () => void): void {
+    if (!this.#frame) this.#frame = requestAnimationFrame(remember);
+  }
+
+  cancelPending(): void {
+    if (this.#frame) cancelAnimationFrame(this.#frame);
+    this.#frame = 0;
   }
 
   /** Keeps `anchor` until the reader moves it (`release`). */
@@ -73,4 +91,13 @@ export class ReadingAnchor {
     const message = anchor.message ?? anchor.id;
     return { id: message, offset: anchor.offset, ...(message !== anchor.id ? { row: anchor.id } : {}) };
   }
+}
+
+function visibleRow(node: Element, top: number): RowAnchor | undefined {
+  if (!(node instanceof HTMLElement)) return undefined;
+  const id = node.dataset['mid'];
+  if (!id) return undefined;
+  const box = node.getBoundingClientRect();
+  if (box.bottom > top) return { id, offset: box.top - top, message: node.dataset['message'] ?? id };
+  return undefined;
 }
