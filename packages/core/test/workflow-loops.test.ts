@@ -131,8 +131,8 @@ test('a loop out of rounds fails its closing step, is told to the parent, and a 
   const newFix = done.nodes.find(n => n.id === 'fix')!.instances[0]!;
   expect(newFix.threadId).not.toBe(oldFix);
   expect(newFix.previousAttempts).toEqual([oldFix]);
-  expect(prompts.filter(p => p.threadId === oldFix).map(p => p.prompt.slice(0, 60))).toEqual([
-    expect.stringContaining('You are one step'), expect.stringContaining('round 2 of 2'),
+  expect(prompts.filter(p => p.threadId === oldFix).map(p => p.prompt)).toEqual([
+    expect.stringContaining(`Boite workflow step fix (run ${run.id}).`), expect.stringContaining('round 2 of 2'),
   ]);
   expect(prompts.find(p => p.threadId === newFix.threadId)?.prompt).toContain('round 3 of 2');
 });
