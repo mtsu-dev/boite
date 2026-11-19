@@ -150,6 +150,16 @@ test('an agent that reads the env file back gets the value masked in its convers
   const text = (await owner.call('threads.get', { threadId })).messages.flatMap(message => message.parts).map(part => part.type === 'text' ? part.text : '').join('\n');
   expect(text).toContain(`API_KEY=${secretMask('API_KEY')}`);
   expect(text).not.toContain(value);
+  // Another thread of the project, a subagent say, that reads the same file sees it masked too.
+  const thread = h.core.threads.require(threadId);
+  const other = await owner.call('threads.create', { projectId: thread.projectId!, providerId: 'echo', accountId: thread.accountId, title: 'reader' });
+  await owner.call('threads.subscribe', { threadId: other.id });
+  const read = owner.next('turn.finished', turn => turn.threadId === other.id, 15000);
+  await owner.call('turns.start', { threadId: other.id, prompt: `[spawn:${process.platform === 'win32' ? 'type' : 'cat'} ${join(root, '.env')}]` });
+  expect((await read).status).toBe('done');
+  const seen = (await owner.call('threads.get', { threadId: other.id })).messages.flatMap(message => message.parts).map(part => part.type === 'text' ? part.text : '').join('\n');
+  expect(seen).toContain(`API_KEY=${secretMask('API_KEY')}`);
+  expect(seen).not.toContain(value);
   expect(await leaks(h, value, [root])).toEqual([]);
 });
 
