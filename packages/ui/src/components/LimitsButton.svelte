@@ -97,7 +97,7 @@
   });
 
   /** A gateway without native quotas opens its dashboard. A slow answer does not hold the popover. */
-  async function beforeOpen(): Promise<boolean> {
+  async function beforeOpen() {
     if (!proxy?.enabled) return true;
     const client = store.client;
     const navigation = store.navigationGeneration;
@@ -106,8 +106,7 @@
     }
     if (store.client !== client || store.navigationGeneration !== navigation) return false;
     if (proxy.kind === 'douane' && gateway.state?.status !== 'unsupported') return true;
-    store.showSettings('limits');
-    return false;
+    return () => store.showSettings('limits');
   }
 </script>
 
@@ -116,8 +115,8 @@
   <Menu variant="ghost" testid="nav-limits" popupTestid="limits-glance"
     {label} titled={!name} panelLabel={strings.quotas.glance} beforeopen={beforeOpen}
     oncontextmenu={(event) => controlMenu(event, store, 'sidebar.limits')}>
-    {#snippet panel(close)}
-      <Deferred part={parts.LimitsGlance}>{#snippet children(Glance)}<Glance {store} {close} />{/snippet}</Deferred>
+    {#snippet panel(close, _rows, open)}
+      <Deferred part={parts.LimitsGlance}>{#snippet children(Glance)}<Glance {store} {close} {open} />{/snippet}</Deferred>
     {/snippet}
     <span class="glyph">
       {#if meter}

@@ -5,7 +5,7 @@
   import { strings } from '../lib/strings';
   import InfoTip from './InfoTip.svelte';
 
-  let { title, page, scope, scopeTemplate, kind, picker, heading, mobile = false, limits = false }: {
+  let { title, page, scope, scopeTemplate, kind, picker, heading, actions, description, mobile = false, quota = false, section = false }: {
     title: string;
     page: string;
     scope?: string | null;
@@ -13,8 +13,11 @@
     kind?: ScopeKind | null;
     picker?: Snippet<[string]>;
     heading?: Snippet;
+    actions?: Snippet;
+    description?: string;
     mobile?: boolean;
-    limits?: boolean;
+    quota?: boolean;
+    section?: boolean;
   } = $props();
   function infoOf(page: string): string {
     switch (page) {
@@ -35,11 +38,13 @@
   const picks = $derived(kind === 'machine' ? picker : undefined);
 </script>
 
-<div class="heading" class:mobile class:limits>
-  <h1 class="ui-label-box">
+<div class="heading" class:mobile class:quota class:section>
+  <svelte:element this={section ? 'h2' : 'h1'} class="ui-label-box title">
     {#if heading}{@render heading()}{:else}<span class="ui-label">{title}</span>{/if}
-    {#if info}<InfoTip topic={title} text={info} testid={mobile ? 'mobile-settings-info' : 'settings-info'} />{/if}
-  </h1>
+    {#if info && !description}<InfoTip topic={title} text={info} testid={mobile ? 'mobile-settings-info' : 'settings-info'} />{/if}
+    {@render actions?.()}
+  </svelte:element>
+  {#if description}<p class="hint">{description}</p>{/if}
   {#if scope}
     <p class="scope page-scope" class:picks data-testid={mobile ? 'mobile-settings-page-scope' : 'settings-scope'} data-scope={kind}>
       {#if kind === 'device'}<MonitorSmartphone size={14} strokeWidth={1.75} aria-hidden="true" />
@@ -51,10 +56,10 @@
 
 <style>
   .heading { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
-  h1 { min-width: 0; margin: 0; color: var(--color-foreground); font-size: var(--settings-title); font-weight: 650; line-height: 1.2; letter-spacing: -0.02em; }
+  .title { min-width: 0; margin: 0; color: var(--color-foreground); font-size: var(--settings-title); font-weight: 650; line-height: 1.2; letter-spacing: -0.02em; }
   .mobile { flex: 1; align-items: stretch; }
-  .mobile h1 { font-size: var(--text-md); font-weight: 600; line-height: inherit; letter-spacing: inherit; }
-  .mobile.limits h1 { margin-right: 54px; }
+  .mobile .title, .section .title { font-size: var(--text-md); font-weight: 600; line-height: inherit; letter-spacing: inherit; }
+  .mobile.quota .title { margin-right: 54px; }
   .mobile .page-scope { min-width: 0; margin: 2px 0 0; color: var(--color-subtle); line-height: 1.3; }
   .page-scope > .ui-label { min-width: 0; overflow-wrap: anywhere; }
   .page-scope > :global(svg) { flex: none; }

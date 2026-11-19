@@ -100,17 +100,16 @@ test('limits identify the owning machine in the desktop glance and desktop and p
       await page.click('[data-testid="limits-glance-page"]');
     }
     await page.waitFor(`document.querySelector('[data-testid="limits-page"]')`);
-    // On the desktop the settings bar carries the page's title and, under it, the
-    // machine its settings apply on; the page's own heading steps aside.
+    // The desktop header names the machine in its picker. The phone names it in the title.
     const heading = width === 1280 ? '[data-testid="settings-scope"]' : '[data-testid="mobile-settings-header"] h1';
     if (width === 1280) {
       expect((await page.text('[data-testid="settings-crumb"] h1')).trim()).toBe('Limits');
       expect((await page.text(heading)).trim()).toBe('Agent settings apply on Builder');
     } else expect((await page.text(heading)).trim()).toBe('Account limits for Builder');
     expect(await page.evaluate(`document.querySelector('${heading}')?.getClientRects().length > 0`)).toBe(true);
+    expect(await page.evaluate(`document.querySelector('[data-testid=limits-page] h1') === null`)).toBe(true);
     // A renamed machine remains identifiable even on a narrow phone.
     await page.evaluate(`globalThis.__boiteTest.workspace.customize('http://builder.test', 'Build server for shared development projects')`);
-    await page.waitFor(`document.querySelector('${scope}')?.textContent.includes('Build server for shared development projects')`);
     await page.waitFor(`document.querySelector('${heading}')?.textContent.includes('Build server for shared development projects')`);
     expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
     await capture(`quota-remote-page-${width}.png`);
@@ -119,8 +118,8 @@ test('limits identify the owning machine in the desktop glance and desktop and p
       await workspace.select(workspace.machines[0].store);
       workspace.active.showSettings('limits');
     })()`);
-    await page.waitFor(`document.querySelector('${scope}')?.dataset.remote === 'false'`);
-    expect(await page.text(scope)).not.toContain('Build server');
+    await page.waitFor(`document.querySelector('${heading}')?.textContent.includes('studio')`);
+    expect(await page.text(heading)).not.toContain('Build server');
     expect(page.errors()).toEqual([]);
     await page.evaluate(`localStorage.removeItem('boite.machine-profiles')`);
   }

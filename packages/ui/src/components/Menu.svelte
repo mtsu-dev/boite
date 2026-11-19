@@ -47,10 +47,11 @@
     /** The list's tallest desktop height in px, where the room exists for a long list to show whole (lib/floating.ts). */
     cap?: number;
     /** The rail's side-aligned dialog can render the menu items in its body. */
-    panel?: Snippet<[(restoreFocus?: boolean) => void, Snippet]>;
+    panel?: Snippet<[(restoreFocus?: boolean) => void, Snippet, boolean]>;
     panelLabel?: string;
     popupTestid?: string;
-    beforeopen?: () => boolean | Promise<boolean>;
+    /** Return a callback for an alternate action that should only run while opening is still current. */
+    beforeopen?: () => boolean | (() => void) | Promise<boolean | (() => void)>;
     oncontextmenu?: (event: MouseEvent) => void;
     testid?: string;
     /** The list closed: a caller that swapped in a submenu's rows puts its first list back. */
@@ -109,7 +110,10 @@
     const current = ++request;
     opening = true;
     try {
-      if (await beforeopen() && current === request && trigger?.isConnected && !disabled) popover.show();
+      const result = await beforeopen();
+      if (current !== request || !trigger?.isConnected || disabled) return;
+      if (typeof result === 'function') result();
+      else if (result) popover.show();
     } finally {
       if (current === request) opening = false;
     }
@@ -286,7 +290,7 @@
       {/each}
       {/snippet}
       {#if panel}
-        {@render panel(close, itemRows)}
+        {@render panel(close, itemRows, popover.open)}
       {:else}
         <!-- A second level's back row names it: no sheet title over it. -->
         {#if switches && !sheet}<div class="heading ui-label" aria-hidden="true">{label}</div>

@@ -1,10 +1,11 @@
 <script lang="ts">
+  import SettingsSection from './SettingsSection.svelte';
+  import PolicyLock from './PolicyLock.svelte';
   import SettingField from './SettingField.svelte';
   import SettingSwitch from './SettingSwitch.svelte';
   import { lockedBy } from '../lib/policy';
   import { errorText } from '../lib/errors';
   import InfoTip from './InfoTip.svelte';
-  import PolicyLock from './PolicyLock.svelte';
   import VoiceInputSettings from './VoiceInputSettings.svelte';
   import ChoiceSelect from './ChoiceSelect.svelte';
   import { MediaQuery } from 'svelte/reactivity';
@@ -182,10 +183,7 @@
 {/snippet}
 
 <div class="page" data-testid="voice-settings">
-  <header>
-    <h1 class="ui-label-box"><span class="ui-label">{strings.speech.heading}</span><InfoTip topic={strings.speech.heading} text={strings.speech.description} /><PolicyLock {store} keys={['dictation']} /></h1>
-    {#if saved}<span class="saved" role="status"><Check size={14} /><span class="ui-label">{strings.speech.saved}</span></span>{/if}
-  </header>
+  {#if saved}<p class="saved" role="status"><Check size={14} /><span class="ui-label">{strings.speech.saved}</span></p>{/if}
 
   <VoiceInputSettings />
 
@@ -245,19 +243,21 @@
     {#if pollError && pollError !== error}<p class="error" role="alert" data-testid="voice-poll-error">{pollError}</p>{/if}
 
     <section class="card">
-      <div class="switch-row" class:value={phone.current}>
-        <span class="text ui-label-box"><span class="ui-label">{strings.speech.engine}</span><InfoTip topic={strings.speech.engine} text={strings.speech.engineHint} /><PolicyLock {store} keys={['dictation']} /></span>
+      <SettingField title={strings.speech.engine} help={strings.speech.engineHint} field={false} class={phone.current ? 'value' : ''}>
+        {#snippet actions()}<PolicyLock {store} keys={['dictation']} />{/snippet}
+        {#snippet control()}
         {#if phone.current}
-          <ChoiceSelect row label={strings.speech.engine} value={config.engine} testid="voice-engine-current" optionTestid={(id) => `voice-${id}`}
+          <ChoiceSelect row label={strings.speech.engine} value={config!.engine} testid="voice-engine-current" optionTestid={(id) => `voice-${id}`}
             options={[{ id: 'local' as const, name: strings.speech.local, disabled: busy || off }, { id: 'api' as const, name: strings.speech.api, disabled: busy || dictation !== null }]}
             onpick={(engine) => { if (config!.engine !== engine) void apply({ engine }); }} />
         {:else}
         <div class="segmented" role="radiogroup" aria-label={strings.speech.engine}>
-          <button type="button" role="radio" class:on={config.engine === 'local'} aria-checked={config.engine === 'local'} data-testid="voice-local" disabled={busy || off} onclick={() => { if (config!.engine !== 'local') void apply({ engine: 'local' }); }}><span class="ui-label">{strings.speech.local}</span></button>
-          <button type="button" role="radio" class:on={config.engine === 'api'} aria-checked={config.engine === 'api'} data-testid="voice-api" disabled={busy || dictation !== null} onclick={() => { if (config!.engine !== 'api') void apply({ engine: 'api' }); }}><span class="ui-label">{strings.speech.api}</span></button>
+          <button type="button" role="radio" class:on={config!.engine === 'local'} aria-checked={config!.engine === 'local'} data-testid="voice-local" disabled={busy || off} onclick={() => { if (config!.engine !== 'local') void apply({ engine: 'local' }); }}><span class="ui-label">{strings.speech.local}</span></button>
+          <button type="button" role="radio" class:on={config!.engine === 'api'} aria-checked={config!.engine === 'api'} data-testid="voice-api" disabled={busy || dictation !== null} onclick={() => { if (config!.engine !== 'api') void apply({ engine: 'api' }); }}><span class="ui-label">{strings.speech.api}</span></button>
         </div>
         {/if}
-      </div>
+        {/snippet}
+      </SettingField>
       <SettingField title={strings.speech.language} help={strings.speech.languageHint}>
         {#snippet control(attributes)}
           <input {...attributes} class="language" data-testid="voice-language" maxlength="2" pattern={'[a-z]{2}|'} value={config!.language} placeholder="auto" spellcheck="false" disabled={off}
@@ -267,9 +267,8 @@
     </section>
 
     {#if config.engine === 'local'}
-      <section class="card" data-testid="voice-models">
+      <SettingsSection testid="voice-models" title={strings.speech.model} info={strings.speech.modelHint}>
         {#if status.models}
-        <h2 class="ui-label-box"><span class="ui-label">{strings.speech.model}</span><InfoTip topic={strings.speech.model} text={strings.speech.modelHint} /></h2>
         <div class="models" role="radiogroup" aria-label={strings.speech.model}>
           {#each mainModels as model (model.id)}
             {@render modelRow(model)}
@@ -298,17 +297,18 @@
             <div class="actions"><InfoTip topic={strings.speech.advanced} text={strings.speech.pathHint} /></div>
           </div>
         </details>
-      </section>
+      </SettingsSection>
     {:else}
       <form class="card" onsubmit={saveKeys}>
-        <div class="switch-row">
-          <span class="text ui-label-box"><span class="ui-label">{strings.speech.provider}</span><InfoTip topic={strings.speech.provider} text={strings.speech.providerHint} /></span>
+        <SettingField title={strings.speech.provider} help={strings.speech.providerHint} field={false}>
+          {#snippet control()}
           <div class="segmented" role="radiogroup" aria-label={strings.speech.provider}>
             {#each PROVIDERS as id (id)}
-              <button type="button" role="radio" class:on={config.apiProvider === id} aria-checked={config.apiProvider === id} data-testid="voice-provider-{id}" disabled={busy || dictation !== null} onclick={() => { if (config!.apiProvider !== id) void apply({ apiProvider: id }); }}><span class="ui-label">{provider(id)}</span></button>
+              <button type="button" role="radio" class:on={config!.apiProvider === id} aria-checked={config!.apiProvider === id} data-testid="voice-provider-{id}" disabled={busy || dictation !== null} onclick={() => { if (config!.apiProvider !== id) void apply({ apiProvider: id }); }}><span class="ui-label">{provider(id)}</span></button>
             {/each}
           </div>
-        </div>
+          {/snippet}
+        </SettingField>
         {#each PROVIDERS as id (id)}
           {@const set = id === 'groq' ? status.groqKeySet : status.openrouterKeySet}
           <div class="switch-row key">
@@ -338,7 +338,6 @@
 </div>
 
 <style>
-  header h1 { display: flex; align-items: center; gap: 6px; }
   .saved { display: inline-flex; gap: 6px; align-items: center; font-size: var(--text-sm); white-space: nowrap; color: var(--color-success); }
 
   /* The one line that answers "can I dictate now", with the single action that gets there. */

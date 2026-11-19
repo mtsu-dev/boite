@@ -1,6 +1,5 @@
 <script lang="ts">
   import BrowserProfilesCard from './BrowserProfilesCard.svelte';
-  import { strings } from '../lib/strings';
 
   /**
    * The built-in browser's own entry: its profiles and the
@@ -10,8 +9,5 @@
 </script>
 
 <div class="page" data-testid="browser-page">
-  <header>
-    <h1>{strings.settings.tabs.browser}</h1>
-  </header>
   <BrowserProfilesCard />
 </div>

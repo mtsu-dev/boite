@@ -244,6 +244,33 @@ test('a gateway that hangs does not hold the press: the glance opens within a fe
   expect(document.querySelector('[data-testid="limits-glance"]')).not.toBeNull();
 });
 
+test.each(['pending', 'closing'] as const)('Escape cancels a late dashboard redirect while %s', async (phase) => {
+  vi.useFakeTimers();
+  try {
+    let resolveReply!: (value: unknown) => void;
+    const reply = new Promise<unknown>(resolve => { resolveReply = resolve; });
+    const { showSettings } = proxied(true, () => reply, `glance-proxy-escape-${phase}`);
+    const trigger = document.querySelector<HTMLButtonElement>('[data-testid="nav-limits"]')!;
+    trigger.focus();
+    press();
+    if (phase === 'closing') {
+      await vi.advanceTimersByTimeAsync(300);
+      await settle();
+      const surface = document.querySelector<HTMLElement>('[data-testid="limits-glance"]')!;
+      surface.getAnimations = () => [{} as Animation];
+    }
+    document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await settle();
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(trigger);
+    resolveReply({ status: 'unsupported', providers: [], updatedAt: null, checkedAt: null, error: null });
+    await settle();
+    expect(showSettings).not.toHaveBeenCalled();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 test('a replacement core at the same URL never shows the previous core quotas after a failed read', async () => {
   const endpointUrl = 'glance-reused-address';
   const first = { client: { call: async () => [quota], on: () => () => {} }, owner: true, endpointUrl, core: { dataDir: '/first' }, accounts: [] } as unknown as Store;

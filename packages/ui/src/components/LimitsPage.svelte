@@ -1,12 +1,13 @@
 <script lang="ts">
+  import SettingsSection from './SettingsSection.svelte';
   import SettingField from './SettingField.svelte';
+  import SettingsPageHeader from './SettingsPageHeader.svelte';
   import SettingSwitch from './SettingSwitch.svelte';
   import { workspace } from '../lib/workspace.svelte';
   import { untrack } from 'svelte';
   import { RefreshCw } from '@lucide/svelte';
   import { subscriptionProxyName, type AccountQuota, type QuotaAlertPeriod } from '@boite/contracts';
   import { errorText } from '../lib/errors';
-  import InfoTip from './InfoTip.svelte';
   import PolicyLock from './PolicyLock.svelte';
   import { lockedBy } from '../lib/policy';
   import ProviderLogo from './ProviderLogo.svelte';
@@ -120,8 +121,11 @@
   {#if dashboard}
     <SubscriptionProxyDashboard {store} onNative={() => native = true} />
   {:else}
-  <header class="top">
-    {#if showTitle}<h1><QuotaMachineScope {store} fallback={strings.usage.limits} /></h1>{/if}
+  <header class="top" class:quota-actions={!showTitle}>
+    {#if showTitle}
+      <SettingsPageHeader title={strings.usage.limits} page="limits" heading={quotaHeading} />
+      {#snippet quotaHeading()}<QuotaMachineScope {store} fallback={strings.usage.limits} />{/snippet}
+    {/if}
     <QuotaPin />
     <PolicyLock {store} keys={['quotaReads']} />
     {#if store.owner}
@@ -169,8 +173,7 @@
       <!-- The priority the popup, the tray and the pinned card follow: the owner reorders it here too, on a phone as well. -->
       {#if rows.length > 0}<UsageLimits {rows} {store} loading={reader.busy} completed={reader.landed} onalert={alert}
         order={store.settings?.quotaOrder ?? []} onreorder={store.owner ? (quotaOrder) => store.saveSettings({ quotaOrder }) : undefined} />{/if}
-      {#if store.owner}<section class="card tracked" data-testid="limits-tracked">
-        <h2 class="ui-label-box"><span class="ui-label">{strings.quotas.tracked}</span><InfoTip topic={strings.quotas.tracked} text={strings.quotas.trackedHint} /></h2>
+      {#if store.owner}<SettingsSection class="tracked" testid="limits-tracked" title={strings.quotas.tracked} info={strings.quotas.trackedHint}>
         {#each tracked as row (row.accountId)}
           {@const account = row.label}
           {@const entry = store.accounts?.find((entry) => entry.id === row.accountId)}
@@ -178,23 +181,23 @@
             <label class="track-row">
               <ProviderLogo providerId={row.providerId} size={16} />
               <span class="who"><span class="provider">{row.providerName}</span><span class="account">{account}</span></span>
-              <input type="checkbox" role="switch" data-testid="quota-monitor" data-account-id={row.accountId} aria-label="{row.providerName} · {account}" checked={row.enabled} onchange={(event) => void monitor(row.accountId, event.currentTarget.checked)} />
+              <SettingSwitch data-testid="quota-monitor" data-account-id={row.accountId} aria-label="{row.providerName} · {account}" checked={row.enabled} onchange={(event) => void monitor(row.accountId, event.currentTarget.checked)} />
             </label>
             {#if entry}<AccountRename {store} account={entry} />{/if}
           </div>
         {/each}
-      </section>{/if}
+      </SettingsSection>{/if}
     {/if}
   </QuotaLoadState>
   {#if store.owner && store.settings && !dashboard}
-      <section class="card resume" id="settings-limit-resume">
+      <SettingsSection class="resume" id="settings-limit-resume">
         <SettingField title={strings.quotas.autoResume} help={strings.quotas.autoResumeHint} hint={strings.settings.effects.autoResume}>
           {#snippet control(attributes)}
             <SettingSwitch {...attributes} data-testid="setting-auto-resume" checked={store.settings?.autoResumeLimitedThreads === true}
               onchange={(event) => void toggleAutoResume(event.currentTarget)} />
           {/snippet}
         </SettingField>
-      </section>
+      </SettingsSection>
     {/if}
     {#if store.owner}<details class="disclosure"><summary><span class="ui-label">{strings.subscriptionProxy.configure}</span></summary><SubscriptionProxySettings {store} /></details>{/if}
   {/if}
@@ -212,9 +215,8 @@
   .refresh { flex: none; margin-left: auto; width: var(--control); height: var(--control); padding: 0; }
   .refresh :global(.spinning) { animation: spin 900ms linear infinite var(--loops); }
   .muted { margin: 0; color: var(--color-muted-foreground); font-size: var(--text-sm); }
-  .resume { max-width: var(--settings-width); margin-top: 12px; padding: 6px var(--settings-padding); }
-  .tracked { display: grid; gap: 2px; max-width: var(--settings-width); margin-top: 12px; padding: var(--settings-padding); }
-  .tracked h2 { display: flex; align-items: center; margin: 0 0 8px; font-size: var(--text-base); font-weight: 600; }
+  .limits-page :global(.resume) { max-width: var(--settings-width); margin-top: 12px; padding: 6px var(--settings-padding); }
+  .limits-page :global(.tracked) { display: grid; gap: 2px; max-width: var(--settings-width); margin-top: 12px; padding: var(--settings-padding); }
   .track-row { display: flex; align-items: center; gap: 10px; min-height: var(--row); cursor: pointer; }
   .tracked-account { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 8px; }
   .tracked-account :global(form) { grid-column: 1 / -1; }
