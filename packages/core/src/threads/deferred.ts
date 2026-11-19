@@ -9,7 +9,7 @@ import { newId } from '../ids.ts';
 import { withLoad } from './records.ts';
 
 const ANSWERS = 'deferred-answers:';
-type SavedAnswers = { held: string[]; consumed?: string };
+type SavedAnswers = { held: string[]; consumed?: string; idleTurn?: string | null };
 
 /**
  * What reaches an agent outside a prompt the user typed: answers to
@@ -55,13 +55,26 @@ export class DeferredInput {
 
   /** Part of the commit that answers the card, before any attempt at native input. */
   saveAnswer(threadId: ThreadId, text: string): void {
-    this.#save(threadId, [...(this.deferredAnswers.get(threadId) ?? []), text]);
+    const idleTurn = this.#threads.isBusy(threadId) || this.#threads.runner.steering.has(threadId)
+      ? undefined : this.#core.journal.lastTurn(threadId)?.id ?? null;
+    this.#save(threadId, [...(this.deferredAnswers.get(threadId) ?? []), text], this.consumed.get(threadId), idleTurn);
   }
 
-  #save(threadId: ThreadId, held: string[], consumed = this.consumed.get(threadId)): void {
+  #save(threadId: ThreadId, held: string[], consumed = this.consumed.get(threadId), idleTurn?: string | null): void {
     const journal = this.#core.journal;
-    if (held.length || consumed) journal.setSetting(ANSWERS + threadId, { held, consumed });
+    if (held.length || consumed) journal.setSetting(ANSWERS + threadId, { held, consumed, idleTurn } satisfies SavedAnswers);
     else journal.deleteSetting(ANSWERS + threadId);
+  }
+
+  /** Retry an idle card's dispatch or the flush after a successful turn. */
+  recoverAnswers(): void {
+    const journal = this.#core.journal;
+    // A refused admission puts its answer back for the next prompt.
+    for (const threadId of [...this.deferredAnswers.keys()]) {
+      const saved = journal.getSetting(ANSWERS + threadId) as SavedAnswers | undefined;
+      const last = journal.lastTurn(threadId);
+      if (saved && (last?.status === 'done' || saved.idleTurn === (last?.id ?? null))) this.flushDeferred(threadId);
+    }
   }
 
   /**

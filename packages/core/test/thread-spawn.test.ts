@@ -1,4 +1,5 @@
 import { afterEach, expect, spyOn, test } from 'bun:test';
+import { Database } from 'bun:sqlite';
 import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
@@ -81,7 +82,7 @@ test('an agent starts a real thread in another project, which answers it back as
   expect(delivered).toContain('"relation":"a thread you started; it reports to you"');
   expect(delivered).toContain('"project":"Notes"');
   expect(delivered).toContain('"about":"Write the 2.4 release notes"');
-  expect(delivered).toContain('one to three short lines');
+  expect(delivered).toContain('1-3 lines of facts or asks');
   expect(delivered).not.toContain(h.core.coordination.identity().coreId);
   // The started thread reads its starter as the one whose request is its task, beside the message it answers.
   await h.core.coordination.send({ threadId, to: spawned.address, text: 'Add the migration note.', replyTo: letter.id, requestId: 'follow-up' });
@@ -118,21 +119,98 @@ test('a first answer interrupted before coordination queues it is recovered once
   answering();
   try {
     const { h, threadId, cli } = await setup(dataDir);
-    const interrupted = spyOn(h.core.coordination, 'send').mockRejectedValueOnce(new Error('Interrupted before enqueue'));
+    const dispatch = spyOn(h.core.threads.spawns, 'sendResult').mockResolvedValueOnce(undefined);
     const spawned = JSON.parse((await cli(['thread', 'new', 'notes', 'Send a result', '--json'])).out) as AgentSpawn;
-    await waitFor(() => interrupted.mock.calls.length === 1);
+    await waitFor(() => dispatch.mock.calls.length === 1);
+    expect(h.core.journal.getTurn(spawned.turnId)?.status).toBe('done');
+    expect(h.core.journal.getSetting(`spawn-origin:${spawned.thread.id}`)).toMatchObject({
+      reported: false, pending: { turnId: spawned.turnId, text: expect.stringContaining('Done in notes') },
+    });
     expect(h.core.coordination.get(threadId).messages).toEqual([]);
-    interrupted.mockRestore();
+    dispatch.mockRestore();
     await h.stop();
 
     const restarted = await startTestCore({ dataDir }); cores.push(restarted);
     const letters = () => restarted.core.coordination.get(threadId).messages.filter(letter => letter.from.threadId === spawned.thread.id);
     await waitFor(() => letters().length === 1);
     expect(letters()[0]?.text).toContain('Done in notes');
-    const turn = restarted.core.journal.getTurn(spawned.turnId)!;
-    await restarted.core.threads.spawns.finished(turn);
+    await restarted.core.threads.spawns.sendResult(spawned.thread.id);
     expect(letters()).toHaveLength(1);
     await restarted.stop();
+  } finally {
+    for (const h of cores.splice(0)) await h.stop();
+    await removeDir(dataDir);
+  }
+});
+
+test('a first result interrupted before settlement comes back from the resumed turn', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'boite-spawn-before-settlement-'));
+  answering();
+  try {
+    const { h, threadId, cli } = await setup(dataDir);
+    const interrupted = spyOn(h.core.coordination, 'send').mockRejectedValueOnce(new Error('Interrupted before enqueue'));
+    const spawned = JSON.parse((await cli(['thread', 'new', 'notes', 'Send a result', '--json'])).out) as AgentSpawn;
+    await waitFor(() => interrupted.mock.calls.length === 1);
+    interrupted.mockRestore();
+    const id = spawned.thread.id, key = `spawn-origin:${id}`;
+    const { pending, answer, ...origin } = h.core.journal.getSetting(key) as Record<string, unknown>;
+    await h.stop();
+
+    // Recreate the durable rows of a crash before the terminal transaction.
+    const db = new Database(join(dataDir, 'journal.db'));
+    try {
+      db.query("UPDATE turns SET status = 'running', finished_at = NULL WHERE id = ?").run(spawned.turnId);
+      db.query("UPDATE threads SET status = 'running', session_id = NULL WHERE id = ?").run(id);
+      db.query("DELETE FROM messages WHERE thread_id = ? AND role = 'assistant'").run(id);
+      db.query("UPDATE settings SET value = ? WHERE key = ?").run(JSON.stringify(origin), key);
+      db.query("DELETE FROM settings WHERE key = 'auto-continue-stopped'").run();
+    } finally { db.close(); }
+
+    const restarted = await startTestCore({ dataDir }); cores.push(restarted);
+    const letters = () => restarted.core.coordination.get(threadId).messages.filter(letter => letter.from.threadId === id);
+    await waitFor(() => restarted.core.journal.listTurns(id).some(turn => turn.execution?.operation === 'resume' && turn.status === 'done'));
+    await waitFor(() => letters().length > 0);
+    expect(letters().map(letter => letter.text)).toEqual([expect.stringContaining('Done in notes')]);
+  } finally {
+    for (const h of cores.splice(0)) await h.stop();
+    await removeDir(dataDir);
+  }
+});
+
+test.each(['reported', 'pending', 'stopped', 'owner paused', 'legacy restart pause'] as const)('a received first result survives restart (%s)', async state => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'boite-spawn-received-'));
+  const prompts = answering();
+  try {
+    const { h, owner, threadId, cli } = await setup(dataDir);
+    // Crash after the receipt commits and before the asynchronous delivery.
+    Object.assign(h.core.coordination, { deliver: async () => {} });
+    const spawned = JSON.parse((await cli(['thread', 'new', 'notes', 'Send a result', '--json'])).out) as AgentSpawn;
+    const key = `spawn-origin:${spawned.thread.id}`;
+    const saved = () => h.core.journal.getSetting(key) as Record<string, unknown>;
+    await waitFor(() => saved()?.reported === true);
+    const origin = saved();
+    const letter = h.core.coordination.get(threadId).messages.find(letter => letter.id === origin.answer)!;
+    expect(letter.status).toBe('received');
+    if (state === 'pending') h.core.journal.setSetting(key, { ...origin, reported: false, pending: { turnId: spawned.turnId, text: letter.text } });
+    if (state === 'stopped') await owner.call('turns.stop', { threadId });
+    if (state === 'owner paused' || state === 'legacy restart pause') {
+      await owner.call('collaboration.configure', { threadId, config: { ...h.core.coordination.config(threadId), paused: true } });
+      if (state === 'legacy restart pause') h.core.journal.setSetting(`coordination-autopause:${threadId}`, true);
+    }
+    await h.stop();
+
+    const restarted = await startTestCore({ dataDir }); cores.push(restarted);
+    const receipt = () => restarted.core.coordination.get(threadId).messages.find(candidate => candidate.id === letter.id);
+    const deliveries = () => prompts.get(threadId)?.filter(text => text.includes('Done in notes')) ?? [];
+    if (state === 'stopped' || state === 'owner paused') {
+      const inbox = restarted.core.coordination as unknown as { deliver(threadId: string): Promise<void> };
+      await inbox.deliver(threadId);
+      expect(receipt()?.status).toBe('received');
+      expect(deliveries()).toHaveLength(0);
+      await (await restarted.connect()).call('collaboration.configure', { threadId, config: { ...restarted.core.coordination.config(threadId), paused: false } });
+    }
+    await waitFor(() => receipt()?.status === 'delivered' && deliveries().length > 0);
+    expect(deliveries()).toHaveLength(1);
   } finally {
     for (const h of cores.splice(0)) await h.stop();
     await removeDir(dataDir);

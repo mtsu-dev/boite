@@ -57,6 +57,10 @@ describe('projects', () => {
       const client = await harness.connect();
       const { threadId } = await echoThread(harness, client);
       const project = harness.core.projects.require(harness.core.threads.require(threadId).projectId);
+      const doneThread = await client.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: harness.core.threads.require(threadId).accountId });
+      const plugin = { pluginId: 'review-fixture', pluginName: 'Review fixture' };
+      const done = harness.core.threads.archive(doneThread.id, true, true, plugin);
+      expect(done.doneAt).toBeNumber();
       const turn = await client.call('turns.start', { threadId, prompt: '[sleep:60000]', clientRequestId: 'remove-request' });
       await client.call('projects.remove', { projectId: project.id });
       expect(harness.core.scheduler.state().running).toHaveLength(0);
@@ -68,7 +72,10 @@ describe('projects', () => {
       const restarted = await harness.connect();
       expect(await restarted.call('threads.list', { includeArchived: true })).toEqual([]);
       expect(await restarted.call('projects.list', {})).toEqual([]);
-      expect((await restarted.call('projects.add', { path: project.path })).id).toBe(project.id);
+      expect(await restarted.call('projects.add', { path: project.path })).toMatchObject({ id: project.id, doneThreads: 1 });
+      expect(await restarted.call('threads.get', { threadId: done.id })).toMatchObject({
+        id: done.id, archived: true, doneAt: done.doneAt, archiveReason: { type: 'plugin', ...plugin },
+      });
       const restored = await restarted.call('threads.get', { threadId });
       expect(restored.archived).toBe(true);
       expect(restored.turns.map(row => row.id)).toEqual([turn.id]);

@@ -1,5 +1,14 @@
-import { threadActive, type ThreadStatus } from '@boite/contracts';
+import { threadActive, type AgentLetter, type ThreadStatus } from '@boite/contracts';
+import type { Core } from './core.ts';
 import type { Journal } from './journal.ts';
+
+/** The receipt survived before its wake. A restart pause holds the rest of the inbox. */
+export function wakesAfterRestart(core: Core, letter: AgentLetter, localCoreId: string, pauseKey: string): boolean {
+  if (letter.from.coreId !== localCoreId) return false;
+  const reason = core.journal.getSetting(pauseKey);
+  return (reason === 'restart' || reason === true)
+    && core.threads.spawns.answers(letter.from.threadId, letter.to, letter.id);
+}
 
 /** A restart keeps idle contacts reachable and holds interrupted work for a new wake. */
 export function pauseInterruptedCoordination(journal: Journal, pause: (threadId: string) => void): void {

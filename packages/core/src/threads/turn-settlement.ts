@@ -165,6 +165,7 @@ export async function settleTurn(core: Core, state: Settlement): Promise<Complet
         // Read once the answer is written: the flag rides on the turn every listener of `turn.finished` gets.
         if (quietTurn(core, finished)) finished.quiet = true;
         const { toolsClosed, ...completion } = finishThread(core, state);
+        core.threads.spawns.stageResult(finished);
         if (toolsClosed > 0) notes.push(() => core.logs.info(`${toolsClosed} tool calls still running were marked failed because the turn ended ${state.result.status}`, { source: 'turns', event: 'turn.tools-closed', threadId: running.threadId, turnId: running.id, data: { tools: toolsClosed, status: state.result.status } }));
         const attempts = retry;
         if (attempts > 0) notes.push(() => core.logs.info(`Turn settled after ${attempts} failed persistence attempts`, { source: 'turns', event: 'turn.settlement.recovered', threadId: running.threadId, turnId: running.id, durationMs: performance.now() - settleAt, data: { retries: attempts } }));

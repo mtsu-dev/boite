@@ -6,6 +6,7 @@ import { FAKE_FILES, scoreFakeFile } from './files';
 import { IMPORT_LIST_MS } from './providers';
 import { DATA_DIR, FAKE_DRAFTS_PATH, toSummary } from './shared';
 import { putAway } from './threads';
+import { closeThreadTerminals } from './terminals';
 import { archiveProject, describedProject, requireFakeFolder } from './project-archive';
 import type { FakeContext, FakeMethods } from './context';
 
@@ -206,11 +207,18 @@ export function projectMethods(ctx: FakeContext) {
       const threads = [...ctx.threads.values()].filter((thread) => thread.projectId === params.projectId);
       const incognito = new Set(threads.filter(thread => thread.incognito).map(thread => thread.id));
       const retained = (thread: Thread) => !incognito.has(thread.id) && (!thread.parentThreadId || !incognito.has(thread.parentThreadId));
-      for (const thread of threads) {
+      const archived = threads.filter(thread => thread.archived);
+      const open = threads.filter(thread => !thread.archived);
+      for (const thread of open) {
         thread.archived = true;
+        thread.archivedAt = ctx.now();
         ctx.touch(thread);
       }
-      await Promise.all(threads.map((thread) => putAway(ctx, thread)));
+      await Promise.all(open.map(thread => putAway(ctx, thread)));
+      await Promise.all(archived.map(async thread => {
+        await ctx.stopTurn(thread.id);
+        closeThreadTerminals(ctx, thread.id);
+      }));
       ctx.removedProjects.set(pathKey(project.path), { project, threads: threads.filter(retained) });
       ctx.projects = ctx.projects.filter(p => p.id !== project.id);
       for (const thread of threads) {

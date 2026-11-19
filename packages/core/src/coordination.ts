@@ -11,7 +11,7 @@ import { askContact, CoordinationBridge } from './coordination-bridge.ts';
 import { dropGroupRead, policedRoutes, policyAllowsLetter } from './coordination-group.ts';
 import { address, coordinationGuide, coordinationUrl, LETTER_TTL_MS, letterPrompt, RESIDENT_LETTER_TTL_MS, same, text, SWEEP_PROBES } from './coordination-letter.ts';
 import { withProjects, withRelations } from './coordination-relation.ts';
-import { pauseInterruptedCoordination } from './coordination-recovery.ts';
+import { pauseInterruptedCoordination, wakesAfterRestart } from './coordination-recovery.ts';
 import { firstAnswer, PeerGone, PeerRefusal, post, settle, type Answer, type Envelope, type Operation } from './coordination-wire.ts';
 import { checkTailnetName } from './contacts/invite.ts';
 import { outgoingContact, incomingContact } from './contacts/human-letters.ts';
@@ -627,7 +627,7 @@ export class Coordination {
     const resident = this.#core.workforce.projects.mayReceive(letter, letter.from.coreId === this.#self('').coreId);
     if (resident !== null) return resident;
     const recipient = this.config(letter.to.threadId);
-    if (recipient.mode === 'off' || recipient.paused) return false;
+    if (recipient.mode === 'off' || (recipient.paused && !wakesAfterRestart(this.#core, letter, this.#self('').coreId, AUTO_PAUSE_PREFIX + letter.to.threadId))) return false;
     if (letter.from.coreId !== this.#self('').coreId) {
       if (!recipient.remote) return false;
       const routed = this.mailboxes.mayReceive(letter);
