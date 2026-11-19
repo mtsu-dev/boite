@@ -377,18 +377,11 @@ export class ProcRegistry {
       windowsHide: true,
       detached: OWN_GROUP,
     });
-    // It never started (a missing or refused executable): nothing runs to trace or stop. Its 'error' reaches the caller.
     const pid = child.pid;
-    if (pid === undefined) {
-      child.once('error', (error) => forgetOnMissing(command, executable, error));
-      return child;
-    }
+    // It never started (a missing or refused executable): nothing runs to trace or stop, and its 'error' reaches the caller.
+    if (pid === undefined) return child.once('error', (error) => forgetOnMissing(command, executable, error));
 
-    const kill = (): Promise<void> | undefined => {
-      if (OWN_GROUP) return stopGroup(pid, running(child));
-      child.kill();
-      return undefined;
-    };
+    const kill = (): Promise<void> | undefined => OWN_GROUP ? stopGroup(pid, running(child)) : void child.kill();
     const record = this.#register(threadId, pid, cmd, args, {
       root: opts.agentRoot !== false,
       startup: opts.startup === true,
@@ -403,9 +396,7 @@ export class ProcRegistry {
     });
     this.#childStops.set(child, this.#managedStop(record.pid, running(child), kill, exited));
 
-    child.once('exit', (code) => {
-      this.onExit(threadId, record.pid, code, undefined, record);
-    });
+    child.once('exit', (code) => this.onExit(threadId, record.pid, code, undefined, record));
     // A started child may still emit 'error' and no 'exit'; without this it
     // would stay in the live registry for the rest of the session.
     child.once('error', (error) => {
@@ -649,15 +640,6 @@ export class ProcRegistry {
   killAll(): Promise<void> {
     for (const threadId of [...this.#live.keys()]) this.killTree(threadId);
     return Promise.all(this.#stops.keys()).then(() => undefined);
-  }
-
-  /**
-   * For a shutdown out of time, in the tick before it exits: SIGKILL to every
-   * group still running, with no grace. The watcher would end them too
-   * (platform/posix-group-watch.ts), but only after its own grace.
-   */
-  killAllNow(): void {
-    this.platform.killTiedGroups?.();
   }
 
   #trackStop(stop: Promise<void> | undefined, threadId?: ThreadId): void {
