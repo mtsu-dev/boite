@@ -479,7 +479,7 @@ export class AcpSession {
       // more without a word on the wire, which must not read as a start.
       else turn.ctx.reportProgress?.('waiting');
       response = await pending;
-      turn.ctx.sessionAccepted?.(sessionId);
+      if (this.#canLoad) turn.ctx.sessionAccepted?.(sessionId);
     } catch (error) {
       this.#current = null;
       if (turn.isStopped) {
@@ -858,7 +858,7 @@ export class AcpSession {
     }
     const turn = this.#current;
     if (turn === null) return;
-    if (this.#sessionId !== null && params.sessionId === this.#sessionId
+    if (this.#canLoad && this.#sessionId !== null && params.sessionId === this.#sessionId
       && (update.sessionUpdate === 'agent_message_chunk' || update.sessionUpdate === 'agent_thought_chunk' || update.sessionUpdate === 'tool_call')) {
       turn.ctx.sessionAccepted?.(this.#sessionId);
     }

@@ -61,10 +61,6 @@ const SQLITE_INIT_ATTEMPTS = 3;
 const SQLITE_INIT_BACKOFF_MS = 500;
 const SQLITE_INIT_CLOSE_MS = 2_000;
 
-// ---------------------------------------------------------------------------
-// The session: one agent process per thread
-// ---------------------------------------------------------------------------
-
 /**
  * One app-server per thread, initialized and opened once. Warm retention reuses
  * it between turns until idle expiry, a stop, an archive, shutdown or new setup.
@@ -567,8 +563,6 @@ export class CodexSession {
     clearTimeout(this.#idle);
     this.#idle = null;
   }
-
-  // -- what the agent sends -------------------------------------------------
 
   #onNotification(method: string, raw: unknown): void {
     const params = (raw ?? {}) as Record<string, unknown>;
