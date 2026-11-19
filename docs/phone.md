@@ -76,15 +76,15 @@ the VPN or the Wi-Fi.
   finished work. Questions and permissions stay until you answer them.
 - The gear at the end of each list's header opens Settings; Back, or the
   system's back gesture, returns to the list.
-- Slide a row left for Pin and Archive. Tap a conversation's title for its
-  menu: the side panel, pin, rename, find, archive and delete.
+- Slide a row left for Pin and Archive. In a conversation, tap the three dots
+  to pin, rename, find, archive or delete. Tap Panels to open the side panel.
 - Enter writes a new line and the send button sends. With a physical
   keyboard, Ctrl+Enter or Cmd+Enter sends. Back closes the open sheet first.
 - Pictures shrink to 2000 px on the long edge before they leave the phone.
 - In the [agent's browser](browser.md), press Show, tap to click, drag to
   scroll and type in the field below the preview.
 
-Tap a conversation's title to move it when the menu offers Move. Its plan
+Open the three-dot menu to move a conversation when it offers Move. Its plan
 appears in the chat. On a phone connected as the owner, Settings includes
 Accounts, Providers, Brain, Worktrees, Voice and Diagnostics. The task manager
 is in Diagnostics for the owner and has its own Settings entry on a paired
