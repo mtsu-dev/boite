@@ -47,7 +47,7 @@ export const BOT_GUIDE = [
   `- ${OWN_SETTINGS}`,
 ].join('\n');
 
-/** A bot's part in teams of bots (`docs/internals/teams.md`), while the Teams experiment is on. */
+/** A bot's part in teams of bots (`docs/internals/teams.md`). */
 export const TEAM_GUIDE = [
   '- Teams (`boite team help`): a team letter brings the posts meant for you; your final answer is posted where the letter says, so write it as your reply, and answer `[quiet]` when nothing needs saying.',
   '- Post in the group whatever the team should know: `boite team say <team> <text>`, where `@name` or `@tous` picks who wakes. Go private only for what concerns one member or the owner: `boite team dm <team> <member|owner> <text>`.',
@@ -57,10 +57,10 @@ export const TEAM_GUIDE = [
 /**
  * Session context supplied by Boite, independent of the user's brain files.
  * `bot`: a bot's thread, which has no checkout or project of its own: the
- * project-bound commands go and the bot section comes last, with `teams` its
- * team section.
+ * project-bound commands go and the bot section comes last, with its team
+ * section.
  */
-export function agentGuide(asyncQuestions: boolean, logAccess = false, skills: readonly ListedSkill[] = [], bot = false, goalTrack = false, teams = false, pluginLines: readonly string[] = []): string {
+export function agentGuide(asyncQuestions: boolean, logAccess = false, skills: readonly ListedSkill[] = [], bot = false, goalTrack = false, pluginLines: readonly string[] = []): string {
   const report = skills.find(skill => skill.name === REPORT_ISSUE_SKILL.name);
   const others = skills.filter(skill => skill !== report);
   const pullRequests = 'Link each PR: `boite pr link <url>`, then `boite pr watch`: it wakes you on CI, reviews and conflicts, so do not poll.';
@@ -94,6 +94,6 @@ export function agentGuide(asyncQuestions: boolean, logAccess = false, skills: r
     ...pluginLines,
     ...(bot ? ['', BOT_GUIDE] : []),
     // Only while the user has Teams on.
-    ...(bot && teams ? [TEAM_GUIDE] : []),
+    ...(bot ? [TEAM_GUIDE] : []),
   ].join('\n') + '\n\n';
 }

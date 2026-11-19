@@ -41,7 +41,7 @@ test('phones follow the desktop app on this machine before one reached from else
   expect(book.desktopExperiments()).toEqual(on('teams', 'whip'));
 });
 
-test('a Release core keeps the finished features and no experiment, whatever an app reports, and passes on what the desktop app chose', () => {
+test('a Release core keeps every finished feature, whatever an app reports, and passes on what the desktop app chose', () => {
   const moves: { experiments: ExperimentId[]; chosen: ExperimentId[] }[] = [];
   const book = new ClientPreferencesBook(() => {}, moved => moves.push(moved), '2.0.0');
   const here = { id: 'c0', subscriptions: new Set(), identity: { principal: 'owner', sessionId: null, threadId: null }, sentFrom: { client: 'shell', device: 'pc' }, remote: false, sendEvent() {} } as unknown as Connection;
@@ -49,11 +49,12 @@ test('a Release core keeps the finished features and no experiment, whatever an 
   const kept = book.desktopExperiments()!;
   expect(kept).toEqual(effectiveExperiments([], '2.0.0'));
   expect(kept).toContain('resident-agents');
-  for (const id of ['whip', 'teams', 'debates', 'auto-goal', 'contacts'] as const) expect(kept).not.toContain(id);
+  // The five that were experiments are finished: on here too, reported or not.
+  for (const id of ['whip', 'teams', 'debates', 'auto-goal', 'contacts'] as const) expect(kept).toContain(id);
   expect(book.current()!.experiments).toEqual(kept);
   // A phone that follows this desktop app keeps its choices for the day the machine runs a Nightly again.
   expect(book.desktopChosen()).toEqual(['whip', 'contacts', 'auto-goal', 'teams', 'debates']);
-  // An app from before the stages reads `experiments` as what is on: it must never see an experiment a Release does not run.
+  // An app from before the stages reads `experiments` as what is on: every finished feature.
   expect(moves).toEqual([{ experiments: kept, chosen: ['whip', 'contacts', 'auto-goal', 'teams', 'debates'] }]);
 });
 

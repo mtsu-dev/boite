@@ -5,7 +5,8 @@
  * nothing less direct (`packages/contracts/src/experiments.ts`): in a build
  * below the Council's tag it is `false`, the `require` calls below are
  * dropped and the bundle holds neither module. From source and in tests it
- * is not defined. `require` and not `import()`: the core builds its stores in
+ * is not defined, and the Council is finished (`release`), so no build
+ * defines it today. `require` and not `import()`: the core builds its stores in
  * its constructor, which cannot wait.
  *
  * A build without the Council gets a stand-in that answers what the rest of
@@ -23,8 +24,7 @@ const METHODS = ['council.start', 'council.again', 'council.list', 'council.get'
 
 /** What the core calls on the store from outside `council/`, for a build without it. */
 function standIn(): CouncilStore {
-  const store: Pick<CouncilStore, 'enabled' | 'owns' | 'memberOf' | 'running' | 'overFor' | 'stopParent' | 'resumeAfterRestart' | 'beginClose' | 'close'> = {
-    enabled: () => false,
+  const store: Pick<CouncilStore, 'owns' | 'memberOf' | 'running' | 'overFor' | 'stopParent' | 'resumeAfterRestart' | 'beginClose' | 'close'> = {
     owns: () => false,
     memberOf: () => false,
     running: () => false,

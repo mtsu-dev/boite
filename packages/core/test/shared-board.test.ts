@@ -7,9 +7,11 @@ import { connect } from '../src/client.ts';
 import { unavailable } from '../src/errors.ts';
 import { startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
+import { restoreStages, tagStage } from './stage-seam.ts';
 
 const cores: TestCore[] = [], dirs: string[] = [];
 afterEach(async () => {
+  restoreStages();
   for (const core of cores.splice(0).reverse()) await core.stop();
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
@@ -488,7 +490,8 @@ test('a newer revision hint waits for an older in-flight pull to catch up before
   expect(b.h.core.sharedBoard.journal.snapshot(scope.sharedProjectId).cards[0]?.text).toBe('new value');
   expect(await thrown(a.h.core.sharedProjects.request(owner, 'board.changed', {revision: updated.revision + 1}))).toThrow('announced revision');
 }, 30000);
-test('a Release authority applies no card, edit or claim a contact\'s Nightly sends, and still applies a removal', async () => {
+test('with Contacts tagged nightly, a Release authority applies no card, edit or claim a contact\'s Nightly sends, and still applies a removal', async () => {
+  tagStage('contacts', 'nightly');
   const { a, b, scope } = await board(); const theirs = { ...scope, threadId: b.threadId };
   await b.client.call('sharedBoard.apply', { ...theirs, command: command('add', 'as-nightly', 'Written while both were Nightly') });
   expect(await cards(a.client, scope)).toHaveLength(1);
