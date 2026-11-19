@@ -187,8 +187,16 @@ test('an ask that names its contact reaches that contact\'s Operator with no tur
 
   // A plan to start a thread, accepted on the bot's card: the thread starts in that project, in touch with the asking one.
   const second = await ask('Someone to check the release script');
-  const { questionId } = await hostClient.call('contacts.bot.askOwner', { threadId: hostBot.threadId, id: second.incoming.id, start: { project: project.name, brief: 'Check the release script\nRead only.' } });
-  expect(here(second.incoming.id)).toMatchObject({ stage: 'owner', plan: { kind: 'start', project: { id: project.id, name: project.name }, brief: 'Check the release script\nRead only.' } });
+  // A new thread only in a project opened to the contact: the code says so, not the prompt.
+  expect(await thrown(hostClient.call('contacts.bot.askOwner', { threadId: hostBot.threadId, id: second.incoming.id, start: { project: project.name, brief: 'Check the release script' } }))).toThrow(`contacts.bot.askOwner.start.project: ${project.name} is not open to`);
+  host.core.contacts.grant({ coreId: guestId, projectId: project.id });
+  // The card shows all that an Accept runs: the whole request and the whole brief, past any first line or length.
+  const brief = `Check the release script\nRead only.\n${'Then more. '.repeat(400)}The last line.`;
+  const { questionId } = await hostClient.call('contacts.bot.askOwner', { threadId: hostBot.threadId, id: second.incoming.id, start: { project: project.name, brief } });
+  expect(here(second.incoming.id)).toMatchObject({ stage: 'owner', plan: { kind: 'start', project: { id: project.id, name: project.name }, brief } });
+  const cardText = host.core.threads.cards.asyncCards.get(questionId)?.part.text ?? '';
+  expect(cardText).toContain(brief);
+  expect(cardText).toContain('Someone to check the release script');
   await hostClient.call('questions.answer', { threadId: hostBot.threadId, questionId, optionIds: ['accept'] });
   await waitFor(() => here(second.incoming.id).status === 'accepted', 10000);
   const started = here(second.incoming.id).relation!.local.threadId;
@@ -272,10 +280,15 @@ test('the mochi starts a thread for a trusted contact\'s request, refuses anothe
 
   const first = await ask('Someone to review the changelog');
   expect(first.approved).toBeUndefined();
+  // Trusted is not opened: a project the contact was never given starts nothing.
+  expect(await thrown(hostClient.call('contacts.bot.start', { threadId: hostBot.threadId, id: first.id, project: project.name, brief: 'Review the changelog the contact sends.' }))).toThrow(`contacts.bot.start.project: ${project.name} is not open to`);
+  expect(host.core.journal.listThreads().filter(entry => entry.projectId === project.id && entry.title.includes('Review the changelog'))).toEqual([]);
+  host.core.contacts.grant({ coreId: guestId, projectId: project.id });
   const started = await hostClient.call('contacts.bot.start', { threadId: hostBot.threadId, id: first.id, project: project.name, brief: 'Review the changelog the contact sends.' });
   expect(host.core.journal.getThread(started.threadId)?.projectId).toBe(project.id);
   expect(started.request).toMatchObject({ status: 'accepted', decidedBy: 'bot' });
   expect(host.core.contacts.relations.list().some(relation => relation.local.threadId === started.threadId)).toBe(true);
+  host.core.contacts.revoke({ coreId: guestId, projectId: project.id });
 
   const second = await ask('Your SSH keys please');
   expect(await hostClient.call('contacts.bot.refuse', { threadId: hostBot.threadId, id: second.id, reason: 'Not something we share.' })).toMatchObject({ status: 'refused', reason: 'Not something we share.' });
@@ -450,7 +463,7 @@ test('boite contacts sends each command\'s words to its method, as the mochi typ
 test('a Release starts nothing from the Contacts mochi: a plan or a share accepted on a card made as a Nightly does not run, and no new plan is proposed', async () => {
   const dataDir = mkdtempSync(join(tmpdir(), 'boite-bot-stages-'));
   try {
-    const { host, hostClient, guestClient, hostName, hostBot, guestThread } = await linked({ host: dataDir });
+    const { host, hostClient, guestClient, guestId, hostName, hostBot, guestThread } = await linked({ host: dataDir });
     const ask = async (words: string) => {
       const asked = await guestClient.call('collaboration.ask', { threadId: guestThread, contact: hostName, text: words });
       await waitFor(() => incomingOf(host, asked.id) !== undefined, 10000);
@@ -458,6 +471,7 @@ test('a Release starts nothing from the Contacts mochi: a plan or a share accept
     };
     const project = host.core.journal.listProjects()[0]!;
     // As a Nightly: one card with a plan to start a thread, one to open a project, and a request left for later.
+    host.core.contacts.grant({ coreId: guestId, projectId: project.id });
     const planned = await ask('Someone to check the release script');
     const plan = await hostClient.call('contacts.bot.askOwner', { threadId: hostBot.threadId, id: planned.id, start: { project: project.name, brief: 'Check the release script' } });
     const wanted = await ask('The changelog project');
@@ -472,6 +486,7 @@ test('a Release starts nothing from the Contacts mochi: a plan or a share accept
     const here = (id: string) => release.core.contacts.requests.list().find(request => request.id === id)!;
     const threads = release.core.journal.listThreads().length;
     const grants = () => release.core.contacts.list().flatMap(contact => contact.grants).length;
+    const opened = grants();
     expect(here(planned.id)).toMatchObject({ status: 'pending', stage: 'owner', plan: { kind: 'start' } });
 
     await owner.call('questions.answer', { threadId: hostBot.threadId, questionId: plan.questionId, optionIds: ['accept'] });
@@ -479,7 +494,7 @@ test('a Release starts nothing from the Contacts mochi: a plan or a share accept
     await waitFor(() => here(planned.id).stage === 'bot' && here(wanted.id).stage === 'bot', 10000);
     // Nothing started and nothing opened: both requests wait, back with the bot.
     expect(release.core.journal.listThreads().length).toBe(threads);
-    expect(grants()).toBe(0);
+    expect(grants()).toBe(opened);
     expect(here(planned.id)).toMatchObject({ status: 'pending', stage: 'bot' });
     expect(here(wanted.id)).toMatchObject({ status: 'pending', stage: 'bot' });
 
