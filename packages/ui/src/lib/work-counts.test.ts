@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'vitest';
 import { FakeClient } from './fake-client';
 import { Store } from './store.svelte';
-import { agentsAtWork, threadsAtWork } from './work-counts';
+import { agentsAtWork, subagentsAtWork, threadsAtWork } from './work-counts';
 
 const stores: Store[] = [];
 afterEach(() => { for (const store of stores.splice(0)) { store.client?.close(); store.detach(); } });
@@ -51,4 +51,41 @@ test("the Threads button counts every listed conversation at work, a bot's own t
   expect(threadsAtWork([store])).toBe(1);
   store.projects = store.projects.map(entry => entry.id === 'p-notes' ? { ...entry, archived: true } : entry);
   expect(threadsAtWork([store])).toBe(0);
+});
+
+test("the Threads button's second number counts the subagents at work, a bot's helper and an archived project's left out", async () => {
+  const store = await ready();
+  const rest = { status: 'idle' as const, openQuestions: 0, backgroundWork: null, backgroundWait: null, unread: false };
+  // t-descriptors becomes t-trace's subagent, mid-turn: off the Threads count, on the subagents one.
+  store.threads = store.threads.map(thread => thread.id === 't-descriptors'
+    ? { ...thread, ...rest, status: 'running' as const, parentThreadId: 't-trace', projectId: 'p-boite' }
+    : { ...thread, ...rest });
+  expect(subagentsAtWork([store])).toBe(1);
+  expect(subagentsAtWork([store, store])).toBe(2);
+  // Its parent counts once, delegating; the subagent itself never reaches the Threads count.
+  expect(threadsAtWork([store])).toBe(1);
+  // At rest it stops counting; waiting on its own background work it counts again.
+  const child = (patch: object) => { store.threads = store.threads.map(thread => thread.id === 't-descriptors' ? { ...thread, ...patch } : thread); };
+  child({ status: 'idle' });
+  expect(subagentsAtWork([store])).toBe(0);
+  child({ backgroundWait: { state: 'waiting', since: 0 } });
+  expect(subagentsAtWork([store])).toBe(1);
+  // A bot's helper is a listed conversation: the Threads count holds it, never both.
+  const bot = (agentSessionId: string | null) => { store.threads = store.threads.map(thread => thread.id === 't-trace' ? { ...thread, agentSessionId } as typeof thread : thread); };
+  child({ status: 'running', backgroundWait: null });
+  bot('session-1');
+  expect(subagentsAtWork([store])).toBe(0);
+  expect(threadsAtWork([store])).toBe(1);
+  // The same helper started from a mochi's desk, outside any project: still the mochi's, not a subagent here.
+  child({ projectId: null });
+  expect(subagentsAtWork([store])).toBe(0);
+  bot(null);
+  expect(subagentsAtWork([store])).toBe(1);
+  // Under an incognito conversation it stays off the count, as its parent stays off the lists.
+  store.threads = store.threads.map(thread => thread.id === 't-trace' ? { ...thread, incognito: true as const } : thread);
+  expect(subagentsAtWork([store])).toBe(0);
+  store.threads = store.threads.map(thread => thread.id === 't-trace' ? { ...thread, incognito: undefined } : thread);
+  child({ projectId: 'p-boite' });
+  store.projects = store.projects.map(entry => entry.id === 'p-boite' ? { ...entry, archived: true } : entry);
+  expect(subagentsAtWork([store])).toBe(0);
 });

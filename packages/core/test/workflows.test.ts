@@ -387,7 +387,7 @@ test('a failed turn of the conversation leaves its run going, and the result sti
 
 test('a paused team pauses the run until an owner resumes it', async () => {
   const { held } = scripted(ctx => ctx.thread.parentThreadId ? { hold: true } : 'noted');
-  const { h, owner, threadId, config } = await setup();
+  const { h, owner, threadId } = await setup();
   const agent = await connect(h.url, h.core.agents.tokenFor(threadId));
   try {
     const run = await agent.call('workflows.start', { threadId, plan: { name: 'Two', steps: [{ id: 'a', profile: 'fast', task: 'a' }, { id: 'b', profile: 'fast', task: 'b {{a}}' }] }, requestId: 'on' });

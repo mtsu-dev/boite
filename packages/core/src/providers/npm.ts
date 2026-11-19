@@ -161,7 +161,7 @@ export interface NpmInstall {
 }
 
 /** The command names a package's `bin` declares, read from its own `package.json`. */
-function binNames(packageDir: string): string[] {
+export function binNames(packageDir: string): string[] {
   try {
     const parsed = JSON.parse(readFileSync(join(packageDir, 'package.json'), 'utf8')) as { name?: unknown; bin?: unknown };
     if (typeof parsed.bin === 'string' && typeof parsed.name === 'string') return [parsed.name.split('/').at(-1)!];

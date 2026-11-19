@@ -1,0 +1,60 @@
+{
+  "id": "vibe",
+  "schemaVersion": 1,
+  "name": "Mistral Vibe",
+  "shortName": "Vibe",
+  "protocol": "acp",
+  "roots": ["{home}/.vibe", "{isolationDir}"],
+  "profiles": {
+    "windows": {
+      "detect": {},
+      "executable": [
+        { "kind": "file", "value": "{home}/.local/bin/vibe-acp.exe" },
+        { "kind": "path", "value": "vibe-acp" }
+      ],
+      "isolation": { "VIBE_HOME": "{isolationDir}" },
+      "env": { "NO_COLOR": "1", "VIBE_TEST_DISABLE_KEYRING": "1" },
+      "unsetEnv": ["MISTRAL_API_KEY"],
+      "close": { "processes": ["vibe-acp.exe"] }
+    },
+    "linux": {
+      "detect": {},
+      "executable": [
+        { "kind": "path", "value": "vibe-acp" },
+        { "kind": "file", "value": "{home}/.local/bin/vibe-acp" }
+      ],
+      "isolation": { "VIBE_HOME": "{isolationDir}" },
+      "env": { "NO_COLOR": "1", "VIBE_TEST_DISABLE_KEYRING": "1" },
+      "unsetEnv": ["MISTRAL_API_KEY"],
+      "close": { "processes": ["vibe-acp"] }
+    },
+    "macos": {
+      "detect": {},
+      "executable": [
+        { "kind": "path", "value": "vibe-acp" },
+        { "kind": "file", "value": "{home}/.local/bin/vibe-acp" }
+      ],
+      "isolation": { "VIBE_HOME": "{isolationDir}" },
+      "env": { "NO_COLOR": "1", "VIBE_TEST_DISABLE_KEYRING": "1" },
+      "unsetEnv": ["MISTRAL_API_KEY"],
+      "close": { "processes": ["vibe-acp"] }
+    }
+  },
+  "auth": { "kind": "api-key", "session": [".env"] },
+  "login": { "command": ["vibe-acp", "--setup"], "terminal": true },
+  "shared": [
+    {
+      "variable": "VIBE_HOME",
+      "paths": ["config.toml", "AGENTS.md", "agents", "prompts", "skills", "skills.toml", "tools", "plugins", "hooks.toml", "trusted_folders.toml"]
+    }
+  ],
+  "models": [{ "id": "default", "name": "Vibe default", "default": true }],
+  "capabilities": {
+    "approvals": true,
+    "hooks": false,
+    "checkpoint": false,
+    "images": true,
+    "planMode": false,
+    "resume": true
+  }
+}

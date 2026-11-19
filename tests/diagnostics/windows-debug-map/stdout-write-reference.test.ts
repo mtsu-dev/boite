@@ -12,13 +12,12 @@ test('stdout receipts select a distinct experiment and require zero closes even 
  }
 });
 
-import {fixture,request,assignedStdout,fixtureMarker,observed} from './stdio-reference-fixture.ts';
+import {fixture,assignedStdout,fixtureMarker} from './stdio-reference-fixture.ts';
 import {stdoutLabels,boundStdoutReceipt} from './stdout-write-fence.ts';
-import {measureStdoutReferences,runStdoutHarness,validateAssignedStdout} from './stdout-write-reference.ts';
+import {measureStdoutReferences,runStdoutHarness} from './stdout-write-reference.ts';
 import {authorizeActiveFence,validateActiveProof} from './live-fence-dispatch.ts';
 import {FaultRootOwner,startFaultRootService,requestRootReference,type RootRequest} from './fault-root-reference.ts';
-import {writeFileSync,readFileSync,existsSync,mkdtempSync,rmSync} from 'node:fs';import {join} from 'node:path';import {tmpdir} from 'node:os';
-const makeFixture=(absent:(r:RootRequest)=>boolean=r=>r.label===stdoutLabels[1])=>fixture({labels:stdoutLabels,encode:encodeStdoutReceipt,openOriginals:true,barrierPrefix:'stdout',stdoutPrefix:assignedStdout,stdoutWrites:r=>r.label===stdoutLabels[1],comparisonAbsent:absent});
+import {writeFileSync,readFileSync,existsSync} from 'node:fs';import {join} from 'node:path';const makeFixture=(absent:(r:RootRequest)=>boolean=r=>r.label===stdoutLabels[1])=>fixture({labels:stdoutLabels,encode:encodeStdoutReceipt,openOriginals:true,barrierPrefix:'stdout',stdoutPrefix:assignedStdout,stdoutWrites:r=>r.label===stdoutLabels[1],comparisonAbsent:absent});
 test('generated exports and real root transport preserve both original stream sets and release both exact roots before stdout comparison',async()=>{
  const f=makeFixture(),service=startFaultRootService(f.controlDirectory,f.owner,g=>g());
  try{const r=await measureStdoutReferences(f.inputs,{...f.deps,exchange:r=>requestRootReference(f.controlDirectory,r,g=>g())});

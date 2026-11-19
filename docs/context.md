@@ -18,8 +18,8 @@ see the exact counts:
 
 The numbers come from the agent itself: Boite never estimates them. The ring
 stays empty until the agent sends a first measurement. On a Claude thread,
-What the agent sees opens the system prompt and tool definitions of the last
-request, with an estimated size.
+`/clear` empties it at once, and What the agent sees opens the system prompt
+and tool definitions of the last request, with an estimated size.
 
 ## Compact the conversation
 
@@ -60,9 +60,10 @@ left it.
   machine's settings.
 
 Experimental, in Nightly builds only: Background compaction, in Settings,
-Experiments. With a token
-limit, a copy of the session compacts once the conversation reaches 85% of it,
-while you keep working. It works with Claude and Codex; OpenCode 2 uses its
+Experiments. Every automatic compaction then runs on a copy of the session:
+no compaction shows in the conversation, which stays free and takes the
+summary once it is ready, behind a small divider. With a token limit, the copy
+also starts once the conversation reaches 85% of it, while you keep working. It works with Claude and Codex; OpenCode 2 uses its
 own. Copies spend the same account and are not counted in usage.
 
 ## Queue a message while the agent works

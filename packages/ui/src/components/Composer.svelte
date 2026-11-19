@@ -52,7 +52,7 @@
 
   const MAX_LINES = 8, sizesItself = selfSizing();
   const side = new ComposerSide();
-  $effect(() => { key; store.client; return () => side.clear(); });
+  $effect(() => { void key; void store.client; return () => side.clear(); });
   let key = $derived(target?.key ?? store.openThread?.id ?? DRAFT_STASH_KEY);
   $effect(() => { const left = key; if (left === DRAFT_STASH_KEY) void store.draft?.id; return () => closeDraftUndo(left); }); // A phone's Undo toast ends as the box moves to another draft, new conversations included.
   /** The thread this box sends to: none when it speaks to an agent, whatever thread is open behind it. */
@@ -108,15 +108,15 @@
 
   /** The chips follow the open thread, or the remembered choice on a draft; a bot's show its settings. */
   $effect(() => {
-    store.providers;
-    store.accounts;
+    void store.providers;
+    void store.accounts;
     choice = botProfile && !target ? store.composerChoice({ ...botProfile.selection, speed: null }) : chipChoice(store, thread, target);
   });
 
   /** Desktop drafts take the keyboard; touch navigation leaves it closed. */
   $effect(() => {
-    key;
-    store.draft;
+    void key;
+    void store.draft;
     recall = null;
     focusInitial(box, box?.closest<HTMLElement>('[data-testid=composer]'));
   });

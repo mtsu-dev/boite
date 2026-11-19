@@ -61,7 +61,7 @@ export function resourceMethods(ctx: FakeContext) {
         .sort((a, b) => b.startedAt - a.startedAt);
       return structuredClone(params.limit ? rows.slice(0, params.limit) : rows);
     },
-    'resources.list': async (params) => {
+    'resources.list': async () => {
       return structuredClone(resources(ctx));
     },
     'resources.memoryStatus': async () => {

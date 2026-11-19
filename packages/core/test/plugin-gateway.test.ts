@@ -447,7 +447,9 @@ test.skipIf(process.platform !== 'linux')('turned off while its start waits on a
   // A gateway a previous core left running, which takes a second to go once asked.
   const gateways = harness!.core.plugins.gateways;
   const config = join(gateways.dataDir('douane'), 'douane.toml');
-  const orphan = Bun.spawn(['sh', '-c', 'trap "sleep 1; exit 0" TERM; while :; do sleep 0.1; done', 'sh', config]);
+  const orphan = Bun.spawn(['sh', '-c', 'trap "sleep 1; exit 0" TERM; echo ready; while :; do sleep 0.1; done', 'sh', config], { stdout: 'pipe' });
+  // Its trap is set once it says so: a TERM before that would end it at once, and the start would not wait.
+  await orphan.stdout.getReader().read();
   writeFileSync(join(gateways.dataDir('douane'), 'gateway.pid'), `${JSON.stringify({ pid: orphan.pid, config })}\n`);
   try {
     await owner.call('plugins.setEnabled', { id: 'douane', enabled: true });

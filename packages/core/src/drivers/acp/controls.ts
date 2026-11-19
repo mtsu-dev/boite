@@ -15,7 +15,7 @@ import { PROXY_PREFIX_ENV } from '../../subscription-proxy.ts';
 import { antigravityLegacyFamily, isAntigravity } from '../antigravity.ts';
 import { grokReasoningEffortOf } from '../grok.ts';
 import type { SessionContext } from '../types.ts';
-import { AGENT_OWN_MODEL, agentModelsOf, categoryOption, modelsFrom, selectValues, type AgentModels } from './models.ts';
+import { AGENT_OWN_MODEL, agentModelsOf, categoryOption, effortOption, modelsFrom, selectValues, type AgentModels } from './models.ts';
 import { isGrok } from './protocol.ts';
 
 /**
@@ -38,6 +38,8 @@ import { isGrok } from './protocol.ts';
  *   option of category `mode`, with no `availableModes` at all: the same
  *   candidates are matched against that option's values (`applyModeOption`).
  * - `auto` is the short name for a mode that approves everything.
+ * - `ask`, `accept-edits` and `auto-approve` are Mistral Vibe's three modes;
+ *   the middle one already matches `acceptEdits`, and it has no plan mode.
  *
  * Every mode but `plan` ends on the agent's plain mode. An agent that only
  * knows `build` and `plan` has nothing closer to "edit freely", and a thread
@@ -47,12 +49,13 @@ import { isGrok } from './protocol.ts';
  */
 const PLAIN_MODES = ['default', 'build', 'normal'] as const;
 const MODE_CANDIDATES: Record<PermissionMode, readonly string[]> = {
-  default: PLAIN_MODES,
+  // `ask` last: Vibe's mode that asks before each tool, tried only when no plain mode is listed.
+  default: [...PLAIN_MODES, 'ask'],
   acceptEdits: ['acceptEdits', 'accept_edits', 'autoEdit', 'auto_edit', ...PLAIN_MODES],
-  bypassPermissions: ['bypassPermissions', 'bypass_permissions', 'yolo', 'auto', ...PLAIN_MODES],
-  yolo: ['yolo', 'bypassPermissions', 'bypass_permissions', 'auto', ...PLAIN_MODES],
+  bypassPermissions: ['bypassPermissions', 'bypass_permissions', 'yolo', 'auto', 'autoApprove', 'auto_approve', ...PLAIN_MODES],
+  yolo: ['yolo', 'bypassPermissions', 'bypass_permissions', 'auto', 'autoApprove', 'auto_approve', ...PLAIN_MODES],
   plan: ['plan'],
-  dontAsk: ['dontAsk', 'dont_ask', 'bypassPermissions', 'bypass_permissions', 'yolo', 'auto', ...PLAIN_MODES],
+  dontAsk: ['dontAsk', 'dont_ask', 'bypassPermissions', 'bypass_permissions', 'yolo', 'auto', 'autoApprove', 'auto_approve', ...PLAIN_MODES],
 };
 
 /** How long to wait before each new try of a model the agent takes without listing it: 3.25 s in all. */
@@ -452,7 +455,7 @@ export class SessionControls {
       }
     }
     if (effort !== this.#appliedEffort) {
-      const unapplied = await this.#setOption(ctx, 'thought_level', effort);
+      const unapplied = await this.#setOption(ctx, this.#effortCategory(), effort);
       if (unapplied?.kind === 'gone') throw new Error('the acp session went away before the prompt');
       if (unapplied === null) this.#appliedEffort = effort;
     }
@@ -481,11 +484,19 @@ export class SessionControls {
     return option !== null && antigravityLegacyFamily(selectValues(option), wanted) !== null ? option : undefined;
   }
 
+  /**
+   * The category the session files its effort under: the protocol's
+   * `thought_level`, or Mistral Vibe's `thinking` when that is the one listed.
+   */
+  #effortCategory(): SessionConfigOptionCategory {
+    return effortOption(this.#configOptions)?.category ?? 'thought_level';
+  }
+
   /** One effort level on the session as it runs. False when the agent has no such option or refused it. */
   async applyEffort(ctx: SessionContext, effort: string): Promise<boolean> {
     if (isGrok(ctx.provider) || this.#configOptions.length === 0) return false;
     if (effort === this.#appliedEffort) return true;
-    if ((await this.#setOption(ctx, 'thought_level', effort)) !== null) return false;
+    if ((await this.#setOption(ctx, this.#effortCategory(), effort)) !== null) return false;
     this.#appliedEffort = effort;
     return true;
   }

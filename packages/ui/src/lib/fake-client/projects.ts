@@ -73,7 +73,7 @@ export function addFakeProject(ctx: FakeContext, folder: { path: string; name?: 
 
 export function projectMethods(ctx: FakeContext) {
   return {
-    'projects.list': async (params) => {
+    'projects.list': async () => {
       return ctx.projects.map((project) => describedProject(ctx, project));
     },
     'projects.rename': async (params) => {

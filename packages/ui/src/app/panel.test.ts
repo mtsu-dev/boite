@@ -3,7 +3,6 @@ import { flushSync } from 'svelte';
 import { store } from '../lib/store.svelte';
 import { work } from '../lib/work-prefs.svelte';
 import { rightPanel } from '../lib/right-panel.svelte';
-import { count } from '../lib/format';
 import { mountOnFake, query, test, type, waitFor } from '../test/app';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));

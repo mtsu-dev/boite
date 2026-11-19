@@ -14,6 +14,8 @@ export interface Parsed {
   channel: Channel;
   requestId?: string;
   worktree: boolean;
+  /** `delegate models --refresh`: read the model lists again. */
+  refresh: boolean;
   title?: string;
   /** `boite ask --open <url>`: the page the card opens. */
   open?: string;
@@ -61,7 +63,7 @@ export interface Parsed {
 /** The flags that start a thread or a subagent without part of the user's setup. */
 const CONTEXT_FLAGS = { '--context': 'preset', '--keep': 'keep', '--drop': 'drop', '--tools': 'tools', '--rules': 'rules', '--rules-file': 'rulesFile' } as const;
 
-const BOOLEAN_OPTIONS = ['json', 'multiple', 'worktree', 'wait', 'archived', 'skip'] as const;
+const BOOLEAN_OPTIONS = ['json', 'multiple', 'worktree', 'wait', 'archived', 'skip', 'refresh'] as const;
 const NUMBER_OPTIONS = ['timeout', 'last', 'before', 'offset'] as const;
 
 /** What every command reads wherever it stands, until a command's own text begins. */
@@ -129,7 +131,7 @@ function browserText(words: string[]): boolean {
 }
 
 export function parse(argv: string[]): Parsed {
-  const parsed: Parsed = { positional: [], json: false, multiple: false, worktree: false, wait: false, archived: false, skip: false, thread: undefined, dataDir: undefined, channel: 'stable' };
+  const parsed: Parsed = { positional: [], json: false, multiple: false, worktree: false, wait: false, archived: false, skip: false, refresh: false, thread: undefined, dataDir: undefined, channel: 'stable' };
   const number = (flag: string, raw: string): number => {
     const value = Number(raw);
     if (!Number.isFinite(value) || value < 0) throw new Usage(`${flag} needs a number, got ${raw}`);

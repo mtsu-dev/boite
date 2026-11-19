@@ -119,11 +119,26 @@ export const providerLogos: Record<string, ProviderLogo> = {
         fill: '#0467DF'
       }
     ]
+  },
+  // Mistral's pixel "M" in its five brand colours: LobeHub's `mistral-color.svg` (MIT).
+  vibe: {
+    kind: 'paths',
+    viewBox: '0 0 24 24',
+    paths: [
+      { d: 'M3.428 3.4h3.429v3.428H3.428V3.4zm13.714 0h3.43v3.428h-3.43V3.4z', fill: '#FFD700' },
+      { d: 'M3.428 6.828h6.857v3.429H3.429V6.828zm10.286 0h6.857v3.429h-6.857V6.828z', fill: '#FFAF00' },
+      { d: 'M3.428 10.258h17.144v3.428H3.428v-3.428z', fill: '#FF8205' },
+      {
+        d: 'M3.428 13.686h3.429v3.428H3.428v-3.428zm6.858 0h3.429v3.428h-3.429v-3.428zm6.856 0h3.43v3.428h-3.43v-3.428z',
+        fill: '#FA500F'
+      },
+      { d: 'M0 17.114h10.286v3.429H0v-3.429zm13.714 0H24v3.429H13.714v-3.429z', fill: '#E10500' }
+    ]
   }
 };
 
-/** A gateway names some providers by their service: Douane says `opencode_go` and `xai`. */
-const gatewayNames: Record<string, string> = { opencode_go: 'opencode', 'opencode-go': 'opencode', xai: 'grok' };
+/** Gateway provider IDs whose logos are registered under a Boite agent ID. */
+const gatewayNames: Record<string, string> = { meta: 'muse', opencode_go: 'opencode', 'opencode-go': 'opencode', xai: 'grok' };
 
 /** A second descriptor of an agent that has a mark already: OpenCode 2 is OpenCode's next major. */
 const sameMark: Record<string, string> = { 'opencode-v2': 'opencode' };

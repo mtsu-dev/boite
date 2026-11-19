@@ -124,7 +124,7 @@ export function registerModules(core: Core): void {
   core.router.register('delegation.wait', (params, ctx) => core.delegation.wait(params, ctx.connection));
   core.router.register('delegation.get', params => core.delegation.get(params.threadId));
   core.router.register('delegation.configure', params => core.delegation.configure(params.threadId, params.config));
-  core.router.register('delegation.models', params => core.delegation.models(params.threadId, probe, params.machine));
+  core.router.register('delegation.models', params => core.delegation.models(params.threadId, probe, params.machine, params.refresh === true));
   core.router.register('delegation.spawn', async params => {
     if (params.machine !== undefined) return core.delegation.remote.spawn(params);
     await core.delegation.prepareRoutes(params.threadId, probe, [typeof params.model === 'string' ? params.model : undefined]);

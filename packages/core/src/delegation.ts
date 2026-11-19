@@ -5,7 +5,7 @@ import type { AgentLetter, DelegatedAgent, DelegationConfig, DelegationModels, D
 import type { Core } from './core.ts';
 import { invalidParams, messageOf, refused, requiredText as text } from './errors.ts';
 import { isAgentHeld } from './agents/runtime.ts';
-import { anyModel, catalog, conversationRoute, discover, readNamed, resolveRoute, type ChildRoute, type RouteRequest } from './delegation/routes.ts';
+import { anyModel, catalog, conversationRoute, discover, PROBE_TIMEOUT_MS, readNamed, resolveRoute, type ChildRoute, type RouteRequest } from './delegation/routes.ts';
 import { memberModels, memberNamed } from './threads/group-spawn.ts';
 import type { ProviderProbe } from './providers/probe.ts';
 import { assertDriverRunnable } from './drivers/index.ts';
@@ -356,12 +356,12 @@ export class Delegation {
   }
   /**
    * What `boite delegate models` prints: every runnable model, read from each
-   * agent once. With `machine`, that member's, read from it now.
+   * agent once, or again with `refresh`. With `machine`, that member's, read from it now.
    */
-  async models(threadId: string, probe: ProviderProbe, machine?: string): Promise<DelegationModels> {
+  async models(threadId: string, probe: ProviderProbe, machine?: string, refresh = false): Promise<DelegationModels> {
     const parent = this.#root(threadId);
     if (machine !== undefined) return { ...await memberModels(this.#core, parent, memberNamed(this.#core, text(machine, 'delegation.models.machine', 128).trim(), 'delegation.models')), anyModel: anyModel(this.config(parent.id)) };
-    const failures = await discover(this.#core, probe, parent);
+    const failures = await discover(this.#core, probe, parent, undefined, PROBE_TIMEOUT_MS, refresh);
     const { choices, unavailable } = catalog(this.#core, parent);
     const failed = new Set(failures.map(f => f.providerId));
     return { anyModel: anyModel(this.config(parent.id)), choices, unavailable: [...failures, ...unavailable.filter(u => !failed.has(u.providerId))] };

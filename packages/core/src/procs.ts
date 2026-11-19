@@ -229,7 +229,7 @@ export class ProcRegistry {
   spawn(threadId: ThreadId, cmd: string, args: string[], opts: SpawnOptions = {}): SpawnedProcess {
     opts = this.#admitted(opts);
     const protectedLaunch = this.protection.launch(threadId, cmd, args, opts);
-    const [command, env] = launchOf(protectedLaunch?.command ?? cmd, protectedLaunch?.env ?? { ...process.env, ...(opts.env ?? {}) });
+    const [command, env] = launchOf(protectedLaunch?.command ?? cmd, protectedLaunch?.env ?? { ...process.env, ...opts.env });
     const extra = Math.max(0, Math.floor(opts.extraPipes ?? 0));
     const proc = startResolved(command, env, (executable) => Bun.spawn({
       cmd: [executable, ...(protectedLaunch?.args ?? args)],
@@ -639,7 +639,7 @@ export class ProcRegistry {
    */
   killAll(): Promise<void> {
     for (const threadId of [...this.#live.keys()]) this.killTree(threadId);
-    return Promise.all([...this.#stops.keys()]).then(() => undefined);
+    return Promise.all(this.#stops.keys()).then(() => undefined);
   }
 
   #trackStop(stop: Promise<void> | undefined, threadId?: ThreadId): void {

@@ -216,7 +216,7 @@ export function logMethods(ctx: FakeContext): Pick<FakeMethods, DiagnosticMethod
         add(ctx, {
           at: Math.abs(record.at - now) < 10 * 60_000 ? record.at : now, level: record.level, origin: 'ui', source: record.source, event: record.event, message: record.message,
           ...(record.threadId && ctx.threads.has(record.threadId) ? { threadId: record.threadId } : {}), ...(record.durationMs === undefined ? {} : { durationMs: record.durationMs }),
-          data: { ...(record.data ?? {}), client, remote: ctx.bus.principal === 'session' },
+          data: { ...record.data, client, remote: ctx.bus.principal === 'session' },
         });
       }
       return { accepted: accepted.length };

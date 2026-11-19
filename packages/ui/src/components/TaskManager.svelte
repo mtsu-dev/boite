@@ -52,7 +52,7 @@
   const hint = (usage: ResourceByteUsage) => usage.coverage === 'unavailable' ? strings.taskManager.unavailableHint : usage.source === 'linux-tcp-info' ? strings.taskManager.tcpHint : strings.taskManager.diskHint;
 
   $effect(() => {
-    retry;
+    void retry;
     const client = owner.client;
     const ready = owner.connection === 'ready';
     snapshot = null;

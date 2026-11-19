@@ -114,10 +114,10 @@ export function providerCatalogMethods(ctx: FakeContext) {
       ctx.agents.providersChanged();
       return result;
     },
-    'providers.list': async (params) => {
+    'providers.list': async () => {
       return { loaded: structuredClone(markBlockedProviders(ctx, ctx.providers)), rejected: [] };
     },
-    'providers.reload': async (params) => {
+    'providers.reload': async () => {
       // As the core: a reload that changes no provider tells nobody, so a page
       // that reloads on focus keeps every model list it already read.
       const before = JSON.stringify(ctx.providers);

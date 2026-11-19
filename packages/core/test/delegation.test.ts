@@ -1289,6 +1289,77 @@ test('a spawn reads no agent: a speed on a model or profile whose tiers are not 
   } finally { agent.close(); }
 });
 
+test('a model released after the list was read shows up on delegate models --refresh, and a spawn naming it reads its provider again once', async () => {
+  scripted();
+  const { h, owner, threadId } = await setup();
+  await twinProvider(h, owner, [{ id: 'luna', name: 'Luna' }], 'pi');
+  restores.push(() => forgetProbes({ providerId: 'twin' }));
+  // What the agent lists: the vendor ships `sol` with its speed tiers after the first read.
+  let served = [{ id: 'luna', name: 'Luna' }] as ModelInfo[];
+  const refreshes: boolean[] = [];
+  const probe: Parameters<typeof h.core.delegation.models>[1] = async params => {
+    if (params.providerId === 'twin') {
+      refreshes.push(params.refresh === true);
+      rememberExternalModels('pi', 'twin', params.accountId, served);
+    }
+    return { models: served, probedAt: Date.now() };
+  };
+  const listed = async (refresh = false) => (await h.core.delegation.models(threadId, probe, undefined, refresh)).choices.filter(c => c.providerId === 'twin').map(c => c.model);
+  expect(await listed()).toEqual(['luna']);
+  served = [...served, { id: 'sol', name: 'Sol', speeds: [{ id: 'priority', label: 'Fast' }, { id: 'ultrafast', label: 'Ultrafast' }] }];
+  // A held list is not read again on a plain listing.
+  expect(await listed()).toEqual(['luna']);
+  expect(refreshes).toEqual([false]);
+  expect(await listed(true)).toEqual(['luna', 'sol']);
+  expect(refreshes).toEqual([false, true]);
+  expect(h.core.delegation.resolve(threadId, { model: 'twin/sol', speed: 'ultrafast' }).speed).toBe('ultrafast');
+
+  // A spawn naming a model the held list lacks reads that provider again, once a minute at most.
+  served = [...served, { id: 'terra', name: 'Terra' }];
+  await h.core.delegation.prepareRoutes(threadId, probe, ['twin/terra']);
+  expect(refreshes).toEqual([false, true, true]);
+  expect(h.core.delegation.resolve(threadId, { model: 'twin/terra' }).model).toBe('terra');
+  // A typo right after does not read the agent again within the minute.
+  await h.core.delegation.prepareRoutes(threadId, probe, ['twin/nothing-like-this']);
+  expect(refreshes).toEqual([false, true, true]);
+});
+
+test('two spawns naming the same new model share one re-read, and a cold list is read once, not twice', async () => {
+  scripted();
+  const { h, owner, threadId } = await setup();
+  await twinProvider(h, owner, [{ id: 'luna', name: 'Luna' }], 'pi');
+  restores.push(() => forgetProbes({ providerId: 'twin' }));
+  let served = [{ id: 'luna', name: 'Luna' }] as ModelInfo[];
+  const refreshes: boolean[] = [];
+  let release = (): void => undefined;
+  const probe: Parameters<typeof h.core.delegation.models>[1] = async params => {
+    if (params.providerId === 'twin') {
+      refreshes.push(params.refresh === true);
+      if (params.refresh) await new Promise<void>(resolve => { release = resolve; });
+      rememberExternalModels('pi', 'twin', params.accountId, served);
+    }
+    return { models: served, probedAt: Date.now() };
+  };
+  // Cold: the first read is fresh, so a model it lacks is not read a second time.
+  await h.core.delegation.prepareRoutes(threadId, probe, ['twin/sol']);
+  expect(refreshes).toEqual([false]);
+  // Held: two spawns at once both wait on the one re-read that brings the model.
+  served = [...served, { id: 'sol', name: 'Sol' }];
+  const first = h.core.delegation.prepareRoutes(threadId, probe, ['twin/sol']);
+  const second = h.core.delegation.prepareRoutes(threadId, probe, ['twin/sol']);
+  const resolved: string[] = [];
+  const settle = (prepared: Promise<void>) => prepared.then(() => { resolved.push(h.core.delegation.resolve(threadId, { model: 'twin/sol' }).model ?? 'none'); });
+  const both = Promise.all([settle(first), settle(second)]);
+  await waitFor(() => refreshes.length === 2);
+  await new Promise(resolve => setTimeout(resolve, 20));
+  // Neither spawn goes on before the read that lists its model.
+  expect(resolved).toEqual([]);
+  release();
+  await both;
+  expect(refreshes).toEqual([false, true]);
+  expect(resolved).toEqual(['sol', 'sol']);
+});
+
 test('the parent agent resumes its own stop and a Stop once the owner wrote again, never the Settings pause', async () => {
   const running = scripted(); const { h, owner, threadId, config } = await setup();
   const cli = parentCli(h, threadId);

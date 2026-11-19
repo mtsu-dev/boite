@@ -8,7 +8,7 @@ import { noticePart } from './notices.ts';
 import { authenticationFailureOf, authenticationSuspectOf, commandsOf, isApiRetry, isAuthenticationFailure, subagentOf } from './mapping.ts';
 import { RunningTotals } from './totals.ts';
 import { toolGate } from './permissions.ts';
-import { liveSetup, PROMPT_EFFORT, PromptQueue, STDERR_MAX } from './query.ts';
+import { liveSetup, PROMPT_EFFORT, PromptQueue } from './query.ts';
 import type { ClaudeDeps, LiveSetup } from './query.ts';
 import type { ClaudeTurn } from './turn.ts';
 import { SessionRetention } from '../session-retention.ts';

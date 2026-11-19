@@ -125,7 +125,8 @@ export async function readModels(ctx: ProbeContext): Promise<ModelInfo[]> {
     throw unavailable(`no ${ctx.provider.id} executable on this machine`, { providerId: ctx.provider.id });
   }
 
-  const child = ctx.spawnChild(executable, subscriptionProxyCodexArgs(profile?.launch?.args ?? [], ctx.accountEnv), {
+  const args = await subscriptionProxyCodexArgs(profile?.launch?.args ?? [], ctx.accountEnv);
+  const child = ctx.spawnChild(executable, args, {
     cwd: ctx.cwd,
     env: { ...process.env, ...ctx.accountEnv },
   });

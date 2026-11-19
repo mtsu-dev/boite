@@ -11,6 +11,9 @@
  */
 import { readdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
+import { assignShards } from './shards.mts';
+
+export { assignShards, type Shard } from './shards.mts';
 
 const ROOT = join(import.meta.dir, '..', '..');
 const DURATIONS = join(import.meta.dir, 'e2e-durations.json');
@@ -18,7 +21,6 @@ const DURATIONS = join(import.meta.dir, 'e2e-durations.json');
 const NATIVE = 'tests/e2e/shell.test.ts';
 
 export type Durations = { refreshed: string; runs: string[]; seconds: Record<string, number> };
-export type Shard = { files: string[]; seconds: number };
 
 /** Every E2E file but the native shell one, relative, with forward slashes, sorted. */
 export function e2eFiles(root = ROOT): string[] {
@@ -29,32 +31,6 @@ export function e2eFiles(root = ROOT): string[] {
       return entry.name.endsWith('.test.ts') ? [relative(root, path).replaceAll('\\', '/')] : [];
     });
   return walk(join(root, 'tests', 'e2e')).filter((file) => file !== NATIVE).sort();
-}
-
-function median(values: number[]): number {
-  if (values.length === 0) return 1;
-  const sorted = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2;
-}
-
-/**
- * Longest first, each to the lightest shard; ties go to the lower shard and
- * equal times keep path order, so every runner computes the same split.
- */
-export function assignShards(files: string[], seconds: Record<string, number>, count: number): Shard[] {
-  if (!Number.isInteger(count) || count < 1) throw new Error(`shard count: expected a positive integer, got ${count}`);
-  const fallback = median(files.flatMap((file) => seconds[file] === undefined ? [] : [seconds[file]!]));
-  const timed = files.map((file) => ({ file, seconds: seconds[file] ?? fallback }));
-  timed.sort((a, b) => b.seconds - a.seconds || (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
-  const shards: Shard[] = Array.from({ length: count }, () => ({ files: [], seconds: 0 }));
-  for (const { file, seconds: cost } of timed) {
-    const lightest = shards.reduce((best, shard) => shard.seconds < best.seconds ? shard : best);
-    lightest.files.push(file);
-    lightest.seconds += cost;
-  }
-  for (const shard of shards) shard.files.sort();
-  return shards;
 }
 
 const STAMP = /^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z) (.*)$/;
@@ -107,7 +83,7 @@ function runLogs(run: string): string[] {
   if (shards.length === 0) throw new Error(`run ${run}: no E2E shard job`);
   const failed = shards.filter((job) => job.conclusion !== 'success');
   if (failed.length) throw new Error(`run ${run}: ${failed.map((job) => `${job.name} ${job.conclusion}`).join(', ')}; refresh from a green run`);
-  const repo = gh(['repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner']).trim();
+  const repo = process.env.GITHUB_REPOSITORY || gh(['repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner']).trim();
   return shards.map((job) => gh(['api', '--allow-escape-sequences', `repos/${repo}/actions/jobs/${job.databaseId}/logs`]));
 }
 
@@ -127,7 +103,7 @@ if (import.meta.main) {
     const files = e2eFiles();
     const missing = files.filter((file) => seconds[file] === undefined);
     console.log(`Recorded ${Object.keys(seconds).length} files${missing.length ? `; no time for ${missing.join(', ')}` : ''}`);
-    for (const [index, shard] of assignShards(files, seconds, 3).entries()) console.log(`shard ${index + 1}/3: ${shard.files.length} files, ${Math.round(shard.seconds)} s`);
+    for (const [index, shard] of assignShards(files, seconds, 5).entries()) console.log(`shard ${index + 1}/5: ${shard.files.length} files, ${Math.round(shard.seconds)} s`);
   } else {
     const index = Number(command);
     const count = Number(rest[0]);

@@ -148,10 +148,15 @@ export class BackgroundCompaction {
     return JSON.stringify(effectiveCompaction(this.#core.settings.get(), thread));
   }
 
+  /** Whether the setting is on for the thread, with an automatic compaction rule to work for. */
+  private enabled(thread: ThreadSummary): boolean {
+    const settings = effectiveCompaction(this.#core.settings.get(), thread);
+    return settings.backgroundCompaction === true && settings.autoCompact != null;
+  }
+
   /** The token limit a copy works toward, or null when the setting or the limit is off. */
   private limit(thread: ThreadSummary): number | null {
-    const settings = effectiveCompaction(this.#core.settings.get(), thread);
-    return settings.backgroundCompaction === true ? settings.autoCompact?.tokens ?? null : null;
+    return this.enabled(thread) ? effectiveCompaction(this.#core.settings.get(), thread).autoCompact?.tokens ?? null : null;
   }
 
   /** Called by `AutoCompaction.turnFinished`, before it plans anything. */
@@ -166,7 +171,7 @@ export class BackgroundCompaction {
     const copy = this.#copies.get(thread.id);
     if (copy !== undefined) {
       // A compaction rewrote the context the copy was made from.
-      const stale = limit === null ? 'the setting is off' : turn.execution?.operation === 'compact' ? 'the thread compacted' : this.#stale(thread, copy, limit);
+      const stale = !this.enabled(thread) ? 'the setting is off' : turn.execution?.operation === 'compact' ? 'the thread compacted' : this.#stale(thread, copy, limit);
       if (stale === null) return;
       this.#drop(thread.id, stale);
     }
@@ -195,8 +200,7 @@ export class BackgroundCompaction {
   due(thread: ThreadSummary): 'swapped' | 'waiting' | null {
     const copy = this.#copies.get(thread.id);
     if (copy === undefined) return null;
-    const limit = this.limit(thread);
-    const stale = limit === null ? 'the setting is off' : this.#stale(thread, copy, limit);
+    const stale = !this.enabled(thread) ? 'the setting is off' : this.#stale(thread, copy, this.limit(thread));
     if (stale !== null) { this.#drop(thread.id, stale); return null; }
     if (copy.ready === null) return 'waiting';
     // Taking the new session closes the process that runs them.
@@ -204,12 +208,36 @@ export class BackgroundCompaction {
     try {
       this.#swap(thread, copy, copy.ready);
     } catch (error) {
+      // Counted, so an idle moment does not start copy after copy that never swaps.
+      this.#failures.set(thread.id, (this.#failures.get(thread.id) ?? 0) + 1);
       this.#drop(thread.id, `the swap failed: ${messageOf(error)}`);
       return null;
     }
     this.#copies.delete(thread.id);
     this.#failures.delete(thread.id);
     return 'swapped';
+  }
+
+  /**
+   * Called when `AutoCompaction` would open a compaction turn on an idle
+   * thread, at the token limit or a chosen idle moment (the prompt cache's
+   * last minute included), and `due` had no copy to give. With the setting
+   * on, a copy cut at the end of the last turn compacts instead, whatever the
+   * context's size: the thread never shows a compaction turn, and `due` swaps
+   * the copy in as soon as it is ready (`AutoCompaction.recheck`). A prompt
+   * sent meanwhile runs on the original session, and the copy waits for the
+   * next pause, its tail carried as after any copy. False when no copy can
+   * start: the thread compacts the usual way.
+   */
+  startIdle(thread: ThreadSummary): boolean {
+    if (this.#copies.has(thread.id) || !this.enabled(thread)) return false;
+    // A swap would be refused while that work runs, and the copy wasted.
+    if (this.#backgroundWork(thread.id)) return false;
+    const turn = this.#core.journal.lastTurn(thread.id, true);
+    if (turn === null || turn.status !== 'done') return false;
+    const source = this.#source(thread, turn);
+    if (source === null) return false;
+    return this.#launch(thread, this.limit(thread), source.tokens, source.checkpoint, { turnId: turn.id, afterPart: null }, true);
   }
 
   /**
@@ -232,8 +260,8 @@ export class BackgroundCompaction {
     let thread = this.#core.journal.getThread(threadId);
     if (thread === null || this.#core.journal.runningTurn(threadId)?.id !== turn.id) return null;
     if (execution.providerId !== thread.providerId || execution.accountId !== thread.accountId) return null;
+    if (!this.enabled(thread)) { this.#drop(threadId, 'the setting is off'); return null; }
     const limit = this.limit(thread);
-    if (limit === null) { this.#drop(threadId, 'the setting is off'); return null; }
     const tokens = Number.isFinite(boundary.tokens) && boundary.tokens >= 0 ? boundary.tokens : null;
     if (tokens === null) return null;
     this.#boundaries.set(threadId, { turnId: turn.id, generation: thread.sessionGeneration ?? 0, tokens, at: Date.now() });
@@ -242,13 +270,14 @@ export class BackgroundCompaction {
       ? { sessionId: thread.sessionId, resumeAt: thread.sessionResumeAt ?? null, tokens }
       : { sessionId, resumeAt: null, tokens };
     const copy = this.#copies.get(threadId);
-    if (tokens < limit) {
+    // Without a limit, only a copy an idle moment started runs on, for the next pause.
+    if (limit === null || tokens < limit) {
       if (copy !== undefined) {
         const stale = this.#stale(thread, copy, limit, live);
         if (stale === null) return null;
         this.#drop(threadId, stale);
       }
-      if (sessionId === null || boundary.checkpoint === null) return null;
+      if (limit === null || sessionId === null || boundary.checkpoint === null) return null;
       // A first turn names its session only once it ends: the copy is made from the one it runs on.
       if (thread.sessionId === null) thread = saveThread(this.#core, { ...thread, sessionId, sessionResumeAt: null }, 'thread.updated');
       const anchor: TailAnchor = { turnId: turn.id, afterPart: this.#lastPart(threadId, turn.id) };
@@ -350,8 +379,7 @@ export class BackgroundCompaction {
    * null, and the agent's own compaction handles the limit.
    */
   async #takeInTurn(thread: ThreadSummary, turn: Turn, copy: Copy, live: Live, fileReference: Parameters<typeof stepTail>[3]): Promise<StepDecision | null> {
-    let limit: number | null = this.limit(thread);
-    let stale = limit === null ? 'the setting is off' : this.#stale(thread, copy, limit, live);
+    let stale = !this.enabled(thread) ? 'the setting is off' : this.#stale(thread, copy, this.limit(thread), live);
     if (stale !== null) { this.#drop(thread.id, stale); return null; }
     // A swap that background work forbids is not worth waiting for.
     if (this.#backgroundWork(thread.id)) { this.#drop(thread.id, 'background work is running'); return null; }
@@ -361,8 +389,7 @@ export class BackgroundCompaction {
       const current = this.#core.journal.getThread(thread.id);
       if (current === null || this.#core.journal.runningTurn(thread.id)?.id !== turn.id) return null;
       thread = current;
-      limit = this.limit(thread);
-      stale = limit === null ? 'the setting is off' : this.#stale(thread, copy, limit, live);
+      stale = !this.enabled(thread) ? 'the setting is off' : this.#stale(thread, copy, this.limit(thread), live);
       if (stale !== null) { this.#drop(thread.id, stale); return null; }
     }
     const ready = copy.ready;
@@ -382,7 +409,7 @@ export class BackgroundCompaction {
   }
 
   /** Why the copy cannot replace the thread's session now, or null. `live`: what a step of a running turn reports instead of the thread. */
-  #stale(thread: ThreadSummary, copy: Copy, limit: number, live?: Live): string | null {
+  #stale(thread: ThreadSummary, copy: Copy, limit: number | null, live?: Live): string | null {
     const { source } = copy;
     const at: Live = live ?? { sessionId: thread.sessionId, resumeAt: thread.sessionResumeAt ?? null, tokens: this.#contextTokens(thread) };
     if (this.policy(thread) !== copy.policy) return 'the compaction policy changed';
@@ -398,30 +425,39 @@ export class BackgroundCompaction {
 
   /** At the end of a done turn: a copy cut at that turn's checkpoint. */
   #start(thread: ThreadSummary, turn: Turn, limit: number): void {
-    const tokens = thread.context?.tokens ?? null;
-    if (tokens === null || thread.sessionId === null || (thread.sessionResumeAt ?? null) !== null) return;
-    const execution = turn.execution;
-    if (!execution || execution.operation === 'compact' || execution.operation === 'keepalive' || execution.operation === 'background') return;
-    // Only a session the turn itself ran on.
-    if (execution.sessionGeneration !== (thread.sessionGeneration ?? 0) || execution.providerId !== thread.providerId || execution.accountId !== thread.accountId) return;
-    const provider = this.#core.providers.get(thread.providerId);
-    if (provider === undefined) return;
-    const checkpoint = this.#checkpointOf(provider, thread, turn);
-    if (checkpoint === null) return;
-    this.#launch(thread, limit, tokens, checkpoint, { turnId: turn.id, afterPart: null });
+    const source = this.#source(thread, turn);
+    if (source !== null) this.#launch(thread, limit, source.tokens, source.checkpoint, { turnId: turn.id, afterPart: null });
   }
 
-  /** Starts a copy of the thread's session cut at `checkpoint`, when the context is near the limit and nothing forbids it. */
-  #launch(thread: ThreadSummary, limit: number, tokens: number, checkpoint: { sessionId: string; entry: string }, anchor: TailAnchor): void {
-    if (this.#closed || this.#core.stopping) return;
-    if (tokens >= limit || !nearLimit(tokens, limit)) return;
-    if (thread.archived || thread.incognito || thread.sessionId !== checkpoint.sessionId || (thread.sessionResumeAt ?? null) !== null) return;
-    if ((this.#failures.get(thread.id) ?? 0) >= BACKGROUND_COMPACT.maxFailures || this.threads.compactRefusal(thread) !== null) return;
+  /** The context and the fork point of a copy cut at the end of `turn`, a done turn of the thread's current session, or null. */
+  #source(thread: ThreadSummary, turn: Turn): { tokens: number; checkpoint: { sessionId: string; entry: string } } | null {
+    const tokens = thread.context?.tokens ?? null;
+    if (tokens === null || thread.sessionId === null || (thread.sessionResumeAt ?? null) !== null) return null;
+    const execution = turn.execution;
+    if (!execution || execution.operation === 'compact' || execution.operation === 'keepalive' || execution.operation === 'background') return null;
+    // Only a session the turn itself ran on.
+    if (execution.sessionGeneration !== (thread.sessionGeneration ?? 0) || execution.providerId !== thread.providerId || execution.accountId !== thread.accountId) return null;
     const provider = this.#core.providers.get(thread.providerId);
-    if (provider === undefined) return;
-    if (provider.protocol !== 'echo' && provider.protocol !== 'claude-sdk' && getDriver(provider.protocol).forkSession === undefined) return;
+    if (provider === undefined) return null;
+    const checkpoint = this.#checkpointOf(provider, thread, turn);
+    return checkpoint === null ? null : { tokens, checkpoint };
+  }
+
+  /**
+   * Starts a copy of the thread's session cut at `checkpoint` when nothing
+   * forbids it: near the limit and below it, or at any size for an idle
+   * moment (`idle`). Whether it started.
+   */
+  #launch(thread: ThreadSummary, limit: number | null, tokens: number, checkpoint: { sessionId: string; entry: string }, anchor: TailAnchor, idle = false): boolean {
+    if (this.#closed || this.#core.stopping) return false;
+    if (!idle && (limit === null || tokens >= limit || !nearLimit(tokens, limit))) return false;
+    if (thread.archived || thread.incognito || thread.sessionId !== checkpoint.sessionId || (thread.sessionResumeAt ?? null) !== null) return false;
+    if ((this.#failures.get(thread.id) ?? 0) >= BACKGROUND_COMPACT.maxFailures || this.threads.compactRefusal(thread) !== null) return false;
+    const provider = this.#core.providers.get(thread.providerId);
+    if (provider === undefined) return false;
+    if (provider.protocol !== 'echo' && provider.protocol !== 'claude-sdk' && getDriver(provider.protocol).forkSession === undefined) return false;
     let account: Account;
-    try { account = this.#core.accounts.require(thread.accountId); } catch { return; }
+    try { account = this.#core.accounts.require(thread.accountId); } catch { return false; }
     const copy: Copy = {
       source: {
         sessionId: checkpoint.sessionId, generation: thread.sessionGeneration ?? 0, providerId: thread.providerId, accountId: thread.accountId,
@@ -436,8 +472,9 @@ export class BackgroundCompaction {
       gone: Promise.withResolvers<void>(),
     };
     this.#copies.set(thread.id, copy);
-    this.#core.log('info', `thread ${thread.id}: background compaction started at ${tokens} of ${limit} tokens${anchor.afterPart === null ? '' : ' inside a turn'}`, { source: provider.id, threadId: thread.id });
+    this.#core.log('info', `thread ${thread.id}: background compaction started at ${tokens}${limit === null ? '' : ` of ${limit}`} tokens${anchor.afterPart === null ? '' : ' inside a turn'}${idle ? ' for an idle moment' : ''}`, { source: provider.id, threadId: thread.id });
     copy.settled = this.#run(thread, copy, provider, account, checkpoint).catch(() => undefined);
+    return true;
   }
 
   /** Where the copy forks the session: the end of `turn`, in the driver's own terms. Null when it cannot. */
@@ -512,8 +549,7 @@ export class BackgroundCompaction {
     copy.ready = { sessionId: made, postTokens, window: reading?.window ?? null, totals: result.agentTotals ?? null };
     copy.handle = null;
     const current = this.#core.journal.getThread(thread.id);
-    const limit = current === null ? null : this.limit(current);
-    const stale = current === null ? 'the thread is gone' : limit === null ? 'the setting is off' : this.#stale(current, copy, limit);
+    const stale = current === null ? 'the thread is gone' : !this.enabled(current) ? 'the setting is off' : this.#stale(current, copy, this.limit(current));
     if (stale !== null) { this.#drop(thread.id, stale); return; }
     this.threads.autoCompact.recheck(thread.id);
   }
@@ -706,6 +742,6 @@ export class BackgroundCompaction {
 }
 
 /** The most a thread may add after its copy started for the copy to stay usable. */
-function tailLimit(limit: number): number {
-  return Math.min(BACKGROUND_COMPACT.tailTokens, BACKGROUND_COMPACT.tailShare * limit);
+function tailLimit(limit: number | null): number {
+  return limit === null ? BACKGROUND_COMPACT.tailTokens : Math.min(BACKGROUND_COMPACT.tailTokens, BACKGROUND_COMPACT.tailShare * limit);
 }

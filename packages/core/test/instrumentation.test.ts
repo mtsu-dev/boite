@@ -55,7 +55,7 @@ test('an agent process that crashes leaves one warning with its exit code and th
   watchProviderProcess(core, next, '/home/someone/.local/bin/claude', { threadId, providerId: 'claude', resume: true });
   noteStderr(threadId, 'this one failed');
   next.emit('exit', 3, null); next.emit('close', 3, null);
-  expect((records.at(-1)?.context.data as Record<string, unknown>).stderrTail).toBe('this one failed');
+  expect((records.at(-1)!.context.data as Record<string, unknown>).stderrTail).toBe('this one failed');
   forgetStderr(threadId);
 });
 

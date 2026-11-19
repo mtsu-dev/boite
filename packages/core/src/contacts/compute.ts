@@ -17,7 +17,6 @@ import { fingerprint } from './project-journal.ts';
 import type { SharedPeerContext } from './projects.ts';
 import { contactsGate } from './gate.ts';
 
-type StartWire = SharedProjectPeerMethods['compute.start']['params'];
 const hostKey = (id: string) => `shared-compute-host:${id}`;
 
 export class SharedCompute {

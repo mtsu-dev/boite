@@ -1,7 +1,7 @@
 import type { AgentTask, ImageAttachment, NativeAgentUpdate, QuestionAnswer, QuestionOption, ToolStatus, Usage } from '@boite/contracts';
-import type { SessionContext, TurnContext } from '../types.ts';
+import type { SessionContext } from '../types.ts';
 import { stringify } from '../tool-text.ts';
-import type { CodexItem, CodexQuestion, CodexThreadOpened, CodexTokenUsage, ToolView } from './protocol.ts';
+import type { CodexItem, CodexThreadOpened, CodexTokenUsage, ToolView } from './protocol.ts';
 import { AGENT_OWN_MODEL, COMMAND_TOOL_NAME, FILE_CHANGE_TOOL_NAME, SLEEP_TOOL_NAME } from './protocol.ts';
 import { answerText } from '../../attachments.ts';
 export { questionTextOf } from '../../attachments.ts';

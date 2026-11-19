@@ -220,7 +220,7 @@ test('a journal closed while its values were compressed ends the pass without to
 
 test('a value that starts with a byte order mark keeps it, compressed or recoded', async () => {
   const output = `﻿${'BOM output line\n'.repeat(400)}`;
-  const stored = () => (journal.getMessage('msg_a')?.parts[0] as { output: string }).output;
+  const stored = () => (journal.getMessage('msg_a')!.parts[0] as { output: string }).output;
   journal.putMessage({ id: 'msg_a', threadId: 'thr_a', turnId: 'trn_a', role: 'assistant', parts: [toolPart(output)], state: 'complete', createdAt: 1 });
   expect((codecs() as { codec: number }[]).map(row => row.codec)).toEqual([1]);
   expect(stored()).toBe(output);

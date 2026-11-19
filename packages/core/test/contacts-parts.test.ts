@@ -190,7 +190,7 @@ test('the Tailscale client: the key stays in its 600 file, calls reach api.tails
   expect(JSON.parse(String(calls[2]!.init?.body))).toEqual([{ multiUse: false, allowExitNode: false }]);
   expect(JSON.parse(String(calls[4]!.init?.body))).toEqual([{ invite: 'https://login.tailscale.com/admin/invite/abc' }]);
   for (const call of calls) {
-    expect((call.init?.headers as Record<string, string>).authorization).toBe(`Bearer ${key}`);
+    expect((call.init!.headers as Record<string, string>).authorization).toBe(`Bearer ${key}`);
     expect(call.init?.redirect).toBe('error');
   }
   client.setKey(null);

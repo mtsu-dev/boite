@@ -212,9 +212,9 @@ test('local files are embedded, and a remote address or a missing file is a prob
   expect(refused.some(line => /url\(\/\/example\.com\/a\.png\) is remote/.test(line))).toBe(true);
   expect(refused.some(line => /<iframe> cannot load other\.html/.test(line))).toBe(true);
   expect(refused.some(line => /notes\.txt is not a file a view can embed/.test(line))).toBe(true);
-  expect(refused.some(line => /^line 11: the stylesheet uses @import/.test(line))).toBe(true);
+  expect(refused.some(line => line.startsWith('line 11: the stylesheet uses @import'))).toBe(true);
   expect(refused.some(line => /^line 11: gone\.png: .*does not exist/.test(line))).toBe(true);
-  expect(refused.some(line => /^line 11: url\(https:\/\/example\.com\/b\.png\) in the stylesheet is remote/.test(line))).toBe(true);
+  expect(refused.some(line => line.startsWith('line 11: url(https://example.com/b.png) in the stylesheet is remote'))).toBe(true);
 });
 
 test('a page of many small style blocks is read in one pass', () => {

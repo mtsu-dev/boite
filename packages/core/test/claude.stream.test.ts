@@ -137,6 +137,7 @@ describe('claude driver', () => {
   test('the prompt cache clock starts at the last main-loop request, not at a subagent one or the turn end', async () => {
     const { client, threadId } = await openClaudeThread();
     let mainAt = 0;
+    let subAt = 0;
     scripted((fake) => {
       void (async () => {
         fake.emit(init('sess-clock'));
@@ -147,6 +148,7 @@ describe('claude driver', () => {
           message: { id: 'msg_1', role: 'assistant', model: 'claude-opus-5', content: [{ type: 'text', text: 'pong' }], usage: { input_tokens: 5, cache_creation_input_tokens: 900, cache_creation: { ephemeral_5m_input_tokens: 900, ephemeral_1h_input_tokens: 0 } } },
         }));
         await Bun.sleep(100);
+        subAt = Date.now();
         fake.emit(sdk({ type: 'stream_event', session_id: 'sess-clock', parent_tool_use_id: 'toolu_task', event: { type: 'message_start', message: { id: 'msg_sub' } } }));
         await Bun.sleep(100);
         fake.emit(success('sess-clock'));
@@ -157,9 +159,9 @@ describe('claude driver', () => {
     const thread = await client.call('threads.get', { threadId });
     const cache = thread.promptCache!;
     expect(cache.ttlSeconds).toBe(300);
+    // Before the subagent's request, and so before the turn end: a slow runner moves every stamp, never their order.
     expect(cache.at).toBeGreaterThanOrEqual(mainAt);
-    expect(cache.at).toBeLessThan(mainAt + 80);
-    expect(thread.turns.at(-1)!.finishedAt! - cache.at).toBeGreaterThanOrEqual(150);
+    expect(cache.at).toBeLessThan(subAt);
   });
   test('a scripted turn maps deltas, the tool pair, the usage and the session id', async () => {
     const { client, threadId } = await openClaudeThread();
@@ -817,5 +819,39 @@ describe('claude driver', () => {
       { type: 'compaction', trigger: 'auto', preTokens: 95_000, postTokens: 20_000 },
       { type: 'text', text: 'done' },
     ]);
+  });
+
+  test('a cleared conversation empties the context meter at once', async () => {
+    const { client, threadId } = await openClaudeThread();
+
+    scripted(() => undefined, (fake, prompt) => {
+      if (!prompt.includes('/clear')) {
+        fake.emit(init('sess-before'));
+        fake.emit(sdk({
+          type: 'assistant', session_id: 'sess-before', parent_tool_use_id: null,
+          message: { id: 'msg_a', role: 'assistant', model: 'claude-opus-5', content: [{ type: 'text', text: 'long answer' }],
+            usage: { input_tokens: 500, cache_read_input_tokens: 80_000, cache_creation_input_tokens: 0 } },
+        }));
+        const result = success('sess-before') as SDKMessage & { modelUsage: Record<string, unknown> };
+        result.modelUsage = { 'claude-opus-5-20260401': { contextWindow: 200_000 } };
+        fake.emit(result);
+        return;
+      }
+      // What CLI 2.1.326 writes for `/clear`, in this order: the reset, an init on the new session, an empty result.
+      fake.emit(sdk({ type: 'conversation_reset', new_conversation_id: 'conv-after', uuid: 'uuid-reset', session_id: 'sess-before', trigger: 'clear' }));
+      fake.emit(init('sess-after'));
+      fake.emit(sdk({ ...(success('sess-after') as object), result: '' }));
+    });
+
+    expect(await runTurn(client, threadId, 'fill it')).toBe('done');
+    expect((await client.call('threads.get', { threadId })).context).toMatchObject({ tokens: 80_500, window: 200_000 });
+
+    const readings: (number | null)[] = [];
+    client.on('thread.updated', (thread) => { if (thread.id === threadId) readings.push(thread.context?.tokens ?? null); });
+    expect(await runTurn(client, threadId, '/clear')).toBe('done');
+    const thread = await client.call('threads.get', { threadId });
+    // The window stays: only what fills it is gone.
+    expect(thread.context).toMatchObject({ tokens: 0, window: 200_000 });
+    expect(readings).toContain(0);
   });
 });

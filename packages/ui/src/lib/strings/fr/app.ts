@@ -18,6 +18,8 @@ export const fr: Translation = {
       waitingMany: '{count} ont besoin de vous',
       workingOne: '1 au travail',
       workingMany: '{count} au travail',
+      subagentsOne: '1 sous-agent',
+      subagentsMany: '{count} sous-agents',
       bots: 'Mochis',
       add: 'Nouveau mochi ou équipe',
       botWaiting: '{name} a besoin de vous',

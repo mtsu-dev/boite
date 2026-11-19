@@ -20,7 +20,7 @@ test('no product module opens a socket with Bun\'s own WebSocket client', () => 
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
       const path = join(directory, entry.name);
       if (entry.isDirectory()) walk(path);
-      else if (/\.ts$/.test(entry.name) && /\bnew WebSocket\(/.test(readFileSync(path, 'utf8'))) found.push(path.slice(SOURCE.length + 1).replaceAll('\\', '/'));
+      else if (entry.name.endsWith('.ts') && /\bnew WebSocket\(/.test(readFileSync(path, 'utf8'))) found.push(path.slice(SOURCE.length + 1).replaceAll('\\', '/'));
     }
   };
   walk(SOURCE);

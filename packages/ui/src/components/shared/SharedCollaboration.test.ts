@@ -74,7 +74,7 @@ test('the existing board starts one claimed goal, shows owner/machine/checklist 
   await vi.waitFor(() => expect(el('board-card-agent')?.textContent).toContain('You'));
   const page = await a.call('sharedBoard.get', localScope); expect(page.kind).toBe('snapshot');
   if (page.kind !== 'snapshot') throw new Error('expected snapshot');
-  const worker = page.cards[0]!.assignment!.worker.threadId;
+  expect(page.cards[0]?.assignment?.worker).toBeTruthy();
   await vi.waitFor(() => expect(el('board-card-progress')?.textContent).toMatch(/\d\/\d/));
   await click('board-card-text');
   expect(document.querySelector('[data-testid=goal-checklist-item]')).not.toBeNull();

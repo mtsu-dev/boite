@@ -719,12 +719,17 @@ on Linux it stops when the WebKitGTK headers are missing
 ## Checks and tests
 
 ```sh
-bun run check               # architecture and all declared TypeScript/Svelte checks
+bun run lint                # oxlint, fails on any warning
+bun run check               # lint, architecture and all declared TypeScript/Svelte checks
 bun run test                # isolated core file processes, then UI Vitest
 bun run build:ui            # production assets for core-backed browser tests
 bun run e2e                 # builds UI, then runs tests/e2e
 bun scripts/check-docs.ts    # local documentation link targets
 ```
+
+`bun run lint` runs oxlint with `.oxlintrc.json` (correctness rules, the
+scripts of Svelte components included) and fails on any warning. Disable a rule
+on one line only, with the reason after `--`.
 
 Run the checks relevant to the change. Core files run in fresh Bun processes,
 four at once by default; `BOITE_TEST_WORKERS` accepts 1 to 8, and

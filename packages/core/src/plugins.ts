@@ -25,7 +25,7 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync } from 'nod
 import { chmod, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { PLUGIN_MANIFEST_FILE, sameRepository } from '@boite/contracts';
-import type { PluginArtifact, PluginCommandResult, PluginManifest, PluginPermission, PluginPool, PluginPreview, PluginRejected, PluginSetting, PluginSettingValues, PluginSource, PluginState, RpcParams } from '@boite/contracts';
+import type { PluginArtifact, PluginCommandResult, PluginManifest, PluginPool, PluginPreview, PluginRejected, PluginSetting, PluginSettingValues, PluginSource, PluginState, RpcParams } from '@boite/contracts';
 import type { Identity } from './sessions.ts';
 import type { Core } from './core.ts';
 import { invalidParams, messageOf, refused } from './errors.ts';
@@ -37,7 +37,6 @@ import {
   executableFile,
   isPluginId,
   isRecord,
-  parseManifest,
   parseManifestText,
   permissionsOf,
   platformKey,

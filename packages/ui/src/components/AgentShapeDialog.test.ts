@@ -43,7 +43,7 @@ test('a Claude thread opens what its last request carried from the context meter
   const shape = await client.call('threads.agentShape', { threadId: thread.id });
   const tools = [...document.querySelectorAll('[data-testid="agent-shape-tool"] .name')].map(node => node.textContent);
   expect(tools).toEqual(shape.tools.map(tool => tool.name));
-  expect(shape.tools.map(tool => tool.chars)).toEqual([...shape.tools.map(tool => tool.chars)].sort((a, b) => b - a));
+  expect(shape.tools.map(tool => tool.chars)).toEqual(shape.tools.map(tool => tool.chars).sort((a, b) => b - a));
   expect(document.body.textContent).toContain(fill(strings.agentShape.estimate, { tokens: shape.estimatedTokens.toLocaleString('en') }));
   const blocks = document.querySelectorAll<HTMLDetailsElement>('[data-testid="agent-shape-block"]');
   expect(blocks).toHaveLength(shape.system.length);

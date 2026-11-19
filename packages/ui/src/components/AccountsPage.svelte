@@ -65,7 +65,8 @@
     grok: 'https://grok.com/build',
     hermes: 'https://hermes-agent.nousresearch.com/docs/getting-started/installation',
     muse: 'https://developer.meta.com/ai/products/muse-code/',
-    pi: 'https://github.com/earendil-works/pi'
+    pi: 'https://github.com/earendil-works/pi',
+    vibe: 'https://github.com/mistralai/mistral-vibe#installation'
   };
 
   /** The fold's duration, nothing when the system or the app asks for less motion. */

@@ -13,6 +13,7 @@ export { proxyKey } from './subscription-proxy-auth.ts';
 const OPENCODE_MODELS_SETTING = 'subscription-proxy-opencode-models';
 export const PROXY_URL_ENV = 'BOITE_SUBSCRIPTION_PROXY_URL';
 export const PROXY_KEY_ENV = 'BOITE_SUBSCRIPTION_PROXY_KEY';
+const CODEX_CATALOG_ENV = 'BOITE_SUBSCRIPTION_PROXY_CODEX_CATALOG';
 /**
  * The start of every model id the core injected into an agent as a provider of
  * its own, `douane/`. An agent may take such a model without listing it among
@@ -149,7 +150,14 @@ export function subscriptionProxyEnv(core: Core, provider: ProviderDescriptor): 
     CLAUDE_CODE_PROMPT_CACHE_TTL: '1h',
     CLAUDE_CODE_SKIP_FAST_MODE_ORG_CHECK: '1',
   };
-  return { [PROXY_URL_ENV]: proxyApiUrl(proxy), [PROXY_KEY_ENV]: key };
+  const api = proxyApiUrl(proxy);
+  return {
+    [PROXY_URL_ENV]: api,
+    [PROXY_KEY_ENV]: key,
+    ...(proxy.kind === 'douane' && provider.protocol === 'codex-appserver'
+      ? { [CODEX_CATALOG_ENV]: `${api}/codex/models` }
+      : {}),
+  };
 }
 
 /** Muse serve takes its endpoint from settings, never the TUI's --base-url flag. Keep native settings and logins intact. */
@@ -164,8 +172,8 @@ function museGatewayEnv(core: Core, proxy: SubscriptionProxy, key: string): Reco
   return { XDG_CONFIG_HOME: directory, META_API_KEY: key };
 }
 
-/** Only the address is an argument; Codex reads the key from its child's environment. */
-export function subscriptionProxyCodexArgs(args: string[], env: Record<string, string>): string[] {
+/** Only addresses go on the command line; Codex reads the key from its environment. */
+export async function subscriptionProxyCodexArgs(args: string[], env: Record<string, string>): Promise<string[]> {
   const baseUrl = env[PROXY_URL_ENV];
   if (!baseUrl) return args;
   const provider = 'boite_subscription_proxy';
@@ -178,6 +186,20 @@ export function subscriptionProxyCodexArgs(args: string[], env: Record<string, s
     `model_providers.${provider}.requires_openai_auth=false`,
     `model_providers.${provider}.env_key="${PROXY_KEY_ENV}"`,
   ];
+  const catalog = env[CODEX_CATALOG_ENV];
+  // An explicit Codex catalog replaces its bundled list. Older gateways keep
+  // the bundled models until they support the native catalog endpoint.
+  if (catalog) {
+    const response = await fetch(catalog, {
+      method: 'HEAD', headers: { Authorization: `Bearer ${env[PROXY_KEY_ENV]}` },
+      signal: AbortSignal.timeout(3_000), redirect: 'error',
+    }).catch(() => null);
+    if (response?.ok && response.headers.get('content-type')?.startsWith('application/json')) {
+      // Douane routes bare ids from this key's catalog to Codex.
+      config.push(`model_providers.${provider}.model_catalog_url=${JSON.stringify(catalog)}`,
+        `model_providers.${provider}.http_headers={"x-douane-model-catalog"="codex"}`);
+    }
+  }
   return [...args, ...config.flatMap(value => ['--config', value])];
 }
 

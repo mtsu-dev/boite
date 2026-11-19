@@ -1,8 +1,7 @@
 /** In-memory counterpart of the scoped Contacts protocol. No foreign thread is inserted locally. */
-import { RpcErrorCode, type Contact, type RpcParams, type SharedProject, type SharedProjectActor, type SharedProjectRef, type SharedProjectScope, type SharedProjectView, type SharedProjectThread, type SharedAccessEvent, type SharedReviewVerdict, type SharedFileOverride, type SharedReviewConfig } from '@boite/contracts';
+import { RpcErrorCode, type Contact, type SharedProject, type SharedProjectActor, type SharedProjectRef, type SharedProjectScope, type SharedProjectView, type SharedProjectThread, type SharedAccessEvent, type SharedReviewVerdict, type SharedFileOverride, type SharedReviewConfig } from '@boite/contracts';
 import { RpcFailure } from '../client';
-import { secureId } from '../secure-id';
-import type { FakeContext, FakeMethods } from './context';
+import type { FakeContext } from './context';
 import { coordinationConfig, fakeCore, setSharedPartners } from './coordination';
 import { contactFor, contactState, modelTier } from './contacts';
 

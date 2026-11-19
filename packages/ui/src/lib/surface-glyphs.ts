@@ -1,4 +1,4 @@
-import { Activity, AppWindow, Cpu, FileText, FolderTree, GitCompare, Globe, LampDesk, ListChecks, MessageSquare, MessagesSquare, Puzzle, Smartphone, UsersRound } from '@lucide/svelte';
+import { AppWindow, Cpu, FileText, FolderTree, GitCompare, Globe, LampDesk, ListChecks, MessageSquare, MessagesSquare, Puzzle, Smartphone, UsersRound } from '@lucide/svelte';
 import type { Component } from 'svelte';
 import type { SurfaceKind } from './right-panel.svelte';
 

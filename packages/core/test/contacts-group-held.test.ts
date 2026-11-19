@@ -29,7 +29,7 @@ test('a contact a member still holds is the whole group\'s: asked from the Mochi
   await cClient.call('contacts.update', { coreId: aId, trusted: true });
   const cBot = await contactsBotOf(c, cClient);
   // X hosts the bots, but C cannot reach X (it is on another network): A keeps the link.
-  const xBot = await contactsBotOf(x, xClient);
+  await contactsBotOf(x, xClient);
   x.core.contacts.selfUrl = async () => 'http://127.0.0.1:9';
   await botsHome(a, aClient, x, xId);
   await waitFor(() => y.core.group.roleOf('botsHome') === xId, 10000);
@@ -109,7 +109,7 @@ async function heldSetup(before: (sides: Awaited<ReturnType<typeof setup>>) => v
   remoteOn(x, xThread);
   remoteOn(c, cThread);
   await contactsBotOf(c, cClient);
-  const xBot = await contactsBotOf(x, xClient);
+  await contactsBotOf(x, xClient);
   before(sides);
   await botsHome(a, aClient, x, xId);
   await waitFor(() => botView(x.core).contacts.some(contact => contact.coreId === cId && contact.heldBy !== undefined), 20000);

@@ -329,7 +329,7 @@ export class AccountStore {
     if (profile === undefined) return {};
     this.prepare(account, provider);
     const isolationDir = account.isolationDir;
-    const env: Record<string, string> = { ...(profile.env ?? {}) };
+    const env: Record<string, string> = { ...profile.env };
     if (isolationDir !== null) {
       for (const [key, value] of Object.entries(profile.isolation)) {
         env[key] = value.split('{isolationDir}').join(isolationDir);
@@ -745,7 +745,7 @@ export class AccountStore {
   /** Every login still running, killed with the core. */
   async closeLogins(): Promise<void> {
     await Promise.all([...this.#logins.keys()].map((accountId) => this.loginCancel(accountId)));
-    await Promise.allSettled([...this.#checks.values()]);
+    await Promise.allSettled(this.#checks.values());
   }
 
   /** One line of a login's output, whichever form it takes. */

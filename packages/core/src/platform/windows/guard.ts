@@ -303,7 +303,7 @@ function teardown(): Promise<void> {
   mutedPids.clear();
   noted.clear();
   if (running !== null) track(stopWorker(running, flag));
-  return Promise.all([...stopping]).then(() => undefined);
+  return Promise.all(stopping).then(() => undefined);
 }
 
 /**

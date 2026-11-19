@@ -10,6 +10,7 @@ import { withQuotaProbe } from '../src/quotas.ts';
 import { startTestCore, waitFor } from './harness.ts';
 import type { TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
+import { countEvents } from './event-count.ts';
 
 const ECHO_LOGIN_SCRIPT = fileURLToPath(new URL('../src/providers/shipped/echo-login.ts', import.meta.url));
 // A Claude login may be in the macOS Keychain or Windows Credential Manager, so a missing file proves nothing there.
@@ -374,18 +375,18 @@ describe('accounts', () => {
     const account = await client.call('accounts.add', { providerId: 'claude', label: 'Checked', useDefaultLocation: false });
     const updated: string[] = [];
     client.on('accounts.updated', (event) => updated.push(event.status));
-    const rows = harness.core.journal.countEvents('account.checked');
+    const rows = countEvents(harness.core.journal, 'account.checked');
 
     for (let index = 0; index < 3; index += 1) {
       expect((await client.call('accounts.check', { accountId: account.id })).status).toBe(CLAUDE_WITHOUT_SESSION_FILE);
     }
-    expect(harness.core.journal.countEvents('account.checked')).toBe(rows);
+    expect(countEvents(harness.core.journal, 'account.checked')).toBe(rows);
 
     writeFileSync(join(account.isolationDir ?? '', '.credentials.json'), '{"fake":true}', 'utf8');
     expect((await client.call('accounts.check', { accountId: account.id })).status).toBe('ok');
     await waitFor(() => updated.length === 1);
     expect(updated).toEqual(['ok']);
-    expect(harness.core.journal.countEvents('account.checked')).toBe(rows + 1);
+    expect(countEvents(harness.core.journal, 'account.checked')).toBe(rows + 1);
   });
 
   test('a profile whose login lives outside any file reads unknown rather than unauthenticated', async () => {

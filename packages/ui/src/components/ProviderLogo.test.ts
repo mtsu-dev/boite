@@ -28,13 +28,20 @@ function pathsOf(providerId: string) {
 }
 
 test('every agent Boite ships has a mark, and only those', () => {
-  expect(Object.keys(providerLogos).sort()).toEqual(['antigravity', 'claude', 'codex', 'grok', 'muse', 'opencode', 'pi']);
+  expect(Object.keys(providerLogos).sort()).toEqual(['antigravity', 'claude', 'codex', 'grok', 'muse', 'opencode', 'pi', 'vibe']);
 });
 
 test('a gateway name for a shipped agent draws that agent, not an initial', () => {
   draw('opencode_go');
   expect(document.querySelector('[data-initial]')).toBeNull();
   expect(document.querySelector('svg')).not.toBeNull();
+});
+
+test('the Meta quota from Douane draws the Muse logo', () => {
+  draw('meta');
+
+  expect(document.querySelector('svg[data-logo=meta] path')?.getAttribute('d')).toBe(pathsOf('muse').paths[0]?.d);
+  expect(document.querySelector('[data-initial=meta]')).toBeNull();
 });
 
 test('a mark in one colour draws its path at the size it was given, in that colour', () => {

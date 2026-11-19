@@ -159,7 +159,7 @@ test('a pull request runs only the Linux checks and leaves the rest to the merge
   const all = affectedChecks(['packages/core/src/main.ts']);
   const pr = plan(all, 'pr');
   expect(pr).toMatchObject({ core: true, web: true, desktop: false, e2e: false, server: false, android: false, androidServer: false, stress: false });
-  expect(JSON.parse(pr.coreRunners)).toEqual([{ os: 'ubuntu-24.04', name: 'Linux x64' }]);
+  expect(JSON.parse(pr.coreRunners)).toEqual([{ os: 'ubuntu-24.04', name: 'Linux x64', shards: 2 }]);
   // Bundle size still measures a desktop change: the queue skips it.
   expect(pr.size).toBe(true);
   expect(plan(affectedChecks(['telemetry/src/index.ts']), 'pr').size).toBe(false);

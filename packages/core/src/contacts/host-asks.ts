@@ -373,5 +373,5 @@ export class ContactHostAsks {
     return from;
   }
 
-  close(): Promise<unknown> { this.#closed = true; return Promise.allSettled([...this.#pending]); }
+  close(): Promise<unknown> { this.#closed = true; return Promise.allSettled(this.#pending); }
 }

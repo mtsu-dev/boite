@@ -84,6 +84,7 @@ afterEach(async () => {
   delete process.env['ACP_FAKE_REFUSE_SMART'];
   delete process.env['ACP_FAKE_HANG_SMART'];
   delete process.env['ACP_FAKE_NO_IMAGES'];
+  delete process.env['ACP_FAKE_VIBE'];
   delete process.env['ACP_FAKE_HANG_INIT'];
   delete process.env['ACP_FAKE_EXIT_AT_START'];
   delete process.env['ACP_FAKE_FORGET'];
@@ -1002,6 +1003,33 @@ describe('acp driver', () => {
     const done = await finished;
     expect(done.status).toBe('error');
     expect(done.error).toBe('no available subscription for this model');
+  });
+
+  test('Vibe: the thinking category is the effort scale, and its three modes map', async () => {
+    process.env['ACP_FAKE_VIBE'] = '1';
+    const client = await startCore({ warmProcessMinutes: 5 });
+    const threadId = await acpThread(client, 'fake-fast', 'default');
+    const { accountId } = await client.call('threads.get', { threadId });
+
+    const probed = await client.call('providers.probe', { providerId: 'acp-fake', accountId });
+    expect(probed.models.find((model) => model.id === 'fake-fast')?.effort).toEqual({
+      levels: [
+        { id: 'off', label: 'Off' },
+        { id: 'high', label: 'High' },
+      ],
+      default: 'off',
+    });
+
+    await client.call('threads.update', { threadId, effort: 'high' });
+    await runTurn(client, threadId, 'first');
+    await waitFor(() => configCount('thinking high') === 1);
+    // Vibe opens in accept-edits; Boite's default is its ask mode.
+    await waitFor(() => setModeCount('ask') === 1);
+
+    await client.call('threads.update', { threadId, permissionMode: 'bypassPermissions' });
+    await runTurn(client, threadId, 'second');
+    await waitFor(() => setModeCount('auto-approve') === 1);
+    expect(fakeLog()).not.toContain('set_mode:refused');
   });
 
   test('a thread on the model "default" lets the agent keep its own', async () => {

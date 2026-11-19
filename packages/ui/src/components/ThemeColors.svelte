@@ -38,7 +38,7 @@
   let customizing = $state(false);
   const editorId = $props.id();
   const roles: ColorRole[] = ['background', 'frame', 'surface', 'foreground', 'accent'];
-  let presets = $derived.by(() => { accent; return PALETTES.map(id => ({ id, palette: presetPalette(id, mode) })); });
+  let presets = $derived.by(() => { void accent; return PALETTES.map(id => ({ id, palette: presetPalette(id, mode) })); });
   let tokens = $derived(paletteTokens(palette));
   let grounds = $derived(['--color-background', '--color-frame', '--color-surface', '--color-surface-2', '--color-surface-3'].map(key => tokens[key]!));
   let ratio = $derived(Math.min(...grounds.map(ground => contrast(palette.foreground, ground))));

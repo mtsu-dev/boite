@@ -80,7 +80,7 @@ export class CoordinationLookups {
       const trusted = new Set(this.side.trusted().map(peer => peer.coreId));
       // So is the reach: a machine it closed while its answer was in flight is left out, routed contacts included.
       const now = this.side.config(threadId);
-      if (now.reach !== 'group') routed.entries = [], routed.unavailable = [];
+      if (now.reach !== 'group') { routed.entries = []; routed.unavailable = []; }
       for (const { peer, answer } of found) {
         if (!now.machine(peer.coreId)) continue;
         let remote: { contacts: AgentContact[]; missing: number } | null = null;
@@ -145,7 +145,7 @@ export class CoordinationLookups {
     const routed = config.remote && config.reach === 'group' ? await this.side.mailboxes.search(threadId, words) : { entries: [], unavailable: [] };
     const hide = this.hidden(threadId);
     routed.entries = routed.entries.filter(entry => !hide(entry.coreId));
-    if (this.side.config(threadId).reach !== 'group') routed.entries = [], routed.unavailable = [];
+    if (this.side.config(threadId).reach !== 'group') { routed.entries = []; routed.unavailable = []; }
     this.side.checkLookupAccess(threadId, config.remote);
     const remote = collect();
     const reachable = new Set(this.side.localReach(threadId).map(contact => contact.threadId));

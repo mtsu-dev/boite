@@ -14,6 +14,7 @@ with the account you already pay for, and shows its work in one app.
 | Antigravity | Google | Boite installs it | Boite installs it | From Boite, with a Google account |
 | [Grok](https://grok.com/build) | xAI | Install it yourself | Install it yourself | From Boite |
 | [Hermes Agent](https://hermes-agent.nousresearch.com/docs/getting-started/installation) | Nous Research | Install it yourself | Install it yourself | From Boite, by choosing a model and its key |
+| [Mistral Vibe](https://github.com/mistralai/mistral-vibe#installation) | Mistral AI | Install it yourself | Install it yourself | From Boite, in a browser or with a Vibe key |
 | [pi](https://github.com/earendil-works/pi) | Earendil Works | Install it yourself | Install it yourself | In pi itself |
 
 [OpenCode 2](https://opencode.ai/v2/docs/) is also supported as an experiment.
@@ -46,6 +47,7 @@ same agent.
 | Antigravity | Yes | No | Yes |
 | Grok | No | Yes | Yes |
 | Hermes Agent | Yes | No | Yes |
+| Mistral Vibe | Yes | No | Yes |
 | pi | Yes | No | No |
 
 - Plan mode: the agent proposes a plan and waits for your approval before it

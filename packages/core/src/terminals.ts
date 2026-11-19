@@ -649,7 +649,7 @@ export class TerminalStore {
    */
   async closeAll(): Promise<void> {
     await this.#restored;
-    await Promise.allSettled([...this.#opening.values()]);
+    await Promise.allSettled(this.#opening.values());
     if (!this.#core.endsKept) {
       for (const session of [...this.#sessions.values()]) {
         if (session.kept === null || session.closing) continue;

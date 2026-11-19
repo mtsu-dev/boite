@@ -281,7 +281,7 @@ test('cancelling a deferred reconnect keeps new input without replacing the unre
   const durable = { updatedAt: 1, inputs: {
     't-parser': { text: 'An unread saved reply', attachments: [], queued: [] }
   }, drafts: {
-    '\"p-boite\"': { draft: { projectId: 'p-boite', worktree: false }, input: { text: 'Previously saved input', attachments: [], queued: [] } }
+    '"p-boite"': { draft: { projectId: 'p-boite', worktree: false }, input: { text: 'Previously saved input', attachments: [], queued: [] } }
   } };
   let release!: (value: unknown) => void;
   vi.mocked(readDraftJournal).mockReturnValueOnce(new Promise(resolve => { release = resolve; }));
@@ -474,6 +474,7 @@ test('removed assets leave the index only after a pending durable journal settle
   const payload = 'A'.repeat(262_144);
   let index: Map<unknown, unknown> | undefined;
   const set = Map.prototype.set;
+  // oxlint-disable-next-line typescript/no-this-alias -- the spy hands the written Map to the test
   vi.spyOn(Map.prototype, 'set').mockImplementation(function (this: Map<unknown, unknown>, key, value) { if (key === payload) index = this; return set.call(this, key, value); });
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });

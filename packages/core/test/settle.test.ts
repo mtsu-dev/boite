@@ -11,6 +11,7 @@ test('a promise that resolves fails both helpers, as the rejects matcher did', a
 
 test('a thenable reason comes back as itself, not adopted', async () => {
   let adopted = false;
+  // oxlint-disable-next-line unicorn/no-thenable -- the test needs a thenable rejection reason
   const reason = { then(resolve: (value: unknown) => void) { adopted = true; resolve('adopted'); } };
   expect((await rejection(Promise.reject(reason))).reason).toBe(reason);
   expect(adopted).toBe(false);

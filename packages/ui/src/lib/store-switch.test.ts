@@ -148,7 +148,7 @@ test('more than four small visits retain their history for an immediate return',
 });
 
 test('a disclosure retrieves the real fake transport output and clears its preview marker', async ({ ready }) => {
-  const { store, client } = await ready({ delayMs: 0 });
+  const { store } = await ready({ delayMs: 0 });
   await store.open('t-trace');
   const message = store.openThread!.messages.find(message => message.parts.some(part => part.type === 'tool' && part.output))!;
   const part = message.parts.find(part => part.type === 'tool' && part.output)!;
