@@ -2,6 +2,7 @@ import { expect, vi } from 'vitest';
 import { test } from '../test/fake-client';
 import { RpcErrorCode } from '@boite/contracts';
 import { RpcFailure } from './client';
+import { LiveWeights } from './store/live-weights.svelte';
 
 /** A card's fetch: `messages.toolPart` on a core with `deferredToolParts`, `messages.toolOutput` before it. */
 const toolRead = (method: string) => method === 'messages.toolOutput' || method === 'messages.toolPart';
@@ -374,11 +375,14 @@ test('a live end past its bound lets its oldest messages go and reads them again
   await store.loadOlder();
   const thread = store.openThread!;
   expect(thread.messages).toHaveLength(160);
+  const weights = new LiveWeights();
+  expect(store.releaseOlder('t-long', undefined, weights)).toBe(0);
   // A day of output: every held message weighs 256 KiB, 40 MiB in all.
   const text = 'x'.repeat(128 * 1024);
   for (const message of thread.messages) message.parts = [{ type: 'text', text }];
+  thread.messages.push({ ...thread.messages.at(-1)!, id: 'measured-arrival' });
   const newest = thread.messages.at(-1)!.id;
-  expect(store.releaseOlder('t-long')).toBe(144);
+  expect(store.releaseOlder('t-long', undefined, weights)).toBe(145);
   expect(store.openThread!.messages).toHaveLength(16);
   expect(store.openThread!.messages.at(-1)!.id).toBe(newest);
   expect(store.messagesBefore).toBe(store.openThread!.messages[0]!.id);

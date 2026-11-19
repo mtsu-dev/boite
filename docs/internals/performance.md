@@ -609,11 +609,11 @@ the turn's other events, which no channel holds back.
   subscription, unread acknowledgement and fresh snapshot run in the background.
   Unchanged messages and turns keep their identities through revalidation.
   The cache retains up to 16 visits, at most 4 MiB of text per thread and
-  16 MiB in total, with a 2,000-message bound per thread. A leave counts the
-  thread it leaves and keeps that size beside the entry, so it never measures
-  the other visits again (`ReadingCache` in `reading-cache.ts`). Once the page
-  is idle, a plain copy replaces the deep `$state` proxy the timeline drew,
-  which weighed several times its data.
+  16 MiB in total, with a 2,000-message bound per thread. A leave rejects a
+  page above the message limit immediately. The cache projects and weighs
+  eligible pages when idle or on a quick return, and keeps the weight beside
+  each entry (`ReadingCache` in `reading-cache.ts`). Once the page is idle,
+  a plain copy replaces the deep `$state` proxy the timeline drew.
 - Once a machine is ready and the page idle (`requestIdleCallback`, else
   1 s), its first sidebar threads are read ahead into the same cache
   (`IdlePreloads` in `lib/store/thread-preload.ts`): up to 4, one at a time,
@@ -1686,9 +1686,10 @@ What the UI held without bound:
 - The open thread's live end. Messages arriving on the subscribed thread were
   appended for as long as it stayed open, while a thread left keeps 4 MiB in
   the reading cache. Now, while the list follows the bottom,
-  `store/live-end.ts` weighs the live end each time a message arrives (never
-  on a delta) and, past twice the reading cache's per-thread bound (8 MiB or
-  2,000 messages), keeps the newest 4 MiB or 1,000 messages with their turns
+  `store/live-end.ts` checks the budget on message arrival. It reuses the
+  weights of unchanged messages in blocks of 64. Past the reading cache's
+  per-thread bound (4 MiB or 2,000 messages), it keeps the newest 2 MiB or
+  1,000 messages with their turns
   and sets `messagesBefore` to the first one kept: scrolling up reads the rest
   again from the core. The heights and rises the list measured for the rows
   that left go with them.

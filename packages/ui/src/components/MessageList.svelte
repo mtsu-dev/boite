@@ -39,7 +39,9 @@
   import { retryTurn } from '../lib/composer-edit';
   import { TurnProgress } from '../lib/turn-progress.svelte';
   import { GAP, OVERSCAN, SlotTotals, WINDOW_FROM, atOrBefore, gapChanged, keepOnly, measurable, overscanAbove, reaches, sameView, slotGap, windowStats, type WindowView } from '../lib/message-window';
-  import { TimelineRows, rowIndexOf, seam, type TimelineRow } from '../lib/timeline-rows';
+  import { rowIndexOf, seam, type TimelineRow } from '../lib/timeline-rows';
+  import { reactiveTimelineRows } from '../lib/timeline-rows.svelte';
+  import { LiveWeights } from '../lib/store/live-weights.svelte';
   import { GapRows, NO_GAPS, READ_AHEAD, RangeAsk, gapHeight, heldNear, loadKeepingReader, wantedRange } from '../lib/history-gaps';
   import TimelineGap from './TimelineGap.svelte';
   import { latest } from '../lib/latest.svelte';
@@ -96,9 +98,8 @@
   const shaped = $derived(agentTimeline.build(quietKeepalives(placed, shownTurns), shownTurns, memoryPassOf(store, threadId)));
   const timeline = $derived(shaped.timeline);
   const days = $derived(dayBreaks(timeline)); // The messages that open a new day, a divider above each.
-  /** What the window lists and measures: a row per message, several for the message of a long turn (lib/timeline-rows.ts). */
-  const cut = new TimelineRows(), gapRows = new GapRows();
-  /** Where the held messages sit in the thread, on a core that says so: each stretch missing between them is a gap row. */
+  const cut = reactiveTimelineRows(), gapRows = new GapRows();
+  const liveWeights = new LiveWeights();
   const placement = $derived(store.openThread?.id === threadId ? store.messagePlacement?.(threadId, messages) ?? null : null);
   const positional = $derived((placement?.first ?? null) !== null);
   const gapped = $derived.by(() => {
@@ -111,9 +112,7 @@
   const timelineOrder = $derived.by(() => { void rows; return gapped.gaps.length ? rows.map(row => row.id).join('\0') : cut.order; });
   const savedReading = untrack(() => store.readingPositions?.get(threadId));
 
-  /** How often the bottom message's height is allowed to speak to the pin. */
   const TAIL_GAP_MS = 100;
-
   let viewport = $state<HTMLDivElement | undefined>(undefined);
   let pinned = $state(savedReading?.pinned ?? true);
   let behind = $state(false);
@@ -648,7 +647,7 @@
       // Held by the reader or on its way down, the list is still at the bottom: it takes the new height once free.
       if (opened || untrack(following)) {
         // Followed, the live end lets go of the messages far above it, and the heights measured for them; never those within reach of the view.
-        if (untrack(following) && untrack(() => store.releaseOlder(threadId, () => heldNear(totals(rows), rows, messages, viewHeight * (READ_AHEAD + 1), views))) > 0) void tick().then(() => keepOnly([heights, risen], rows, messages));
+        if (untrack(following) && untrack(() => store.releaseOlder(threadId, () => heldNear(totals(rows), rows, messages, viewHeight * (READ_AHEAD + 1), views), liveWeights)) > 0) void tick().then(() => keepOnly([heights, risen], rows, messages));
         scrolledHeight = box.scrollHeight; edge.follow(box); scrollTop = box.scrollTop;
       }
       pinned = true; behind = false;
