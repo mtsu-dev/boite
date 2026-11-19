@@ -846,9 +846,6 @@
     .body.mobile-covered { visibility: hidden; pointer-events: none; content-visibility: hidden; transition: content-visibility 0s var(--dur-whip) allow-discrete; }
     /* Settings over the chat it keeps: the chat is skipped like under the list, the layer takes the body's box. */
     .body.under-settings > :global(:not(.settings-layer)) { visibility: hidden; pointer-events: none; content-visibility: hidden; }
-    /* Its edge fades run on scroll timelines a skipped chat never advances: they would stay running forever. */
-    .body.under-settings > :global(:not(.settings-layer) :is(.scroll-edges, [data-scroll-root])::before),
-    .body.under-settings > :global(:not(.settings-layer) :is(.scroll-edges, [data-scroll-root])::after) { content: none; }
     .settings-layer.over { position: absolute; inset: 0; display: flex; min-height: 0; padding: inherit; box-sizing: border-box; }
     .scrim {
       display: block;

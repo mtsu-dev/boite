@@ -635,8 +635,6 @@
     /* Kept under a conversation or a page, as the conversation's `.body` is kept under the list (App.svelte):
        not drawn, not laid out, not reachable, its rows and its scroll ready for the next Back. */
     .mobile-list.covered { visibility: hidden; pointer-events: none; content-visibility: hidden; }
-    /* Its edge fades run on its scroll timeline, which a skipped list never advances: they would stay running forever. */
-    .mobile-list.covered::before, .mobile-list.covered::after { content: none; }
     /* A conversation slides over the list it opens from, and off it on the way back (lib/screen-slide.svelte.ts). The
        conversation, the app's `.body`, spans the bottom bar's row too, as tall all the way as it is once open, so nothing
        inside rewraps; the list and the bar shift under it, and the header stays, raised over its shadow. */
