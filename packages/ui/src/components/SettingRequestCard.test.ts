@@ -151,6 +151,35 @@ test('Show in Settings opens the card it names without answering, and Refuse tel
   }
 });
 
+test.each([
+  ['backgroundCompaction', 'background-compaction', 'System › Background compaction'],
+  ['deviceStream', 'device-stream', 'System › Live device stream'],
+] as const)('a card asked when %s was an experiment leads to System, where its switch is now', async (key, section, place) => {
+  const { client, store } = await setup();
+  try {
+    mounted = mount(SettingRequestCard, {
+      target: document.body,
+      props: {
+        store,
+        text: 'Turn it on',
+        setting: { kind: 'change', key, value: true, previous: false, page: 'experiments', section, sensitive: false },
+        answer: null,
+        pending: true,
+        respond: async () => undefined
+      }
+    });
+    flushSync();
+    expect(query('[data-testid=setting-place]').textContent).toBe(place);
+    query<HTMLButtonElement>('[data-testid=setting-show]').click();
+    flushSync();
+    expect(store.settingsTab).toBe('advanced');
+    expect(store.settingsSection).toMatchObject({ id: section, flash: true });
+  } finally {
+    store.detach();
+    client.close();
+  }
+});
+
 test('the app tells its core its language, and no experiment is a setting while every feature is finished', async () => {
   localStorage.setItem('boite.experiments', JSON.stringify(['resident-agents', 'whip']));
   const { client, store } = await setup();

@@ -61,7 +61,9 @@ The three core settings that used to be experiments,
 (`deviceStream`), are ordinary owner settings now, off by default, in
 Settings > System on the desktop and on a phone. The core reads them as
 stored in every build, and an agent may ask for any of them with a settings
-card (`REQUESTABLE_SETTINGS`).
+card (`REQUESTABLE_SETTINGS`). A card asked while background compaction or
+the stream was an experiment still names the Experiments page: its button
+and its trail lead to System (`settingPlace` in `lib/setting-requests.ts`).
 
 ## Who decides
 

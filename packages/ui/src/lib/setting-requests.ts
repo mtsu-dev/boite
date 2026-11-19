@@ -252,10 +252,22 @@ const PHONE_CARDS: Partial<Record<SettingsPage, readonly string[]>> = {
 };
 
 /**
+ * Where a card's setting is now. A card asked while background compaction
+ * and the live device stream were experiments still names the Experiments
+ * page; their switches are in System since, and no build lists that page.
+ */
+const MOVED_TO_SYSTEM: readonly string[] = ['background-compaction', 'device-stream'];
+export function settingPlace(setting: SettingAsk): Pick<SettingAsk, 'page' | 'section'> {
+  if (setting.page === 'experiments' && setting.section !== null && MOVED_TO_SYSTEM.includes(setting.section)) return { page: 'advanced', section: setting.section };
+  return { page: setting.page, section: setting.section };
+}
+
+/**
  * Whether this client's Settings has the card a settings card points at. A
  * button that would land on Home instead is not offered.
  */
-export function settingsReachable(setting: SettingAsk, client: { owner: boolean; phone: boolean }): boolean {
+export function settingsReachable(asked: SettingAsk, client: { owner: boolean; phone: boolean }): boolean {
+  const setting = settingPlace(asked);
   const section = setting.section;
   // A Release has no Experiments page.
   if (setting.page === 'experiments' && !experimentsShown()) return false;
@@ -268,7 +280,8 @@ export function settingsReachable(setting: SettingAsk, client: { owner: boolean;
 }
 
 /** `Resources › Limits`, the trail under a card. */
-export function settingPlaceText(setting: SettingAsk, providers: readonly ProviderSummary[] = []): string {
+export function settingPlaceText(asked: SettingAsk, providers: readonly ProviderSummary[] = []): string {
+  const setting = settingPlace(asked);
   const section = setting.section === null ? null : settingsSectionLabel(setting.section, providers);
   return [settingsPageLabel(setting.page), section].filter((part): part is string => part !== null).join(' › ');
 }

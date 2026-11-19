@@ -15,6 +15,12 @@ test('Show and Open are offered only where this client draws the target card', (
   expect(settingsReachable(open('advanced', 'device-stream'), { owner: true, phone: true })).toBe(true);
   // No build lists an experiment today: a card that points at Experiments has nowhere to land.
   expect(settingsReachable(open('experiments', null), { owner: true, phone: false })).toBe(false);
+  // Except a card asked while background compaction or the stream was an experiment: it leads to System now.
+  for (const section of ['background-compaction', 'device-stream']) {
+    expect(settingsReachable(open('experiments', section), { owner: true, phone: true }), section).toBe(true);
+    expect(settingsReachable(open('experiments', section), { owner: true, phone: false }), section).toBe(true);
+    expect(settingsReachable(open('experiments', section), { owner: false, phone: false }), section).toBe(false);
+  }
   // A phone browser lacks the desktop's General, Advanced and pairing cards.
   expect(settingsReachable(open('resources', 'limits'), { owner: true, phone: true })).toBe(true);
   expect(settingsReachable(open('general', 'conversations'), { owner: true, phone: true })).toBe(true);
