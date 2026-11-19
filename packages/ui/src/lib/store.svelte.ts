@@ -688,6 +688,7 @@ export class Store {
   get permissionRequests() { return this.#ctx.requests.permissionRequests; }
   set permissionRequests(value) { this.#ctx.requests.permissionRequests = value; }
   get pendingQuestions() { return this.#ctx.requests.pendingQuestions; }
+  hasRequest(...args: Parameters<Requests['hasRequest']>) { return this.#ctx.requests.hasRequest(...args); }
   get pendingSecrets() { return this.#ctx.requests.pendingSecrets; }
   set pendingQuestions(value) { this.#ctx.requests.pendingQuestions = value; }
   get questionRequests() { return this.#ctx.requests.questionRequests; }

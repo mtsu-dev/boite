@@ -120,7 +120,18 @@ export const NEEDS_RANK = 1;
 
 type Asks = readonly { threadId?: ThreadId | null }[];
 /** What a row reads from its machine besides the summary: its delegated agents and the requests held for it. */
-export type RowSource<D> = { subagents(threadId: ThreadId): D; pendingQuestions?: Asks; pendingPermissions?: Asks };
+export type RowSource<D> = {
+  subagents(threadId: ThreadId): D;
+  pendingQuestions?: Asks;
+  pendingPermissions?: Asks;
+  hasRequest?(kind: 'question' | 'permission', threadId: ThreadId): boolean;
+};
+
+function held(store: RowSource<Delegated>, kind: 'question' | 'permission', threadId: ThreadId): boolean {
+  if (store.hasRequest) return store.hasRequest(kind, threadId);
+  const asks = kind === 'question' ? store.pendingQuestions : store.pendingPermissions;
+  return asks?.some(request => request.threadId === threadId) ?? false;
+}
 
 /**
  * A row's delegated agents, plus one asking when the machine holds a question
@@ -131,8 +142,7 @@ export function rowAsks(store: RowSource<WorkingChildren | null>, threadId: Thre
 export function rowAsks(store: RowSource<Delegated>, threadId: ThreadId): Delegated;
 export function rowAsks(store: RowSource<Delegated | WorkingChildren>, threadId: ThreadId): Delegated | WorkingChildren {
   const children = store.subagents(threadId);
-  const held = (asks: Asks | undefined) => asks?.some(request => request.threadId === threadId) ?? false;
-  if (!held(store.pendingQuestions) && !held(store.pendingPermissions)) return children;
+  if (!held(store, 'question', threadId) && !held(store, 'permission', threadId)) return children;
   if (typeof children === 'number') return { count: children, asking: 1 };
   return { count: children?.count ?? 0, since: children && 'since' in children ? children.since : null, asking: (children?.asking ?? 0) + 1 };
 }
@@ -158,9 +168,7 @@ export type ActivityEvent<E> = { lead: E; helpers: E[]; rank: number };
  * or the state itself (a failure, a stop, news). Two threads share a row only when this is the same.
  */
 function eventKind(store: RowSource<Delegated>, thread: ThreadSummary, kind: ThreadState): string {
-  if (kind !== 'waiting') return kind;
-  const held = (asks: RowSource<Delegated>['pendingQuestions']) => asks?.some(ask => ask.threadId === thread.id) ?? false;
-  return held(store.pendingPermissions) && !held(store.pendingQuestions) ? 'allow' : 'answer';
+  return kind === 'waiting' ? activityKind(store, thread.id, kind)! : kind;
 }
 
 /**
@@ -197,8 +205,11 @@ export function activityEvents<E extends ActivitySource<{ id: string; store: Row
   for (const entry of listed) {
     const parent = parentOf(entry);
     if (!parent) { tops.set(key(entry), entry); continue; }
-    children.set(key(parent), [...children.get(key(parent)) ?? [], entry]);
-    if (!tops.has(key(parent))) tops.set(key(parent), parent);
+    const parentKey = key(parent);
+    const group = children.get(parentKey);
+    if (group) group.push(entry);
+    else children.set(parentKey, [entry]);
+    if (!tops.has(parentKey)) tops.set(parentKey, parent);
   }
   const events: ActivityEvent<E>[] = [];
   for (const top of tops.values()) {
@@ -207,7 +218,9 @@ export function activityEvents<E extends ActivitySource<{ id: string; store: Row
     const byKind = new Map<string, E[]>();
     for (const entry of own ? [top, ...children.get(key(top)) ?? []] : children.get(key(top)) ?? []) {
       const kind = eventKind(entry.machine.store, entry.thread, listedKind(entry)!);
-      byKind.set(kind, [...byKind.get(kind) ?? [], entry]);
+      const group = byKind.get(kind);
+      if (group) group.push(entry);
+      else byKind.set(kind, [entry]);
     }
     [...byKind.values()].forEach((members, index) => {
       const rank = statusRank(listedKind(members[0]!));
@@ -226,8 +239,7 @@ export type ActivityKind = 'permission' | 'question' | 'failed' | 'stopped' | 'd
 /** A row's kind from its state and the requests held for it: a permission alone is allowed, any question answered. */
 export function activityKind(store: RowSource<Delegated>, threadId: ThreadId, state: ThreadState | null): ActivityKind | null {
   if (state === 'waiting') {
-    const held = (asks: RowSource<Delegated>['pendingQuestions']) => asks?.some(ask => ask.threadId === threadId) ?? false;
-    return held(store.pendingPermissions) && !held(store.pendingQuestions) ? 'permission' : 'question';
+    return held(store, 'permission', threadId) && !held(store, 'question', threadId) ? 'permission' : 'question';
   }
   return state === 'error' ? 'failed' : state === 'interrupted' ? 'stopped' : state === 'done' ? 'done' : null;
 }
