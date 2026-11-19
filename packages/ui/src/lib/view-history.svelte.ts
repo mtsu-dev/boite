@@ -48,6 +48,8 @@ export class Trail {
 
   get current(): View | null { return this.#views[this.#index] ?? null; }
   get length(): number { return this.#views.length; }
+  /** Whether a view lies behind the current one, gone or not. */
+  get behind(): boolean { return this.#index > 0; }
 
   /** A view reached any other way than by the buttons: what was ahead of the last one is gone. */
   visit(view: View): void {

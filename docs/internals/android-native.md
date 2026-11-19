@@ -3,9 +3,10 @@
 `apps/mobile` is the native Android package, meant for Google Play and for
 phones without Google services. It is a Tauri 2 app that embeds the same UI
 bundle as the shell and the phone web app, built with
-`vite build --mode mobile`. It has no core of its own: like the
-[Trusted Web Activity](android.md) it is a client of the machines its phone is
-added to, but it needs no Chrome and loads no page from the network. The
+`vite build --mode mobile`. It has no core of its own: it is a client of the
+machines its phone is added to, needs no Chrome and loads no page from the
+network. It replaced a Trusted Web Activity that opened the app's address in
+Chrome (`com.boite.two`, no longer built). The
 package is `dev.mtsu.boite`. The nightly builds and signs it; until it is on
 Play, the app offers each new build and the browser downloads it for Android
 to install ([updates](#updates)).
@@ -56,7 +57,33 @@ What the app does not do yet, or what nobody has checked on a phone:
   pages. The opener plugin may open `http` and `https` URLs only.
 - `MainActivity` exposes `BoiteAndroid.ready()`. The UI calls it two frames
   after its first mount, which calls `reportFullyDrawn()`: that is the time
-  `am start -W` and Play vitals report as fully drawn.
+  `am start -W` and Play vitals report as fully drawn. `BoiteAndroid.leave()`
+  sends the app to the background ([Back](#back)).
+- The page answers the Back button itself ([Back](#back)).
+
+## Back
+
+Tauri hands Back to the WebView's history (`webView.goBack()`) unless the page
+listens for it. A history navigation reaches the page as a `popstate` one task
+later, after the WebView has walked its own list. `lib/android-back.ts`
+listens instead (`onBackButtonPress`, allowed by
+`core:app:allow-register-listener` in `capabilities/default.json`), and the
+press runs in the page at once:
+
+1. `answerBack()` (`lib/mobile-history.ts`) closes the newest open overlay, a
+   conversation, a sheet or a Settings page, in the same task. Its history
+   entry is popped behind it, so a browser's Back and the app's agree.
+2. Wider than a phone, where nothing is an overlay, Back walks the views the
+   window showed (`lib/view-history.svelte.ts`), as a mouse's back button does.
+3. With nothing left, `BoiteAndroid.leave()` calls `moveTaskToBack(true)`: the
+   app goes to the background, as Android's own Back does on its root
+   screen, and the page stays loaded for the next launch.
+
+If the listener cannot register, Tauri keeps its history navigation: slower,
+but every overlay still closes.
+
+What Back costs, and what the screens it reveals keep built for it, is in
+[performance](performance.md#what-a-tap-costs).
 
 ## Building
 

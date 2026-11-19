@@ -120,6 +120,11 @@
   // Wider than a phone (an iPhone on its side, a tablet, a desktop browser)
   // a lost or revoked pairing gets the same screen rather than a stale page.
   const wideRecovery = $derived(!narrow.current && mobileRecovery && store.pairingRequired && store.page !== 'settings');
+  /**
+   * A phone's Settings is a layer over the chat, which stays built under it, hidden: leaving Settings shows the list
+   * and the conversation as they were instead of building them again.
+   */
+  const phoneSettings = $derived(!inShell && narrow.current && store.page === 'settings');
   let documentVisible = $state(!document.hidden);
   // What the first screen does not draw stays out of the first chunk: the right
   // panel and its six surfaces, the palette and the two dialogs were a third of
@@ -527,14 +532,14 @@
   {/if}
   <TitleBar {store} edge={!railShown} listless={listGone} />
 
-  <div class="body" class:mobile-covered={!inShell && store.page === 'chat' && (mobileScreen !== 'chat' || mobileRecovery)} class:panel-maximized={(store.page === 'chat' || store.page === 'agents') && rightPanel.maximized && !rightPanel.floating && store.panelOpen} class:sidebar-folded={sidebarFolded}>
+  <div class="body" class:under-settings={phoneSettings} class:mobile-covered={!inShell && store.page === 'chat' && (mobileScreen !== 'chat' || mobileRecovery)} class:panel-maximized={(store.page === 'chat' || store.page === 'agents') && rightPanel.maximized && !rightPanel.floating && store.panelOpen} class:sidebar-folded={sidebarFolded}>
     {#if !booted}
       <p class="empty boot" class:long={compacting}>{compacting ? strings.app.compacting : strings.app.loading}</p>
     {:else if wideRecovery}
       <div class="wide-recovery" data-testid="wide-recovery"><MobileConnect {store} onpaired={() => {}} /></div>
-    {:else if store.page === 'settings'}
+    {:else if store.page === 'settings' && !phoneSettings}
       <!-- Its pages' list takes the thread list's column, connected or not. -->
-      {#if SettingsShell}<SettingsShell {store} onopenthread={() => { mobileScreen = 'chat'; }} />{:else}<p class="empty">{settingsLoadError || strings.app.loading}</p>{/if}
+      {@render settingsPage()}
     {:else if store.connection === 'closed' && !store.core}
       <Sidebar {store} />
       <div class="notice framed">
@@ -612,7 +617,12 @@
            Not on the Contacts page: the list column's Contacts side holds the same rows there. -->
       {#if contacts.ContactsRail && contactsShown(store) && !narrow.current && store.page !== 'home'}<contacts.ContactsRail {store} />{/if}
     {/if}
+    {#if booted && phoneSettings}<div class="settings-layer">{@render settingsPage()}</div>{/if}
   </div>
+
+  {#snippet settingsPage()}
+    {#if SettingsShell}<SettingsShell {store} onopenthread={() => { mobileScreen = 'chat'; }} />{:else}<p class="empty">{settingsLoadError || strings.app.loading}</p>{/if}
+  {/snippet}
 
   {#if store.dropping}
     <DropOverlay kind={store.dropping} />
@@ -824,6 +834,9 @@
        Skipped content does not advance its animations, so the switch waits for the exits the cover started
        (a menu closing) to end, and lifts at once on return. */
     .body.mobile-covered { visibility: hidden; pointer-events: none; content-visibility: hidden; transition: content-visibility 0s var(--dur-whip) allow-discrete; }
+    /* Settings over the chat it keeps: the chat is skipped like under the list, the layer takes the body's box. */
+    .body.under-settings > :global(:not(.settings-layer)) { visibility: hidden; pointer-events: none; content-visibility: hidden; }
+    .settings-layer { position: absolute; inset: 0; display: flex; min-height: 0; padding: inherit; box-sizing: border-box; }
     .scrim {
       display: block;
       position: fixed;

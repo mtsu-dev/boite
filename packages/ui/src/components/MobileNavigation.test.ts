@@ -158,7 +158,7 @@ test('the header holds the search, opened in place, the new thread and the Setti
   workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
   mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'activity' } });
   await settle();
-  const list = () => document.querySelector('[data-testid=mobile-list]')?.getAttribute('aria-label');
+  const list = () => document.querySelector('[data-testid=mobile-list]:not(.covered)')?.getAttribute('aria-label');
   const id = (testid: string) => document.querySelector<HTMLElement>(`[data-testid=${testid}]`);
   expect(list()).toBe('Activity');
   // Activity answers what is asked: it creates nothing, the thread list's "+" is one tab away.
@@ -227,7 +227,7 @@ test('the header holds the search, opened in place, the new thread and the Setti
   expect(document.querySelector('[data-testid=mobile-tabs] [data-testid=mobile-new]')).toBeNull();
   id('mobile-new')!.click(); await settle();
   expect(store.draft).not.toBeNull();
-  expect(document.querySelector('.mobile-list')).toBeNull();
+  expect(document.querySelector('.mobile-list:not(.covered)')).toBeNull();
   expect(id('mobile-back')).not.toBeNull();
   expect(id('mobile-new')).toBeNull();
 });
@@ -282,7 +282,10 @@ test('a parent on another machine shows its working sub-agents, counted, and Rec
 
     // Opening the parent and coming Back finds the list still filtered.
     document.querySelector<HTMLButtonElement>(`[data-testid="mobile-thread-${parent.id}"]`)!.click(); await settle();
-    expect(document.querySelector('.mobile-list')).toBeNull();
+    expect(document.querySelector('.mobile-list:not(.covered)')).toBeNull();
+    // The list stays drawn under the conversation, hidden and out of reach, so Back reveals it instead of building it again.
+    const kept = document.querySelector<HTMLElement>('.mobile-list.covered');
+    expect([kept?.inert, kept?.getAttribute('aria-hidden'), kept?.querySelector(`[data-thread-id="${parent.id}"]`) !== null]).toEqual([true, 'true', true]);
     document.querySelector<HTMLButtonElement>('[data-testid=mobile-back]')!.click(); await settle();
     expect(count()).toBe('Working');
     expect(rows()).toEqual([parent.id]);
@@ -319,13 +322,13 @@ test("a contact's page opened from the list leaves for the board on the chat scr
   await settle();
   // What the contact's row under the projects does.
   store.showHome('core-chris'); await settle();
-  expect(document.querySelector('.mobile-list')).toBeNull();
+  expect(document.querySelector('.mobile-list:not(.covered)')).toBeNull();
 
   await store.openProjectBoard('p-boite'); await settle();
   expect([store.page, store.openThread?.projectId, store.boardShown]).toEqual(['chat', 'p-boite', true]);
-  expect(document.querySelector('.mobile-list')).toBeNull();
+  expect(document.querySelector('.mobile-list:not(.covered)')).toBeNull();
   document.querySelector<HTMLButtonElement>('[data-testid=mobile-back]')!.click(); await settle();
-  expect(document.querySelector('.mobile-list')).not.toBeNull();
+  expect(document.querySelector('.mobile-list:not(.covered)')).not.toBeNull();
 });
 
 test("a project header's menu starts a thread there and leaves the list for its composer", async () => {
@@ -341,7 +344,7 @@ test("a project header's menu starts a thread there and leaves the list for its 
   contextMenu.current!.onpick('new'); await settle();
   // The draft was made, yet the list stayed over it.
   expect(store.draft?.projectId).toBe('p-boite');
-  expect(document.querySelector('.mobile-list')).toBeNull();
+  expect(document.querySelector('.mobile-list:not(.covered)')).toBeNull();
 });
 
 test("with two machines the gear names the machine on the threads list only: Activity gathers every machine", async () => {

@@ -56,6 +56,7 @@
   import { needsUser, projectRollup, threadState } from '../lib/thread-state';
   import { foldQuiet } from '../lib/card-fold';
   import { minuteClock } from '../lib/clock.svelte';
+  import { whenIdle } from '../lib/idle';
   import { needsAnAI } from '../lib/first-run';
   import { contactsShown } from '../lib/contacts-rail.svelte';
   import { contactsParts } from '../lib/contacts-entry';
@@ -78,7 +79,20 @@
   let lastList = $state<'threads' | 'activity'>('threads');
   $effect.pre(() => { if (screen !== 'chat') lastList = screen; });
   const leaving = $derived(slide.direction === 'push');
-  const listScreen = $derived(leaving ? lastList : screen);
+  /** The list the header and the bottom bar name: none in a conversation, the one under it while it slides in. */
+  const headerList = $derived(leaving ? lastList : screen);
+  /** The list's own rows: the last list shown, kept under a conversation for the way back. */
+  const listScreen = $derived(screen === 'chat' ? lastList : screen);
+  /** The list on screen, alone or under a conversation sliding over it or off it. */
+  const listShown = $derived(narrow.current && store.page === 'chat' && (screen !== 'chat' || recover || leaving));
+  /**
+   * Once built, the list stays in the page under the conversation and the other pages, hidden: Back shows it as it
+   * was in the next frame instead of building every row again. A phone that lands in a conversation builds it once
+   * the page is idle, so its first Back is as quick.
+   */
+  let listKept = $state(false);
+  $effect.pre(() => { if (listShown) listKept = true; });
+  $effect(() => { if (narrow.current && !listKept) return whenIdle(() => { listKept = true; }, { timeout: 4000, fallback: 1500 }); });
   // The contacts under the projects, loaded with their experiment; a desktop window shows them in the column on the right.
   let SidebarContacts = $state<typeof import('./home/SidebarContacts.svelte').default>();
   let ContactRequestNotice = $state<typeof import('./home/ContactRequestNotice.svelte').default>();
@@ -127,13 +141,13 @@
    * The machine line names where the page reads: worth a line only once there is another to pick, or this one is not
    * there. Activity, Bots and Contacts gather every machine's rows, so there it only says trouble.
    */
-  let gathered = $derived(store.page === 'agents' || store.page === 'home' || (store.page === 'chat' && listScreen === 'activity'));
+  let gathered = $derived(store.page === 'agents' || store.page === 'home' || (store.page === 'chat' && headerList === 'activity'));
   let placeShown = $derived((several && !gathered) || store.connection !== 'ready' || store.pairingRequired);
   let place = $derived(store.pairingRequired ? strings.mobile.pairingRequired : store.connection === 'ready' ? (machine ? machineName(machine) : strings.mobile.computer) : strings.connection[store.connection]);
   let project = $derived(store.openProject ?? store.projects.find(p => p.archived !== true));
   let groups = $derived(projectView.sorted(machines.flatMap(machine => machine.store.projects.filter(project => !project.archived).map(project => ({ machine, project })))));
   /** The thread list on screen, with projects to show: its header names its two views. */
-  let threadViews = $derived(listScreen === 'threads' && store.page === 'chat' && !recover && groups.length > 0);
+  let threadViews = $derived(headerList === 'threads' && store.page === 'chat' && !recover && groups.length > 0);
   /** At work on top when working grouping is on, open, then set aside; idle projects go to their fold, as on the desktop. */
   let sections = $derived(projectSections(groups, recentPreferences.groupOtherProjects, recentPreferences.groupWorking));
   let shelved = $derived(machines.flatMap(machine => machine.store.projects.filter(project => project.archived === true).map(project => ({ machine, project }))));
@@ -176,7 +190,7 @@
   const filters = $derived(Number(atWorkShown) + Number(inRecent && selected !== undefined));
   // The chip goes with the last of that work: the filter does not come back by itself with the next turn.
   // Only the Recent list watches it: opening a conversation, searching or visiting Projects keeps the filter.
-  $effect(() => { if (atWorkOnly && inRecent && !query && atWorkRows.length === 0) atWorkOnly = false; });
+  $effect(() => { if (atWorkOnly && listShown && inRecent && !query && atWorkRows.length === 0) atWorkOnly = false; });
   const working = $derived(groupWorking && !atWorkShown ? rows.filter(row => groupWorkingThread(row.machine.store, row.thread)) : []);
   const attention = $derived(atWorkShown ? atWorkRows : groupWorking ? rows.filter(row => !groupWorkingThread(row.machine.store, row.thread)) : rows);
 
@@ -309,7 +323,7 @@
     <!-- The magnifier opened the field in the title's place; the display options close its row, as on the desktop list. -->
     <div class="search"><Search size={17} /><input type="search" bind:value={() => lent ? tabHeader.query : search, value => { if (lent) tabHeader.query = value; else search = value; }}
       aria-label={lent?.searchLabel ?? strings.mobile.search} placeholder={lent?.searchLabel ?? strings.mobile.search} data-testid="mobile-search" use:focusOnMount onkeydown={event => { if (event.key === 'Escape') closeSearch(); }} />
-      {#if store.page === 'chat' && listScreen === 'threads' && groups.length}<span class="display"><DisplayOptions entries={groups} target={undefined} owner={store} prefix="mobile-" compact filters={filters} {atWork} onaddproject={store.addsProjects ? addProject : undefined} /></span>{/if}
+      {#if store.page === 'chat' && headerList === 'threads' && groups.length}<span class="display"><DisplayOptions entries={groups} target={undefined} owner={store} prefix="mobile-" compact filters={filters} {atWork} onaddproject={store.addsProjects ? addProject : undefined} /></span>{/if}
     </div>
     <button class="ghost icon" data-testid="mobile-search-close" aria-label={strings.mobile.clearSearch} onclick={closeSearch}><X size={20} /></button>
   {:else}
@@ -329,7 +343,7 @@
   {#if narrow.current && ContactRequestNotice && contactsShown(store)}<ContactRequestNotice {store} />{/if}
   <!-- One way to create per screen: a page (Bots, Contacts, Settings) owns its own. Activity answers what is
        asked, so it creates nothing; the thread list's "+" is one tab away. -->
-  {#if tabbed && !recover && store.page === 'chat' && listScreen === 'threads' && !(searching && searchable)}
+  {#if tabbed && !recover && store.page === 'chat' && headerList === 'threads' && !(searching && searchable)}
     <!-- A new conversation, the list's one labelled action: "New" where the row is narrow, "New thread" past it. -->
     <button class="primary new" data-testid="mobile-new" aria-label={strings.sidebar.newThread} disabled={draftOwner.connection !== 'ready'} onclick={() => void newThread()}><Plus size={14} aria-hidden="true" /><span class="ui-label short">{strings.sidebar.newShort}</span><span class="ui-label long">{strings.sidebar.newThread}</span></button>
   {:else if lent?.create && !(searching && searchable)}
@@ -349,15 +363,15 @@
 </header>
 
 {#if tabbed || leaving}
-  <MobileTabs {store} screen={listScreen} waiting={threadsNeedingYou(machines.map(machine => machine.store)) + inbox.contacts} navigate={show} inert={leaving} />
+  <MobileTabs {store} screen={headerList} waiting={threadsNeedingYou(machines.map(machine => machine.store)) + inbox.contacts} navigate={show} inert={leaving} />
 {/if}
 
 {#snippet contacts()}
   {#if SidebarContacts && contactsShown(store)}<div class="contacts-slot"><SidebarContacts {store} {machines} /></div>{/if}
 {/snippet}
 
-{#if narrow.current && store.page === 'chat' && (screen !== 'chat' || recover || leaving)}
-  <section class="mobile-list scroll-edges" class:recent={inRecent} class:tabbed={tabbed || leaving} inert={leaving} bind:this={scrollRoot} style:--cut={cut ? `${cut}px` : undefined} onscroll={() => { if (scrollRoot) scrollPositions.set(listKey, scrollRoot.scrollTop); }} data-testid="mobile-list" aria-label={listScreen === 'activity' ? strings.mobile.activity : strings.sidebar.threads}>
+{#if narrow.current && (listShown || listKept)}
+  <section class="mobile-list scroll-edges" class:recent={inRecent} class:tabbed={tabbed || leaving} class:covered={!listShown} inert={leaving || !listShown} aria-hidden={listShown ? undefined : 'true'} bind:this={scrollRoot} style:--cut={cut ? `${cut}px` : undefined} onscroll={() => { if (scrollRoot) scrollPositions.set(listKey, scrollRoot.scrollTop); }} data-testid="mobile-list" aria-label={listScreen === 'activity' ? strings.mobile.activity : strings.sidebar.threads}>
     {#if recover && narrow.current}
       <MobileConnect {store} onpaired={() => show('threads')} />
     {:else}
@@ -617,6 +631,9 @@
     .empty-state p { color: var(--color-muted-foreground); line-height: 1.6; max-width: 280px; margin: 0 0 20px; }
     .mobile-header { grid-row: 1; grid-column: 1; }
     .mobile-list { grid-row: 2; grid-column: 1; position: relative; z-index: 1; min-height: 0; }
+    /* Kept under a conversation or a page, as the conversation's `.body` is kept under the list (App.svelte):
+       not drawn, not laid out, not reachable, its rows and its scroll ready for the next Back. */
+    .mobile-list.covered { visibility: hidden; pointer-events: none; content-visibility: hidden; }
     /* A conversation slides over the list it opens from, and off it on the way back (lib/screen-slide.svelte.ts). The
        conversation, the app's `.body`, spans the bottom bar's row too, as tall all the way as it is once open, so nothing
        inside rewraps; the list and the bar shift under it, and the header stays, raised over its shadow. */

@@ -72,7 +72,7 @@ async function buildBundle(outDir: string): Promise<void> {
     name: 'bench-ui-frames-bridge',
     transform(code: string, id: string) {
       if (id.replaceAll('\\', '/') !== join(UI, 'src/main.ts').replaceAll('\\', '/')) return;
-      return `${code}\nimport { store as __store } from './lib/store.svelte.ts';\nimport { rightPanel as __panel } from './lib/right-panel.svelte.ts';\nglobalThis.__bench = { store: __store, panel: __panel };\n`;
+      return `${code}\nimport { store as __store } from './lib/store.svelte.ts';\nimport { rightPanel as __panel } from './lib/right-panel.svelte.ts';\nimport { answerAndroidBack as __back } from './lib/android-back.ts';\nglobalThis.__bench = { store: __store, panel: __panel, back: __back };\n`;
     },
   };
   await build({ root: UI, plugins: [bridge], define: { 'import.meta.env.DEV': 'true' }, build: { outDir, emptyOutDir: true, ...(process.env.BENCH_MINIFY === '0' ? { minify: false } : {}) }, logLevel: 'warn' });
