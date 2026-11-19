@@ -15,11 +15,12 @@
  */
 
 import { INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, MESSAGE_PAGE_MAX, READING_PAGE_BYTES, type MessageId, type ProjectId, type RpcParams, type Thread, type ThreadId, type ThreadSnapshot, type ThreadSummary } from '@boite/contracts';
-import type { Client } from '../client';
+import { wasDropped, type Client } from '../client';
+import { wasClosed } from '../rpc-error';
 import { whenIdle } from '../idle';
 import { readingCacheBytes } from '../reading-cache';
 import { compareRecent } from '../thread-order';
-import { lastIndexById, snapshotResume } from '../thread-rows';
+import { lastIndexById, mergeResumed, snapshotResume } from '../thread-rows';
 import type { StoreContext } from './context';
 import { lightPage, setMessagesAfter, type ReadingPosition } from './reading-pages.svelte';
 
@@ -107,7 +108,7 @@ export function askPage(ctx: StoreContext, opener: Opener, client: Client, threa
 }
 
 /** Re-read the held window beyond the snapshot, within the normal count and byte bounds of each page. */
-export function refreshHeldWindow(ctx: StoreContext, client: Client, held: Thread, fresh: Thread, current: () => boolean): Promise<void> | undefined {
+function refreshHeldWindow(ctx: StoreContext, client: Client, held: Thread, fresh: Thread, current: () => boolean): Promise<void> | undefined {
   const first = fresh.messages[0]?.id;
   const last = fresh.messages.at(-1)?.id;
   let older = first === undefined || fresh.messagesBefore === null ? 0 : lastIndexById(held.messages, first);
@@ -152,6 +153,8 @@ export class ThreadPreloads {
   #waiting: Preload | null = null;
   /** The press an `open()` took over, patched by events until its page is on screen. */
   #claimed: Preload | null = null;
+  /** The fresh portion of a window whose remaining pages are being checked. */
+  #repairing: Thread | null = null;
   /** The first sidebar threads, read ahead once the machine is ready and the page idle. */
   readonly idle: IdlePreloads;
 
@@ -225,9 +228,61 @@ export class ThreadPreloads {
     return this.#waiting?.threadId;
   }
 
+  cancelRepair(): void { this.#repairing = null; }
+
+  /** Reuse the certified part of a held window and read any remaining pages before displaying the answer. */
+  revalidate(client: Client, fresh: Thread, held: Thread | undefined, deviceSnapshot: boolean, around: MessageId | undefined, proofFirst: MessageId | undefined, newest: () => boolean): Promise<boolean> | undefined {
+    const { readingThreads, readingPositions } = this.opener;
+    const prefixProofs = this.ctx.store.core?.features?.threadPrefixProofs === true;
+    let replaced = false;
+    if (fresh.messagesFrom !== undefined && held) {
+      const confirmedAt = proofFirst === undefined || proofFirst === held.messages[0]?.id ? 0 : lastIndexById(held.messages, proofFirst);
+      if (confirmedAt > 0) {
+        const messages = held.messages.slice(confirmedAt);
+        const turns = new Set(messages.map(message => message.turnId));
+        mergeResumed({ ...held, messages, turns: held.turns.filter(turn => turns.has(turn.id)), messagesBefore: proofFirst! }, fresh);
+      } else mergeResumed(held, fresh);
+    } else {
+      const cached = deviceSnapshot || prefixProofs ? undefined : held ?? readingThreads.get(fresh.id);
+      const ids = cached ? new Set(fresh.messages.map(message => message.id)) : undefined;
+      const overlap = ids ? cached!.messages.findIndex(message => ids.has(message.id)) : -1;
+      if (cached && overlap >= 0) {
+        // Keep the loaded prefix before a legacy core's fresh, overlapping tail.
+        fresh.messages = [...cached.messages.slice(0, overlap), ...fresh.messages];
+        const turnIds = new Set(fresh.turns.map(turn => turn.id));
+        fresh.turns = [...cached.turns.filter(turn => !turnIds.has(turn.id)), ...fresh.turns];
+        fresh.messagesBefore = cached.messagesBefore;
+      } else {
+        readingThreads.forget(fresh.id);
+        replaced = true;
+      }
+    }
+    const place = () => {
+      if (replaced && (!around || !fresh.messages.some(message => message.id === around))) readingPositions.delete(fresh.id);
+    };
+    if (held && prefixProofs) {
+      const mark = readingThreads.mark();
+      const current = () => newest() && !readingThreads.droppedSince(fresh.id, mark);
+      const repair = refreshHeldWindow(this.ctx, client, held, fresh, current);
+      if (repair) {
+        this.#repairing = fresh;
+        return repair.catch(error => {
+          if (current() && !((wasDropped(error) || wasClosed(error)) && this.ctx.store.connection !== 'ready')) this.ctx.fail(error);
+        }).then(() => {
+          if (!current()) return false;
+          place();
+          return true;
+        }).finally(() => { if (this.#repairing === fresh) this.#repairing = null; });
+      }
+    }
+    place();
+  }
+
   /** The pages presses loaded, which events patch beside the open thread. */
   pages(): (Thread | null | undefined)[] {
-    return [this.#waiting?.thread, this.#claimed?.thread];
+    const pages = [this.#waiting?.thread, this.#claimed?.thread];
+    if (this.#repairing) pages.push(this.#repairing);
+    return pages;
   }
 
   /** The page a press loaded for `threadId`, for the events that patch only the open thread. */
@@ -263,7 +318,7 @@ export function idlePreloadAllowed(): boolean {
 
 /** What the read-ahead reads of the thread store, beside what a press reads. */
 export interface ReadAheadSource extends Opener {
-  readonly readingThreads: Opener['readingThreads'] & { has(threadId: string): boolean; prefill(threadId: string, thread: Thread, bytes: number): boolean; mark(): number; droppedSince(threadId: string, mark: number): boolean };
+  readonly readingThreads: Opener['readingThreads'] & { has(threadId: string): boolean; prefill(threadId: string, thread: Thread, bytes: number): boolean; forget(threadId: string): boolean; mark(): number; droppedSince(threadId: string, mark: number): boolean };
   /** A project's rows as its card lists them: no archived, incognito or helper thread. */
   threadsOf(projectId: ProjectId): readonly ThreadSummary[];
 }

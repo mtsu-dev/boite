@@ -26,7 +26,7 @@ export function releaseOlder(ctx: StoreContext, threadId: ThreadId, near: () => 
   if (weighed.get(messages) === messages.length) return 0;
   weighed.set(messages, messages.length);
   if (messages.length <= READING_CACHE_MESSAGES &&
-    (weights?.total(messages) ?? messages.reduce((sum, message) => sum + messageChars(message), 0)) <= READING_CACHE_BYTES) return 0;
+    (weights ? weights.bytes / 2 : messages.reduce((sum, message) => sum + messageChars(message), 0)) <= READING_CACHE_BYTES) return 0;
   let kept = 0, chars = 0;
   for (let at = messages.length - 1; at >= 0 && kept < READING_CACHE_MESSAGES / 2; at--) {
     const message = messages[at]!;

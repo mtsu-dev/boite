@@ -176,7 +176,7 @@ export class Store {
     ctx.off.push(ctx.draftStartup.watch());
     ctx.off.push(watchIncognito(ctx));
     ctx.off.push(watchIdlePreloads(ctx));
-    ctx.off.push(ctx.threads.watchReadingWeight());
+    ctx.off.push(ctx.threads.readingWeights.watch());
     // Each machine hears about this window's own failures. Unit tests drive
     // fake timers through stores by the hundred, so the reporter stays out of them.
     if (import.meta.env.MODE !== 'test') ctx.off.push(startDiagnosticsReport(client));

@@ -894,16 +894,15 @@ test('a reconnect catches up the agent transcript and the team statuses the gap 
   await store.open('t-trace');
   await store.loadDelegation('t-trace');
   await store.selectDelegatedAgent('t-team-running');
-  const answer = store.delegationThread!.messages.at(-1)!;
-  const full = (answer.parts[0] as { text: string }).text;
   // What the gap loses: the end of a streamed reply and a status change.
-  answer.parts = [{ type: 'text', text: 'I found the' }];
   store.delegation!.agents.find((agent) => agent.thread.id === 't-team-running')!.thread.status = 'idle';
   const called = vi.spyOn(client, 'call');
   client.drop();
+  const { partIndex } = client.streamPastClient('t-team-running', 2);
   await client.restore();
   await waitFor(() => (store.delegation?.agents.find((agent) => agent.thread.id === 't-team-running')?.thread.status === 'running' ? true : undefined));
-  await waitFor(() => ((store.delegationThread?.messages.at(-1)?.parts[0] as { text?: string } | undefined)?.text === full ? true : undefined));
+  await waitFor(() => store.delegationThread?.messages.at(-1)?.parts[partIndex] ? true : undefined);
+  expect(store.delegationThread?.messages.at(-1)?.parts[partIndex]).toMatchObject({ type: 'text', text: 'Arrived.' });
   expect(store.delegationSelectedAgentId).toBe('t-team-running');
   expect(store.delegationThread?.messages.map((message) => message.id)).toEqual(['m-t-team-running-1', 'm-t-team-running-2']);
   // Light like the thread's own pages: the transcript draws a call's name and status, never its output.
@@ -1231,8 +1230,11 @@ test.for(['input', 'inputText', 'output', 'documents'])('reading cache excludes 
   part[field] = field === 'documents' ? [{ kind: 'markdown', text: large }] : field === 'input' ? { nested: { text: large } } : large;
   store.openThread!.messages.unshift({ id: 'cached-only', threadId: 't-bench', turnId: 'old', role: 'assistant', parts: [part], state: 'complete', createdAt: 0 });
   await store.open('t-scheduler');
-  await store.open('t-bench');
+  const opening = store.open('t-bench');
   const cached = store.openThread!.messages.find(message => message.id === 'cached-only');
+  await opening;
+  // The core does not have this fixture message. Only the cached paint can show it.
+  expect(store.openThread!.messages.some(message => message.id === 'cached-only')).toBe(false);
   // What a page would defer stays deferred in the cache, a successful output with no preview; a streaming input has nothing to fetch back.
   if (field === 'output') expect(cached?.parts[0]).toMatchObject({ outputDeferred: true, output: '' });
   else if (field === 'input') expect(cached?.parts[0]).toMatchObject({ inputDeferred: true, input: { nested: { text: large.slice(0, 1024) } } });
