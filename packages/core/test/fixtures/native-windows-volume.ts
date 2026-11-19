@@ -28,6 +28,7 @@ for (const path of paths) for (const access of [0x100080, 0x100001]) {
       const error = used ? 0 : kernel.symbols.GetLastError();
       names.push({flags, used, error, path: used && used < buffer.length / 2 ? buffer.toString('utf16le', 0, used * 2) : null});
     }
+  // oxlint-disable-next-line no-unsafe-finally -- a handle that does not close must fail the probe
   } finally {if (!kernel.symbols.CloseHandle(handle)) throw new Error('directory probe handle did not close');}
   observations.push({path, access, opened, error, names});
 }

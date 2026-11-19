@@ -17,8 +17,10 @@ test('a pull request reports the same fixed check names whichever jobs run', () 
     // Written out, not derived from CORE_ALL or PORTABLE_ALL: renaming a runner
     // renames a required check too.
     'Core tests (Linux arm64)',
-    'Core tests (Linux x64)',
-    'Core tests (Windows x64)',
+    'Core tests (Linux x64) 1/2',
+    'Core tests (Linux x64) 2/2',
+    'Core tests (Windows x64) 1/2',
+    'Core tests (Windows x64) 2/2',
     'Core tests (macOS arm64)',
     'Core tests (macOS x64)',
     'Desktop / Linux arm64',
@@ -27,17 +29,22 @@ test('a pull request reports the same fixed check names whichever jobs run', () 
     'Desktop / macOS x64',
     'Desktop / Windows x64',
     'Desktop / Windows x64 Rust tests',
-    'E2E 1/3',
-    'E2E 2/3',
-    'E2E 3/3',
+    'E2E 1/5',
+    'E2E 2/5',
+    'E2E 3/5',
+    'E2E 4/5',
+    'E2E 5/5',
     'E2E type check',
+    'Native Windows protection',
     'PR title',
-    'Plan and repository checks',
+    'Plan',
+    'Repository checks',
     'Server / verify server (amd64)',
     'Server / verify server (arm64)',
     'Stress fixtures',
     'Telemetry relay tests',
-    'Type checks and UI tests',
+    'Type checks and UI tests 1/2',
+    'UI tests 2/2',
   ].sort());
   // labeler.yml runs the base's workflow through pull_request_target.
   // An advisory name that no job reports any more is a stale exception.
@@ -48,7 +55,7 @@ test('a pull request reports the same fixed check names whichever jobs run', () 
 test('every job a needs chain runs through is in the list, so a skip after a failed dependency comes with a failed check', () => {
   const names = requiredChecks(files);
   const ci = loadWorkflow('ci.yml');
-  for (const [id, job] of Object.entries(ci.jobs)) {
+  for (const job of Object.values(ci.jobs)) {
     for (const need of [job.needs ?? []].flat()) {
       for (const check of jobChecks('ci.yml', need, ci.jobs[need]!)) expect(names).toContain(check);
     }
@@ -68,6 +75,12 @@ test('only the plan decides which jobs run, the same way for a pull request and 
   for (const [id, job] of Object.entries(ci.jobs)) {
     expect(JSON.stringify({ name: job.name, if: job.if }), id).not.toContain('draft');
     if (id === 'changes' || id === 'ruleset' || job.uses) continue;
+    // The repository checks run on every change, beside the plan.
+    if (id === 'checks') {
+      expect(job.if).toBeUndefined();
+      expect(job.needs).toBeUndefined();
+      continue;
+    }
     // Bundle size compares a pull request with its base: the queue skips it.
     if (id === 'size') {
       expect(job.if).toBe("github.event_name == 'pull_request' && needs.changes.outputs.size == 'true'");
@@ -108,10 +121,12 @@ test('matrix jobs and computed names are refused', () => {
 
 // changes.ts picks the runners and platforms; each written-out job must run
 // on the one it names, or a selected leg would skip without a failure.
-test('each core job runs on its CORE_ALL runner when coreRunners lists it', () => {
+test('each core job runs one shard of its CORE_ALL runner when coreRunners lists it', () => {
   const jobs = Object.entries(loadWorkflow('ci.yml').jobs).filter(([id]) => id.startsWith('core-'));
-  expect(jobs.map(([, job]) => ({ os: job['runs-on'], name: job.name })))
-    .toEqual(CORE_ALL.map((runner) => ({ os: runner.os, name: `Core tests (${runner.name})` })));
+  expect(jobs.map(([, job]) => ({ os: job['runs-on'], name: job.name, shard: job.env?.BOITE_TEST_SHARD })))
+    .toEqual(CORE_ALL.flatMap((runner) => runner.shards
+      ? Array.from({ length: runner.shards }, (_, index) => ({ os: runner.os, name: `Core tests (${runner.name}) ${index + 1}/${runner.shards}`, shard: `${index + 1}/${runner.shards}` }))
+      : [{ os: runner.os, name: `Core tests (${runner.name})`, shard: undefined }]));
   for (const [, job] of jobs) {
     expect(job.if).toBe(`needs.changes.outputs.core == 'true' && contains(needs.changes.outputs.coreRunners, '"os":"${job['runs-on']}"')`);
   }
@@ -121,24 +136,28 @@ test('each core job runs on its CORE_ALL runner when coreRunners lists it', () =
   expect(pr.includes('"os":"ubuntu-24.04-arm"')).toBe(true);
 });
 
-test('protection changes run the native fixture inside the existing Windows core check', () => {
+test('protection changes run the native fixtures in their own job beside the Windows core shards', () => {
   const ci = loadWorkflow('ci.yml');
   const changes = ci.jobs.changes as Job & { outputs: Record<string, string> };
   expect(changes.outputs.nativeWindows).toBe('${{ steps.filter.outputs.nativeWindows }}');
-  const windows = ci.jobs['core-windows-x64'] as Job & { 'timeout-minutes': number; steps: { id?: string; name?: string; if?: string; run?: string; env?: Record<string, string> }[] };
-  const helper = windows.steps.find(step => step.name === 'Build userspace native helper')!;
-  const native = windows.steps.find(step => step.name === 'Native Windows protected tools')!;
-  const prepare = windows.steps.find(step => step.name === 'Prepare synthetic native providers')!;
-  const providers = windows.steps.find(step => step.name === 'Native Windows provider and shared scopes')!;
+  type Step = { id?: string; name?: string; if?: string; run?: string; env?: Record<string, string> };
+  const job = ci.jobs['native-windows'] as Job & { 'timeout-minutes': number; steps: Step[] };
+  expect(job['runs-on']).toBe('windows-2025');
+  expect(job.if).toBe(`needs.changes.outputs.core == 'true' && needs.changes.outputs.nativeWindows == 'true' && contains(needs.changes.outputs.coreRunners, '"os":"windows-2025"')`);
+  expect(job['timeout-minutes']).toBe(25);
+  const helper = job.steps.find(step => step.name === 'Build userspace native helper')!;
+  const native = job.steps.find(step => step.name === 'Native Windows protected tools')!;
+  const prepare = job.steps.find(step => step.name === 'Prepare synthetic native providers')!;
+  const providers = job.steps.find(step => step.name === 'Native Windows provider and shared scopes')!;
   expect(helper.id).toBe('native_helper');
-  expect(prepare).toMatchObject({id: 'native_providers', if: "${{ !cancelled() && runner.os == 'Windows' && needs.changes.outputs.nativeWindows == 'true' && steps.native_helper.outcome == 'success' }}"});
-  expect(providers.if).toBe("${{ !cancelled() && runner.os == 'Windows' && needs.changes.outputs.nativeWindows == 'true' && steps.native_providers.outcome == 'success' }}");
-  expect(windows['timeout-minutes']).toBe(30);
+  expect(prepare).toMatchObject({id: 'native_providers', if: "${{ !cancelled() && steps.native_helper.outcome == 'success' }}"});
+  expect(providers.if).toBe("${{ !cancelled() && steps.native_providers.outcome == 'success' }}");
   expect(providers.env).toMatchObject({BOITE_TEST_NATIVE_EXECUTION: '1', BOITE_DIAGNOSE_JOB_EVENTS: '1'});
   expect(providers.run).toContain("@('protected-tool.exe', 'protected-tool-mingw.exe')");
   expect(providers.run).toContain('bun test packages/core/test/protected-muse.test.ts --timeout 120000');
   expect(helper.if).toBe("runner.os == 'Windows' && needs.changes.outputs.nativeWindows == 'true'");
-  expect(native.if).toBe(helper.if);
+  // A failed helper build stops the matrices that need it.
+  expect(native.if).toBeUndefined();
   expect(helper.run).toContain('bun packages/core/bin/install-windows-sandbox.ts');
   expect(helper.run).toContain('BOITE_WINDOWS_SANDBOX_PATH=');
   expect(helper.run).toContain('$env:GITHUB_ENV');
@@ -150,7 +169,7 @@ test('protection changes run the native fixture inside the existing Windows core
   for (const index of nativeCommands) {
     expect(helperLines[index + 1]).toBe('if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }');
   }
-  expect(windows.steps.indexOf(helper)).toBeLessThan(windows.steps.indexOf(native));
+  expect(job.steps.indexOf(helper)).toBeLessThan(job.steps.indexOf(native));
   expect(native.env).toMatchObject({ BOITE_TEST_NATIVE_EXECUTION: '1', TEMP: '${{ runner.temp }}', TMP: '${{ runner.temp }}' });
   expect(native.run).toBe(`$failed = $false
 foreach ($helper in @('protected-tool.exe', 'protected-tool-mingw.exe')) {
@@ -161,7 +180,15 @@ foreach ($helper in @('protected-tool.exe', 'protected-tool-mingw.exe')) {
 }
 if ($failed) { exit 1 }
 `);
-  expect(windows.steps.some(step => step.run === 'bun run --cwd packages/core test')).toBe(true);
+  // The Windows core shards run the suite with the same helper, and none of the matrices.
+  for (const id of ['core-windows-x64-1', 'core-windows-x64-2']) {
+    const steps = (ci.jobs[id] as Job & { steps: Step[] }).steps;
+    expect(steps.find(step => step.name === 'Build userspace native helper')).toEqual(helper);
+    for (const name of ['Native Windows protected tools', 'Prepare synthetic native providers', 'Native Windows provider and shared scopes']) {
+      expect(steps.some(step => step.name === name)).toBe(false);
+    }
+    expect(steps.find(step => step.run === 'bun run --cwd packages/core test')?.if).toBeUndefined();
+  }
 });
 
 test('each portable desktop job builds its PORTABLE_ALL platform when platforms lists it', () => {

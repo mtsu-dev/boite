@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import {
   AGENT_SUBMIT_REFUSED, createLogAnonymizer, deviceBound, formatLogDuration, formatLogLine, formatLogTime, ISSUE_REPOSITORY, logLevelAtLeast, logMatches, validateDiagnosticsLogsQuery, validateDiagnosticsParams,
   type CoreLogLevel, type CoreLogRecord, type DiagnosticEnvironment, type DiagnosticProblem, type DiagnosticReportRecord, type DiagnosticsExport, type DiagnosticsExportParams,
-  type DiagnosticsIssue, type DiagnosticsIssueParams, type DiagnosticsLogsQuery, type DiagnosticSummary, type DiagnosticThread, type LogAnonymizer, type LogData, type ThreadSummary,
+  type DiagnosticsIssue, type DiagnosticsIssueParams, type DiagnosticSummary, type DiagnosticThread, type LogAnonymizer, type LogData, type ThreadSummary,
 } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { invalidParams, messageOf, refused } from './errors.ts';
@@ -387,7 +387,7 @@ export class Diagnostics {
       this.#core.logs.record(record.level, record.message, {
         origin: 'ui', source: record.source, event: record.event, ...(threadId ? { threadId } : {}),
         ...(record.durationMs === undefined ? {} : { durationMs: record.durationMs }),
-        data: { ...(record.data ?? {}), client, remote: connection.remote !== false },
+        data: { ...record.data, client, remote: connection.remote !== false },
       }, at);
     }
     if (accepted.length < records.length && used < REPORTS_PER_MINUTE) {

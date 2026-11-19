@@ -106,7 +106,7 @@ test('persists an override and drops an effort the account no longer offers', ()
 });
 
 test('a configured default survives reconnect and wins over the previous thread model', async ({ ready }) => {
-  const { store, client } = await ready({ delayMs: 0 });
+  const { store } = await ready({ delayMs: 0 });
   const provider = store.providerOf('claude')!;
   const account = store.accountsOf('claude')[0]!;
   await store.probeModels('claude', account.id);

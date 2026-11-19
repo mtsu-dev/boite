@@ -199,9 +199,9 @@ class Choices extends HTMLElement {
     this.at = index;
     this.panels.forEach((panel, i) => { panel.hidden = i !== index; });
     this.buttons.forEach((button, i) => button.setAttribute('aria-pressed', String(i === index)));
-    this.count && (this.count.textContent = `${index + 1} / ${this.panels.length}`);
-    this.prev && (this.prev.disabled = index === 0);
-    this.next && (this.next.disabled = index === this.panels.length - 1);
+    if (this.count) this.count.textContent = `${index + 1} / ${this.panels.length}`;
+    if (this.prev) this.prev.disabled = index === 0;
+    if (this.next) this.next.disabled = index === this.panels.length - 1;
   }
 }
 class Steps extends Choices {

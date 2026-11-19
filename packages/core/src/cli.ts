@@ -189,8 +189,8 @@ ${BOT_HELP}
   team <command>                 a mochi's teams: post, read, propose (boite team help)
   --request-id <id>              reuse to retry threads send|reply or delegate spawn|send
   delegate models                models, reasoning levels and speeds a subagent can use
-                                 (--machine <name>: another machine's, for
-                                 thread new or delegate spawn --machine --model)
+                                 (--refresh: read again; --machine <name>: another
+                                 machine's, for thread new or spawn --machine --model)
   delegate spawn <brief>         start a subagent on one bounded job; its result
                                  comes back as a message (--model <provider/model>,
                                  --effort <level>, --speed <tier>, --title <title>,
@@ -278,10 +278,10 @@ interface Target {
 /** Loopback, Tailscale's 100.64.0.0/10 and its fd7a:115c:a1e0::/48: links that already encrypt or never leave the machine. */
 export function privateLink(hostname: string): boolean {
   const host = hostname.replace(/^\[|\]$/g, '').toLowerCase();
-  if (host === 'localhost' || host === '::1' || /^127\./.test(host)) return true;
+  if (host === 'localhost' || host === '::1' || host.startsWith('127.')) return true;
   const v4 = /^100\.(\d+)\.\d+\.\d+$/.exec(host);
   if (v4) return Number(v4[1]) >= 64 && Number(v4[1]) <= 127;
-  return /^fd7a:115c:a1e0:/.test(host);
+  return host.startsWith('fd7a:115c:a1e0:');
 }
 
 /** The environment first; `--thread` and `core.json` when the command runs outside a thread. */
@@ -483,7 +483,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
         ...(parsed.requestId === undefined ? {} : { requestId: parsed.requestId }), ...(parsed.timeout === undefined ? {} : { timeout: parsed.timeout }),
         ...(parsed.title === undefined ? {} : { title: parsed.title }), ...(parsed.model === undefined ? {} : { model: parsed.model }),
         ...(parsed.effort === undefined ? {} : { effort: parsed.effort }), ...(parsed.speed === undefined ? {} : { speed: parsed.speed }), ...(parsed.profile === undefined ? {} : { profile: parsed.profile }),
-        ...(parsed.worktree === true ? { worktree: true } : {}), ...(parsed.machine === undefined ? {} : { machine: parsed.machine }),
+        ...(parsed.worktree === true ? { worktree: true } : {}), ...(parsed.refresh === true ? { refresh: true } : {}), ...(parsed.machine === undefined ? {} : { machine: parsed.machine }),
         ...(parsed.context === undefined ? {} : { context: contextRequest(parsed, readRules) }),
         cwd: io.cwd,
       }, print);

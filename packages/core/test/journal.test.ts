@@ -159,7 +159,7 @@ describe('journal', () => {
     // Restore the old NOT NULL ownership constraint without losing newer columns or indexes.
     const definition = journal.db.query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'threads'").get() as { sql: string };
     const indexes = journal.db.query("SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'threads' AND sql IS NOT NULL").all() as { sql: string }[];
-    journal.db.exec(definition.sql.replace(/CREATE TABLE (?:IF NOT EXISTS )?["`\[]?threads["`\]]?/i, 'CREATE TABLE threads_legacy')
+    journal.db.exec(definition.sql.replace(/CREATE TABLE (?:IF NOT EXISTS )?["`[]?threads["`\]]?/i, 'CREATE TABLE threads_legacy')
       .replace(/project_id TEXT/i, 'project_id TEXT NOT NULL'));
     journal.db.exec('INSERT INTO threads_legacy SELECT * FROM threads; DROP TABLE threads; ALTER TABLE threads_legacy RENAME TO threads');
     for (const index of indexes) journal.db.exec(index.sql);
@@ -228,7 +228,7 @@ describe('journal', () => {
     const page = journal.listMessagePage('thr_test', { limit: 120, project: sent });
     expect(page.messages.map(message => message.id)).toEqual(['latest-live']);
     expect(page.before).toBe('latest-live');
-    expect((page.messages[0]?.parts[0] as { text: string }).text.length).toBe(7 * 1024 * 1024);
+    expect((page.messages[0]!.parts[0] as { text: string }).text.length).toBe(7 * 1024 * 1024);
     expect(journal.listMessagesFrom('thr_test', journal.messageRowid('thr_test', 'older-large')!, 120, sent) === null).toBe(true);
     const delta = journal.listMessagesFrom('thr_test', journal.messageRowid('thr_test', 'latest-live')!, 120, sent);
     expect(delta?.messages[0]?.parts).toEqual(page.messages[0]?.parts);

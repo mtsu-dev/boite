@@ -238,7 +238,7 @@ function agentKit() {
       if (el || given) throw new Error('ref @' + ref[1] + ' is stale because the page changed; take a new snapshot');
       throw new Error(K.used ? 'unknown ref @' + ref[1] + '; take a new snapshot' : 'ref @' + ref[1] + ' belongs to an earlier page: this one has no snapshot yet; take one');
     }
-    if (/^text=/.test(t)) {
+    if (t.startsWith('text=')) {
       const wanted = t.slice(5).replace(/^"(.*)"$/, '$1').toLowerCase();
       const all = Array.from(document.querySelectorAll('a,button,input,select,textarea,summary,label,[role],h1,h2,h3,h4,h5,h6,li,td,span,div,p')).filter(el => visible(el) && clip((el.innerText ?? el.textContent) || el.value, 400).toLowerCase().includes(wanted));
       // The innermost match: the element whose own text matched, not every ancestor.

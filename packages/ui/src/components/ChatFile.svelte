@@ -63,7 +63,7 @@
    * nothing below moves when the picture decodes.
    */
   const box = $derived.by(() => {
-    if (file?.type !== 'file' || !/^image\//.test(file.mimeType)) return null;
+    if (file?.type !== 'file' || !file.mimeType.startsWith('image/')) return null;
     if (file.width && file.height) return { width: file.width, height: file.height };
     return file.data ? imageSize(file.data) : null;
   });

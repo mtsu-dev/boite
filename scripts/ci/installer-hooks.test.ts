@@ -14,7 +14,7 @@ import { installerPrerequisites } from './installer-prerequisites.ts';
 
 const ROOT = resolve(import.meta.dir, '../..');
 const HOOKS = join(ROOT, 'apps/shell/src-tauri/windows/hooks.nsh');
-const { nsis: NSIS, makensis: MAKENSIS, plugins: PLUGINS, generated: GENERATED, ready } = installerPrerequisites({ root: ROOT });
+const { makensis: MAKENSIS, plugins: PLUGINS, generated: GENERATED, ready } = installerPrerequisites({ root: ROOT });
 
 const scratch = ready ? mkdtempSync(join(tmpdir(), 'boite-hooks-')) : '';
 const started: number[] = [];

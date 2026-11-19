@@ -153,7 +153,7 @@ test('Codex keeps missing jsonrpc responses and numeric or string incoming reque
 test('Muse keeps UUIDv7 commands, MSP error data and request refusal', async () => {
   const f = fixture(), rpc = new MuseRpc(f.child, { log: f.log, notification: (...args) => f.received.push(args) });
   const pending = outcome(rpc.command('turn/start', {}));
-  expect((f.sent[0]?.params as Record<string, unknown>)['commandId']).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  expect((f.sent[0]!.params as Record<string, unknown>)['commandId']).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   f.stdout.write('{"id":1,"error":{"code":409,"message":"refused","data":{"kind":"busy","reason":"active"}}}\n{"method":"future/event","params":{"value":1}}\n{"id":"approval-1","method":"approval/request"}\n');
   expect(await pending).toBeInstanceOf(MspError);
   expect(await pending).toMatchObject({ method: 'turn/start', code: 409, kind: 'busy', reason: 'active' });

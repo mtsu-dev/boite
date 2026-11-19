@@ -1,8 +1,7 @@
 import { expect, vi } from 'vitest';
 import { flushSync } from 'svelte';
 import { store } from '../lib/store.svelte';
-import { count } from '../lib/format';
-import { SEEDED_THINKING, STREAMED_TOOL_INPUT, query, sendPrompt, test, type, waitFor } from '../test/app';
+import { SEEDED_THINKING, STREAMED_TOOL_INPUT, query, sendPrompt, test, waitFor } from '../test/app';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 

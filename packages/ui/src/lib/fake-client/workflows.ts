@@ -18,7 +18,6 @@ import {
   workflowLevels,
   workflowValues,
   type DelegationConfig,
-  type DelegationProfile,
   type DelegationWorktree,
   type Principal,
   type RpcMethodName,

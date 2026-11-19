@@ -11,7 +11,7 @@ const FOLDER: DroppedEntry = { path: 'C:\\Dev\\app', name: 'app', directory: tru
 
 function shell(entries: DroppedEntry[]) {
   invoke.mockImplementation(async (command, args) => {
-    if (command === 'dropped_entries') return entries.filter((entry) => (args?.paths as string[]).includes(entry.path));
+    if (command === 'dropped_entries') return entries.filter((entry) => (args!.paths as string[]).includes(entry.path));
     if (command === 'dropped_file') return new Uint8Array([1, 2, 3, 4]).buffer;
     throw new Error(`unexpected ${command}`);
   });

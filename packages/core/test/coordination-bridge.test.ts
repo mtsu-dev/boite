@@ -54,7 +54,7 @@ test('an owner app carries signed list read and send in both directions without 
 test('another owner connection cannot supply a bridge response, and a forged signature is rejected', async () => {
   const server = await startTestCore(); const pc = await startTestCore(); cores.push(server, pc);
   const owner = await server.connect(), other = await server.connect(), destination = await pc.connect();
-  const a = (await echoThread(server, owner)).threadId, b = (await echoThread(pc, destination)).threadId;
+  await echoThread(server, owner); await echoThread(pc, destination);
   const cardA = server.core.coordination.identity(), cardB = pc.core.coordination.identity();
   server.core.coordination.trust({ ...cardB, viaClient: true }); pc.core.coordination.trust({ ...cardA, readThreads: true });
   const response: CoordinationBridgeResponse = { status: 200, body: '{}', signature: 'forged' };

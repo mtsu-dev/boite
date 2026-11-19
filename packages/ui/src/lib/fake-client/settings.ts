@@ -41,7 +41,7 @@ export function settingsMethods(ctx: FakeContext) {
       ctx.emit('subscriptionProxy.quotasUpdated', gatewayQuotas(ctx));
       return ctx.settingsInForce();
     },
-    'scheduler.get': async (params) => {
+    'scheduler.get': async () => {
       return structuredClone(ctx.scheduler);
     },
     'telemetry.state': async () => ({ ...ctx.telemetry }),
@@ -66,7 +66,7 @@ export function settingsMethods(ctx: FakeContext) {
       // As the core: `stored` hands the copy to a following machine what is saved, not what a Release reads as off.
       return params?.stored === true ? { ...ctx.settings } : ctx.settingsInForce();
     },
-    'keybindings.get': async (params) => {
+    'keybindings.get': async () => {
       return structuredClone(ctx.keybindings);
     },
     'keybindings.set': async (params) => {

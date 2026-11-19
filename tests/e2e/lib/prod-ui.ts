@@ -45,7 +45,7 @@ function newestInput(): number {
     }
     if (!stat.isDirectory()) {
       // UI tests sit beside the components but never reach the bundle.
-      if (!/\.test\.ts$/.test(path)) newest = Math.max(newest, stat.mtimeMs);
+      if (!path.endsWith('.test.ts')) newest = Math.max(newest, stat.mtimeMs);
       return;
     }
     for (const entry of readdirSync(path)) walk(join(path, entry));

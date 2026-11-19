@@ -438,7 +438,7 @@ export class PushStore {
     this.#offAttention();
     clearTimeout(this.#heldTimer);
     this.#held.clear();
-    await Promise.allSettled([...this.#pending]);
+    await Promise.allSettled(this.#pending);
   }
 }
 

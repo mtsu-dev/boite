@@ -594,7 +594,7 @@ describe('plugin git ignores the caller gitconfig', () => {
     const seen: { args: string[]; env: Record<string, string | undefined> }[] = [];
     const empty = (): ReadableStream<Uint8Array> => new ReadableStream({ start(controller) { controller.close(); } });
     harness.core.procs.spawn = (threadId, command, args, opts) => {
-      seen.push({ args: [...args], env: { ...(opts?.env ?? {}) } });
+      seen.push({ args: [...args], env: { ...opts?.env } });
       const record: SpawnedProcess['record'] = {
         pid: 0,
         parentPid: null,

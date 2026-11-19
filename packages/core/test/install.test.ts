@@ -550,7 +550,7 @@ describe('managed installs', () => {
 
   test('a core that starts removes releases and downloads nothing points at any more', async () => {
     await loadDescriptor(goodInstall());
-    const { client, states } = await installing('managed');
+    const { states } = await installing('managed');
     await waitFor(() => states.some((state) => state.state === 'installed'));
     mkdirSync(agentDir('releases', '0.9.0'), { recursive: true });
     writeFileSync(agentDir('releases', '0.9.0', 'left.txt'), 'an older release');
@@ -622,7 +622,7 @@ describe('managed installs', () => {
 
   test('an archive of the wrong length is refused before it is even hashed', async () => {
     await loadDescriptor({ ...goodInstall(), url: url('/short.zip') });
-    const { client, states } = await installing('managed');
+    const { states } = await installing('managed');
     await waitFor(() => states.some((state) => state.state === 'failed'));
 
     const failed = states.find((state) => state.state === 'failed');
@@ -639,7 +639,7 @@ describe('managed installs', () => {
       sha256: sha256(ESCAPING),
       archiveBytes: ESCAPING.byteLength,
     });
-    const { client, states } = await installing('managed');
+    const { states } = await installing('managed');
     await waitFor(() => states.some((state) => state.state === 'failed'));
 
     const failed = states.find((state) => state.state === 'failed');
@@ -771,7 +771,7 @@ describe('managed installs', () => {
 
   test('a core starting on the same data directory reads the install back off disk', async () => {
     await loadDescriptor(goodInstall());
-    const { client, states } = await installing('managed');
+    const { states } = await installing('managed');
     await waitFor(() => states.some((state) => state.state === 'installed'));
 
     const second = new Core({ dataDir: harness.dataDir, token: newToken() });
@@ -989,7 +989,7 @@ describe('managed installs on a bad connection', () => {
   /** Installs from `path` and waits for the run to settle, installed or failed. */
   async function installFrom(path: string): Promise<ProviderInstallState[]> {
     await loadDescriptor(bigInstall(path));
-    const { client, states } = await installing('managed');
+    const { states } = await installing('managed');
     await waitFor(() => states.some((state) => state.state === 'installed' || state.state === 'failed'), 10_000);
     return states;
   }

@@ -74,6 +74,10 @@ for that machine and find the Agent updates card:
   it again brings back the skipped one.
 - Automatic updates makes that machine update its agents by itself. It is off
   by default.
+- An agent installed with npm that no longer starts after its update gets the
+  version it had before back, and the broken version is skipped. npm reports
+  success when a platform package is missing from the registry, which leaves
+  the agent with no program to run.
 - An agent whose newest version Boite cannot read shows Checks by itself and
   Run its updater.
 

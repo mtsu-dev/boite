@@ -25,10 +25,6 @@ export type Load = (file: string) => Workflow;
 
 export const loadWorkflow: Load = (file) => Bun.YAML.parse(readFileSync(join(WORKFLOWS, file), 'utf8')) as Workflow;
 
-function list(value: string | string[] | undefined): string[] {
-  return value === undefined ? [] : Array.isArray(value) ? value : [value];
-}
-
 /** Every check a job reports: its name, or for a caller each name of the workflow it calls. */
 export function jobChecks(file: string, id: string, job: Job, load: Load = loadWorkflow): string[] {
   if (job.strategy?.matrix !== undefined) throw new Error(`${file}: job ${id} is a matrix; a skipped one reports its template name`);

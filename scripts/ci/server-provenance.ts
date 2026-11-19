@@ -20,7 +20,8 @@ export type ServerProvenance = ReleaseIdentity & {
 // verify job passed or skipped as planned; the planning job proves verify planned them.
 const REQUIRED_JOBS = [
   'version',
-  'verify / Plan and repository checks',
+  'verify / Plan',
+  'verify / Repository checks',
   'image / test and stage server (amd64)',
   'image / test and stage server (arm64)',
   'draft',

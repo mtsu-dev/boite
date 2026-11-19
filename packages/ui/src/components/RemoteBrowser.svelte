@@ -348,7 +348,7 @@
     if (!usable || !frame || event.button !== 0) return;
     pointer = { x: event.clientX, y: event.clientY, lastX: event.clientX, lastY: event.clientY, moved: false, mouse: event.pointerType === 'mouse', shift: event.shiftKey, from: point(event, frame), frame, client: frameClient };
     scrollX = 0; scrollY = 0; scrollAt = point(event, frame);
-    event.currentTarget instanceof Element && event.currentTarget.setPointerCapture?.(event.pointerId);
+    if (event.currentTarget instanceof Element) event.currentTarget.setPointerCapture?.(event.pointerId);
   }
   /** The page follows the finger while it moves: one wheel in flight, the rest added to the next. */
   function flushScroll() {

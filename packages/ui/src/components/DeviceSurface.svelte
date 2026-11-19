@@ -327,7 +327,7 @@
     const at = streamPoint(event, false), used = new Set(fingers.values()), finger = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].find(n => !used.has(n));
     if (!at || finger === undefined) return;
     fingers.set(event.pointerId, finger);
-    event.currentTarget instanceof Element && event.currentTarget.setPointerCapture?.(event.pointerId);
+    if (event.currentTarget instanceof Element) event.currentTarget.setPointerCapture?.(event.pointerId);
     direct({ kind: 'touch', action: 'down', ...at, pointerId: finger });
   }
   function touchMove(event: PointerEvent) {
@@ -350,7 +350,7 @@
     if (live) { touchDown(event); return; }
     if (!usable || !frame || !showing?.input || event.button !== 0) return;
     pointer = { x: event.clientX, y: event.clientY, at: performance.now(), frame };
-    event.currentTarget instanceof Element && event.currentTarget.setPointerCapture?.(event.pointerId);
+    if (event.currentTarget instanceof Element) event.currentTarget.setPointerCapture?.(event.pointerId);
   }
   function up(event: PointerEvent) {
     if (fingers.has(event.pointerId)) { touchEnd(event, 'up'); return; }

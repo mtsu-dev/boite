@@ -83,7 +83,7 @@ test('Activity gives each row its reason and its time, a sub-agent under its par
   const reasons = rows.map(row => row.querySelector('[data-testid=mobile-row-reason]')?.textContent ?? '');
   // A question is its own reason, whole, a permission says what it runs.
   const asked = store.pendingQuestions.map(question => question.text.trim());
-  expect(reasons.some(reason => /^Wants to run /.test(reason) || asked.includes(reason))).toBe(true);
+  expect(reasons.some(reason => reason.startsWith('Wants to run ') || asked.includes(reason))).toBe(true);
   // Triage: what asks the user under "Needs you", before the updates' heading when there is one.
   const needs = document.querySelector<HTMLElement>('[data-testid=activity-needs]')!;
   // The section says its number, the tab badge's own: one count for both.
@@ -92,7 +92,7 @@ test('Activity gives each row its reason and its time, a sub-agent under its par
   expect(needs.querySelector('.feed-dot')?.nextSibling?.textContent).toBe('Needs you');
   expect(needs.querySelector('.feed-count')?.textContent).toBe(document.querySelector('[data-testid=mobile-activity-waiting]')?.textContent);
   const updates = document.querySelector<HTMLElement>('[data-testid=activity-updates]');
-  const asking = rows.find(row => asked.includes(row.querySelector('[data-testid=mobile-row-reason]')?.textContent ?? '') || /^Wants to run /.test(row.textContent ?? ''))!;
+  const asking = rows.find(row => asked.includes(row.querySelector('[data-testid=mobile-row-reason]')?.textContent ?? '') || (row.textContent ?? '').startsWith('Wants to run '))!;
   expect(needs.compareDocumentPosition(asking) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   if (updates) expect(updates.compareDocumentPosition(asking) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
   // The asking row says what to do there; its verb opens the thread like the row does.

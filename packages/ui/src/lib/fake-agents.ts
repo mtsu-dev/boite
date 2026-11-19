@@ -1,8 +1,7 @@
 import { nextAgentOccurrence, placeMemoryNote, RpcErrorCode, AGENT_MEMORY_MAX, AGENT_PICTURE_CODE, AGENT_PICTURE_MAX_BYTES, AGENT_PICTURE_TYPES, isAgentPicture, AGENT_ROUTINE_CHECK_MAX, AGENT_ROUTINE_NAME_MAX, AGENT_ROUTINE_PROMPT_MAX, AGENT_ROUTINES_MAX, spentAgentRoutine } from '@boite/contracts';
 import { BUILTIN_BOTS, BUILTIN_LOCKED, BUILTIN_NEVER_ARCHIVED } from './fake-client/builtin-bots';
 import type {
-  AgentAccountGrant, AgentBuiltin, AgentBrain, AgentBrainRoot, AgentEntrustment, AgentProfile, AgentQueuedMove, AgentRecord, AgentRoutine, AgentRuntimeConfig, AgentSchedule,
-  AgentSelection, AgentSession, AgentStatus, AgentWatch, AgentsRpcMethods, AgentsSnapshot, RpcParams, RpcResult, Thread, Turn
+  AgentAccountGrant, AgentBuiltin, AgentBrain, AgentBrainRoot, AgentEntrustment, AgentProfile, AgentQueuedMove, AgentRecord, AgentRoutine, AgentRuntimeConfig, AgentSelection, AgentSession, AgentStatus, AgentWatch, AgentsRpcMethods, AgentsSnapshot, RpcParams, RpcResult, Thread, Turn
 } from '@boite/contracts';
 import { RpcFailure } from './client';
 

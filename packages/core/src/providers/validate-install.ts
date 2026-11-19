@@ -18,7 +18,7 @@ export function checkCandidate(value: unknown, file: string, field: string): Exe
   if (kind === 'npm' && !isNpmSpec(candidateValue)) {
     reject(file, `${field}.value`, 'an npm package name, @scope/name, with an optional #bin', `${candidateValue} is not an npm package name`);
   }
-  if (candidateValue.includes(NPM_ROOT) && (kind !== 'file' || !/^{npmRoot}[\/]/.test(candidateValue))) {
+  if (candidateValue.includes(NPM_ROOT) && (kind !== 'file' || !/^{npmRoot}[/]/.test(candidateValue))) {
     reject(file, `${field}.value`, `${NPM_ROOT} only at the start of a file candidate, followed by a separator`, `${candidateValue} places ${NPM_ROOT} where it cannot expand`);
   }
   const candidate: ExecutableCandidate = { kind: kind as ExecutableCandidate['kind'], value: candidateValue };

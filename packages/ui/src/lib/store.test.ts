@@ -1224,7 +1224,7 @@ test.for(['back', 'gone'])('a start the socket dropped is asked once more when t
   expect(turns.messages.filter(message => message.role === 'user' && JSON.stringify(message.parts).includes('Survive the reconnect'))).toHaveLength(1);
 });
 
-test.for(['input', 'inputText', 'output', 'documents'])('reading cache excludes oversized tool %s', async (field, { store, client }) => {
+test.for(['input', 'inputText', 'output', 'documents'])('reading cache excludes oversized tool %s', async (field, { store }) => {
   await store.open('t-bench');
   const large = 'x'.repeat(2 * 1024 * 1024 + 1);
   const part: any = { type: 'tool', toolId: 'large', name: 'read', input: {}, output: null, status: 'done' };
@@ -1240,7 +1240,7 @@ test.for(['input', 'inputText', 'output', 'documents'])('reading cache excludes 
   else expect(cached).toBeUndefined();
 });
 
-test('sizing a timeline for the reading cache reads string lengths, never a JSON copy of each part', async ({ store, client }) => {
+test('sizing a timeline for the reading cache reads string lengths, never a JSON copy of each part', async ({ store }) => {
   await store.open('t-bench');
   let copies = 0;
   const big = 'x'.repeat(256 * 1024);
@@ -2007,7 +2007,7 @@ describe('Store', () => {
     expect(store.settings?.publicUrl).toBe('https://boite.example.com');
   });
 
-  test('archiving a thread lets go of its panel, browser views, composer and terminal', async ({ store, client }) => {
+  test('archiving a thread lets go of its panel, browser views, composer and terminal', async ({ store }) => {
     const destroy = vi.spyOn(browserBridge, 'destroy');
     try {
       const thread = store.threads.find((t) => t.status === 'idle' && !t.parentThreadId)!;
@@ -2085,7 +2085,7 @@ describe('Store', () => {
     expect(rightPanel.threads[store.threadKey(shown.id)]).toBeUndefined();
   });
 
-  test('a reload drops the layouts of threads its core no longer lists, and only its own', async ({ store, client }) => {
+  test('a reload drops the layouts of threads its core no longer lists, and only its own', async ({ store }) => {
     try {
       store.machineId = 'http://a.test';
       const live = store.threads[0]!.id;

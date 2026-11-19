@@ -2,6 +2,7 @@ import { defineConfig } from 'vitest/config';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { lucideGlyph } from './icon-plugin.ts';
 import { completeCatalogues } from './catalogue-plugin.ts';
+import { DurationSequencer } from './test-sequencer.ts';
 
 /**
  * Vitest 5 runs on the same Vite 8 the app builds on, so the tests use the real
@@ -19,6 +20,8 @@ export default defineConfig({
     setupFiles: ['./test-setup.ts'],
     include: ['src/**/*.test.ts'],
     globals: false,
+    /* CI runs the suite in two shards of about equal recorded seconds. */
+    sequence: { sequencer: DurationSequencer },
     /* The app suite runs the fake on the wall clock (install steps, probes,
        retitles), and one long list renders for seconds on a CI runner: 5 s
        left too little room. The app suite's waits (src/test/app.ts) stop at 8 s, inside this. */

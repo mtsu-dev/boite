@@ -56,10 +56,10 @@ if (args[0] === 'funnel') {
   }
   if (state.funnelError) fail(state.funnelError);
   const hostPort = `${name}:${port}`;
-  state.serve.TCP = { ...(state.serve.TCP ?? {}), [port]: { HTTPS: true } };
+  state.serve.TCP = { ...state.serve.TCP, [port]: { HTTPS: true } };
   const web = state.serve.Web?.[hostPort] ?? {};
-  state.serve.Web = { ...(state.serve.Web ?? {}), [hostPort]: { Handlers: { ...(web.Handlers ?? {}), [mount]: { Proxy: target } } } };
-  state.serve.AllowFunnel = { ...(state.serve.AllowFunnel ?? {}), [hostPort]: true };
+  state.serve.Web = { ...state.serve.Web, [hostPort]: { Handlers: { ...web.Handlers, [mount]: { Proxy: target } } } };
+  state.serve.AllowFunnel = { ...state.serve.AllowFunnel, [hostPort]: true };
   save();
   process.stdout.write(`Available on the internet:\n\nhttps://${hostPort}${mount}\n|-- proxy ${target}\n`);
   process.exit(0);
@@ -96,8 +96,8 @@ if (command === 'status --json') {
     delete state.serve.Web?.[host];
     save();
   } else if (args[1] === '--bg' && args[2] === '--https=443' && args[3]) {
-    state.serve.TCP = { ...(state.serve.TCP ?? {}), '443': { HTTPS: true } };
-    state.serve.Web = { ...(state.serve.Web ?? {}), [host]: { Handlers: { '/': { Proxy: args[3] } } } };
+    state.serve.TCP = { ...state.serve.TCP, '443': { HTTPS: true } };
+    state.serve.Web = { ...state.serve.Web, [host]: { Handlers: { '/': { Proxy: args[3] } } } };
     save();
     process.stdout.write(`Available within your tailnet:\n\nhttps://${host.replace(':443', '')}/\n|-- proxy ${args[3]}\n\nServe started and running in the background.\n`);
   } else {

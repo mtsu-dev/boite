@@ -28,10 +28,12 @@ let running: Record<string, unknown> | null = null;
 let queueCore: TestComposerCore;
 
 const test = fixtureTest.extend<{ app: void; queueApp: void }>({
+  // oxlint-disable-next-line no-empty-pattern -- Vitest reads fixture dependencies from this pattern
   app: async ({}, use) => {
     await mountOnFake();
     await use();
   },
+  // oxlint-disable-next-line no-empty-pattern -- Vitest reads fixture dependencies from this pattern
   queueApp: async ({}, use) => {
     queueCore = new TestComposerCore();
     await mountOnFake(0, undefined, queueCore);

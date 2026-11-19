@@ -566,10 +566,10 @@ export function coordinationMethods(ctx: FakeContext) {
       // Fake letters arrive delivered at once: nothing is ever left to wait for.
       return { letters: [] };
     },
-    'collaboration.identity': async (params) => {
+    'collaboration.identity': async () => {
       return structuredClone(ctx.identity);
     },
-    'collaboration.peers': async (params) => {
+    'collaboration.peers': async () => {
       return structuredClone([...ctx.peers.values()]);
     },
     'collaboration.check': async (params) => {

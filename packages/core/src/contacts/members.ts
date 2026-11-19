@@ -551,5 +551,5 @@ export class ContactMembers {
   }
 
   beginClose(): void { this.#closed = true; }
-  settled(): Promise<unknown> { return Promise.allSettled([...this.#pending]); }
+  settled(): Promise<unknown> { return Promise.allSettled(this.#pending); }
 }

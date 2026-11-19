@@ -137,8 +137,8 @@ export const providerLogos: Record<string, ProviderLogo> = {
   }
 };
 
-/** A gateway names some providers by their service: Douane says `opencode_go` and `xai`. */
-const gatewayNames: Record<string, string> = { opencode_go: 'opencode', 'opencode-go': 'opencode', xai: 'grok' };
+/** Gateway provider IDs whose logos are registered under a Boite agent ID. */
+const gatewayNames: Record<string, string> = { meta: 'muse', opencode_go: 'opencode', 'opencode-go': 'opencode', xai: 'grok' };
 
 /** A second descriptor of an agent that has a mark already: OpenCode 2 is OpenCode's next major. */
 const sameMark: Record<string, string> = { 'opencode-v2': 'opencode' };

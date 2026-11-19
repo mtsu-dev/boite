@@ -49,7 +49,8 @@ Fold a project to hide its threads. Its heading shows the thread count just
 after the project name, on desktop and phone.
 
 The Threads button in the app rail, and the Threads tab on a phone, show how
-many threads are at work across your machines.
+many threads are at work across your machines. When subagents are at work too,
+a second, lighter number beside it counts them.
 
 ## Drafts without a project
 

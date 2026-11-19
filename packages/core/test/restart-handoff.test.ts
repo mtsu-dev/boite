@@ -4,7 +4,6 @@ import { connect } from '../src/client.ts';
 import { Core } from '../src/core.ts';
 import { startServer, type RunningServer } from '../src/server.ts';
 import { HANDOFF } from '../src/threads/handoff.ts';
-import { CRASH_WHILE_QUEUED } from '../src/threads/recovery.ts';
 import { echoThread, holdAccountTurns, removeDir, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
 

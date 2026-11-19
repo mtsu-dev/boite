@@ -387,6 +387,7 @@ export class CodexSession {
   async #initialize(ctx: SessionContext, executable: string, args: string[]): Promise<CodexRpc> {
     this.#initializing = true;
     try {
+      args = await subscriptionProxyCodexArgs(args, ctx.accountEnv);
       for (let attempt = 1; ; attempt += 1) {
         if (this.#closing || this.#active?.isStopped) throw new Error('the codex startup was stopped');
         this.#exitCode = null;
@@ -424,7 +425,6 @@ export class CodexSession {
   }
 
   #spawn(ctx: SessionContext, executable: string, args: string[]): CodexRpc {
-    args = subscriptionProxyCodexArgs(args, ctx.accountEnv);
     const context = contextArgs(ctx.thread.contextMode);
     args = [...args, ...context, ...NO_NATIVE_SUBAGENTS, ...LIVE_TURN_SETTINGS];
     if (ctx.protectedExecution) {ctx.protectedExecution.check(); args = [...args, ...PROTECTED_CODEX_ARGS];}

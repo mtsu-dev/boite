@@ -6,7 +6,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
-import type { Channel, Group, PairingGrant, PairingRole, Settings, TailscaleStatus } from '@boite/contracts';
+import type { Channel, Group, PairingGrant, PairingRole, TailscaleStatus } from '@boite/contracts';
 import type { connect } from './client.ts';
 import type { Core } from './core.ts';
 import { CORE_VERSION } from './version.ts';
