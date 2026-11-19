@@ -212,7 +212,7 @@ export class Layout {
       // A push already brings this one to the device: this page's core, or a member forwarding to the device's push home.
       if (await pushCovers(origin, core !== undefined && s.group !== null)) return;
       const body = typeof detail === 'function' ? await detail().catch(() => null) : detail;
-      await sendNotification({ ...toastFor(kind, key, title, body), coreThreadId: threadId, origin, ...(core === undefined ? {} : { core }) });
+      if (!await sendNotification({ ...toastFor(kind, key, title, body), coreThreadId: threadId, origin, ...(core === undefined ? {} : { core }) })) this.notificationsUnavailable();
     })();
   }
 
@@ -227,7 +227,7 @@ export class Layout {
     void (async () => {
       const core = origin !== undefined && origin !== location.origin ? notificationCore(s) : undefined;
       if (await pushCovers(origin, core !== undefined && s.group !== null)) return;
-      await sendNotification({ ...limitToast(alert, limitsKey(s.machineId)), origin, ...(core === undefined ? {} : { core }) });
+      if (!await sendNotification({ ...limitToast(alert, limitsKey(s.machineId)), origin, ...(core === undefined ? {} : { core }) })) this.notificationsUnavailable();
     })();
   }
 
@@ -237,8 +237,22 @@ export class Layout {
     writeNotifications(enabled);
     this.syncPushKinds();
     if (!enabled) return;
-    const granted = await requestNotificationPermission();
-    if (!granted) this.ctx.store.error = strings.settings.notificationsDenied;
+    const answer = await requestNotificationPermission();
+    if (answer === 'unavailable') this.notificationsUnavailable();
+    else if (answer === 'denied') this.ctx.store.error = strings.settings.notificationsDenied;
+  }
+
+  /**
+   * The desktop shell cannot show a toast on this machine (a Linux desktop
+   * without `notify-send`): the switch goes off and the user hears it once,
+   * rather than a switch that stays on and shows nothing.
+   */
+  private notificationsUnavailable(): void {
+    if (!readNotifications()) return;
+    this.notifications = false;
+    writeNotifications(false);
+    this.syncPushKinds();
+    this.ctx.store.error = strings.settings.notificationsUnavailable;
   }
 
   /** One kind's switch, under the main one. */
