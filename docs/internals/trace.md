@@ -442,8 +442,7 @@ running and exposes its failure through `guardStatus()`.
 The pump waits on its message queue 100 ms at a time, less when a batched audio
 walk is due sooner.
 
-Logic tests use fake Win32 calls. `BOITE_E2E_GUARD=1` is the opt-in real-window
-case and briefly takes focus; ordinary automation must not enable it.
+Tests use fake Win32 calls.
 
 ## The audio mute
 
