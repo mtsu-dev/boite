@@ -302,6 +302,9 @@ export class ProjectStore {
     return this.require(found.id);
   }
 
+  /** True while `remove` stops the project's work: its threads stay archived until it ends. */
+  isRemoving(projectId: ProjectId): boolean { return this.#removing.has(projectId); }
+
   require(projectId: ProjectId | null): Project {
     if (projectId === null) throw refused('this agent session has no project');
     if (this.#removing.has(projectId)) throw refused('this project is being removed', { projectId });
@@ -501,17 +504,25 @@ export class ProjectStore {
       // Archiving stops each open thread; adding the folder back reopens them.
       // One already archived keeps its done time and reason untouched.
       const open = threads.filter((thread) => !thread.archived && !thread.incognito).map((thread) => thread.id);
-      for (const thread of threads) if (!thread.archived) this.#core.threads.archive(thread.id, true);
+      const archivedNow = threads.filter((thread) => !thread.archived).map((thread) => thread.id);
+      for (const threadId of archivedNow) this.#core.threads.archive(threadId, true);
       // An incognito conversation goes as when it is deleted: its rows, its folder and its transcripts.
       const all = this.#core.journal.listThreads();
       const incognito = threads.filter((thread) => thread.incognito && !thread.parentThreadId)
         .map((root) => ({ root, ids: all.filter((thread) => thread.id === root.id || thread.parentThreadId === root.id).map((thread) => thread.id) }));
-      const stopped = [...new Set([...threads.map((thread) => thread.id), ...incognito.flatMap((family) => family.ids)])];
-      await Promise.all(stopped.map((threadId) => this.#core.scheduler.stopAndWait(threadId)));
-      await Promise.all(stopped.map((threadId) => this.#core.procs.stopAndWait(threadId)));
-      // A thread's shells run under their own trace ids: they are gone too before the records go.
-      await Promise.all(stopped.map((threadId) => this.#core.terminals.stopThread(threadId)));
-      for (const family of incognito) await eraseIncognito(this.#core, family.root, family.ids);
+      try {
+        const stopped = [...new Set([...threads.map((thread) => thread.id), ...incognito.flatMap((family) => family.ids)])];
+        await Promise.all(stopped.map((threadId) => this.#core.scheduler.stopAndWait(threadId)));
+        await Promise.all(stopped.map((threadId) => this.#core.procs.stopAndWait(threadId)));
+        // A thread's shells run under their own trace ids: they are gone too before the records go.
+        await Promise.all(stopped.map((threadId) => this.#core.terminals.stopThread(threadId)));
+        for (const family of incognito) await eraseIncognito(this.#core, family.root, family.ids);
+      } catch (error) {
+        // The project stays: the threads this call archived open again, as they were.
+        this.#removing.delete(projectId);
+        for (const threadId of archivedNow) if (this.#core.journal.getThread(threadId)?.archived) this.#core.threads.archive(threadId, false);
+        throw error;
+      }
       const erased = new Set(incognito.flatMap((family) => family.ids));
       // Nothing else is deleted: threads, messages, turns, usage, traces,
       // checkpoints and the project's settings stay on disk for audits and the
