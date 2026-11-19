@@ -5,6 +5,7 @@
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 const DIGITS = new Map([...ALPHABET].map((char, value) => [char.charCodeAt(0), value]));
+const AVIF_HEADER_CHARS = 8 * 1024;
 
 /**
  * The first bytes of a base64 string, decoded by hand: this module runs in the
@@ -143,7 +144,6 @@ function sizeOf(b: Uint8Array): Size | null | 'more' {
     if (ascii(b, 12, 'VP8X')) return sized(u24le(b, 24) + 1, u24le(b, 27) + 1);
     return null;
   }
-  if (ascii(b, 4, 'ftypavif')) return avifSize(b);
   if (b.length >= 2 && b[0] === 0xff && b[1] === 0xd8) return jpegSize(b);
   return null;
 }
@@ -151,14 +151,20 @@ function sizeOf(b: Uint8Array): Size | null | 'more' {
 /**
  * The size an image is drawn at, read from the header of its base64 bytes:
  * PNG, GIF, WebP, still AVIF and JPEG, the last with its EXIF orientation
- * applied as a browser applies it. Only the start is decoded, a little more
- * for a JPEG whose metadata comes before its frame. Null for anything else.
+ * applied as a browser applies it. Decode more of the header for a JPEG or
+ * AVIF whose size comes late. Null for anything else.
  */
 export function imageSize(data: string): Size | null {
   let chars = 4096;
   for (;;) {
     const bytes = prefix(data, chars);
     if (bytes === null) return null;
+    if (ascii(bytes, 4, 'ftypavif')) {
+      const size = avifSize(bytes);
+      if (size !== null || data.length <= chars) return size;
+      const header = prefix(data, AVIF_HEADER_CHARS);
+      return header === null ? null : avifSize(header);
+    }
     const size = sizeOf(bytes);
     if (size !== 'more') return size;
     if (chars >= data.length) return null;

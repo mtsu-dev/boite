@@ -99,6 +99,7 @@ const previews = (threadId: string) =>
 describe('deferred pictures', () => {
   test.each([
     ['image/avif', 'media-preview.avif', 96, 54],
+    ['image/avif', 'media-preview-padded.avif', 96, 54],
     ['image/webp', 'media-preview-animated.webp', 96, 54],
     ['image/avif', 'media-preview-large.avif', 640, 360],
   ] as const)('%s with unavailable decoder serves only a source that fits (%s)', async (mimeType, fixture, width, height) => {
