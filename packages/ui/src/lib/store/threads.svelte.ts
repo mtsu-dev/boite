@@ -11,12 +11,13 @@ import type {
   ThreadRewind,
   ThreadSummary
 } from '@boite/contracts';
-import { ReadingCache } from '../reading-cache';
+import { ReadingCache, READING_CACHE_BYTES, READING_CACHE_MESSAGES } from '../reading-cache';
 import { DeviceSnapshots, readingPage } from './device-snapshots';
 import { INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, READING_PAGE_BYTES } from '@boite/contracts';
 import { DeferredParts } from './deferred-parts';
-import { askPage, ThreadPreloads } from './thread-preload';
+import { askPage, refreshHeldWindow, ThreadPreloads } from './thread-preload';
 import { lightPage, NewerPages, setMessagesAfter, type ReadingPosition } from './reading-pages.svelte';
+import { LiveWeights } from './live-weights.svelte';
 export type { ReadingPosition } from './reading-pages.svelte';
 import { forgetArchivedThread } from '../archive-history';
 import { rightPanel } from '../right-panel.svelte';
@@ -58,6 +59,13 @@ export class Threads {
   rewinding = $state<Record<ThreadId, MessageId>>({});
   readonly readingPositions = new Map<string, ReadingPosition>();
   readonly readingThreads = new ReadingCache(threadId => this.snapshots.drop(threadId));
+  readonly readingWeights = new LiveWeights();
+  #readingBytes = $derived.by(() => {
+    const messages = this.openThread?.messages;
+    if (messages && messages.length <= READING_CACHE_MESSAGES) return this.readingWeights.total(messages) * 2;
+    this.readingWeights.reset();
+    return READING_CACHE_BYTES + 1;
+  });
   subscribedThreadId: ThreadId | null = null;
   /** The newest open or navigation, including a quiet revalidation of the current thread. */
   openGeneration = 0;
@@ -65,6 +73,8 @@ export class Threads {
   navigationGeneration = 0;
   /** What that newest run is opening, so an older one knows what to give back. */
   #openTarget: ThreadId | null = null;
+  /** The fresh portion of a held window whose remaining pages are being checked. */
+  #repairing: Thread | null = null;
   #olderGeneration = 0;
   /** Threads shown as their bare row until their first page arrives; a page that came back empty takes its thread out, and it reopens empty. */
   readonly #unloaded = new Set<ThreadId>();
@@ -75,6 +85,14 @@ export class Threads {
 
   constructor(private readonly ctx: StoreContext) { this.newer = new NewerPages(ctx); this.preloads = new ThreadPreloads(ctx, this); this.parts = new DeferredParts(ctx, this); this.snapshots = new DeviceSnapshots(ctx, this, this.#unloaded); }
   get openTarget(): ThreadId | null { return this.#openTarget; }
+
+  /** Weigh pages while they are open so leaving a thread reuses the block totals. */
+  watchReadingWeight(): () => void {
+    const stop = $effect.root(() => {
+      $effect.pre(() => { void this.#readingBytes; });
+    });
+    return () => { stop(); this.readingWeights.reset(); };
+  }
 
   async capabilities(threadId: ThreadId) {
     const client = this.ctx.client;
@@ -134,6 +152,7 @@ export class Threads {
   invalidateNavigation(navigate = true): number {
     if (navigate) this.navigationGeneration++;
     this.#openTarget = null;
+    this.#repairing = null;
     this.#olderGeneration++;
     this.loadingOlder = false;
     this.newer.reset();
@@ -147,7 +166,7 @@ export class Threads {
     // A bare row whose page never came holds nothing (navigation clears `loadingThreadId` before this runs): reopened, it loads.
     if (!thread || (thread.messages.length === 0 && this.#unloaded.has(thread.id))) return;
     const id = thread.id;
-    const kept = this.readingThreads.defer(thread, held => readingPage(this.ctx, held), held => $state.snapshot(held) as Thread,
+    const kept = this.readingThreads.defer(thread, this.#readingBytes, held => readingPage(this.ctx, held), held => $state.snapshot(held) as Thread,
       () => this.openThread?.id !== id && this.preloads.waitingThreadId !== id);
     if (kept) this.snapshots.schedule(thread.id);
   }
@@ -381,7 +400,7 @@ export class Threads {
       // messages waited behind a subscribe and an unsubscribe they do not need.
       const bundled = s.core?.features?.threadSnapshots === true;
       // A claimed press left the previous thread, the unread mark and the requests to this open.
-      const { subscribed, fetched, around } = preloaded ?? askPage(this.ctx, this, client, threadId, held,
+      const { subscribed, fetched, around, proofFirst } = preloaded ?? askPage(this.ctx, this, client, threadId, held,
         { ...(previous && previous !== threadId && previous !== delegation.delegationSubscribedThreadId ? { previous } : {}), ...(options.requests === false ? { requests: false } : {}), markRead: true }, newest);
       const bundledRequests = bundled && !preloaded;
       if (options.requests !== false) {
@@ -414,10 +433,18 @@ export class Threads {
         : Promise.resolve();
       this.ctx.composer.settle(threadId);
       // A snapshot the core did not resume from goes (below), and the thread shows only what the core sent.
-      const cached = snapshot !== undefined || s.core?.features?.threadPrefixProofs ? undefined : held ?? this.readingThreads.get(threadId);
-      const freshIds = new Set(thread.messages.map(m => m.id));
-      if (thread.messagesFrom !== undefined && held) mergeResumed(held, thread);
-      else if (cached && cached.messages.some(m => freshIds.has(m.id))) {
+      const prefixProofs = s.core?.features?.threadPrefixProofs === true;
+      const cached = snapshot !== undefined || prefixProofs ? undefined : held ?? this.readingThreads.get(threadId);
+      const freshIds = cached ? new Set(thread.messages.map(message => message.id)) : undefined;
+      let replaced = false;
+      if (thread.messagesFrom !== undefined && held) {
+        const confirmedAt = proofFirst === undefined || proofFirst === held.messages[0]?.id ? 0 : lastIndexById(held.messages, proofFirst);
+        if (confirmedAt > 0) {
+          const messages = held.messages.slice(confirmedAt);
+          const turns = new Set(messages.map(message => message.turnId));
+          mergeResumed({ ...held, messages, turns: held.turns.filter(turn => turns.has(turn.id)), messagesBefore: proofFirst! }, thread);
+        } else mergeResumed(held, thread);
+      } else if (cached && freshIds && cached.messages.some(m => freshIds.has(m.id))) {
         // The fresh tail is authoritative, including a rewind missed while away.
         // Keep only the loaded prefix before its first overlapping message.
         const overlap = cached.messages.findIndex(message => freshIds.has(message.id));
@@ -427,8 +454,24 @@ export class Threads {
         thread.messagesBefore = cached.messagesBefore;
       } else {
         this.readingThreads.forget(threadId);
-        // A page around the reader's message keeps their place; any other starts at the end.
-        if (!around || !freshIds.has(around)) this.readingPositions.delete(threadId);
+        replaced = true;
+      }
+      // A page that holds the reader's anchor keeps their place, including pages stitched back above it.
+      if (replaced && (!around || !thread.messages.some(message => message.id === around))) this.readingPositions.delete(threadId);
+      if (held && prefixProofs) {
+        const mark = this.readingThreads.mark();
+        const current = () => newest() && !this.readingThreads.droppedSince(threadId, mark);
+        const repair = refreshHeldWindow(this.ctx, client, held, thread, current);
+        if (repair) {
+          this.#repairing = thread;
+          try { await repair; }
+          catch (error) {
+            if (current() && !((wasDropped(error) || wasClosed(error)) && s.connection !== 'ready')) this.ctx.fail(error);
+          }
+          finally { if (this.#repairing === thread) this.#repairing = null; }
+          if (!newest()) { await retire(); return; }
+          if (!current()) return;
+        }
       }
       // A window that now reaches the end says so, over the cursor a held copy had.
       if (held && thread.messagesAfter === undefined) delete held.messagesAfter;
@@ -878,7 +921,9 @@ export class Threads {
   }
 
   threadSnapshots(threadId: ThreadId): Thread[] {
-    return threadCopies(threadId, this.openThread, this.ctx.store.delegationThread, this.preloads.pages());
+    const pages = this.preloads.pages();
+    if (this.#repairing) pages.push(this.#repairing);
+    return threadCopies(threadId, this.openThread, this.ctx.store.delegationThread, pages);
   }
 
   messages(threadId: ThreadId, messageId: string): Message[] {

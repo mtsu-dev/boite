@@ -82,21 +82,16 @@ export class ReadingCache {
   }
 
   /** Prepare a visit after the destination can paint. A quick return can still use the page. */
-  defer(thread: Thread, page: (thread: Thread) => Thread, copy: (held: Thread) => Thread, settle: () => boolean): boolean {
+  defer(thread: Thread, bytes: number, page: (thread: Thread) => Thread, copy: (held: Thread) => Thread, settle: () => boolean): boolean {
     const id = thread.id;
     this.delete(id);
-    if (thread.messages.length > READING_CACHE_MESSAGES) return false;
-    const rawBytes = readingCacheBytes(thread.messages);
-    const compacted = rawBytes > READING_CACHE_BYTES;
-    const held = compacted ? page(thread) : thread;
-    const bytes = compacted ? readingCacheBytes(held.messages) : rawBytes;
     if (bytes > READING_CACHE_BYTES) return false;
     const prepare = () => {
       const pending = this.#pending.get(id);
       if (pending?.prepare !== prepare) return;
       pending.cancel();
       this.#pending.delete(id);
-      const projected = compacted ? held : page(held);
+      const projected = page(thread);
       this.#store(id, projected, readingCacheBytes(projected.messages), copy, settle);
     };
     this.#pending.set(id, { prepare, cancel: whenIdle(prepare) });

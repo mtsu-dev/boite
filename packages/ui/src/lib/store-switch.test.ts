@@ -49,6 +49,30 @@ test('a quiet revalidation retains message objects', async ({ ready }) => {
   asked.mockRestore();
 });
 
+test('a quiet revalidation keeps the pages already loaded above the tail', async ({ ready }) => {
+  const { store, client } = await ready({ delayMs: 0, long: true });
+  await store.open('t-long');
+  for (let page = 0; page < 3; page++) await store.loadOlder();
+  const messages = store.openThread!.messages;
+  expect(messages).toHaveLength(400);
+  const ids = messages.map(message => message.id);
+  const asked = vi.spyOn(client, 'call');
+  try {
+    await store.open('t-long', false);
+    expect(store.openThread!.messages.map(message => message.id)).toEqual(ids);
+    expect(store.openThread!.messages).toBe(messages);
+    expect(store.messagesBefore).toBeNull();
+    expect(await asked.mock.results[0]!.value).toMatchObject({ messages: [], messagesUnchanged: true });
+    const pages = asked.mock.calls.flatMap(([method, params]) => method === 'messages.list' ? [params] : []);
+    expect(pages).toEqual([
+      expect.objectContaining({ before: ids[360], limit: 200 }),
+      expect.objectContaining({ before: ids[160], limit: 160 }),
+    ]);
+  } finally {
+    asked.mockRestore();
+  }
+});
+
 test('a core without snapshot support keeps the original opening protocol', async ({ ready }) => {
   const { store, client } = await ready({ delayMs: 0 });
   delete store.core!.features;

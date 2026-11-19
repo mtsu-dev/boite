@@ -41,8 +41,6 @@
   import { GAP, OVERSCAN, SlotTotals, WINDOW_FROM, atOrBefore, gapChanged, keepOnly, measurable, overscanAbove, reaches, sameView, slotGap, windowStats, type WindowView } from '../lib/message-window';
   import { rowIndexOf, seam, type TimelineRow } from '../lib/timeline-rows';
   import { reactiveTimelineRows } from '../lib/timeline-rows.svelte';
-  import { LiveWeights } from '../lib/store/live-weights.svelte';
-  import { READING_CACHE_MESSAGES } from '../lib/reading-cache';
   import { GapRows, NO_GAPS, READ_AHEAD, RangeAsk, gapHeight, heldNear, loadKeepingReader, wantedRange } from '../lib/history-gaps';
   import TimelineGap from './TimelineGap.svelte';
   import { latest } from '../lib/latest.svelte';
@@ -100,7 +98,6 @@
   const timeline = $derived(shaped.timeline);
   const days = $derived(dayBreaks(timeline)); // The messages that open a new day, a divider above each.
   const cut = reactiveTimelineRows(), gapRows = new GapRows();
-  const liveWeights = new LiveWeights();
   const placement = $derived(store.openThread?.id === threadId ? store.messagePlacement?.(threadId, messages) ?? null : null);
   const positional = $derived((placement?.first ?? null) !== null);
   const gapped = $derived.by(() => {
@@ -630,11 +627,6 @@
   }
 
   $effect(() => () => { glide.stop(); hold.release(); });
-  // Keep the block weights subscribed separately from scroll following.
-  $effect.pre(() => {
-    if (store.openThread?.id === threadId && pinned && messages.length <= READING_CACHE_MESSAGES) liveWeights.total(messages);
-    else liveWeights.reset();
-  });
   /** Follow new messages and measured tail growth, never text deltas. */
   $effect(() => {
     void timeline.length;
@@ -649,7 +641,7 @@
       untrack(markSeen);
     } else if (opened || pinned) {
       if (opened || untrack(following)) {
-        if (untrack(following) && untrack(() => store.releaseOlder(threadId, () => heldNear(totals(rows), rows, messages, viewHeight * (READ_AHEAD + 1), views), liveWeights)) > 0) void tick().then(() => keepOnly([heights, risen], rows, messages));
+        if (untrack(following) && untrack(() => store.releaseOlder(threadId, () => heldNear(totals(rows), rows, messages, viewHeight * (READ_AHEAD + 1), views))) > 0) void tick().then(() => keepOnly([heights, risen], rows, messages));
         scrolledHeight = box.scrollHeight; edge.follow(box); scrollTop = box.scrollTop;
       }
       pinned = true; behind = false;

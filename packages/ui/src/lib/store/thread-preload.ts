@@ -14,14 +14,14 @@
  * cache, so a click on one paints it at once, like a thread visited before.
  */
 
-import { INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, MESSAGE_PAGE_MAX, type MessageId, type ProjectId, type RpcParams, type Thread, type ThreadId, type ThreadSnapshot, type ThreadSummary } from '@boite/contracts';
+import { INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, MESSAGE_PAGE_MAX, READING_PAGE_BYTES, type MessageId, type ProjectId, type RpcParams, type Thread, type ThreadId, type ThreadSnapshot, type ThreadSummary } from '@boite/contracts';
 import type { Client } from '../client';
 import { whenIdle } from '../idle';
 import { readingCacheBytes } from '../reading-cache';
 import { compareRecent } from '../thread-order';
-import { snapshotResume } from '../thread-rows';
+import { lastIndexById, snapshotResume } from '../thread-rows';
 import type { StoreContext } from './context';
-import { lightPage, type ReadingPosition } from './reading-pages.svelte';
+import { lightPage, setMessagesAfter, type ReadingPosition } from './reading-pages.svelte';
 
 /** What `open()` sends for a thread: the page and, before bundled snapshots, the subscription. */
 export interface PageAsk {
@@ -29,6 +29,8 @@ export interface PageAsk {
   fetched: Promise<ThreadSnapshot>;
   /** The reader's message the page is centred on, when it is. */
   around: MessageId | undefined;
+  /** The first message the requested proof can certify. */
+  proofFirst: MessageId | undefined;
 }
 
 /** A press waiting for its click, or claimed by the open it became. */
@@ -73,7 +75,7 @@ function pageRequest(ctx: StoreContext, opener: Opener, threadId: ThreadId, held
   // what it cannot vouch for: a reconnect on a long conversation used to
   // download its last 120 messages again for the two that were new.
   const features = ctx.store.core?.features;
-  const resume = snapshotResume(threadId, held, features?.threadPrefixProofs === true);
+  const resume = snapshotResume(threadId, held, features?.threadPrefixProofs === true, true);
   const around = !held || features?.threadPrefixProofs ? readingAround(ctx, opener, threadId) : undefined;
   // A page holds about one screen; the rest comes as the reader scrolls. A resume tail is never cut.
   const { sync, ...target } = resume;
@@ -100,7 +102,49 @@ export function askPage(ctx: StoreContext, opener: Opener, client: Client, threa
   });
   // Where the page sits, noted as it lands, whichever open or press ends up using it.
   void fetched.then((thread) => ctx.positions.note(threadId, thread.messages, thread.messageOffset), () => undefined);
-  return { subscribed, fetched, around };
+  const proofFirst = features?.threadPrefixProofs && params.sync !== true ? params.sync?.prefix?.first : undefined;
+  return { subscribed, fetched, around, proofFirst };
+}
+
+/** Re-read the held window beyond the snapshot, within the normal count and byte bounds of each page. */
+export function refreshHeldWindow(ctx: StoreContext, client: Client, held: Thread, fresh: Thread, current: () => boolean): Promise<void> | undefined {
+  const first = fresh.messages[0]?.id;
+  const last = fresh.messages.at(-1)?.id;
+  let older = first === undefined || fresh.messagesBefore === null ? 0 : lastIndexById(held.messages, first);
+  const lastIndex = last === undefined || !fresh.messagesAfter ? -1 : lastIndexById(held.messages, last);
+  let newer = lastIndex < 0 ? 0 : held.messages.length - lastIndex - 1;
+  if (older <= 0 && newer <= 0) return;
+
+  return (async () => {
+    const turns = new Map<string, Thread['turns'][number]>();
+    while (current() && older > 0 && fresh.messagesBefore !== null) {
+      const page = await client.call('messages.list', {
+        threadId: fresh.id, before: fresh.messagesBefore, limit: Math.min(older, MESSAGE_PAGE_MAX),
+        maxBytes: READING_PAGE_BYTES, ...lightPage(ctx),
+      });
+      if (!current() || page.messages.length === 0) break;
+      ctx.positions.note(fresh.id, page.messages, page.offset);
+      fresh.messageOffset = page.offset ?? fresh.messageOffset;
+      fresh.messages = [...page.messages, ...fresh.messages];
+      fresh.messagesBefore = page.before;
+      older -= page.messages.length;
+      for (const turn of page.turns ?? []) if (!turns.has(turn.id)) turns.set(turn.id, turn);
+    }
+    while (current() && newer > 0 && fresh.messagesAfter) {
+      const page = await client.call('messages.list', {
+        threadId: fresh.id, after: fresh.messagesAfter, limit: Math.min(newer, MESSAGE_PAGE_MAX),
+        maxBytes: READING_PAGE_BYTES, ...lightPage(ctx),
+      });
+      if (!current() || page.messages.length === 0) break;
+      ctx.positions.note(fresh.id, page.messages, page.offset);
+      fresh.messages.push(...page.messages);
+      setMessagesAfter(fresh, page.after);
+      newer -= page.messages.length;
+      for (const turn of page.turns ?? []) if (!turns.has(turn.id)) turns.set(turn.id, turn);
+    }
+    for (const turn of fresh.turns) turns.set(turn.id, turn);
+    fresh.turns = [...turns.values()].sort((a, b) => a.queuedAt - b.queuedAt);
+  })();
 }
 
 export class ThreadPreloads {

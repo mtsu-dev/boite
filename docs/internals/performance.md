@@ -608,11 +608,13 @@ the turn's other events, which no channel holds back.
 - Returning to a recent thread selects its cached history synchronously. The
   subscription, unread acknowledgement and fresh snapshot run in the background.
   Unchanged messages and turns keep their identities through revalidation.
+  If the snapshot only proves part of the held window, bounded pages
+  revalidate the rest while that window stays on screen.
   The cache retains up to 16 visits, at most 4 MiB of text per thread and
-  16 MiB in total, with a 2,000-message bound per thread. A leave rejects a
-  page above the message limit immediately. The cache projects and weighs
-  eligible pages when idle or on a quick return, and keeps the weight beside
-  each entry (`ReadingCache` in `reading-cache.ts`). Once the page is idle,
+  16 MiB in total, with a 2,000-message bound per thread. The open thread
+  maintains the weight of its held messages in blocks of 64. A leave reuses
+  those weights to reserve space or reject an oversized page. The cache
+  projects eligible pages at idle or on a quick return. Once the page is idle,
   a plain copy replaces the deep `$state` proxy the timeline drew.
 - Once a machine is ready and the page idle (`requestIdleCallback`, else
   1 s), its first sidebar threads are read ahead into the same cache

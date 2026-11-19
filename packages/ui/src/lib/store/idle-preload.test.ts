@@ -216,13 +216,13 @@ test('a departure delays its projection, a quick return reuses it, and a forgott
   const thread = { id: 'left', messages: [] } as unknown as Thread;
   const prepare = vi.fn(() => thread);
   const copy = (held: Thread) => held;
-  cache.defer(thread, prepare, copy, () => false);
+  cache.defer(thread, 0, prepare, copy, () => false);
   expect(cache.has(thread.id)).toBe(true);
   expect(cache.prefill(thread.id, thread, 0)).toBe(false);
   expect(prepare).not.toHaveBeenCalled();
   expect(cache.get(thread.id)).toBe(thread);
   expect(prepare).toHaveBeenCalledOnce();
-  cache.defer(thread, prepare, copy, () => false);
+  cache.defer(thread, 0, prepare, copy, () => false);
   cache.forget(thread.id);
   expect(cache.get(thread.id)).toBeUndefined();
   expect(prepare).toHaveBeenCalledOnce();
@@ -237,11 +237,11 @@ test('ready visits and visits waiting for idle share the same byte budget', () =
   const page = (id: string) => ({ id, messages: [{ parts: [{ type: 'text', text: 'x'.repeat(READING_CACHE_BYTES / 2) }] }] }) as Thread;
   try {
     cache.remember('first', page('first'), READING_CACHE_BYTES, thread => thread);
-    for (const id of ['second', 'third', 'fourth']) expect(cache.defer(page(id), thread => thread, thread => thread, () => true)).toBe(true);
+    for (const id of ['second', 'third', 'fourth']) expect(cache.defer(page(id), READING_CACHE_BYTES, thread => thread, thread => thread, () => true)).toBe(true);
     const mark = cache.mark();
     expect(cache.get('second')?.id).toBe('second');
     expect(cache.droppedSince('second', mark)).toBe(false);
-    expect(cache.defer(page('fifth'), thread => thread, thread => thread, () => true)).toBe(true);
+    expect(cache.defer(page('fifth'), READING_CACHE_BYTES, thread => thread, thread => thread, () => true)).toBe(true);
     expect(cache.has('first')).toBe(false);
     expect(waiting.size).toBe(4);
   } finally {

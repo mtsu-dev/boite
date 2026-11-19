@@ -110,12 +110,15 @@ export function resumeRequest(threadId: ThreadId, held: Pick<Thread, 'messages' 
   return after === null ? { threadId } : { threadId, after };
 }
 
-/** A core with prefix proofs can only reuse the exact window that it proved. */
-export function snapshotResume(threadId: ThreadId, held: Thread | undefined, prefixProofs: boolean): Pick<RpcParams<'threads.get'>, 'threadId' | 'after' | 'sync'> {
+/** A core with prefix proofs can reuse the window it proved. An open can re-read pages above it. */
+export function snapshotResume(threadId: ThreadId, held: Thread | undefined, prefixProofs: boolean, paged = false): Pick<RpcParams<'threads.get'>, 'threadId' | 'after' | 'sync'> {
   const resume = resumeRequest(threadId, held);
   const proof = held?.messagesSync?.from === resume.after ? held?.messagesSync : undefined;
-  if (prefixProofs && (!held || !proof?.prefix || proof.prefix.first !== held.messages[0]?.id
-    || held.messages[proof.prefix.count]?.id !== resume.after)) return { threadId, sync: true };
+  if (prefixProofs) {
+    if (!held || !proof?.prefix) return { threadId, sync: true };
+    const first = proof.prefix.first === held.messages[0]?.id ? 0 : paged ? lastIndexById(held.messages, proof.prefix.first) : -1;
+    if (first < 0 || held.messages[first + proof.prefix.count]?.id !== resume.after) return { threadId, sync: true };
+  }
   return { ...resume, sync: proof ?? true };
 }
 
