@@ -6,6 +6,7 @@
  * direct (`packages/contracts/src/experiments.ts`): in a build below the
  * Contacts' tag it is `false`, this is `null`, the imports are dropped and no
  * chunk holds these screens. From source and in tests it is not defined.
+ * Contacts are finished (`release`), so no build defines the flag today.
  *
  * What stays in every build is small and drawn whatever the switch says: the
  * column's fold (`contacts-rail.svelte.ts`), the remote chip and the ask row

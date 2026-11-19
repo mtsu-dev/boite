@@ -2,7 +2,7 @@ import { errorText } from './errors';
 import { strings } from './strings';
 import type { Store } from './store.svelte';
 
-/** A machine this window may make a bot on: its owner, connected. A paired phone only flips its switch. */
+/** A machine this window may make a bot on: its owner, connected. A paired phone makes none. */
 function owned(store: Store): boolean {
   return store.owner && store.connection === 'ready' && !!store.client;
 }
@@ -41,23 +41,40 @@ export function operatorHost(home: Store, stores: readonly Store[]): Store | nul
 }
 
 /**
- * The Contacts switch turned on: the group gets its one Operator. When a
- * connected owner machine already has one, nothing is made; else it is made
- * on `operatorHost`, and nowhere while the Bots machine is offline (the
- * Contacts page says so). A failure is told on `home` and the switch stays
- * on, so turning it on again retries.
+ * Contacts opened: the group gets its one Operator. When a connected owner
+ * machine already has one, nothing is made; else it is made on
+ * `operatorHost`, and nowhere while the Bots machine is offline (the Contacts
+ * page says so). A failure is told on `home` and answers false, so the next
+ * opening retries.
  */
-export async function ensureOperator(home: Store, stores: readonly Store[]): Promise<void> {
+export async function ensureOperator(home: Store, stores: readonly Store[]): Promise<boolean> {
   const host = operatorHost(home, stores);
-  if (!host) return;
+  if (!host) return false;
   const machines = [home, ...stores.filter(store => store !== home)].filter(owned);
   const found = await Promise.all(machines.map(async store => {
     try { return !!(await store.client!.call('contacts.get', {})).bot; } catch { return false; }
   }));
-  if (found.some(Boolean)) return;
+  if (found.some(Boolean)) return true;
   try {
     await host.client!.call('agents.builtin.ensure', { kind: 'contacts', name: strings.agents.builtin.name.contacts });
+    return true;
   } catch (error) {
     home.error = errorText(error);
+    return false;
   }
+}
+
+/** The windows' machines whose group was given its Operator, or is being given it, in this session. */
+const asked = new WeakSet<Store>();
+
+/**
+ * The first time Contacts opens on `home` in this session, its page or its
+ * column: `ensureOperator`, never at boot. Once it found or made the
+ * Operator nothing asks again until a reload; a failure, or no machine to
+ * hold it yet, lets the next opening try again.
+ */
+export function operatorOnOpen(home: Store, stores: readonly Store[]): void {
+  if (asked.has(home) || !operatorHost(home, stores)) return;
+  asked.add(home);
+  void ensureOperator(home, stores).then(done => { if (!done) asked.delete(home); });
 }

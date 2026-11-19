@@ -6,6 +6,7 @@
  * folds nothing less direct (`packages/contracts/src/experiments.ts`): in a
  * build below the Teams' tag it is `false`, the imports are dropped and no
  * chunk holds these screens. From source and in tests it is not defined.
+ * The Teams are finished (`release`), so no build defines the flag today.
  *
  * `lib/teams.svelte.ts`, the list of a machine's teams the rails read, stays
  * in every build: it is empty where the core has no team.

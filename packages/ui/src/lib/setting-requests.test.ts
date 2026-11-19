@@ -10,9 +10,11 @@ test('Show and Open are offered only where this client draws the target card', (
   expect(settingsReachable(open('resources', 'limits'), { owner: false, phone: false })).toBe(false);
   expect(settingsReachable(open('general', 'worktrees'), { owner: false, phone: false })).toBe(false);
   expect(settingsReachable(open('appearance', 'theme'), { owner: false, phone: false })).toBe(true);
-  // The live device stream runs on the owner's machine: only the owner's Experiments draws its card, on a phone too.
-  expect(settingsReachable(open('experiments', 'device-stream'), { owner: false, phone: false })).toBe(false);
-  expect(settingsReachable(open('experiments', 'device-stream'), { owner: true, phone: true })).toBe(true);
+  // The live device stream runs on the owner's machine: only the owner's System draws its card, on a phone too.
+  expect(settingsReachable(open('advanced', 'device-stream'), { owner: false, phone: false })).toBe(false);
+  expect(settingsReachable(open('advanced', 'device-stream'), { owner: true, phone: true })).toBe(true);
+  // No build lists an experiment today: a card that points at Experiments has nowhere to land.
+  expect(settingsReachable(open('experiments', null), { owner: true, phone: false })).toBe(false);
   // A phone browser lacks the desktop's General, Advanced and pairing cards.
   expect(settingsReachable(open('resources', 'limits'), { owner: true, phone: true })).toBe(true);
   expect(settingsReachable(open('general', 'conversations'), { owner: true, phone: true })).toBe(true);

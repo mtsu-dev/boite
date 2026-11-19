@@ -6,15 +6,16 @@ import { toMobileList } from './lib/mobile.ts';
 import { startDevUi } from './lib/ui.ts';
 
 /*
- * The stages of `EXPERIMENT_STAGES` as a person meets them: a Nightly lists
- * the five experiments, a Release has no Experiments page, and Bots are there
- * on a profile that stored nothing. The in-memory core says its version
+ * The stages of `EXPERIMENT_STAGES` as a person meets them: with every
+ * feature finished, no build has an Experiments page, the five features that
+ * were experiments are on with nothing stored, and Bots are there on a
+ * profile that stored nothing. The in-memory core says its version
  * (`?fake=1&version=`), the way a real hello does.
  */
 const ARTIFACTS = join(import.meta.dir, '.artifacts', 'stages');
 const DESKTOP = { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false };
 const PHONE = { width: 390, height: 844, deviceScaleFactor: 1, mobile: true };
-const EXPERIMENTS = ['whip', 'contacts', 'auto-goal', 'teams', 'debates'];
+const FINISHED = ['whip', 'contacts', 'auto-goal', 'teams', 'debates'];
 
 let page: BrowserPage;
 let server: { close(): Promise<void> };
@@ -47,38 +48,26 @@ async function capture(name: string) {
   await page.screenshot(join(ARTIFACTS, name));
 }
 
-const switches = `[...document.querySelectorAll('[data-testid="experiments-page"] [data-testid^="experiment-"]')].map(node => node.dataset.testid.slice('experiment-'.length))`;
-
 for (const [name, size] of [['desktop', DESKTOP], ['phone', PHONE]] as const) {
-  test(`${name}: a Nightly lists the five experiments on its Experiments page, with nothing stored`, async () => {
-    await open('', size);
-    expect(await page.evaluate(`localStorage.getItem('boite.experiments')`)).toBeNull();
-    expect(await page.evaluate(`window.__boiteTest.workspace.active.core.version`)).toBe('2.0.0-beta.1');
-    await page.evaluate(`window.__boiteTest.workspace.active.showSettings('experiments')`);
-    await page.waitFor(`document.querySelector('[data-testid="experiment-whip"]')?.getBoundingClientRect().width > 0`);
-    expect(await page.evaluate(switches)).toEqual(EXPERIMENTS);
-    await capture(`nightly-experiments-${name}.png`);
-  }, 60000);
-
-  test(`${name}: a Release has no Experiments page, and an experiment stored before is off and kept`, async () => {
-    await page.evaluate(`localStorage.setItem('boite.experiments', JSON.stringify(['whip']))`);
-    await open('&version=2.0.0', size);
-    await page.waitFor(`localStorage.getItem('boite.experiments.build') === '2.0.0'`);
-    // A route to the page that is gone lands on Settings' first page, not on an empty one.
-    await page.evaluate(`window.__boiteTest.workspace.active.showSettings('experiments')`);
-    await page.waitFor(`document.querySelector('[data-testid="settings-tab-general"], [data-testid="settings-family"]')?.getBoundingClientRect().width > 0`);
-    expect(await page.evaluate(`document.querySelector('[data-testid="settings-tab-experiments"]')`)).toBeNull();
-    expect(await page.evaluate(`document.querySelector('[data-testid="experiments-page"]')`)).toBeNull();
-    expect(await page.evaluate(`import('/src/lib/experiments.ts').then(({ isExperimentEnabled }) => [isExperimentEnabled('whip'), isExperimentEnabled('resident-agents')])`)).toEqual([false, true]);
-    expect(await page.evaluate(`JSON.parse(localStorage.getItem('boite.experiments'))`)).toEqual(['whip']);
-    // The phone's list is taller than the screen: show the whole Advanced family, where the row was.
-    if (name === 'phone') {
-      await page.evaluate(`document.querySelector('[data-testid="settings-family"][data-family="advanced"]').scrollIntoView({ block: 'end' })`);
-      await page.waitFor(`(() => { const box = document.querySelector('[data-testid="settings-family"][data-family="advanced"]').getBoundingClientRect(); return box.top >= 0 && box.bottom <= innerHeight; })()`);
-    }
-    await capture(`release-settings-${name}.png`);
-    await page.evaluate(`localStorage.removeItem('boite.experiments'); localStorage.removeItem('boite.experiments.build')`);
-  }, 60000);
+  for (const [build, query] of [['Dev', ''], ['Release', '&version=2.0.0']] as const) {
+    test(`${name}: a ${build} has no Experiments page, and the five finished features are on with nothing stored`, async () => {
+      await open(query, size);
+      expect(await page.evaluate(`localStorage.getItem('boite.experiments')`)).toBeNull();
+      // A route to the page that is gone lands on Settings' first page, not on an empty one.
+      await page.evaluate(`window.__boiteTest.workspace.active.showSettings('experiments')`);
+      await page.waitFor(`document.querySelector('[data-testid="settings-tab-general"], [data-testid="settings-family"]')?.getBoundingClientRect().width > 0`);
+      expect(await page.evaluate(`document.querySelector('[data-testid="settings-tab-experiments"]')`)).toBeNull();
+      expect(await page.evaluate(`document.querySelector('[data-testid="experiments-page"]')`)).toBeNull();
+      expect(await page.evaluate(`import('/src/lib/experiments.ts').then(({ isExperimentEnabled }) => ${JSON.stringify(FINISHED)}.map(isExperimentEnabled))`)).toEqual(FINISHED.map(() => true));
+      // The phone's list is taller than the screen: show the whole Advanced family, where the row was.
+      if (name === 'phone') {
+        await page.evaluate(`document.querySelector('[data-testid="settings-family"][data-family="advanced"]').scrollIntoView({ block: 'end' })`);
+        await page.waitFor(`(() => { const box = document.querySelector('[data-testid="settings-family"][data-family="advanced"]').getBoundingClientRect(); return box.top >= 0 && box.bottom <= innerHeight; })()`);
+      }
+      await capture(`${build.toLowerCase()}-settings-${name}.png`);
+      await page.evaluate(`localStorage.removeItem('boite.experiments.build')`);
+    }, 60000);
+  }
 
   test(`${name}: Mochis are in the ${name === 'desktop' ? 'app rail' : 'bottom bar'} on a fresh profile`, async () => {
     await open('&agents=1', size);

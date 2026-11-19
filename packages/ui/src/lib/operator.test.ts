@@ -1,5 +1,5 @@
 import { expect, test, vi } from 'vitest';
-import { botsHost, botsHostAway, ensureOperator, operatorHost } from './operator';
+import { botsHost, botsHostAway, ensureOperator, operatorHost, operatorOnOpen } from './operator';
 import type { Store } from './store.svelte';
 
 /** A machine as `operatorHost` reads it: its owner, its link, its client and its place in the group. */
@@ -39,4 +39,32 @@ test('turning Contacts on while the Mochis machine is offline makes no Operator 
   await ensureOperator(a, [b, c]);
   expect(c.client!.call).toHaveBeenCalledWith('agents.builtin.ensure', expect.objectContaining({ kind: 'contacts' }));
   for (const store of [a, b]) expect(store.client!.call).not.toHaveBeenCalledWith('agents.builtin.ensure', expect.anything());
+});
+
+test('Contacts opened gives the group its Operator once a session, and a failure lets the next opening try again', async () => {
+  const ensures = (store: Store) => vi.mocked(store.client!.call).mock.calls.filter(([method]) => method === 'agents.builtin.ensure').length;
+  let refuse = true;
+  const none = (method: string) => {
+    if (method === 'contacts.get') return { bot: null };
+    if (method === 'agents.builtin.ensure' && refuse) throw new Error('selection: no signed-in account on this machine to run the mochi');
+    return {};
+  };
+  const home = machine('core-a', {}, true, none);
+  operatorOnOpen(home, []);
+  await vi.waitFor(() => expect(home.error).toContain('no signed-in account'));
+  expect(ensures(home)).toBe(1);
+  refuse = false;
+  operatorOnOpen(home, []);
+  await vi.waitFor(() => expect(ensures(home)).toBe(2));
+  // Made: opening Contacts again asks nothing more in this session.
+  operatorOnOpen(home, []);
+  await new Promise(resolve => setTimeout(resolve, 10));
+  expect(vi.mocked(home.client!.call).mock.calls.length).toBe(4);
+  // A machine of the group already has one: this one makes none.
+  const other = machine('core-b', {}, true, () => ({ bot: { id: 'operator' } }));
+  const fresh = machine('core-a', {}, true, none);
+  operatorOnOpen(fresh, [other]);
+  await vi.waitFor(() => expect(vi.mocked(other.client!.call)).toHaveBeenCalledWith('contacts.get', {}));
+  await new Promise(resolve => setTimeout(resolve, 10));
+  expect(ensures(fresh) + ensures(other)).toBe(0);
 });

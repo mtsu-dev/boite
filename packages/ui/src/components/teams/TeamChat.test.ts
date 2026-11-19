@@ -34,7 +34,7 @@ function query<T extends Element>(selector: string): T {
 
 const all = (selector: string) => [...document.querySelectorAll<HTMLElement>(selector)];
 
-/** Chris's Skollheim: two bots named as an owner names them, the Teams experiment on in the app and on the core. */
+/** Chris's Skollheim: two bots named as an owner names them, and their team. */
 async function skollheim() {
   setExperiment('teams', true);
   const client = new FakeClient({ delayMs: 0 });
@@ -164,16 +164,16 @@ test("a phone's Mochis list holds the teams, a team's chat opens full screen ove
   expect(store.openThread?.id).toBe(team.threadId);
 });
 
-test('with Teams off the Mochis page lists the mochis alone, and a team chat opens in the chat', async () => {
+test('a device whose old Teams switch is off still lists its teams on the Mochis page, and a team chat opens there', async () => {
   const { store, team, huginn } = await skollheim();
   setExperiment('teams', false);
   botsPage(store, true);
   await vi.waitFor(() => query(`[data-testid="agent-entry-${huginn.id}"]`));
   await settle();
-  expect(document.querySelector('[data-testid=agents-teams]')).toBeNull();
-  expect(all('.agents-rail .section-label')).toHaveLength(0);
+  // Teams are on in every build: the switch left in storage no longer hides them.
+  expect(query('[data-testid=agents-teams]').textContent).toContain('Skollheim');
   await store.open(team.threadId);
-  expect(store.page).toBe('chat');
+  expect(store.page).toBe('agents');
 });
 
 test('the team chat draws each post with its author, a private post with its recipient, and who each post woke', async () => {
@@ -220,9 +220,7 @@ test('a member of another machine of the group carries that machine in the membe
   const distant = await firebat.call('agents.profile.save', { value: { name: 'Munin', domain: '', instructions: '', avatar: '', status: 'active', projectIds: [],
     selection: { providerId: 'echo', accountId: 'a-echo', model: 'echo-1', effort: null, permissionMode: 'default' } } });
 
-  // The other machine's own switch keeps its bot out, with its name in the refusal.
-  await expect(client.call('teams.create', { name: 'Across', members: [huginn.id, 'Firebat/Munin'] })).rejects.toThrow('Firebat: teams need the Teams experiment');
-  firebat.reportDesktopExperiments(['teams']);
+  // Teams are on in every build: the other machine takes its bot in whatever its desktop reported.
   const team = await client.call('teams.create', { name: 'Across', members: [huginn.id, 'Firebat/Munin'] });
   expect(team.members[1]).toMatchObject({ key: `firebat/${distant.id}`, coreId: 'firebat', botId: distant.id, machine: 'Firebat' });
   await client.call('teams.post', { teamId: team.id, id: 'to-munin', text: '@Munin hello' });

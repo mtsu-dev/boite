@@ -30,12 +30,13 @@ test('the fake starts an automatic goal and its card on a long prompt, as the co
   await expect(client.call('threads.goal.track', { threadId: thread.id })).rejects.toThrow("the user's last prompt already started a goal");
 });
 
-test('the fake goal track takes the last prompt once and refuses with the experiment off', async ({ createClient }) => {
+test('the fake goal track takes the last prompt once and refuses with automatic goals off on the machine', async ({ createClient }) => {
   const client = await createClient({ delayMs: 0 });
   const thread = await freshThread(client);
   await client.call('turns.start', { threadId: thread.id, prompt: 'Fix the login and the signup' });
-  await expect(client.call('threads.goal.track', { threadId: thread.id })).rejects.toThrow('needs the Automatic goals experiment');
-  await client.call('client.preferences', report(['auto-goal']));
+  await client.call('settings.set', { autoGoals: false });
+  await expect(client.call('threads.goal.track', { threadId: thread.id })).rejects.toThrow('the owner turned off on this machine');
+  await client.call('settings.set', { autoGoals: true });
   expect((await client.call('threads.goal.track', { threadId: thread.id })).goal).toMatchObject({ objective: 'Fix the login and the signup', auto: true });
   await expect(client.call('threads.goal.track', { threadId: thread.id })).rejects.toThrow('already has a goal or a loop');
 });

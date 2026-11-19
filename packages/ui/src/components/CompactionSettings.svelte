@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { experimentsRun, type CompactionTarget } from '@boite/contracts';
+  import type { CompactionTarget } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
   import { strings } from '../lib/strings';
   import { compactionPolicy } from '../lib/compaction-settings';
@@ -7,10 +7,17 @@
   import BackgroundCompactionSettings from './BackgroundCompactionSettings.svelte';
   import InfoTip from './InfoTip.svelte';
 
-  let { store, backgroundOnly = false }: { store: Store; backgroundOnly?: boolean } = $props();
+  /**
+   * The compaction card: the type it edits, then for that type the automatic
+   * compaction's limit and moments, and background compaction under them.
+   */
+  let { store }: { store: Store } = $props();
   let target = $state<CompactionTarget | undefined>();
   let saving = $state(false);
   let editor = $state<{ flush: () => Promise<void> }>();
+  let background = $state<{ flush: () => Promise<void> }>();
+  /** Both halves save what they hold before the card changes type or customization. */
+  const flush = () => Promise.all([editor?.flush(), background?.flush()]);
   const uid = $props.id();
   const targets = $derived([
     { id: undefined, label: strings.settings.compactionCommon },
@@ -23,7 +30,7 @@
     if (saving || next === target) return;
     saving = true;
     try {
-      await editor?.flush();
+      await flush();
       target = next;
     } finally { saving = false; }
   }
@@ -31,7 +38,7 @@
     if (!target) return;
     saving = true;
     try {
-      await editor?.flush();
+      await flush();
       const next = { ...store.settings?.compactionByType };
       if (input.checked) next[target] = structuredClone($state.snapshot(compactionPolicy(store.settings, target)));
       else delete next[target];
@@ -50,7 +57,7 @@
     </div>
     {#if target}
       <div class="customize">
-        <span class="words"><label for="{uid}-custom" class="ui-label">{strings.settings.compactionCustomize}</label><InfoTip topic={strings.settings.compactionCustomize} text={experimentsRun(store.core?.version) ? strings.settings.compactionInheritanceHint : strings.settings.compactionInheritanceHintRelease} /></span>
+        <span class="words"><label for="{uid}-custom" class="ui-label">{strings.settings.compactionCustomize}</label><InfoTip topic={strings.settings.compactionCustomize} text={strings.settings.compactionInheritanceHint} /></span>
         <input id="{uid}-custom" type="checkbox" role="switch" data-testid="compaction-customize" checked={customized}
           disabled={!store.settings || saving} onchange={(event) => void customize(event.currentTarget)} />
       </div>
@@ -58,8 +65,8 @@
     {/if}
     {#key `${target ?? 'common'}:${customized}`}
       <fieldset disabled={saving || (target !== undefined && !customized)}>
-        {#if backgroundOnly}<BackgroundCompactionSettings bind:this={editor} {store} {target} embedded />
-        {:else}<AutoCompactSettings bind:this={editor} {store} {target} embedded />{/if}
+        <AutoCompactSettings bind:this={editor} {store} {target} embedded />
+        <div class="background"><BackgroundCompactionSettings bind:this={background} {store} {target} embedded /></div>
       </fieldset>
     {/key}
   </section>
@@ -77,6 +84,7 @@
   .hint { margin: 0 0 var(--space-3); }
   fieldset { border: 0; border-top: 1px solid var(--color-border); padding: var(--space-3) 0; margin: 0; min-width: 0; }
   fieldset:disabled { opacity: 0.6; }
+  .background { margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--color-border); }
   @media (max-width: 720px) {
     .card > .scope { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .ui-chip { min-width: 0; }

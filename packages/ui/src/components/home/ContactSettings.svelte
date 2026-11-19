@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { markFeature } from '@boite/contracts';
   import { lockedBy } from '../../lib/policy';
   import { onDestroy } from 'svelte';
   import { Check, ChevronDown, Copy, ExternalLink } from '@lucide/svelte';
@@ -41,8 +40,6 @@
     clearTimeout(timer);
     timer = setTimeout(() => { copied = false; }, 1500);
   }
-  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
-  markFeature('boite-feature:contacts');
 </script>
 
 <div class="switch-row">

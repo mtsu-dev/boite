@@ -1,5 +1,5 @@
 /** Core settings, the scheduler they size, keybindings and telemetry. */
-import { KEYBINDING_COMMANDS, MACHINE_SETTINGS, parseChord, RpcErrorCode, checkSettingsPatch, experimentalSettingRefusal, followedPatch, keepLaterFavorites, keepStoredExperimentalSettings } from '@boite/contracts';
+import { KEYBINDING_COMMANDS, MACHINE_SETTINGS, parseChord, RpcErrorCode, checkSettingsPatch, followedPatch, keepLaterFavorites } from '@boite/contracts';
 import type { Settings } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import type { FakeContext, FakeMethods } from './context';
@@ -95,18 +95,16 @@ export function settingsMethods(ctx: FakeContext) {
       const patch: unknown = params?.patch;
       if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'patch: expected an object of settings', data: { field: 'patch' } });
       const followed = followedPatch(ctx.settings, patch);
-      // As the core: what the settings home holds is stored as it is, an experiment included, and read as off on a Release.
-      return Object.keys(followed).length === 0 ? ctx.settingsInForce() : save({ ...followed }, true);
+      // As the core: what the settings home holds is stored as it is.
+      return Object.keys(followed).length === 0 ? ctx.settingsInForce() : save({ ...followed });
     },
-    'settings.set': async (params) => save(params, false),
+    'settings.set': async (params) => save(params),
   } satisfies Partial<FakeMethods>;
 
-  async function save(params: Partial<Settings>, followed: boolean): Promise<Settings> {
+  async function save(params: Partial<Settings>): Promise<Settings> {
     // The core's own check, so a value the core refuses is refused here too.
     const checked = checkSettingsPatch(params);
     if (!checked.ok) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: checked.message, data: { field: checked.field } });
-    const experiment = followed ? null : experimentalSettingRefusal(checked.patch, ctx.core.version);
-    if (experiment !== null) throw new RpcFailure({ code: RpcErrorCode.Refused, message: experiment.message, data: { field: experiment.key } });
     const titleModel = checked.patch.titleModel;
     if (titleModel && ctx.providers.find(p => p.id === titleModel.providerId)?.titles !== true) {
       throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `titleModel names ${titleModel.providerId}, which is not a loaded provider that writes titles`, data: { field: 'titleModel' } });
@@ -117,8 +115,7 @@ export function settingsMethods(ctx: FakeContext) {
     }
     checkPolicySettings(ctx, checked.patch);
     const before = Object.fromEntries(MACHINE_SETTINGS.map(key => [key, ctx.settings[key] === true]));
-    // A Release only shows the experiments as off: a save that hands that back leaves them as stored.
-    ctx.settings = { ...ctx.settings, ...keepLaterFavorites(ctx.settings, followed ? checked.patch : keepStoredExperimentalSettings(ctx.settings, checked.patch, ctx.core.version)) };
+    ctx.settings = { ...ctx.settings, ...keepLaterFavorites(ctx.settings, checked.patch) };
     // As the core's `setting.changed`: the other members' cards about this machine settle.
     for (const key of MACHINE_SETTINGS) {
       if ((ctx.settings[key] === true) === before[key]) continue;

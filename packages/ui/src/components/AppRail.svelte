@@ -8,6 +8,7 @@
   import { count } from '../lib/format';
   import { machineName, workspace, type Machine } from '../lib/workspace.svelte';
   import { experimentOn } from '../lib/experiments.svelte';
+  import { featureOn } from '../lib/features.svelte';
   import { agentDirectory, followAgentDirectories } from '../lib/agent-directory.svelte';
   import { AgentsView, agentRows, resetBuiltin, waitingOn, type AgentRowData } from '../lib/agents.svelte';
   import { agentMenuItems, pickAgentAction } from '../lib/agent-menu';
@@ -57,7 +58,7 @@
   /** A bot's name card says its machine once there are two. */
   const several = $derived(machines.length > 1);
   const botsOn = $derived(experimentOn('resident-agents'));
-  const teamsOn = $derived(botsOn && experimentOn('teams'));
+  const teamsOn = $derived(botsOn);
   const contactsOn = $derived(contactsShown(store));
 
   // Every machine's bots stay read while the rail is drawn, so their pictures say how each one stands.
@@ -383,7 +384,7 @@
     </div>
     <!-- Each with the same name card as every rail button; a slot with no button (nothing to update) takes no room. -->
     {#if !narrow.current}<div class="slot extra"><Deferred part={parts.UpdatesNotice} quiet>{#snippet children(UpdatesNotice)}<UpdatesNotice name={statusName} />{/snippet}</Deferred></div>{/if}
-    {#if experimentOn('whip') && whipEntry.feature}{@const WhipButton = whipEntry.feature.WhipButton}<div class="slot extra"><WhipButton name={statusName} /></div>{/if}
+    {#if featureOn('whip') && whipEntry.feature}{@const WhipButton = whipEntry.feature.WhipButton}<div class="slot extra"><WhipButton name={statusName} /></div>{/if}
     <div class="slot extra limits-slot"><LimitsButton {store} name={limitsName} /></div>
     <div class="slot" class:selected={store.page === 'settings'}>
       <button type="button" class="ghost icon" class:on={store.page === 'settings'} aria-current={store.page === 'settings' ? 'page' : undefined}

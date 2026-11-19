@@ -18,10 +18,12 @@
   import { controlGroups } from '../lib/control-groups';
   import type { Store } from '../lib/store.svelte';
   import SurfaceIcon from './SurfaceIcon.svelte';
+  import { featureOn } from '../lib/features.svelte';
+  import { setFeature } from '../lib/features';
 
   /**
-   * Visual choices only: language, theme, colours, widths, faces, zoom and the
-   * buttons shown. What the app does (how a turn's changes show, where a window
+   * Visual choices only: language, theme, colours, widths, the Whip, faces,
+   * zoom and the buttons shown. What the app does (how a turn's changes show, where a window
    * starts, the terminal's renderer) lives under General, and the terminal's
    * cursor and the edge scrollbars under Advanced. `phone`: what a phone reads
    * and looks like; the column width and the header's buttons are the desktop's.
@@ -233,6 +235,12 @@
         </div>
       </div>
     {/if}
+    <!-- The Whip's button in the rail, or the phone's bar: on until a person would rather not see it. -->
+    <label class="switch-row" for="{uid}-whip" id="settings-whip">
+      <span class="text"><span class="ui-label" id="{uid}-whip-name">{strings.features.whip.title}</span><span class="hint" id="{uid}-whip-effect">{strings.features.whip.hint}</span></span>
+      <input id="{uid}-whip" aria-labelledby="{uid}-whip-name" aria-describedby="{uid}-whip-effect" type="checkbox" role="switch" checked={featureOn('whip')} data-testid="setting-whip"
+        onchange={event => setFeature('whip', event.currentTarget.checked)} />
+    </label>
   </section>
 
   <section class="card" id="settings-reading">

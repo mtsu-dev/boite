@@ -3,7 +3,7 @@
   import { Activity, Bot, FishingHook, MessageCircleQuestionMark, Settings2, Users } from '@lucide/svelte';
   import { showDecision } from '../lib/decision-tail.svelte';
   import { replyOf, repliesOf, sendAnswer, writeAnswer } from '../lib/question-reply.svelte';
-  import { COUNCIL_EXPERIMENT, type Account, type Message } from '@boite/contracts';
+  import type { Account, Message } from '@boite/contracts';
   import { fill, strings } from '../lib/strings';
   import type { Snippet } from 'svelte';
   import type { Store } from '../lib/store.svelte';
@@ -37,7 +37,6 @@
   import { AgentsView, agentOfThread } from '../lib/agents.svelte';
   import AgentAvatar from './agents/AgentAvatar.svelte';
   import ProviderLogo from './ProviderLogo.svelte';
-  import { experimentOn } from '../lib/experiments.svelte';
   import { asksDocked, cardedCall, failedCall, questionDocked } from '../lib/one-status';
   import { machineAway } from '../lib/machine-away';
   import { textRevision } from '../lib/text-revisions';
@@ -208,7 +207,7 @@
     {@const shownText = sliced ? whole.slice(sliced.start, sliced.end) : whole}
     {@const open = !sliced || sliced.end === undefined}
     {@const narrated = part.type === 'text' && message.role === 'assistant' && narrates(index, whole.trim())}
-    {#if (part.type !== 'text' || shownText.trim().length > 0) && ((part.type !== 'council' && part.type !== 'debate') || experimentOn(COUNCIL_EXPERIMENT)) && !(asking && part.type === 'question' && questionDocked(store, part))}
+    {#if (part.type !== 'text' || shownText.trim().length > 0) && !(asking && part.type === 'question' && questionDocked(store, part))}
     <!-- Narration is a class, not another branch: the paragraphs already drawn stay the same nodes when a step arrives after them. -->
     <div class="part" class:narration={narrated} data-kind={part.type} data-testid={narrated ? 'narration' : undefined}>
       {#if part.type === 'text'}
@@ -304,7 +303,7 @@
       {:else if part.type === 'secret_request'}
         <Deferred part={parts.SecretCard}>{#snippet children(SecretCard)}<SecretCard {store} threadId={message.threadId} {part} />{/snippet}</Deferred>
       {:else if part.type === 'council' || part.type === 'debate'}
-        <!-- Drawn only with the Council experiment on: off, the card leaves no trace in the thread. -->
+        <!-- Drawn wherever the build holds the Council (every build today, lib/council-entry.ts). -->
         {#if councilBuilt()}<Deferred part={parts.CouncilCard}>{#snippet children(CouncilCard)}<CouncilCard {store} threadId={message.threadId} {part} />{/snippet}</Deferred>{/if}
       {:else if part.type === 'compaction'}
         {@render compaction(part)}

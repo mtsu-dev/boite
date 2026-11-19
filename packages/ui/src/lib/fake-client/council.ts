@@ -9,7 +9,6 @@ import {
   COUNCIL_AUTHOR,
   COUNCIL_DEFAULT_EFFORT,
   COUNCIL_DEFAULT_MODELS,
-  COUNCIL_EXPERIMENT,
   COUNCIL_LEGACY_SUMMARY,
   COUNCIL_LIMITS,
   COUNCIL_OWNER,
@@ -86,9 +85,6 @@ function salonOf(ctx: FakeContext, parent: Thread, councilId: string, request: s
 }
 
 export function councilMethods(ctx: FakeContext): CouncilMethods {
-  const gate = () => {
-    if (!ctx.experimentsInForce().includes(COUNCIL_EXPERIMENT)) throw refused('the council needs the Council experiment, which is off in the desktop app (Settings, Experiments)', { reason: 'experiment-off' });
-  };
   const all = () => [...state(ctx).councils.values()].sort((a, b) => b.createdAt - a.createdAt);
   const postsOf = (id: string) => state(ctx).posts.get(id) ?? [];
   const require = (id: unknown): Council => {
@@ -149,7 +145,6 @@ export function councilMethods(ctx: FakeContext): CouncilMethods {
 
   return {
     'council.start': async (params) => {
-      gate();
       const parent = ctx.thread(text(params?.threadId, 'threadId', 128));
       if (parent.parentThreadId) throw refused('a subagent cannot start a council; ask its parent', { threadId: parent.id });
       if (parent.teamId || parent.councilId) throw refused('a team chat or a council salon cannot start a council', { threadId: parent.id });
@@ -245,7 +240,6 @@ export function councilMethods(ctx: FakeContext): CouncilMethods {
       return structuredClone(state(ctx).councils.get(id)!);
     },
     'council.again': async (params) => {
-      gate();
       const council = require(params?.councilId);
       own(council, params.threadId);
       const given = (value: unknown) => value !== undefined && value !== null && value !== '';
@@ -274,24 +268,20 @@ export function councilMethods(ctx: FakeContext): CouncilMethods {
       return structuredClone(state(ctx).councils.get(council.id)!);
     },
     'council.list': async (params) => {
-      gate();
       const threadId = params?.threadId === undefined ? undefined : text(params.threadId, 'threadId', 128);
       return { councils: structuredClone(all().filter(council => threadId === undefined || council.parentThreadId === threadId).slice(0, 30)) };
     },
     'council.get': async (params) => {
-      gate();
       const council = require(params?.councilId);
       return { council: structuredClone(council), posts: structuredClone(postsOf(council.id)) };
     },
     'council.table': async (params) => {
-      gate();
       const council = require(params?.councilId);
       own(council, params.threadId);
       if (council.legacy) throw refused('a debate from before the council has no scores, so no table', { councilId: council.id });
       return { table: councilTable(council), council: structuredClone(council) };
     },
     'council.post': async (params) => {
-      gate();
       const council = require(params?.councilId);
       const body = text(params.text, 'text', COUNCIL_LIMITS.postChars);
       const id = params.id === undefined ? undefined : text(params.id, 'id', 100);
@@ -305,7 +295,6 @@ export function councilMethods(ctx: FakeContext): CouncilMethods {
       return post(council, { ...(id === undefined ? {} : { id }), round: council.round + 1, author: COUNCIL_OWNER, text: body, to, inReplyTo: null });
     },
     'council.closeRound': async (params) => {
-      gate();
       const council = require(params?.councilId);
       if (council.status !== 'running') throw refused('no round is under way', { councilId: council.id, status: council.status });
       const round = council.round;
@@ -327,7 +316,6 @@ export function councilMethods(ctx: FakeContext): CouncilMethods {
       }));
     },
     'council.stop': async (params) => {
-      gate();
       const council = require(params?.councilId);
       own(council, params.threadId);
       if (councilOver(council)) return structuredClone(council);

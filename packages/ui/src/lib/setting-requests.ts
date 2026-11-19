@@ -31,6 +31,8 @@ function graduated(key: string): { title: string; switched: boolean } | null {
   if (id === 'open-chat-links') return { title: strings.features.openChatLinks.title, switched: true };
   if (id === 'preview-comments') return { title: strings.features.previewComments.title, switched: true };
   if (id === 'edge-scrollbars') return { title: strings.features.edgeScrollbars.title, switched: true };
+  if (id === 'whip') return { title: strings.features.whip.title, switched: true };
+  if (id === 'auto-goal') return { title: strings.settings.autoGoals, switched: true };
   if (id === 'press-preload') return { title: strings.settingRequest.loadOnPress, switched: false };
   // Finished since: on in every build, with no switch (`EXPERIMENT_STAGES`).
   if (id === 'resident-agents') return { title: strings.agents.heading, switched: false };
@@ -39,6 +41,9 @@ function graduated(key: string): { title: string; switched: boolean } | null {
   if (id === 'pinned-quotas') return { title: strings.quotas.pin, switched: false };
   if (id === 'prompt-cache') return { title: strings.settingRequest.promptCacheTimer, switched: false };
   if (id === 'recording-indicators') return { title: strings.settingRequest.recordingActions, switched: false };
+  if (id === 'contacts') return { title: strings.contacts.heading, switched: false };
+  if (id === 'teams') return { title: strings.teamChat.heading, switched: false };
+  if (id === 'debates') return { title: strings.council.salon, switched: false };
   const known = experimentOf(key);
   if (known !== null && EXPERIMENT_STAGES[known] === 'release') return { title: strings.settingRequest.formerExperiment, switched: false };
   return null;
@@ -94,6 +99,7 @@ export function settingHelp(key: RequestableKey): string | null {
     shortAnswers: [effects.shortAnswers, s.shortAnswersHint],
     toolSummaries: [effects.toolSummaries, s.toolSummariesHint],
     titleModel: [s.titleModelHint],
+    autoGoals: [effects.autoGoals, s.autoGoalsHint],
     threadDoneRetentionDays: [s.archived.doneRetentionHint],
     threadDeletionRetentionDays: [s.deleted.retentionHint],
     worktreeStorage: [`${worktrees.storageProject}: ${worktrees.storageProjectHint} .boite/worktrees`, `${worktrees.storageShared}: ${worktrees.storageSharedHint}`, worktrees.storageNewOnly],
@@ -115,6 +121,7 @@ export function settingHelp(key: RequestableKey): string | null {
     compactionByType: [s.compactionInheritanceHint],
     compactionSummary: [s.compactionSummaryHint],
     autoResumeLimitedThreads: [effects.autoResume, strings.quotas.autoResumeHint],
+    cacheKeepalive: [effects.cacheKeepalive, s.cacheKeepaliveHint],
     backgroundCompaction: [effects.backgroundCompaction, s.backgroundCompactionHint],
     deviceStream: [effects.deviceStream, s.deviceStreamHint],
     groupThreads: [strings.machines.groupThreadsHint],
@@ -220,6 +227,7 @@ export function settingsSectionLabel(section: string, providers: readonly Provid
     execution: settings.execution,
     origins: strings.machines.browserOrigins,
     'auto-compact': settings.autoCompact,
+    'cache-keepalive': settings.cacheKeepalive,
     'device-stream': settings.deviceStream,
     'background-compaction': settings.backgroundCompaction,
   };
@@ -229,7 +237,7 @@ export function settingsSectionLabel(section: string, providers: readonly Provid
 /** Pages a paired device's Settings leaves out: `OWNER_TABS` in `SettingsShell.svelte`. */
 const OWNER_PAGES: readonly SettingsPage[] = ['accounts', 'plugins', 'resources', 'brain'];
 /** Cards of the shared pages that only the owner's Settings draws there. */
-const OWNER_SECTIONS: readonly string[] = ['quiet', 'agents-alone', 'agent-replies', 'worktrees', 'privacy', 'execution', 'origins', 'auto-compact', 'device-stream', 'background-compaction'];
+const OWNER_SECTIONS: readonly string[] = ['quiet', 'agents-alone', 'agent-replies', 'worktrees', 'privacy', 'execution', 'origins', 'cache-keepalive', 'auto-compact', 'device-stream', 'background-compaction'];
 /**
  * What a phone browser's Settings (`MobileSettings.svelte`) draws: the pages
  * it opens whole, then the cards it has of the others. Keep it in step with
@@ -240,7 +248,7 @@ const PHONE_CARDS: Partial<Record<SettingsPage, readonly string[]>> = {
   resources: ['limits', 'tasks'],
   machines: ['machines', 'group'],
   general: ['archived', 'worktrees', 'conversations', 'quiet', 'agents-alone', 'agent-replies'],
-  advanced: ['auto-compact'],
+  advanced: ['cache-keepalive', 'auto-compact', 'background-compaction', 'device-stream'],
 };
 
 /**
