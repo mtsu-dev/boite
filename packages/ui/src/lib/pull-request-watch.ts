@@ -1,10 +1,10 @@
 import type { PullRequestWatch } from '@boite/contracts';
-import { time } from './format';
+import { dayClock } from './format';
 import { fill, strings } from './strings';
 
 /** What a pull request watch last saw, or why it waits: the line beside its number in the panel and the header's menu. */
 export function watchStatus(watch: PullRequestWatch): string {
-  if (watch.paused) return fill(watch.paused.reason === 'rate-limit' ? strings.tasks.watchRateLimited : strings.tasks.watchUnreachable, { time: time(watch.paused.until) });
+  if (watch.paused) return fill(watch.paused.reason === 'rate-limit' ? strings.tasks.watchRateLimited : strings.tasks.watchUnreachable, { time: dayClock(watch.paused.until) });
   const seen = watch.seen;
   if (!seen) return strings.tasks.watchNotRead;
   const { total, running, failed } = seen.checks;

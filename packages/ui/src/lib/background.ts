@@ -51,7 +51,7 @@ export function threadWait(thread: ThreadSummary | null, store: Requests & RowSo
   }
   if (thread.backgroundWait?.state === 'waiting') return namedWait(thread.backgroundWait.for, thread.backgroundWait.since);
   const paused = thread.pullRequestWatches?.find(watch => watch.paused !== null);
-  if (paused) return { label: `#${paused.number} · ${watchStatus(paused)}`, since: null };
+  if (paused) return { label: watchStatus(paused), since: null };
   const watches = thread.pullRequestWatches?.filter(pullRequestWatchWaits);
   if (watches?.length) {
     const words = strings.sidebar.state.workWord;

@@ -84,8 +84,7 @@ test('a paused pull request watch shows its reason and next read instead of its 
   expect(wait()?.textContent).toContain('CI running #12');
   store.openThread = { ...thread, pullRequestWatches: [{ ...watch, paused: { reason: 'rate-limit', until: Date.now() + 60_000, message: 'rate limit' } }] };
   await settle();
-  expect(wait()?.textContent).toMatch(/GitHub rate limit, next read .+/);
-  expect(wait()?.textContent).toContain('#12');
+  expect(wait()?.textContent).toMatch(/GitHub rate limit · retry .+/);
   expect(wait()?.querySelector('[data-testid=agent-elapsed]')).toBeNull();
 });
 

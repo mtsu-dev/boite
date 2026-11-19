@@ -33,8 +33,8 @@ export const fr: Translation = {
     watchFailed: '{count} en échec',
     watchConflict: 'En conflit avec {base}',
     watchQueued: 'File de merge, position {position}',
-    watchRateLimited: 'Limite de requêtes GitHub, prochaine lecture {time}',
-    watchUnreachable: 'GitHub injoignable, prochaine lecture {time}',
+    watchRateLimited: 'Limite GitHub · reprise {time}',
+    watchUnreachable: 'GitHub injoignable · reprise {time}',
     stopWatch: 'Arrêter la surveillance',
     stopWatchOf: 'Ne plus surveiller #{number}'
   }
