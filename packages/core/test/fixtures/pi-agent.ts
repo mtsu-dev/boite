@@ -103,8 +103,9 @@ const sessionId = flag('--session-id');
 const sessionDir = flag('--session-dir');
 const model = flag('--model');
 log(`argv sessionId=${sessionId} sessionDir=${sessionDir} model=${model}`);
-// What Boite's background compaction gave this process: the extension and its setting.
-if (process.argv.includes('--extension')) log(`extension ${flag('--extension')}`);
+for (const [index, arg] of process.argv.entries()) {
+  if (arg === '--extension') log(`extension ${process.argv[index + 1] ?? ''}`);
+}
 if (process.env['BOITE_COMPACTION'] !== undefined) log(`compaction ${process.env['BOITE_COMPACTION']}`);
 
 // ---------------------------------------------------------------------------
