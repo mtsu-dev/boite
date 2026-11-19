@@ -267,7 +267,8 @@ export interface TurnsRpcMethods {
   'turns.start': { params: { threadId: ThreadId; prompt: string; attachments?: Attachment[]; attachmentIds?: (string | null)[]; previewReferences?: PreviewReference[]; expectedSelectionVersion?: number; clientRequestId?: string }; result: Turn };
   /** Sends user input into the active turn; false leaves it queued for a later boundary or turn. */
   'turns.steer': { params: { threadId: ThreadId; turnId: TurnId; prompt: string; attachments?: Attachment[]; previewReferences?: PreviewReference[]; expectedSelectionVersion?: number; clientRequestId: string }; result: { accepted: boolean } };
-  'turns.stop': { params: { threadId: ThreadId }; result: { stopped: boolean } };
+  /** Stop the thread unless a supplied target turn is no longer the one it would stop. */
+  'turns.stop': { params: { threadId: ThreadId; expectedTurnId?: TurnId }; result: { stopped: boolean } };
   /** Resume or discard exactly one unsent prompt held after restart, retaining its execution selection. */
   'turns.recover': { params: { threadId: ThreadId; turnId: TurnId; action: 'resume' | 'discard' }; result: Turn };
   /**

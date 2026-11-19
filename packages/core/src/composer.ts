@@ -200,10 +200,6 @@ export class Composer {
         if (refusal !== null) throw refused(refusal);
         const active = this.#core.threads.isBusy(id);
         const forced = this.#forced.get(id) === item.id;
-        // Startup may be awaiting native preparation without a stoppable handle.
-        // inputReady wakes us as soon as that handle exists, before any tool output.
-        const runner = this.#core.threads.runner;
-        if (active && forced && this.#core.journal.runningTurn(id) && !runner.handles.has(id) && !runner.retryOf(id) && !runner.isPaused(id)) return;
         this.#forced.delete(id);
         if (active && forced) {
           // Only the current turn stops. Its children and coordination remain available to the new user turn.

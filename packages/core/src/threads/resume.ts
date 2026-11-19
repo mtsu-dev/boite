@@ -255,7 +255,10 @@ export class ResumePlanner {
     try {
       // The request id makes the resume one turn whatever happens: a second call returns the first.
       const limit = plan.reason === 'limit';
-      const turn = this.threads.startTurn(threadId, { prompt: plan.prompt, display: RESUME_TEXT[plan.reason].label },
+      const source = this.#core.journal.getTurn(plan.turnId);
+      const input = source && (plan.reason === 'crash' || plan.reason === 'error' || limit)
+        ? this.threads.handoff.continuation(source, plan.prompt) : { prompt: plan.prompt };
+      const turn = this.threads.startTurn(threadId, { ...input, display: RESUME_TEXT[plan.reason].label },
         { kind: 'resume', reason: limit ? 'limit' : 'carry-on', requestId: `${limit ? 'limit-resume' : 'auto-continue'}_${plan.turnId}` });
       sent = turn.id;
       this.log('info', threadId, `Turn ${turn.id} resumes the thread after turn ${plan.turnId} stopped (${plan.reason})`, 'started', plan);

@@ -80,6 +80,14 @@ export class Scheduler {
     this.#pump();
   }
 
+  stopTarget(threadId: ThreadId): TurnId | undefined {
+    const running = this.running.get(threadId);
+    if (running) return running.turnId;
+    for (const entry of this.#queue.values()) {
+      if (entry.threadId === threadId) return entry.turnId;
+    }
+  }
+
   stop(threadId: ThreadId): boolean {
     const running = this.running.get(threadId);
     if (running !== undefined) {

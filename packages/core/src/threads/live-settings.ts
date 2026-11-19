@@ -27,6 +27,7 @@ export class LiveSettings {
   attach(handle: TurnHandle): void {
     this.handle = handle;
     this.finished = Promise.withResolvers<void>();
+    if (this.wanted !== null) this.change(this.wanted);
   }
 
   detach(): void {

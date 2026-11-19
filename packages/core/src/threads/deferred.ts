@@ -85,7 +85,8 @@ export class DeferredInput {
     const turn = core.journal.runningTurn(threadId);
     if (turn?.execution?.operation === 'compact' || turn?.execution?.operation === 'keepalive') return;
     const turnId = turn?.id;
-    runner.steering.add(threadId);
+    const steering = runner.beginSteering(threadId, handle);
+    if (!steering) return;
     let recorded = false;
     try {
       while (!core.stopping && runner.handles.get(threadId) === handle) {
@@ -93,7 +94,7 @@ export class DeferredInput {
         if (text === undefined) break;
         recorded = false;
         const accepted = () => {
-          if (recorded || core.stopping) return;
+          if (recorded || core.stopping || steering.signal.aborted) return;
           if (turnId) runner.answerAfter.set(turnId, this.#recordAnswer(threadId, turnId, text));
           const held = answers.get(threadId) ?? [];
           const index = held.indexOf(text);
@@ -102,15 +103,15 @@ export class DeferredInput {
           recorded = true;
           this.#changed(threadId);
         };
-        if (await submit(text, undefined, accepted)) accepted();
+        if (await steering.send(submit, text, undefined, accepted)) accepted();
         if (!recorded) break;
       }
     } catch (error) {
       // A transport may have sent the text before it lost the acknowledgement.
       if (!recorded) this.#uncertain.add(handle);
-      if (!core.stopping) core.log('warn', `thread ${threadId}: steering an async answer failed, it waits for the next turn: ${messageOf(error)}`);
+      if (!core.stopping && !steering.signal.aborted) core.log('warn', `thread ${threadId}: steering an async answer failed, it waits for the next turn: ${messageOf(error)}`);
     } finally {
-      runner.steering.delete(threadId);
+      steering.release();
       // A late rejection must not undo Stop or retry a failed turn.
       if (!core.stopping && !runner.handles.has(threadId) && turnId && core.journal.getTurn(turnId)?.status === 'done') this.flushDeferred(threadId);
     }

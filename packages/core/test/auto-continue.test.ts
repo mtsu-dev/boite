@@ -33,7 +33,7 @@ function scripted(...outcomes: Outcome[]): TurnContext[] {
     startTurn(ctx) {
       seen.push(ctx);
       const next = outcomes[Math.min(seen.length - 1, outcomes.length - 1)]!;
-      return { stop() {}, done: Promise.resolve(typeof next === 'function' ? next(ctx) : next) };
+      return { stop() {}, async steer() { return true; }, done: Promise.resolve(typeof next === 'function' ? next(ctx) : next) };
     },
   }));
   return seen;
@@ -60,25 +60,34 @@ function openingOf(h: TestCore, threadId: string, turnId: string): { text: strin
 
 test('a turn that ends on an API error resumes by itself with the error and a carry-on prompt', async () => {
   const h = await startTestCore();
-  const asked = scripted(failed('API Error: Connection refused (ECONNREFUSED)'), done);
+  const fail = Promise.withResolvers<TurnResult>();
+  const image = { kind: 'image' as const, mimeType: 'image/png', data: 'aGVsbG8=', name: 'target.png' };
+  const asked = scripted(() => fail.promise, done);
   try {
     const client = await h.connect();
     const { threadId } = await echoThread(h, client);
     const retries: string[] = [];
     client.on('thread.updated', thread => { if (thread.id === threadId && thread.retry) retries.push(`${thread.retry.kind} ${thread.retry.attempt}/${thread.retry.attempts}`); });
     const first = await client.call('turns.start', { threadId, prompt: 'port the shader' });
+    await waitFor(() => h.core.threads.runner.handles.has(threadId));
+    expect(await client.call('turns.steer', { threadId, turnId: first.id, prompt: 'keep the contrast', clientRequestId: 'resume_steer_1' })).toEqual({ accepted: true });
+    expect(await client.call('turns.steer', { threadId, turnId: first.id, prompt: 'use this target', attachments: [image], clientRequestId: 'resume_steer_2' })).toEqual({ accepted: true });
+    fail.resolve(failed('API Error: Connection refused (ECONNREFUSED)'));
     await waitFor(() => turns(h, threadId).length === 2 && turns(h, threadId)[1]!.status === 'done');
     const resume = turns(h, threadId)[1]!;
     expect(resume.execution?.operation).toBe('resume');
     expect(asked).toHaveLength(2);
     expect(asked[1]!.prompt).toContain('ECONNREFUSED');
     expect(asked[1]!.prompt).toContain('Continue the current task from where it stopped');
+    expect(asked[1]!.thread.sessionId).toBe('native');
+    expect(asked[1]!.prompt).toMatch(/port the shader[\s\S]*keep the contrast[\s\S]*use this target/);
+    expect(asked[1]!.attachments).toEqual([image]);
     expect(openingOf(h, threadId, resume.id).label).toBe(AUTO_CONTINUE_LABEL.error);
     expect(h.core.journal.getTurn(first.id)?.status).toBe('error');
     expect(retries).toContain('auto-continue 1/2');
     expect(h.core.threads.require(threadId)).toMatchObject({ status: 'idle' });
     expect((await client.call('threads.get', { threadId })).retry).toBeNull();
-  } finally { await h.stop(); }
+  } finally { fail.resolve(failed()); await h.stop(); }
 });
 
 test('two resumes in a row that fail again end the row: the last failure stays for the user', async () => {
@@ -290,8 +299,9 @@ test('background work that ends without waking its agent resumes the thread; a S
 });
 
 /** A killed core stops writing mid-turn: its journal closes under the running turn. */
-async function crash(h: TestCore): Promise<void> {
+async function crash(h: TestCore, cut?: () => void): Promise<void> {
   h.core.journal.close();
+  cut?.();
   await h.server.stop();
   await h.core.close();
   delete process.env.BOITE_DATA_DIR;
@@ -303,9 +313,10 @@ async function restart(h: TestCore): Promise<{ core: Core; stop: () => Promise<v
   return { core, stop: async () => { await server.stop(); await core.close(); await removeDir(h.dataDir); } };
 }
 
-async function crashMidTurn(prompt: string): Promise<{ h: TestCore; threadId: string; turnId: string }> {
+async function crashMidTurn(prompt: string, stopFirst = false): Promise<{ h: TestCore; threadId: string; turnId: string }> {
   const h = await startTestCore();
   let started = false;
+  let cut: (() => void) | undefined;
   // The agent never answers by itself; the closing core's stop is all that settles it.
   restores.push(setDriver('echo', {
     protocol: 'echo',
@@ -313,17 +324,33 @@ async function crashMidTurn(prompt: string): Promise<{ h: TestCore; threadId: st
       say(ctx, { type: 'text', text: 'Halfway through.' });
       started = true;
       const { promise, resolve } = Promise.withResolvers<TurnResult>();
-      return { stop() { resolve({ status: 'stopped', sessionId: 'native', usage: null }); }, done: promise };
+      cut = () => resolve({ status: 'stopped', sessionId: 'native', usage: null });
+      return { stop() { if (!stopFirst) cut?.(); }, done: promise };
     },
   }));
   const client = await h.connect();
   const { threadId } = await echoThread(h, client);
   const turn = await client.call('turns.start', { threadId, prompt });
   await waitFor(() => started);
+  if (stopFirst) {
+    expect(await client.call('turns.stop', { threadId })).toEqual({ stopped: true });
+    expect(h.core.journal.getTurn(turn.id)?.status).toBe('running');
+  }
   client.close();
-  await crash(h);
+  await crash(h, cut);
   return { h, threadId, turnId: turn.id };
 }
+
+test('an acknowledged Stop survives a crash while the native attempt is still running', async () => {
+  const { h, threadId, turnId } = await crashMidTurn('stop this migration', true);
+  const asked = scripted(done);
+  const next = await restart(h);
+  try {
+    expect(next.core.journal.getTurn(turnId)).toMatchObject({ status: 'stopped', error: null });
+    expect(next.core.threads.get(threadId).turns).toHaveLength(1);
+    expect(asked).toHaveLength(0);
+  } finally { await next.stop(); }
+});
 
 test('a core that dies mid-turn resumes that turn once the next core starts, quoting the request', async () => {
   const { h, threadId, turnId } = await crashMidTurn('migrate the journal to schema 38');

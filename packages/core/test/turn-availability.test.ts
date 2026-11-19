@@ -79,6 +79,59 @@ test.each(['preparation', 'attempt', 'retry'] as const)('an account signed out d
   }
 });
 
+test('Stop during the second protection preparation never starts the provider', async () => {
+  const h = await startTestCore();
+  const entered = Promise.withResolvers<void>(), ready = Promise.withResolvers<void>();
+  const started: TurnContext[] = [];
+  const restore = setDriver('echo', {
+    protocol: 'echo',
+    startTurn(ctx) {
+      started.push(ctx);
+      return { stop() {}, done: Promise.resolve({ status: 'done', sessionId: null, usage: null }) };
+    },
+  });
+  let calls = 0;
+  const held = spyOn(h.core.sharedAccess.execution, 'prepare').mockImplementation(() => {
+    if (++calls === 2) { entered.resolve(); return ready.promise; }
+  });
+  try {
+    const client = await h.connect();
+    const { threadId } = await echoThread(h, client);
+    const turn = await client.call('turns.start', { threadId, prompt: 'Stop before native startup' });
+    await entered.promise;
+    expect(await client.call('turns.stop', { threadId })).toEqual({ stopped: true });
+    ready.resolve();
+    await waitFor(() => h.core.scheduler.stopTarget(threadId) === undefined);
+    expect(h.core.journal.getTurn(turn.id)?.status).toBe('stopped');
+    expect(started).toHaveLength(0);
+  } finally {
+    ready.resolve();
+    held.mockRestore();
+    await h.stop();
+    restore();
+  }
+});
+
+test('Stop for a previous turn leaves its successor and the thread activity alone', async () => {
+  const h = await startTestCore();
+  const pause = spyOn(h.core.activity, 'pauseAll');
+  const unwatch = spyOn(h.core.pullRequestWatches, 'endThread');
+  try {
+    const client = await h.connect();
+    const { threadId } = await echoThread(h, client);
+    const previous = await client.call('turns.start', { threadId, prompt: 'first' });
+    await waitFor(() => h.core.journal.getTurn(previous.id)?.status === 'done');
+    const active = await client.call('turns.start', { threadId, prompt: '[sleep:60000]' });
+    await waitFor(() => h.core.threads.runner.handles.has(threadId));
+    expect(await client.call('turns.stop', { threadId, expectedTurnId: previous.id })).toEqual({ stopped: false });
+    expect(pause).not.toHaveBeenCalled();
+    expect(unwatch).not.toHaveBeenCalled();
+    expect(h.core.journal.getTurn(active.id)?.status).toBe('running');
+    expect(await client.call('turns.stop', { threadId, expectedTurnId: active.id })).toEqual({ stopped: true });
+    await waitFor(() => h.core.journal.getTurn(active.id)?.status === 'stopped');
+  } finally { pause.mockRestore(); unwatch.mockRestore(); await h.stop(); }
+});
+
 test('a turn refused at capacity before writing anything tries again with the same input until it answers', async () => {
   const h = await startTestCore();
   try {
