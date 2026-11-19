@@ -84,6 +84,46 @@ test('a mochi\'s Boite guide is the thread guide less the project-bound commands
   expect(second.split(BOT_GUIDE).length - 1).toBe(1);
 });
 
+test('a warm mochi gets each delegation policy change once and a fresh disabled mochi skips the guide', async () => {
+  await client.call('brain.configure', { path: null, enabled: false, boiteGuide: true });
+  const driver = scripted(() => ({ text: 'Noted.' })); restore = driver.restore;
+  const { agent, threadId } = await makeAgent(h, client);
+  const prompts = () => driver.prompts.get(threadId)!;
+  const guide = 'Boite subagents';
+  const ask = async () => {
+    const count = prompts().length;
+    await client.call('turns.start', { threadId, prompt: 'Keep working.' });
+    await waitFor(() => prompts().length === count + 1 && settled(h, threadId));
+    return prompts().at(-1)!;
+  };
+  const configure = async (enabled: boolean) => {
+    const runtime = await client.call('agents.runtime.get', { agentId: agent.id });
+    await client.call('agents.runtime.configure', {
+      agentId: agent.id,
+      expectedRevision: h.core.workforce.records.get('profile', agent.id).revision,
+      config: { ...runtime, subagents: { ...runtime.subagents, enabled } },
+    });
+  };
+  expect(prompts()[0]).not.toContain(guide);
+  const sessionId = h.core.threads.require(threadId).sessionId;
+  expect(sessionId).not.toBeNull();
+  await configure(true);
+  expect(await ask()).toContain('boite delegate spawn');
+  expect(await ask()).not.toContain(guide);
+  await configure(false);
+  expect(await ask()).toContain('the owner turned them off');
+  expect(await ask()).not.toContain(guide);
+  await configure(true);
+  expect(await ask()).toContain('boite delegate spawn');
+  expect(await ask()).not.toContain(guide);
+  expect(h.core.threads.require(threadId).sessionId).toBe(sessionId);
+
+  await configure(false);
+  const thread = h.core.threads.require(threadId);
+  h.core.journal.putThread({ ...thread, sessionId: null, sessionGeneration: (thread.sessionGeneration ?? 0) + 1 });
+  expect(await ask()).not.toContain(guide);
+});
+
 test('the context block is sent once, then again only on a fresh session or a compaction; a change to MEMORY.md alone goes as its lines', async () => {
   let compact = false;
   const driver = scripted(() => ({ text: 'Noted.', compacted: compact })); restore = driver.restore;
@@ -135,6 +175,16 @@ test('the context block is sent once, then again only on a fresh session or a co
   expect(persona).not.toContain(BOT_GUIDE);
   expect(await ask('Anything else?')).not.toContain('Answer about support.');
 
+  const latest = await client.call('agents.brain.get', { agentId: agent.id });
+  await client.call('agents.brain.save', {
+    agentId: agent.id, expectedRevision: latest.revision, instructions: 'Answer about both.',
+    memory: latest.memory.replace('The release moved to Monday.', 'The release moved to Tuesday.'),
+  });
+  const both = await ask('Read the new instructions and notes');
+  expect(both).toContain('Answer about both.');
+  expect(both).toMatch(/Lines removed:\n- \d{4}-\d{2}-\d{2} The release moved to Monday\.\n\nLines added at the top:\n- \d{4}-\d{2}-\d{2} The release moved to Tuesday\.\n/);
+  expect(both).not.toContain('the rest of who you are is as it was');
+
   // A fresh native session (an account switch) hears the block whole, memory changed or not, with the journal's history.
   await client.call('agents.memory.note', { agentId: agent.id, text: 'Ship notes go to the wiki.' });
   const thread = h.core.threads.require(threadId);
@@ -157,7 +207,7 @@ test('the context block is sent once, then again only on a fresh session or a co
   // Each turn that carried something is on the thread's events: block or memory, its size and hash.
   const turns = new Map(turnsOf(h, threadId).map(t => [t.id, t]));
   const kinds = traced().map(t => t.kind);
-  expect(kinds).toEqual(['block', 'memory', 'memory', 'memory', 'block', 'block', 'block']);
+  expect(kinds).toEqual(['block', 'memory', 'memory', 'memory', 'block', 'block', 'block', 'block']);
   for (const trace of traced()) {
     expect(turns.has(trace.turnId)).toBe(true);
     expect(trace.hash).toMatch(/^[0-9a-f]{64}$/);

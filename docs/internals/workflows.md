@@ -60,7 +60,7 @@ models` lists the choices.
 | `when` | `{ "path", "equals" }`, `{ "path", "notEquals" }`, `{ "path", "in": [values] }`, `{ "path", "notEmpty": true }` or `{ "path", "empty": true }`, with a string, number, boolean or null. A false condition skips the step |
 | `repeat` | Optional. `{ "from", "until", "max" }` runs the steps from `from` to this one again until `until`, a condition like `when`, holds ([loops](#loops)) |
 | `output` | The JSON shape the step must return: `"string"`, `"number"`, `"boolean"`, `"any"`, `[shape]` or `{ "key": shape }` |
-| `worktree` | Optional. `true` runs the step in a git worktree of its own on a new branch from the conversation's HEAD, as `delegate spawn --worktree` does ([delegation](delegation.md#children-in-their-own-worktree)). The step's `worktree` record, `boite workflow show` and the run's summary name the branch to merge, or say it was removed with nothing in it |
+| `worktree` | Optional. `true` runs the step in a git worktree of its own on a new branch from the conversation's HEAD, as `delegate spawn --worktree` does ([delegation](delegation.md#children-in-their-own-worktree)). The step's details and the run's summary name the branch to merge, or say it was removed with nothing in it |
 | `machine` | Optional. Another machine of the group, by name or core id prefix as `delegate spawn --machine` takes it. The step runs there ([below](#steps-on-another-machine)). Not with `compute` |
 | `project` | Optional, with `machine` only. One of that machine's projects, as `delegate spawn --project`. Left out, the one named like this conversation's project |
 
@@ -238,8 +238,9 @@ to another owner's host.
 
 A failed step blocks the steps that depend on it. Independent steps and
 the other items of a fan-out keep running. The parent hears of each failure
-once, when its own conversation is idle. The run sends its failed summary
-after the independent work finishes.
+once, when its own conversation is idle. To read the full error, pass the
+notice's failed key to `boite workflow show <run-id> <step-or-execution>`.
+The run sends its failed summary after the independent work finishes.
 
 `boite workflow retry <run-id> <step>` starts the named step's failed
 executions in fresh conversations, with the same task and, for a local
@@ -258,7 +259,7 @@ cut to an equal share of 10,000 characters. A larger one is held to those
 value (less only when the floors of every text together pass the budget, all of
 them shrinking alike), errors and the answers of the last steps (those no other
 step reads) then grow evenly, then the other values. Each shortened text ends in `[cut]`, and the
-summary's first line counts them and points to `boite workflow show <run-id>`
+summary's first line counts them and points to `boite workflow show <run-id> --details`
 and the steps' conversations for the whole text.
 
 Handing the summary back is a turn of the parent. If the team is paused before
@@ -359,7 +360,9 @@ boite workflow help                     # plan format and command help
 boite workflow check <plan.json|json>   # validate and print the columns
 boite workflow run <plan.json|json>     # start a run and open its panel
 boite workflow list
-boite workflow show <run-id>            # executions, threads and output
+boite workflow show <run-id>            # execution status and threads
+boite workflow show <run-id> <step-or-execution>  # one step or execution in full
+boite workflow show <run-id> --details  # full results for the run
 boite workflow extend <run-id> <steps>
 boite workflow pause|resume|stop <run-id>
 boite workflow retry <run-id> [step]

@@ -714,8 +714,11 @@ test('a failed item lets the other items finish and its retry opens a new conver
     { id: 'each', profile: 'fast', forEach: 'list.items', task: 'do {{item}}' },
   ] }, requestId: 'fan' });
   await waitFor(() => held.size === 2);
-  const first = h.core.workflows.get(threadId, run.id).nodes[1]!.instances[0]!.threadId!;
-  const second = h.core.workflows.get(threadId, run.id).nodes[1]!.instances[1]!.threadId!;
+  const items = () => h.core.workflows.get(threadId, run.id).nodes[1]!.instances;
+  const [firstItem, secondItem, thirdItem] = items();
+  const first = firstItem!.threadId!;
+  const second = secondItem!.threadId!;
+  expect(thirdItem).toMatchObject({ status: 'waiting', threadId: null });
   held.get(first)!('', 'error');
   await waitFor(() => h.core.workflows.get(threadId, run.id).nodes[1]!.instances[0]!.status === 'failed');
   // The failure is delivered without waiting for the other items to finish.
@@ -723,8 +726,18 @@ test('a failed item lets the other items finish and its retry opens a new conver
   // The parent hears of the failure now, once, not when the last running step ends.
   const told = () => prompts.filter(p => p.threadId === threadId && p.prompt.startsWith('Boite workflow step failed'));
   await waitFor(() => told().length === 1);
-  expect(told()[0]!.prompt).toContain(`"failed":[{"step":"each","item":"1","status":"failed"`);
-  expect(told()[0]!.prompt).toContain(`boite workflow retry ${run.id} each`);
+  const notice = told()[0]!.prompt;
+  expect(notice).toContain('Other steps and fan-out items continue.');
+  await waitFor(() => items()[2]!.status === 'running');
+  expect(notice).toContain(`"failed":[{"step":"each","item":"1","status":"failed"`);
+  expect(notice).toContain(`boite workflow retry ${run.id} each`);
+  const detail = /Read full details with boite (workflow show [\w-]+ [\w#-]+)\./.exec(notice)?.[1];
+  expect(detail).toBe(`workflow show ${run.id} ${firstItem!.key}`);
+  const out: string[] = [];
+  const env = { [AGENT_ENV.coreUrl]: h.url, [AGENT_ENV.token]: h.core.agents.tokenFor(threadId), [AGENT_ENV.threadId]: threadId };
+  expect(await runCli(detail!.split(' '), { out: text => out.push(text), err: text => out.push(text), env, cwd: h.dataDir })).toBe(0);
+  expect(out.join('')).toContain(`${firstItem!.key} "1" failed`);
+  expect(out.join('')).not.toContain(secondItem!.key);
   await waitFor(() => h.core.workflows.get(threadId, run.id).failuresNoticed?.length === 1);
   for (const item of [2, 3, 4]) {
     await waitFor(() => {

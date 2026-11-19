@@ -28,6 +28,17 @@ function sentGuides(core: Core, threadId: string): GuidesSent {
   return value && 'hash' in value ? { coordination: value } : value ?? {};
 }
 
+function guideHeldBy(core: Core, thread: ThreadSummary, sessionId: string | null, kind: GuideKind): GuideSent | undefined {
+  if (sessionId === null) return undefined;
+  const sent = sentGuides(core, thread.id)[kind];
+  return sent?.sessionGeneration === (thread.sessionGeneration ?? 0) ? sent : undefined;
+}
+
+/** Whether this native session has read a version of the guide. */
+export function sessionHoldsGuide(core: Core, thread: ThreadSummary, sessionId: string | null, kind: GuideKind): boolean {
+  return guideHeldBy(core, thread, sessionId, kind) !== undefined;
+}
+
 /** What a running turn carried, by thread, until that turn ends; in memory, so a core that stops mid-turn marks nothing. */
 const carried = new WeakMap<Core, Map<string, Pending>>();
 
@@ -40,14 +51,12 @@ function carriedBy(core: Core): Map<string, Pending> {
 /** The guide for one composed prompt: `text` whole, or '' when this session already holds it. */
 export function coordinationGuideFor(core: Core, thread: ThreadSummary, sessionId: string | null, turnId: string, text: string, kind: GuideKind = 'coordination'): string {
   if (!text) return '';
-  const sent = sentGuides(core, thread.id)[kind];
-  const sessionGeneration = thread.sessionGeneration ?? 0;
   const hash = createHash('sha256').update(text).digest('hex');
-  if (sessionId !== null && sent?.hash === hash && sent.sessionGeneration === sessionGeneration) return '';
+  if (guideHeldBy(core, thread, sessionId, kind)?.hash === hash) return '';
   const map = carriedBy(core);
   const pending = map.get(thread.id);
   const guides = pending?.turnId === turnId ? pending.guides : {};
-  map.set(thread.id, { turnId, guides: { ...guides, [kind]: { hash, sessionGeneration } } });
+  map.set(thread.id, { turnId, guides: { ...guides, [kind]: { hash, sessionGeneration: thread.sessionGeneration ?? 0 } } });
   return text;
 }
 

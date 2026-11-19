@@ -462,7 +462,7 @@ export class TurnContexts {
       // The coordination guide and an entrusted thread's instructions: whole on a fresh session or once they changed, else nothing (`coordination-context.ts`).
       const coordinationGuide = inject && !bare && guideEnabled ? coordinationGuideFor(this.#core, thread, sessionId, turn.id, this.#core.coordination.instructions(threadId) + this.#core.workforce.entrusted.instructions(threadId)) : '';
       const request = operation ? '' : preparedPrompt;
-      const delegationText = inject && !bare && !noGuides ? this.#core.delegation.instructions(threadId, request, guideEnabled) : '';
+      const delegationText = inject && !bare && !noGuides ? this.#core.delegation.instructions(threadId, request, guideEnabled, sessionId) : '';
       const delegationGuide = coordinationGuideFor(this.#core, thread, sessionId, turn.id, delegationText, 'delegation');
       const reminder = delegationText && !delegationGuide && !thread.parentThreadId && !this.#core.delegation.remote.parentOf(threadId) ? delegationReminder(request) : '';
       // A driver that takes the guide in its system prompt keeps it there, compaction included.

@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test';
+import { AGENT_ENV } from '@boite/contracts';
 import { SHORT_ANSWERS } from '../src/agent-guide.ts';
+import { runCli } from '../src/cli.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import { echoDriver } from '../src/drivers/echo.ts';
 import { CAPACITY_CONTINUE_PROMPT, CAPACITY_RETRY } from '../src/threads/turn-attempts.ts';
@@ -42,6 +44,15 @@ test('the coordination guide goes once a native session: again when it changes, 
     const workflow = await run('Inspect the workflow');
     expect(workflow).toContain('boite workflow help');
     expect(workflow).not.toContain('Boite subagents');
+    const delegationTurn = await run('Hand the review to a subagent');
+    expect(delegationTurn).not.toContain('Boite subagents');
+    const help = /Delegation commands: boite (delegate help)\./.exec(delegationTurn)?.[1];
+    expect(help).toBe('delegate help');
+    const output: string[] = [];
+    const env = { [AGENT_ENV.coreUrl]: h.url, [AGENT_ENV.token]: h.core.agents.tokenFor(threadId), [AGENT_ENV.threadId]: threadId };
+    expect(await runCli(help!.split(' '), { out: text => output.push(text), err: text => output.push(text), env, cwd: h.dataDir })).toBe(0);
+    expect(output.join('')).toContain('delegate spawn <brief>');
+    expect(output.join('')).not.toContain('workflow check|run <plan>');
     const before = prompts.length;
     for (let index = 2; index <= 20; index++) {
       const prompt = await run(`Turn ${index}`);

@@ -831,7 +831,7 @@ export class Delegation {
     return resumed;
   }
   /** What an agent reads about its team on a turn ([guide](./delegation/guide.ts)). */
-  instructions(threadId: string, request?: string, fresh = true): string { return teamInstructions(this.#core, threadId, request, fresh); }
+  instructions(threadId: string, request?: string, guideEnabled = true, sessionId: string | null = null): string { return teamInstructions(this.#core, threadId, request, guideEnabled, sessionId); }
   #changed(rootId: string): void {
     if (this.#closed || this.#pendingChanges.has(rootId)) return;
     this.#pendingChanges.add(rootId);
