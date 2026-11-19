@@ -57,6 +57,21 @@ export function addFakeProject(ctx: FakeContext, folder: { path: string; name?: 
   // As the core on Windows: the same folder in another case is the project already there.
   const existing = ctx.projects.find((p) => pathKey(p.path) === pathKey(path));
   if (existing) return { project: describedProject(ctx, existing), added: false };
+  // As the core: a removed folder comes back under its id, with every thread it had.
+  const removed = ctx.removedProjects.get(pathKey(path));
+  if (removed) {
+    ctx.removedProjects.delete(pathKey(path));
+    const back: Project = { ...removed.project, ...(folder.name ? { name: folder.name } : {}) };
+    delete back.archived;
+    ctx.projects.push(back);
+    const summary = describedProject(ctx, back);
+    ctx.emit('project.added', summary);
+    for (const thread of removed.threads) {
+      ctx.threads.set(thread.id, thread);
+      ctx.emit('thread.created', structuredClone(toSummary(thread)));
+    }
+    return { project: summary, added: true };
+  }
   const project: Project = {
     id: `p-${++ctx.seq}`,
     name: folder.name ?? path.split(/[\\/]/).filter(Boolean).pop() ?? path,
@@ -175,24 +190,19 @@ export function projectMethods(ctx: FakeContext) {
           data: { projectId: params.projectId }
         });
       }
+      const project = ctx.projects.find((p) => p.id === params.projectId)!;
       ctx.projects = ctx.projects.filter((p) => p.id !== params.projectId);
-      for (const [id, family] of ctx.deletedThreads) if (family.threads.some(t => t.projectId === params.projectId)) {
-        for (const thread of family.threads) { ctx.mergedPrFixtures.delete(thread.id); ctx.mergedPrArchive.delete(thread.id); }
-        ctx.deletedThreads.delete(id);
-      }
-      ctx.emit('thread.deletionsUpdated', {});
       const threads = [...ctx.threads.values()].filter((thread) => thread.projectId === params.projectId);
-      // As the core: each thread is archived, and says so, before the records go.
+      // As the core: each thread is archived, and says so, then leaves the lists; nothing is deleted.
       for (const thread of threads) {
         thread.archived = true;
         ctx.touch(thread);
       }
       await Promise.all(threads.map((thread) => putAway(ctx, thread)));
+      ctx.removedProjects.set(pathKey(project.path), { project, threads });
       for (const thread of threads) {
-        ctx.mergedPrFixtures.delete(thread.id);
-        ctx.mergedPrArchive.delete(thread.id);
         ctx.threads.delete(thread.id);
-        ctx.emit('thread.removed', { threadId: thread.id });
+        ctx.emit('thread.removed', { threadId: thread.id, undoable: true });
       }
       ctx.emit('project.removed', { projectId: params.projectId });
       return { ok: true };

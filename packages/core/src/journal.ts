@@ -205,13 +205,6 @@ export class Journal {
     return new Map(rows.map((row) => [row.project_id, { archived: row.count, done: row.done }]));
   }
 
-  deleteProject(projectId: string): void {
-    for (const prefix of ['project-auto-archive-merged-pr:', 'project-auto-remove-worktrees:', 'todos:']) this.deleteSetting(`${prefix}${projectId}`);
-    this.db.query('DELETE FROM projects WHERE id = ?').run(projectId);
-    this.db.query('DELETE FROM project_icons WHERE project_id = ?').run(projectId);
-    this.db.query('DELETE FROM workflow_templates WHERE project_id = ?').run(projectId);
-  }
-
   /** What every project's icon reads as, bytes left out: one small query per list. */
   projectIcons(): Map<string, ProjectIconRow> {
     const rows = this.db.query('SELECT project_id, kind, tech, version FROM project_icons').all() as (ProjectIconRow & { project_id: string })[];
@@ -242,14 +235,31 @@ export class Journal {
       );
   }
 
+  /** A listed project; a removed one reads as gone. */
   getProject(projectId: string): Project | null {
-    const row = this.db.query('SELECT * FROM projects WHERE id = ?').get(projectId) as ProjectRow | null;
+    const row = this.db.query('SELECT * FROM projects WHERE id = ? AND removed_at IS NULL').get(projectId) as ProjectRow | null;
     return row === null ? null : toProject(row);
   }
 
   listProjects(): Project[] {
-    const rows = this.db.query('SELECT * FROM projects ORDER BY rowid').all() as ProjectRow[];
+    const rows = this.db.query('SELECT * FROM projects WHERE removed_at IS NULL ORDER BY rowid').all() as ProjectRow[];
     return rows.map(toProject);
+  }
+
+  /** The projects `projects.remove` took out of the lists, newest first: every row they had is still here. */
+  listRemovedProjects(): Project[] {
+    const rows = this.db.query('SELECT * FROM projects WHERE removed_at IS NOT NULL ORDER BY removed_at DESC').all() as ProjectRow[];
+    return rows.map(toProject);
+  }
+
+  /** Hides a project and, with it, its threads (`VISIBLE_THREADS`); nothing is deleted. */
+  markProjectRemoved(projectId: string, at: number): void {
+    this.db.query('UPDATE projects SET removed_at = ? WHERE id = ?').run(at, projectId);
+  }
+
+  /** Lists a removed project again, unarchived, under `name`, with every thread it had. */
+  restoreRemovedProject(projectId: string, name: string): void {
+    this.db.query('UPDATE projects SET removed_at = NULL, archived = 0, name = ? WHERE id = ?').run(name, projectId);
   }
 
   // -- threads --------------------------------------------------------------
@@ -290,13 +300,6 @@ export class Journal {
     for (const thread of candidates) this.getThread(thread.id);
   }
 
-  deleteThreadsOfProject(projectId: string): string[] {
-    const rows = this.db.query('SELECT id FROM threads WHERE project_id = ?').all(projectId) as { id: string }[];
-    const ids = rows.map(row => row.id);
-    this.deleteThreads(ids, { keepUsage: true });
-    return ids;
-  }
-
   /** Hide the stopped family while keeping its rows and deletion time across restarts. */
   stageThreadDeletion(rootId: string, threads: ThreadSummary[]): void {
     this.flushDeltas();
@@ -323,14 +326,17 @@ export class Journal {
   /**
    * Incognito conversations and the sub-threads they started. Their native
    * sessions wait in `takeIncognitoSessions` for the core, which alone knows
-   * which account directories it may clean.
+   * which account directories it may clean. `projectId` limits it to the
+   * conversations of a project being removed.
    */
-  purgeIncognitoThreads(): void {
+  purgeIncognitoThreads(projectId?: string): void {
     // Almost always none: then the family query is never run.
-    const roots = (this.db.query('SELECT id FROM threads WHERE incognito = 1').all() as { id: string }[]).map(row => row.id);
+    const roots = (projectId === undefined
+      ? this.db.query('SELECT id FROM threads WHERE incognito = 1').all()
+      : this.db.query('SELECT id FROM threads WHERE incognito = 1 AND project_id = ?').all(projectId)) as { id: string }[];
     if (roots.length === 0) return;
-    const children = this.db.query(`SELECT id FROM threads WHERE parent_thread_id IN (${roots.map(() => '?').join(', ')})`).all(...roots) as { id: string }[];
-    const ids = [...roots, ...children.map(row => row.id)];
+    const children = this.db.query(`SELECT id FROM threads WHERE parent_thread_id IN (${roots.map(() => '?').join(', ')})`).all(...roots.map(row => row.id)) as { id: string }[];
+    const ids = [...roots, ...children].map(row => row.id);
     this.#incognitoSessions.push(...threadSessions(this.db, ids));
     this.deleteThreads(ids);
   }

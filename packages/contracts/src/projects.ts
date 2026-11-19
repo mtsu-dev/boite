@@ -118,6 +118,11 @@ export interface ProjectsRpcMethods {
     params: { path?: string };
     result: { path: string; parent: string | null; directories: { name: string; path: string }[] };
   };
+  /**
+   * Take a project out of every list. Its running threads stop and are archived;
+   * nothing is deleted: threads, messages, turns, usage and traces stay on disk,
+   * and `projects.add` on the same folder brings the project back with them.
+   */
   'projects.remove': { params: { projectId: ProjectId }; result: { ok: true } };
   /**
    * Put a project away, or bring it back with `archived: false`. Nothing else
@@ -162,9 +167,13 @@ export interface ProjectsRpcMethods {
 }
 
 export interface ProjectsRpcEvents {
-  /** A project `projects.add` created. A known path returns its project without one. */
+  /**
+   * A project `projects.add` created, or a removed one it brought back, then a
+   * `thread.created` for each of its threads. A listed path returns its project
+   * without one.
+   */
   'project.added': Project;
-  /** A project `projects.remove` deleted, after the `thread.removed` of each of its threads. */
+  /** A project `projects.remove` took out of the lists, after the `thread.removed` of each of its threads. */
   'project.removed': { projectId: ProjectId };
   /** A project renamed, archived or restored, one whose count of archived threads moved, or one whose icon changed. */
   'project.updated': Project;

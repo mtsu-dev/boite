@@ -141,8 +141,10 @@ above the message box or the bottom tabs.
   Settings, General, Archived threads, for the number of days set in Keep
   deleted conversations for.
 - Archive project takes a project out of the list. Its threads keep running,
-  and a new thread brings it back. Remove from Boite removes the project and
-  its threads; the files on disk stay.
+  and a new thread brings it back. Remove from Boite takes the project and its
+  threads out of the app but keeps them saved, with their history and usage:
+  add the same folder again and they come back, the open ones reopened. The
+  files on disk stay.
 
 ## Import a Claude Code or Codex session
 

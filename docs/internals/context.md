@@ -705,7 +705,8 @@ applies both every 6 hours, and the end of a turn trims a thread once it holds
 checkpoints are kept for the newest 50 turns of a conversation". The same
 pass, and the removal of a thread's checkpoints, then deletes the shared
 files no thread links to any more.
-They survive restarts and leave with a permanently removed project or thread.
+They survive restarts and leave with a purged thread; a removed project keeps
+them for when its folder comes back.
 
 Each snapshot is limited to 20000 files and 128 MiB of saved content. A file
 above 16 MiB is not copied: the snapshot keeps only its metadata, so a change

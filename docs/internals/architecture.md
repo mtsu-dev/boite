@@ -127,8 +127,12 @@ An event-retention error keeps the pending statement and pass state for a
 retry after 30 s. Waiting for the WAL to catch up uses the same delay before
 any statistics or pruning work, without changing the batch size. Stopping
 retention or closing the journal prevents further ticks.
-Project removal explicitly clears thread-keyed tables; foreign keys are disabled.
-It and the purge of deleted conversations first keep each finished turn's time,
+Project removal deletes no row: it sets `projects.removed_at`, archives the
+project's threads and hides both from every list, so audits and usage keep the
+whole history. Adding the same folder again clears `removed_at` and reopens the
+threads that were open. Only its incognito threads are erased, as on any close.
+Foreign keys are disabled, so a purge clears thread-keyed tables explicitly.
+The purge of deleted conversations first keeps each finished turn's time,
 provider, model and usage in `removed_turn_usage`, so
 [`usage.history`](usage.md#usagehistory) still counts them.
 A newer journal schema is refused before writing, with the file and both versions.
@@ -262,7 +266,7 @@ markers. Restore retains history and previous archive flags without restarting
 agents. The default deletion retention is 30 days; `threadDeletionRetentionDays`
 accepts 0 to 3650, with 0 disabling automatic purge. Startup and minute passes
 purge expired families transactionally. Reads and restoration also check expiry.
-Project removal purges its pending deletions. Files, worktrees and branches
+A removed project's pending deletions expire on their own schedule. Files, worktrees and branches
 stay on disk; the
 [settled worktree cleanup](development.md#settled-worktree-cleanup) later removes
 a deleted thread's worktree when nothing in it would be lost. See
