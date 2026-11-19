@@ -4,8 +4,8 @@ import { chmod, mkdir, open, readdir, unlink, writeFile } from 'node:fs/promises
 import { arch, cpus, freemem, homedir, hostname, platform, release, totalmem, userInfo, version as osVersion } from 'node:os';
 import { join } from 'node:path';
 import {
-  AGENT_SUBMIT_REFUSED, createLogAnonymizer, deviceBound, formatLogDuration, formatLogLine, formatLogTime, ISSUE_REPOSITORY, logLevelAtLeast, logMatches, validateDiagnosticsLogsQuery, validateDiagnosticsParams,
-  type CoreLogLevel, type CoreLogRecord, type DiagnosticEnvironment, type DiagnosticProblem, type DiagnosticReportRecord, type DiagnosticsExport, type DiagnosticsExportParams,
+  AGENT_SUBMIT_REFUSED, createLogAnonymizer, deviceBound, formatLogDuration, formatLogLine, formatLogTime, ISSUE_REPOSITORY, logMatches, summarizeDiagnosticRecords, validateDiagnosticsLogsQuery, validateDiagnosticsParams,
+  type CoreLogRecord, type DiagnosticEnvironment, type DiagnosticProblem, type DiagnosticReportRecord, type DiagnosticsExport, type DiagnosticsExportParams,
   type DiagnosticsIssue, type DiagnosticsIssueParams, type DiagnosticSummary, type DiagnosticThread, type LogAnonymizer, type LogData, type ThreadSummary,
 } from '@boite/contracts';
 import type { Core } from './core.ts';
@@ -159,36 +159,9 @@ export class Diagnostics {
   }
 
   async #summarize(records: readonly CoreLogRecord[], since: number, anonymizer: LogAnonymizer, family: Set<string> | null): Promise<DiagnosticSummary> {
-    const counts: Record<CoreLogLevel, number> = { debug: 0, info: 0, warn: 0, error: 0 };
-    const problems = new Map<string, DiagnosticProblem>();
-    const perThread = new Map<string, { warnings: number; errors: number; lastError: { at: number; message: string } | null }>();
-    for (const record of records) {
-      counts[record.level] += 1;
-      if (record.threadId !== undefined) {
-        const entry = perThread.get(record.threadId) ?? { warnings: 0, errors: 0, lastError: null };
-        if (record.level === 'warn') entry.warnings += 1;
-        if (record.level === 'error') {
-          entry.errors += 1;
-          if (entry.lastError === null || entry.lastError.at < record.at) entry.lastError = { at: record.at, message: record.message.slice(0, 300) };
-        }
-        perThread.set(record.threadId, entry);
-      }
-      if (!logLevelAtLeast(record.level, 'warn')) continue;
-      const key = `${record.origin ?? 'core'}|${record.source}|${record.event}|${record.level}`;
-      const problem = problems.get(key);
-      if (problem === undefined) {
-        problems.set(key, { origin: record.origin ?? 'core', source: record.source, event: record.event, level: record.level as 'warn' | 'error', count: 1, firstAt: record.at, lastAt: record.at, message: record.message.slice(0, 500), threadIds: record.threadId ? [record.threadId] : [] });
-      } else {
-        problem.count += 1;
-        if (record.at < problem.firstAt) problem.firstAt = record.at;
-        // Read newest first: a record of the same instant is older, so the newest message stays.
-        if (record.at > problem.lastAt) { problem.lastAt = record.at; problem.message = record.message.slice(0, 500); }
-        if (record.threadId && !problem.threadIds.includes(record.threadId) && problem.threadIds.length < 5) problem.threadIds.push(record.threadId);
-      }
-    }
+    const { counts, problems, perThread, mentioned } = summarizeDiagnosticRecords(records);
     const all = this.#core.journal.listThreads();
     const projectPaths = new Map(this.#core.projects.list().map(project => [project.id, project.path]));
-    const mentioned = new Set(records.flatMap(record => [record.threadId, record.parentThreadId].filter((id): id is string => id !== undefined)));
     const threads: DiagnosticThread[] = all.filter(thread => (family === null || family.has(thread.id)) && (mentioned.has(thread.id) || (!thread.archived && thread.updatedAt >= since))).map(thread => {
       const seen = perThread.get(thread.id);
       return {
@@ -200,7 +173,7 @@ export class Diagnostics {
     });
     return {
       generatedAt: Date.now(), environment: this.#anonymizeEnvironment(this.environment(), anonymizer),
-      problems: [...problems.values()].sort((a, b) => (b.level === 'error' ? 1 : 0) - (a.level === 'error' ? 1 : 0) || b.lastAt - a.lastAt),
+      problems,
       threads, logFiles: await this.#core.logs.files(), counts, since,
     };
   }

@@ -11,6 +11,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { assignShards, type Shard } from './shards.mts';
+import { readShardJobLogs } from './shard-logs.ts';
 
 const ROOT = join(import.meta.dir, '..', '..');
 const TESTS = join(ROOT, 'packages', 'core', 'test');
@@ -84,21 +85,9 @@ export function mergeDurations(logs: { key: string; seconds: Record<string, numb
   }))]));
 }
 
-function gh(args: string[]): string {
-  const result = Bun.spawnSync(['gh', ...args], { stdout: 'pipe', stderr: 'pipe', cwd: ROOT, windowsHide: true });
-  if (result.exitCode !== 0) throw new Error(`gh ${args.join(' ')}: ${result.stderr.toString().trim()}`);
-  return result.stdout.toString();
-}
-
-/** The logs of a run's core jobs, by runner key; the run's core jobs must have passed, or a file cut short skews its time. */
 function runLogs(run: string): { key: string; log: string }[] {
-  const view = JSON.parse(gh(['run', 'view', run, '--json', 'jobs'])) as { jobs: { databaseId: number; name: string; conclusion: string }[] };
-  const jobs = view.jobs.filter((job) => jobKey(job.name) && job.conclusion !== 'skipped');
-  if (jobs.length === 0) throw new Error(`run ${run}: no core job ran`);
-  const failed = jobs.filter((job) => job.conclusion !== 'success');
-  if (failed.length) throw new Error(`run ${run}: ${failed.map((job) => `${job.name} ${job.conclusion}`).join(', ')}; refresh from a green run`);
-  const repo = process.env.GITHUB_REPOSITORY || gh(['repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner']).trim();
-  return jobs.map((job) => ({ key: jobKey(job.name)!, log: gh(['api', `repos/${repo}/actions/jobs/${job.databaseId}/logs`]) }));
+  return readShardJobLogs(run, 'core', job => Boolean(jobKey(job.name)) && job.conclusion !== 'skipped')
+    .map(({ name, log }) => ({ key: jobKey(name)!, log }));
 }
 
 if (import.meta.main) {

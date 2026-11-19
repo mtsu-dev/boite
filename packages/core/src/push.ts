@@ -188,8 +188,8 @@ export class PushStore {
     this.#keysPromise ??= (async () => {
       const existing = this.#core.journal.getSetting(KEYS) as Keys | null;
       if (existing) return existing;
-      const { default: webpush } = await import('web-push');
-      const generated = webpush.generateVAPIDKeys();
+      const { generateVAPIDKeys } = await import('web-push');
+      const generated = generateVAPIDKeys();
       // Secrets belong to private storage, never the append-only event payload.
       this.#core.journal.setSetting(KEYS, generated);
       return generated;
@@ -386,8 +386,8 @@ export class PushStore {
 
   /** Override the sender in tests to exercise lifecycle without contacting push providers. */
   send = async (subscription: PushSubscription, payload: string, keys: Keys, topic: string): Promise<void> => {
-    const { default: webpush } = await import('web-push');
-    await webpush.sendNotification(subscription, payload, {
+    const { sendNotification } = await import('web-push');
+    await sendNotification(subscription, payload, {
       vapidDetails: { ...keys, subject: this.#core.settings.get().publicUrl ?? 'https://github.com/mtsu-dev/boite' },
       TTL: 300, timeout: 10_000, urgency: 'normal', topic
     });

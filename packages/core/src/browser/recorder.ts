@@ -9,35 +9,16 @@ import {
   BROWSER_RECORDING_CHUNK_BYTES,
   BROWSER_RECORDING_CODECS,
   BROWSER_RECORDING_CODEC_LABELS,
+  BROWSER_RECORDING_CODEC_TYPES,
   BROWSER_RECORDING_MAX_BYTES,
+  recordingBitrate,
+  recordingSize,
+  recordingTypeCodec,
   type BrowserRecording,
   type BrowserRecordingCodec,
   type BrowserRecordingFrameRate,
 } from '@boite/contracts';
 import type { Cdp } from './cdp.ts';
-
-/** The MediaRecorder types tried for each codec, all MP4; plain `video/mp4` would let the engine pick. */
-const CODEC_TYPES: Record<BrowserRecordingCodec, string[]> = {
-  h264: ['video/mp4;codecs=avc1.640028', 'video/mp4;codecs=avc1.4d0028', 'video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1'],
-  hevc: ['video/mp4;codecs=hvc1.1.6.L123.B0', 'video/mp4;codecs=hev1.1.6.L123.B0', 'video/mp4;codecs=hvc1', 'video/mp4;codecs=hev1'],
-  av1: ['video/mp4;codecs=av01', 'video/mp4;codecs=av01.0.08M.08'],
-};
-
-export function recordingTypeCodec(type: string): BrowserRecordingCodec | null {
-  const codecs = /codecs=([^;]*)/i.exec(type)?.[1]?.toLowerCase() ?? '';
-  return /\bavc[13]/.test(codecs) ? 'h264' : /\b(hvc1|hev1)/.test(codecs) ? 'hevc' : /\bav01/.test(codecs) ? 'av1' : null;
-}
-
-/** T3 Code's budget: the bitrate follows pixels and frames, within 2.5 and 50 Mbit/s. */
-export function recordingBitrate(width: number, height: number, frameRate: number): number {
-  return Math.round(Math.min(50_000_000, Math.max(2_500_000, width * height * frameRate * 0.05)));
-}
-
-/** The video's size: the page's own up to 1920×1080, even sides for H.264. */
-export function recordingSize(width: number, height: number): { width: number; height: number } {
-  const scale = Math.min(1, 1920 / width, 1080 / height);
-  return { width: Math.max(2, Math.round(width * scale / 2) * 2), height: Math.max(2, Math.round(height * scale / 2) * 2) };
-}
 
 /**
  * Defines `__boiteRecorder` in the helper page. A still page streams no frame,
@@ -161,9 +142,9 @@ export class TabRecorder {
     this.#helper = { contextId, targetId, sessionId };
     try {
       await this.#evaluate(RECORDER_SCRIPT);
-      const types = BROWSER_RECORDING_CODECS.map(other => CODEC_TYPES[other]);
+      const types = BROWSER_RECORDING_CODECS.map(other => BROWSER_RECORDING_CODEC_TYPES[other]);
       const supported = await this.#evaluate<boolean[][]>(`Promise.all(${JSON.stringify(types)}.map(list => __boiteRecorder.types(list)))`);
-      const usable = Object.fromEntries(BROWSER_RECORDING_CODECS.map((other, i) => [other, CODEC_TYPES[other].find((_, j) => supported[i]?.[j]) ?? null])) as Record<BrowserRecordingCodec, string | null>;
+      const usable = Object.fromEntries(BROWSER_RECORDING_CODECS.map((other, i) => [other, BROWSER_RECORDING_CODEC_TYPES[other].find((_, j) => supported[i]?.[j]) ?? null])) as Record<BrowserRecordingCodec, string | null>;
       const type = usable[codec];
       if (!type) {
         const available = BROWSER_RECORDING_CODECS.filter(other => usable[other]).map(other => BROWSER_RECORDING_CODEC_LABELS[other]);
