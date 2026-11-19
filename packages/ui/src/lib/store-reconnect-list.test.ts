@@ -55,6 +55,37 @@ test('a reconnect after one thread changed among two thousand reads that thread,
   expect(store.error).toBeNull();
 });
 
+test('startup paints the first list page and keeps a newer edit through the final page', async () => {
+  const client = new FakeClient({ delayMs: 0, idle: 3000 });
+  const store = new Store();
+  stores.push(store);
+  store.attach(client);
+  const real = client.call.bind(client);
+  let release!: () => void;
+  const nextPage = new Promise<void>(resolve => { release = resolve; });
+  const calls = vi.spyOn(client, 'call').mockImplementation(((method: string, params: { page?: unknown }, options?: never) => {
+    const answer = real(method as never, params as never, options);
+    return method === 'threads.listChanges' && typeof params.page === 'string' ? nextPage.then(() => answer) : answer;
+  }) as typeof client.call);
+  const loading = store.connect();
+  try {
+    await vi.waitFor(() => expect(store.threads.length).toBeGreaterThan(0), { timeout: 2000 });
+    expect(store.threads.length).toBeLessThan(3000);
+    const shown = store.threads.find(thread => !thread.pinned)!;
+    await client.call('threads.pin', { threadId: shown.id, pinned: true });
+    expect(store.threads.find(thread => thread.id === shown.id)?.pinned).toBe(true);
+    release();
+    await loading;
+    await store.reload();
+    expect(store.threads.length).toBeGreaterThan(3000);
+    expect(store.threads.find(thread => thread.id === shown.id)?.pinned).toBe(true);
+    expect(calls.mock.calls.some(([method, params]) => method === 'threads.listChanges' && typeof (params as { page?: unknown }).page === 'string')).toBe(true);
+  } finally {
+    release();
+    await loading;
+  }
+});
+
 test('a thread deleted and one archived while away leave the sidebar', async () => {
   const { client, store } = await connected();
   expect(store.threads.some(row => row.id === 't-trace')).toBe(true);
