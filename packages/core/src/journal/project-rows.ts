@@ -1,6 +1,27 @@
 import type { Database } from 'bun:sqlite';
+import type { Project } from '@boite/contracts';
 import type { DetectedIcon } from '../project-icons.ts';
-import type { ProjectIconRow } from './rows.ts';
+import { toProject, type ProjectIconRow, type ProjectRow } from './rows.ts';
+
+export function getProject(db: Database, projectId: string): Project | null {
+  const row = db.query('SELECT * FROM projects WHERE id = ? AND removed_at IS NULL').get(projectId) as ProjectRow | null;
+  return row === null ? null : toProject(row);
+}
+
+export function listProjects(db: Database, removed: boolean): Project[] {
+  const sql = removed ? 'SELECT * FROM projects WHERE removed_at IS NOT NULL ORDER BY removed_at DESC'
+    : 'SELECT * FROM projects WHERE removed_at IS NULL ORDER BY rowid';
+  return (db.query(sql).all() as ProjectRow[]).map(toProject);
+}
+
+/** Archived project threads, including work delegated by a bot, and how many are done. */
+export function archivedThreadCounts(db: Database): Map<string, { archived: number; done: number }> {
+  const rows = db
+    .query(`SELECT project_id, COUNT(*) AS count, COUNT(done_at) AS done FROM threads WHERE archived = 1
+      AND (parent_thread_id IS NULL OR EXISTS (SELECT 1 FROM threads parent WHERE parent.id = threads.parent_thread_id AND parent.agent_session_id IS NOT NULL))
+      AND project_id IS NOT NULL AND id NOT IN (SELECT thread_id FROM thread_deletions) GROUP BY project_id`).all() as { project_id: string; count: number; done: number }[];
+  return new Map(rows.map(row => [row.project_id, { archived: row.count, done: row.done }]));
+}
 
 export interface ProjectIconImage {
   mime: string;

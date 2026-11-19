@@ -20,13 +20,13 @@ import { hydrate, hydratePart } from './journal/part-blobs.ts';
 import { migrate } from './journal/schema.ts';
 import { openAsyncQuestions, projectQuestion } from './journal/questions.ts';
 import { PROCESS_COLUMNS, PROCESS_FROM, ProcessRows } from './journal/processes.ts';
-import { projectIconImage, projectIcons, putProjectIcon, type ProjectIconImage } from './journal/project-icons.ts';
+import { archivedThreadCounts, getProject, listProjects, projectIconImage, projectIcons, putProjectIcon, type ProjectIconImage } from './journal/project-rows.ts';
 import { cachePages, runWrite } from './journal/statements.ts';
 import { WAL_LIMIT_BYTES, WalCheckpoints, type WalCheckpointOptions } from './journal/wal-checkpoints.ts';
-import { toAccount, toMessage, toProcess, toProject, toThread, toTurn, parseJson } from './journal/rows.ts';
+import { toAccount, toMessage, toProcess, toThread, toTurn, parseJson } from './journal/rows.ts';
 import { REMOVED_PROJECTS, restoreDeletedRows, threadsWhere, VISIBLE_THREAD_ROWS, VISIBLE_THREADS, writeThread } from './journal/thread-rows.ts';
 import { oneTurn, pageTurns, sumSessionUsage, writeTurn, type SessionUsage } from './journal/turn-rows.ts';
-import type { AccountRow, MessageRow, ProcessRow, ProjectIconRow, ProjectRow, ThreadRow, TurnRow } from './journal/rows.ts';
+import type { AccountRow, MessageRow, ProcessRow, ProjectIconRow, ThreadRow, TurnRow } from './journal/rows.ts';
 import type { DetectedIcon as StoredProjectIcon } from './project-icons.ts';
 import { copyStoredParts, foldStreamingParts, StreamBuffer } from './journal/stream-buffer.ts';
 import { requestSince } from './journal/request-since.ts';
@@ -197,13 +197,8 @@ export class Journal {
       .run(project.id, project.name, project.path, project.createdAt, project.archived === true ? 1 : 0, project.worktreeDefault === true ? 1 : 0);
   }
 
-  /** Archived project threads, including work delegated by a bot, and how many are done. */
   archivedThreadCounts(): Map<string, { archived: number; done: number }> {
-    const rows = this.db
-      .query(`SELECT project_id, COUNT(*) AS count, COUNT(done_at) AS done FROM threads WHERE archived = 1
-        AND (parent_thread_id IS NULL OR EXISTS (SELECT 1 FROM threads parent WHERE parent.id = threads.parent_thread_id AND parent.agent_session_id IS NOT NULL))
-        AND project_id IS NOT NULL AND id NOT IN (SELECT thread_id FROM thread_deletions) GROUP BY project_id`).all() as { project_id: string; count: number; done: number }[];
-    return new Map(rows.map((row) => [row.project_id, { archived: row.count, done: row.done }]));
+    return archivedThreadCounts(this.db);
   }
 
   deleteProject(projectId: string): void {
@@ -219,20 +214,9 @@ export class Journal {
     putProjectIcon(this.db, projectId, icon, checkedAt);
   }
 
-  getProject(projectId: string): Project | null {
-    const row = this.db.query('SELECT * FROM projects WHERE id = ? AND removed_at IS NULL').get(projectId) as ProjectRow | null;
-    return row === null ? null : toProject(row);
-  }
-
-  listProjects(): Project[] {
-    const rows = this.db.query('SELECT * FROM projects WHERE removed_at IS NULL ORDER BY rowid').all() as ProjectRow[];
-    return rows.map(toProject);
-  }
-
-  listRemovedProjects(): Project[] {
-    const rows = this.db.query('SELECT * FROM projects WHERE removed_at IS NOT NULL ORDER BY removed_at DESC').all() as ProjectRow[];
-    return rows.map(toProject);
-  }
+  getProject(projectId: string): Project | null { return getProject(this.db, projectId); }
+  listProjects(): Project[] { return listProjects(this.db, false); }
+  listRemovedProjects(): Project[] { return listProjects(this.db, true); }
 
   removeProject(projectId: string, at: number): void {
     this.db.query('UPDATE projects SET removed_at = ? WHERE id = ?').run(at, projectId);
