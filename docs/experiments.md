@@ -3,8 +3,8 @@
 Experiments are features that are not finished yet. They can change or
 disappear, so each one has a switch in Settings, Experiments.
 
-There is no experiment today: every feature is finished and on in every
-build, so Settings has no Experiments page. The page comes back with the next
+There is no experiment today: every feature ships in every build, so
+Settings has no Experiments page. The page comes back with the next
 experiment.
 
 ## Where they exist

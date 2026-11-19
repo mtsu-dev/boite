@@ -299,7 +299,7 @@ typed text or password input), pinned model quotas (`pinned-quotas`, see
 their own elsewhere: the [Whip](#whip) (`whip`, Settings > Appearance, on by
 default) and [automatic goals](goals.md#automatic-goals) (`auto-goal`, the
 owner setting `autoGoals` in Settings > General > Agent replies, on by
-default, beside its threshold `autoGoalMinChars`).
+default, with its threshold `autoGoalMinChars` under it while on).
 
 The three owner settings that were experiments, the cache keepalive,
 background compaction and the device live stream, are in Settings > System,

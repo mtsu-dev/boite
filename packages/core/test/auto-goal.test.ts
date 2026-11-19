@@ -105,7 +105,7 @@ test('1499 characters, the owner\'s setting off, or a command start no goal', as
   // A command is exempt while the setting is on.
   const { threadId } = await echoThread(h, on.client, 'command');
   await on.client.call('turns.start', { threadId, prompt: `/cost ${prompt(1500)}` });
-  await waitFor(() => h.core.journal.listTurns(threadId).length > 0);
+  await waitFor(() => h.core.journal.listTurns(threadId).some(turn => turn.status === 'done'));
   await on.client.call('settings.set', { autoGoals: false });
   const off = await desktop();
   await off.client.call('turns.start', { threadId: off.threadId, prompt: prompt(1500) });

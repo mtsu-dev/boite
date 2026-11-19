@@ -163,10 +163,11 @@ test('a setting a Nightly turned on while it was an experiment stays on in a Rel
 test('a Release core lets Contacts start something', async () => {
   const release = await core(RELEASE);
   const owner = await release.connect();
+  // One call at a time: a rejection waits for no earlier answer before its handler is attached.
   for (const call of [
-    owner.call('contacts.invite', {}),
-    owner.call('contacts.join', { link: 'boite://contact/none' }),
-    owner.call('contacts.update', { coreId: 'none', trusted: true }),
-  ]) expect(await call.then(() => 'accepted', (error: Error) => error.message)).not.toContain('Nightly');
+    () => owner.call('contacts.invite', {}),
+    () => owner.call('contacts.join', { link: 'boite://contact/none' }),
+    () => owner.call('contacts.update', { coreId: 'none', trusted: true }),
+  ]) expect(await call().then(() => 'accepted', (error: Error) => error.message)).not.toContain('Nightly');
   owner.close();
 });
