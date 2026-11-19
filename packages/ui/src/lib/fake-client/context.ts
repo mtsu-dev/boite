@@ -68,7 +68,7 @@ import {
   type Turn,
   type Usage,
 } from '@boite/contracts';
-import { effectiveExperiments, experimentStartRefusal } from '@boite/contracts';
+import { effectiveExperiments } from '@boite/contracts';
 import { CLOSED_AGENT_DEFAULTS, OPEN_AGENT_DEFAULTS } from '@boite/contracts';
 
 /** `?agents=closed`: the two agent settings as a new install holds them. */
@@ -375,11 +375,6 @@ export class FakeContext {
     return { ...this.settings };
   }
 
-  /** As the core's `contactsGate`: refuses nothing while the feature is `release`, as Contacts are. */
-  startGate(id: ExperimentId): void {
-    const refusal = experimentStartRefusal(id, this.core.version);
-    if (refusal !== null) throw new RpcFailure({ code: RpcErrorCode.Refused, message: refusal, data: { reason: 'experiment-off' } });
-  }
   speech: SpeechConfig = { engine: 'local', language: '', apiProvider: 'groq', fallback: false, executable: '', modelPath: '', model: SPEECH_DEFAULT_MODEL };
   readonly speechStatus: SpeechStatus = { revision: 'fake-voice', engine: 'local', ready: true, localReady: true, groqKeySet: false, openrouterKeySet: false, installing: false, downloadedBytes: 0, totalBytes: 0, error: null, canInstallRuntime: true, models: fakeSpeechModels(), downloading: null, runtimeOutdated: false };
   readonly speechRequests = new Map<string, symbol>();

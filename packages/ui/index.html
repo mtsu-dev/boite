@@ -64,15 +64,6 @@
         if (accent !== null && Number.isFinite(Number(accent)) && Number(accent) >= 0 && Number(accent) <= 360) document.documentElement.style.setProperty('--accent-hue', accent);
         var stored = localStorage.getItem('boite.theme');
         var theme = stored === 'dark' || stored === 'light' || stored === 'grain' ? stored : 'system';
-        // Grain rides behind an experiment: a stored choice with the switch off is System again.
-        if (theme === 'grain') {
-          var on = false;
-          try {
-            var raw = localStorage.getItem('boite.experiments');
-            on = raw !== null && JSON.parse(raw).indexOf('theme-grain') !== -1;
-          } catch (e) {}
-          if (!on) theme = 'system';
-        }
         if (theme === 'grain') {
           document.documentElement.dataset.theme = 'grain';
           document.querySelector('meta[name="theme-color"]').setAttribute('content', '#1a1a1e');

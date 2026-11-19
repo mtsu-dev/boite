@@ -77,7 +77,7 @@ const REQUEST = 'Review the cache plan in docs/cache.md.';
 async function setup(experiment = true) {
   const h = await startTestCore(); cores.push(h);
   const owner = await h.connect();
-  if (experiment) await owner.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: ['debates'], labels: {} });
+  if (experiment) await owner.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: [], labels: {} });
   const { threadId } = await echoThread(h, owner, 'Parent');
   await twinProvider(h, owner, [{ id: 'alpha', name: 'Alpha' }, { id: 'beta', name: 'Beta' }, { id: 'gamma', name: 'Gamma' }]);
   const start = (extra: Record<string, unknown> = {}) => owner.call('council.start', { threadId, request: REQUEST, models: ['twin/alpha', 'twin/beta', 'twin/gamma'], ...extra });

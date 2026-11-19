@@ -7,7 +7,6 @@
   import { contextPercent, contextLevel } from '../lib/tokens';
   import { Closing } from '../lib/closing.svelte';
   import { contextPopup } from '../lib/idle-parts';
-  import { experimentOn } from '../lib/experiments.svelte';
   import { cacheSpan, promptCacheState, PROMPT_CACHE_TICK_MS } from '../lib/prompt-cache';
   /**
    * The context's one form, desktop and phone: a small ring filled by what is
@@ -39,7 +38,7 @@
   // A running turn may refresh the cache. Hide the old timer until it finishes.
   let now = $state(Date.now());
   const activeTurn = $derived(thread ? threadActive(thread.status) : false);
-  const cache = $derived(experimentOn('prompt-cache') && !activeTurn ? thread?.promptCache ?? null : null);
+  const cache = $derived(!activeTurn ? thread?.promptCache ?? null : null);
   const cacheNow = $derived(cache && thread ? promptCacheState(cache, thread, now) : null);
   $effect(() => {
     if (!cache) return;

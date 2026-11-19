@@ -45,14 +45,16 @@ export interface ClientPreferences {
 export const CLIENT_LABELS_MAX = 120;
 export const CLIENT_APP_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
 export const CLIENT_LABEL_CHARS = 120;
+/** The longest experiments list a report may carry: an app older or newer than this core names ids it does not know, which are dropped. */
+const CLIENT_EXPERIMENTS_MAX = 32;
 
 /** A report checked, or why it is refused. Labels lose control characters and keep the known keys only. */
 export function checkClientPreferences(params: unknown): { ok: true; preferences: ClientPreferences } | { ok: false; message: string; field: string } {
   const given = (params ?? {}) as Partial<Record<keyof ClientPreferences, unknown>>;
   if (typeof given.app !== 'string' || !CLIENT_APP_PATTERN.test(given.app)) return { ok: false, message: 'app must be 8 to 64 letters, digits, dashes or underscores', field: 'app' };
   if (!(APP_LANGUAGES as readonly unknown[]).includes(given.language)) return { ok: false, message: `language must be one of ${APP_LANGUAGES.join(', ')}`, field: 'language' };
-  if (!Array.isArray(given.experiments) || given.experiments.length > EXPERIMENT_IDS.length * 2) return { ok: false, message: 'experiments must be a list of experiment ids', field: 'experiments' };
-  // A newer app may ship an experiment this core does not know: it is left out, not refused.
+  if (!Array.isArray(given.experiments) || given.experiments.length > CLIENT_EXPERIMENTS_MAX) return { ok: false, message: `experiments must be a list of at most ${CLIENT_EXPERIMENTS_MAX} experiment ids`, field: 'experiments' };
+  // A newer app may ship an experiment this core does not know, an older one an experiment since finished: it is left out, not refused.
   const experiments = EXPERIMENT_IDS.filter(id => (given.experiments as unknown[]).includes(id));
   const raw = given.labels ?? {};
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw) || Object.keys(raw).length > CLIENT_LABELS_MAX) return { ok: false, message: `labels must map at most ${CLIENT_LABELS_MAX} keys to names`, field: 'labels' };

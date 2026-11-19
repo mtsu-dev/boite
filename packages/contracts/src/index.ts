@@ -239,7 +239,7 @@ export {
   type SettingsReading,
 } from './setting-requests.ts';
 export {
-  BUILD_KINDS, BUILD_KIND_NAMES, COMPILED_BUILD_KIND, FEATURE_CUTS, buildKindOf, featureCompiled, featureDefines, featureFlag, featureMarker, markFeature, loadedFeatures, featureRuns, stageRuns,
+  BUILD_KINDS, BUILD_KIND_NAMES, COMPILED_BUILD_KIND, FEATURE_CUTS, buildKindOf, featureCompiled, featureDefines, featureFlag, featureMarker, markFeature, featureRuns, stageRuns,
   EXPERIMENT_IDS, EXPERIMENT_STAGES, effectiveExperiments, experimentListed, experimentRefusal, experimentStartRefusal, experimentsRun,
   isExperimentId, isReleaseVersion, listedExperiments,
   type BuildKind, type ExperimentId, type FeatureStage,

@@ -190,8 +190,6 @@
    * before it waits for it, unless a newer click, key or menu takes over meanwhile.
    */
   function teamMenu(event: MouseEvent, row: TeamRow) {
-    const parts = teamsParts;
-    if (!parts) return;
     const ask = ++teamMenuAsk;
     if (teamMenuModule) { contextMenu.open(event, teamMenuItemsOf(teamMenuModule, row), action => pickTeam(teamMenuModule!, row, action)); return; }
     event.preventDefault();
@@ -204,7 +202,7 @@
     const overtake = () => { overtaken = true; };
     window.addEventListener('pointerdown', overtake, true);
     window.addEventListener('keydown', overtake, true);
-    void parts.teamMenu().then(module => {
+    void teamsParts.teamMenu().then(module => {
       teamMenuModule = module;
       if (overtaken || ask !== teamMenuAsk || contextMenu.current !== before) return;
       contextMenu.show(at, teamMenuItemsOf(module, row), action => pickTeam(module, row, action), opener);
@@ -218,7 +216,7 @@
   /** The last team menu asked for: an older one still loading gives way. */
   let teamMenuAsk = 0;
   $effect(() => {
-    if (teams.length && !teamMenuModule) void teamsParts?.teamMenu().then(module => { teamMenuModule = module; }).catch(() => {});
+    if (teams.length && !teamMenuModule) void teamsParts.teamMenu().then(module => { teamMenuModule = module; }).catch(() => {});
   });
   function teamMenuItemsOf(module: TeamMenuModule, row: TeamRow): MenuItem[] {
     return [{ id: 'open', label: strings.common.open, glyph: MessageSquare }, separator('sep-open'), ...module.teamMenuItems(row.machine.store, row.team)];
@@ -309,7 +307,7 @@
   let ContactRequestNotice = $state<typeof import('./home/ContactRequestNotice.svelte').default>();
   $effect(() => {
     if (!contactsOn || ContactRequestNotice) return;
-    void contactsParts?.ContactRequestNotice().then(module => { ContactRequestNotice = module.default; }).catch(() => {});
+    void contactsParts.ContactRequestNotice().then(module => { ContactRequestNotice = module.default; }).catch(() => {});
   });
 </script>
 

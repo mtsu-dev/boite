@@ -1,6 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
-import { setExperiment } from '../../lib/experiments';
 import { FakeClient } from '../../lib/fake-client';
 import { Store } from '../../lib/store.svelte';
 import { workspace } from '../../lib/workspace.svelte';
@@ -16,7 +15,6 @@ afterEach(async () => {
   for (const component of mounted.splice(0)) await unmount(component);
   for (const close of closers.splice(0)) close();
   workspace.machines = []; workspace.active = previousActive;
-  setExperiment('teams', false);
   vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear();
   document.documentElement.classList.remove('agents-detail-open');
 });
@@ -36,13 +34,12 @@ const all = (selector: string) => [...document.querySelectorAll<HTMLElement>(sel
 
 /** Chris's Skollheim: two bots named as an owner names them, and their team. */
 async function skollheim() {
-  setExperiment('teams', true);
   const client = new FakeClient({ delayMs: 0 });
   const store = new Store();
   store.attach(client);
   closers.push(() => { store.detach(); client.close(); });
   await store.connect();
-  client.reportDesktopExperiments(['teams']);
+  client.reportDesktopExperiments([]);
   const bot = (name: string) => client.call('agents.profile.save', { value: { name, domain: '', instructions: '', avatar: '', status: 'active', projectIds: [],
     selection: { providerId: 'echo', accountId: 'a-echo', model: 'echo-1', effort: null, permissionMode: 'default' } } });
   const huginn = await bot('Huginn (Réseaux)');
@@ -166,7 +163,6 @@ test("a phone's Mochis list holds the teams, a team's chat opens full screen ove
 
 test('a device whose old Teams switch is off still lists its teams on the Mochis page, and a team chat opens there', async () => {
   const { store, team, huginn } = await skollheim();
-  setExperiment('teams', false);
   botsPage(store, true);
   await vi.waitFor(() => query(`[data-testid="agent-entry-${huginn.id}"]`));
   await settle();

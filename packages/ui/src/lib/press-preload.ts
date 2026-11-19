@@ -37,7 +37,7 @@ export const PRESS_HOLD_MS = 8_000;
 const views: Record<string, () => Promise<unknown>> = {
   settings: () => import('../components/SettingsShell.svelte'),
   agents: () => import('../components/agents/AgentsPage.svelte'),
-  home: () => contactsParts?.HomePage() ?? Promise.resolve(undefined)
+  home: () => contactsParts.HomePage()
 };
 
 /** False under a driven browser, unless its own test asked for it. */

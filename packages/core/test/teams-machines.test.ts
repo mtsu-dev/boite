@@ -26,7 +26,7 @@ afterEach(async () => {
 });
 
 const DESKTOP = 'app-desktop-0001';
-const experiment = (client: CoreClient, on = true) => client.call('client.preferences', { app: DESKTOP, language: 'en', experiments: on ? ['teams'] : [], labels: {} });
+const experiment = (client: CoreClient) => client.call('client.preferences', { app: DESKTOP, language: 'en', experiments: [], labels: {} });
 const speak = (answer: (prompt: string, threadId: string) => Answer = () => ({ text: '[quiet]' })) => { driver = scripted(ctx => answer(ctx.prompt, ctx.thread.id)); return driver; };
 
 async function join(h: TestCore, first: TestCore) {
@@ -286,8 +286,8 @@ test('teams are on in every build: a machine whose app reports none still lets i
   host.core.coordination.request = request;
 
   // Both apps report no experiment at all: nothing is off.
-  await experiment(awayOwner, false);
-  await experiment(hostOwner, false);
+  await experiment(awayOwner);
+  await experiment(hostOwner);
   const team = await hostOwner.call('teams.create', { name: 'Crew', members: [ada.agent.id, `${awayId}/Bob`] });
   await waitFor(() => away.core.teams.get(team.id) !== null);
   host.core.teams.ownerPost({ teamId: team.id, id: 'two', text: '@Bob answer me' });

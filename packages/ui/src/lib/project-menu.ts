@@ -5,7 +5,6 @@ import { workspace } from './workspace.svelte';
 import { openArchived } from './archived-view.svelte';
 import { confirm } from './confirm.svelte';
 import { contextMenu } from './context-menu.svelte';
-import { experimentOn } from './experiments.svelte';
 import { separator, type MenuItem } from './menu';
 import { fill, strings } from './strings';
 import { count, projectName } from './format';
@@ -51,7 +50,7 @@ export function projectMenu(event: MouseEvent, owner: Store, project: Project, r
     ] : []),
     ...(owner.owner
       ? [
-          ...(experimentOn('session-import') ? [{ id: 'import', label: strings.sidebar.importSession, glyph: Import }] : []),
+          { id: 'import', label: strings.sidebar.importSession, glyph: Import },
           ...(project.kind !== 'drafts' && project.repository === true ? [{ id: 'worktree-default', label: strings.sidebar.worktreeDefault, glyph: GitBranch, checked: project.worktreeDefault === true }, { id: 'worktrees', label: strings.settings.worktrees.heading, glyph: GitBranch }] : []),
           ...(project.kind !== 'drafts' && project.repository !== false && project.autoArchiveMergedPr !== undefined ? [{
             id: 'auto-archive-merged-pr', label: strings.sidebar.autoArchiveMergedPr, glyph: Archive,

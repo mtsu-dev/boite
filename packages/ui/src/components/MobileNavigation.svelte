@@ -86,9 +86,9 @@
   let ContactInboxRows = $state<typeof import('./home/ContactInboxRows.svelte').default>();
   $effect(() => {
     if (!contactsShown(store) || SidebarContacts) return;
-    void contactsParts?.SidebarContacts().then(module => { SidebarContacts = module.default; }).catch(() => {});
-    void contactsParts?.ContactRequestNotice().then(module => { ContactRequestNotice = module.default; }).catch(() => {});
-    void contactsParts?.ContactInboxRows().then(module => { ContactInboxRows = module.default; }).catch(() => {});
+    void contactsParts.SidebarContacts().then(module => { SidebarContacts = module.default; }).catch(() => {});
+    void contactsParts.ContactRequestNotice().then(module => { ContactRequestNotice = module.default; }).catch(() => {});
+    void contactsParts.ContactInboxRows().then(module => { ContactInboxRows = module.default; }).catch(() => {});
   });
   let search = $state('');
   const query = $derived(search.trim().toLocaleLowerCase());

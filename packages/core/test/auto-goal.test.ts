@@ -58,7 +58,7 @@ function roles(options: { hold?: boolean; prompts?: string[]; answer?: string } 
 }
 
 /** A desktop app with `experiments` on, and its echo conversation. */
-async function desktop(experiments: ExperimentId[] = ['auto-goal']) {
+async function desktop(experiments: ExperimentId[] = []) {
   const client = await connect(h.url, h.token, { client: { version: 'test', name: 'shell' } });
   clients.push(client);
   await client.call('client.preferences', report(experiments));
@@ -151,7 +151,7 @@ test('a queued long prompt keeps the decision it was queued with across a core r
   const { threadId } = await echoThread(h, a);
   h.core.composer.stop();
   const text = prompt(1600);
-  const value: ComposerValue = { input: { text: '', attachments: [], paused: false, queued: [{ id: 'long-queued', text, attachments: [], experiments: ['auto-goal'] }] } };
+  const value: ComposerValue = { input: { text: '', attachments: [], paused: false, queued: [{ id: 'long-queued', text, attachments: [], experiments: [] }] } };
   await a.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0, value });
   a.close();
   await h.stop();
@@ -246,11 +246,11 @@ test('a queued long prompt starts its goal from the machine\'s setting, whatever
   await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0, value });
   await waitFor(() => goalOf(threadId) !== null, 5000);
   expect(goalOf(threadId)).toMatchObject({ objective: text, auto: true });
-  // The setting off, an item that still names the old experiment starts none.
+  // The setting off, an item an older app queued with the old `auto-goal` experiment starts none: the core drops the id.
   await client.call('settings.set', { autoGoals: false });
   const off = await desktop([]);
   const stale: ComposerValue = { input: { text: '', attachments: [], paused: false, queued: [
-    { id: 'long-tagged', text, attachments: [], experiments: ['auto-goal'] },
+    { id: 'long-tagged', text, attachments: [], experiments: ['auto-goal'] as unknown as ExperimentId[] },
   ] } };
   await off.client.call('composer.put', { section: 'inputs', id: off.threadId, expectedRevision: 0, value: stale });
   await waitFor(() => h.core.journal.listTurns(off.threadId).some(turn => turn.status === 'done'), 5000);

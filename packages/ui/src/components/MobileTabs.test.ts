@@ -2,7 +2,6 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
-import { setExperiment } from '../lib/experiments';
 import MobileTabs from './MobileTabs.svelte';
 
 let app: ReturnType<typeof mount> | undefined, client: FakeClient, store: Store;
@@ -10,7 +9,7 @@ const settle = async () => { for (let i = 0; i < 15; i++) { await Promise.resolv
 beforeEach(async () => {
   client = new FakeClient({ delayMs: 0, principal: 'session' }); store = new Store(); store.attach(client); await store.connect();
 });
-afterEach(async () => { setExperiment('contacts', false); if (app) await unmount(app); app = undefined; store.detach(); client.close(); vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear(); });
+afterEach(async () => { if (app) await unmount(app); app = undefined; store.detach(); client.close(); vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear(); });
 const tab = (id: string) => document.querySelector<HTMLButtonElement>(`[data-testid="${id}"]`);
 
 test('the bar holds only places and marks the current one; a new conversation and Settings are the header\'s', async () => {
@@ -56,7 +55,6 @@ test('Mochis carries a dot while mochis work, in the waiting colour once one ask
 });
 
 test('Contacts keeps a tab of its own under Activity, before Mochis, marked on its page: no switch hides it behind the Mochis tab', async () => {
-  setExperiment('contacts', true);
   client.close(); store.detach();
   client = new FakeClient({ delayMs: 0 }); store = new Store(); store.attach(client); await store.connect();
   app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate: () => {} } }); await settle();

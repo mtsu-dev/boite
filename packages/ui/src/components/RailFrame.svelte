@@ -5,7 +5,6 @@
   import type { Store } from '../lib/store.svelte';
   import { clampSidebar, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN } from '../lib/prefs';
   import { strings } from '../lib/strings';
-  import { experimentOn } from '../lib/experiments.svelte';
   import { pinnedQuotas } from '../lib/pinned-quotas.svelte';
   import Deferred from './Deferred.svelte';
   import { parts } from '../lib/deferred-parts';
@@ -151,7 +150,7 @@
     onscroll={() => { scrolled = (scroller?.scrollTop ?? 0) > 0; measureMore(); onscroll?.(); }}>
     {@render children()}
   </div>
-  {#if (store.page === 'chat' || store.page === 'agents') && dockVisible && experimentOn('pinned-quotas') && pinnedQuotas.current.pinned && pinnedQuotas.wantsDock(store)}
+  {#if (store.page === 'chat' || store.page === 'agents') && dockVisible && pinnedQuotas.current.pinned && pinnedQuotas.wantsDock(store)}
     <Deferred part={parts.PinnedQuota} quiet>{#snippet children(PinnedQuota)}<PinnedQuota {store} dock />{/snippet}</Deferred>
   {/if}
   <!-- No app rail below 720 pixels: the drawer's foot keeps the update button, and its card opens as a sheet. -->

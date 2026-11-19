@@ -3,10 +3,9 @@
  * few lines a model reads back cheaply: one row per child or run, its state,
  * its model and reasoning, its time, then the one next step that makes sense.
  */
-import { experimentRefusal, threadActive, CONVERSATION_PROFILE_ID, speedName } from '@boite/contracts';
+import { threadActive, CONVERSATION_PROFILE_ID, speedName } from '@boite/contracts';
 import type { Council, DelegatedAgent, DelegationModelChoice, DelegationView, PauseOrigin, RpcParams, WorkflowRun } from '@boite/contracts';
 import type { CoreClient } from './client.ts';
-import { CORE_VERSION } from './version.ts';
 import { INTERRUPTION_TEXT } from './delegation/interruption.ts';
 import { needLine, worktreeLine } from './delegation/messages.ts';
 import { requiredText, Usage } from './cli-args.ts';
@@ -34,22 +33,9 @@ export interface DelegateOptions {
   cwd?: string;
 }
 
-/**
- * The one way to the Council's commands (`council/cli.ts`). The flag is
- * written in full because a bundler folds nothing less direct
- * (`packages/contracts/src/experiments.ts`): in a bundle below the Council's
- * tag it is `false`, the import is dropped and the bundle has no such module.
- * From source and in tests it is not defined. The store and the RPC methods
- * go the same way in `council-entry.ts` (docs/internals/experiments.md#out-of-the-build).
- */
-function councilCli(): Promise<typeof import('./council/cli.ts')> | null {
-  if (typeof __BOITE_HAS_DEBATES__ === 'undefined' || __BOITE_HAS_DEBATES__) return import('./council/cli.ts');
-  return null;
-}
-
-/** What `boite delegate council` answers in a bundle without it: the tag and the build, as the core's own refusal. */
-function councilAbsent(): Usage {
-  return new Usage(`boite delegate council: ${experimentRefusal('debates', CORE_VERSION) ?? 'the Council is not in this build'}`);
+/** The Council's commands (`council/cli.ts`), loaded when one runs. */
+function councilCli(): Promise<typeof import('./council/cli.ts')> {
+  return import('./council/cli.ts');
 }
 
 export const DELEGATE_ACTIONS = 'models, spawn, council, list, send, stop, resume, wait, result or profiles';
@@ -173,11 +159,9 @@ export async function delegateCommand(client: CoreClient, threadId: string, rest
       const [view, runs, councils] = await Promise.all([
         client.call('delegation.get', { threadId }),
         client.call('workflows.list', { threadId }).catch(() => [] as WorkflowRun[]),
-        // Refused while the Council experiment is off: then there are none to list.
         client.call('council.list', { threadId }).then(result => result.councils, () => [] as Council[]),
       ]);
       const now = Date.now();
-      // Only a bundle with the Council has councils to list; one without names what an older build left.
       const cli = councils.length ? await councilCli() : null;
       const busyTeam = view.agents.some(busy) || runs.some(r => r.status === 'running') || councils.some(c => c.status === 'running');
       print([
@@ -193,7 +177,6 @@ export async function delegateCommand(client: CoreClient, threadId: string, rest
     case 'debate':
     case 'council': {
       const cli = await councilCli();
-      if (!cli) throw councilAbsent();
       if (action === 'debate') throw new Usage('boite delegate debate was replaced by boite delegate council: ' + cli.COUNCIL_USAGE);
       await cli.councilCommand(client, threadId, rest.slice(1), print, options.cwd);
       return;

@@ -27,12 +27,12 @@ export function contactsViews(current: () => Store, machines: () => readonly { s
   }>({ homeError: '' });
   $effect(() => {
     if (current().page !== 'home' || !contactsShown(current()) || views.HomePage) return;
-    void contactsParts?.HomePage().then(module => { views.HomePage = module.default; })
+    void contactsParts.HomePage().then(module => { views.HomePage = module.default; })
       .catch(() => { views.homeError = strings.contacts.loadFailed; });
   });
   $effect(() => {
     if (!contactsShown(current()) || narrow() || views.ContactsRail) return;
-    void contactsParts?.ContactsRail().then(module => { views.ContactsRail = module.default; }).catch(() => {});
+    void contactsParts.ContactsRail().then(module => { views.ContactsRail = module.default; }).catch(() => {});
   });
   // Waits for the group's answer, which names the machine that holds the
   // Operator, and follows that machine: reached again while Contacts stay

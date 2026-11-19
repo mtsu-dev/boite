@@ -57,8 +57,8 @@ async function failure(run: () => unknown): Promise<Error & { rpc: { data?: unkn
 }
 
 const DESKTOP = 'app-desktop-0001';
-async function experiment(client: CoreClient, on = true) {
-  await client.call('client.preferences', { app: DESKTOP, language: 'en', experiments: on ? ['teams'] : [], labels: {} });
+async function experiment(client: CoreClient) {
+  await client.call('client.preferences', { app: DESKTOP, language: 'en', experiments: [], labels: {} });
 }
 
 type Bot = Awaited<ReturnType<typeof makeAgent>>;
@@ -92,7 +92,7 @@ const holdDelivery = (h: TestCore) => {
 
 test('teams stay open whatever the app reports, and a machine in no group names no mochi of another', async () => {
   const { h, owner, bots, team } = await setup();
-  await experiment(owner, false);
+  await experiment(owner);
   expect((await owner.call('teams.list', {})).teams.map(entry => entry.name)).toEqual(['Crew']);
   const alone = await failure(() => owner.call('teams.members.add', { teamId: team.id, botId: 'pc/Bob' }));
   expect(alone.message).toContain('this machine is in no group');
@@ -485,7 +485,7 @@ test('boite team: a mochi lists, posts, reads and asks for cards, whatever the a
   expect(remote.code).not.toBe(0);
   expect(remote.err).toContain('this machine is in no group');
   // An app that reports no Teams closes nothing: they are on in every build.
-  await experiment(owner, false);
+  await experiment(owner);
   const listed = await boiteAs(h, ada!.threadId, ['team', 'list']);
   expect(listed.code).toBe(0);
   expect(listed.out).toContain('Crew');
