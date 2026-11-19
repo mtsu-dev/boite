@@ -75,15 +75,19 @@ test('a snapshot whose cursor the core does not know is dropped, and the thread 
   const db = new MemorySnapshotDb();
   const snapshots = new ThreadSnapshots({ db, subtle: crypto.subtle });
   setThreadSnapshots(snapshots);
-  const { store, gets } = await load();
-  const page = await store.client!.call('threads.get', { threadId: 't-descriptors' });
-  const gone = { ...page.messages.at(-1)!, id: 'm-rewound-away' } as Thread['messages'][number];
-  const stale = { ...page, messages: [...page.messages.slice(0, -1), gone] } as Thread;
-  await snapshots.write('core-fixture', null, stale, 'm-rewound-away' as never);
+  const previous = await load();
+  await previous.client.call('turns.start', { threadId: 't-descriptors', prompt: 'This turn will be rewound' });
+  const stale = await previous.client.call('threads.get', { threadId: 't-descriptors', sync: true });
+  const cursor = stale.messagesSync!.from;
+  await snapshots.write('core-fixture', null, stale, cursor);
+
+  // The new fake core has the same identity and the history before the extra turn.
+  const { store, client, gets } = await load();
+  const page = await client.call('threads.get', { threadId: 't-descriptors' });
+  expect(page.messages.map(message => message.id)).not.toContain(cursor);
   gets.length = 0;
   await store.open('t-descriptors');
-  expect(gets.find(params => params.threadId === 't-descriptors')?.after).toBe('m-rewound-away');
-  expect(store.openThread!.messages.map(message => message.id)).not.toContain('m-rewound-away');
+  expect(gets.find(params => params.threadId === 't-descriptors')?.after).toBe(cursor);
   expect(store.openThread!.messages.map(message => message.id)).toEqual(page.messages.map(message => message.id));
   await snapshots.purgeMachine('none');
   expect(await db.data('core-fixture', 't-descriptors')).toBeUndefined();
