@@ -27,7 +27,7 @@ function gate(store: Store) {
   store.gitDiff = (id, path, ref, oldPath) => {
     origins.push(oldPath);
     diffs.push({ id, path });
-    return new Promise<GitDiff | null>((resolve) => held.push({ kind: 'diff', release: () => resolve(realDiff(id, path, ref, oldPath)) }));
+    return new Promise<FileAnswer<GitDiff>>((resolve) => held.push({ kind: 'diff', release: () => resolve(realDiff(id, path, ref, oldPath)) }));
   };
   return {
     origins,

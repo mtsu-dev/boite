@@ -131,7 +131,7 @@
   }
 
   /** A read diff, with the text pair it is drawn from: one object per answer, so its rows and counts are read once. */
-  type Read = { diff: GitDiff | null; source: DiffSource | null };
+  type Read = { diff: GitDiff; source: DiffSource | null } | { error: string; source: null };
   let diffs = $state.raw<Record<string, Read>>({});
   /** The files whose diff is wanted: seen near the screen. The file asked for always is. */
   let wanted = $state<Record<string, true>>({});
@@ -213,11 +213,17 @@
       const last = reads.get(path);
       if (last && last.round === round && (last.from === from || last.from === undefined || from === undefined)) continue;
       const mine = ++diffSeq;
+      const clientGeneration = store.clientGeneration;
       reads.set(path, { round, from, seq: mine });
       void store.gitDiff(id, path, undefined, from).then((answer) => {
-        if (reads.get(path)?.seq !== mine || diffThread !== id) return;
-        const source = answer && !answer.binary ? { oldText: answer.oldText ?? '', newText: answer.newText ?? '' } : null;
-        diffs = { ...diffs, [path]: { diff: answer, source } };
+        if (reads.get(path)?.seq !== mine || threadId !== id || round !== `${finished}:${asked}` || clientGeneration !== store.clientGeneration) return;
+        if (!answer.ok) {
+          diffs = { ...diffs, [path]: { error: answer.error, source: null } };
+          return;
+        }
+        const diff = answer.value;
+        const source = diff.binary ? null : { oldText: diff.oldText ?? '', newText: diff.newText ?? '' };
+        diffs = { ...diffs, [path]: { diff, source } };
       });
     }
   });
@@ -341,8 +347,8 @@
           {#if !read}
             <!-- Read as it nears the screen: a quiet block holds its place meanwhile. -->
             <div class="pending" aria-busy="true"></div>
-          {:else if !read.diff}
-            <p class="empty">{strings.changes.clean}</p>
+          {:else if 'error' in read}
+            <p class="empty" role="status" data-testid="changes-diff-error">{read.error}</p>
           {:else if read.diff.binary}
             <p class="empty" data-testid="changes-binary">{strings.changes.binary}</p>
           {:else}
