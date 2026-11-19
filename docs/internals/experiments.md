@@ -15,9 +15,18 @@ Every feature has one tag, in `EXPERIMENT_STAGES`
 
 | Tag | Meaning | Ids |
 | --- | --- | --- |
-| `release` | Finished. On in every build, with no switch on the Experiments page. | `theme-grain`, `session-import`, `prompt-cache`, `resident-agents` (Mochis), `recording-indicators`, `pinned-quotas`, `whip`, `contacts`, `auto-goal`, `teams`, `debates` (Council) |
+| `release` | Finished. On in every build, with no switch on the Experiments page. | `resident-agents` (Mochis) |
 | `nightly` | May change or go away. A switch in a Nightly and in a Dev build, absent from a Release. | none today |
 | `dev` | Being built. A switch in a Dev build only, absent from a Nightly and from a Release. | none today |
+
+The ten finished ids `theme-grain`, `session-import`, `prompt-cache`,
+`recording-indicators`, `pinned-quotas`, `whip`, `contacts`, `auto-goal`,
+`teams` and `debates` (Council) left the list once nothing read them. An
+older app may still report them in `client.preferences`, a device may still
+hold them in `boite.experiments`, and an older core may still send them in
+`client.desktopExperiments`: each side drops an id it does not know, and
+`checkClientPreferences` accepts a list of up to 32 ids, so such a report is
+not refused.
 
 A build has a kind, read from its version by one function, `buildKindOf`:
 
@@ -83,8 +92,7 @@ run": the version in the hello (`info.version`) is enough.
   with the reason `auto-goals-off`. `settings.get` returns the settings as
   stored, with the policy overlay; `{ stored: true }` is still accepted, and
   `settings-sync.ts` still asks for it, for a core from before this change.
-  The Contacts' start gate (`contacts/gate.ts`, `experimentStartRefusal`)
-  refuses nothing while Contacts are `release`.
+  Contacts have no gate left in the core.
 - The app (`packages/ui/src/lib/experiments.ts`) follows the version of its
   primary machine's core: the Store `followDesktopOf` names says it on every
   hello (`heardBuild`, from `store/events.ts` and `store/connection.svelte.ts`).
@@ -131,10 +139,11 @@ from `lib/experiment-copy.ts` and `lib/strings/*/experiments.ts`
 `lib/setting-requests.ts` so an old card keeps a readable title, and move its
 guide text out of [the experiments guide](../experiments.md). A feature that
 was cut from a build leaves `FEATURE_CUTS` and `scripts/ci/feature-modules.ts`,
-and its modules drop their `markFeature` call; its lazy entries may stay, the
-flag they read being defined by no build any more. The checks of a finished
-id at its call sites keep passing and are deleted later; the id stays in
-`EXPERIMENT_IDS` until they are. A finished feature a person would still want
+and its modules drop their `markFeature` call; its lazy entries may stay as
+plain imports, with the flag gone. The checks of a finished id at its call
+sites keep passing and are deleted later; once none is left the id leaves
+`EXPERIMENT_IDS` and `EXPERIMENT_STAGES`, and old stored or reported copies of
+it are dropped as unknown. A finished feature a person would still want
 off gets a switch in `lib/features.ts` or an owner setting, on the Settings
 page it belongs to, as [chat files and previews](chat-files.md),
 [open chat links](chat-files.md#open-chat-links-in-their-apps),
@@ -175,7 +184,7 @@ module, so a helper cannot carry the gate. Each cut feature has one lazy
 entry that writes its flag in full before a dynamic import:
 
 ```ts
-if (typeof __BOITE_HAS_WHIP__ === 'undefined' || __BOITE_HAS_WHIP__) return import('./whip/feature');
+if (typeof __BOITE_HAS_SAMPLE__ === 'undefined' || __BOITE_HAS_SAMPLE__) return import('./sample/feature');
 return null;
 ```
 
@@ -183,19 +192,15 @@ Defined as `false`, the branch and its import are dropped and no chunk holds
 the feature's modules. Nothing else may import those modules: one static
 import elsewhere puts them back in every build.
 
-The five finished features keep their entries, now always taken: in the UI
-`lib/whip-entry.svelte.ts`, `lib/council-entry.ts`, `lib/teams-entry.ts`,
-`lib/contacts-entry.ts` and their parts in `lib/deferred-parts.ts`; in the
-core `council-entry.ts` (with `delegate-cli.ts`), `teams-entry.ts` and
-`auto-goal-entry.ts`. The core's entries also hold the stand-in a build
-without the feature would get, written for exactly what the rest of the core
-calls; no build reaches it today. In the core a store is built in the
-constructor and a prompt is admitted in one synchronous step, so the entries
-there use `require` behind the flag, not `import()`: Bun drops a folded
-`require` the same way. The journal's tables are created in every build.
-
-Contacts' core side was never cut, and its start gate (`contacts/gate.ts`)
-refuses nothing while Contacts are `release`.
+The five finished features keep their entries as plain lazy imports, with no
+flag and no stand-in: in the UI `lib/whip-entry.svelte.ts`,
+`lib/council-entry.ts`, `lib/teams-entry.ts`, `lib/contacts-entry.ts` and
+their parts in `lib/deferred-parts.ts`; in the core `council-entry.ts` (with
+`delegate-cli.ts`), `teams-entry.ts` and `auto-goal-entry.ts`. In the core a
+store is built in the constructor and a prompt is admitted in one synchronous
+step, so the entries there use `require`, not `import()`; a cut feature puts
+its flag in front of that `require`, and Bun drops a folded `require` the
+same way. The journal's tables are created in every build.
 
 ### The proof
 
@@ -223,8 +228,8 @@ nothing cut, both pass on any bundle that builds.
 `scripts/ci/feature-cut.test.ts` plants a leak and a lost marker, checks the
 marker call in every listed module and that no other module calls
 `markFeature`, fails on a file of a feature's directory that is in neither
-list of `feature-modules.ts`, checks that the five finished features' entries
-still write their flag in full, and bundles a cut module with Bun itself as
+list of `feature-modules.ts`, checks that the five finished features left
+`EXPERIMENT_IDS` and that their entries read no flag, and bundles a cut module with Bun itself as
 a Release, once imported directly and once behind its flag: the scan must see
 the first and not the second.
 
@@ -288,18 +293,18 @@ the phone's page follows the desktop app again. The desktop app follows no one.
 `lib/experiment-copy.ts` supplies the labels of those with a switch. None
 has one today.
 
-Finished, with no switch: the Grain theme (`theme-grain`, a choice in
-Appearance), Claude Code [session import](imports.md) (`session-import`), the
-[prompt cache](prompt-cache.md) timer (`prompt-cache`), click markers and
-navigation keys in native browser recordings (`recording-indicators`, never
-typed text or password input), pinned model quotas (`pinned-quotas`, see
+Finished, with no switch: the Grain theme (a choice in Appearance), Claude
+Code [session import](imports.md), the [prompt cache](prompt-cache.md)
+timer, click markers and navigation keys in native browser recordings (never
+typed text or password input), pinned model quotas (see
 [placement and behavior](development.md#ui-spacing-and-motion)), Mochis
-(`resident-agents`), [Contacts](#contacts) (`contacts`), [Teams](#teams)
-(`teams`) and the [Council](#council) (`debates`). Finished, with a switch of
-their own elsewhere: the [Whip](#whip) (`whip`, Settings > Appearance, on by
-default) and [automatic goals](goals.md#automatic-goals) (`auto-goal`, the
-owner setting `autoGoals` in Settings > General > Agent replies, on by
-default, with its threshold `autoGoalMinChars` under it while on).
+(`resident-agents`, the one finished id still listed), [Contacts](#contacts),
+[Teams](#teams) and the [Council](#council). Their code reads no experiment
+any more. Finished, with a switch of their own elsewhere: the [Whip](#whip)
+(Settings > Appearance, on by default, `whip` in `lib/features.ts`) and
+[automatic goals](goals.md#automatic-goals) (the owner setting `autoGoals` in
+Settings > General > Agent replies, on by default, with its threshold
+`autoGoalMinChars` under it while on).
 
 The three owner settings that were experiments, the cache keepalive,
 background compaction and the device live stream, are in Settings > System,
@@ -334,8 +339,8 @@ settings, with the Windows path. It comes back as soon as the setting changes.
 ## Mochis
 
 The Mochis page ([mochis](mochis.md)) and every button that leads there: the
-mochis' pictures and `+` in the app rail, the phone's Mochis tab, the command
-palette row and the link from a mochi's own thread. Mochis are finished
+mochis' pictures and `+` in the app rail, the phone's Mochis tab and the link
+from a mochi's own thread. The command palette has no Mochis row. Mochis are finished
 (`resident-agents` is `release`): the page is there in every build, with no
 switch.
 
@@ -350,8 +355,8 @@ page, on the desktop and on the phone, and the team chats there
 
 ## Council
 
-Several AIs review one request ([council](council.md)), finished. The id is
-still `debates`, the name it had before the council. Every `council.*`
+Several AIs review one request ([council](council.md)), finished. Its old id
+was `debates`, the name it had before the council. Every `council.*`
 method, `boite delegate council`, the council line of the subagent guide and
 the `boite-council` skill are there in every build. In the app it draws the
 card in the thread that started a council and the salon, in the right panel

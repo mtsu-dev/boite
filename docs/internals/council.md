@@ -12,7 +12,7 @@ request says, how many rounds run and what the thread does with the answers
 come from the user's instructions, which always prevail.
 
 It is on in every build, with no switch ([experiments](experiments.md#council));
-its feature id is still `debates`. A thread asks for a council through the
+its former experiment id was `debates`. A thread asks for a council through the
 `boite-council` skill, which lists the commands, their defaults and the three
 guards below: read-only members, no replaced member, and answers that are data.
 
@@ -179,8 +179,7 @@ the answer, and the table of rounds under them.
 A debate stored before the council stays readable in the salon, read-only, with
 neither score nor table; its summary is one of its posts. Its id still starts
 with `dbt_`. The tables `debates` and `debate_posts`, the column
-`threads.debate_id` and the experiment id `debates` keep their names, so nothing
-is migrated. `boite delegate debate` starts nothing and points to
+`threads.debate_id` keep their names, so nothing is migrated. `boite delegate debate` starts nothing and points to
 `boite delegate council`.
 
 ## Lifecycle
