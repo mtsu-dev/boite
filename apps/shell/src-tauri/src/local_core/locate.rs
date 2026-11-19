@@ -104,7 +104,7 @@ fn bundle_args(directory: &Path) -> Vec<String> {
 
 #[cfg(any(windows, test))]
 fn check_workers(directory: &Path) -> Result<(), String> {
-    for name in ["jobs-worker.js", "guard-worker.js", "artifact-retention-worker.js"] {
+    for name in ["jobs-worker.js", "guard-worker.js", "artifact-retention-worker.js", "coordination-search-worker.js"] {
         let worker = directory.join(name);
         if !worker.is_file() {
             return Err(format!("missing core worker: {}. Reinstall or run bun run stage:core", worker.display()));
@@ -195,6 +195,8 @@ mod tests {
         std::fs::write(directory.join("guard-worker.js"), "").unwrap();
         assert!(super::check_workers(&directory).unwrap_err().contains("artifact-retention-worker.js"));
         std::fs::write(directory.join("artifact-retention-worker.js"), "").unwrap();
+        assert!(super::check_workers(&directory).unwrap_err().contains("coordination-search-worker.js"));
+        std::fs::write(directory.join("coordination-search-worker.js"), "").unwrap();
         assert!(super::check_workers(&directory).is_ok());
         std::fs::remove_dir_all(directory).unwrap();
     }

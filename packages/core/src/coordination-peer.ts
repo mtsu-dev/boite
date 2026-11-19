@@ -8,7 +8,8 @@ import { CLOCK_ERROR } from './peer-clock.ts';
 import { verify } from 'node:crypto';
 import type { AgentContact, AgentLetter, CoordinationPeer } from '@boite/contracts';
 import { text } from './coordination-letter.ts';
-import { checkRemoteContact, PARTIAL, readTranscript, searchContacts, searchWords, transcriptQuery, type TranscriptQuery } from './coordination-lookup.ts';
+import { checkRemoteContact, PARTIAL, readTranscript, searchWords, transcriptQuery, type TranscriptQuery } from './coordination-lookup.ts';
+import { searchLocalContacts } from './coordination-search.ts';
 import { boundedBody, BOT_OPERATIONS, TEAM_OPERATIONS, type BotOperation, type Envelope, type TeamOperation } from './coordination-wire.ts';
 import { pack, SEALED, sealResponse, unpack, type Sealing } from './group/seal.ts';
 import type { Core } from './core.ts';
@@ -136,14 +137,18 @@ export class PeerDesk {
         if (!member && envelope.operation.startsWith('setting.')) throw refused('operation: only a machine of this core\'s group reads or announces its settings');
         if (!member && envelope.operation.startsWith('bot.')) throw refused('operation: only a machine of this core\'s group looks after projects here');
         if (!member && envelope.operation.startsWith('team.')) throw refused('operation: only a machine of this core\'s group takes part in its teams');
-        if (contact) result = await this.contact(currentPeer, envelope.operation, envelope.payload, false);
+        if (contact) result = await this.contact(currentPeer, envelope.operation, envelope.payload, false, request.signal);
         else if (envelope.operation === 'contact.route') result = await this.#core.coordination.mailboxes.handle(currentPeer, envelope.payload);
         else if (envelope.operation === 'contact.hand') result = await this.#core.contacts.groupLink.handed(currentPeer, envelope.payload);
         else if (envelope.operation === 'directory') result = this.#side.directory();
         else if (envelope.operation === 'deliver') result = this.#side.receive(envelope.payload as AgentLetter, peer);
         else if (envelope.operation === 'search') {
           const words = searchWords(((envelope.payload as { words?: unknown })?.words as string[] | undefined)?.join?.(' '));
-          result = searchContacts(this.#core.journal.db, this.#side.directory(), words, currentPeer.readThreads === true);
+          const matches = await searchLocalContacts(this.#core, this.#side.directory(), words, currentPeer.readThreads === true, false, request.signal);
+          const now = this.#side.trusted().find(p => p.coreId === peer.coreId);
+          if (!now) throw refused('peer permission revoked');
+          const open = new Set(this.#side.directory().map(entry => entry.threadId));
+          result = matches.filter(match => open.has(match.threadId) && (now.readThreads === true || !match.matched.includes('chat')));
         } else if (envelope.operation === 'read') {
           if (!currentPeer.readThreads) throw refused('agents on this machine are not allowed to read conversations; enable their access in Machines on the destination');
           const { threadId, ...query } = readParams(envelope.payload);
@@ -158,13 +163,13 @@ export class PeerDesk {
         else if (envelope.operation === 'relay.out') result = await this.#core.contacts.members.outbound(peer, envelope.payload);
         else if (envelope.operation === 'relay.in') {
           // A member answers for a contact it is linked to: what it asks is the contact's, under that contact's name here.
-          const request = envelope.payload as { contact?: unknown; operation?: unknown; payload?: unknown } | null;
-          const relayed = this.#core.contacts.members.adopt(peer.coreId, request?.contact);
+          const relay = envelope.payload as { contact?: unknown; operation?: unknown; payload?: unknown } | null;
+          const relayed = this.#core.contacts.members.adopt(peer.coreId, relay?.contact);
           const as = this.#core.contacts.peers().find(p => p.coreId === relayed.coreId);
           // A relation with a thread here carries letters and their receipts, nothing else.
-          const byRelation = (relayed.relations?.length ?? 0) > 0 && (request?.operation === 'deliver' || request?.operation === 'receipt');
+          const byRelation = (relayed.relations?.length ?? 0) > 0 && (relay?.operation === 'deliver' || relay?.operation === 'receipt');
           if (!as || (relayed.grants.length === 0 && !byRelation)) throw refused('nothing of this machine is opened to that contact any more');
-          result = await this.contact(as, request?.operation as string, request?.payload, true);
+          result = await this.contact(as, relay?.operation as string, relay?.payload, true, request.signal);
         } else if (envelope.operation === 'thread.start') result = await this.#core.threads.spawns.startFor(currentPeer, envelope.payload);
         else if (envelope.operation === 'project.add') result = this.#core.threads.spawns.addFor(envelope.payload);
         else if (envelope.operation === 'delegation.catalog') result = await this.#core.threads.spawns.catalogFor(envelope.payload);
@@ -198,10 +203,10 @@ export class PeerDesk {
    * machine it is linked to, the projects other members opened to it as well
    * (`contacts/members.ts`); `relayed`, asked by that machine for the contact.
    */
-  private async contact(peer: CoordinationPeer, operation: string, payload: unknown, relayed: boolean): Promise<unknown> {
+  private async contact(peer: CoordinationPeer, operation: string, payload: unknown, relayed: boolean, signal: AbortSignal): Promise<unknown> {
     this.#core.policy.assert(this.#core.policy.networkOff('contacts'), 'network.contacts');
     const members = this.#core.contacts.members;
-    if (operation === 'contact.project') return receiveProject(this.#core, peer.coreId, payload, relayed);
+    if (operation === 'contact.project') return receiveProject(this.#core, peer.coreId, payload, relayed, signal);
     if (this.#core.sharedProjects.hasContact(peer.coreId) && ['directory', 'search', 'read'].includes(operation)) throw refused('operation: associated projects require scoped contact.project queries');
     // A contact that asks for a partial list also learns how many of this group's machines did not answer.
     const listed = (entries: AgentContact[], unavailable: number) => (payload as { partial?: unknown } | null)?.partial === PARTIAL
@@ -225,10 +230,13 @@ export class PeerDesk {
       const open = this.#side.contactDirectory(peer.coreId).map(redactSharedContact);
       const readable = open.filter(entry => this.#core.contacts.reach.mayRead(peer.coreId, entry.threadId));
       const closed = open.filter(entry => !this.#core.contacts.reach.mayRead(peer.coreId, entry.threadId));
-      const local = [...searchContacts(this.#core.journal.db, readable, words, true, redactSharedText), ...searchContacts(this.#core.journal.db, closed, words, false, redactSharedText)];
-      if (relayed) return local.slice(0, 100);
-      const held = await members.search(peer.coreId, words);
-      return listed([...local, ...held.entries], held.unavailable);
+      const local = [...await searchLocalContacts(this.#core, readable, words, true, true, signal), ...await searchLocalContacts(this.#core, closed, words, false, false, signal)];
+      const held = relayed ? null : await members.search(peer.coreId, words);
+      const visible = new Set(this.#side.contactDirectory(peer.coreId).map(entry => entry.threadId));
+      const matches = local.filter(match => visible.has(match.threadId)
+        && (!match.matched.includes('chat') || this.#core.contacts.reach.mayRead(peer.coreId, match.threadId)));
+      if (held === null) return matches.slice(0, 100);
+      return listed([...matches, ...held.entries], held.unavailable);
     }
     if (operation === 'read') {
       const { threadId, ...query } = readParams(payload);

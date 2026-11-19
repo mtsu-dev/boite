@@ -29,6 +29,37 @@ function send(h: TestCore, from: string, to: AgentAddress, text = 'May I restart
   return h.core.coordination.send({ threadId: from, to, text, requestId });
 }
 
+test('the server handles health requests during a conversation search', async () => {
+  const { h, a, b } = await setup();
+  enable(h, a, b);
+  h.core.journal.putMessage({ id: 'old-spoken-text', threadId: b, turnId: 'history', role: 'user', state: 'complete', createdAt: 1,
+    parts: [{ type: 'text', text: 'a durable unique phrase' }] });
+  // Exercise a long history without depending on any wall-clock performance threshold.
+  h.core.journal.db.query(`WITH RECURSIVE n(i) AS (VALUES(1) UNION ALL SELECT i + 1 FROM n WHERE i < 128)
+    INSERT INTO messages (id, thread_id, turn_id, role, state, created_at, parts)
+    SELECT 'bulk-' || i, ?, 'history', 'assistant', 'complete', i + 1, ? FROM n`).run(b,
+    JSON.stringify([{ type: 'text', text: 'ordinary history '.repeat(32_768) }]));
+  const health = fetch(h.url.replace(/^ws/, 'http').replace(/\/rpc$/, '/health')).then(async response => { await response.text(); return response.status; });
+  const search = h.core.coordination.search(a, 'durable deployment');
+  expect(await Promise.race([search.then(() => 'search'), health])).toBe(200);
+  expect((await search).matches).toMatchObject([{ threadId: b, matched: ['title', 'chat'], excerpts: ['a durable unique phrase'] }]);
+});
+
+test('a cancelled queued search releases its caller before the active reader finishes', async () => {
+  const { h, a, b } = await setup();
+  enable(h, a, b);
+  let finished = false;
+  const active = h.core.coordination.search(a, 'deployment').finally(() => { finished = true; });
+  const caller = new AbortController();
+  const queued = h.core.coordination.search(a, 'deployment', caller.signal);
+  caller.abort();
+  try {
+    expect(await thrown(queued)).toThrow('Conversation search cancelled');
+    expect(finished).toBe(false);
+  } finally { await active; }
+  expect((await h.core.coordination.search(a, 'deployment')).matches).toMatchObject([{ threadId: b }]);
+});
+
 test('contact answer letters distinguish automatic decisions from explicit owner decisions', async () => {
   const { h, a, b } = await setup();
   h.core.coordination.configure(a, { ...h.core.coordination.get(a).config, paused: true });
@@ -749,6 +780,21 @@ test('two linked cores search and read each other\'s agents through signed reque
   two.h.core.coordination.configure(two.b, { ...brief, remote: false });
   expect(await thrown(one.h.core.coordination.read(one.a, { coreId: cardB.coreId, threadId: two.b }))).toThrow('not a thread open to other machines');
 }, 25000);
+
+test('a local search stays local when remote coordination opens while history is read', async () => {
+  const one = await setup(); const two = await setup();
+  const cardA = one.h.core.coordination.identity(), cardB = two.h.core.coordination.identity();
+  one.h.core.coordination.trust(cardB); two.h.core.coordination.trust(cardA);
+  enable(one.h, one.a, one.b);
+  const receive = spyOn(two.h.core.coordination, 'http');
+  try {
+    const local = one.h.core.coordination.search(one.a, 'deployment');
+    one.h.core.coordination.configure(one.a, { ...brief, remote: true });
+    expect((await local).matches).toMatchObject([{ coreId: cardA.coreId, threadId: one.b }]);
+    expect(receive).not.toHaveBeenCalled();
+    expect((await one.h.core.coordination.search(one.a, 'deployment')).matches.some(match => match.coreId === cardB.coreId)).toBe(true);
+  } finally { receive.mockRestore(); }
+});
 
 
 test('old local letters gain project names without requiring enabled contacts', async () => {

@@ -4,7 +4,7 @@ import { address, text } from './coordination-letter.ts';
 import { invalidParams } from './errors.ts';
 import { threadRef } from './contacts/project-policy.ts';
 
-/** At most this many words in a search; each costs one scan of the candidates' chat. */
+/** At most this many words in a search. */
 export const SEARCH_WORDS = 8;
 /** Matches returned by one core. */
 export const SEARCH_RESULTS = 20;
@@ -55,11 +55,20 @@ export function searchContacts(db: Database, candidates: AgentContact[], words: 
   if (candidates.length === 0) return [];
   const ids = JSON.stringify(candidates.map(contact => contact.threadId));
   const inChat = new Map<string, Set<string>>();
-  for (const word of readChat ? words : []) {
-    const rows = db.query(`SELECT DISTINCT m.thread_id AS id${sanitize ? ", j.value->>'text' AS text" : ''} FROM messages m, json_each(m.parts) j WHERE m.thread_id IN (SELECT value FROM json_each(?)) AND ${CHAT_TEXT} AND instr(lower(j.value->>'text'), ?) > 0`).all(ids, word) as { id: string; text?: string }[];
-    inChat.set(word, new Set(rows.filter(row => !sanitize || sanitize(row.text!) === row.text).map(row => row.id)));
+  if (readChat) {
+    // Walk each candidate message's parts once, even when the query has several words.
+    const rows = db.query<{ id: string; word: string; text?: string }, [string, string]>(`SELECT DISTINCT m.thread_id AS id, w.value AS word${sanitize ? ", j.value->>'text' AS text" : ''}
+      FROM messages m CROSS JOIN json_each(m.parts) j CROSS JOIN json_each(?) w
+      WHERE m.thread_id IN (SELECT value FROM json_each(?)) AND ${CHAT_TEXT} AND instr(lower(j.value->>'text'), w.value) > 0`)
+      .iterate(JSON.stringify(words), ids);
+    for (const row of rows) {
+      if (sanitize && sanitize(row.text!) !== row.text) continue;
+      let threads = inChat.get(row.word);
+      if (threads === undefined) { threads = new Set(); inChat.set(row.word, threads); }
+      threads.add(row.id);
+    }
   }
-  const matches: AgentMatch[] = [];
+  const matches: { contact: AgentContact; matched: Field[]; chatWords: string[] }[] = [];
   for (const contact of candidates) {
     const matched = new Set<Field>();
     const chatWords: string[] = [];
@@ -73,10 +82,13 @@ export function searchContacts(db: Database, candidates: AgentContact[], words: 
     }
     if (!all) continue;
     if (chatWords.length > 0) matched.add('chat');
-    matches.push({ ...contact, matched: [...matched], excerpts: chatWords.length > 0 ? excerpts(db, contact.threadId, chatWords, sanitize) : [] });
+    matches.push({ contact, matched: [...matched], chatWords });
   }
-  const fieldHits = (match: AgentMatch) => match.matched.filter(field => field !== 'chat').length;
-  return matches.sort((a, b) => fieldHits(b) - fieldHits(a) || (b.activeAt ?? 0) - (a.activeAt ?? 0)).slice(0, SEARCH_RESULTS);
+  const fieldHits = (match: Pick<AgentMatch, 'matched'>) => match.matched.length - Number(match.matched.includes('chat'));
+  return matches.sort((a, b) => fieldHits(b) - fieldHits(a) || (b.contact.activeAt ?? 0) - (a.contact.activeAt ?? 0))
+    .slice(0, SEARCH_RESULTS).map(({ contact, matched, chatWords }) => ({
+      ...contact, matched, excerpts: chatWords.length > 0 ? excerpts(db, contact.threadId, chatWords, sanitize) : [],
+    }));
 }
 
 /** Up to three recent excerpts of one thread's chat, around the first word each message contains. */

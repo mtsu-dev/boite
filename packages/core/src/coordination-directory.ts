@@ -1,12 +1,13 @@
 import { reachRefusal, type AgentAddress, type AgentContact, type AgentMatch, type AgentTranscript, type CoordinationConfig, type CoordinationPeer, type CoordinationReach, type Message } from '@boite/contracts';
 import type { Core } from './core.ts';
-import { checkMatchExtras, checkRemoteContact, remoteTranscript, PARTIAL, partialList, partialName, queryPayload, readTranscript, searchContacts, searchWords, toolOutputEntry, transcriptQuery, type TranscriptQuery } from './coordination-lookup.ts';
+import { checkMatchExtras, checkRemoteContact, remoteTranscript, PARTIAL, partialList, partialName, queryPayload, readTranscript, searchWords, toolOutputEntry, transcriptQuery, type TranscriptQuery } from './coordination-lookup.ts';
+import { searchLocalContacts } from './coordination-search.ts';
 import { address, same } from './coordination-letter.ts';
 import { PeerRefusal } from './coordination-wire.ts';
 import { contactsBot } from './contacts/bot.ts';
 import type { ContactMailboxes } from './contacts/mailboxes.ts';
 import { projectCoordination } from './contacts/project-coordination.ts';
-import { invalidParams, messageOf, refused } from './errors.ts';
+import { invalidParams, messageOf, refused, unavailable } from './errors.ts';
 
 /** What the lookups read from the coordination that owns them. */
 export interface LookupSide {
@@ -109,11 +110,11 @@ export class CoordinationLookups {
    * Every contact this thread may reach on each trusted machine, in parallel; a machine that fails is named, not fatal.
    * The caller collects the answers after its own last await: trust and associations are read then.
    */
-  private async remoteAll<T>(threadId: string, operation: 'search' | 'read', payload: unknown, check: (answer: unknown, peer: CoordinationPeer) => T, peers = this.peers(threadId)): Promise<() => { results: T[]; unavailable: string[] }> {
+  private async remoteAll<T>(threadId: string, operation: 'search' | 'read', payload: unknown, check: (answer: unknown, peer: CoordinationPeer) => T, peers = this.peers(threadId), signal?: AbortSignal): Promise<() => { results: T[]; unavailable: string[] }> {
     const config = this.side.config(threadId);
     if (!config.remote || config.mode === 'off') return () => ({ results: [], unavailable: [] });
     const found = await Promise.all(peers.map(async peer => {
-      try { return { peer, answer: await projectCoordination(this.core, threadId, peer, operation, payload), failed: null }; }
+      try { return { peer, answer: await projectCoordination(this.core, threadId, peer, operation, payload, signal), failed: null }; }
       catch (error) { return { peer, answer: null, failed: error instanceof PeerRefusal ? `${peer.name} (${error.message})` : peer.name }; }
     }));
     return () => {
@@ -132,22 +133,27 @@ export class CoordinationLookups {
     };
   }
   /** Contacts here and on trusted machines whose fields or chat contain every word of the query. */
-  async search(threadId: string, query: string): Promise<{ matches: AgentMatch[]; unavailable: string[] }> {
+  async search(threadId: string, query: string, signal?: AbortSignal): Promise<{ matches: AgentMatch[]; unavailable: string[] }> {
     const words = searchWords(query);
     const config = this.side.config(threadId);
     if (this.core.threads.require(threadId).archived || config.mode === 'off') return { matches: [], unavailable: [] };
+    const peers = config.remote ? new Set(this.peers(threadId).map(peer => peer.coreId)) : new Set<string>();
     const own = this.side.localReach(threadId).filter(a => a.threadId !== threadId);
-    const matches = searchContacts(this.core.journal.db, own, words);
-    const collect = await this.remoteAll(threadId, 'search', { words, partial: PARTIAL }, (answer, peer) => {
+    const matches = await searchLocalContacts(this.core, own, words, true, false, signal);
+    if (signal?.aborted) throw unavailable('Conversation search cancelled');
+    this.side.checkLookupAccess(threadId, config.remote);
+    const collect = config.remote ? await this.remoteAll(threadId, 'search', { words, partial: PARTIAL }, (answer, peer) => {
       const list = partialList(answer);
       return { peer, missing: list.unavailable, matches: list.entries.map(match => ({ ...checkRemoteContact(match as AgentContact, peer), ...checkMatchExtras(match as { matched?: unknown; excerpts?: unknown }) })) };
-    });
-    const routed = config.remote && config.reach === 'group' ? await this.side.mailboxes.search(threadId, words) : { entries: [], unavailable: [] };
+    }, this.peers(threadId).filter(peer => peers.has(peer.coreId)), signal) : null;
+    if (signal?.aborted) throw unavailable('Conversation search cancelled');
+    const routed = config.remote && config.reach === 'group' && this.side.config(threadId).reach === 'group'
+      ? await this.side.mailboxes.search(threadId, words) : { entries: [], unavailable: [] };
     const hide = this.hidden(threadId);
     routed.entries = routed.entries.filter(entry => !hide(entry.coreId));
     if (this.side.config(threadId).reach !== 'group') { routed.entries = []; routed.unavailable = []; }
     this.side.checkLookupAccess(threadId, config.remote);
-    const remote = collect();
+    const remote = collect?.() ?? { results: [], unavailable: [] };
     const reachable = new Set(this.side.localReach(threadId).map(contact => contact.threadId));
     const trusted = new Set(this.side.trusted().map(peer => peer.coreId));
     const remoteMatches = remote.results.flatMap(result => result.matches);
