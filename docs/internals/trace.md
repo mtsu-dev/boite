@@ -383,7 +383,11 @@ Memory stops appear beside the interrupted tool. Persisted message/part
 boundaries keep later output from relocating the notice. Repeated notices at
 the same boundary, reason and threshold share a folded process list. Owners can
 open the owning machine's memory settings, including from phone-width Settings.
-Paired devices cannot change core protections.
+Paired devices cannot change core protections. The last stop of a machine
+(`Workbench.memoryStop`) stays in the notification corner (`MemoryCorner`), on
+any page, until its card is closed or its Memory settings button used: the open
+thread's own card carries it when that thread's history can, otherwise the
+machine's card does.
 
 ## Orphans
 

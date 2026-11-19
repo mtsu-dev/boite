@@ -1,3 +1,4 @@
+import type { MemoryEvent } from '@boite/contracts';
 import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import { FakeClient } from '../lib/fake-client';
@@ -127,6 +128,50 @@ test('a stop in a thread off screen, or on another page, still reaches the corne
     flushSync();
     expect(document.querySelector('[data-testid=memory-corner]')).toBeNull();
     expect(store.memoryStop).toBeNull();
+  } finally { store.detach(); client.close(); }
+});
+
+/** A stop that lands in the open thread, with the corner following the page as App passes it. */
+async function openThreadStop(events: MemoryEvent[] | undefined) {
+  const client = new FakeClient({ delayMs: 0 }); const store = new Store(); store.attach(client);
+  await store.connect(); await store.open('t-trace');
+  store.openThread!.memoryEvents = events;
+  mounted = mount(MemoryCorner, { target: document.body, props: { store, get chat() { return store.page === 'chat'; } } });
+  flushSync();
+  const stop = { threadId: store.openThread!.id, kind: 'killed', reason: 'thread-quota', limitBytes: 4096 * 1048576, bytes: 5000 * 1048576, exe: 'cargo', state: 'ok', at: Date.now() } as const;
+  return { client, store, stop };
+}
+const cornerTitle = () => document.querySelector('[data-testid=memory-corner] .title')?.textContent;
+
+test('a stop in the open thread stays on another page until it is put away', async () => {
+  const { client, store, stop } = await openThreadStop([]);
+  try {
+    client.emitMemory(stop);
+    flushSync();
+    expect(cornerTitle()).toBe(strings.resources.killTitle);
+    // Settings opened another way than the card's own button: the stop was not answered.
+    store.showSettings('home');
+    flushSync();
+    expect(cornerTitle()).toBe(strings.resources.killTitle);
+    document.querySelector<HTMLButtonElement>('[data-testid=memory-row-dismiss]')!.click();
+    flushSync();
+    expect(cornerTitle()).toBeUndefined();
+    expect(store.memoryStop).toBeNull();
+    store.showChat(); flushSync();
+    expect(cornerTitle()).toBeUndefined();
+  } finally { store.detach(); client.close(); }
+});
+
+test('a stop in the open thread before its history lands still reaches the corner', async () => {
+  // Opened from the list: the thread's stops are not known yet, so its history cannot tell this one.
+  const { client, store, stop } = await openThreadStop(undefined);
+  try {
+    client.emitMemory(stop);
+    flushSync();
+    expect(cornerTitle()).toBe(strings.resources.killTitle);
+    document.querySelector<HTMLButtonElement>('[data-testid=memory-row-dismiss]')!.click();
+    flushSync();
+    expect(cornerTitle()).toBeUndefined();
   } finally { store.detach(); client.close(); }
 });
 

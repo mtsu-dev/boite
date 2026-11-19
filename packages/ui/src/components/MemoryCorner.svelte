@@ -10,8 +10,9 @@
    * stop that lands while its thread is open arrives in the notification
    * corner, once, with the way to the memory settings. The stops a thread
    * already had when it was first opened are history and stay out of the way.
-   * A stop anywhere else, in a thread not on screen or on another page
-   * (`chat` false), comes the same way until it is put away.
+   * A stop anywhere else, in a thread not on screen, on another page (`chat`
+   * false) or in the open thread before its history landed, comes the same
+   * way; either card stays until it is put away.
    */
   let { store, chat = true }: { store: Store; chat?: boolean } = $props();
 
@@ -34,12 +35,14 @@
   });
   const key = $derived(thread && group.length ? `${thread.id}:${group.at(-1)!.at}` : null);
 
-  const dismiss = (): void => { if (key !== null) dismissed = [...dismissed, key]; };
-  /** The machine's last stop, unless the thread on screen is the one it hit: that thread's own card above says it. */
+  /** The machine's last stop, kept until it is put away: on another page, or before the thread's history lands, only this card can say it. */
   const stop = $derived(store.memoryStop);
-  const elsewhere = $derived(stop !== null && !(thread !== null && stop.threadId === thread.id) ? stop : null);
-  // Told by the open thread's card, it does not come back once that thread is left.
-  $effect(() => { if (stop !== null && thread !== null && stop.threadId === thread.id) store.dismissMemoryStop(); });
+  /** Whether the open thread's own card carries that stop, so it is not said twice. */
+  const told = $derived(stop !== null && thread !== null && stop.threadId === thread.id && group.some(event => event.at === stop.at && event.kind === stop.kind));
+  // Putting the thread's card away puts away the stop it carries, so it does not come back once that thread is left.
+  const dismiss = (): void => { if (key !== null) dismissed = [...dismissed, key]; if (told) store.dismissMemoryStop(); };
+  /** Putting the machine's card away answers the thread's card for the same stop too, once its thread is back on screen. */
+  const dismissStop = (): void => { if (stop !== null) dismissed = [...dismissed, `${stop.threadId}:${stop.at}`]; store.dismissMemoryStop(); };
   /** The way to the memory settings, for the owner: the card goes away on the way. */
   const configure = (put: () => void): (() => void) | undefined => store.owner ? () => { put(); store.showSettings('resources', 'limits'); } : undefined;
 </script>
@@ -48,9 +51,9 @@
   <div class="notify-corner memory-corner" use:notifyCorner data-testid="memory-corner">
     <MemoryRow event={group[0]!} events={group} ondismiss={dismiss} onconfigure={configure(dismiss)} />
   </div>
-{:else if elsewhere !== null}
+{:else if stop !== null}
   <div class="notify-corner memory-corner" use:notifyCorner data-testid="memory-corner">
-    <MemoryRow event={elsewhere} ondismiss={() => store.dismissMemoryStop()} onconfigure={configure(() => store.dismissMemoryStop())} />
+    <MemoryRow event={stop} ondismiss={dismissStop} onconfigure={configure(dismissStop)} />
   </div>
 {/if}
 
