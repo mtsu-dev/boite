@@ -32,11 +32,11 @@
  * a CPU profile per scenario; `BENCH_MINIFY=0` keeps the function names.
  */
 import { mkdtempSync, rmSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { ONBOARDING_STORAGE_KEY, ONBOARDING_VERSION } from '../packages/ui/src/lib/onboarding.ts';
 import { findBrowser, freePort } from '../tests/e2e/lib/cdp.ts';
+import { buildUiFixture } from './lib/ui-fixture.ts';
 
 const argv = process.argv.slice(2);
 const option = (name: string): string | undefined => {
@@ -64,19 +64,6 @@ const VARIANTS: Record<string, string> = {
 };
 
 const UI = resolve(option('ui') ?? join(import.meta.dir, '../packages/ui'));
-
-/** The fake-client build, with the store and the fake client reachable from the page. */
-async function buildBundle(outDir: string): Promise<void> {
-  const { build } = await import(createRequire(join(UI, 'package.json')).resolve('vite'));
-  const bridge = {
-    name: 'bench-ui-frames-bridge',
-    transform(code: string, id: string) {
-      if (id.replaceAll('\\', '/') !== join(UI, 'src/main.ts').replaceAll('\\', '/')) return;
-      return `${code}\nimport { store as __store } from './lib/store.svelte.ts';\nimport { rightPanel as __panel } from './lib/right-panel.svelte.ts';\nglobalThis.__bench = { store: __store, panel: __panel };\n`;
-    },
-  };
-  await build({ root: UI, plugins: [bridge], define: { 'import.meta.env.DEV': 'true' }, build: { outDir, emptyOutDir: true, ...(process.env.BENCH_MINIFY === '0' ? { minify: false } : {}) }, logLevel: 'warn' });
-}
 
 type Metrics = { name: string; value: number }[];
 /** The only events the bench listens to: what `--trace` collects and the signal that it is complete. */
@@ -528,5 +515,5 @@ async function main(): Promise<void> {
 }
 
 const buildOnly = option('build');
-if (buildOnly !== undefined) await buildBundle(buildOnly);
+if (buildOnly !== undefined) await buildUiFixture(UI, buildOnly);
 else await main();
