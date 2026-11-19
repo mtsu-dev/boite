@@ -348,15 +348,11 @@ export class ProcRegistry {
   /** Set while the keeper holds agent sessions (`keeper/kept-agents.ts`): a launch with `keep` goes to it, null leaves it here. */
   keptSpawn: ((threadId: ThreadId, cmd: string, executable: string, args: string[], opts: SpawnOptions) => SpawnedChild | null) | null = null;
 
-  /** Lets go of a thread's processes, unstopped and with no exit recorded: the keeper holds them for the next core. */
+  /** Lets go of a thread's processes, unstopped and with no exit recorded: the keeper holds them for the next core. Each pid also leaves `unassigned`, where every POSIX pid sits. */
   disown(threadId: ThreadId): void {
     const byPid = this.#live.get(threadId);
     if (byPid === undefined) return;
-    for (const pid of byPid.keys()) {
-      this.platform.pidRemoved(threadId, pid, !this.#shown.has(threadId));
-      // On POSIX every pid is unassigned: left here, each kept process leaked one entry per core lifetime.
-      this.unassigned.delete(pid);
-    }
+    for (const pid of byPid.keys()) { this.platform.pidRemoved(threadId, pid, !this.#shown.has(threadId)); this.unassigned.delete(pid); }
     this.#live.delete(threadId);
     this.known.delete(threadId);
   }
