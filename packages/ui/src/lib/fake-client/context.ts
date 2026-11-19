@@ -553,7 +553,7 @@ export class FakeContext {
         this.delegationConfigs.set(rootId, { ...delegationConfig(this, rootId), paused: false });
         this.emit('delegation.changed', { threadId: rootId });
       },
-      child: (root, profile, title, task) => workflowChild(this, root, profile, title, task),
+      child: (root, profile, title, task, context) => workflowChild(this, root, profile, title, task, context),
       answer: (threadId, text, ok) => workflowAnswer(this, threadId, text, ok),
       again: (threadId, task) => workflowAgain(this, threadId, task),
       member: (query, field) => void fakeMember(this, query, field),
@@ -562,7 +562,7 @@ export class FakeContext {
         const there = fakeCore(coreId);
         if (!there?.threads.has(threadId)) return null;
         workflowAnswer(there, threadId, text, ok);
-        return there.thread(threadId).turns.at(-1)?.id ?? null;
+        return there.thread(threadId).turns.at(-1) ?? null;
       },
       changed: (rootId, runId, templatesProjectId) => {
         if (templatesProjectId !== undefined) this.emit('workflows.changed', { threadId: rootId, runId, templatesProjectId });

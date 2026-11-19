@@ -1,5 +1,5 @@
 import type { DelegationWorktree, PauseOrigin, ProjectId, ProviderId, ThreadId, Timestamp, Usage } from './index';
-import type { ContextPreset, ContextRequest } from './context-mode';
+import type { ContextPreset, ContextRequest, ThreadContextMode } from './context-mode';
 import type { SharedComputeResult, SharedProjectRef, SharedThreadRef } from './shared-projects';
 
 /**
@@ -128,9 +128,13 @@ export interface WorkflowInstance {
   /** Earlier local conversations replaced by an explicit retry. */
   previousAttempts?: ThreadId[];
   providerId: ProviderId | null;
+  /** The resolved account on the execution machine. Missing before admission and on older runs. */
+  accountId?: string;
   model: string | null;
   /** The reasoning level it runs at; null or missing on older runs: the model's default. */
   effort?: string | null;
+  /** The context of the admitted child. Null for its full context. */
+  contextMode?: ThreadContextMode | null;
   /** All reported turns of this execution, retries and cache included. Null when none reported; missing on older cores. */
   usage?: Usage | null;
   status: WorkflowStepStatus;
@@ -158,7 +162,7 @@ export interface WorkflowInstance {
    * result in its answer, and that result as it was read then; that work was stopped there, and the step ends on
    * that result once its worktree there is kept or removed, with no second read.
    */
-  machine?: { name: string; coreId: string | null; requestId: string; childId: string | null; turnId: string | null; corrections: number; correction?: { requestId: string; text: string }; accepted?: { turnId: string; result: string | null; output: unknown } };
+  machine?: { name: string; coreId: string | null; requestId: string; childId: string | null; turnId: string | null; corrections: number; correction?: { requestId: string; text: string }; accepted?: { turnId: string; result: string | null; output: unknown }; usageTurnIds?: string[] };
 }
 
 export interface WorkflowNode {

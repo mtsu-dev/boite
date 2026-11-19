@@ -418,6 +418,8 @@ export class Workflows {
         return failNow(messageOf(error));
       }
     }
+    const child = this.#core.journal.getThread(threadId);
+    if (child) Object.assign(inst, { accountId: child.accountId, contextMode: child.contextMode ?? null });
     const previous = inst.error;
     const correction = inst.outputCorrection;
     Object.assign(inst, { status: 'running', attempts: correction ? inst.attempts : 1, error: null, result: null, output: null, startedAt: correction ? inst.startedAt : now, finishedAt: null });
