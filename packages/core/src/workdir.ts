@@ -293,8 +293,14 @@ function byName(a: { name: string }, b: { name: string }): number {
  * nobody asked to walk, and the link is followed when a client opens it.
  */
 export async function listDirectory(cwd: string, path: string | undefined): Promise<FileEntry[]> {
-  const target = existingInside(cwd, path === undefined || path.length === 0 ? '.' : path, 'dir', 'files.list path');
-  const dirents = await readdir(target.absolute, { withFileTypes: true });
+  const directory = path === undefined || path === '' ? '.' : path;
+  const what = 'files.list path';
+  const target = existingInside(cwd, directory, 'dir', what);
+  const dirents = await readdir(target.absolute, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'EACCES' || error.code === 'EPERM') throw refused(`${what} cannot be read: ${directory}`, { what, path: directory });
+    if (error.code === 'ENOENT' || error.code === 'ENOTDIR') throw refused(`${what} is no longer a directory: ${directory}`, { what, path: directory });
+    throw error;
+  });
   const ordered = dirents
     .sort((a, b) => Number(b.isDirectory()) - Number(a.isDirectory()) || byName(a, b))
     .slice(0, FILES_LIST_MAX);

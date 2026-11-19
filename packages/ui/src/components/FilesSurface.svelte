@@ -211,7 +211,9 @@
 
   function refresh(): void {
     problem = null;
-    for (const path of loaded.keys()) void read(path, true);
+    const directories = new Set(['', ...loaded.keys()]);
+    for (const [path, open] of Object.entries(expanded)) if (open) directories.add(path);
+    for (const path of directories) void read(path, true);
   }
 
   // On mount, and again whenever the tab is asked for another directory: the

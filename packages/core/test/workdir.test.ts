@@ -5,14 +5,14 @@
  * temporary directory the harness removes.
  */
 
-import { closeSync, constants, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
+import { chmodSync, closeSync, constants, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
 import * as fs from 'node:fs';
 import * as fsPromises from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
-import { FILE_MAX_BYTES, FILE_ROUTE, FILE_TICKET_TTL_MS } from '@boite/contracts';
+import { FILE_MAX_BYTES, FILE_ROUTE, FILE_TICKET_TTL_MS, RpcErrorCode } from '@boite/contracts';
 import { connect, type CoreClient } from '../src/client.ts';
 import { createExclusiveFile, languageOf, mediaOf, openHeldDirectory, writeLandsInside } from '../src/workdir.ts';
 import { echoThread, startTestCore } from './harness.ts';
@@ -96,6 +96,23 @@ describe('files.list', () => {
       'files.list path does not exist: nowhere',
       "files.read path leaves the thread's working directory: ../outside.txt",
     ]);
+  });
+
+  test.skipIf(process.platform !== 'linux' || process.getuid?.() === 0)('losing directory read permission returns a refusal over RPC', async () => {
+    const dir = join(harness.dataDir, 'closed-dir');
+    mkdirSync(dir);
+    writeFileSync(join(dir, 'old.txt'), 'test');
+    const params = { threadId, path: 'closed-dir' };
+    expect(await client.call('files.list', params)).toMatchObject([{ name: 'old.txt' }]);
+    chmodSync(dir, 0o100);
+    try {
+      expect((await rejection(client.call('files.list', params))).reason).toMatchObject({
+        rpc: { code: RpcErrorCode.Refused, data: { path: 'closed-dir' } },
+      });
+    } finally {
+      chmodSync(dir, 0o700);
+    }
+    expect(await client.call('files.list', params)).toMatchObject([{ name: 'old.txt' }]);
   });
 });
 

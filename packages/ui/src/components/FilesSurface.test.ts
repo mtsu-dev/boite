@@ -71,6 +71,13 @@ test.each([true, false])('a failed revalidation invalidates rows only for a conf
     app = mount(FilesSurface, { target: document.body, props });
     await tick();
     expect(shown()).toBe(!inaccessible);
+    if (inaccessible) {
+      await vi.waitFor(() => expect(document.querySelector('[data-testid="files-error"]')).not.toBeNull());
+      failure = false;
+      const refresh = document.querySelector<HTMLButtonElement>('[data-testid="files-refresh"]')!;
+      refresh.click();
+      await vi.waitFor(() => expect(shown()).toBe(true));
+    }
   } finally {
     await unmount(app);
     vi.unstubAllGlobals();

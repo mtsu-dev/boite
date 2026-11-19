@@ -43,6 +43,7 @@ export class ProgressState {
     this.latest.set(threadId, progress);
     // Native compaction may start while a merged conversation's last prompt finishes.
     if (phase === 'compacting') this.core.threads.autoCompact.stopIfDone(threadId);
+    if (old.phase !== phase) this.core.workforce.progressChanged(threadId);
     if (old.phase === phase && old.detail === short && at - (this.published.get(threadId) ?? 0) < 1000) return;
     this.publish(threadId, progress, at);
   }

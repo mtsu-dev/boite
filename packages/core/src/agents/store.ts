@@ -138,6 +138,11 @@ export class AgentStore {
     this.timer = null;
   }
 
+  /** A running phase can change the activity shown in an agent's team. */
+  progressChanged(threadId: string): void {
+    if (this.#threads.has(threadId)) this.changed();
+  }
+
   private last = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   /** Invalidation, at most once a second: the first change goes at once, the rest of the second after it. */
