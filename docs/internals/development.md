@@ -104,6 +104,8 @@ client. Development fixtures spend no provider tokens:
 | `?fake=1&pluginArchive=1` | "Finish the trace tab" is done, marked by the plugin Bureau through `threads.archive`, permission `threads.write` ([plugins](plugins.md#permissions)) |
 | `?fake=1&uninstalled=1` | No connected provider |
 | `?fake=1&policy=managed` | An admin policy that locks every key a control shows; `broken` adds problems, `closed` fails closed ([enterprise](enterprise.md)) |
+| `?fake=1&os=linux` | A Linux core: the Windows-only switches and the CPU cap are greyed out; `macos` also reads no agent CPU |
+| `?fake=1&awake=missing` | A machine with no sleep inhibitor: Keep awake says so under its name |
 
 Production bundles exclude the fake client and Svelte development runtime.
 Vite removes an orphan fake-client chunk and rejects shipped references to it.
@@ -1018,13 +1020,9 @@ compiled worker, and uses fresh data without provider calls.
 
 ## The opt-in live tests
 
-The installed-binary compatibility check uses a local mock API, fresh homes
-and no login: `BOITE_E2E_OPENCODE2_BINARY=/absolute/path/to/opencode2 bun test packages/core/test/opencode2.compat.test.ts`
-from the repository root. It covers discovery, a read tool, queued and immediate
-follow-ups in one execution, cold resume, plan mode and cancellation beside a
-locked, incompatible version 1 profile. `tests/e2e/opencode2-steering.test.ts`
-checks the queued bubbles, Send now and compact tools on desktop and phone
-against a scripted native server, without an installed provider.
+`tests/e2e/opencode2-steering.test.ts` checks the queued bubbles, Send now and
+compact tools on desktop and phone against a scripted native server, without an
+installed provider.
 
 Real-provider tests use CLI logins and spend tokens. Run selected cases from
 `packages/core`, one at a time; never enable them for an ordinary fixture run.
@@ -1048,9 +1046,7 @@ Real-provider tests use CLI logins and spend tokens. Run selected cases from
 | `BOITE_BENCH_CLAUDE=1` | Real Claude turn in `bun run bench` |
 | `BOITE_BENCH_HOST_AGENTS=1` | Host agent update checks in `bench/idle-rss.ts` |
 
-`BOITE_E2E_GUARD=1` separately enables the native Windows focus case, which
-opens a real window and takes focus briefly. Other guard tests use fake Win32
-calls. Voice and local Whisper opt-ins are listed in [voice](voice.md#verification).
+The focus guard tests use fake Win32 calls. Voice and local Whisper opt-ins are listed in [voice](voice.md#verification).
 
 ## Phone checks
 

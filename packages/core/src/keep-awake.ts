@@ -10,8 +10,10 @@
  * other keep one hold. It is given back at once when the `keepAwake` setting
  * goes off and when the core closes. A machine with no inhibitor, or one that
  * refuses it, is logged once; the setting toggled on again retries.
+ * `resources.keepAwake` reads `status()`, so the switch says when it can hold
+ * nothing here.
  */
-import type { RpcEventName } from '@boite/contracts';
+import type { KeepAwakeStatus, RpcEventName } from '@boite/contracts';
 import type { Core } from './core.ts';
 import type { ProcessPlatform } from './platform/types.ts';
 
@@ -28,6 +30,7 @@ export class KeepAwake {
   readonly #core: Core;
   readonly #hold: KeepAwakeHold | null;
   readonly #releaseAfterMs: number;
+  readonly #available: () => boolean;
   readonly #unsubscribe: () => void;
   #release: (() => void) | null = null;
   #check: ReturnType<typeof setTimeout> | null = null;
@@ -37,11 +40,15 @@ export class KeepAwake {
   #enabled: boolean;
   #closed = false;
 
-  /** `hold` null: this core holds nothing and says nothing (`BOITE_KEEP_AWAKE=0`, a platform without the call). */
-  constructor(core: Core, hold: KeepAwakeHold | null, releaseAfterMs = RELEASE_AFTER_MS) {
+  /**
+   * `hold` null: this core holds nothing and says nothing (`BOITE_KEEP_AWAKE=0`, a platform without the call).
+   * `available` says, before any turn, whether the machine has an inhibitor to hold.
+   */
+  constructor(core: Core, hold: KeepAwakeHold | null, releaseAfterMs = RELEASE_AFTER_MS, available: () => boolean = () => true) {
     this.#core = core;
     this.#hold = hold;
     this.#releaseAfterMs = releaseAfterMs;
+    this.#available = available;
     this.#enabled = core.settings.get().keepAwake !== false;
     this.#unsubscribe = hold === null ? () => {} : core.bus.onCommitted(name => { if (WATCHED.has(name)) this.#schedule(); });
     // Turns a previous core left queued start without an event this listener saw.
@@ -50,6 +57,11 @@ export class KeepAwake {
 
   /** Whether the inhibitor is held now. */
   get held(): boolean { return this.#release !== null; }
+
+  /** Held now, and whether it can be: false with no inhibitor, a refused or lost one, or none asked for. */
+  status(): KeepAwakeStatus {
+    return { held: this.held, available: this.#hold !== null && !this.#unavailable && this.#available() };
+  }
 
   /** A turn runs or waits for a slot; `waiting` is a thread waiting for the user. */
   #working(): boolean {

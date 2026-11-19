@@ -1,5 +1,5 @@
 /** Agent output through the keeper against the core's own pipes.
- * Run: BOITE_KEEPER=1 bun bench/keeper-agent.ts [floodMiB=64] [samples=20]
+ * Run: bun bench/keeper-agent.ts [floodMiB=64] [samples=20]   (Linux or macOS, without BOITE_KEEPER=0)
  * One core with the keeper on. `procs.spawnChild` starts the echo driver's
  * child (`drivers/echo-agent.ts`) with `keep`, which goes to the keeper, and
  * without, which stays on the core's pipes. Measured for each:
@@ -15,10 +15,11 @@
 import assert from 'node:assert/strict';
 import type { ThreadId } from '../packages/contracts/src/index.ts';
 import { echoAgentCommand } from '../packages/core/src/drivers/echo-process.ts';
+import { keeperEnabled } from '../packages/core/src/keeper/client.ts';
 import type { SpawnedChild } from '../packages/core/src/process-spawn-types.ts';
 import { echoThread, startTestCore, waitFor } from '../packages/core/test/harness.ts';
 
-assert(process.env.BOITE_KEEPER === '1', 'run with BOITE_KEEPER=1');
+assert(keeperEnabled(), 'run on Linux or macOS, without BOITE_KEEPER=0');
 process.env.BOITE_KEEPER_IDLE_MS = '1000';
 const numbers = process.argv.slice(2).filter(value => /^\d+$/.test(value)).map(Number);
 const floodMiB = numbers[0] ?? 64;
