@@ -9,7 +9,7 @@ import type { TurnContext, TurnResult } from '../src/drivers/types.ts';
 import { startServer } from '../src/server.ts';
 import { AUTO_CONTINUE, AUTO_CONTINUE_LABEL } from '../src/threads/auto-continue.ts';
 import { CRASH_RESUMING, CRASH_WHILE_RUNNING } from '../src/threads/recovery.ts';
-import { echoThread, removeDir, rolledBackArchive, startTestCore, waitFor, type TestCore } from './harness.ts';
+import { echoThread, holdAccountTurns, removeDir, rolledBackArchive, startTestCore, waitFor, type TestCore } from './harness.ts';
 
 const defaults = { ...AUTO_CONTINUE, delaysMs: [...AUTO_CONTINUE.delaysMs] };
 const restores: (() => void)[] = [];
@@ -313,7 +313,7 @@ async function restart(h: TestCore): Promise<{ core: Core; stop: () => Promise<v
   return { core, stop: async () => { await server.stop(); await core.close(); await removeDir(h.dataDir); } };
 }
 
-async function crashMidTurn(prompt: string, stopFirst = false): Promise<{ h: TestCore; threadId: string; turnId: string }> {
+async function crashMidTurn(prompt: string, stopFirst = false, accepted = false): Promise<{ h: TestCore; threadId: string; turnId: string }> {
   const h = await startTestCore();
   let started = false;
   let cut: (() => void) | undefined;
@@ -321,6 +321,7 @@ async function crashMidTurn(prompt: string, stopFirst = false): Promise<{ h: Tes
   restores.push(setDriver('echo', {
     protocol: 'echo',
     startTurn(ctx) {
+      if (accepted) ctx.sessionAccepted?.('native');
       say(ctx, { type: 'text', text: 'Halfway through.' });
       started = true;
       const { promise, resolve } = Promise.withResolvers<TurnResult>();
@@ -352,8 +353,8 @@ test('an acknowledged Stop survives a crash while the native attempt is still ru
   } finally { await next.stop(); }
 });
 
-test('a core that dies mid-turn resumes that turn once the next core starts, quoting the request', async () => {
-  const { h, threadId, turnId } = await crashMidTurn('migrate the journal to schema 38');
+test.each([false, true])('a core that dies mid-turn resumes once (native admission: %s)', async (accepted) => {
+  const { h, threadId, turnId } = await crashMidTurn('migrate the journal to schema 38', false, accepted);
   const asked = scripted(done);
   const next = await restart(h);
   try {
@@ -361,6 +362,8 @@ test('a core that dies mid-turn resumes that turn once the next core starts, quo
     expect(next.core.journal.getTurn(turnId)).toMatchObject({ status: 'error', error: CRASH_RESUMING });
     const resume = next.core.threads.get(threadId).turns[1]!;
     expect(resume.execution?.operation).toBe('resume');
+    expect(asked[0]!.sessionId).toBe(accepted ? 'native' : null);
+    expect(next.core.journal.getTurn(turnId)?.execution?.sessionId).toBe(accepted ? 'native' : null);
     expect(asked[0]!.prompt).toContain('Boite stopped unexpectedly');
     expect(asked[0]!.prompt).toContain('migrate the journal to schema 38');
     const opening = next.core.threads.get(threadId).messages.find(message => message.turnId === resume.id && message.role === 'system')!.parts[0]!;
@@ -502,15 +505,27 @@ test('a crash that paused the subagent team of an answered thread wakes its agen
   } finally { setSystemTime(); await next.stop(); }
 });
 
-test('a resume planned before a crash survives it and goes out from the next core', async () => {
+test.each(['planned', 'dispatching', 'admitted'])('a resume survives a crash while %s', async (stage) => {
   // Long enough to crash first; the plan keeps its time across the restart.
   AUTO_CONTINUE.delaysMs = [1_500, 1_500];
   const h = await startTestCore();
   scripted(failed());
   const client = await h.connect();
   const { threadId } = await echoThread(h, client);
-  await client.call('turns.start', { threadId, prompt: 'index the docs' });
+  const source = await client.call('turns.start', { threadId, prompt: 'index the docs' });
   await waitFor(() => h.core.threads.list({ includeArchived: true }).find(thread => thread.id === threadId)?.retry?.kind === 'auto-continue');
+  let admittedId: string | undefined;
+  if (stage !== 'planned') {
+    const entry = h.core.threads.resumes.entry(threadId)!;
+    h.core.journal.setSetting('resumes', { [threadId]: { ...entry, plan: { ...entry.plan, dispatching: true } } });
+    if (stage === 'admitted') {
+      holdAccountTurns(h);
+      const input = h.core.threads.handoff.continuation(source, entry.plan!.prompt);
+      const admitted = h.core.threads.startTurn(threadId, input, { kind: 'resume', reason: 'carry-on', requestId: `auto-continue_${source.id}` });
+      expect(admitted.status).toBe('queued');
+      admittedId = admitted.id;
+    }
+  }
   client.close();
   await crash(h);
   const asked = scripted(done);
@@ -518,5 +533,7 @@ test('a resume planned before a crash survives it and goes out from the next cor
   try {
     await waitFor(() => next.core.threads.get(threadId).turns.length === 2 && next.core.threads.get(threadId).turns[1]!.status === 'done');
     expect(asked[0]!.prompt).toContain('API Error: 503');
+    expect(asked).toHaveLength(1);
+    if (admittedId) expect(next.core.journal.turnRequest(threadId, `auto-continue_${source.id}`)?.turn_id).toBe(admittedId);
   } finally { await next.stop(); }
 });

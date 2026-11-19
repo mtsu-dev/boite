@@ -205,12 +205,12 @@ export class CodexSession {
     const rpc = this.#rpc;
     const threadId = this.#threadId;
     if (rpc === null || threadId === null || turn.turnId === null) return;
-    void rpc.request('turn/interrupt', { threadId, turnId: turn.turnId }).catch(() => undefined);
+    void rpc.request('turn/interrupt', { threadId, turnId: turn.turnId }, { writeKind: 'stop' }).catch(() => undefined);
   }
 
   async steer(turn: CodexTurn, text: string, attachments: TurnContext['attachments'] = [], onAccepted?: () => void, signal?: AbortSignal): Promise<boolean> {
     if (this.#current !== turn || turn.settled || turn.isStopped || !this.#rpc || !this.#threadId || !turn.turnId) return false;
-    await this.#rpc.request('turn/steer', { threadId: this.#threadId, expectedTurnId: turn.turnId, input: [...this.skills.steer(text), ...imageInputsOf(attachments)] }, { onAccepted, signal });
+    await this.#rpc.request('turn/steer', { threadId: this.#threadId, expectedTurnId: turn.turnId, input: [...this.skills.steer(text), ...imageInputsOf(attachments)] }, { onAccepted, signal, writeKind: 'steer' });
     return true;
   }
 
@@ -288,7 +288,9 @@ export class CodexSession {
           ...(ctx.thread.effort === null ? {} : { effort: ctx.thread.effort }),
           serviceTier: ctx.thread.speed ?? "default",
         });
-        turn.turnId = started.turn.id; ctx.inputReady?.();
+        turn.turnId = started.turn.id;
+        ctx.sessionAccepted?.(threadId);
+        ctx.inputReady?.();
         if (turn.isStopped) this.#interrupt(turn);
         // A server that answers with a turn already finished settles it here;
         // the one that answers `inProgress` settles on `turn/completed`.
@@ -588,7 +590,11 @@ export class CodexSession {
     switch (method) {
       case 'turn/started': {
         const record = params['turn'] as CodexTurnRecord | undefined;
-        if (record) { turn.turnId = record.id; if (turn.isStopped) this.#interrupt(turn); }
+        if (record) {
+          turn.turnId = record.id;
+          if (typeof record.id === 'string' && this.#threadId !== null) turn.ctx.sessionAccepted?.(this.#threadId);
+          if (turn.isStopped) this.#interrupt(turn);
+        }
         break;
       }
       case 'turn/completed': {

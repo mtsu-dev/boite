@@ -741,6 +741,7 @@ export function startServer(options: ServerOptions): RunningServer {
     // before it would be refused for good.
     void core.providers.settle().finally(() => {
       if (stopping) return;
+      core.scheduler.startupReady();
       core.threads.handoff.resume();
       // The children and steps the handoff cut go on with their conversations.
       core.delegation.resumeAfterRestart();

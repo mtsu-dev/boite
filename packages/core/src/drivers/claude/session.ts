@@ -641,6 +641,8 @@ export class ClaudeSession {
     }
     // The turn is told what earlier turns account for before it reads the result.
     if (message.type === 'result') turn.noteCostBefore(...this.#totals.before(message));
+    if (!replayed && this.#native === null && this.#foreignResults === 0 && this.#sessionId !== null
+      && message.type === 'assistant' && !message.error && subagentOf(message) === null) turn.ctx.sessionAccepted?.(this.#sessionId);
     turn.handle(message);
     // One result per user message: that is the end of this turn, not of the CLI.
     if (message.type === 'result') {

@@ -179,7 +179,7 @@ export class PiSession {
 
   async #sendAbort(turn: PiTurn, peer: PiPeer): Promise<void> {
     if (this.#steered) {
-      try { await peer.command('clear_queue', {}, { timeoutMs: Math.min(EXIT_GRACE_MS, stopDeadlineMs) }); }
+      try { await peer.command('clear_queue', {}, { timeoutMs: Math.min(EXIT_GRACE_MS, stopDeadlineMs), writeKind: 'stop' }); }
       catch (error) {
         if (this.#current !== turn || this.#peer !== peer) return;
         turn.ctx.log('warn', `pi: closing the stopped session because its queue could not be cleared: ${messageOf(error)}`);
@@ -189,7 +189,7 @@ export class PiSession {
     }
     if (this.#current !== turn || this.#peer !== peer || turn.decided) return;
     try {
-      await peer.command('abort');
+      await peer.command('abort', {}, { writeKind: 'stop' });
       if (this.#current !== turn || this.#peer !== peer || turn.decided) return;
       const state = await peer.command('get_state', {}, { timeoutMs: stopDeadlineMs });
       if (dataOf(state)['isStreaming'] !== true) turn.settleRun();
@@ -231,7 +231,7 @@ export class PiSession {
   async steer(turn: PiTurn, message: string, attachments: TurnContext['attachments'] = [], onAccepted?: () => void, signal?: AbortSignal): Promise<boolean> {
     if (this.#current !== turn || turn.settled || turn.isStopped || !this.#peer) return false;
     this.#steered = true;
-    await this.#peer.command('steer', { message, ...(attachments.length ? { images: imagesOf(attachments) } : {}) }, { onAccepted, signal });
+    await this.#peer.command('steer', { message, ...(attachments.length ? { images: imagesOf(attachments) } : {}) }, { onAccepted, signal, writeKind: 'steer' });
     return true;
   }
 
@@ -675,7 +675,10 @@ export class PiSession {
         break;
       case 'message_start': {
         const started = message['message'] as { role?: unknown } | undefined;
-        if (started?.role === 'assistant') turn.requestAt = Date.now();
+        if (started?.role === 'assistant') {
+          if (turn.sessionId !== null) turn.ctx.sessionAccepted?.(turn.sessionId);
+          turn.requestAt = Date.now();
+        }
         break;
       }
       case 'message_end': {

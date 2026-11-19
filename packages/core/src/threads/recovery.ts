@@ -4,6 +4,7 @@ import type { Core } from '../core.ts';
 import { assertDriverRunnable } from '../drivers/index.ts';
 import { notFound, refused } from '../errors.ts';
 import { requireAgent } from './agentless.ts';
+import { HANDOFF } from './handoff.ts';
 import { markQueued, settleStatus } from './lifecycle.ts';
 import { checkStoredEffort, checkStoredSpeed } from './selection.ts';
 import { announceFinished, finishTurn, userStopKey } from './turn-settlement.ts';
@@ -29,7 +30,7 @@ export class ThreadRecovery {
    * A core that dies mid-turn leaves that turn `running` or `queued` in the
    * journal, and the next start comes up with an empty scheduler: nothing would
    * ever finish it. Unsent ordinary prompts retain their identity and frozen
-   * selection, held until the user resumes or discards them. A turn that may
+   * selection, returning to the queue after a recent crash. A turn that may
    * have reached its provider becomes an error; it is never replayed here, but
    * a conversation's turn cut within the hour gets a continuation once the
    * core started (`threads/auto-continue.ts`).
@@ -38,6 +39,7 @@ export class ThreadRecovery {
     const stuck = this.#core.journal.unfinishedTurns();
     const handoff = this.#core.threads.handoff;
     const inherited = handoff.inheritedTurns();
+    const recentCrash = stuck.length > 0 && this.#core.threads.autoContinue.previousRunCut();
     /** Threads whose queued turn goes back in line once the server listens. */
     const waiting = new Set<ThreadId>();
     const counts = { requeued: 0, held: 0, handedOver: 0, stopped: 0, failed: 0 };
@@ -59,8 +61,21 @@ export class ThreadRecovery {
         continue;
       }
       const thread = this.#core.journal.getThread(turn.threadId);
-      if (previous === 'queued' && turn.startedAt === null && turn.execution
-        && !turn.execution.operation && thread && !thread.archived && !thread.parentThreadId) {
+      const target = turn.execution;
+      if (previous === 'queued' && turn.startedAt === null && target && thread && !thread.archived && !thread.parentThreadId
+        && (!target.operation || this.#core.threads.resumes.admitted(turn))) {
+        if (recentCrash && !turn.queueHold && Date.now() - turn.queuedAt <= HANDOFF.maxAgeMs) {
+          this.#core.scheduler.enqueue(turn, target.accountId, { recovering: true });
+          counts.requeued += 1;
+          waiting.add(turn.threadId);
+          continue;
+        }
+        // An expired automatic continuation has nothing new for the owner to resume.
+        if (target.operation) {
+          this.#closeStopped(turn, 'handed-over');
+          counts.stopped += 1;
+          continue;
+        }
         const held: Turn = { ...turn, queueHold: turn.queueHold ?? { reason: 'core-restarted', since: Date.now() } };
         this.#core.bus.afterCommit(() => this.#core.journal.db.transaction(() => {
           if (!turn.queueHold) this.#core.journal.append({ type: 'turn.held', threadId: turn.threadId, version: 1, payload: held }, () => this.#core.journal.putTurn(held));

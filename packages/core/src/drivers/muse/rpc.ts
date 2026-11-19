@@ -102,8 +102,8 @@ export class MuseRpc {
   }
 
   /** A command: a request whose params carry a fresh `commandId`. */
-  command<T>(method: string, params: Record<string, unknown>, onAccepted?: () => void): Promise<T> {
-    return this.request<T>(method, { commandId: mintUuidV7(), ...params }, { onAccepted });
+  command<T>(method: string, params: Record<string, unknown>, options?: StdioRequestOptions): Promise<T> {
+    return this.request<T>(method, { commandId: mintUuidV7(), ...params }, options);
   }
 
   notify(method: string, params: unknown): void {

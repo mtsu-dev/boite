@@ -42,7 +42,7 @@ export interface Plan {
   /** A usage limit's: the reset of the spent window, and what it was spent on. */
   resetsAt?: number;
   selection?: LimitSelection;
-  /** Written just before the turn is dispatched: a core that finds it so cannot know whether it went out. */
+  /** Written just before dispatch; the request receipt records its durable admission. */
   dispatching?: true;
 }
 
@@ -64,8 +64,8 @@ type Record_ = Record<ThreadId, Entry>;
  * Every resume the core plans for a thread by itself, whatever stopped it: a
  * usage limit (`threads/limit-resume.ts`) or a turn that stopped before its
  * answer (`threads/auto-continue.ts`). One journalled record survives a
- * restart; a plan caught while dispatching is dropped, since its turn may
- * have gone out. Everything is checked again when it fires. A cache ping
+ * restart. At startup the request receipt settles an admitted plan, and a
+ * plan without a receipt is armed again. Everything is checked when it fires. A cache ping
  * neither cancels a plan nor holds it back: it gives way.
  */
 export class ResumePlanner {
@@ -104,18 +104,31 @@ export class ResumePlanner {
         }
         continue;
       }
-      const plan = entry.plan;
+      let plan = entry.plan;
       if (plan === undefined) continue;
       if (plan.dispatching) {
-        record[threadId] = settled(entry, plan, false);
+        const receipt = this.#core.journal.turnRequest(threadId, requestId(plan.turnId, plan.reason === 'limit'));
         changed = true;
-        this.log('warn', threadId, `The ${what(plan)} of turn ${plan.turnId} was being sent when the previous core stopped; it is not sent again`, 'uncertain', plan);
-        continue;
+        if (receipt !== null) {
+          record[threadId] = settled(entry, plan, receipt.turn_id as TurnId);
+          continue;
+        }
+        const { dispatching: _, ...unsent } = plan;
+        plan = unsent;
+        record[threadId] = { ...entry, plan };
       }
       const startDelay = plan.reason === 'limit' ? RESUME_TIMING.limit.startDelayMs : RESUME_TIMING.carryOn.startDelayMs;
       this.#arm(threadId, Math.max(startDelay, plan.at - Date.now()));
     }
     if (changed) this.#save(record);
+  }
+
+  /** A queued automatic resume already has its own journalled prompt and receipt. */
+  admitted(turn: Turn): boolean {
+    if (turn.execution?.operation !== 'resume') return false;
+    const source = this.#load()[turn.threadId]?.plan?.turnId ?? this.#core.journal.lastEndedTurn(turn.threadId)?.id;
+    return source !== undefined && [false, true].some(limit =>
+      this.#core.journal.turnRequest(turn.threadId, requestId(source, limit))?.turn_id === turn.id);
   }
 
   close(): void {
@@ -259,7 +272,7 @@ export class ResumePlanner {
       const input = source && (plan.reason === 'crash' || plan.reason === 'error' || limit)
         ? this.threads.handoff.continuation(source, plan.prompt) : { prompt: plan.prompt };
       const turn = this.threads.startTurn(threadId, { ...input, display: RESUME_TEXT[plan.reason].label },
-        { kind: 'resume', reason: limit ? 'limit' : 'carry-on', requestId: `${limit ? 'limit-resume' : 'auto-continue'}_${plan.turnId}` });
+        { kind: 'resume', reason: limit ? 'limit' : 'carry-on', requestId: requestId(plan.turnId, limit) });
       sent = turn.id;
       this.log('info', threadId, `Turn ${turn.id} resumes the thread after turn ${plan.turnId} stopped (${plan.reason})`, 'started', plan);
     } catch (error) {
@@ -371,6 +384,10 @@ function asRecord(value: unknown): Record_ {
 
 function what(plan: Plan): string {
   return plan.reason === 'limit' ? 'usage limit resume' : 'automatic resume';
+}
+
+function requestId(turnId: TurnId, limit: boolean): string {
+  return `${limit ? 'limit-resume' : 'auto-continue'}_${turnId}`;
 }
 
 /**

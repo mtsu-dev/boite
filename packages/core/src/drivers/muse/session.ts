@@ -187,12 +187,12 @@ export class MuseSession {
    * `turn/steer` names the turn it means: a host whose turn already ended
    * refuses it, and the text waits for the next turn instead of starting one.
    */
-  async steer(turn: MuseTurn, text: string, onAccepted?: () => void): Promise<boolean> {
+  async steer(turn: MuseTurn, text: string, onAccepted?: () => void, signal?: AbortSignal): Promise<boolean> {
     const rpc = this.#rpc;
     const sessionId = this.#sessionId;
     if (rpc === null || sessionId === null || this.#current !== turn || turn.turnId === null || turn.isStopped || turn.compacting) return false;
     try {
-      await rpc.command('turn/steer', { sessionId, expectedTurnId: turn.turnId, input: inputOf(text, []) }, onAccepted);
+      await rpc.command('turn/steer', { sessionId, expectedTurnId: turn.turnId, input: inputOf(text, []) }, { onAccepted, signal, writeKind: 'steer' });
       return true;
     } catch (error) {
       if (error instanceof MspError) return false;
@@ -204,7 +204,7 @@ export class MuseSession {
     const rpc = this.#rpc;
     const sessionId = this.#sessionId;
     if (rpc === null || sessionId === null || turn.turnId === null) return;
-    void rpc.command('turn/interrupt', { sessionId, turnId: turn.turnId }).catch((error: unknown) => {
+    void rpc.command('turn/interrupt', { sessionId, turnId: turn.turnId }, { writeKind: 'stop' }).catch((error: unknown) => {
       turn.ctx.log('warn', `muse: turn/interrupt failed: ${messageOf(error)}`);
     });
     const deadline = setTimeout(() => {
@@ -306,6 +306,7 @@ export class MuseSession {
           ...(effort === null ? {} : { reasoningEffort: effort }),
         });
         if (typeof started.turnId === 'string' && started.turnId.length > 0) turn.turnId = started.turnId;
+        ctx.sessionAccepted?.(sessionId);
         ctx.inputReady?.();
         if (turn.isStopped) this.#interrupt(turn);
       }

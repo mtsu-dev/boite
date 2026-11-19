@@ -254,6 +254,12 @@ export class TurnAttempts {
       // after that belongs to no turn the journal still holds open, so it
       // reaches no message.
       let listening = true;
+      const generation = context.thread.sessionGeneration ?? 0;
+      if (context.sessionId === null) {
+        context.sessionAccepted = sessionId => {
+          if (listening && !signal.aborted) this.#acceptSession(state, generation, sessionId);
+        };
+      }
       // Messages this attempt opened: its end closes any the driver left open
       // (a driver cut off by its forced stop completes nothing). Completing one
       // already closed through the sink changes nothing.
@@ -514,6 +520,31 @@ export class TurnAttempts {
     if (current && current.providerId === state.thread.providerId && current.accountId === state.thread.accountId && (current.sessionGeneration ?? 0) === (state.thread.sessionGeneration ?? 0)) {
       saveThread(this.#core, { ...current, sessionId: state.thread.sessionId, sessionResumeAt: null }, 'thread.updated');
     }
+  }
+
+  /** Journal the first usable session with the running turn, before a result can be lost to a crash. */
+  #acceptSession(state: TurnAttemptState, generation: number, sessionId: string): void {
+    const { threadId, turnId, thread, running } = state;
+    const { journal } = this.#core;
+    const execution = running.execution;
+    if (!sessionId || execution?.sessionId !== null || execution.sessionGeneration !== generation
+      || this.#turns.get(threadId) !== state || journal.isClosed()) return;
+    const current = journal.getThread(threadId);
+    const stored = journal.getTurn(turnId);
+    if (current === null || !sameSelectionTarget(current, thread) || (current.sessionGeneration ?? 0) !== generation
+      || (current.sessionId !== null && current.sessionId !== sessionId)
+      || stored?.status !== 'running' || stored.startedAt !== running.startedAt || stored.threadId !== threadId
+      || stored.execution?.sessionId !== null || stored.execution.sessionGeneration !== generation
+      || stored.execution.accountId !== execution.accountId || stored.execution.providerId !== execution.providerId) return;
+    const next = { ...current, sessionId, sessionResumeAt: null };
+    const accepted = { ...running, execution: { ...execution, sessionId, sessionResumeAt: null } };
+    journal.append({ type: 'turn.session-accepted', threadId, version: 1, payload: { turnId, sessionId, generation } }, () => {
+      journal.putThread(next);
+      journal.putTurn(accepted);
+    });
+    state.thread = { ...thread, sessionId, sessionResumeAt: null };
+    state.running = accepted;
+    this.#announce(threadId);
   }
 
   /**

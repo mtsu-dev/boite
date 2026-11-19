@@ -65,7 +65,7 @@ export function createMuseDriver(): Driver {
         stop: (): void => {
           running.stopTurn(turn);
         },
-        steer: (text, _attachments, onAccepted) => running.steer(turn, text, onAccepted),
+        steer: (text, _attachments, onAccepted, signal) => running.steer(turn, text, onAccepted, signal),
       };
     },
 

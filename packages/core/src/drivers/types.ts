@@ -248,6 +248,8 @@ export interface TurnContext {
   reportProviderEvent?(): void;
   /** The running turn can now accept native user input. Does not report model progress. */
   inputReady?(): void;
+  /** Native output or acknowledgement proves the first prompt belongs to this resumable session. */
+  sessionAccepted?(sessionId: string): void;
   /** A native authentication refusal invalidates the account's passive status. */
   authenticationFailed?(): void;
   /**
