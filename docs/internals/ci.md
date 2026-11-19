@@ -154,6 +154,10 @@ nothing.
   every pull request. Keep the old job and add the new one, merge, add the new
   name to the ruleset, then remove the old job and its name once no open pull
   request still needs it.
+- Removing a job with no replacement: drop its name from the ruleset only once
+  the pull request that removes the job is first in the merge queue. Dropped
+  earlier, every other merge group fails `Ruleset check names`, since main still
+  reports the job.
 
 ### Run modes and platforms
 
