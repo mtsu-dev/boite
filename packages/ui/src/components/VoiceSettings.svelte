@@ -351,7 +351,7 @@
   progress { display: block; width: 100%; height: 4px; margin-top: 12px; accent-color: var(--color-accent); }
   .error { max-width: var(--settings-width); margin: 0 0 16px; }
 
-  .language { width: 88px; text-align: center; }
+  .language { width: 10em; text-align: center; }
 
   /* A model is a radio with its size; the action on its right downloads or removes it. */
   .model { gap: 12px; }
