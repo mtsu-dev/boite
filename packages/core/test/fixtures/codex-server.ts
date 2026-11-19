@@ -69,6 +69,25 @@ let afterAnswer: (() => void) | null = null;
 const waiting = new Map<string, () => void>();
 /** Admission precedes streamed output and the point where a slow turn waits for interruption. */
 const activeTurns = new Set<string>();
+/** `[latency-stream]` keeps writing until Stop and echoes a steer on its next beat. */
+const latencyInputs = new Map<string, string[]>();
+
+async function latencyStream(turnId: string, say: (text: string) => void): Promise<void> {
+  const inputs: string[] = [];
+  latencyInputs.set(turnId, inputs);
+  try {
+    await Bun.sleep(25);
+    while (!interrupted.has(turnId)) {
+      say(inputs.shift() ?? '0123456789abcdef');
+      await Bun.sleep(8);
+    }
+    await Bun.sleep(24);
+    notify('turn/completed', { threadId, turn: turnRecord(turnId, 'interrupted') });
+  } finally {
+    latencyInputs.delete(turnId);
+    interrupted.delete(turnId);
+  }
+}
 
 function awaitInterrupt(turnId: string): Promise<void> {
   if (interrupted.has(turnId)) return Promise.resolve();
@@ -319,6 +338,7 @@ async function runTurn(turnId: string, text: string): Promise<void> {
   const say = (chunk: string): void => {
     notify('item/agentMessage/delta', { threadId, turnId, itemId: 'msg-1', delta: chunk });
   };
+  if (instructions.includes('[latency-stream]')) return latencyStream(turnId, say);
 
   // A real agent reasons before it answers, so the reasoning deltas go first.
   for (const directive of directives) {
@@ -776,7 +796,9 @@ function handle(method: string, raw: unknown): unknown {
     case 'turn/steer': {
       const active = textOf(params['expectedTurnId']);
       if (!activeTurns.has(active) || params['threadId'] !== threadId) throw new Error('no matching active turn');
-      log(`turn/steer ${active} ${promptOf(params)}`);
+      const prompt = promptOf(params);
+      log(`turn/steer ${active} ${prompt}`);
+      latencyInputs.get(active)?.push(prompt);
       const images = Array.isArray(params['input']) ? params['input'].filter((input: Record<string, unknown>) => input['type'] === 'image') : [];
       if (images.length) log(`steer-images ${images.length} ${String(images[0]['url']).slice(0, 22)}`);
       return { turnId: active };
