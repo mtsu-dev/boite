@@ -107,6 +107,16 @@ export class OpenCodeConnection {
 
   get sessionCost(): number | null { return this.#sessionCost; }
 
+  async readSessionCost(turn: AcpTurn): Promise<number | null> {
+    try {
+      const session = object(object(await this.#call(this.#path(), 'GET', undefined, AbortSignal.timeout(EXIT_GRACE_MS)))['data']);
+      return sessionCost(session);
+    } catch (error) {
+      if (!this.#abort.signal.aborted) turn.ctx.log('warn', `OpenCode session cost could not be read: ${messageOf(error)}`);
+      return null;
+    }
+  }
+
   async steer(prompt: ContentBlock[], onAccepted?: () => void, signal?: AbortSignal): Promise<boolean> {
     const pending = this.#pending;
     if (!pending || this.#inputCommitted || !this.#current() || this.#current()?.isStopped) return false;
@@ -439,12 +449,8 @@ export class OpenCodeConnection {
     if (this.#lastTokens > 0) turn?.noteContext(this.#lastTokens, this.#controls.contextWindow());
     if (turn) {
       this.#sessionCost = null;
-      try {
-        const session = object(object(await this.#call(this.#path(), 'GET', undefined, AbortSignal.timeout(EXIT_GRACE_MS)))['data']);
-        if (this.#current() === turn) this.#sessionCost = turn.costUsdEquivalent = sessionCost(session);
-      } catch (error) {
-        if (!this.#abort.signal.aborted) turn.ctx.log('warn', `OpenCode session cost could not be read: ${messageOf(error)}`);
-      }
+      const cost = await this.readSessionCost(turn);
+      if (this.#current() === turn) this.#sessionCost = turn.costUsdEquivalent = cost;
     }
     pending.resolve({ stopReason: turn?.isStopped ? 'cancelled' : stopReason, usage: this.#tokens });
   }

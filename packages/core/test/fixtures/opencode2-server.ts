@@ -16,13 +16,15 @@ if (!process.argv.includes('serve')) {
   };
   let timer: ReturnType<typeof setTimeout> | undefined;
   let ended = false;
-  let failCostRead = false;
+  let failedCostReadsLeft = 0;
+  let holdCostReload = false;
   let inboxSequence = 0;
   let lateAdmission = false;
   let cancelAdmission = false;
   let admitAfterInterrupt: (() => void) | undefined;
   const traceFile = process.env['OPENCODE_FIXTURE_TRACE'];
   const trace = (line: string) => { if (traceFile) appendFileSync(traceFile, `${line}\n`); };
+  if (costFile) trace('cost server started');
   const event = (type: string, data: Record<string, unknown>) => {
     const bytes = encoder.encode(`data: ${JSON.stringify({ type, data: { sessionID, ...data } })}\n\n`);
     for (const stream of streams) stream.enqueue(bytes);
@@ -47,7 +49,15 @@ if (!process.argv.includes('serve')) {
     if (url.pathname === '/api/agent') return Response.json({ data: [{ id: 'build', name: 'Build' }, { id: 'plan', name: 'Plan' }] });
     if (url.pathname === '/api/command') return Response.json({ data: [] });
     if (url.pathname === `/api/session/${sessionID}` && request.method === 'GET') {
-      if (failCostRead || process.env['OPENCODE_FIXTURE_COST_ERROR']) return new Response('Unavailable', { status: 503 });
+      if (failedCostReadsLeft > 0 || process.env['OPENCODE_FIXTURE_COST_ERROR']) {
+        if (failedCostReadsLeft > 0) failedCostReadsLeft -= 1;
+        return new Response('Unavailable', { status: 503 });
+      }
+      if (holdCostReload) {
+        holdCostReload = false;
+        trace('cost reload waiting');
+        await new Promise<void>(resolve => request.signal.addEventListener('abort', () => resolve(), { once: true }));
+      }
       return Response.json({ data: session() });
     }
     if (url.pathname === '/api/session') return Response.json({ data: session() });
@@ -105,7 +115,7 @@ if (!process.argv.includes('serve')) {
           event('session.tool.success', { id: 'shell-1', content: [{ type: 'text', text: 'working tree clean' }], metadata: { exit: 0 } });
           if (instructions.includes('[usage-after-tool]')) {
             charge(0.01);
-            failCostRead = instructions.includes('[fail-cost-read]');
+            failedCostReadsLeft = instructions.includes('[fail-cost-read]') ? 1 : 0;
             event('session.step.ended', { tokens: { input: 17, output: 3 } });
             trace('step ended');
           }
@@ -121,6 +131,9 @@ if (!process.argv.includes('serve')) {
       } else {
         event('session.text.delta', { delta: `Received: ${body.text}; images: ${body.files?.length ?? 0}\n` });
         if (body.text.includes('[done]')) {
+          if (instructions.includes('[fail-cost-read]')) failedCostReadsLeft = 1;
+          if (instructions.includes('[fail-two-cost-reads]')) failedCostReadsLeft = 2;
+          if (instructions.includes('[hold-cost-reload]')) holdCostReload = true;
           if (costFile) charge(0.02);
           event('session.step.ended', { tokens: { input: 17, output: 3 } });
           event('session.execution.succeeded', {});
