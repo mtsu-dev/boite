@@ -1,20 +1,17 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import ContextModeBadge from './ContextModeBadge.svelte';
+  import AgentExecutionRow from './AgentExecutionRow.svelte';
   import MachineIcon from './MachineIcon.svelte';
-  import { Pause, Play, Plus, RotateCcw, Settings, Square, Trash2, Workflow } from '@lucide/svelte';
+  import { Pause, Play, Plus, RotateCcw, Settings, Square, Trash2 } from '@lucide/svelte';
   import { DEFAULT_DELEGATION_CONFIG, threadActive, threadBusy, type DelegationConfig, type DelegationProfile } from '@boite/contracts';
   import type { BoundPanel, Surface } from '../lib/right-panel.svelte';
   import { fill, strings } from '../lib/strings';
   import type { Choice, PickPatch, Store } from '../lib/store.svelte';
-  import { effortName, formatTokens, providerName } from '../lib/format';
   import { totalTokens } from '../lib/usage';
-  import { modelLogoId, modelMakerName } from '../lib/provider-logos';
-  import { isLive, runProgress } from '../lib/workflow-view';
+  import { executionRoute } from '../lib/execution-route';
+  import { executionTokenLabel, isLive, runProgress } from '../lib/workflow-view';
   import EffortSlider from './EffortSlider.svelte';
   import ModelPicker from './ModelPicker.svelte';
-  import ProviderLogo from './ProviderLogo.svelte';
-  import StatusMark from './StatusMark.svelte';
   import { threadTone, workflowTone } from '../lib/status-tone';
   import Elapsed from './Elapsed.svelte';
   import NativeAgents from './NativeAgents.svelte';
@@ -114,26 +111,6 @@
     return progress.finishedAt ?? progress.startedAt;
   }
 
-  /**
-   * Harness, model and reasoning level, the way the composer's picker names
-   * them. The row shows the model's own mark, labelled with its maker, and the
-   * model's name; the harness stays in the route's tooltip.
-   */
-  function routeOf(agent: Agent) {
-    const thread = agent.thread;
-    const model = store.modelOf({ providerId: thread.providerId, accountId: thread.accountId, model: thread.model, effort: thread.effort, permissionMode: 'default', speed: null });
-    const provider = providerName(store, thread.providerId);
-    const name = model?.name ?? thread.model ?? strings.thread.defaultModel;
-    const effort = thread.effort ? effortName(model, thread.effort) : null;
-    const logo = modelLogoId(thread.providerId, thread.model ?? model?.id);
-    return { provider, maker: modelMakerName(logo, thread.providerId) ?? provider, name, effort, logo, label: [provider, name, effort].filter(Boolean).join(' · ') };
-  }
-
-  function tokensOf(agent: Agent): number | null {
-    const usage = agent.lastTurn?.usage;
-    return usage ? totalTokens(usage) : null;
-  }
-
   /** Completed goes without saying under Finished; a stop, a failure or an interruption does not. */
   function outcomeOf(agent: Agent): string | null {
     const status = agentProgress(agent).status;
@@ -181,22 +158,16 @@
 {#snippet runRow(entry: (typeof runs)[number])}
   {@const progress = runProgress(entry)}
   <button type="button" class="member" data-testid="delegation-run" data-run-id={entry.id} onclick={() => showRun(entry.id)}>
-    <span class="avatar run"><Workflow size={16} strokeWidth={1.75} /><StatusMark {...workflowTone(entry.status, true)} corner /></span>
-    <span class="member-main">
-      <strong class="title"><span class="ui-label">{entry.name}</span></strong>
-      <span class="route"><span class="ui-label">{fill(strings.workflow.steps, { done: String(progress.done), total: String(progress.total) })}</span></span>
-    </span>
-    <span class="meta">
-      {#if !isLive(entry)}<span class="outcome ui-label" data-status={entry.status}>{strings.workflow.status[entry.status]}</span>{/if}
-      <Elapsed startedAt={entry.createdAt} finishedAt={entry.finishedAt} active={entry.status === 'running'} />
-    </span>
+    <AgentExecutionRow title={entry.name} mark={workflowTone(entry.status, true)}
+      subtitle={fill(strings.workflow.steps, { done: String(progress.done), total: String(progress.total) })}
+      outcome={isLive(entry) ? null : strings.workflow.status[entry.status]} status={entry.status}
+      startedAt={entry.createdAt} finishedAt={entry.finishedAt} active={entry.status === 'running'} />
   </button>
 {/snippet}
 
 {#snippet member(agent: Agent)}
   {@const progress = agentProgress(agent)}
-  {@const route = routeOf(agent)}
-  {@const tokens = tokensOf(agent)}
+  {@const usage = agent.lastTurn?.usage}
   {@const outcome = outcomeOf(agent)}
   {@const wait = agent.thread.backgroundWait ?? null}
   {@const there = remoteOf(agent)}
@@ -204,30 +175,22 @@
   <button type="button" class="member" class:away={away !== null} data-testid="delegation-member" data-agent-id={agent.thread.id} data-status={progress.status}
     data-preload-thread={away === null ? agent.thread.id : undefined} data-machine-id={there?.store ? there.machine!.id : undefined}
     aria-disabled={away === null ? undefined : 'true'} title={away ?? undefined} onclick={() => openChild(agent)}>
-    <span class="avatar" role="img" aria-label={route.maker} title={route.maker}>
-      <ProviderLogo providerId={route.logo} size={20} />
-      {#if progress.active}<StatusMark {...markOf(agent)} corner />{/if}
-    </span>
-    <span class="member-main">
-      <strong class="title"><span class="ui-label">{agent.thread.title}</span></strong>
-      <span class="route" data-testid="delegation-member-route" title={route.label}>
-        <span class="model ui-label">{route.name}</span>{#if route.effort}<span class="effort ui-label">{route.effort}</span>{/if}
-        {#if agent.thread.contextMode}<ContextModeBadge mode={agent.thread.contextMode} compact testid="delegation-member-context" />{/if}
+    <AgentExecutionRow title={agent.thread.title} route={executionRoute(there?.store ?? store, agent.thread)}
+      context={agent.thread.contextMode} mark={progress.active ? markOf(agent) : undefined}
+      {outcome} status={progress.status} startedAt={progress.startedAt} finishedAt={progress.finishedAt} active={progress.active}
+      tokens={usage ? executionTokenLabel(totalTokens(usage)) : null}
+      routeTestId="delegation-member-route" contextTestId="delegation-member-context">
+      {#snippet chips()}
         {#if there}<span class="machine" title={fill(strings.delegation.runsOn, { machine: there.name })}><MachineIcon icon={there.machine?.icon} os={there.machine?.store.core?.os} size={12} /><span class="ui-label" data-testid="delegation-member-machine">{there.name}</span></span>{/if}
-      </span>
-    </span>
-    <span class="meta">
-      {#if outcome}<span class="outcome ui-label" data-status={progress.status}>{outcome}</span>{/if}
-      <Elapsed startedAt={progress.startedAt} finishedAt={progress.finishedAt} active={progress.active} />
-      {#if tokens !== null}<span class="tokens ui-label">{formatTokens(tokens)} {strings.units.tokens}</span>{/if}
-    </span>
-    {#if wait?.state === 'waiting'}
-      <span class="note" data-testid="delegation-member-wait"><span class="ui-label">{fill(strings.sidebar.state.awaiting, { what: wait.for })}</span><Elapsed startedAt={wait.since} finishedAt={null} active /></span>
-    {:else if wait?.state === 'interrupted'}
-      <span class="note interrupted" data-testid="delegation-member-wait"><span class="ui-label">{fill(strings.sidebar.state.interruptedBy, { what: wait.for, reason: strings.sidebar.state.interruption[wait.reason] })}</span></span>
-    {/if}
-    {#if away}<span class="note away-note" data-testid="delegation-member-away"><span class="ui-label">{away}</span></span>{/if}
-    {#if agent.result}<span class="result"><span>{agent.result}</span></span>{/if}
+      {/snippet}
+      {#if wait?.state === 'waiting'}
+        <span class="note" data-testid="delegation-member-wait"><span class="ui-label">{fill(strings.sidebar.state.awaiting, { what: wait.for })}</span><Elapsed startedAt={wait.since} finishedAt={null} active /></span>
+      {:else if wait?.state === 'interrupted'}
+        <span class="note interrupted" data-testid="delegation-member-wait"><span class="ui-label">{fill(strings.sidebar.state.interruptedBy, { what: wait.for, reason: strings.sidebar.state.interruption[wait.reason] })}</span></span>
+      {/if}
+      {#if away}<span class="note away-note" data-testid="delegation-member-away"><span class="ui-label">{away}</span></span>{/if}
+      {#if agent.result}<span class="result"><span>{agent.result}</span></span>{/if}
+    </AgentExecutionRow>
   </button>
   {#if wait?.state === 'interrupted'}
     <div class="resume-row">
@@ -344,28 +307,16 @@
   .group-head { padding: 10px 9px 6px; display: flex; align-items: center; gap: 6px; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; }
   .group-head .count { color: var(--color-subtle); font-variant-numeric: tabular-nums; font-weight: 500; }
   /* The panels' one row form (the changes list's): a quiet fill on hover, no frame. */
-  .member { width: 100%; height: auto; padding: 8px 9px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 0 10px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; text-align: left; }
+  .member { width: 100%; height: auto; padding: 8px 9px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; text-align: left; }
   .member + .member { margin-top: 2px; }
   .member:hover { background: var(--color-hover); }
   /* On a machine this window is not connected to: it reads, it does not open. */
   .member.away { cursor: default; }
   .member.away:hover { background: transparent; border-color: transparent; }
-  .avatar { --ring: var(--color-background); position: relative; width: 30px; height: 30px; display: grid; place-items: center; border-radius: var(--radius-md); background: var(--color-surface-2); border: 1px solid var(--color-border); }
-  .avatar.run { color: var(--color-muted-foreground); }
-  .member-main { min-width: 0; display: grid; gap: 6px; padding-top: 1px; }
-  .title { min-width: 0; font-size: var(--text-sm); font-weight: 600; }
-  .title .ui-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .route { min-width: 0; display: flex; align-items: center; gap: 6px; color: var(--color-muted-foreground); font-size: var(--text-xs); }
-  .model { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-foreground); font-weight: 500; }
-  .effort { flex: none; padding: 3px 6px; border-radius: var(--radius-sm); background: var(--color-surface-3); color: var(--color-muted-foreground); }
   /* The machine of the group that runs it, beside the model it runs on. */
   .machine { flex: 0 1 auto; min-width: 0; max-width: 16ch; padding: 2px 6px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); color: var(--color-muted-foreground); }
   .machine :global(svg) { flex: none; }
   .machine > .ui-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .meta { display: grid; justify-items: end; gap: 6px; padding-top: 2px; color: var(--color-muted-foreground); font-size: var(--text-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .outcome { font-weight: 500; }
-  .outcome[data-status='error'], .outcome[data-status='failed'], .outcome[data-status='interrupted'] { color: var(--color-danger); }
-  .outcome[data-status='background'] { color: var(--color-muted-foreground); }
   /* What a subagent at rest waits on, or what ended without waking it. */
   .note { grid-column: 2 / -1; margin-top: 8px; display: flex; align-items: baseline; gap: 6px; min-width: 0; color: var(--color-muted-foreground); font-size: var(--text-xs); }
   .note > .ui-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -48,14 +48,15 @@ it read the first results.
 
 - The run draws top to bottom: one row per phase, the steps of a phase side by
   side, an arrow down from each step to the steps waiting for it.
-- A card shows the step's status, its model, its elapsed time and its tokens.
+- A card shows the step's status, model, reasoning level, context when it differs
+  from full, elapsed time and reported tokens.
   A step that runs once per item shows `done/total` and a segmented bar.
 - A loop draws a dashed arc back to the step it starts from. It is amber while
   the loop runs, green once its condition held, red once it ran out of rounds.
   The closing step shows the round, such as `2/3`.
 - A phase with more steps than fit turns the run into a plain list of phases.
-- The header totals the reported tokens. Tokens still being generated are not
-  counted.
+- The header totals the reported tokens. It marks a total as partial when some
+  started executions still have no measurement, or unknown when none reported.
 
 Click a step run by one agent to open its conversation. A step with several
 executions opens its detail: dependencies, condition, loop, each execution and

@@ -3,7 +3,9 @@
  * its edges, each step's route and progress. Pure, so the layout rules are
  * tested without a DOM.
  */
-import { loopBody, workflowLevels, type DelegationProfile, type WorkflowCondition, type WorkflowNode, type WorkflowRun, type WorkflowStepPlan, type WorkflowStepStatus } from '@boite/contracts';
+import { loopBody, workflowLevels, type DelegationProfile, type Usage, type WorkflowCondition, type WorkflowInstance, type WorkflowNode, type WorkflowRun, type WorkflowStepPlan, type WorkflowStepStatus } from '@boite/contracts';
+import { formatTokens } from './format';
+import { fill, strings } from './strings';
 import { totalTokens } from './usage';
 
 /** Under this width per step a phase no longer fits in a row, and the graph reads as a plain list. */
@@ -96,16 +98,33 @@ export function nodeProgress(node: WorkflowNode): { done: number; total: number;
 }
 
 /** The route a step runs on: its first execution's once started, its profile's before. Null before a step without profile starts: it takes the conversation's model. */
-export function routeOf(node: WorkflowNode, profiles: DelegationProfile[], step?: WorkflowStepPlan): { providerId: string; model: string; profile: string; effort: string | null } | null {
-  const started = node.instances.find(inst => inst.providerId !== null);
+export function routeOf(node: WorkflowNode, profiles: DelegationProfile[], step?: WorkflowStepPlan, instance?: WorkflowInstance) {
+  const started = instance ?? node.instances.find(inst => inst.providerId !== null);
   const profile = profiles.find(entry => entry.id === node.profileId);
-  if (started?.providerId) return { providerId: started.providerId, model: started.model ?? profile?.model ?? '', profile: profile?.name ?? node.profileId ?? '', effort: started.effort === undefined ? step?.effort ?? profile?.effort ?? null : started.effort };
-  return profile ? { providerId: profile.providerId, model: profile.model, profile: profile.name, effort: step?.effort ?? profile.effort } : null;
+  if (started?.providerId) return {
+    providerId: started.providerId,
+    accountId: started.accountId ?? (!started.machine && !started.compute && profile?.providerId === started.providerId ? profile.accountId : undefined),
+    model: started.model,
+    effort: started.effort === undefined ? step?.effort ?? profile?.effort ?? null : started.effort,
+  };
+  return profile && !step?.machine && !step?.compute && !step?.model ? { ...profile, effort: step?.effort ?? profile.effort } : null;
 }
 
-/** All reported turns of every execution of a step, cache and retries included. */
-export function nodeTokens(node: WorkflowNode): number {
-  return node.instances.reduce((sum, inst) => sum + (inst.usage ? totalTokens(inst.usage) : 0), 0);
+export function executionTokenLabel(tokens: number | null, partial = false): string {
+  return tokens === null ? strings.workflow.tokensUnknown : fill(partial ? strings.workflow.tokensPartial : strings.workflow.tokens, { tokens: formatTokens(tokens) });
+}
+
+export function workflowTokenLabel(instances: readonly WorkflowInstance[], aggregate?: Usage): string {
+  const started = instances.filter(inst => inst.startedAt !== null || inst.usage != null);
+  const known = started.filter(inst => inst.usage != null);
+  const tokens = aggregate ? totalTokens(aggregate) : known.reduce((sum, inst) => sum + totalTokens(inst.usage!), 0);
+  return executionTokenLabel(known.length || tokens ? tokens : null, known.length < started.length || (!known.length && tokens > 0));
+}
+
+export function stepTitle(node: WorkflowNode): string {
+  if (node.title !== node.id) return node.title;
+  const words = node.id.replace(/[-_]+/g, ' ').trim();
+  return words ? words[0]!.toUpperCase() + words.slice(1) : node.id;
 }
 
 /** When the step started and ended, across its executions. */

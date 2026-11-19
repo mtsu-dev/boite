@@ -3,7 +3,7 @@ import { afterEach, expect, spyOn, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { ThreadSummary, WorkflowPlan, WorkflowRun } from '@boite/contracts';
+import type { ThreadSummary, Usage, WorkflowPlan, WorkflowRun } from '@boite/contracts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnContext, TurnResult } from '../src/drivers/types.ts';
 import { echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';
@@ -16,12 +16,12 @@ const restores: (() => void)[] = [];
 afterEach(async () => { for (const h of cores.splice(0)) await h.stop(); for (const restore of restores.splice(0)) restore(); });
 
 /** Each turn answers `reply(prompt)`; null holds it until stopped. Every prompt is kept by thread. */
-function scripted(reply: (prompt: string, ctx: TurnContext) => string | null) {
+function scripted(reply: (prompt: string, ctx: TurnContext) => string | null, usage: (prompt: string) => Usage | null = () => null) {
   const prompts = new Map<string, string[]>();
   const held = new Set<string>();
   restores.push(setDriver('echo', { protocol: 'echo', startTurn(ctx: TurnContext) {
     prompts.set(ctx.thread.id, [...(prompts.get(ctx.thread.id) ?? []), ctx.prompt]);
-    const done: TurnResult = { status: 'done', sessionId: `session:${ctx.thread.id}`, usage: null };
+    const done: TurnResult = { status: 'done', sessionId: `session:${ctx.thread.id}`, usage: usage(ctx.prompt) };
     const text = reply(ctx.prompt, ctx);
     if (text !== null) {
       const id = ctx.emit.startMessage('assistant');
@@ -128,7 +128,10 @@ test('a step on another machine runs there after a step here, and its JSON outpu
     if (prompt.includes('does not match this workflow step')) return `${'🦊'.repeat(1_000)}${'x'.repeat(13_990)}\n${JSON_BLOCK({ count: 2 })}`;
     if (prompt.includes('step count')) return 'Two files.';
     return 'Summary read.';
-  });
+  }, prompt => ({
+    inputTokens: prompt.includes('does not match this workflow step') ? 9 : 5,
+    outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0, costUsdEquivalent: null,
+  }));
   const { desk, pc, owner, threadId, pcId, machine, onPc, run } = await setup();
   const plan: WorkflowPlan = { name: 'Across', steps: [
     { id: 'scan', task: 'List the files.', output: { files: ['string'] } },
@@ -142,6 +145,8 @@ test('a step on another machine runs there after a step here, and its JSON outpu
   expect(child).toBeDefined();
   const count = run(started.id).nodes[1]!.instances[0]!;
   expect(count).toMatchObject({ status: 'done', output: { count: 2 }, threadId: null, providerId: 'echo' });
+  expect(count.usage).toMatchObject({ inputTokens: 14, outputTokens: 2 });
+  expect(run(started.id).usage).toMatchObject({ inputTokens: 19, outputTokens: 3 });
   expect(count.machine).toMatchObject({ name: pc.core.coordination.identity().name, coreId: pcId, childId: child!.id, corrections: 1 });
   // It ran there, on what the step before it returned here.
   const first = prompts.get(child!.id)![0]!;

@@ -4,7 +4,7 @@ import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
 import WorkflowRunPane from './WorkflowRunPane.svelte';
 
-test('the graph shows effort and cumulative tokens for each step and the run, including zero', async () => {
+test('the workflow distinguishes partial, unknown and measured zero usage', async () => {
   const client = new FakeClient({ delayMs: 0, delegationDemo: true });
   const store = new Store();
   store.attach(client);
@@ -19,11 +19,22 @@ test('the graph shows effort and cumulative tokens for each step and the run, in
   let component = mount(WorkflowRunPane, { target, props: { store, run: run!, onback() {} } });
   try {
     flushSync();
+    expect(target.querySelector('[data-node-id="review"]')?.textContent).toContain('Sonnet 5.5');
+    expect(target.querySelector('[data-node-id="review"] [data-testid="workflow-context"]')?.textContent?.trim()).toBe('Light');
     expect(target.querySelector('[data-node-id="review"] [data-testid="workflow-effort"]')?.textContent).toBe('High');
-    expect(target.querySelector('[data-node-id="review"] [data-testid="workflow-node-tokens"]')?.textContent).toBe('365 tokens');
-    expect(target.querySelector('[data-testid="workflow-meta"]')?.textContent).toContain('365 tokens');
+    expect(target.querySelector('[data-node-id="review"] [data-testid="workflow-node-tokens"]')?.textContent).toBe('365 tokens (partial)');
+    expect(target.querySelector('[data-testid="workflow-meta"]')?.textContent).toContain('365 tokens (partial)');
+    target.querySelector<HTMLButtonElement>('[data-node-id="review"]')!.click();
+    flushSync();
+    expect(target.querySelector('[data-testid="workflow-instance"]:last-child')?.textContent).toContain('Tokens unknown');
     await unmount(component);
     const empty = structuredClone(run!); empty.usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsdEquivalent: null };
+    for (const node of empty.nodes) for (const instance of node.instances) instance.usage = null;
+    component = mount(WorkflowRunPane, { target, props: { store, run: empty, onback() {} } });
+    flushSync();
+    expect(target.querySelector('[data-testid="workflow-meta"]')?.textContent).toContain('Tokens unknown');
+    await unmount(component);
+    for (const node of empty.nodes) for (const instance of node.instances) instance.usage = empty.usage;
     component = mount(WorkflowRunPane, { target, props: { store, run: empty, onback() {} } });
     flushSync();
     expect(target.querySelector('[data-testid="workflow-meta"]')?.textContent).toContain('0 tokens');
