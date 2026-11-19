@@ -22,6 +22,12 @@ export interface GitStatus {
   changes: GitChange[];
 }
 
+/** Error data on a Git read refused because the thread is outside a repository. */
+export interface GitOutsideRepository {
+  reason: 'not-a-repository';
+  threadId: ThreadId;
+}
+
 /** Maximum full name of a Git branch created by Boite, including prefix and collision suffix. */
 export const BRANCH_NAME_MAX = 48;
 

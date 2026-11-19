@@ -42,6 +42,8 @@ each surface.
 
 ## Changes and files
 
+- If the conversation's folder is outside a Git repository, Changes shows that
+  in the panel. Refresh checks the folder again.
 - The Changes tab draws additions in green and deletions in red. On a narrow
   panel it shows the list or one diff, with All changes, Previous file and
   Next file to move between them.

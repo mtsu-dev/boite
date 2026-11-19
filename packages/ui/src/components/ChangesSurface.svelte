@@ -27,6 +27,7 @@
   let { store, surface, panel }: { store: Store; surface: Surface; panel: BoundPanel } = $props();
 
   let status = $state<GitStatus | null>(null);
+  let error = $state<string | null>(null);
   let loading = $state(false);
 
   let threadId = $derived(store.openThread?.id ?? null);
@@ -70,7 +71,10 @@
       const answer = await store.gitStatus(id);
       // The thread may have changed, or a newer read gone out, while the call
       // was out: an answer about another working tree must not land in this list.
-      if (mine === latest && threadId === id) status = answer;
+      if (mine === latest && threadId === id) {
+        status = answer.ok ? answer.value : null;
+        error = answer.ok ? null : answer.error;
+      }
     } finally {
       if (mine === latest) loading = false;
     }
@@ -169,6 +173,7 @@
     if (id !== listed) {
       listed = id;
       status = null;
+      error = null;
     }
     if (id !== null) void refresh(id);
   });
@@ -273,7 +278,7 @@
       </span>
     {:else if status}
       <span class="total" data-testid="changes-count"><ChangeCount files={0} added={0} removed={0} /></span>
-    {:else}
+    {:else if loading}
       <span class="total" data-testid="changes-count">{strings.changes.loading}</span>
     {/if}
     <span class="spacer"></span>
@@ -294,7 +299,9 @@
   <!-- The reader's own wheel, touch, press or key lets go of a jump's hold; the scroll itself is no control. -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="detail" bind:this={body} bind:clientWidth={codeWidth} onwheel={release} ontouchstart={release} onpointerdown={release} onkeydown={release}>
-    {#if status && status.changes.length === 0 && entries.length === 0}
+    {#if error}
+      <p class="empty" role="status" data-testid="changes-error">{error}</p>
+    {:else if status && status.changes.length === 0 && entries.length === 0}
       <p class="empty" data-testid="changes-empty">{strings.changes.clean}</p>
     {/if}
     {#each entries as { path, change } (path)}
