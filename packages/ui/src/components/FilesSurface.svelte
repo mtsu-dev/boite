@@ -4,18 +4,21 @@
   // expand and never before: a repository with ten thousand files costs the
   // same as a small one until someone opens a folder.
   import { tick, untrack } from 'svelte';
+  import { SvelteMap } from 'svelte/reactivity';
   import { ChevronRight, File, FileAudio, FileImage, FileText, FileVideo, Folder, FolderOpen, FolderTree, RefreshCw, CircleAlert } from '@lucide/svelte';
   import { FILES_LIST_MAX, type FileEntry } from '@boite/contracts';
   import { bytes } from '../lib/format';
   import type { BoundPanel, Surface } from '../lib/right-panel.svelte';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
+  import { fileListings } from '../lib/file-listings';
+  import { whenIdle } from '../lib/idle';
   import SurfaceHead from './SurfaceHead.svelte';
 
   let { store, surface, panel }: { store: Store; surface: Surface; panel: BoundPanel } = $props();
 
   /** One entry per directory already read, keyed by its path. The root is the empty key. */
-  let loaded = $state<Record<string, FileEntry[]>>({});
+  const loaded = new SvelteMap<string, FileEntry[]>();
   let expanded = $state<Record<string, boolean>>({});
   let reading = $state(0);
   /** What the last refused directory answered, shown in the surface rather than as a toast. */
@@ -29,8 +32,9 @@
    */
   let placing = $state(0);
   let list = $state<HTMLDivElement | undefined>(undefined);
-  /** The thread whose directories `loaded` holds. */
-  let shownFor: string | null = null;
+  type Visit = { id: string; cwd: string; listings: ReturnType<typeof fileListings> };
+  let visit: Visit | null = null;
+  const refreshing = new Map<string, () => void>();
 
   let threadId = $derived(store.openThread?.id ?? null);
 
@@ -42,7 +46,7 @@
   });
 
   /** A directory the core cut at its own limit: the footer says so once. */
-  let capped = $derived(Object.values(loaded).some((entries) => entries.length >= FILES_LIST_MAX));
+  let capped = $derived([...loaded.values()].some((entries) => entries.length >= FILES_LIST_MAX));
 
   interface Row {
     entry: FileEntry;
@@ -72,7 +76,7 @@
   /** The loaded rows, narrowed by the filter. A directory stays for a match under it. */
   function collect(path: string, depth: number, word: string): Row[] {
     const out: Row[] = [];
-    for (const entry of loaded[path] ?? []) {
+    for (const entry of loaded.get(path) ?? []) {
       const children =
         entry.kind === 'dir' && expanded[entry.path] === true ? collect(entry.path, depth + 1, word) : [];
       const hit = word === '' || entry.name.toLowerCase().includes(word);
@@ -85,51 +89,67 @@
 
   let rows = $derived(collect('', 0, filter.trim().toLowerCase()));
 
+  function refreshAtIdle(path: string): void {
+    if (refreshing.has(path)) return;
+    refreshing.set(path, whenIdle(() => {
+      refreshing.delete(path);
+      void read(path, true);
+    }));
+  }
+
   async function read(path: string, again = false): Promise<void> {
-    const id = threadId;
-    if (id === null) return;
-    if (!again && loaded[path] !== undefined) return;
-    reading += 1;
-    const answer = await store.listFiles(id, path === '' ? undefined : path);
-    reading -= 1;
-    // The thread may have changed while the call was out: another working
-    // directory's answer must not land in this tree.
-    if (threadId !== id) return;
-    if (answer.ok) {
-      loaded = { ...loaded, [path]: answer.value };
-      problem = null;
-    } else {
-      problem = answer.error;
+    const owner = visit;
+    if (!owner || (!again && loaded.has(path))) return;
+    const cached = !again && owner.listings.peek(owner.id, owner.cwd, path);
+    if (cached) {
+      loaded.set(path, cached);
+      refreshAtIdle(path);
+      return;
     }
+    reading += 1;
+    try {
+      const answer = await owner.listings.read(owner.id, owner.cwd, path);
+      if (visit !== owner || threadId !== owner.id || (store.openThread?.cwd ?? '') !== owner.cwd || fileListings(store) !== owner.listings) return;
+      if (answer.ok) loaded.set(path, answer.value);
+      else problem = answer.error;
+    } finally { reading -= 1; }
   }
 
-  /** The root, then every ancestor of the directory the tab was opened on. */
-  async function openAt(path: string): Promise<void> {
-    placing += 1;
-    try { await place(path); } finally { placing -= 1; }
-  }
-
-  async function place(path: string): Promise<void> {
-    await read('');
-    if (path === '') return;
+  /** Every ancestor is already known from the path. Ask for missing directories together. */
+  function openAt(path: string): () => void {
+    const owner = visit;
+    const paths = [''];
+    const opened = { ...expanded };
     let at = '';
     for (const part of path.split('/').filter((one) => one !== '')) {
       at = at === '' ? part : `${at}/${part}`;
-      expanded = { ...expanded, [at]: true };
-      await read(at);
+      opened[at] = true;
+      paths.push(at);
     }
-    await tick();
-    const node = list?.querySelector<HTMLElement>(`[data-path="${CSS.escape(path)}"]`);
-    // jsdom lays nothing out, so it scrolls nothing either.
-    node?.scrollIntoView?.({ block: 'nearest' });
-    const index = rows.findIndex((row) => row.entry.path === path);
-    if (index >= 0) cursor = index;
+    expanded = opened;
+    let live = true;
+    for (const dir of paths) if (loaded.has(dir)) refreshAtIdle(dir);
+    placing += 1;
+    void Promise.all(paths.map(dir => read(dir))).then(async () => {
+      if (path === '') return;
+      await tick();
+      if (!live || visit !== owner) return;
+      const node = list?.querySelector<HTMLElement>(`[data-path="${CSS.escape(path)}"]`);
+      node?.scrollIntoView?.({ block: 'nearest' });
+      const index = rows.findIndex((row) => row.entry.path === path);
+      if (index >= 0) cursor = index;
+    }).finally(() => { placing -= 1; });
+    return () => {
+      live = false;
+      for (const cancel of refreshing.values()) cancel();
+      refreshing.clear();
+    };
   }
 
   function toggle(path: string): void {
     const on = expanded[path] === true;
     expanded = { ...expanded, [path]: !on };
-    if (!on) void read(path);
+    if (!on) { problem = null; void read(path); }
   }
 
   function activate(row: Row | undefined): void {
@@ -187,27 +207,30 @@
   }
 
   function refresh(): void {
-    for (const path of Object.keys(loaded)) void read(path, true);
+    problem = null;
+    for (const path of loaded.keys()) void read(path, true);
   }
 
   // On mount, and again whenever the tab is asked for another directory: the
   // path it carries is what the tree opens on and scrolls to.
   $effect(() => {
     const id = threadId;
+    const cwd = store.openThread?.cwd ?? '';
+    // A replaced connection can point at a different filesystem even for the same thread id.
+    void store.connection;
+    const listings = fileListings(store);
     const wanted = surface.path ?? '';
     if (id === null) return;
-    untrack(() => {
-      // The panel is not remounted between threads, and the cache is keyed by
-      // path alone: another thread's tree must not answer for this one.
-      if (shownFor !== id) {
-        shownFor = id;
-        loaded = {};
+    return untrack(() => {
+      if (!visit || visit.id !== id || visit.cwd !== cwd || visit.listings !== listings) {
+        visit = { id, cwd, listings };
+        loaded.clear();
         expanded = {};
-        problem = null;
         cursor = 0;
         filter = '';
       }
-      void openAt(wanted);
+      problem = null;
+      return openAt(wanted);
     });
   });
 </script>
