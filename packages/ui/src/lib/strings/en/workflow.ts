@@ -35,6 +35,7 @@ export const strings = {
     tokensPartial: '{tokens} tokens (partial)',
     tokensUnknown: 'Tokens unknown',
     contextRequested: '{label} (requested)',
+    routeRequested: 'Requested',
     tokensHelp: 'Reported usage from completed turns, including cache reads, cache writes and retries.'
   }
 } as const;

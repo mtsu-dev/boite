@@ -65,6 +65,7 @@ export class CodexTurn extends DecidedTurnParts {
   usageCounts: CodexTokenCounts | null = null;
   /** The thread's cumulative `total` at this turn's latest usage update. */
   usageTotal: CodexTokenCounts | null = null;
+  usageLast: CodexTokenCounts | null = null;
   /** The published prompt cache lifetime of the model this turn ran on. */
   cacheLife: PromptCacheLife | null = null;
   /** `thread/resume` said the Codex thread is gone. */

@@ -32,6 +32,8 @@ export interface ChildState {
   project?: string;
   /** Its last turn was cut by a restart of the member, whose next core continues it: no result yet. Absent once that stop is final. */
   restarting?: true;
+  /** The turn targeted by this workflow stop, even after a new turn starts. */
+  workflowStop?: { seq: number; turn: Pick<Turn, 'id' | 'finishedAt' | 'usage'> };
 }
 
 /** What a member answers to `delegation.start`. */
@@ -54,7 +56,7 @@ export interface Report {
  * in the order the caller asked it: the member applies it once, and never
  * after one it applied later, however often or late it arrives.
  */
-export interface Stop { key: string; seq: number; parentId: string; childId: string; retire?: true }
+export interface Stop { key: string; seq: number; parentId: string; childId: string; retire?: true; workflow?: true }
 
 /** The caller's record of a child on another machine. `childId` is null until that machine answered or reported. */
 export interface RemoteChild {
@@ -73,6 +75,8 @@ export interface RemoteChild {
   retired?: true;
   /** A stop asked before the member named the child: it goes once a report or a late answer names it. */
   stopping?: true;
+  workflowStop?: number;
+  workflowStopTurnId?: string;
   /** A workflow step's: its run follows it, so `delegate list` does not show it and its result and questions are not mail. */
   workflow?: true;
   /** The member could not continue this checkpoint, retained across later state reports and caller restarts. */
@@ -80,13 +84,27 @@ export interface RemoteChild {
 }
 
 /** The member's link from a child here to its parent on another machine. `stop`: the number of the last stop applied to it. */
-export interface ParentLink { coreId: string; machine: string; parentId: string; title: string; projectId: string; project: string; requestId: string; fingerprint: string; at: number; stop?: number }
+export interface ParentLink { coreId: string; machine: string; parentId: string; title: string; projectId: string; project: string; requestId: string; fingerprint: string; at: number; stop?: number; workflowStop?: { seq: number; turnId: string } }
+
+export function trackWorkflowStop(record: RemoteChild, next: () => number): number {
+  if (record.workflowStop !== undefined) return record.workflowStop;
+  const turn = record.state?.lastTurn;
+  if (turn && turn.finishedAt === null) record.workflowStopTurnId = turn.id;
+  return record.workflowStop = next();
+}
+
+export function workflowStopReceipt(receipt: ParentLink['workflowStop'], last: Turn | null, getTurn: (id: string) => Turn | null): ChildState['workflowStop'] {
+  if (!receipt) return undefined;
+  const turn = receipt.turnId === last?.id ? last : getTurn(receipt.turnId);
+  return turn ? { seq: receipt.seq, turn: { id: turn.id, finishedAt: turn.finishedAt, usage: turn.usage } } : undefined;
+}
 
 export const readableState = (value: unknown): value is ChildState => {
   const state = value as ChildState | null;
   return typeof state?.thread?.id === 'string' && typeof state.thread.status === 'string' && typeof state.thread.title === 'string'
     && (state.lastTurn === null || typeof state.lastTurn?.id === 'string') && (state.result === null || typeof state.result === 'string')
-    && (state.needsInput === undefined || Array.isArray(state.needsInput));
+    && (state.needsInput === undefined || Array.isArray(state.needsInput))
+    && (state.workflowStop === undefined || Number.isSafeInteger(state.workflowStop?.seq) && typeof state.workflowStop.turn?.id === 'string');
 };
 
 /** A `delegation.start` request checked field by field. */

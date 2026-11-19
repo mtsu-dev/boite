@@ -180,6 +180,8 @@ export interface WorkflowNode {
   spent?: number;
   /** In a loop: the executions of its last round, whose conversations the next round reuses. */
   previous?: WorkflowInstance[];
+  /** Measured usage across every round of this step, when it has run more than one round. */
+  usage?: Usage;
   /** Closes a loop that ran out of rounds: a retry runs one round more. */
   exhausted?: boolean;
 }

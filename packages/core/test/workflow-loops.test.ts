@@ -129,6 +129,7 @@ test('a closing step fanned out over an empty list still checks its condition, a
   const failed = await settled(h, threadId, run.id);
   const review = failed.nodes.find(n => n.id === 'review')!;
   expect([failed.status, review.status, review.round, review.instances.length, review.exhausted]).toEqual(['failed', 'failed', 3, 0, true]);
+  expect(review.usage).toMatchObject({ inputTokens: 10, outputTokens: 5 });
   // Round 2 hears what round 1's review said; round 3 follows an empty round and hears nothing older.
   const listPrompts = prompts.filter(p => p.threadId === failed.nodes.find(n => n.id === 'list')!.instances[0]!.threadId).map(p => p.prompt);
   expect(listPrompts.map(p => p.includes('notes CHANGES'))).toEqual([false, true, false]);
@@ -136,6 +137,7 @@ test('a closing step fanned out over an empty list still checks its condition, a
   await owner.call('workflows.control', { threadId, runId: run.id, action: 'retry', stepId: 'review' });
   const done = await settled(h, threadId, run.id);
   expect([done.status, done.nodes.find(n => n.id === 'review')!.round, done.nodes.find(n => n.id === 'review')!.exhausted]).toEqual(['done', 4, undefined]);
+  expect(done.nodes.find(n => n.id === 'review')?.usage).toMatchObject({ inputTokens: 20, outputTokens: 10 });
 });
 
 test('every round counts toward the run\'s execution limit', async () => {

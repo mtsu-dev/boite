@@ -84,7 +84,7 @@ export function createCodexDriver(): Driver {
     releaseThread(threadId: ThreadId): void {
       const session = sessions.get(threadId);
       if (session === undefined || session.busy()) return;
-      void session.close(null);
+      session.release();
     },
 
     shutdown(): void {

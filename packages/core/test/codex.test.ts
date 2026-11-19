@@ -153,6 +153,7 @@ afterEach(async () => {
   const open = harness;
   harness = null;
   delete process.env['CODEX_FAKE_LOG'];
+  delete process.env['CODEX_FAKE_USAGE_GATE'];
   for (const name of FAKE_SWITCHES) delete process.env[name];
   if (open !== null) await open.stop();
 });
@@ -1201,23 +1202,56 @@ describe('codex driver', () => {
   });
 
   test('context reported after completion is retained, including a missing total', async () => {
-    const { client, threadId } = await startThread({warmProcessMinutes: 1});
+    const { client, threadId } = await startThread({ warmProcessMinutes: 0 });
     const { finished } = await startTurn(client, threadId, '[late-context]', 20000);
     await finished;
     await waitFor(() => harness?.core.journal.getThread(threadId)?.context?.tokens === 90, 1500);
     const thread = await client.call('threads.get', {threadId});
     expect(thread.context?.window).toBe(200000);
     expect(thread.context?.breakdown).toEqual({input:60,cache:20,output:10});
+    expect(thread.turns.at(-1)?.usage).toMatchObject({inputTokens:60,cacheReadTokens:20,outputTokens:10});
   });
 
   test('late usage from a previous turn does not overwrite the current turn', async () => {
     const { client, threadId } = await startThread({ warmProcessMinutes: 1 });
-    await runTurn(client, threadId, '[late-context]');
+    const gate = join(harness!.dataDir, 'usage-ready');
+    process.env['CODEX_FAKE_USAGE_GATE'] = gate;
+    const { finished: firstFinished } = await startTurn(client, threadId, '[late-context]', 20000);
+    const first = await firstFinished;
     const { finished } = await startTurn(client, threadId, '[slow]', 20000);
+    await waitFor(() => fakeLog().includes('waiting for interrupt'));
+    writeFileSync(gate, 'ready');
     await waitFor(() => harness!.core.threads.get(threadId).context?.tokens === 90);
     await client.call('turns.stop', { threadId });
     expect((await finished).usage).toBeNull();
+    expect(harness!.core.journal.getTurn(first.id)?.usage).toMatchObject({ inputTokens: 60, cacheReadTokens: 20, outputTokens: 10 });
   });
+
+  test('late usage invalidates an already finished workflow', async () => {
+    const { client, threadId } = await startThread({ warmProcessMinutes: 1 });
+    const gate = join(harness!.dataDir, 'usage-ready');
+    process.env['CODEX_FAKE_USAGE_GATE'] = gate;
+    const run = await client.call('workflows.start', { threadId, requestId: 'late-usage', plan: {
+      name: 'Late usage', steps: [{ id: 'measure', model: 'codex-fake/fake-codex', task: '[late-context]' }],
+    } });
+    const snapshot = () => harness!.core.workflows.get(threadId, run.id);
+    const measurements: number[] = [];
+    client.on('workflows.changed', change => {
+      if (change.runId !== run.id) return;
+      const view = snapshot();
+      if (view.status === 'done') measurements.push(view.usage?.outputTokens ?? 0);
+    });
+    await waitFor(() => ['done', 'failed', 'stopped'].includes(snapshot().status), 3500);
+    expect(snapshot()).toMatchObject({ status: 'done' });
+    await waitFor(() => measurements.includes(0), 1500);
+    const childId = snapshot().nodes[0]!.instances[0]!.threadId!;
+    expect(harness!.core.journal.getThread(childId)?.archived).toBe(true);
+    writeFileSync(gate, 'ready');
+    await waitFor(() => harness!.core.journal.getThread(childId)?.context?.tokens === 90, 1500);
+    expect(harness!.core.journal.listTurns(childId).at(-1)?.usage).toMatchObject({ inputTokens: 60, cacheReadTokens: 20, outputTokens: 10, buckets: 1 });
+    await waitFor(() => measurements.includes(10), 1500);
+    expect(snapshot().nodes[0]?.instances[0]?.usage).toMatchObject({ inputTokens: 60, cacheReadTokens: 20, outputTokens: 10 });
+  }, 10000);
 
   test('the turn usage sums every model request of the turn once, with no price, and keeps its input apart from the cache', async () => {
     const { client, threadId } = await startThread();

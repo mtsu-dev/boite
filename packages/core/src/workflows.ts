@@ -21,7 +21,7 @@ import { listTemplates, removeTemplate, saveTemplate } from './workflows/templat
 import { planError, text } from './workflows/validation.ts';
 import { NOT_STARTED, clip, describe, failureNotice, runSummary, tooLong, unnoticed } from './workflows/notices.ts';
 import { askFinal, childEnd, unwoken } from './delegation/completion.ts';
-import { workflowUsage } from './workflows/usage.ts';
+import { announceWorkflow, workflowUsage } from './workflows/usage.ts';
 import { SharedWorkflowCompute } from './workflows/shared-compute.ts';
 import { MachineWorkflowSteps } from './workflows/machine-steps.ts';
 import { loopPrompt, stepPrompt } from './workflows/prompt.ts';
@@ -150,11 +150,7 @@ export class Workflows {
       this.#trackDelivery(run);
       try { this.#log.saved(run); } catch { /* A diagnostic storage failure must not break workflows. */ }
     }
-    this.#core.bus.emit('workflows.changed', { threadId: run.rootThreadId, runId: run.id });
-    // A step's conversation shows its parent's runs, and a client reading it subscribes to that thread alone.
-    for (const node of run.nodes) for (const inst of node.instances) {
-      if (inst.threadId) this.#core.bus.emit('workflows.changed', { threadId: inst.threadId, runId: run.id });
-    }
+    announceWorkflow(this.#core, run);
   }
   /** Load, change, save. `change` returns false to leave the record untouched. */
   #mutate(runId: string, change: (run: WorkflowRun) => boolean | void): WorkflowRun | null {

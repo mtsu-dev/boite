@@ -15,6 +15,7 @@ import type {
   ThreadSummary,
   Turn,
   TurnId,
+  Usage,
 } from '@boite/contracts';
 import { activityPrompt } from '../activity-prompt.ts';
 import { agentEnvOf } from '../agent.ts';
@@ -39,6 +40,7 @@ import { stoppedInput } from './stopped-input.ts';
 import { brainContextFor, forgetBrainContext } from './brain-context.ts';
 import { coordinationGuideFor, forgetCoordinationGuide } from './coordination-context.ts';
 import { sessionUsage } from '../usage.ts';
+import { announceWorkflowUsage } from '../workflows/usage.ts';
 import { pluginGuideLines } from '../plugins/extensions.ts';
 
 /**
@@ -69,6 +71,20 @@ export class TurnContexts {
     core.bus.onCommitted((name, payload) => {
       if (name === 'thread.removed') this.#files.forget((payload as { threadId: ThreadId }).threadId);
     });
+  }
+
+  #lateUsage({ id, threadId, startedAt }: Turn): (usage: Usage) => void {
+    const core = this.#core;
+    return measured => {
+      if (core.journal.isClosed()) return;
+      const usage: Usage = { ...measured, buckets: 1 };
+      const saved = core.journal.getTurn(id);
+      if (!saved || saved.threadId !== threadId || saved.startedAt !== startedAt || JSON.stringify(saved.usage) === JSON.stringify(usage)) return;
+      core.journal.append({ type: 'turn.usage', threadId, version: 1, payload: { turnId: id, usage } }, () => core.journal.putTurn({ ...saved, usage }));
+      if (saved.finishedAt === null) return;
+      announceWorkflowUsage(core, threadId);
+      core.delegation.remote.state(threadId);
+    };
   }
 
   /**
@@ -522,6 +538,7 @@ export class TurnContexts {
         if (!bare) void this.#threads.deferred.flushRunning(threadId);
       },
       reportProviderEvent: () => this.#threads.progress.contact(threadId, turn.id),
+      reportLateUsage: this.#lateUsage(turn),
       authenticationFailed: () => this.#core.accounts.authenticationFailed(account.id),
       log: (level, message, context) => {
         if (context?.kind === 'provider-output') noteStderr(threadId, message);

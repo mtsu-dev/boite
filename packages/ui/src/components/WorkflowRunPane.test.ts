@@ -44,3 +44,28 @@ test('the workflow distinguishes partial, unknown and measured zero usage', asyn
   }
 
 });
+
+test('the waiting reviewer keeps the previous round usage and shows the requested model and effort', async () => {
+  const client = new FakeClient({ delayMs: 0, delegationDemo: true, loopDemo: true });
+  const store = new Store();
+  store.attach(client);
+  await store.connect();
+  await store.open('t-trace');
+  await store.probeModels('claude', 'a-claude-main');
+  const [run] = await client.call('workflows.list', { threadId: 't-trace' });
+  Object.assign(run!.plan.steps.find(step => step.id === 'review')!, { model: 'claude/claude-sonnet-5-5', effort: 'high' });
+  const target = document.createElement('div');
+  document.body.append(target);
+  const component = mount(WorkflowRunPane, { target, props: { store, run: run!, onback() {} } });
+  try {
+    flushSync();
+    const reviewer = target.querySelector('[data-node-id="review"]');
+    expect(reviewer?.querySelector('[role="img"]')?.getAttribute('aria-label')).toBe('Claude');
+    expect(reviewer?.textContent).toContain('Sonnet 5.5');
+    expect(reviewer?.querySelector('[data-testid="workflow-effort"]')?.textContent).toBe('High');
+    expect(reviewer?.textContent).toContain('Requested');
+    expect(reviewer?.querySelector('[data-testid="workflow-node-tokens"]')?.textContent).toBe('4.3K tokens');
+  } finally {
+    await unmount(component); target.remove(); store.detach(); client.close();
+  }
+});

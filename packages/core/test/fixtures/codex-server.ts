@@ -513,11 +513,14 @@ async function runTurn(turnId: string, text: string): Promise<void> {
         notify('item/completed', { item: commandItem(itemId, 'completed', 'flood done'), threadId, turnId, completedAtMs: Date.now() });
         break;
       }
-      case 'late-context':
+      case 'late-context': {
         notify('turn/completed', { threadId, turn: turnRecord(turnId, 'completed') });
-        await Bun.sleep(80);
-        notify('thread/tokenUsage/updated', { threadId, turnId, tokenUsage: { last: { inputTokens: 80, cachedInputTokens: 20, outputTokens: 10 }, modelContextWindow: 200000 } });
+        const gate = process.env['CODEX_FAKE_USAGE_GATE'];
+        if (gate) while (!existsSync(gate)) await Bun.sleep(10);
+        else await Bun.sleep(80);
+        for (let i = 0; i < 2; i++) notify('thread/tokenUsage/updated', { threadId, turnId, tokenUsage: { last: { inputTokens: 80, cachedInputTokens: 20, outputTokens: 10 }, modelContextWindow: 200000 } });
         return;
+      }
       case 'usage': {
         // Like a real turn: one update per model request, `last` for that
         // request alone, `total` cumulative over the thread's earlier turns

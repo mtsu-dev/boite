@@ -31,7 +31,7 @@ function scripted(reply: (prompt: string, ctx: TurnContext) => string | null, us
     }
     held.add(ctx.thread.id);
     const finished = Promise.withResolvers<TurnResult>();
-    return { done: finished.promise, stop() { held.delete(ctx.thread.id); finished.resolve({ status: 'stopped', sessionId: null, usage: null }); } };
+    return { done: finished.promise, stop() { held.delete(ctx.thread.id); finished.resolve({ ...done, status: 'stopped', sessionId: null }); } };
   } }));
   return { prompts, held };
 }
@@ -211,7 +211,12 @@ test('a remote step whose failure cannot be saved is logged, and does not leave 
 });
 
 for (const restart of [false, true]) test(`stopping the run${restart ? ' after a caller restart' : ''} stops its step on the other machine`, async () => {
-  const { held } = scripted(prompt => (prompt.includes('step slow') ? null : 'ok'));
+  const usage = { inputTokens: 10, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0, costUsdEquivalent: null };
+  const followUpUsage = { ...usage, inputTokens: 50 };
+  const followUpPrompt = 'Follow up.';
+  const isFollowUp = (prompt: string): boolean => prompt.includes(followUpPrompt);
+  const isInitial = (prompt: string): boolean => !isFollowUp(prompt) && prompt.includes('step slow');
+  const { held } = scripted(prompt => isInitial(prompt) ? null : 'ok', prompt => isFollowUp(prompt) ? followUpUsage : isInitial(prompt) ? usage : null);
   const deskDir = restartable();
   const { desk, pc, owner, threadId, pcId, machine, onPc, run } = await setup(true, { desk: deskDir });
   const started = await owner.call('workflows.start', { threadId, requestId: 'stop-1', plan: { name: 'Stop', steps: [{ id: 'slow', machine, project: 'notes', task: 'Read every page.' }] } });
@@ -235,6 +240,21 @@ for (const restart of [false, true]) test(`stopping the run${restart ? ' after a
   await caller.core.delegation.remote.flush(pcId);
   await waitFor(() => !held.has(childId) && pc.core.threads.require(childId).status !== 'running', 1_000);
   expect(pc.core.journal.listTurns(childId).at(-1)?.status).toBe('stopped');
+  const step = () => caller.core.workflows.get(threadId, started.id).nodes[0]!.instances[0]!;
+  await pc.core.delegation.remote.flush(caller.core.coordination.card().coreId);
+  const state = () => caller.core.delegation.remote.record(threadId, step().machine!.requestId)?.state;
+  const stopped = state()?.lastTurn;
+  expect(stopped).toMatchObject({ status: 'stopped', usage });
+  expect(step().usage).toMatchObject(usage);
+  expect(state()?.workflowStop?.turn.id).toBe(stopped?.id);
+
+  const member = await pc.connect();
+  const followUp = await member.call('turns.start', { threadId: childId, prompt: followUpPrompt });
+  await waitFor(() => pc.core.journal.getTurn(followUp.id)?.finishedAt != null);
+  await pc.core.delegation.remote.flush(caller.core.coordination.card().coreId);
+  expect(state()?.lastTurn).toMatchObject({ id: followUp.id, usage: followUpUsage });
+  expect(state()?.workflowStop?.turn.id).toBe(stopped?.id);
+  expect(step().usage).toMatchObject(usage);
 });
 
 test('a run stopped before the start answer came stops its subagent there once a report names it', async () => {

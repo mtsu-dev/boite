@@ -114,11 +114,11 @@ export function executionTokenLabel(tokens: number | null, partial = false): str
   return tokens === null ? strings.workflow.tokensUnknown : fill(partial ? strings.workflow.tokensPartial : strings.workflow.tokens, { tokens: formatTokens(tokens) });
 }
 
-export function workflowTokenLabel(instances: readonly WorkflowInstance[], aggregate?: Usage): string {
+export function workflowTokenLabel(instances: readonly WorkflowInstance[], aggregate?: Usage, measured = false): string {
   const started = instances.filter(inst => inst.startedAt !== null || inst.usage != null);
   const known = started.filter(inst => inst.usage != null);
   const tokens = aggregate ? totalTokens(aggregate) : known.reduce((sum, inst) => sum + totalTokens(inst.usage!), 0);
-  return executionTokenLabel(known.length || tokens ? tokens : null, known.length < started.length || (!known.length && tokens > 0));
+  return executionTokenLabel(known.length || tokens || measured ? tokens : null, known.length < started.length || (!known.length && tokens > 0 && !measured));
 }
 
 export function stepTitle(node: WorkflowNode): string {
