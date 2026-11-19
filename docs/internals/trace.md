@@ -637,7 +637,10 @@ about it. Its leader's exit marks it, and it is removed once a probe every
 second finds it empty, or at once when the keeper takes it over: tools a
 leader left behind stay held. A group id is its leader's pid, which the
 kernel does not reuse while the group has a member, so a live process with
-that pid means the group emptied: it is dropped and never signalled. When the
+that pid means the group emptied: it is dropped and never signalled. After the
+core, the watcher signals such a group only when the probe of that pid says
+"No such process"; a refused probe counts as a live stranger. A new spawn that
+gets the pid back is watched again as a running group. When the
 pipe closes, after a crash, SIGKILL, the OOM killer or any exit, the watcher
 sends each group it still holds SIGTERM, probes them every 100 ms and sends
 SIGKILL to what remains after two seconds. A shutdown past its deadline sends

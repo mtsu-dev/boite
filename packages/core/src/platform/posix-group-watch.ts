@@ -17,7 +17,10 @@
  * A group id is its leader's pid, which the kernel never hands out while the
  * group has a member. So for a group whose leader exited, a live process with
  * that pid proves the group emptied and the id went to a stranger: the group
- * is dropped, never signalled.
+ * is dropped, never signalled. A probe of that pid the kernel refuses (EPERM,
+ * another user's process) counts as a stranger too; only "No such process"
+ * leaves the group ours. A new spawn that gets the pid back watches it again
+ * as a running group.
  *
  * The watcher starts before the first spawn and leads a session of its own. It
  * ignores the signals a terminal sends, so a Ctrl+C that reaches the core's
@@ -26,6 +29,8 @@
 
 /** The watcher's script; `$g` holds groups whose leader runs, `$e` those whose leader exited, each pid between spaces. */
 export const GROUP_WATCH_SCRIPT = `trap '' INT TERM HUP QUIT
+LC_ALL=C; export LC_ALL
+gone() { case $(kill -s 0 "$1" 2>&1) in *'No such process'*) return 0 ;; esac; return 1; }
 g=' ' e=' '
 while read -r op pid; do
   case $pid in ''|*[!0-9]*) continue ;; esac
@@ -33,7 +38,7 @@ while read -r op pid; do
   case $e in *" $pid "*) e="\${e%% $pid *} \${e#* $pid }" ;; esac
   case $op in +) g="$g$pid " ;; x) e="$e$pid " ;; esac
 done
-for p in $e; do kill -s 0 "$p" 2>/dev/null || g="$g$p "; done
+for p in $e; do gone "$p" && g="$g$p "; done
 for p in $g; do kill -s TERM -- -"$p" 2>/dev/null; done
 i=0
 while [ $i -lt 20 ]; do
@@ -53,7 +58,7 @@ export type WatchWriter = (line: string) => void;
 function startWatcher(): WatchWriter {
   const shell = Bun.which('sh');
   if (shell === null) throw new Error('no sh on PATH');
-  const watcher = Bun.spawn({ cmd: [shell, '-c', GROUP_WATCH_SCRIPT], stdin: 'pipe', stdout: 'ignore', stderr: 'ignore', detached: true });
+  const watcher = Bun.spawn({ cmd: [shell, '-c', GROUP_WATCH_SCRIPT], env: { ...process.env, LC_ALL: 'C' }, stdin: 'pipe', stdout: 'ignore', stderr: 'ignore', detached: true });
   // Neither the watcher nor its pipe holds the core's exit back: that exit is what it waits for.
   watcher.unref();
   (watcher.stdin as unknown as { unref?: () => void }).unref?.();
@@ -101,7 +106,8 @@ export class GroupWatch {
   }
 
   add(pid: number): void {
-    if (!Number.isSafeInteger(pid) || pid <= 1 || this.#watched.has(pid)) return;
+    // An exited leader's pid that a new spawn got back leads a group of ours again.
+    if (!Number.isSafeInteger(pid) || pid <= 1 || this.#watched.get(pid) === true) return;
     this.#watched.set(pid, true);
     this.#write(`+ ${pid}\n`);
   }
