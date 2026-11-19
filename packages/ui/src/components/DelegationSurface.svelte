@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { namedWait } from '../lib/background';
+  import WaitLine from './WaitLine.svelte';
   import { untrack } from 'svelte';
   import ContextModeBadge from './ContextModeBadge.svelte';
   import MachineIcon from './MachineIcon.svelte';
@@ -222,7 +224,7 @@
       {#if tokens !== null}<span class="tokens ui-label">{formatTokens(tokens)} {strings.units.tokens}</span>{/if}
     </span>
     {#if wait?.state === 'waiting'}
-      <span class="note" data-testid="delegation-member-wait"><span class="ui-label">{fill(strings.sidebar.state.awaiting, { what: wait.for })}</span><Elapsed startedAt={wait.since} finishedAt={null} active /></span>
+      <span class="note"><WaitLine wait={namedWait(wait.for, wait.since)} testid="delegation-member-wait" /></span>
     {:else if wait?.state === 'interrupted'}
       <span class="note interrupted" data-testid="delegation-member-wait"><span class="ui-label">{fill(strings.sidebar.state.interruptedBy, { what: wait.for, reason: strings.sidebar.state.interruption[wait.reason] })}</span></span>
     {/if}

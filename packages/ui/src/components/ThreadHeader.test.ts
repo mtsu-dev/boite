@@ -38,6 +38,19 @@ async function start(): Promise<ReturnType<typeof vi.spyOn>> {
   return vi.spyOn(store, 'rename').mockResolvedValue();
 }
 
+test('the open thread names the work it is waiting on and shows when the wait began', async () => {
+  await start();
+  const since = Date.now() - 60_000;
+  store.openThread = { ...store.openThread!, status: 'idle', backgroundWait: { state: 'waiting', for: 'release build', since, until: null } };
+  await settle();
+  const wait = document.querySelector('[data-testid=thread-header] [data-testid=thread-wait]');
+  expect(wait?.textContent).toContain('Waiting on release build');
+  expect(wait?.querySelector('[data-testid=agent-elapsed]')?.textContent).toMatch(/^1m \d\ds$/);
+  store.openThread = { ...store.openThread!, backgroundWait: null };
+  await settle();
+  expect(document.querySelector('[data-testid=thread-header] [data-testid=thread-wait]')).toBeNull();
+});
+
 test('a rename begun on one thread writes to that thread after another surface opens a different one', async () => {
   const rename = await start();
   const input = await renameOpen('Title for the trace thread');

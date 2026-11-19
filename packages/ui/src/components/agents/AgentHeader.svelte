@@ -3,6 +3,7 @@
   import type { AgentProfile, AgentStatus, ThreadSummary } from '@boite/contracts';
   import { moodOf, liveState, liveStep, waitingOn, type AgentsView } from '../../lib/agents.svelte';
   import { agentLifecycleItems, pickAgentLifecycle } from '../../lib/agent-menu';
+  import { threadWait } from '../../lib/background';
   import { dateTime } from '../../lib/schedule';
   import type { AgentPane } from '../../lib/store/layout.svelte';
   import type { Store } from '../../lib/store.svelte';
@@ -10,6 +11,7 @@
   import { minuteClock } from '../../lib/clock.svelte';
   import Menu from '../Menu.svelte';
   import Elapsed from '../Elapsed.svelte';
+  import WaitLine from '../WaitLine.svelte';
   import AgentAvatar from './AgentAvatar.svelte';
   import { avatarLit } from '../../lib/avatar-lit';
   import StatusMark from '../StatusMark.svelte';
@@ -49,6 +51,7 @@
   /** What it waits on: the question it asked, else the permission it needs. */
   const pending = $derived(waitingOn(store, thread?.id));
   const state = $derived(liveState(agent, status, thread, !!pending));
+  const wait = $derived(store.connection === 'ready' && agent.status === 'active' ? threadWait(thread, store) : null);
   const step = $derived(liveStep(status, thread));
   const since = $derived(thread?.status === 'running' ? thread.runningSince ?? thread.progress?.since ?? null : null);
   /** The panel button, as on a thread's header: it opens the panel on the desk, whose selector holds every other panel. */
@@ -107,7 +110,8 @@
         <span class="agent-live" data-state={state} aria-live="polite" data-testid="agent-live">
           <!-- One signal per state: the mark carries the hue, the words stay neutral (AgentRow.svelte). -->
           {#if state === 'working' || state === 'waiting' || state === 'error'}<StatusMark tone={state === 'working' ? 'running' : state} label={labels.state[state]} />{/if}
-          {#if state === 'working'}
+          {#if wait}<WaitLine {wait} />
+          {:else if state === 'working'}
             <span class="agent-live-text">{step ?? labels.state.working}</span>
             {#if since !== null}<span class="agent-live-time">· <Elapsed startedAt={since} finishedAt={null} active /></span>{/if}
           {:else if state === 'queued'}
@@ -134,6 +138,7 @@
         <ChevronDown size={16} />
       </Menu>
     </span>
+    {#if wait && store.sidebarCollapsed}<span class="header-wait"><WaitLine {wait} /></span>{/if}
   {/if}
   <nav class="agent-head-actions" aria-label={agent.name}>
     <PanelDoor {store} count={panelCount} ontoggle={togglePanel} testid="agent-desk-toggle" />
@@ -146,6 +151,7 @@
 </header>
 
 <style>
+  .header-wait { min-width: 0; max-width: 32%; }
   .agent-crumb { flex: none; height: var(--control); padding: 0 6px; margin-left: -6px; color: var(--color-muted-foreground); font-weight: 500; }
   .agent-crumb:hover { color: var(--color-foreground); }
   /* The slash sits midway, as in a thread's "project / title": the name's button has a narrower inset than a title's. */

@@ -39,7 +39,7 @@
    * palette). In both, the word stays in the tooltip and the accessible name.
    * An archived thread carries no live state: its time alone.
    */
-  let { thread, now, subagents = null, team = null, away = false, mark = false, fit = false }: { thread: Pick<ThreadSummary, 'status' | 'unread' | 'runningSince' | 'requestSince' | 'backgroundWork' | 'openQuestions' | 'lastUserMessageAt' | 'createdAt'> & Partial<Pick<ThreadSummary, 'backgroundWait' | 'pullRequestWatches' | 'archived'>>; now: number; subagents?: WorkingChildren | null; team?: WorkingChildren | null; away?: boolean; mark?: boolean; fit?: boolean } = $props();
+  let { thread, now, subagents = null, team = null, away = false, mark = false, fit = false, elapsedShownSince = null }: { thread: Pick<ThreadSummary, 'status' | 'unread' | 'runningSince' | 'requestSince' | 'backgroundWork' | 'openQuestions' | 'lastUserMessageAt' | 'createdAt'> & Partial<Pick<ThreadSummary, 'backgroundWait' | 'pullRequestWatches' | 'archived'>>; now: number; subagents?: WorkingChildren | null; team?: WorkingChildren | null; away?: boolean; mark?: boolean; fit?: boolean; elapsedShownSince?: number | null } = $props();
 
   function earliest(a: number | null | undefined, b: number | null | undefined): number | null {
     return a == null ? b ?? null : b == null ? a : Math.min(a, b);
@@ -69,7 +69,7 @@
     : kind === 'delegating' ? subagents?.since ?? null
     : live ? thread.backgroundWork?.since ?? (wait?.state === 'waiting' ? wait.since : null) : null);
   /** Counting time reads the second clock, only while the agent works: the list's clock ticks far slower. */
-  let spent = $derived(since === null ? null : elapsed(Math.max(secondClock.now, now) - since));
+  let spent = $derived(since === null || since === elapsedShownSince ? null : elapsed(Math.max(secondClock.now, now) - since));
   /**
    * The word beside the mark: what the work waits on, so a list tells a CI run from a command or a workflow
    * without a hover ("CI running", "Command", "Sub-agents"); the turn itself reads "Working", an unreached

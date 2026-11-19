@@ -100,7 +100,7 @@ first three notes. A warning mark there means a memory update failed; its
 tooltip holds the error.
 
 The mochi's column starts with its name and one status: the step it is on, what
-it waits for, why it failed, or, at rest, its next routine and when. The "i"
+it waits for and how long it has waited, why it failed, or, at rest, its next routine and when. The "i"
 beside its name says how often it woke on its own today and what it spent
 today in all, your messages included, beside its daily budget when it has one.
 
