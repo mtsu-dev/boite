@@ -1,5 +1,5 @@
 import { afterEach, expect, spyOn, test } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AgentLetter, ContactRequest } from '@boite/contracts';
@@ -58,7 +58,7 @@ async function linked(dirs: { host?: string; guest?: string } = {}) {
 const lettersOf = (h: TestCore, threadId: string): AgentLetter[] => h.core.coordination.get(threadId).messages;
 const incomingOf = (h: TestCore, remoteId: string) => h.core.contacts.requests.list().find(request => request.direction === 'in' && request.remoteId === remoteId);
 
-test('an ask wakes the mochi, which forwards it; an untrusted contact waits for the owner\'s Yes; connect puts both threads in touch without a project grant; cut ends both sides', async () => {
+test('an ask wakes the mochi, which forwards it; an untrusted contact waits for the owner\'s Yes; connect puts both threads in touch, in a project opened to the contact, and the relation outlives the grant; cut ends both sides', async () => {
   const { host, guest, hostClient, guestClient, hostId, guestId, hostBot, guestBot, hostFacts, guestFacts, hostName, guestName, hostThread, guestThread } = await linked();
 
   // The asking thread names no contact: only its bot hears of it, as data.
@@ -104,8 +104,13 @@ test('an ask wakes the mochi, which forwards it; an untrusted contact waits for 
   await waitFor(() => host.core.contacts.requests.list().find(request => request.id === incoming.id)?.approved === true);
 
   expect(host.core.coordination.get(hostBot.threadId).requests).toEqual([]);
+  // The owner's Yes to a text card does not open a project: the mochi connects only to a thread of one opened to the contact.
+  const projectId = host.core.journal.getThread(hostThread)!.projectId!;
+  expect(await thrown(hostClient.call('contacts.bot.connect', { threadId: hostBot.threadId, id: incoming.id, target: hostThread }))).toThrow(`is not open to ${guestName}; expected a project opened to it first`);
+  host.core.contacts.grant({ coreId: guestId, projectId });
   const settled = await hostClient.call('contacts.bot.connect', { threadId: hostBot.threadId, id: incoming.id, target: hostThread });
   expect(settled).toMatchObject({ status: 'accepted', decidedBy: 'bot' });
+  host.core.contacts.revoke({ coreId: guestId, projectId });
   // The host's bot thread shows what it settled; the asking thread's request turns answered, with the thread to write to.
   expect(host.core.coordination.get(hostBot.threadId).requests).toEqual([expect.objectContaining({ id: incoming.id, direction: 'in', status: 'accepted' })]);
   await waitFor(() => guest.core.coordination.get(guestThread).requests![0]!.status === 'accepted', 10000);
@@ -128,7 +133,7 @@ test('an ask wakes the mochi, which forwards it; an untrusted contact waits for 
   expect(guest.core.coordination.get(guestThread).requests![0]).toMatchObject({ contact: 'Docs office', relation: { contact: 'Docs office' } });
   expect((await guest.core.coordination.directory(guestThread)).agents.filter(agent => agent.coreId === hostId && agent.threadId === hostThread).map(agent => agent.machine)).toEqual(['Docs-office']);
 
-  // No project is open either way, and the two threads still write to each other.
+  // No project is open either way any more, and the two threads still write to each other.
   expect(host.core.contacts.find(guestId)?.grants).toEqual([]);
   const sent = await guest.core.coordination.send({ threadId: guestThread, to: { coreId: hostId, threadId: hostThread }, text: 'Which page lists the ports?', requestId: 'relation-1' });
   expect(sent.status).not.toBe('rejected');
@@ -144,7 +149,7 @@ test('an ask wakes the mochi, which forwards it; an untrusted contact waits for 
 }, 60000);
 
 test('an ask that names its contact reaches that contact\'s Operator with no turn of the asking side\'s; a contact not trusted waits for the owner\'s Accept of the plan the Operator wrote, which runs as written; a trusted one is settled at once', async () => {
-  const { host, guest, hostClient, guestClient, hostId, guestId, hostBot, hostFacts, guestFacts, hostName, hostThread, guestThread } = await linked();
+  const { host, guest, hostClient, guestClient, hostId, guestId, hostBot, hostFacts, guestFacts, hostName, guestName, hostThread, guestThread } = await linked();
   const ask = async (words: string) => {
     const asked = await guestClient.call('collaboration.ask', { threadId: guestThread, contact: hostName, text: words });
     // No stage here and no wake of the asking side's bot: the request is already on its way.
@@ -240,7 +245,14 @@ test('an ask that names its contact reaches that contact\'s Operator with no tur
   const fifth = await ask('Where is the changelog kept?');
   expect(fifth.incoming.approved).toBeUndefined();
   expect(hostFacts.find(fact => fact.key === `contacts-in-${fifth.incoming.id}`)?.text).toContain('trusted: settle it now');
-  expect(await hostClient.call('contacts.bot.connect', { threadId: hostBot.threadId, id: fifth.incoming.id, target: hostThread })).toMatchObject({ status: 'accepted', decidedBy: 'bot' });
+  // Even trusted, the Operator puts the contact in touch only with a thread of a project opened to it: its letters steer that thread.
+  mkdirSync(join(host.dataDir, 'closed'));
+  const closed = await hostClient.call('projects.add', { path: join(host.dataDir, 'closed'), name: 'closed' });
+  const closedThread = await thread(host, hostClient, closed.id, 'Closed work');
+  expect(await thrown(hostClient.call('contacts.bot.connect', { threadId: hostBot.threadId, id: fifth.incoming.id, target: closedThread }))).toThrow(`contacts.bot.connect.target: closed is not open to ${guestName}; expected one of ${project.name}`);
+  expect(host.core.contacts.relations.list().some(relation => relation.local.threadId === closedThread)).toBe(false);
+  host.core.contacts.grant({ coreId: guestId, projectId: closed.id });
+  expect(await hostClient.call('contacts.bot.connect', { threadId: hostBot.threadId, id: fifth.incoming.id, target: closedThread })).toMatchObject({ status: 'accepted', decidedBy: 'bot', relation: { local: { threadId: closedThread } } });
   await waitFor(() => mine(fifth.asked.id).status === 'accepted', 10000);
 }, 60000);
 
@@ -365,6 +377,7 @@ test('a relation outlives a restart of either core: both keep it and their threa
   try {
     const { host, guest, hostClient, guestClient, hostId, guestId, hostBot, hostName, hostThread, guestThread } = await linked(dirs);
     await hostClient.call('contacts.update', { coreId: guestId, trusted: true });
+    host.core.contacts.grant({ coreId: guestId, projectId: host.core.journal.getThread(hostThread)!.projectId! });
     const asked = await guestClient.call('collaboration.ask', { threadId: guestThread, target: `${hostName.replace(/\s+/g, '-')}/${hostThread}`, text: 'Talk about the docs' });
     await waitFor(() => incomingOf(host, asked.id) !== undefined, 10000);
     await hostClient.call('contacts.bot.connect', { threadId: hostBot.threadId, id: incomingOf(host, asked.id)!.id, target: hostThread });
