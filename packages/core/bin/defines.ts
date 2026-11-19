@@ -1,10 +1,7 @@
 /**
- * What every core build defines: the kind of build the version says and one
- * flag per tagged feature (`packages/contracts/src/experiments.ts`), as
- * `bun build --define` arguments. `build.ts` (the bundle Windows and the
- * server archives ship) and `compile.ts` (the Linux and macOS sidecar) both
- * pass them, so each drops the code of the features above its kind
- * (docs/internals/experiments.md#out-of-the-build).
+ * Both core builds derive the kind and feature flags from the stamped version.
+ * `compile.ts` passes them as `bun build --define` arguments and `build.ts`
+ * passes the same `featureDefines` record directly to `Bun.build`.
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
