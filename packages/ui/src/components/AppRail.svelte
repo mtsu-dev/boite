@@ -21,7 +21,7 @@
   import { projectView } from '../lib/project-view.svelte';
   import { botEngine, newBot, newTeam, showTeam } from '../lib/agents-view.svelte';
   import { teamsParts } from '../lib/teams-entry';
-  import { separator } from '../lib/menu';
+  import { separator, type MenuItem } from '../lib/menu';
   import { contextMenu } from '../lib/context-menu.svelte';
   import { dragWindow } from '../lib/window-drag';
   import { isMac } from '../lib/keybindings';
@@ -185,26 +185,48 @@
   /**
    * A team's picture has the menu of its chat's head (`teamMenuItems`) on a right click, after Open, answered through
    * its own machine; a refusal shows in this window. Edit opens its chat with the team's dialog over it. The menu's
-   * module comes with the Teams' screens (`lib/teams-entry.ts`), fetched once a team shows.
+   * module comes with the Teams' screens (`lib/teams-entry.ts`), fetched once a team shows; a right click that comes
+   * before it waits for it, unless a newer click, key or menu takes over meanwhile.
    */
   function teamMenu(event: MouseEvent, row: TeamRow) {
     const parts = teamsParts;
     if (!parts) return;
+    const ask = ++teamMenuAsk;
+    if (teamMenuModule) { contextMenu.open(event, teamMenuItemsOf(teamMenuModule, row), action => pickTeam(teamMenuModule!, row, action)); return; }
     event.preventDefault();
     event.stopPropagation();
     const opener = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
     const rect = opener?.getBoundingClientRect();
     const at = event.clientX === 0 && event.clientY === 0 && rect ? { x: rect.left + 8, y: rect.bottom } : { x: event.clientX, y: event.clientY };
-    void parts.teamMenu().then(({ pickTeamAction, teamMenuItems }) => {
-      const items = [{ id: 'open', label: strings.common.open, glyph: MessageSquare }, separator('sep-open'), ...teamMenuItems(row.machine.store, row.team)];
-      contextMenu.show(at, items, action => {
-        if (action === 'open') openTeamChat(row);
-        else if (action === 'edit') openTeamChat(row, true);
-        else void pickTeamAction(row.machine.store, row.team, action, store);
-      }, opener);
-    }).catch(error => store.reportError(error, 'minor'));
+    const before = contextMenu.current;
+    let overtaken = false;
+    const overtake = () => { overtaken = true; };
+    window.addEventListener('pointerdown', overtake, true);
+    window.addEventListener('keydown', overtake, true);
+    void parts.teamMenu().then(module => {
+      teamMenuModule = module;
+      if (overtaken || ask !== teamMenuAsk || contextMenu.current !== before) return;
+      contextMenu.show(at, teamMenuItemsOf(module, row), action => pickTeam(module, row, action), opener);
+    }).catch(error => store.reportError(error, 'minor')).finally(() => {
+      window.removeEventListener('pointerdown', overtake, true);
+      window.removeEventListener('keydown', overtake, true);
+    });
   }
-  $effect(() => { if (teams.length) void teamsParts?.teamMenu().catch(() => {}); });
+  type TeamMenuModule = typeof import('../lib/team-menu');
+  let teamMenuModule: TeamMenuModule | null = null;
+  /** The last team menu asked for: an older one still loading gives way. */
+  let teamMenuAsk = 0;
+  $effect(() => {
+    if (teams.length && !teamMenuModule) void teamsParts?.teamMenu().then(module => { teamMenuModule = module; }).catch(() => {});
+  });
+  function teamMenuItemsOf(module: TeamMenuModule, row: TeamRow): MenuItem[] {
+    return [{ id: 'open', label: strings.common.open, glyph: MessageSquare }, separator('sep-open'), ...module.teamMenuItems(row.machine.store, row.team)];
+  }
+  function pickTeam(module: TeamMenuModule, row: TeamRow, action: string) {
+    if (action === 'open') openTeamChat(row);
+    else if (action === 'edit') openTeamChat(row, true);
+    else void module.pickTeamAction(row.machine.store, row.team, action, store);
+  }
   /** What the Bots page's head offers, from anywhere: the page owns the forms (agents-view.svelte.ts). */
   function addMenu(anchor: HTMLElement) {
     const rect = anchor.getBoundingClientRect();

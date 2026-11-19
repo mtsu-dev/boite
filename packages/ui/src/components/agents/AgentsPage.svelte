@@ -140,7 +140,8 @@
       else if (intent?.kind === 'engine') focus = { kind: 'engine' };
       else if (intent?.kind === 'new-team' && experimentOn('teams') && store.owner) creatingTeam = true;
       else if (intent?.kind === 'team' && experimentOn('teams')) {
-        showTeamChat(intent.threadId);
+        // Asked from the rail, which stopped any load in flight: select again even when this thread was already asked for.
+        showTeamChat(intent.threadId, true);
         if (intent.edit && store.owner) editingTeam = intent.teamId;
       }
     });
@@ -217,11 +218,11 @@
     if (machine.store === store) showTeamChat(chosen.threadId);
     else void workspace.select(machine.store, chosen.threadId);
   }
-  /** A team's chat on this page's machine, in place of a form or a pane. */
-  function showTeamChat(threadId: string) {
+  /** A team's chat on this page's machine, in place of a form or a pane; `again` selects it even when it is open. */
+  function showTeamChat(threadId: string, again = false) {
     tried = true;
     focus = null; pane = null; listShown = false;
-    if (teamThread?.id !== threadId) void workspace.select(store, threadId);
+    if (again || teamThread?.id !== threadId) void workspace.select(store, threadId);
   }
   /** One step out: a form, then the conversation, then the list. */
   function back() {
