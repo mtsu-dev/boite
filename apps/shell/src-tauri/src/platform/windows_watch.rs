@@ -198,16 +198,14 @@ pub(crate) fn watch_webview(window: &tauri::WebviewWindow) {
                             });
                         }
                         COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED => {
-                            let app = main.app_handle().clone();
-                            let window = main.clone();
-                            let _ = main.run_on_main_thread(move || {
-                                if app.state::<crate::updater::AppUpdater>().install_in_progress()
-                                    || RELAUNCHED.swap(true, Ordering::Relaxed) { return; }
-                                let was_visible = window.is_visible().unwrap_or(true);
-                                std::env::set_var(WEBVIEW_RELAUNCH, if was_visible { "window" } else { "tray" });
-                                shell_log::warn("webview", "shell.webview.restart", "restarting the shell after WebView2 exited", json!({}));
-                                app.request_restart();
-                            });
+                            if !RELAUNCHED.load(Ordering::Relaxed) {
+                                let app = main.app_handle().clone();
+                                let control = app.state::<crate::updater::AppUpdater>().install_control();
+                                // An admission request can still hold this mutex for its HTTP deadline.
+                                tauri::async_runtime::spawn_blocking(move || {
+                                    if control.lock().unwrap().webview_failed() { restart_webview(&app); }
+                                });
+                            }
                         }
                         _ => {}
                     }
@@ -227,6 +225,18 @@ pub(crate) fn watch_webview(window: &tauri::WebviewWindow) {
         shell_log::warn("webview", "shell.webview.watch-unavailable",
             format!("WebView2 process failures or navigations will not be logged: {error}"), json!({}));
     }
+}
+
+pub(crate) fn restart_webview(app: &tauri::AppHandle) {
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if RELAUNCHED.swap(true, Ordering::Relaxed) { return; }
+        let was_visible = crate::window::main_window(&handle)
+            .is_none_or(|window| window.is_visible().unwrap_or(true));
+        std::env::set_var(WEBVIEW_RELAUNCH, if was_visible { "window" } else { "tray" });
+        shell_log::warn("webview", "shell.webview.restart", "restarting the shell after WebView2 exited", json!({}));
+        handle.request_restart();
+    });
 }
 
 /// The URL a record names: no query, fragment or credentials.

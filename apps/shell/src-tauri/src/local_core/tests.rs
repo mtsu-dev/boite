@@ -13,6 +13,7 @@ use std::process::{Child, Command, Stdio};
 /// its work in `core.starting.json` until the time its test wrote in
 /// `compact-until`, however long Bun took to start, then serves 300 ms later.
 const FAKE_CORE: &str = r#"
+import { existsSync, readFileSync } from 'node:fs';
 const [version, mode] = process.argv.slice(2);
 const dir = process.argv[process.argv.indexOf('--data-dir') + 1];
 if (mode === 'fail') {
@@ -35,7 +36,11 @@ if (mode !== 'hang') {
   const token = 'test-token';
   const server = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch(request) {
     const url = new URL(request.url);
-    if (url.pathname === '/health') return Response.json({ ok: true, version, pid: process.pid });
+    if (url.pathname === '/health') {
+      const mute = `${dir}/mute`;
+      if (existsSync(mute) && readFileSync(mute, 'utf8') === String(process.pid)) return new Promise(() => {});
+      return Response.json({ ok: true, version, pid: process.pid });
+    }
     if ((url.pathname === '/shutdown' || url.pathname === '/shutdown-if-idle' && url.searchParams.get('pid') === String(process.pid)) && request.method === 'POST' && request.headers.get('authorization') === `Bearer ${token}`) {
       setTimeout(() => process.exit(0), 20);
       return Response.json({ ok: true, pid: process.pid }, { status: 202 });
@@ -108,10 +113,37 @@ fn a_running_core_without_health_is_refused_without_replacing_it() {
     )));
     let outcome = current_endpoint(&state, true);
     std::fs::remove_dir_all(directory).unwrap();
-    assert!(matches!(outcome, Err(error) if error.contains("no longer answers")));
+    assert!(matches!(outcome, Err(EndpointError::Message(error)) if error.contains("no longer answers")));
+    assert!(force_restart(&state, 0).is_err(), "a PID the shell did not spawn cannot be stopped");
     assert!(spawned_pid(&state).is_none());
 }
 
+#[test]
+fn force_restart_replaces_only_the_owned_core_that_is_still_unresponsive() {
+    let _process_guard = crate::process_test_guard();
+    let directory = scratch("force-restart");
+    let state = state(&directory, "2.0.0", fake_command(&directory, "2.0.0", "serve"), false, Duration::from_secs(30));
+    publish(&state.slot, resolve_core(&state));
+    let first_pid = spawned_pid(&state).unwrap();
+    assert!(matches!(force_restart(&state, 0), Err(error) if error.contains("responding")));
+    std::fs::write(directory.join("mute"), first_pid.to_string()).unwrap();
+    let generation = match current_endpoint(&state, true) {
+        Err(EndpointError::Unresponsive { restart_generation, .. }) => restart_generation,
+        _ => panic!("the unresponsive child must be eligible for confirmed restart"),
+    };
+    assert!(platform::process::alive(first_pid));
+    let replacement = force_restart(&state, generation);
+    let second_pid = spawned_pid(&state).unwrap();
+    let repeated = force_restart(&state, generation);
+    state.kill_child();
+    std::fs::remove_dir_all(directory).unwrap();
+    assert!(replacement.is_ok());
+    assert_ne!(first_pid, second_pid);
+    assert!(!platform::process::alive(first_pid));
+    assert!(matches!(repeated, Err(error) if error.contains("already changed")));
+}
+
+#[cfg(unix)]
 #[test]
 fn an_update_can_repair_a_failed_start_only_when_it_owns_the_idle_core_lock() {
     let _process_guard = crate::process_test_guard();
@@ -261,10 +293,25 @@ fn a_core_stopped_for_an_install_stays_stopped_until_the_hold_is_released() {
     assert!(state.wait_for_install(&control, false, || Ok(true), || {}).expect("the idle core stops on request"));
     assert!(!platform::process::alive(first_pid), "the core outlived the stop");
     // The window asks again once it lost the core: nothing may start.
-    assert_eq!(current_endpoint(&state, false).err().as_deref(), Some(HELD));
+    assert!(matches!(current_endpoint(&state, false), Err(EndpointError::Message(error)) if error == HELD));
     assert!(spawned_pid(&state).is_none_or(|pid| pid == first_pid), "a core was started during the install");
+    #[cfg(unix)]
+    let competing_lock = || {
+        let lock = std::fs::File::open(directory.join("core.lock")).unwrap();
+        fs2::FileExt::try_lock_exclusive(&lock).is_ok()
+    };
+    #[cfg(unix)]
+    assert!(!competing_lock(), "the install must exclude a new core after the original core exits");
+    #[cfg(target_os = "linux")]
+    {
+        let mut contender = Command::new("flock");
+        contender.args(["-n", "-E", "77"]).arg(directory.join("core.lock")).arg("true");
+        assert_eq!(contender.status().unwrap().code(), Some(77));
+    }
     // The installer never ran: the next ask brings the engine back.
     state.release_hold();
+    #[cfg(unix)]
+    assert!(competing_lock(), "an aborted installation must release the data directory");
     let second = current_endpoint(&state, false);
     state.kill_child();
     assert_ne!(second.expect("a new core after the hold").url, first.url);

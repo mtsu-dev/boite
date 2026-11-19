@@ -62,8 +62,17 @@ impl Drop for Operation<'_> { fn drop(&mut self) { self.0.store(false, Ordering:
 
 impl AppUpdater {
     #[cfg(windows)]
-    pub(crate) fn install_in_progress(&self) -> bool {
-        self.install.try_lock().map_or(true, |state| *state != crate::update_stop::InstallState::Idle)
+    pub(crate) fn install_control(&self) -> Arc<Mutex<crate::update_stop::InstallState>> {
+        self.install.clone()
+    }
+
+    fn finish_install(&self, app: &AppHandle) {
+        if let Some(core) = app.try_state::<crate::local_core::CoreState>() { core.release_hold(); }
+        let restart = self.install.lock().unwrap().finish();
+        #[cfg(windows)]
+        if restart { crate::platform::watch::restart_webview(app); }
+        #[cfg(not(windows))]
+        let _ = restart;
     }
 
     pub fn new(version: String, directory: PathBuf, supported: bool) -> Self {
@@ -454,9 +463,7 @@ pub async fn app_update_cancel_install(webview: Webview, state: State<'_, AppUpd
     let control = state.install.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let mut install = control.lock().map_err(|_| "update admission state is poisoned")?;
-        if *install != crate::update_stop::InstallState::Waiting { return Ok(false); }
-        *install = crate::update_stop::InstallState::Cancelled;
-        Ok(true)
+        Ok(install.cancel())
     }).await.map_err(|e| e.to_string())?
 }
 
@@ -491,9 +498,12 @@ async fn install(app: AppHandle, state: State<'_, AppUpdater>, quiet: bool) -> R
         let error = "Downloaded update changed after signature verification".to_string();
         state.fail(&app, error.clone()); return Err(error);
     }
-    *state.install.lock().unwrap() = crate::update_stop::InstallState::Waiting;
+    if !state.install.lock().unwrap().start() {
+        *state.pending.lock().unwrap() = Some(pending);
+        return Ok(false);
+    }
     // Nobody waits on an automatic install: it says nothing until the core has agreed to stop.
-    if !quiet { state.change(&app, |s| s.phase = "waiting".into()); }
+    if !quiet { state.change(&app, |s| { s.phase = "waiting".into(); s.error = None; }); }
     let core = app.clone();
     let control = state.install.clone();
     let stopped = tauri::async_runtime::spawn_blocking(move || match core.try_state::<crate::local_core::CoreState>() {
@@ -502,23 +512,23 @@ async fn install(app: AppHandle, state: State<'_, AppUpdater>, quiet: bool) -> R
             app_updates_blocked(quiet)?;
             Ok(!quiet || !crate::window::main_window(&core).is_some_and(|window| window.is_visible().unwrap_or(true)))
         }, || {
-            core.state::<AppUpdater>().change(&core, |s| s.phase = "installing".into());
+            core.state::<AppUpdater>().change(&core, |s| { s.phase = "installing".into(); s.error = None; });
         }),
         None => Err("the shell has no local core state; nothing was installed".into()),
     }).await;
     match stopped {
         Ok(Ok(true)) => {},
         Ok(Ok(false)) => {
-            *state.install.lock().unwrap() = crate::update_stop::InstallState::Idle;
             *state.pending.lock().unwrap() = Some(pending);
             state.change(&app, |s| { s.phase = "ready".into(); s.error = None; });
+            state.finish_install(&app);
             return Ok(false);
         },
         outcome => {
-            *state.install.lock().unwrap() = crate::update_stop::InstallState::Idle;
             let error = match outcome { Ok(Err(e)) => e, Err(e) => e.to_string(), _ => unreachable!() };
             *state.pending.lock().unwrap() = Some(pending);
             state.change(&app, |s| { s.phase = "ready".into(); s.error = Some(error.clone()); });
+            state.finish_install(&app);
             return Err(error);
         }
     }
@@ -532,7 +542,10 @@ async fn install(app: AppHandle, state: State<'_, AppUpdater>, quiet: bool) -> R
         serde_json::json!({ "version": version, "bytes": bytes.len() as u64 }));
     crate::shell_log::flush(Duration::from_millis(500));
     let result = tauri::async_runtime::spawn_blocking(move || {
-        let installed = pending.update.install(bytes);
+        let installed = crate::update_stop::launch_if_allowed(
+            || app_updates_blocked(quiet),
+            || pending.update.install(bytes).map_err(|e| e.to_string()),
+        );
         (pending, installed)
     }).await;
     match result {
@@ -544,12 +557,9 @@ async fn install(app: AppHandle, state: State<'_, AppUpdater>, quiet: bool) -> R
             app.restart();
         }
         outcome => {
-            if let Some(core) = app.try_state::<crate::local_core::CoreState>() { core.release_hold(); }
             let _ = std::fs::remove_file(&state.quiet_restart);
-            *state.install.lock().unwrap() = crate::update_stop::InstallState::Idle;
             let error = match outcome {
                 Ok((pending, Err(error))) => {
-                    let error = error.to_string();
                     *state.pending.lock().unwrap() = Some(pending);
                     state.change(&app, |s| { s.phase = "ready".into(); s.error = Some(error.clone()); });
                     error
@@ -561,6 +571,7 @@ async fn install(app: AppHandle, state: State<'_, AppUpdater>, quiet: bool) -> R
                 }
                 Ok((_, Ok(()))) => unreachable!(),
             };
+            state.finish_install(&app);
             Err(error)
         }
     }

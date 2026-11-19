@@ -2,27 +2,82 @@
 //! 30 seconds at most, stops, and resumes after the restart. A core too old for that handoff
 //! keeps the earlier rule: it stays usable until it grants an idle stop.
 use std::io::{Read, Write};
+#[cfg(unix)]
 use std::fs::{File, OpenOptions};
 use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use fs2::FileExt;
-use serde::Deserialize;
+#[cfg(unix)]
+use {fs2::FileExt, serde::Deserialize};
 
-use crate::local_core::health::{health, read_core_file, same_core, CoreStart, HEALTH_TIMEOUT};
-use crate::local_core::starting::read_starting;
-use crate::platform::file_identity;
+use crate::local_core::health::{health, read_core_file, same_core, HEALTH_TIMEOUT};
+#[cfg(unix)]
+use {crate::local_core::{health::CoreStart, starting::read_starting}, crate::platform::file_identity};
 use crate::platform::process::Watched;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum InstallState { Idle, Waiting, Cancelled, Committed }
+pub(crate) enum InstallState {
+    Idle,
+    Waiting,
+    Cancelled,
+    Committed,
+    CancelledForRecovery,
+    CommittedWithRecovery,
+    Restarting,
+}
+
+impl InstallState {
+    pub(crate) fn start(&mut self) -> bool {
+        if *self != Self::Idle { return false; }
+        *self = Self::Waiting;
+        true
+    }
+
+    pub(crate) fn cancel(&mut self) -> bool {
+        if *self != Self::Waiting { return false; }
+        *self = Self::Cancelled;
+        true
+    }
+
+    pub(crate) fn cancelled(self) -> bool {
+        matches!(self, Self::Cancelled | Self::CancelledForRecovery)
+    }
+
+    /// The dead browser cannot cancel its own request. An accepted handoff
+    /// must finish first, since a successful install already restarts the shell.
+    #[cfg_attr(not(any(windows, test)), allow(dead_code))]
+    pub(crate) fn webview_failed(&mut self) -> bool {
+        *self = match *self {
+            Self::Idle => Self::Restarting,
+            Self::Waiting | Self::Cancelled => Self::CancelledForRecovery,
+            Self::Committed => Self::CommittedWithRecovery,
+            _ => return false,
+        };
+        *self == Self::Restarting
+    }
+
+    /// Called once the install returned or was cancelled and the core hold is released.
+    pub(crate) fn finish(&mut self) -> bool {
+        if *self == Self::Restarting { return false; }
+        let restart = matches!(self, Self::CancelledForRecovery | Self::CommittedWithRecovery);
+        *self = if restart { Self::Restarting } else { Self::Idle };
+        restart
+    }
+}
+
+/// A policy update can arrive while an accepted core handoff drains its turns.
+pub(crate) fn launch_if_allowed(check: impl FnOnce() -> Result<(), String>, launch: impl FnOnce() -> Result<(), String>) -> Result<(), String> {
+    check()?;
+    launch()
+}
 
 /// The core's grace for a tool call (30 s), its deadline for a turn that ignores its stop (12 s)
 /// and its own shutdown, with a margin.
 pub(crate) const HANDOFF_EXIT: Duration = Duration::from_secs(60);
 
+#[cfg(unix)]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct LockRecord {
@@ -33,6 +88,7 @@ struct LockRecord {
     os_lock: bool,
 }
 
+#[cfg(unix)]
 fn core_is_running(directory: &Path) -> Result<bool, String> {
     let core = read_core_file(&directory.join("core.json"))?;
     Ok(core.is_some_and(|core| core.pid.is_some_and(|pid| same_core(pid, &core.start())))
@@ -41,6 +97,7 @@ fn core_is_running(directory: &Path) -> Result<bool, String> {
 
 /// Holds the same lock startup takes. A legacy PID record can still exclude
 /// us even without an OS lock. A live core must use authenticated admission.
+#[cfg(unix)]
 pub(crate) fn lock_without_core(directory: &Path) -> Result<Option<File>, String> {
     if core_is_running(directory)? { return Ok(None); }
     let path = directory.join("core.lock");
@@ -100,7 +157,7 @@ pub(crate) fn stop_for_update(directory: &Path, control: &Mutex<InstallState>, i
     let mut handoff = !idle_only;
     loop {
         let mut state = control.lock().map_err(|_| "update admission state is poisoned")?;
-        if *state == InstallState::Cancelled { return Ok(false); }
+        if state.cancelled() { return Ok(false); }
         let alive = !process.exited_within(Duration::ZERO);
         if alive && (!same_core(pid, &start) || health(core.port, pid).is_none() || !same_core(pid, &start)) {
             return Err("the live engine did not answer as the expected core; nothing was installed".into());
@@ -190,7 +247,13 @@ const server = Bun.serve({ hostname:'127.0.0.1', port:0, fetch(request) {
         // No `idle` file: the idle admission would answer busy for ever.
         assert!(stop_for_update(&fixture.directory, &control, false, || Ok(true), || {}).unwrap());
         assert_eq!(fixture.child.wait().unwrap().code(), Some(0));
-        assert!(*control.lock().unwrap() == InstallState::Committed);
+        let mut state = control.lock().unwrap();
+        assert!(*state == InstallState::Committed);
+        assert!(!state.webview_failed(), "an accepted handoff must finish first");
+        let result = launch_if_allowed(|| Ok(()), || Err("installer did not launch".into()));
+        assert_eq!(result.unwrap_err(), "installer did not launch");
+        assert!(state.finish(), "a failed installer launch must recover the dead webview");
+        assert!(!state.finish());
     }
     #[test]
     fn cancellation_leaves_a_busy_core_running() {
@@ -203,6 +266,29 @@ const server = Bun.serve({ hostname:'127.0.0.1', port:0, fetch(request) {
         *control.lock().unwrap() = InstallState::Cancelled;
         assert!(!waiter.join().unwrap().unwrap());
         assert!(fixture.child.try_wait().unwrap().is_none());
+    }
+
+    #[test]
+    fn a_webview_crash_cancels_admission_to_a_busy_core_before_restarting_the_shell() {
+        let _guard = crate::process_test_guard();
+        let mut fixture = Fixture::new("webview-crash-during-admission", "current");
+        let control = Arc::new(Mutex::new(InstallState::Waiting));
+        let (checked, admitted) = std::sync::mpsc::channel();
+        let other = control.clone();
+        let directory = fixture.directory.clone();
+        let waiter = std::thread::spawn(move || {
+            stop_for_update(&directory, &other, false, || {
+                let _ = checked.send(());
+                Ok(true)
+            }, || panic!("the busy core must stay running"))
+        });
+        admitted.recv_timeout(Duration::from_secs(3)).unwrap();
+        admitted.recv_timeout(Duration::from_secs(3)).unwrap();
+        assert!(!control.lock().unwrap().webview_failed());
+        assert!(!waiter.join().unwrap().unwrap());
+        assert!(fixture.child.try_wait().unwrap().is_none());
+        assert!(control.lock().unwrap().finish());
+        assert!(!control.lock().unwrap().start());
     }
     #[test]
     fn busy_work_finishes_before_the_core_exits_on_its_own() {
@@ -248,6 +334,24 @@ const server = Bun.serve({ hostname:'127.0.0.1', port:0, fetch(request) {
         assert_eq!(stopped.unwrap_err(), "updates.app is now off");
         assert!(fixture.child.try_wait().unwrap().is_none());
         assert!(*control.lock().unwrap() == InstallState::Waiting);
+    }
+
+    #[test]
+    fn a_policy_change_during_an_accepted_handoff_refuses_to_launch_the_installer() {
+        let _guard = crate::process_test_guard();
+        let mut fixture = Fixture::new("policy-during-handoff", "handoff");
+        let mut state = InstallState::Idle;
+        assert!(state.start());
+        let control = Mutex::new(state);
+        let blocked = std::cell::Cell::new(false);
+        assert!(stop_for_update(&fixture.directory, &control, false, || Ok(!blocked.get()), || {
+            blocked.set(true);
+        }).unwrap());
+        assert_eq!(fixture.child.wait().unwrap().code(), Some(0));
+        let result = launch_if_allowed(|| {
+            if blocked.get() { Err("updates.app is now off".into()) } else { Ok(()) }
+        }, || panic!("the updated policy prohibits launching the installer"));
+        assert_eq!(result.unwrap_err(), "updates.app is now off");
     }
     #[test]
     fn an_older_core_without_idle_admission_is_never_killed() {

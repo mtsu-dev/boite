@@ -193,6 +193,7 @@ pub fn run() {
 
     let (commands, command_names) = shell_commands![
         local_core::core_endpoint,
+        local_core::core_restart,
         local_core::core_starting,
         local_files::open_local_file,
         local_files::open_chat_file,

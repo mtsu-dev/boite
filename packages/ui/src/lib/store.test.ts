@@ -9,6 +9,7 @@ import * as endpoints from './endpoint';
 import * as deviceKeys from './device-key';
 import { Store } from './store.svelte';
 import { LOCAL_RECOVERY_MS } from './store/connection.svelte';
+import { IDLE_PROBE_MS, PROBE_DEADLINE_MS } from './ws-client-utils';
 import { resumeAnchor } from './thread-rows';
 import { strings } from './strings';
 import { compareThreads } from './thread-order';
@@ -2543,6 +2544,69 @@ describe('the shell core lost under a local store', () => {
     window.__TAURI_INTERNALS__ = {} as typeof window.__TAURI_INTERNALS__;
     return { store, client };
   }
+
+  test('an open local socket that goes silent after hello reconnects and asks the shell', async () => {
+    vi.useFakeTimers();
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    const endpoint = { url: 'http://127.0.0.1:41000', token: 'test', local: true };
+    const invoke = vi.fn().mockRejectedValue({ message: 'the core no longer answers', restartGeneration: 0 });
+    window.__TAURI_INTERNALS__ = { invoke };
+    const fromTauri = vi.spyOn(endpoints, 'fromTauri');
+    const frames: { id: number; method: string; progress?: boolean }[] = [];
+    vi.stubGlobal('WebSocket', class implements SocketLike {
+      onopen: SocketLike['onopen'] = null;
+      onmessage: SocketLike['onmessage'] = null;
+      onclose: SocketLike['onclose'] = null;
+      onerror: SocketLike['onerror'] = null;
+      constructor() { void Promise.resolve().then(() => this.onopen?.()); }
+      send(raw: string) {
+        const frame = JSON.parse(raw);
+        frames.push(frame);
+        if (frames.length === 1) {
+          this.onmessage?.({ data: JSON.stringify({ id: frame.id, result: { core: { protocolVersion: PROTOCOL_VERSION }, principal: 'owner' } }) });
+        }
+      }
+      close() {}
+    });
+    const store = new Store();
+    const connecting = store.connectEndpoint(endpoint);
+    const client = store.client!;
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(client.state).toBe('ready');
+      const call = client.call('threads.list', {}).catch(() => undefined);
+      expect(frames.find((frame) => frame.method === 'threads.list')?.progress).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(IDLE_PROBE_MS + PROBE_DEADLINE_MS);
+      expect(client.state).toBe('connecting');
+      await vi.advanceTimersByTimeAsync(LOCAL_RECOVERY_MS);
+      expect(fromTauri).toHaveBeenCalledWith(true);
+      await vi.advanceTimersByTimeAsync(29_999 - IDLE_PROBE_MS - PROBE_DEADLINE_MS - LOCAL_RECOVERY_MS);
+      expect(store.canForceCoreRestart).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(store.canForceCoreRestart).toBe(true);
+      expect(invoke).not.toHaveBeenCalledWith('core_restart', expect.anything(), undefined);
+      const cancelled = store.forceCoreRestart();
+      confirm.answer(false);
+      await cancelled;
+      expect(invoke).not.toHaveBeenCalledWith('core_restart', expect.anything(), undefined);
+      const confirmed = store.forceCoreRestart();
+      invoke.mockResolvedValueOnce({ url: 'http://127.0.0.1:42000', token: 'replacement' });
+      confirm.answer(true);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(invoke).toHaveBeenCalledWith('core_restart', { generation: 0 }, undefined);
+      expect(store.endpointUrl).toBe('http://127.0.0.1:42000');
+      expect(store.canForceCoreRestart).toBe(false);
+      store.client?.close();
+      await confirmed;
+      await call;
+    } finally {
+      store.detach(); client.close();
+      await connecting;
+      fromTauri.mockRestore(); visibility.mockRestore();
+      vi.unstubAllGlobals(); vi.useRealTimers();
+      delete window.__TAURI_INTERNALS__;
+    }
+  });
 
   test('a core unreachable for a while is asked of the shell again, and the store follows it to its new address', async () => {
     vi.useFakeTimers();
