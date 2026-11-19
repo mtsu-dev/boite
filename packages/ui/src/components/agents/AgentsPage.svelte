@@ -80,6 +80,9 @@
   });
   /** The dialog that creates a team by hand is open (`docs/internals/teams.md`, In the app). */
   let creatingTeam = $state(false);
+  /** The team the window's rail asked to edit, on this page's machine. */
+  let editingTeam = $state<string | null>(null);
+  const teamToEdit = $derived(editingTeam ? teamsOf(store).teams.find(row => row.id === editingTeam) ?? null : null);
   const directory = $derived(agentDirectory(store));
   const threadId = $derived(thread?.id ?? teamThread?.id ?? null);
   const agent = $derived(thread ? agentOfThread(snapshot, thread.id) ?? directory.ownerOf(thread) : null);
@@ -128,14 +131,19 @@
     if (!id || !threadId || narrow.current) return;
     untrack(() => { if (!store.panel.isOpen && store.panel.surfaces.length === 0 && firstDeskVisit(id)) store.panel.open('desk'); });
   });
-  // The window's rail asks for a new bot, a new team or the engine settings: the page owns those forms.
+  // The window's rail asks for a new bot, a new team, a team's chat or edit, or the engine settings: the page owns those forms.
   $effect(() => {
     void agentsIntent.request;
     untrack(() => {
-      const kind = takeAgentsIntent(store);
-      if (kind === 'new-bot') focus = { kind: 'new' };
-      else if (kind === 'engine') focus = { kind: 'engine' };
-      else if (kind === 'new-team' && experimentOn('teams') && store.owner) creatingTeam = true;
+      const intent = takeAgentsIntent(store);
+      if (intent?.kind === 'new-bot') focus = { kind: 'new' };
+      else if (intent?.kind === 'engine') focus = { kind: 'engine' };
+      else if (intent?.kind === 'new-team' && experimentOn('teams') && store.owner) creatingTeam = true;
+      else if (intent?.kind === 'team' && experimentOn('teams')) {
+        // Asked from the rail, which stopped any load in flight: select again even when this thread was already asked for.
+        showTeamChat(intent.threadId, true);
+        if (intent.edit && store.owner) editingTeam = intent.teamId;
+      }
     });
   });
   /** The desktop's default agent was opened, or gave way to one named on the way in. */
@@ -207,10 +215,14 @@
   }
   /** A team's row: its chat, on the machine that holds it. The desktop's default agent gives way to it. */
   function openTeam(machine: Machine, chosen: Team) {
+    if (machine.store === store) showTeamChat(chosen.threadId);
+    else void workspace.select(machine.store, chosen.threadId);
+  }
+  /** A team's chat on this page's machine, in place of a form or a pane; `again` selects it even when it is open. */
+  function showTeamChat(threadId: string, again = false) {
     tried = true;
     focus = null; pane = null; listShown = false;
-    if (machine.store === store && teamThread?.id === chosen.threadId) return;
-    void workspace.select(machine.store, chosen.threadId);
+    if (again || teamThread?.id !== threadId) void workspace.select(store, threadId);
   }
   /** One step out: a form, then the conversation, then the list. */
   function back() {
@@ -232,6 +244,9 @@
   onopen={open} onteam={openTeam} oncreate={() => { focus = { kind: 'new' }; }} onnewteam={() => { creatingTeam = true; }} onengine={() => { focus = focus?.kind === 'engine' ? null : { kind: 'engine' }; }}
   onpane={next => { focus = null; pane = pane === next ? null : next; }} />
 
+{#if teamToEdit && TeamDialog}
+  <TeamDialog {view} {others} team={teamToEdit} onclose={() => { editingTeam = null; }} ondone={() => {}} />
+{/if}
 {#if creatingTeam && TeamDialog}
   <TeamDialog {view} {others} onclose={() => { creatingTeam = false; }} ondone={created => { if (here) openTeam(here, created); }} />
 {/if}

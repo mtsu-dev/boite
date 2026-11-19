@@ -911,6 +911,26 @@ test('Escape in the box that answers a question keeps the question and its turn'
   expect(document.querySelector('[data-testid=question-card][data-state=pending]')).not.toBeNull();
 });
 
+test('a part that lands past the end of the copy on screen leaves no gap, and the chips still follow the next thread', async ({ app: _app }) => {
+  const client = store.client as FakeClient;
+  const claude = await client.call('threads.create', { projectId: 'p-boite', providerId: 'claude', accountId: 'a-claude-main', model: 'claude-opus-5-5' });
+  const opencode = await client.call('threads.create', { projectId: 'p-boite', providerId: 'opencode', accountId: 'a-opencode' });
+  await openIdle(opencode.id);
+  client.redrawCommand(opencode.id, 'building');
+  const { messageId, partIndex } = client.streamPastClient(opencode.id, 2);
+  await waitFor(() => store.openThread?.messages.some(message => message.id === messageId && message.parts.length > partIndex) ?? false);
+  const parts = store.openThread!.messages.find(message => message.id === messageId)!.parts;
+  // Array.from turns a hole into undefined; every() alone skips holes.
+  expect(Array.from(parts).every(part => part !== undefined)).toBe(true);
+  // A hole made every reader of the parts throw, which stopped the screen's effects: the
+  // box kept the previous thread's model and account and sent them to this one.
+  await store.open(claude.id);
+  await waitFor(() => input().placeholder.includes('Claude'));
+  await store.open(opencode.id);
+  await waitFor(() => input().placeholder.includes('OpenCode'));
+  expect(query('[data-testid=composer-picker]').textContent).not.toContain('Opus');
+});
+
 test('a thread of a machine that dropped still opens and queues its prompts until the machine is back', async ({ queueApp: _app }) => {
   await openIdle('t-trace');
   const other = store.threads.find((t) => t.id === 't-descriptors')!;

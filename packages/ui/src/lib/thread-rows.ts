@@ -1,4 +1,4 @@
-import type { MessageId, ProjectId, Thread, ThreadId, ThreadLoad, ThreadSummary } from '@boite/contracts';
+import type { MessageId, MessagePart, ProjectId, Thread, ThreadId, ThreadLoad, ThreadSummary } from '@boite/contracts';
 import { resumeAnchor } from '@boite/contracts';
 export { resumeAnchor, workingChildren, type WorkingChildren } from '@boite/contracts';
 
@@ -79,6 +79,21 @@ export function threadsByProject(threads: readonly ThreadSummary[]): Map<Project
 export function lastIndexById<T extends { id: string }>(items: readonly T[], id: string): number {
   for (let index = items.length - 1; index >= 0; index--) if (items[index]!.id === id) return index;
   return -1;
+}
+
+/**
+ * Puts `part` at `index` of a message this client holds. An event can name a
+ * part past the end of the copy: a copy painted from an earlier visit or the
+ * device's snapshot while its page is still on the way, or a socket that
+ * dropped deltas under backpressure and resends their part once it drains.
+ * The slots in between become empty text, the way the core opens every text
+ * part, until the page or the resent part fills them: a sparse `parts` throws
+ * in every reader, and a throw in a render effect leaves the rest of the
+ * screen, the composer's chips included, on the thread shown before.
+ */
+export function placePart(parts: MessagePart[], index: number, part: MessagePart): void {
+  while (parts.length < index) parts.push({ type: 'text', text: '' });
+  parts[index] = part;
 }
 
 /** The `threads.get` parameters for a thread, from its resume anchor when part of it is held. */

@@ -183,6 +183,10 @@ export class SettingsStore {
         this.#core.accounts.check(account.id, true);
       }
     }
+    // A provider the gateway starts serving needs an account to name, as it gets at startup: its last one may be gone.
+    if (this.#core.providers.available().some(provider => subscriptionProxyOf(previous, provider) === null && subscriptionProxyOf(next, provider) !== null)) {
+      this.#core.accounts.ensureDefaults();
+    }
   }
 
   /** A value the policy holds anyway is not the user's choice: the saved one stays for when the policy lifts. */
