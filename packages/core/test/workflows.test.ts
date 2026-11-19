@@ -274,9 +274,13 @@ test('a mismatched output is asked for once more, then the step fails and retry 
   const retried = await owner.call('workflows.control', { threadId, runId: run.id, action: 'retry', stepId: 'scan' });
   expect(retried.status).toBe('running');
   const done = await settled(h, threadId, run.id, ['done']);
-  // An empty list is a finished fan-out input, and the retry reused the same child thread.
+  // Automatic correction shares the old conversation. Explicit retry has its own conversation.
   expect(done.nodes[1]!.status).toBe('done');
-  expect(new Set(prompts.filter(p => p.prompt.includes('step scan')).map(p => p.threadId)).size).toBe(1);
+  const oldThread = failed.nodes[0]!.instances[0]!.threadId!;
+  const newThread = done.nodes[0]!.instances[0]!.threadId!;
+  expect(newThread).not.toBe(oldThread);
+  expect(h.core.journal.listTurns(oldThread)).toHaveLength(2);
+  expect(h.core.journal.listTurns(newThread)).toHaveLength(1);
 });
 
 test.each(['stop', 'pause', 'archive'] as const)('a pending output correction respects %s before its dispatch', async action => {
@@ -697,7 +701,7 @@ test('templates are kept per project, refreshed by name, started by id, and the 
   expect(out.join('')).toContain('steps[0].profile');
 });
 
-test('a failed step stops what never launched and is told to the parent at once, and a retry past an archived conversation opens a new one', async () => {
+test('a failed item lets the other items finish and its retry opens a new conversation', async () => {
   const { held, prompts } = scripted(ctx => !ctx.thread.parentThreadId ? 'noted' : taskOf(ctx.prompt) === 'x' ? '```json\n{"items": [1, 2, 3, 4]}\n```' : { hold: true });
   const { h, owner, threadId } = await setup();
   const run = await owner.call('workflows.start', { threadId, plan: { name: 'Fan', limits: { maxConcurrent: 2 }, steps: [
@@ -709,16 +713,23 @@ test('a failed step stops what never launched and is told to the parent at once,
   const second = h.core.workflows.get(threadId, run.id).nodes[1]!.instances[1]!.threadId!;
   held.get(first)!('', 'error');
   await waitFor(() => h.core.workflows.get(threadId, run.id).nodes[1]!.instances[0]!.status === 'failed');
-  // The run is halted but not over while a step it launched still works.
+  // The failure is delivered without waiting for the other items to finish.
   expect(h.core.workflows.get(threadId, run.id).status).toBe('running');
   // The parent hears of the failure now, once, not when the last running step ends.
   const told = () => prompts.filter(p => p.threadId === threadId && p.prompt.startsWith('Boite workflow step failed'));
   await waitFor(() => told().length === 1);
   expect(told()[0]!.prompt).toContain(`"failed":[{"step":"each","item":"1","status":"failed"`);
-  expect(told()[0]!.prompt).toContain('"running":["each (2)"]');
   expect(told()[0]!.prompt).toContain(`boite workflow retry ${run.id} each`);
   await waitFor(() => h.core.workflows.get(threadId, run.id).failuresNoticed?.length === 1);
-  held.get(second)!('Two done.');
+  for (const item of [2, 3, 4]) {
+    await waitFor(() => {
+      const id = h.core.workflows.get(threadId, run.id).nodes[1]!.instances[item - 1]!.threadId;
+      return id !== null && held.has(id);
+    });
+    const id = h.core.workflows.get(threadId, run.id).nodes[1]!.instances[item - 1]!.threadId!;
+    if (item === 2) expect(id).toBe(second);
+    held.get(id)!('Done.');
+  }
   const failed = await settled(h, threadId, run.id);
   expect(failed.status).toBe('failed');
   await waitFor(() => prompts.some(p => p.threadId === threadId && p.prompt.includes('Boite workflow failed')));
@@ -726,24 +737,21 @@ test('a failed step stops what never launched and is told to the parent at once,
   expect(failed.error).toStartWith('each: ');
   const each = failed.nodes[1]!;
   expect(each.status).toBe('failed');
-  expect(each.instances.map(i => [i.status, i.threadId === null])).toEqual([['failed', false], ['done', false], ['stopped', true], ['stopped', true]]);
-  expect(each.instances[2]!.error).toBe('Not started: another step of the run failed');
+  expect(each.instances.map(i => i.status)).toEqual(['failed', 'done', 'done', 'done']);
 
   await owner.call('threads.archive', { threadId: first });
   await owner.call('workflows.control', { threadId, runId: run.id, action: 'retry' });
-  await waitFor(() => held.size === 2);
+  await waitFor(() => held.size === 1);
   const retried = h.core.workflows.get(threadId, run.id).nodes[1]!.instances;
   expect(retried[0]!.threadId).not.toBeNull();
   expect(retried[0]!.threadId).not.toBe(first);
   expect(retried[0]!.usage?.inputTokens).toBe(10);
-  expect(retried.map(i => i.status)).toEqual(['running', 'done', 'running', 'waiting']);
+  expect(retried.map(i => i.status)).toEqual(['running', 'done', 'done', 'done']);
   // The archived conversation speaks for nothing once the step moved on.
   const stale = await connect(h.url, h.core.agents.tokenFor(first));
   try {
     expect(await thrown(stale.call('workflows.output', { threadId: first, value: null }))).toThrow('is not running');
   } finally { stale.close(); }
-  for (const finish of [...held.values()]) finish('ok');
-  await waitFor(() => held.size === 1);
   for (const finish of [...held.values()]) finish('ok');
   const done = await settled(h, threadId, run.id);
   expect(done.status).toBe('done');
@@ -766,13 +774,14 @@ test('a step that fails before it has any execution is told to the parent while 
   expect((await settled(h, threadId, run.id)).status).toBe('failed');
 });
 
-test('retrying the failed step also reopens a parallel step that stopped before it launched', async () => {
+test('independent steps run to completion while a failed dependency blocks its descendants', async () => {
   const { held } = scripted(ctx => !ctx.thread.parentThreadId ? 'noted' : taskOf(ctx.prompt) === 'x' ? '```json\n{"items": [1, 2, 3]}\n```' : { hold: true });
   const { h, owner, threadId } = await setup();
   const run = await owner.call('workflows.start', { threadId, plan: { name: 'Side', limits: { maxConcurrent: 2 }, steps: [
     { id: 'lone', profile: 'fast', task: 'lone' },
     { id: 'list', profile: 'fast', task: 'x', output: { items: ['number'] } },
     { id: 'each', profile: 'fast', forEach: 'list.items', task: 'do {{item}}' },
+    { id: 'blocked', profile: 'fast', after: ['lone'], task: 'blocked' },
   ] }, requestId: 'side' });
   await waitFor(() => held.size === 2);
   const lone = h.core.workflows.get(threadId, run.id).nodes[0]!.instances[0]!.threadId!;
@@ -780,19 +789,18 @@ test('retrying the failed step also reopens a parallel step that stopped before 
   held.get(lone)!('', 'error');
   await waitFor(() => h.core.workflows.get(threadId, run.id).nodes[0]!.status === 'failed');
   held.get(first)!('One done.');
+  await waitFor(() => held.size === 2);
+  for (const finish of [...held.values()]) finish('ok');
   const failed = await settled(h, threadId, run.id);
-  expect(failed.nodes[2]!.status).toBe('stopped');
-  expect(failed.nodes[2]!.instances.map(i => i.status)).toEqual(['done', 'stopped', 'stopped']);
+  expect(failed.nodes[2]!.status).toBe('done');
+  expect(failed.nodes[2]!.instances.map(i => i.status)).toEqual(['done', 'done', 'done']);
+  expect(failed.nodes[3]!.status).toBe('waiting');
 
   await owner.call('workflows.control', { threadId, runId: run.id, action: 'retry', stepId: 'lone' });
-  await waitFor(() => held.size === 2);
-  const reopened = h.core.workflows.get(threadId, run.id);
-  expect(reopened.nodes[2]!.status).toBe('running');
-  expect(reopened.nodes[2]!.instances.map(i => [i.status, i.error])).toEqual([['done', null], ['running', null], ['waiting', null]]);
-  while (h.core.workflows.get(threadId, run.id).status === 'running') {
-    for (const finish of [...held.values()]) finish('ok');
-    await Bun.sleep(20);
-  }
+  await waitFor(() => held.size === 1);
+  [...held.values()][0]!('Retried.');
+  await waitFor(() => h.core.workflows.get(threadId, run.id).nodes[3]!.status === 'running');
+  [...held.values()][0]!('Unblocked.');
   expect((await settled(h, threadId, run.id)).status).toBe('done');
 });
 
@@ -940,7 +948,7 @@ test('a step names its model and reasoning level, and a level the model lacks is
   expect(plain!.effort).toBe(h.core.threads.require(threadId).effort);
 });
 
-test('retrying one of two failed steps names the other, changes nothing, and a run retry reopens both', async () => {
+test('retrying one of two failed steps runs it while the other stays failed', async () => {
   const { held } = scripted(ctx => !ctx.thread.parentThreadId ? 'noted' : { hold: true });
   const { h, owner, threadId } = await setup();
   const run = await owner.call('workflows.start', { threadId, plan: { name: 'Pair', limits: { maxConcurrent: 2 }, steps: [
@@ -952,14 +960,16 @@ test('retrying one of two failed steps names the other, changes nothing, and a r
   const failed = await settled(h, threadId, run.id);
   expect(failed.nodes.map(node => node.status)).toEqual(['failed', 'failed']);
 
-  expect(await thrown(owner.call('workflows.control', { threadId, runId: run.id, action: 'retry', stepId: 'left' })))
-    .toThrow('the run stays stopped while right has failed; retry that step too, or retry the whole run without naming a step');
-  const unchanged = h.core.workflows.get(threadId, run.id);
-  expect([unchanged.status, ...unchanged.nodes.map(node => node.status)]).toEqual(['failed', 'failed', 'failed']);
+  const left = await owner.call('workflows.control', { threadId, runId: run.id, action: 'retry', stepId: 'left' });
+  expect(left.nodes.map(node => node.status)).toEqual(['running', 'failed']);
+  await waitFor(() => held.size === 1);
+  [...held.values()][0]!('Left done.');
+  const partial = await settled(h, threadId, run.id);
+  expect([partial.status, ...partial.nodes.map(node => node.status)]).toEqual(['failed', 'done', 'failed']);
 
   await owner.call('workflows.control', { threadId, runId: run.id, action: 'retry' });
-  await waitFor(() => held.size === 2);
-  expect(h.core.workflows.get(threadId, run.id).nodes.map(node => node.status)).toEqual(['running', 'running']);
+  await waitFor(() => held.size === 1);
+  expect(h.core.workflows.get(threadId, run.id).nodes.map(node => node.status)).toEqual(['done', 'running']);
   for (const finish of [...held.values()]) finish('ok');
   expect((await settled(h, threadId, run.id)).status).toBe('done');
 });

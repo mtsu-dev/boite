@@ -180,8 +180,11 @@ by the canonical Git common directory. Linked checkouts share that queue; other
 repositories and running jobs remain independent. Queued preparation rechecks
 cancellation before spawning, and queue time counts against an explicit timeout.
 
-With `worktree: {}`, `threads.create` runs `git worktree add -b` before writing
-the thread, with `-c checkout.workers=0` (one checkout worker per core) unless
+With `worktree: {}`, `threads.create` records the reservation and reserves the
+branch ref at the project's default branch commit before running `git worktree
+add` and writing the thread. Boite checks the remote's default branch with a
+short timeout and falls back to the corresponding local branch when offline.
+Checkout runs with `-c checkout.workers=0` (one checkout worker per core) unless
 the repository's or the user's git config sets `checkout.workers`; the core
 reads that once per repository. The temporary branch is `boite/wt-<id>`, unless explicitly named;
 the directory is `<project>/.boite/worktrees/wt-<id>` by default. A missing Git

@@ -206,7 +206,8 @@ export class ThreadBranching {
 
     const id = newId('thr_');
     const title = `${source.title}${FORK_TITLE_SUFFIX}`;
-    const placed = worktree ? await this.#core.worktrees.add(id, project) : null;
+    const base = worktree ? await this.#core.worktrees.head(id, source.cwd) : undefined;
+    const placed = worktree ? await this.#core.worktrees.add(id, project, undefined, undefined, undefined, base) : null;
     try {
       return await this.#writeFork(source, target, rowid, { id, title, cwd: placed?.path ?? source.cwd, branch: placed?.branch ?? source.branch, branchNamingPending: placed?.namingPending ?? false });
     } catch (error) {

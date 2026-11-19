@@ -10,11 +10,12 @@ import {
   conditionHolds,
   executionsUsed,
   itemLabel,
-  loopAgain,
-  loopSpent,
   renderTask,
   resolvePath,
+  retryWorkflowSteps,
   shapeMismatch,
+  workflowContinuation,
+  workflowExecutions,
   workflowLevels,
   workflowValues,
   type DelegationConfig,
@@ -73,7 +74,6 @@ const LIST_LIMIT = 20;
 const STEP_TICKS = 60;
 const ended = (status: WorkflowStepStatus) => status === 'done' || status === 'skipped';
 const broken = (status: WorkflowStepStatus) => status === 'failed' || status === 'stopped';
-const NOT_STARTED = 'Not started: another step of the run failed';
 
 function invalid(message: string): RpcFailure {
   return new RpcFailure({ code: RpcErrorCode.InvalidParams, message });
@@ -379,10 +379,6 @@ export class FakeWorkflows {
     return undefined;
   }
 
-  #halted(run: WorkflowRun): boolean {
-    return run.nodes.some(node => broken(node.status) || node.instances.some(i => broken(i.status)));
-  }
-
   #advance(runId: string): void {
     const run = this.#runs.get(runId);
     if (!run) return;
@@ -408,7 +404,6 @@ export class FakeWorkflows {
       }
     }
     for (;;) {
-      if (this.#halted(run)) break;
       const running = run.nodes.reduce((n, node) => n + node.instances.filter(i => i.status === 'running').length, 0);
       if (running >= run.limits.maxConcurrent) break;
       const localRunning = run.nodes.filter(n => !run.plan.steps.find(s => s.id === n.id)!.compute).reduce((n, node) => n + node.instances.filter(i => i.status === 'running').length, 0);
@@ -425,7 +420,7 @@ export class FakeWorkflows {
     this.#settleNodes(run);
     const now = this.host.now();
     const was = run.status;
-    if (!run.nodes.some(node => node.instances.some(i => i.status === 'running'))) {
+    if (!run.nodes.some(node => node.status === 'running')) {
       const failure = run.nodes.find(node => node.status === 'failed') ?? run.nodes.find(node => broken(node.status));
       // The fake has no parent turn to wait for: the summary counts as handed back at once.
       if (failure && was === 'running') Object.assign(run, { status: 'failed', error: `${failure.title}: ${failure.error ?? failure.status}`, finishedAt: now, delivered: true });
@@ -456,18 +451,17 @@ export class FakeWorkflows {
       closeLoop(run, node, now);
       return;
     }
-    node.instances = (items ?? [undefined]).map((item, index) => {
-      const key = items ? `${node.id}#${index}` : node.id;
-      // A loop's next round reuses the conversation each execution had.
-      const last = node.previous?.find(inst => inst.key === key && inst.threadId !== null && !this.#archived(inst.threadId));
+    node.instances = workflowExecutions(run, node, items).map(({ key, previous, itemIdentity }, index) => {
       return {
-        key, index: items ? index : null, label: items ? itemLabel(item) : '',
-        threadId: last?.threadId ?? null, providerId: last?.providerId ?? null, model: last?.model ?? null, ...(last?.effort === undefined ? {} : { effort: last.effort }),
+        key, itemIdentity, index: items ? index : null, label: items ? itemLabel(items[index]) : '',
+        threadId: null, providerId: null, model: null,
         status: 'waiting', attempts: 0,
-        task: renderTask(step.task, items ? { ...values, item, index } : values), result: null, output: null,
+        task: renderTask(step.task, items ? { ...values, item: items[index], index } : values), result: null, output: null,
         error: null, startedAt: null, finishedAt: null,
+        ...workflowContinuation(previous, node.freshRound === true, id => !this.#archived(id)),
       };
     });
+    delete node.freshRound;
     Object.assign(node, { status: 'running', startedAt: now, error: null });
   }
 
@@ -549,14 +543,10 @@ export class FakeWorkflows {
   }
 
   #settleNodes(run: WorkflowRun): void {
-    const halted = this.#halted(run);
     const now = this.host.now();
     for (const node of run.nodes) {
       if (node.status !== 'running' || !node.instances.length) continue;
-      const running = node.instances.some(i => i.status === 'running');
-      const done = node.instances.every(i => ended(i.status));
-      if (!done && (running || !halted)) continue;
-      for (const inst of node.instances) if (inst.status === 'waiting') Object.assign(inst, { status: 'stopped', error: NOT_STARTED, finishedAt: now });
+      if (!node.instances.every(i => ended(i.status) || broken(i.status))) continue;
       const failed = node.instances.find(i => i.status === 'failed');
       const stopped = node.instances.find(i => i.status === 'stopped');
       node.status = failed ? 'failed' : stopped ? 'stopped' : 'done';
@@ -589,30 +579,10 @@ export class FakeWorkflows {
         if (principal === 'session') throw refusal('retrying a workflow step is an owner action');
         if (run.status === 'done') throw refusal('the run finished; start it again instead');
         if (run.status === 'paused' && principal !== 'owner') throw refusal('the run is paused; the owner resumes it');
-        const nodes = params.stepId === undefined ? run.nodes.filter(n => broken(n.status) || n.instances.some(i => broken(i.status))) : run.nodes.filter(n => n.id === params.stepId);
-        if (params.stepId !== undefined && !nodes.length) throw invalid(`stepId: no step ${params.stepId} in this run`);
-        // Work on a copy: a refused retry leaves the run as it was, as the core does.
-        const next = structuredClone(run);
-        const targets = new Set(nodes.map(node => node.id));
-        // A loop out of rounds goes one round more.
-        for (const node of next.nodes) if (targets.has(node.id) && loopSpent(next, node)) loopAgain(next, node);
-        for (const node of next.nodes) {
-          const target = targets.has(node.id);
-          for (const inst of node.instances) if (target && broken(inst.status)) {
-            // An archived step conversation takes no turn: the retry gets a new one.
-            const archived = inst.threadId !== null && this.#archived(inst.threadId);
-            Object.assign(inst, { status: 'waiting', finishedAt: null, ...(archived ? { threadId: null } : {}) });
-          }
-          // Stopped only because another step failed, it never ran: it waits again with the retried one.
-          else if (inst.status === 'stopped' && inst.error === NOT_STARTED) Object.assign(inst, { status: 'waiting', error: null, finishedAt: null });
-          if (target && !node.instances.length && broken(node.status)) Object.assign(node, { status: 'waiting', error: null, startedAt: null, finishedAt: null });
-          else if (node.instances.some(i => i.status === 'waiting')) Object.assign(node, { status: 'running', error: null, finishedAt: null });
-          else if (node.status === 'stopped' && !node.instances.length) Object.assign(node, { status: 'waiting', error: null, startedAt: null, finishedAt: null });
-        }
-        const holding = next.nodes.filter(node => broken(node.status) || node.instances.some(i => broken(i.status))).map(node => node.id);
-        if (holding.length) throw refusal(`the run stays stopped while ${holding.join(', ')} ${holding.length === 1 ? 'has' : 'have'} failed; retry ${holding.length === 1 ? 'that step' : 'those steps'} too, or retry the whole run without naming a step`);
+        if (params.stepId !== undefined && !run.nodes.some(node => node.id === params.stepId)) throw invalid(`stepId: no step ${params.stepId} in this run`);
+        if (!retryWorkflowSteps(run, params.stepId)) throw refusal('there is no failed or stopped execution to retry');
         this.#resumeTeam(run.rootThreadId);
-        Object.assign(run, next, { status: 'running', error: null, finishedAt: null, delivered: false });
+        Object.assign(run, { status: 'running', error: null, finishedAt: null, delivered: false });
         break;
       }
       default:
