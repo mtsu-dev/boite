@@ -273,7 +273,7 @@ export class ClaudeTurn {
     const { prompt: _prompt, attachments: _attachments, continuation: _continuation, ...kept } = this.ctx;
     const generation = (kept.thread.sessionGeneration ?? 0) + 1;
     this.ctx = {
-      ...kept, prompt: swap.tail, attachments: [], sessionId: swap.sessionId, resumeAt: null,
+      ...kept, prompt: swap.tail, attachments: swap.attachments, sessionId: swap.sessionId, resumeAt: null,
       // The CLI resuming the copy restores the totals the copy's compaction left; a copy that
       // reported none leaves the new generation with no finished turn yet (`sessionUsage`).
       sessionBefore: swap.totals ?? { costUsd: 0, tokens: 0 },

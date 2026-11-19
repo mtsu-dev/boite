@@ -107,8 +107,9 @@ export interface StepDecision {
   swap: {
     /** The compacted session the thread now names. */
     sessionId: string;
-    /** The first message to send on it: what happened since the copy, as text, ending with a request to go on. */
+    /** The first message to send on it, ending with a request to go on. */
     tail: string;
+    attachments: Attachment[];
     /** The context the compacted session holds, when the copy reported it. */
     postTokens: number | null;
     /**
