@@ -50,10 +50,9 @@ export class Coordination {
   #publicKey = '';
   #coreId = '';
   #closed = false;
-  /** Releases local acknowledgement waits before driver teardown can reject them. */
-  readonly #localWaits = new Set<() => void>();
+  readonly #closing = new AbortController();
   readonly #pending = new Set<Promise<unknown>>();
-  readonly #delivering = new Set<string>();
+  readonly #delivering = new Map<string, symbol>();
   /** The letters `admit` let through, while their sink records them. */
   #admitting: Set<string> | null = null;
   /** Answers other cores' signed requests. */
@@ -659,18 +658,6 @@ export class Coordination {
       return true;
     }, undefined, true);
   }
-  async #steer(threadId: string, prompt: string): Promise<{ submitted: boolean } | null> {
-    if (this.#closed) return null;
-    const stopped = Promise.withResolvers<null>();
-    const cancel = () => stopped.resolve(null);
-    this.#localWaits.add(cancel);
-    try {
-      return await Promise.race([
-        this.#core.threads.steer(threadId, prompt).then(submitted => ({ submitted })),
-        stopped.promise,
-      ]);
-    } finally { this.#localWaits.delete(cancel); }
-  }
   /** Restore on actual provider delivery, after pause, expiry and permission checks. */
   #restoreProject(threadId: string): void {
     const projectId = this.#core.threads.require(threadId).projectId;
@@ -683,7 +670,9 @@ export class Coordination {
     if (!thread || thread.archived || thread.status === 'waiting' || thread.status === 'queued') return;
     const ready = this.#ready(threadId, BATCH);
     if (!ready.length) return;
-    this.#delivering.add(threadId);
+    const delivery = Symbol();
+    this.#delivering.set(threadId, delivery);
+    const release = () => { if (this.#delivering.get(threadId) === delivery) this.#delivering.delete(threadId); };
     const local = () => this.#ready(threadId, BATCH, null, true);
     try {
       if (thread.status === 'running') {
@@ -697,11 +686,11 @@ export class Coordination {
         }, local);
         if (!steered) return;
         try {
-          const result = await this.#steer(threadId, steered.prompt);
-          if (result === null || this.#closed || this.#core.journal.isClosed()) return;
+          const submitted = await this.#core.threads.steer(threadId, steered.prompt, { release, signal: this.#closing.signal });
+          if (this.#closed || this.#core.journal.isClosed()) return;
           for (const letter of steered.letters) {
             const current = this.#find(letter.id, 'in');
-            if (current?.status === 'uncertain' && current.error === 'Awaiting provider acknowledgement') this.update(current, result.submitted ? 'delivered' : 'received');
+            if (current?.status === 'uncertain' && current.error === 'Awaiting provider acknowledgement') this.update(current, submitted ? 'delivered' : 'received');
           }
         } catch (error) {
           if (this.#closed || this.#core.journal.isClosed()) return;
@@ -735,7 +724,7 @@ export class Coordination {
         this.pause(threadId, 'failure'); this.#core.log('warn', `coordination ${threadId}: ${messageOf(error)}`);
       }
     }
-    finally { this.#delivering.delete(threadId); }
+    finally { release(); }
   }
   /** A scheduled coordination turn reached its driver; no claim that the model read it. */
   submitted(threadId: string, turnId: string): void {
@@ -885,8 +874,7 @@ export class Coordination {
   beginClose(): void {
     if (this.#closed) return;
     this.#closed = true;
-    for (const cancel of this.#localWaits) cancel();
-    this.#localWaits.clear();
+    this.#closing.abort();
     this.bridge.close();
     this.mailboxes.beginClose();
     clearInterval(this.#timer); this.#off();

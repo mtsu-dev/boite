@@ -43,8 +43,9 @@ export class Delegation {
   readonly retirements: Retirements;
   /** Subagents on another machine of the group, from either side ([remote](./delegation/remote.ts)). */
   readonly remote: RemoteDelegation;
-  #closed = false;
-  readonly #delivering = new Set<string>();
+  readonly #closing = new AbortController();
+  get #closed(): boolean { return this.#closing.signal.aborted; }
+  readonly #delivering = new Map<string, symbol>();
   readonly #jobs = new Set<Promise<void>>();
   readonly #stopped = new Set<string>();
   readonly #summaries = new Map<string, string>();
@@ -534,21 +535,23 @@ export class Delegation {
     if (['queued', 'waiting'].includes(thread.status) || (thread.status === 'error' && ((!thread.parentThreadId && !this.remote.parentOf(threadId)) || this.#stopped.has(threadId)))) return;
     const letters = this.#inbox(threadId);
     if (!letters.length) return;
-    this.#delivering.add(threadId);
+    const delivery = Symbol();
+    this.#delivering.set(threadId, delivery);
+    const release = () => { if (this.#delivering.get(threadId) === delivery) this.#delivering.delete(threadId); };
     try {
       const prompt = delegationPrompt(letters, this.#relationTo(threadId));
       if (thread.status === 'running') {
         if (!this.#core.threads.canSteer(threadId)) return;
         for (const letter of letters) this.#update(letter, 'uncertain', 'Awaiting provider acknowledgement');
         try {
-          const accepted = await this.#core.threads.steer(threadId, prompt);
-          if (!this.#closed) for (const letter of letters) {
+          const accepted = await this.#core.threads.steer(threadId, prompt, { release, signal: this.#closing.signal });
+          if (this.#live()) for (const letter of letters) {
             const root = this.#root(threadId), config = this.config(root.id);
             if (this.#stopped.has(threadId) || config.paused || !config.enabled) this.#update(letter, 'uncertain', 'Stopped while awaiting provider acknowledgement; not retried');
             else this.#update(letter, accepted ? 'delivered' : 'received');
           }
         } catch (error) {
-          if (!this.#closed) for (const letter of letters) this.#update(letter, 'uncertain', messageOf(error));
+          if (this.#live()) for (const letter of letters) this.#update(letter, 'uncertain', this.#stopped.has(threadId) ? 'Stopped while awaiting provider acknowledgement; not retried' : messageOf(error));
         }
       } else {
         const turn = this.#core.threads.startTurn(threadId, prompt, mailOrigin(Boolean(thread.parentThreadId || this.remote.parentOf(threadId)), letters));
@@ -559,7 +562,7 @@ export class Delegation {
       // A persistent agent that is paused or out of budget: the results wait in its inbox.
       if (isAgentHeld(error)) { this.#core.agentRuntime.whenAdmitted(threadId, 'delegation', () => this.#kick(threadId)); return; }
       for (const letter of letters) this.#update(letter, 'rejected', messageOf(error));
-    } finally { this.#delivering.delete(threadId); }
+    } finally { release(); }
   }
   /**
    * A child ended a turn: its parent gets its result as mail. A child here
@@ -891,10 +894,6 @@ export class Delegation {
     this.#core.journal.db.query('DELETE FROM delegated_agents WHERE thread_id = ? OR root_id = ?').run(threadId, threadId);
     this.#core.journal.db.query('DELETE FROM delegation_messages WHERE root_id = ? OR sender_id = ? OR recipient_id = ?').run(threadId, threadId, threadId);
   }
-  beginClose(): void { this.waits.close(); this.remote.close(); this.#closed = true; clearInterval(this.#timer); this.#off(); this.#summaries.clear(); this.#pendingChanges.clear(); this.#nativeActive.clear(); this.#wakeDeadlines.clear(); this.#permissionWakes.clear(); }
-  async close(): Promise<void> {
-    this.beginClose();
-    // Driver cancellation releases an in-flight steer. Do not wait here before
-    // scheduler.drain, which owns that cancellation and its bounded wait.
-  }
+  beginClose(): void { this.waits.close(); this.remote.close(); this.#closing.abort(); clearInterval(this.#timer); this.#off(); this.#summaries.clear(); this.#pendingChanges.clear(); this.#nativeActive.clear(); this.#wakeDeadlines.clear(); this.#permissionWakes.clear(); }
+  async close(): Promise<void> { this.beginClose(); }
 }

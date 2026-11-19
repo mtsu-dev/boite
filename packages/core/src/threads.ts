@@ -24,7 +24,7 @@ import type {
   TurnInFlightData,
 } from '@boite/contracts';
 import type { Core } from './core.ts';
-import { abortable } from './abortable.ts';
+import { waitForMailReceipt, type MailDelivery } from './threads/steering.ts';
 import { notFound, refused } from './errors.ts';
 import { newId } from './ids.ts';
 import { assertDriverRunnable, releaseThread } from './drivers/index.ts';
@@ -798,7 +798,7 @@ export class ThreadStore {
     return typeof this.runner.handles.get(threadId)?.steer === 'function' && operation !== 'compact' && !this.cacheKeepalive.pinging(threadId);
   }
 
-  async steer(threadId: string, text: string): Promise<boolean> {
+  async steer(threadId: string, text: string, delivery?: MailDelivery): Promise<boolean> {
     const handle = this.runner.handles.get(threadId);
     if (!handle?.steer || this.runner.steering.has(threadId)) return false;
     const turn = this.#core.journal.runningTurn(threadId);
@@ -806,15 +806,18 @@ export class ThreadStore {
     const steering = this.runner.beginSteering(threadId, handle);
     if (!steering) return false;
     try {
+      delivery?.signal.throwIfAborted();
       // A late receipt can settle mail from a finished turn. The transport can
       // still cancel its request when the attempt releases its steering slot.
       const receipt = handle.steer(text, undefined, undefined, steering.signal);
-      const submitted = await abortable(receipt, steering.turnStopSignal);
+      const submitted = await waitForMailReceipt(receipt, steering.signal, steering.turnStopSignal, delivery);
       if (submitted && !this.#core.stopping && !this.#core.journal.isClosed()) this.noteCoordination(threadId, turn.id, text);
       return submitted;
     } finally {
-      steering.release();
-      void this.deferred.flushRunning(threadId);
+      if (!steering.signal.aborted) {
+        steering.release();
+        void this.deferred.flushRunning(threadId);
+      }
     }
   }
 
