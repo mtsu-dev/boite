@@ -27,7 +27,7 @@ import { Readable, Writable } from 'node:stream';
 import { agent, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk/unstable';
 
 /** The variables a test asserts on: the isolation, the harness, the browser suppression and where it unpacks. */
-const WATCHED = ['GEMINI_HOME', 'AGY_ACP_FORCE_FILE_STORAGE', 'ANTIGRAVITY_HARNESS_PATH', 'BROWSER', 'GEMINI_API_KEY', 'TEMP', 'TMP', 'TMPDIR', 'SSL_CERT_FILE'];
+const WATCHED = ['GEMINI_HOME', 'AGY_LLM_GATEWAY_URL', 'AGY_ACP_FORCE_FILE_STORAGE', 'ANTIGRAVITY_HARNESS_PATH', 'BROWSER', 'GEMINI_API_KEY', 'TEMP', 'TMP', 'TMPDIR', 'SSL_CERT_FILE'];
 
 /**
  * The models 1.4.5 answers `session/new` with (2026-11-04): Gemini for any
@@ -41,10 +41,16 @@ const ALLOWLISTED = [
   { value: 'claude-opus-4-6-thinking', name: 'Claude Opus 4.6 (Thinking)' },
   { value: 'gpt-oss-120b-medium', name: 'GPT-OSS 120B (Medium)' },
 ];
+/** A model only a gateway serves, so a test tells the gateway's list from the agent's own sign-in. */
+const GATEWAY_ONLY = { value: 'gemini-4-neon', name: 'Gemini 4 Neon' };
 const LEVELS = ['low', 'medium', 'high'];
 let clientName = '';
 
-const families = (): { value: string; name: string }[] => (clientName === 'zed' ? [GEMINI, ...ALLOWLISTED] : [GEMINI]);
+const families = (): { value: string; name: string }[] => [
+  GEMINI,
+  ...(clientName === 'zed' ? ALLOWLISTED : []),
+  ...((process.env['AGY_LLM_GATEWAY_URL'] ?? '') === '' ? [] : [GATEWAY_ONLY]),
+];
 
 /** One session's model and level, as `configOptions` and as the `models` list. */
 function controls(state: { model: string; level: string }): Record<string, unknown> {
