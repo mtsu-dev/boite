@@ -38,6 +38,7 @@ export function searchJournalChat(db: Database, search: ChatSearch, timeoutMs = 
       if (hits) resolve(hits); else reject(error);
     };
     const timeout = setTimeout(() => finish(new Error(`chat search timed out after ${Math.round(timeoutMs / 1000)} s`)), timeoutMs);
+    timeout.unref();
     void turn.then(() => {
       if (settled) return;
       try {

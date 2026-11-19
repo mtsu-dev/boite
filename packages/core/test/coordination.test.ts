@@ -651,12 +651,12 @@ test('search finds a contact by words of its chat, fields or both, and reading r
   const { h, a, b } = await setup();
   say(h, b, 'user', 'the login page shows a blank screen after the redirect', 1000);
   say(h, b, 'assistant', 'I changed the OAuth callback in auth.ts', 2000);
-  // The chat is scanned off the core's thread: a timer due now runs before the search answers.
-  // On the core's own connection the scan held every client for its whole length (35 s on a 10 GB journal).
-  let turned = false;
-  setTimeout(() => { turned = true; }, 0);
+  const workerRequests = spyOn(Worker.prototype, 'postMessage');
+  restores.push(() => workerRequests.mockRestore());
   const found = await h.core.coordination.search(a, 'blank deployment');
-  expect(turned).toBe(true);
+  expect(workerRequests).toHaveBeenCalledWith(expect.objectContaining({
+    search: expect.objectContaining({ words: ['blank', 'deployment'] }),
+  }));
   expect(found.matches.map(m => m.threadId)).toEqual([b]);
   expect(found.matches[0]?.matched).toEqual(['title', 'chat']);
   expect(found.matches[0]?.excerpts[0]).toContain('blank screen');
