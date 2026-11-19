@@ -20,12 +20,13 @@ import { hydrate, hydratePart } from './journal/part-blobs.ts';
 import { migrate } from './journal/schema.ts';
 import { openAsyncQuestions, projectQuestion } from './journal/questions.ts';
 import { PROCESS_COLUMNS, PROCESS_FROM, ProcessRows } from './journal/processes.ts';
+import { archivedThreadCounts, getProject, listProjects, projectIconImage, projectIcons, putProjectIcon, type ProjectIconImage } from './journal/project-rows.ts';
 import { cachePages, runWrite } from './journal/statements.ts';
 import { WAL_LIMIT_BYTES, WalCheckpoints, type WalCheckpointOptions } from './journal/wal-checkpoints.ts';
-import { toAccount, toMessage, toProcess, toProject, toThread, toTurn, parseJson } from './journal/rows.ts';
-import { restoreDeletedRows, threadsWhere, VISIBLE_THREADS, writeThread } from './journal/thread-rows.ts';
+import { toAccount, toMessage, toProcess, toThread, toTurn, parseJson } from './journal/rows.ts';
+import { REMOVED_PROJECTS, restoreDeletedRows, threadsWhere, VISIBLE_THREAD_ROWS, VISIBLE_THREADS, writeThread } from './journal/thread-rows.ts';
 import { oneTurn, pageTurns, sumSessionUsage, writeTurn, type SessionUsage } from './journal/turn-rows.ts';
-import type { AccountRow, MessageRow, ProcessRow, ProjectIconRow, ProjectRow, ThreadRow, TurnRow } from './journal/rows.ts';
+import type { AccountRow, MessageRow, ProcessRow, ProjectIconRow, ThreadRow, TurnRow } from './journal/rows.ts';
 import type { DetectedIcon as StoredProjectIcon } from './project-icons.ts';
 import { copyStoredParts, foldStreamingParts, StreamBuffer } from './journal/stream-buffer.ts';
 import { requestSince } from './journal/request-since.ts';
@@ -196,13 +197,8 @@ export class Journal {
       .run(project.id, project.name, project.path, project.createdAt, project.archived === true ? 1 : 0, project.worktreeDefault === true ? 1 : 0);
   }
 
-  /** Archived project threads, including work delegated by a bot, and how many are done. */
   archivedThreadCounts(): Map<string, { archived: number; done: number }> {
-    const rows = this.db
-      .query(`SELECT project_id, COUNT(*) AS count, COUNT(done_at) AS done FROM threads WHERE archived = 1
-        AND (parent_thread_id IS NULL OR EXISTS (SELECT 1 FROM threads parent WHERE parent.id = threads.parent_thread_id AND parent.agent_session_id IS NOT NULL))
-        AND project_id IS NOT NULL AND id NOT IN (SELECT thread_id FROM thread_deletions) GROUP BY project_id`).all() as { project_id: string; count: number; done: number }[];
-    return new Map(rows.map((row) => [row.project_id, { archived: row.count, done: row.done }]));
+    return archivedThreadCounts(this.db);
   }
 
   deleteProject(projectId: string): void {
@@ -212,44 +208,22 @@ export class Journal {
     this.db.query('DELETE FROM workflow_templates WHERE project_id = ?').run(projectId);
   }
 
-  /** What every project's icon reads as, bytes left out: one small query per list. */
-  projectIcons(): Map<string, ProjectIconRow> {
-    const rows = this.db.query('SELECT project_id, kind, tech, version FROM project_icons').all() as (ProjectIconRow & { project_id: string })[];
-    return new Map(rows.map(({ project_id, ...row }) => [project_id, row]));
-  }
-
-  /** The stored image of a project, or null when its icon is not one. */
-  projectIconImage(projectId: string): { mime: string; data: Uint8Array; version: string } | null {
-    const row = this.db
-      .query("SELECT mime, data, version FROM project_icons WHERE project_id = ? AND kind = 'image'")
-      .get(projectId) as { mime: string | null; data: Uint8Array | null; version: string | null } | null;
-    if (row === null || row.mime === null || row.data === null || row.version === null) return null;
-    return { mime: row.mime, data: row.data, version: row.version };
-  }
-
+  projectIcons(): Map<string, ProjectIconRow> { return projectIcons(this.db); }
+  projectIconImage(projectId: string): ProjectIconImage | null { return projectIconImage(this.db, projectId); }
   putProjectIcon(projectId: string, icon: StoredProjectIcon, checkedAt: number): void {
-    this.db
-      .query('INSERT OR REPLACE INTO project_icons (project_id, kind, tech, mime, data, version, source, checked_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(
-        projectId,
-        icon.kind,
-        icon.kind === 'tech' ? icon.id : null,
-        icon.kind === 'image' ? icon.mime : null,
-        icon.kind === 'image' ? icon.bytes : null,
-        icon.kind === 'image' ? icon.version : null,
-        icon.kind === 'image' ? icon.source : null,
-        checkedAt,
-      );
+    putProjectIcon(this.db, projectId, icon, checkedAt);
   }
 
-  getProject(projectId: string): Project | null {
-    const row = this.db.query('SELECT * FROM projects WHERE id = ?').get(projectId) as ProjectRow | null;
-    return row === null ? null : toProject(row);
+  getProject(projectId: string): Project | null { return getProject(this.db, projectId); }
+  listProjects(): Project[] { return listProjects(this.db, false); }
+  listRemovedProjects(): Project[] { return listProjects(this.db, true); }
+
+  removeProject(projectId: string, at: number): void {
+    this.db.query('UPDATE projects SET removed_at = ? WHERE id = ?').run(at, projectId);
   }
 
-  listProjects(): Project[] {
-    const rows = this.db.query('SELECT * FROM projects ORDER BY rowid').all() as ProjectRow[];
-    return rows.map(toProject);
+  restoreProject(projectId: string, name: string): void {
+    this.db.query('UPDATE projects SET removed_at = NULL, archived = 0, name = ? WHERE id = ?').run(name, projectId);
   }
 
   // -- threads --------------------------------------------------------------
@@ -271,6 +245,24 @@ export class Journal {
   listThreads(projectId?: string, { includeArchived = true } = {}): ThreadSummary[] {
     const visible = includeArchived ? '' : 'AND archived = 0';
     return projectId === undefined ? threadsWhere(this.db, visible) : threadsWhere(this.db, `${visible} AND project_id = ?`, projectId);
+  }
+
+  /** The root and its direct children, using the thread and parent indexes. */
+  listThreadFamily(threadId: string): ThreadSummary[] {
+    return threadsWhere(this.db, 'AND (id = ? OR parent_thread_id = ?)', threadId, threadId);
+  }
+
+  listChildren(threadId: string, projectId: string | null): ThreadSummary[] {
+    return projectId === null ? threadsWhere(this.db, 'AND parent_thread_id = ?', threadId)
+      : threadsWhere(this.db, 'AND parent_thread_id = ? AND project_id = ?', threadId, projectId);
+  }
+
+  listThreadsOnBranch(cwd: string, branch: string): ThreadSummary[] {
+    return threadsWhere(this.db, 'AND cwd = ? AND branch = ?', cwd, branch);
+  }
+
+  hasThreadsWithStatus(statuses: readonly ThreadSummary['status'][]): boolean {
+    return this.db.query(`SELECT 1 ${VISIBLE_THREAD_ROWS} AND status IN (SELECT value FROM json_each(?)) LIMIT 1`).get(JSON.stringify(statuses)) !== null;
   }
 
   /** Startup reads: only the threads each recovery acts on, not every thread's JSON. */
@@ -314,7 +306,8 @@ export class Journal {
   listDeletedThreads(): DeletedThreadSummary[] {
     const rows = this.db.query(`SELECT t.*, d.deleted_at, (SELECT MAX(created_at) FROM messages WHERE thread_id = t.id AND role = 'user') AS last_user_message_at
       FROM threads t JOIN thread_deletions d ON t.id = d.thread_id
-      WHERE d.root_id = t.id ORDER BY d.deleted_at DESC, d.rowid DESC`).all() as (ThreadRow & { deleted_at: number })[];
+      WHERE d.root_id = t.id AND (t.project_id IS NULL OR t.project_id NOT IN (${REMOVED_PROJECTS}))
+      ORDER BY d.deleted_at DESC, d.rowid DESC`).all() as (ThreadRow & { deleted_at: number })[];
     return rows.map(row => ({ ...toThread(row), deletedAt: row.deleted_at }));
   }
 
@@ -372,7 +365,7 @@ export class Journal {
         this.db.query('DELETE FROM workflow_requests WHERE run_id IN (SELECT id FROM workflow_runs WHERE root_id = ?)').run(id);
         this.db.query('DELETE FROM workflow_runs WHERE root_id = ?').run(id);
         deleteComposerInput(this.db, id, this.collectComposerAssets);
-        for (const prefix of ['merged-pr-archive:', 'linked-pull-requests:', 'pr-watches:', 'activity:', 'activity-input:', 'activity-choice:', 'move-note:', 'compaction-tail:', 'session-totals:', 'brain-sent:', 'coordination-sent:', 'account-sessions:', 'memory-notices:', 'coordination:', 'coordination-autopause:', 'delegation:', 'delegation-turns:', 'delegation-episode:', 'delegation-worktree:', 'spawn-origin:', 'spawns:', 'worktree-removed:', 'remote-parent:', 'created-by:']) this.deleteSetting(`${prefix}${id}`);
+        for (const prefix of ['merged-pr-archive:', 'linked-pull-requests:', 'pr-watches:', 'activity:', 'activity-input:', 'activity-choice:', 'move-note:', 'compaction-tail:', 'session-totals:', 'brain-sent:', 'coordination-sent:', 'account-sessions:', 'memory-notices:', 'coordination:', 'coordination-autopause:', 'delegation:', 'delegation-turns:', 'delegation-episode:', 'delegation-worktree:', 'spawn-origin:', 'spawns:', 'worktree-removed:', 'remote-parent:', 'created-by:', 'deferred-answers:']) this.deleteSetting(`${prefix}${id}`);
         this.db.query('DELETE FROM threads WHERE id = ?').run(id);
         this.db.query('DELETE FROM thread_deletions WHERE thread_id = ?').run(id);
       }
@@ -890,5 +883,8 @@ export class Journal {
       .query('INSERT INTO events (thread_id, ts, type, version, payload) VALUES (?, ?, ?, ?, ?)')
       .run(event.threadId, event.ts ?? Date.now(), event.type, event.version, JSON.stringify(payload ?? null));
     projectQuestion(this.db, event.type, event.threadId, event.payload);
+    if (event.threadId && (event.type === 'thread.rewound' || (event.type === 'thread.archived' && (event.payload as ThreadSummary).archived))) {
+      this.deleteSetting(`deferred-answers:${event.threadId}`);
+    }
   }
 }

@@ -131,8 +131,8 @@ async function summary(env: ContractEnv, threadId: string): Promise<ThreadSummar
 }
 
 /** One echo turn, run to its end, so the thread has a turn to ask in. */
-async function finishedTurn(env: ContractEnv, threadId: string): Promise<void> {
-  await env.call('turns.start', { threadId, prompt: 'hello' });
+async function finishedTurn(env: ContractEnv, threadId: string, prompt = 'hello'): Promise<void> {
+  await env.call('turns.start', { threadId, prompt });
   await until('the turn to finish', async () => !['queued', 'running', 'waiting'].includes((await summary(env, threadId)).status));
 }
 
@@ -318,8 +318,15 @@ export const SCENARIOS: Record<string, Scenario> = {
   'deferred attachment metadata downloads the original bytes and rejects a different conversation': async env => {
     const setup = await echo(env), created = await thread(env, setup);
     const data = btoa('attachment bytes preserved');
-    await env.call('turns.start', { threadId: created.id, prompt: 'read the file', attachments: [{ kind: 'file', name: 'fixture.txt', mimeType: 'text/plain', data }] });
-    await until('the attachment turn to finish', async () => (await summary(env, created.id)).status === 'idle');
+    await env.call('threads.get', { threadId: created.id, compactFiles: true, open: {} });
+    const live: RpcEvents['message.started'][] = [];
+    const off = env.on('message.started', message => live.push(message));
+    try {
+      await env.call('turns.start', { threadId: created.id, prompt: 'read the file', attachments: [{ kind: 'file', name: 'fixture.txt', mimeType: 'text/plain', data }] });
+      await until('the attachment turn to finish', async () => (await summary(env, created.id)).status === 'idle');
+    } finally { off(); }
+    const liveFile = live.flatMap(message => message.parts).find(part => part.type === 'file');
+    check(liveFile?.dataDeferred === true && liveFile.data === '' && liveFile.bytes === atob(data).length, 'the live file included its bytes or lost its metadata');
     const compact = await env.call('threads.get', { threadId: created.id, compactFiles: true, sync: true });
     const message = compact.messages.find(message => message.parts.some(part => part.type === 'file'));
     check(message !== undefined, 'the attachment disappeared');
@@ -340,8 +347,15 @@ export const SCENARIOS: Record<string, Scenario> = {
     // A PNG header for 640 by 360, padded past the 8 KiB a light page keeps inline: the size comes from the header alone.
     const header = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 2, 0x80, 0, 0, 1, 0x68, 8, 2, 0, 0, 0];
     const data = btoa(String.fromCharCode(...header, ...new Array(9000).fill(0)));
-    await env.call('turns.start', { threadId: created.id, prompt: 'see', attachments: [{ kind: 'image', name: 'shot.png', mimeType: 'image/png', data }] });
-    await until('the picture turn to finish', async () => (await summary(env, created.id)).status === 'idle');
+    await env.call('threads.get', { threadId: created.id, compactImages: true, open: {} });
+    const live: RpcEvents['message.started'][] = [];
+    const off = env.on('message.started', message => live.push(message));
+    try {
+      await env.call('turns.start', { threadId: created.id, prompt: 'see', attachments: [{ kind: 'image', name: 'shot.png', mimeType: 'image/png', data }] });
+      await until('the picture turn to finish', async () => (await summary(env, created.id)).status === 'idle');
+    } finally { off(); }
+    const liveImage = live.flatMap(message => message.parts).find(part => part.type === 'image');
+    check(liveImage?.dataDeferred === true && liveImage.data === '' && liveImage.width === 640 && liveImage.height === 360, 'the live picture included its bytes or lost its dimensions');
     const light = await env.call('threads.get', { threadId: created.id, compactImages: true });
     const message = light.messages.find(message => message.parts.some(part => part.type === 'image'));
     const part = message?.parts.find(part => part.type === 'image');
@@ -884,8 +898,10 @@ export const SCENARIOS: Record<string, Scenario> = {
     }
     await env.call('threads.remove', { threadId: kept.id });
     await env.call('projects.remove', { projectId: setup.projectId });
-    check(!(await env.call('threads.deleted', {})).some(t => t.id === kept.id), 'project removal left a recoverable deletion');
+    check(!(await env.call('threads.deleted', {})).some(t => t.id === kept.id), 'a removed project still lists its deleted conversations');
     await refusedWith(env.call('threads.restore', { threadId: kept.id }), RpcErrorCode.NotFound, ['threadId']);
+    same((await env.call('projects.add', { path: setup.projectPath })).id, setup.projectId, 'the re-added project id');
+    same((await env.call('threads.restore', { threadId: kept.id })).id, kept.id, 'the conversation stays recoverable');
     await refusedWith(env.call('threads.remove', { threadId: 'thr_missing' }), RpcErrorCode.NotFound, ['threadId']);
   },
   'threads.stats counts the prompts sent and refuses a missing conversation': async env => {
@@ -899,6 +915,7 @@ export const SCENARIOS: Record<string, Scenario> = {
   'projects.remove archives each thread before removing it': async (env) => {
     const setup = await echo(env);
     const created = await thread(env, setup);
+    await finishedTurn(env, created.id, 'Keep this conversation');
     const events = record(env, ['thread.updated', 'thread.removed', 'project.removed']);
     await env.call('projects.remove', { projectId: setup.projectId });
     await until('project.removed', () => events.events.some((event) => event.name === 'project.removed'));
@@ -907,6 +924,11 @@ export const SCENARIOS: Record<string, Scenario> = {
       .filter((event) => event.name === 'project.removed' || (event.payload as { id?: string; threadId?: string }).id === created.id || (event.payload as { threadId?: string }).threadId === created.id)
       .map((event) => (event.name === 'thread.updated' ? `thread.updated archived=${(event.payload as ThreadSummary).archived}` : event.name));
     same(order.filter((entry, index) => index === 0 || entry !== order[index - 1]), ['thread.updated archived=true', 'thread.removed', 'project.removed'], 'the events');
+    await refusedWith(env.call('threads.get', { threadId: created.id }), RpcErrorCode.NotFound);
+    same((await env.call('projects.add', { path: setup.projectPath })).id, setup.projectId, 'the re-added project id');
+    const restored = await env.call('threads.get', { threadId: created.id });
+    check(restored.archived && restored.messages.some(message => message.role === 'user' &&
+      message.parts.some(part => part.type === 'text' && part.text === 'Keep this conversation')), 'the restored project lost its conversation');
   },
   'a group is created, invites, refuses what names the wrong machine, and is left': async (env) => {
     same(await env.call('group.get', {}), null, 'the group before any');

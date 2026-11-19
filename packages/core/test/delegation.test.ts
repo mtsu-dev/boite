@@ -896,15 +896,14 @@ test('late steering acknowledgement after stop stays uncertain and cannot resume
   expect(h.core.threads.require(child.thread.id).status).toBe('idle');
 });
 
-test('a legacy deadline does not stop a child and project removal deletes delegation records', async () => {
+test('a legacy deadline does not stop a child and project removal keeps delegation records', async () => {
   scripted(); const { h, owner, threadId, spawn } = await setup(); const child = await spawn();
   h.core.journal.setSetting(`delegation:${threadId}`, { ...h.core.delegation.config(threadId), maxMinutes: 1 });
   const now = Date.now(); const clock = spyOn(Date, 'now').mockReturnValue(now + 61_000);
   try { await Bun.sleep(1100); expect(h.core.threads.require(child.thread.id).status).toBe('running'); }
   finally { clock.mockRestore(); }
   await owner.call('projects.remove', { projectId: h.core.threads.require(threadId).projectId! });
-  expect(h.core.journal.db.query('SELECT count(*) AS n FROM delegated_agents').get()).toEqual({ n: 0 });
-  expect(h.core.journal.db.query('SELECT count(*) AS n FROM delegation_messages').get()).toEqual({ n: 0 });
+  expect(h.core.journal.db.query('SELECT count(*) AS n FROM delegated_agents').get()).toEqual({ n: 1 });
 });
 
 test('results held while the parent waits join its next manual prompt without steering or hooks', async () => {

@@ -377,25 +377,25 @@ test('purging a deleted conversation leaves usage.history as it was', async () =
   expect(after.threads.map((thread) => thread.threadId)).toEqual([codex.id]);
 });
 
-test('a removed project keeps no title, prompt, answer, path or project id: only each finished turn\'s time, route and usage', async () => {
+test('a removed project keeps its history and usage attribution', async () => {
   const client = await harness.connect();
   const { threadId } = await echoThread(harness, client, 'Secret plans');
   const thread = harness.core.threads.require(threadId);
   const finished = client.next('turn.finished', (finishedTurn) => finishedTurn.threadId === threadId, 10000);
   await client.call('turns.start', { threadId, prompt: 'whisper the launch codes' });
-  const done = await finished;
+  await finished;
   expect(harness.core.journal.listMessages(threadId).length).toBeGreaterThan(0);
+  const now = Date.now();
+  const query = { edges: [now - DAY, now + DAY] };
+  const before = await client.call('usage.history', query);
 
   await client.call('projects.remove', { projectId: thread.projectId! });
-  const rows = kept();
-  expect(rows.map((row) => ({ ...row, usage: JSON.parse(row.usage!) as unknown }))).toEqual([
-    { finished_at: done.finishedAt!, provider_id: 'echo', model: done.execution?.model ?? null, usage: done.usage },
-  ]);
-  const values = rows.flatMap((row) => Object.values(row)).map(String);
-  for (const secret of ['Secret plans', 'launch codes', thread.projectId!, thread.cwd, threadId, done.id]) {
-    expect(values.filter((value) => value.includes(secret))).toEqual([]);
-  }
-  expect(harness.core.journal.listMessages(threadId)).toEqual([]);
+  expect(kept()).toEqual([]);
+  expect(await client.call('usage.history', query)).toEqual({ ...before, threads: [] });
+  await client.call('projects.add', { path: thread.cwd });
+  expect(await client.call('usage.history', query)).toEqual({ ...before, threads: before.threads.map(row => ({ ...row, archived: true })) });
+  expect(harness.core.journal.listMessages(threadId).find(message => message.role === 'user')?.parts[0])
+    .toMatchObject({ type: 'text', text: 'whisper the launch codes' });
 });
 
 test('an incognito conversation leaves no usage behind, whether erased, purged at startup or swept with a project', async () => {

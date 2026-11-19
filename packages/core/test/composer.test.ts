@@ -95,10 +95,10 @@ test('an offline first prompt creates one thread, transfers its queue and retain
   await waitFor(() => h.core.composer.storage.get('drafts', retained.id).value?.input.paused === true);
   expect(h.core.journal.listThreads()).toHaveLength(1);
   await c.call('projects.remove', { projectId: project.id });
-  expect(h.core.journal.db.query('SELECT section, status, thread_id, fingerprint FROM composer_deliveries').all()).toEqual([
-    { section: 'drafts', status: 'delivered', thread_id: null, fingerprint: '' },
-    { section: 'drafts', status: 'delivered', thread_id: null, fingerprint: '' },
-  ]);
+  const deliveries = h.core.journal.db.query("SELECT section, status, thread_id, fingerprint FROM composer_deliveries WHERE section = 'drafts'").all();
+  expect(deliveries).toHaveLength(2);
+  expect(deliveries).toContainEqual({ section: 'drafts', status: 'delivered', thread_id: null, fingerprint: '' });
+  expect(deliveries).toContainEqual(expect.objectContaining({ section: 'drafts', status: 'delivered', thread_id: expect.any(String) }));
 });
 
 test('a known failed draft creation cleans its workspace and permits retrying the same queued input', async () => {
@@ -465,20 +465,21 @@ test('archived and deleted targets cannot execute queued input', async () => {
   await a.call('threads.remove', { threadId });
   await Bun.sleep(30);
   expect(h.core.journal.listTurns(threadId)).toHaveLength(1);
-  // Soft deletion is undoable; hard deletion must erase unsent input and receipts.
+  // Soft deletion is undoable; retention expiry erases unsent input and receipts.
   expect(h.core.composer.storage.get('inputs', threadId).value?.input.queued).toHaveLength(1);
   const offline = h.core.composer.storage.get('inputs', threadId);
   expect((await a.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: offline.revision, value: offline.value })).accepted).toBe(true);
   await a.call('projects.remove', { projectId });
+  expect(h.core.composer.storage.get('inputs', threadId).value?.input.queued).toHaveLength(1);
+  h.core.journal.db.query('UPDATE thread_deletions SET deleted_at = 0 WHERE thread_id = ?').run(threadId);
+  h.core.threads.purgeDeleted();
   expect((await a.call('composer.list', {})).some(record => record.section === 'inputs' && record.id === threadId)).toBe(false);
-  expect(h.core.composer.storage.queued.has(JSON.stringify(['inputs', threadId]))).toBe(false);
   expect(h.core.journal.db.query('SELECT COUNT(*) AS n FROM composer_deliveries WHERE thread_id = ? OR record_id = ?').get(threadId, threadId)).toEqual({ n: 0 });
   const reconnected = await h.connect();
   for (const expectedRevision of [0, offline.revision]) {
     expect((await rejection(reconnected.call('composer.put', { section: 'inputs', id: threadId, expectedRevision, value: offline.value }))).reason).toMatchObject({ rpc: { code: RpcErrorCode.NotFound, data: { reason: 'thread-deleted', threadId, field: 'composer.id' } } });
   }
   expect((await a.call('composer.list', {})).some(record => record.id === threadId)).toBe(false);
-  expect(h.core.composer.storage.queued.has(JSON.stringify(['inputs', threadId]))).toBe(false);
   await h.stop(); h = await startTestCore({ dataDir: restartDir });
   const afterRestart = await h.connect();
   for (const expectedRevision of [0, offline.revision]) {

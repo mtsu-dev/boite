@@ -248,7 +248,8 @@ export function composerMethods(ctx: FakeContext, methods: () => FakeMethods): P
     },
     'composer.put': async params => {
       if (params.section === 'inputs' && params.value !== null && !ctx.threads.has(params.id)
-        && ![...ctx.deletedThreads.values()].some(family => family.threads.some(thread => thread.id === params.id))) {
+        && ![...ctx.deletedThreads.values()].some(family => family.threads.some(thread => thread.id === params.id))
+        && ![...ctx.removedProjects.values()].some(project => project.threads.some(thread => thread.id === params.id))) {
         throw new RpcFailure({ code: RpcErrorCode.NotFound, message: 'composer.id: expected an existing thread; this conversation was permanently deleted', data: { reason: 'thread-deleted', threadId: params.id, field: 'composer.id' } });
       }
       const key = keyOf(params.section, params.id);

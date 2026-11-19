@@ -1,4 +1,5 @@
 import type { Database, SQLQueryBindings } from 'bun:sqlite';
+import { REMOVED_PROJECTS } from './thread-rows.ts';
 
 /** What `usageByBucket` and `usageByThread` sum over a group of finished turns. */
 export interface UsageSums {
@@ -141,7 +142,7 @@ export function usageByBucket(db: Database, edges: readonly number[]): UsageSumR
 /**
  * The same sums per thread, provider and model over `[from, to)`, with what a
  * list needs to name each thread. The turns a removal erased name no thread
- * and stay out.
+ * and stay out. Hidden projects still count toward the bucket totals.
  */
 export function usageByThread(db: Database, from: number, to: number): UsageThreadRow[] {
   return db
@@ -151,6 +152,7 @@ export function usageByThread(db: Database, from: number, to: number): UsageThre
            ${TURN_ROUTE}
          FROM turns t LEFT JOIN threads th ON th.id = t.thread_id
          WHERE t.finished_at >= ? AND t.finished_at < ?
+           AND (th.project_id IS NULL OR th.project_id NOT IN (${REMOVED_PROJECTS}))
        )
        SELECT x.thread_id, x.provider_id, x.model, x.legacy, COALESCE(th.title, '') AS title, th.project_id,
          COALESCE(th.provider_id, '') AS thread_provider_id, COALESCE(th.archived, 0) AS archived, ${USAGE_SUMS}

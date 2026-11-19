@@ -528,6 +528,9 @@ export class Core {
     });
     queueMicrotask(() => this.threads.titles.recover());
     this.agentRuntime = new AgentRuntime(this);
+    queueMicrotask(() => {
+      void this.threads.spawns.recoverResults().catch(error => this.log('warn', `thread result recovery failed: ${String(error)}`));
+    });
     queueMicrotask(() => this.composer.start());
     this.brain.start();
     this.mergedPrAsk = new MergedPrAsk(this, this.pullRequests);

@@ -5,7 +5,7 @@ import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { PROJECT_NAME_MAX, TECH_ICON_IDS, deviceBound, type Project, type ProjectIcon, type ProjectId, type TechIconId } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { newId } from './ids.ts';
-import { folderGone, messageOf, notFound, refused } from './errors.ts';
+import { folderGone, notFound, refused } from './errors.ts';
 import { FileIndex } from './files.ts';
 import { documentsDir } from './platform/folders.ts';
 import { assertDeviceProjectFolder } from './workdir.ts';
@@ -13,6 +13,7 @@ import type { FilesPage } from './files.ts';
 import type { ProjectIconRow } from './journal/rows.ts';
 import { detectProjectIcon, type DetectedIcon } from './project-icons.ts';
 import { autoRemoveWorktreesKey } from './worktree-cleanup-state.ts';
+import { withLoad } from './threads/records.ts';
 
 /** How long a `.git` check may take before the last known answer stands. */
 export const GIT_PROBE_TIMEOUT_MS = 2_000;
@@ -320,6 +321,10 @@ export class ProjectStore {
     return this.#described(project);
   }
 
+  isRemoving(projectId: ProjectId | null): boolean {
+    return projectId !== null && this.#removing.has(projectId);
+  }
+
   /**
    * The project, once its folder answered as a directory. Refused by the
    * folder when it is gone, and every client hears the project is `missing`;
@@ -374,10 +379,22 @@ export class ProjectStore {
     // one `described` and `refreshGit` read.
     const key = pathKey(full);
     const existing = this.#core.journal.listProjects().find((project) => pathKey(project.path) === key);
+    const removed = existing ? undefined : this.#core.journal.listRemovedProjects().find(project => pathKey(project.path) === key);
     // The folder just answered, so this check does too; the answer is exact from the start.
-    this.git.set(existing?.path ?? full, { value: existsSync(join(full, '.git')), missing: false, inflight: false });
+    this.git.set(existing?.path ?? removed?.path ?? full, { value: existsSync(join(full, '.git')), missing: false, inflight: false });
     // No second check of a folder that was just checked.
     if (existing !== undefined) return this.#described(existing, false);
+    if (removed !== undefined) {
+      const restoredName = name || removed.name;
+      this.#core.journal.append({ type: 'project.restored', threadId: null, version: 1, payload: { projectId: removed.id, name: restoredName } },
+        () => this.#core.journal.restoreProject(removed.id, restoredName));
+      const restored = this.#described(this.require(removed.id), false);
+      this.#core.bus.emit('project.added', restored);
+      for (const thread of this.#core.journal.listThreads(removed.id)) this.#core.bus.emit('thread.created', withLoad(this.#core, thread));
+      this.#core.bus.emit('thread.deletionsUpdated', {});
+      if (!this.isDrafts(restored)) this.#queueIcon(restored.id);
+      return restored;
+    }
 
     const project: Project = {
       id: newId('prj_'),
@@ -483,20 +500,18 @@ export class ProjectStore {
       for (const thread of threads) this.#core.threads.archive(thread.id, true);
       await Promise.all(threads.map((thread) => this.#core.scheduler.stopAndWait(thread.id)));
       await Promise.all(threads.map((thread) => this.#core.procs.stopAndWait(thread.id)));
-      // A thread's shells run under their own trace ids: they are gone too before the records go.
+      // A thread's shells run under their own trace ids: stop them before hiding the project.
       await Promise.all(threads.map((thread) => this.#core.terminals.stopThread(thread.id)));
-      const threadIds = this.#core.journal.append(
+      // Incognito conversations still take their permanent erase path.
+      for (const thread of threads) {
+        if (thread.incognito && !thread.parentThreadId) await this.#core.threads.remove(thread.id);
+      }
+      const retained = this.#core.journal.listThreads(projectId);
+      this.#core.journal.append(
         { type: 'project.removed', threadId: null, version: 1, payload: { projectId } },
-        () => {
-          const removed = this.#core.journal.deleteThreadsOfProject(projectId);
-          this.#core.journal.deleteProject(projectId);
-          return removed;
-        },
+        () => this.#core.journal.removeProject(projectId, Date.now()),
       );
-      await this.#core.threads.codeCheckpoints.discard(threadIds).catch(error => {
-        this.#core.log('warn', `file checkpoints of removed project ${projectId} were not deleted: ${messageOf(error)}`);
-      });
-      for (const threadId of threadIds) this.#core.bus.emit('thread.removed', { threadId });
+      for (const thread of retained) this.#core.bus.emit('thread.removed', { threadId: thread.id, undoable: true });
       this.#core.bus.emit('project.removed', { projectId });
       this.#core.bus.emit('thread.deletionsUpdated', {});
       this.#files.forget(project.path);

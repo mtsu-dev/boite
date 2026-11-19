@@ -18,7 +18,7 @@ import { createKeptProcesses } from './kept-processes.ts';
 import { createMessageStats } from './thread-stats.ts';
 import { ARTIFACT_ROW } from './artifact-references.ts';
 
-export const SCHEMA_VERSION = 51;
+export const SCHEMA_VERSION = 52;
 
 /** Raised when the journal was written by a newer core than this one. */
 export class JournalTooNewError extends Error {
@@ -475,6 +475,7 @@ export function migrate(db: Database, file: string): { from: number; to: number 
       ) WITHOUT ROWID;`);
     version = 44;
   }
+  db.exec('CREATE INDEX IF NOT EXISTS composer_deliveries_thread ON composer_deliveries (thread_id, request_id)');
   if (version < 45) {
     // A new journal has no events to read; reading them anyway marks `events` for ANALYZE on SQLite before 3.46.
     createPendingQuestions(db, (row?.user_version ?? 0) > 0);
@@ -510,6 +511,10 @@ export function migrate(db: Database, file: string): { from: number; to: number 
   if (!hasColumn('turns', 'switched')) {
     db.exec('ALTER TABLE turns ADD COLUMN switched TEXT');
     version = 51;
+  }
+  if (!hasColumn('projects', 'removed_at')) {
+    db.exec('ALTER TABLE projects ADD COLUMN removed_at INTEGER');
+    version = 52;
   }
   createSharedProjects(db);
   createSharedBoard(db);
@@ -558,6 +563,9 @@ function bindLegacyTurnRequests(db: Database): void {
 export function ensureIndexes(db: Database): void {
   db.exec("CREATE INDEX IF NOT EXISTS agent_message_reading ON agent_entities (json_extract(data, '$.scope.kind'), json_extract(data, '$.scope.id'), created_at, id) WHERE kind = 'message'");
   db.exec('CREATE INDEX IF NOT EXISTS thread_deletions_by_date ON thread_deletions (deleted_at)');
+  db.exec('CREATE INDEX IF NOT EXISTS threads_project ON threads (project_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS threads_cwd_branch ON threads (cwd, branch)');
+  db.exec('CREATE INDEX IF NOT EXISTS threads_status ON threads (status)');
   db.exec('CREATE INDEX IF NOT EXISTS processes_by_started ON processes (thread_id, started_at DESC)');
   // The few rows still open, which each startup closes (`closeLiveProcesses`).
   db.exec('CREATE INDEX IF NOT EXISTS processes_live ON processes (thread_id) WHERE exited_at IS NULL');

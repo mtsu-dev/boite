@@ -276,16 +276,16 @@ test('a turn in a worktree nested in the project neither blocks nor spoils a rew
   expect(await overlap(h.core, threadId, nested, cwd)).toBe(false);
 });
 
-test('permanently removing a project removes its private file checkpoints', async () => {
+test('removing a project keeps its private file checkpoints for restoration', async () => {
   const message = await run('save');
   expect(message).toBeTruthy();
   const folder = join(h.dataDir, 'checkpoints', threadId);
   expect((await stat(folder)).isDirectory()).toBe(true);
   await client.call('projects.remove', { projectId: h.core.threads.require(threadId).projectId! });
-  expect((await rejection(stat(folder))).reason).toMatchObject({ code: 'ENOENT' });
+  expect((await stat(folder)).isDirectory()).toBe(true);
 });
 
-test('project removal still reaches connected clients when checkpoint cleanup fails', async () => {
+test('project removal reaches connected clients without discarding checkpoints', async () => {
   await run('save');
   const projectId = h.core.threads.require(threadId).projectId!;
   const observer = await h.connect();
@@ -295,6 +295,7 @@ test('project removal still reaches connected clients when checkpoint cleanup fa
     await client.call('projects.remove', { projectId });
     expect((await removed).projectId).toBe(projectId);
     expect((await observer.call('projects.list', {})).some(project => project.id === projectId)).toBe(false);
+    expect(cleanup).not.toHaveBeenCalled();
   } finally { cleanup.mockRestore(); observer.close(); }
 });
 
