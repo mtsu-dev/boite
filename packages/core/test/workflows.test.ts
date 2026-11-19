@@ -326,6 +326,11 @@ test('concurrency holds to the run limit, and stop ends running steps without wa
   const run = await owner.call('workflows.start', { threadId, plan: { ...plan, steps: [{ id: 'list', profile: 'fast', task: 'x', output: { items: ['number'] } }, { id: 'each', profile: 'fast', forEach: 'list.items', task: 'do {{item}}' }] }, requestId: 'fan' });
   await waitFor(() => held.size === 1);
   const stepThread = h.core.workflows.get(threadId, run.id).nodes[0]!.instances[0]!.threadId!;
+  const opening = prompts.find(prompt => prompt.threadId === stepThread)!.prompt;
+  expect(opening.split('Your final answer is collected automatically')).toHaveLength(2);
+  expect(opening).toContain('do not message the parent or start workflows');
+  expect(opening).toContain("boite workflow output '<json>'");
+  expect(opening).toContain('{"items":["number"]}');
   const step = await connect(h.url, h.core.agents.tokenFor(stepThread));
   try {
     expect(await thrown(step.call('workflows.output', { threadId: stepThread, value: { items: ['1'] } }))).toThrow('output.items[0]: expected a number');

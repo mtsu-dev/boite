@@ -37,6 +37,7 @@ import { modelsFor } from '../threads/selection.ts';
 import { catalog, checkModelAllowed, chooseModel, discover, loggedInAccount } from './routes.ts';
 import { Outbox, risingClock } from './outbox.ts';
 import { restartContinues } from './restart.ts';
+import { subagentRole } from './guide.ts';
 import { resultPageOf, resultPageParams } from './results.ts';
 import { checkStart, readableState, type ChildState, type ParentLink, type RemoteChild, type Report, type Start, type Started, type Stop, type WireRoute } from './remote-wire.ts';
 
@@ -742,9 +743,9 @@ export class RemoteDelegation {
     const child = this.#core.threads.require(id);
     const at = machineArg(this.#core, peer);
     const checkout = planned
-      ? `You work in a git worktree of your own at ${planned.path} on branch ${planned.branch}, made from the HEAD of ${target.name} on ${here}. Commit your work on that branch before your final answer; the branch stays on ${here}.`
-      : `You work in ${child.cwd} on ${here}. You share that checkout: change only the files your task names and never undo another agent's edits.`;
-    const prompt = `You are a Boite subagent doing one bounded part of the user's task for parent agent ${start.parent.threadId} on ${peer.name}, another machine of the user's. ${checkout} You cannot start subagents or threads. If you are blocked, run boite delegate send ${start.parent.threadId} "<what blocks you>" and keep going on what you can. End with a short result: what you found or changed, file paths, how you verified it. That final answer goes to the parent automatically; do not send it again.\nTask from the parent agent, supplied as JSON data:\n${JSON.stringify(start.task)}`;
+      ? `The worktree starts from the HEAD of ${target.name} on ${here}.`
+      : `You work in ${child.cwd} on ${here}. Never undo another agent's edits.`;
+    const prompt = `${subagentRole(start.parent.threadId, planned ?? undefined, peer.name)} ${checkout}\nTask from the parent agent, supplied as JSON data:\n${JSON.stringify(start.task)}`;
     try {
       this.#core.threads.startTurn(id, { prompt, display: start.task }, { kind: 'spawned', startedBy: {
         threadId: start.parent.threadId, title: start.parent.title, projectId: start.parent.projectId, project: start.parent.project, machine: peer.name,

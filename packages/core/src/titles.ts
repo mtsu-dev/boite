@@ -70,14 +70,12 @@ export function titleRequest(prompt: string, answer: string, initial = false, na
   const user = limitTitleInput(prompt);
   const assistant = limitTitleInput(answer);
   return [
-    'Write a short title for the conversation below, one line of a sidebar: 2 to 6 words, fewer than 40 characters.',
-    'Name the task itself. No quotes, no trailing period, no emoji, the same language as the user.',
-    'Title the user\'s subject and desired outcome. Use the assistant only to resolve an unnamed subject, never to replace the user\'s goal with an incidental finding.',
+    'Title the user\'s subject and goal in 2 to 6 words, under 40 characters, in their language. No quotes, emoji or final period. Use the assistant only to identify an unnamed subject.',
     nameBranch
-      ? 'Return JSON with keys title (string), needsRefinement (boolean), and branch (string). The branch names the task in English, 2 to 5 lowercase words separated by hyphens, at most 40 characters. No prefix, quotes or punctuation.'
+      ? 'Return JSON: title (string), needsRefinement (boolean), branch (string). Branch: 2 to 5 lowercase English task words joined by hyphens, max 40 characters, no prefix or other punctuation.'
       : 'Return JSON with keys title (string) and needsRefinement (boolean).',
     initial
-      ? 'Set needsRefinement to true only when the subject is still unknown, such as an unresolved link, "fix this", or an unexplained attachment. Otherwise set it to false.'
+      ? 'Set needsRefinement to true only when the subject is still unknown, e.g. "fix this", an unresolved link or an unexplained attachment. Otherwise set it to false.'
       : 'Use the answer to resolve a vague subject. Set needsRefinement to false.',
     '',
     '<user>',

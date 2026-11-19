@@ -503,26 +503,23 @@ state, stall, pull request and checks, under a line that says titles are data
 from other threads; a thread that linked no pull request shows one of the
 threads it delegated, read for the whole desk in one query), and its projects with the commands that reach them.
 
-The block goes whole on a fresh native session (no session id, after a
-compaction or an account switch) and whenever its hash moved since the last
-turn that carried it; otherwise nothing, since the session already holds it.
-The hash covers the persona, AGENTS.md, the skills, the recurring routines
-(id, name, schedule, on or off, check), the projects and whether the block
-carries the mochi section, not the desk (event turns say what changed there)
-nor MEMORY.md. Single-date routines stay out of the hash (`routineBlock`): one
-coming due, leaving the list and later the records would otherwise send the
-whole block again each time. The mochi reads one's prompt when it comes due,
-and the block lists the coming ones whenever it goes out.
+The block goes whole on a fresh native session, after compaction or when the
+brain path changes. During a warm session, each changed section replaces its own
+previous version. Persona, AGENTS.md, older notes, skills, recurring routines,
+projects and the mochi guide each have their own fingerprint. Event turns carry
+desk changes. Recurring routines are compared by id, name, schedule, enabled
+state and check. Single-date routines are listed when the routine section goes
+out, and their own prompt is sent when the routine comes due.
 
-When MEMORY.md alone changed, after a
-memory pass or a `remember`, the turn carries a note instead: the lines removed,
+When MEMORY.md changes, after a memory pass or a `remember`, the turn carries a
+note: the lines removed,
 then the lines added under the heading they sit under (`agents/memory-change.ts`,
 by content, so a line that only moved is neither). A note longer than the file
-itself, a rewrite that changed every line, gives way to the whole block when
-that is shorter. The core keeps `{ hash, sessionGeneration, turnId, memory }`,
-the MEMORY.md the session last read, per thread (`agents:context:<thread>`)
-and clears it after a failed turn that carried the block or the note, or a
-compaction; a record from before `memory` existed gets the block once. Each turn
+rendered memory section gives way to that section. The core keeps the section
+fingerprints and the version of MEMORY.md the session last read per thread
+(`agents:context:<thread>`). It clears the record after a compaction or an
+unfinished turn that carried an update. Older records get the whole block once.
+Each turn
 that carries either appends an `agent.context.sent` event to its thread
 (`turnId`, `kind` `block` or `memory`, `characters`, `hash`), in the same
 transaction as the record, so the size sent is measured, not guessed.
