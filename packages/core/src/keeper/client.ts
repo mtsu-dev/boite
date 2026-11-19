@@ -46,10 +46,10 @@ export function keeperToken(dataDir: string): string {
   return token;
 }
 
-/** One process the keeper holds for this core. */
 /** The keeper could not be reached, did not answer or is stopping: the caller may run the process itself. */
 export class KeeperUnavailable extends Error {}
 
+/** One process the keeper holds for this core. */
 export class KeptTerminal {
   readonly id: string;
   readonly pid: number;
