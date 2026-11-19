@@ -1,4 +1,6 @@
 <script lang="ts">
+  import SettingField from './SettingField.svelte';
+  import SettingSwitch from './SettingSwitch.svelte';
   import { lockedBy } from '../lib/policy';
   import { errorText } from '../lib/errors';
   import InfoTip from './InfoTip.svelte';
@@ -256,11 +258,12 @@
         </div>
         {/if}
       </div>
-      <div class="switch-row">
-        <span class="text ui-label-box" id="voice-language-label"><span class="ui-label">{strings.speech.language}</span><InfoTip topic={strings.speech.language} text={strings.speech.languageHint} /></span>
-        <input class="language" data-testid="voice-language" maxlength="2" pattern={'[a-z]{2}|'} value={config.language} placeholder={strings.speech.languageAuto} aria-labelledby="voice-language-label" spellcheck="false" disabled={off}
-          onchange={(event) => { const value = event.currentTarget.value.trim().toLowerCase(); if (value !== config!.language && /^([a-z]{2})?$/.test(value)) void apply({ language: value }); }} />
-      </div>
+      <SettingField title={strings.speech.language} help={strings.speech.languageHint}>
+        {#snippet control(attributes)}
+          <input {...attributes} class="language" data-testid="voice-language" maxlength="2" pattern={'[a-z]{2}|'} value={config!.language} placeholder={strings.speech.languageAuto} spellcheck="false" disabled={off}
+            onchange={(event) => { const value = event.currentTarget.value.trim().toLowerCase(); if (value !== config!.language && /^([a-z]{2})?$/.test(value)) void apply({ language: value }); }} />
+        {/snippet}
+      </SettingField>
     </section>
 
     {#if config.engine === 'local'}
@@ -323,10 +326,12 @@
         {#if groqKey.trim() || openrouterKey.trim()}
           <div class="actions save"><button type="submit" class="primary small" data-testid="voice-save" disabled={busy || dictation !== null}><span class="ui-label">{strings.speech.saveKeys}</span></button></div>
         {/if}
-        <label class="switch-row">
-          <span class="text ui-label-box"><span class="ui-label">{strings.speech.fallback}</span><InfoTip topic={strings.speech.fallback} text={strings.speech.fallbackHint} /></span>
-          <input type="checkbox" role="switch" data-testid="voice-fallback" checked={config.fallback} disabled={busy || dictation !== null} onchange={(event) => void apply({ fallback: event.currentTarget.checked })} />
-        </label>
+        <SettingField title={strings.speech.fallback} help={strings.speech.fallbackHint}>
+          {#snippet control(attributes)}
+            <SettingSwitch {...attributes} data-testid="voice-fallback" checked={config!.fallback} disabled={busy || dictation !== null}
+              onchange={(event) => void apply({ fallback: event.currentTarget.checked })} />
+          {/snippet}
+        </SettingField>
       </form>
     {/if}
   {/if}

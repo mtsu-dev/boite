@@ -6,7 +6,7 @@
   import type { Store } from '../lib/store.svelte';
   import SettingDays from './SettingDays.svelte';
 
-  let { store, eager = false }: { store: Store; eager?: boolean } = $props();
+  let { store }: { store: Store } = $props();
   let threads = $state<DeletedThreadSummary[] | null>(null);
   let loading = $state(false);
   let restoring = $state<ThreadId | null>(null);
@@ -15,7 +15,7 @@
   let retention = $derived(store.settings?.threadDeletionRetentionDays ?? DEFAULT_THREAD_DELETION_RETENTION_DAYS);
 
   $effect(() => {
-    if (store.owner && store.connection === 'ready' && (eager || asked)) void load();
+    if (store.owner && store.connection === 'ready' && asked) void load();
   });
   $effect(() => store.client?.on('thread.deletionsUpdated', () => { if (asked) void load(); }));
 
@@ -46,7 +46,7 @@
 </script>
 
 {#if store.owner}
-  <section class="card" data-testid="deleted-threads">
+  <section class="card" id="settings-thread-retention" data-testid="deleted-threads">
     <h2>{strings.settings.deleted.heading}</h2>
     <!-- How long a thread stays, done then deleted: two rows that save when left, out of the archive's list. -->
     <SettingDays {store} key="threadDoneRetentionDays" label={strings.settings.archived.doneRetentionLabel} hint={strings.settings.archived.doneRetentionHint}

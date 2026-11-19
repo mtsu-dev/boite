@@ -25,7 +25,7 @@
   import WindowExclusionsCard from './WindowExclusionsCard.svelte';
   import type { Store } from '../lib/store.svelte';
   /** `store`: the machine whose windows the page's last cards change, this window's own. */
-  let { mobile = false, onopenthread, store: here }: { mobile?: boolean; onopenthread?: () => void; store?: Store } = $props();
+  let { mobile = false, showTitle = true, onopenthread, store: here }: { mobile?: boolean; showTitle?: boolean; onopenthread?: () => void; store?: Store } = $props();
   /**
    * The switches a machine of a group holds for itself: whether the agents of
    * the other machines may start threads there (`groupThreads`), and whether
@@ -182,9 +182,9 @@
 <div class="page machines-page" data-testid="machines-page">
   <!-- The title and its button belong to the section: a link to the machines lands on them, not under them. -->
   <section class="connections-section" id="settings-machines" aria-label={strings.machines.heading}>
-  <header class="head">
+  {#if showTitle}<header class="head">
     <h1 class="ui-label-box"><span class="ui-label">{strings.settings.tabs.machines}</span><InfoTip topic={strings.settings.tabs.machines} text={strings.machines.intro} /></h1>
-  </header>
+  </header>{/if}
 
   <UpdatesCard />
 

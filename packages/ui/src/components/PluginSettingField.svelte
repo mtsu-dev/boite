@@ -5,6 +5,8 @@
   import type { MenuItem } from '../lib/menu';
   import { fill, strings } from '../lib/strings';
   import Menu from './Menu.svelte';
+  import SettingField from './SettingField.svelte';
+  import SettingSwitch from './SettingSwitch.svelte';
 
   /**
    * One setting a plugin's manifest declares, drawn the way Boite draws its
@@ -21,7 +23,6 @@
   } = $props();
 
   const t = strings.plugins;
-  const uid = `plugin-setting-${Math.random().toString(36).slice(2, 10)}`;
   /** What the control shows while typed or dragged, back to the saved value once it lands. */
   let draft = $state<string | null>(null);
   let problem = $state('');
@@ -56,51 +57,43 @@
   const fillShare = $derived(setting.type === 'slider' ? ((Number(shown) - setting.min) / (setting.max - setting.min)) * 100 : 0);
 </script>
 
-<div class="setting" class:wide={setting.type === 'text'} data-testid="plugin-setting" data-key={setting.key} data-type={setting.type}>
-  <div class="text">
-    <label class="label" for={setting.type === 'select' ? undefined : uid}>{setting.label}</label>
-    {#if setting.description}<p class="hint" id="{uid}-hint">{setting.description}</p>{/if}
-  </div>
-  <div class="control">
+<SettingField title={setting.label} hint={setting.description} error={problem} errorTestid="plugin-setting-error"
+  field={setting.type !== 'select'} stacked={setting.type === 'text'} data-testid="plugin-setting" data-key={setting.key} data-type={setting.type}>
+  {#snippet control(attributes)}
+  <div class="control" class:wide={setting.type === 'text'}>
     {#if setting.type === 'switch'}
-      <input id={uid} type="checkbox" role="switch" checked={value === true} {disabled} aria-describedby={setting.description ? `${uid}-hint` : undefined}
+      <SettingSwitch {...attributes} checked={value === true} {disabled}
         data-testid="plugin-setting-input" onchange={(event) => { event.currentTarget.checked = value === true; void save(value !== true); }} />
     {:else if setting.type === 'slider'}
-      <input id={uid} type="range" min={setting.min} max={setting.max} step={setting.step ?? 'any'} value={shown} {disabled} style:--fill="{fillShare}%"
-        aria-describedby={setting.description ? `${uid}-hint` : undefined} data-testid="plugin-setting-input"
+      <input {...attributes} type="range" min={setting.min} max={setting.max} step={setting.step ?? 'any'} value={shown} {disabled} style:--fill="{fillShare}%"
+        data-testid="plugin-setting-input"
         oninput={(event) => { draft = event.currentTarget.value; }} onchange={(event) => void save(Number(event.currentTarget.value))} />
-      <output for={uid} class="readout" data-testid="plugin-setting-readout">{shown}</output>
+      <output for={attributes.id} class="readout" data-testid="plugin-setting-readout">{shown}</output>
     {:else if setting.type === 'number'}
-      <input id={uid} class="number" type="number" inputmode="decimal" min={setting.min} max={setting.max} step={setting.step ?? 'any'} value={shown} {disabled}
-        aria-describedby={setting.description ? `${uid}-hint` : undefined} aria-invalid={problem !== ''} data-testid="plugin-setting-input"
+      <input {...attributes} class="number" type="number" inputmode="decimal" min={setting.min} max={setting.max} step={setting.step ?? 'any'} value={shown} {disabled}
+        data-testid="plugin-setting-input"
         oninput={(event) => { draft = event.currentTarget.value; }} onchange={(event) => typed(event.currentTarget.value)} />
     {:else if setting.type === 'text'}
-      <input id={uid} class="line" type="text" autocomplete="off" spellcheck="false" maxlength={1000} value={shown} {disabled}
-        aria-describedby={setting.description ? `${uid}-hint` : undefined} aria-invalid={problem !== ''} data-testid="plugin-setting-input"
+      <input {...attributes} class="line" type="text" autocomplete="off" spellcheck="false" maxlength={1000} value={shown} {disabled}
+        data-testid="plugin-setting-input"
         oninput={(event) => { draft = event.currentTarget.value; }} onchange={(event) => typed(event.currentTarget.value)} />
     {:else}
-      <span id={uid} class="menu">
+      <span class="menu">
         <Menu {items} onpick={(id) => void save(id)} label={setting.label} placement="bottom" align="end" {disabled} testid="plugin-setting-menu">
           <span class="ui-label">{picked}</span><ChevronDown size={14} />
         </Menu>
       </span>
     {/if}
   </div>
-  {#if problem}<p class="problem" role="alert" data-testid="plugin-setting-error">{problem}</p>{/if}
-</div>
+  {/snippet}
+</SettingField>
 
 <style>
-  .setting { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 16px; padding: 10px 0; }
-  .setting + :global(.setting) { border-top: 1px solid var(--color-border); }
-  .text { display: grid; gap: 3px; min-width: 0; }
-  .label { font-size: var(--text-base); font-weight: 500; color: var(--color-foreground); }
-  .hint { margin: 0; font-size: var(--text-sm); line-height: 1.45; color: var(--color-muted-foreground); }
-  .control { display: flex; align-items: center; justify-content: flex-end; gap: 10px; min-width: 0; --switch-width: 36px; --switch-height: 22px; }
+  .control { display: flex; align-items: center; justify-content: flex-end; gap: 10px; min-width: 0; }
   .number { width: 96px; text-align: right; font-variant-numeric: tabular-nums; }
   .line { width: min(240px, 100%); }
   .menu { display: inline-flex; }
   .menu :global(button) { gap: 6px; }
-  .problem { grid-column: 1 / -1; margin: 0; font-size: var(--text-sm); color: var(--color-danger); overflow-wrap: anywhere; }
 
   /* The slider: a thin track, filled up to the thumb in the accent. */
   input[type='range'] {
@@ -125,9 +118,7 @@
 
   /* A line of text takes the row's width under its label on a narrow dialog. */
   @media (max-width: 720px) {
-    .setting.wide { grid-template-columns: minmax(0, 1fr); }
-    .setting.wide .control { justify-content: stretch; }
-    .setting.wide .line { width: 100%; }
+    .control.wide, .wide .line { width: 100%; }
     input[type='range'] { width: 120px; }
   }
 </style>

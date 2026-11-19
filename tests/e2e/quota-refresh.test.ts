@@ -44,7 +44,18 @@ test('limits identify the owning machine in the desktop glance and desktop and p
       await workspace.select(remote.store, 't-trace');
     })()`);
     const scope = '[data-testid="quota-machine-scope"]';
-    if (width === 1280) await page.click('[data-testid="nav-limits"]');
+    if (width === 1280) {
+      const trigger = '[data-testid=nav-limits]';
+      await page.click(trigger);
+      await page.waitFor(`document.querySelector('[data-testid=limits-glance]')`);
+      expect(await page.evaluate(`document.querySelector('${trigger}').getAttribute('aria-expanded')`)).toBe('true');
+      expect(await page.evaluate(`document.querySelector('${trigger}').getAttribute('aria-controls') === document.querySelector('[data-testid=limits-glance]').id`)).toBe(true);
+      await page.waitFor(`document.activeElement.closest('[data-testid=limits-glance]')`);
+      await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+      await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+      await page.waitFor(`document.activeElement.matches('${trigger}') && document.activeElement.getAttribute('aria-expanded') === 'false'`);
+      await page.click(trigger);
+    }
     else {
       await page.click('[data-testid="nav-settings"]');
       await openLimitsTab(page);
