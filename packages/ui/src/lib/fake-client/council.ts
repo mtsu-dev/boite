@@ -328,8 +328,7 @@ export function councilMethods(ctx: FakeContext): CouncilMethods {
 /**
  * `?fake=1&council=1`: a thread that started two councils, one finished after two
  * rounds, one in its second round with a member still reviewing and an owner's
- * message to one AI, and a debate from before the council. The experiment itself
- * stays the app's to turn on.
+ * message to one AI, and a debate from before the council.
  */
 export function seedCouncilDemo(ctx: FakeContext): void {
   const at = ctx.now();
