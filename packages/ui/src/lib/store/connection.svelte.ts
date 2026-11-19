@@ -382,16 +382,19 @@ export class Connection {
     this.ctx.store.attach(client);
   }
 
-  /** Drops everything the last core said, then connects to the next one. */
-  async #switchTo(endpoint: Endpoint): Promise<void> {
+  /** Drops the last client's data, then connects to the next core. */
+  async #switchTo(endpoint: Endpoint, reconnectingLocal = false): Promise<void> {
     const s = this.ctx.store;
+    // A private draft lives only here in memory. Keep it while reconnecting to this machine.
+    const privateDraft = reconnectingLocal && s.draft?.incognito ? s.draft : null;
+    const draftInput = privateDraft ? s.composerStates.draft : undefined;
     this.ctx.client?.close();
     s.detach();
-    s.composerStates = {};
+    s.composerStates = draftInput ? { draft: draftInput } : {};
     this.ctx.composer.previewUndo.clear();
     this.ctx.composer.composerInsertions.clear();
     s.openThread = null;
-    s.draft = null;
+    s.draft = privateDraft;
     s.closeDeviceInvite();
     s.sessions = [];
     s.group = null;
@@ -528,7 +531,7 @@ export class Connection {
   async #moveLocalCore(local: Endpoint): Promise<void> {
     this.localEndpointUrl = local.url;
     this.environments = refreshLocalEnvironment(local);
-    await this.#switchTo(local);
+    await this.#switchTo(local, true);
   }
 
   async connect(): Promise<void> {

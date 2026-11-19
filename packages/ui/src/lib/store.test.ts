@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, vi } from 'vitest';
 import { test } from '../test/fake-client';
 import { machineKey } from '../test/machine-key';
-import { INITIAL_PAGE_BYTES, PROTOCOL_VERSION, RpcErrorCode, TRACE_LIMIT, type ProcessRecord, type Thread, type ThreadStatus, type ThreadSummary } from '@boite/contracts';
+import { INITIAL_PAGE_BYTES, PROTOCOL_VERSION, RpcErrorCode, TRACE_LIMIT, type ProcessRecord, type RpcMethodName, type RpcParams, type Thread, type ThreadStatus, type ThreadSummary } from '@boite/contracts';
 import { RpcFailure, WsClient, droppedFailure, type SocketLike } from './client';
 import { FakeClient } from './fake-client';
 import { setNotificationSender, type Toast } from './notify';
@@ -2545,7 +2545,7 @@ describe('the shell core lost under a local store', () => {
     return { store, client };
   }
 
-  test('an open local socket that goes silent after hello reconnects and asks the shell', async () => {
+  test('a silent local socket offers a restart after 30 seconds and keeps the private draft', async () => {
     vi.useFakeTimers();
     const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
     const endpoint = { url: 'http://127.0.0.1:41000', token: 'test', local: true };
@@ -2553,6 +2553,8 @@ describe('the shell core lost under a local store', () => {
     window.__TAURI_INTERNALS__ = { invoke };
     const fromTauri = vi.spyOn(endpoints, 'fromTauri');
     const frames: { id: number; method: string; progress?: boolean }[] = [];
+    const replacement = new FakeClient({ delayMs: 0 });
+    let restarted = false;
     vi.stubGlobal('WebSocket', class implements SocketLike {
       onopen: SocketLike['onopen'] = null;
       onmessage: SocketLike['onmessage'] = null;
@@ -2560,11 +2562,14 @@ describe('the shell core lost under a local store', () => {
       onerror: SocketLike['onerror'] = null;
       constructor() { void Promise.resolve().then(() => this.onopen?.()); }
       send(raw: string) {
-        const frame = JSON.parse(raw);
+        const frame = JSON.parse(raw) as { id: number; method: RpcMethodName; params: RpcParams<RpcMethodName>; progress?: boolean };
         frames.push(frame);
-        if (frames.length === 1) {
-          this.onmessage?.({ data: JSON.stringify({ id: frame.id, result: { core: { protocolVersion: PROTOCOL_VERSION }, principal: 'owner' } }) });
-        }
+        const answer = (body: object) => this.onmessage?.({ data: JSON.stringify({ id: frame.id, ...body }) });
+        if (restarted) void replacement.call(frame.method, frame.params).then(
+          result => answer({ result }),
+          (error: RpcFailure) => answer({ error: { code: error.code, message: error.message } })
+        );
+        else if (frames.length === 1) answer({ result: { core: { protocolVersion: PROTOCOL_VERSION }, principal: 'owner' } });
       }
       close() {}
     });
@@ -2580,6 +2585,8 @@ describe('the shell core lost under a local store', () => {
       expect(client.state).toBe('connecting');
       await vi.advanceTimersByTimeAsync(LOCAL_RECOVERY_MS);
       expect(fromTauri).toHaveBeenCalledWith(true);
+      await fromTauri.mock.results[0]!.value;
+      expect(invoke).toHaveBeenCalledWith('core_endpoint', { reconnecting: true }, undefined);
       await vi.advanceTimersByTimeAsync(29_999 - IDLE_PROBE_MS - PROBE_DEADLINE_MS - LOCAL_RECOVERY_MS);
       expect(store.canForceCoreRestart).toBe(false);
       await vi.advanceTimersByTimeAsync(1);
@@ -2589,18 +2596,34 @@ describe('the shell core lost under a local store', () => {
       confirm.answer(false);
       await cancelled;
       expect(invoke).not.toHaveBeenCalledWith('core_restart', expect.anything(), undefined);
+      store.startDraft(null);
+      store.setDraftIncognito(true);
+      const draftId = store.draft!.id;
+      expect(store.draft?.incognito).toBe(true);
+      const unsent = 'An unsent private draft';
+      store.editComposerText('draft', unsent);
       const confirmed = store.forceCoreRestart();
-      invoke.mockResolvedValueOnce({ url: 'http://127.0.0.1:42000', token: 'replacement' });
+      invoke.mockImplementationOnce(async () => {
+        await replacement.connect();
+        restarted = true;
+        return { url: endpoint.url, token: 'replacement' };
+      });
       confirm.answer(true);
+      await vi.dynamicImportSettled();
       await vi.advanceTimersByTimeAsync(0);
-      expect(invoke).toHaveBeenCalledWith('core_restart', { generation: 0 }, undefined);
-      expect(store.endpointUrl).toBe('http://127.0.0.1:42000');
-      expect(store.canForceCoreRestart).toBe(false);
-      store.client?.close();
       await confirmed;
+      expect(invoke).toHaveBeenCalledWith('core_restart', { generation: 0 }, undefined);
+      expect(store.endpointUrl).toBe(endpoint.url);
+      expect(store.client).not.toBe(client);
+      expect(store.connection).toBe('ready');
+      expect(store.canForceCoreRestart).toBe(false);
+      expect(store.composerStates.draft?.text).toBe(unsent);
+      expect(store.draft).toMatchObject({ id: draftId, incognito: true });
+      expect(Object.values(localStorage).join('')).not.toContain(unsent);
       await call;
     } finally {
-      store.detach(); client.close();
+      store.client?.close();
+      store.detach(); client.close(); replacement.close();
       await connecting;
       fromTauri.mockRestore(); visibility.mockRestore();
       vi.unstubAllGlobals(); vi.useRealTimers();

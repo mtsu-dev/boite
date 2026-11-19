@@ -9,6 +9,7 @@ and the known problems of each system.
 If Boite on this computer stops answering for 30 seconds, the desktop app can
 offer **Force restart**. Confirm to restart the local engine. Boite interrupts
 running turns and resumes those it can recover from their last saved state.
+An open incognito draft stays in the desktop app during the restart.
 
 ## Read the log
 

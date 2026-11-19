@@ -158,28 +158,28 @@ pub(crate) fn stop_for_update(directory: &Path, control: &Mutex<InstallState>, i
     loop {
         let mut state = control.lock().map_err(|_| "update admission state is poisoned")?;
         if state.cancelled() { return Ok(false); }
-        let alive = !process.exited_within(Duration::ZERO);
-        if alive && (!same_core(pid, &start) || health(core.port, pid).is_none() || !same_core(pid, &start)) {
+        if process.exited_within(Duration::ZERO) {
+            return Err("the engine exited before admitting the update; nothing was installed".into());
+        }
+        if !same_core(pid, &start) || health(core.port, pid).is_none() || !same_core(pid, &start) {
             return Err("the live engine did not answer as the expected core; nothing was installed".into());
         }
         if !still()? { return Ok(false); }
-        if alive {
-            if handoff {
-                match request_shutdown("/shutdown-for-update", core.port, &core.token, pid)? {
-                    Admission::Accepted => {}
-                    _ => { handoff = false; continue; }
+        if handoff {
+            match request_shutdown("/shutdown-for-update", core.port, &core.token, pid)? {
+                Admission::Accepted => {}
+                _ => { handoff = false; continue; }
+            }
+        } else {
+            match request_shutdown("/shutdown-if-idle", core.port, &core.token, pid)? {
+                Admission::Accepted => {}
+                Admission::Busy if idle_only => return Ok(false),
+                Admission::Busy => {
+                    drop(state);
+                    std::thread::sleep(Duration::from_millis(250));
+                    continue;
                 }
-            } else {
-                match request_shutdown("/shutdown-if-idle", core.port, &core.token, pid)? {
-                    Admission::Accepted => {}
-                    Admission::Busy if idle_only => return Ok(false),
-                    Admission::Busy => {
-                        drop(state);
-                        std::thread::sleep(Duration::from_millis(250));
-                        continue;
-                    }
-                    Admission::Unsupported => return Err("the engine refused safe update admission (HTTP 404); stop it explicitly before installing".into()),
-                }
+                Admission::Unsupported => return Err("the engine refused safe update admission (HTTP 404); stop it explicitly before installing".into()),
             }
         }
         *state = InstallState::Committed;
@@ -239,6 +239,26 @@ const server = Bun.serve({ hostname:'127.0.0.1', port:0, fetch(request) {
     impl Drop for Fixture {
         fn drop(&mut self) { let _ = self.child.kill(); let _ = self.child.wait(); let _ = std::fs::remove_dir_all(&self.directory); }
     }
+
+    #[test]
+    fn an_exited_core_with_a_retained_handle_cannot_admit_an_update() {
+        let _guard = crate::process_test_guard();
+        let mut fixture = Fixture::new("exit-before-admission", "handoff");
+        let pid = fixture.child.id();
+        let watched = Watched::open(pid).unwrap();
+        fixture.child.kill().unwrap();
+        assert!(watched.exited_within(Duration::from_secs(3)));
+        // Keep the Child and the watch alive through admission. Windows can
+        // still open the exited process, as POSIX can before the Child is reaped.
+        assert!(Watched::open(pid).unwrap().exited_within(Duration::ZERO));
+        let control = Mutex::new(InstallState::Waiting);
+        let committed = std::cell::Cell::new(false);
+        let result = stop_for_update(&fixture.directory, &control, false, || Ok(true), || committed.set(true));
+        assert!(result.is_err(), "the exited core admitted an update: {result:?}");
+        assert!(!committed.get());
+        assert!(*control.lock().unwrap() == InstallState::Waiting);
+    }
+
     #[test]
     fn a_busy_core_with_the_handoff_stops_on_the_first_request() {
         let _guard = crate::process_test_guard();
