@@ -16,7 +16,7 @@ import type { Core } from './core.ts';
 import { invalidParams, messageOf, notFound, refused } from './errors.ts';
 import type { Router } from './router.ts';
 import { HistoryAnnounce, defaultHistoryFile, describeShell, integrate, parseHistory, readHistoryTail } from './terminal-integration.ts';
-import { KeeperClient, keeperEnabled, type KeptTerminal } from './keeper/client.ts';
+import { KeeperClient, KeeperUnavailable, keeperEnabled, type KeptTerminal } from './keeper/client.ts';
 import { adoptKeptTerminal, spawnKeptTerminal } from './keeper/kept-terminal.ts';
 import type { KeptProcess, KeptTag } from './keeper/protocol.ts';
 import type { SpawnedKeptTerminal } from './process-spawn-types.ts';
@@ -413,8 +413,9 @@ export class TerminalStore {
       try {
         spawned = await spawnKeptTerminal(this.#core.procs, keeper, id as ThreadId, launch.exe, launch.args, { cwd: options.cwd, env: output.env, cols: options.cols, rows: options.rows, tag: { ...tag } });
       } catch (error) {
-        // The keeper could not be reached or started: the shell is this core's, as with the keeper off.
-        if (!keeper.connected) return this.#openDirect(keeper, id, options, error);
+        // The keeper could not be reached, did not answer or is stopping: the shell is this core's, as with the keeper off.
+        // A keeper that answered with the shell's own failure is not bypassed: the core would fail the same way.
+        if (error instanceof KeeperUnavailable || !keeper.connected) return this.#openDirect(keeper, id, options, error);
         throw refused(`the shell ${launch.exe} did not start: ${messageOf(error)}`, { id, shell: launch.exe });
       }
       this.#directWarned = false;

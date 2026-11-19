@@ -48,7 +48,7 @@ describe('procs', () => {
   });
   test('disown forgets the pids it lets go of, so a kept process leaves no entry behind', async () => {
     const registry = new ProcRegistry(harness.core.journal, new Bus(), createPosixPlatform('linux', null));
-    const child = registry.spawn('disowned', 'sh', ['-c', LONG_CHILD], { agentRoot: false });
+    const child = registry.spawn('disowned', process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { agentRoot: false });
     try {
       const unassigned = (registry as unknown as { unassigned: Set<number> }).unassigned;
       expect(unassigned.has(child.record.pid)).toBe(true);

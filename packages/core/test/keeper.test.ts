@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
@@ -7,7 +7,7 @@ import { connect, type CoreClient } from '../src/client.ts';
 import { Core } from '../src/core.ts';
 import { ByteRing } from '../src/keeper/byte-ring.ts';
 import { KeeperClient, keeperEnabled, keeperToken, type KeptTerminal } from '../src/keeper/client.ts';
-import { LineReader, keeperTokenPath } from '../src/keeper/protocol.ts';
+import { KEEPER_PROTOCOL, LineReader, keeperSocketPath, keeperTokenPath } from '../src/keeper/protocol.ts';
 import { startServer, type RunningServer } from '../src/server.ts';
 import { threadTerminalId } from '../src/terminals.ts';
 import { echoThread, removeDir, startTestCore, waitFor, type TestCore } from './harness.ts';
@@ -263,6 +263,52 @@ describe.skipIf(!keeperEnabled({ BOITE_KEEPER: '1' }))('keeper', () => {
       await removeDir(h.dataDir);
     }
   }, 60_000);
+
+  test('a keeper that stays connected but never answers a launch leaves the thread shell on the core', async () => {
+    const runtime = process.env.XDG_RUNTIME_DIR;
+    const root = mkdtempSync(join(tmpdir(), 'boite-keeper-mute-'));
+    process.env.XDG_RUNTIME_DIR = join(root, 'runtime');
+    const dataDir = join(root, 'data');
+    mkdirSync(dataDir);
+    const socketPath = keeperSocketPath(dataDir);
+    mkdirSync(join(root, 'runtime', 'boite'), { recursive: true });
+    // A stand-in pid for the keeper: the core may signal it, never this test's own process.
+    const standIn = Bun.spawn([process.execPath, '-e', 'setTimeout(() => {}, 60000)']);
+    // It welcomes the core, then never answers a spawn: connected, but no longer working.
+    const mute = Bun.listen({
+      unix: socketPath,
+      socket: {
+        data(socket, bytes) {
+          for (const line of new TextDecoder().decode(bytes).split('\n')) {
+            if (line.includes('"op":"hello"')) socket.write(`${JSON.stringify({ op: 'welcome', protocol: KEEPER_PROTOCOL, version: 'test', pid: standIn.pid, processes: [] })}\n`);
+          }
+        },
+      },
+    });
+    const h = await startTestCore({ dataDir, onShutdown: () => undefined });
+    try {
+      const client = await h.connect();
+      const { threadId } = await echoThread(h, client);
+      const id = threadTerminalId(threadId);
+      const shell = watch(client, id);
+      await waitFor(() => h.core.terminals.keeper!.connected, 5_000);
+      await client.call('terminals.open', { threadId, cols: 80, rows: 24 });
+      expect(h.core.terminals.keeper!.connected).toBe(true);
+      h.core.terminals.write(id, `echo $PPID-parent-$((70+8))\r`);
+      await waitFor(() => shell.text().includes(`${process.pid}-parent-78`), SHELL_MS);
+      await client.call('terminals.close', { id });
+      client.close();
+    } finally {
+      await h.core.drain();
+      await h.server.stop();
+      await h.core.close();
+      mute.stop(true);
+      standIn.kill('SIGKILL');
+      if (runtime === undefined) delete process.env.XDG_RUNTIME_DIR; else process.env.XDG_RUNTIME_DIR = runtime;
+      delete process.env.BOITE_DATA_DIR;
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 40_000);
 
   test('a keeper that does not start leaves the thread shell on the core', async () => {
     const blocked = mkdtempSync(join(tmpdir(), 'boite-keeper-blocked-'));
