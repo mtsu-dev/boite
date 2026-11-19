@@ -25,7 +25,7 @@ export { STOP_DEADLINE, STOP_DEADLINE_ERROR } from './turn-attempts.ts';
 export class TurnRunner {
   readonly #attempts: TurnAttempts;
   readonly handles: TurnAttempts['handles'];
-  readonly steering: Pick<TurnAttempts['steering'], 'has'>;
+  readonly steering: Pick<TurnAttempts['steering'], 'has' | 'size'>;
   /**
    * Standalone messages inserted during a running answer, with their timestamps.
    * The turn's emitter starts its next segment after the latest one.

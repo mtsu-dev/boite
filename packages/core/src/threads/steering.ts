@@ -8,6 +8,8 @@ type Steer = NonNullable<TurnHandle['steer']>;
 export class TurnSteering {
   readonly #active = new Map<ThreadId, AbortController>();
 
+  get size(): number { return this.#active.size; }
+
   has(threadId: ThreadId): boolean { return this.#active.has(threadId); }
 
   begin(threadId: ThreadId) {

@@ -230,13 +230,13 @@ test('a restart lets the running tool call finish, stops the turn and resumes th
 
     next = startNext(h);
     const core = next.core;
-    // The scripted agent replays the quoted directives, so the resumed turn is read while it runs.
-    await waitFor(() => core.journal.listTurns(threadId).length === 2 && core.journal.listTurns(threadId)[1]!.status === 'running');
+    await waitFor(() => core.journal.listTurns(threadId)[1]?.status === 'done');
     const resumed = core.journal.listTurns(threadId)[1]!;
     expect(resumed.execution?.operation).toBe('resume');
     const opening = messagesOf(core, resumed).find(message => message.role === 'system');
     expect(opening?.parts[0]).toMatchObject({ type: 'text', displayText: 'Resumed after a restart' });
-    expect(textOf(opening)).toContain('The request that turn was answering:\n\nbuild it');
+    expect(textOf(opening)).toContain('<interrupted-user-messages>\nbuild it [tool:300] [sleep:60000] never written');
+    expect(messagesOf(core, resumed).flatMap(message => message.parts).some(part => part.type === 'tool')).toBe(false);
     expect(core.journal.getSetting('restart-handoff')).toBeFalsy();
     // Once: a later start has nothing to resume.
     expect(core.threads.handoff.resume()).toBe(0);

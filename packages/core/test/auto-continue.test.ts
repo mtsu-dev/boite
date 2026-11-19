@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, setSystemTime, test } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Message, Turn } from '@boite/contracts';
+import type { ImageAttachment, Message, Turn } from '@boite/contracts';
 import { Core } from '../src/core.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnContext, TurnResult } from '../src/drivers/types.ts';
@@ -61,7 +61,7 @@ function openingOf(h: TestCore, threadId: string, turnId: string): { text: strin
 test('a turn that ends on an API error resumes by itself with the error and a carry-on prompt', async () => {
   const h = await startTestCore();
   const fail = Promise.withResolvers<TurnResult>();
-  const image = { kind: 'image' as const, mimeType: 'image/png', data: 'aGVsbG8=', name: 'target.png' };
+  const image: ImageAttachment = { kind: 'image', mimeType: 'image/png', data: 'aGVsbG8=', name: 'target.png' };
   const asked = scripted(() => fail.promise, done);
   try {
     const client = await h.connect();
