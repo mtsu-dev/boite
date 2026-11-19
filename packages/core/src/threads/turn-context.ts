@@ -392,10 +392,13 @@ export class TurnContexts {
     // No closure of this context may reach `input` or `prepared`: they share one
     // scope, and a driver keeps the callbacks of its session between turns.
     const input = resumePrompt !== undefined ? { prompt: resumePrompt, attachments: [] } : this.#lastUserInput(threadId, turn.id);
-    const carry = carrier(this.#core, this.#files, threadId, resumePrompt !== undefined ? null : turn.id, input, provider, turn);
-    const fresh = thread.sessionId === null && ((thread.sessionGeneration ?? 0) > 0 || resumePrompt !== undefined);
-    // A session resumed by a switch back to its account: what it missed goes with its first prompt (`threads/account-sessions.ts`).
     const kind = turn.execution?.operation;
+    // A resume's attachments were copied from the interrupted turn. A fresh
+    // session gets them from that history, including after a failed native load.
+    const carryInput = kind === 'resume' ? { ...input, attachments: [] } : input;
+    const carry = carrier(this.#core, this.#files, threadId, resumePrompt !== undefined ? null : turn.id, carryInput, provider, turn);
+    const fresh = thread.sessionId === null && ((thread.sessionGeneration ?? 0) > 0 || kind === 'resume' || resumePrompt !== undefined);
+    // A session resumed by a switch back to its account: what it missed goes with its first prompt (`threads/account-sessions.ts`).
     // A resume carries it too, since the cut turn may have stopped before the session saved its prompt, but not a restart inside the turn that carried it.
     const missed = fresh || kind === 'compact' || kind === 'keepalive' || kind === 'background' || nativeCommandPrompt(input.prompt)
       || (resumePrompt !== undefined && this.#threads.accountSessions.carrying(threadId) === turn.id)

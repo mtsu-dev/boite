@@ -61,6 +61,8 @@ const waitingApproval = new Map<string, (choiceId: string) => void>();
 const waitingInput = new Map<string, (answers: unknown[] | null) => void>();
 /** The `[steer]` turn waiting for a `turn/steer` that names it. */
 const waitingSteer = new Map<string, (text: string) => void>();
+const heldSteerAcks: Record<string, unknown>[] = [];
+const HOLD_ACK = Symbol('hold acknowledgement');
 let outputBatch: string[] | null = null;
 
 function log(line: string): void {
@@ -376,7 +378,7 @@ const MODELS = [
   { modelId: 'someone-else', displayLabel: 'Not Meta', isDefault: false, providerId: 'other', profileId: null, contextLimit: 1 },
 ];
 
-function handle(method: string, raw: unknown): unknown {
+function handle(method: string, raw: unknown, requestId?: unknown): unknown {
   const params = (raw ?? {}) as Record<string, unknown>;
   const commandId = textOf(params['commandId']);
   switch (method) {
@@ -431,6 +433,10 @@ function handle(method: string, raw: unknown): unknown {
       const text = input.map((part) => textOf(part['text'])).join('');
       log(`turn/start uuid=${UUID_V7.test(commandId)} effort=${effort} display=${textOf(params['displayText']) === text}`);
       if (closed) throw new Error('the session is closed');
+      if (instructionsOf(text).includes('[release-steer-acks]')) {
+        for (const ack of heldSteerAcks.splice(0)) send(ack);
+        log('late steer acknowledgements sent');
+      }
       for (const part of input) {
         if (part['type'] === 'image') log(`image ${textOf(part['mediaType'])} ${textOf(part['base64Data'])}`);
       }
@@ -460,6 +466,10 @@ function handle(method: string, raw: unknown): unknown {
       queueMicrotask(() => {
         waiter(text);
       });
+      if (text === 'Finish before acknowledging') {
+        heldSteerAcks.push({ id: requestId, result: { turnId: expected } });
+        return HOLD_ACK;
+      }
       return { turnId: expected };
     }
     case 'approval/decide': {
@@ -556,7 +566,8 @@ process.stdin.on('data', (chunk: string) => {
     }
     if (typeof method === 'string' && id !== undefined && id !== null) {
       try {
-        send({ id, result: handle(method, message['params']) });
+        const result = handle(method, message['params'], id);
+        if (result !== HOLD_ACK) send({ id, result });
       } catch (error) {
         send({
           id,

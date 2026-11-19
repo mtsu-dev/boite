@@ -15,6 +15,7 @@ let harness: TestCore | undefined;
 afterEach(async () => {
   delete process.env['OPENCODE_FIXTURE_TRACE'];
   delete process.env['OPENCODE_FIXTURE_COST_ERROR'];
+  delete process.env['OPENCODE_FIXTURE_COST'];
   await harness?.stop();
   harness = undefined;
 });
@@ -68,6 +69,36 @@ test('OpenCode reapplies Stop when initial admission completes after the interru
   expect(trace()).toBe('initial prompt waiting\ninterrupt\nadmitted\ninterrupt\n');
 }, 12_000);
 
+test.each(['terminal received', 'execution active', 'cost unavailable'] as const)('OpenCode stops with its received usage while a document is still loading (%s)', async state => {
+  const { owner, threadId, trace } = await loopbackThread();
+  process.env['OPENCODE_FIXTURE_COST'] = join(harness!.dataDir, 'native-cost.txt');
+  const reading = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<[]>();
+  const content = spyOn(openCodeContent, 'openCodeContent').mockImplementation(() => {
+    reading.resolve();
+    return release.promise;
+  });
+  try {
+    const terminal = state === 'terminal received';
+    const unavailable = state === 'cost unavailable';
+    const turn = await owner.call('turns.start', { threadId,
+      prompt: `[slow][usage-after-tool]${terminal ? '[finish-after-tool]' : ''}${unavailable ? '[fail-cost-read]' : ''}` });
+    await reading.promise;
+    await waitFor(() => trace().includes(terminal ? 'execution ended' : 'step ended'));
+    await Bun.sleep(100);
+    const finished = owner.next('turn.finished', event => event.id === turn.id, 1800);
+    expect(await owner.call('turns.stop', { threadId })).toEqual({ stopped: true });
+    const stopped = await finished;
+    expect(stopped).toMatchObject({ status: 'stopped', usage: { inputTokens: 17, outputTokens: 3 } });
+    expect(stopped.usage?.costUsdEquivalent).toBe(unavailable ? null : 0.01);
+    const resumed = owner.next('turn.finished', event => event.threadId === threadId, 6000);
+    await owner.call('turns.start', { threadId, prompt: '[done]' });
+    const next = await resumed;
+    expect(next.status).toBe('done');
+    expect(next.usage?.costUsdEquivalent).toBeCloseTo(0.02, 6);
+  } finally { release.resolve([]); content.mockRestore(); }
+}, 12_000);
+
 test('OpenCode keeps the terminal result and tokens when the cost read fails', async () => {
   const { owner, threadId } = await loopbackThread();
   process.env['OPENCODE_FIXTURE_COST_ERROR'] = '1';
@@ -75,6 +106,40 @@ test('OpenCode keeps the terminal result and tokens when the cost read fails', a
   await owner.call('turns.start', { threadId, prompt: '[done]' });
   expect(await finished).toMatchObject({ status: 'done', usage: { inputTokens: 17, outputTokens: 3 } });
 }, 12_000);
+
+test.each(['available', 'unavailable'] as const)('OpenCode attributes warm-turn costs when the reloaded baseline is %s', async baseline => {
+  const { owner, threadId, trace } = await loopbackThread();
+  process.env['OPENCODE_FIXTURE_COST'] = join(harness!.dataDir, 'native-cost.txt');
+  await owner.call('settings.set', { warmProcessMinutes: 5 });
+  const run = async (prompt: string) => {
+    const finished = owner.next('turn.finished', event => event.threadId === threadId, 10_000);
+    await owner.call('turns.start', { threadId, prompt });
+    return (await finished).usage?.costUsdEquivalent;
+  };
+  expect(await run('[done]')).toBeCloseTo(0.02, 6);
+  expect(await run(baseline === 'available' ? '[done][fail-cost-read]' : '[done][fail-two-cost-reads]')).toBeNull();
+  const third = await run('[done]');
+  if (baseline === 'available') expect(third).toBeCloseTo(0.02, 6);
+  else expect(third).toBeNull();
+  expect(await run('[done]')).toBeCloseTo(0.02, 6);
+  expect(trace().split('cost server started\n')).toHaveLength(2);
+}, 25_000);
+
+test('OpenCode Stop cancels a blocked cost reload before submitting the prompt', async () => {
+  const { owner, threadId, trace } = await loopbackThread();
+  const costFile = join(harness!.dataDir, 'native-cost.txt');
+  process.env['OPENCODE_FIXTURE_COST'] = costFile;
+  await owner.call('settings.set', { warmProcessMinutes: 5 });
+  const warm = owner.next('turn.finished', event => event.threadId === threadId, 10_000);
+  await owner.call('turns.start', { threadId, prompt: '[done][fail-cost-read][hold-cost-reload]' });
+  expect((await warm).usage?.costUsdEquivalent).toBeNull();
+  const turn = await owner.call('turns.start', { threadId, prompt: '[done]' });
+  await waitFor(() => trace().includes('cost reload waiting'));
+  const finished = owner.next('turn.finished', event => event.id === turn.id, 2_000);
+  expect(await owner.call('turns.stop', { threadId })).toEqual({ stopped: true });
+  expect((await finished).status).toBe('stopped');
+  expect(Number(readFileSync(costFile, 'utf8'))).toBeCloseTo(0.02, 6);
+}, 20_000);
 
 test('Send now during OpenCode startup stops the old turn and delivers a new one before a tool boundary', async () => {
   harness = await startTestCore();

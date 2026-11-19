@@ -79,7 +79,7 @@ test.each(['preparation', 'attempt', 'retry'] as const)('an account signed out d
   }
 });
 
-test('Stop during the second protection preparation never starts the provider', async () => {
+test.each([1, 2])('Stop during protection preparation %i frees the scheduler slot without starting the provider', async preparation => {
   const h = await startTestCore();
   const entered = Promise.withResolvers<void>(), ready = Promise.withResolvers<void>();
   const started: TurnContext[] = [];
@@ -92,7 +92,7 @@ test('Stop during the second protection preparation never starts the provider', 
   });
   let calls = 0;
   const held = spyOn(h.core.sharedAccess.execution, 'prepare').mockImplementation(() => {
-    if (++calls === 2) { entered.resolve(); return ready.promise; }
+    if (++calls === preparation) { entered.resolve(); return ready.promise; }
   });
   try {
     const client = await h.connect();
@@ -100,8 +100,7 @@ test('Stop during the second protection preparation never starts the provider', 
     const turn = await client.call('turns.start', { threadId, prompt: 'Stop before native startup' });
     await entered.promise;
     expect(await client.call('turns.stop', { threadId })).toEqual({ stopped: true });
-    ready.resolve();
-    await waitFor(() => h.core.scheduler.stopTarget(threadId) === undefined);
+    await waitFor(() => h.core.scheduler.stopTarget(threadId) === undefined, 1200);
     expect(h.core.journal.getTurn(turn.id)?.status).toBe('stopped');
     expect(started).toHaveLength(0);
   } finally {
