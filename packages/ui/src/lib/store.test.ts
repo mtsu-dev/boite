@@ -2007,7 +2007,7 @@ describe('Store', () => {
     expect(store.settings?.publicUrl).toBe('https://boite.example.com');
   });
 
-  test('archiving a thread lets go of its panel, browser views, composer and terminal', async ({ store }) => {
+  test('archiving a thread closes its panel and terminal and keeps its draft', async ({ store }) => {
     const destroy = vi.spyOn(browserBridge, 'destroy');
     try {
       const thread = store.threads.find((t) => t.status === 'idle' && !t.parentThreadId)!;
@@ -2021,22 +2021,22 @@ describe('Store', () => {
 
       expect(destroy.mock.calls.map(([id]) => id)).toEqual([view.id]);
       expect(rightPanel.threads[store.threadKey(thread.id)]).toBeUndefined();
-      expect(store.composerStates[thread.id]).toBeUndefined();
+      expect(store.composerStates[thread.id]?.text).toBe('half a prompt');
       expect(store.terminalShown(thread.id)).toBe(false);
     } finally { destroy.mockRestore(); }
   });
 
-  test('a thread archived from another client drops its panel here too', async ({ store, client }) => {
+  test('a thread archived from another client drops its panel and keeps its draft', async ({ store, client }) => {
     const [shown, other] = store.threads.filter((t) => t.status === 'idle' && !t.parentThreadId);
     await store.open(shown!.id);
     rightPanel.for(store.threadKey(other!.id)).open('trace');
     store.editComposerText(other!.id, 'draft');
     await client.call('threads.archive', { threadId: other!.id, archived: true });
     await waitFor(() => (rightPanel.threads[store.threadKey(other!.id)] === undefined ? true : undefined));
-    expect(store.composerStates[other!.id]).toBeUndefined();
+    expect(store.composerStates[other!.id]?.text).toBe('draft');
   });
 
-  test.for(['manual', 'pr-merged'] as const)('the open archived thread releases reading state and preserves automatic archive input: %s', async (reason, { store, client }) => {
+  test.for(['manual', 'pr-merged'] as const)('leaving an archived thread preserves its draft: %s', async (reason, { store, client }) => {
     const destroy = vi.spyOn(browserBridge, 'destroy');
     try {
       const [shown, next] = store.threads.filter((t) => t.status === 'idle' && !t.parentThreadId);
@@ -2068,7 +2068,7 @@ describe('Store', () => {
       } else {
         expect(rightPanel.threads[key]).toBeUndefined();
         expect(rightPanel.documents.drafted(key)).toBe(false);
-        expect(store.composerStates[shown!.id]).toBeUndefined();
+        expect(store.composerStates[shown!.id]?.text).toBe('unsent prompt');
         expect(destroy.mock.calls.map(([id]) => id)).toEqual([view.id]);
       }
     } finally { destroy.mockRestore(); }

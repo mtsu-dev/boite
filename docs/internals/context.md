@@ -636,9 +636,10 @@ holds the prompt at the head of the queue.
 
 Asynchronous creation and send retain the original core, thread and draft
 identity. Accepted work does not select a thread after newer navigation or
-consume the newer draft. A merged-PR archive from an older core preserves local
-input and pauses retained queues; manual archive and deletion clear input as
-requested, and `boite thread done` is refused while a device reports input. See
+consume the newer draft. An archived conversation keeps its composer draft for
+restoration. When the client closes the archived view, it pauses any retained
+queue. Deletion clears the input, and `boite thread done` is refused while a
+device reports input. See
 [merged pull requests](development.md#merged-pull-requests).
 
 ## Editing a message and forking

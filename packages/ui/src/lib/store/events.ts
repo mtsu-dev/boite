@@ -117,8 +117,8 @@ export function listen(ctx: StoreContext, client: Client): void {
     ctx.delegation.patchThread(summary);
     const open = s.openThread;
     if (open && open.id === summary.id) patchFields(open, summary);
-    // Archived from another client: nothing here can show it again.
-    else if (summary.archived) threads.forgetThread(summary.id, summary.archiveReason?.type === 'pr-merged');
+    // Archived from another client: release the inactive view.
+    else if (summary.archived) threads.forgetThread(summary.id, summary);
     if (s.delegationThread?.id === summary.id) patchFields(s.delegationThread, summary);
     // A sub-agent of the open thread now asks: its parent's dock reads what it asks.
     if (turnedToUser && open && summary.parentThreadId === open.id) requests.readChildren(client, open.id, summary.id);

@@ -24,6 +24,7 @@ test('a manually archived conversation opens read-only and keeps its draft when 
       value: { input: { text: draft, attachments: [], queued: [], paused: false } },
     });
     expect(saved.accepted).toBe(true);
+    const savedInput = async () => (await client.call('composer.list', {})).find(row => row.id === thread.id)?.value?.input;
     page = await BrowserPage.launch({ url: pairingUrlOf(core), locale: 'en', windowSize: { width: 1440, height: 900 } });
     const titleSelector = '[data-testid=thread-title]';
     const received = `[...document.querySelectorAll('[data-role=assistant]')].some(row => row.textContent.includes(${JSON.stringify(prompt)}))`;
@@ -38,6 +39,7 @@ test('a manually archived conversation opens read-only and keeps its draft when 
     const archived = await client.call('threads.get', { threadId: thread.id });
     expect(archived.archived).toBe(true);
     expect(archived.doneAt ?? null).toBeNull();
+    expect((await savedInput())?.text).toBe(draft);
 
     await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'k', code: 'KeyK', modifiers: 2, windowsVirtualKeyCode: 75 });
     await page.type('[data-testid=palette-input]', title);
@@ -49,9 +51,10 @@ test('a manually archived conversation opens read-only and keeps its draft when 
     expect(await page.text('[data-testid=done-thread-notice]')).toContain('This thread was set aside');
     expect(await page.evaluate(`document.querySelectorAll('[data-testid=message-edit], [data-testid=message-retry]').length`)).toBe(0);
     expect(await page.evaluate(`document.querySelector('[data-testid=composer-input]')`)).toBeNull();
+    expect((await savedInput())?.text).toBe(draft);
     await page.click('[data-testid=done-thread-reopen]');
     await page.waitFor(`document.querySelector('[data-testid=composer-input]')?.value === ${JSON.stringify(draft)}`);
-    const input = (await client.call('composer.list', {})).find(row => row.id === thread.id)?.value?.input;
+    const input = await savedInput();
     expect(input?.text).toBe(draft);
     expect(input?.editing ?? null).toBeNull();
   } finally {

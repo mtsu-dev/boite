@@ -766,13 +766,13 @@ export class Threads {
     if (!client) return;
     const navigationGeneration = this.openGeneration;
     try {
-      await archiveWhile(() => this.threads, threadId, client.call('threads.archive', { threadId, archived: true, ...(onlyIfIdle ? { onlyIfIdle: true } : {}) }));
+      const archived = await archiveWhile(() => this.threads, threadId, client.call('threads.archive', { threadId, archived: true, ...(onlyIfIdle ? { onlyIfIdle: true } : {}) }));
       if (!this.ctx.currentClient(client, clientGeneration)) return;
       this.ctx.threadReads.change(threadId, null);
       this.threads = this.threads.filter((t) => t.id !== threadId);
       this.ctx.requests.dropRequestsOf(threadId);
       if (this.openThread?.id === threadId && this.openGeneration === navigationGeneration) this.ctx.store.startDraft(this.openThread.projectId, { refresh: false });
-      this.forgetThread(threadId);
+      this.forgetThread(threadId, archived);
     } catch (error) {
       if (this.ctx.currentClient(client, clientGeneration)) this.ctx.fail(error);
     }
@@ -853,15 +853,15 @@ export class Threads {
     else this.#rowIndex.push(this.threads, summary);
   }
 
-  /** Drops reading state; automatic archives can retain unsent input for restoration. */
-  forgetThread(threadId: ThreadId, preserveInput = false): void {
-    const s = this.ctx.store;
-    const composer = this.ctx.composer;
-    if (preserveInput) {
+  /** Drops reading state. An archived conversation keeps its draft for restoration. */
+  forgetThread(threadId: ThreadId, archive?: ThreadSummary): void {
+    const { store: s, composer } = this.ctx;
+    const preservePanel = archive?.archiveReason?.type === 'pr-merged';
+    if (archive && !archive.incognito) {
       const input = s.composerStates[threadId];
-      if (input) input.paused = true;
-    } else {
-      delete s.composerStates[threadId];
+      if (input && (input.queued.length || preservePanel)) input.paused = true;
+    } else delete s.composerStates[threadId];
+    if (!preservePanel) {
       composer.previewUndo.delete(s.threadKey(threadId));
       composer.pendingSends.delete(threadId);
       delete composer.staged[threadId];
@@ -875,7 +875,7 @@ export class Threads {
   /** The open thread, archived from another client, stayed on screen with its panel; leaving it lets that go. */
   leaveArchived(next: ThreadId | null): void {
     const left = this.openThread;
-    if (left?.archived && left.id !== next) this.forgetThread(left.id, left.archiveReason?.type === 'pr-merged');
+    if (left?.archived && left.id !== next) this.forgetThread(left.id, left);
   }
 
   threadSnapshots(threadId: ThreadId): Thread[] {

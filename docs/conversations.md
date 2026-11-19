@@ -133,8 +133,8 @@ above the message box or the bottom tabs.
   later; the toast offers Undo, or press Ctrl+Z.
 - Open Archived threads from Filter, a project's menu or Settings > General.
   Select a conversation to read it. Restore it from the row or from the open
-  conversation before sending a message. Its agent starts again with your
-  first message.
+  conversation before sending a message. Restoring brings back your message
+  draft. Its agent starts again with your first message.
 - A project's Done list shows ten rows at a time; scroll it for the rest.
 - Delete done threads after (days) defaults to 3. Manual archives are kept.
 - A deleted conversation can be restored from Show deleted conversations in
