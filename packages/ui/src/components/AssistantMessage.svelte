@@ -207,7 +207,7 @@
     {@const shownText = sliced ? whole.slice(sliced.start, sliced.end) : whole}
     {@const open = !sliced || sliced.end === undefined}
     {@const narrated = part.type === 'text' && message.role === 'assistant' && narrates(index, whole.trim())}
-    {#if (part.type !== 'text' || shownText.trim().length > 0) && !(asking && part.type === 'question' && questionDocked(store, part))}
+    {#if (part.type !== 'text' || shownText.trim().length > 0) && ((part.type !== 'council' && part.type !== 'debate') || councilBuilt()) && !(asking && part.type === 'question' && questionDocked(store, part))}
     <!-- Narration is a class, not another branch: the paragraphs already drawn stay the same nodes when a step arrives after them. -->
     <div class="part" class:narration={narrated} data-kind={part.type} data-testid={narrated ? 'narration' : undefined}>
       {#if part.type === 'text'}

@@ -93,7 +93,6 @@ export function agentGuide(asyncQuestions: boolean, logAccess = false, skills: r
     // What installed plugins add (plugins/extensions.ts): their commands, skills and prompts.
     ...pluginLines,
     ...(bot ? ['', BOT_GUIDE] : []),
-    // Only while the user has Teams on.
     ...(bot ? [TEAM_GUIDE] : []),
   ].join('\n') + '\n\n';
 }
