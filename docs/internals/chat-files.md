@@ -40,10 +40,14 @@ keeps its place.
 Published images, videos and audio appear directly in the conversation
 whatever the switch says. Media keeps its aspect ratio in a bounded card; videos have
 playback, seeking and fullscreen controls and never autoplay. Images open in a
-keyboard-accessible viewer with zoom, fit and download controls. Images larger
-than 5 MB show their name, size and download first. Click Load image or the
-filename to load them; opening a conversation does not fetch them automatically.
-If decoding fails, the card keeps its download and offers a retry. Published PDFs
+keyboard-accessible viewer with zoom, fit and download controls. Near the
+visible chat, the client asks `messages.attachment` or `artifacts.read` for a
+WebP preview sized for the card and the device's pixel ratio. The core caches
+each preset for the message until the message is removed. If the encoder cannot
+convert the image, the browser can draw its original when the header fits the
+requested size and its base64 stays within 8 KiB. Larger images that could
+not be converted still open in the viewer. The viewer requests the original
+on selection and requests a current link when saving. Published PDFs
 have an inline preview while the switch is on; other types remain
 downloadable. Mutable file editing and viewing belong to the
 [right panel](panel.md).

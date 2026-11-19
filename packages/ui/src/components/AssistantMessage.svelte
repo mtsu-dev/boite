@@ -229,7 +229,7 @@
 
       {:else if part.type === 'artifact' && part.view}
         <InlineView {part} {store} {threadId} messageId={message.id} partIndex={index} />
-      {:else if part.type === 'file' || part.type === 'artifact'}
+      {:else if part.type === 'file' || (part.type === 'artifact' && !part.windowCapture)}
         <ChatFile file={part} {store} {threadId} messageId={message.id} partIndex={index} />
       {:else if part.type === 'tool' && planOf(part.name, part.input) !== null}
         {@render plan(planOf(part.name, part.input) ?? '')}
@@ -320,7 +320,7 @@
         <!-- The agent warned and went on: a notice of the timeline, not a failure of the turn. -->
         <AgentNoticeLine notice={part.notice} detail={part.detail} />
       {:else if part.type === 'window_capture'}
-        <WindowCard {part} />
+        <WindowCard {part} {store} threadId={message.threadId} messageId={message.id} />
       {:else if part.type === 'window_consent'}
         <WindowCard {store} threadId={message.threadId} agent={agentName ?? (execution ? providerName(store, execution.providerId) : strings.windows.consent.anAgent)} {part} />
       {:else if part.type === 'error'}

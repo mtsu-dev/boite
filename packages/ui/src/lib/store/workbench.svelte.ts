@@ -10,6 +10,7 @@ import type {
   GitStatus,
   ProcessRecord,
   ProjectId,
+  RpcParams,
   ThreadId,
   ThreadResources,
   Todo
@@ -195,11 +196,11 @@ export class Workbench {
   }
 
   /** `view` asks for the address a published view opens as a page at, which a frame loads; without it the address downloads. */
-  async readArtifact(threadId: ThreadId, messageId: string, artifactId: string, renew?: string, view = false): Promise<FileAnswer<ArtifactContent>> {
+  async readArtifact(threadId: ThreadId, messageId: string, artifactId: string, renew?: string, view = false, previewMax?: RpcParams<'artifacts.read'>['previewMax']): Promise<FileAnswer<ArtifactContent>> {
     const client = this.ctx.client;
     if (!client) return { ok: false, error: strings.artifacts.failed };
     try {
-      const value = await client.call('artifacts.read', { threadId, messageId, artifactId, ...(renew ? { renew } : {}), ...(view ? { view: true as const } : {}) });
+      const value = await client.call('artifacts.read', { threadId, messageId, artifactId, ...(renew ? { renew } : {}), ...(view ? { view: true as const } : {}), ...(previewMax ? { previewMax } : {}) });
       const endpoint = this.ctx.store.endpointUrl;
       return { ok: true, value: { ...value, url: value.url.startsWith('/') && endpoint ? coreHref(endpoint, value.url) : value.url } };
     } catch (error) { return { ok: false, error: this.ctx.reason(error) }; }

@@ -148,7 +148,10 @@
   });
   let scrollTop = $state(savedTop);
   let column = $state<HTMLDivElement | undefined>(undefined);
-  function rememberAnchor() { anchors.remember(viewport, column); }
+  function rememberAnchor() {
+    const id = lastView && rows[lastView.first]?.id;
+    anchors.remember(viewport, column, id ? anchors.nodes.get(id) : undefined);
+  }
   /** Typing in a field never leaves the thread: a chord, Enter, Escape or a key outside a field reads the anchor. */
   function rememberBeforeKey(event: KeyboardEvent) { if (!typingKey(event)) rememberAnchor(); }
   function restoreAnchor(anchor: RowAnchor | undefined = anchors.current) {
@@ -171,6 +174,7 @@
   });
   let restoredReading = false;
   onDestroy(() => {
+    anchors.cancelPending();
     if (!viewport || !store.readingPositions) return;
     store.readingPositions.delete(threadId);
     store.readingPositions.set(threadId, { top: scrollTop, pinned, heights: new Map(heights), anchor: anchors.saved(), height: viewHeight, reservePrompt, followPrompt: promptTarget });
@@ -481,8 +485,6 @@
         frame = 0;
         const batch = measurable([...pending.values()], id => slots.indexOf(rows, id) >= 0);
         pending.clear();
-        // Estimated rows can be taller than their slot totals. Keep the actual
-        // visible message, then align it after Svelte updates the spacers.
         rememberAnchor();
         const anchor = anchors.current;
         onMeasured(batch);
@@ -520,8 +522,7 @@
     scrollTop = box.scrollTop;
     viewHeight = box.clientHeight;
     if (navigationTarget || promptTarget) return;
-    // Read the anchor after the render, before another navigation can restore it.
-    void tick().then(rememberAnchor);
+    anchors.schedule(rememberAnchor);
     if (glide.active) {
       if (distance > 1) return;
       endGlide(false);

@@ -6,13 +6,16 @@
   import { fill, strings } from '../lib/strings';
   import Deferred from './Deferred.svelte';
   import { parts } from '../lib/deferred-parts';
+  import type { Store } from '../lib/store.svelte';
 
   /**
    * A window an agent captured with `boite window`, or whose live view a viewer
    * started (docs/internals/windows.md): no capture is silent. The thumbnail opens in the
    * image viewer with the timeline's other pictures.
    */
-  let { part }: { part: Extract<MessagePart, { type: 'window_capture' }> } = $props();
+  let { part, store, threadId, messageId }: {
+    part: Extract<MessagePart, { type: 'window_capture' }>; store?: Store; threadId?: string; messageId?: string;
+  } = $props();
   const s = strings.windows.capture;
 
   const host = viewerHost();
@@ -21,6 +24,17 @@
   const src = $derived(part.thumbnail ? `data:image/jpeg;base64,${part.thumbnail.data}` : null);
 
   function item(): MediaItem | null {
+    const { artifactId, process, path } = part;
+    const owner = store, thread = threadId, message = messageId;
+    if (artifactId && owner && thread && message) {
+      return { src: '', name: path?.split(/[\\/]/).at(-1) || fill(s.alt, { process }), mimeType: 'image/png', kind: 'image',
+        load: async () => {
+          const result = await owner.readArtifact(thread, message, artifactId);
+          if (!result.ok) throw new Error(result.error);
+          return result.value.url;
+        }
+      };
+    }
     return src ? { src, name: fill(s.alt, { process: part.process }), mimeType: 'image/jpeg', kind: 'image' } : null;
   }
   function open(from: HTMLElement): void {

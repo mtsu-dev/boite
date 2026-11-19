@@ -1,4 +1,4 @@
-import { ownerThreadRequestKey, ownerThreadSelection, partChannel, permissionAutoDecision, type RpcResult, type StreamChannel, type ThreadId } from '@boite/contracts';
+import { chatPreviewSizeProblem, decodedBytes, ownerThreadRequestKey, ownerThreadSelection, partChannel, permissionAutoDecision, type RpcResult, type StreamChannel, type ThreadId } from '@boite/contracts';
 import { noteUserMessage } from './checklist';
 import { startAutoGoal, startsAutoGoal } from './activity';
 import { createFakeThread, publishFakeThread } from './create-thread';
@@ -477,14 +477,18 @@ export function threadMethods(ctx: FakeContext) {
     'messages.attachment': async params => {
       const thread = ctx.thread(params.threadId);
       if (!Number.isSafeInteger(params.partIndex) || params.partIndex < 0) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'messages.attachment.partIndex: expected a nonnegative integer', data: { field: 'partIndex', expected: 'a nonnegative integer' } });
+      const problem = chatPreviewSizeProblem(params.previewMax);
+      if (problem) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `messages.attachment.previewMax: expected one of ${problem.expected}`, data: problem });
       const message = thread.messages.find(message => message.id === params.messageId);
       if (!message) throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `message ${params.messageId} is not a message of thread ${params.threadId}`, data: { threadId: params.threadId, messageId: params.messageId } });
       const part = message.parts[params.partIndex];
       if (part?.type !== 'file' && part?.type !== 'image') throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `part ${params.partIndex} is not an attachment of message ${params.messageId}`, data: { messageId: params.messageId, partIndex: params.partIndex } });
-      // The fake makes no copies: `display` and `thumb` give the original, and `ticket` an address of it, as a blob the page can load.
-      if (params.ticket !== true) return { data: part.data };
-      const bytes = decodeBase64(part.data);
-      return { data: '', url: URL.createObjectURL(new Blob([bytes], { type: part.mimeType })), mimeType: part.mimeType, bytes: bytes.length };
+      if (params.previewMax === undefined) {
+        return { data: part.data, ...(params.ticket === true ? { mimeType: part.mimeType, bytes: decodedBytes(part.data) } : {}) };
+      }
+      const key = JSON.stringify([thread.id, message.id, params.partIndex, params.previewMax]);
+      const copy = await ctx.imagePreviews.read(key, params.previewMax, () => new Blob([decodeBase64(part.data)], { type: part.mimeType }));
+      return copy ?? { data: '', mimeType: 'image/webp', bytes: 0 };
     },
     'threads.update': async (params) => {
       const thread = ctx.thread(params.threadId);
