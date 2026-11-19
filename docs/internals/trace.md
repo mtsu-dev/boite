@@ -541,7 +541,9 @@ exists.
 | `keepAwake` | Gives the sleep inhibitor back; the machine sleeps by its own power settings |
 
 Protections are on by default. Notifications are a separate client preference
-under General, stored per machine as `boite.notifications`. The desktop shell's
+under General, stored per device as `boite.notifications`: one switch every
+connected machine's Store reads. When the shell finds no way to show a toast,
+the switch goes off and the view on screen says so, whichever machine tried. The desktop shell's
 `notify` command shows a Windows toast, or runs `notify-send` or `osascript` on
 Linux and macOS ([portability](portability.md)); phones use Web Notifications.
 A click opens the thread, except on Linux and macOS.
