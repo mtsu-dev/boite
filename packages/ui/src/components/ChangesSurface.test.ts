@@ -3,7 +3,7 @@ import { flushSync, mount, unmount } from 'svelte';
 import type { GitDiff, GitStatus } from '@boite/contracts';
 import { FakeClient } from '../lib/fake-client';
 import type { BoundPanel, Surface } from '../lib/right-panel.svelte';
-import { Store } from '../lib/store.svelte';
+import { Store, type FileAnswer } from '../lib/store.svelte';
 import { strings } from '../lib/strings';
 import ChangesSurface from './ChangesSurface.svelte';
 
@@ -21,7 +21,9 @@ function gate(store: Store) {
   const realStatus = store.gitStatus.bind(store);
   const realDiff = store.gitDiff.bind(store);
   store.gitStatus = (id) =>
-    new Promise<GitStatus | null>((resolve) => held.push({ kind: 'status', release: () => resolve(realStatus(id).then((status) => (status === null ? null : edit(status)))) }));
+    new Promise<FileAnswer<GitStatus>>((resolve) => held.push({
+      kind: 'status', release: () => resolve(realStatus(id).then(answer => answer.ok ? { ...answer, value: edit(answer.value) } : answer)),
+    }));
   store.gitDiff = (id, path, ref, oldPath) => {
     origins.push(oldPath);
     diffs.push({ id, path });
