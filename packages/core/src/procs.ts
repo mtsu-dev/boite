@@ -19,6 +19,7 @@ import { launchOf } from './git/command.ts';
 import { ExecutionProtections } from './execution-protection.ts';
 import { closeProcessResources, protectionRunner } from './protection-runner.ts';
 import { processEventDiagnostic } from './process-event-diagnostics.ts';
+import { killEntry, running } from './process-entry.ts';
 
 import type { ChildProcess, ManagedStop, ProcessEntry as Entry, SpawnedChild, SpawnedPipedProcess, SpawnedProcess, SpawnedTerminal, SpawnOptions, TerminalSpawnOptions, ProcRegistryOptions } from './process-spawn-types.ts';
 export type { ProcRegistryOptions, ChildProcess, ManagedStop, PipedChildProcess, SpawnedChild, SpawnedPipedProcess, SpawnedProcess, SpawnedTerminal, SpawnOptions, TerminalSpawnOptions } from './process-spawn-types.ts';
@@ -890,12 +891,4 @@ export class ProcRegistry {
       }
     });
   }
-}
-
-/** Whether `proc` runs as its spawner sees it: until it reports the exit it holds the process's handle. */
-const running = (proc: { exitCode: number | null; signalCode: unknown }) => () => proc.exitCode === null && proc.signalCode === null;
-
-/** An entry's own kill, and the group stop that may follow it. */
-function killEntry(entry: Entry): Promise<void> | undefined {
-  try { return entry.kill() ?? undefined; } catch { return undefined; /* already exited */ }
 }
