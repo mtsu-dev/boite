@@ -279,7 +279,7 @@ export class Delegation {
     const subscribed = threadId !== threads.subscribedThreadId ? client.call('threads.subscribe', { threadId, ...this.ctx.streams.params(threadId) }) : null;
     // The transcript draws a call's name and status, never its output.
     const fetched = client.call('threads.get', { threadId, limit: INITIAL_MESSAGE_PAGE, maxBytes: INITIAL_PAGE_BYTES, ...lightPage(this.ctx),
-      ...(s.core?.features?.threadSnapshots ? { sync: true as const } : {}) });
+      ...(this.ctx.store.core?.features?.threadSnapshots ? { sync: true as const } : {}) });
     // A run that a newer selection overtakes returns early and never awaits the read.
     fetched.catch(() => undefined);
     try {

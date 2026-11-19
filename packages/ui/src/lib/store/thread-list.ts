@@ -1,4 +1,4 @@
-import { RpcErrorCode, type CoreInfo, type ListCursor, type ThreadId, type ThreadSummary } from '@boite/contracts';
+import { RpcErrorCode, type CoreInfo, type ListCursor, type ThreadId, type ThreadListChanges, type ThreadSummary } from '@boite/contracts';
 import { RpcFailure, type Client } from '../client';
 
 /** A list read: the whole list, or the rows changed since the cursor sent. `cursor` is null from a core without `listChanges`. */
@@ -21,7 +21,7 @@ export async function readThreadList(client: Client, core: CoreInfo | null, sinc
     const threads = [...first.threads];
     let next: string | undefined = first.next;
     while (next && current()) {
-      const page = await client.call('threads.listChanges', { page: next });
+      const page: ThreadListChanges = await client.call('threads.listChanges', { page: next });
       if (page.kind !== 'full') throw new Error('Expected a page of the full thread list');
       threads.push(...page.threads);
       next = page.next;
