@@ -107,11 +107,11 @@ test('the slots equal a sum of the raw turns after a write, a rewrite, a move, a
   agree(journal);
   expect(journal.db.query('SELECT SUM(turns) AS turns FROM usage_slots').get()).toEqual({ turns: 7 });
 
-  // A project removal keeps the turns, under no project.
+  // A project removal keeps the turns, under their project.
   const client = await harness.connect();
   await client.call('projects.remove', { projectId: echo.projectId! });
   agree(journal);
-  expect(journal.db.query('SELECT DISTINCT project_id FROM usage_slots').all()).toEqual([{ project_id: '' }]);
+  expect(journal.db.query('SELECT DISTINCT project_id FROM usage_slots').all()).toEqual([{ project_id: echo.projectId }]);
   expect(journal.db.query('SELECT SUM(turns) AS turns FROM usage_slots').get()).toEqual({ turns: 7 });
 });
 
@@ -169,9 +169,10 @@ test('usage.history keeps one project\'s turns, lists every project with its nam
   // A project whose row is gone still names its turns, as removed.
   journal.db.query('DELETE FROM projects WHERE id = ?').run('prj_other');
   expect(byProject(await client.call('usage.history', { edges: EDGES })).prj_other).toEqual([null, true, 1, 20]);
-  // A removed project's turns count under no project.
+  // A removed project keeps its name and its turns, marked removed; the filter still finds them.
   await client.call('projects.remove', { projectId: echo.projectId! });
-  expect(byProject(await client.call('usage.history', { edges: EDGES })).null).toEqual([null, false, 2, 40]);
+  expect(byProject(await client.call('usage.history', { edges: EDGES }))[project.id]).toEqual([project.name, true, 1, 10]);
+  expect((await client.call('usage.history', { edges: EDGES, projectId: project.id })).rows.map((row) => row.turns)).toEqual([1]);
 });
 
 test('usage.thread lists a thread\'s turns oldest first, keeps the newest when capped, and totals its subagents', async () => {

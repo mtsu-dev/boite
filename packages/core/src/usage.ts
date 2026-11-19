@@ -243,9 +243,7 @@ function threadTotals(core: Core, rows: readonly UsageThreadRow[], providerId?: 
 
 /** The name of each project and whether it left the list; a row that is gone gives no name. */
 function projectNames(core: Core, ids: readonly string[]): Map<string, { name: string; removed: boolean }> {
-  const db = core.journal.db;
-  const softRemoval = db.query("SELECT 1 FROM pragma_table_info('projects') WHERE name = 'removed_at'").get() !== null;
-  const rows = db.query(`SELECT id, name, ${softRemoval ? 'removed_at IS NOT NULL' : '0'} AS removed FROM projects WHERE id IN (SELECT value FROM json_each(?))`)
+  const rows = core.journal.db.query('SELECT id, name, removed_at IS NOT NULL AS removed FROM projects WHERE id IN (SELECT value FROM json_each(?))')
     .all(JSON.stringify(ids)) as { id: string; name: string; removed: number }[];
   return new Map(rows.map((row) => [row.id, { name: row.name, removed: row.removed !== 0 }]));
 }
