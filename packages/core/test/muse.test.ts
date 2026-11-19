@@ -500,6 +500,7 @@ describe('muse driver', () => {
 
   test('a crash after Muse starts streaming but before turn/start replies keeps the native session', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'boite-muse-restart-'));
+    const recoveredDir = mkdtempSync(join(tmpdir(), 'boite-muse-recovered-'));
     const first = await startTestCore({ dataDir });
     harness = first;
     logFile = join(dataDir, 'muse-fake.log');
@@ -516,11 +517,14 @@ describe('muse driver', () => {
       expect(first.core.journal.getTurn(turn.id)?.execution?.sessionId).toBe(saved!);
       expect(first.core.journal.getTurn(turn.id)?.status).toBe('running');
 
-      first.core.journal.close();
-      first.core.threads.releaseAgent(threadId);
+      // Take the journal at the crash boundary, then clean up the live test process.
+      first.core.journal.flushDeltas();
+      first.core.journal.db.query('VACUUM INTO ?').run(join(recoveredDir, 'journal.db'));
+      first.core.procs.killTree(threadId);
       await first.stop();
       delete process.env['MUSE_FAKE_TURN_ACK'];
-      reopened = await startTestCore({ dataDir });
+      writeDescriptor(recoveredDir);
+      reopened = await startTestCore({ dataDir: recoveredDir });
       await waitFor(() => reopened!.core.journal.listTurns(threadId)[1]?.status === 'done', 10_000);
       expect(fakeLog()).toContain(`session/resume ${saved} excludeItems=true`);
       expect(reopened.core.journal.getThread(threadId)?.sessionId).toBe(saved!);
@@ -530,6 +534,7 @@ describe('muse driver', () => {
       await reopened?.stop();
       await first.stop();
       await removeDir(dataDir);
+      await removeDir(recoveredDir);
     }
   }, 20_000);
 
