@@ -360,7 +360,7 @@ export class SharedProjects {
     let result: unknown;
     if (p.method === 'view') result = shared;
     else if (p.method === 'threads') result = this.localThreads(ctx);
-    else if (p.method === 'search') result = this.#localSearch(ctx, p.params?.query);
+    else if (p.method === 'search') result = await this.#localSearch(ctx, p.params?.query);
     else if (p.method === 'read') result = this.#localRead(ctx, p.params);
     else if (p.method === 'subscribe') result = this.subscriptions.receiveSubscribe(ctx, p.params);
     else if (p.method === 'changed') result = await this.subscriptions.receiveChanged(ctx, p.params);
@@ -407,12 +407,17 @@ export class SharedProjects {
     const current = this.scope(p, connection);
     return { threads: [...this.localThreads(current), ...remote], unavailable };
   }
-  #localSearch(ctx: SharedPeerContext, query: unknown): AgentMatch[] {
+  async #localSearch(ctx: SharedPeerContext, query: unknown): Promise<AgentMatch[]> {
     const entries = this.localThreads(ctx);
     const words = searchWords(query);
-    return [true, false].flatMap(read => searchContacts(this.core.journal.db, entries.filter(t => t.readThreads === read).map(t => ({...t.agent, threadId: t.ref.threadId})), words, read, redactSharedText)).map(match => {
-      const ref = entries.find(t => t.ref.threadId === match.threadId)!.ref;
-      return {...match, ...ref.address, sharedThread: ref};
+    const found: AgentMatch[] = [];
+    for (const read of [true, false]) found.push(...await searchContacts(this.core.journal.db, entries.filter(t => t.readThreads === read).map(t => ({...t.agent, threadId: t.ref.threadId})), words, read, redactSharedText));
+    // The chat was read off this thread: a thread closed or made unreadable meanwhile is left out.
+    const now = new Map(this.localThreads(ctx).map(t => [t.ref.threadId, t]));
+    return found.flatMap(match => {
+      const entry = now.get(match.threadId);
+      if (!entry || (match.matched.includes('chat') && !entry.readThreads)) return [];
+      return [{...match, ...entry.ref.address, sharedThread: entry.ref}];
     });
   }
   async search(p: SharedProjectScope & { query: string }, connection?: Connection): Promise<{ matches: AgentMatch[]; unavailable: SharedProjectRef[] }> {
@@ -433,7 +438,7 @@ export class SharedProjects {
       });
     } catch (error) { if (error instanceof RpcFailure && error.code !== RpcErrorCode.Unavailable) throw error; unavailable.push(ctx.remote); }
     const current = this.scope(p, connection);
-    return { matches: [...this.#localSearch(current, p.query), ...remote], unavailable };
+    return { matches: [...await this.#localSearch(current, p.query), ...remote], unavailable };
   }
   #localRead(ctx: SharedPeerContext, p: SharedProjectPeerMethods['read']['params']): AgentTranscript {
     const target = threadRef(p?.target);

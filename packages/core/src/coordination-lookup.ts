@@ -2,6 +2,7 @@ import { fitTranscript, TRANSCRIPT_ENTRY_PAGE, TRANSCRIPT_ENTRY_TEXT, TRANSCRIPT
 import type { Database } from 'bun:sqlite';
 import { address, text } from './coordination-letter.ts';
 import { invalidParams } from './errors.ts';
+import { readJournal } from './journal-reads.ts';
 import { threadRef } from './contacts/project-policy.ts';
 
 /** At most this many words in a search; each costs one scan of the candidates' chat. */
@@ -49,17 +50,20 @@ const CHAT_TEXT = "j.value->>'type' = 'text' AND m.role IN ('user', 'assistant')
 
 /**
  * Contacts among `candidates` where every word appears in a field or in the
- * chat. Field matches rank first, then the most recently active.
+ * chat. Field matches rank first, then the most recently active. The chat is
+ * read off the core's thread (`journal-reads.ts`): the caller awaits, so it
+ * checks again afterwards what the asker may still reach.
  */
-export function searchContacts(db: Database, candidates: AgentContact[], words: string[], readChat = true, sanitize?: (value: string) => string): AgentMatch[] {
+export async function searchContacts(db: Database, candidates: AgentContact[], words: string[], readChat = true, sanitize?: (value: string) => string): Promise<AgentMatch[]> {
   if (candidates.length === 0) return [];
   const ids = JSON.stringify(candidates.map(contact => contact.threadId));
   const inChat = new Map<string, Set<string>>();
-  for (const word of readChat ? words : []) {
-    const rows = db.query(`SELECT DISTINCT m.thread_id AS id${sanitize ? ", j.value->>'text' AS text" : ''} FROM messages m, json_each(m.parts) j WHERE m.thread_id IN (SELECT value FROM json_each(?)) AND ${CHAT_TEXT} AND instr(lower(j.value->>'text'), ?) > 0`).all(ids, word) as { id: string; text?: string }[];
-    inChat.set(word, new Set(rows.filter(row => !sanitize || sanitize(row.text!) === row.text).map(row => row.id)));
+  if (readChat) {
+    const sql = `SELECT DISTINCT m.thread_id AS id${sanitize ? ", j.value->>'text' AS text" : ''} FROM messages m, json_each(m.parts) j WHERE m.thread_id IN (SELECT value FROM json_each(?)) AND ${CHAT_TEXT} AND instr(lower(j.value->>'text'), ?) > 0`;
+    const found = await readJournal(db, words.map(word => ({ sql, params: [ids, word] }))) as { id: string; text?: string }[][];
+    words.forEach((word, index) => inChat.set(word, new Set(found[index]!.filter(row => !sanitize || sanitize(row.text!) === row.text).map(row => row.id))));
   }
-  const matches: AgentMatch[] = [];
+  const matches: (AgentMatch & { chatWords: string[] })[] = [];
   for (const contact of candidates) {
     const matched = new Set<Field>();
     const chatWords: string[] = [];
@@ -73,15 +77,22 @@ export function searchContacts(db: Database, candidates: AgentContact[], words: 
     }
     if (!all) continue;
     if (chatWords.length > 0) matched.add('chat');
-    matches.push({ ...contact, matched: [...matched], excerpts: chatWords.length > 0 ? excerpts(db, contact.threadId, chatWords, sanitize) : [] });
+    matches.push({ ...contact, matched: [...matched], excerpts: [], chatWords });
   }
   const fieldHits = (match: AgentMatch) => match.matched.filter(field => field !== 'chat').length;
-  return matches.sort((a, b) => fieldHits(b) - fieldHits(a) || (b.activeAt ?? 0) - (a.activeAt ?? 0)).slice(0, SEARCH_RESULTS);
+  // Only the matches returned get excerpts: each costs a read of its thread's chat.
+  const kept = matches.sort((a, b) => fieldHits(b) - fieldHits(a) || (b.activeAt ?? 0) - (a.activeAt ?? 0)).slice(0, SEARCH_RESULTS);
+  const quoted = kept.filter(match => match.chatWords.length > 0);
+  const texts = await readJournal(db, quoted.map(match => ({ sql: EXCERPTS, params: [match.threadId, match.chatWords[0]!] }))) as { text: string }[][];
+  const excerptsOf = new Map(quoted.map((match, index) => [match.threadId, excerpts(texts[index]!, match.chatWords, sanitize)]));
+  return kept.map(({ chatWords: _, ...match }) => ({ ...match, excerpts: excerptsOf.get(match.threadId) ?? [] }));
 }
 
-/** Up to three recent excerpts of one thread's chat, around the first word each message contains. */
-function excerpts(db: Database, threadId: string, words: string[], sanitize?: (value: string) => string): string[] {
-  const rows = db.query(`SELECT j.value->>'text' AS text FROM messages m, json_each(m.parts) j WHERE m.thread_id = ? AND ${CHAT_TEXT} AND instr(lower(j.value->>'text'), ?) > 0 ORDER BY m.created_at DESC LIMIT 3`).all(threadId, words[0]!) as { text: string }[];
+/** Up to three recent messages of one thread's chat that contain a word. */
+const EXCERPTS = `SELECT j.value->>'text' AS text FROM messages m, json_each(m.parts) j WHERE m.thread_id = ? AND ${CHAT_TEXT} AND instr(lower(j.value->>'text'), ?) > 0 ORDER BY m.created_at DESC LIMIT 3`;
+
+/** An excerpt of each of `rows`, around the first of `words` it contains. */
+function excerpts(rows: { text: string }[], words: string[], sanitize?: (value: string) => string): string[] {
   return rows.filter(row => !sanitize || sanitize(row.text) === row.text).map(row => excerpt(row.text, words.find(word => row.text.toLowerCase().includes(word)) ?? words[0]!));
 }
 

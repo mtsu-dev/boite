@@ -413,6 +413,11 @@ boite threads contacts                      # other owners' Boites and the proje
 boite threads ask --contact <name> "An agent on a project like our parser" --wait
 ```
 
+`threads find` reads the chat through a worker's own journal connection
+(`journal-reads.ts`), one search at a time: a scan of many threads takes seconds
+on a large journal and never holds the core's thread. A thread closed or made
+unreadable during the scan is dropped from the answer.
+
 An agent is named by its thread id when it runs on the same core, or by
 `<machine>/<thread-id>` or `<core-id prefix>/<thread-id>` on a linked one. The
 CLI resolves the short form against the directory and refuses a name that

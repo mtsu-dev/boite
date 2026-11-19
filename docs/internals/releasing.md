@@ -334,7 +334,8 @@ name is `Boite`. The install is per user and asks for no elevation.
 - `jobs-worker.js`, beside the core because that is where the core looks for it.
   Without it the trace reports `poll` instead of `events`.
 - `guard-worker.js`, the focus guard and the audio mute.
-- `artifact-retention-worker.js`, the background scan for unused deliverables.
+- `artifact-retention-worker.js`, the journal's reader: the background scan for unused
+  deliverables and the chat scan of `boite threads find`.
 - `boite` and `boite.cmd`, the CLI shims the core puts on an agent's PATH; each
   invokes the adjacent core's CLI entry ([cli.md](cli.md)).
 - `boite.exe`, the same CLI without cmd.exe, which Windows finds first; built
