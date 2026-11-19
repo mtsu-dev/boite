@@ -136,32 +136,42 @@ function pidsIn(text: string): number[] {
 interface ProcSnapshot {
   at: number;
   children: Map<number, number[]>;
+  /** Only the stat lines this walk read. */
   stats: Map<number, string>;
+  parents: Map<number, number>;
   available: boolean;
 }
 
-/** Parent links and raw stat lines from the same procfs walk. */
-function scanProc(read: ProcRead): Omit<ProcSnapshot, 'at'> {
+/**
+ * Parent links and raw stat lines from the same procfs walk. A pid in `known`
+ * keeps the parent it had there and its stat file is not read.
+ */
+function scanProc(read: ProcRead, known?: Map<number, number>): Omit<ProcSnapshot, 'at'> {
   const children = new Map<number, number[]>();
   const stats = new Map<number, string>();
+  const parents = new Map<number, number>();
   const directory = read('/proc');
   for (const pid of pidsIn(directory ?? '')) {
-    const stat = read(`/proc/${pid}/stat`);
-    if (stat !== null) stats.set(pid, stat);
-    const parent = stat === null ? null : statField(stat, 4);
+    let parent = known?.get(pid) ?? null;
+    if (parent === null) {
+      const stat = read(`/proc/${pid}/stat`);
+      if (stat !== null) stats.set(pid, stat);
+      parent = stat === null ? null : statField(stat, 4);
+    }
     if (parent === null) continue;
+    parents.set(pid, parent);
     const siblings = children.get(parent) ?? [];
     siblings.push(pid);
     children.set(parent, siblings);
   }
-  return { children, stats, available: directory !== null };
+  return { children, stats, parents, available: directory !== null };
 }
 
 /**
- * How old the machine-wide parent scan may get where the kernel has `children`
- * files. Those files list a task's children only while it runs and never a
- * child its thread's exit hands over, so the scan still runs, five times less
- * often than the 500 ms it lives without them, and catches every descendant they left out.
+ * Where the kernel has `children` files, they can still leave a live child
+ * out, so `/proc` is listed on every tick as before, but only a pid new to
+ * the listing has its stat file read. Every stat file is read again this
+ * often, for a parent that changed under a pid the listing already knew.
  */
 export const BACKSTOP_SCAN_MS = 5000;
 
@@ -174,6 +184,9 @@ export class LinuxLoad {
   readonly #last = new Map<string, { ticks: Map<number, number>; births: Map<number, number | null>; at: number }>();
   /** One parent scan serves every thread sampled in the same tick. */
   #scan: ProcSnapshot | null = null;
+  /** The listing of `/proc` beside the children files, and when it last read every stat file. */
+  #listing: ProcSnapshot | null = null;
+  #listingFullAt = -Infinity;
   /**
    * Each sampled process's name, per thread, while it stays in the sample.
    * `/proc/<pid>/comm` is read again only for a new birth or when the stat
@@ -197,10 +210,19 @@ export class LinuxLoad {
 
   forget(threadId: string): void { this.#resources.forget(threadId); this.#names.delete(threadId); }
 
-  #snapshot(fresh = false, maxAgeMs = 500): ProcSnapshot {
+  #snapshot(fresh = false): ProcSnapshot {
     const at = this.now();
-    if (fresh || this.#scan === null || at - this.#scan.at >= maxAgeMs) this.#scan = { at, ...scanProc(this.read) };
+    if (fresh || this.#scan === null || at - this.#scan.at >= 500) this.#scan = { at, ...scanProc(this.read) };
     return this.#scan;
+  }
+
+  /** `/proc` listed at the scan's 500 ms pace, its stat files read only for new pids between full reads. */
+  #listed(): ProcSnapshot {
+    const at = this.now();
+    if (this.#listing !== null && at - this.#listing.at < 500) return this.#listing;
+    const full = at - this.#listingFullAt >= BACKSTOP_SCAN_MS;
+    if (full) this.#listingFullAt = at;
+    return this.#listing = { at, ...scanProc(this.read, full ? undefined : this.#listing?.parents) };
   }
 
   /**
@@ -308,11 +330,12 @@ export class LinuxLoad {
     let memoryBytes = 0;
     const workingSets: NonNullable<ProcessSample['workingSets']> = [];
     let processes = 0;
-    // The machine-wide scan costs a read per process on the host: every 500 ms
-    // without `children` files, every BACKSTOP_SCAN_MS with them.
+    // Without `children` files, a stat read per process on the host every 500 ms;
+    // with them, the listing only reads the stat files of new pids.
     let scan: ProcSnapshot | null = null;
-    /** The parent the scan alone named for a descendant: a scan seconds old may name a pid that went elsewhere since. */
-    const parents = new Map<number, number>();
+    /** Descendants only the listing named: a parent it remembers may be stale, so their own stat line must name a counted parent. */
+    const scanOnly = new Set<number>();
+    const counted = new Set<number>();
     const at = this.now();
     const pending = new Set(pids);
     let owners = this.#owners;
@@ -334,12 +357,13 @@ export class LinuxLoad {
         : this.read(`/proc/${pid}/stat`);
       const used = stat === null ? null : cpuTicks(stat);
       if (used === null) continue;
-      if (parents.has(pid) && statField(stat ?? '', 4) !== parents.get(pid)) continue;
+      if (scanOnly.has(pid) && !counted.has(statField(stat ?? '', 4) ?? -1)) continue;
       const birth = stat === null ? null : statField(stat, 22);
       const expectedBirth = this.#births.get(threadId)?.get(pid);
       if (pids.has(pid) && expectedBirth != null && birth !== expectedBirth) continue;
       if (birth !== null && Number.isSafeInteger(birth) && (!pids.has(pid) || expectedBirth === birth)) members.push({ pid, birth });
       processes += 1;
+      counted.add(pid);
       ticks.set(pid, used);
       sampledBirths.set(pid, birth);
       const bytes = status === null ? null : residentBytes(status);
@@ -351,10 +375,10 @@ export class LinuxLoad {
       memoryBytes += bytes ?? 0;
       // A separately registered agent owns its own subtree, even when nested.
       const listed = this.#taskChildren(pid);
-      scan ??= this.#snapshot(false, listed === null ? 500 : BACKSTOP_SCAN_MS);
+      scan ??= listed === null ? this.#snapshot() : this.#listed();
       for (const child of [...listed ?? [], ...scan.children.get(pid) ?? []]) {
-        if ((owners.has(child) && owners.get(child) !== threadId) || pending.has(child)) continue;
-        if (!listed?.includes(child)) parents.set(child, pid);
+        if (owners.has(child) && owners.get(child) !== threadId) continue;
+        if (listed?.includes(child)) scanOnly.delete(child); else if (!pending.has(child)) scanOnly.add(child);
         pending.add(child);
       }
     }

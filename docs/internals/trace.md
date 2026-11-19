@@ -544,10 +544,11 @@ this fallback, not complete process-tree event tracking.
 
 Linux samples procfs on each load tick for registered processes and their descendants.
 Descendants come from each task's `/proc/<pid>/task/<tid>/children`, read on
-every tick. Those files miss a child whose parent thread exited, so a scan of
-every process's stat line backs them up, shared and reused for 5 s; without
-those files that scan alone answers, reused for 500 ms. A descendant only a
-reused scan names counts only while its stat line still names that parent.
+every tick. Those files can leave a live child out, so `/proc` is still listed
+at the old 500 ms pace, but only a pid new to the listing has its stat line
+read; every stat line is read again each 5 s. A descendant only the listing
+names counts only while its own stat line names a process already counted.
+Without those files, a scan of every stat line answers alone, reused for 500 ms.
 A stop by pid still scans the whole machine beside the children files before
 it signals anything.
 CPU uses `/proc/<pid>/stat`; memory uses `RssAnon + RssShmem`, falling back to

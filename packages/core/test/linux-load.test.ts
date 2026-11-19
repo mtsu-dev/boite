@@ -412,7 +412,7 @@ describe('a thread load on Linux', () => {
     expect(load.sample('thr')).toMatchObject({ processes: 3, memoryBytes: 8000 * 1024 });
   });
 
-  test('a thread whose kernel has children files lists every process only once per backstop period', () => {
+  test('a thread whose kernel has children files reads an unrelated process only once per backstop period', () => {
     const proc = new FakeProc();
     proc.set(100, 10, 0, 1000);
     proc.files.set('/proc/101/stat', stat(101, 10, 0, 'cc', 100));
@@ -430,10 +430,43 @@ describe('a thread load on Linux', () => {
       expect(load.sample('thr')).toMatchObject({ processes: 2, memoryBytes: 3000 * 1024 });
       proc.at += 1000;
     }
-    expect(reads.filter(path => path === '/proc')).toHaveLength(1);
     expect(reads.filter(path => path.startsWith('/proc/200/'))).toEqual(['/proc/200/stat']);
     expect(load.sample('thr')?.processes).toBe(2);
-    expect(reads.filter(path => path === '/proc')).toHaveLength(2);
+    expect(reads.filter(path => path.startsWith('/proc/200/'))).toEqual(['/proc/200/stat', '/proc/200/stat']);
+  });
+
+  test('a descendant that starts after a sample and that the children files leave out counts from the next tick', () => {
+    const proc = new FakeProc();
+    proc.set(100, 10, 0, 1000);
+    proc.files.set('/proc', '100');
+    proc.files.set('/proc/100/task/100/children', '');
+    const load = new LinuxLoad(2, proc.read, proc.now);
+    load.add('thr', 100);
+    const counts = [load.sample('thr')?.processes];
+    proc.files.set('/proc/102/stat', stat(102, 10, 0, 'rustc', 100));
+    proc.files.set('/proc/102/status', status(5000));
+    proc.files.set('/proc', '100 102');
+    for (let tick = 0; tick < 5; tick++) { proc.at += 1000; counts.push(load.sample('thr')?.processes); }
+    expect(counts).toEqual([1, 2, 2, 2, 2, 2]);
+  });
+
+  test('a descendant that moved under another root of the thread still counts', () => {
+    const proc = new FakeProc();
+    proc.set(100, 10, 0, 1000);
+    proc.set(200, 10, 0, 1000);
+    proc.files.set('/proc/203/stat', stat(203, 10, 0, 'rustc', 100));
+    proc.files.set('/proc/203/status', status(5000));
+    proc.files.set('/proc', '100 200 203');
+    proc.files.set('/proc/100/task/100/children', '');
+    proc.files.set('/proc/200/task/200/children', '');
+    const load = new LinuxLoad(2, proc.read, proc.now);
+    load.add('thr', 100);
+    load.add('thr', 200);
+    expect(load.sample('thr')?.workingSets?.map(set => set.pid)).toEqual([100, 200, 203]);
+    proc.at += 1000;
+    proc.files.set('/proc/203/stat', stat(203, 10, 0, 'rustc', 200));
+    proc.files.set('/proc/200/task/200/children', '203');
+    expect(load.sample('thr')?.workingSets?.map(set => set.pid)).toEqual([100, 200, 203]);
   });
 
   test('a member the backstop scan names is dropped once its pid has another parent', () => {
