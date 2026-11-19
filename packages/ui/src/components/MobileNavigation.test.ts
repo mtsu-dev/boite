@@ -122,7 +122,7 @@ test('selecting a conversation beyond the first mobile window finishes loading i
   });
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
-  const summary = store.threads[0]!;
+  const summary = store.threads.find(thread => thread.id === 't-trace')!;
   const history = await client.call('threads.get', { threadId: summary.id });
   expect(history.messages.length).toBeGreaterThan(0);
   store.threads = Array.from({ length: 1000 }, (_, index) => ({ ...summary, id: index === 999 ? summary.id : `offscreen-${index}`, updatedAt: 1000 - index }));

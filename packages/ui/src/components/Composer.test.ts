@@ -1918,7 +1918,10 @@ test('Send pressed during a file read goes once the file is ready, unless the us
   await waitFor(() => store.openThread!.messages.length > before && !store.busy);
   const sent = store.openThread!.messages.filter(m => m.role === 'user').at(-1)!;
   expect(sent.parts.some(part => part.type === 'text' && part.text === 'Read these notes, all of them')).toBe(true);
-  expect(sent.parts).toContainEqual({ type: 'file', mimeType: 'text/plain', name: 'notes.txt', data: btoa('notes') });
+  const history = await store.client!.call('threads.get', { threadId: 't-trace' });
+  expect(history.messages.find(message => message.id === sent.id)?.parts).toContainEqual({
+    type: 'file', mimeType: 'text/plain', name: 'notes.txt', data: btoa('notes')
+  });
   expect(input().value).toBe('');
 });
 
