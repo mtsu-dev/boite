@@ -154,7 +154,11 @@ export function parse(argv: string[]): Parsed {
       return value;
     };
     const owner = OWNED.find(family => family.owns(parsed.positional));
-    const text = owner?.text?.(parsed.positional) === true;
+    const [command, action] = parsed.positional;
+    const desktopHelp = command === 'desktop' && action !== undefined && (arg === '--help' || arg === '-h')
+      && !parsed.positional.includes('--') && (action !== 'run' || parsed.positional.length === 2);
+    if (desktopHelp) { helpFlag = true; continue; }
+    const text = !(command === 'desktop' && helpFlag) && owner?.text?.(parsed.positional) === true;
     // `--` ends Boite's flags: every word after it is the command's, `task add -- --json` and
     // `browser run -- batch.js --core` included. Inside a command's text it is that text,
     // and `secret run <ref> -- <command>` reads its own.
@@ -225,7 +229,7 @@ export function parse(argv: string[]): Parsed {
   const [command, action, last] = parsed.positional;
   if (command === 'help' && literalFrom > 0) parsed.help = canonicalCommand(parsed.positional.slice(1, literalFrom));
   else if (helpFlag) parsed.help = parsed.positional.slice(0, literalFrom);
-  else if (action === 'help' && parsed.positional.length === 2 && literalFrom > 1) parsed.help = parsed.positional.slice(0, 1);
+  else if (action === 'help' && parsed.positional.length === 2 && literalFrom > 1 && !isPluginCommandWord(command)) parsed.help = parsed.positional.slice(0, 1);
   else if (command === 'settings' && action === 'bot' && last === 'help' && parsed.positional.length === 3 && literalFrom > 2) parsed.help = ['settings', 'bot'];
   return parsed;
 }

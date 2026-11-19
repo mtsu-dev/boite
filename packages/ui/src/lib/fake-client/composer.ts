@@ -1,6 +1,6 @@
 import { sha256 } from '@noble/hashes/sha2.js';
 import {
-  answerAttachmentError, ATTACHMENTS_PER_TURN, ATTACHMENTS_TOTAL_MAX_BYTES, decodedBytes, composerBatch, composerActivity, isComposerActivity, RpcErrorCode, type Attachment, type ComposerChoice, type ComposerQueuedPrompt,
+  answerAttachmentError, ATTACHMENTS_PER_TURN, ATTACHMENTS_TOTAL_MAX_BYTES, decodedBytes, composerBatch, composerActivity, composerInputThreadId, isComposerActivity, privateTerminalComposerId, RpcErrorCode, type Attachment, type ComposerChoice, type ComposerQueuedPrompt,
   type ComposerRecord, type ComposerValue, type RpcEventName, type RpcEvents,
 } from '@boite/contracts';
 import { RpcFailure } from '../client';
@@ -33,6 +33,7 @@ export class FakeComposerState {
   attach(ctx: FakeContext, methods: () => FakeMethods): void {
     this.clients.add(ctx);
     this.methods.set(ctx, methods);
+    this.schedule(ctx);
   }
 
   detach(ctx: FakeContext): void {
@@ -43,20 +44,22 @@ export class FakeComposerState {
     for (const [id, owner] of this.assetOwners) if (owner === ctx) { this.assets.delete(id); this.assetOwners.delete(id); }
   }
 
-  visible(key: string, ctx: FakeContext): boolean { return !this.owners.has(key) || this.owners.get(key) === ctx; }
+  visible(key: string, ctx: FakeContext): boolean { return !this.records.get(key)?.privateMode || this.owners.get(key) === ctx; }
 
 
   forgetThread(id: string): void {
-    const key = keyOf('inputs', id);
-    this.records.delete(key); this.consumed.delete(key);
+    for (const recordId of [id, privateTerminalComposerId(id)]) {
+      const key = keyOf('inputs', recordId);
+      this.records.delete(key); this.consumed.delete(key); this.owners.delete(key);
+    }
     this.boundaries.delete(id);
     this.forced.delete(id);
-    for (const request of this.cliPrompts.keys()) if (request.startsWith(`${id}:`)) this.cliPrompts.delete(request);
+    for (const request of this.cliPrompts.keys()) if (request.startsWith(`cli_${id}:`)) this.cliPrompts.delete(request);
   }
 
   write(section: ComposerRecord['section'], id: string, value: ComposerValue | null, owner?: FakeContext): ComposerRecord {
     const key = keyOf(section, id);
-    const privateMode = !!owner || this.owners.has(key);
+    const privateMode = !!owner || this.owners.has(key) || (section === 'inputs' && composerInputThreadId(id) !== id);
     const record: ComposerRecord = { section, id, revision: (this.records.get(key)?.revision ?? 0) + 1, updatedAt: Date.now(), value: copy(value), ...(privateMode ? { privateMode: true } : {}) };
     if (owner) this.owners.set(key, owner);
     this.records.set(key, record);
@@ -90,10 +93,11 @@ export class FakeComposerState {
     this.pending = true;
     queueMicrotask(() => {
       this.pending = false;
-      if (!this.clients.has(ctx)) return;
+      const active = this.clients.has(ctx) ? ctx : this.clients.values().next().value;
+      if (!active) return;
       for (const [key, row] of this.records) {
         if (!row.value?.input.queued.length || row.value.input.paused || this.delivering.has(key)) continue;
-        void this.deliver(this.owners.get(key) ?? ctx, key);
+        void this.deliver(this.owners.get(key) ?? active, key);
       }
     });
   }
@@ -107,15 +111,16 @@ export class FakeComposerState {
     const head = value.input.queued[0]!;
     if (head.request?.failed !== undefined) return;
     if (row.section === 'drafts') { await this.launch(ctx, row, methods); return; }
-    const thread = ctx.threads.get(row.id);
+    const threadId = composerInputThreadId(row.id);
+    const thread = ctx.threads.get(threadId);
     if (!thread || thread.archived || ['queued', 'waiting'].includes(thread.status)) return;
-    if ([...ctx.pendingPermissions.values()].some(item => item.request.threadId === row.id) || [...ctx.pendingQuestions.values()].some(item => item.request.threadId === row.id && !item.request.async)) return;
+    if ([...ctx.pendingPermissions.values()].some(item => item.request.threadId === threadId) || [...ctx.pendingQuestions.values()].some(item => item.request.threadId === threadId && !item.request.async)) return;
     const running = thread.status === 'running';
     const forced = this.forced.get(row.id) === head.id;
     this.forced.delete(row.id);
     if (running && forced) {
       this.delivering.set(key, [head]);
-      try { await ctx.stopTurn(row.id); }
+      try { await ctx.stopTurn(threadId); }
       finally { this.delivering.delete(key); this.schedule(ctx); }
       return;
     }
@@ -134,20 +139,20 @@ export class FakeComposerState {
       if (running) {
         const turn = thread.turns.findLast(turn => turn.status === 'running');
         if (!turn || !sameExecutionChoice(choiceOf({ ...thread, ...turn.execution }), choiceOf(head.choice ?? thread))) return;
-        const outcome = await methods['turns.steer']({ threadId: row.id, turnId: turn.id, ...payload, clientRequestId: requestId, expectedSelectionVersion: thread.selectionVersion ?? 0 });
+        const outcome = await methods['turns.steer']({ threadId, turnId: turn.id, ...payload, clientRequestId: requestId, expectedSelectionVersion: thread.selectionVersion ?? 0 });
         if (!outcome.accepted) { this.boundaries.delete(row.id); return; }
       } else {
         this.boundaries.delete(row.id);
         const command = composerActivity(payload.prompt);
-        if (command) await methods['threads.activity.set']({ threadId: row.id, ...command, ...(payload.attachments.length ? { attachments: payload.attachments } : {}) });
+        if (command) await methods['threads.activity.set']({ threadId, ...command, ...(payload.attachments.length ? { attachments: payload.attachments } : {}) });
         else {
-          const chosen = head.request?.choice ?? head.choice;
+          const chosen = head.id.startsWith('cli_') ? undefined : head.request?.choice ?? head.choice;
           const selection = choiceOf(thread);
           if (chosen) Object.assign(thread, chosen, { permissionMode: selection.permissionMode });
           // `turns.start` fixes the turn's execution before its first await: the whole picker goes back at once, before any update can land.
           // The experiments it was queued with decide an automatic goal, as in the core.
           ctx.queuedExperiments = head.experiments ?? [];
-          const started = methods['turns.start']({ threadId: row.id, ...payload, clientRequestId: requestId });
+          const started = methods['turns.start']({ threadId, ...payload, clientRequestId: requestId });
           ctx.queuedExperiments = null;
           if (chosen) Object.assign(thread, selection);
           await started;
@@ -220,33 +225,45 @@ export function composerMethods(ctx: FakeContext, methods: () => FakeMethods): P
       const { threadId, prompt, clientRequestId: requestId } = params;
       if (!prompt?.trim() || !/^[A-Za-z0-9_-]{8,128}$/.test(requestId)) throw refusal('composer.enqueue: expected a non-empty prompt and an 8 to 128 character request id');
       const thread = ctx.thread(threadId);
-      const id = `${threadId}:${requestId}`;
-      const previous = ctx.turnRequests.get(id);
+      const id = `cli_${threadId}:${requestId}`;
+      const previous = ctx.turnRequests.get(`${threadId}:${requestId}`);
       if (previous) {
         if (previous.content !== JSON.stringify([prompt, []])) throw refusal('clientRequestId was already used for different content');
         return { requestId, status: 'sent', turnId: previous.turn.id };
       }
-      if (thread.incognito) {
-        const turn = await methods()['turns.start'](params);
-        return { requestId, status: 'sent', turnId: turn.id };
-      }
-      const key = keyOf('inputs', threadId);
+      const recordId = thread.incognito ? privateTerminalComposerId(threadId) : threadId;
+      const key = keyOf('inputs', recordId);
       const record = state.records.get(key);
       const queued = record?.value?.input.queued.find(item => item.id === id);
       const consumed = state.consumed.get(key)?.has(id);
       if ((queued && queued.text !== prompt) || (consumed && state.cliPrompts.get(id) !== prompt)) throw refusal('clientRequestId was already used for different content');
       if (consumed) return { requestId, status: 'sent' };
-      if (queued) return { requestId, status: record?.value?.input.paused ? 'held' : 'queued', ...(queued.request?.failed ? { reason: queued.request.failed } : {}) };
+      if (queued) {
+        if (thread.incognito && queued.request?.failed && record?.value?.input.queued[0] === queued) {
+          const value = copy(record.value);
+          delete value.input.queued[0]!.request!.failed;
+          value.input.paused = false;
+          state.write('inputs', recordId, value);
+          state.schedule(ctx);
+          return { requestId, status: 'queued' };
+        }
+        return { requestId, status: record?.value?.input.paused ? 'held' : 'queued', ...(queued.request?.failed ? { reason: queued.request.failed } : {}) };
+      }
       if (thread.archived || ctx.projects.some(project => project.id === thread.projectId && project.archived)) throw refusal('cannot send a prompt in an archived conversation or project');
       const value: ComposerValue = copy(record?.value ?? { input: { text: '', attachments: [], queued: [], paused: false } });
-      const choice = choiceOf(thread);
-      value.input.queued.push({ id, text: prompt, attachments: [], choice, request: { id: requestId, choice, queuedAt: Date.now() } });
-      const saved = await methods()['composer.put']({ section: 'inputs', id: threadId, expectedRevision: record?.revision ?? 0, value });
-      if (!saved.accepted) throw refusal('the composer changed; retry with the same clientRequestId');
+      value.input.queued.push({ id, text: prompt, attachments: [], request: { id: requestId, choice: null, queuedAt: Date.now() }, experiments: ctx.clientPreferences?.experiments ?? [], sentFrom: null });
+      if (thread.incognito) {
+        state.write('inputs', recordId, value);
+        state.schedule(ctx);
+      } else {
+        const saved = await methods()['composer.put']({ section: 'inputs', id: recordId, expectedRevision: record?.revision ?? 0, value });
+        if (!saved.accepted) throw refusal('the composer changed; retry with the same clientRequestId');
+      }
       state.cliPrompts.set(id, prompt);
       return { requestId, status: value.input.paused ? 'held' : 'queued' };
     },
     'composer.put': async params => {
+      if (params.section === 'inputs' && composerInputThreadId(params.id) !== params.id) throw new RpcFailure({ code: RpcErrorCode.NotFound, message: 'composer.id: expected an existing thread' });
       if (params.section === 'inputs' && params.value !== null && !ctx.threads.has(params.id)
         && ![...ctx.deletedThreads.values()].some(family => family.threads.some(thread => thread.id === params.id))) {
         throw new RpcFailure({ code: RpcErrorCode.NotFound, message: 'composer.id: expected an existing thread; this conversation was permanently deleted', data: { reason: 'thread-deleted', threadId: params.id, field: 'composer.id' } });

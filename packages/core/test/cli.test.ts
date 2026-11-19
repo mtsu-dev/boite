@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { AGENT_ENV } from '@boite/contracts';
 import { runCli, splitLine } from '../src/cli.ts';
+import { parse } from '../src/cli-args.ts';
 import { continuationInput } from '../src/continuation.ts';
 import type { CliIo } from '../src/cli.ts';
 import { setDriver } from '../src/drivers/index.ts';
@@ -400,6 +401,29 @@ describe('usage', () => {
     expect(await client.call('questions.list', { threadId })).toMatchObject([{ text: 'help' }]);
   });
 
+  test('desktop subcommand help needs no connection and never launches a program', async () => {
+    for (const action of ['run', 'snapshot']) {
+      const result = await boite(['--json', 'desktop', action, '--help'], { [AGENT_ENV.threadId]: '', [AGENT_ENV.coreUrl]: '', [AGENT_ENV.token]: '' });
+      expect([result.code, result.err]).toEqual([0, '']);
+      expect(JSON.parse(result.out).help).toContain('boite desktop');
+    }
+    const launch = spyOn(harness.core.desktops, 'run').mockRejectedValue(new Error('must not launch'));
+    try {
+      expect((await boite(['desktop', 'run', '--help'])).code).toBe(0);
+      expect(launch).not.toHaveBeenCalled();
+    } finally { launch.mockRestore(); }
+    expect(parse(['desktop', 'run', 'app', '--help']).positional).toEqual(['desktop', 'run', 'app', '--help']);
+    expect(parse(['desktop', 'type', '@e1', '--', '--help']).help).toBeUndefined();
+  });
+
+  test('a plugin command receives its own help operands', () => {
+    for (const operand of ['help', '--help']) {
+      const parsed = parse(['example-plugin-command', operand]);
+      expect(parsed.positional).toEqual(['example-plugin-command', operand]);
+      expect(parsed.help).toBeUndefined();
+    }
+  });
+
   test('outside a thread it says which variable is missing', async () => {
     const run = await boite(['where'], { [AGENT_ENV.threadId]: '' });
     expect(run.code).toBe(1);
@@ -419,6 +443,10 @@ test('workflow show reports state and opens only the explicitly selected result'
   expect(shown).not.toHaveProperty('plan');
   expect(shown.nodes.map((node: { instances: unknown[] }) => node.instances)).toMatchObject([[{ key: 'first', status: 'done' }], [{ key: 'second', status: 'done' }]]);
   expect(shown.nodes[0].instances[0]).not.toHaveProperty('result');
+  const list = JSON.parse((await boite(['workflow', 'list', '--json'])).out);
+  expect(list).toMatchObject([{ id: run.id, name: 'Probe', status: 'done' }]);
+  expect(list[0]).not.toHaveProperty('plan');
+  expect(list[0]).not.toHaveProperty('nodes');
   const selected = JSON.parse((await boite(['workflow', 'show', run.id, 'first', '--json'])).out);
   expect(selected.nodes).toHaveLength(1);
   expect(selected.nodes[0].instances[0].result).toContain('First workflow brief.');
@@ -649,6 +677,51 @@ test('owner CLI sends wait behind an active turn and deduplicate retries', async
   expect(harness.core.journal.listMessages(threadId).filter(message => message.role === 'user')).toHaveLength(2);
 });
 
+test('owner CLI queues incognito sends across a reconnect without publishing the private queue', async () => {
+  const client = await harness.connect();
+  const project = await client.call('projects.drafts', {});
+  const { accountId } = harness.core.threads.require(threadId);
+  const privateThread = await client.call('threads.create', { projectId: project.id, accountId, providerId: 'echo', incognito: true });
+  await client.call('turns.start', { threadId: privateThread.id, prompt: 'First [sleep:500]' });
+  const args = ['thread', 'send', privateThread.id, 'Private follow-up', '--request-id', 'cli-private-turn', '--json'];
+  const initial = await ownerBoite(args);
+  expect([initial.code, initial.err]).toEqual([0, '']);
+  expect(JSON.parse(initial.out).status).toBe('queued');
+  expect(await client.call('composer.list', {})).toEqual([]);
+  expect(harness.core.journal.db.query('SELECT value FROM composer_records').all()).toEqual([]);
+  const retry = await ownerBoite(args);
+  expect([retry.code, retry.err]).toEqual([0, '']);
+  await waitFor(() => harness.core.journal.turnRequest(privateThread.id, 'cli-private-turn') !== null);
+  expect(JSON.parse((await ownerBoite(args)).out).status).toBe('sent');
+  expect(harness.core.journal.listMessages(privateThread.id).filter(message => message.role === 'user')).toHaveLength(2);
+});
+
+test('owner CLI sends using the fallback account when the thread account is signed out', async () => {
+  const client = await harness.connect();
+  const thread = harness.core.threads.require(threadId);
+  const fallback = await client.call('accounts.add', { providerId: 'echo', label: 'Fallback' });
+  harness.core.journal.putAccount({ ...harness.core.accounts.require(thread.accountId), status: 'unauthenticated' });
+  const sent = await ownerBoite(['thread', 'send', threadId, 'Use the other account', '--request-id', 'cli-fallback-turn']);
+  expect([sent.code, sent.err]).toEqual([0, '']);
+  await waitFor(() => harness.core.journal.turnRequest(threadId, 'cli-fallback-turn') !== null);
+  expect(harness.core.journal.lastTurn(threadId)?.execution).toMatchObject({ accountId: fallback.id, accountLeft: 'signed-out' });
+});
+
+test('owner CLI holds queued text when the conversation folder is gone', async () => {
+  const client = await harness.connect();
+  const { projectId, accountId } = harness.core.threads.require(threadId);
+  const folder = join(cwd, 'removed-subfolder');
+  mkdirSync(folder);
+  const moved = await client.call('threads.create', { projectId: projectId!, accountId, providerId: 'echo', cwd: folder });
+  rmdirSync(folder);
+  const args = ['thread', 'send', moved.id, 'Keep this text', '--request-id', 'cli-missing-folder', '--json'];
+  expect((await ownerBoite(args)).code).toBe(0);
+  await waitFor(() => harness.core.composer.storage.get('inputs', moved.id).value?.input.paused === true || harness.core.journal.lastTurn(moved.id) !== null);
+  expect(harness.core.journal.listTurns(moved.id)).toEqual([]);
+  const receipt = await ownerBoite(args);
+  expect(JSON.parse(receipt.out)).toMatchObject({ status: 'held', reason: expect.stringContaining(folder) });
+});
+
 test('owner CLI thread new selects an explicit provider and rejects an unknown source', async () => {
   const client = await harness.connect();
   const projectId = harness.core.threads.require(threadId).projectId!;
@@ -674,6 +747,10 @@ test('repeating an owner CLI creation request keeps its conversation and first t
   const [first, second] = results.map(result => JSON.parse(result.out));
   expect(second.thread.id).toBe(first.thread.id);
   expect(second.turn.id).toBe(first.turn.id);
+  await client.call('threads.update', { threadId: first.thread.id, permissionMode: 'yolo' });
+  const retried = await ownerBoite(request);
+  expect([retried.code, retried.err]).toEqual([0, '']);
+  expect(JSON.parse(retried.out)).toMatchObject({ thread: { id: first.thread.id }, turn: { id: first.turn.id } });
   const changed = await ownerBoite(request.map(word => word === 'First line\nDetails' ? 'First line\nDifferent details' : word));
   expect(changed.code).toBe(1);
   expect(changed.err).toContain('different content');

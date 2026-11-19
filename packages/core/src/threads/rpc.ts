@@ -1,9 +1,9 @@
-import { pullRequestAddress, type AccountId, type ProviderId, type ThreadId } from '@boite/contracts';
+import { ownerThreadSelection, pullRequestAddress, type AccountId, type ProviderId, type RpcResult, type ThreadId } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { promptOrigin } from '../client-preferences.ts';
-import { invalidParams, refused } from '../errors.ts';
+import { invalidParams, messageOf, refused } from '../errors.ts';
 import { requireAgent } from './agentless.ts';
-import { folderPresent, requireThreadCwd, restoreThreadCwd } from './cwd.ts';
+import { ensureThreadCwd } from './cwd.ts';
 import type { ProviderProbe } from '../providers/probe.ts';
 import { defaultModel, needsModelDiscovery } from './selection.ts';
 import { LinkedPullRequests } from '../linked-pull-requests.ts';
@@ -14,6 +14,7 @@ import { startsAutoGoal } from '../composer-activity.ts';
 import { readToolOutput, readToolPart } from './records.ts';
 import { readMessageAttachment } from './attachment-read.ts';
 import { CreationRequests } from './creation-requests.ts';
+import { checkTurnRequest } from './inputs.ts';
 import { archiveForPlugin } from './plugin-archive.ts';
 import { pluginActor, recordCreator } from '../plugins/actor.ts';
 import { trustLetters } from '../contacts/letter-scopes.ts';
@@ -31,9 +32,7 @@ async function requireCwd(core: Core, threadId: ThreadId): Promise<void> {
   if (thread.archived) return;
   // The project's own folder is asked too, beside this turn: gone or put back, every client hears it.
   if (thread.projectId !== null) void core.projects.requireFolder(thread.projectId).catch(() => undefined);
-  // Off the event loop first, so a share whose host is gone stalls this call only.
-  if (!(await folderPresent(thread.cwd))) await restoreThreadCwd(core, thread);
-  await requireThreadCwd(threadId, thread.cwd);
+  await ensureThreadCwd(core, thread);
 }
 
 /** `12` or `#12`, else null. */
@@ -69,6 +68,7 @@ async function watchTarget(linked: LinkedPullRequests, threadId: ThreadId, input
 
 export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
   const creations = new CreationRequests();
+  const ownerCreations = new CreationRequests();
   async function discover(providerId: ProviderId, accountId: AccountId, model: string | null, effort: string | null, speed: string | null): Promise<void> {
     const provider = core.providers.require(providerId);
     const account = core.accounts.require(accountId);
@@ -154,6 +154,21 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
     }, threadId => core.journal.getThread(threadId));
     if (params.subscribe === true) ctx.connection.subscriptions.add(thread.id);
     return thread;
+  });
+  core.router.register('threads.createFromPrompt', async (params, ctx) => {
+    const thread = await ownerCreations.onceFromPrompt(params, async () => {
+      const project = core.projects.find(params.project, 'threads.createFromPrompt', 'project');
+      await core.providers.settle();
+      const { loaded } = core.providers.list();
+      let selection;
+      try { selection = ownerThreadSelection(params, project.id, core.journal.listThreads(undefined, { includeArchived: true }), loaded, core.accounts.list()); }
+      catch (error) { throw refused(messageOf(error)); }
+      return await core.router.dispatch('threads.create', selection, ctx) as RpcResult<'threads.create'>;
+    }, id => core.journal.getThread(id));
+    const { prompt, clientRequestId } = params;
+    const receipt = checkTurnRequest(core.journal, thread.id, prompt, [], [], clientRequestId);
+    const turn = receipt.turn ?? await core.router.dispatch('turns.start', { threadId: thread.id, prompt, clientRequestId }, ctx) as RpcResult<'turns.start'>;
+    return { thread, turn, project: core.projects.require(thread.projectId).name };
   });
   // Projection queues missing image previews without delaying the snapshot or its subscription.
   core.router.register('threads.get', (params, ctx) => {

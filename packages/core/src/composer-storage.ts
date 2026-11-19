@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { Attachment, ComposerAttachment, ComposerRecord, ComposerValue } from '@boite/contracts';
-import { answerAttachmentError, decodedBytes, stableComposerValue, ATTACHMENTS_PER_TURN, ATTACHMENTS_TOTAL_MAX_BYTES } from '@boite/contracts';
+import { answerAttachmentError, composerInputThreadId, decodedBytes, privateTerminalComposerId, stableComposerValue, ATTACHMENTS_PER_TURN, ATTACHMENTS_TOTAL_MAX_BYTES } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { invalidParams, notFound, refused } from './errors.ts';
 import type { Connection } from './router.ts';
@@ -46,15 +46,18 @@ export class ComposerStorage {
 
   owner(record: Pick<ComposerRecord, 'section' | 'id'>): Connection | undefined { return this.#privateOwners.get(recordKey(record.section, record.id)); }
   forgetThread(threadId: string): void {
-    const key = recordKey('inputs', threadId);
-    const assets = this.#privateRecords.get(key)?.value;
-    this.queued.delete(key); this.#privateRecords.delete(key); this.#privateOwners.delete(key);
+    const ids = [threadId, privateTerminalComposerId(threadId)];
+    for (const id of ids) {
+      const key = recordKey('inputs', id);
+      const value = this.#privateRecords.get(key)?.value;
+      this.queued.delete(key); this.#privateRecords.delete(key); this.#privateOwners.delete(key);
+      if (value) this.#collectAssets(this.references(value).map(reference => reference.assetId));
+    }
     for (const [id, delivery] of this.#privateDeliveries) {
-      if (delivery.thread_id !== threadId && !(delivery.section === 'inputs' && delivery.record_id === threadId)) continue;
+      if (delivery.thread_id !== threadId && !(delivery.section === 'inputs' && ids.includes(delivery.record_id))) continue;
       if (delivery.section === 'drafts' && delivery.status === 'delivered') { delivery.thread_id = null; delivery.fingerprint = ''; }
       else this.#privateDeliveries.delete(id);
     }
-    if (assets) this.#collectAssets(this.references(assets).map(reference => reference.assetId));
   }
   requireOwner(record: Pick<ComposerRecord, 'section' | 'id'>, connectionId: string): void {
     const owner = this.owner(record);
@@ -75,7 +78,7 @@ export class ComposerStorage {
   privateMode(section: ComposerRecord['section'], id: string, value: ComposerValue | null): boolean {
     return this.#privateRecords.has(recordKey(section, id)) || value?.draft?.incognito === true ||
       value?.input.queued.some(item => item.request?.start?.incognito) === true ||
-      (section === 'inputs' && this.#core.journal.getThread(id)?.incognito === true);
+      (section === 'inputs' && this.#core.journal.getThread(composerInputThreadId(id))?.incognito === true);
   }
 
   save(section: ComposerRecord['section'], id: string, value: ComposerValue | null, owner?: Connection): ComposerRecord {
