@@ -230,9 +230,10 @@
               <tbody>
                 {#each newest.slice(0, shown) as turn (turn.turnId)}
                   {@const model = ownModel(thread.providerId, turn.model)}
+                  {@const label = name(model)}
                   <tr>
                     <td title={exactTime(turn.finishedAt)}>{clockTime(turn.finishedAt)}</td>
-                    <td><span class="model-cell"><span class="swatch" style:background={colors.get(model ?? '')}></span>{name(model)}</span></td>
+                    <td class="model"><span class="model-cell"><span class="swatch" style:background={colors.get(model ?? '')}></span><span class="model-label" title={label}>{label}</span></span></td>
                     <td class="num" class:muted={turn.usage === null}>{turn.usage === null ? strings.usage.noUsageTurn : formatMetric('tokens', totalTokens(turn.usage))}</td>
                     <td class="num wide">{turn.usage === null ? '' : formatMetric('tokens', turn.usage.outputTokens)}</td>
                     <td class="num" class:muted={turn.usage?.costUsdEquivalent == null}>{turn.usage?.costUsdEquivalent == null ? strings.usage.noPrice : formatMetric('cost', turn.usage.costUsdEquivalent)}</td>
@@ -297,7 +298,9 @@
   th { position: sticky; top: 0; z-index: 1; background: var(--color-surface); }
   th:first-child, td:first-child { padding-left: var(--settings-padding); white-space: nowrap; }
   th:last-child, td:last-child { padding-right: var(--settings-padding); }
-  .model-cell { font-variant-numeric: normal; display: inline-flex; align-items: center; gap: 8px; white-space: normal; overflow-wrap: break-word; }
+  td.model { width: 38%; max-width: 0; }
+  .model-cell { font-variant-numeric: normal; display: flex; align-items: center; gap: 8px; }
+  .model-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   tbody tr:hover td { background: var(--color-hover); }
   .more { margin-top: 12px; }
   .note { margin: 10px 0 0; }
