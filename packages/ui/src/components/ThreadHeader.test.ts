@@ -60,7 +60,7 @@ test('an idle parent shows its active children until they finish, and a child qu
   const wait = () => document.querySelector('[data-testid=thread-header] [data-testid=thread-wait]');
   store.threads = [...before, ...children];
   await settle();
-  expect(wait()?.textContent).toContain(strings.sidebar.state.delegatingMany.replace('{count}', '2'));
+  expect(wait()?.textContent).toContain(strings.app.rail.subagentsMany.replace('{count}', '2'));
   expect(wait()?.querySelector('[data-testid=agent-elapsed]')?.textContent).toMatch(/^1m \d\ds$/);
   store.threads = [...before, children[0]!, { ...children[1]!, status: 'waiting' }];
   await settle();

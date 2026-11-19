@@ -56,7 +56,7 @@ test('a parent row shows its delegated work and time since the first child start
   store.threads = [...store.threads, { ...parent, id: 'active-child', parentThreadId: parent.id, status: 'running', runningSince: Date.now() - 60_000 }];
   await show(project, parent);
   const wait = document.querySelector('[data-testid=thread-row] [data-testid=thread-wait]');
-  expect(wait?.textContent).toContain('Waiting on 1 sub-agent');
+  expect(wait?.textContent).toContain('1 subagent');
   expect(wait?.querySelector('[data-testid=agent-elapsed]')?.textContent).toMatch(/^1m \d\ds$/);
   expect(document.querySelector('[data-testid=thread-elapsed]')).toBeNull();
 });

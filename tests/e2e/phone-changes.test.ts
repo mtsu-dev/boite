@@ -59,7 +59,6 @@ test('Changes keeps Git errors in the panel after a repository disappears on des
         await page.waitFor(`!document.querySelector('${id('changes-panel')}')`);
         expect(await page.evaluate('!document.body.textContent.includes("is not inside a git repository")')).toBe(true);
         await openMobilePanel(page);
-        await page.click(id('launch-changes'));
         await page.waitFor(`document.querySelector('${id('changes-error')}')`);
         expect(await page.evaluate('!document.body.textContent.includes("is not inside a git repository")')).toBe(true);
       } finally { await page.close(); }

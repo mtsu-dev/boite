@@ -9,7 +9,7 @@ import { threadTone, workflowTone } from '../lib/status-tone';
 import { workingChildren, type WorkingChildren } from '../lib/thread-rows';
 import { SIDEBAR_DEFAULT } from '../lib/prefs';
 
-type Shown = Pick<ThreadSummary, 'status' | 'unread' | 'runningSince' | 'requestSince' | 'backgroundWork' | 'lastUserMessageAt' | 'createdAt' | 'backgroundWait'> & { archived?: boolean };
+type Shown = Pick<ThreadSummary, 'status' | 'unread' | 'runningSince' | 'requestSince' | 'backgroundWork' | 'lastUserMessageAt' | 'createdAt' | 'backgroundWait' | 'pullRequestWatches'> & { archived?: boolean };
 
 const NOW = Date.UTC(2026, 8, 28, 10, 0, 0);
 let running: Record<string, unknown> | null = null;
@@ -124,8 +124,8 @@ test('a parent row shows how many sub-agents it has at work, in every state, and
 
 test('work names what it waits on: the heaviest background task, CI or the merge queue; the turn\'s clock stands for Working', () => {
   vi.useFakeTimers({ now: NOW });
-  const word = (thread: Partial<Shown> & Record<string, unknown>) => {
-    const state = draw(thread as Partial<Shown>);
+  const word = (thread: Partial<Shown>) => {
+    const state = draw(thread);
     const text = state.querySelector('.word')?.textContent;
     unmount(running!, { outro: false });
     running = null;

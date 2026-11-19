@@ -46,8 +46,8 @@ export function threadWait(thread: ThreadSummary | null, store: Requests & RowSo
   }
   if (threadActive(thread.status)) return null;
   if (state === 'delegating' && children !== null) {
-    const words = strings.sidebar.state;
-    return { label: children.count === 1 ? words.delegatingOne : fill(words.delegatingMany, { count: String(children.count) }), since: children.since };
+    const words = strings.app.rail;
+    return { label: children.count === 1 ? words.subagentsOne : fill(words.subagentsMany, { count: String(children.count) }), since: children.since };
   }
   if (thread.backgroundWait?.state === 'waiting') return namedWait(thread.backgroundWait.for, thread.backgroundWait.since);
   const paused = thread.pullRequestWatches?.find(watch => watch.paused !== null);
