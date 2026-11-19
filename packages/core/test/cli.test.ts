@@ -44,6 +44,12 @@ async function boite(args: string[], env: Record<string, string> = {}): Promise<
   return { code, out, err };
 }
 
+function ownerBoite(args: string[]): Promise<Run> {
+  return boite([...args, '--core', harness.url], {
+    [AGENT_ENV.threadId]: '', [AGENT_ENV.token]: '', [AGENT_ENV.coreUrl]: '', BOITE_TOKEN: harness.token,
+  });
+}
+
 beforeEach(async () => {
   harness = await startTestCore();
   const client = await harness.connect();
@@ -132,7 +138,7 @@ test('threads commands discover, send and reply using the calling thread identit
   expect(listed.code).toBe(0);
   const contact = JSON.parse(listed.out).agents[0];
   expect(contact).toMatchObject({ status: 'idle', lastCompletedAt: null, projectArchived: false, paused: false });
-  expect((await boite(['threads', 'list'])).out).toContain('contacting this inactive thread is allowed but discouraged');
+  expect((await boite(['threads', 'list'])).out.match(/contacting an inactive thread is allowed but discouraged/g)).toHaveLength(1);
   // Bots' brains and the user's notes still say `boite agents list`: it answers the same, with nothing extra.
   const legacy = await boite(['agents', 'list', '--json']);
   expect([legacy.code, legacy.err, JSON.parse(legacy.out).agents]).toEqual([0, '', JSON.parse(listed.out).agents]);
@@ -370,9 +376,28 @@ describe('usage', () => {
     // A lone help after a command is the same request, never a question titled "help".
     const ask = await boite(['ask', 'help']);
     expect(ask.code).toBe(0);
-    expect(ask.out).toContain('usage: boite');
+    expect(ask.out).toContain('boite ask <question>');
+    expect(ask.out).not.toContain('delegate spawn');
     const client = await harness.connect();
     expect(await client.call('questions.list', { threadId })).toEqual([]);
+  });
+
+  test('command help works in every spelling and JSON without a core', async () => {
+    for (const command of ['ask', 'thread', 'delegate', 'task', 'settings', 'where', 'workflow', 'window', 'logs', 'team', 'secret', 'mochi']) {
+      const env = { [AGENT_ENV.threadId]: '', [AGENT_ENV.coreUrl]: '', [AGENT_ENV.token]: '' };
+      const forms = [[command, 'help'], [command, '--help'], ['help', command]];
+      const results = await Promise.all(forms.map(args => boite([...args, '--json', '--core', 'http://127.0.0.1:1'], env)));
+      for (const result of results) expect([result.code, result.err]).toEqual([0, '']);
+      expect(new Set(results.map(result => JSON.parse(result.out).help)).size).toBe(1);
+      expect(JSON.parse(results[0]!.out).help).toBeString();
+    }
+    const client = await harness.connect();
+    const finished = client.next('turn.finished', turn => turn.threadId === threadId);
+    await client.call('turns.start', { threadId, prompt: 'hello' });
+    await finished;
+    const literal = await boite(['ask', '--', 'help']);
+    expect([literal.code, literal.err]).toEqual([0, '']);
+    expect(await client.call('questions.list', { threadId })).toMatchObject([{ text: 'help' }]);
   });
 
   test('outside a thread it says which variable is missing', async () => {
@@ -380,6 +405,26 @@ describe('usage', () => {
     expect(run.code).toBe(1);
     expect(run.err).toContain(AGENT_ENV.threadId);
   });
+});
+
+test('workflow show reports state and opens only the explicitly selected result', async () => {
+  const client = await harness.connect();
+  const run = await client.call('workflows.start', { threadId, requestId: 'cli-show', plan: {
+    name: 'Probe', steps: [{ id: 'first', task: 'First workflow brief.' }, { id: 'second', task: 'Second workflow brief.' }],
+  } });
+  await waitFor(() => harness.core.workflows.get(threadId, run.id).status === 'done');
+  const brief = await boite(['workflow', 'show', run.id, '--json']);
+  expect([brief.code, brief.err]).toEqual([0, '']);
+  const shown = JSON.parse(brief.out);
+  expect(shown).not.toHaveProperty('plan');
+  expect(shown.nodes.map((node: { instances: unknown[] }) => node.instances)).toMatchObject([[{ key: 'first', status: 'done' }], [{ key: 'second', status: 'done' }]]);
+  expect(shown.nodes[0].instances[0]).not.toHaveProperty('result');
+  const selected = JSON.parse((await boite(['workflow', 'show', run.id, 'first', '--json'])).out);
+  expect(selected.nodes).toHaveLength(1);
+  expect(selected.nodes[0].instances[0].result).toContain('First workflow brief.');
+  const details = JSON.parse((await boite(['workflow', 'show', run.id, '--details', '--json'])).out);
+  expect(details.nodes).toHaveLength(2);
+  expect(details.plan.name).toBe('Probe');
 });
 
 describe('where', () => {
@@ -468,6 +513,22 @@ describe('panel', () => {
 });
 
 describe('tasks', () => {
+  test('concurrent adds keep both tasks with distinct ids', async () => {
+    const results = await Promise.all(['left', 'right'].map(text => boite(['task', 'add', text])));
+    expect(results.map(result => result.code)).toEqual([0, 0]);
+    const list = JSON.parse((await boite(['task', 'list', '--json'])).out);
+    expect(list.map((task: { id: string }) => task.id)).toEqual(['t1', 't2']);
+    expect(list.map((task: { text: string }) => task.text).sort()).toEqual(['left', 'right']);
+  });
+
+  test('a task id printed by a provider takes precedence over the numeric alias', async () => {
+    harness.core.activity.tasks(threadId, [
+      { id: '0', text: 'Provider task', status: 'pending' },
+      { id: 't0', text: 'CLI task', status: 'pending' },
+    ]);
+    expect(await boite(['task', 'done', '0'])).toEqual({ code: 0, out: '0 [x] Provider task\nt0 [ ] CLI task\n', err: '' });
+  });
+
   test('add, start, done and list round trip through the thread activity', async () => {
     expect((await boite(['task', 'list'])).out).toBe('tasks: none\n');
     expect((await boite(['task', 'add', 'read', 'the', 'docs'])).out).toBe('t1 [ ] read the docs\n');
@@ -535,7 +596,7 @@ describe('access', () => {
   });
 });
 
-test('ask draws a card that does not stop the agent, and the answer comes back as the next prompt', async () => {
+test('ask draws a card that does not stop the agent, and the CLI can answer with an option and text', async () => {
   const none = await boite(['ask', 'Deploy now?']);
   expect(none.code).toBe(1);
   expect(none.err).toContain('no turn to ask in');
@@ -555,12 +616,68 @@ test('ask draws a card that does not stop the agent, and the answer comes back a
   expect((await client.call('threads.get', { threadId })).status).toBe('idle');
 
   const next = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
-  await client.call('questions.answer', { threadId, questionId, optionIds: ['2'], text: 'after lunch' });
+  const answer = await ownerBoite(['answer', threadId, questionId, '2', '--text', 'after lunch', '--json']);
+  expect([answer.code, answer.err]).toEqual([0, '']);
+  expect(JSON.parse(answer.out)).toMatchObject({ optionIds: ['2'], text: 'after lunch' });
   expect((await next).status).toBe('done');
   const prompts = harness.core.journal.listMessages(threadId).filter((m) => m.role === 'user').map((m) => (m.parts[0]?.type === 'text' ? m.parts[0].text : ''));
   expect(prompts).toEqual(['hello', '> Deploy now?\n\nlater\nafter lunch']);
   const card = harness.core.journal.listMessages(threadId).flatMap((m) => m.parts).find((p) => p.type === 'question');
   expect(card).toMatchObject({ async: true, answer: { optionIds: ['2'], text: 'after lunch' } });
+});
+
+test('the owner CLI lists and restores its deleted conversations', async () => {
+  expect((await ownerBoite(['thread', 'remove', threadId])).code).toBe(0);
+  const list = await ownerBoite(['thread', 'deleted', '--json']);
+  expect([list.code, list.err]).toEqual([0, '']);
+  expect(JSON.parse(list.out)).toMatchObject([{ id: threadId }]);
+  expect((await ownerBoite(['thread', 'restore', threadId])).out).toBe(`restored: ${threadId}\n`);
+  expect((await ownerBoite(['thread', 'deleted', '--json'])).out).toBe('[]\n');
+});
+
+test('owner CLI sends wait behind an active turn and deduplicate retries', async () => {
+  const client = await harness.connect();
+  await client.call('turns.start', { threadId, prompt: 'First [sleep:500]' });
+  const args = ['thread', 'send', threadId, 'Second prompt', '--request-id', 'cli-second-turn', '--json'];
+  const responses = await Promise.all([ownerBoite(args), ownerBoite(args)]);
+  expect(responses.map(response => [response.code, response.err])).toEqual([[0, ''], [0, '']]);
+  expect(responses.map(response => JSON.parse(response.out).status)).toEqual(['queued', 'queued']);
+  const changed = await ownerBoite(args.map(argument => argument === 'Second prompt' ? 'Different prompt' : argument));
+  expect(changed.err).toContain('different content');
+  await waitFor(() => harness.core.journal.turnRequest(threadId, 'cli-second-turn') !== null);
+  expect(JSON.parse((await ownerBoite(args)).out).status).toBe('sent');
+  expect(harness.core.journal.listMessages(threadId).filter(message => message.role === 'user')).toHaveLength(2);
+});
+
+test('owner CLI thread new selects an explicit provider and rejects an unknown source', async () => {
+  const client = await harness.connect();
+  const projectId = harness.core.threads.require(threadId).projectId!;
+  await client.call('threads.remove', { threadId });
+  expect(await client.call('threads.list', { includeArchived: true })).toEqual([]);
+  const request = ['thread', 'new', projectId, 'First prompt', '--model', 'echo/echo', '--json'];
+  const missing = await ownerBoite([...request, '--thread', 'thr_missing']);
+  expect(missing.code).toBe(1);
+  expect(missing.err).toContain('thr_missing');
+  expect(await client.call('threads.list', { includeArchived: true })).toEqual([]);
+  const created = await ownerBoite(request);
+  expect([created.code, created.err]).toEqual([0, '']);
+  expect(JSON.parse(created.out).thread).toMatchObject({ providerId: 'echo', model: 'echo', projectId });
+});
+
+test('repeating an owner CLI creation request keeps its conversation and first turn', async () => {
+  const projectId = harness.core.threads.require(threadId).projectId!;
+  const client = await harness.connect();
+  await client.call('threads.remove', { threadId });
+  const request = ['thread', 'new', projectId, 'First line\nDetails', '--request-id', 'cli-first-turn', '--json'];
+  const results = await Promise.all([ownerBoite(request), ownerBoite(request)]);
+  expect(results.map(result => [result.code, result.err])).toEqual([[0, ''], [0, '']]);
+  const [first, second] = results.map(result => JSON.parse(result.out));
+  expect(second.thread.id).toBe(first.thread.id);
+  expect(second.turn.id).toBe(first.turn.id);
+  const changed = await ownerBoite(request.map(word => word === 'First line\nDetails' ? 'First line\nDifferent details' : word));
+  expect(changed.code).toBe(1);
+  expect(changed.err).toContain('different content');
+  expect(harness.core.journal.listThreads()).toHaveLength(1);
 });
 
 test('ask list reads its own pending questions without publishing a question named list', async () => {

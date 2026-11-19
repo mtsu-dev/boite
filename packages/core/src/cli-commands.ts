@@ -36,7 +36,7 @@ export function isPluginCommandWord(word: string | undefined): boolean {
 /** Commands control-cli.ts answers, with the words that follow them. */
 export const CONTROL_COMMANDS = ['threads', 'thread', 'questions', 'answer', 'permissions', 'allow', 'deny'] as const;
 /** `thread` actions control-cli.ts answers; `new` and `move <project>` without a target stay with the agent's own commands. */
-export const THREAD_ACTIONS = ['show', 'send', 'stop', 'done', 'archive', 'unarchive', 'remove', 'rename'] as const;
+export const THREAD_ACTIONS = ['show', 'send', 'stop', 'done', 'archive', 'unarchive', 'remove', 'rename', 'deleted', 'restore'] as const;
 
 export function isControlCommand(parsed: Parsed): boolean {
   const [command, action] = parsed.positional;
@@ -76,14 +76,17 @@ export const CONTROL_HELP = `  threads [list] [--project <p>] [--archived]
   thread show <id>               state, pending questions and permissions, last answer;
                                  from a thread that is not a mochi's, any thread
                                  boite threads lists, by its address there
-  thread send <id> <text>        the owner's prompt, or the agent's message
+  thread send <id> <text> [--request-id <id>]
+                                 queue the owner's prompt, or send an agent's message
   thread done <id>               put a thread that is not at work in Done
                                  (without <id>: this one, once this turn ends)
   thread stop|archive|unarchive|remove <id>   (remove: owner only)
+  thread deleted                 list recoverable conversations (owner only)
+  thread restore <id>            restore a deleted conversation (owner only)
   thread rename <id> <title>
   thread move <project> <id>     move another thread (without <id>: this one)
   questions [<id>]               pending questions
-  answer <id> <question-id> <option|text ...> (--skip)
+  answer <id> <question-id> <option|text ...> [--text <note>] (--skip)
   permissions [<id>]             pending tool permissions
   allow|deny <id> <request-id>   (owner only, threads of this machine)
   A mochi's <id> may be <machine>/<thread-id>: a thread of a project of that
@@ -105,7 +108,10 @@ export const BOT_HELP = `  mochi memory                   a mochi's MEMORY.md an
   mochi event <mochi> <text>     wake a mochi with an event from outside Boite
                                  (--key <key>: a later event with the same key
                                  replaces it while it waits); from a terminal
-                                 as the owner, or --core with a paired device`;
+                                 as the owner, or --core with a paired device
+  Other mochi commands run from the mochi's own conversation.
+  settings mochi request|create opens a card from a conversation;
+  the owner manages existing mochis in Settings.`;
 
 /** The lines of USAGE for plugin-cli.ts. */
 export const PLUGIN_HELP = `  plugin add <url> --why <text>  a card asking the user to preview a plugin:

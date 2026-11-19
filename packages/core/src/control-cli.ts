@@ -17,9 +17,11 @@
  */
 import type { AgentContact, AgentSpawn, AgentWatch, PermissionRequest, Project, ProjectThreadDetail, ProjectThreadRow, QuestionRequest, RpcParams, ThreadSummary, ThreadWake } from '@boite/contracts';
 import type { CoreClient } from './client.ts';
-import { contactLine, NO_CONTACT, resolveAgent } from './agents-cli.ts';
+import { contactLine, INACTIVE_CONTACT_WARNING, inactiveContact, NO_CONTACT, resolveAgent } from './agents-cli.ts';
 import { requiredText, Usage, type Parsed } from './cli-args.ts';
 import { THREAD_ACTIONS } from './cli-commands.ts';
+import { loggedInAccount } from './delegation/routes.ts';
+import { defaultModel } from './threads/selection.ts';
 
 type Printer = (lines: string[], value: unknown) => void;
 export type Caller = 'owner' | 'agent';
@@ -110,19 +112,22 @@ function permissionLine(request: PermissionRequest): string {
 }
 
 /** Option ids or labels become `optionIds`; anything else is free text. */
-export function answerOf(question: QuestionRequest, words: string[]): { optionIds: string[]; text?: string } {
-  if (question.options.length > 0) {
+export function answerOf(question: QuestionRequest, words: string[], note?: string): { optionIds: string[]; text?: string } {
+  if (note !== undefined && !question.allowText) throw new Usage(`question ${question.id} does not accept text`);
+  const extra = note === undefined ? {} : { text: note };
+  if (words.length && question.options.length > 0) {
     const ids = words.map(word => question.options.find(option => option.id === word || option.label.toLowerCase() === word.toLowerCase())?.id);
     if (ids.every((id): id is string => id !== undefined)) {
       if (!question.multiple && ids.length > 1) throw new Usage(`question ${question.id} takes one option`);
-      return { optionIds: ids };
+      return { optionIds: ids, ...extra };
     }
     const whole = words.join(' ');
     const label = question.options.find(option => option.label.toLowerCase() === whole.toLowerCase());
-    if (label) return { optionIds: [label.id] };
+    if (label) return { optionIds: [label.id], ...extra };
     if (!question.allowText) throw new Usage(`question ${question.id} expects ${question.options.map(option => option.id).join(', ')}`);
   }
-  return { optionIds: [], text: words.join(' ') };
+  if (note !== undefined && words.length) throw new Usage('answer --text expects only option ids or labels before the note');
+  return { optionIds: [], text: note ?? words.join(' ') };
 }
 
 /** A project by id, name (any case) or folder, among the owner's list, as the core's own finder does. */
@@ -295,13 +300,30 @@ export async function controlCommand(client: CoreClient, caller: Caller, threadI
       if (parsed.archived) throw new Error('threads --archived lists archived threads for the owner and for mochis; another thread sees the open ones it may reach');
       const [{ self }, result] = await Promise.all([client.call('collaboration.get', { threadId }), client.call('collaboration.directory', { threadId })]);
       const shown = project === undefined ? result.agents : result.agents.filter(contact => contact.project?.toLowerCase() === project.toLowerCase());
-      const lines = shown.map(contact => contactLine(contact, self.coreId));
+      const now = Date.now();
+      const lines = shown.map(contact => contactLine(contact, self.coreId, now, false));
       if (lines.length === 0) lines.push(project === undefined ? NO_CONTACT : `no thread you may reach is in a project named ${project}`);
+      else if (shown.some(contact => inactiveContact(contact, now))) lines.push(INACTIVE_CONTACT_WARNING);
       print([...lines, ...result.unavailable.map(name => `unavailable: ${name}`)], { ...result, agents: shown });
       return;
     }
     case 'thread': {
       const action = want(0, `one of ${THREAD_ACTIONS.join(', ')} or move`);
+      if (action === 'deleted') {
+        ownerOnly('listing deleted conversations');
+        if (rest.length > 1) throw new Usage('thread deleted takes no arguments');
+        const rows = await client.call('threads.deleted', {});
+        print(rows.length ? rows.map(row => `${row.id} ${JSON.stringify(row.title)} deleted ${new Date(row.deletedAt).toISOString()}`) : ['deleted conversations: none'], rows);
+        return;
+      }
+      if (action === 'restore') {
+        ownerOnly('restoring a deleted conversation');
+        if (rest.length > 2) throw new Usage('thread restore takes one id');
+        const target = here(want(1, 'an id from boite thread deleted'));
+        const restored = await client.call('threads.restore', { threadId: target });
+        print([`restored: ${target}`], restored);
+        return;
+      }
       if (action === 'done' && rest.length === 1) {
         if (owner) throw new Usage('thread done needs a thread id (boite threads lists them)');
         const done = await client.call('agent.done', { threadId });
@@ -351,9 +373,9 @@ export async function controlCommand(client: CoreClient, caller: Caller, threadI
       if (action === 'send') {
         const text = requiredText(rest, 2, 'thread send needs a text after the thread id');
         if (owner) {
-          // The owner is the user: this is an ordinary prompt, queued behind a running turn.
-          const turn = await client.call('turns.start', { threadId: target, prompt: text, clientRequestId: parsed.requestId ?? crypto.randomUUID() });
-          print([`sent: ${turn.id}`, `status: ${turn.status}`], turn);
+          const result = await client.call('composer.enqueue', { threadId: target, prompt: text, clientRequestId: parsed.requestId ?? crypto.randomUUID() });
+          print([`request: ${result.requestId}`, `status: ${result.status}`, ...(result.turnId ? [`turn: ${result.turnId}`] : []),
+            ...(result.reason ? [result.reason] : [])], result);
         } else if (machine !== undefined) {
           // That machine checks the thread is one of the bot's projects there and marks the message as the bot's.
           const letter = await client.call('resident.send', { threadId, machine, target, text, requestId: parsed.requestId ?? crypto.randomUUID() });
@@ -418,14 +440,15 @@ export async function controlCommand(client: CoreClient, caller: Caller, threadI
       if (!question) throw new Error(`no pending question ${questionId} in ${value}`);
       const { target, machine } = owner ? { target: here(value), machine: undefined } : targetOf(value);
       if (parsed.skip) {
+        if (parsed.answerText !== undefined) throw new Usage('answer --skip takes no --text');
         if (owner) await client.call('questions.skip', { threadId: target, questionId });
         else await client.call('resident.answer', { threadId, target, questionId, optionIds: [], skip: true, ...machineOf(machine) });
         print([`skipped: ${questionId}`], { ok: true });
         return;
       }
       const words = rest.slice(2);
-      if (words.length === 0) throw new Usage('answer needs option ids, labels or a text after the question id');
-      const answer = answerOf(question, words);
+      if (words.length === 0 && parsed.answerText === undefined) throw new Usage('answer needs option ids, labels or text after the question id');
+      const answer = answerOf(question, words, parsed.answerText);
       if (owner) await client.call('questions.answer', { threadId: target, questionId, ...answer });
       else await client.call('resident.answer', { threadId, target, questionId, ...answer, ...machineOf(machine) });
       print([`answered: ${questionId}`], { ok: true, ...answer });
@@ -467,7 +490,8 @@ export async function controlCommand(client: CoreClient, caller: Caller, threadI
 /**
  * `thread new` from a terminal, outside any thread: a top-level thread on the
  * selection of `--thread`, else of the project's most recent thread, else of
- * the most recent thread anywhere; `--model` replaces the model. The brief is
+ * the most recent thread anywhere; `--model` may name another provider.
+ * Without an existing thread, pick an available account. The brief is
  * the user's own first prompt.
  */
 export async function ownerThreadNew(client: CoreClient, parsed: Parsed, rest: string[], print: Printer, context?: Record<string, unknown>): Promise<void> {
@@ -478,16 +502,32 @@ export async function ownerThreadNew(client: CoreClient, parsed: Parsed, rest: s
   const project = projectOf(projects, query);
   const threads = (await client.call('threads.list', { includeArchived: true }))
     .filter(thread => !thread.parentThreadId && !thread.agentSessionId).sort((a, b) => b.updatedAt - a.updatedAt);
-  const base = (parsed.thread ? threads.find(thread => thread.id === parsed.thread) : undefined)
-    ?? threads.find(thread => thread.projectId === project.id) ?? threads[0];
-  if (!base) throw new Error('no thread to copy an agent from; start one in the app first');
-  const model = parsed.model ?? base.model ?? undefined;
+  const base = parsed.thread === undefined ? threads.find(thread => thread.projectId === project.id) ?? threads[0]
+    : threads.find(thread => thread.id === parsed.thread);
+  if (parsed.thread !== undefined && !base) throw new Error(`no source conversation ${parsed.thread}; boite threads lists them`);
+  const [{ loaded }, accounts] = await Promise.all([client.call('providers.list', {}), client.call('accounts.list', {})]);
+  const slash = parsed.model?.indexOf('/') ?? -1;
+  const qualified = slash > 0 ? loaded.find(provider => provider.id === parsed.model!.slice(0, slash)) : undefined;
+  const model = qualified ? parsed.model!.slice(slash + 1) : parsed.model ?? base?.model ?? undefined;
+  if (model === '') throw new Usage('--model needs a model after the provider');
+  const available = loaded.filter(provider => provider.available && provider.enabled !== false);
+  const providerId = qualified?.id ?? base?.providerId;
+  const eligible = accounts.filter(account => providerId === undefined
+    ? available.some(provider => provider.id === account.providerId && (model === undefined || provider.models.some(entry => entry.id === model)))
+    : account.providerId === providerId);
+  const account = eligible.find(entry => entry.id === base?.accountId && entry.status !== 'unauthenticated') ?? loggedInAccount(eligible);
+  if (!account) throw new Error(`no usable account${providerId ? ` for ${providerId}` : model ? ` for model ${model}` : ''}; sign in to an installed agent in Accounts`);
+  const provider = loaded.find(entry => entry.id === account.providerId);
+  const selected = model ?? (provider ? defaultModel(provider) ?? undefined : undefined);
+  const requestId = parsed.requestId ?? crypto.randomUUID();
+  if (!/^[A-Za-z0-9_-]{8,128}$/.test(requestId)) throw new Usage('--request-id needs 8 to 128 URL-safe characters');
   const created = await client.call('threads.create', {
-    projectId: project.id, providerId: base.providerId, accountId: base.accountId, title: parsed.title ?? prompt.trim().split('\n')[0]!.slice(0, 80),
-    ...(model === undefined ? {} : { model }), effort: parsed.effort ?? (parsed.model === undefined ? base.effort : null), permissionMode: base.permissionMode,
+    projectId: project.id, providerId: account.providerId, accountId: account.id, title: parsed.title ?? prompt.trim().split('\n')[0]!.slice(0, 80),
+    ...(selected === undefined ? {} : { model: selected }), effort: parsed.effort ?? (parsed.model === undefined ? base?.effort ?? null : null), permissionMode: base?.permissionMode ?? 'default',
     ...(parsed.speed === undefined ? {} : { speed: parsed.speed }),
     ...(parsed.worktree ? { worktree: {} } : {}), ...(context === undefined ? {} : { context: context as RpcParams<'threads.create'>['context'] }),
+    clientRequestId: requestId,
   });
-  const turn = await client.call('turns.start', { threadId: created.id, prompt, clientRequestId: parsed.requestId ?? crypto.randomUUID() });
+  const turn = await client.call('turns.start', { threadId: created.id, prompt, clientRequestId: requestId });
   print([`thread: ${created.id}`, `title: ${created.title}`, `project: ${project.name}`, `cwd: ${created.cwd}`, `agent: ${created.providerId} ${created.model ?? 'default'}`, `turn: ${turn.id}`], { thread: created, turn });
 }

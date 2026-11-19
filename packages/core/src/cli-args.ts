@@ -1,12 +1,15 @@
 import type { Channel } from '@boite/contracts';
 import { isPluginCommandWord } from './cli-commands.ts';
 
-export class Usage extends Error {}
+export class Usage extends Error {
+  constructor(message: string, readonly command?: string) { super(message); }
+}
 /** A usage error whose message is the command's own usage line: the CLI prints it without the whole help. */
 export class ShortUsage extends Usage {}
 
 export interface Parsed {
   positional: string[];
+  help?: string[];
   json: boolean;
   multiple: boolean;
   thread: string | undefined;
@@ -40,6 +43,8 @@ export interface Parsed {
   archived: boolean;
   /** `answer --skip`: resolve a question without an answer. */
   skip: boolean;
+  /** `answer --text`: free text sent alongside the selected options. */
+  answerText?: string;
   /** `settings request|open --why <text>`: the reason the card shows the user. */
   why?: string;
   /** `settings mochi --mochi <name>`: the mochi, by name or id; omitted, the one whose conversation this is. */
@@ -80,7 +85,7 @@ const DESKTOP_FIXED = new Set(['help', 'status', 'start', 'stop', 'env']);
  */
 const OWNED: { owns: (positional: string[]) => boolean; help: boolean; text?: (positional: string[]) => boolean; terminator?: boolean }[] = [
   // agent-browser's own flags (-i, --text, --timeout...); see `browserText` for its text.
-  { owns: ([command, action]) => command === 'browser' && action !== undefined, help: false, text: positional => browserText(positional.slice(1)) },
+  { owns: ([command, action]) => command === 'browser' && action !== undefined, help: true, text: positional => browserText(positional.slice(1)) },
   // Their own filters (logs-cli.ts); a value comes next and is passed the same way.
   { owns: ([command]) => command === 'logs' || command === 'issue', help: true },
   // window-cli.ts: its --title names a window, not a thread.
@@ -97,7 +102,7 @@ const OWNED: { owns: (positional: string[]) => boolean; help: boolean; text?: (p
   // council/cli.ts: --models, --effort, --timeout (minutes), --request-file, --role, --send-changes and --request-id are its own, and it reads `--` itself. `debate` only answers that it was replaced.
   { owns: ([command, action]) => command === 'delegate' && (action === 'council' || action === 'debate'), help: true, text: positional => positional.includes('--'), terminator: true },
   // secret-cli.ts; after `--` every word is the child command's.
-  { owns: ([command]) => command === 'secret', help: false, text: positional => positional.includes('--'), terminator: true },
+  { owns: ([command]) => command === 'secret', help: true, text: positional => positional.includes('--'), terminator: true },
   // `plugin dev --remove <id>`: its flags are its own.
   { owns: ([command]) => command === 'plugin', help: true },
   // agents/cli.ts: `mochi remember` reads --replace and --section itself, under any of the mochi's names.
@@ -132,16 +137,19 @@ function browserText(words: string[]): boolean {
 
 export function parse(argv: string[]): Parsed {
   const parsed: Parsed = { positional: [], json: false, multiple: false, worktree: false, wait: false, archived: false, skip: false, refresh: false, thread: undefined, dataDir: undefined, channel: 'stable' };
+  let helpFlag = false;
+  let literalFrom = Infinity;
+  const usage = (message: string) => new Usage(message, canonicalCommand(parsed.positional)[0]);
   const number = (flag: string, raw: string): number => {
     const value = Number(raw);
-    if (!Number.isFinite(value) || value < 0) throw new Usage(`${flag} needs a number, got ${raw}`);
+    if (!Number.isFinite(value) || value < 0) throw usage(`${flag} needs a number, got ${raw}`);
     return value;
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index] ?? '';
     const next = (): string => {
       const value = argv[index + 1];
-      if (value === undefined || value === '' || value.startsWith('--')) throw new Usage(`${arg} needs a value`);
+      if (value === undefined || value === '' || value.startsWith('--')) throw usage(`${arg} needs a value`);
       index += 1;
       return value;
     };
@@ -151,6 +159,7 @@ export function parse(argv: string[]): Parsed {
     // `browser run -- batch.js --core` included. Inside a command's text it is that text,
     // and `secret run <ref> -- <command>` reads its own.
     if (arg === '--' && !text && owner?.terminator !== true) {
+      literalFrom = parsed.positional.length;
       parsed.positional.push(...argv.slice(index + 1));
       break;
     }
@@ -166,6 +175,7 @@ export function parse(argv: string[]): Parsed {
     else if (arg === '--title') parsed.title = next();
     else if (arg === '--open') parsed.open = next();
     else if (arg === '--name') parsed.name = next();
+    else if (arg === '--text' && parsed.positional[0] === 'answer') parsed.answerText = next();
     else if (arg === '--project') parsed.project = next();
     else if (arg === '--why') parsed.why = next();
     // `--bot` and `--agent` are the old spellings, still read.
@@ -182,22 +192,22 @@ export function parse(argv: string[]): Parsed {
     else if (arg === '--tool' && (parsed.positional[0] === 'threads' || parsed.positional[0] === 'agents')) parsed.tool = next();
     else if (arg === '--limit') {
       const value = number(arg, next());
-      // The widest any command takes (`boite logs`); a command with a lower cap checks its own.
-      if (!Number.isInteger(value) || value < 1 || value > 1000) throw new Usage('--limit needs an integer from 1 to 1000');
+      const max = parsed.positional[0] === 'delegate' && parsed.positional[1] === 'result' ? 16_000 : 1000;
+      if (!Number.isInteger(value) || value < 1 || value > max) throw usage(`--limit needs an integer from 1 to ${max}`);
       parsed.limit = value;
     }
     else if (arg === '--level') {
       const value = next();
-      if (value !== 'debug' && value !== 'info' && value !== 'warn' && value !== 'error') throw new Usage('--level expects debug, info, warn or error');
+      if (value !== 'debug' && value !== 'info' && value !== 'warn' && value !== 'error') throw usage('--level expects debug, info, warn or error');
       parsed.level = value;
     }
     else if (arg === '--thread') parsed.thread = next();
     else if (arg === '--data-dir') parsed.dataDir = next();
     else if (arg === '--channel') {
       const channel = next();
-      if (channel !== 'stable' && channel !== 'dev') throw new Usage(`unknown channel ${channel}`);
+      if (channel !== 'stable' && channel !== 'dev') throw usage(`unknown channel ${channel}`);
       parsed.channel = channel;
-    } else if (arg === '--help' || arg === '-h') throw new Usage('');
+    } else if (arg === '--help' || arg === '-h') helpFlag = true;
     else if (arg === '--output' && parsed.positional[0] === 'device' && parsed.positional[1] === 'screenshot') parsed.positional.push(arg, next());
     else if (arg === '--platform' && parsed.positional[0] === 'device' && parsed.positional[1] === 'open') parsed.positional.push(arg, next());
     else if (arg === '--shutdown' && parsed.positional[0] === 'device' && parsed.positional[1] === 'close') parsed.positional.push(arg);
@@ -205,11 +215,18 @@ export function parse(argv: string[]): Parsed {
     else if (arg === '--effort') parsed.effort = next();
     else if (arg === '--speed') parsed.speed = next();
     else if (arg === '--profile') parsed.profile = next();
+    else if (arg === '--details' && ((parsed.positional[0] === 'workflow' && parsed.positional[1] === 'show')
+      || (parsed.positional[0] === 'delegate' && ['list', 'status'].includes(parsed.positional[1] ?? '')))) parsed.positional.push(arg);
     else if (Object.hasOwn(CONTEXT_FLAGS, arg)) parsed.context = { ...parsed.context, [CONTEXT_FLAGS[arg as keyof typeof CONTEXT_FLAGS]]: next() };
-    else if (arg.startsWith('--')) throw new Usage(`unknown flag ${arg}`);
+    else if (arg.startsWith('--')) throw usage(`unknown flag ${arg}`);
     else parsed.positional.push(arg);
   }
   parsed.positional = canonicalCommand(parsed.positional);
+  const [command, action, last] = parsed.positional;
+  if (command === 'help' && literalFrom > 0) parsed.help = canonicalCommand(parsed.positional.slice(1, literalFrom));
+  else if (helpFlag) parsed.help = parsed.positional.slice(0, literalFrom);
+  else if (action === 'help' && parsed.positional.length === 2 && literalFrom > 1) parsed.help = parsed.positional.slice(0, 1);
+  else if (command === 'settings' && action === 'bot' && last === 'help' && parsed.positional.length === 3 && literalFrom > 2) parsed.help = ['settings', 'bot'];
   return parsed;
 }
 

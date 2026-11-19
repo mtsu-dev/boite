@@ -69,6 +69,7 @@ export * from './plugins';
 export * from './plugin-source';
 export * from './projects';
 export * from './threads';
+export * from './agent-tasks';
 export * from './prompt-suggestions';
 export * from './usage';
 export * from './turns';
