@@ -29,4 +29,3 @@ export function checkSignature(minisign: Minisign, data: Uint8Array): void {
     throw new Error('Update signature verification failed; the installation was left unchanged');
   }
 }
-
