@@ -190,7 +190,8 @@ settings and its sign-in, is not touched, so turning the proxy off gives the
 native sign-in back. The profile's shared skills are mirrored into the gateway
 home as into an account's. A conversation started under one home is not found
 under the other. A sign-in started while the proxy is on runs without its
-environment, so the token lands in the account's own directory. Turning the
+environment, so the token lands in the account's own directory, and the models
+its session lists stay out of the catalog, which keeps the gateway's. Turning the
 proxy on runs the startup account defaults again, so an installed agent it
 starts serving gets its default account back when its last one was removed.
 

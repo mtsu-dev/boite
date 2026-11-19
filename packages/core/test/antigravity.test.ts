@@ -177,6 +177,31 @@ describe('antigravity', () => {
     expect((await client.call('accounts.check', { accountId: account.id })).status).toBe('ok');
   });
 
+  test('a sign-in while Douane serves Antigravity leaves the gateway\'s model list in place', async () => {
+    const client = await startCore({ subscriptionProxy: DOUANE });
+    shippedAsFake();
+    const account = await client.call('accounts.add', { providerId: 'antigravity', label: 'Native' });
+    // The agent in its gateway mode lists what the gateway serves.
+    const gateway = (await client.call('providers.probe', { providerId: 'antigravity', accountId: account.id })).models.map((model) => model.id);
+    expect(gateway).toContain('gemini-4-neon');
+    const probed: string[][] = [];
+    client.on('providers.probed', (event) => { if (event.accountId === account.id) probed.push(event.models.map((model) => model.id)); });
+
+    const states: string[] = [];
+    client.on('account.login', (event) => { if (event.accountId === account.id) states.push(event.state); });
+    await client.call('accounts.login', { accountId: account.id });
+    await waitFor(() => fakeLog().includes('callback:'), 20_000);
+    const callback = fakeLog().split('\n').find((line) => line.startsWith('callback:'))?.slice('callback:'.length) ?? '';
+    await client.call('accounts.loginInput', { accountId: account.id, text: callback });
+    await waitFor(() => states.includes('done') || states.includes('failed'), 20_000);
+    expect(states.at(-1)).toBe('done');
+    // The sign-in's own session listed the native models: they are not the ones the agent runs on now.
+    await Bun.sleep(200);
+    expect(probed).toEqual([]);
+    const after = (await client.call('providers.probe', { providerId: 'antigravity', accountId: account.id })).models.map((model) => model.id);
+    expect(after).toEqual(gateway);
+  }, 40_000);
+
   test('Douane turned on after the last Antigravity account was removed gives the agent its default account again', async () => {
     const client = await startCore();
     shippedAsFake();
