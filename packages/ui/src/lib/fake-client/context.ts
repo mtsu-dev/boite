@@ -311,6 +311,8 @@ export class FakeContext {
   readonly activityAttachments = new Map<string, Attachment[]>();
   processes: ProcessRecord[] = [];
   memoryState: MemoryState = 'ok';
+  /** Whether this machine has a sleep inhibitor to hold: `?awake=missing` shows one without (`resources.keepAwake`). */
+  keepAwakeAvailable = true;
   readonly usage = new Map<ThreadId, Usage>();
   /** Moves asked for during a turn, applied when it ends, as the core's `ThreadMove.waiting`. Memory only. */
   readonly waitingMoves = new Map<ThreadId, { projectId: string; by: 'user' | 'agent'; stopBackground: boolean | undefined; at: number }>();
@@ -626,6 +628,9 @@ export class FakeContext {
       this.settings.subscriptionProxy = { enabled: search?.get('gatewayOn') === '1', kind: gateway, baseUrl: 'https://gateway.example.test/v1',
         dashboardUrl: gateway === 'douane' ? 'https://gateway.example.test/admin/#quotas' : 'https://gateway.example.test/management.html#/quota' };
     }
+    // `?os=linux` or `macos`: a core where the Windows-only guards and caps do nothing, and macOS reads no CPU.
+    const os = search?.get('os') === 'linux' || search?.get('os') === 'macos' ? search.get('os') as 'linux' | 'macos' : 'windows';
+    this.keepAwakeAvailable = search?.get('awake') !== 'missing';
     const hostname = options.hostname === undefined ? options.coreName ?? 'studio' : options.hostname;
     this.core = {
       ...(hostname ? { hostname } : {}),
@@ -633,17 +638,17 @@ export class FakeContext {
       coreId,
       protocolVersion: PROTOCOL_VERSION,
       features: { draftPreparation: true, attachmentUploads: true, threadSnapshots: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, pluginGrants: true, projectBoard: true, deviceProjects: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, sharedProjects: 1, listChanges: true },
-      os: 'windows',
+      os,
       channel: 'stable',
       pid: 4242,
       startedAt: T0,
       endpoint: { host: '127.0.0.1', port: 8777 },
       dataDir: DATA_DIR,
-      trace: {
-        os: 'windows',
+      trace: os === 'windows' ? {
+        os,
         mode: 'events',
         note: 'Job object completion port: every process this thread launched is reported exactly, including the ones its children launched.'
-      }
+      } : { os, mode: 'poll', note: 'direct children only; Job Objects are Windows-only' }
     };
     this.scheduler = {
       running: [],

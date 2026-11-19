@@ -104,6 +104,8 @@ client. Development fixtures spend no provider tokens:
 | `?fake=1&pluginArchive=1` | "Finish the trace tab" is done, marked by the plugin Bureau through `threads.archive`, permission `threads.write` ([plugins](plugins.md#permissions)) |
 | `?fake=1&uninstalled=1` | No connected provider |
 | `?fake=1&policy=managed` | An admin policy that locks every key a control shows; `broken` adds problems, `closed` fails closed ([enterprise](enterprise.md)) |
+| `?fake=1&os=linux` | A Linux core: the Windows-only switches and the CPU cap are greyed out; `macos` also reads no agent CPU |
+| `?fake=1&awake=missing` | A machine with no sleep inhibitor: Keep awake says so under its name |
 
 Production bundles exclude the fake client and Svelte development runtime.
 Vite removes an orphan fake-client chunk and rejects shipped references to it.

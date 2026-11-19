@@ -586,6 +586,7 @@ export class ProcRegistry {
     this.platform.startup?.(threadId, false);
   }
 
+  /** Which of `loadOf`'s readings were taken: false is unknown, not zero (CPU on macOS). */ loadAvailableOf(threadId: ThreadId) { return this.#resources.availability(threadId); }
   /** What `ThreadSummary.load` carries. Null when the thread has no process. */
   loadOf(threadId: ThreadId): ThreadLoad | null {
     const processes = this.liveCount(threadId);

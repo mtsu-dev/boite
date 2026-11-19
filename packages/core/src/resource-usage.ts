@@ -96,6 +96,10 @@ export class ResourceCollection {
     return resourceSnapshot(this.sampledAt, live, threadOf, loadOf, this.#details, this.#availability);
   }
 
+  availability(threadId: ThreadId): { cpu: boolean; memory: boolean } {
+    return this.#availability.get(threadId) ?? { cpu: false, memory: false };
+  }
+
   forget(threadId: ThreadId): void { this.#details.delete(threadId); this.#availability.delete(threadId); }
   close(): void { this.#watches.clear(); this.sync(); }
 }
