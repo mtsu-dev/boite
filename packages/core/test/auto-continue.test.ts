@@ -1,11 +1,13 @@
-import { afterEach, beforeEach, expect, setSystemTime, test } from 'bun:test';
+import { afterEach, beforeEach, expect, setSystemTime, spyOn, test } from 'bun:test';
 import { Database } from 'bun:sqlite';
-import { mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ImageAttachment, Message, Turn } from '@boite/contracts';
+import { connect } from '../src/client.ts';
 import { Core } from '../src/core.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnContext, TurnResult } from '../src/drivers/types.ts';
+import { profileFor } from '../src/providers/resolve.ts';
 import { startServer } from '../src/server.ts';
 import { AUTO_CONTINUE, AUTO_CONTINUE_LABEL } from '../src/threads/auto-continue.ts';
 import { CRASH_RESUMING, CRASH_WHILE_RUNNING } from '../src/threads/recovery.ts';
@@ -319,10 +321,11 @@ async function crash(h: TestCore, cut?: () => void): Promise<void> {
   delete process.env.BOITE_DATA_DIR;
 }
 
-async function restart(h: TestCore): Promise<{ core: Core; stop: () => Promise<void> }> {
+async function restart(h: TestCore, beforeListen?: (core: Core) => void): Promise<{ core: Core; connect: TestCore['connect']; stop: () => Promise<void> }> {
   const core = new Core({ dataDir: h.dataDir, token: h.token });
+  beforeListen?.(core);
   const server = startServer({ core, host: '127.0.0.1', port: 0 });
-  return { core, stop: async () => { await server.stop(); await core.close(); await removeDir(h.dataDir); } };
+  return { core, connect: () => connect(server.url, h.token), stop: async () => { await server.stop(); await core.close(); await removeDir(h.dataDir); } };
 }
 
 async function crashMidTurn(prompt: string, stopFirst = false, accepted = false): Promise<{ h: TestCore; threadId: string; turnId: string }> {
@@ -517,7 +520,16 @@ test('a crash that paused the subagent team of an answered thread wakes its agen
   } finally { setSystemTime(); await next.stop(); }
 });
 
-test.each(['planned', 'dispatching', 'admitted', 'settled after a cache ping'])('a resume survives a crash while %s', async (stage) => {
+test.each([
+  { stage: 'planned', slowProbe: false, stop: false },
+  { stage: 'dispatching', slowProbe: false, stop: false },
+  { stage: 'admitted', slowProbe: false, stop: false },
+  { stage: 'settled after a cache ping', slowProbe: false, stop: false },
+  { stage: 'planned', slowProbe: true, stop: false },
+  { stage: 'admitted', slowProbe: true, stop: false },
+  { stage: 'planned', slowProbe: true, stop: true },
+  { stage: 'admitted', slowProbe: true, stop: true },
+])('a resume survives a crash while $stage (slow probe: $slowProbe, Stop: $stop)', async ({ stage, slowProbe, stop }) => {
   // Long enough to crash first; the plan keeps its time across the restart.
   AUTO_CONTINUE.delaysMs = [1_500, 1_500];
   const h = await startTestCore();
@@ -527,9 +539,10 @@ test.each(['planned', 'dispatching', 'admitted', 'settled after a cache ping'])(
   const source = await client.call('turns.start', { threadId, prompt: 'index the docs' });
   await waitFor(() => h.core.threads.list({ includeArchived: true }).find(thread => thread.id === threadId)?.retry?.kind === 'auto-continue');
   let admittedId: string | undefined;
-  if (stage !== 'planned') {
+  if (stage !== 'planned' || slowProbe) {
     const entry = h.core.threads.resumes.entry(threadId)!;
-    h.core.journal.setSetting('resumes', { [threadId]: { ...entry, plan: { ...entry.plan, dispatching: true } } });
+    const plan = { ...entry.plan, ...(stage !== 'planned' ? { dispatching: true } : {}), ...(slowProbe ? { at: Date.now() } : {}) };
+    h.core.journal.setSetting('resumes', { [threadId]: { ...entry, plan } });
     if (stage === 'admitted' || stage === 'settled after a cache ping') {
       holdAccountTurns(h);
       const input = h.core.threads.handoff.continuation(source, entry.plan!.prompt);
@@ -545,13 +558,55 @@ test.each(['planned', 'dispatching', 'admitted', 'settled after a cache ping'])(
   client.close();
   await crash(h);
   const asked = scripted(done);
-  const next = await restart(h);
+  const probe = Promise.withResolvers<string>();
+  const unrelatedProbe = Promise.withResolvers<string>();
+  let probing = false;
+  let listSettled = false;
+  const next = await restart(h, slowProbe ? core => {
+    const program = join(h.dataDir, 'probe-agent.exe');
+    const unrelated = join(h.dataDir, 'unrelated-probe.exe');
+    writeFileSync(program, '', { mode: 0o755 });
+    writeFileSync(unrelated, '', { mode: 0o755 });
+    profileFor(core.providers.require('echo'))!.executable = [{ kind: 'file', value: program, major: 2 }];
+    profileFor(core.providers.require('claude'))!.executable = [{ kind: 'file', value: unrelated, major: 2 }];
+    core.providers.attachVersions(path => {
+      if (path === unrelated) return unrelatedProbe.promise;
+      probing = true;
+      return probe.promise;
+    }, () => {});
+    // The list RPC's wait can expire before the probe's own deadline.
+    const settle = core.providers.settle.bind(core.providers);
+    spyOn(core.providers, 'settle').mockImplementation(async () => { await settle(40); listSettled = true; });
+  } : undefined);
   try {
+    if (slowProbe) {
+      await waitFor(() => probing && listSettled);
+      expect(asked).toHaveLength(0);
+      if (admittedId) expect(next.core.journal.getTurn(admittedId)?.status).toBe('queued');
+      else expect(next.core.journal.getSetting('resumes')).toMatchObject({ [threadId]: { plan: { turnId: source.id } } });
+      if (stop) {
+        const reopened = await next.connect();
+        expect(await reopened.call('turns.stop', { threadId })).toEqual({ stopped: true });
+        reopened.close();
+      }
+      probe.resolve('probe-agent 2.0.0');
+      if (stop) {
+        await waitFor(() => next.core.providers.summary('echo')?.available === true);
+        expect(asked).toHaveLength(0);
+        if (admittedId) expect(next.core.journal.getTurn(admittedId)?.status).toBe('stopped');
+        else expect(next.core.journal.turnRequest(threadId, `auto-continue_${source.id}`)).toBeNull();
+        return;
+      }
+    }
     await waitFor(() => asked.length === 1 && next.core.journal.runningTurn(threadId) === null);
     expect(asked[0]!.prompt).toContain('API Error: 503');
     expect(asked).toHaveLength(1);
     const receipt = next.core.journal.turnRequest(threadId, `auto-continue_${source.id}`);
     if (admittedId) expect(receipt?.turn_id).toBe(admittedId);
     expect(next.core.journal.getTurn(receipt!.turn_id)?.status).toBe('done');
-  } finally { await next.stop(); }
+  } finally {
+    probe.resolve('probe-agent 2.0.0');
+    unrelatedProbe.resolve('unrelated-probe 2.0.0');
+    await next.stop();
+  }
 });

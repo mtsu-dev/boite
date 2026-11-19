@@ -252,17 +252,25 @@ export class ResumePlanner {
     this.#timers.delete(threadId);
   }
 
-  #fire(threadId: ThreadId): void {
+  #fire(threadId: ThreadId, expected?: Plan): void {
     if (this.#closed || this.#core.stopping || this.#core.journal.isClosed()) return;
     const record = this.#load();
     const entry = record[threadId];
     const plan = entry?.plan;
-    if (entry === undefined || plan === undefined || plan.dispatching) return;
+    if (entry === undefined || plan === undefined || plan.dispatching || (expected !== undefined && plan !== expected)) return;
     if (plan.at > Date.now() + 1_000) { this.#arm(threadId, plan.at - Date.now()); return; }
     // A cache ping holds the thread only to keep it warm: it gives way, and the resume goes once it stopped.
     if (this.threads.cacheKeepalive.yieldTo(threadId)) { this.#arm(threadId, PING_YIELD_MS); return; }
-    const refusal = this.#refusal(threadId, plan);
+    const thread = this.#core.journal.getThread(threadId);
+    if (thread === null) { this.cancel(threadId, 'the thread is gone'); return; }
+    const refusal = this.#refusal(thread, plan);
     if (refusal !== null) { this.cancel(threadId, refusal); return; }
+    const version = this.#core.providers.pendingVersion(thread.providerId);
+    if (version !== undefined) {
+      const retry = (): void => this.#fire(threadId, plan);
+      void version.then(retry, retry);
+      return;
+    }
     record[threadId] = { ...entry, plan: { ...plan, dispatching: true } };
     this.#save(record);
     let sent: TurnId | null = null;
@@ -287,11 +295,10 @@ export class ResumePlanner {
   }
 
   /** Why the plan must not go out now, or null. */
-  #refusal(threadId: ThreadId, plan: Plan): string | null {
+  #refusal(thread: ThreadSummary, plan: Plan): string | null {
+    const threadId = thread.id;
     const limit = plan.reason === 'limit';
     if (limit && this.#core.settings.get().autoResumeLimitedThreads !== true) return 'automatic resume was turned off';
-    const thread = this.#core.journal.getThread(threadId);
-    if (thread === null) return 'the thread is gone';
     if (thread.archived) return 'the thread was archived';
     if (this.threads.isBusy(threadId)) return 'the thread is busy';
     if (this.lastTurn(threadId)?.id !== plan.turnId) return 'the thread was answered since';

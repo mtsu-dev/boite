@@ -56,6 +56,7 @@ export class RestartHandoff {
   #settle: (() => void) | null = null;
   /** Each inherited entry stays durable until its continuation starts or is explicitly excluded. */
   #inherited: HandoffRecord | null = null;
+  readonly #versionReads = new Set<Promise<void>>();
   /**
    * The previous core stopped through a handoff this core carries on, rather
    * than dying: what delegation and workflows cut then resumes too.
@@ -102,7 +103,7 @@ export class RestartHandoff {
   }
 
   /** The user stopped the thread himself: that turn is his to send again. */
-  forget(threadId: ThreadId): void {
+  forget(threadId: ThreadId): boolean {
     let changed = false;
     for (const entry of this.#entries?.values() ?? []) {
       if (entry.threadId === threadId) changed = this.#entries!.delete(entry.turnId) || changed;
@@ -116,6 +117,7 @@ export class RestartHandoff {
       if (this.#entries !== null) this.#save();
       else this.#saveInherited();
     }
+    return changed;
   }
 
   /**
@@ -185,7 +187,7 @@ export class RestartHandoff {
    */
   resume(): number {
     const record = this.#inherited;
-    if (record === null || this.#core.stopping) return 0;
+    if (record === null || this.#core.stopping || this.#core.journal.isClosed()) return 0;
     if (record.turns.length === 0) { this.#saveInherited(); return 0; }
     let resumed = 0;
     for (const entry of [...record.turns]) {
@@ -202,9 +204,14 @@ export class RestartHandoff {
         if (turn.status === 'queued') {
           const state = this.#core.scheduler.state();
           if ([...state.queued, ...state.running].some(item => item.turnId === turn.id)) continue;
-          this.#core.scheduler.enqueue(turn, turn.execution?.accountId ?? thread.accountId);
+          this.#core.scheduler.enqueue(turn, turn.execution?.accountId ?? thread.accountId, { recovering: true });
           resumed += 1;
         } else if (admitted === null && entry.was === 'running' && turn.status === 'stopped') {
+          const read = this.#core.providers.pendingVersion(thread.providerId);
+          if (read !== undefined) {
+            this.#waitForVersion(read);
+            continue;
+          }
           const continuation = this.#threads.startTurn(thread.id, this.continuation(turn), { kind: 'resume', reason: 'handoff', requestId: this.#requestId(entry) });
           this.#remember(entry, continuation.id);
           resumed += 1;
@@ -219,6 +226,16 @@ export class RestartHandoff {
     }
     if (resumed > 0) this.#core.log('info', `restart handoff: resumed ${resumed} threads`);
     return resumed;
+  }
+
+  #waitForVersion(read: Promise<void>): void {
+    if (this.#versionReads.has(read)) return;
+    this.#versionReads.add(read);
+    const retry = (): void => {
+      this.#versionReads.delete(read);
+      this.resume();
+    };
+    void read.then(retry, retry);
   }
 
   #requestId(entry: Entry): string { return `restart_${entry.turnId}`; }

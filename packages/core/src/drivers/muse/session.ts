@@ -561,6 +561,11 @@ export class MuseSession {
     const turn = this.#current;
     if (turn === null) return;
     switch (method) {
+      case 'turn/started':
+        if (!turn.compacting && turn.turnId !== null && params['turnId'] === turn.turnId && turn.sessionId !== null) {
+          turn.ctx.sessionAccepted?.(turn.sessionId);
+        }
+        break;
       case 'item/started':
       case 'item/updated':
       case 'item/completed': {
@@ -621,8 +626,7 @@ export class MuseSession {
         turn.ctx.log('warn', 'muse: the host skipped some updates of this turn; the saved session is complete');
         break;
       default:
-        // turn/started (the id is already known), session/statusChanged,
-        // session/nameChanged and the rest: nothing to draw.
+        // session/statusChanged, session/nameChanged and the rest: nothing to draw.
         break;
     }
   }

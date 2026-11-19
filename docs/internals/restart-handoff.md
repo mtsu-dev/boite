@@ -97,11 +97,12 @@ asks the agent to check them and run `boite delegate resume`; a parent that had
 no turn running gets a resume for that alone.
 
 After a recent crash, an unsent conversation prompt returns to the queue with
-its original input and selection. The queue waits for startup provider checks
-and accepts Stop while it waits. Long-idle or explicitly held prompts stay held
-for an owner decision. If the provider acknowledged the first prompt or emitted
-its first native response, the running turn and conversation already record the
-resumable session ID.
+its original input and selection. A planned resume stays in the journal while
+its provider's version check runs, and an admitted turn waits with its existing
+ID. Stop cancels a plan or queued turn while it waits. Long-idle or explicitly
+held prompts stay held for an owner decision. If the provider acknowledged the
+first prompt or emitted its first native response, the running turn and
+conversation already record the resumable session ID.
 
 Nothing resumes for a turn that answered, a turn the user stopped, a refusal
 at capacity or at a usage limit, which retries on its own

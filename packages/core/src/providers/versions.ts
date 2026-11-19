@@ -210,6 +210,11 @@ export async function versionsSettled(): Promise<void> {
   while (pending.size > 0) await Promise.allSettled(pending.values());
 }
 
+/** The version read that can unblock resolution of this program. */
+export function pendingVersion(program: string): Promise<void> | undefined {
+  return pending.get(program);
+}
+
 /** Every reading and every pending question dropped: a test starts from nothing. */
 export function forgetVersions(): void {
   readings.clear();

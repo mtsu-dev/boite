@@ -13,6 +13,7 @@
  * `museHome` it reports, where a test puts a `model-catalog/` of its own.
  * `MUSE_FAKE_INIT` delays the answer to `initialize` by that many ms, or never
  * sends it when set to `never`, for the tests of a stalled startup.
+ * `MUSE_FAKE_TURN_ACK=never` streams the turn without acknowledging `turn/start`.
  */
 import { appendFileSync } from 'node:fs';
 import { instructionsOf } from './history.ts';
@@ -440,10 +441,11 @@ function handle(method: string, raw: unknown, requestId?: unknown): unknown {
       for (const part of input) {
         if (part['type'] === 'image') log(`image ${textOf(part['mediaType'])} ${textOf(part['base64Data'])}`);
       }
-      // A fresh turn's id is its commandId, and the turn streams after the ack.
+      // A fresh turn's id is its commandId. The host may stream while the ack is pending.
       setTimeout(() => {
         void runTurn(commandId, text);
       }, 0);
+      if (process.env['MUSE_FAKE_TURN_ACK'] === 'never') return HOLD_ACK;
       return { turnId: commandId, disposition: 'started', status: 'running' };
     }
     case 'turn/interrupt': {

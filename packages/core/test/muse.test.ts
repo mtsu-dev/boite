@@ -9,7 +9,7 @@ import { getDriver } from '../src/drivers/index.ts';
 import { choiceFor, mintUuidV7, museExecutable, museHostArgs } from '../src/drivers/muse.ts';
 import { setMuseStartupDeadlineForTests } from '../src/drivers/muse/session.ts';
 import { StdioTransport } from '../src/drivers/stdio.ts';
-import { startTestCore, startTurn, waitFor } from './harness.ts';
+import { removeDir, startTestCore, startTurn, waitFor } from './harness.ts';
 import type { TestCore } from './harness.ts';
 import { countLogLines, countProcesses, readScriptedLog, writeScriptedProvider } from './scripted-provider.ts';
 
@@ -497,6 +497,41 @@ describe('muse driver', () => {
     expect(again.status).toBe('done');
     expect(fakeLog()).toContain(`session/resume ${sessionId} excludeItems=true`);
   });
+
+  test('a crash after Muse starts streaming but before turn/start replies keeps the native session', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'boite-muse-restart-'));
+    const first = await startTestCore({ dataDir });
+    harness = first;
+    logFile = join(dataDir, 'muse-fake.log');
+    process.env['MUSE_FAKE_LOG'] = logFile;
+    process.env['MUSE_FAKE_TURN_ACK'] = 'never';
+    let reopened: TestCore | undefined;
+    try {
+      const client = await first.connect();
+      const threadId = await museThread(client);
+      const turn = await client.call('turns.start', { threadId, prompt: 'halfway through [slow]' });
+      await waitFor(() => first.core.threads.get(threadId).messages.some(message => message.turnId === turn.id && message.role === 'assistant'));
+      const saved = first.core.journal.getThread(threadId)?.sessionId;
+      expect(saved).toEqual(expect.any(String));
+      expect(first.core.journal.getTurn(turn.id)?.execution?.sessionId).toBe(saved!);
+      expect(first.core.journal.getTurn(turn.id)?.status).toBe('running');
+
+      first.core.journal.close();
+      first.core.threads.releaseAgent(threadId);
+      await first.stop();
+      delete process.env['MUSE_FAKE_TURN_ACK'];
+      reopened = await startTestCore({ dataDir });
+      await waitFor(() => reopened!.core.journal.listTurns(threadId)[1]?.status === 'done', 10_000);
+      expect(fakeLog()).toContain(`session/resume ${saved} excludeItems=true`);
+      expect(reopened.core.journal.getThread(threadId)?.sessionId).toBe(saved!);
+      expect(fakeLog().match(/^session\/start /gm)).toHaveLength(1);
+    } finally {
+      delete process.env['MUSE_FAKE_TURN_ACK'];
+      await reopened?.stop();
+      await first.stop();
+      await removeDir(dataDir);
+    }
+  }, 20_000);
 
   test('a missing login fails the turn with the sentence that fixes it', async () => {
     const { client, threadId } = await startThread();
