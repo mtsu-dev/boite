@@ -11,6 +11,7 @@
   import { onView } from '../lib/on-view';
   import SurfaceHead from './SurfaceHead.svelte';
   import PanelListRow from './PanelListRow.svelte';
+  import EmptyState from './EmptyState.svelte';
   import ChangeCount from './ChangeCount.svelte';
   import DiffView, { SPLIT_MIN_WIDTH } from './DiffView.svelte';
   import Menu from './Menu.svelte';
@@ -296,7 +297,7 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="detail" bind:this={body} bind:clientWidth={codeWidth} onwheel={release} ontouchstart={release} onpointerdown={release} onkeydown={release}>
     {#if status && status.changes.length === 0 && entries.length === 0}
-      <p class="empty" data-testid="changes-empty">{strings.changes.clean}</p>
+      <EmptyState compact testid="changes-empty" line={strings.changes.clean} />
     {/if}
     {#each entries as { path, change } (path)}
       {@const read = diffs[path]}
@@ -336,9 +337,9 @@
             <!-- Read as it nears the screen: a quiet block holds its place meanwhile. -->
             <div class="pending" aria-busy="true"></div>
           {:else if !read.diff}
-            <p class="empty">{strings.changes.clean}</p>
+            <EmptyState compact line={strings.changes.clean} />
           {:else if read.diff.binary}
-            <p class="empty" data-testid="changes-binary">{strings.changes.binary}</p>
+            <EmptyState compact testid="changes-binary" line={strings.changes.binary} />
           {:else}
             {#if read.diff.truncated}
               <p class="notice" data-testid="changes-truncated">{strings.changes.truncated}</p>
@@ -467,13 +468,6 @@
 
   .count.removed {
     color: var(--color-danger);
-  }
-
-  .empty {
-    margin: 0;
-    padding: 10px 12px;
-    font-size: var(--text-sm);
-    color: var(--color-muted-foreground);
   }
 
   .notice {

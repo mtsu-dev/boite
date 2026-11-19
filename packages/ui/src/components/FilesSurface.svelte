@@ -12,6 +12,7 @@
   import type { Store } from '../lib/store.svelte';
   import SurfaceHead from './SurfaceHead.svelte';
   import PanelListRow from './PanelListRow.svelte';
+  import EmptyState from './EmptyState.svelte';
 
   let { store, surface, panel }: { store: Store; surface: Surface; panel: BoundPanel } = $props();
 
@@ -306,9 +307,7 @@
     {/each}
 
     {#if rows.length === 0 && problem === null}
-      <p class="empty" data-testid="files-empty">
-        {filter.trim() === '' ? strings.files.empty : strings.files.noMatch}
-      </p>
+      <EmptyState compact testid="files-empty" line={filter.trim() === '' ? strings.files.empty : strings.files.noMatch} />
     {/if}
   </div>
 
@@ -359,6 +358,7 @@
   }
 
   .tree {
+    --empty-inline-padding: 6px;
     flex: 1;
     min-height: 0;
     overflow: auto;
@@ -395,25 +395,16 @@
     white-space: nowrap;
   }
 
-  :global(.row.on) > .name {
-    color: var(--color-foreground);
-  }
-
   .size {
     flex: none;
     color: var(--color-subtle);
     font-variant-numeric: tabular-nums;
   }
 
-  .empty,
   .footer {
     margin: 0;
     font-size: var(--text-sm);
     color: var(--color-muted-foreground);
-  }
-
-  .empty {
-    padding: 10px 6px;
   }
 
   .problem {
