@@ -49,6 +49,7 @@ export const fr: Translation = {
     removeKey: 'Supprimer', saveKeys: 'Enregistrer les clés',
     fallback: 'Passer à l\'autre fournisseur', fallbackHint: 'Quand le premier échoue. Demande les deux clés. Le mode local ne passe jamais par une API.',
     language: 'Langue', languageHint: 'Vide, la langue est détectée. Un code à deux lettres comme en ou fr la fixe.',
+    languageAuto: 'Automatique',
     saved: 'Enregistré', ownerOnly: 'Le propriétaire de cette machine la gère.',
   }
 };

@@ -423,7 +423,7 @@ export class TurnContexts {
       && !nativeCommandPrompt(input.prompt)) {
       const tail = compactionTail(this.#core, thread);
       if (tail !== null) {
-        continued = tailInput(this.#core.journal, threadId, { turnId: tail.after, afterPart: tail.afterPart ?? null }, turn.id, continued, fileReference);
+        continued = tailInput(this.#core.journal, threadId, { turnId: tail.after, afterPart: tail.afterPart ?? null }, turn.id, continued, provider, fileReference);
         this.#threads.backgroundCompact.carried(threadId, turn.id);
       }
     }

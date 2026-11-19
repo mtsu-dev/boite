@@ -6,7 +6,7 @@ import { notFound, refused } from '../errors.ts';
 import { requireAgent } from './agentless.ts';
 import { markQueued, settleStatus } from './lifecycle.ts';
 import { checkStoredEffort, checkStoredSpeed } from './selection.ts';
-import { announceFinished, finishTurn } from './turn-settlement.ts';
+import { announceFinished, finishTurn, userStopKey } from './turn-settlement.ts';
 import { addErrorPart, closeAsError, openTurnMessage } from './turn-error.ts';
 
 /** What a turn a dead core left behind says, once the next core has closed it. */
@@ -40,9 +40,18 @@ export class ThreadRecovery {
     const inherited = handoff.inheritedTurns();
     /** Threads whose queued turn goes back in line once the server listens. */
     const waiting = new Set<ThreadId>();
-    const counts = { requeued: 0, held: 0, handedOver: 0, failed: 0 };
+    const counts = { requeued: 0, held: 0, handedOver: 0, stopped: 0, failed: 0 };
     for (const turn of stuck) {
       const previous = turn.status;
+      if (previous === 'running' && this.#core.journal.getSetting(userStopKey(turn.id)) === true) {
+        this.#core.journal.db.transaction(() => {
+          handoff.forget(turn.threadId);
+          this.#core.threads.resumes.forget(turn.threadId);
+          this.#closeStopped(turn, 'user-stop');
+        })();
+        counts.stopped += 1;
+        continue;
+      }
       if (handoff.requeues(turn)) {
         counts.requeued += 1;
         this.#core.logs.info(`Turn ${turn.id} was handed over by the previous core and goes back in the queue`, { source: 'turns', event: 'turn.recovery.requeued', threadId: turn.threadId, turnId: turn.id, data: { previous } });
@@ -65,7 +74,7 @@ export class ThreadRecovery {
       }
       if (previous === 'running' && inherited.get(turn.id) === 'running') {
         // Killed during a restart handoff: the next turn of the thread resumes it, so this is no failure.
-        this.#core.journal.db.transaction(() => this.#closeHandedOver(turn))();
+        this.#core.journal.db.transaction(() => this.#closeStopped(turn, 'handed-over'))();
         counts.handedOver += 1;
         this.#core.logs.info(`Turn ${turn.id} was stopped by a restart handoff; the thread's next turn resumes it`, { source: 'turns', event: 'turn.recovery.handed-over', threadId: turn.threadId, turnId: turn.id });
         continue;
@@ -84,7 +93,7 @@ export class ThreadRecovery {
     }
     if (stuck.length > 0) {
       // Requeued, held or handed over turns are a normal restart: only a failed one is worth a warning.
-      this.#core.logs.record(counts.failed > 0 ? 'warn' : 'info', `Recovered ${stuck.length} unfinished turns left by the previous core: ${counts.requeued} requeued, ${counts.held} held, ${counts.handedOver} handed over, ${counts.failed} marked failed`, {
+      this.#core.logs.record(counts.failed > 0 ? 'warn' : 'info', `Recovered ${stuck.length} unfinished turns left by the previous core: ${counts.requeued} requeued, ${counts.held} held, ${counts.handedOver} handed over, ${counts.stopped} stopped, ${counts.failed} marked failed`, {
         source: 'startup', event: 'startup.turns-recovered', data: { total: stuck.length, ...counts },
       });
     }
@@ -125,8 +134,8 @@ export class ThreadRecovery {
     return resumed;
   }
 
-  /** A turn the previous core was handing over when it was killed: stopped, with no error part. */
-  #closeHandedOver(turn: Turn): void {
+  /** The previous core was stopping this turn when it was killed. */
+  #closeStopped(turn: Turn, cause: 'handed-over' | 'user-stop'): void {
     const threadId = turn.threadId;
     for (const message of this.#core.journal.walkTurnMessages(threadId, turn.id, { blobs: false })) {
       if (message.state !== 'streaming') continue;
@@ -139,7 +148,7 @@ export class ThreadRecovery {
       this.#core.bus.emit('message.completed', { threadId, messageId: message.id, state: 'complete' });
     }
     const stopped: Turn = { ...turn, status: 'stopped', finishedAt: Date.now() };
-    announceFinished(this.#core, stopped, finishTurn(this.#core, stopped, 'handed-over'));
+    announceFinished(this.#core, stopped, finishTurn(this.#core, stopped, cause));
   }
 
   #failStuckTurn(turn: Turn, reason: string): void {

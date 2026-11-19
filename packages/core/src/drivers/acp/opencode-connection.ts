@@ -12,10 +12,19 @@ import { messageOf } from '../../errors.ts';
 import { openCodeContent } from './opencode-content.ts';
 import { answerOpenCodeForm } from './opencode-forms.ts';
 import type { PermissionTicket } from '../types.ts';
+import { EXIT_GRACE_MS } from '../exit.ts';
 
-type Pending = { resolve: (response: PromptResponse) => void; reject: (error: Error) => void };
+type Pending = {
+  resolve(response: PromptResponse): void;
+  reject(error: unknown): void;
+  admitted: boolean;
+  cancelSent: boolean;
+  output: Promise<void>;
+  buffered: number;
+};
 type Notify = (notification: SessionNotification) => void;
 type Terminal = { stopReason: 'end_turn' | 'cancelled'; error?: string };
+const EVENT_LIMIT = 16 * 1024 * 1024;
 
 export class OpenCodeConnection {
   readonly agent: ClientContext;
@@ -87,18 +96,19 @@ export class OpenCodeConnection {
     return { model: this.#controls.currentModel(), window: this.#controls.compactionWindow() };
   }
 
-  async steer(prompt: ContentBlock[], onAccepted?: () => void): Promise<boolean> {
-    if (!this.#pending || this.#inputCommitted || !this.#current() || this.#current()?.isStopped) return false;
-    await this.#submit(prompt, onAccepted);
+  async steer(prompt: ContentBlock[], onAccepted?: () => void, signal?: AbortSignal): Promise<boolean> {
+    const pending = this.#pending;
+    if (!pending || this.#inputCommitted || !this.#current() || this.#current()?.isStopped) return false;
+    await this.#submit(pending, prompt, false, onAccepted, signal);
     return true;
   }
 
-  async #call(path: string, method = 'GET', body?: unknown): Promise<unknown> {
+  async #call(path: string, method = 'GET', body?: unknown, signal?: AbortSignal): Promise<unknown> {
     const response = await fetch(`${this.#url}${path}`, {
       method, headers: { authorization: this.#authorization, 'content-type': 'application/json' },
       redirect: 'error',
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      signal: AbortSignal.any([this.#abort.signal, AbortSignal.timeout(30_000)]),
+      signal: AbortSignal.any([this.#abort.signal, AbortSignal.timeout(30_000), ...(signal ? [signal] : [])]),
     });
     if (!response.ok) throw Object.assign(new Error(`OpenCode ${method} ${path.split('?')[0]} returned HTTP ${response.status}`), { code: response.status === 404 ? -32001 : -32603 });
     const content = await response.text();
@@ -133,24 +143,42 @@ export class OpenCodeConnection {
     this.#inbox.clear();
     this.#deferredTerminal = null;
     this.#tokens = { inputTokens: 0, outputTokens: 0, thoughtTokens: 0, cachedReadTokens: 0, cachedWriteTokens: 0, totalTokens: 0 };
-    const response = new Promise<PromptResponse>((resolve, reject) => { this.#pending = { resolve, reject }; });
-    void this.#submit(params['prompt'] as ContentBlock[]).catch(error => { this.#pending?.reject(error); this.#pending = null; });
-    return response;
+    const response = Promise.withResolvers<PromptResponse>();
+    const pending: Pending = { ...response, admitted: false, cancelSent: false, output: Promise.resolve(), buffered: 0 };
+    this.#pending = pending;
+    void this.#submit(pending, params['prompt'] as ContentBlock[], true).catch(error => {
+      if (this.#pending !== pending) return;
+      this.#pending = null;
+      pending.reject(error);
+    });
+    return response.promise;
   }
 
   async #notification(method: string): Promise<void> {
-    if (method === 'session/cancel' && this.#pending) await this.#call(`${this.#path()}/interrupt`, 'POST', {});
+    const pending = this.#pending;
+    if (method !== 'session/cancel' || !pending || pending.cancelSent) return;
+    pending.cancelSent = true;
+    await this.#interrupt();
   }
 
   #path(): string { return `/api/session/${encodeURIComponent(this.#sessionId)}`; }
 
-  async #submit(prompt: ContentBlock[], onAccepted?: () => void): Promise<void> {
+  #interrupt(): Promise<unknown> { return this.#call(`${this.#path()}/interrupt`, 'POST', {}); }
+
+  async #submit(pending: Pending, prompt: ContentBlock[], initial: boolean, onAccepted?: () => void, signal?: AbortSignal): Promise<void> {
     this.#inputCommitted = new Promise(resolve => { this.#commitInput = resolve; });
     try {
-      const response = object(await this.#send(prompt));
+      const response = object(await this.#send(prompt, signal));
+      signal?.throwIfAborted();
+      if (this.#pending !== pending) throw new Error('OpenCode execution ended before admission');
       const id = text(object(response['data'])['id']);
       if (!id) throw new Error('OpenCode prompt response data.id must be a nonempty inbox ID');
       this.#inbox.add(id);
+      if (initial) {
+        pending.admitted = true;
+        // An earlier interrupt may have reached the server before the prompt did.
+        if (pending.cancelSent) void this.#interrupt().catch(() => undefined);
+      }
       onAccepted?.();
     } finally {
       this.#commitInput?.(); this.#commitInput = null; this.#inputCommitted = null;
@@ -158,18 +186,18 @@ export class OpenCodeConnection {
     this.#current()?.ctx.inputReady?.();
   }
 
-  #send(prompt: ContentBlock[]): Promise<unknown> {
+  #send(prompt: ContentBlock[], signal?: AbortSignal): Promise<unknown> {
     const value = prompt.flatMap(block => block.type === 'text' ? [block.text] : []).join('\n');
     const files = prompt.flatMap(block => block.type === 'image' ? [{ uri: `data:${block.mimeType};base64,${block.data}` }] : []);
     const slash = /^\/([^\s]+)\s*([\s\S]*)$/.exec(value.trim());
     if (slash?.[1] === 'compact') {
       this.#compacting = true;
-      return this.#call(`${this.#path()}/compact`, 'POST', {});
+      return this.#call(`${this.#path()}/compact`, 'POST', {}, signal);
     }
     if (slash && this.#controls.commands.some(command => command['name'] === slash[1])) {
-      return this.#call(`${this.#path()}/command`, 'POST', { name: slash[1], text: slash[2], files, delivery: 'steer' });
+      return this.#call(`${this.#path()}/command`, 'POST', { name: slash[1], text: slash[2], files, delivery: 'steer' }, signal);
     }
-    return this.#call(`${this.#path()}/prompt`, 'POST', { text: value, files, delivery: 'steer' });
+    return this.#call(`${this.#path()}/prompt`, 'POST', { text: value, files, delivery: 'steer' }, signal);
   }
 
   async #subscribe(): Promise<void> {
@@ -189,14 +217,14 @@ export class OpenCodeConnection {
       const decoder = new TextDecoder();
       for await (const chunk of response.body!) {
         buffer += decoder.decode(chunk, { stream: true });
-        if (buffer.length > 16 * 1024 * 1024) throw new Error('OpenCode event exceeds 16 MiB');
+        if (buffer.length > EVENT_LIMIT) throw new Error('OpenCode event exceeds 16 MiB');
         let end: number;
         while ((end = buffer.indexOf('\n')) >= 0) {
           const line = buffer.slice(0, end).trimEnd(); buffer = buffer.slice(end + 1);
           if (!line.startsWith('data:')) continue;
           const event = object(JSON.parse(line.slice(5)));
           if (event['type'] === 'server.connected') { clearTimeout(timer); connected(); }
-          else await this.#event(text(event['type']), object(event['data']));
+          else this.#receive(text(event['type']), object(event['data']), line.length);
         }
       }
       if (!this.#abort.signal.aborted) throw new Error('OpenCode event stream closed');
@@ -208,18 +236,40 @@ export class OpenCodeConnection {
     try { await ready; } finally { clearTimeout(timer); }
   }
 
-  async #event(type: string, data: Record<string, unknown>): Promise<void> {
-    // SSE can outrun the HTTP acknowledgement. Publish accepted user input
-    // before drawing the model's response to it.
-    if (this.#inputCommitted) await this.#inputCommitted;
+  #receive(type: string, data: Record<string, unknown>, size: number): void {
     if (type === 'session.created' && (data['parentID'] === this.#sessionId || this.#children.has(text(data['parentID'])))) {
       this.#children.add(text(data['sessionID']));
       return;
     }
+    const pending = this.#pending;
     const turn = this.#current();
+    if (!pending || !turn) return;
+    const terminal = type === 'session.execution.interrupted' || type === 'session.execution.succeeded' || type === 'session.execution.failed'
+      || (this.#compacting && (type === 'session.compaction.ended' || type === 'session.compaction.failed'));
+    if (turn.isStopped && data['sessionID'] === this.#sessionId && terminal) {
+      // A terminal event before initial admission can belong to the idle session.
+      // The interrupt sent after admission gets its own terminal event.
+      if (pending.admitted) this.#complete({ stopReason: 'cancelled' });
+      return;
+    }
+    pending.buffered += size;
+    if (pending.buffered > EVENT_LIMIT) throw new Error('OpenCode pending output exceeds 16 MiB');
+    pending.output = pending.output.then(async () => {
+      // SSE may arrive first. Publish the input before drawing its answer, and
+      // keep data events ordered while a tool's documents are being read.
+      while (this.#pending === pending && this.#inputCommitted) await this.#inputCommitted;
+      if (this.#pending === pending && this.#current() === turn && !turn.isStopped) await this.#event(turn, type, data);
+    }).catch(error => {
+      if (this.#pending !== pending) return;
+      pending.reject(error);
+      this.close();
+    }).finally(() => { pending.buffered -= size; });
+  }
+
+  async #event(turn: AcpTurn, type: string, data: Record<string, unknown>): Promise<void> {
     const sessionId = text(data['sessionID'] ?? object(data['form'])['sessionID']);
     const child = this.#children.has(sessionId);
-    if (!this.#pending || !turn || (sessionId !== this.#sessionId && !child)) return;
+    if (sessionId !== this.#sessionId && !child) return;
     // Children can ask for approval without ending their parent's execution.
     if (child && !type.startsWith('permission.') && !type.startsWith('form.') && !type.startsWith('session.tool.')) return;
     const id = text(data['id']);
@@ -246,6 +296,7 @@ export class OpenCodeConnection {
       case 'session.tool.failed': {
         const tool = this.#tools.get(id);
         const content = await openCodeContent(data['content'], type.endsWith('failed') ? null : data['metadata'], turn.ctx.thread.cwd);
+        if (turn !== this.#current() || turn.isStopped || turn.settled || this.#abort.signal.aborted) return;
         if (type.endsWith('failed')) content.push({ type: 'content', content: { type: 'text', text: text(object(data['error'])['message']) } });
         turn.upsertTool(id, tool?.name ?? null, tool?.input, undefined, type.endsWith('failed') ? 'failed' : 'completed', content);
         break;
@@ -327,12 +378,19 @@ export class OpenCodeConnection {
     const pending = this.#pending;
     if (!pending) return;
     this.#pending = null;
-    try {
-      const session = object(object(await this.#call(this.#path()))['data']);
-      const turn = this.#current();
-      if (turn && typeof session['cost'] === 'number') turn.costUsdEquivalent = session['cost'];
-      if (this.#lastTokens > 0) turn?.noteContext(this.#lastTokens, this.#controls.contextWindow());
-      pending.resolve({ stopReason, usage: this.#tokens });
-    } catch (error) { pending.reject(error instanceof Error ? error : new Error(messageOf(error))); }
+    const turn = this.#current();
+    if (this.#lastTokens > 0) turn?.noteContext(this.#lastTokens, this.#controls.contextWindow());
+    if (turn && !turn.isStopped && stopReason !== 'cancelled') {
+      const reading = new AbortController();
+      void turn.stopped.then(() => reading.abort());
+      try {
+        const signal = AbortSignal.any([reading.signal, AbortSignal.timeout(EXIT_GRACE_MS)]);
+        const session = object(object(await this.#call(this.#path(), 'GET', undefined, signal))['data']);
+        if (this.#current() === turn && typeof session['cost'] === 'number') turn.costUsdEquivalent = session['cost'];
+      } catch (error) {
+        if (!reading.signal.aborted) turn.ctx.log('warn', `OpenCode session cost could not be read: ${messageOf(error)}`);
+      }
+    }
+    pending.resolve({ stopReason: turn?.isStopped ? 'cancelled' : stopReason, usage: this.#tokens });
   }
 }

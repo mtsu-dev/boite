@@ -145,13 +145,7 @@ export class MuseRpc {
       entry.reject(mspErrorOf(entry.method, error));
       return;
     }
-    try {
-      // Promise continuations run after every notification in this pipe chunk.
-      entry.onAccepted?.();
-      entry.resolve(message['result']);
-    } catch (error) {
-      entry.reject(error instanceof Error ? error : new Error(String(error)));
-    }
+    entry.resolve(message['result']);
   }
 }
 

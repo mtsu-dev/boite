@@ -375,13 +375,14 @@ delay their delivery.
 
 ## Where it lives
 
-The graph shows each step's reasoning effort and cumulative reported tokens,
-with the run's total in its header, including zero before the first report.
-Counts include input, output, cache reads, cache writes and previous attempts.
-Fan-out details also show
+The graph shows each step's resolved route, reasoning effort and cumulative reported tokens,
+with the run's total in its header. The UI marks missing usage as unknown
+and a sum across both measured and unmeasured executions as partial.
+Counts include input, output, cache reads, cache writes and previous attempts,
+including a retry that replaced an archived child. Fan-out details also show
 each execution's tokens. Usage arrives when a provider finishes a turn;
-tokens still being generated are not estimated. Older cores without execution
-usage keep the run total and omit per-step counts.
+tokens still being generated are not estimated. Group-machine reports store a
+turn's usage once per execution attempt, including output corrections.
 
 The plan checks and the path rules are shared by the core and the UI in
 `packages/contracts/src/workflow-plan.ts`. The core's runner is

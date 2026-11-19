@@ -210,6 +210,29 @@ export const BROWSER_RECORDING_CODECS = ['h264', 'hevc', 'av1'] as const;
 export type BrowserRecordingCodec = typeof BROWSER_RECORDING_CODECS[number];
 export const DEFAULT_BROWSER_RECORDING_CODEC: BrowserRecordingCodec = 'h264';
 export const BROWSER_RECORDING_CODEC_LABELS: Record<BrowserRecordingCodec, string> = { h264: 'H.264', hevc: 'HEVC', av1: 'AV1' };
+/** The MediaRecorder types tried for each codec, all MP4; plain `video/mp4` would let the engine pick. */
+export const BROWSER_RECORDING_CODEC_TYPES: Readonly<Record<BrowserRecordingCodec, readonly string[]>> = {
+  h264: ['video/mp4;codecs=avc1.640028', 'video/mp4;codecs=avc1.4d0028', 'video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1'],
+  hevc: ['video/mp4;codecs=hvc1.1.6.L123.B0', 'video/mp4;codecs=hev1.1.6.L123.B0', 'video/mp4;codecs=hvc1', 'video/mp4;codecs=hev1'],
+  av1: ['video/mp4;codecs=av01', 'video/mp4;codecs=av01.0.08M.08'],
+};
+
+export function recordingTypeCodec(type: string): BrowserRecordingCodec | null {
+  const codecs = /codecs=([^;]*)/i.exec(type)?.[1]?.toLowerCase() ?? '';
+  return /\bavc[13]/.test(codecs) ? 'h264' : /\b(hvc1|hev1)/.test(codecs) ? 'hevc' : /\bav01/.test(codecs) ? 'av1' : null;
+}
+
+/** The bitrate follows pixels and frames, within 2.5 and 50 Mbit/s. */
+export function recordingBitrate(width: number, height: number, frameRate: number): number {
+  return Math.round(Math.min(50_000_000, Math.max(2_500_000, width * height * frameRate * 0.05)));
+}
+
+/** The video's size: the page's own up to 1920×1080, even sides for H.264. */
+export function recordingSize(width: number, height: number): { width: number; height: number } {
+  const scale = Math.min(1, 1920 / width, 1080 / height);
+  return { width: Math.max(2, Math.round(width * scale / 2) * 2), height: Math.max(2, Math.round(height * scale / 2) * 2) };
+}
+
 /** `frameRate` is the rate requested, `frames` the page frames the video received, `codec` the one encoded. */
 export interface BrowserRecording { id: string; mime: BrowserRecordingMime; bytes: number; durationMs: number; frameRate?: BrowserRecordingFrameRate; frames?: number; codec?: BrowserRecordingCodec; reason: 'stopped' | 'size' | 'error'; error?: string }
 export interface BrowserDiagnostic { at: number; kind: 'console' | 'exception' | 'network'; level: string; text: string; url?: string }

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import SettingField from './SettingField.svelte';
+  import SettingSwitch from './SettingSwitch.svelte';
   import { lockedBy } from '../lib/policy';
   import { workspace } from '../lib/workspace.svelte';
   import { tick, untrack } from 'svelte';
@@ -403,11 +405,12 @@
   </section>
 
   <section class="card" id="settings-diagnostics-agents">
-    <label for="{uid}-agents" class="switch-row">
-      <span class="text"><span class="ui-label" id="{uid}-agents-name">{s.agentAccess}</span><span class="hint" id="{uid}-agents-effect">{strings.settings.effects.agentAccess}</span></span>
-      <input id="{uid}-agents" aria-labelledby="{uid}-agents-name" aria-describedby="{uid}-agents-effect" type="checkbox" role="switch" data-testid="setting-agent-log-access"
-        checked={store.settings?.agentLogAccess ?? true} disabled={!store.settings} onchange={event => void toggleAgents(event.currentTarget)} />
-    </label>
+    <SettingField title={s.agentAccess} hint={strings.settings.effects.agentAccess}>
+      {#snippet control(attributes)}
+        <SettingSwitch {...attributes} data-testid="setting-agent-log-access" checked={store.settings?.agentLogAccess ?? true}
+          disabled={!store.settings} onchange={(event) => void toggleAgents(event.currentTarget)} />
+      {/snippet}
+    </SettingField>
   </section>
 </div>
 

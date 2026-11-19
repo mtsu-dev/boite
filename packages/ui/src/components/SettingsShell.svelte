@@ -1,11 +1,12 @@
 <script lang="ts">
   import { desktopShell } from '../lib/shell-platform';
+  import { openArchived } from '../lib/archived-view.svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { tick } from 'svelte';
   import MobileSettings from './MobileSettings.svelte';
   import BrainPage from './BrainPage.svelte';
-  import InfoTip from './InfoTip.svelte';
-  import { ChevronDown, ChevronLeft, ChevronRight, Search, Monitor, MonitorSmartphone } from '@lucide/svelte';
+  import SettingsPageHeader from './SettingsPageHeader.svelte';
+  import { ChevronDown, ChevronLeft, ChevronRight, Search } from '@lucide/svelte';
   import { SETTINGS_ICONS, SETTINGS_ICON_SIZE, SETTINGS_ICON_STROKE } from '../lib/settings-icons';
   import KeyboardPage from './KeyboardPage.svelte';
   import LimitsPage from './LimitsPage.svelte';
@@ -194,28 +195,8 @@
   /** The pages merged into the shown one as its last sections (`lib/settings-tabs.ts`). */
   let merged = $derived(sectionsOf(tab, store.owner));
 
-  /**
-   * What each page is for, said once behind the "i" beside the screen's title
-   * at the top of its card: the page's own title steps aside, so its card
-   * starts with its settings (app.css's `.page > header`).
-   */
-  function infoOf(page: SettingsTab): string {
-    switch (page) {
-      case 'keyboard': return strings.keyboard.intro;
-      case 'voice': return strings.speech.description;
-      case 'accounts': return strings.providerSettings.intro;
-      case 'plugins': return strings.plugins.intro;
-      case 'usage': return `${strings.usage.intro} ${strings.usage.note}`;
-      case 'machines': return strings.machines.intro;
-      case 'experiments': return strings.settings.experiments.intro;
-      case 'diagnostics': return strings.diagnostics.intro;
-      case 'task-manager': return strings.taskManager.scope;
-      default: return '';
-    }
-  }
   /** One title per screen, at the top of its card: the page's own name, as the nav lists it. */
   let title = $derived(tab === 'home' ? strings.settings.tabs.home : tabs.find((entry) => entry.id === tab)?.label ?? '');
-  let info = $derived(infoOf(tab));
   let scopePicks = $derived(bar && tab !== 'experiments' && choices.length > 1 && chosen !== undefined);
   /**
    * Where the page's settings apply, said once under the title, for most of
@@ -264,7 +245,7 @@
     ['general', 'conversations', strings.features.previewComments.title],
     ['browser', 'browser-profiles', strings.browserProfiles.heading],
     ...(store.owner ? [['machines', 'window-exclusions', strings.windows.settings.addLabel]] as [SettingsTab, string, string][] : []),
-    ['general', 'archived', strings.settings.archived.doneRetentionLabel],
+    ['general', 'thread-retention', strings.settings.archived.doneRetentionLabel],
     // The switch lives in the shell's own card: a browser has no tray.
     ...(inShell ? [['general', 'app', strings.settings.closeToTray] as [SettingsTab, string, string]] : []),
     ...(inShell ? [['general', 'app', strings.settings.launchAtLogin] as [SettingsTab, string, string]] : []),
@@ -359,7 +340,8 @@
 
   function open(entry: SettingsEntry) {
     query = '';
-    store.showSettings(entry.tab, entry.section);
+    if (entry.tab === 'general' && entry.section === 'archived') openArchived(store);
+    else store.showSettings(entry.tab, entry.section);
   }
 
   function go(page: SettingsTab) {
@@ -501,13 +483,7 @@
         <div class="found">{@render searchResults()}</div>
       {:else}
         <header class="screen" data-testid="settings-crumb">
-          <h1 class="ui-label-box"><span class="ui-label">{title}</span>{#if info}<InfoTip topic={title} text={info} testid="settings-info" />{/if}</h1>
-          {#if scope}
-            <p class="scope" data-testid="settings-scope" data-scope={scopeKind}>
-              {#if scopeKind === 'device'}<MonitorSmartphone size={14} strokeWidth={1.75} aria-hidden="true" />{:else if !scopePicks}<Monitor size={14} strokeWidth={1.75} aria-hidden="true" />{/if}
-              {#if scopeKind === 'machine' && scopePicks}{@render scopePicker(strings.settings.scopeMachine)}{:else}<span class="ui-label">{scope}</span>{/if}
-            </p>
-          {/if}
+          <SettingsPageHeader {title} page={tab} {scope} kind={scopeKind} picker={scopePicks ? scopePicker : undefined} />
         </header>
         {#if bar && tab !== 'experiments'}{@render machineNotes()}{/if}
         {#key target}
@@ -533,7 +509,7 @@
       {:else if page === 'general'}
         <GeneralSettings store={target} here={store} />
       {:else if page === 'machines'}
-        <MachinesPage {onopenthread} {store} />
+        <MachinesPage {onopenthread} {store} showTitle={false} />
       {:else if page === 'advanced'}
         <AdvancedSettings store={target} />
       {:else if page === 'appearance'}
@@ -645,10 +621,8 @@
   .framed > :global(.page > header h1 > .ui-label),
   .framed > :global(.page > header h1 > .ui-label + .info-tip),
   .framed > :global(.page > header h1:not(:has(> :not(.ui-label, .ui-label + .info-tip)))),
-  .framed > :global(.limits-page > header h1),
-  .framed > :global(.machines-page .head h1) { display: none; }
-  .framed > :global(.page > header:not(:has(button:not(.ui-label + .info-tip), [role='status'], .policy-lock))),
-  .framed > :global(.machines-page .head:not(:has(button:not(.ui-label + .info-tip)))) { display: none; }
+  .framed > :global(.limits-page > header h1) { display: none; }
+  .framed > :global(.page > header:not(:has(button:not(.ui-label + .info-tip), [role='status'], .policy-lock))) { display: none; }
   .framed > :global(.page > header) { justify-content: flex-end; }
 
   /* The pages' list is a column of its own width, on the chrome: every page's name fits it,
@@ -681,14 +655,10 @@
   .crumb { flex: 1; min-width: 0; }
   /* The screen's one title, at the top of its card in the settings column, one step over a card's. */
   .screen { display: flex; flex-direction: column; align-items: flex-start; padding: var(--space-8) max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)) 0; }
-  .screen h1 { min-width: 0; margin: 0; color: var(--color-foreground); font-size: var(--settings-title); font-weight: 650; line-height: 1.2; letter-spacing: -0.02em; }
   /* The first card's title follows the screen's title at the normal step, with no empty band between. */
   .screen ~ :global(.page) { padding-top: var(--space-4); }
   .screen ~ :global(.page > .card:first-child:has(> h2:first-child)),
   .screen ~ :global(.page > header:first-child + .card:has(> h2:first-child)) { margin-top: var(--card-head); }
-  /* The machine's name in the scope line is the picker: a word with an edge and a chevron, so it reads as one at rest. */
-  :global(.settings .scope .trigger.text) { margin: -2px 0; color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge); }
-  :global(.settings .scope .pick-name) { overflow: hidden; max-width: 28ch; text-overflow: ellipsis; white-space: nowrap; }
 
   .tab {
     justify-content: flex-start;

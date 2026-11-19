@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { tick, untrack, type Snippet } from 'svelte';
+  import { untrack, type Snippet } from 'svelte';
   import { Gauge } from '@lucide/svelte';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
   import { quotaLimitName } from '../lib/format';
-  import { quotaReader, shownQuotas } from '../lib/quota-reader.svelte';
+  import { gatewayReader, quotaReader, shownQuotas } from '../lib/quota-reader.svelte';
   import { countdown, limitsNotice, windowSpan } from '../lib/limits-meter';
   import { outsideNotice } from '../lib/outside-usage';
   import { tenth } from '../lib/format';
@@ -12,7 +12,7 @@
   import { controlMenu } from '../lib/controls';
   import Deferred from './Deferred.svelte';
   import { parts } from '../lib/deferred-parts';
-  import type LimitsGlance from './LimitsGlance.svelte';
+  import Menu from './Menu.svelte';
 
   /**
    * The limits in the rail's foot, above Settings: one glyph that says nothing
@@ -80,27 +80,45 @@
   });
   const RADIUS = 8;
   const CIRCLE = 2 * Math.PI * RADIUS;
-  let button = $state<HTMLButtonElement>();
-  let glance = $state<LimitsGlance>();
   /** The name card: the limits' sentence, then a line each for its note and the leak; the leak alone while the limits say nothing. */
   const title = $derived(!meter && leakText ? leakText : text);
   const lines = $derived([note, meter ? leakText : null].filter((line): line is string => !!line));
   const label = $derived([title, ...lines].join(' · '));
 
-  /** The glance is a click-only body in its own chunk: a press before it lands waits for it. */
-  async function openGlance() {
-    if (!glance) {
-      await parts.LimitsGlance.load().catch(() => undefined);
-      await tick();
+  const gateway = $derived(gatewayReader(store.endpointUrl ?? 'here'));
+  const proxy = $derived(store.settings?.subscriptionProxy);
+  $effect(() => {
+    const client = store.client;
+    const current = gateway;
+    if (!shown || !client || !proxy?.enabled || proxy.kind !== 'douane') return;
+    const off = client.on('subscriptionProxy.quotasUpdated', (value) => current.accept(value));
+    untrack(() => void current.read(client));
+    return off;
+  });
+
+  /** A gateway without native quotas opens its dashboard. A slow answer does not hold the popover. */
+  async function beforeOpen(): Promise<boolean> {
+    if (!proxy?.enabled) return true;
+    const client = store.client;
+    const navigation = store.navigationGeneration;
+    if (proxy.kind === 'douane' && client && gateway.state === null) {
+      await Promise.race([gateway.known(client), new Promise(resolve => setTimeout(resolve, 300))]);
     }
-    void glance?.open();
+    if (store.client !== client || store.navigationGeneration !== navigation) return false;
+    if (proxy.kind === 'douane' && gateway.state?.status !== 'unsupported') return true;
+    store.showSettings('limits');
+    return false;
   }
 </script>
 
 {#if shown}
-  <button type="button" class="ghost icon limits" class:low={meter?.kind === 'low'} class:out={meter?.kind === 'out'} class:leak={leak !== null} bind:this={button} data-testid="nav-limits"
-    title={name ? undefined : label} aria-label={label} aria-haspopup="dialog"
-    onclick={() => void openGlance()} oncontextmenu={(event) => controlMenu(event, store, 'sidebar.limits')}>
+  <div class="limits" class:low={meter?.kind === 'low'} class:out={meter?.kind === 'out'} class:leak={leak !== null}>
+  <Menu variant="ghost" side="right" align="end" cap={460} testid="nav-limits" popupTestid="limits-glance"
+    {label} titled={!name} panelLabel={strings.quotas.glance} beforeopen={beforeOpen}
+    oncontextmenu={(event) => controlMenu(event, store, 'sidebar.limits')}>
+    {#snippet panel(close)}
+      <Deferred part={parts.LimitsGlance}>{#snippet children(Glance)}<Glance {store} {close} />{/snippet}</Deferred>
+    {/snippet}
     <span class="glyph">
       {#if meter}
         <svg class="ring" viewBox="0 0 24 24" aria-hidden="true" data-testid="limits-gauge" data-left={meter.left} data-limit={meter.kind} data-share={share.toFixed(2)}>
@@ -114,21 +132,21 @@
       {/if}
     </span>
     {#if left}<span class="countdown" aria-hidden="true" data-testid="limits-countdown">{left}</span>{/if}
-  </button>
+  </Menu>
+  </div>
   {@render name?.(title, lines)}
-  <Deferred part={parts.LimitsGlance} quiet>{#snippet children(Glance)}<Glance bind:this={glance} {store} side="right" anchor={() => button ?? null} />{/snippet}</Deferred>
 {/if}
 
 <style>
   /* The glyph, and out the time left under it, both inside the button's square: nothing hangs past its edge. */
-  .limits { position: relative; flex: none; flex-direction: column; gap: 2px; }
+  .limits :global(.trigger) { position: relative; flex: none; flex-direction: column; gap: 2px; }
   .glyph { position: relative; display: grid; place-items: center; }
   .ring { width: 21px; height: 21px; transform: rotate(-90deg); overflow: visible; }
   .ring circle { fill: none; stroke-width: 2.5; }
   .ring .track { stroke: color-mix(in srgb, currentColor 22%, transparent); }
   .ring .arc { stroke-linecap: round; transition: stroke-dasharray var(--dur-3) var(--ease-out-quint); }
-  .limits.low { color: var(--color-caution); }
-  .limits.out { color: var(--color-danger); }
+  .limits.low :global(.trigger) { color: var(--color-caution); }
+  .limits.out :global(.trigger) { color: var(--color-danger); }
   .limits.low .arc { stroke: var(--color-caution); }
   .limits.out .arc { stroke: var(--color-danger); }
   /* On the glyph's shoulder, not the button's corner: the button's hover fill and focus ring stay clear of it. */

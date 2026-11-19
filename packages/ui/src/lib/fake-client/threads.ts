@@ -810,6 +810,9 @@ export function threadMethods(ctx: FakeContext) {
     },
     'turns.stop': async (params) => {
       const thread = ctx.thread(params.threadId);
+      const target = thread.turns.findLast(turn => turn.status === 'running') ?? thread.turns.find(turn => turn.status === 'queued');
+      if (params.expectedTurnId !== undefined && target?.id !== params.expectedTurnId) return { stopped: false };
+      const targetedStop = params.expectedTurnId === undefined ? undefined : ctx.stopTurn(params.threadId);
       const root = thread.parentThreadId ?? thread.id;
       let childrenStopped = 0;
       if (thread.parentThreadId || (ctx.delegationAgents.get(root)?.length ?? 0) > 0) {
@@ -822,7 +825,7 @@ export function threadMethods(ctx: FakeContext) {
       if (plannedRetry) { thread.retry = null; ctx.touch(thread); }
       const unwatched = thread.pullRequestWatches?.length ?? 0;
       if (unwatched > 0) { thread.pullRequestWatches = []; ctx.emit('thread.updated', structuredClone(toSummary(thread))); }
-      const stopped = await ctx.stopTurn(params.threadId) || childrenStopped > 0 || plannedRetry || unwatched > 0;
+      const stopped = await (targetedStop ?? ctx.stopTurn(params.threadId)) || childrenStopped > 0 || plannedRetry || unwatched > 0;
       // As the core: Stop on an idle thread ends what it still runs in the background.
       if (!stopped && (thread.background?.length ?? 0) > 0) {
         ctx.setBackground(thread, [], 'session-ended');

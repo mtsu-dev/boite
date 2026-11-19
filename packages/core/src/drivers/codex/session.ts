@@ -208,9 +208,9 @@ export class CodexSession {
     void rpc.request('turn/interrupt', { threadId, turnId: turn.turnId }).catch(() => undefined);
   }
 
-  async steer(turn: CodexTurn, text: string, attachments: TurnContext['attachments'] = []): Promise<boolean> {
+  async steer(turn: CodexTurn, text: string, attachments: TurnContext['attachments'] = [], onAccepted?: () => void, signal?: AbortSignal): Promise<boolean> {
     if (this.#current !== turn || turn.settled || turn.isStopped || !this.#rpc || !this.#threadId || !turn.turnId) return false;
-    await this.#rpc.request('turn/steer', { threadId: this.#threadId, expectedTurnId: turn.turnId, input: [...this.skills.steer(text), ...imageInputsOf(attachments)] });
+    await this.#rpc.request('turn/steer', { threadId: this.#threadId, expectedTurnId: turn.turnId, input: [...this.skills.steer(text), ...imageInputsOf(attachments)] }, { onAccepted, signal });
     return true;
   }
 

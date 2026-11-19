@@ -249,6 +249,10 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
     return core.delegation.retirements.revivable(thread) ? core.delegation.retirements.revive(thread, start) : start();
   });
   core.router.register('turns.stop', (params, ctx) => {
+    if (params.expectedTurnId !== undefined) {
+      core.threads.require(params.threadId);
+      if (core.scheduler.stopTarget(params.threadId) !== params.expectedTurnId) return { stopped: false };
+    }
     const by = ctx.connection.identity.principal === 'agent' ? `agent of ${ctx.connection.identity.threadId}` : `${ctx.connection.identity.principal} from ${ctx.connection.sentFrom?.client ?? 'a client'}`;
     core.activity.pauseAll(params.threadId);
     // Stop ends what would wake the thread again, its pull request watches included.

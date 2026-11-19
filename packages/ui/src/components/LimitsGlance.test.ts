@@ -4,7 +4,7 @@ import { SvelteMap } from 'svelte/reactivity';
 import type { AccountQuota } from '@boite/contracts';
 import type { Store } from '../lib/store.svelte';
 import { RpcFailure } from '../lib/client';
-import LimitsGlance from './LimitsGlance.svelte';
+import LimitsButton from './LimitsButton.svelte';
 import { phoneWidth } from '../test/phone-width';
 
 let mounted: ReturnType<typeof mount> | undefined;
@@ -12,12 +12,9 @@ afterEach(async () => { if (mounted) await unmount(mounted); mounted = undefined
 
 /** The rail menu's Limits row stands in for the anchor: pressing it opens the glance beside it. */
 function glance(store: Store): HTMLButtonElement {
-  const anchor = document.body.appendChild(Object.assign(document.createElement('button'), { type: 'button' }));
-  anchor.dataset.testid = 'nav-limits';
-  const component = mount(LimitsGlance, { target: document.body, props: { store, side: 'right', anchor: () => anchor } }) as unknown as { open(): Promise<void> };
-  anchor.onclick = () => void component.open();
-  mounted = component;
-  return anchor;
+  mounted = mount(LimitsButton, { target: document.body, props: { store } });
+  flushSync();
+  return document.querySelector<HTMLButtonElement>('[data-testid="nav-limits"]')!;
 }
 const settle = async () => { for (let i = 0; i < 20; i++) { await Promise.resolve(); flushSync(); } };
 const quota: AccountQuota = {

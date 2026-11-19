@@ -2,7 +2,8 @@
   import { Gauge, RefreshCw, Settings2, X } from '@lucide/svelte';
   import type { AccountQuota } from '@boite/contracts';
   import type { Snippet } from 'svelte';
-  import { fill, strings } from '../lib/strings';
+  import { strings } from '../lib/strings';
+  import QuotaLoadState from './QuotaLoadState.svelte';
   import Deferred from './Deferred.svelte';
   import { parts } from '../lib/nested-parts';
 
@@ -42,20 +43,12 @@
     </div>
   </header>
   <section class="body">
-    {#if error}
-      <div class="failed" role="alert" data-testid={`${testPrefix}-error`}>
-        <p>{fill(strings.quotas.readFailed, { error })}</p>
-        <button type="button" class="ghost small" disabled={loading} data-testid={`${testPrefix}-retry`} onclick={refresh}><span class="ui-label">{strings.common.retry}</span></button>
-      </div>
-    {/if}
-    {#if outdated}
-      <p class="muted" data-testid={`${testPrefix}-outdated`}>{strings.quotas.outdated}</p>
-    {:else if rows === null}
-      <p class="muted" role="status">{strings.quotas.loading}</p>
-    {:else if !(error && rows.length === 0)}
-      {@const shown = rows}
-      <Deferred part={parts.QuotaOverview}>{#snippet children(QuotaOverview)}<QuotaOverview rows={shown} {current} {loading} {completed} {connect} {order} onreorder={reorder} />{/snippet}</Deferred>
-    {/if}
+    <QuotaLoadState {error} {outdated} pending={rows === null} busy={loading} retry={refresh} {testPrefix}>
+      {#if rows && !(error && rows.length === 0)}
+        {@const shown = rows}
+        <Deferred part={parts.QuotaOverview}>{#snippet children(QuotaOverview)}<QuotaOverview rows={shown} {current} {loading} {completed} {connect} {order} onreorder={reorder} />{/snippet}</Deferred>
+      {/if}
+    </QuotaLoadState>
   </section>
   <footer>
     <button type="button" class="ghost" data-testid={`${testPrefix}-page`} onclick={settings}><Settings2 size={15} /><span class="ui-label">{strings.quotas.allLimits}</span></button>
@@ -72,9 +65,6 @@
   .actions { flex: none; display: flex; gap: 2px; }
   .body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 2px 8px; }
   footer button { font-size: var(--text-sm); }
-  .failed { display: grid; justify-items: start; gap: 8px; padding: 12px 4px; color: var(--color-danger); font-size: var(--text-sm); }
-  .failed p { margin: 0; overflow-wrap: anywhere; }
-  .muted { margin: 0; padding: 14px 4px; color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .actions :global(.spinning) { animation: spin 900ms linear infinite var(--loops); }
   @media (prefers-reduced-motion: reduce) { .actions :global(.spinning) { animation: none; } }
 </style>

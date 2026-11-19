@@ -1,8 +1,10 @@
-import type { RpcEventName, RpcEvents, ThreadId, ThreadSummary, Turn, TurnId } from '@boite/contracts';
+import { ATTACHMENTS_PER_TURN, ATTACHMENTS_TOTAL_MAX_BYTES, decodedBytes, type Attachment, type RpcEventName, type RpcEvents, type ThreadId, type ThreadSummary, type Turn, type TurnId } from '@boite/contracts';
+import { messageExcerpt } from '../continuation.ts';
 import type { Core } from '../core.ts';
 import { messageOf } from '../errors.ts';
 import type { ThreadStore } from '../threads.ts';
 import { RESUME_TEXT } from './resume-text.ts';
+import type { TurnInput } from './turn-origin.ts';
 import { STOP_DEADLINE } from './turn-runner.ts';
 
 /**
@@ -253,16 +255,40 @@ export class RestartHandoff {
    * continue the children a handoff cut with it too, and a crash resume
    * (`threads/auto-continue.ts`) leads with its own reason.
    */
-  continuation(turn: Turn, lead: string = RESUME_TEXT.handoff.prompt): string {
-    const opening = turn.execution?.operation === 'resume'
-      ? Array.from(this.#core.journal.walkTurnMessages(turn.threadId, turn.id, { blobs: false })).find(message => message.role === 'system') ?? null
-      : this.#core.journal.lastUserMessage(turn.threadId, turn.id);
-    const text = (opening?.parts ?? []).map(part => part.type === 'text' ? part.text : '').join('').trim();
-    // A second restart over a resumed turn sends the same note, not a note about a note.
-    if (turn.execution?.operation === 'resume' && text.length > 0) return text;
-    if (text.length === 0) return lead;
-    const quoted = text.length > QUOTE_LIMIT ? `${text.slice(0, QUOTE_LIMIT)}\n[cut by Boite at ${QUOTE_LIMIT} characters]` : text;
-    return `${lead}\n\nThe request that turn was answering:\n\n${quoted}`;
+  continuation(turn: Turn, lead: string = RESUME_TEXT.handoff.prompt): TurnInput {
+    const journal = this.#core.journal;
+    const messages = [...journal.walkTurnMessages(turn.threadId, turn.id, { blobs: false })];
+    const opening = turn.execution?.operation === 'resume' ? messages.find(message => message.role === 'system') : undefined;
+    const requests = messages.filter(message => message.role === 'user');
+    const previous = opening?.parts.find(part => part.type === 'text')?.text;
+    const start = '<interrupted-user-messages>\n';
+    const end = '\n</interrupted-user-messages>';
+    const kept = previous?.includes(start) && previous.endsWith(end) ? previous.slice(previous.indexOf(start) + start.length, -end.length) : previous;
+    const text = [kept, ...requests.map(message => messageExcerpt(message).trim())].filter(Boolean).join('\n\n');
+    const half = QUOTE_LIMIT / 2;
+    const quoted = text.length > QUOTE_LIMIT ? `${text.slice(0, half)}\n[cut by Boite at ${QUOTE_LIMIT} characters]\n${text.slice(-half)}` : text;
+    const prompt = !quoted ? lead : `${lead}\n\nThe request that turn was answering, as conversation history:\n\n${start}${quoted}${end}`;
+    const thread = journal.getThread(turn.threadId);
+    const attachments: Attachment[] = [];
+    // A fresh session reads these messages through conversation history.
+    if (!thread?.sessionId) return { prompt };
+    const images = this.#core.providers.require(thread.providerId).capabilities.images;
+    let room = ATTACHMENTS_TOTAL_MAX_BYTES;
+    for (const message of (opening ? [opening, ...requests] : requests).toReversed()) {
+      for (let index = message.parts.length - 1; index >= 0 && attachments.length < ATTACHMENTS_PER_TURN; index--) {
+        const stored = message.parts[index]!;
+        if (stored.type !== 'file' && !(stored.type === 'image' && images)) continue;
+        const part = journal.messagePart(message.id, index)?.part;
+        if (part?.type !== 'file' && part?.type !== 'image') continue;
+        const bytes = decodedBytes(part.data);
+        if (bytes > room) continue;
+        room -= bytes;
+        attachments.unshift(part.type === 'image'
+          ? { kind: 'image', mimeType: part.mimeType, data: part.data, name: part.alt }
+          : { kind: 'file', mimeType: part.mimeType, data: part.data, name: part.name });
+      }
+    }
+    return { prompt, attachments };
   }
 
   /**

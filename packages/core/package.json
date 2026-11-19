@@ -19,13 +19,13 @@
     "test:serial": "bun run bin/test.ts --workers 1"
   },
   "dependencies": {
-    "@agentclientprotocol/sdk": "2.1.0",
-    "@anthropic-ai/claude-agent-sdk": "0.3.312",
+    "@agentclientprotocol/sdk": "2.8.0",
+    "@anthropic-ai/claude-agent-sdk": "0.3.328",
     "@boite/contracts": "workspace:*",
     "@modelcontextprotocol/server": "2.4.0",
     "diff": "9.0.0",
     "fflate": "0.8.3",
-    "web-push": "^3.6.7",
+    "web-push": "^4.0.0",
     "zod": "4.6.7"
   },
   "devDependencies": {

@@ -335,9 +335,9 @@ export class AcpSession {
     }
   }
 
-  async steerOpenCode(turn: AcpTurn, text: string, attachments: import('@boite/contracts').ImageAttachment[] = [], onAccepted?: () => void): Promise<boolean> {
+  async steerOpenCode(turn: AcpTurn, text: string, attachments: import('@boite/contracts').ImageAttachment[] = [], onAccepted?: () => void, signal?: AbortSignal): Promise<boolean> {
     if (this.#current !== turn || turn.isStopped || !(this.#connection instanceof OpenCodeConnection)) return false;
-    return this.#connection.steer([{ type: 'text', text }, ...imageBlocksOf(attachments)], onAccepted);
+    return this.#connection.steer([{ type: 'text', text }, ...imageBlocksOf(attachments)], onAccepted, signal);
   }
 
   #cancel(): void {

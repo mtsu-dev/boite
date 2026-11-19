@@ -198,9 +198,9 @@ test('a history that leaves messages out names the newest of them with the comma
   // The exchanges after a point (a compaction made ahead, a switch back, a swap during a turn) name theirs the same way.
   const anchor = { turnId: 'turn-a', afterPart: null };
   const named = `[59 earlier messages omitted. Reading them is optional: do it only when the current request needs a detail one holds, with boite threads read thr_cut --entry <id>. The newest 20, oldest first: user m-40, assistant m-41,`;
-  expect(tailInput(journal, 'thr_cut', anchor, 'next', input).prompt).toContain(named);
+  expect(tailInput(journal, 'thr_cut', anchor, 'next', input, provider).prompt).toContain(named);
   expect(switchBackInput(journal, 'thr_cut', anchor, 'next', input, provider).prompt).toContain(named);
-  expect(stepTail(journal, 'thr_cut', anchor)).toContain(named);
+  expect(stepTail(journal, 'thr_cut', anchor, () => '[File]', provider).prompt).toContain(named);
   // Few enough to name them all, and an id the shell would split stays one word.
   expect(omittedNote('thr_x', 2, 'earlier messages omitted', [{ id: "b c's", role: 'assistant' }, { id: 'a', role: 'user' }])).toBe("[2 earlier messages omitted. Reading them is optional: do it only when the current request needs a detail one holds, with boite threads read thr_x --entry <id>. They are: user a, assistant 'b c'\\''s']");
   // Ids too long for the room are left to the count.
@@ -226,7 +226,7 @@ test('a step tail bounds even its newest message and keeps the most recent tool 
       { type: 'file', name: 'next.txt', mimeType: 'text/plain', data: 'aGVsbG8=' },
     ],
   });
-  const result = stepTail(journal, threadId, { turnId, afterPart: { messageId: 'step', partIndex: 1 } });
+  const { prompt: result } = stepTail(journal, threadId, { turnId, afterPart: { messageId: 'step', partIndex: 1 } }, undefined, provider);
   expect(result.length).toBeLessThan(65_000);
   expect(result).not.toContain('already summarized');
   expect(result).toContain('Earlier parts omitted');
@@ -234,4 +234,24 @@ test('a step tail bounds even its newest message and keeps the most recent tool 
   expect(result).toContain('[Tool error]');
   expect(result).toContain('boite threads read thr_step --entry step --tool tool-1199');
   expect(result).toContain('[File: next.txt]');
+});
+
+test('a compacted copy receives images after its exact anchor, within the destination prompt budget', () => {
+  const image = (alt: string): Extract<MessagePart, { type: 'image' }> => ({ type: 'image', mimeType: 'image/png', alt, data: Buffer.from(alt).toString('base64') });
+  journal.putMessage({ id: 'fork', threadId: 'thr_compacted', turnId: 'fork-turn', role: 'user', state: 'complete', createdAt: 1, parts: [image('before.png'), image('after.png')] });
+  journal.putMessage({ id: 'followup', threadId: 'thr_compacted', turnId: 'fork-turn', role: 'user', state: 'complete', createdAt: 2, parts: [image('latest.png')] });
+  const anchor = { turnId: 'fork-turn', afterPart: { messageId: 'fork', partIndex: 1 } };
+  const attachments: Attachment[] = Array.from({ length: ATTACHMENTS_PER_TURN - 1 }, () => ({ kind: 'image', mimeType: 'image/png', data: 'AQ==', name: 'current.png' }));
+  const input = { prompt: 'Current request', attachments };
+  const next = tailInput(journal, 'thr_compacted', anchor, 'next-turn', input, provider);
+  expect(next.attachments).toHaveLength(ATTACHMENTS_PER_TURN);
+  expect(next.attachments[0]).toMatchObject({ name: 'latest.png' });
+  expect(next.prompt).toContain('after.png');
+  expect(next.prompt).not.toContain('before.png');
+  const swapped = stepTail(journal, 'thr_compacted', anchor, () => '[File]', provider);
+  expect(swapped.attachments.map(part => part.name)).toEqual(['after.png', 'latest.png']);
+  expect(swapped.historicalImages).toEqual(swapped.attachments);
+  expect(stepTail(journal, 'thr_compacted', anchor, () => '[File]', provider, 'fork-turn').historicalImages).toEqual([]);
+  const textOnly = { ...provider, capabilities: { ...provider.capabilities, images: false } };
+  expect(stepTail(journal, 'thr_compacted', anchor, () => '[File]', textOnly)).toMatchObject({ attachments: [], prompt: expect.stringContaining('latest.png') });
 });

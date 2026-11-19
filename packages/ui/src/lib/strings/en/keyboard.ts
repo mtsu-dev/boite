@@ -3,6 +3,7 @@ export const strings = {
   /** The Keyboard settings page: the table, the file, and the commands the palette has no word for. */
   keyboard: {
     heading: 'Shortcuts',
+    escapeKey: 'Esc',
     intro: 'Click a shortcut, then press the keys you want instead. It applies at once on this machine.',
     search: 'Filter commands',
     groups: { general: 'General', surfaces: 'Side panel', thread: 'Thread and composer', jump: 'Go to a thread', theme: 'Theme', terminal: 'Terminal' },

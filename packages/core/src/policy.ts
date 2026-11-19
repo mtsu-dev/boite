@@ -20,8 +20,10 @@
  */
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { POLICY_KEYS, type AdminPolicy, type PolicyKey, type PolicyProblem, type PolicyRefusalData, type PolicyState, type Settings, type UpdatePolicy } from '@boite/contracts';
+import { lockedKeys, STRICTEST_POLICY, type AdminPolicy, type PolicyKey, type PolicyProblem, type PolicyRefusalData, type PolicyState, type Settings, type UpdatePolicy } from '@boite/contracts';
 import { refused, unavailable, type RpcFailure } from './errors.ts';
+
+export { lockedKeys, STRICTEST_POLICY } from '@boite/contracts';
 
 /** How often the file is looked at for a change: a stat, nothing read unless it moved. */
 export const POLICY_POLL_MS = 3000;
@@ -52,23 +54,6 @@ function present(file: string): boolean {
   try { statSync(file); return true; }
   catch (error) { const code = (error as NodeJS.ErrnoException).code; return code !== 'ENOENT' && code !== 'ENOTDIR'; }
 }
-
-/** Every key at its strictest: what a file that does not parse means. */
-export const STRICTEST_POLICY: AdminPolicy = Object.freeze({
-  analytics: 'off',
-  updates: { app: 'off', server: 'off', agents: 'off' },
-  providers: { allow: [] },
-  gateway: false,
-  quotaReads: false,
-  plugins: { install: false, recommended: false },
-  issueReports: false,
-  dictation: 'off',
-  previews: { remoteResources: false },
-  agentBrowser: false,
-  agentDesktop: false,
-  network: { lan: false, tailscaleServe: false, groups: false, contacts: false, push: false },
-  pullRequests: false,
-}) as AdminPolicy;
 
 interface Parsed { values: AdminPolicy; problems: PolicyProblem[]; failedClosed: boolean }
 
@@ -201,14 +186,6 @@ export function parsePolicy(text: string | null, file: string): Parsed {
     }
   }
   return { values, problems, failedClosed: false };
-}
-
-/** The keys a policy's values lock, in `POLICY_KEYS` order. A `true` that restricts nothing locks nothing. */
-export function lockedKeys(values: AdminPolicy): PolicyKey[] {
-  return POLICY_KEYS.filter(key => {
-    const value = key.split('.').reduce<unknown>((node, part) => isObject(node) ? node[part] : undefined, values);
-    return value === false || typeof value === 'string' || Array.isArray(value);
-  });
 }
 
 /** The policy at `file` now. A missing file is no policy; an unreadable one fails closed. */

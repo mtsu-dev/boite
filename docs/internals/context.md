@@ -346,8 +346,10 @@ start of a step:
   session's first message (`stepTail` in `continuation.ts`): user and
   assistant text, each tool call with its input and its result, every tool
   output cut at 1 250 characters, in a `<recent-history>` block that ends
-  with `Continue the current task.`. It is never sent again with the next
-  prompt;
+  with `Continue the current task.`. Providers that accept images receive the
+  newest images after the fork point within the turn's attachment limits.
+  Other images in the included history stay as references. The tail is sent
+  once, with the swap;
 - `null` instead, whenever the copy failed, ran out of time or no longer
   matches: the driver goes on, and its own blocking compaction handles the
   limit.
@@ -378,7 +380,8 @@ instead, under the same conditions as the timer above and after the same 2 s:
 a new session generation, no model call, its process released, and the same
 divider. The thread's next prompt then carries what was said after the fork
 point in a `<recent-history>` block before the request (`tailInput` in
-`continuation.ts`); the `compaction-tail:<thread>` marker clears once a turn
+`continuation.ts`). Images after the fork point share that prompt's attachment
+count and byte limits. The `compaction-tail:<thread>` marker clears once a turn
 that carried it ends `done`. The `autoCompact` moments govern these idle
 pauses only.
 
@@ -638,9 +641,10 @@ holds the prompt at the head of the queue.
 
 Asynchronous creation and send retain the original core, thread and draft
 identity. Accepted work does not select a thread after newer navigation or
-consume the newer draft. A merged-PR archive from an older core preserves local
-input and pauses retained queues; manual archive and deletion clear input as
-requested, and `boite thread done` is refused while a device reports input. See
+consume the newer draft. An archived conversation keeps its composer draft for
+restoration. When the client closes the archived view, it pauses any retained
+queue. Deletion clears the input, and `boite thread done` is refused while a
+device reports input. See
 [merged pull requests](development.md#merged-pull-requests).
 
 ## Editing a message and forking

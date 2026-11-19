@@ -862,7 +862,14 @@ process.stdin.on('data', (chunk: string) => {
       void Promise.resolve()
         .then(() => handle(method, params))
         .then(
-          (result) => { send({ id, result }); const after = afterAnswer; afterAnswer = null; after?.(); },
+          (result) => {
+            if (method === 'turn/steer' && promptOf(params as Record<string, unknown>).includes('[steer-delta]')) {
+              const turnId = (result as { turnId: string }).turnId;
+              const delta = { method: 'item/agentMessage/delta', params: { threadId, turnId, itemId: 'msg-1', delta: 'Steer answered' } };
+              process.stdout.write(`${JSON.stringify({ id, result })}\n${JSON.stringify(delta)}\n`);
+            } else send({ id, result });
+            const after = afterAnswer; afterAnswer = null; after?.();
+          },
           (error: unknown) => send({ id, error: { code: (error as { code?: number }).code ?? -32601, message: (error as Error).message } }),
         );
       continue;

@@ -36,9 +36,9 @@ type Timer = ReturnType<typeof setTimeout>;
 /**
  * How long a stopped turn waits for `agent_settled` after `abort` before the
  * process is closed. pi's abort waits for its tool trees to die, and a Windows
- * taskkill can take seconds; Muse gives its host 30 s.
+ * taskkill can take seconds. Leave the core's 10 s deadline as a backstop.
  */
-const STOP_DEADLINE_MS = 15_000;
+const STOP_DEADLINE_MS = 9_000;
 let stopDeadlineMs = STOP_DEADLINE_MS;
 /** Control reads are bounded; the prompt and actual model run are not. */
 const READ_DEADLINE_MS = 5_000;
@@ -164,8 +164,8 @@ export class PiSession {
 
   /**
    * `abort`, after `clear_queue` when coordination steered the run, since pi
-   * may continue queued steering after an abort. A refused command is not a
-   * failed turn: the deadline still ends it as stopped.
+   * may continue queued steering after an abort. If the queue cannot confirm
+   * it is empty within a local pipe round trip, close this process instead.
    *
    * An idle pi answers `abort` and emits nothing, which is what a prompt still
    * in preflight (an extension dialog) or an extension command leaves behind.
@@ -173,15 +173,27 @@ export class PiSession {
    * in order, so a run that ended has sent `agent_settled` before it.
    */
   #abort(turn: PiTurn, peer: PiPeer): void {
-    const cleared = this.#steered ? peer.command('clear_queue').catch(() => undefined) : Promise.resolve(undefined);
-    void cleared
-      .then(() => peer.command('abort'))
-      .then(() => peer.command('get_state'))
-      .then((state) => {
-        if (!turn.decided && dataOf(state)['isStreaming'] !== true) turn.settleRun();
-      })
-      .catch(() => undefined);
     this.#armStopDeadline(turn);
+    void this.#sendAbort(turn, peer);
+  }
+
+  async #sendAbort(turn: PiTurn, peer: PiPeer): Promise<void> {
+    if (this.#steered) {
+      try { await peer.command('clear_queue', {}, { timeoutMs: Math.min(EXIT_GRACE_MS, stopDeadlineMs) }); }
+      catch (error) {
+        if (this.#current !== turn || this.#peer !== peer) return;
+        turn.ctx.log('warn', `pi: closing the stopped session because its queue could not be cleared: ${messageOf(error)}`);
+        this.#drop();
+        return;
+      }
+    }
+    if (this.#current !== turn || this.#peer !== peer || turn.decided) return;
+    try {
+      await peer.command('abort');
+      if (this.#current !== turn || this.#peer !== peer || turn.decided) return;
+      const state = await peer.command('get_state', {}, { timeoutMs: stopDeadlineMs });
+      if (dataOf(state)['isStreaming'] !== true) turn.settleRun();
+    } catch { /* The stop deadline closes an unresponsive session. */ }
   }
 
   /**
@@ -216,10 +228,10 @@ export class PiSession {
   }
 
   /** Submit input at pi's next tool boundary. */
-  async steer(turn: PiTurn, message: string, attachments: TurnContext['attachments'] = []): Promise<boolean> {
+  async steer(turn: PiTurn, message: string, attachments: TurnContext['attachments'] = [], onAccepted?: () => void, signal?: AbortSignal): Promise<boolean> {
     if (this.#current !== turn || turn.settled || turn.isStopped || !this.#peer) return false;
     this.#steered = true;
-    await this.#peer.command('steer', { message, ...(attachments.length ? { images: imagesOf(attachments) } : {}) });
+    await this.#peer.command('steer', { message, ...(attachments.length ? { images: imagesOf(attachments) } : {}) }, { onAccepted, signal });
     return true;
   }
 
@@ -414,14 +426,16 @@ export class PiSession {
    * compaction, until the next answer, so nothing is written then.
    */
   async #readContext(turn: PiTurn, peer: PiPeer): Promise<void> {
-    if (this.#peer !== peer) return;
+    if (this.#peer !== peer || turn.isStopped) return;
+    const reading = new AbortController();
+    void turn.stopped.then(() => reading.abort());
     try {
-      const stats = dataOf(await peer.command('get_session_stats', {}, { timeoutMs: readDeadlineMs }));
+      const stats = dataOf(await peer.command('get_session_stats', {}, { signal: reading.signal, timeoutMs: Math.min(EXIT_GRACE_MS, readDeadlineMs) }));
       const usage = (stats['contextUsage'] ?? {}) as { tokens?: unknown; contextWindow?: unknown };
       const tokens = numberOf(usage.tokens);
-      if (tokens !== null) turn.ctx.context({ tokens, window: numberOf(usage.contextWindow) });
+      if (!turn.isStopped && tokens !== null) turn.ctx.context({ tokens, window: numberOf(usage.contextWindow) });
     } catch (error) {
-      turn.ctx.log('warn', `pi: get_session_stats failed: ${messageOf(error)}`);
+      if (!reading.signal.aborted) turn.ctx.log('warn', `pi: get_session_stats failed: ${messageOf(error)}`);
     }
   }
 

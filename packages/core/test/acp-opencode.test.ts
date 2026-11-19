@@ -1,17 +1,80 @@
-import { afterEach, expect, test } from 'bun:test';
+import { afterEach, expect, spyOn, test } from 'bun:test';
 import type { AccountId, MessagePart } from '@boite/contracts';
 import { createAcpDriver } from '../src/drivers/acp.ts';
 import type { AcpMemory } from '../src/drivers/acp/session.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import { AcpTurn } from '../src/drivers/acp/turn.ts';
+import * as openCodeContent from '../src/drivers/acp/opencode-content.ts';
 import { drawUpdate } from '../src/drivers/acp/updates.ts';
 import type { TurnContext } from '../src/drivers/types.ts';
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { startTestCore, waitFor, type TestCore } from './harness.ts';
 
 let harness: TestCore | undefined;
-afterEach(async () => { await harness?.stop(); harness = undefined; });
+afterEach(async () => {
+  delete process.env['OPENCODE_FIXTURE_TRACE'];
+  delete process.env['OPENCODE_FIXTURE_COST_ERROR'];
+  await harness?.stop();
+  harness = undefined;
+});
+
+async function loopbackThread() {
+  harness = await startTestCore();
+  const owner = await harness.connect();
+  const trace = join(harness.dataDir, 'native-trace.txt');
+  process.env['OPENCODE_FIXTURE_TRACE'] = trace;
+  const profile = { executable: [{ kind: 'file' as const, value: process.execPath }], detect: {}, isolation: {}, launch: { args: [join(import.meta.dir, 'fixtures/opencode2-server.ts'), 'acp'] } };
+  Object.assign(harness.core.providers.require('opencode-v2'), { auth: { kind: 'none' }, env: {}, profiles: { windows: profile, linux: profile, macos: profile } });
+  await owner.call('providers.setEnabled', { providerId: 'opencode-v2', enabled: true });
+  const account = await owner.call('accounts.add', { providerId: 'opencode-v2', label: 'Fixture' });
+  const project = await owner.call('projects.add', { path: harness.dataDir, name: 'Fixture' });
+  const thread = await owner.call('threads.create', { projectId: project.id, accountId: account.id, providerId: 'opencode-v2' });
+  return { owner, threadId: thread.id, trace: () => existsSync(trace) ? readFileSync(trace, 'utf8') : '' };
+}
+
+test.each(['documents', 'steer acknowledgement'] as const)('OpenCode handles the Stop terminal event during %s', async blocked => {
+  const { owner, threadId, trace } = await loopbackThread();
+  const reading = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<[]>();
+  const content = blocked === 'documents' ? spyOn(openCodeContent, 'openCodeContent').mockImplementation(() => {
+    reading.resolve();
+    return release.promise;
+  }) : undefined;
+  try {
+    const tool = owner.next('turn.toolCompleted', event => event.threadId === threadId, 10_000);
+    if (content) void tool.catch(() => undefined);
+    const turn = await owner.call('turns.start', { threadId, prompt: '[slow]' });
+    await (content ? reading.promise : tool);
+    if (!content) {
+      const submitted = owner.call('turns.steer', { threadId, turnId: turn.id, prompt: '[hold-ack]', clientRequestId: 'hold_steer_ack' }).catch(error => String(error));
+      void submitted;
+      await waitFor(() => trace().includes('steer waiting'));
+    }
+    const finished = owner.next('turn.finished', event => event.id === turn.id, 2_000);
+    expect(await owner.call('turns.stop', { threadId })).toEqual({ stopped: true });
+    expect((await finished).status).toBe('stopped');
+    expect(trace()).toContain('interrupt\n');
+  } finally { release.resolve([]); content?.mockRestore(); }
+}, 12_000);
+
+test('OpenCode reapplies Stop when initial admission completes after the interrupt', async () => {
+  const { owner, threadId, trace } = await loopbackThread();
+  const turn = await owner.call('turns.start', { threadId, prompt: '[early-interrupt]' });
+  await waitFor(() => trace().includes('initial prompt waiting'), 10_000);
+  const finished = owner.next('turn.finished', event => event.id === turn.id, 2_000);
+  expect(await owner.call('turns.stop', { threadId })).toEqual({ stopped: true });
+  expect((await finished).status).toBe('stopped');
+  expect(trace()).toBe('initial prompt waiting\ninterrupt\nadmitted\ninterrupt\n');
+}, 12_000);
+
+test('OpenCode keeps the terminal result and tokens when the cost read fails', async () => {
+  const { owner, threadId } = await loopbackThread();
+  process.env['OPENCODE_FIXTURE_COST_ERROR'] = '1';
+  const finished = owner.next('turn.finished', event => event.threadId === threadId, 10_000);
+  await owner.call('turns.start', { threadId, prompt: '[done]' });
+  expect(await finished).toMatchObject({ status: 'done', usage: { inputTokens: 17, outputTokens: 3 } });
+}, 12_000);
 
 test('Send now during OpenCode startup stops the old turn and delivers a new one before a tool boundary', async () => {
   harness = await startTestCore();

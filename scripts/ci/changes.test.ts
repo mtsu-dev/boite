@@ -49,6 +49,7 @@ test('Boite Server builds its APK for the app and the bundle checks for its Term
   }
   // The release bundle carries termux/, not the APK.
   expect(affectedChecks(['apps/android-server/termux/boite-server.ts'])).toEqual({ ...none, core: true, web: true, desktop: true });
+  expect(affectedChecks(['apps/android-server/termux/minisign.ts'])).toEqual({ ...none, core: true, web: true, desktop: true, server: true });
 });
 
 test('ordinary benches and architecture scripts keep the cheap type-check route', () => {

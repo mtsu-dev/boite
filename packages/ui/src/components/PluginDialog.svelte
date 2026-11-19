@@ -4,6 +4,7 @@
   import type { PluginSettingValue, PluginState } from '@boite/contracts';
   import { PLUGIN_PERMISSIONS, pluginSettingValues } from '@boite/contracts';
   import { Closing } from '../lib/closing.svelte';
+  import { trapModalTab } from '../lib/focus';
   import { mobileOverlay } from '../lib/mobile-history';
   import { hasFiles, permissionTitle, pluginAuthor } from '../lib/plugin-card';
   import { fill, strings } from '../lib/strings';
@@ -29,7 +30,6 @@
   } = $props();
 
   const t = strings.plugins;
-  const FOCUSABLE = 'button:not(:disabled), input:not(:disabled), a[href]';
   const overlay = new Closing();
   let card = $state<HTMLDivElement | undefined>(undefined);
   /** The plugin last shown, kept while the dialog plays its exit. */
@@ -54,15 +54,7 @@
     // A menu of choices open inside the dialog takes its own Escape first.
     if (event.key === 'Escape' && card?.querySelector('[role="menu"]')) return;
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onclose(); return; }
-    if (event.key !== 'Tab' || !card) return;
-    const stops = Array.from(card.querySelectorAll<HTMLElement>(FOCUSABLE));
-    const first = stops[0], last = stops[stops.length - 1];
-    if (!first || !last) return;
-    const active = document.activeElement;
-    const inside = active instanceof Node && card.contains(active);
-    if (event.shiftKey ? inside && active !== first : inside && active !== last) return;
-    event.preventDefault();
-    (event.shiftKey ? last : first).focus({ preventScroll: true });
+    trapModalTab(event, card);
   }
 
   const settings = $derived(shown?.settings ?? []);

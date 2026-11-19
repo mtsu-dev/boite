@@ -128,7 +128,7 @@
    * An error that ended the thread's last turn, at rest, can be answered in
    * place: the same prompt sent again (`retryTurn`, the turn's own Retry).
    */
-  const retryable = $derived(store.openThread?.id === threadId && !store.busy && store.openThread.turns.at(-1)?.id === message.turnId
+  const retryable = $derived(store.openThread?.id === threadId && !store.openThread.archived && !store.busy && store.openThread.turns.at(-1)?.id === message.turnId
     && !store.composerStates[threadId]?.sending && (store.composerStates[threadId]?.queued.length ?? 0) === 0);
   const end = $derived(to ?? message.parts.length);
   /**

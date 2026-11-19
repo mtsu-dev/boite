@@ -4,6 +4,7 @@
   import type { GatewayMoveItem, GatewayMoveOutcome, GatewayMovePlan, GatewayMoveTarget } from '@boite/contracts';
   import { Closing } from '../lib/closing.svelte';
   import { errorText } from '../lib/errors';
+  import { trapModalTab } from '../lib/focus';
   import { mobileOverlay } from '../lib/mobile-history';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
@@ -100,15 +101,7 @@
   function onkeydown(event: KeyboardEvent) {
     if (!overlay.open) return;
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); return; }
-    if (event.key !== 'Tab' || !card) return;
-    const stops = Array.from(card.querySelectorAll<HTMLElement>(FOCUSABLE));
-    const first = stops[0], last = stops[stops.length - 1];
-    if (!first || !last) return;
-    const active = document.activeElement;
-    const inside = active instanceof Node && card.contains(active);
-    if (event.shiftKey ? inside && active !== first : inside && active !== last) return;
-    event.preventDefault();
-    (event.shiftKey ? last : first).focus({ preventScroll: true });
+    trapModalTab(event, card);
   }
 </script>
 
