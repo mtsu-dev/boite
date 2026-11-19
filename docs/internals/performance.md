@@ -442,6 +442,29 @@ and are kept per thread until a turn or row of that thread changes.
 parts a second). The 500 ms agents tick costs 5 µs and no statement when
 nothing is due.
 
+## Usage page
+
+`bun bench/usage-history.ts [--root <checkout>] [--dir <dir>]` writes a
+synthetic journal (1,800 threads in 40 projects, 110,000 turns over 100 days,
+ten messages each, 1.2 GB) into a journal the measured core creates, then reads
+`usage.history` over 7, 30 and 90 days: once after dropping the file's pages
+from the OS cache (cold, Linux), then the median of 5 (warm). `--root` measures
+another checkout on the same rows. On 2026-11-19, on boite-m1 (Linux, Bun
+1.4.4) under a load average of 27 to 36 on 16 threads, two alternating runs
+each, `29a4c974b` before `usage_slots` and this branch after:
+
+| Range | Before, cold | Before, warm | After, cold | After, warm |
+| --- | --- | --- | --- | --- |
+| 7 days | 557 to 624 ms | 84 to 103 ms | 81 to 364 ms | 19 to 34 ms |
+| 30 days | 1,724 to 1,813 ms | 462 to 507 ms | 294 to 968 ms | 131 to 156 ms |
+| 90 days | 5,437 to 6,499 ms | 2,060 to 2,898 ms | 1,935 to 4,348 ms | 408 to 445 ms |
+
+Building the slots for these 110,000 turns took 9.9 s, once, in migration 53.
+The synthetic turns are spread over many threads at once, so the slots hold
+105,359 rows for 110,000 turns: a journal where a few threads run at a time
+folds more turns into each row. What is left is about half the slots read and
+half the thread ranking, which still sums the turns themselves.
+
 ## Local and remote connections
 
 The core decides per connection. A WebSocket whose `Host` header is
