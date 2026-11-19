@@ -508,8 +508,9 @@ export class AcpSession {
    * True when the turn's reading has to tell which of the two the agent does.
    */
   #costBaseline(turn: AcpTurn): boolean {
-    if (this.#reportedCost !== null) {
-      turn.costBefore = this.#reportedCost;
+    const reported = this.#connection instanceof OpenCodeConnection ? this.#connection.sessionCost : this.#reportedCost;
+    if (reported !== null) {
+      turn.costBefore = reported;
       return false;
     }
     if (!this.#loaded || this.#memory.costPerProcess.has(turn.ctx.provider.id)) {

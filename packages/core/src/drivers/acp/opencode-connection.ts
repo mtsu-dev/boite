@@ -21,10 +21,18 @@ type Pending = {
   cancelSent: boolean;
   output: Promise<void>;
   buffered: number;
+  awaitingInbox: Set<string>;
+  earlyInbox: Set<string> | null;
+  receivedTerminal: boolean;
 };
 type Notify = (notification: SessionNotification) => void;
 type Terminal = { stopReason: 'end_turn' | 'cancelled'; error?: string };
 const EVENT_LIMIT = 16 * 1024 * 1024;
+
+function sessionCost(session: Record<string, unknown>): number | null {
+  const cost = session['cost'];
+  return typeof cost === 'number' && Number.isFinite(cost) && cost >= 0 ? cost : null;
+}
 
 export class OpenCodeConnection {
   readonly agent: ClientContext;
@@ -32,6 +40,7 @@ export class OpenCodeConnection {
   readonly #controls: OpenCodeControls;
   readonly #tools = new Map<string, { name: string; input: unknown }>();
   #sessionId = '';
+  #sessionCost: number | null = null;
   #pending: Pending | null = null;
   #tokens = { inputTokens: 0, outputTokens: 0, thoughtTokens: 0, cachedReadTokens: 0, cachedWriteTokens: 0, totalTokens: 0 };
   #lastTokens = 0;
@@ -96,6 +105,8 @@ export class OpenCodeConnection {
     return { model: this.#controls.currentModel(), window: this.#controls.compactionWindow() };
   }
 
+  get sessionCost(): number | null { return this.#sessionCost; }
+
   async steer(prompt: ContentBlock[], onAccepted?: () => void, signal?: AbortSignal): Promise<boolean> {
     const pending = this.#pending;
     if (!pending || this.#inputCommitted || !this.#current() || this.#current()?.isStopped) return false;
@@ -123,6 +134,7 @@ export class OpenCodeConnection {
         : await this.#call(`/api/session/${encodeURIComponent(text(params['sessionId']))}`))['data']);
       this.#sessionId = text(session['id']);
       if (!this.#sessionId) throw new Error('OpenCode session.id must be a nonempty string');
+      this.#sessionCost = sessionCost(session);
       await this.#controls.read(session);
       this.#notify({ sessionId: this.#sessionId, update: { sessionUpdate: 'available_commands_update', availableCommands: [
         { name: 'compact', description: 'Compact the session' },
@@ -144,7 +156,10 @@ export class OpenCodeConnection {
     this.#deferredTerminal = null;
     this.#tokens = { inputTokens: 0, outputTokens: 0, thoughtTokens: 0, cachedReadTokens: 0, cachedWriteTokens: 0, totalTokens: 0 };
     const response = Promise.withResolvers<PromptResponse>();
-    const pending: Pending = { ...response, admitted: false, cancelSent: false, output: Promise.resolve(), buffered: 0 };
+    const pending: Pending = {
+      ...response, admitted: false, cancelSent: false, output: Promise.resolve(), buffered: 0,
+      awaitingInbox: new Set(), earlyInbox: null, receivedTerminal: false,
+    };
     this.#pending = pending;
     void this.#submit(pending, params['prompt'] as ContentBlock[], true).catch(error => {
       if (this.#pending !== pending) return;
@@ -158,7 +173,7 @@ export class OpenCodeConnection {
     const pending = this.#pending;
     if (method !== 'session/cancel' || !pending || pending.cancelSent) return;
     pending.cancelSent = true;
-    await this.#interrupt();
+    if (!this.#stopOnReceivedTerminal(pending)) await this.#interrupt();
   }
 
   #path(): string { return `/api/session/${encodeURIComponent(this.#sessionId)}`; }
@@ -167,6 +182,8 @@ export class OpenCodeConnection {
 
   async #submit(pending: Pending, prompt: ContentBlock[], initial: boolean, onAccepted?: () => void, signal?: AbortSignal): Promise<void> {
     this.#inputCommitted = new Promise(resolve => { this.#commitInput = resolve; });
+    const earlyInbox = new Set<string>();
+    pending.earlyInbox = earlyInbox;
     try {
       const response = object(await this.#send(prompt, signal));
       signal?.throwIfAborted();
@@ -174,14 +191,16 @@ export class OpenCodeConnection {
       const id = text(object(response['data'])['id']);
       if (!id) throw new Error('OpenCode prompt response data.id must be a nonempty inbox ID');
       this.#inbox.add(id);
-      if (initial) {
-        pending.admitted = true;
-        // An earlier interrupt may have reached the server before the prompt did.
-        if (pending.cancelSent) void this.#interrupt().catch(() => undefined);
-      }
+      if (!earlyInbox.has(id)) pending.awaitingInbox.add(id);
+      if (initial) pending.admitted = true;
       onAccepted?.();
     } finally {
+      pending.earlyInbox = null;
       this.#commitInput?.(); this.#commitInput = null; this.#inputCommitted = null;
+      // An earlier interrupt may have reached the server before the prompt did.
+      if (this.#pending === pending && pending.cancelSent && pending.admitted && !this.#stopOnReceivedTerminal(pending) && initial) {
+        void this.#interrupt().catch(() => undefined);
+      }
     }
     this.#current()?.ctx.inputReady?.();
   }
@@ -244,14 +263,20 @@ export class OpenCodeConnection {
     const pending = this.#pending;
     const turn = this.#current();
     if (!pending || !turn) return;
-    const terminal = type === 'session.execution.interrupted' || type === 'session.execution.succeeded' || type === 'session.execution.failed'
-      || (this.#compacting && (type === 'session.compaction.ended' || type === 'session.compaction.failed'));
-    if (turn.isStopped && data['sessionID'] === this.#sessionId && terminal) {
-      // A terminal event before initial admission can belong to the idle session.
-      // The interrupt sent after admission gets its own terminal event.
-      if (pending.admitted) this.#complete({ stopReason: 'cancelled' });
-      return;
+    if (data['sessionID'] === this.#sessionId) {
+      if (type === 'session.step.ended' || type === 'session.step.failed') {
+        this.#noteTokens(object(data['tokens']));
+        return;
+      }
+      this.#noteReceipt(pending, type, data);
+      if (turn.isStopped) {
+        // A new interrupt acknowledgement ends even an admitted inbox.
+        // Before initial admission it can still be for the idle session.
+        if (pending.admitted && type === 'session.execution.interrupted') void this.#finish('cancelled');
+        else this.#stopOnReceivedTerminal(pending);
+      }
     }
+    if (turn.isStopped) return;
     pending.buffered += size;
     if (pending.buffered > EVENT_LIMIT) throw new Error('OpenCode pending output exceeds 16 MiB');
     pending.output = pending.output.then(async () => {
@@ -264,6 +289,40 @@ export class OpenCodeConnection {
       pending.reject(error);
       this.close();
     }).finally(() => { pending.buffered -= size; });
+  }
+
+  /** Track the execution and its inbox at receipt, while drawing stays ordered. */
+  #noteReceipt(pending: Pending, type: string, data: Record<string, unknown>): void {
+    switch (type) {
+      case 'session.execution.started':
+      case 'session.compaction.started':
+        pending.receivedTerminal = false;
+        break;
+      case 'session.inbox.delivered':
+      case 'session.inbox.cancelled': {
+        const id = text(data['inboxID']);
+        if (!pending.awaitingInbox.delete(id)) pending.earlyInbox?.add(id);
+        if (type === 'session.inbox.delivered') pending.receivedTerminal = false;
+        break;
+      }
+      case 'session.execution.interrupted':
+        if (pending.admitted) pending.receivedTerminal = true;
+        break;
+      case 'session.execution.succeeded':
+      case 'session.execution.failed':
+        pending.receivedTerminal = true;
+        break;
+      case 'session.compaction.ended':
+      case 'session.compaction.failed':
+        if (this.#compacting) pending.receivedTerminal = true;
+        break;
+    }
+  }
+
+  #stopOnReceivedTerminal(pending: Pending): boolean {
+    if (!pending.admitted || pending.earlyInbox !== null || !pending.receivedTerminal || pending.awaitingInbox.size > 0) return false;
+    void this.#finish('cancelled');
+    return true;
   }
 
   async #event(turn: AcpTurn, type: string, data: Record<string, unknown>): Promise<void> {
@@ -301,8 +360,6 @@ export class OpenCodeConnection {
         turn.upsertTool(id, tool?.name ?? null, tool?.input, undefined, type.endsWith('failed') ? 'failed' : 'completed', content);
         break;
       }
-      case 'session.step.ended':
-      case 'session.step.failed': this.#noteTokens(object(data['tokens'])); break;
       case 'session.compaction.started': turn.ctx.reportProgress?.('compacting'); break;
       case 'session.compaction.ended':
         turn.ctx.reportProgress?.('working');
@@ -380,15 +437,13 @@ export class OpenCodeConnection {
     this.#pending = null;
     const turn = this.#current();
     if (this.#lastTokens > 0) turn?.noteContext(this.#lastTokens, this.#controls.contextWindow());
-    if (turn && !turn.isStopped && stopReason !== 'cancelled') {
-      const reading = new AbortController();
-      void turn.stopped.then(() => reading.abort());
+    if (turn) {
+      this.#sessionCost = null;
       try {
-        const signal = AbortSignal.any([reading.signal, AbortSignal.timeout(EXIT_GRACE_MS)]);
-        const session = object(object(await this.#call(this.#path(), 'GET', undefined, signal))['data']);
-        if (this.#current() === turn && typeof session['cost'] === 'number') turn.costUsdEquivalent = session['cost'];
+        const session = object(object(await this.#call(this.#path(), 'GET', undefined, AbortSignal.timeout(EXIT_GRACE_MS)))['data']);
+        if (this.#current() === turn) this.#sessionCost = turn.costUsdEquivalent = sessionCost(session);
       } catch (error) {
-        if (!reading.signal.aborted) turn.ctx.log('warn', `OpenCode session cost could not be read: ${messageOf(error)}`);
+        if (!this.#abort.signal.aborted) turn.ctx.log('warn', `OpenCode session cost could not be read: ${messageOf(error)}`);
       }
     }
     pending.resolve({ stopReason: turn?.isStopped ? 'cancelled' : stopReason, usage: this.#tokens });
