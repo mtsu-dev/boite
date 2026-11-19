@@ -12,8 +12,8 @@ set -euo pipefail
 
 # The Bun every release runs on: android-server-bundle.ts copies this pin into
 # server-release.json, so an update downloads the same build.
-BUN_VERSION=1.4.4
-BUN_SHA256=d72e42c60e895ccbc16144bb1e0e0ad7ee384841c35b5501a7ec28b4d6d759c9
+BUN_VERSION=1.4.5
+BUN_SHA256=587471d26c8cc685debc5655cd5bf6d95d052a3b4a4956bdc922f8c6f1779396
 
 REPOSITORY=mtsu-dev/boite
 REF=main
