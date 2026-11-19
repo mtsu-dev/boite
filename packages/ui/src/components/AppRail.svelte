@@ -210,7 +210,8 @@
     const owner = AgentsView.of(machine.store);
     // The machines' picker opens where the menu stood at once; the snapshot is read once a destination is picked.
     if (action === 'move') {
-      contextMenu.follow(moveItems(machine.store, agent.id), target => void current(owner, agent.id).then(found => found && moveBot(owner, agent, target, store)));
+      // The move's confirmation lists the projects it detaches: the fresh profile's, not the menu's.
+      contextMenu.follow(moveItems(machine.store, agent.id), target => void current(owner, agent.id).then(fresh => fresh && moveBot(owner, fresh, target, store)));
       return;
     }
     if (!await current(owner, agent.id)) return;
@@ -222,12 +223,13 @@
     }
     pickAgentAction(owner, agent, action, { open: () => show(), edit: () => show('settings'), rename: () => show('settings'), report: store });
   }
-  /** Reads the bot's machine again; false, with the reason in the window's toast, when the bot is no longer there. */
-  async function current(owner: AgentsView, id: string): Promise<boolean> {
+  /** Reads the bot's machine again: its profile now, or null, with the reason in the window's toast, when it is gone. */
+  async function current(owner: AgentsView, id: string): Promise<AgentProfile | null> {
     await owner.refresh();
-    if (owner.snapshot?.profiles.some(profile => profile.id === id)) return true;
+    const fresh = owner.snapshot?.profiles.find(profile => profile.id === id);
+    if (fresh) return fresh;
     store.reportError(new Error(owner.loadError || strings.connection.unavailable), 'minor');
-    return false;
+    return null;
   }
   function pickMachine(id: string | null) {
     const entries = machines.flatMap(machine => machine.store.projects.map(project => ({ machine, project })));
