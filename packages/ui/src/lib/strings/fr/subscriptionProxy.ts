@@ -4,7 +4,7 @@ export const fr: Translation = {
   subscriptionProxy: {
     offLine: 'Fait passer Claude et Codex par une passerelle, comme Douane, au lieu des comptes connectés ici.',
     heading: 'Proxy d\'abonnements', enable: 'Utiliser un proxy d\'abonnements',
-    hint: 'Claude et Codex utilisent la passerelle de cette machine, Grok aussi derrière Douane, et OpenCode 2 ajoute ses autres modèles aux siens. Limites ouvre son tableau de bord dans Boite. Les autres agents gardent leur configuration.',
+    hint: 'Claude et Codex utilisent la passerelle de cette machine, Grok et Antigravity aussi derrière Douane, et OpenCode 2 ajoute ses autres modèles aux siens. Limites ouvre son tableau de bord dans Boite. Les autres agents gardent leur configuration.',
     baseUrl: 'URL de l\'API', dashboardUrl: 'URL du tableau de bord des limites', key: 'Clé API (facultative)',
     keyHint: 'Laissez vide pour garder la clé enregistrée. Utilisez la clé API du proxy, pas sa clé de gestion du tableau de bord. En mode local, Boite crée une clé client si aucune clé n’est enregistrée.',
     clearKey: 'Retirer la clé enregistrée', save: 'Enregistrer le proxy', saved: 'Proxy enregistré',
@@ -13,7 +13,7 @@ export const fr: Translation = {
     openGateway: 'Ouvrir {name}',
     signInHint: 'Connectez-vous avec Ouvrir {name}, puis rechargez ici. Si la page reste vide, ce tableau peut refuser les vues intégrées.',
     mixedContent: "Cette page utilise HTTPS. Configurez une URL de tableau HTTPS pour l'afficher ici, ou ouvrez le tableau HTTP séparément.",
-    enabledHint: 'Activé, les comptes connectés sur cette machine ne sont plus utilisés pour Claude et Codex, ni pour Grok derrière Douane.',
+    enabledHint: 'Activé, les comptes connectés sur cette machine ne sont plus utilisés pour Claude et Codex, ni pour Grok et Antigravity derrière Douane.',
     use: 'Utiliser {name}',
     switchFailed: 'Impossible de basculer {name} : {error}',
     account: 'Les requêtes passent par {name} ({origin}). Les connexions de ce PC ne sont pas utilisées.',
