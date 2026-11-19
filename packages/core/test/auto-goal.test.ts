@@ -102,13 +102,14 @@ test('1499 characters, the owner\'s setting off, or a command start no goal', as
   const on = await desktop();
   await on.client.call('turns.start', { threadId: on.threadId, prompt: prompt(1499) });
   await waitFor(() => h.core.journal.listTurns(on.threadId).some(turn => turn.status === 'done'));
+  // A command is exempt while the setting is on.
+  const { threadId } = await echoThread(h, on.client, 'command');
+  await on.client.call('turns.start', { threadId, prompt: `/cost ${prompt(1500)}` });
+  await waitFor(() => h.core.journal.listTurns(threadId).length > 0);
   await on.client.call('settings.set', { autoGoals: false });
   const off = await desktop();
   await off.client.call('turns.start', { threadId: off.threadId, prompt: prompt(1500) });
   await waitFor(() => h.core.journal.listTurns(off.threadId).some(turn => turn.status === 'done'));
-  const { threadId } = await echoThread(h, on.client, 'command');
-  await on.client.call('turns.start', { threadId, prompt: `/cost ${prompt(1500)}` });
-  await waitFor(() => h.core.journal.listTurns(threadId).length > 0);
   for (const id of [on.threadId, off.threadId, threadId]) expect(goalOf(id)).toBeNull();
   expect(await cards(on.client, on.threadId)).toEqual([]);
   // An app that reports no experiment changes nothing: the setting decides.
@@ -213,7 +214,7 @@ test('the card of an automatic goal is claimed once its review passes', async ()
   expect(list[0]).toMatchObject({ status: 'claimed', goalThreadId: threadId });
 });
 
-test('the agent guide names goal track only while the experiment is on', () => {
+test('the agent guide names goal track only while automatic goals are on', () => {
   expect(agentGuide(true, false, [], false, true)).toContain('`boite goal track`');
   expect(agentGuide(true, false, [], false, false)).not.toContain('goal track');
 });
@@ -245,6 +246,15 @@ test('a queued long prompt starts its goal from the machine\'s setting, whatever
   await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0, value });
   await waitFor(() => goalOf(threadId) !== null, 5000);
   expect(goalOf(threadId)).toMatchObject({ objective: text, auto: true });
+  // The setting off, an item that still names the old experiment starts none.
+  await client.call('settings.set', { autoGoals: false });
+  const off = await desktop([]);
+  const stale: ComposerValue = { input: { text: '', attachments: [], paused: false, queued: [
+    { id: 'long-tagged', text, attachments: [], experiments: ['auto-goal'] },
+  ] } };
+  await off.client.call('composer.put', { section: 'inputs', id: off.threadId, expectedRevision: 0, value: stale });
+  await waitFor(() => h.core.journal.listTurns(off.threadId).some(turn => turn.status === 'done'), 5000);
+  expect(goalOf(off.threadId)).toBeNull();
 });
 
 test('goal track takes the user\'s last prompt, a steer included', async () => {
