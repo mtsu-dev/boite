@@ -24,7 +24,7 @@ import { delegationConfig, stopDelegation } from './delegation';
 import { fakeCore } from './coordination';
 import type { FakeContext, FakeMethods } from './context';
 import { registerFakeWorktree, requireFakeCwd } from './worktrees';
-import { boundedMessageWindow, listCursorProblem, pageBytes, pageBytesProblem, projectMessage, resumeAnchor, snapshotOptionsProblem, type TransportOptions } from '@boite/contracts';
+import { boundedMessageWindow, listCursorProblem, pageBytes, pageBytesProblem, projectMessage, resumeAnchor, snapshotOptionsProblem, THREAD_LIST_PAGE_BYTES, ThreadListPages, type TransportOptions } from '@boite/contracts';
 import { dropWaitingMove, fakeMoveNote } from './thread-move';
 import { cancelFamilySideQuestions, cancelSide, sideQuestionMethods } from './side-questions';
 
@@ -318,6 +318,7 @@ export async function deleteExpiredDoneThreads(ctx: FakeContext, remove: (id: st
 }
 
 export function threadMethods(ctx: FakeContext) {
+  const pages = new ThreadListPages();
   const creations = new Map<string, { key: string; created: Promise<string> }>();
   const removing = new Set<string>();
   const methods = {
@@ -330,16 +331,30 @@ export function threadMethods(ctx: FakeContext) {
     },
     // The core's answer (`threads/list-changes.ts`): whole, or the rows changed since plus every row with a load.
     'threads.listChanges': async (params) => {
-      const problem = params.since === undefined ? null : listCursorProblem(params.since);
+      const { since, page } = params ?? {};
+      const problem = since === undefined ? null : listCursorProblem(since);
       if (problem) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `threads.listChanges.${problem.field}: expected ${problem.expected}`, data: problem });
       const cursor = ctx.threadChanges.cursor();
-      const changed = params.since === undefined ? null : ctx.threadChanges.since(params.since);
+      const read = (id: string) => {
+        const thread = ctx.threads.get(id);
+        return thread ? toSummary(thread) : null;
+      };
+      const take = (page: string) => {
+        const answer = pages.take(page, read);
+        if (!answer) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'threads.listChanges.page: expected the next cursor of this connection' });
+        return structuredClone(answer);
+      };
+      if (typeof page === 'string') return take(page);
+      if (page !== undefined && page !== true) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'threads.listChanges.page: expected true or a continuation cursor' });
+      const changed = since === undefined ? null : ctx.threadChanges.since(since);
       const listed = [...ctx.threads.values()].filter(t => !t.archived);
-      if (changed === null) return { kind: 'full' as const, cursor, threads: listed.map(t => structuredClone(toSummary(t))) };
+      const start = () => take(pages.start(cursor, listed.sort((a, b) => b.updatedAt - a.updatedAt || (a.id < b.id ? -1 : 1)).map(t => t.id), crypto.randomUUID()));
+      if (changed === null) return page ? start() : { kind: 'full' as const, cursor, threads: listed.map(t => structuredClone(toSummary(t))) };
       const asked = new Set(changed);
       const threads = listed.filter(t => asked.has(t.id) || t.load != null).map(t => structuredClone(toSummary(t)));
       const answered = new Set(threads.map(t => t.id));
-      return { kind: 'changes' as const, cursor, threads, removed: changed.filter(id => !answered.has(id)) };
+      const answer = { kind: 'changes' as const, cursor, threads, removed: changed.filter(id => !answered.has(id)) };
+      return page && new TextEncoder().encode(JSON.stringify(answer)).length > THREAD_LIST_PAGE_BYTES ? start() : answer;
     },
     'threads.create': async (params) => {
       // The core's creation receipts: asked again under its request id, a creation answers with the conversation it made.
@@ -379,14 +394,25 @@ export function threadMethods(ctx: FakeContext) {
       // the tail exceeds a page's count or bytes, and then a full page.
       const from = params.after === undefined ? -1 : thread.messages.findIndex((message) => message.id === params.after);
       const project = projection(params);
-      const tail = from === -1 ? null : tailOf(thread.messages, from, limit, project);
+      const known = params.sync && params.sync !== true ? params.sync : undefined;
+      const prefix = known?.prefix;
+      const preceding = from < 0 || !prefix ? undefined : thread.messages.slice(Math.max(0, from - prefix.count), from);
+      const verified = !prefix || (preceding && known?.from === params.after && preceding.length === prefix.count
+        && prefix.first === (preceding[0]?.id ?? params.after) && prefix.hash === snapshotHash(preceding, params));
+      const tail = from === -1 || !verified ? null : tailOf(thread.messages, from, limit, project);
       const page = tail !== null ? { messages: tail, before: null, after: null }
         : aroundOf(thread.messages, params.around, limit, project, maxBytes) ?? { ...pageOf(thread.messages, thread.messages.length, limit, project, maxBytes), after: null };
       const sent = new Set(page.messages.map(message => message.turnId));
       const turns = thread.turns.filter(turn => turn.status === 'queued' || turn.status === 'running' || sent.has(turn.id));
       const anchor = params.sync ? resumeAnchor({ messages: page.messages, turns }) : null;
-      const proof = anchor === null ? undefined : { from: anchor, hash: snapshotHash(page.messages.slice(page.messages.findIndex(message => message.id === anchor)), params) };
-      const known = params.sync && params.sync !== true ? params.sync : undefined;
+      const anchorIndex = page.messages.findIndex(message => message.id === anchor);
+      const heldPrefix = tail === null ? page.messages.slice(0, anchorIndex) : preceding && [...preceding, ...page.messages.slice(0, anchorIndex)];
+      const proof = anchor === null ? undefined : {
+        from: anchor, hash: snapshotHash(page.messages.slice(anchorIndex), params),
+        ...(heldPrefix && heldPrefix.length <= MESSAGE_PAGE_MAX ? {
+          prefix: { first: heldPrefix[0]?.id ?? anchor, count: heldPrefix.length, hash: snapshotHash(heldPrefix, params) },
+        } : {}),
+      };
       const unchanged = tail !== null && params.after !== undefined && known?.from === params.after && known.hash === (proof?.from === params.after ? proof.hash : snapshotHash(tail, params));
       // As the core: where the page's first message sits, or the resume tail's `after`.
       const first = tail !== null ? params.after : page.messages[0]?.id;

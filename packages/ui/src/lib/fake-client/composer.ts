@@ -1,6 +1,6 @@
 import { sha256 } from '@noble/hashes/sha2.js';
 import {
-  answerAttachmentError, ATTACHMENTS_PER_TURN, ATTACHMENTS_TOTAL_MAX_BYTES, decodedBytes, composerBatch, composerActivity, isComposerActivity, RpcErrorCode, type Attachment, type ComposerChoice, type ComposerQueuedPrompt,
+  answerAttachmentError, ATTACHMENTS_PER_TURN, ATTACHMENTS_TOTAL_MAX_BYTES, composerBytes, composerPage, composerRevision, COMPOSER_RECORD_MAX_BYTES, decodedBytes, composerBatch, composerActivity, isComposerActivity, isComposerKey, RpcErrorCode, type Attachment, type ComposerChoice, type ComposerQueuedPrompt, type ComposerCursor,
   type ComposerRecord, type ComposerValue, type RpcEventName, type RpcEvents,
 } from '@boite/contracts';
 import { RpcFailure } from '../client';
@@ -54,15 +54,22 @@ export class FakeComposerState {
     for (const request of this.cliPrompts.keys()) if (request.startsWith(`${id}:`)) this.cliPrompts.delete(request);
   }
 
-  write(section: ComposerRecord['section'], id: string, value: ComposerValue | null, owner?: FakeContext): ComposerRecord {
+  write(section: ComposerRecord['section'], id: string, value: ComposerValue | null, owner?: FakeContext, writer?: FakeContext): ComposerRecord {
     const key = keyOf(section, id);
     const privateMode = !!owner || this.owners.has(key);
-    const record: ComposerRecord = { section, id, revision: (this.records.get(key)?.revision ?? 0) + 1, updatedAt: Date.now(), value: copy(value), ...(privateMode ? { privateMode: true } : {}) };
+    const previous = this.records.get(key);
+    const record: ComposerRecord = { section, id, revision: (previous?.revision ?? 0) + 1, updatedAt: Date.now(), value: copy(value), ...(privateMode ? { privateMode: true } : {}) };
+    const bytes = composerBytes(record);
+    if (bytes > COMPOSER_RECORD_MAX_BYTES) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `composer.value: expected at most ${COMPOSER_RECORD_MAX_BYTES} serialized UTF-8 bytes` });
     if (owner) this.owners.set(key, owner);
     this.records.set(key, record);
     // As the core, a boundary or a Send now lasts only while the queue holds something.
     if (section === 'inputs' && !value?.input.queued.length) { this.boundaries.delete(id); this.forced.delete(id); }
-    for (const client of this.clients) if (this.visible(key, client)) client.emit('composer.updated', copy(record));
+    const revision = previous && composerRevision(record, previous, () => bytes);
+    for (const client of this.clients) if (client !== writer && this.visible(key, client)) {
+      if (revision && client.core.features?.composerPages) client.emit('composer.revision', copy(revision));
+      else client.emit('composer.updated', copy(record));
+    }
     return copy(record);
   }
 
@@ -211,11 +218,27 @@ function choiceOf(thread: ComposerChoice): ComposerChoice {
   return { providerId: thread.providerId, accountId: thread.accountId, permissionMode: thread.permissionMode, model: thread.model, effort: thread.effort, speed: thread.speed ?? null };
 }
 
-export function composerMethods(ctx: FakeContext, methods: () => FakeMethods): Pick<FakeMethods, 'composer.list' | 'composer.put' | 'composer.enqueue' | 'composer.asset.put' | 'composer.asset.get'> {
+export function composerMethods(ctx: FakeContext, methods: () => FakeMethods): Pick<FakeMethods, 'composer.list' | 'composer.listPage' | 'composer.get' | 'composer.put' | 'composer.enqueue' | 'composer.asset.put' | 'composer.asset.get'> {
   const state = ctx.composer;
   state.attach(ctx, methods);
   return {
     'composer.list': async () => copy([...state.records].filter(([key]) => state.visible(key, ctx)).map(([, row]) => row)),
+    'composer.listPage': async params => {
+      const after = params?.after;
+      if (after !== undefined && (!isComposerKey(after) || (after.privateMode !== undefined && after.privateMode !== true))) {
+        throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'composer.listPage.after: expected a cursor from an earlier page' });
+      }
+      const byText = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
+      const compare = (a: ComposerCursor, b: ComposerCursor) => Number(!!a.privateMode) - Number(!!b.privateMode) || byText(a.section, b.section) || byText(a.id, b.id);
+      const rows = [...state.records].filter(([key, row]) => state.visible(key, ctx) && (!after || compare(row, after) > 0)).map(([, row]) => row).sort(compare);
+      return copy(composerPage(rows));
+    },
+    'composer.get': async params => {
+      if (!isComposerKey(params)) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'composer.get: expected section inputs/drafts and a nonempty id' });
+      const { section, id } = params, key = keyOf(section, id);
+      if (!state.visible(key, ctx)) throw new RpcFailure({ code: RpcErrorCode.NotFound, message: 'composer.id: this private composer belongs to another connection' });
+      return copy(state.records.get(key) ?? { section, id, revision: 0, updatedAt: 0, value: null });
+    },
     'composer.enqueue': async params => {
       const { threadId, prompt, clientRequestId: requestId } = params;
       if (!prompt?.trim() || !/^[A-Za-z0-9_-]{8,128}$/.test(requestId)) throw refusal('composer.enqueue: expected a non-empty prompt and an 8 to 128 character request id');
@@ -242,6 +265,7 @@ export function composerMethods(ctx: FakeContext, methods: () => FakeMethods): P
       const choice = choiceOf(thread);
       value.input.queued.push({ id, text: prompt, attachments: [], choice, request: { id: requestId, choice, queuedAt: Date.now() } });
       const saved = await methods()['composer.put']({ section: 'inputs', id: threadId, expectedRevision: record?.revision ?? 0, value });
+      if (saved.accepted) ctx.emit('composer.updated', copy(saved.record));
       if (!saved.accepted) throw refusal('the composer changed; retry with the same clientRequestId');
       state.cliPrompts.set(id, prompt);
       return { requestId, status: value.input.paused ? 'held' : 'queued' };
@@ -282,7 +306,7 @@ export function composerMethods(ctx: FakeContext, methods: () => FakeMethods): P
           }
         }
       }
-      const record = state.write(params.section, params.id, value, privateMode ? ctx : undefined);
+      const record = state.write(params.section, params.id, value, privateMode ? ctx : undefined, ctx);
       if (params.section === 'inputs' && params.sendNow && value?.input.queued.length) state.sendNow(params.id);
       state.schedule(ctx);
       return { accepted: true, record };

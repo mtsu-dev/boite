@@ -1,5 +1,5 @@
 import type { ComposerChoice, ComposerQueuedPrompt, ComposerRecord, ComposerValue, RpcParams, ThreadSummary, Turn } from '@boite/contracts';
-import { effectiveExperiments } from '@boite/contracts';
+import { effectiveExperiments, isComposerKey } from '@boite/contracts';
 import type { Core } from './core.ts';
 import type { Connection } from './router.ts';
 import { promptOrigin } from './client-preferences.ts';
@@ -56,6 +56,12 @@ export class Composer {
       }
     });
     core.router.register('composer.list', (_params, ctx) => this.storage.list(ctx.connection.id));
+    core.router.register('composer.listPage', (params, ctx) => this.storage.listPage(ctx.connection.id, params?.after));
+    core.router.register('composer.get', (params, ctx) => {
+      if (!isComposerKey(params)) throw invalidParams('composer.get: expected section inputs/drafts and a nonempty id');
+      this.storage.requireOwner(params, ctx.connection.id);
+      return this.storage.get(params.section, params.id);
+    });
     // The owner terminal has no shared draft state. It appends one prompt through the same outbox.
     core.router.register('composer.enqueue', (params, ctx) => this.enqueue(params, ctx.connection));
     core.router.register('composer.asset.put', (params, ctx) => this.storage.putAsset(params.attachment, params.incognito === true, ctx.connection));
@@ -128,12 +134,12 @@ export class Composer {
     if (thread.projectId && this.#core.projects.require(thread.projectId).archived) throw refused('cannot send a prompt in an archived project');
     const value: ComposerValue = record.value ?? { input: { text: '', attachments: [], queued: [], paused: false } };
     value.input.queued.push({ id, text: prompt, attachments: [], choice, request: { id: requestId, choice, queuedAt: Date.now() } });
-    const saved = this.put({ section: 'inputs', id: threadId, expectedRevision: record.revision, value }, connection);
+    const saved = this.put({ section: 'inputs', id: threadId, expectedRevision: record.revision, value }, connection, false);
     if (!saved.accepted) throw refused('the composer changed; retry with the same clientRequestId');
     return { requestId, status: value.input.paused ? 'held' as const : 'queued' as const };
   }
 
-  put(params: RpcParams<'composer.put'>, connection: Connection): { accepted: boolean; record: ComposerRecord } {
+  put(params: RpcParams<'composer.put'>, connection: Connection, returnsRecord = true): { accepted: boolean; record: ComposerRecord } {
     if (!params || !['inputs', 'drafts'].includes(params.section) || typeof params.id !== 'string' || !params.id || !Number.isSafeInteger(params.expectedRevision) || params.expectedRevision < 0) throw invalidParams('composer.put: expected section inputs/drafts, non-empty id and non-negative expectedRevision');
     // Soft-deleted rows remain undoable. Missing rows cannot adopt an offline
     // client's old input again, regardless of its remembered CAS revision.
@@ -169,7 +175,7 @@ export class Composer {
         }
       }
     }
-    const record = this.#atomic(() => this.storage.save(params.section, params.id, value, connection));
+    const record = this.#atomic(() => this.storage.save(params.section, params.id, value, connection, returnsRecord ? connection.id : undefined));
     if (params.section === 'inputs') {
       if (!record.value?.input.queued.length) { this.#boundaries.delete(params.id); this.#forced.delete(params.id); }
       else if (params.sendNow) this.#forced.set(params.id, record.value.input.queued[0]!.id);

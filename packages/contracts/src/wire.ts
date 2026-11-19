@@ -111,5 +111,5 @@ export const CLIENT_NAMES = ['shell', 'pwa', 'cli', 'plugin', 'test', 'bench'] a
 export type ClientName = (typeof CLIENT_NAMES)[number];
 
 /** What a hello's `accepts` may name. Anything else is ignored. */
-export const HELLO_ACCEPTED = ['thread.load'] as const;
+export const HELLO_ACCEPTED = ['thread.load', 'thread.progress', 'composer.revision'] as const;
 export type HelloAccepted = (typeof HELLO_ACCEPTED)[number];

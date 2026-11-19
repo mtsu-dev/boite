@@ -132,7 +132,7 @@ export class FakeClient implements ObservableClient {
     this.#ctx = ctx;
     this.#methods = this.#answer(ctx);
     this.#missing = new Set(options.missing ?? []);
-    ctx.core.features = { ...ctx.core.features, composerPersistence: !this.#missing.has('composer.list'), listChanges: !this.#missing.has('threads.listChanges'), streamChannels: true, browserStream: !this.#missing.has('browser.remoteStream') };
+    ctx.core.features = { ...ctx.core.features, composerPersistence: !this.#missing.has('composer.list'), composerPages: !this.#missing.has('composer.listPage') && !this.#missing.has('composer.get'), listChanges: !this.#missing.has('threads.listChanges'), streamChannels: true, browserStream: !this.#missing.has('browser.remoteStream') };
     this.#agentSettings = agentSettingMethods(ctx);
     registerCore(ctx);
     seed(ctx);

@@ -14,7 +14,8 @@ import type {
   ThreadResources,
   Todo
 } from '@boite/contracts';
-import { TRACE_LIMIT } from '@boite/contracts';
+import { RpcErrorCode, TRACE_LIMIT } from '@boite/contracts';
+import { RpcFailure } from '../client';
 import { untrack } from 'svelte';
 import { strings } from '../strings';
 import { coreHref } from '../endpoint';
@@ -157,7 +158,8 @@ export class Workbench {
       if (!this.ctx.currentClient(client, clientGeneration)) return { ok: false, error: strings.errors.noEndpoint };
       return { ok: true, value };
     } catch (error) {
-      return { ok: false, error: this.ctx.reason(error) };
+      const inaccessible = error instanceof RpcFailure && [RpcErrorCode.NotFound, RpcErrorCode.Refused, RpcErrorCode.Unauthorized].some(code => code === error.code);
+      return { ok: false, error: this.ctx.reason(error), ...(inaccessible ? { inaccessible: true as const } : {}) };
     }
   }
 

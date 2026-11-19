@@ -1,6 +1,8 @@
 import type { Attachment, PreviewReference, SentFrom } from './messages';
 import type { PermissionMode } from './threads';
 import type { ExperimentId } from './experiments';
+import { RPC_MAX_FRAME_BYTES } from './attachment-limits';
+import { utf8Bytes } from './transport';
 
 export interface ComposerChoice {
   providerId: string;
@@ -75,8 +77,50 @@ export interface ComposerRecord {
   value: ComposerValue | null;
 }
 
+export type ComposerKey = Pick<ComposerRecord, 'section' | 'id'>;
+export type ComposerRevision = Pick<ComposerRecord, 'section' | 'id' | 'revision' | 'updatedAt'>;
+export type ComposerCursor = ComposerKey & { privateMode?: true };
+export interface ComposerPage { records: ComposerRecord[]; next?: ComposerCursor }
+
+export const COMPOSER_RECORD_MAX_BYTES = RPC_MAX_FRAME_BYTES - 1024;
+export const composerBytes = (value: unknown): number => utf8Bytes(JSON.stringify(value));
+
+export function isComposerKey(value: unknown): value is ComposerKey {
+  if (!value || typeof value !== 'object') return false;
+  const { section, id } = value as Partial<ComposerKey>;
+  return (section === 'inputs' || section === 'drafts') && typeof id === 'string' && id.length > 0;
+}
+
+/** Only edits to an existing box with the same routing and no server-owned queue can wait for a read. */
+export function composerRevision(record: ComposerRecord, previous: ComposerRecord, bytes = composerBytes): ComposerRevision | undefined {
+  const value = record.value, old = previous.value;
+  if (!value || !old || record.privateMode || value.input.queued.length || old.input.queued.length ||
+    JSON.stringify([value.draft, value.choice, value.parked]) !== JSON.stringify([old.draft, old.choice, old.parked]) ||
+    bytes(record) < 64 * 1024) return undefined;
+  const { section, id, revision, updatedAt } = record;
+  return { section, id, revision, updatedAt };
+}
+
+/** A single record may exceed the page budget, up to the transport's record limit. */
+export function composerPage(source: Iterable<ComposerRecord>, bytes = composerBytes): ComposerPage {
+  const records: ComposerRecord[] = [];
+  let size = 2;
+  for (const row of source) {
+    const length = bytes(row) + 1;
+    if (records.length && size + length >= 4 * 1024 * 1024) {
+      const { section, id, privateMode } = records.at(-1)!;
+      return { records, next: { section, id, ...(privateMode ? { privateMode } : {}) } };
+    }
+    records.push(row);
+    size += length;
+  }
+  return { records };
+}
+
 export interface ComposerRpcMethods {
   'composer.list': { params: {}; result: ComposerRecord[] };
+  'composer.listPage': { params: { after?: ComposerCursor }; result: ComposerPage };
+  'composer.get': { params: ComposerKey; result: ComposerRecord };
   /** Owner terminal submission. The request id also names the turn when the queue delivers it. */
   'composer.enqueue': {
     params: { threadId: string; prompt: string; clientRequestId: string };
@@ -90,4 +134,5 @@ export interface ComposerRpcMethods {
 
 export interface ComposerRpcEvents {
   'composer.updated': ComposerRecord;
+  'composer.revision': ComposerRevision;
 }

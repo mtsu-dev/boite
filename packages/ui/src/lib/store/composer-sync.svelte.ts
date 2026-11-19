@@ -1,4 +1,5 @@
-import { ATTACHMENTS_PER_TURN, ATTACHMENTS_TOTAL_MAX_BYTES, RpcErrorCode, type Attachment, type ComposerAttachment, type ComposerQueuedPrompt, type ComposerRecord, type ComposerValue, type PreviewReference } from '@boite/contracts';
+import { ATTACHMENTS_PER_TURN, ATTACHMENTS_TOTAL_MAX_BYTES, RpcErrorCode, type Attachment, type ComposerAttachment, type ComposerCursor, type ComposerQueuedPrompt, type ComposerRecord, type ComposerRevision, type ComposerValue, type PreviewReference } from '@boite/contracts';
+import { untrack } from 'svelte';
 import { RpcFailure, type Client } from '../client';
 import { isLoading, unresolvedAssetId, type DraftAttachment } from '../draft-attachments';
 import { bytes } from '../format';
@@ -64,6 +65,8 @@ export class ComposerSync {
   #listed = false;
   /** Records heard before the list answered, latest per key. */
   #early = new Map<string, ComposerRecord>();
+  #revisions = new Map<string, number>();
+  #revisionReads = new Map<string, Promise<void>>();
   #known = new Map<string, Known>();
   /** Asset ids the core holds: referenced by a record, uploaded or fetched. */
   #remoteAssets = new Set<string>();
@@ -151,34 +154,53 @@ export class ComposerSync {
     const epoch = ++this.#epoch;
     if (this.#client !== client) this.#reset(client);
     this.#listed = false;
-    let records: ComposerRecord[];
-    try { records = await client.call('composer.list', {}); }
+    const generation = this.ctx.clientGeneration;
+    const current = () => epoch === this.#epoch && this.ctx.currentClient(client, generation);
+    const records = new Map<string, ComposerRecord>();
+    const remember = (record: ComposerRecord) => {
+      const key = entryKey(record.section, record.id);
+      if ((records.get(key)?.revision ?? -1) <= record.revision) records.set(key, record);
+    };
+    try {
+      if (this.ctx.store.core?.features?.composerPages) {
+        let after: ComposerCursor | undefined;
+        do {
+          const page = await client.call('composer.listPage', { after });
+          if (!current()) return;
+          for (const record of page.records) remember(record);
+          after = page.next;
+        } while (after);
+      } else {
+        for (const record of await client.call('composer.list', {})) remember(record);
+      }
+    }
     catch (error) {
       if (epoch !== this.#epoch) return;
       if (error instanceof RpcFailure && error.code === RpcErrorCode.MethodNotFound) { this.#unsupported(); return; }
       this.#later();
       return;
     }
-    if (epoch !== this.#epoch || !this.ctx.currentClient(client, this.ctx.clientGeneration)) return;
+    if (!current()) return;
     this.#listed = true;
-    const listed = new Set<string>();
-    for (const record of records) { listed.add(entryKey(record.section, record.id)); this.#receive(record); }
-    for (const record of this.#early.values()) this.#receive(record);
+    for (const record of this.#early.values()) remember(record);
+    for (const record of records.values()) this.#receive(record, false);
     this.#early.clear();
     this.#startup = false;
-    for (const key of this.#launching) if (!listed.has(key) && !this.#inflight.has(key)) this.#launching.delete(key);
+    for (const key of this.#launching) if (!records.has(key) && !this.#inflight.has(key)) this.#launching.delete(key);
     // What the core has never seen: this device's unsent input from before, or
     // input cleared offline. Unchanged synced records stay as the core has them.
     for (const key of [...this.#known.keys()]) {
-      if (!listed.has(key)) this.#known.delete(key);
+      if (!records.has(key)) this.#known.delete(key);
       this.#dirty.add(key);
     }
     for (const { section, id } of this.ctx.drafts.localSources()) this.#dirty.add(entryKey(section, id));
+    this.#saveMeta();
     this.#pruneAssets();
     this.#flushSoon(true);
+    void this.#readRevision(this.#visibleKey());
   }
 
-  /** A core's push: another device's edit, the core consuming a queue, or this device's own echo. */
+  /** A core's push: another device's edit or the core consuming a queue. */
   receive(record: ComposerRecord): void {
     if (!this.active || this.ctx.client !== this.#client) return;
     const key = entryKey(record.section, record.id);
@@ -187,6 +209,40 @@ export class ComposerSync {
       return;
     }
     this.#receive(record);
+  }
+
+  receiveRevision(revision: ComposerRevision): void {
+    if (!this.active || this.ctx.client !== this.#client) return;
+    const key = entryKey(revision.section, revision.id);
+    if (revision.revision <= Math.max(this.#known.get(key)?.revision ?? 0, this.#early.get(key)?.revision ?? 0, this.#revisions.get(key) ?? 0)) return;
+    this.#revisions.set(key, revision.revision);
+    if (this.#visibleKey() === key) void this.#readRevision(key);
+  }
+
+  #visibleKey(): string | null {
+    const s = this.ctx.store;
+    return s.openThread ? entryKey('inputs', s.openThread.id) : s.draft ? entryKey('drafts', draftKey(s.draft)) : null;
+  }
+
+  #readRevision(key: string | null): Promise<void> | undefined {
+    const client = this.#client;
+    if (!key || !client || !this.#listed || this.ctx.client !== client || this.ctx.store.connection !== 'ready' || !this.#revisions.has(key)) return;
+    const pending = this.#revisionReads.get(key);
+    if (pending) return pending;
+    const [section, id] = parseKey(key);
+    const epoch = this.#epoch;
+    const read = client.call('composer.get', { section, id }).then(record => {
+      if (epoch !== this.#epoch) return;
+      if (record.revision === 0) this.#revisions.delete(key);
+      else this.receive(record);
+      if (this.#revisions.has(key)) this.#later();
+    }).catch(() => {
+      if (epoch === this.#epoch) this.#later();
+    }).finally(() => {
+      if (this.#revisionReads.get(key) === read) this.#revisionReads.delete(key);
+    });
+    this.#revisionReads.set(key, read);
+    return read;
   }
 
   /** The journal captured a change to this record. Clearing goes at once; typing waits for a pause. */
@@ -226,6 +282,8 @@ export class ComposerSync {
       $effect(() => {
         const s = this.ctx.store;
         if (s.connection !== 'ready' || !this.active) return;
+        const visible = this.#visibleKey();
+        untrack(() => { void this.#readRevision(visible); });
         const key = s.openThread ? s.openThread.id : s.draft ? 'draft' : null;
         const input = key === null ? undefined : this.ctx.composer.composerStates[key];
         if (input && [...input.attachments, ...input.queued.flatMap(entry => entry.attachments)].some(file => unresolvedAssetId(file) !== undefined)) {
@@ -262,6 +320,7 @@ export class ComposerSync {
     this.#listed = false;
     this.#early.clear(); this.#private.clear(); this.#privateEntries.clear(); this.#launching.clear(); this.#known.clear(); this.#remoteAssets.clear(); this.#dirty.clear(); this.#inflight.clear(); this.#stashed.clear();
     this.#assetIds.clear(); this.#bytes.clear(); this.#fetching.clear(); this.#homes.clear(); this.#left.clear();
+    this.#revisions.clear(); this.#revisionReads.clear();
     this.#byteHashes = new WeakMap();
     this.#metaKey = client && this.ctx.drafts.storageKey ? `${this.ctx.drafts.storageKey}:composer` : null;
     this.#meta = { entries: {}, assets: {} };
@@ -277,7 +336,6 @@ export class ComposerSync {
   }
 
   #saveMeta(): void {
-    this.#pruneAssets();
     if (!this.#metaKey) return;
     const entries: Record<string, Known> = {};
     const used = new Set<string>();
@@ -311,7 +369,12 @@ export class ComposerSync {
   #later(): void {
     if (this.#retry !== undefined) return;
     // A list that failed is asked again: until one succeeds, nothing is sent.
-    this.#retry = setTimeout(() => { this.#retry = undefined; if (this.#listed) this.#flushSoon(true); else void this.resync(); }, RETRY_MS);
+    this.#retry = setTimeout(() => {
+      this.#retry = undefined;
+      if (!this.#listed) { void this.resync(); return; }
+      this.#flushSoon(true);
+      void this.#readRevision(this.#visibleKey());
+    }, RETRY_MS);
   }
 
   #flushSoon(now: boolean): void {
@@ -324,9 +387,7 @@ export class ComposerSync {
     }, now ? 0 : COALESCE_MS);
   }
 
-  // ---------------------------------------------------------------------------
   // Local and remote forms
-  // ---------------------------------------------------------------------------
 
   #source(key: string): LiveSource | null {
     const [section, id] = parseKey(key);
@@ -446,16 +507,14 @@ export class ComposerSync {
     const known: Known = { revision: record.revision, ...this.#parts(this.#shape(this.#toLocal(record.value, this.#isPrivate(record.section, record.id, record.value)))), ...(prior ? { prior } : {}) };
     this.#known.set(key, known);
     for (const entry of record.value?.input.queued ?? []) if (record.section === 'inputs') this.#homes.set(entry.id, record.id);
-    this.#saveMeta();
   }
 
-  // ---------------------------------------------------------------------------
   // Receiving
-  // ---------------------------------------------------------------------------
 
-  #receive(record: ComposerRecord): void {
+  #receive(record: ComposerRecord, persist = true): void {
     this.#tag(record);
     const key = entryKey(record.section, record.id);
+    if (record.revision >= (this.#revisions.get(key) ?? Infinity)) this.#revisions.delete(key);
     const known = this.#known.get(key);
     // A delayed list or event never takes a newer record back.
     if (known && record.revision < known.revision) return;
@@ -492,6 +551,10 @@ export class ComposerSync {
     if (record.section === 'drafts') this.#launched(record.id, before, remote);
     else this.#arrived(record);
     this.materialize(this.#onScreen(key));
+    if (persist) {
+      this.#saveMeta();
+      this.#pruneAssets();
+    }
   }
 
   /**
@@ -637,10 +700,7 @@ export class ComposerSync {
     if (value.choice !== undefined && JSON.stringify($state.snapshot(s.draftChoice)) !== JSON.stringify(value.choice)) s.draftChoice = value.choice ? { ...value.choice } : null;
   }
 
-  // ---------------------------------------------------------------------------
   // Sending
-  // ---------------------------------------------------------------------------
-
   /** The over-limit warning `key` raised ends once that box no longer has to reach the core. */
   #fits(key: string): void {
     if (this.#overLimit?.key !== key) return;
@@ -651,6 +711,11 @@ export class ComposerSync {
   async #flush(key: string): Promise<void> {
     const client = this.ctx.client;
     if (!client || client !== this.#client || !this.#listed || this.ctx.store.connection !== 'ready' || !this.active) return;
+    if (this.#revisions.has(key)) {
+      const epoch = this.#epoch;
+      await this.#readRevision(key);
+      if (epoch !== this.#epoch || !this.#listed || this.#revisions.has(key) || !this.#dirty.has(key)) return;
+    }
     if (this.#inflight.has(key)) return;
     const source = this.#source(key);
     const [section, id] = parseKey(key);
@@ -689,11 +754,15 @@ export class ComposerSync {
           this.#fits(key);
           this.#know(key, result.record);
           const stored = this.#known.get(key)!;
-          if (stored.hash === sent.hash) { if (this.#parts(this.#shape(now)).hash !== sent.hash) this.#dirty.add(key); return; }
-          // The core stamped a choice or dropped an entry it delivered: its record is what the box shows, with typing since kept.
-          const merged = this.#merge(key, now, sent, this.#toLocal(result.record.value, privateMode));
-          this.#apply(key, merged);
-          if (this.#parts(this.#shape(merged)).hash !== stored.hash) this.#dirty.add(key);
+          if (stored.hash === sent.hash) {
+            if (this.#parts(this.#shape(now)).hash !== sent.hash) this.#dirty.add(key);
+          } else {
+            // The core stamped a choice or dropped a delivered entry. Keep typing since the put.
+            const merged = this.#merge(key, now, sent, this.#toLocal(result.record.value, privateMode));
+            this.#apply(key, merged);
+            if (this.#parts(this.#shape(merged)).hash !== stored.hash) this.#dirty.add(key);
+          }
+          this.#saveMeta();
           return;
         }
         // Refused at the same revision: the core runs an entry this put dropped or changed, and keeps it.
@@ -702,6 +771,7 @@ export class ComposerSync {
         this.#know(key, result.record);
         const merged = this.#merge(key, now, base, this.#toLocal(result.record.value, privateMode), strict);
         this.#apply(key, merged);
+        this.#saveMeta();
         // Nothing left to send, unless Send now still has to reach the core.
         if (!sendNow && this.#parts(this.#shape(merged)).hash === this.#known.get(key)!.hash) return;
       }

@@ -1,6 +1,5 @@
 import type { ThreadId, ThreadProgress, Turn, TurnId } from '@boite/contracts';
 import type { Core } from '../core.ts';
-import { withLoad } from './records.ts';
 
 /** One latest event per active turn. Streaming timestamps update without a write per delta. */
 export class ProgressState {
@@ -40,14 +39,12 @@ export class ProgressState {
     const short = detail?.replace(/\s+/g, ' ').trim().slice(0, 300) || null;
     // A compaction mid-turn shows how long it has run, so a repeated phase keeps its start.
     const since = old.phase === phase ? old.since ?? old.at : at;
-    this.latest.set(threadId, { turnId, phase, detail: short, at, since, providerAt: at });
+    const progress = { turnId, phase, detail: short, at, since, providerAt: at };
+    this.latest.set(threadId, progress);
     // Native compaction may start while a merged conversation's last prompt finishes.
     if (phase === 'compacting') this.core.threads.autoCompact.stopIfDone(threadId);
     if (old.phase === phase && old.detail === short && at - (this.published.get(threadId) ?? 0) < 1000) return;
-    const thread = this.core.journal.getThread(threadId);
-    if (!thread) return;
-    this.published.set(threadId, at);
-    this.core.bus.emit('thread.updated', withLoad(this.core, thread));
+    this.publish(threadId, progress, at);
   }
 
   end(threadId: ThreadId, turnId: TurnId): void {
@@ -61,12 +58,15 @@ export class ProgressState {
     const old = this.get(threadId);
     if (!old || old.turnId !== turnId) return;
     const now = Date.now();
-    this.latest.set(threadId, { ...old, providerAt: now });
+    const progress = { ...old, providerAt: now };
+    this.latest.set(threadId, progress);
     if (now - (this.published.get(threadId) ?? 0) < 1000) return;
-    const thread = this.core.journal.getThread(threadId);
-    if (!thread) return;
+    this.publish(threadId, progress, now);
+  }
+
+  private publish(threadId: ThreadId, progress: ThreadProgress, now: number): void {
     this.published.set(threadId, now);
-    this.core.bus.emit('thread.updated', withLoad(this.core, thread));
+    this.core.bus.emit('thread.progress', { threadId, progress });
   }
 
   /** A write that ends the turn is final even if its transaction rolls back: a late callback is dropped, never let through. */

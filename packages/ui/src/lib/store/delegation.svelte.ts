@@ -16,7 +16,7 @@ import type {
 import type { Client } from '../client';
 import { untrack } from 'svelte';
 import { strings } from '../strings';
-import { mergeResumed, patchFields, patchLoad, patchRow, resumeRequest } from '../thread-rows';
+import { mergeResumed, patchFields, patchLoad, patchProgress, patchRow, snapshotResume } from '../thread-rows';
 import type { StoreContext } from './context';
 import { lightPage } from './reading-pages.svelte';
 import { INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES } from '@boite/contracts';
@@ -92,7 +92,7 @@ export class Delegation {
   delegationSubscribedThreadId: ThreadId | null = null;
   private readonly coordinationRefresh = new ViewRefresh();
   private readonly delegationRefresh = new ViewRefresh();
-  private teamRead: { client: Client; threadId: ThreadId; updates: Map<ThreadId, ThreadSummary>; loads: Map<ThreadId, ThreadLoad> } | null = null;
+  private teamRead: { client: Client; threadId: ThreadId; updates: Map<ThreadId, ThreadSummary>; loads: Map<ThreadId, ThreadLoad>; progress: Map<ThreadId, NonNullable<ThreadSummary['progress']>> } | null = null;
 
   constructor(private readonly ctx: StoreContext) {}
 
@@ -163,7 +163,7 @@ export class Delegation {
     await this.delegationRefresh.request(client, threadId, `${epoch}:${generation}`, false, current, async (_directory, latest) => {
       this.delegationLoading = true;
       this.delegationError = null;
-      const pending = { client, threadId, updates: new Map<ThreadId, ThreadSummary>(), loads: new Map<ThreadId, ThreadLoad>() };
+      const pending = { client, threadId, updates: new Map<ThreadId, ThreadSummary>(), loads: new Map<ThreadId, ThreadLoad>(), progress: new Map<ThreadId, NonNullable<ThreadSummary['progress']>>() };
       this.teamRead = pending;
       try {
         const view = await client.call('delegation.get', { threadId });
@@ -174,6 +174,8 @@ export class Delegation {
           if (summary) patchRow(agent.thread, summary);
           const load = pending.loads.get(agent.thread.id);
           if (load) patchLoad(agent.thread, load);
+          const progress = pending.progress.get(agent.thread.id);
+          if (progress) patchProgress(agent.thread, progress);
         }
         this.delegation = view;
         const selected = this.delegationSelectedAgentId;
@@ -201,6 +203,13 @@ export class Delegation {
     if (pending?.client === this.ctx.client) pending.loads.set(threadId, load);
   }
 
+  patchProgress(threadId: ThreadId, progress: NonNullable<ThreadSummary['progress']>): void {
+    const agent = this.delegation?.agents.find(agent => !agent.machine && agent.thread.id === threadId);
+    if (agent && !patchProgress(agent.thread, progress)) return;
+    const pending = this.teamRead;
+    if (pending?.client === this.ctx.client) pending.progress.set(threadId, progress);
+  }
+
   /** Load-only changes update team rows without fetching the team's messages again. */
   patchThread(summary: ThreadSummary): void {
     const agent = this.delegation?.agents.find(agent => !agent.machine && agent.thread.id === summary.id);
@@ -208,7 +217,11 @@ export class Delegation {
     const pending = this.teamRead;
     const open = this.ctx.store.openThread;
     if (pending?.client === this.ctx.client && pending?.threadId === open?.id &&
-      summary.parentThreadId === (open?.parentThreadId ?? open?.id)) { pending.updates.set(summary.id, summary); pending.loads.delete(summary.id); }
+      summary.parentThreadId === (open?.parentThreadId ?? open?.id)) {
+      pending.updates.set(summary.id, summary);
+      pending.loads.delete(summary.id);
+      pending.progress.delete(summary.id);
+    }
   }
 
   #delegationRootId(): ThreadId | null {
@@ -265,7 +278,8 @@ export class Delegation {
     const current = (): boolean => epoch === this.delegationSelectionEpoch && client === this.ctx.client;
     const subscribed = threadId !== threads.subscribedThreadId ? client.call('threads.subscribe', { threadId, ...this.ctx.streams.params(threadId) }) : null;
     // The transcript draws a call's name and status, never its output.
-    const fetched = client.call('threads.get', { threadId, limit: INITIAL_MESSAGE_PAGE, maxBytes: INITIAL_PAGE_BYTES, ...lightPage(this.ctx) });
+    const fetched = client.call('threads.get', { threadId, limit: INITIAL_MESSAGE_PAGE, maxBytes: INITIAL_PAGE_BYTES, ...lightPage(this.ctx),
+      ...(s.core?.features?.threadSnapshots ? { sync: true as const } : {}) });
     // A run that a newer selection overtakes returns early and never awaits the read.
     fetched.catch(() => undefined);
     try {
@@ -377,7 +391,9 @@ export class Delegation {
     const epoch = this.delegationSelectionEpoch;
     const current = () => epoch === this.delegationSelectionEpoch && client === this.ctx.client && this.delegationThread === held;
     try {
-      const thread = await client.call('threads.get', { ...resumeRequest(threadId, held), maxBytes: INITIAL_PAGE_BYTES, ...lightPage(this.ctx) });
+      const features = this.ctx.store.core?.features;
+      const { sync, ...target } = snapshotResume(threadId, held, features?.threadPrefixProofs === true);
+      const thread = await client.call('threads.get', { ...target, ...(features?.threadSnapshots ? { sync } : {}), maxBytes: INITIAL_PAGE_BYTES, ...lightPage(this.ctx) });
       if (!current()) return;
       mergeResumed(held, thread);
       this.delegationThread = thread;

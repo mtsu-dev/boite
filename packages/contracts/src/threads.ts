@@ -12,6 +12,7 @@ import type { BackgroundTask, BackgroundTaskObservation, BackgroundWait, Questio
 import type { MemoryEvent } from './scheduler';
 import type { DeletedThreadSummary } from './settings';
 import type { StreamChannel } from './stream-channels';
+import type { MessageSync } from './thread-sync';
 import type { Turn } from './turns';
 
 export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'yolo' | 'plan' | 'dontAsk';
@@ -545,11 +546,6 @@ export interface Thread extends ThreadSummary {
   turns: Turn[];
 }
 
-export interface MessageSync {
-  from: MessageId;
-  hash: string;
-}
-
 /** An opt-in opening reads requests and changes this socket's subscription in the same RPC. */
 export interface ThreadSnapshot extends Thread {
   opened?: { permissions?: PermissionRequest[]; questions?: QuestionRequest[] };
@@ -599,7 +595,7 @@ export interface ListCursor {
  * archived. A held row in neither list is unchanged.
  */
 export type ThreadListChanges =
-  | { kind: 'full'; cursor: ListCursor; threads: ThreadSummary[] }
+  | { kind: 'full'; cursor: ListCursor; threads: ThreadSummary[]; next?: string }
   | { kind: 'changes'; cursor: ListCursor; threads: ThreadSummary[]; removed: ThreadId[] };
 
 /**
@@ -642,7 +638,7 @@ export interface ThreadsRpcMethods {
    * whole without `since`, else only what changed since that answer
    * (`features.listChanges`). See `ThreadListChanges`.
    */
-  'threads.listChanges': { params: { since?: ListCursor }; result: ThreadListChanges };
+  'threads.listChanges': { params: { since?: ListCursor; page?: true | string }; result: ThreadListChanges };
   /** Read the thread's own branch PR using the execution machine's GitHub CLI. Null when the thread has no branch. */
   /** `refresh`: a user asked, so what the core kept for this repository is read again, and a missing gh is tried again. */
   'threads.pullRequest': { params: { threadId: ThreadId; refresh?: boolean }; result: ThreadSummary['pullRequest'] };
@@ -886,6 +882,8 @@ export interface ThreadsRpcEvents {
    * as `thread.updated`.
    */
   'thread.load': { threadId: ThreadId; load: ThreadLoad };
+  /** One active turn's latest progress. Other clients receive a whole row. */
+  'thread.progress': { threadId: ThreadId; progress: ThreadProgress };
   'thread.removed': { threadId: ThreadId; undoable?: boolean };
   /** The owner-only deletion list changed, including purge and removal with a project. */
   'thread.deletionsUpdated': Record<string, never>;

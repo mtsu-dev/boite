@@ -12,8 +12,22 @@ export type ThreadListAnswer =
  * before. A core that announced it but refuses the call answers whole too,
  * with no error shown.
  */
-export async function readThreadList(client: Client, core: CoreInfo | null, since: ListCursor | null): Promise<ThreadListAnswer> {
+export async function readThreadList(client: Client, core: CoreInfo | null, since: ListCursor | null, firstPage: (rows: ThreadSummary[]) => void, current: () => boolean): Promise<ThreadListAnswer> {
   if (core?.features?.listChanges !== true) return { kind: 'full', cursor: null, threads: await client.call('threads.list', {}) };
+  if (core.features.threadListPages) {
+    const first = await client.call('threads.listChanges', { page: true, ...(since === null ? {} : { since }) });
+    if (first.kind !== 'full' || !first.next) return first;
+    firstPage(first.threads);
+    const threads = [...first.threads];
+    let next: string | undefined = first.next;
+    while (next && current()) {
+      const page = await client.call('threads.listChanges', { page: next });
+      if (page.kind !== 'full') throw new Error('Expected a page of the full thread list');
+      threads.push(...page.threads);
+      next = page.next;
+    }
+    return { kind: 'full', cursor: first.cursor, threads };
+  }
   try {
     return await client.call('threads.listChanges', since === null ? {} : { since });
   } catch (error) {

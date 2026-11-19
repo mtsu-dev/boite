@@ -1,4 +1,4 @@
-import type { MessageId, MessagePart, ProjectId, Thread, ThreadId, ThreadLoad, ThreadSummary } from '@boite/contracts';
+import type { MessageId, MessagePart, ProjectId, RpcParams, Thread, ThreadId, ThreadLoad, ThreadProgress, ThreadSummary } from '@boite/contracts';
 import { resumeAnchor } from '@boite/contracts';
 import { sameValue } from './plain-data';
 export { resumeAnchor, workingChildren, type WorkingChildren } from '@boite/contracts';
@@ -18,6 +18,13 @@ function same(a: unknown, b: unknown): boolean {
 /** A `thread.load` on one held copy of the row: written only when it moved, so an unchanged sample re-renders nothing. */
 export function patchLoad(row: Pick<ThreadSummary, 'load'>, load: ThreadLoad): void {
   if (!same(row.load, load)) row.load = load;
+}
+
+export function patchProgress(row: ThreadSummary, progress: ThreadProgress): boolean {
+  if ((row.status !== 'running' && row.status !== 'waiting') || row.progress?.turnId !== progress.turnId
+    || (row.progress.providerAt ?? row.progress.at) > (progress.providerAt ?? progress.at)) return false;
+  if (!same(row.progress, progress)) row.progress = progress;
+  return true;
 }
 
 export function patchRow(row: ThreadSummary, next: ThreadSummary): void {
@@ -103,6 +110,15 @@ export function resumeRequest(threadId: ThreadId, held: Pick<Thread, 'messages' 
   return after === null ? { threadId } : { threadId, after };
 }
 
+/** A core with prefix proofs can only reuse the exact window that it proved. */
+export function snapshotResume(threadId: ThreadId, held: Thread | undefined, prefixProofs: boolean): Pick<RpcParams<'threads.get'>, 'threadId' | 'after' | 'sync'> {
+  const resume = resumeRequest(threadId, held);
+  const proof = held?.messagesSync?.from === resume.after ? held?.messagesSync : undefined;
+  if (prefixProofs && (!held || !proof?.prefix || proof.prefix.first !== held.messages[0]?.id
+    || held.messages[proof.prefix.count]?.id !== resume.after)) return { threadId, sync: true };
+  return { ...resume, sync: proof ?? true };
+}
+
 /** The row part of a thread, without what only an open thread carries. */
 export function summaryOf(thread: Thread): ThreadSummary {
   const { memoryEvents: _memoryEvents, messages: _messages, turns: _turns, commands: _commands, background: _background, backgroundHistory: _history, activity: _activity, messagesBefore: _before, messagesAfter: _after, messagesFrom: _from, messagesSync: _sync, messagesUnchanged: _unchanged, messageOffset: _offset, ...summary } = thread;
@@ -162,6 +178,7 @@ export function reconcileThread(held: Thread, fresh: Thread): Thread {
   fresh.turns = fresh.turns.map(turn => sameValue(turns.get(turn.id), turn) ? turns.get(turn.id)! : turn);
   if (fresh.messages.length === held.messages.length && fresh.messages.every((message, index) => message === held.messages[index])) fresh.messages = held.messages;
   if (fresh.turns.length === held.turns.length && fresh.turns.every((turn, index) => turn === held.turns[index])) fresh.turns = held.turns;
+  if (fresh.messagesSync === undefined) delete held.messagesSync;
   Object.assign(held, fresh);
   return held;
 }

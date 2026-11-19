@@ -682,7 +682,9 @@ export class Connection {
         this.ctx.projects.bootListAt = Date.now();
         void this.ctx.projects.sendPendingArchives(rows);
       }, () => projectRead.cancel()),
-      slice(readThreadList(client, this.core, lastList?.client === client && lastList.generation === generation ? lastList.cursor : null), answer => {
+      slice(readThreadList(client, this.core, lastList?.client === client && lastList.generation === generation ? lastList.cursor : null, rows => {
+        if (current() && lastList === null) s.threads = reconcileRows(s.threads, threadRead.preview(rows, s.threads));
+      }, current), answer => {
         const fresh = answer.kind === 'full' ? answer.threads : applyThreadChanges(s.threads, answer.threads, answer.removed);
         const applied = threadRead.active;
         s.threads = reconcileRows(s.threads, threadRead.apply(fresh, s.threads));

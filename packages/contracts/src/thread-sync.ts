@@ -1,4 +1,12 @@
 import type { MessageId, RpcParams, Thread } from './index';
+import { MESSAGE_PAGE_MAX } from './messages';
+
+export interface MessageSync {
+  from: MessageId;
+  hash: string;
+  /** The messages held before `from`, with a separate proof from the tail. */
+  prefix?: { first: MessageId; count: number; hash: string };
+}
 
 /** The earliest unfinished message, otherwise the last message already held. */
 export function resumeAnchor(thread: Pick<Thread, 'messages' | 'turns'>): MessageId | null {
@@ -15,6 +23,13 @@ export function snapshotOptionsProblem(options: Pick<RpcParams<'threads.get'>, '
     if (!sync || typeof sync !== 'object' || Array.isArray(sync)) return bad('sync', 'true or a resume proof');
     if (typeof sync.from !== 'string' || !sync.from.length) return bad('sync.from', 'a nonempty message id');
     if (typeof sync.hash !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(sync.hash)) return bad('sync.hash', '16 to 128 URL-safe characters');
+    if (sync.prefix !== undefined) {
+      const prefix = sync.prefix;
+      if (!prefix || typeof prefix !== 'object' || Array.isArray(prefix)) return bad('sync.prefix', 'a prefix proof');
+      if (typeof prefix.first !== 'string' || !prefix.first.length) return bad('sync.prefix.first', 'a nonempty message id');
+      if (!Number.isSafeInteger(prefix.count) || prefix.count < 0 || prefix.count > MESSAGE_PAGE_MAX) return bad('sync.prefix.count', `an integer from 0 to ${MESSAGE_PAGE_MAX}`);
+      if (typeof prefix.hash !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(prefix.hash)) return bad('sync.prefix.hash', '16 to 128 URL-safe characters');
+    }
   }
   if (options.open !== undefined) {
     const open = options.open;

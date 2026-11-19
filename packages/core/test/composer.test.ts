@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test';
-import { RpcErrorCode, type ComposerValue } from '@boite/contracts';
+import { RpcErrorCode, type ComposerCursor, type ComposerRecord, type ComposerValue } from '@boite/contracts';
 import { echoThread, holdAccountTurns, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -28,6 +28,56 @@ test('composer records use CAS and broadcast metadata to another unsubscribed cl
   expect(await update).toEqual(first.record);
   expect(await b.call('composer.put', { ...put, value: value('stale') })).toEqual({ accepted: false, record: first.record });
   expect(await b.call('composer.list', {})).toEqual([first.record]);
+});
+
+test('large composer edits send a revision to a modern peer and nothing to the writer', async () => {
+  h = await startTestCore();
+  const writer = await h.connect(), legacy = await h.connect();
+  const modern = await connect(h.url, h.token, { accepts: ['composer.revision'] });
+  try {
+    const echoed: ComposerRecord[] = [];
+    writer.on('composer.updated', row => echoed.push(row));
+    const key = { section: 'drafts' as const, id: 'large-edit' };
+    const original = legacy.next('composer.updated');
+    const initial = await writer.call('composer.put', { ...key, expectedRevision: 0, value: value('x'.repeat(70_000)) });
+    expect(await original).toEqual(initial.record);
+    const notice = modern.next('composer.revision');
+    const full = legacy.next('composer.updated');
+    const changed = await writer.call('composer.put', { ...key, expectedRevision: initial.record.revision, value: value('y'.repeat(70_000)) });
+    expect(await notice).toEqual({ ...key, revision: changed.record.revision, updatedAt: changed.record.updatedAt });
+    expect(await full).toEqual(changed.record);
+    expect(await modern.call('composer.get', key)).toEqual(changed.record);
+    expect(await writer.call('composer.get', key)).toEqual(changed.record);
+    expect(echoed).toEqual([]);
+  } finally {
+    modern.close();
+  }
+});
+
+test('composer pages keep a large journal syncable and retain revision tombstones', async () => {
+  h = await startTestCore();
+  const client = await h.connect();
+  const text = 'x'.repeat(960_000);
+  for (let index = 0; index < 18; index++) {
+    expect((await client.call('composer.put', { section: 'drafts', id: `draft-${index}`, expectedRevision: 0, value: value(text) })).accepted).toBe(true);
+  }
+  await client.call('composer.put', { section: 'drafts', id: 'removed', expectedRevision: 0, value: value() });
+  await client.call('composer.put', { section: 'drafts', id: 'removed', expectedRevision: 1, value: null });
+  const list = (after?: ComposerCursor) => client.call('composer.listPage', { after });
+  const records = new Map<string, ComposerRecord>();
+  let page = await list();
+  while (true) {
+    expect(new TextEncoder().encode(JSON.stringify(page)).length).toBeLessThan(4 * 1024 * 1024);
+    for (const record of page.records) {
+      expect(records.has(record.id)).toBe(false);
+      records.set(record.id, record);
+    }
+    if (!page.next) break;
+    page = await list(page.next);
+  }
+  expect(records.size).toBe(19);
+  expect(records.get('draft-17')?.value?.input.text.length).toBe(text.length);
+  expect(records.get('removed')).toMatchObject({ revision: 2, value: null });
 });
 
 test('attachment assets survive restart, deduplicate and stay out of record broadcasts', async () => {
@@ -590,8 +640,14 @@ test('incognito composer records and attachments are memory-only', async () => {
   expect(h.core.journal.db.query('SELECT count(*) AS n FROM composer_assets').get()).toEqual({ n: 0 });
   expect(await a.call('composer.asset.get', asset)).toEqual(attachment);
   expect(await a.call('composer.list', {})).toHaveLength(1);
+  const key = { section: 'drafts' as const, id: 'private-draft' };
+  const privateRecord = await a.call('composer.get', key);
+  expect(privateRecord).toMatchObject({ privateMode: true, value: { input: { text: 'private text' } } });
+  expect((await a.call('composer.listPage', {})).records).toEqual([privateRecord]);
   for (const other of [b, phone]) {
     expect(await other.call('composer.list', {})).toEqual([]);
+    expect((await other.call('composer.listPage', {})).records).toEqual([]);
+    expect(await thrown(other.call('composer.get', key))).toThrow('private composer');
     expect(await thrown(other.call('composer.asset.get', asset))).toThrow('referenced');
     expect(await thrown(other.call('composer.put', { section: 'drafts', id: 'private-draft', expectedRevision: 0, value: value('overwrite') }))).toThrow('private composer');
   }

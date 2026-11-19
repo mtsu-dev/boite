@@ -146,8 +146,9 @@ export class Threads {
     const thread = this.openThread;
     // A bare row whose page never came holds nothing (navigation clears `loadingThreadId` before this runs): reopened, it loads.
     if (!thread || (thread.messages.length === 0 && this.#unloaded.has(thread.id))) return;
+    const id = thread.id;
     const kept = this.readingThreads.defer(thread, held => readingPage(this.ctx, held), held => $state.snapshot(held) as Thread,
-      () => this.openThread?.id !== thread.id && this.preloads.waitingThreadId !== thread.id);
+      () => this.openThread?.id !== id && this.preloads.waitingThreadId !== id);
     if (kept) this.snapshots.schedule(thread.id);
   }
 
@@ -413,7 +414,7 @@ export class Threads {
         : Promise.resolve();
       this.ctx.composer.settle(threadId);
       // A snapshot the core did not resume from goes (below), and the thread shows only what the core sent.
-      const cached = snapshot !== undefined && thread.messagesFrom === undefined ? undefined : held ?? this.readingThreads.get(threadId);
+      const cached = snapshot !== undefined || s.core?.features?.threadPrefixProofs ? undefined : held ?? this.readingThreads.get(threadId);
       const freshIds = new Set(thread.messages.map(m => m.id));
       if (thread.messagesFrom !== undefined && held) mergeResumed(held, thread);
       else if (cached && cached.messages.some(m => freshIds.has(m.id))) {

@@ -633,7 +633,7 @@ export class FakeContext {
       version: options.version ?? '2.0.0-beta.1',
       coreId,
       protocolVersion: PROTOCOL_VERSION,
-      features: { draftPreparation: true, attachmentUploads: true, threadSnapshots: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, pluginGrants: true, projectBoard: true, deviceProjects: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, sharedProjects: 1, listChanges: true },
+      features: { draftPreparation: true, attachmentUploads: true, threadSnapshots: true, threadPrefixProofs: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, pluginGrants: true, projectBoard: true, deviceProjects: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, sharedProjects: 1, listChanges: true, threadListPages: true },
       os: 'windows',
       channel: 'stable',
       pid: 4242,
@@ -696,6 +696,7 @@ export class FakeContext {
     // The core counts what its clients hear of a summary (`threads/list-changes.ts`).
     if (event === 'thread.created' || event === 'thread.updated') this.threadChanges.note((payload as RpcEvents['thread.updated']).id);
     if (event === 'thread.removed') this.threadChanges.note((payload as RpcEvents['thread.removed']).threadId);
+    if (event === 'thread.progress') this.threadChanges.note((payload as RpcEvents['thread.progress']).threadId);
     this.composer.observe(this, event, payload);
     if (event === 'thread.removed') cancelSecretCards(this, (payload as RpcEvents['thread.removed']).threadId);
     if (event === 'thread.updated') {

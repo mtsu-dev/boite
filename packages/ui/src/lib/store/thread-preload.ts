@@ -19,7 +19,7 @@ import type { Client } from '../client';
 import { whenIdle } from '../idle';
 import { readingCacheBytes } from '../reading-cache';
 import { compareRecent } from '../thread-order';
-import { resumeRequest } from '../thread-rows';
+import { snapshotResume } from '../thread-rows';
 import type { StoreContext } from './context';
 import { lightPage, type ReadingPosition } from './reading-pages.svelte';
 
@@ -68,14 +68,17 @@ export function readingAround(ctx: StoreContext, opener: Pick<Opener, 'readingPo
  * vouch for, a long thread left away from its end opens around the reader's
  * message, any other reads its last screen.
  */
-function pageRequest(ctx: StoreContext, opener: Opener, threadId: ThreadId, held: Thread | undefined): { params: RpcParams<'threads.get'>; after: MessageId | undefined; around: MessageId | undefined } {
+function pageRequest(ctx: StoreContext, opener: Opener, threadId: ThreadId, held: Thread | undefined): { params: RpcParams<'threads.get'>; around: MessageId | undefined } {
   // A thread already in hand, open or among the recent ones, asks only for
   // what it cannot vouch for: a reconnect on a long conversation used to
   // download its last 120 messages again for the two that were new.
-  const resume = resumeRequest(threadId, held);
-  const around = held ? undefined : readingAround(ctx, opener, threadId);
+  const features = ctx.store.core?.features;
+  const resume = snapshotResume(threadId, held, features?.threadPrefixProofs === true);
+  const around = !held || features?.threadPrefixProofs ? readingAround(ctx, opener, threadId) : undefined;
   // A page holds about one screen; the rest comes as the reader scrolls. A resume tail is never cut.
-  return { params: { ...resume, limit: held ? MESSAGE_PAGE_MAX : INITIAL_MESSAGE_PAGE, maxBytes: INITIAL_PAGE_BYTES, ...lightPage(ctx), ...(around ? { around } : {}) }, after: resume.after, around };
+  const { sync, ...target } = resume;
+  const limit = target.after ? MESSAGE_PAGE_MAX : Math.min(MESSAGE_PAGE_MAX, Math.max(INITIAL_MESSAGE_PAGE, held?.messages.length ?? 0));
+  return { params: { ...target, ...(features?.threadSnapshots ? { sync } : {}), limit, maxBytes: INITIAL_PAGE_BYTES, ...lightPage(ctx), ...(around ? { around } : {}) }, around };
 }
 
 /**
@@ -88,9 +91,9 @@ export function askPage(ctx: StoreContext, opener: Opener, client: Client, threa
   const bundled = features?.threadSnapshots === true;
   const channels = ctx.streams.params(threadId);
   const subscribed = bundled ? null : client.call('threads.subscribe', { threadId, ...channels });
-  const { params, after, around } = pageRequest(ctx, opener, threadId, held);
+  const { params, around } = pageRequest(ctx, opener, threadId, held);
   const fetched = client.call('threads.get', { ...params,
-    ...(bundled ? { sync: held?.messagesSync && held.messagesSync.from === after ? held.messagesSync : true, open, ...channels } : {})
+    ...(bundled ? { open, ...channels } : {})
   }, held || !features?.chunkedAnswers ? {} : {
     // The loading view counts the page in as the core slices it.
     onProgress: (received, total) => { if (current() && opener.loadingThreadId === threadId) opener.loadingBytes = { threadId, received, total }; }

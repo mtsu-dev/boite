@@ -921,7 +921,7 @@ describe('WsClient', () => {
       token: 'secret',
       protocolVersion: PROTOCOL_VERSION,
       client: { name: 'shell', version: '2.0.0-beta.1', device: 'office-pc' },
-      accepts: ['thread.load']
+      accepts: ['thread.load', 'thread.progress', 'composer.revision']
     });
 
     live.receive({ jsonrpc: '2.0', id: hello.id, result: { core: CORE, principal: 'owner' } });

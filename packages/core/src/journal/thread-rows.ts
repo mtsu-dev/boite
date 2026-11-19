@@ -21,6 +21,11 @@ export function threadsWhere(db: Database, filter: string, ...params: string[]):
   return (db.query(`${VISIBLE_THREADS} ${filter} ORDER BY rowid`).all(...params) as ThreadRow[]).map(toThread);
 }
 
+/** Only ids are needed to freeze the order of a sidebar read. The first page paints the newest rows. */
+export function recentThreadIds(db: Database): string[] {
+  return (db.query(`SELECT id ${VISIBLE_THREAD_ROWS} AND archived = 0 ORDER BY updated_at DESC, id`).all() as { id: string }[]).map(row => row.id);
+}
+
 /** Current native sessions remain reserved while deleted threads are recoverable, children included. */
 export function sessionThreads(db: Database): { id: string; sessionId: string }[] {
   return db.query('SELECT id, session_id AS sessionId FROM threads WHERE session_id IS NOT NULL').all() as { id: string; sessionId: string }[];

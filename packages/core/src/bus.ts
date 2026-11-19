@@ -1,8 +1,9 @@
-import type { RpcEventName, RpcEvents } from '@boite/contracts';
+import type { ComposerRevision, RpcEventName, RpcEvents } from '@boite/contracts';
 
 export type EventPayload = RpcEvents[RpcEventName];
-export type BusListener = (name: RpcEventName, payload: EventPayload) => void;
-interface Notification { name: RpcEventName; payload: EventPayload }
+export interface BroadcastOptions { excludeConnection?: string; composerRevision?: ComposerRevision }
+export type BusListener = (name: RpcEventName, payload: EventPayload, options?: BroadcastOptions) => void;
+interface Notification { name: RpcEventName; payload: EventPayload; options?: BroadcastOptions }
 /** A staged event, or an effect `whenCommitted` holds until the outermost commit. */
 type Staged = Notification | { effect: () => void };
 
@@ -89,19 +90,19 @@ export class Bus {
   }
 
   #release(staged: Staged): void {
-    if (!('effect' in staged)) { this.#notify(this.#committedListeners, staged.name, staged.payload); return; }
+    if (!('effect' in staged)) { this.#notify(this.#committedListeners, staged.name, staged.payload, staged.options); return; }
     try { staged.effect(); }
     catch (error) { this.onError(`committed effect failed: ${error instanceof Error ? error.message : String(error)}`); }
   }
 
-  emit<E extends RpcEventName>(name: E, payload: RpcEvents[E]): void {
+  emit<E extends RpcEventName>(name: E, payload: RpcEvents[E], options?: BroadcastOptions): void {
     if (name === 'core.log' && this.normalizeLog) payload = this.normalizeLog(payload as RpcEvents['core.log']) as RpcEvents[E];
     if (name === 'message.delta') {
       this.#queue(payload as RpcEvents['message.delta']);
       return;
     }
     this.flush();
-    this.#dispatch(name, payload);
+    this.#dispatch(name, payload, options);
   }
 
   flush(): void {
@@ -141,16 +142,16 @@ export class Bus {
     }
   }
 
-  #dispatch(name: RpcEventName, payload: EventPayload): void {
-    this.#notify(this.listeners, name, payload);
-    if (this.#staged !== null) this.#staged.push({ name, payload });
-    else this.#notify(this.#committedListeners, name, payload);
+  #dispatch(name: RpcEventName, payload: EventPayload, options?: BroadcastOptions): void {
+    this.#notify(this.listeners, name, payload, options);
+    if (this.#staged !== null) this.#staged.push({ name, payload, options });
+    else this.#notify(this.#committedListeners, name, payload, options);
   }
 
-  #notify(listeners: Set<BusListener>, name: RpcEventName, payload: EventPayload): void {
+  #notify(listeners: Set<BusListener>, name: RpcEventName, payload: EventPayload, options?: BroadcastOptions): void {
     for (const listener of listeners) {
       try {
-        listener(name, payload);
+        listener(name, payload, options);
       } catch (error) {
         // A report is itself an event: a listener that throws on it too must not loop.
         if (this.#reporting) continue;

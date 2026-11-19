@@ -24,6 +24,7 @@ import { PLUGIN_PERMISSIONS, pluginClosedReason, pluginPermissionFor, type Plugi
 export const DEVICE_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>([
   // Paired apps share the owner's composer and its validated, content-addressed attachments.
   'composer.list', 'composer.put', 'composer.asset.put', 'composer.asset.get',
+  'composer.listPage', 'composer.get', // Bounded and individual reads of the same composer records.
   // A paired phone lists the owner's agents with their state, desk and routines; talking to one is
   // `turns.start` on its thread, which the device already reaches.
   'agents.snapshot',
@@ -247,6 +248,7 @@ export const DEVICE_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>
 /** Push events must not bypass the read permissions enforced on RPC calls. */
 export const DEVICE_EVENTS: ReadonlySet<RpcEventName> = new Set<RpcEventName>([
   'composer.updated', // Same metadata composer.list exposes, without attachment bytes or subscription routing.
+  'composer.revision', // Point-read hint for a shared composer record.
   'sharedProjects.changed', // Direct delivery only to the connection's exact subscribed association and source.
   'threads.pullRequestsChanged', // Links already readable on the subscribed conversation.
   'browser.remoteChanged', // The subscribed conversation's agent tabs, as browser.remoteStatus says.
@@ -265,6 +267,7 @@ export const DEVICE_EVENTS: ReadonlySet<RpcEventName> = new Set<RpcEventName>([
   'thread.suggestion',
   // The load `thread.updated` already carries to the same sockets, without the rest of the row.
   'thread.load',
+  'thread.progress', // The active turn's progress already visible in thread.updated.
   'turn.started', 'turn.finished',
   'turn.switched', // The divider of a turn the device already reads, with what its new session was handed.
   'turn.toolCompleted',
