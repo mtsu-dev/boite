@@ -620,5 +620,20 @@ its pid. After the exit, the pid may be another process's, and only the
 root's own kill runs. A helper of a root that
 already exited is not reached there. Normal
 shutdown waits for escalation; a hard shell kill does not guarantee core exit
-on Linux/macOS. `TraceCapability` exposes OS, mode (`events`, `poll`, `none`) and
+on Linux/macOS.
+
+A core that dies without stopping its agents takes their groups with it on
+Linux and macOS too (`platform/posix-group-watch.ts`). One `sh` per core
+process, started with the first spawn, reads the group leaders on a pipe from
+the core: a pid is added at spawn and removed once its exit is recorded or the
+keeper takes it over. When the pipe closes, after a crash, SIGKILL, the OOM
+killer or any exit, the watcher sends each group it still holds SIGTERM,
+probes them every 100 ms and sends SIGKILL to what remains after two seconds.
+A shutdown past its deadline sends SIGKILL to those groups itself before it
+exits. Processes the keeper adopted are never added. At startup the core
+closes every trace row a previous core left open (`exited_at` set, no exit
+code), through the partial index `processes_live`, before anything spawns; a
+process the keeper still holds is written live again when it is adopted.
+
+`TraceCapability` exposes OS, mode (`events`, `poll`, `none`) and
 failure notes; clients must read it before promising native capabilities.

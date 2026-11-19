@@ -8,6 +8,10 @@ import { androidServerUpdates } from './android-server-update.ts';
 import { findTailscaleCli } from './tailscale.ts';
 import { LinuxExecutionBoundary } from './linux-protected.ts';
 import { linuxGpus, linuxOsLabel, linuxVolumes, macosOsLabel, macosVolumes } from './posix-machine.ts';
+import { GroupWatch } from './posix-group-watch.ts';
+
+/** One watcher per core process, whatever the number of registries in it. */
+const groups = new GroupWatch();
 
 /**
  * Why this machine cannot capture windows, or null on an X11 session. Pure,
@@ -70,7 +74,10 @@ export function createPosixPlatform(
     pidRemoved: (threadId, pid) => {
       load?.remove(threadId, pid);
       cgroups?.forget(pid);
+      groups.remove(pid);
     },
+    tieGroup: (pid) => groups.add(pid),
+    killTiedGroups: () => groups.killAll(),
     warm() {},
     forget(threadId) { load?.forget?.(threadId); },
     guardStatus: () => ({ running: false, hook: null, failure: null, audio: 'off', mutedPids: [] }),
