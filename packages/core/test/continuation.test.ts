@@ -250,7 +250,7 @@ test('a compacted copy receives images after its exact anchor, within the destin
   expect(next.prompt).not.toContain('before.png');
   const swapped = stepTail(journal, 'thr_compacted', anchor, () => '[File]', provider);
   expect(swapped.attachments.map(part => part.name)).toEqual(['after.png', 'latest.png']);
-  expect(swapped.historicalImages).toEqual(swapped.attachments);
+  expect(swapped.attachments).toEqual(swapped.historicalImages!);
   expect(stepTail(journal, 'thr_compacted', anchor, () => '[File]', provider, 'fork-turn').historicalImages).toEqual([]);
   const textOnly = { ...provider, capabilities: { ...provider.capabilities, images: false } };
   expect(stepTail(journal, 'thr_compacted', anchor, () => '[File]', textOnly)).toMatchObject({ attachments: [], prompt: expect.stringContaining('latest.png') });
