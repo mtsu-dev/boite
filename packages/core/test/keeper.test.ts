@@ -266,44 +266,51 @@ describe.skipIf(!keeperEnabled({ BOITE_KEEPER: '1' }))('keeper', () => {
 
   test('a keeper that stays connected but never answers a launch leaves the thread shell on the core', async () => {
     const runtime = process.env.XDG_RUNTIME_DIR;
-    const root = mkdtempSync(join(tmpdir(), 'boite-keeper-mute-'));
-    process.env.XDG_RUNTIME_DIR = join(root, 'runtime');
-    const dataDir = join(root, 'data');
-    mkdirSync(dataDir);
-    const socketPath = keeperSocketPath(dataDir);
-    mkdirSync(join(root, 'runtime', 'boite'), { recursive: true });
-    // A stand-in pid for the keeper: the core may signal it, never this test's own process.
-    const standIn = Bun.spawn([process.execPath, '-e', 'setTimeout(() => {}, 60000)']);
-    // It welcomes the core, then never answers a spawn: connected, but no longer working.
-    const mute = Bun.listen({
-      unix: socketPath,
-      socket: {
-        data(socket, bytes) {
-          for (const line of new TextDecoder().decode(bytes).split('\n')) {
-            if (line.includes('"op":"hello"')) socket.write(`${JSON.stringify({ op: 'welcome', protocol: KEEPER_PROTOCOL, version: 'test', pid: standIn.pid, processes: [] })}\n`);
-          }
-        },
-      },
-    });
-    const h = await startTestCore({ dataDir, onShutdown: () => undefined });
+    // Short on purpose: a macOS socket path holds 104 bytes, and TMPDIR there is already long.
+    const root = mkdtempSync('/tmp/bk-');
+    let standIn: ReturnType<typeof Bun.spawn> | undefined;
+    let mute: ReturnType<typeof Bun.listen> | undefined;
+    let h: TestCore | undefined;
     try {
+      process.env.XDG_RUNTIME_DIR = root;
+      const dataDir = join(root, 'data');
+      mkdirSync(dataDir);
+      mkdirSync(join(root, 'boite'));
+      // A stand-in pid for the keeper: the core may signal it, never this test's own process.
+      const fake = Bun.spawn([process.execPath, '-e', 'setTimeout(() => {}, 60000)']);
+      standIn = fake;
+      // It welcomes the core, then never answers a spawn: connected, but no longer working.
+      mute = Bun.listen({
+        unix: keeperSocketPath(dataDir),
+        socket: {
+          data(socket, bytes) {
+            for (const line of new TextDecoder().decode(bytes).split('\n')) {
+              if (line.includes('"op":"hello"')) socket.write(`${JSON.stringify({ op: 'welcome', protocol: KEEPER_PROTOCOL, version: 'test', pid: fake.pid, processes: [] })}\n`);
+            }
+          },
+        },
+      });
+      h = await startTestCore({ dataDir, onShutdown: () => undefined });
       const client = await h.connect();
       const { threadId } = await echoThread(h, client);
       const id = threadTerminalId(threadId);
       const shell = watch(client, id);
-      await waitFor(() => h.core.terminals.keeper!.connected, 5_000);
+      const core = h.core;
+      await waitFor(() => core.terminals.keeper!.connected, 5_000);
       await client.call('terminals.open', { threadId, cols: 80, rows: 24 });
-      expect(h.core.terminals.keeper!.connected).toBe(true);
-      h.core.terminals.write(id, `echo $PPID-parent-$((70+8))\r`);
+      expect(core.terminals.keeper!.connected).toBe(true);
+      core.terminals.write(id, `echo $PPID-parent-$((70+8))\r`);
       await waitFor(() => shell.text().includes(`${process.pid}-parent-78`), SHELL_MS);
       await client.call('terminals.close', { id });
       client.close();
     } finally {
-      await h.core.drain();
-      await h.server.stop();
-      await h.core.close();
-      mute.stop(true);
-      standIn.kill('SIGKILL');
+      if (h !== undefined) {
+        await h.core.drain();
+        await h.server.stop();
+        await h.core.close();
+      }
+      mute?.stop(true);
+      standIn?.kill('SIGKILL');
       if (runtime === undefined) delete process.env.XDG_RUNTIME_DIR; else process.env.XDG_RUNTIME_DIR = runtime;
       delete process.env.BOITE_DATA_DIR;
       rmSync(root, { recursive: true, force: true });
