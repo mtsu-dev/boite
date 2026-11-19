@@ -10,7 +10,7 @@ const cores = ['core-a', 'core-c'].map(coreId => ({ coreId, name: coreId.toUpper
 
 /** A machine as the views and `operatorHost` read it, its link and its group reactive as the real store's are. */
 function machine(self: string, connection: string, group: { botsHome?: string } | null, groupKnown: boolean) {
-  const call = vi.fn(async (method: string) => method === 'contacts.get' ? { bot: null } : {});
+  const call = vi.fn(async (method: string): Promise<unknown> => method === 'contacts.get' ? { bot: null } : {});
   const store = $state({
     owner: true, page: 'chat', connection, client: { call }, groupKnown, error: '',
     group: group && { id: 'grp', self, cores, ...group }, showChat: () => {},
