@@ -68,7 +68,10 @@
   .outcome { font-weight: 500; }
   .outcome[data-status='error'], .outcome[data-status='failed'], .outcome[data-status='interrupted'] { color: var(--color-danger); }
   .compact { grid-template-columns: auto minmax(0, 1fr); }
+  .compact .title { align-items: baseline; flex-wrap: wrap; gap: var(--space-1); line-height: 1.25; }
+  .compact .title > .ui-label:first-child { overflow: visible; overflow-wrap: anywhere; white-space: normal; text-box: normal; }
   .compact .route { flex-wrap: wrap; gap: 4px; }
   .compact .route > .model { text-box: normal; padding: 0; margin: 0; }
-  .compact .meta { grid-column: 2; display: flex; flex-wrap: wrap; gap: 2px 6px; padding-top: 5px; white-space: normal; }
+  .compact .effort { text-box: normal; line-height: 1; }
+  .compact .meta { grid-column: 2; display: flex; flex-wrap: wrap; gap: 2px 6px; padding-top: var(--space-2); white-space: normal; }
 </style>

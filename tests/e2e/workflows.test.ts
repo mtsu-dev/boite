@@ -91,6 +91,7 @@ test('a loop draws its arc from the closing step back to the first, live while i
   await page.waitFor(`document.querySelector('${id('workflow-graph')}')?.dataset.layout === 'rows' && document.querySelector('${id('workflow-loop')}')`);
   expect(await page.evaluate(`document.querySelector('${id('workflow-loop')}').dataset.state`)).toBe('live');
   expect(await page.text('[data-node-id="review"] [data-testid="workflow-round"]')).toBe('2/3');
+  expect(await page.text('[data-node-id="review"] [data-testid="workflow-node-tokens"]')).toBe('4.3K tokens');
   // The arc runs right of every card it passes, inside the graph.
   expect(await page.evaluate(`(() => {
     const arc = document.querySelector('${id('workflow-loop')}').getBoundingClientRect();
@@ -109,6 +110,10 @@ test('a loop draws its arc from the closing step back to the first, live while i
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
   await page.waitFor(`document.querySelector('${id('workflow-loop')}')`);
   expect(await page.evaluate(`document.documentElement.scrollWidth <= window.innerWidth`)).toBe(true);
+  expect(await page.evaluate(`(() => {
+    const title = document.querySelector('[data-node-id="tests"] strong > span');
+    return title.textContent === 'Write failing tests' && title.scrollWidth <= title.clientWidth;
+  })()`)).toBe(true);
   await capture('workflow-loop-phone.png');
   expect(page.errors()).toEqual([]);
 }, 40_000);

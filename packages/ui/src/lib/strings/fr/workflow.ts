@@ -36,6 +36,7 @@ export const fr: Translation = {
     tokensPartial: '{tokens} jetons (partiel)',
     tokensUnknown: 'Jetons inconnus',
     contextRequested: '{label} (demandé)',
+    routeRequested: 'Demandé',
     tokensHelp: 'Usage transmis par les tours terminés, lectures et écritures du cache et nouvelles tentatives comprises.'
   }
 };

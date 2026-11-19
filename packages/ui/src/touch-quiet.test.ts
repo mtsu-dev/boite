@@ -49,9 +49,10 @@ test('the composer chip fills under a pointer that hovers only: a finger leaves 
 });
 
 test("the phone model search is a 44 px field the input fills: its hairline is drawn inside, so no border eats the target", () => {
-  const css = read('components/ModelSearch.svelte');
+  expect(read('components/ModelSearch.svelte')).toMatch(/<SearchField\b[^>]*\bcompact\b/);
+  const css = read('components/SearchField.svelte');
   const phone = css.slice(css.indexOf('@media (max-width: 720px)'));
-  expect(phone).toMatch(/\.search \{ height: var\(--touch-target\); border: 0;/);
+  expect(phone).toMatch(/\.compact \{ height: var\(--touch-target\); border: 0; box-shadow: inset/);
   expect(bare(appCss())).toMatch(/--touch-target: 44px;/);
-  expect(css).toMatch(/\.search input \{[^}]*height: 100%;/);
+  expect(css).toMatch(/\binput \{[^}]*height: 100%;/);
 });

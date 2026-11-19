@@ -246,6 +246,8 @@ export interface TurnContext {
   reportProgress?(phase: import('@boite/contracts').ThreadProgress['phase'], detail?: string | null): void;
   /** A provider signal that need not mean execution advanced. */
   reportProviderEvent?(): void;
+  /** A revised usage total received after the driver has returned the turn result. */
+  reportLateUsage?(usage: Usage): void;
   /** The running turn can now accept native user input. Does not report model progress. */
   inputReady?(): void;
   /** Native output or acknowledgement proves the first prompt belongs to this resumable session. */

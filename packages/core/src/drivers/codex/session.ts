@@ -11,11 +11,8 @@ import type { LiveTurnSettings, ProbeContext, QuestionAsk, SessionContext, TurnC
 import { preparedModels } from './models.ts';
 import { exitSentence, exitWithin } from '../exit.ts';
 import {
-  addCounts,
   answerTextOf,
-  countsOf,
   imageInputsOf,
-  mapUsage,
   modelOf,
   optionsOf,
   planTasksOf,
@@ -23,9 +20,8 @@ import {
   servedOf,
   textOf,
   toolViewOf,
-  usageDelta,
 } from './mapping.ts';
-import type { CodexHookRun, CodexHooksListed, CodexItem, CodexQuestion, CodexThreadOpened, CodexTokenUsage, CodexTurnRecord, Timer } from './protocol.ts';
+import type { CodexHookRun, CodexHooksListed, CodexItem, CodexQuestion, CodexThreadOpened, CodexTurnRecord, Timer } from './protocol.ts';
 import {
   CLIENT_NAME,
   COMMAND_TOOL_NAME,
@@ -45,6 +41,7 @@ import { resumeThread, ThreadLostError } from './resume.ts';
 import { threadConfig } from './config.ts';
 import { updateTurnSettings } from './live-settings.ts';
 import { CodexTurn } from './turn.ts';
+import { CodexUsageReports } from './usage-report.ts';
 import { CodexPrediction } from './prediction.ts';
 import { CodexRateLimits } from './rate-limits.ts';
 import { SpentWindows, turnError } from './availability.ts';
@@ -83,6 +80,8 @@ export class CodexSession {
   #idle: Timer | null = null;
   /** The turn whose `turn/start` is in flight. Context updates also arrive while idle. */
   #current: CodexTurn | null = null;
+  readonly #usage = new CodexUsageReports();
+  #drainingUsage = false;
   /** The account's spent windows, from `account/rateLimits/updated`. */
   readonly #spentWindows = new SpentWindows();
   /** The turn this session is running, from its process start to its settle. */
@@ -119,11 +118,12 @@ export class CodexSession {
 
   /** Reusable only while the process is up and the turn asks for the very same setup. */
   usable(key: string, warmMs: number): boolean {
-    return !this.#ended && !this.#closing && this.key === key && this.#retention.reusable(warmMs, this.warmMs);
+    return !this.#ended && !this.#closing && !this.#drainingUsage && this.key === key && this.#retention.reusable(warmMs, this.warmMs);
   }
 
   setViewed(viewed: boolean): void {
     this.#retention.setViewed(viewed);
+    if (this.#drainingUsage) return;
     this.#clearIdle();
     if (!viewed && !this.busy() && !this.#ended) this.#armIdle();
   }
@@ -227,13 +227,20 @@ export class CodexSession {
   /** Archive, shutdown, an idle window, a changed setup: the process goes. */
   close(reason: string | null, ctx?: SessionContext): Promise<void> {
     if (this.#ended) return this.#writer.closed;
-    this.#closing = true;
     if (reason !== null && ctx !== undefined) ctx.log('warn', `codex session: ${reason}`);
-    this.#drop();
+    if (ctx && !this.busy()) this.release();
+    else this.#drop();
     return this.#writer.closed;
   }
 
-  // -- the turn -------------------------------------------------------------
+  /** A cold turn or retired step can still be receiving its final usage report. */
+  release(): void {
+    if (this.#ended || this.#drainingUsage) return;
+    const remaining = this.#usage.drainMs;
+    if (remaining === 0 || this.#closing) return this.#drop();
+    this.#drainingUsage = true;
+    this.#armIdle(remaining);
+  }
 
   async #runTurn(turn: CodexTurn): Promise<void> {
     this.#active = turn;
@@ -304,20 +311,23 @@ export class CodexSession {
     }
 
     await turn.finished;
+    this.#usage.finish(turn);
     this.#current = null;
     this.#prediction.ask(this.#rpc, this.#threadId, turn);
     // Only OpenAI's own endpoint has a published lifetime; Codex never sends a
     // retention option, so the default for the model applies.
     if (this.#served.provider === 'openai') turn.cacheLife = openAiCacheLife(modelOf(ctx) ?? this.#served.model);
-    this.#endTurn(turn, turn.isStopped);
+    this.#endTurn(turn, false);
   }
 
   #endTurn(turn: CodexTurn, drop: boolean): void {
     if (this.#active === turn) this.#active = null;
     this.#clearStopGrace();
     this.#running = Math.max(0, this.#running - 1);
-    if (drop || this.#closing || this.#retention.idleMs(this.warmMs) <= 0) {
+    if (drop || this.#closing) {
       this.#drop();
+    } else if (turn.isStopped || this.#retention.idleMs(this.warmMs) <= 0) {
+      this.release();
     } else if (this.#running === 0 && !this.#retention.viewed) this.#armIdle();
     turn.settle();
   }
@@ -541,6 +551,7 @@ export class CodexSession {
     this.#ended = true;
     this.#closing = true;
     this.#clearIdle();
+    this.#usage.clear();
     endOnClose(this.#current, 'the codex session was closed');
     this.#rpc?.fail('the codex session was closed');
     this.#rpc = null;
@@ -550,11 +561,12 @@ export class CodexSession {
     this.#writer.release(this.#processClosed, () => this.onEnded(this));
   }
 
-  #armIdle(): void {
+  #armIdle(ms = this.#retention.idleMs(this.warmMs)): void {
+    this.#clearIdle();
     this.#idle = setTimeout(() => {
       this.#idle = null;
       this.#drop();
-    }, this.#retention.idleMs(this.warmMs));
+    }, ms);
     this.#idle?.unref?.();
   }
 
@@ -722,23 +734,8 @@ export class CodexSession {
   /** Usage also arrives while the session has no active turn. */
   #reportUsage(params: Record<string, unknown>): void {
     if (params['threadId'] !== this.#threadId) return;
-    const usage = params['tokenUsage'] as { total?: CodexTokenUsage; last?: CodexTokenUsage; modelContextWindow?: number } | undefined;
-    const last = usage?.last;
-    if (!last) return;
-    const turn = this.#current;
-    if (turn && params['turnId'] === turn.turnId) {
-      const delta = usageDelta(turn.usageTotal, usage.total, last);
-      turn.usageCounts = turn.usageCounts ? addCounts(turn.usageCounts, delta) : delta;
-      turn.usageTotal = usage.total ? countsOf(usage.total) : null;
-      turn.usage = mapUsage(turn.usageCounts);
-    }
-    const tokens = last.totalTokens ?? (typeof last.inputTokens === 'number' && typeof last.outputTokens === 'number' ? last.inputTokens + last.outputTokens : null);
-    if (tokens !== null) {
-      const cache = last.cachedInputTokens ?? 0;
-      const breakdown = typeof last.inputTokens === 'number' && typeof last.outputTokens === 'number'
-        ? { input: last.inputTokens - cache, cache, output: last.outputTokens } : undefined;
-      this.#contextSink?.({ tokens, window: usage?.modelContextWindow ?? null, ...(breakdown ? { breakdown } : {}) });
-    }
+    const use = this.#usage.update(params, this.#current);
+    if (use) this.#contextSink?.(use);
   }
 
   async #onRequest(ctx: SessionContext, method: string, raw: unknown): Promise<unknown> {

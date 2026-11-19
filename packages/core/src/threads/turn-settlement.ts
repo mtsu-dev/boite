@@ -162,6 +162,8 @@ export async function settleTurn(core: Core, state: Settlement): Promise<Complet
           }));
           return null;
         }
+        // A driver can revise its usage after returning while the same execution is still settling.
+        finished.usage = owned!.usage ?? finished.usage;
         // Read once the answer is written: the flag rides on the turn every listener of `turn.finished` gets.
         if (quietTurn(core, finished)) finished.quiet = true;
         const { toolsClosed, ...completion } = finishThread(core, state);

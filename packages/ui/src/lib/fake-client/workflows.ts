@@ -363,15 +363,24 @@ export class FakeWorkflows {
   #view(run: WorkflowRun): WorkflowRun {
     const empty = (): Usage => ({ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsdEquivalent: null });
     const byKey = new Map<string, Usage>();
+    const byNode = new Map<string, Usage>();
+    const partial = new Set<string>();
     const usage = empty();
     for (const [threadId, step] of this.#steps) {
       if (step.runId !== run.id) continue;
-      for (const turn of this.host.thread(threadId).turns) if (turn.usage) {
+      const id = step.key.split('#', 1)[0]!;
+      for (const turn of this.host.thread(threadId).turns) {
+        if (!turn.usage) {
+          if (turn.startedAt !== null && turn.finishedAt !== null && turn.execution?.operation !== 'compact' && turn.execution?.operation !== 'keepalive') partial.add(id);
+          continue;
+        }
         const bucket = byKey.get(step.key) ?? empty();
-        addUsage(bucket, turn.usage); addUsage(usage, turn.usage); byKey.set(step.key, bucket);
+        const rounds = byNode.get(id) ?? empty();
+        addUsage(bucket, turn.usage); addUsage(rounds, turn.usage); addUsage(usage, turn.usage);
+        byKey.set(step.key, bucket); byNode.set(id, rounds);
       }
     }
-    const nodes = run.nodes.map(node => ({ ...node, instances: node.instances.map(inst => {
+    const nodes = run.nodes.map(node => ({ ...node, ...((node.round ?? 1) > 1 ? { usage: byNode.get(node.id), usagePartial: partial.has(node.id) } : {}), instances: node.instances.map(inst => {
       if (inst.machine && inst.usage) addUsage(usage, inst.usage);
       return { ...inst, usage: inst.usage ?? byKey.get(inst.key) ?? null };
     }) }));

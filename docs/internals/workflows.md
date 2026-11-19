@@ -385,10 +385,12 @@ The graph shows each step's resolved route, reasoning effort and cumulative repo
 with the run's total in its header. The UI marks missing usage as unknown
 and a sum across both measured and unmeasured executions as partial.
 Counts include input, output, cache reads, cache writes and previous attempts,
-including a retry that replaced an archived child. Fan-out details also show
-each execution's tokens. Usage arrives when a provider finishes a turn;
-tokens still being generated are not estimated. Group-machine reports store a
-turn's usage once per execution attempt, including output corrections.
+including a retry that replaced an archived child. Step cards retain measured
+usage across loop rounds. Fan-out details show each execution's tokens.
+The UI displays reported counts, including Codex usage that arrives after a
+turn finishes. A revised group-machine report replaces the measurement for
+that turn. A stop receipt identifies the turn stopped on the member even if
+another turn starts in its conversation.
 
 The plan checks and the path rules are shared by the core and the UI in
 `packages/contracts/src/workflow-plan.ts`. The core's runner is

@@ -31,11 +31,11 @@ import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs
 import { join } from 'node:path';
 import { instructionsOf } from './history.ts';
 
-const DIRECTIVE = /\[(agents|command|command-failed|approve|thought|summary|usage|late-context|slow|crash|input|async|stream|elicit|elicit-url|permissions|time|hook-block|limits|flood|cut)\]/g;
+const DIRECTIVE = /\[(agents|command|command-failed|approve|thought|summary|usage|late-context|partial-usage|slow|slow-usage|crash|input|async|stream|elicit|elicit-url|permissions|time|hook-block|limits|flood|cut)\]/g;
 const CHUNKS = 3;
 
 type Directive =
-  | 'command' | 'command-failed' | 'approve' | 'thought' | 'summary' | 'usage' | 'late-context' | 'slow' | 'crash' | 'input' | 'async' | 'stream'
+  | 'command' | 'command-failed' | 'approve' | 'thought' | 'summary' | 'usage' | 'late-context' | 'partial-usage' | 'slow' | 'slow-usage' | 'crash' | 'input' | 'async' | 'stream'
   | 'elicit' | 'elicit-url' | 'permissions' | 'time' | 'hook-block' | 'agents' | 'limits' | 'flood' | 'cut';
 
 let threadCounter = 0;
@@ -533,11 +533,19 @@ async function runTurn(turnId: string, text: string): Promise<void> {
         notify('item/completed', { item: commandItem(itemId, 'completed', 'flood done'), threadId, turnId, completedAtMs: Date.now() });
         break;
       }
-      case 'late-context':
+      case 'partial-usage':
+      case 'late-context': {
+        if (directive === 'partial-usage') {
+          const first = { inputTokens: 10, outputTokens: 2 };
+          notify('thread/tokenUsage/updated', { threadId, turnId, tokenUsage: { total: first, last: first } });
+        }
         notify('turn/completed', { threadId, turn: turnRecord(turnId, 'completed') });
-        await Bun.sleep(80);
-        notify('thread/tokenUsage/updated', { threadId, turnId, tokenUsage: { last: { inputTokens: 80, cachedInputTokens: 20, outputTokens: 10 }, modelContextWindow: 200000 } });
+        const gate = process.env['CODEX_FAKE_USAGE_GATE'];
+        if (gate) while (!existsSync(gate)) await Bun.sleep(10);
+        else await Bun.sleep(80);
+        for (let i = 0; i < 2; i++) notify('thread/tokenUsage/updated', { threadId, turnId, tokenUsage: { last: { inputTokens: 80, cachedInputTokens: 20, outputTokens: 10 }, modelContextWindow: 200000 } });
         return;
+      }
       case 'usage': {
         // Like a real turn: one update per model request, `last` for that
         // request alone, `total` cumulative over the thread's earlier turns
@@ -556,12 +564,17 @@ async function runTurn(turnId: string, text: string): Promise<void> {
         notify('thread/tokenUsage/updated', final);
         break;
       }
+      case 'slow-usage':
       case 'slow':
         log('waiting for interrupt');
         await awaitInterrupt(turnId);
         waiting.delete(turnId);
         interrupted.delete(turnId);
         notify('turn/completed', { threadId, turn: turnRecord(turnId, 'interrupted') });
+        if (directive === 'slow-usage') {
+          await Bun.sleep(80);
+          notify('thread/tokenUsage/updated', { threadId, turnId, tokenUsage: { last: { inputTokens: 80, cachedInputTokens: 20, outputTokens: 10 } } });
+        }
         return;
       case 'hook-block':
         // A userPromptSubmit hook that exits 2: the turn ends with nothing said (0.157.1).

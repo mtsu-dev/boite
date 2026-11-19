@@ -64,10 +64,16 @@ export class MachineWorkflowSteps {
     if (!run) return;
     let changed = false;
     for (const node of run.nodes) for (const inst of node.instances) {
-      const state = inst.machine && this.#core.delegation.remote.record(run.rootThreadId, inst.machine.requestId)?.state;
+      const record = inst.machine && this.#core.delegation.remote.record(run.rootThreadId, inst.machine.requestId);
+      const state = record?.state;
       const worktree = state?.worktree;
       if (worktree && JSON.stringify(worktree) !== JSON.stringify(inst.worktree)) { inst.worktree = worktree; changed = true; }
-      if (state?.lastTurn?.id === inst.machine?.turnId && recordMachineUsage(inst, state?.lastTurn)) changed = true;
+      const last = state?.lastTurn;
+      const receipt = state?.workflowStop;
+      const stopped = run.status === 'stopped' && record?.workflowStop !== undefined;
+      const measured = stopped && receipt && receipt.seq === record.workflowStop ? receipt.turn
+        : last && (last.id === inst.machine?.turnId || stopped && last.id === record.workflowStopTurnId) ? last : null;
+      if (recordMachineUsage(inst, measured)) changed = true;
     }
     if (changed) this.#hooks.save(run);
   }

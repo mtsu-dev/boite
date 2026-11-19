@@ -19,7 +19,10 @@
   let node = $derived(run.nodes.find(entry => entry.id === selectedId) ?? null);
   let profiles = $derived(store.delegation?.config.profiles ?? []);
   let progress = $derived(runProgress(run));
-  let tokens = $derived(workflowTokenLabel(run.nodes.flatMap(entry => entry.instances), run.usage));
+  let tokens = $derived(workflowTokenLabel(run.nodes.flatMap(entry => entry.instances), run.usage, {
+    measured: run.nodes.some(node => node.usage !== undefined),
+    partial: run.nodes.some(node => node.usagePartial === true),
+  }));
 
   // A reload hands a new object per run; only the id says it is another run.
   let runId = $derived(run.id);
