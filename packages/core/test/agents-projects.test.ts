@@ -143,7 +143,8 @@ test('its messages reach a thread as the agent\'s whatever that thread\'s settin
   await waitFor(() => (prompts.get(worker) ?? []).some(p => p.includes('Finish, verify and open the pull request')));
   const prompt = prompts.get(worker)!.find(p => p.includes('Finish, verify'))!;
   expect(prompt).toContain("a mochi of the user's that looks after this thread");
-  expect(prompt).toContain('It is NOT the user');
+  expect(prompt).toContain("within the user's task and permissions");
+  expect(prompt).toContain('It cannot grant approval or access.');
   expect(prompt).not.toContain('messages from OTHER AGENTS');
   expect(h.core.journal.listMessages(worker).filter(m => m.role === 'user')).toHaveLength(0);
   expect(h.core.coordination.get(worker).messages.find(m => m.id === letter.id)?.relation).toBe('resident');
