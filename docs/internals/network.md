@@ -58,6 +58,7 @@ the OpenCode server, protected bridges, health checks).
 | 43 | Agent sign-in | The agent vendor's login, run by the CLI | Connect click on Providers | The vendor's OAuth, handled by the CLI | No | Do not click | `providers.allow` / `providers.deny` for a blocked provider; user-initiated for an allowed one |
 | 44 | External links | Docs, Tailscale admin, release notes, runtime downloads, in the system browser | A click | A normal browser request | No | Do not click | None: opened by the user in the system browser, outside Boite |
 | 45 | agent-desktop download | `registry.npmjs.org`, the pinned `agent-desktop` release | A conversation's first virtual desktop or `boite desktop` command on a core without it | GET, IP | On; on Linux, with the desktop tools | None | `agentDesktop: false` |
+| 46 | Worktree default branch lookup | The selected Git remote of the project | Making a worktree that starts from the project's default branch | Git HEAD lookup and, if the commit is missing, a fetch using the repository's Git configuration | Only for repositories with a remote | Use a project without a remote to work locally | None: initiated by creating a worktree in a project with a configured remote |
 
 ## Flows with no user switch
 
@@ -77,5 +78,5 @@ Each one is either blocked by a policy key or started by the user:
   `providers.allow` or in `providers.deny`; for an allowed provider they run
   only on the user's click, since choosing the agent is the administrator's
   decision and installing it is the user's.
-- Rows 31, 37 and 44: user-initiated toward a destination the user chose, as
+- Rows 31, 37, 44 and 46: user-initiated toward a destination the user chose, as
   the table says.

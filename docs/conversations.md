@@ -79,10 +79,11 @@ folder, stay.
 
 ## Worktrees
 
-A worktree conversation starts on a temporary branch, then Boite renames the
-branch after the conversation's title while the first turn runs. A branch you
-named yourself, or one with a remote, keeps its name. The header shows the
-branch.
+A new worktree conversation starts from the project's default branch. Boite
+checks the remote for its latest commit and uses the local default branch when
+offline. Boite renames the temporary branch after the conversation's title
+while the first turn runs. A branch you named yourself, or one with a remote,
+keeps its name. The header shows the branch.
 
 - Worktree by default, in a project's Manage project menu, turns the switch on
   for every new thread there.

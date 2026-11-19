@@ -101,6 +101,75 @@ test('a child that commits keeps its worktree, and its result names the branch t
   expect(existsSync(join(s.repo, 'fix.txt'))).toBe(false);
 }, 90_000);
 
+test.each([false, true])('a child keeps files that arrive while its agent is stopping for cleanup, ignored: %s', async ignored => {
+  const s = await setup();
+  if (ignored) {
+    writeFileSync(join(s.repo, '.gitignore'), 'late-note.txt\n');
+    git(s.repo, 'add', '.gitignore');
+    git(s.repo, 'commit', '-qm', 'ignore notes');
+  }
+  const stop = s.h.core.procs.stopAndWait.bind(s.h.core.procs);
+  const stopped = spyOn(s.h.core.procs, 'stopAndWait').mockImplementation(async id => {
+    await stop(id);
+    const worktree = s.h.core.delegation.worktrees.get(id);
+    if (worktree?.state === 'active') writeFileSync(join(worktree.path, 'late-note.txt'), 'keep me');
+  });
+  try {
+    const child = await s.client.call('delegation.spawn', { threadId: s.threadId, task: 'Read the project.', worktree: true, requestId: 'late-file' });
+    const { path, branch } = child.worktree!;
+    await waitFor(() => s.results().length === 1, SLOW_GIT_MS);
+    expect(s.h.core.delegation.worktrees.get(child.thread.id)).toMatchObject({ state: 'kept', dirty: true });
+    expect(readFileSync(join(path, 'late-note.txt'), 'utf8')).toBe('keep me');
+    expect(branchExists(s.repo, branch)).toBe(true);
+  } finally { stopped.mockRestore(); }
+}, 90_000);
+
+test('a kept child reattaches only its surviving branch after its worktree is removed', async () => {
+  const s = await setup(ctx => {
+    if (ctx.prompt.includes('Initial read')) git(ctx.thread.cwd, 'commit', '-q', '--allow-empty', '-m', 'child work');
+  });
+  const child = await s.client.call('delegation.spawn', { threadId: s.threadId, task: 'Initial read', worktree: true, requestId: 'keep-branch' });
+  const { path, branch } = child.worktree!;
+  await waitFor(() => s.results().length === 1, SLOW_GIT_MS);
+  const head = git(path, 'rev-parse', 'HEAD');
+  git(s.repo, 'worktree', 'remove', path);
+  git(s.repo, 'commit', '-q', '--allow-empty', '-m', 'parent work');
+  await s.client.call('delegation.send', { threadId: s.threadId, toThreadId: child.thread.id, text: 'Reattach the branch.', requestId: 'reattach' });
+  await waitFor(() => s.results().length === 2, SLOW_GIT_MS);
+  expect(git(path, 'rev-parse', 'HEAD')).toBe(head);
+
+  git(s.repo, 'worktree', 'remove', path);
+  git(s.repo, 'branch', '-D', branch);
+  await s.client.call('delegation.send', { threadId: s.threadId, toThreadId: child.thread.id, text: 'Reattach again.', requestId: 'missing-branch' });
+  await waitFor(() => s.results().length === 3, SLOW_GIT_MS);
+  expect(s.h.core.delegation.worktrees.get(child.thread.id)).toMatchObject({ state: 'kept', error: expect.stringContaining(branch) });
+  expect(branchExists(s.repo, branch)).toBe(false);
+  expect(existsSync(path)).toBe(false);
+}, 90_000);
+
+test('cleanup preserves a branch that advances just before its ref is deleted', async () => {
+  const s = await setup();
+  let advanced: string | null = null;
+  const spawn = s.h.core.procs.spawn.bind(s.h.core.procs);
+  const observed = spyOn(s.h.core.procs, 'spawn').mockImplementation((id, command, args, options) => {
+    if (command === 'git' && (args[0] === 'update-ref' && args[1] === '-d' || args[0] === 'branch' && args[1] === '-D')) {
+      const child = s.h.core.delegation.worktrees.get(id);
+      if (child) {
+        advanced = git(s.repo, 'commit-tree', 'HEAD^{tree}', '-p', 'HEAD', '-m', 'concurrent commit');
+        git(s.repo, 'update-ref', `refs/heads/${child.branch}`, advanced);
+      }
+    }
+    return spawn(id, command, args, options);
+  });
+  try {
+    const child = await s.client.call('delegation.spawn', { threadId: s.threadId, task: 'Read.', worktree: true, requestId: 'advanced-branch' });
+    await waitFor(() => s.results().length === 1, SLOW_GIT_MS);
+    expect(advanced).not.toBeNull();
+    expect(s.h.core.delegation.worktrees.get(child.thread.id)).toMatchObject({ state: 'kept', error: expect.any(String) });
+    expect(git(s.repo, 'rev-parse', `refs/heads/${child.worktree!.branch}`)).toBe(advanced!);
+  } finally { observed.mockRestore(); }
+}, 90_000);
+
 test('a mochi child worktree branches from its entrusted project HEAD, including after a follow-up', async () => {
   const s = await setup();
   const projectId = s.h.core.threads.require(s.threadId).projectId!;
