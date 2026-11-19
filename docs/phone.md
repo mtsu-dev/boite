@@ -51,6 +51,7 @@ offline need HTTPS.
 
 - The code works once, for ten minutes: treat it like a password.
 - To take a phone out, press Remove from the group on its row there.
+  A fresh link adds it again, including when the phone was offline during removal.
 - On iPhone, add the Home Screen app from inside it, with its Scan button:
   it does not share Safari's storage, and the Camera app opens Safari.
 - A link to a machine without an HTTPS address opens that machine's own page

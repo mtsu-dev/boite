@@ -1,10 +1,10 @@
 // Owns the WebSocket client lifecycle, authentication and reconnect state.
 import { secureId } from './secure-id';
 import { RELEASE_VERSION } from './release';
-import { signedUngrouped, type DeviceKey } from './device-key';
+import { signedDeviceRevocation, signedUngrouped, type DeviceKey } from './device-key';
 import {
   PROTOCOL_VERSION, RPC_CHUNK_BYTES, RPC_MAX_FRAME_BYTES, RpcCloseCode, RpcErrorCode,
-  type ClientName, type CoreInfo, type DeviceHello, type Principal, type UngroupedData,
+  type ClientName, type CoreInfo, type DeviceHello, type DeviceRevokedData, type Principal, type UngroupedData,
   type RpcEventName, type RpcMethodName, type RpcParams, type RpcResult, type StreamChannel, type ThreadId
 } from '@boite/contracts';
 import type { CallOptions, ClientState, EventHandler, FrameSocket, ObservableClient, Session, SocketLike, WsClientOptions } from './client';
@@ -26,6 +26,8 @@ interface Candidate {
   /** Set by `#open`: ends the attempt and closes its socket without a word to the client. */
   cancel: () => void;
 }
+
+type Signer = Omit<NonNullable<WsClientOptions['signer']>, 'key'> & { key: DeviceKey | null; ready: Promise<DeviceKey> };
 
 const NO_HANDLERS = new Map<string, Set<(payload: unknown) => void>>();
 const RESUMED = 'connection resumed; check the conversation before resending';
@@ -58,7 +60,8 @@ export class WsClient implements ObservableClient {
   /** The token is a pairing's session key, so a hello it no longer opens is a revoke. */
   #paired: boolean;
   #relay: (() => string | DeviceHello | null) | null;
-  #signer: { key: DeviceKey | null; ready: Promise<DeviceKey>; coreId: string | null } | null;
+  #signer: Signer | null;
+  #replacedRevokedKey = false;
   #onDevice: ((device: string, coreId: string) => unknown) | null;
   #onSession: ((session: Session) => unknown) | null;
   #onRevoked: (() => void) | null;
@@ -118,8 +121,9 @@ export class WsClient implements ObservableClient {
     this.#nonce = this.#grant === null ? '' : secureId();
     this.#signer = null;
     if (options.signer !== undefined) {
-      const signer: { key: DeviceKey | null; ready: Promise<DeviceKey>; coreId: string | null } = { key: null, ready: options.signer.key(), coreId: options.signer.coreId };
-      void signer.ready.then((key) => { signer.key = key; }, () => undefined);
+      const { key, ...identity } = options.signer;
+      const signer: Signer = { ...identity, key: null, ready: key() };
+      void signer.ready.then((device) => { signer.key = device; }, () => undefined);
       this.#signer = signer;
     }
     this.#onDevice = options.onDevice ?? null;
@@ -483,8 +487,8 @@ export class WsClient implements ObservableClient {
         if (aside()) { dropAside('connection closed'); return; }
         const wasReady = this.#state === 'ready';
         if (wasReady && event?.code === RpcCloseCode.DeviceRevoked && this.#signer !== null) {
-          this.#onRevoked?.();
           this.close();
+          this.#onRevoked?.();
           return;
         }
         const incompatible = event?.code === RpcCloseCode.ProtocolMismatch;
@@ -591,9 +595,26 @@ export class WsClient implements ObservableClient {
               resolve(result.core);
             }
           },
-          (error: unknown) => {
+          async (error: unknown) => {
             // A candidate refused is no verdict on the client: the reconnect after a dead probe hears it again.
             if (aside()) { dropAside(error instanceof Error ? error.message : String(error)); return; }
+            if (settled || this.#socket !== socket) return;
+            const replacing = grant !== null && this.#replaceRevokedKey(error, signer);
+            if (replacing) {
+              // The core closes this socket after refusing the hello. Keep the current
+              // connect promise open until the replacement hello answers on a new socket.
+              closeQuietly(socket);
+              const replacement = await replacing;
+              if (settled || this.#socket !== socket) return;
+              if (replacement !== null && signer !== null) {
+                signer.key = replacement;
+                this.#replacedRevokedKey = true;
+                settled = true;
+                clearTimeout(timeout);
+                void this.#open().then(resolve, reject);
+                return;
+              }
+            }
             if (!settled) {
               settled = true;
               clearTimeout(timeout);
@@ -631,6 +652,16 @@ export class WsClient implements ObservableClient {
         );
       };
     });
+  }
+
+  #replaceRevokedKey(error: unknown, signer: Signer | null): Promise<DeviceKey | null> | false {
+    if (this.#replacedRevokedKey || !signer?.coreId || !signer.key || !signer.replaceRevokedKey) return false;
+    if (!(error instanceof RpcFailure) || error.code !== RpcErrorCode.Unauthorized || (error.data as Partial<DeviceRevokedData> | undefined)?.reason !== 'device-revoked') return false;
+    const id = signer.key.id;
+    const replace = signer.replaceRevokedKey;
+    return signedDeviceRevocation(signer.coreId, this.#nonce, id, error.data)
+      .then(verified => verified ? replace(id) : null)
+      .catch(() => null);
   }
 
   /**

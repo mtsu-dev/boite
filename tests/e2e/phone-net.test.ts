@@ -215,6 +215,18 @@ test('the installed phone app is added with a pasted link, and a removed one get
       await phone.click(id('machine-add'));
       await phone.waitFor(`document.querySelector('${id('machine-card-status')}')?.classList.contains('ready') || document.querySelector('${id('machine-paste-form')} [role=alert]')`);
       expect(await phone.evaluate(`document.querySelector('${id('machine-paste-form')} [role=alert]')?.textContent ?? null`)).toBeNull();
+
+      // The app was offline when its key was revoked and opens the new grant before any signed hello can clear it.
+      const [offline] = (await owner.call('group.get', {}))?.devices ?? [];
+      expect(await phone.evaluate("localStorage.getItem('boite.device') !== null")).toBe(true);
+      await phone.navigate('about:blank');
+      await owner.call('group.revokeDevice', { id: offline!.id });
+      await phone.navigate((await owner.call('group.addDevice', {})).url);
+      await phone.waitFor(`document.querySelector('${id('status-connection')}')?.dataset.state === 'ready' || document.querySelector('${id('error-toast')}')?.textContent.includes('removed from the group')`);
+      expect(await phone.evaluate(`document.querySelector('${id('status-connection')}')?.dataset.state`)).toBe('ready');
+      const [back] = (await owner.call('group.get', {}))?.devices ?? [];
+      expect(back?.id).toBeDefined();
+      expect(back?.id).not.toBe(offline!.id);
     } finally {
       owner.close();
     }
