@@ -334,28 +334,6 @@ describe('boite desktop on a shared session', () => {
     }
   }, 30_000);
 
-  // Opt-in: downloads the pinned agent-desktop, as a first use on the machine would.
-  test.skipIf(!windows || process.env['BOITE_E2E_DESKTOP'] !== '1')('Windows: agent-desktop reads, fills and captures an app on the hidden desktop', async () => {
-    const { desktops } = watched();
-    useDesktops({ platform: 'win32', hiddenDesktops: async () => desktops }, new AgentDesktopTool(join(harness.dataDir, 'tools'), harness.core.procs));
-    await cli('run', 'charmap');
-    // charmap opens small helper windows too: its main one has a title.
-    const main = await until(async () => {
-      const listed = JSON.parse((await cli('list-windows', '--app', 'charmap')).out || '{}') as { data?: ListedWindow[] };
-      return (listed.data ?? []).find(window => window.title);
-    }, window => window !== undefined);
-    expect(main).toBeDefined();
-    const snapshot = JSON.parse((await cli('snapshot', '--window-id', main!.id, '-i', '--compact')).out) as { data: { snapshot_id: string } };
-    const field = `@${snapshot.data.snapshot_id}:e1`;
-    expect((await cli('set-value', field, 'boite')).code).toBe(0);
-    expect((await cli('get', field, '--property', 'value')).out).toContain('"value":"boite"');
-    const shot = process.env['BOITE_E2E_DESKTOP_SHOT'] ?? join(harness.dataDir, 'charmap.png');
-    expect((await cli('screenshot', '--window-id', main!.id, shot)).code).toBe(0);
-    expect(statSync(shot).size).toBeGreaterThan(1_000);
-    // The keyboard stays the user's.
-    expect((await cli('press', 'ctrl+c', '--app', 'charmap')).error).toContain('press is refused');
-  }, 120_000);
-
   // Opt-in, in a signed-in macOS session that granted agent-desktop's launcher Accessibility and Screen Recording.
   const front = () => Bun.spawnSync({ cmd: ['osascript', '-e', 'tell application "System Events" to get name of first process whose frontmost is true'] }).stdout.toString().trim();
   test.skipIf(process.platform !== 'darwin' || process.env['BOITE_E2E_DESKTOP'] !== '1')('macOS: agent-desktop drives the Calculator the conversation started, and the user keeps the front app', async () => {

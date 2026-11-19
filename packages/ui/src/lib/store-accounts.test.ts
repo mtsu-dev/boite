@@ -205,17 +205,19 @@ test('a proxied provider shows one gateway account over its local ones, which co
   expect(store.accountsOf('claude').map(account => [account.id, account.label, account.status, account.identity])).toEqual([['a-claude-main', 'Douane', 'ok', null]]);
   expect(store.accountOf('a-claude-side')).toMatchObject({ id: 'a-claude-side', label: 'Douane', status: 'ok' });
   expect(store.gatewayOf('codex')).toEqual({ kind: 'douane', name: 'Douane', origin: 'http://gateway.test:8787' });
-  // Both OpenCode versions use the gateway; other ACP agents keep their own sign-ins.
-  for (const provider of ['opencode', 'opencode-v2']) {
+  // Both OpenCode versions use the gateway, and Antigravity behind Douane; other ACP agents keep their own sign-ins.
+  for (const provider of ['opencode', 'opencode-v2', 'antigravity']) {
     expect(store.gatewayOf(provider)).toEqual({ kind: 'douane', name: 'Douane', origin: 'http://gateway.test:8787' });
   }
   expect(store.accountsOf('opencode')[0]).toMatchObject({ label: 'Douane', status: 'ok' });
-  expect(store.gatewayOf('antigravity')).toBeNull();
+  expect(store.gatewayOf('vibe')).toBeNull();
   expect(store.accounts.filter(account => account.providerId === 'claude').map(account => account.label)).toEqual(['Default', 'Second seat']);
   expect((await client.call('accounts.list', {})).some(account => account.label === 'Douane')).toBe(false);
 
   store.settings = await client.call('subscriptionProxy.configure', { subscriptionProxy: { ...douane, kind: 'cliproxyapi' } });
   expect(store.accountsOf('claude')[0]!.label).toBe('CLIProxyAPI');
+  // CLIProxyAPI serves no Gemini API: Antigravity keeps its own sign-in there.
+  expect(store.gatewayOf('antigravity')).toBeNull();
   store.settings = await client.call('subscriptionProxy.configure', { subscriptionProxy: { ...douane, enabled: false } });
   expect(store.accountsOf('claude').map(account => [account.label, account.status])).toEqual([['Default', 'ok'], ['Second seat', 'unauthenticated']]);
   expect(store.accountOf('a-claude-side')!.label).toBe('Second seat');

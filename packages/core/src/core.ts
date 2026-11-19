@@ -239,7 +239,7 @@ export class Core {
   /** What the user's own hooks did since this core started, for Settings. */
   readonly hooks: HookLedger;
   readonly terminals: TerminalStore;
-  /** Agent sessions on the keeper, with `BOITE_KEEPER=1` (`keeper/kept-agents.ts`). */
+  /** Agent sessions on the keeper, null with `BOITE_KEEPER=0` or on Windows (`keeper/kept-agents.ts`). */
   readonly keptAgents: KeptAgents | null;
   readonly secrets: SecretStore;
   readonly stopArtifactRetention: () => Promise<void>;

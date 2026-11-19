@@ -56,6 +56,20 @@ describe('procs', () => {
       else expect(error).toBe(protectionError);
     } finally {close.mockRestore();}
   });
+  test('disown forgets the pids it lets go of, so a kept process leaves no entry behind', async () => {
+    const registry = new ProcRegistry(harness.core.journal, new Bus(), createPosixPlatform('linux', null));
+    const child = registry.spawn('disowned', process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { agentRoot: false });
+    try {
+      const unassigned = (registry as unknown as { unassigned: Set<number> }).unassigned;
+      expect(unassigned.has(child.record.pid)).toBe(true);
+      registry.disown('disowned');
+      expect(unassigned.has(child.record.pid)).toBe(false);
+    } finally {
+      process.kill(child.record.pid, 'SIGKILL');
+      await child.exited;
+      await registry.close();
+    }
+  });
   test('a managed stop hands its root to the tree backend only while that root has not exited', async () => {
     // On Windows the backend is taskkill /T /PID: a root that exited may have given its pid to a stranger.
     const handed: number[] = [];

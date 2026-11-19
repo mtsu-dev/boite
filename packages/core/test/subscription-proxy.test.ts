@@ -1,8 +1,8 @@
 import { afterEach, expect, test } from 'bun:test';
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { SubscriptionProxy } from '@boite/contracts';
-import { checkSettingsPatch } from '@boite/contracts';
+import { checkSettingsPatch, subscriptionProxyServes } from '@boite/contracts';
 import { connect } from '../src/client.ts';
 import { getDriver, probedModelsOf, setDriver } from '../src/drivers/index.ts';
 import { readNativeList, saveCatalog } from '../src/providers/saved-catalogs.ts';
@@ -462,6 +462,53 @@ test('Grok runs through Douane by its environment alone, and keeps its own sign-
   expect(harness.core.accounts.require(account.id).status).toBe('ok');
   await owner.call('settings.set', { subscriptionProxy: config(url, 'cliproxyapi') });
   expect(harness.core.accounts.require(account.id).status).toBe('ok');
+});
+
+test('Antigravity runs through Douane in a gateway home of its own, and keeps its own sign-in behind CLIProxyAPI', async () => {
+  const antigravity = { id: 'antigravity', protocol: 'acp' } as const;
+  expect(subscriptionProxyServes(antigravity, 'douane')).toBe(true);
+  expect(subscriptionProxyServes(antigravity, 'cliproxyapi')).toBe(false);
+  let listed = 0;
+  gateway = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch() { listed += 1; return Response.json({ data: [] }); } });
+  const origin = `http://127.0.0.1:${gateway.port}`;
+  harness = await startTestCore({ settings: { subscriptionProxy: config(`${origin}/v1`) } });
+  const owner = await harness.connect();
+  await owner.call('subscriptionProxy.key', { key: 'gateway-key' });
+  const provider = harness.core.providers.require('antigravity');
+  // The gateway is the login: no Google sign-in of the account is asked for.
+  const account = await owner.call('accounts.add', { providerId: 'antigravity', label: 'Gateway Antigravity' });
+  expect(account.status).toBe('ok');
+  const own = join(account.isolationDir!, 'antigravity-acp', 'settings.json');
+
+  const spawned = agentEnv(provider, harness.core.accounts.accountEnv(harness.core.accounts.require(account.id), provider),
+    { AGY_LLM_GATEWAY_URL: 'https://inherited.test', AGY_LLM_GATEWAY_API_KEY: 'inherited-key', GEMINI_HOME: '/inherited' });
+  const home = spawned['GEMINI_HOME']!;
+  expect(home).toMatch(/subscription-proxy[\\/]antigravity[\\/][0-9a-f]{24}$/);
+  expect(home.startsWith(harness.core.dataDir)).toBe(true);
+  // The origin, without /v1: the agent calls /v1beta under it.
+  expect(spawned['AGY_LLM_GATEWAY_URL']).toBe(origin);
+  expect(spawned['AGY_LLM_GATEWAY_API_KEY']).toBe('gateway-key');
+  expect(JSON.parse(readFileSync(join(home, 'antigravity-acp', 'settings.json'), 'utf8'))).toEqual({ auth: { type: 'gateway' } });
+  // The account's home keeps its own sign-in settings.
+  expect(JSON.parse(readFileSync(own, 'utf8'))).toEqual({ auth: { type: 'oauth-personal' } });
+  // A settings file the agent rewrote with another auth type is put back on gateway, its other keys kept.
+  writeFileSync(join(home, 'antigravity-acp', 'settings.json'), '{"auth":{"type":"oauth-personal"},"theme":"dark"}');
+  subscriptionProxyEnv(harness.core, provider);
+  expect(JSON.parse(readFileSync(join(home, 'antigravity-acp', 'settings.json'), 'utf8'))).toEqual({ auth: { type: 'gateway' }, theme: 'dark' });
+  // The agent lists the gateway's Gemini API models itself: the core reads no OpenAI catalog.
+  expect(await readSubscriptionProxyModels(harness.core, provider)).toBeNull();
+  expect(listed).toBe(0);
+
+  // CLIProxyAPI serves no Gemini API: the account answers for itself, in its own home.
+  await owner.call('settings.set', { subscriptionProxy: config(`${origin}/v1`, 'cliproxyapi') });
+  expect(subscriptionProxyEnv(harness.core, provider)).toEqual({});
+  const native = agentEnv(provider, harness.core.accounts.accountEnv(harness.core.accounts.require(account.id), provider),
+    { AGY_LLM_GATEWAY_URL: 'https://inherited.test', AGY_LLM_GATEWAY_API_KEY: 'inherited-key' });
+  expect(native['GEMINI_HOME']).toBe(account.isolationDir!);
+  expect(native['AGY_LLM_GATEWAY_URL']).toBeUndefined();
+  expect(native['AGY_LLM_GATEWAY_API_KEY']).toBeUndefined();
+  expect(JSON.parse(readFileSync(own, 'utf8'))).toEqual({ auth: { type: 'oauth-personal' } });
+  expect((await owner.call('accounts.check', { accountId: account.id })).status).toBe('unauthenticated');
 });
 
 test('legacy CLIProxy catalogs select native families and malformed gateway errors cannot echo the key', async () => {

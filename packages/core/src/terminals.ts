@@ -16,7 +16,7 @@ import type { Core } from './core.ts';
 import { invalidParams, messageOf, notFound, refused } from './errors.ts';
 import type { Router } from './router.ts';
 import { HistoryAnnounce, defaultHistoryFile, describeShell, integrate, parseHistory, readHistoryTail } from './terminal-integration.ts';
-import { KeeperClient, keeperEnabled, type KeptTerminal } from './keeper/client.ts';
+import { KeeperClient, KeeperUnavailable, keeperEnabled, type KeptTerminal } from './keeper/client.ts';
 import { adoptKeptTerminal, spawnKeptTerminal } from './keeper/kept-terminal.ts';
 import type { KeptProcess, KeptTag } from './keeper/protocol.ts';
 import type { SpawnedKeptTerminal } from './process-spawn-types.ts';
@@ -226,7 +226,7 @@ export class TerminalStore {
   readonly #watchers = new Map<string, Set<string>>();
 
   readonly #core: Core;
-  /** Set with `BOITE_KEEPER=1`: thread shells then outlive the core (`keeper/`). */
+  /** Set unless `BOITE_KEEPER=0` or on Windows: thread shells then outlive the core (`keeper/`). */
   readonly #keeper: KeeperClient | null;
   /** Thread shells waiting for the keeper to start them. */
   readonly #opening = new Map<string, Promise<TerminalState>>();
@@ -234,6 +234,8 @@ export class TerminalStore {
   readonly #restored: Promise<void>;
   /** True until `#restored` settles: a close in that window waits, or the restore would take the shell back. */
   #restoring: boolean;
+  /** Set once a shell started on this core for want of a keeper, until one starts on the keeper again: one warning per outage. */
+  #directWarned = false;
 
   constructor(core: Core) {
     this.#core = core;
@@ -247,7 +249,7 @@ export class TerminalStore {
 
   get keeps(): boolean { return this.#keeper !== null; }
 
-  /** The keeper's client, null unless `BOITE_KEEPER=1`. */
+  /** The keeper's client, null with `BOITE_KEEPER=0` or on Windows. */
   get keeper(): KeeperClient | null { return this.#keeper; }
 
   /** The connection attached shell `id`: from now on its output reaches it. */
@@ -402,6 +404,8 @@ export class TerminalStore {
     const started = this.#restored.then(async () => {
       const running = this.#running(id, options);
       if (running !== null) return running;
+      // No keeper now, it did not start or went away: no wait for another launch.
+      if (!keeper.reachable) return this.#openDirect(keeper, id, options, null);
       const output = this.#output(id, options, this.#shellFor(options));
       const launch = output.launchShell;
       const tag: TerminalTag = { kind: 'terminal', id, cwd: options.cwd, threadId: options.threadId ?? null, shell: output.described, exe: launch.exe, args: launch.args };
@@ -409,8 +413,12 @@ export class TerminalStore {
       try {
         spawned = await spawnKeptTerminal(this.#core.procs, keeper, id as ThreadId, launch.exe, launch.args, { cwd: options.cwd, env: output.env, cols: options.cols, rows: options.rows, tag: { ...tag } });
       } catch (error) {
+        // The keeper could not be reached, did not answer or is stopping: the shell is this core's, as with the keeper off.
+        // A keeper that answered with the shell's own failure is not bypassed: the core would fail the same way.
+        if (error instanceof KeeperUnavailable || !keeper.connected) return this.#openDirect(keeper, id, options, error);
         throw refused(`the shell ${launch.exe} did not start: ${messageOf(error)}`, { id, shell: launch.exe });
       }
+      this.#directWarned = false;
       // Archived or deleted while the keeper started it: the shell goes with its thread.
       const thread = options.threadId === undefined ? undefined : this.#core.journal.getThread(options.threadId);
       if (thread === null || thread?.archived === true) {
@@ -539,6 +547,29 @@ export class TerminalStore {
     };
     this.#sessions.set(id, session);
     return session;
+  }
+
+  /**
+   * A thread shell started by this core while the keeper is out of reach: it
+   * ends with the core, as with the keeper off. `error` is the connect that
+   * just failed; with none, the keeper went away earlier, and the first such
+   * shell of the outage asks for one again in the background, so a later
+   * shell goes to it. Agent launches ask too (`KeptAgents`).
+   */
+  #openDirect(keeper: KeeperClient, id: string, options: StartOptions, error: unknown): TerminalState {
+    const thread = options.threadId === undefined ? undefined : this.#core.journal.getThread(options.threadId);
+    if (thread === null || thread?.archived === true) {
+      throw refused(`the thread ${options.threadId} was archived while its shell started`, { threadId: options.threadId, field: 'archived', expected: false });
+    }
+    if (!this.#directWarned) {
+      this.#directWarned = true;
+      const reason = error === null ? '' : ` (${messageOf(error)})`;
+      this.#core.logs.warn(`The keeper is not reachable${reason}: terminal ${id} runs in this core, and a restart ends it`, {
+        source: 'keeper', event: 'keeper.terminal-direct', ...(options.threadId === undefined ? {} : { threadId: options.threadId }),
+      });
+      if (error === null) void keeper.connect({ launch: true }).catch(() => undefined);
+    }
+    return this.open(id, options);
   }
 
   /** A kept shell's session: its output wired, then asked for, what the keeper kept first. */

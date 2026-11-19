@@ -651,7 +651,12 @@ test('search finds a contact by words of its chat, fields or both, and reading r
   const { h, a, b } = await setup();
   say(h, b, 'user', 'the login page shows a blank screen after the redirect', 1000);
   say(h, b, 'assistant', 'I changed the OAuth callback in auth.ts', 2000);
+  const workerRequests = spyOn(Worker.prototype, 'postMessage');
+  restores.push(() => workerRequests.mockRestore());
   const found = await h.core.coordination.search(a, 'blank deployment');
+  expect(workerRequests).toHaveBeenCalledWith(expect.objectContaining({
+    search: expect.objectContaining({ words: ['blank', 'deployment'] }),
+  }));
   expect(found.matches.map(m => m.threadId)).toEqual([b]);
   expect(found.matches[0]?.matched).toEqual(['title', 'chat']);
   expect(found.matches[0]?.excerpts[0]).toContain('blank screen');
@@ -748,6 +753,20 @@ test('two linked cores search and read each other\'s agents through signed reque
   expect(read.entries.map(e => e.text)).toEqual(['the nightly backup to the NAS failed again']);
   two.h.core.coordination.configure(two.b, { ...brief, remote: false });
   expect(await thrown(one.h.core.coordination.read(one.a, { coreId: cardB.coreId, threadId: two.b }))).toThrow('not a thread open to other machines');
+}, 25000);
+
+
+test('a search that starts local stays local when the machines open during its scan', async () => {
+  const one = await setup(); const two = await setup();
+  const cardA = one.h.core.coordination.identity(), cardB = two.h.core.coordination.identity();
+  one.h.core.coordination.trust(cardB); two.h.core.coordination.trust({ ...cardA, readThreads: true });
+  say(two.h, two.b, 'user', 'the nightly backup to the NAS failed again');
+  const mine = one.h.core.coordination.get(one.a).config;
+  one.h.core.coordination.configure(one.a, { ...mine, remote: false });
+  const pending = one.h.core.coordination.search(one.a, 'nas backup');
+  one.h.core.coordination.configure(one.a, { ...mine, remote: true });
+  expect((await pending).matches.filter(m => m.coreId === cardB.coreId)).toEqual([]);
+  expect((await one.h.core.coordination.search(one.a, 'nas backup')).matches.map(m => m.coreId)).toContain(cardB.coreId);
 }, 25000);
 
 
