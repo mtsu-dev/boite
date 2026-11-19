@@ -85,9 +85,18 @@ function connectable(core: Core, bot: Bot, target: unknown, field: string) {
   return thread;
 }
 
-/** The contact's asking thread and one thread here may now write to each other. */
+/**
+ * The contact's asking thread and one thread here may now write to each other.
+ * Its letters then steer that thread, so the mochi, alone, reaches only a
+ * thread of a project opened to the contact; the owner, who picks or accepts
+ * the thread named on their card, reaches any.
+ */
 function connectThreads(core: Core, bot: Bot, request: ContactRequest, name: string, target: unknown, by: Decider): ContactRequest {
   const thread = connectable(core, bot, target, 'contacts.bot.connect.target');
+  if (by === 'bot') {
+    const project = thread.projectId === null ? null : core.journal.getProject(thread.projectId);
+    openTo(core, request, name, project?.id ?? null, project?.name ?? `${thread.id}, in no project,`, 'contacts.bot.connect', 'target');
+  }
   const relation = core.contacts.relations.add({ coreId: request.coreId, contact: name, local: { threadId: thread.id, title: thread.title }, remote: request.from, requestId: request.id });
   const settled = core.contacts.requests.settle(request.id, true, undefined, undefined, by, relation);
   const address = `${dashed(name)}/${request.from.threadId}`;
@@ -104,12 +113,16 @@ function connectThreads(core: Core, bot: Bot, request: ContactRequest, name: str
  */
 function grantedProject(core: Core, bot: Bot, request: ContactRequest, name: string, project: unknown, method: string, field: string) {
   const found = core.projects.find(project, method, field, { threadId: bot.threadId });
-  const grants = core.contacts.find(request.coreId)?.grants.filter(grant => !grant.machine) ?? [];
-  if (!grants.some(grant => grant.projectId === found.id)) {
-    const open = grants.map(grant => core.journal.getProject(grant.projectId)?.name ?? grant.projectId);
-    throw refused(`${method}.${field}: ${found.name} is not open to ${name}; expected ${open.length ? `one of ${open.join(', ')}` : 'a project opened to it first with boite contacts share'}`, { field, expected: open });
-  }
+  openTo(core, request, name, found.id, found.name, method, field);
   return found;
+}
+
+/** Refuses a project of this core that the request's contact was not opened. */
+function openTo(core: Core, request: ContactRequest, name: string, projectId: string | null, label: string, method: string, field: string): void {
+  const grants = core.contacts.find(request.coreId)?.grants.filter(grant => !grant.machine) ?? [];
+  if (projectId !== null && grants.some(grant => grant.projectId === projectId)) return;
+  const open = grants.map(grant => core.journal.getProject(grant.projectId)?.name ?? grant.projectId);
+  throw refused(`${method}.${field}: ${label} is not open to ${name}; expected ${open.length ? `one of ${open.join(', ')}` : 'a project opened to it first with boite contacts share'}`, { field, expected: open });
 }
 
 /** A thread starts here for the contact's request, in relation with the thread that asked. */

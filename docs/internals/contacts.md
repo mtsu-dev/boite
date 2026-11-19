@@ -608,7 +608,11 @@ sequenceDiagram
    it in relation, `refuse` answers with a reason. `start`, and an `ask-owner`
    plan to start, take only a project opened to that contact
    (`grantedProject` in `bot.ts`); another is refused with the field and the
-   open list, whoever accepts. The owner's card for a plan shows the whole
+   open list, whoever accepts. The mochi's own `connect` likewise takes only a
+   thread of a project opened to that contact (`openTo`), trusted or approved
+   alike, since the contact's letters then steer that thread; the owner's
+   Accept of a `connect` plan, or the thread they pick themselves, reaches any
+   thread, as they read it on the card. The owner's card for a plan shows the whole
    request and the whole brief, and the Contacts page shows the brief in a
    scrolled box: their Accept never runs text they were not shown. Opening a project,
    `share`, is always a card for the owner, trusted or not; their Yes grants

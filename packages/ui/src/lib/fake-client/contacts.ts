@@ -420,14 +420,17 @@ export function contactMethods(ctx: FakeContext) {
     if (!found) throw invalid(`project: ${String(value)} is not an unarchived project of this core`, 'project');
     return found;
   };
+  /** As the core's `openTo`: refuses a project the request's contact was not opened. */
+  const openTo = (request: ContactRequest, projectId: string | null, label: string, field: string): void => {
+    const grants = contactState(ctx).contacts.find(entry => entry.coreId === request.coreId)?.grants.filter(grant => !grant.machine) ?? [];
+    if (projectId !== null && grants.some(grant => grant.projectId === projectId)) return;
+    const open = grants.map(grant => ctx.projects.find(entry => entry.id === grant.projectId)?.name ?? grant.projectId);
+    throw refuse(`${field}: ${label} is not open to ${request.contact}; expected ${open.length ? `one of ${open.join(', ')}` : 'a project opened to it first with boite contacts share'}`, field);
+  };
   /** As the core's `grantedProject`: a contact gets a new thread only in a project opened to it. */
   const grantedProject = (request: ContactRequest, value: unknown, field: string) => {
     const found = projectNamed(value);
-    const grants = contactState(ctx).contacts.find(entry => entry.coreId === request.coreId)?.grants.filter(grant => !grant.machine) ?? [];
-    if (!grants.some(grant => grant.projectId === found.id)) {
-      const open = grants.map(grant => ctx.projects.find(entry => entry.id === grant.projectId)?.name ?? grant.projectId);
-      throw refuse(`${field}: ${found.name} is not open to ${request.contact}; expected ${open.length ? `one of ${open.join(', ')}` : 'a project opened to it first with boite contacts share'}`, field);
-    }
+    openTo(request, found.id, found.name, field);
     return found;
   };
   /** A thread starts here for the contact's request, in relation with the thread that asked. */
@@ -783,7 +786,11 @@ export function contactMethods(ctx: FakeContext) {
       ctx.startGate('contacts');
       botCall(params?.threadId);
       const request = incoming(params.id, true);
-      relate(request, connectable(params.target));
+      // As the core: the mochi alone connects only to a thread of a project opened to the contact.
+      const target = connectable(params.target);
+      const project = target.projectId === null ? undefined : ctx.projects.find(entry => entry.id === target.projectId);
+      openTo(request, project?.id ?? null, project?.name ?? `${target.id}, in no project,`, 'target');
+      relate(request, target);
       changed();
       return structuredClone(request);
     },
