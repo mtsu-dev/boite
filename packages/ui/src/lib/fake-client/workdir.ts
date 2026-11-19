@@ -1,5 +1,6 @@
 /** A thread's working directory: files, git, the panel and published artifacts. */
-import { ARTIFACT_MAX_BYTES, ATTACHMENT_MAX_BYTES, PANEL_SURFACE_KINDS, RpcErrorCode, VIEW_BLOCK_MAX_BYTES, VIEW_DEFAULT_HEIGHT, VIEW_MAX_BYTES, VIEW_TITLE_MAX, viewDocument, viewTitleOf, type ArtifactContent, type FileContent, type FileEntry, type GitDiff, type GitStatus, type Message, type PanelSurface } from '@boite/contracts';
+import { ARTIFACT_MAX_BYTES, ATTACHMENT_MAX_BYTES, PANEL_SURFACE_KINDS, RpcErrorCode, VIEW_BLOCK_MAX_BYTES, VIEW_DEFAULT_HEIGHT, VIEW_MAX_BYTES, VIEW_TITLE_MAX, chatPreviewSizeProblem, viewDocument, viewTitleOf, type FileContent, type FileEntry, type GitDiff, type GitStatus, type Message, type PanelSurface } from '@boite/contracts';
+import { fakeImagePreview } from './image-preview';
 import { RpcFailure } from '../client';
 import { FAKE_CHANGES, FAKE_DIFFS, FAKE_MEDIA, FAKE_MEDIA_PATHS, fakeBytes, fakeLanguage } from './files';
 import { seededArtifact } from './agents-demo';
@@ -128,7 +129,7 @@ function checkSurface(ctx: FakeContext, cwd: string, surface: PanelSurface): Pan
 }
 
 export function workdirMethods(ctx: FakeContext, all: () => Pick<FakeMethods, 'browser.command'>) {
-  const snapshots = new Map<string, ArtifactContent>();
+  const snapshots = ctx.artifacts;
   /** Each block's page by its HTML, so a block drawn again keeps its address, as the core's ticket does. */
   const viewBlocks = new Map<string, string>();
   return {
@@ -146,11 +147,21 @@ export function workdirMethods(ctx: FakeContext, all: () => Pick<FakeMethods, 'b
       inside(ctx, thread.cwd, path, 'artifacts.previewClose path');
       return { ok: true as const };
     },
-    'artifacts.read': async ({ threadId, messageId, artifactId, view }) => {
+    'artifacts.read': async ({ threadId, messageId, artifactId, view, previewMax }) => {
+      const problem = chatPreviewSizeProblem(previewMax);
+      if (problem) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `artifacts.read.previewMax: expected one of ${problem.expected}`, data: problem });
       const message = ctx.thread(threadId).messages.find(m => m.id === messageId);
       const value = snapshots.get(artifactId) ?? seededArtifact(ctx, artifactId);
       const part = message?.parts.find(p => p.type === 'artifact' && p.id === artifactId);
       if (!value || part?.type !== 'artifact') throw refusal('artifacts.read needs an artifact from this message and thread');
+      if (previewMax !== undefined) {
+        const response = await fetch(value.url);
+        const copy = response.ok ? await fakeImagePreview(await response.blob(), previewMax) : null;
+        if (!copy) return { ...value, url: '', mimeType: 'image/webp' };
+        const url = URL.createObjectURL(copy);
+        ctx.artifactUrls.add(url);
+        return { ...value, url, mimeType: copy.type };
+      }
       if (view && !part.view) throw refusal('artifacts.read view needs an artifact published with boite view');
       return { ...value };
     },

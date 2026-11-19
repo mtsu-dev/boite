@@ -338,8 +338,8 @@ describe('deferred pictures on a real core', () => {
     await page.waitFor(`(${shown}).length > 0 && (${shown}).every((node) => node.querySelector('img:not(.blur)')?.complete && !node.querySelector('.blur'))`);
     await settled();
     expect(await page.evaluate<number>(top)).toBe(before);
-    // ChatFile draws the large copy, at the picture's own 960 px, from the file route too.
-    expect(await page.evaluate<{ src: string; width: number }>(`(() => { const img = (${shown})[0].querySelector('[data-testid=artifact-copy]'); return { src: img.src.slice(0, ${core.url.length + 6}), width: img.naturalWidth }; })()`)).toEqual({ src: `${core.url}/file/`, width: WIDTH });
+    // The file route serves a copy at the chat box's resolution.
+    expect(await page.evaluate<{ src: string; width: number }>(`(() => { const img = (${shown})[0].querySelector('[data-testid=artifact-copy]'); return { src: img.src.slice(0, ${core.url.length + 6}), width: img.naturalWidth }; })()`)).toEqual({ src: `${core.url}/file/`, width: 576 });
     await page.screenshot(join(artifacts, 'media-agent-loaded.png'));
 
     // What the timeline drew is the light WebP copy; the original is one click away.
@@ -352,7 +352,8 @@ describe('deferred pictures on a real core', () => {
     expect(copy.data.length * 5).toBeLessThan(original.data.length);
     await page.evaluate(`(${shown}).at(-1).click()`);
     await page.waitFor(`document.querySelector('[data-testid=image-viewer] img')?.complete && document.querySelector('[data-testid=image-viewer] img').naturalWidth === ${WIDTH}`);
-    expect(await page.evaluate<string>(`document.querySelector('[data-testid=image-viewer] img').getAttribute('src').slice(0, 5)`)).toBe('blob:');
+    expect(await page.evaluate<string>(`document.querySelector('[data-testid=image-viewer] img').src.slice(0, ${core.url.length + 6})`)).toBe(`${core.url}/file/`);
+    expect(await page.evaluate<number>(`(${shown}).at(-1).querySelector('[data-testid=artifact-copy]').naturalWidth`)).toBe(576);
     await settled();
     await page.screenshot(join(artifacts, 'media-agent-original.png'));
     await page.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);

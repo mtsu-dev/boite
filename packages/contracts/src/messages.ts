@@ -163,7 +163,7 @@ export type MessagePart =
    * end of its turn instead of a file card, and one that does not know the field still offers
    * the download.
    */
-  | { type: 'artifact'; id: string; mimeType: string; bytes: number; name: string; view?: InlineView }
+  | { type: 'artifact'; id: string; mimeType: string; bytes: number; name: string; view?: InlineView; windowCapture?: true }
   /** The model's reasoning as the provider streams it, folded in the UI. */
   | { type: 'thinking'; text: string; startedAt?: Timestamp; finishedAt?: Timestamp | null; omitted?: number }
   | {
@@ -269,7 +269,7 @@ export type MessagePart =
    * not be made; `path` is the file the agent asked for, `width` and `height`
    * that file's size (the window's for a stream).
    */
-  | { type: 'window_capture'; kind: WindowCaptureKind; windowId: string; process: string; width: number; height: number; at: Timestamp; thumbnail: { data: string; width: number; height: number } | null; path?: string; frames?: number }
+  | { type: 'window_capture'; kind: WindowCaptureKind; windowId: string; process: string; width: number; height: number; at: Timestamp; thumbnail: { data: string; width: number; height: number } | null; path?: string; frames?: number; artifactId?: string }
   /**
    * An agent asked to capture an app the project does not allow: the owner
    * answers Allow once, Always for this project or Refuse. `answer` is null
@@ -372,15 +372,30 @@ export const DISPLAY_IMAGE_MAX = 1280;
  */
 export const DISPLAY_THUMB_MAX = 320;
 
+/** Maximum long edges of chat previews, in device pixels. Quantized to bound cached copies. */
+export const CHAT_PREVIEW_SIZES = [192, 320, 384, 480, 576, 704, 832, 1024, 1280, 1536, 1792, 2048] as const;
+export type ChatPreviewSize = typeof CHAT_PREVIEW_SIZES[number];
+export const CHAT_PREVIEW_IMAGES = /^image\/(png|jpeg|gif|webp|avif|bmp)$/;
+
+export function chatPreviewSize(pixels: number): ChatPreviewSize {
+  return CHAT_PREVIEW_SIZES.find(size => size >= pixels) ?? CHAT_PREVIEW_SIZES.at(-1)!;
+}
+
+export function chatPreviewSizeProblem(value: unknown): { field: 'previewMax'; expected: string } | null {
+  return value === undefined || CHAT_PREVIEW_SIZES.some(size => size === value) ? null
+    : { field: 'previewMax', expected: CHAT_PREVIEW_SIZES.join(', ') };
+}
+
 export interface MessagesRpcMethods {
   /** Explicitly publish a bounded file snapshot from this thread's working directory. */
   'artifacts.publish': { params: { threadId: ThreadId; path: string }; result: Message };
   /**
    * `view: true` asks for the address a published view opens as a page at
    * (`VIEW_ROUTE`), which only an artifact carrying `view` has; without it the
-   * address downloads.
+   * address downloads. `previewMax` asks for the cached chat image at that
+   * maximum long edge. A source that cannot be rendered has no preview URL.
    */
-  'artifacts.read': { params: { threadId: ThreadId; messageId: MessageId; artifactId: string; renew?: string; view?: true }; result: ArtifactContent };
+  'artifacts.read': { params: { threadId: ThreadId; messageId: MessageId; artifactId: string; renew?: string; view?: true; previewMax?: ChatPreviewSize }; result: ArtifactContent };
   /**
    * Publish an HTML page of this thread's working directory as an inline view
    * (`boite view`). Local files it names are embedded, a remote resource or a
@@ -493,7 +508,8 @@ export interface MessagesRpcMethods {
    * the answers to decoded pictures in 93 ms and 12 ms.
    */
   'messages.attachment': {
-    params: { threadId: ThreadId; messageId: MessageId; partIndex: number; display?: boolean; thumb?: boolean; ticket?: boolean };
+    /** `previewMax` requests a chat-sized copy and never falls back to original bytes. */
+    params: { threadId: ThreadId; messageId: MessageId; partIndex: number; display?: boolean; thumb?: boolean; ticket?: boolean; previewMax?: ChatPreviewSize };
     result: { data: string; mimeType?: string; url?: string; bytes?: number };
   };
 }

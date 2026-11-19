@@ -7,7 +7,7 @@
  * reaches only an app its project allows, and an app the project does not
  * allow waits for the owner's answer on a consent card. Pictures go only to
  * the file asked for, in the conversation's folder, its project or its
- * temporary folder, and to the card's thumbnail; never to a log. See
+ * temporary folder, and to the card's capture and thumbnail; never to a log. See
  * docs/internals/windows.md.
  */
 import {
@@ -41,6 +41,7 @@ import { lstatSync, mkdirSync, realpathSync, type Stats, writeFileSync } from 'n
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import type { Core } from '../core.ts';
+import { snapshotWindowCapture } from '../artifacts.ts';
 import { invalidParams, messageOf, refused } from '../errors.ts';
 import { newId } from '../ids.ts';
 import { processPlatform } from '../platform/index.ts';
@@ -147,7 +148,7 @@ export class DesktopWindows {
     this.#write(output, png.bytes);
     const shot = { windowId: window.id, process: window.process, path: output, width: png.width, height: png.height, source };
     this.#core.logs.info(`Captured window ${window.id} of ${window.process} to a ${png.width}x${png.height} PNG`, { source: 'windows', event: 'window.screenshot', threadId: thread.id, data: { windowId: window.id, process: window.process, width: png.width, height: png.height, via: pixels.via } });
-    await this.#card(thread, 'screenshot', window, pixels, png, { path: output });
+    await this.#card(thread, 'screenshot', window, pixels, png, { path: output }, png.bytes);
     return shot;
   }
 
@@ -188,7 +189,7 @@ export class DesktopWindows {
     const png = await encode(sheet, 'png', 0);
     this.#write(output, png.bytes);
     this.#core.logs.info(`Captured ${count} frames of window ${window.id} of ${window.process} to a ${png.width}x${png.height} contact sheet`, { source: 'windows', event: 'window.clip', threadId: thread.id, data: { windowId: window.id, process: window.process, frames: count, fps, width: png.width, height: png.height } });
-    await this.#card(thread, 'clip', window, first!, png, { path: output, frames: count });
+    await this.#card(thread, 'clip', window, first!, png, { path: output, frames: count }, png.bytes);
     return { windowId: window.id, process: window.process, path: output, width: png.width, height: png.height, source: source!, frames: count, seconds, fps };
   }
 
@@ -498,17 +499,29 @@ export class DesktopWindows {
   }
 
   /** The capture's card in the conversation, with a small JPEG of what was taken; size is the file's, or the window's for a stream. */
-  async #card(thread: ThreadSummary, kind: WindowCaptureKind, window: { id: string; process: string }, pixels: WindowPixels, size: { width: number; height: number }, extra: { path?: string; frames?: number }): Promise<void> {
+  async #card(thread: ThreadSummary, kind: WindowCaptureKind, window: { id: string; process: string }, pixels: WindowPixels, size: { width: number; height: number }, extra: { path?: string; frames?: number }, original?: Uint8Array): Promise<void> {
     const turn = this.#core.journal.runningTurn(thread.id) ?? this.#core.journal.lastTurn(thread.id);
     if (turn === null || this.#core.journal.isClosed()) return;
     const thumb = await encode(pixels, 'jpeg', WINDOW_THUMBNAIL_MAX, 60);
+    const parent = thread.parentThreadId ? this.#core.journal.getThread(thread.parentThreadId) : null;
+    const snapshot = original && extra.path && !thread.incognito && !parent?.incognito && !this.#core.sharedAccess.bound(thread.id)
+      ? await snapshotWindowCapture(this.#core, basename(extra.path), original).catch(error => {
+        this.#core.log('warn', `window capture snapshot: ${messageOf(error)}`);
+        return null;
+      }) : null;
     const part: MessagePart = {
       type: 'window_capture', kind, windowId: window.id, process: window.process, width: size.width, height: size.height, at: Date.now(),
       thumbnail: { data: Buffer.from(thumb.bytes).toString('base64'), width: thumb.width, height: thumb.height },
+      ...(snapshot ? { artifactId: snapshot.part.id } : {}),
       ...extra,
     };
-    const message: Message = { id: newId('msg_'), threadId: thread.id, turnId: turn.id, role: 'assistant', parts: [part], state: 'complete', createdAt: Date.now() };
-    this.#core.journal.append({ type: 'message.started', threadId: thread.id, version: 1, payload: message }, () => this.#core.journal.putMessage(message));
+    const message: Message = { id: newId('msg_'), threadId: thread.id, turnId: turn.id, role: 'assistant', parts: snapshot ? [part, snapshot.part] : [part], state: 'complete', createdAt: Date.now() };
+    try {
+      this.#core.journal.append({ type: 'message.started', threadId: thread.id, version: 1, payload: message }, () => this.#core.journal.putMessage(message));
+    } catch (error) {
+      await snapshot?.discard();
+      throw error;
+    }
     this.#core.bus.emit('message.started', message);
     this.#core.bus.emit('message.completed', { threadId: thread.id, messageId: message.id, state: 'complete' });
   }

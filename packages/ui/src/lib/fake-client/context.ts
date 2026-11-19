@@ -23,6 +23,7 @@ import {
   processAgentCommand,
   type Attachment,
   type Account,
+  type ArtifactContent,
   type BackgroundTask,
   type AgentLetter,
   type BrainStatus,
@@ -331,6 +332,7 @@ export class FakeContext {
   queuedExperiments: readonly string[] | null = null;
   /** The working tree `files.list`, `files.read` and `files.write` share. */
   readonly files = new Map<string, string>(Object.entries(FAKE_TREE));
+  readonly artifacts = new Map<string, ArtifactContent>();
   readonly artifactUrls = new Set<string>();
   private storedSettings!: Settings;
 

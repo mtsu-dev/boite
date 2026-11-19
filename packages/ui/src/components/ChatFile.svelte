@@ -1,9 +1,9 @@
 <script lang="ts">
   import { desktopShell } from '../lib/shell-platform';
   import { errorText } from '../lib/errors';
-  import { onMount, tick } from 'svelte';
+  import { onMount } from 'svelte';
   import { Check, Download, FileText, Image, Film, Music2, Maximize2, RefreshCw, X } from '@lucide/svelte';
-  import { ATTACHMENT_MAX_BYTES, FILE_TICKET_TTL_MS, imageSize, type MessagePart } from '@boite/contracts';
+  import { ATTACHMENT_MAX_BYTES, CHAT_PREVIEW_IMAGES, FILE_TICKET_TTL_MS, chatPreviewSize, decodedBytes, imageSize, type ChatPreviewSize, type MessagePart } from '@boite/contracts';
   import { onView } from '../lib/on-view';
   import type { Store } from '../lib/store.svelte';
   import { featureOn } from '../lib/features.svelte';
@@ -48,6 +48,8 @@
   let body: Uint8Array<ArrayBuffer> | null = null;
   const directory = $derived(!file && path ? localFileDirectory(store, threadId) : null);
   const name = $derived(file?.name ?? path?.split('/').at(-1) ?? strings.composer.attachAlt);
+  const timelineImage = $derived(!!file && (file.type === 'artifact' || file.dataDeferred || file.bytes !== undefined)
+    && CHAT_PREVIEW_IMAGES.test(file.mimeType) && !!store && !!threadId && !!messageId && partIndex !== undefined);
   const rich = $derived(featureOn('chat-artifacts'));
   const image = $derived(/^image\/(png|jpeg|gif|webp|avif|bmp)$/.test(mime));
   const pdf = $derived(mime === 'application/pdf');
@@ -67,8 +69,6 @@
     if (file.width && file.height) return { width: file.width, height: file.height };
     return file.data ? imageSize(file.data) : null;
   });
-  /** A deferred picture not fetched yet: its box and blur wait for it to near the screen. */
-  const waiting = $derived(file?.type === 'file' && !!file.dataDeferred && box !== null && !url && !error);
   /** The size this attachment loaded at, here or in an earlier mount of its row (lib/media-size.ts). */
   const sizeKey = $derived(mediaKey({ threadId, messageId, partIndex, artifactId: file?.type === 'artifact' ? file.id : undefined, path }));
   let learned = $state<MediaSize | null>(null);
@@ -83,20 +83,32 @@
    * known yet, so it is laid out as the inline media it will be: in a full-width card the box stood
    * up to 480 px tall, then dropped to the 560 px-wide player, and the timeline jumped on every mount.
    */
-  const reserved = $derived(!!file && !waiting && frame !== null && !url && loading);
-  const inlineMedia = $derived(!!file && ((image && !deferredImage) || video || audio || reserved));
+  const reserved = $derived(!!file && frame !== null && !url && loading);
+  const inlineMedia = $derived(!!file && (timelineImage || (image && !deferredImage) || video || audio || reserved));
   const showPreview = $derived(inlineMedia || (expanded && rich));
-  /** The light copy the core made for the timeline (`loadDisplayImage`), drawn until the original is asked for. */
+  /** The original keeps its own URL in the viewer. */
   let copy = $state('');
   let copyShown = $state(false);
   let copyAsked = false;
   let copyRetried = false;
-  /** Near the screen, a deferred picture fetches its light copy; the original waits for a click. */
+  let requested: ChatPreviewSize = 576;
+
+  async function artifactUrl(previewMax?: ChatPreviewSize): Promise<string> {
+    if (file?.type !== 'artifact' || !store || !threadId || !messageId) throw new Error(strings.artifacts.failed);
+    const result = await store.readArtifact(threadId, messageId, file.id, undefined, false, previewMax);
+    if (!result.ok) throw new Error(result.error);
+    if (!result.value.url) throw new Error(strings.chat.imageUnavailable);
+    return result.value.url;
+  }
+
+  /** Near the screen, request the physical pixel size of the box. */
   function near(): void {
-    if (!waiting || copy || copyAsked) return;
-    if (!store || !threadId || !messageId || partIndex === undefined || file?.type !== 'file') { if (!loading && !deferredImage) void load(); return; }
+    if (!timelineImage || !file || !shot || copy || copyAsked) return;
     copyAsked = true;
-    store.loadDisplayImage(threadId, messageId, partIndex, file.mimeType).then((value) => { if (!disposed) copy = value; }, (reason: unknown) => {
+    error = '';
+    requested = chatPreviewSize(Math.max(shot.clientWidth, shot.clientHeight) * (window.devicePixelRatio || 1));
+    const pending = file.type === 'artifact' ? artifactUrl(requested) : store!.loadDisplayImage(threadId!, messageId!, partIndex!, file.mimeType, requested);
+    pending.then((value) => { if (!disposed) copy = value; }, (reason: unknown) => {
       copyAsked = false;
       if (!disposed) error = reason instanceof Error ? reason.message : strings.artifacts.failed;
     });
@@ -109,20 +121,45 @@
 
   /** A copy's address that stopped loading (a ticket the core forgot) is asked for again, once. */
   function copyFailed(): void {
-    if (copyRetried || copy.startsWith('data:') || !store || !threadId || !messageId || partIndex === undefined) return;
-    copyRetried = true;
-    store.forgetDisplayImage(threadId, messageId, partIndex);
     copy = '';
+    copyShown = false;
     copyAsked = false;
+    if (store && threadId && messageId && partIndex !== undefined) {
+      store.forgetDisplayImage(threadId, messageId, partIndex, requested);
+    }
+    if (copyRetried) { error = strings.artifacts.mediaFailed; return; }
+    copyRetried = true;
     near();
   }
 
-  /** The viewer shows the original: a picture drawn from its copy fetches it first, then opens in the same box. */
-  async function openOriginal(): Promise<void> {
-    if (!url) await load();
-    if (!url || disposed) return;
-    await tick();
-    view(shot);
+  function previewItem(): MediaItem | null {
+    const attachment = file, owner = store, thread = threadId, message = messageId, index = partIndex, filename = name;
+    if (!timelineImage || !attachment || !owner || !thread || !message || index === undefined) return null;
+    const load = async (): Promise<string> => {
+      if (attachment.type === 'artifact') {
+        const result = await owner.readArtifact(thread, message, attachment.id);
+        if (!result.ok) throw new Error(result.error);
+        return result.value.url;
+      }
+      return await owner.loadMediaAttachment(thread, message, index, attachment.mimeType);
+    };
+    return { src: '', name: filename, mimeType: attachment.mimeType, kind: 'image', load, save: src => { void savePicture(src, filename); } };
+  }
+
+  function openOriginal(): void {
+    const item = previewItem();
+    if (!item) return;
+    const gallery = galleryFrom(shot, item);
+    if (host) host.open(gallery); else viewing = gallery;
+  }
+
+  async function savePicture(original: string, filename: string): Promise<void> {
+    if (!desktopShell()) { browserDownload(original, filename); return; }
+    try {
+      const result = original.startsWith('data:') ? await saveAttachment(filename, decodeBase64(original.slice(original.indexOf(',') + 1)), false)
+        : await saveAttachmentUrl(filename, original, false);
+      if (!disposed) saved = result?.path ?? '';
+    } catch (reason) { if (!disposed) error = errorText(reason); }
   }
 
   async function open(): Promise<void> {
@@ -155,6 +192,7 @@
 
   /** The name or the icon: take the file out and open it. */
   async function launch(): Promise<void> {
+    if (timelineImage) { openOriginal(); return; }
     if (directory && !image) return open();
     if (file?.type === 'file' && file.dataDeferred) await load();
     if (!url) return;
@@ -169,6 +207,16 @@
 
   function download(event: MouseEvent): void {
     if (loading || saving) { event.preventDefault(); return; }
+    if (timelineImage) {
+      event.preventDefault();
+      const item = previewItem();
+      if (!item?.load) return;
+      saving = true;
+      void item.load().then(url => savePicture(url, item.name), reason => {
+        if (!disposed) error = errorText(reason);
+      }).finally(() => { saving = false; });
+      return;
+    }
     if (file?.type === 'file' && file.dataDeferred) {
       event.preventDefault();
       void load().then(async () => { if (!disposed && url && !(await save(false))) browserDownload(url, name); });
@@ -267,6 +315,13 @@
     learned = rememberSize(sizeKey, element.naturalWidth, element.naturalHeight);
   }
 
+  function previewLoaded(event: Event): void {
+    copyShown = true;
+    if (box !== null) return;
+    const element = event.currentTarget as HTMLImageElement;
+    learned = rememberSize(sizeKey, element.naturalWidth, element.naturalHeight);
+  }
+
   function mediaLoaded(event: Event) {
     const element = event.currentTarget as HTMLMediaElement;
     duration = Number.isFinite(element.duration) ? element.duration : 0;
@@ -277,24 +332,26 @@
   }
 
   onMount(() => {
-    if (file?.type === 'file' && file.dataDeferred) { mime = file.mimeType; size = file.bytes ?? 0; }
+    if (file && (timelineImage || (file.type === 'file' && file.dataDeferred))) {
+      mime = file.mimeType; size = file.bytes ?? (file.type === 'file' ? decodedBytes(file.data) : 0);
+    }
     else void load();
-    const renewal = file?.type === 'artifact' ? setInterval(() => {
+    const renewal = file?.type === 'artifact' && !timelineImage ? setInterval(() => {
       void loadArtifact().catch(() => {}); // A transient disconnect can retry on the next interval.
     }, FILE_TICKET_TTL_MS / 2) : null;
-    const resume = () => { if (file?.type === 'artifact' && !document.hidden) void loadArtifact().catch(() => {}); };
+    const resume = () => { if (file?.type === 'artifact' && !timelineImage && !document.hidden) void loadArtifact().catch(() => {}); };
     document.addEventListener('visibilitychange', resume);
     return () => { disposed = true; document.removeEventListener('visibilitychange', resume); if (renewal) clearInterval(renewal); if (objectUrl) { if (host) host.release(objectUrl); else URL.revokeObjectURL(objectUrl); } };
   });
 </script>
 
 <section class="chat-file" class:inline-media={inlineMedia} class:sound={inlineMedia && audio} data-testid="chat-file" aria-busy={loading || saving} use:onView={nearMedia}>
-  {#if waiting}
-    <div class="preview" data-testid="artifact-waiting">
-      <button type="button" class="shot boxed" style:width={boxWidth} style:aspect-ratio={boxRatio} use:onView={near} onclick={() => void openOriginal()} disabled={loading}
-        title={strings.artifacts.enlarge} aria-label={strings.artifacts.enlarge} aria-busy={loading} data-testid="artifact-open-original">
+  {#if timelineImage}
+    <div class="preview" data-testid="artifact-content">
+      <button type="button" class="shot boxed" style:width={boxWidth ?? '560px'} style:aspect-ratio={boxRatio ?? '16 / 9'} bind:this={shot} use:onView={near}
+        use:media={previewItem} onclick={openOriginal} title={strings.artifacts.enlarge} aria-label={strings.artifacts.enlarge} data-testid="artifact-open-original">
         {#if file?.type === 'file' && file.preview && !copyShown}<img class="blur" src={file.preview} alt="" aria-hidden="true" data-testid="artifact-blur" />{/if}
-        {#if copy}<img src={copy} alt={name} decoding="async" onload={() => copyShown = true} onerror={copyFailed} data-testid="artifact-copy" />{/if}
+        {#if copy}<img src={copy} alt={name} decoding="async" onload={previewLoaded} onerror={copyFailed} data-testid="artifact-copy" />{/if}
         <span class="enlarge"><Maximize2 size={16} /></span>
       </button>
     </div>
@@ -325,20 +382,20 @@
     </div>
   {/if}
   <div class="file-row">
-    <button type="button" class="identity" onclick={launch} disabled={opening || saving || loading || (!url && !directory && !(file?.type === 'file' && file.dataDeferred))} title={saved || name}
+    <button type="button" class="identity" onclick={launch} disabled={opening || saving || loading || (!timelineImage && !url && !directory && !(file?.type === 'file' && file.dataDeferred))} title={saved || name}
       aria-label={fill(strings.chat.openFile, { name })} data-testid="artifact-launch">
       {#if image}<Image size={18} />{:else if video}<Film size={18} />{:else if audio}<Music2 size={18} />{:else}<FileText size={20} />{/if}
       <span class="label"><span class="filename">{name}</span><small>{loading ? strings.artifacts.loading : saving ? strings.artifacts.saving : saved ? strings.artifacts.saved : [bytes(size), dimensions || (box ? `${box.width} × ${box.height}` : ''), duration ? millis(duration * 1000) : ''].filter(Boolean).join(' · ')}</small></span>
     </button>
     {#if directory}<button class="ghost small" type="button" onclick={open} disabled={opening} data-testid="artifact-open"><span class="ui-label">{strings.common.open}</span></button>{/if}
-    {#if url || (file?.type === 'file' && file.dataDeferred)}
-      {#if deferredImage}<button class="ghost small" type="button" onclick={() => { imageRequested = true; if (waiting) void load(); }} data-testid="artifact-load-image"><span class="ui-label">{strings.artifacts.loadImage}</span></button>
+    {#if url || timelineImage || (file?.type === 'file' && file.dataDeferred)}
+      {#if deferredImage && !timelineImage}<button class="ghost small" type="button" onclick={() => imageRequested = true} data-testid="artifact-load-image"><span class="ui-label">{strings.artifacts.loadImage}</span></button>
       {:else if rich && previewable && !inlineMedia}<button class="ghost small" type="button" onclick={() => expanded = !expanded} aria-expanded={expanded} data-testid="artifact-preview"><span class="ui-label">{strings.artifacts.preview}</span></button>{/if}
       <a class="ghost small download" href={url || '#'} download={name} onclick={download} data-testid="artifact-download" aria-label={strings.artifacts.download} aria-disabled={saving || loading} title={strings.artifacts.download}>{#if saved}<Check size={16} />{:else}<Download size={16} />{/if}</a>
     {/if}
     {#if onclose}<button class="ghost small icon" type="button" onclick={onclose} aria-label={strings.artifacts.close}><X size={16} /></button>{/if}
   </div>
-  {#if error}<div class="error" role="alert"><p>{error}</p><button type="button" class="ghost small" onclick={load} disabled={loading}><span class="ui-label">{strings.common.retry}</span></button></div>{/if}
+  {#if error}<div class="error" role="alert"><p>{error}</p><button type="button" class="ghost small" onclick={timelineImage ? near : load} disabled={loading}><span class="ui-label">{strings.common.retry}</span></button></div>{/if}
 </section>
 {#if viewing}{@const view = viewing}<Deferred part={parts.ImageViewer} floating>{#snippet children(ImageViewer)}<ImageViewer items={view.items} index={view.index} onclose={() => viewing = null} />{/snippet}</Deferred>{/if}
 

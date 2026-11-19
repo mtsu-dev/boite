@@ -16,7 +16,7 @@ afterEach(async () => {
 });
 
 /** A real PNG with noise in it, base64: past the inline limit, and Bun can decode and blur it. */
-function png(width: number, height: number): string {
+function png(width: number, height: number, flat = false): string {
   const chunk = (type: string, data: Buffer) => {
     const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
     const length = Buffer.alloc(4);
@@ -34,7 +34,7 @@ function png(width: number, height: number): string {
   let seed = width * 31 + height;
   for (let at = 0; at < rows.length; at += 1) {
     seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-    rows[at] = at % (width * 3 + 1) === 0 ? 0 : seed >> 23;
+    rows[at] = flat || at % (width * 3 + 1) === 0 ? 0 : seed >> 23;
   }
   return Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
@@ -96,6 +96,30 @@ const previews = (threadId: string) =>
   (harness.core.journal.db.query('SELECT COUNT(*) AS n FROM media_previews WHERE thread_id = ?').get(threadId) as { n: number }).n;
 
 describe('deferred pictures', () => {
+  test('a large compressed picture stays on the core and only its requested preview is sent', async () => {
+    const client = await harness.connect();
+    const { threadId } = await echoThread(harness, client);
+    // A flat screenshot can be under the wire threshold despite a large decoded surface.
+    const flat = Buffer.from(await new Bun.Image(Buffer.from(png(2000, 1125, true), 'base64')).webp().bytes()).toString('base64');
+    expect(flat.length).toBeLessThan(8192);
+    const messageId = 'msg_large_compact';
+    harness.core.journal.putMessage({
+      id: messageId, threadId, turnId: 'trn_seed', role: 'user', state: 'complete', createdAt: 1000,
+      parts: [{ type: 'image', data: flat, mimeType: 'image/webp', alt: 'flat.webp' }],
+    });
+    const { messages } = await client.call('threads.get', { threadId, compactImages: true });
+    expect(messages[0]?.parts[0]).toMatchObject({ data: '', dataDeferred: true, width: 2000, height: 1125 });
+    const asked = { threadId, messageId, partIndex: 0 };
+    const copy = await client.call('messages.attachment', { ...asked, previewMax: 576, ticket: true });
+    expect(copy.url).toMatch(/^\/file\//);
+    const served = await fetch(`${harness.url}${copy.url}`);
+    expect(served.status).toBe(200);
+    const bytes = new Uint8Array(await served.arrayBuffer());
+    expect(await new Bun.Image(bytes).metadata()).toMatchObject({ width: 576, height: 324 });
+    expect(await client.call('messages.attachment', { ...asked, previewMax: 576, ticket: true })).toEqual(copy);
+    expect(await client.call('messages.attachment', asked)).toEqual({ data: flat });
+  });
+
   for (const method of ['threads.get', 'messages.list'] as const) {
     test(`${method} answers while image previews are still being prepared`, async () => {
       const client = await harness.connect();

@@ -38,6 +38,20 @@
   let natural = $state({ width: 0, height: 0 });
   let viewport = $state({ width: 0, height: 0 });
   let notice = $state('');
+  let loadedOriginal = $state.raw<{ item: MediaItem; src: string } | null>(null);
+  const source = $derived(item.load ? loadedOriginal?.item === item ? loadedOriginal.src : '' : item.src);
+  const ready = $derived(source ? { ...item, src: source } : null);
+  $effect(() => {
+    const current = item;
+    if (!current.load) return;
+    let active = true;
+    void current.load().then(src => {
+      if (active) loadedOriginal = { item: current, src };
+    }, () => {
+      if (active) notice = strings.artifacts.mediaFailed;
+    });
+    return () => { active = false; loadedOriginal = null; };
+  });
   const shareable = canShareFiles() && !desktopShell();
   /** Files fetched for the share sheet, by URL: iOS opens the sheet only when it is asked straight from the tap. */
   const files = new Map<string, File>();
@@ -225,7 +239,8 @@
    * tap. Without a share sheet, or for a file it refuses, the file downloads.
    */
   async function share(): Promise<void> {
-    const current = item;
+    const current = ready;
+    if (!current) return;
     notice = '';
     if (!shareable) { saveMedia(current); return; }
     let file = files.get(current.src);
@@ -248,8 +263,8 @@
   // A file already in memory (an attachment, a pasted picture) is read ahead,
   // so Share can open the sheet from the tap itself.
   $effect(() => {
-    const current = item;
-    if (!shareable || files.has(current.src) || !/^(blob|data):/.test(current.src)) return;
+    const current = ready;
+    if (!current || !shareable || files.has(current.src) || !/^(blob|data):/.test(current.src)) return;
     void mediaFile(current).then((file) => files.set(current.src, file), () => {});
   });
 
@@ -310,21 +325,21 @@
       <button type="button" class="ghost small fit zoom" onclick={() => zoomTo(1)} aria-label={strings.artifacts.fitImage} title={strings.artifacts.fitImage}><Maximize2 size={16} /><span class="ui-label">{Math.round(view.scale * 100)}%</span></button>
       <button type="button" class="ghost icon zoom" onclick={() => zoomTo(view.scale + 0.5)} disabled={view.scale >= MAX_SCALE} aria-label={strings.artifacts.zoomIn} title={strings.artifacts.zoomIn}><Plus size={17} /></button>
     {/if}
-    {#if shareable}<button type="button" class="ghost icon" onclick={share} aria-label={strings.media.share} title={strings.media.share} data-testid="image-viewer-share"><Share size={17} /></button>{/if}
-    <button type="button" class="ghost icon download" onclick={() => saveMedia(item)} aria-label={strings.artifacts.download} title={strings.artifacts.download} data-testid="image-viewer-download"><Download size={17} /></button>
+    {#if shareable}<button type="button" class="ghost icon" disabled={!ready} onclick={share} aria-label={strings.media.share} title={strings.media.share} data-testid="image-viewer-share"><Share size={17} /></button>{/if}
+    <button type="button" class="ghost icon download" disabled={!ready} onclick={() => ready && saveMedia(ready)} aria-label={strings.artifacts.download} title={strings.artifacts.download} data-testid="image-viewer-download"><Download size={17} /></button>
     <button type="button" class="ghost icon" bind:this={close} aria-label={strings.artifacts.closeImage} title={strings.artifacts.closeImage} onclick={onclose} data-testid="image-viewer-close"><X size={18} /></button>
   </div>
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="stage" class:video={!isImage} bind:this={stage} onpointerdown={pointerdown} data-testid="image-viewer-stage">
     <button type="button" class="backdrop" tabindex="-1" aria-label={strings.artifacts.closeImage} onclick={backdrop}></button>
     {#key index}
-      {#if isImage}
-        <img src={item.src} alt={item.name} draggable="false" onload={loaded} class:settling class:sized={fitted.width > 0} class:zoomed={view.scale > 1}
+      {#if isImage && source}
+        <img src={source} alt={item.name} draggable="false" onload={loaded} onerror={() => notice = strings.artifacts.mediaFailed} class:settling class:sized={fitted.width > 0} class:zoomed={view.scale > 1}
           style:width={fitted.width ? `${fitted.width}px` : undefined} style:height={fitted.height ? `${fitted.height}px` : undefined}
           style:transform ontransitionend={() => settling = false} />
-      {:else}
+      {:else if !isImage && source}
         <!-- svelte-ignore a11y_media_has_caption -->
-        <video src={item.src} aria-label={item.name} controls playsinline preload="metadata" class:settling style:transform ontransitionend={() => settling = false}></video>
+        <video src={source} aria-label={item.name} controls playsinline preload="metadata" class:settling style:transform ontransitionend={() => settling = false}></video>
       {/if}
     {/key}
     {#if items.length > 1}

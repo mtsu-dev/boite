@@ -114,6 +114,10 @@ describe('window capture', () => {
     const [card] = parts('window_capture');
     expect(card).toMatchObject({ kind: 'screenshot', windowId: '101', process: 'Unity.exe', width: 64, height: 40, path: shot.path });
     expect(card!.thumbnail!.data.length).toBeGreaterThan(100);
+    const message = harness.core.journal.listMessages(threadId).find(message => message.parts.some(part => part.type === 'window_capture'));
+    expect(card?.artifactId).toBeDefined();
+    const original = await owner.call('artifacts.read', { threadId, messageId: message!.id, artifactId: card!.artifactId! });
+    expect(Buffer.from(await (await fetch(new URL(original.url, harness.url))).arrayBuffer())).toEqual(readFileSync(shot.path));
 
     const again = answer('refuse');
     expect(await thrown(agent.call('windows.screenshot', { threadId, target: { id: '101' } }))).toThrow('the owner refused the capture of Unity.exe');

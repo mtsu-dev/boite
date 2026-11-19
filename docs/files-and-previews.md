@@ -21,9 +21,10 @@ appears in its answer with a download button.
 
 - Images, videos and sounds show in the conversation. A video never plays on
   its own and has seek and full screen controls.
-- An image opens in a viewer with zoom, fit and download.
-- An image over 5 MB shows its name and size first. Press Load image to see
-  it.
+- Images, including those over 5 MB, load a small preview as you scroll.
+  Click the preview to load the original in a viewer with zoom, fit and
+  download. Animated images play in the viewer. If a preview is unavailable,
+  open the image from its card.
 - A PDF has an inline preview while Chat files and previews is on (below).
   Other files are a download.
 - The file is a copy taken when the agent sent it. It stays downloadable after

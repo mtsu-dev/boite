@@ -230,16 +230,18 @@ test('a deferred picture drawn from its light copy opens its original in the vie
     parts: [{ type: 'image', mimeType: 'image/png', data: '', alt: 'screen.png', dataDeferred: true, bytes: 2_400_000, width: 1920, height: 1080 }]
   } as unknown as Message);
   const part = message.parts[0] as Extract<Message['parts'][number], { type: 'image' }>;
-  // As the store does: the original goes into the part it holds.
-  const loadMessageAttachment = vi.fn(async () => { part.data = btoa('original'); delete part.dataDeferred; return part.data; });
+  const original = `data:image/png;base64,${btoa('original')}`;
+  const loadMediaAttachment = vi.fn(async () => original);
   const loadDisplayImage = vi.fn(async () => 'data:image/webp;base64,COPY');
-  const store = { providerOf: () => undefined, openThread: null, loadMessageAttachment, loadDisplayImage, reportError: vi.fn() } as unknown as Store;
+  const store = { providerOf: () => undefined, openThread: null, loadMediaAttachment, loadDisplayImage, reportError: vi.fn() } as unknown as Store;
   mounted.push(mount(UserMessage, { target: thread, props: { store, message, turn: undefined, accepted: false, responded: false } }));
   flushSync();
 
+  expect(loadMediaAttachment).not.toHaveBeenCalled();
   query<HTMLButtonElement>('[data-testid=image-open]').click();
-  await vi.waitFor(() => expect(document.querySelector('[data-testid=image-viewer] img')?.getAttribute('src')).toBe(`data:image/png;base64,${btoa('original')}`));
-  expect(loadMessageAttachment).toHaveBeenCalledWith('t1', 'm2', 0);
+  await vi.waitFor(() => expect(document.querySelector('[data-testid=image-viewer] img')?.getAttribute('src')).toBe(original));
+  expect(loadMediaAttachment).toHaveBeenCalledWith('t1', 'm2', 0, 'image/png');
+  expect(part).toMatchObject({ dataDeferred: true, data: '' });
   expect(query<HTMLImageElement>('[data-testid=image-viewer] img').alt).toBe('screen.png');
 });
 
