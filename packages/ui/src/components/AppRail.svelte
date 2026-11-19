@@ -9,8 +9,10 @@
   import { machineName, workspace, type Machine } from '../lib/workspace.svelte';
   import { experimentOn } from '../lib/experiments.svelte';
   import { agentDirectory, followAgentDirectories } from '../lib/agent-directory.svelte';
-  import { AgentsView, agentRows, waitingOn, type AgentRowData } from '../lib/agents.svelte';
+  import { AgentsView, agentRows, resetBuiltin, waitingOn, type AgentRowData } from '../lib/agents.svelte';
   import { agentMenuItems, pickAgentAction } from '../lib/agent-menu';
+  import { moveBot, moveItems } from '../lib/agent-move-flow';
+  import type { AgentProfile } from '@boite/contracts';
   import type { AgentPane } from '../lib/store/layout.svelte';
   import { watchTeams, type TeamRow } from '../lib/teams.svelte';
   import { contactsShown } from '../lib/contacts-rail.svelte';
@@ -194,18 +196,38 @@
   function botMenu(event: MouseEvent, { machine, row }: Bot) {
     const agent = row.profile;
     const items = agentMenuItems(machine.store, agent, { open: machine.store === store && openBot === agent.id, leaving: !!row.status?.leaving });
-    contextMenu.open(event, items, action => void pickBot(machine, agent.id, action));
+    contextMenu.open(event, items, action => void pickBot(machine, agent, action));
   }
-  async function pickBot(machine: Machine, id: string, action: string) {
-    const show = (pane?: AgentPane) => workspace.showAgents(machine.store, id, pane);
+  /**
+   * `agent` is the profile the menu was drawn from: Pin and Pause do what their label said, and each save reads the
+   * revision of a snapshot fetched after the pick, since the Bots page's view may never have loaded or kept its last
+   * visit's.
+   */
+  async function pickBot(machine: Machine, agent: AgentProfile, action: string) {
+    const show = (pane?: AgentPane) => workspace.showAgents(machine.store, agent.id, pane);
     if (action === 'open') return show();
     if (action === 'edit' || action === 'rename') return show('settings');
-    // The Bots page's view may never have loaded, or kept the snapshot of its last visit: a save sends the current revision.
     const owner = AgentsView.of(machine.store);
-    await owner.refresh();
-    const agent = owner.snapshot?.profiles.find(profile => profile.id === id);
-    if (!agent) { store.reportError(new Error(owner.loadError || strings.connection.unavailable), 'minor'); return; }
+    // The machines' picker opens where the menu stood at once; the snapshot is read once a destination is picked.
+    if (action === 'move') {
+      contextMenu.follow(moveItems(machine.store, agent.id), target => void current(owner, agent.id).then(found => found && moveBot(owner, agent, target, store)));
+      return;
+    }
+    if (!await current(owner, agent.id)) return;
+    if (action === 'reset') {
+      // A refusal lands in the Bots view's banner, which may not be on screen: the window's toast says it.
+      owner.error = '';
+      if (!await resetBuiltin(owner, agent) && owner.error) store.reportError(new Error(owner.error), 'minor');
+      return;
+    }
     pickAgentAction(owner, agent, action, { open: () => show(), edit: () => show('settings'), rename: () => show('settings'), report: store });
+  }
+  /** Reads the bot's machine again; false, with the reason in the window's toast, when the bot is no longer there. */
+  async function current(owner: AgentsView, id: string): Promise<boolean> {
+    await owner.refresh();
+    if (owner.snapshot?.profiles.some(profile => profile.id === id)) return true;
+    store.reportError(new Error(owner.loadError || strings.connection.unavailable), 'minor');
+    return false;
   }
   function pickMachine(id: string | null) {
     const entries = machines.flatMap(machine => machine.store.projects.map(project => ({ machine, project })));

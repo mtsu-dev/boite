@@ -14,6 +14,7 @@ import { fill, strings } from './lib/strings';
 import { clampPanel, rightPanel } from './lib/right-panel.svelte';
 import { contactsRail } from './lib/contacts-rail.svelte';
 import { AgentsView, openAgent } from './lib/agents.svelte';
+import { saveAgent } from './lib/agent-menu';
 import { subagentsAtWork, threadsAtWork } from './lib/work-counts';
 
 /**
@@ -256,11 +257,17 @@ test("a right click on a mochi's rail picture opens its menu, not the webview's,
     expect(event.defaultPrevented).toBe(true);
     await waitFor(() => document.querySelector('[data-testid=context-menu]') !== null);
     const values = [...document.querySelectorAll<HTMLElement>('[data-testid=context-menu] [data-value]')].map(row => row.dataset['value']);
-    expect(values).toEqual(expect.arrayContaining(['open', 'rename', 'pin', 'edit', 'pause', 'copy']));
-    // Pin goes through the mochi's own machine, even with the Bots page never opened.
-    query<HTMLButtonElement>('[data-testid=context-menu] [data-value=pin]').click();
+    expect(values).toEqual(expect.arrayContaining(['open', 'rename', 'pin', 'edit', 'copy']));
+    expect(values.some(value => value === 'pause' || value === 'resume')).toBe(true);
+    // Pinned elsewhere while the menu still says Pin: the pick pins, as its label said, instead of toggling it off.
     const view = AgentsView.of(store);
-    await waitFor(() => view.snapshot?.profiles.find(profile => profile.id === id)?.pinned === true);
+    await view.refresh();
+    await saveAgent(view, id, { pinned: true }, store);
+    const revision = () => view.snapshot?.profiles.find(profile => profile.id === id)?.revision ?? 0;
+    const before = revision();
+    query<HTMLButtonElement>('[data-testid=context-menu] [data-value=pin]').click();
+    await waitFor(() => revision() > before);
+    expect(view.snapshot?.profiles.find(profile => profile.id === id)?.pinned).toBe(true);
     // Edit opens its settings on the Bots page.
     bot.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 30, clientY: 80 }));
     await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=edit]') !== null);
