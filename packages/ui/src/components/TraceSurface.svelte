@@ -9,6 +9,8 @@
   let { store }: { store: Store } = $props();
 
   let load = $derived(store.openThread?.load ?? null);
+  /** A macOS core reads no CPU per thread: its 0 is unknown, as the Task manager says. */
+  const cpuUnknown = $derived(store.core?.os === 'macos');
 
   // The surface reads the trace the moment it is the one showing, whichever
   // way it got there: the chat header, the launcher, a tab, a restored panel.
@@ -40,7 +42,7 @@
     </button>
   </SurfaceHead>
   {#if load}
-    <div class="load"><span>{strings.trace.cpu} <b>{percent(load.cpuPercent)}</b></span><span>{strings.trace.currentMemory} <b>{bytes(load.memoryBytes)}</b></span></div>
+    <div class="load"><span>{strings.trace.cpu} <b>{cpuUnknown ? strings.resources.unknown : percent(load.cpuPercent)}</b></span><span>{strings.trace.currentMemory} <b>{bytes(load.memoryBytes)}</b></span></div>
   {/if}
   <div class="scroll">
     <TraceTable records={store.trace} capability={store.core?.trace ?? null} />

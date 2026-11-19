@@ -1,6 +1,7 @@
 import type {
   AgentTask,
   ArtifactContent,
+  KeepAwakeStatus,
   MemoryEvent,
   MemoryState,
   MemoryStatus,
@@ -42,6 +43,8 @@ export class Workbench {
   memory = $state.raw<MemoryStatus | null>(null);
   memoryState = $state<MemoryState | null>(null);
   memoryStopped = $state(false);
+  /** Whether the machine is held awake and can be; null until read, or from a core without `resources.keepAwake`. */
+  keepAwake = $state.raw<KeepAwakeStatus | null>(null);
   private memoryRevision = 0;
   private memoryRead = 0;
 
@@ -51,6 +54,7 @@ export class Workbench {
     this.memory = null;
     this.memoryState = null;
     this.memoryStopped = false;
+    this.keepAwake = null;
   }
 
   memoryEvent(event: MemoryEvent): void {
@@ -58,6 +62,19 @@ export class Workbench {
     this.memoryState = event.state;
     if (event.state === 'ok') this.memoryStopped = false;
     else if (event.kind === 'killed') this.memoryStopped = true;
+  }
+
+  /** Quiet on failure: an older core has no such method, and the switch then says nothing. */
+  async refreshKeepAwake(): Promise<void> {
+    const client = this.ctx.client;
+    const clientGeneration = this.ctx.clientGeneration;
+    if (!client || !this.ctx.store.owner) return;
+    try {
+      const status = await client.call('resources.keepAwake', {});
+      if (this.ctx.currentClient(client, clientGeneration)) this.keepAwake = status;
+    } catch {
+      if (this.ctx.currentClient(client, clientGeneration)) this.keepAwake = null;
+    }
   }
 
   async refreshMemory(): Promise<void> {
@@ -375,7 +392,7 @@ export class Workbench {
     const clientGeneration = this.ctx.clientGeneration;
     if (!client || !this.ctx.store.owner) return;
     try {
-      const [resources] = await Promise.all([client.call('resources.list', {}), this.refreshMemory()]);
+      const [resources] = await Promise.all([client.call('resources.list', {}), this.refreshMemory(), this.refreshKeepAwake()]);
       if (this.ctx.currentClient(client, clientGeneration)) this.resources = resources;
     } catch (error) {
       if (this.ctx.currentClient(client, clientGeneration)) this.ctx.fail(error);

@@ -516,6 +516,10 @@ core closes.
 None of them stops a sleep the user orders, a closed lid or the screen
 turning off. A machine without the helper, or one that refuses it, logs
 `keepAwake.unavailable` once and is not asked again until the setting changes.
+`resources.keepAwake` answers `{ held, available }`: `available` is false when
+the platform has no helper (`keepAwakeAvailable`, asked before any turn), when
+the hold was refused or lost, and under `BOITE_KEEP_AWAKE=0`. Settings,
+Resources reads it with each poll and says so under the Keep awake switch.
 `BOITE_KEEP_AWAKE=0` makes a core hold nothing; the test preload sets it.
 `keep-awake.test.ts` drives the rule with a counted hold and the helper with a
 stand-in command, and lists the real logind inhibitor where a system bus
@@ -532,8 +536,10 @@ exists.
 | `keepAwake` | Gives the sleep inhibitor back; the machine sleeps by its own power settings |
 
 Protections are on by default. Notifications are a separate client preference
-under General, stored per machine as `boite.notifications`. Windows uses the
-shell's toast command and phones use Web Notifications; a click opens the thread.
+under General, stored per machine as `boite.notifications`. The desktop shell's
+`notify` command shows a Windows toast, or runs `notify-send` or `osascript` on
+Linux and macOS ([portability](portability.md)); phones use Web Notifications.
+A click opens the thread, except on Linux and macOS.
 
 ## Linux and macOS
 
@@ -550,9 +556,12 @@ once per birth and again only when the stat line's name changes, as after an
 `exec`; the boot time from `/proc/stat` is read once. macOS walks descendants with
 `proc_listchildpids` and sums `proc_pid_rusage` physical footprint for registered
 roots and their descendants, once per PID. A separately registered conversation
-owns its subtree. CPU still reports zero. The automatic memory guard can
+owns its subtree. CPU still reports zero, with `cpuMeasured: false`:
+`resources.list` and `resources.usage` carry it as `loadAvailable.cpu`, and
+Resources, the Task manager and the Trace surface print Not available. The automatic memory guard can
 stop the heaviest child tree when a thread exceeds its share. CPU job caps,
-focus guard and audio mute remain Windows-only.
+focus guard and audio mute remain Windows-only; Settings and the tour grey
+their controls out when `core.os` is not `windows`.
 
 A Linux memory stop of a child the core spawned goes through the handle it
 holds, which signals nothing once the child has exited; a child is not reaped,

@@ -17,7 +17,9 @@ export function resources(ctx: FakeContext): ThreadResources[] {
       status: thread.status,
       live,
       // As in the core, the count is the live list's, whenever the load was sampled.
-      load: { ...(thread.load ?? { cpuPercent: 0, memoryBytes: 0 }), processes: live.length }
+      load: { ...(thread.load ?? { cpuPercent: 0, memoryBytes: 0 }), processes: live.length },
+      // As in the core, macOS reads no CPU: unknown, not 0 %.
+      loadAvailable: { cpu: thread.load !== null && ctx.core.os !== 'macos', memory: thread.load !== null }
     });
   }
   return out.sort((a, b) => b.load.cpuPercent - a.load.cpuPercent);
@@ -36,7 +38,7 @@ export function resourceMethods(ctx: FakeContext) {
         const thread = ctx.threads.get(resource.threadId)!;
         return { threadId: thread.id, title: thread.title, providerId: thread.providerId, model: thread.model,
           status: thread.status, projectId: thread.projectId, parentThreadId: thread.parentThreadId ?? null,
-          load: resource.load, loadAvailable: { cpu: thread.load !== null, memory: thread.load !== null }, disk: unavailable(), network: unavailable() };
+          load: resource.load, loadAvailable: resource.loadAvailable!, disk: unavailable(), network: unavailable() };
       }) };
     },
     'resources.machine': async (params): Promise<MachineResourceSnapshot> => {
@@ -78,6 +80,8 @@ export function resourceMethods(ctx: FakeContext) {
         },
       };
     },
+    // No turn holds the demo machine awake; `?awake=missing` is a machine without an inhibitor.
+    'resources.keepAwake': async () => ({ held: false, available: ctx.keepAwakeAvailable }),
     'resources.killTree': async (params) => {
       let killed = 0;
       for (const record of ctx.processes) {
