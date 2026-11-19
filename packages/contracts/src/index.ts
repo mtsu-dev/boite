@@ -79,6 +79,7 @@ export * from './secrets';
 export * from './trace';
 export * from './scheduler';
 export * from './settings';
+export { defaultSettings } from './settings-defaults';
 export * from './subscription-proxy';
 export * from './keybindings';
 export * from './imports';
