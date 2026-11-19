@@ -262,8 +262,7 @@ function anchoredParts(events: readonly MemoryEvent[] | undefined): ReadonlySet<
   return new Set(events.flatMap(event => event.anchor ? [event.anchor.partIndex] : []));
 }
 
-type MessageRows = {
-  count: number;
+type MessageShape = {
   cuts: number[];
   pieces: ReturnType<typeof textPieces>;
 };
@@ -279,7 +278,7 @@ type Memo = <T>(read: () => T) => () => T;
 export class TimelineRows {
   readonly #scans = new WeakMap<MessagePart, TextCutScan>();
   readonly #failures = new WeakMap<Message, () => ReturnType<typeof failureKind>>();
-  readonly #shapes = new WeakMap<Message, { events: MemoryEvent[] | undefined; read: () => MessageRows }>();
+  readonly #shapes = new WeakMap<Message, { events: MemoryEvent[] | undefined; count: number; read: () => MessageShape }>();
   #known = new Map<string, TimelineRow>();
   #rows: TimelineRow[] = [];
   #order = '';
@@ -293,20 +292,19 @@ export class TimelineRows {
     return read();
   };
 
-  #shape(message: Message, events: MemoryEvent[] | undefined): MessageRows {
+  #shape(message: Message, count: number, events: MemoryEvent[] | undefined): MessageShape {
     let shape = this.#shapes.get(message);
-    if (!shape || shape.events !== events) {
-      let previous: MessageRows | undefined;
+    if (!shape || shape.count !== count || shape.events !== events) {
+      let previous: MessageShape | undefined;
       const read = this.memo(() => {
         const anchored = anchoredParts(events);
-        const count = message.parts.length;
         const cuts = rowCuts(message, anchored);
         const pieces = textPieces(message, this.#scans, anchored);
-        if (previous && previous.count === count && previous.cuts.length === cuts.length && cuts.every((cut, at) => cut === previous!.cuts[at]) &&
+        if (previous && previous.cuts.length === cuts.length && cuts.every((cut, at) => cut === previous!.cuts[at]) &&
           previous.pieces.length === pieces.length && pieces.every((piece, at) => previous!.pieces[at]?.part === piece.part && previous!.pieces[at]?.slices === piece.slices)) return previous;
-        return previous = { count, cuts, pieces };
+        return previous = { cuts, pieces };
       });
-      this.#shapes.set(message, shape = { events, read });
+      this.#shapes.set(message, shape = { count, events, read });
     }
     return shape.read();
   }
@@ -348,7 +346,8 @@ export class TimelineRows {
         continue;
       }
       // A long turn that ends on a long answer takes both cuts: the answer is sliced inside its rows of parts.
-      const { count, cuts, pieces } = this.#shape(message, memory?.get(message.id));
+      const count = message.parts.length;
+      const { cuts, pieces } = this.#shape(message, count, memory?.get(message.id));
       if (pieces.length) { sliceRows(message, count, pieces, cuts, add); continue; }
       if (cuts.length === 0) { add(message.id, message, 0, count, true, true); continue; }
       add(message.id, message, 0, cuts[0]!, true, false);
