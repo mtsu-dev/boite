@@ -54,7 +54,9 @@ the continuation starts or the entry is explicitly excluded. Repeated recovery
 reuses an accepted continuation rather than creating another turn. A second
 restart retains pending entries; a repeated resume note does not quote itself.
 Each admission rechecks ownership and stopping state, including a user Stop
-triggered while an earlier continuation starts.
+triggered while an earlier continuation starts. A new turn on the thread
+cancels its pending continuation while the provider's version check runs.
+Cache pings leave that continuation pending.
 
 An unreadable record or one older than one hour resumes nothing. Archived,
 deleted or non-runnable threads are excluded; failed admission logs its reason.

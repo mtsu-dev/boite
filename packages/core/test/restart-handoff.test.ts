@@ -84,10 +84,11 @@ test('constructing and losing a replacement core before listening keeps the hand
 });
 
 test.each([
-  { stage: 'planned', stop: false },
-  { stage: 'admitted', stop: false },
-  { stage: 'planned', stop: true },
-])('a $stage update handoff waits past the provider-list deadline (Stop: $stop)', async ({ stage, stop }) => {
+  { stage: 'planned', action: 'resume' },
+  { stage: 'admitted', action: 'resume' },
+  { stage: 'planned', action: 'stop' },
+  { stage: 'planned', action: 'replace' },
+])('a $stage update handoff waits past the provider-list deadline ($action)', async ({ stage, action }) => {
   const { h, turns: [source] } = await stoppedHandoff();
   const threadId = source!.threadId;
   let admitted: string | undefined;
@@ -114,9 +115,29 @@ test.each([
     expect(next.core.journal.getSetting('restart-handoff')).toBeTruthy();
     if (admitted) expect(next.core.journal.getTurn(admitted)?.status).toBe('queued');
     else expect(next.core.journal.listTurns(threadId)).toHaveLength(1);
-    if (stop) expect(next.core.threads.stopTurn(threadId)).toBe(true);
+    if (action === 'stop') expect(next.core.threads.stopTurn(threadId)).toBe(true);
+    if (action === 'replace') {
+      // The profile can resolve again while the earlier probe is still in flight.
+      profileFor(next.core.providers.require('echo'))!.executable = [];
+      const ping = next.core.threads.startTurn(threadId, 'keep the cache warm', { kind: 'keepalive' });
+      await waitFor(() => next.core.journal.getTurn(ping.id)?.status === 'done' && !next.core.threads.isBusy(threadId));
+      expect(next.core.journal.getSetting('restart-handoff')).toBeTruthy();
+
+      const client = await connect(next.server.url, h.token);
+      try {
+        const fresh = await client.call('turns.start', { threadId, prompt: 'Replace the previous request' });
+        await waitFor(() => next.core.journal.getTurn(fresh.id)?.status === 'done');
+        const pendingAfterFresh = next.core.journal.getSetting('restart-handoff');
+        release.resolve('handoff-probe 2.0.0');
+        await next.core.providers.settle();
+        expect(next.core.journal.listTurns(threadId).map(turn => turn.id)).toEqual([source!.id, ping.id, fresh.id]);
+        expect(pendingAfterFresh).toBeFalsy();
+        expect(next.core.journal.getSetting('restart-handoff')).toBeFalsy();
+      } finally { client.close(); }
+      return;
+    }
     release.resolve('handoff-probe 2.0.0');
-    if (stop) {
+    if (action === 'stop') {
       await waitFor(() => next.core.providers.summary('echo')?.available === true);
       expect(next.core.journal.listTurns(threadId)).toHaveLength(1);
       expect(next.core.journal.getSetting('restart-handoff')).toBeFalsy();
@@ -128,6 +149,26 @@ test.each([
     if (admitted) expect(turns[1]!.id).toBe(admitted);
     expect(next.core.journal.getSetting('restart-handoff')).toBeFalsy();
   } finally { release.resolve('handoff-probe 2.0.0'); await next.stop(); }
+});
+
+test('a stale handoff record cannot resume a thread with a newer turn in the journal', async () => {
+  const { h, turns: [source] } = await stoppedHandoff();
+  const threadId = source!.threadId;
+  let core = new Core({ dataDir: h.dataDir, token: h.token });
+  try {
+    const stale = core.journal.getSetting('restart-handoff');
+    expect(stale).toBeTruthy();
+    const fresh = core.threads.startTurn(threadId, 'Answer this request instead');
+    await waitFor(() => core.journal.getTurn(fresh.id)?.status === 'done');
+    // Simulate an older core that committed the replacement without clearing the plan.
+    core.journal.setSetting('restart-handoff', stale);
+    await core.close();
+
+    core = new Core({ dataDir: h.dataDir, token: h.token });
+    expect(core.threads.handoff.resume()).toBe(0);
+    expect(core.journal.listTurns(threadId).map(turn => turn.id)).toEqual([source!.id, fresh.id]);
+    expect(core.journal.getSetting('restart-handoff')).toBeFalsy();
+  } finally { await core.close(); await h.stop().catch(() => undefined); }
 });
 
 test('partial resume keeps failed admissions and reuses a durably accepted queued continuation after another restart', async () => {

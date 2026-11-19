@@ -78,6 +78,9 @@ export class RestartHandoff {
     }
     this.handedOver = this.#inherited !== null;
     core.bus.onAny((name, payload) => this.#observe(name, payload));
+    if (this.handedOver) core.bus.onCommitted((name, payload) => {
+      if (name === 'turn.started') this.#turnStarted(payload as RpcEvents['turn.started']);
+    });
   }
 
   get active(): boolean { return this.#entries !== null; }
@@ -207,6 +210,11 @@ export class RestartHandoff {
           this.#core.scheduler.enqueue(turn, turn.execution?.accountId ?? thread.accountId, { recovering: true });
           resumed += 1;
         } else if (admitted === null && entry.was === 'running' && turn.status === 'stopped') {
+          // The core may have stopped after committing a new turn, before observing its start.
+          if (this.#core.journal.lastTurn(thread.id, true)?.id !== turn.id) {
+            this.#consume(entry);
+            continue;
+          }
           const read = this.#core.providers.pendingVersion(thread.providerId);
           if (read !== undefined) {
             this.#waitForVersion(read);
@@ -334,14 +342,16 @@ export class RestartHandoff {
     this.#threads.stopRunning(threadId);
   }
 
-  #observe(name: RpcEventName, payload: unknown): void {
-    if (name === 'turn.started' && this.#entries === null) {
-      const turn = payload as Turn;
-      for (const entry of [...this.#inherited?.turns ?? []]) {
-        if ((this.#admitted(entry) ?? entry.turnId) === turn.id) this.#consume(entry);
-      }
-      return;
+  #turnStarted(turn: Turn): void {
+    if (this.#inherited === null || this.#entries !== null || turn.execution?.operation === 'keepalive') return;
+    for (const entry of this.#inherited.turns) {
+      if (entry.threadId !== turn.threadId) continue;
+      const admitted = this.#admitted(entry);
+      if ((admitted ?? entry.turnId) === turn.id || (admitted === null && entry.was === 'running')) this.#consume(entry);
     }
+  }
+
+  #observe(name: RpcEventName, payload: unknown): void {
     if (name === 'message.part') {
       const { threadId, messageId, partIndex, part } = payload as RpcEvents['message.part'];
       if (part.type !== 'tool') return;
