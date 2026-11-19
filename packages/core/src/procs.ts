@@ -340,7 +340,7 @@ export class ProcRegistry {
    */
   adopt(threadId: ThreadId, pid: number, cmd: string, args: string[], control: { running: () => boolean; kill: () => Promise<void> | undefined; exited: Promise<number | null>; root?: boolean; startup?: boolean; child?: SpawnedChild }): { record: ProcessRecord; exited: Promise<number | null> } {
     this.#admitted({});
-    const record = this.#register(threadId, pid, cmd, args, { root: control.root === true, startup: control.startup === true, running: control.running, kill: control.kill, usage: () => null });
+    const record = this.#register(threadId, pid, cmd, args, { root: control.root === true, startup: control.startup === true, running: control.running, kill: control.kill, usage: () => null }, false);
     if (control.child !== undefined) this.#childStops.set(control.child, this.#managedStop(record.pid, control.running, control.kill, control.exited));
     return { record, exited: control.exited.then((code) => { this.onExit(threadId, record.pid, code, undefined, record); return code; }) };
   }
@@ -377,13 +377,12 @@ export class ProcRegistry {
       windowsHide: true,
       detached: OWN_GROUP,
     });
+    const pid = child.pid;
+    // It never started (a missing or refused executable): nothing runs to trace or stop, and its 'error' reaches the caller.
+    if (pid === undefined) return child.once('error', (error) => forgetOnMissing(command, executable, error));
 
-    const kill = (): Promise<void> | undefined => {
-      if (OWN_GROUP) return stopGroup(child.pid ?? -1, running(child));
-      child.kill();
-      return undefined;
-    };
-    const record = this.#register(threadId, child.pid ?? -1, cmd, args, {
+    const kill = (): Promise<void> | undefined => OWN_GROUP ? stopGroup(pid, running(child)) : void child.kill();
+    const record = this.#register(threadId, pid, cmd, args, {
       root: opts.agentRoot !== false,
       startup: opts.startup === true,
       kill,
@@ -397,10 +396,8 @@ export class ProcRegistry {
     });
     this.#childStops.set(child, this.#managedStop(record.pid, running(child), kill, exited));
 
-    child.once('exit', (code) => {
-      this.onExit(threadId, record.pid, code, undefined, record);
-    });
-    // A child that never starts emits 'error' and no 'exit'; without this it
+    child.once('exit', (code) => this.onExit(threadId, record.pid, code, undefined, record));
+    // A started child may still emit 'error' and no 'exit'; without this it
     // would stay in the live registry for the rest of the session.
     child.once('error', (error) => {
       forgetOnMissing(command, executable, error);
@@ -438,8 +435,11 @@ export class ProcRegistry {
     cmd: string,
     args: string[],
     control: Omit<Entry, 'record' | 'identity'>,
+    spawned = true,
   ): ProcessRecord {
     const nativeStartedAt = this.platform.startedAt(pid);
+    // Its group ends with this core; what the keeper holds outlives it on purpose.
+    if (spawned) this.platform.tieGroup?.(pid);
     const record: ProcessRecord = {
       pid,
       parentPid: process.pid,

@@ -195,6 +195,21 @@ export class LinuxLoad {
     return this.#scan;
   }
 
+  /**
+   * A process's children from each of its tasks' `children` files, without
+   * listing `/proc`. Null when the kernel has none (built without
+   * CONFIG_PROC_CHILDREN) or the process is gone: the parent scan answers then.
+   */
+  #taskChildren(pid: number): number[] | null {
+    const found: number[] = [];
+    for (const tid of pidsIn(this.read(`/proc/${pid}/task`) ?? String(pid))) {
+      const text = this.read(`/proc/${pid}/task/${tid}/children`);
+      if (text === null && tid === pid) return null;
+      found.push(...pidsIn(text ?? ''));
+    }
+    return found;
+  }
+
   /** Killing always adds each task's current children to the fresh parent scan. */
   #children(pid: number, scan: ProcSnapshot, tasks = false): number[] {
     const found = new Set(scan.children.get(pid) ?? []);
@@ -285,7 +300,8 @@ export class LinuxLoad {
     let memoryBytes = 0;
     const workingSets: NonNullable<ProcessSample['workingSets']> = [];
     let processes = 0;
-    const scan = this.#snapshot();
+    // The machine-wide scan only where the kernel has no `children` files: its cost grows with every process on the host.
+    let scan: ProcSnapshot | null = null;
     const at = this.now();
     const pending = new Set(pids);
     let owners = this.#owners;
@@ -302,7 +318,7 @@ export class LinuxLoad {
       // Topology can be shared for 500 ms, but CPU ticks must describe this
       // sample's time. Reuse scan reads only at that same time, and confirm a
       // process whose status vanished instead of counting its cached stat.
-      const stat = scan.at === at && status !== null
+      const stat = scan?.at === at && status !== null
         ? scan.stats.get(pid) ?? this.read(`/proc/${pid}/stat`)
         : this.read(`/proc/${pid}/stat`);
       const used = stat === null ? null : cpuTicks(stat);
@@ -322,7 +338,7 @@ export class LinuxLoad {
       if (bytes !== null) workingSets.push({ pid, bytes, ...(exe ? { exe } : {}) });
       memoryBytes += bytes ?? 0;
       // A separately registered agent owns its own subtree, even when nested.
-      for (const child of this.#children(pid, scan)) if (!owners.has(child) || owners.get(child) === threadId) pending.add(child);
+      for (const child of this.#taskChildren(pid) ?? this.#children(pid, scan ??= this.#snapshot())) if (!owners.has(child) || owners.get(child) === threadId) pending.add(child);
     }
     if (processes === 0) { this.#resources.forget(threadId); this.#names.delete(threadId); return null; }
     this.#names.set(threadId, sampledNames);

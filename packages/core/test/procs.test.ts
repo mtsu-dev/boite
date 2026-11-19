@@ -6,6 +6,10 @@ import { Bus } from '../src/bus.ts';
 import { ProcRegistry } from '../src/procs.ts';
 import { createPosixPlatform } from '../src/platform/posix.ts';
 import type { ProcessPlatform } from '../src/platform/types.ts';
+import { Journal } from '../src/journal.ts';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const LONG_CHILD = process.platform === 'win32' ? 'ping -n 30 127.0.0.1' : 'exec sleep 30';
 /** POSIX tracks direct children only, so explicitly replace the fixture shell. */
@@ -21,6 +25,12 @@ function isRunning(pid: number): boolean {
   } catch {
     return false;
   }
+}
+
+/** Running and not a zombie: an orphan's exit is reaped by whoever adopted it, maybe not at once. */
+function isAlive(pid: number): boolean {
+  if (!isRunning(pid)) return false;
+  try { return !/\) Z /.test(readFileSync(`/proc/${pid}/stat`, 'utf8')); } catch { return process.platform !== 'linux'; }
 }
 
 beforeEach(async () => {
@@ -163,6 +173,57 @@ describe('procs', () => {
     await spawned.exited;
     await waitFor(() => !isRunning(grandchild), 5000);
   }, 15000);
+
+  test.skipIf(process.platform === 'win32')('off Windows a core that dies takes its agents\' groups with it, and the next core closes their rows', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'boite-crash-'));
+    const src = join(import.meta.dir, '..', 'src');
+    // A core killed with SIGKILL runs nothing on its way out.
+    const crashed = Bun.spawn({
+      cmd: [process.execPath, '-e', `
+        const { Journal } = await import(${JSON.stringify(join(src, 'journal.ts'))});
+        const { Bus } = await import(${JSON.stringify(join(src, 'bus.ts'))});
+        const { ProcRegistry } = await import(${JSON.stringify(join(src, 'procs.ts'))});
+        const procs = new ProcRegistry(new Journal(${JSON.stringify(join(dataDir, 'journal.db'))}), new Bus());
+        const agent = procs.spawn('crashed', 'sh', ['-c', 'sleep 60 & echo $!; wait']);
+        const reader = agent.proc.stdout.getReader();
+        const tool = new TextDecoder().decode((await reader.read()).value).trim();
+        console.log(JSON.stringify({ agent: agent.record.pid, tool: Number(tool) }));
+        process.kill(process.pid, 'SIGKILL');`],
+      stdout: 'pipe', stderr: 'inherit',
+    });
+    const pids = JSON.parse((await new Response(crashed.stdout).text()).trim()) as { agent: number; tool: number };
+    await crashed.exited;
+    expect(crashed.signalCode).toBe('SIGKILL');
+    try {
+      await waitFor(() => !isAlive(pids.agent) && !isAlive(pids.tool), 5000);
+      const before = new Journal(join(dataDir, 'journal.db'));
+      expect(before.listProcesses('crashed', 10).map(row => row.exitedAt)).toEqual([null]);
+      before.close();
+      const next = await startTestCore({ dataDir });
+      try {
+        const [row] = next.core.journal.listProcesses('crashed', 10);
+        expect(row?.pid).toBe(pids.agent);
+        expect(row?.exitedAt).not.toBeNull();
+        expect(row?.exitCode).toBeNull();
+      } finally { await next.stop(); }
+    } finally {
+      for (const pid of [pids.agent, pids.tool]) { try { process.kill(pid, 'SIGKILL'); } catch { /* gone, as it should be */ } }
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  }, 20000);
+
+  test('a child that never starts is not traced, and two on one thread leave no row open', async () => {
+    const threadId = 'never-started';
+    const errors: string[] = [];
+    for (const name of ['agent-a', 'agent-b']) {
+      const child = harness.core.procs.spawnChild(threadId, join(harness.dataDir, 'missing', name), []);
+      child.once('error', error => errors.push((error as NodeJS.ErrnoException).code ?? 'error'));
+    }
+    await waitFor(() => errors.length === 2, 5000);
+    expect(errors).toEqual(['ENOENT', 'ENOENT']);
+    expect(harness.core.procs.liveCount(threadId)).toBe(0);
+    expect(harness.core.journal.listProcesses(threadId, 10)).toEqual([]);
+  });
 
   test.skipIf(process.platform === 'win32')('off Windows a child that ignores SIGTERM still lets its thread stop', async () => {
     const threadId = 'posix-stubborn';

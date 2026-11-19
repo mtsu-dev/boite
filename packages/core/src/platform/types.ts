@@ -223,6 +223,15 @@ export interface ProcessPlatform {
    */
   pidAdded(threadId: string, pid: number, guarded: boolean): void;
   pidRemoved(threadId: string, pid: number, guarded: boolean): void;
+  /**
+   * The registry spawned `pid` as the leader of a process group of its own:
+   * have that group end with the core, even a core that dies without stopping
+   * it, until `pidRemoved` names the pid. Linux and macOS; on Windows the
+   * thread's job does it.
+   */
+  tieGroup?(pid: number): void;
+  /** SIGKILL to every tied group at once, for a shutdown out of time. */
+  killTiedGroups?(): void;
   /** A turn is starting: have the process drain and the protections ready before its first process. */
   warm(): void;
   /** The registry forgot an idle thread: drop what the platform keeps for it. */

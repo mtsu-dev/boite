@@ -7,6 +7,7 @@ import {Journal} from '../src/journal.ts';
 import {ProcRegistry} from '../src/procs.ts';
 import {createPosixPlatform} from '../src/platform/posix.ts';
 import {scopedPlatforms} from '../src/platform/scoped.ts';
+import {registryPlatform} from '../src/platform/index.ts';
 import type {GuardEventSink, ProcessEventSink, ProcessPlatform} from '../src/platform/types.ts';
 
 test('equal public thread IDs keep their native trace, descendants and termination through another registry restart', async () => {
@@ -76,6 +77,28 @@ test('equal public thread IDs keep their native trace, descendants and terminati
     expect(killed).toEqual([502, 502, 503, 504]); expect(releases).toBe(1);
   } finally {
     for (const procs of registries) {await procs.killAll(); await procs.close();}
+    for (const journal of journals) journal.close();
+    rmSync(directory, {recursive: true, force: true});
+  }
+});
+
+test.skipIf(process.platform !== 'linux')('two registries on one Linux backend sample only their own processes, and closing one leaves the other measured', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'boite-posix-scopes-'));
+  const journals = [new Journal(join(directory, 'a.db')), new Journal(join(directory, 'b.db'))];
+  const [first, second] = journals.map(journal => new ProcRegistry(journal, new Bus(), registryPlatform())) as [ProcRegistry, ProcRegistry];
+  try {
+    const a = first.spawn('same-thread', 'sleep', ['30']);
+    const b = second.spawn('same-thread', 'sleep', ['30']);
+    expect(first.platform.sample('same-thread')?.processes).toBe(1);
+    expect(second.platform.sample('same-thread')?.processes).toBe(1);
+    await first.killAll();
+    await a.exited;
+    await first.close();
+    expect(second.platform.sample('same-thread')?.processes).toBe(1);
+    await second.killAll();
+    await b.exited;
+  } finally {
+    await Promise.all([first.close(), second.close()]);
     for (const journal of journals) journal.close();
     rmSync(directory, {recursive: true, force: true});
   }
