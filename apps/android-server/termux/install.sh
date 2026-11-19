@@ -92,7 +92,19 @@ controller="$ROOT/boite-server.ts"
 if [ -n "$BUNDLE" ]; then
   unzip -p "$BUNDLE" boite-server.ts >"$controller.tmp"
 else
-  curl -fsSL --retry 3 -o "$controller.tmp" "https://raw.githubusercontent.com/$REPOSITORY/$REF/apps/android-server/termux/boite-server.ts"
+  work=$(mktemp -d "$ROOT/downloads/controller.XXXXXX")
+  trap 'rm -rf "$work"' EXIT
+  base="https://raw.githubusercontent.com/$REPOSITORY/$REF/apps/android-server/termux"
+  curl -fsSL --retry 3 -o "$work/boite-server.ts" "$base/boite-server.ts"
+  # Older refs already ship a standalone controller.
+  if grep -Fq "from './minisign.ts'" "$work/boite-server.ts"; then
+    curl -fsSL --retry 3 -o "$work/minisign.ts" "$base/minisign.ts"
+    "$ROOT/bin/bun" build "$work/boite-server.ts" --target=bun --outfile="$controller.tmp"
+  else
+    mv "$work/boite-server.ts" "$controller.tmp"
+  fi
+  rm -rf "$work"
+  trap - EXIT
 fi
 [ -s "$controller.tmp" ] || fail "could not get boite-server.ts"
 mv -f "$controller.tmp" "$controller"

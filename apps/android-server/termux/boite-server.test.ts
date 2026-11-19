@@ -36,11 +36,11 @@ test('a bundle installs only with a signature the core would accept for the same
       const signature = signs(bytes, algorithm);
       expect(() => verifyPayload(bytes, signature, publicKey)).not.toThrow();
       expect(() => verifyFile(file, signature, publicKey)).not.toThrow();
-      expect(() => verifyFile(file, signs(Buffer.from('other bytes'), algorithm), publicKey)).toThrow('does not match');
+      expect(() => verifyFile(file, signs(Buffer.from('other bytes'), algorithm), publicKey)).toThrow('verification failed');
       const comment = Buffer.from(signature, 'base64').toString().replace('version:2.0.0', 'version:9.0.0');
-      expect(() => verifyFile(file, Buffer.from(comment).toString('base64'), publicKey)).toThrow('does not match');
+      expect(() => verifyFile(file, Buffer.from(comment).toString('base64'), publicKey)).toThrow('verification failed');
       // The release key never signed this test payload.
-      expect(() => verifyFile(file, signature)).toThrow('release key');
+      expect(() => verifyFile(file, signature)).toThrow('signing key');
     }
   } finally {
     rmSync(dir, { recursive: true, force: true });

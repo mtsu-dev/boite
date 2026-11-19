@@ -1,7 +1,7 @@
 {
   "ceiling": 900,
   "allow": {
-    "apps/android-server/termux/boite-server.ts": 1230
+    "apps/android-server/termux/boite-server.ts": 1198
   },
   "exempt": {}
 }
