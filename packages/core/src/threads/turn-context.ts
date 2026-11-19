@@ -22,7 +22,7 @@ import { agentGuide, SHORT_ANSWERS } from '../agent-guide.ts';
 import { nativeSkillFiles } from '../brain.ts';
 import { takesSystemGuide } from '../drivers/index.ts';
 import { effectiveCompaction, contextRulesBlock, type CompactionPolicy } from '@boite/contracts';
-import { prepareAttachments, FileReferences } from '../attachments.ts';
+import { prepareAttachments, prepareHistoryImages, FileReferences } from '../attachments.ts';
 import { continuationInput, switchBackInput, tailInput, type HistoryInput, type PartPlace } from '../continuation.ts';
 import { recordHandover } from './switch-notice.ts';
 import type { Core } from '../core.ts';
@@ -183,14 +183,14 @@ export class TurnContexts {
     };
   }
 
-  makeContext(
+  async makeContext(
     thread: ThreadSummary,
     provider: ProviderDescriptor,
     account: Account,
     turn: Turn,
     carried: CarriedInput = {},
     resumePrompt?: string,
-  ): TurnContext {
+  ): Promise<TurnContext> {
     const hostContextMode = thread.contextMode;
     thread = this.#core.sharedAccess.contextThread(thread);
     const threadId = thread.id;
@@ -433,6 +433,7 @@ export class TurnContexts {
       recordHandover(this.#core, turn, 'resumed', continued.carried ?? { full: 0, cut: 0, omitted: 0, chars: 0 });
     }
     this.#core.sharedAccess.uploads(threadId, continued.attachments);
+    if (continued.historicalImages?.length) continued = await prepareHistoryImages(this.#core.dataDir, continued);
     const prepared = prepareAttachments(this.#core.dataDir, continued, provider);
     const operation = turn.execution?.operation;
     // A compaction or a cache keepalive goes to the agent as its command alone: nothing taken rides on it.
@@ -707,12 +708,12 @@ type TurnInput = Parameters<typeof continuationInput>[3];
  * `makeContext`, so that only the context's `continuation` holds the input,
  * not every callback of the context.
  */
-function carrier(core: Core, files: FileReferences, threadId: ThreadId, turnId: TurnId | null, input: TurnInput, provider: ProviderDescriptor, turn: Turn): () => { prompt: string; attachments: Attachment[] } {
+function carrier(core: Core, files: FileReferences, threadId: ThreadId, turnId: TurnId | null, input: TurnInput, provider: ProviderDescriptor, turn: Turn): () => HistoryInput {
   const history = (): HistoryInput => {
     const result = continuationInput(core.journal, threadId, turnId, input, provider, (part, place) => {
       core.sharedAccess.uploads(threadId, [part]);
       return files.of(threadId, part, place);
-    });
+    }, turn.id);
     core.sharedAccess.uploads(threadId, result.attachments);
     return result;
   };
@@ -727,9 +728,11 @@ function carrier(core: Core, files: FileReferences, threadId: ThreadId, turnId: 
 }
 
 /** `TurnContext.continuation`, built here for the same reason as `carrier`. */
-function freshStart(dataDir: string, carry: () => { prompt: string; attachments: Attachment[] }, compose: (body: string, sessionId: string | null) => string, provider: ProviderDescriptor): NonNullable<TurnContext['continuation']> {
-  return () => {
-    const fresh = prepareAttachments(dataDir, carry(), provider);
+function freshStart(dataDir: string, carry: () => HistoryInput, compose: (body: string, sessionId: string | null) => string, provider: ProviderDescriptor): NonNullable<TurnContext['continuation']> {
+  return async () => {
+    let history = carry();
+    if (history.historicalImages?.length) history = await prepareHistoryImages(dataDir, history);
+    const fresh = prepareAttachments(dataDir, history, provider);
     return { prompt: compose(fresh.prompt, null), attachments: fresh.attachments };
   };
 }

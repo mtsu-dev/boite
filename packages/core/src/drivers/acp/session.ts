@@ -424,13 +424,19 @@ export class AcpSession {
     if (this.#replaces !== null && this.#replaces === turn.ctx.sessionId) {
       this.#replaces = null;
       try {
-        const carried = turn.ctx.continuation?.();
+        const carried = await turn.ctx.continuation?.();
+        if (turn.isStopped) {
+          turn.stopNow();
+          this.#endTurn(turn, true);
+          return;
+        }
         if (carried !== undefined) {
           prompt = carried.prompt;
           attachments = carried.attachments;
         }
       } catch (error) {
-        turn.fail(messageOf(error));
+        if (turn.isStopped) turn.stopNow();
+        else turn.fail(messageOf(error));
         this.#endTurn(turn, true);
         return;
       }

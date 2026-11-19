@@ -307,17 +307,20 @@ export class PiSession {
         let prompt = turn.ctx.prompt, attachments = turn.ctx.attachments;
         if (this.#replaces !== null && this.#replaces === turn.ctx.sessionId) {
           this.#replaces = null;
-          const carried = turn.ctx.continuation?.();
+          const carried = await turn.ctx.continuation?.();
           if (!carried) throw new Error('execution.pi.history: a protected cold start requires the captured conversation continuation');
           prompt = carried.prompt; attachments = carried.attachments;
         }
-        await peer.command('prompt', {
-          message: prompt,
-          ...(attachments.length === 0 ? {} : { images: imagesOf(attachments) }),
-        });
-        turn.ctx.inputReady?.();
-        if (turn.isStopped) this.#abort(turn, peer);
-        else await this.#settleIfIdle(turn, peer);
+        if (turn.isStopped) turn.settleRun();
+        else {
+          await peer.command('prompt', {
+            message: prompt,
+            ...(attachments.length === 0 ? {} : { images: imagesOf(attachments) }),
+          });
+          turn.ctx.inputReady?.();
+          if (turn.isStopped) this.#abort(turn, peer);
+          else await this.#settleIfIdle(turn, peer);
+        }
       }
     } catch (error) {
       turn.awaitingPi = false;

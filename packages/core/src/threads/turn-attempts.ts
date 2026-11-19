@@ -197,19 +197,39 @@ export class TurnAttempts {
       // A retry or delayed provider preparation cannot outlive shared host consent.
       this.#core.sharedCompute?.assertTurn(threadId);
       this.#core.sharedAccess?.assertTurn(threadId);
-      const protection = this.#core.sharedAccess.execution.prepare(threadId);
-      if (protection) await protection;
-      // Preparation can yield while the user changes modes. Read it only
-      // once the native context and handle can be constructed without yielding.
-      state.thread.permissionMode = permissions.mode;
       const note = afterUpdate;
       afterUpdate = null;
       // The resumed session already holds what the first attempt took from the thread.
       const continuing = afterCapacity && wroteBefore;
       afterCapacity = false;
+      let context: TurnContext;
+      this.#preparing.add(threadId);
+      try {
+        const protection = this.#core.sharedAccess.execution.prepare(threadId);
+        if (protection) await protection;
+        if (this.#stopRequested.has(threadId)) {
+          result = { status: 'stopped', sessionId: state.thread.sessionId, usage: null };
+          break;
+        }
+        state.thread.permissionMode = permissions.mode;
+        const account = this.#core.accounts.require(accountId);
+        context = await this.threads.contexts.makeContext(state.thread, provider, account, state.running, note || continuing ? { memory: '', deferred: '', letters: '' } : carried, note?.prompt);
+      } catch (error) {
+        if (!this.#stopRequested.has(threadId)) throw error;
+        result = { status: 'stopped', sessionId: state.thread.sessionId, usage: null };
+        break;
+      } finally {
+        this.#preparing.delete(threadId);
+      }
+      if (this.#stopRequested.has(threadId)) {
+        result = { status: 'stopped', sessionId: state.thread.sessionId, usage: null };
+        break;
+      }
+      this.#core.sharedCompute?.assertTurn(threadId);
+      this.#core.sharedAccess?.assertTurn(threadId);
+      state.thread.permissionMode = context.thread.permissionMode = permissions.mode;
       // Preparation, capacity waits and lost-session retries can all outlive an admin edit or sign-out.
       const account = this.#core.accounts.require(accountId);
-      const context = this.threads.contexts.makeContext(state.thread, provider, account, state.running, note || continuing ? { memory: '', deferred: '', letters: '' } : carried, note?.prompt);
       // Whether this attempt writes anything but an error: the agent's session then holds work a new try must not repeat.
       let wrote = false;
       const sink = context.emit;

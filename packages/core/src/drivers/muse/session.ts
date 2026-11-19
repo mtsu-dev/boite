@@ -284,7 +284,12 @@ export class MuseSession {
         let prompt = ctx.prompt, attachments = ctx.attachments;
         if (this.#replaces !== null && this.#replaces === ctx.sessionId) {
           this.#replaces = null;
-          const carried = ctx.continuation?.();
+          const carried = await ctx.continuation?.();
+          if (turn.isStopped) {
+            this.#current = null;
+            this.#endStopped(turn);
+            return;
+          }
           if (!carried) throw new Error('execution.muse.history: a protected cold start requires the captured conversation continuation');
           prompt = carried.prompt; attachments = carried.attachments;
         }

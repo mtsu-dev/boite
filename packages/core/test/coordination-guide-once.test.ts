@@ -20,7 +20,7 @@ test('the coordination guide goes once a native session: again when it changes, 
   let directive = 'Hello';
   const restore = setDriver('echo', { ...echoDriver, startTurn(ctx) {
     prompts.push(ctx.prompt);
-    if (ctx.prompt.includes('Continue me')) continuation = ctx.continuation?.().prompt ?? null;
+    if (ctx.prompt.includes('Continue me')) void Promise.resolve(ctx.continuation?.()).then(value => { continuation = value?.prompt ?? null; });
     // Echo plays the directive of this turn alone: a fresh session's prompt also carries the history.
     const play = ctx.turn.execution?.operation === 'compact' || ctx.prompt === CAPACITY_CONTINUE_PROMPT ? ctx.prompt : directive;
     return echoDriver.startTurn({ ...ctx, prompt: play });

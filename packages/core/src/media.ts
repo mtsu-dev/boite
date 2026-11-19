@@ -1,4 +1,4 @@
-import { DISPLAY_IMAGE_MAX, DISPLAY_THUMB_MAX, type ImagePreviews } from '@boite/contracts';
+import { DISPLAY_IMAGE_MAX, DISPLAY_THUMB_MAX, type ImageAttachment, type ImagePreviews } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { messageOf } from './errors.ts';
 import { mediaDisplay, mediaPreviews, putMediaDisplay, putMediaPreview } from './journal/media-previews.ts';
@@ -48,6 +48,21 @@ export async function makeDisplay(source: string | Uint8Array, size: DisplaySize
       .resize(max, max, { fit: 'inside', withoutEnlargement: true })
       .webp({ quality })
       .bytes();
+  } catch {
+    return null;
+  }
+}
+
+/** A historical image travels at preview size, with its original available as a file. */
+export async function historyImagePreview(image: ImageAttachment): Promise<ImageAttachment | null> {
+  if (typeof Bun.Image !== 'function') return null;
+  try {
+    const source = new Bun.Image(Buffer.from(image.data, 'base64'), { maxPixels: PREVIEW_MAX_PIXELS });
+    const { width, height, format } = await source.metadata();
+    // A JPEG's orientation can exchange its axes at the receiving provider.
+    if (width <= (format === 'jpeg' ? 720 : 1280) && height <= 720) return image;
+    const bytes = await source.resize(1280, 720, { fit: 'inside', withoutEnlargement: true }).webp({ quality: 80 }).bytes();
+    return { ...image, mimeType: 'image/webp', data: Buffer.from(bytes).toString('base64') };
   } catch {
     return null;
   }

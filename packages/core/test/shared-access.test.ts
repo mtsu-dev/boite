@@ -92,9 +92,9 @@ test('shared compaction tails enforce upload policy before materializing histori
     journal.setSetting(COMPACTION_TAIL_PREFIX + worker.id, {generation: 1, after: source.id});
     const provider = b.h.core.providers.require(thread.providerId), account = b.h.core.accounts.require(thread.accountId);
     const context = () => b.h.core.threads.contexts.makeContext(thread, provider, account, current);
-    expect(() => context()).toThrow('shared file policy: secret uploads require publication from an exact authorized host source');
+    expect(await thrown(context())).toThrow('shared file policy: secret uploads require publication from an exact authorized host source');
     journal.setMessagePart('msg_shared_tail_file', 0, {type: 'file', name: 'ordinary-tail.txt', mimeType: 'text/plain', data: Buffer.from('ordinary historical bytes').toString('base64')});
-    const allowed = context();
+    const allowed = await context();
     expect(allowed.prompt).toContain('<recent-history>');
     expect(allowed.prompt).toContain('ordinary-tail.txt');
     expect(allowed.prompt).toContain('continue after compaction');
