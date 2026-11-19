@@ -375,14 +375,18 @@ export class Coordination {
     const resident = local ? this.#core.workforce.projects.over(params.threadId, to.threadId) : null;
     let from = this.#contact(params.threadId, resident !== null);
     const id = answerId ?? randomUUID(), config = this.scope(params.threadId, { id, to });
-    if (config.paused) throw refused('coordination paused by the owner');
+    const returnAnswer = answerId !== undefined && this.#core.threads.spawns.answers(params.threadId, to, answerId);
+    const paused = () => this.config(params.threadId).paused && !(returnAnswer && this.#wakesForAgent(params.threadId));
+    if (paused()) throw refused('coordination paused by the owner');
     const body = text(params.text, 'text');
     const requestId = text(params.requestId, 'requestId', 128);
     const fingerprint = createHash('sha256').update(JSON.stringify([to, body, params.replyTo ?? null, ...(human ? ['contact-human'] : [])])).digest('hex');
     const existing = this.#core.journal.db.query('SELECT data, fingerprint FROM coordination_letters WHERE thread_id = ? AND request_id = ?').get(params.threadId, requestId) as Row | null;
     if (existing) {
       if (existing.fingerprint !== fingerprint) throw refused('requestId already used for different content');
-      return JSON.parse(existing.data) as AgentLetter;
+      const letter = JSON.parse(existing.data) as AgentLetter;
+      if (returnAnswer && local && letter.status === 'queued') this.#deliverLocal(letter);
+      return this.#find(letter.id, 'out') ?? letter;
     }
     if (same(from, to)) throw refused('an agent cannot message itself');
     let toTitle: string;
@@ -401,7 +405,7 @@ export class Coordination {
       if (!peer && !route) throw refused('destination machine is not trusted for coordination');
       if (!human && (this.#core.contacts.isContact(to.coreId) || route)) this.#core.contacts.checkSendTier(params.threadId, to.coreId);
       from = this.#contact(params.threadId, resident !== null);
-      if (!this.scope(params.threadId, { id, to }).machine(to.coreId) || this.config(params.threadId).paused) throw refused('coordination permissions changed; retry the send');
+      if (!this.scope(params.threadId, { id, to }).machine(to.coreId) || paused()) throw refused('coordination permissions changed; retry the send');
       // No directory round trip on send: a disconnected recipient can receive after reconnect.
       toTitle = to.threadId;
       toMachine = peer?.name ?? route!.name;
@@ -414,7 +418,7 @@ export class Coordination {
     }
     const provenance = await outgoingContact(this.#core, from, to, human, connection);
     if (to.coreId !== from.coreId) this.#core.contacts.reach.checkSend(from.threadId, to, provenance.sharedProjectId !== undefined);
-    this.#contact(params.threadId, resident !== null); if (this.config(params.threadId).paused) throw refused('coordination paused by the owner');
+    this.#contact(params.threadId, resident !== null); if (paused()) throw refused('coordination paused by the owner');
     if (to.coreId !== from.coreId && !this.scope(params.threadId, { id, to }).machine(to.coreId)) throw refused('coordination permissions changed; retry the send');
     const raced = this.rows('thread_id = ? AND request_id = ?', params.threadId, requestId)[0];
     if (raced) { if (raced.fingerprint !== fingerprint) throw refused('requestId already used for different content'); return JSON.parse(raced.data) as AgentLetter; }
@@ -429,10 +433,21 @@ export class Coordination {
     // The thread's turns now report back to the agent that wrote to it, waking it only once it watches the thread.
     if (resident) this.#core.workforce.projects.follow(resident.id, to.threadId, 'touched');
     this.#changed(from.threadId);
-    if (to.coreId === from.coreId) {
-      try { this.#receive(letter); } catch (error) { this.update(letter, 'rejected', messageOf(error)); }
-    } else queueMicrotask(() => { void this.tick(); });
+    if (local) this.#deliverLocal(letter);
+    else queueMicrotask(() => { void this.tick(); });
     return this.#find(letter.id, 'out')!;
+  }
+
+  /** A crash can leave the outgoing row without its local receipt. */
+  #deliverLocal(letter: AgentLetter): void {
+    const saved = this.#find(letter.id, 'in');
+    if (saved) {
+      this.update(saved, saved.status, saved.error);
+      if (saved.status === 'received') this.#resumeForAgent(saved.to.threadId);
+      this.#kick(saved.to.threadId);
+      return;
+    }
+    try { this.#receive(letter); } catch (error) { this.update(letter, 'rejected', messageOf(error)); }
   }
   /** Called only after the gateway's sealed group envelope and the saved source route match. */
   receiveRouted(letter: AgentLetter, name: string): AgentLetter {
@@ -793,7 +808,7 @@ export class Coordination {
       const peer = this.trusted().find(p => p.coreId === letter.to.coreId);
       const route = !peer ? this.mailboxes.route(letter.from.threadId, letter.to.coreId) : undefined;
       if ((!peer && !route) || !config.machine(letter.to.coreId) || config.mode === 'off') { this.update(letter, 'rejected', 'Machine permission revoked'); return; }
-      if (config.paused && letter.status === 'queued') return;
+      if (config.paused && letter.status === 'queued' && !(this.#wakesForAgent(letter.from.threadId) && this.#core.threads.spawns.answers(letter.from.threadId, letter.to, letter.id))) return;
       try {
         const answer = peer ? await this.exchange(peer, letter.status === 'queued' ? 'deliver' : 'receipt', letter.status === 'queued' ? letter : { id: letter.id, fromThreadId: letter.from.threadId }) as AgentLetter : await this.mailboxes.relay(letter);
         if (this.#closed) return;

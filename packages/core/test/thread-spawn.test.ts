@@ -1,11 +1,12 @@
-import { afterEach, expect, test } from 'bun:test';
-import { mkdirSync } from 'node:fs';
+import { afterEach, expect, spyOn, test } from 'bun:test';
+import { mkdirSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import type { AgentProjectAdded, AgentSpawn } from '@boite/contracts';
 import { runCli } from '../src/cli.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnContext, TurnResult } from '../src/drivers/types.ts';
-import { echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';
+import { echoThread, removeDir, startTestCore, waitFor, type TestCore } from './harness.ts';
 
 const cores: TestCore[] = [];
 const restores: (() => void)[] = [];
@@ -30,8 +31,8 @@ function git(cwd: string, ...args: string[]): void {
   if (!run.success) throw new Error(`git ${args.join(' ')} failed: ${run.stderr.toString()}`);
 }
 
-async function setup() {
-  const h = await startTestCore(); cores.push(h);
+async function setup(dataDir?: string) {
+  const h = await startTestCore({ dataDir }); cores.push(h);
   const owner = await h.connect();
   const { threadId } = await echoThread(h, owner, 'Release manager');
   const notesPath = join(h.dataDir, 'notes');
@@ -110,6 +111,32 @@ test('the first answer of a started thread comes back whatever the reach, and no
   expect((more as Error).message).toContain('coordinationReach is "project"');
   const back = await h.core.coordination.send({ threadId, to: spawned.address, text: 'Add the migration note.', requestId: 'follow-up' }).catch((error: Error) => error);
   expect((back as Error).message).toContain('coordinationReach is "project"');
+});
+
+test('a first answer interrupted before coordination queues it is recovered once after restart', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'boite-spawn-result-'));
+  answering();
+  try {
+    const { h, threadId, cli } = await setup(dataDir);
+    const interrupted = spyOn(h.core.coordination, 'send').mockRejectedValueOnce(new Error('Interrupted before enqueue'));
+    const spawned = JSON.parse((await cli(['thread', 'new', 'notes', 'Send a result', '--json'])).out) as AgentSpawn;
+    await waitFor(() => interrupted.mock.calls.length === 1);
+    expect(h.core.coordination.get(threadId).messages).toEqual([]);
+    interrupted.mockRestore();
+    await h.stop();
+
+    const restarted = await startTestCore({ dataDir }); cores.push(restarted);
+    const letters = () => restarted.core.coordination.get(threadId).messages.filter(letter => letter.from.threadId === spawned.thread.id);
+    await waitFor(() => letters().length === 1);
+    expect(letters()[0]?.text).toContain('Done in notes');
+    const turn = restarted.core.journal.getTurn(spawned.turnId)!;
+    await restarted.core.threads.spawns.finished(turn);
+    expect(letters()).toHaveLength(1);
+    await restarted.stop();
+  } finally {
+    for (const h of cores.splice(0)) await h.stop();
+    await removeDir(dataDir);
+  }
 });
 
 test('starting threads stays within communication settings and one agent generation, with no hourly budget', async () => {
