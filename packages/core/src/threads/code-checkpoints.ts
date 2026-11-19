@@ -275,7 +275,7 @@ export class CodeCheckpoints {
     let entries;
     try { entries = await readdir(this.#root(), { withFileTypes: true }); }
     catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; throw error; }
-    if (!this.#core.journal.isClosed()) await this.discard(entries.filter(entry => entry.isDirectory() && !this.#core.journal.getThread(entry.name)).map(entry => entry.name));
+    if (!this.#core.journal.isClosed()) await this.discard(entries.filter(entry => entry.isDirectory() && !this.#core.journal.retainsThread(entry.name)).map(entry => entry.name));
   }
 
   /**

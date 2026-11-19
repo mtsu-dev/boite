@@ -942,6 +942,9 @@ export const SCENARIOS: Record<string, Scenario> = {
     const setup = await echo(env);
     const created = await thread(env, setup);
     await finishedTurn(env, created.id, 'Keep this conversation');
+    const archived = await thread(env, setup);
+    const done = await env.call('threads.archive', { threadId: archived.id, archived: true, onlyIfIdle: true });
+    check(typeof done.doneAt === 'number', 'the second conversation was marked done');
     const events = record(env, ['thread.updated', 'thread.removed', 'project.removed']);
     await env.call('projects.remove', { projectId: setup.projectId });
     await until('project.removed', () => events.events.some((event) => event.name === 'project.removed'));
@@ -950,11 +953,16 @@ export const SCENARIOS: Record<string, Scenario> = {
       .filter((event) => event.name === 'project.removed' || (event.payload as { id?: string; threadId?: string }).id === created.id || (event.payload as { threadId?: string }).threadId === created.id)
       .map((event) => (event.name === 'thread.updated' ? `thread.updated archived=${(event.payload as ThreadSummary).archived}` : event.name));
     same(order.filter((entry, index) => index === 0 || entry !== order[index - 1]), ['thread.updated archived=true', 'thread.removed', 'project.removed'], 'the events');
+    check(!events.events.some(event => event.name === 'thread.updated' && (event.payload as ThreadSummary).id === done.id),
+      'the already archived conversation was archived again');
     await refusedWith(env.call('threads.get', { threadId: created.id }), RpcErrorCode.NotFound);
-    same((await env.call('projects.add', { path: setup.projectPath })).id, setup.projectId, 'the re-added project id');
+    const project = await env.call('projects.add', { path: setup.projectPath });
+    same(project.id, setup.projectId, 'the re-added project id');
+    same(project.doneThreads, 1, 'the restored project keeps its Done count');
     const restored = await env.call('threads.get', { threadId: created.id });
     check(restored.archived && restored.messages.some(message => message.role === 'user' &&
       message.parts.some(part => part.type === 'text' && part.text === 'Keep this conversation')), 'the restored project lost its conversation');
+    same((await env.call('threads.get', { threadId: done.id })).doneAt, done.doneAt, 'the re-added conversation keeps its Done time');
   },
   'a group is created, invites, refuses what names the wrong machine, and is left': async (env) => {
     same(await env.call('group.get', {}), null, 'the group before any');

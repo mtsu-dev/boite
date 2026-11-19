@@ -221,7 +221,7 @@ export class TurnRunner {
     if (!threadOwned) {
       // This completion still belongs to its parent, even if the child thread
       // now names a newer execution. Do not run work against that execution.
-      await this.threads.spawns.finished(finished);
+      await this.threads.spawns.sendResult(threadId);
       return;
     }
     if (next.archived) releaseThread(threadId);
@@ -232,7 +232,7 @@ export class TurnRunner {
     // Done the agent asked for during the turn, now that its answer is written. A move asked in the same turn went first.
     this.threads.agentDone.applyWaiting(threadId);
     // A thread an agent started answers it before a failure pauses its coordination.
-    await this.threads.spawns.finished(finished);
+    await this.threads.spawns.sendResult(threadId);
     // A stopped turn pauses coordination until the user's next message. A failed one pauses nothing: another agent
     // can wake the crashed thread, and a letter that arrived during the turn reaches it now. A keepalive was only waiting.
     const keepalive = queued.execution?.operation === 'keepalive';
