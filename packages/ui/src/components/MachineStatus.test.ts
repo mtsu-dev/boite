@@ -32,8 +32,13 @@ test('one connected machine says nothing; a filter brings back the button, its n
   expect(document.querySelector('[data-testid=machine-status] .name')?.textContent).toBeTruthy();
   document.querySelector<HTMLButtonElement>('[data-testid=machine-status]')!.click();
   await settle();
-  const rows = [...document.querySelectorAll<HTMLElement>('[data-testid=machine-status-menu] [data-row]')].map(row => row.dataset.value);
-  expect(rows).toEqual(['manage']);
+  const menu = document.querySelector('[data-testid=machine-status-menu]');
+  expect(menu?.querySelectorAll('[data-row]')).toHaveLength(0);
+  const manage = menu?.querySelector<HTMLButtonElement>('footer button');
+  expect(manage?.textContent).toBe('Manage machines');
+  manage!.click(); await settle();
+  expect(store.page).toBe('settings');
+  expect(store.settingsTab).toBe('machines');
 });
 
 test('a machine out of reach reads one way, off or lost: the offline ring on the button and "Offline" after its name; none answering crosses the monitor', async () => {

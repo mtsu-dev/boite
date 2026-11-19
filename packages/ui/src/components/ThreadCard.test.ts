@@ -42,8 +42,9 @@ async function show(project: Store['projects'][number], thread: ThreadSummary, e
 
 test('a thread row names the work it is waiting on without a hover', async () => {
   const { project, thread } = await connectBranched();
+  store.pendingQuestions = [];
   const since = Date.now() - 60_000;
-  await show(project, { ...thread, status: 'idle', backgroundWait: { state: 'waiting', for: 'release build', since, until: null } });
+  await show(project, { ...thread, status: 'idle', openQuestions: 0, backgroundWait: { state: 'waiting', for: 'release build', since, until: null } });
   const wait = document.querySelector('[data-testid=thread-row] [data-testid=thread-wait]');
   expect(wait?.textContent).toContain('Waiting on release build');
   expect(wait?.querySelector('[data-testid=agent-elapsed]')?.textContent).toMatch(/^1m \d\ds$/);
@@ -52,6 +53,7 @@ test('a thread row names the work it is waiting on without a hover', async () =>
 
 test('a parent row shows its delegated work and time since the first child started', async () => {
   const { project, thread } = await connectBranched();
+  store.pendingQuestions = [];
   const parent = { ...thread, status: 'idle' as const, openQuestions: 0, backgroundWork: null, backgroundWait: null };
   store.threads = [...store.threads, { ...parent, id: 'active-child', parentThreadId: parent.id, status: 'running', runningSince: Date.now() - 60_000 }];
   await show(project, parent);
