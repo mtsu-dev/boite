@@ -18,7 +18,7 @@ import { launchOf } from './git/command.ts';
 import { ExecutionProtections } from './execution-protection.ts';
 import { closeProcessResources, protectionRunner } from './protection-runner.ts';
 import { processEventDiagnostic } from './process-event-diagnostics.ts';
-import { running, stopProcess } from './process-entry.ts';
+import { killEntry, running, stopProcess } from './process-entry.ts';
 
 import type { ChildProcess, ManagedStop, ProcessEntry as Entry, SpawnedChild, SpawnedPipedProcess, SpawnedProcess, SpawnedTerminal, SpawnOptions, TerminalSpawnOptions, ProcRegistryOptions } from './process-spawn-types.ts';
 export type { ProcRegistryOptions, ChildProcess, ManagedStop, PipedChildProcess, SpawnedChild, SpawnedPipedProcess, SpawnedProcess, SpawnedTerminal, SpawnOptions, TerminalSpawnOptions } from './process-spawn-types.ts';
@@ -621,7 +621,7 @@ export class ProcRegistry {
       const { pid } = entry.record;
       const assigned = !this.unassigned.has(pid);
       if (pid <= 0 || (terminated && assigned)) continue;
-      this.#trackStop(stopProcess(this.platform, threadId, pid, assigned, entry.running(), entry.kill), threadId);
+      this.#trackStop(stopProcess(this.platform, threadId, pid, assigned, entry.running(), () => killEntry(entry)), threadId);
     }
     return entries.length;
   }
