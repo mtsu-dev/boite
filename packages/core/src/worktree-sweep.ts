@@ -19,7 +19,8 @@ import { inside, keyOf } from './checkouts.ts';
 import { fetchedRepositories } from './pull-requests.ts';
 
 export { inside, keyOf } from './checkouts.ts';
-import { assertCheckoutVacant, realKey, removeCleanCheckout, withVacantCheckout } from './checkout-removal.ts';
+import { assertCheckoutVacant, realKey, removeCleanCheckout, restoreInterruptedCheckout, withVacantCheckout } from './checkout-removal.ts';
+import { listCheckoutRecoveries } from './checkout-recovery.ts';
 export { realKey } from './checkout-removal.ts';
 import { withRegistration, worktreeRoot } from './worktree.ts';
 
@@ -200,7 +201,10 @@ export class WorktreeSweep {
     // Reserve immediately after the final occupancy check and hold through removal.
     const git = (args: string[]) => this.git(project, project.path, args);
     const remove = () => typeof branchRule === 'string' ? git(removal) : removeCleanCheckout(this.core, target.path, git);
-    const removed = await this.registered(project, () => withVacantCheckout(this.core, project, target.path, remove, [path]));
+    const removed = await this.registered(project, async () => {
+      if (typeof branchRule !== 'string') await restoreInterruptedCheckout(this.core, project, target.path, target.branch, git);
+      return withVacantCheckout(this.core, project, target.path, remove, [path]);
+    });
     if (removed.code !== 0) {
       throw refused(`git worktree remove failed for ${path}: ${removed.stderr.trim() || `exit ${removed.code}`}`, { projectId: project.id, path });
     }
@@ -354,5 +358,6 @@ export class WorktreeSweep {
 export function registerWorktreeMethods(core: Core, sweep: WorktreeSweep = new WorktreeSweep(core)): void {
   // Owner only, absent from DEVICE_METHODS: both name paths on the host, and a removal deletes a folder.
   core.router.register('worktrees.list', (params) => sweep.list(params.projectId));
+  core.router.register('worktrees.recoveries', () => listCheckoutRecoveries(core));
   core.router.register('worktrees.remove', (params) => sweep.remove(params));
 }

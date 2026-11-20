@@ -108,7 +108,9 @@ keeps its name. The header shows the branch.
   after all its conversations are done or archived, only when its last commit
   is on another branch or in a merged pull request. It keeps worktrees with
   uncommitted changes, including files Git ignores. Boite logs where it saved
-  the files from a retired worktree. Check that copy before deleting it by hand.
+  files that changed during removal or that Boite could not verify. Run
+  `boite projects recoveries` from your terminal to find those files and
+  check them before deleting them by hand.
 - Ask to finish after merge: once every pull request of a worktree conversation
   is merged or closed, Boite asks its agent whether the conversation is done.
   The agent moves it to Done or keeps it open when it still has something to

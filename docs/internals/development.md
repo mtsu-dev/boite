@@ -274,11 +274,16 @@ minutes per pass. A worktree qualifies when all of these hold:
   directory and sets aside its tracked files. The directory must be empty
   when removed, so a process with an open directory handle can still leave a
   file that stops cleanup. Boite restores that checkout, or recovers the
-  recorded move on the next open after a crash. A successful retirement keeps
-  the files in the sibling directory's `saved` folder, since an open file
-  handle can still write to them after the last status check. The
-  `worktree.recovery-saved` log record shows where to inspect and manually
-  remove the copy.
+  recorded move on the next open after a crash. Once Git has removed its
+  registration, Boite discards a saved file only when its bytes and Git mode
+  match the recorded commit and the filesystem can exclude writers. A file
+  that stays open for writing can still receive edits after cleanup returns.
+  Files with differences, open writers or unverifiable contents remain in
+  the sibling directory's `saved` folder. On macOS, regular files stay there
+  because Boite has no file lease to check for open writers. An empty recovery
+  is removed. Each retained recovery has a `recovery.json` manifest with the
+  original checkout path and commit. Its `saved` folder has no Git pointer.
+  The owner can list the durable inventory with `boite projects recoveries`.
 - HEAD is on another local branch or remote-tracking ref, or a merged, non-fork
   GitHub pull request has that exact commit as its head. The proof is the one
   [merged pull requests](#merged-pull-requests) use, so a squash
