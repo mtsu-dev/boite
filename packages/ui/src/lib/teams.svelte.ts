@@ -57,8 +57,8 @@ export class TeamDirectory {
     this.#reading += 1;
     if (client) {
       const changed = client.on('teams.changed', () => { void this.refresh(); });
-      // An older core gates teams on the desktop's experiments: a read made before it heard of them was refused.
-      const switched = client.on('client.desktopExperiments', ({ experiments }) => { if (experiments.includes('teams')) void this.refresh(); });
+      // A core from before Teams were finished gated them on the desktop's `teams` experiment: a read made before it heard of it was refused.
+      const switched = client.on('client.desktopExperiments', ({ experiments, chosen }) => { if ([...experiments, ...chosen ?? []].includes('teams' as never)) void this.refresh(); });
       this.#release = () => { changed(); switched(); };
     } else this.#release = null;
     if (ready) void this.refresh();

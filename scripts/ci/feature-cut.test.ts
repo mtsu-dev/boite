@@ -2,7 +2,7 @@ import { afterEach, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { EXPERIMENT_IDS, EXPERIMENT_STAGES, FEATURE_CUTS, featureDefines, featureFlag, featureMarker, type ExperimentId } from '../../packages/contracts/src/experiments.ts';
+import { EXPERIMENT_IDS, EXPERIMENT_STAGES, FEATURE_CUTS, featureDefines, featureFlag, featureMarker, type ExperimentId, type FeatureStage } from '../../packages/contracts/src/experiments.ts';
 import { describe, scanBundle, type Cuts } from './feature-cut.ts';
 import { FEATURE_DIRECTORIES, FEATURE_MODULES, STAYS } from './feature-modules.ts';
 
@@ -20,11 +20,13 @@ function bundle(files: Record<string, string>): string {
   return dir;
 }
 
-// Whip stands for a dev feature and teams for a nightly one; both cut from both bundles.
-const stages = { ...EXPERIMENT_STAGES, whip: 'dev', teams: 'nightly' } as const;
-const cuts: Cuts = { whip: { ui: true, core: true }, teams: { ui: true, core: false } };
-const whip = `mark("${featureMarker('whip')}")`;
-const teams = `const m="${featureMarker('teams')}"`;
+// No feature is cut today: two stand-in ids, a dev feature cut from both bundles and a nightly one cut from the UI.
+const WHIP = 'whip' as unknown as ExperimentId;
+const TEAMS = 'teams' as unknown as ExperimentId;
+const stages: Record<ExperimentId, FeatureStage> = { ...EXPERIMENT_STAGES, [WHIP]: 'dev', [TEAMS]: 'nightly' };
+const cuts: Cuts = { [WHIP]: { ui: true, core: true }, [TEAMS]: { ui: true, core: false } };
+const whip = `mark("${featureMarker(WHIP)}")`;
+const teams = `const m="${featureMarker(TEAMS)}"`;
 
 test('a bundle that holds exactly the features of its kind passes, for each of the three kinds', () => {
   expect(scanBundle(bundle({ 'index.html': '<html>', 'assets/app.js': 'boot()' }), 'ui', 'release', cuts, stages)).toEqual([]);
@@ -36,7 +38,7 @@ test('a bundle that holds exactly the features of its kind passes, for each of t
 
 test('a planted leak fails: a dev feature in a Nightly or a Release, a nightly feature in a Release', () => {
   const nightly = scanBundle(bundle({ 'assets/app.js': 'boot()', 'assets/teams.js': teams, 'assets/chunk-9f.js': `a();${whip};b()` }), 'ui', 'nightly', cuts, stages);
-  expect(nightly).toEqual([{ side: 'ui', kind: 'nightly', feature: 'whip', problem: 'leak', files: ['assets/chunk-9f.js'] }]);
+  expect(nightly).toEqual([{ side: 'ui', kind: 'nightly', feature: WHIP, problem: 'leak', files: ['assets/chunk-9f.js'] }]);
   expect(describe(nightly[0]!, stages)).toBe('ui bundle (nightly): holds "boite-feature:whip" in assets/chunk-9f.js, but whip is tagged dev. Something imports its code outside its lazy entry (docs/internals/experiments.md#out-of-the-build)');
 
   const release = scanBundle(bundle({ 'index.html': `<script>${teams}</script>`, 'assets/app.js': whip }), 'ui', 'release', cuts, stages);
@@ -47,34 +49,32 @@ test('a planted leak fails: a dev feature in a Nightly or a Release, a nightly f
 
 test('a bundle that lost the marker of a feature it must hold fails too, and so does an empty directory', () => {
   const lost = scanBundle(bundle({ 'assets/app.js': 'boot()', 'assets/whip.js': whip }), 'ui', 'dev', cuts, stages);
-  expect(lost).toEqual([{ side: 'ui', kind: 'dev', feature: 'teams', problem: 'lost', files: [] }]);
+  expect(lost).toEqual([{ side: 'ui', kind: 'dev', feature: TEAMS, problem: 'lost', files: [] }]);
   expect(describe(lost[0]!, stages)).toContain('"boite-feature:teams" is nowhere');
   // The compressed copies and binary assets are not read: a marker is looked for in text.
   expect(() => scanBundle(bundle({ 'assets/app.js.br': 'x', 'assets/font.woff2': 'x' }), 'ui', 'release', cuts, stages)).toThrow('holds no bundle');
 });
 
-test('the five finished features are cut no more, their lazy entries still write their flag in full, and the contracts name no marker', () => {
+test('the five finished features left the registry, their lazy entries load with no flag, and the contracts name no marker', () => {
   const root = join(import.meta.dir, '..', '..');
   const read = (path: string) => readFileSync(join(root, path), 'utf8');
-  // The five that were cut are finished: every build holds them, so nothing is left to prove a bundle lacks.
-  // Another feature may be cut meanwhile; only these five must be out of the registry.
-  for (const id of ['whip', 'debates', 'contacts', 'teams', 'auto-goal'] as const) {
-    expect(EXPERIMENT_STAGES[id], id).toBe('release');
-    expect(FEATURE_CUTS[id], id).toBeUndefined();
+  // Every build holds the five: nothing reads their stage, so they are no experiment ids any more.
+  for (const id of ['whip', 'debates', 'contacts', 'teams', 'auto-goal']) {
+    expect(EXPERIMENT_IDS as readonly string[], id).not.toContain(id);
+    expect((FEATURE_CUTS as Record<string, unknown>)[id], id).toBeUndefined();
   }
-  // Their entries stay, with the flag no build defines any more: the import runs, and a feature tagged below release again is cut by one line.
-  const entries: [ExperimentId, string][] = [
-    ['whip', 'packages/ui/src/lib/whip-entry.svelte.ts'],
-    ['debates', 'packages/ui/src/lib/council-entry.ts'],
-    ['debates', 'packages/core/src/council-entry.ts'],
-    ['debates', 'packages/core/src/delegate-cli.ts'],
-    ['contacts', 'packages/ui/src/lib/contacts-entry.ts'],
-    ['teams', 'packages/ui/src/lib/teams-entry.ts'],
-    ['teams', 'packages/core/src/teams-entry.ts'],
-    ['auto-goal', 'packages/core/src/auto-goal-entry.ts'],
+  const entries = [
+    'packages/ui/src/lib/whip-entry.svelte.ts',
+    'packages/ui/src/lib/council-entry.ts',
+    'packages/core/src/council-entry.ts',
+    'packages/core/src/delegate-cli.ts',
+    'packages/ui/src/lib/contacts-entry.ts',
+    'packages/ui/src/lib/teams-entry.ts',
+    'packages/core/src/teams-entry.ts',
+    'packages/core/src/auto-goal-entry.ts',
+    'packages/ui/src/lib/deferred-parts.ts',
   ];
-  for (const [id, entry] of entries) expect(read(entry), entry).toContain(`typeof ${featureFlag(id)} === 'undefined' || ${featureFlag(id)}`);
-  for (const id of ['debates', 'contacts', 'teams'] as const) expect(read('packages/ui/src/lib/deferred-parts.ts')).toContain(`typeof ${featureFlag(id)} === 'undefined' || ${featureFlag(id)}`);
+  for (const entry of entries) expect(read(entry), entry).not.toContain('__BOITE_HAS_');
   // The contracts file names no marker in full, or every bundle would hold them all.
   const contracts = read('packages/contracts/src/experiments.ts');
   for (const id of EXPERIMENT_IDS) expect(contracts, id).not.toContain(featureMarker(id));
@@ -128,14 +128,15 @@ test('every module of a cut feature calls markFeature with its marker, no other 
 
 test('a cut module imported directly, outside its entry, is a leak the scan sees in a real Release bundle, and one behind its flag is not', async () => {
   const contracts = JSON.stringify(join(import.meta.dir, '..', '..', 'packages', 'contracts', 'src', 'experiments.ts'));
-  // Teams stands for a nightly feature cut from the core, as the five were before they finished.
-  const nightly = { ...EXPERIMENT_STAGES, teams: 'nightly' } as const;
-  const cut: Cuts = { teams: { ui: false, core: true } };
-  const module = `import { markFeature } from ${contracts};\nexport class TeamStore { size() { return 1; } }\nmarkFeature('${featureMarker('teams')}');\n`;
+  // Resident agents stand for a nightly feature cut from the core, as the five were before they finished: featureDefines writes flags for registered ids only.
+  const id: ExperimentId = 'resident-agents';
+  const nightly: Record<ExperimentId, FeatureStage> = { ...EXPERIMENT_STAGES, [id]: 'nightly' };
+  const cut: Cuts = { [id]: { ui: false, core: true } };
+  const module = `import { markFeature } from ${contracts};\nexport class TeamStore { size() { return 1; } }\nmarkFeature('${featureMarker(id)}');\n`;
   // What a careless change does: a static import of one name of a cut module. The bundler keeps the code and drops every unused export.
   const direct = `import { TeamStore } from './store.ts';\n(globalThis as Record<string, unknown>).leaked = TeamStore;\n`;
   // What an entry does: the flag written in full before the require, folded and dropped in a Release.
-  const gated = `declare const ${featureFlag('teams')}: boolean | undefined;\n(globalThis as Record<string, unknown>).store = typeof ${featureFlag('teams')} === 'undefined' || ${featureFlag('teams')} ? require('./store.ts') : null;\n`;
+  const gated = `declare const ${featureFlag(id)}: boolean | undefined;\n(globalThis as Record<string, unknown>).store = typeof ${featureFlag(id)} === 'undefined' || ${featureFlag(id)} ? require('./store.ts') : null;\n`;
   const found: Record<string, string[]> = {};
   for (const [name, entry] of [['direct', direct], ['gated', gated]] as const) {
     const dir = bundle({ 'store.ts': module, 'entry.ts': entry });
@@ -144,5 +145,5 @@ test('a cut module imported directly, outside its entry, is a leak the scan sees
     expect(built.success, name).toBe(true);
     found[name] = scanBundle(outdir, 'core', 'release', cut, nightly).map((finding) => `${finding.feature} ${finding.problem}`);
   }
-  expect(found).toEqual({ direct: ['teams leak'], gated: [] });
+  expect(found).toEqual({ direct: ['resident-agents leak'], gated: [] });
 }, 60_000);

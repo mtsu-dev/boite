@@ -17,7 +17,7 @@ export interface TransitEntry {
 }
 
 /** A key the user kept for a project: under its own vault id, found by name. */
-export interface KeptEntry {
+interface KeptEntry {
   id: string;
   projectId: ProjectId;
   name: string;
@@ -26,7 +26,7 @@ export interface KeptEntry {
 }
 
 /** Where an open card is drawn, so a core that stopped with it open closes it on the next start. */
-export interface OpenCard {
+interface OpenCard {
   requestId: string;
   threadId: ThreadId;
   messageId: string;

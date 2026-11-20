@@ -57,7 +57,7 @@ const WAIT_ON_APP = ['--window', '--text', '--menu', '--menu-closed'];
 const REF = /^@[A-Za-z0-9]+:e\d+$/;
 
 /** The words before `--`: after it come texts, never flags. */
-export function flagWords(args: string[]): string[] {
+function flagWords(args: string[]): string[] {
   const end = args.indexOf('--');
   return end === -1 ? args : args.slice(0, end);
 }

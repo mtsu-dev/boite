@@ -57,7 +57,6 @@ export const strings = {
     includeLogs: 'Include anonymized logs',
     preview: 'Preview',
     previewHint: 'This is the text the issue will contain.',
-    previewUpdate: 'Update the preview',
     submit: 'Create the issue',
     openGithub: 'Open on GitHub',
     ghMissing: 'GitHub CLI is not set up on this machine, so the issue opens in your browser. Drag {file} into it to attach the full logs.',

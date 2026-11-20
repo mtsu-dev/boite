@@ -8,14 +8,13 @@ import { startDevUi } from './lib/ui.ts';
 /*
  * The stages of `EXPERIMENT_STAGES` as a person meets them: with every
  * feature finished, no build has an Experiments page, the five features that
- * were experiments are on with nothing stored, and Bots are there on a
+ * were experiments have no gate left, and Bots are there on a
  * profile that stored nothing. The in-memory core says its version
  * (`?fake=1&version=`), the way a real hello does.
  */
 const ARTIFACTS = join(import.meta.dir, '.artifacts', 'stages');
 const DESKTOP = { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false };
 const PHONE = { width: 390, height: 844, deviceScaleFactor: 1, mobile: true };
-const FINISHED = ['whip', 'contacts', 'auto-goal', 'teams', 'debates'];
 
 let page: BrowserPage;
 let server: { close(): Promise<void> };
@@ -50,7 +49,7 @@ async function capture(name: string) {
 
 for (const [name, size] of [['desktop', DESKTOP], ['phone', PHONE]] as const) {
   for (const [build, query] of [['Dev', ''], ['Release', '&version=2.0.0']] as const) {
-    test(`${name}: a ${build} has no Experiments page, and the five finished features are on with nothing stored`, async () => {
+    test(`${name}: a ${build} has no Experiments page, with nothing stored`, async () => {
       await open(query, size);
       expect(await page.evaluate(`localStorage.getItem('boite.experiments')`)).toBeNull();
       // A route to the page that is gone lands on Settings' first page, not on an empty one.
@@ -58,7 +57,6 @@ for (const [name, size] of [['desktop', DESKTOP], ['phone', PHONE]] as const) {
       await page.waitFor(`document.querySelector('[data-testid="settings-tab-general"], [data-testid="settings-family"]')?.getBoundingClientRect().width > 0`);
       expect(await page.evaluate(`document.querySelector('[data-testid="settings-tab-experiments"]')`)).toBeNull();
       expect(await page.evaluate(`document.querySelector('[data-testid="experiments-page"]')`)).toBeNull();
-      expect(await page.evaluate(`import('/src/lib/experiments.ts').then(({ isExperimentEnabled }) => ${JSON.stringify(FINISHED)}.map(isExperimentEnabled))`)).toEqual(FINISHED.map(() => true));
       // The phone's list is taller than the screen: show the whole Advanced family, where the row was.
       if (name === 'phone') {
         await page.evaluate(`document.querySelector('[data-testid="settings-family"][data-family="advanced"]').scrollIntoView({ block: 'end' })`);

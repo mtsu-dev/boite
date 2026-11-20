@@ -31,7 +31,7 @@ export const UI_VERSION: string = RELEASE_VERSION;
  */
 export const LOCAL_RECOVERY_MS = 4_000;
 /** The longest wait between two asks while the shell's core keeps failing to start. */
-export const LOCAL_RECOVERY_MAX_MS = 60_000;
+const LOCAL_RECOVERY_MAX_MS = 60_000;
 
 export function observable(client: Client): client is ObservableClient {
   return 'onState' in client;

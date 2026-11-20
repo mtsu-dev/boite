@@ -189,8 +189,10 @@ test('the app tells its core its language, and no experiment is a setting while 
     const read = await client.call('agent.settings', { threadId: 't-trace' });
     // A finished feature is not a setting any more: it has no reading and no card, an old switch left in storage too.
     expect(read.settings.filter((reading) => reading.key.startsWith('experiment.'))).toEqual([]);
-    for (const key of ['experiment.resident-agents', 'experiment.whip', 'experiment.teams'] as const) {
-      await expect(client.call('settings.request', { threadId: 't-trace', reason: 'x', key, value: true }), key).rejects.toThrow('no longer an experiment');
+    await expect(client.call('settings.request', { threadId: 't-trace', reason: 'x', key: 'experiment.resident-agents', value: true })).rejects.toThrow('no longer an experiment');
+    // An id that left the registry is no setting at all.
+    for (const key of ['experiment.whip', 'experiment.teams'] as const) {
+      await expect(client.call('settings.request', { threadId: 't-trace', reason: 'x', key, value: true }), key).rejects.toThrow('is not a setting an agent may ask about');
     }
   } finally {
     localStorage.removeItem('boite.experiments');

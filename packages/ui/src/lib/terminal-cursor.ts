@@ -7,9 +7,9 @@
 
 export type TerminalCursor = 'bar' | 'block' | 'underline';
 
-export const TERMINAL_CURSORS: readonly TerminalCursor[] = ['bar', 'block', 'underline'];
+const TERMINAL_CURSORS: readonly TerminalCursor[] = ['bar', 'block', 'underline'];
 
-export const TERMINAL_CURSOR_STORAGE_KEY = 'boite.terminalCursor';
+const TERMINAL_CURSOR_STORAGE_KEY = 'boite.terminalCursor';
 
 /** The shape picked on this page, which storage may have refused to keep. */
 let picked: TerminalCursor | undefined;
@@ -41,7 +41,7 @@ export function setTerminalCursor(cursor: TerminalCursor): void {
  * draws with xterm's DOM renderer, for a GPU or driver that draws badly. It
  * applies to screens opened after the change.
  */
-export const TERMINAL_GPU_STORAGE_KEY = 'boite.terminalGpu';
+const TERMINAL_GPU_STORAGE_KEY = 'boite.terminalGpu';
 
 let gpuPicked: boolean | undefined;
 

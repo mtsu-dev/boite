@@ -13,7 +13,6 @@ import { activeSubscriptionProxy } from './subscription-proxy.ts';
 import { GatewayQuotas } from './subscription-proxy-quotas.ts';
 import { QuotaAlertStore } from './quota-alerts.ts';
 
-export { claudeUsageAgent, codexQuotaWindows } from './quota-details.ts';
 
 const CACHE_MS = 60_000;
 const RETRY_MS = 300_000;

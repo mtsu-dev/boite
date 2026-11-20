@@ -335,9 +335,9 @@ export type SessionContext = Pick<TurnContext,
   'accountEnv' | 'systemGuide' | 'warmProcessMinutes' | 'toolSummaries' | 'shortAnswers' | 'promptSuggestions' | 'suggestion' | 'autoCompactTokens' | 'backgroundCompaction' | 'compactionSummary' | 'log' | 'diagnostic' | 'authenticationFailed' | 'commands' | 'context' | 'hook' |
   'background' | 'backgroundFinished' | 'wake' | 'notice' | 'loopWake' | 'spawnChild' | 'stopChild' | 'finishStartup' | 'killTree' | 'quota' | 'lazyMcp' | 'protectedExecution' | 'modeRequired'>;
 
-export type DiagnosticLevel = 'debug' | 'info' | 'warn' | 'error';
+type DiagnosticLevel = 'debug' | 'info' | 'warn' | 'error';
 /** Scalars only: never a prompt, a tool input or output, a command line or a token. */
-export interface DiagnosticContext { event: string; durationMs?: number; data?: Record<string, string | number | boolean | null> }
+interface DiagnosticContext { event: string; durationMs?: number; data?: Record<string, string | number | boolean | null> }
 
 export interface TurnResult {
   status: 'done' | 'stopped' | 'error';

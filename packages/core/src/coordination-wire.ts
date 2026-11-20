@@ -120,7 +120,7 @@ function unsealed(url: string | null, status: number, raw: string): string {
 }
 
 /** How long the address that answered last is asked alone before the others are tried. */
-export const HEAD_START_MS = 1000;
+const HEAD_START_MS = 1000;
 
 /**
  * The addresses of a member may all lead to the same core, and asking them all

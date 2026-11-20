@@ -39,7 +39,7 @@ const STATUS_TIMEOUT_MS = 5_000;
 /** `funnel --bg` on a node never allowed Funnel prints a consent link, then waits for it. */
 const FUNNEL_TIMEOUT_MS = 15_000;
 /** The ports Funnel accepts besides 443. */
-export const FUNNEL_PORTS = [8443, 10000] as const;
+const FUNNEL_PORTS = [8443, 10000] as const;
 
 /** How often the mounts are checked from the internet, when they are turned off and on, and when checks stop. */
 export interface FunnelTiming { checkMs: number; repairAfterMs: number; giveUpMs: number; /** The shorter wait between checks at first, and for how long. */ soonMs?: number; soonForMs?: number }

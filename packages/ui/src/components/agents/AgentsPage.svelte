@@ -74,7 +74,7 @@
   let TeamDialog = $state.raw<typeof import('../teams/TeamDialog.svelte').default>();
   let TeamHeader = $state.raw<typeof import('../teams/TeamHeader.svelte').default>();
   $effect(() => {
-    if (TeamDialog || !teamsParts) return;
+    if (TeamDialog) return;
     void Promise.all([teamsParts.TeamDialog(), teamsParts.TeamHeader()]).then(([dialog, header]) => { TeamDialog = dialog.default; TeamHeader = header.default; }).catch(() => {});
   });
   /** The dialog that creates a team by hand is open (`docs/internals/teams.md`, In the app). */

@@ -26,7 +26,7 @@ export interface FavoritesTarget {
 }
 
 /** The list as a core stores it: trimmed, repeats dropped, unknown keys gone. Null when malformed. */
-export function cleanFavorites(value: unknown): ModelFavorites | null {
+function cleanFavorites(value: unknown): ModelFavorites | null {
   if (value === undefined || value === null) return null;
   const checked = checkSettingsPatch({ modelFavorites: value as ModelFavorites });
   return checked.ok ? checked.patch.modelFavorites ?? null : null;
@@ -37,7 +37,7 @@ function itemKey(item: ModelFavorite): string {
 }
 
 /** Above zero when `a` wins: the later change, then the greater content, so a tie never flips back. */
-export const compareFavorites = compareModelFavorites;
+const compareFavorites = compareModelFavorites;
 
 function readCache(): ModelFavorites {
   try { return cleanFavorites(JSON.parse(localStorage.getItem(FAVORITES_CACHE_KEY) ?? 'null')) ?? EMPTY; }

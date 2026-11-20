@@ -170,8 +170,8 @@ export function limitToast(alert: QuotaAlert, key: string): Toast {
 }
 
 /** Where `sw.js` reads them. Not a `boite-ui-` cache: those go with each new build. */
-export const NOTIFICATION_WORDS_CACHE = 'boite-notify';
-export const NOTIFICATION_WORDS_PATH = '/notification-words';
+const NOTIFICATION_WORDS_CACHE = 'boite-notify';
+const NOTIFICATION_WORDS_PATH = '/notification-words';
 
 /**
  * Leaves the words where the service worker finds them. The core speaks no
@@ -186,7 +186,7 @@ export async function storeNotificationWords(words: Record<NotificationLabel, st
 }
 
 /** Where `sw.js` reads the page's language when it installs, to store that catalogue with the shell. */
-export const WORKER_LOCALE_PATH = '/locale';
+const WORKER_LOCALE_PATH = '/locale';
 
 /**
  * Leaves the language this page speaks beside the words. The next worker

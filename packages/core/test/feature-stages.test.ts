@@ -9,7 +9,8 @@ import { echoThread, startTestCore, type TestCore } from './harness.ts';
 const RELEASE = '2.0.0';
 const NIGHTLY = '2.0.1-nightly.20261113.1';
 const DEV = '2.0.0-beta.1';
-const GRADUATED: ExperimentId[] = ['whip', 'contacts', 'auto-goal', 'teams', 'debates'];
+/** The experiments finished and removed from the list since, as an older app still reports them. */
+const GRADUATED = ['whip', 'contacts', 'auto-goal', 'teams', 'debates'] as unknown as ExperimentId[];
 const report = (experiments: ExperimentId[]): ClientPreferences => ({ app: 'app-desktop-0001', language: 'en', experiments, labels: {} });
 
 const cores: TestCore[] = [];
@@ -36,7 +37,7 @@ test('a version without a prerelease part is a Release, and no build lists a swi
 
   // Finished features are on whatever a device stored, in every build.
   for (const version of [RELEASE, NIGHTLY, DEV]) expect(effectiveExperiments([], version), version).toEqual([...EXPERIMENT_IDS]);
-  expect(effectiveExperiments(['whip', 'gone'], RELEASE)).toEqual([...EXPERIMENT_IDS]);
+  expect(effectiveExperiments([...GRADUATED, 'gone' as ExperimentId], RELEASE)).toEqual([...EXPERIMENT_IDS]);
 });
 
 test('a build has one of three kinds, read from its version', () => {
@@ -50,47 +51,52 @@ test('a build has one of three kinds, read from its version', () => {
 });
 
 test('a dev feature exists in a Dev build only, a nightly one in a Nightly and a Dev build', () => {
-  // The real table with one feature of each tag: whip stands for a dev feature, teams for a nightly one.
-  const stages = { ...EXPERIMENT_STAGES, whip: 'dev', teams: 'nightly' } as const;
+  // The real table with the Mochis tagged lower: once dev, once nightly.
+  const id = 'resident-agents';
+  const dev = { ...EXPERIMENT_STAGES, [id]: 'dev' } as const;
+  const nightly = { ...EXPERIMENT_STAGES, [id]: 'nightly' } as const;
 
-  expect(listedExperiments(DEV, stages)).toContain('whip');
-  expect(listedExperiments(NIGHTLY, stages)).not.toContain('whip');
-  expect(listedExperiments(RELEASE, stages)).not.toContain('whip');
-  expect(experimentRefusal('whip', DEV, stages)).toBeNull();
-  expect(experimentRefusal('whip', NIGHTLY, stages)).toBe(`experiment.whip runs in Dev builds only, and this machine runs a Nightly (${NIGHTLY}): it is still being built and no published build has it`);
-  expect(experimentRefusal('whip', RELEASE, stages)).toBe(`experiment.whip runs in Dev builds only, and this machine runs a Release (${RELEASE}): it is still being built and no published build has it`);
-  expect(experimentStartRefusal('whip', NIGHTLY, stages)).toContain('runs in Dev builds only');
+  expect(listedExperiments(DEV, dev)).toContain(id);
+  expect(listedExperiments(NIGHTLY, dev)).not.toContain(id);
+  expect(listedExperiments(RELEASE, dev)).not.toContain(id);
+  expect(experimentRefusal(id, DEV, dev)).toBeNull();
+  expect(experimentRefusal(id, NIGHTLY, dev)).toBe(`experiment.${id} runs in Dev builds only, and this machine runs a Nightly (${NIGHTLY}): it is still being built and no published build has it`);
+  expect(experimentRefusal(id, RELEASE, dev)).toBe(`experiment.${id} runs in Dev builds only, and this machine runs a Release (${RELEASE}): it is still being built and no published build has it`);
+  expect(experimentStartRefusal(id, NIGHTLY, dev)).toContain('runs in Dev builds only');
 
-  expect(listedExperiments(DEV, stages)).toContain('teams');
-  expect(listedExperiments(NIGHTLY, stages)).toContain('teams');
-  expect(listedExperiments(RELEASE, stages)).not.toContain('teams');
-  expect(experimentRefusal('teams', NIGHTLY, stages)).toBeNull();
-  expect(experimentRefusal('teams', DEV, stages)).toBeNull();
-  expect(experimentRefusal('teams', RELEASE, stages)).toBe(`experiment.teams runs in Nightly and Dev builds only, and this machine runs a Release (${RELEASE}): switch the update channel to Nightly in Settings > Machines and updates to try it`);
+  expect(listedExperiments(DEV, nightly)).toContain(id);
+  expect(listedExperiments(NIGHTLY, nightly)).toContain(id);
+  expect(listedExperiments(RELEASE, nightly)).not.toContain(id);
+  expect(experimentRefusal(id, NIGHTLY, nightly)).toBeNull();
+  expect(experimentRefusal(id, DEV, nightly)).toBeNull();
+  expect(experimentRefusal(id, RELEASE, nightly)).toBe(`experiment.${id} runs in Nightly and Dev builds only, and this machine runs a Release (${RELEASE}): switch the update channel to Nightly in Settings > Machines and updates to try it`);
 
   // A stored choice for a feature the build lacks is ignored, and still there for the build that has it.
-  const chosen = ['whip', 'teams'];
-  expect(effectiveExperiments(chosen, DEV, stages)).toEqual(expect.arrayContaining(['whip', 'teams']));
-  expect(effectiveExperiments(chosen, NIGHTLY, stages)).toContain('teams');
-  expect(effectiveExperiments(chosen, NIGHTLY, stages)).not.toContain('whip');
-  expect(effectiveExperiments(chosen, RELEASE, stages)).toEqual(effectiveExperiments([], RELEASE, stages));
-  expect(chosen).toEqual(['whip', 'teams']);
+  const chosen: ExperimentId[] = [id];
+  expect(effectiveExperiments(chosen, DEV, dev)).toEqual([id]);
+  expect(effectiveExperiments(chosen, NIGHTLY, nightly)).toEqual([id]);
+  expect(effectiveExperiments(chosen, NIGHTLY, dev)).toEqual([]);
+  expect(effectiveExperiments(chosen, RELEASE, nightly)).toEqual(effectiveExperiments([], RELEASE, nightly));
+  expect(chosen).toEqual([id]);
+  // A finished one has no switch left: its card is refused.
+  expect(experimentRefusal(id, RELEASE)).toBe(`experiment.${id} is no longer an experiment: it is on in every build and has no switch`);
 });
 
 test('a build is compiled with one constant for its kind and one flag per tagged feature', () => {
-  const stages = { ...EXPERIMENT_STAGES, whip: 'dev', teams: 'nightly' } as const;
-  expect(featureDefines(RELEASE, stages)).toMatchObject({ __BOITE_BUILD_KIND__: '"release"', __BOITE_HAS_WHIP__: 'false', __BOITE_HAS_TEAMS__: 'false' });
-  expect(featureDefines(NIGHTLY, stages)).toMatchObject({ __BOITE_BUILD_KIND__: '"nightly"', __BOITE_HAS_WHIP__: 'false', __BOITE_HAS_TEAMS__: 'true' });
-  expect(featureDefines(DEV, stages)).toMatchObject({ __BOITE_BUILD_KIND__: '"dev"', __BOITE_HAS_WHIP__: 'true', __BOITE_HAS_TEAMS__: 'true' });
+  const dev = { ...EXPERIMENT_STAGES, 'resident-agents': 'dev' } as const;
+  const nightly = { ...EXPERIMENT_STAGES, 'resident-agents': 'nightly' } as const;
+  expect(featureDefines(RELEASE, dev)).toEqual({ __BOITE_BUILD_KIND__: '"release"', __BOITE_HAS_RESIDENT_AGENTS__: 'false' });
+  expect(featureDefines(NIGHTLY, dev)).toEqual({ __BOITE_BUILD_KIND__: '"nightly"', __BOITE_HAS_RESIDENT_AGENTS__: 'false' });
+  expect(featureDefines(NIGHTLY, nightly)).toEqual({ __BOITE_BUILD_KIND__: '"nightly"', __BOITE_HAS_RESIDENT_AGENTS__: 'true' });
+  expect(featureDefines(DEV, dev)).toEqual({ __BOITE_BUILD_KIND__: '"dev"', __BOITE_HAS_RESIDENT_AGENTS__: 'true' });
   // A finished feature has no flag: nothing of it is ever cut.
   expect(Object.keys(featureDefines(RELEASE))).toEqual(['__BOITE_BUILD_KIND__']);
   // From source nothing is compiled out, and a finished feature is in every bundle.
-  expect(featureCompiled('whip')).toBe(true);
-  expect(featureCompiled('whip', 'release')).toBe(true);
-  expect(featureCompiled('theme-grain', 'release')).toBe(true);
+  expect(featureCompiled('resident-agents')).toBe(true);
+  expect(featureCompiled('resident-agents', 'release')).toBe(true);
   // Only a feature above the release tag can be cut, and its marker is its own.
   for (const id of Object.keys(FEATURE_CUTS) as ExperimentId[]) expect(EXPERIMENT_STAGES[id], id).not.toBe('release');
-  expect(featureMarker('whip')).toBe('boite-feature:whip');
+  expect(featureMarker('resident-agents')).toBe('boite-feature:resident-agents');
 });
 
 test('a Release core has every feature on before any app reported, as after a restart: teams, the council and goal track answer', async () => {
@@ -130,12 +136,14 @@ test('a former experiment\'s card says it is finished, and the former experiment
   await finished;
 
   // The historic field and the chosen list: every feature is in force, whatever the app chose.
-  expect(await owner.call('client.preferences', report(GRADUATED))).toEqual({ ok: true, desktop: [...EXPERIMENT_IDS], desktopChosen: GRADUATED });
+  // An older app still names the experiments since finished: they are dropped, and every feature is in force.
+  expect(await owner.call('client.preferences', report(GRADUATED))).toEqual({ ok: true, desktop: [...EXPERIMENT_IDS], desktopChosen: [] });
   const read = await owner.call('agent.settings', { threadId });
   expect(read.settings.filter(setting => setting.key.startsWith('experiment.'))).toEqual([]);
   expect(read.settings.find(setting => setting.key === 'cacheKeepalive')).toMatchObject({ value: null, page: 'advanced', section: 'cache-keepalive' });
 
-  expect(await owner.call('settings.request', { threadId, reason: 'Try the whip', key: 'experiment.whip', value: true }).catch((error: Error) => error.message)).toContain('no longer an experiment');
+  expect(await owner.call('settings.request', { threadId, reason: 'Try the mochis', key: 'experiment.resident-agents', value: true }).catch((error: Error) => error.message)).toContain('no longer an experiment');
+  expect(await owner.call('settings.request', { threadId, reason: 'Try the whip', key: 'experiment.whip', value: true }).then(() => 'accepted', (error: Error) => error.message)).not.toBe('accepted');
   const { setting } = await owner.call('settings.request', { threadId, reason: 'Watch the phone', key: 'deviceStream', value: true });
   expect(setting).toMatchObject({ kind: 'change', key: 'deviceStream', value: true, previous: false, page: 'advanced', section: 'device-stream' });
   owner.close();

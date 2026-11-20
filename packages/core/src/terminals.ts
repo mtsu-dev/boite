@@ -27,7 +27,7 @@ export const HISTORY_CHARS = 256 * 1024;
  * Output that follows other output within this window goes out as one event. The
  * first chunk after a quiet window goes at once, so a typed key echoes without delay.
  */
-export const OUTPUT_WINDOW_MS = 16;
+const OUTPUT_WINDOW_MS = 16;
 /** How far into a cut history the first line break is looked for. */
 const LINE_SEARCH_CHARS = 4096;
 /** Chunks the history holds before it joins them into one string. */

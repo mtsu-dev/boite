@@ -215,14 +215,14 @@ const TAR_PAX = 0x78;
 const TAR_PAX_GLOBAL = 0x67;
 const TAR_GNU_LONG_NAME = 0x4c;
 
-export type TarSink = { write: (chunk: Uint8Array) => void; end: () => void };
+type TarSink = { write: (chunk: Uint8Array) => void; end: () => void };
 
 /**
  * A ustar reader fed the gunzipped stream a piece at a time, so no member is
  * held whole. `onEntry` returns where a member's bytes go, or null to skip
  * it; pax and GNU long names apply to the entry they precede.
  */
-export class TarReader {
+class TarReader {
   readonly #onEntry: (name: string, type: number) => TarSink | null;
   readonly #header = new Uint8Array(TAR_BLOCK);
   #headerFill = 0;

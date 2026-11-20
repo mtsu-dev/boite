@@ -1,10 +1,10 @@
 import type { Protocol, ThreadSummary } from '@boite/contracts';
 
 /** Past this many tokens a thread holds far more than a new session is handed. */
-export const SWITCH_WARNING_TOKENS = 200_000;
+const SWITCH_WARNING_TOKENS = 200_000;
 
 /** Past this many tokens one uncached turn costs as much quota as a dozen cached ones. */
-export const CACHE_WARNING_TOKENS = 100_000;
+const CACHE_WARNING_TOKENS = 100_000;
 
 /** Ignore cache readings older than one hour when warning about a model switch. */
 export const CACHE_LIFETIME_MS = 60 * 60 * 1000;

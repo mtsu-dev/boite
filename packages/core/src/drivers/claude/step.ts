@@ -12,7 +12,7 @@ export const STEP_HOOK_TIMEOUT_S = 330;
 /** How long a boundary waits for the result entries of its batch, which the SDK may yield just after the hook. */
 const ENTRY_WAIT_MS = 1_000;
 /** What the CLI is told when a hook stops its loop for a swap. */
-export const SWAP_STOP_REASON = 'Boite goes on with the session compacted in the background';
+const SWAP_STOP_REASON = 'Boite goes on with the session compacted in the background';
 
 /** What the step hooks read from their session: the turn the CLI is on and an interrupt. */
 export interface StepHost {

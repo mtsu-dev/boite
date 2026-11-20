@@ -10,7 +10,7 @@ import { KEEPER_ERR_BYTES, KEEPER_OUT_WINDOW_BYTES } from './protocol.ts';
 import { ByteRing } from './byte-ring.ts';
 
 /** The unacknowledged end of a stream: bytes from `acked` to `end`. */
-export class OutWindow {
+class OutWindow {
   #chunks: Uint8Array[] = [];
   #acked = 0;
   #end = 0;

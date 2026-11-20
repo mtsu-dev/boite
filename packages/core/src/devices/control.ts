@@ -51,7 +51,7 @@ import type { DeviceStreams, StreamOptions } from './stream.ts';
 
 const SCOPE = 'system:devices';
 /** What T3 Code waits too: a cold emulator takes a minute or two. */
-export const BOOT_TIMEOUT_MS = 180_000;
+const BOOT_TIMEOUT_MS = 180_000;
 const COMMAND_TIMEOUT_MS = 15_000;
 /** A capture is shared by every viewer that asks within this long, so a phone and a desktop cost one screencap. */
 const CAPTURE_REUSE_MS = 200;

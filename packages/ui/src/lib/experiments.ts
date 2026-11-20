@@ -38,7 +38,7 @@ export { EXPERIMENT_IDS, type ExperimentId };
 
 export const EXPERIMENTS_STORAGE_KEY = 'boite.experiments';
 /** `off` once this device keeps its own experiments rather than the desktop app's. */
-export const FOLLOW_STORAGE_KEY = 'boite.experiments.follow';
+const FOLLOW_STORAGE_KEY = 'boite.experiments.follow';
 /** The desktop app's experiments as last heard, so a reload starts with them before the hello. */
 export const DESKTOP_STORAGE_KEY = 'boite.experiments.desktop';
 /** The version of the primary machine's core as last heard, so a reload lists the right switches before the hello. */

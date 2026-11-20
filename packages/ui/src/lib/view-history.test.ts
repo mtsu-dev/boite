@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, test } from 'vitest';
-import { setExperiment } from './experiments';
 import { workspace } from './workspace.svelte';
 import type { Store } from './store.svelte';
 import { exists, sameView, Trail, TRAIL_LIMIT, type View } from './view-history.svelte';
@@ -66,7 +65,7 @@ describe('Trail', () => {
 
 describe('exists', () => {
   const active = workspace.active;
-  afterEach(() => { workspace.active = active; setExperiment('contacts', false); });
+  afterEach(() => { workspace.active = active; });
 
   test('a Contacts page is no place to return to on a client that is not the owner; an old Contacts switch off changes nothing', () => {
     // Class instances, as Stores are: a plain object would come back from the workspace as a proxy.
@@ -76,7 +75,6 @@ describe('exists', () => {
     const page: View = { store: owner, page: 'home', contact: 'core-chris' };
     expect(exists(page)).toBe(true);
     // Contacts are on in every build: the switch a device kept from when they were an experiment is not read.
-    setExperiment('contacts', false);
     expect(exists(page)).toBe(true);
     const paired = client(false);
     workspace.active = paired;

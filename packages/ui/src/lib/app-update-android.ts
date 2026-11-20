@@ -92,7 +92,7 @@ export function androidUpdater(): AndroidUpdater | null {
   return bridge.updater;
 }
 
-export function trackOf(version: string): UpdateChannel {
+function trackOf(version: string): UpdateChannel {
   return version.includes('-nightly.') ? 'nightly' : 'stable';
 }
 

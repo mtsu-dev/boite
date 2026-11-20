@@ -88,7 +88,7 @@ export function prefixPackageOf(program: string): PrefixPackage | null {
  * The upstream part of a Debian version, in the form the agent prints:
  * `1:0.166.0-2` is 0.166.0, and `~`, Debian's pre-release mark, reads as `-`.
  */
-export function upstreamVersion(version: string): string {
+function upstreamVersion(version: string): string {
   let upstream = version.trim().replace(/^\d+:/, '');
   const revision = upstream.lastIndexOf('-');
   if (revision > 0) upstream = upstream.slice(0, revision);
@@ -96,7 +96,7 @@ export function upstreamVersion(version: string): string {
 }
 
 /** The version `apt-cache policy` would install, null when the repository has none. */
-export function policyCandidate(output: string): string | null {
+function policyCandidate(output: string): string | null {
   const candidate = /^\s*Candidate:\s*(\S+)/m.exec(output)?.[1];
   return candidate === undefined || candidate === '(none)' ? null : candidate;
 }
@@ -106,7 +106,7 @@ export function policyCandidate(output: string): string | null {
  * repository cannot be reached and keeps the old index, so its own lines are
  * all that tell: offline, the old index would read as nothing newer.
  */
-export function indexFailure(output: string): string | null {
+function indexFailure(output: string): string | null {
   return /^(?:E: .*|W: Failed to fetch .*)$/m.exec(output)?.[0].slice(0, 300) ?? null;
 }
 
@@ -122,7 +122,7 @@ export interface Via {
 }
 
 /** apt run for an agent's package, with nobody to answer it and in the language its output is read in. */
-export function aptVia(program: string, executable: string, args: string[]): Via {
+function aptVia(program: string, executable: string, args: string[]): Via {
   return {
     command: { executable, prefix: [], shown: program, updateEnv: { DEBIAN_FRONTEND: 'noninteractive', LC_ALL: 'C' } },
     label: `${basename(executable)} ${args.join(' ')}`,

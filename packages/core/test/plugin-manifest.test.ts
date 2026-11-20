@@ -7,7 +7,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { ManifestRefused, POOL_PROVIDERS, commandsOf, parseManifest, parseManifestText } from '../src/plugins/manifest.ts';
 import { checkRef, normalizeSourceUrl, readSource } from '../src/plugins/source.ts';
 import { readPluginSource, sameRepository } from '@boite/contracts';
-import { recommendedPlugins, recommendedUpdates } from '../src/plugins.ts';
+import { recommendedPlugins, recommendedUpdates } from '../src/plugins/record.ts';
 import { startTestCore, type TestCore } from './harness.ts';
 
 const SHA = 'a'.repeat(64);

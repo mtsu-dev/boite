@@ -3,7 +3,6 @@ import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte';
 import { sharedFlow } from '../../test/shared-flow';
 import { Store } from '../../lib/store.svelte';
 import { FakeClient } from '../../lib/fake-client';
-import { setExperiment } from '../../lib/experiments';
 import { sharedProjectDialog } from '../../lib/deferred-parts';
 import SharedProjectThreads from './SharedProjectThreads.svelte';
 import SharedProjectDialog from './SharedProjectDialog.svelte';
@@ -17,10 +16,9 @@ beforeAll(() => {
   Object.defineProperty(HTMLDialogElement.prototype, 'close', {configurable: true, value: function(this: HTMLDialogElement) {this.open = false;}});
   HTMLElement.prototype.scrollTo = function(this: HTMLElement, options: ScrollToOptions | number) {this.scrollLeft = typeof options === 'number' ? options : options.left ?? 0;} as typeof HTMLElement.prototype.scrollTo;
 });
-afterEach(async () => {for (const run of cleanup.splice(0).reverse()) await run(); vi.restoreAllMocks(); sharedProjectDialog.current = undefined; sharedProjectDialog.failed = false; setExperiment('contacts', false); document.body.innerHTML = '';});
+afterEach(async () => {for (const run of cleanup.splice(0).reverse()) await run(); vi.restoreAllMocks(); sharedProjectDialog.current = undefined; sharedProjectDialog.failed = false; document.body.innerHTML = '';});
 async function settle() {for (let i = 0; i < 8; i++) {await new Promise(r => setTimeout(r, 0)); await tick();} flushSync();}
 async function setup() {
-  setExperiment('contacts', true);
   const pair = await sharedFlow(); cleanup.push(() => pair.close());
   const store = new Store(); store.attach(pair.a); await store.connect(); await store.open(pair.local.id);
   cleanup.push(() => store.detach());

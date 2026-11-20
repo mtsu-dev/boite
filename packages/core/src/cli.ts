@@ -112,7 +112,7 @@ ${CONTROL_HELP}
                                  --open <url> adds an Open button for a page
                                  the user must sign in to, in your browser
   ask list                      read this thread's pending questions
-  secret list                    keys kept for this project, by name only
+  secret list                    compatibility: reports that no keys are stored
   secret ask <NAME> --why <text> ask the user for a key on a card; prints
                                  saved secret:<ref>, declined, cancelled or timed_out
   secret write|run|pipe <ref>    use it without seeing it; boite secret help

@@ -134,7 +134,7 @@ export class ArtifactPreviews {
  * nothing from outside the preview's own origin either: no script, image,
  * font or request reaches another host.
  */
-export function previewContentPolicy(localOnly: boolean): string {
+function previewContentPolicy(localOnly: boolean): string {
   const base = "sandbox allow-scripts allow-same-origin; object-src 'none'; frame-src 'none'; base-uri 'self'";
   if (!localOnly) return base;
   return `${base}; default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; style-src 'self' 'unsafe-inline' data:; connect-src 'self'; form-action 'none'`;

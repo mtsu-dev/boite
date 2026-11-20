@@ -8,7 +8,7 @@
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** Longest name first, so "Games pro" wins over "Games". */
-export function pingPattern(names: readonly string[]): RegExp {
+function pingPattern(names: readonly string[]): RegExp {
   const words = [...new Set(names.map(name => name.trim()).filter(Boolean))].sort((a, b) => b.length - a.length).map(escape);
   return new RegExp(`(^|[^\\p{L}\\p{N}_])(@(?:${[...words, 'tous', 'everyone'].join('|')}))(?![\\p{L}\\p{N}_-])`, 'giu');
 }
