@@ -9,6 +9,7 @@ import { findTailscaleCli } from './tailscale.ts';
 import { LinuxExecutionBoundary } from './linux-protected.ts';
 import { linuxGpus, linuxOsLabel, linuxVolumes, macosOsLabel, macosVolumes } from './posix-machine.ts';
 import { GroupWatch } from './posix-group-watch.ts';
+import { stopCapturedTree, stopGroup } from './posix-kill.ts';
 
 /** One watcher per core process, whatever the number of registries in it. */
 const groups = new GroupWatch();
@@ -36,7 +37,7 @@ export function windowCaptureRefusal(os: 'linux' | 'macos', env: Record<string, 
  */
 export function createPosixPlatform(
   os: 'linux' | 'macos',
-  load: Pick<LinuxLoad, 'add' | 'remove' | 'sample'> & Partial<Pick<LinuxLoad, 'killTree' | 'watchResources' | 'finishResources' | 'closeResources' | 'forget'>> | null = os === 'linux' ? new LinuxLoad(availableParallelism()) : null,
+  load: Pick<LinuxLoad, 'add' | 'remove' | 'sample'> & Partial<Pick<LinuxLoad, 'killTree' | 'captureTree' | 'watchResources' | 'finishResources' | 'closeResources' | 'forget'>> | null = os === 'linux' ? new LinuxLoad(availableParallelism()) : null,
 ): ProcessPlatform {
   const cgroups = os === 'linux' ? new CgroupMemoryReader() : null;
   return {
@@ -56,8 +57,14 @@ export function createPosixPlatform(
     capability: () => ({ os, mode: 'poll', note: 'direct children only; Job Objects are Windows-only' }),
     applySettings() {},
     attach: () => false,
+    detachedChildren: true,
+    stopChild: (pid, running) => stopGroup(pid, running),
     terminate: () => false,
     terminateProcess: (threadId, pid, startedAt) => load?.killTree?.(pid, threadId, startedAt) ?? false,
+    stopDescendants(threadId, pid) {
+      const send = load?.captureTree?.(pid, threadId);
+      return send ? stopCapturedTree(send) : undefined;
+    },
     terminateUnassigned() {},
     sample: (threadId) => load?.sample(threadId) ?? null,
     watchResources: (active) => load?.watchResources?.(active),

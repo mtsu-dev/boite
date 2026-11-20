@@ -10,6 +10,8 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import type { ProcessPlatform, ProcessSample } from './types.ts';
 import { LinuxResources, type LinuxResourceProcess } from './linux-resources.ts';
+import { captureSignals } from './posix-kill.ts';
+import { cpuPercentForInterval } from './cpu.ts';
 
 /**
  * The unit of the stat file's CPU fields. The kernel fixes the value it exports
@@ -199,7 +201,7 @@ export class LinuxLoad {
     private readonly logicalCpus: number,
     private readonly read: ProcRead = readProc,
     private readonly now: () => number = Date.now,
-    private readonly signal: (pid: number) => void = (pid) => { process.kill(pid, 'SIGKILL'); },
+    private readonly signal: (pid: number, name: NodeJS.Signals) => void = (pid, name) => { process.kill(pid, name); },
   ) { this.#resources = new LinuxResources(read, now); }
 
   watchResources(active: boolean): void { this.#resources.watch(active); }
@@ -257,14 +259,14 @@ export class LinuxLoad {
    * signal: a pid may have been given to an unrelated process in the meantime.
    * False when the process itself could not be identified or signalled.
    */
-  killTree(pid: number, threadId: string, startedAt?: number | null): boolean {
+  captureTree(pid: number, threadId: string, startedAt?: number | null) {
     const registered = this.#births.get(threadId);
     const birth = registered?.has(pid) ? registered.get(pid) : this.#last.get(threadId)?.births.get(pid);
-    if (birth == null || !Number.isSafeInteger(birth)) return false;
-    if (startedAt !== undefined && (startedAt === null || linuxStartedAt(pid, this.read) !== startedAt)) return false;
+    if (birth == null || !Number.isSafeInteger(birth)) return null;
+    if (startedAt !== undefined && (startedAt === null || linuxStartedAt(pid, this.read) !== startedAt)) return null;
     const scan = this.#snapshot(true);
     const root = scan.stats.get(pid) ?? this.read(`/proc/${pid}/stat`);
-    if (root === null || statField(root, 22) !== birth) return false;
+    if (root === null || statField(root, 22) !== birth) return null;
     const tree = new Map([[pid, birth]]);
     for (const [member] of tree) {
       for (const child of this.#children(member, scan, true)) {
@@ -274,18 +276,14 @@ export class LinuxLoad {
         if (!tree.has(child)) tree.set(child, childBirth);
       }
     }
-    let stopped = false;
-    for (const [member, expectedBirth] of tree) {
+    return captureSignals(tree, member => {
       const stat = this.read(`/proc/${member}/stat`);
-      if (stat === null || statField(stat, 22) !== expectedBirth) continue;
-      try {
-        this.signal(member);
-        if (member === pid) stopped = true;
-      } catch {
-        // Already gone, or not ours to signal.
-      }
-    }
-    return stopped;
+      return stat === null || stat[stat.lastIndexOf(')') + 2] === 'Z' ? null : statField(stat, 22);
+    }, this.signal);
+  }
+
+  killTree(pid: number, threadId: string, startedAt?: number | null): boolean {
+    return this.captureTree(pid, threadId, startedAt)?.('SIGKILL').includes(pid) ?? false;
   }
 
   add(threadId: string, pid: number): void {
@@ -400,7 +398,7 @@ export class LinuxLoad {
         }
       }
       const cpuMs = (spent * 1000) / USER_HZ;
-      cpuPercent = Math.round((cpuMs / (elapsedMs * Math.max(1, this.logicalCpus))) * 1000) / 10;
+      cpuPercent = cpuPercentForInterval(cpuMs, elapsedMs, this.logicalCpus);
     }
     const resources = this.#resources.sample(threadId, members);
     const trustedRoots = [...pids].every(pid => this.#births.get(threadId)?.get(pid) != null);

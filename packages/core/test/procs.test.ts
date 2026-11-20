@@ -98,6 +98,43 @@ describe('procs', () => {
       await live.exited;
     } finally { await registry.close(); }
   });
+  test('a managed stop of an assigned root never calls the unassigned tree fallback', async () => {
+    const fallback = spyOn({ stop() {} }, 'stop');
+    const registry = new ProcRegistry(harness.core.journal, new Bus(), {
+      ...createPosixPlatform('linux', null), attach: () => true, terminateUnassigned: fallback,
+    });
+    try {
+      const child = registry.spawn('assigned-stop', process.execPath, ['-e', 'setTimeout(() => {}, 30000)']);
+      await child.stop();
+      expect(fallback).not.toHaveBeenCalled();
+    } finally { await registry.close(); }
+  });
+  test.skipIf(process.platform !== 'win32')('a managed stop ends only its native job subtree without taskkill', async () => {
+    const registry = harness.core.procs;
+    const fallback = spyOn(registry.platform, 'terminateUnassigned');
+    const threadId = 'native-subtree-stop';
+    const sibling = registry.spawn(threadId, process.execPath, ['-e', 'await Bun.sleep(30000)']);
+    const root = registry.spawn(threadId, process.execPath, ['-e', `
+      const tool = Bun.spawn([process.execPath, '-e', 'await Bun.sleep(30000)'], { stdout: 'ignore', stderr: 'ignore', windowsHide: true });
+      console.log(tool.pid);
+      await tool.exited;
+    `]);
+    try {
+      const reader = root.proc.stdout.getReader();
+      const { value } = await reader.read();
+      reader.releaseLock();
+      const tool = Number(new TextDecoder().decode(value).trim());
+      expect(tool).toBeGreaterThan(0);
+      expect(isRunning(tool)).toBe(true);
+      await root.stop();
+      await waitFor(() => !isRunning(tool), 2000);
+      expect(sibling.proc.exitCode).toBeNull();
+      expect(fallback).not.toHaveBeenCalled();
+    } finally {
+      fallback.mockRestore();
+      await registry.stopAndWait(threadId);
+    }
+  }, 15_000);
   test.skipIf(process.platform !== 'win32')('spawnChild keeps native exit usage after the node exit callback', async () => {
     const threadId = 'native-child-usage';
     const child = harness.core.procs.spawnChild(threadId, process.execPath, ['-e', 'setTimeout(() => {}, 250)'], {
@@ -281,6 +318,23 @@ describe('procs', () => {
     await harness.core.procs.stopAndWait(threadId);
     expect(Date.now() - started).toBeLessThan(5000);
   }, 15000);
+
+  test.skipIf(process.platform !== 'linux')('a thread stop escalates for a descendant that left the process group', async () => {
+    const threadId = 'posix-detached-tool';
+    const root = harness.core.procs.spawn(threadId, 'sh', ['-c', 'setsid sh -c \'trap "" TERM; echo $$; exec sleep 30\' & wait']);
+    const reader = root.proc.stdout.getReader();
+    const { value } = await reader.read();
+    reader.releaseLock();
+    const tool = Number(new TextDecoder().decode(value).trim());
+    expect(tool).toBeGreaterThan(0);
+    try {
+      expect(isAlive(tool)).toBe(true);
+      await harness.core.procs.stopAndWait(threadId);
+      await waitFor(() => !isAlive(tool), 500);
+    } finally {
+      if (isAlive(tool)) process.kill(tool, 'SIGKILL');
+    }
+  });
 
   test('an archive stops the turn and the processes of the thread and its sub-threads, and leaves other threads alone', async () => {
     const client = await harness.connect();

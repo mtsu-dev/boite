@@ -454,9 +454,9 @@ processes stay separate. [Windows setup](contacts.md#native-windows-tool-executi
 requires an explicitly built userspace helper. macOS has no protected execution
 backend and refuses these routes.
 
-Windows Job Objects provide tree membership events and resource caps. For ordinary
-processes, Linux and macOS record direct children; their process-group termination
-cannot catch a child that starts its own session. The capability report exposes those limits.
+Windows Job Objects provide tree membership events and resource caps. Linux and
+macOS record direct children. Stopping a live child signals its group and
+captures its current descendants, including those that started a separate session.
 [Trace](trace.md#platform-boundary) owns process records, caps, guards and shutdown.
 
 ## Drivers, one interface
