@@ -15,6 +15,11 @@ import { releaseVersion } from './release-version.ts';
 import { featureDefines } from '../contracts/src/experiments.ts';
 
 const COMPRESSIBLE = /\.(?:html|js|css|svg|json|webmanifest)$/;
+const CONVERSATION_VIEWS = ['Sidebar', 'ChatView', 'AgentsLayout'];
+
+function isView(id: string, view: string): boolean {
+  return id.replaceAll('\\', '/').endsWith(`/${view}.svelte`);
+}
 
 /**
  * Names the service worker's cache after the hashed files this build emitted
@@ -172,12 +177,12 @@ function localePreload(): Plugin {
 }
 
 /**
- * The connected views are loaded on demand. Keep them available offline as
- * before: index.html lists their scripts and styles for the service worker.
+ * Keep the conversation views available offline and fetch the desktop views
+ * beside the entry. A phone on its way to pairing skips their downloads.
  */
-function offlineParts(): Plugin {
+function conversationAssets(mobile: boolean): Plugin {
   return {
-    name: 'boite-offline-parts',
+    name: 'boite-conversation-assets',
     apply: 'build',
     transformIndexHtml: {
       order: 'post',
@@ -191,20 +196,29 @@ function offlineParts(): Plugin {
           for (const css of file.viteMetadata?.importedCss ?? []) files.add(css);
           for (const imported of file.imports) visit(imported);
         };
-        for (const view of ['MobileNavigation', 'Sidebar', 'ChatView', 'AgentsLayout']) {
-          const suffix = `/${view}.svelte`;
-          const chunks = Object.values(bundle).filter((file) => file.type === 'chunk' && file.facadeModuleId?.replaceAll('\\', '/').endsWith(suffix));
+        for (const view of ['MobileNavigation', ...CONVERSATION_VIEWS]) {
+          const chunks = Object.values(bundle).filter(file => file.type === 'chunk' && Object.keys(file.modules).some(id => isView(id, view)));
           if (chunks.length === 0) throw new Error(`${view}.svelte is missing its offline entry`);
           for (const chunk of chunks) visit(chunk.fileName);
         }
-        return [{ tag: 'meta', attrs: { name: 'boite-offline', content: [...files].map((name) => `./${name}`).join(' ') }, injectTo: 'head' }];
+        const paths = [...files].map(name => `./${name}`);
+        const offline = { tag: 'meta', attrs: { name: 'boite-offline', content: paths.join(' ') }, injectTo: 'head' as const };
+        if (mobile) return [offline];
+        // The app awaits these chunks on desktop. Start the graph before the
+        // entry runs so its imports do not cost another trip for each layer.
+        const preload = `(function(){if(new URLSearchParams(location.search).get('view')==='quotas'||` +
+          `(window.__TAURI_INTERNALS__===undefined&&matchMedia('(max-width: 720px)').matches))return;` +
+          `${JSON.stringify(paths)}.forEach(function(path){var link=document.createElement('link');` +
+          `link.href=path;link.crossOrigin='anonymous';if(/\\.css$/.test(path)){link.rel='preload';link.as='style'}` +
+          `else{link.rel='modulepreload'}document.head.appendChild(link)})})()`;
+        return [offline, { tag: 'script', children: preload, injectTo: 'head' }];
       },
     },
   };
 }
 
 export default defineConfig(({ mode }) => ({
-  plugins: [lucideGlyph(), completeCatalogues(), svelte(), themePrepaint(), browserFloor(), dropFakeClient(), localePreload(), offlineParts(), prepaintMinify(), ...(mode === 'mobile' ? [dropWorker()] : [precompress()])],
+  plugins: [lucideGlyph(), completeCatalogues(), svelte(), themePrepaint(), browserFloor(), dropFakeClient(), localePreload(), conversationAssets(mode === 'mobile'), prepaintMinify(), ...(mode === 'mobile' ? [dropWorker()] : [precompress()])],
   base: './',
   // The build's kind and one flag per tagged feature, from the stamped version: a
   // Release bundle holds no nightly or dev feature (docs/internals/experiments.md#out-of-the-build).
@@ -221,7 +235,12 @@ export default defineConfig(({ mode }) => ({
       // Keep lazy references visible to the boot group. The redundant-load
       // pass removes those references and puts shared modules in the entry.
       experimental: { chunkOptimization: { avoidRedundantChunkLoads: false } },
-      output: { codeSplitting: { groups: [{ name: 'boot', tags: ['$initial'], minShareCount: 2 }] } }
+      output: { codeSplitting: { groups: [
+        { name: 'boot', tags: ['$initial'], minShareCount: 2 },
+        // Fetch the connected views and their shared modules without dozens of
+        // round trips on the core's HTTP/1.1 connection.
+        { name: 'conversations', test: id => CONVERSATION_VIEWS.some(view => isView(id, view)) },
+      ] } }
     }
   },
   server: { port: 5173, strictPort: true }

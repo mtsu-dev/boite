@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { desktopShell } from './lib/shell-platform';
+  import { desktopShell, MOBILE_BUILD } from './lib/shell-platform';
   import { errorText } from './lib/errors';
   import { onMount, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
@@ -98,6 +98,11 @@
     return () => stops.forEach((stop) => stop());
   });
   const narrow = new MediaQuery('(max-width: 720px)');
+  const desktopStartup = !MOBILE_BUILD && (inShell || !narrow.current);
+  const sidebar = new LazyComponent(() => import('./components/Sidebar.svelte'));
+  const chatView = new LazyComponent(() => import('./components/ChatView.svelte'));
+  const agentsLayout = new LazyComponent(() => import('./components/agents/AgentsLayout.svelte'));
+  let desktopViewsSettled = $state(!desktopStartup);
   let appRoot = $state<HTMLDivElement | undefined>(undefined);
   let mobileScreen = $state<'chat' | 'threads' | 'activity'>('chat'), mobileTabs = $state(false);
   const mobileRecovery = $derived(!inShell && (store.pairingRequired || (!store.core && store.connection !== 'ready'))
@@ -107,7 +112,7 @@
   const earlyPairing = $derived(narrow.current && mobileRecovery && store.pairingRequired
     && store.page === 'chat' && !mobileNavigation.current);
   // The machine the window opened on may still give way to one that answers.
-  const booted = $derived(store.booted && !(workspace.waiting && store === workspace.primary)
+  const booted = $derived(store.booted && desktopViewsSettled && !(workspace.waiting && store === workspace.primary)
     && (inShell || earlyPairing || mobileNavigation.current !== undefined || mobileNavigation.failed));
   // A core compacting its journal once before it serves: the start says so rather than only "Starting".
   let compacting = $state(false);
@@ -119,13 +124,11 @@
     const timer = setInterval(look, 1000);
     return () => { live = false; clearInterval(timer); };
   });
-  const sidebar = new LazyComponent(() => import('./components/Sidebar.svelte'));
-  const chatView = new LazyComponent(() => import('./components/ChatView.svelte'));
-  const agentsLayout = new LazyComponent(() => import('./components/agents/AgentsLayout.svelte'));
-  if (inShell || !narrow.current || readStoredEndpoint() || opensFromLink()) {
+  if (desktopStartup || !narrow.current || readStoredEndpoint() || opensFromLink()) {
     loadMobileNavigation();
-    void sidebar.load().catch(() => undefined);
-    void chatView.load().catch(() => undefined);
+    const views = desktopStartup ? [sidebar, chatView, agentsLayout] : [sidebar, chatView];
+    // Connect the core while the desktop's views load, then draw them together.
+    void Promise.allSettled(views.map(view => view.load())).then(() => { desktopViewsSettled = true; });
   }
   $effect(() => {
     if (!inShell && (!narrow.current || (store.booted && !earlyPairing))) untrack(loadMobileNavigation);
@@ -189,7 +192,7 @@
   // Once the first load has landed rather than against it, and the rest only on a
   // link that can spare the bytes (lib/prefetch.ts). The plugin update notice reads its own list, so it loads on any link.
   $effect(() => {
-    if (!store.booted || earlyPairing) return;
+    if (!booted || earlyPairing) return;
     return whenIdle(() => { need('PluginUiHost'); if (!prefetchAllowed()) return need('PluginUpdateNotice'); needAll(); prefetchParts(); warmPages(store, experimentOn('resident-agents')); });
   });
   // With the first open thread, so the corner is there before a stop lands in it; a stop elsewhere asks for it too.

@@ -148,9 +148,13 @@ export async function mountOnFake(search = '/?fake=1'): Promise<void> {
   // which is the point of it and not what these tests are about.
   closeTour();
   running = mount(App, { target });
-  // The app can finish connecting before its deferred conversation list is drawn.
-  await waitFor(() => store.booted && (store.openThread !== null || store.draft !== null)
-    && target.querySelector('.app.ready [data-testid=sidebar]') !== null);
+  // Connection and the phone header can be ready before the conversation views load.
+  await waitFor(() => {
+    const chat = target.querySelector('.thread-chat');
+    return store.booted && (store.openThread !== null || store.draft !== null)
+      && target.querySelector('.app.ready [data-testid=sidebar]') !== null
+      && chat !== null && chat.querySelector(':scope > [data-testid^="deferred-"]') === null;
+  });
 }
 
 /** The thread every workbench test works in, with an empty strip to start on. */

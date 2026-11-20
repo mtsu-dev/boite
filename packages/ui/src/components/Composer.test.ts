@@ -235,7 +235,7 @@ async function mountOnFake(delayMs?: number, missing?: string[], composerState?:
   running = mount(App, { target });
   await waitFor(() => store.booted && store.openThread !== null
     && target.querySelector('[data-testid=composer-input]') !== null
-    && target.querySelector('[data-testid=sidebar]') !== null);
+    && target.querySelector('[data-testid=sidebar]') !== null, 4_000);
   if (delayMs !== undefined) { store.attach(new FakeClient({ delayMs, ...(missing ? { missing } : {}), ...(composerState ? { composerState } : {}) })); await store.connect(); }
 }
 

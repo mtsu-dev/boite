@@ -35,6 +35,8 @@ test('a fresh browser paints startup with all client files pending', async () =>
         await page.send('Page.navigate', { url: `http://127.0.0.1:${proxy.port}/` });
         await page.waitFor(`${has('boot-status')} && performance.getEntriesByName('first-contentful-paint').length > 0`);
         expect(await page.evaluate(`document.querySelector('${id('boot-status')}').innerText`)).toBe('Démarrage');
+        const preloadsChat = `!!document.querySelector('link[rel=modulepreload][href*="/conversations-"]')`;
+        expect(await page.evaluate<boolean>(preloadsChat)).toBe(!mobile);
         const captures = process.env['BOITE_E2E_CAPTURES'];
         if (captures) await page.screenshot(join(captures, `${mobile ? 'phone' : 'desktop'}-startup.png`));
       } finally { await page.close(); }
