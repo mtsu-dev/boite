@@ -16,6 +16,21 @@ const plan: WorkflowPlan = {
   ]
 };
 
+test('the simulated run reports the value that could not be used for a fan-out', async ({ createClient }) => {
+  const client = await createClient({ delayMs: 0, coreId: 'workflow-non-list' });
+  const { workflows } = fakeCore('workflow-non-list')!;
+  let run!: WorkflowRun;
+  workflows.hold(() => {
+    run = workflows.start('t-trace', { name: 'Fan-out', steps: [
+      { id: 'scan', task: 'Read the count', output: { count: 'number' } },
+      { id: 'each', task: 'Read {{item}}', forEach: 'scan.count' },
+    ] }, 'non-list', undefined, 'user');
+    workflows.finish(run.id, 'scan');
+  });
+  const settled = await client.call('workflows.get', { threadId: 't-trace', runId: run.id });
+  expect(settled.nodes[1]).toMatchObject({ status: 'failed', error: 'forEach: scan.count is the number 1, not a list', instances: [] });
+});
+
 test('fake local and remote workflow questions update the parent summary without delegated-agent rows', async ({ createClient }) => {
   const client = await createClient({ delayMs: 0, coreId: 'workflow-question' });
   const pc = await createClient({ delayMs: 0, coreId: 'workflow-question-pc', coreName: 'PC' });

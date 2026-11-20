@@ -322,17 +322,17 @@
 <!-- Its name beside a rail button under the pointer or the keyboard, and its key when it has one: the button's
      own accessible name already says it, so the label is drawn for the eye alone. -->
 {#snippet railName(label: string, key: string | null = null, note: string | null = null, keyId: string | undefined = undefined)}
-  <span class="rail-name" aria-hidden="true"><span class="ui-label">{label}</span>{#if note}<span class="ui-label note">{note}</span>{/if}{#if key}<span class="kbd" id={keyId}>{key}</span>{/if}</span>
+  <span class="rail-name tooltip-surface" aria-hidden="true"><span class="ui-label">{label}</span>{#if note}<span class="ui-label note">{note}</span>{/if}{#if key}<span class="kbd" id={keyId}>{key}</span>{/if}</span>
 {/snippet}
 {#snippet statusName(label: string, note: string | null)}{@render railName(label, null, note)}{/snippet}
 <!-- The limits' card: the sentence, then a line each for the wait and the use outside Douane; an address in them blurred. -->
 {#snippet limitsName(label: string, lines: string[])}
-  <span class="rail-name stack-name" aria-hidden="true" data-testid="limits-card"><span class="ui-label"><PrivateText text={label} /></span>{#each lines as line, index (index)}<span class="ui-label note"><PrivateText text={line} /></span>{/each}</span>
+  <span class="rail-name tooltip-surface stack-name" aria-hidden="true" data-testid="limits-card"><span class="ui-label"><PrivateText text={label} /></span>{#each lines as line, index (index)}<span class="ui-label note"><PrivateText text={line} /></span>{/each}</span>
 {/snippet}
 <!-- The machines' card: its name and what a click does ("Machines · click to filter"), the trouble if any, then each
      machine on a line of its own with the state dot the filter's menu shows. -->
 {#snippet machinesName(label: string, hint: string | null, note: string | null, lines: MachineLine[])}
-  <span class="rail-name machines-name" aria-hidden="true" data-testid="machine-status-card">
+  <span class="rail-name tooltip-surface machines-name" aria-hidden="true" data-testid="machine-status-card">
     <span class="title"><span class="ui-label">{label}</span>{#if hint}<span class="ui-label note">· {hint}</span>{/if}</span>{#if note}<span class="ui-label note">{note}</span>{/if}
     {#each lines as line (line.id)}<span class="machine-line" data-tone={line.tone}><span class="state-dot" aria-hidden="true"></span><span class="ui-label">{line.name}</span><span class="ui-label note">{line.state}</span></span>{/each}
   </span>
@@ -554,12 +554,7 @@
     align-items: center;
     gap: 8px;
     padding: 5px 9px;
-    border: 1px solid var(--overlay-edge);
-    border-radius: var(--radius-sm);
-    background: var(--overlay-surface);
-    box-shadow: var(--shadow-overlay);
-    color: var(--color-foreground);
-    font-size: var(--text-sm);
+    --tooltip-radius: var(--radius-sm);
     font-weight: 500;
     white-space: nowrap;
     pointer-events: none;

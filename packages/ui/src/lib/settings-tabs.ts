@@ -18,12 +18,14 @@ interface SettingsPage {
    * where the phone has no such page.
    */
   phone: 'page' | 'sections' | 'home';
+  /** Cards of this page that also appear on a phone. Omit on a whole page shared by both layouts. */
+  phoneCards?: readonly string[];
 }
 
 /** The one table both layouts read a route from. */
 const PAGES: Record<SettingsTab, SettingsPage> = {
   home: { phone: 'home' },
-  general: { machine: true, phone: 'sections' },
+  general: { machine: true, phone: 'sections', phoneCards: ['privacy'] },
   appearance: { device: true, phone: 'page' },
   keyboard: { machine: true, phone: 'home' },
   voice: { machine: true, phone: 'page' },
@@ -38,9 +40,9 @@ const PAGES: Record<SettingsTab, SettingsPage> = {
   usage: { phone: 'page' },
   limits: { machine: true, phone: 'page' },
   'task-manager': { phone: 'page' },
-  resources: { owner: true, machine: true, phone: 'page' },
-  machines: { phone: 'page' },
-  advanced: { machine: true, phone: 'sections' },
+  resources: { owner: true, machine: true, phone: 'page', phoneCards: ['limits', 'tasks'] },
+  machines: { phone: 'page', phoneCards: ['machines', 'group'] },
+  advanced: { machine: true, phone: 'sections', phoneCards: ['auto-compact'] },
   diagnostics: { owner: true, machine: true, phone: 'page' },
   experiments: { machine: true, phone: 'page' }
 };
@@ -62,6 +64,9 @@ const SECTION_PAGES: Partial<Record<SettingsTab, Record<string, { page: PhoneSec
 };
 
 export type PhoneSectionPage = 'conversations' | 'archived' | 'worktrees';
+
+/** Cards on shared pages that write to the owner's machine. */
+const OWNER_CARDS = new Set(['privacy', 'execution', 'origins', 'auto-compact', 'device-stream', 'background-compaction']);
 
 /**
  * The families Settings lists, desktop nav and phone list alike, each page a
@@ -156,8 +161,8 @@ export function pageScopeOf(tab: SettingsTab): 'device' | 'machine' | null {
 }
 
 /**
- * Whether this window shows the desktop settings, the only ones with Plugins
- * and the keyboard: the app always does, a browser once wider than a phone.
+ * Whether this window uses desktop settings: the desktop app always does,
+ * a browser once wider than a phone.
  */
 export function desktopSettings(phoneWidth: boolean): boolean {
   return !phoneWidth || desktopShell();
@@ -195,4 +200,16 @@ export function phonePage(route: SettingsTab, section: string | null | undefined
   const card = section ? SECTION_PAGES[tab]?.[section] : undefined;
   if (!card) return tab;
   return owner || !card.owner ? card.page : 'home';
+}
+
+/** Whether a shortcut reaches a page or card in this layout and role. */
+export function settingsDestination(route: SettingsTab, section: string | null, { owner, phone }: { owner: boolean; phone: boolean }): boolean {
+  const tab = movedTo(route, section) ?? route;
+  const card = section ? SECTION_PAGES[tab]?.[section] : undefined;
+  if (!pageAvailable(tab, owner) || (!owner && (card?.owner || (section && OWNER_CARDS.has(section))))) return false;
+  if (!phone) return desktopPage(tab, owner) !== 'home';
+  if (phonePage(tab, section, owner) === 'home') return false;
+  if (section === null || card) return true;
+  const page = PAGES[tab];
+  return page.phoneCards?.includes(section) ?? page.phone === 'page';
 }

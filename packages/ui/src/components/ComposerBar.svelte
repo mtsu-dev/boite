@@ -24,7 +24,7 @@
   import { contextLevel, contextPercent } from '../lib/tokens';
   import { speedControl } from '../lib/model-speeds';
   import type { ComposerTarget } from '../lib/composer-target';
-  import { desktopSettings } from '../lib/settings-tabs';
+  import { desktopSettings, settingsDestination } from '../lib/settings-tabs';
   import { machineAway } from '../lib/machine-away';
   import { declineHint } from '../lib/composer-placeholder';
   import { repliesOf } from '../lib/question-reply.svelte';
@@ -162,7 +162,7 @@
    * nowhere, and the sentence behind it is the one a send would answer with.
    */
   const phoneWidth = new MediaQuery('(max-width: 720px)');
-  let providersReachable = $derived(store.owner && desktopSettings(phoneWidth.current));
+  let providersReachable = $derived(settingsDestination('accounts', null, { owner: store.owner, phone: !desktopSettings(phoneWidth.current) }));
   // One word per mode, one plain line under it, the long sentence on hover.
   // A legacy mode still live (`plan`) keeps its own choice until another is picked.
   let modeChoices = $derived<ModeChoice[]>([...modes, ...modes.includes(displayedMode) ? [] : [displayedMode]]

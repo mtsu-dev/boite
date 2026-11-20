@@ -7,7 +7,7 @@
  */
 import { COORDINATION_REACH, EXPERIMENT_STAGES, experimentOf, type AutoCompactMoment, type ProviderSummary, type RequestableKey, type RequestableSetting, type SettingAsk, type SettingCardAsk, type SettingsPage } from '@boite/contracts';
 import { experimentCopy } from './experiment-copy';
-import { experimentsShown } from './experiments.svelte';
+import { settingsDestination } from './settings-tabs';
 import { formatLocale } from './i18n.svelte';
 import { fill, strings } from './strings';
 import { formatTokens } from './format';
@@ -226,37 +226,9 @@ export function settingsSectionLabel(section: string, providers: readonly Provid
   return labels[section] ?? null;
 }
 
-/** Pages a paired device's Settings leaves out: `OWNER_TABS` in `SettingsShell.svelte`. */
-const OWNER_PAGES: readonly SettingsPage[] = ['accounts', 'plugins', 'resources', 'brain'];
-/** Cards of the shared pages that only the owner's Settings draws there. */
-const OWNER_SECTIONS: readonly string[] = ['quiet', 'agents-alone', 'agent-replies', 'worktrees', 'privacy', 'execution', 'origins', 'auto-compact', 'device-stream', 'background-compaction'];
-/**
- * What a phone browser's Settings (`MobileSettings.svelte`) draws: the pages
- * it opens whole, then the cards it has of the others. Keep it in step with
- * that component's `page`.
- */
-const PHONE_PAGES: readonly SettingsPage[] = ['appearance', 'accounts', 'voice', 'usage', 'limits', 'task-manager', 'experiments', 'brain'];
-const PHONE_CARDS: Partial<Record<SettingsPage, readonly string[]>> = {
-  resources: ['limits', 'tasks'],
-  machines: ['machines', 'group'],
-  general: ['archived', 'worktrees', 'conversations', 'quiet', 'agents-alone', 'agent-replies'],
-  advanced: ['auto-compact'],
-};
-
-/**
- * Whether this client's Settings has the card a settings card points at. A
- * button that would land on Home instead is not offered.
- */
-export function settingsReachable(setting: SettingAsk, client: { owner: boolean; phone: boolean }): boolean {
-  const section = setting.section;
-  // A Release has no Experiments page.
-  if (setting.page === 'experiments' && !experimentsShown()) return false;
-  if (!client.owner && (OWNER_PAGES.includes(setting.page) || (section !== null && OWNER_SECTIONS.includes(section)))) return false;
-  if (!client.phone || PHONE_PAGES.includes(setting.page)) return true;
-  const cards = PHONE_CARDS[setting.page];
-  if (cards === undefined) return false;
-  // Resources and Machines open as pages of their own; General and Advanced only through one of their cards.
-  return section === null ? setting.page === 'resources' || setting.page === 'machines' : cards.includes(section);
+/** Whether Settings draws the page or card a request names. */
+export function settingsReachable({ page, section }: Pick<SettingAsk, 'page' | 'section'>, client: { owner: boolean; phone: boolean }): boolean {
+  return settingsDestination(page, section, client);
 }
 
 /** `Resources › Limits`, the trail under a card. */

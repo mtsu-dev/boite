@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, expect, test } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { BUILD_STORAGE_KEY, EXPERIMENTS_STORAGE_KEY, setExperiment } from './experiments';
 import { applyTheme, readTheme, setTheme, startTheme, THEME_STORAGE_KEY } from './theme';
 
 let meta: HTMLMetaElement;
+let palette: HTMLStyleElement;
 
 beforeEach(() => {
   window.localStorage.clear();
@@ -11,10 +13,14 @@ beforeEach(() => {
   meta.name = 'theme-color';
   meta.content = '#111114';
   document.head.append(meta);
+  palette = document.createElement('style');
+  palette.textContent = readFileSync('src/styles/themes.css', 'utf8');
+  document.head.append(palette);
 });
 
 afterEach(() => {
   meta.remove();
+  palette.remove();
   window.localStorage.clear();
   delete document.documentElement.dataset.theme;
 });
@@ -30,6 +36,21 @@ test('grain resolves to itself, stamps the root and takes the meta colour', () =
   expect(document.documentElement.dataset.theme).toBe('grain');
   expect(color()).toBe('#1a1a1e');
   expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe('grain');
+});
+
+test('theme chrome follows the CSS palette while switching through grain, light and dark', () => {
+  const root = document.documentElement;
+  const css = getComputedStyle(root);
+  expect(css.getPropertyValue('--palette-grain-theme-color').trim()).toBeTruthy();
+  for (const [theme, token] of [
+    ['grain', '--palette-grain-theme-color'],
+    ['light', '--palette-light-default-background'],
+    ['dark', '--palette-dark-default-background']
+  ] as const) {
+    meta.content = 'stale';
+    applyTheme(theme);
+    expect(color()).toBe(getComputedStyle(root).getPropertyValue(token).trim());
+  }
 });
 
 test('an id this build does not offer is the system theme, which here is dark', () => {

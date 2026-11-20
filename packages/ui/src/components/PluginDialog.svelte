@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ModalScrim from './ModalScrim.svelte';
   import { tick, untrack, type Snippet } from 'svelte';
   import { Puzzle, ShieldCheck, X } from '@lucide/svelte';
   import type { PluginSettingValue, PluginState } from '@boite/contracts';
@@ -72,8 +73,7 @@
 
 {#if overlay.shown && shown}
   {@const current = shown}
-  <div class="scrim" class:closing={overlay.closing} role="presentation" use:overlay.attach onanimationend={overlay.end}
-    onclick={(event) => { if (event.target === event.currentTarget) onclose(); }}>
+  <ModalScrim {overlay} {onclose} sheet>
     <div class="dialog" class:closing={overlay.closing} role="dialog" aria-modal="true" aria-labelledby="plugin-dialog-title" tabindex="-1"
       bind:this={card} data-testid="plugin-dialog" data-plugin={current.id}>
       <div class="head">
@@ -134,19 +134,10 @@
         <button type="button" class="quiet push" onclick={onclose}><span class="ui-label">{strings.common.close}</span></button>
       </div>
     </div>
-  </div>
+  </ModalScrim>
 {/if}
 
 <style>
-  .scrim {
-    position: fixed; inset: 0; z-index: 60;
-    display: flex; align-items: flex-start; justify-content: center;
-    padding-top: min(8vh, 72px);
-    background: var(--color-scrim);
-    /* The one motion set (app.css): one duration and curve in and out. */
-    animation: fade var(--motion-duration) var(--motion-curve);
-  }
-  .scrim.closing { animation: fade-out var(--motion-duration) var(--motion-curve); pointer-events: none; }
   .dialog {
     width: min(560px, calc(100vw - 32px));
     max-height: min(84vh, 720px);
@@ -186,7 +177,6 @@
   .push { margin-left: auto; }
   .danger-text { color: var(--color-danger); }
   @media (max-width: 720px) {
-    .scrim { align-items: flex-end; padding-top: 0; }
     .dialog { width: 100vw; max-height: 90dvh; border-radius: var(--radius-overlay) var(--radius-overlay) 0 0; padding-bottom: env(safe-area-inset-bottom); }
     .authorizations { grid-template-columns: minmax(0, 1fr); }
     .reach, .chips { justify-content: flex-start; }

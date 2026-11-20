@@ -31,6 +31,8 @@ To install one from a repository:
 
 You can also ask an agent: "add this plugin" with its link. The agent puts a
 card in the conversation that opens the same preview, and you decide.
+If the agent asks you to open Plugins, press Open settings on its card. Owners
+can open the page from the card on a computer or phone.
 
 ## Permissions a plugin asks for
 

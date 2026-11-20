@@ -6,16 +6,11 @@ import {
   WORKFLOW_LIMITS,
   checkPlan,
   checkSteps,
-  closeLoop,
-  conditionHolds,
-  executionsUsed,
-  itemLabel,
-  renderTask,
-  resolvePath,
+  openWorkflowNode,
   retryWorkflowSteps,
+  settleWorkflowNodes,
   shapeMismatch,
-  workflowContinuation,
-  workflowExecutions,
+  workflowInstance,
   workflowLevels,
   workflowValues,
   type DelegationConfig,
@@ -219,7 +214,7 @@ export class FakeWorkflows {
       const entry = this.#steps.get(threadId);
       if (!entry) throw refusal('boite workflow output works only inside a workflow step');
       const run = this.#runs.get(entry.runId)!;
-      const inst = this.#instance(run, entry.key);
+      const inst = workflowInstance(run, entry.key);
       if (!inst || inst.status !== 'running' || inst.threadId !== threadId) throw refusal(`step ${entry.key} is not running`);
       const shape = run.plan.steps.find(s => s.id === entry.key.split('#')[0])?.output;
       const mismatch = shape === undefined ? null : shapeMismatch(value, shape);
@@ -295,7 +290,7 @@ export class FakeWorkflows {
   /** Ends one running execution now, the way its timer would, for a demo that must not move. */
   finish(runId: string, key: string, ok = true): void {
     const run = this.#runs.get(runId);
-    const inst = run && this.#instance(run, key);
+    const inst = run && workflowInstance(run, key);
     if (!run || !inst || inst.status !== 'running') return;
     const step = run.plan.steps.find(s => s.id === key.split('#')[0])!;
     const failing = !ok || /\bfail\b/i.test(inst.task ?? '');
@@ -394,21 +389,13 @@ export class FakeWorkflows {
     for (const node of run.nodes) for (const inst of node.instances) if (inst.threadId) this.host.changed(inst.threadId, run.id);
   }
 
-  #instance(run: WorkflowRun, key: string): WorkflowInstance | undefined {
-    for (const node of run.nodes) {
-      const found = node.instances.find(i => i.key === key);
-      if (found) return found;
-    }
-    return undefined;
-  }
-
   #advance(runId: string): void {
     const run = this.#runs.get(runId);
     if (!run) return;
     // Paused, nothing new launches, but the steps already out still end.
     if (run.status === 'paused') return this.#settle(run);
     if (run.status !== 'running') return;
-    this.#settleNodes(run);
+    settleWorkflowNodes(run, this.host.now());
     const config = this.host.config(run.rootThreadId);
     if (config.enabled && config.paused) {
       Object.assign(run, { status: 'paused', error: 'Subagents are paused for this thread. Resume to continue.' });
@@ -422,7 +409,7 @@ export class FakeWorkflows {
         if (node.status !== 'waiting' || node.instances.length) continue;
         const deps = node.after.map(id => run.nodes.find(n => n.id === id)!);
         if (!deps.every(dep => ended(dep.status))) continue;
-        this.#open(run, node, values);
+        openWorkflowNode(run, node, values, this.host.now(), id => !this.#archived(id));
         progress = true;
       }
     }
@@ -440,7 +427,7 @@ export class FakeWorkflows {
 
   /** The core's `settle`: a run with nothing running is over, a paused one only once every step is done. */
   #settle(run: WorkflowRun): void {
-    this.#settleNodes(run);
+    settleWorkflowNodes(run, this.host.now());
     const now = this.host.now();
     const was = run.status;
     if (!run.nodes.some(node => node.status === 'running')) {
@@ -450,42 +437,6 @@ export class FakeWorkflows {
       else if (!failure && run.nodes.every(node => ended(node.status))) Object.assign(run, { status: 'done', error: null, finishedAt: now, delivered: true });
     }
     this.#save(run);
-  }
-
-  #open(run: WorkflowRun, node: WorkflowNode, values: Record<string, unknown>): void {
-    const step = run.plan.steps.find(s => s.id === node.id)!;
-    const now = this.host.now();
-    const fail = (error: string) => Object.assign(node, { status: 'failed', error, startedAt: now, finishedAt: now });
-    if (step.when && !conditionHolds(step.when, values)) {
-      Object.assign(node, { status: 'skipped', startedAt: now, finishedAt: now });
-      return;
-    }
-    let items: unknown[] | null = null;
-    if (step.forEach) {
-      const list = resolvePath(values, step.forEach.split('.'));
-      if (!Array.isArray(list)) return void fail(`forEach: ${step.forEach} is not a list`);
-      items = list;
-    }
-    const used = executionsUsed(run);
-    const count = items ? items.length : 1;
-    if (used + count > run.limits.maxSteps) return void fail(`${count} executions would pass this run's limit of ${run.limits.maxSteps} (${used} used); raise limits.maxSteps up to ${WORKFLOW_LIMITS.maxSteps} or narrow the list`);
-    if (items && items.length === 0) {
-      Object.assign(node, { status: 'done', startedAt: now, finishedAt: now });
-      closeLoop(run, node, now);
-      return;
-    }
-    node.instances = workflowExecutions(run, node, items).map(({ key, previous, itemIdentity }, index) => {
-      return {
-        key, itemIdentity, index: items ? index : null, label: items ? itemLabel(items[index]) : '',
-        threadId: null, providerId: null, model: null,
-        status: 'waiting', attempts: 0,
-        task: renderTask(step.task, items ? { ...values, item: items[index], index } : values), result: null, output: null,
-        error: null, startedAt: null, finishedAt: null,
-        ...workflowContinuation(previous, node.freshRound === true, id => !this.#archived(id)),
-      };
-    });
-    delete node.freshRound;
-    Object.assign(node, { status: 'running', startedAt: now, error: null });
   }
 
   #launch(run: WorkflowRun, node: WorkflowNode, inst: WorkflowInstance, config: DelegationConfig): void {
@@ -529,7 +480,7 @@ export class FakeWorkflows {
     const timer = setTimeout(() => {
       this.#timers.delete(timer);
       const run = this.#runs.get(runId);
-      if (attempt !== undefined && (run && this.#instance(run, key))?.machine?.requestId !== attempt) return;
+      if (attempt !== undefined && (run && workflowInstance(run, key))?.machine?.requestId !== attempt) return;
       this.finish(runId, key);
     }, this.host.delayMs() * STEP_TICKS);
     this.#timers.add(timer);
@@ -571,20 +522,6 @@ export class FakeWorkflows {
     } catch (error) {
       fail(error instanceof Error ? error.message : String(error));
       return false;
-    }
-  }
-
-  #settleNodes(run: WorkflowRun): void {
-    const now = this.host.now();
-    for (const node of run.nodes) {
-      if (node.status !== 'running' || !node.instances.length) continue;
-      if (!node.instances.every(i => ended(i.status) || broken(i.status))) continue;
-      const failed = node.instances.find(i => i.status === 'failed');
-      const stopped = node.instances.find(i => i.status === 'stopped');
-      node.status = failed ? 'failed' : stopped ? 'stopped' : 'done';
-      node.error = (failed ?? stopped)?.error ?? null;
-      node.finishedAt = now;
-      closeLoop(run, node, now);
     }
   }
 

@@ -21,13 +21,6 @@ export const THEME_STORAGE_KEY = 'boite.theme';
 
 const THEMES: Theme[] = ['system', 'dark', 'light', 'grain'];
 
-/** What `<meta name="theme-color">` reads once the theme resolves: `--color-background`, or grain's mid tone. */
-const THEME_COLOR: Record<ResolvedTheme, string> = {
-  dark: '#111114',
-  light: '#f3f3f6',
-  grain: '#1a1a1e'
-};
-
 const LIGHT_QUERY = '(prefers-color-scheme: light)';
 
 /**
@@ -68,7 +61,6 @@ export function applyTheme(theme: Theme): void {
   const root = document.documentElement;
   if (resolved === 'dark') delete root.dataset.theme;
   else root.dataset.theme = resolved;
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLOR[resolved]);
   applyColors(resolved === 'light' ? 'light' : 'dark');
   window.dispatchEvent(new Event(COLORS_EVENT));
 }

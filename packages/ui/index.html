@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-    <meta name="theme-color" content="#111114" />
+    <meta name="theme-color" content="__PALETTE_dark-default-background__" />
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" type="image/svg+xml" href="./icons/icon.svg" />
     <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
@@ -18,22 +18,22 @@
       body {
         margin: 0;
         height: 100%;
-        background: var(--color-background, #111114);
-        color: var(--color-foreground, #ededef);
+        background: var(--color-background, __PALETTE_dark-default-background__);
+        color: var(--color-foreground, __PALETTE_dark-default-foreground__);
         overflow: hidden;
       }
 
       html[data-theme='light'],
       html[data-theme='light'] body {
-        background: var(--color-background, #f3f3f6);
-        color: var(--color-foreground, #0b0b0e);
+        background: var(--color-background, __PALETTE_light-default-background__);
+        color: var(--color-foreground, __PALETTE_light-default-foreground__);
       }
 
       /* Grain paints its fade from the stylesheet; the mid tone stands in until then. */
       html[data-theme='grain'],
       html[data-theme='grain'] body {
-        background: #2a2a31;
-        color: #ececf1;
+        background: var(--color-background, __PALETTE_grain-background__);
+        color: var(--color-foreground, __PALETTE_dark-default-foreground__);
       }
     </style>
     <!-- The same rule as lib/theme.ts, run before the first paint: dark stamps nothing. -->
@@ -64,18 +64,9 @@
         if (accent !== null && Number.isFinite(Number(accent)) && Number(accent) >= 0 && Number(accent) <= 360) document.documentElement.style.setProperty('--accent-hue', accent);
         var stored = localStorage.getItem('boite.theme');
         var theme = stored === 'dark' || stored === 'light' || stored === 'grain' ? stored : 'system';
-        // Grain rides behind an experiment: a stored choice with the switch off is System again.
-        if (theme === 'grain') {
-          var on = false;
-          try {
-            var raw = localStorage.getItem('boite.experiments');
-            on = raw !== null && JSON.parse(raw).indexOf('theme-grain') !== -1;
-          } catch (e) {}
-          if (!on) theme = 'system';
-        }
         if (theme === 'grain') {
           document.documentElement.dataset.theme = 'grain';
-          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#1a1a1e');
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '__PALETTE_grain-theme-color__');
         } else {
           var light =
             theme === 'light' ||
@@ -84,7 +75,7 @@
               window.matchMedia('(prefers-color-scheme: light)').matches);
           if (light) {
             document.documentElement.dataset.theme = 'light';
-            document.querySelector('meta[name="theme-color"]').setAttribute('content', '#f3f3f6');
+            document.querySelector('meta[name="theme-color"]').setAttribute('content', '__PALETTE_light-default-background__');
           }
         }
       } catch (e) {}

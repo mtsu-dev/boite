@@ -7,7 +7,7 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { stampWorkerCache } from './src/lib/worker-stamp.ts';
 import { tooNewForFloor } from './src/lib/browser-floor.ts';
 import { localePreloadScript } from './src/lib/locale-preload.ts';
-import { colorsBootScript } from './src/lib/theme-colors.ts';
+import { themePrepaint } from './theme-prepaint.ts';
 import { lucideGlyph } from './icon-plugin.ts';
 import { completeCatalogues } from './catalogue-plugin.ts';
 import { prepaintMinify } from './prepaint.ts';
@@ -206,7 +206,7 @@ function offlineParts(): Plugin {
 }
 
 export default defineConfig(({ mode }) => ({
-  plugins: [lucideGlyph(), completeCatalogues(), svelte(), { name: 'boite-colors-prepaint', transformIndexHtml: () => [{ tag: 'script', children: colorsBootScript(), injectTo: 'head' }] }, browserFloor(), dropFakeClient(), localePreload(), offlineParts(), prepaintMinify(), ...(mode === 'mobile' ? [dropWorker()] : [precompress()])],
+  plugins: [lucideGlyph(), completeCatalogues(), svelte(), themePrepaint(), browserFloor(), dropFakeClient(), localePreload(), offlineParts(), prepaintMinify(), ...(mode === 'mobile' ? [dropWorker()] : [precompress()])],
   base: './',
   // The build's kind and one flag per tagged feature, from the stamped version: a
   // Release bundle holds no nightly or dev feature (docs/internals/experiments.md#out-of-the-build).
