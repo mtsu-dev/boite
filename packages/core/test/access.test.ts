@@ -545,9 +545,15 @@ describe('a paired device reads a thread\'s changes and files', () => {
         expect(attempts[0]).toThrow('folder that holds keys or tokens');
         expect(attempts[1]).toThrow('credential files');
         if (location === 'shared XDG') {
+          const alias = join(config, 'login-alias');
+          symlinkSync(root, alias, 'junction');
+          expect(await thrown(phone.call('projects.add', { path: alias }))).toThrow('folder that holds keys or tokens');
           const other = join(config, 'vendor', 'unrelated-project');
           mkdirSync(other, { recursive: true });
           expect((await phone.call('projects.add', { path: other })).path).toBe(other);
+          const nested = join(root, 'ordinary-project');
+          mkdirSync(nested);
+          expect((await phone.call('projects.add', { path: nested })).path).toBe(nested);
         }
       } finally { phone.close(); }
     } finally {

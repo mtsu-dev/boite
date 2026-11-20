@@ -38,12 +38,7 @@ import { detectionLogger, installLogger } from './install-log.ts';
 import { registerLocalCommands } from './local-command.ts';
 import { homePath } from '../paths.ts';
 import { ISOLATION_DEFAULTS, variableHome } from '../profile-share.ts';
-import { addSessionFilePaths, providerLoginHome, providerSessionFiles } from './session-paths.ts';
-
-function below(root: string, path: string): boolean {
-  const child = relative(root, path);
-  return child !== '' && child !== '..' && !child.startsWith(`..${sep}`) && !isAbsolute(child);
-}
+import { addSessionFilePaths, below, providerLoginHome, providerSessionFiles } from './session-paths.ts';
 
 /**
  * Echo is the fake agent the tests and the bench drive: no CLI, it repeats the
@@ -422,10 +417,10 @@ export class ProviderRegistry {
     return this.entries.get(id)?.descriptor;
   }
 
-  /** Dedicated login directories and individual session files, including leaves outside their directories. */
-  credentialPaths(accounts: readonly Account[]): { roots: Set<string>; files: Set<string> } {
+  /** Dedicated login subtrees and exact paths, including session leaves outside those subtrees. */
+  credentialPaths(accounts: readonly Account[], forProjectRoot = false): { roots: Set<string>; exact: Set<string> } {
     const protectedRoots = new Set<string>();
-    const files = new Set<string>();
+    const exact = new Set<string>();
     for (const { descriptor } of this.entries.values()) {
       const roots = descriptor.roots.filter(root => isAbsolute(root) && !root.includes('{isolationDir}'));
       for (const root of roots) protectedRoots.add(root);
@@ -433,10 +428,9 @@ export class ProviderRegistry {
       const profile = profileFor(descriptor);
       const login = providerLoginHome(descriptor, profile);
       const loginRoot = resolve(login.path);
-      if (login.variable === null || !login.variable.startsWith('XDG_')) {
-        protectedRoots.add(loginRoot);
-      }
-      addSessionFilePaths(files, loginRoot, providerSessionFiles(descriptor, profile));
+      const shared = login.variable?.startsWith('XDG_') === true;
+      if (!shared) protectedRoots.add(loginRoot);
+      addSessionFilePaths(exact, loginRoot, providerSessionFiles(descriptor, profile), shared && forProjectRoot);
       for (const key of Object.keys(profile?.isolation ?? {})) {
         const location = variableHome(key, profile);
         if (location === null || !isAbsolute(location)) continue;
@@ -457,9 +451,9 @@ export class ProviderRegistry {
       if (isolationDir === null) continue;
       protectedRoots.add(isolationDir);
       const descriptor = this.get(providerId);
-      if (descriptor !== undefined) addSessionFilePaths(files, isolationDir, providerSessionFiles(descriptor));
+      if (descriptor !== undefined) addSessionFilePaths(exact, isolationDir, providerSessionFiles(descriptor));
     }
-    return { roots: protectedRoots, files };
+    return { roots: protectedRoots, exact };
   }
 
   require(id: ProviderId): ProviderDescriptor {

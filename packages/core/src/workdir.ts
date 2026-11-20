@@ -84,14 +84,14 @@ function homeCredentialEntry(home: string, real: string): string | null {
   return first.startsWith('.') || /^(appdata|library)$/i.test(first) ? first : null;
 }
 
-function isCredentialPath(core: Core, home: string, path: string, real: string): boolean {
-  const { roots, files } = core.providers.credentialPaths(core.accounts.list());
+function isCredentialPath(core: Core, home: string, path: string, real: string, forProjectRoot = false): boolean {
+  const { roots, exact } = core.providers.credentialPaths(core.accounts.list(), forProjectRoot);
   for (const name of DEVICE_HOME_CREDENTIAL_STORES) roots.add(join(home, name));
   for (const root of roots) {
     if (contains(root, path) || contains(realOf(root), real)) return true;
   }
-  for (const file of files) {
-    if (relative(file, path) === '' || relative(realOf(file), real) === '') return true;
+  for (const entry of exact) {
+    if (relative(entry, path) === '' || relative(realOf(entry), real) === '') return true;
   }
   return false;
 }
@@ -129,7 +129,8 @@ export function assertDeviceFile(core: Core, threadId: ThreadId, cwd: string, pa
  * A folder a paired device adds as a project becomes a root the checks above
  * read from, so it is held to the same rules first: not boite's data folder or
  * inside it, not the home folder, one of its parents or a disk root (they hold
- * every login), and not a folder that holds keys or tokens or one inside it.
+ * every login), and not a dedicated credential store or one inside it. A
+ * nested folder holding a declared XDG login file is also refused as a root.
  * A hidden project and a cloud drive can still be added. Links are followed,
  * as they are for a read, including links to a dedicated credential store.
  */
@@ -142,7 +143,7 @@ export function assertDeviceProjectFolder(core: Core, folder: string): void {
   if (contains(real, home) || dirname(real) === real) {
     throw refused(`a paired device does not add the home folder, a folder that contains it or a disk root as a project, since it holds every login on this machine; add a folder inside it, or add ${folder} on the owner's machine`, { field: 'path', path: folder, expected: `a folder inside ${home}, not ${home} itself or a parent of it` });
   }
-  if (isCredentialPath(core, home, resolve(folder), real) || real.split(sep).some((part) => DEVICE_SECRET_DIRS.has(part.toLowerCase()))) {
+  if (isCredentialPath(core, home, resolve(folder), real, true) || real.split(sep).some((part) => DEVICE_SECRET_DIRS.has(part.toLowerCase()))) {
     throw refused(`a paired device does not add a folder that holds keys or tokens as a project: ${folder}`, { field: 'path', path: folder, expected: 'a project folder outside credential stores' });
   }
 }

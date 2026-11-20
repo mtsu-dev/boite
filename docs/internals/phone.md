@@ -367,7 +367,9 @@ is covered before anyone lists it. The temporary folder and the cloud drives und
 or shared worktree folder the owner keeps inside one of them (`~/.worktrees`, iCloud
 Drive, the data folder) is a root of its own and keeps its reads. In a shared
 XDG folder, the provider's declared login files and SQLite sidecars stay private,
-including the targets of links. A provider's declared dedicated roots stay
+including the targets of links. A paired device cannot add a nested folder
+that directly holds a declared login file as a project. It can add projects
+beside or inside that folder. A provider's declared dedicated roots stay
 private as a whole. At a phone's width the Changes panel shows
 the list, then one diff with Back and previous/next file; a file reads as wrapped,
 numbered lines with no editor.
