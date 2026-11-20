@@ -25,10 +25,11 @@ export class CodexUsageReports {
   get drainMs(): number { return Math.max(0, this.#drainUntil - performance.now()); }
 
   finish(turn: CodexTurn): void {
+    const report = turn.ctx.reportLateUsage;
+    if (turn.turnId === null || !report) return;
     this.#drainUntil = turn.nativeFinished ? performance.now() + USAGE_DRAIN_MS : 0;
-    if (turn.turnId === null || !turn.ctx.reportLateUsage) return;
     const { usageCounts, usageTotal, usageLast } = turn;
-    this.#finished.set(turn.turnId, { usageCounts, usageTotal, usageLast, report: turn.ctx.reportLateUsage });
+    this.#finished.set(turn.turnId, { usageCounts, usageTotal, usageLast, report });
   }
 
   clear(): void { this.#finished.clear(); }
