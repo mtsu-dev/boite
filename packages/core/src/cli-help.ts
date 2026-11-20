@@ -233,11 +233,19 @@ const FAMILY_HELP = {
 const commandName = (command?: string): string => command === 'bot' ? 'mochi' : command ?? '';
 
 /** Read the same command entries as the full manual, without its other families. */
+/** The synopses of a command: a grouped name such as allow|deny is shown as the one asked for, and a prose
+ * paragraph (from a capitalized line until the next synopsis with a description or a section break) is never one. */
 function usageEntries(command: string, action?: string): string[] {
-  return USAGE.split(/\n(?= {2}\S)/).filter(entry => {
+  let prose = false;
+  return USAGE.split(/\n(?= {2}\S)/).flatMap(entry => {
+    if (/^ {2}[A-Z]/.test(entry)) prose = true;
+    else if (/^ {2}\S.*?\S {2,}\S/.test(entry)) prose = false;
+    const inProse = prose;
+    if (/\n\s*\n|\n\S/.test(entry)) prose = false;
     const [first, second] = entry.trim().split(/\s+/);
-    return first === command && (action === undefined || second?.split('|').includes(action));
-  }).map(entry => 'boite ' + entry.trim());
+    if (inProse || !first?.split('|').includes(command) || (action !== undefined && !second?.split('|').includes(action))) return [];
+    return ['boite ' + command + entry.trim().slice(first.length)];
+  });
 }
 
 export async function cliHelp([command, action]: string[]): Promise<string> {

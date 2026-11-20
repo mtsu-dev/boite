@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
-import { mkdirSync, readFileSync, rmdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, rmdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { AGENT_ENV, EXPERIMENT_STAGES, privateTerminalComposerId, type ExperimentId, type FeatureStage } from '@boite/contracts';
 import { runCli, splitLine } from '../src/cli.ts';
 import { parse } from '../src/cli-args.ts';
 import { continuationInput } from '../src/continuation.ts';
+import * as cwdCheck from '../src/threads/cwd.ts';
 import type { CliIo } from '../src/cli.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnResult } from '../src/drivers/index.ts';
@@ -401,6 +402,23 @@ describe('usage', () => {
     expect(await client.call('questions.list', { threadId })).toMatchObject([{ text: 'help' }]);
   });
 
+  test('allow and deny help and flag hints name their own command without a core', async () => {
+    const env = { [AGENT_ENV.threadId]: '', [AGENT_ENV.coreUrl]: '', [AGENT_ENV.token]: '' };
+    for (const command of ['allow', 'deny']) {
+      const synopsis = `boite ${command} <id> <request-id>`;
+      for (const form of [[command, '--help'], [command, 'help'], ['help', command]]) {
+        const result = await boite([...form, '--core', 'http://127.0.0.1:1'], env);
+        expect([form.join(' '), result.code, result.err]).toEqual([form.join(' '), 0, '']);
+        expect(result.out.startsWith(synopsis + ' ')).toBe(true);
+        expect(result.out).not.toContain('allow|deny');
+        expect(result.out).not.toContain('need no --thread');
+      }
+      const hint = await boite([command, '--nope', '--core', 'http://127.0.0.1:1'], env);
+      expect(hint.code).toBe(2);
+      expect(hint.err).toBe(`unknown flag --nope\nusage: ${synopsis}\nSee boite ${command} help.\n`);
+    }
+  });
+
   test('desktop subcommand help needs no connection and never launches a program', async () => {
     for (const action of ['run', 'snapshot']) {
       const result = await boite(['--json', 'desktop', action, '--help'], { [AGENT_ENV.threadId]: '', [AGENT_ENV.coreUrl]: '', [AGENT_ENV.token]: '' });
@@ -721,14 +739,14 @@ test('owner CLI resumes its incognito queue after the account signs back in', as
 
 test('owner CLI follows a selection change during the folder check', async () => {
   const client = await harness.connect();
-  const { projects, journal, composer } = harness.core;
-  const requireFolder = projects.requireFolder.bind(projects);
+  const { journal, composer } = harness.core;
+  const ensure = cwdCheck.ensureThreadCwd;
   const release = Promise.withResolvers<void>();
   let checking = false;
-  const check = spyOn(projects, 'requireFolder').mockImplementation(async projectId => {
+  const check = spyOn(cwdCheck, 'ensureThreadCwd').mockImplementation(async (core, thread) => {
     checking = true;
     await release.promise;
-    return requireFolder(projectId);
+    return ensure(core, thread);
   });
   try {
     const sent = await ownerBoite(['thread', 'send', threadId, 'Use current permission', '--request-id', 'cli-folder-selection', '--json']);
@@ -765,6 +783,32 @@ test('owner CLI holds queued text when the conversation folder is gone', async (
   expect(harness.core.journal.listTurns(moved.id)).toEqual([]);
   const receipt = await ownerBoite(args);
   expect(JSON.parse(receipt.out)).toMatchObject({ status: 'held', reason: expect.stringContaining(folder) });
+});
+
+test('owner CLI delivers to a reachable shared worktree whose project folder is gone', async () => {
+  const client = await harness.connect();
+  const source = join(harness.dataDir, 'shared-source');
+  mkdirSync(source);
+  for (const args of [['init', '-q'], ['commit', '-q', '--allow-empty', '-m', 'init']]) {
+    const run = Bun.spawnSync({ cmd: ['git', ...args], cwd: source, stdout: 'pipe', stderr: 'pipe', windowsHide: true, env: {
+      ...process.env, GIT_AUTHOR_NAME: 'boite test', GIT_AUTHOR_EMAIL: 'test@boite.invalid', GIT_COMMITTER_NAME: 'boite test', GIT_COMMITTER_EMAIL: 'test@boite.invalid',
+    } });
+    if (!run.success) throw new Error(`git ${args.join(' ')} failed: ${run.stderr.toString()}`);
+  }
+  const project = await client.call('projects.add', { path: source, name: 'shared-source' });
+  const shared = join(harness.dataDir, 'shared');
+  await client.call('settings.set', { worktreeStorage: { mode: 'shared', directory: shared } });
+  const { accountId } = harness.core.threads.require(threadId);
+  const thread = await client.call('threads.create', { projectId: project.id, accountId, providerId: 'echo', worktree: {} });
+  expect(thread.cwd.startsWith(shared)).toBe(true);
+  renameSync(source, `${source}-away`);
+  const args = ['thread', 'send', thread.id, 'Work in the shared worktree', '--request-id', 'cli-shared-worktree', '--json'];
+  expect(JSON.parse((await ownerBoite(args)).out).status).toBe('queued');
+  await waitFor(() => harness.core.journal.turnRequest(thread.id, 'cli-shared-worktree') !== null || harness.core.composer.storage.get('inputs', thread.id).value?.input.paused === true);
+  expect([JSON.parse((await ownerBoite(args)).out).reason, harness.core.journal.turnRequest(thread.id, 'cli-shared-worktree') !== null]).toEqual([undefined, true]);
+  await waitFor(() => harness.core.journal.lastTurn(thread.id)?.status !== 'running');
+  expect(JSON.parse((await ownerBoite(args)).out).status).toBe('sent');
+  expect(harness.core.journal.listMessages(thread.id).filter(message => message.role === 'user').map(message => message.parts[0])).toMatchObject([{ text: 'Work in the shared worktree' }]);
 });
 
 test('owner CLI thread new selects an explicit provider and rejects an unknown source', async () => {
