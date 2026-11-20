@@ -190,7 +190,7 @@ export function migrate(db: Database, file: string): { from: number; to: number 
   }
   if (version < 10) { db.exec('ALTER TABLE threads ADD COLUMN speed TEXT'); version = 10; }
   // `foreign_keys` is off, so the REFERENCES ... ON DELETE CASCADE clauses below
-  // are dead and deleteThreadsOfProject clears these tables itself. Turning it
+  // are dead and deleteThreads clears these tables itself. Turning it
   // on first needs putThread and putTurn moved from INSERT OR REPLACE to
   // INSERT ... ON CONFLICT(id) DO UPDATE: a REPLACE deletes the old row, and the
   // cascade would wipe that thread's coordination rows and that turn's request
@@ -513,6 +513,8 @@ export function migrate(db: Database, file: string): { from: number; to: number 
     db.exec('ALTER TABLE turns ADD COLUMN switched TEXT');
     version = 51;
   }
+  // A removed project keeps its row, its threads and everything they wrote: it
+  // only leaves the lists, and adding its folder again brings it all back.
   if (!hasColumn('projects', 'removed_at')) {
     db.exec('ALTER TABLE projects ADD COLUMN removed_at INTEGER');
     version = 52;

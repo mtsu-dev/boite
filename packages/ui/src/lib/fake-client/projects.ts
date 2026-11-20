@@ -66,21 +66,29 @@ function deviceProjectFolder(path: string): void {
 /** A checked folder registered on `ctx`, as the core's `ProjectStore.add`: the project already there answers as it is. */
 export function addFakeProject(ctx: FakeContext, folder: { path: string; name?: string }): { project: Project; added: boolean } {
   const { path } = folder;
+  const key = pathKey(path);
+  const isDrafts = key === pathKey(FAKE_DRAFTS_PATH);
   if (missingFolder(path)) {
     throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'a project path must be an existing directory', data: { path } });
   }
   // As the core on Windows: the same folder in another case is the project already there.
-  const existing = ctx.projects.find((p) => pathKey(p.path) === pathKey(path));
+  const existing = ctx.projects.find((p) => pathKey(p.path) === key);
   if (existing) return { project: describedProject(ctx, existing), added: false };
-  const removed = ctx.removedProjects.get(pathKey(path));
+  const removed = ctx.removedProjects.get(key);
   if (removed) {
     const project = { ...removed.project, name: folder.name ?? removed.project.name, archived: false };
-    ctx.removedProjects.delete(pathKey(path));
+    ctx.removedProjects.delete(key);
     ctx.projects.push(project);
-    for (const thread of removed.threads) ctx.threads.set(thread.id, thread);
+    for (const thread of removed.threads) {
+      if (removed.open.has(thread.id)) {
+        thread.archived = false;
+        thread.archivedAt = null;
+      }
+      ctx.threads.set(thread.id, thread);
+    }
     const summary = describedProject(ctx, project);
     ctx.emit('project.added', summary);
-    for (const thread of removed.threads) ctx.emit('thread.created', toSummary(thread));
+    for (const thread of removed.threads) ctx.emit('thread.created', structuredClone(toSummary(thread)));
     ctx.emit('thread.deletionsUpdated', {});
     return { project: summary, added: true };
   }
@@ -89,8 +97,9 @@ export function addFakeProject(ctx: FakeContext, folder: { path: string; name?: 
     name: folder.name ?? path.split(/[\\/]/).filter(Boolean).pop() ?? path,
     path,
     createdAt: ctx.now(),
-    // No disk here: a folder the fake is handed counts as a repository.
-    repository: true
+    // The fake treats user-added folders as repositories. Drafts are a system folder.
+    repository: !isDrafts,
+    ...(isDrafts ? { kind: 'drafts' as const } : {}),
   };
   ctx.projects.push(project);
   const summary = describedProject(ctx, project);
@@ -186,20 +195,7 @@ export function projectMethods(ctx: FakeContext) {
       return addFakeProject(ctx, folder).project;
     },
     'projects.drafts': async () => {
-      const existing = ctx.projects.find((p) => p.kind === 'drafts');
-      if (existing) return describedProject(ctx, existing);
-      const project: Project = {
-        id: `p-${++ctx.seq}`,
-        name: 'Drafts',
-        path: FAKE_DRAFTS_PATH,
-        createdAt: ctx.now(),
-        repository: false,
-        kind: 'drafts'
-      };
-      ctx.projects.push(project);
-      const summary = describedProject(ctx, project);
-      ctx.emit('project.added', summary);
-      return summary;
+      return addFakeProject(ctx, { path: FAKE_DRAFTS_PATH, name: 'Drafts' }).project;
     },
     'projects.remove': async (params) => {
       const project = ctx.projects.find(p => p.id === params.projectId);
@@ -226,14 +222,14 @@ export function projectMethods(ctx: FakeContext) {
         await ctx.stopTurn(thread.id);
         closeThreadTerminals(ctx, thread.id);
       }));
-      ctx.removedProjects.set(pathKey(project.path), { project, threads: threads.filter(retained) });
+      ctx.removedProjects.set(pathKey(project.path), { project, threads: threads.filter(retained), open: new Set(open.filter(retained).map(thread => thread.id)) });
       ctx.projects = ctx.projects.filter(p => p.id !== project.id);
       for (const thread of threads) {
         ctx.threads.delete(thread.id);
         ctx.emit('thread.removed', { threadId: thread.id, undoable: retained(thread) });
       }
-      ctx.emit('project.removed', { projectId: params.projectId });
       ctx.emit('thread.deletionsUpdated', {});
+      ctx.emit('project.removed', { projectId: params.projectId });
       return { ok: true };
     },
     'projects.files': async (params) => {

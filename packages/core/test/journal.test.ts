@@ -470,14 +470,14 @@ describe('journal', () => {
     journal = new Journal(join(dir, 'other.db'));
   });
 
-  test('removing a project clears every row its threads left, with foreign keys off', () => {
+  test('deleting threads clears every row they left, with foreign keys off', () => {
     const count = (sql: string) => (journal.db.query(sql).get() as { n: number }).n;
     const thread = { id: 'thr_gone', projectId: 'prj_gone', title: 't', titleSource: 'prompt', providerId: 'echo', accountId: 'acc', model: null, effort: null, speed: null, cwd: 'D:/x', branch: null, permissionMode: 'default', status: 'idle', unread: false, archived: false, pinned: false, sessionId: null, sessionGeneration: 0, selectionVersion: 0, load: null, context: null, createdAt: 1, updatedAt: 1 } as const;
     journal.append({ type: 'thread.created', threadId: 'thr_gone', version: 1, payload: {} }, () => journal.putThread({ ...thread }));
     journal.db.query("INSERT INTO coordination_letters (id, thread_id, direction, status, created_at, data) VALUES ('l', 'thr_gone', 'in', 'received', 1, '{}')").run();
     journal.db.query("INSERT INTO coordination_wakes VALUES ('thr_gone', 1)").run();
     journal.setSetting('activity:thr_gone', { tasks: [] });
-    journal.deleteThreadsOfProject('prj_gone');
+    journal.deleteThreads(['thr_gone']);
     expect(count("SELECT COUNT(*) AS n FROM coordination_letters WHERE thread_id = 'thr_gone'")).toBe(0);
     expect(count("SELECT COUNT(*) AS n FROM coordination_wakes WHERE thread_id = 'thr_gone'")).toBe(0);
     expect(count("SELECT COUNT(*) AS n FROM events WHERE thread_id = 'thr_gone'")).toBe(0);
@@ -485,18 +485,27 @@ describe('journal', () => {
     expect((journal.db.query('PRAGMA foreign_keys').get() as { foreign_keys: number }).foreign_keys).toBe(0);
   });
 
-  test('removing a project drops its todos and workflow templates and keeps another project and a global template', () => {
+  test('a removed project keeps its rows and threads out of the lists, and comes back whole', () => {
     journal.putProject({ id: 'prj_gone', name: 'gone', path: dir, createdAt: 1 });
     journal.putProject({ id: 'prj_keep', name: 'keep', path: dir, createdAt: 1 });
+    const thread = { id: 'thr_gone', projectId: 'prj_gone', title: 't', titleSource: 'prompt', providerId: 'echo', accountId: 'acc', model: null, effort: null, speed: null, cwd: dir, branch: null, permissionMode: 'default', status: 'idle', unread: false, archived: true, pinned: false, sessionId: null, sessionGeneration: 0, selectionVersion: 0, load: null, context: null, createdAt: 1, updatedAt: 1 } as const;
+    journal.putThread({ ...thread });
     journal.setSetting('todos:prj_gone', [{ id: 'a' }]);
-    journal.setSetting('todos:prj_keep', [{ id: 'b' }]);
     journal.db.query('INSERT INTO workflow_templates VALUES (?, ?, ?, ?, ?, ?)').run('tpl_gone', 'prj_gone', 'gone', 1, 1, '{}');
-    journal.db.query('INSERT INTO workflow_templates VALUES (?, ?, ?, ?, ?, ?)').run('tpl_global', null, 'global', 1, 1, '{}');
-    journal.deleteProject('prj_gone');
-    expect(journal.getSetting('todos:prj_gone')).toBeUndefined();
-    expect(journal.getSetting('todos:prj_keep')).toEqual([{ id: 'b' }]);
-    expect(journal.db.query('SELECT id FROM workflow_templates ORDER BY id').all()).toEqual([{ id: 'tpl_global' }]);
-    expect(journal.getProject('prj_keep')?.id).toBe('prj_keep');
+    journal.removeProject('prj_gone', 5);
+    const [removed] = journal.listRemovedProjects();
+    journal.putProject({ ...removed!, name: 'updated while removed' });
+    expect(journal.getProject('prj_gone')).toBeNull();
+    expect(journal.listProjects().map((project) => project.id)).toEqual(['prj_keep']);
+    expect(journal.listRemovedProjects().map(({ id, name }) => ({ id, name }))).toEqual([{ id: 'prj_gone', name: 'updated while removed' }]);
+    expect(journal.getThread('thr_gone')).toBeNull();
+    expect(journal.listThreads().map((entry) => entry.id)).not.toContain('thr_gone');
+    expect(journal.getSetting('todos:prj_gone')).toEqual([{ id: 'a' }]);
+    expect(journal.db.query("SELECT COUNT(*) AS n FROM threads WHERE id = 'thr_gone'").get()).toEqual({ n: 1 });
+    journal.restoreProject('prj_gone', 'back');
+    expect(journal.getProject('prj_gone')?.name).toBe('back');
+    expect(journal.getThread('thr_gone')?.archived).toBe(true);
+    expect(journal.db.query('SELECT id FROM workflow_templates ORDER BY id').all()).toEqual([{ id: 'tpl_gone' }]);
   });
 
   test('thread deletion commits delegated and workflow history without removal listeners, or rolls everything back', () => {

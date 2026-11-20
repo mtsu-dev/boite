@@ -193,19 +193,13 @@ export class Journal {
 
   putProject(project: Project): void {
     this.db
-      .query('INSERT OR REPLACE INTO projects (id, name, path, created_at, archived, worktree_default) VALUES (?, ?, ?, ?, ?, ?)')
+      .query(`INSERT OR REPLACE INTO projects (id, name, path, created_at, archived, worktree_default, removed_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, (SELECT removed_at FROM projects WHERE id = ?1))`)
       .run(project.id, project.name, project.path, project.createdAt, project.archived === true ? 1 : 0, project.worktreeDefault === true ? 1 : 0);
   }
 
   archivedThreadCounts(): Map<string, { archived: number; done: number }> {
     return archivedThreadCounts(this.db);
-  }
-
-  deleteProject(projectId: string): void {
-    for (const prefix of ['project-auto-archive-merged-pr:', 'project-auto-remove-worktrees:', 'todos:']) this.deleteSetting(`${prefix}${projectId}`);
-    this.db.query('DELETE FROM projects WHERE id = ?').run(projectId);
-    this.db.query('DELETE FROM project_icons WHERE project_id = ?').run(projectId);
-    this.db.query('DELETE FROM workflow_templates WHERE project_id = ?').run(projectId);
   }
 
   projectIcons(): Map<string, ProjectIconRow> { return projectIcons(this.db); }
@@ -285,13 +279,6 @@ export class Journal {
         OR (prompt_cache IS NOT NULL AND (typeof(prompt_cache) <> 'text' OR NOT json_valid(prompt_cache)))
         OR (title_state IS NOT NULL AND title_state <> '' AND (typeof(title_state) <> 'text' OR NOT json_valid(title_state)))) ORDER BY rowid`).all() as { id: string }[];
     for (const thread of candidates) this.getThread(thread.id);
-  }
-
-  deleteThreadsOfProject(projectId: string): string[] {
-    const rows = this.db.query('SELECT id FROM threads WHERE project_id = ?').all(projectId) as { id: string }[];
-    const ids = rows.map(row => row.id);
-    this.deleteThreads(ids, { keepUsage: true });
-    return ids;
   }
 
   /** Hide the stopped family while keeping its rows and deletion time across restarts. */

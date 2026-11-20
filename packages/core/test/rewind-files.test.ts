@@ -306,7 +306,6 @@ test('removing a project keeps its private file checkpoints for restoration', as
     client = await h.connect();
     expect(await client.call('projects.list', {})).toEqual([]);
     expect((await client.call('projects.add', { path: cwd })).id).toBe(project.id);
-    await client.call('threads.archive', { threadId, archived: false });
     const rewound = await client.call('threads.rewind', { threadId, messageId });
     expect(rewound.files).toEqual({ status: 'restored', count: 1 });
     expect(await readFile(file, 'utf8')).toBe('before');

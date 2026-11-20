@@ -120,6 +120,12 @@ export interface ProjectsRpcMethods {
     params: { path?: string };
     result: { path: string; parent: string | null; directories: { name: string; path: string }[] };
   };
+  /**
+   * Hide a project and stop its running threads. Saved threads are archived and
+   * their messages, turns, usage and traces stay on disk. Incognito threads and
+   * their transcripts are erased. Adding the same folder restores the project
+   * and reopens the saved threads that were open.
+   */
   'projects.remove': { params: { projectId: ProjectId }; result: { ok: true } };
   /**
    * Put a project away, or bring it back with `archived: false`. Nothing else
@@ -164,9 +170,13 @@ export interface ProjectsRpcMethods {
 }
 
 export interface ProjectsRpcEvents {
-  /** A project `projects.add` created. A known path returns its project without one. */
+  /**
+   * A project `projects.add` created, or a removed one it brought back, then a
+   * `thread.created` for each of its threads. A listed path returns its project
+   * without one.
+   */
   'project.added': Project;
-  /** A project `projects.remove` deleted, after the `thread.removed` of each of its threads. */
+  /** A project `projects.remove` took out of the lists, after the `thread.removed` of each of its threads. */
   'project.removed': { projectId: ProjectId };
   /** A project renamed, archived or restored, one whose count of archived threads moved, or one whose icon changed. */
   'project.updated': Project;

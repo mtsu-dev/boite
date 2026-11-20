@@ -163,9 +163,9 @@ above the message box or the bottom tabs.
   On a paired phone, use Undo in the confirmation toast immediately after
   deleting a conversation.
 - Archive project takes a project out of the list. Its threads keep running,
-  and a new thread brings it back. Remove from Boite stops its threads and hides
-  the project. Add the same folder again to recover its history in Archived
-  threads. Files on disk stay in place.
+  and a new thread brings it back. Remove from Boite stops its conversations
+  and hides the project. Add the same folder again to recover its history and
+  reopen the conversations that were open. Files on disk stay in place.
 
 ## Import a Claude Code or Codex session
 

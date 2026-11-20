@@ -534,10 +534,14 @@ export class ThreadStore {
     const days = this.#core.settings.get().threadDeletionRetentionDays ?? DEFAULT_THREAD_DELETION_RETENTION_DAYS;
     if (days === 0) return;
     let sessions: NativeSession[] = [];
+    let purgedIds: string[] = [];
     const purged = this.#core.journal.purgeDeletedThreads(Date.now() - days * 86_400_000, ids => {
       sessions = threadSessions(this.#core.journal.db, ids);
+      purgedIds = ids;
     });
     if (purged > 0) {
+      // Gone for good: listeners drop what they still hold of them (queued input, remote delegations).
+      for (const threadId of purgedIds) this.#core.bus.emit('thread.removed', { threadId });
       this.#core.bus.emit('thread.deletionsUpdated', {});
       this.transcriptPurge = removeTranscripts(this.#core, sessions);
     }

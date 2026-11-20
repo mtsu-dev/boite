@@ -262,7 +262,7 @@ export class FakeContext {
   /** The admin policy, as `policy.get` answers it: none, as on most machines, unless `?policy=` names a fixture (`policy.ts`). */
   policy: PolicyState;
   projects: Project[] = [];
-  readonly removedProjects = new Map<string, { project: Project; threads: Thread[] }>();
+  readonly removedProjects = new Map<string, { project: Project; threads: Thread[]; open: Set<ThreadId> }>();
   /** The image of each project whose icon is one, as `projects.icon` answers it. */
   projectImages = new Map<string, { version: string; dataUrl: string }>();
   /** What `git worktree list` would report for each project (`worktrees.ts`). */

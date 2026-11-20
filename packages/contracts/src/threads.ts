@@ -875,7 +875,7 @@ export interface ThreadsRpcEvents {
   'thread.load': { threadId: ThreadId; load: ThreadLoad };
   /** One active turn's latest progress. Other clients receive a whole row. */
   'thread.progress': { threadId: ThreadId; progress: ThreadProgress };
-  'thread.removed': { threadId: ThreadId; undoable?: boolean };
+  'thread.removed': { threadId: ThreadId; /** It can come back (trash, removed project): its records stay. */ undoable?: boolean };
   /** The owner-only deletion list changed, including purge and removal with a project. */
   'thread.deletionsUpdated': Record<string, never>;
   /** The agent's `/name` commands, whole, each time the list it reports changes. */

@@ -909,6 +909,7 @@ test('a legacy deadline does not stop a child and project removal keeps delegati
   finally { clock.mockRestore(); }
   await owner.call('projects.remove', { projectId: h.core.threads.require(threadId).projectId! });
   expect(h.core.journal.db.query('SELECT count(*) AS n FROM delegated_agents').get()).toEqual({ n: 1 });
+  expect(h.core.journal.getThread(child.thread.id)).toBeNull();
 });
 
 test('results held while the parent waits join its next manual prompt without steering or hooks', async () => {

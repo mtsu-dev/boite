@@ -34,6 +34,11 @@ import { cancelFamilySideQuestions, cancelSide, sideQuestionMethods } from './si
  * `ServerConnection.setStreamChannels`: the thread's channels on this socket,
  * and what its streaming messages hold on each channel turned back on.
  */
+/** A project `projects.remove` took out of the lists, its rows kept for when its folder comes back. */
+function removedProject(ctx: FakeContext, projectId: string | null): boolean {
+  return projectId !== null && [...ctx.removedProjects.values()].some(entry => entry.project.id === projectId);
+}
+
 function setStreamChannels(ctx: FakeContext, threadId: ThreadId, channels: StreamChannel[] | undefined): void {
   const enabled = ctx.bus.streams.set(threadId, channels);
   if (enabled.length === 0) return;
@@ -616,17 +621,16 @@ export function threadMethods(ctx: FakeContext) {
     },
     'threads.deleted': async () => {
       purgeDeletedThreads(ctx);
-      return [...ctx.deletedThreads.values()].reverse()
-        .filter(family => family.threads[0]!.projectId === null || ctx.projects.some(project => project.id === family.threads[0]!.projectId))
+      // As the core: a removed project's deletions wait, hidden, for its folder to come back.
+      return [...ctx.deletedThreads.values()].reverse().filter(family => !removedProject(ctx, family.threads[0]!.projectId))
         .map(family => ({ ...structuredClone(toSummary(family.threads[0]!)), deletedAt: family.deletedAt }));
     },
     'threads.restore': async ({ threadId }) => {
       purgeDeletedThreads(ctx);
       const family = ctx.deletedThreads.get(threadId);
-      const root = family?.threads.find(t => t.id === threadId);
-      if (!family || !root || (root.projectId !== null && !ctx.projects.some(p => p.id === root.projectId))) {
-        throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `threadId: no recoverable deletion for ${threadId}`, data: { threadId } });
-      }
+      if (!family || removedProject(ctx, family.threads[0]!.projectId)) throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `threadId: no recoverable deletion for ${threadId}`, data: { threadId } });
+      const root = family.threads.find(t => t.id === threadId)!;
+      if (root.projectId !== null && !ctx.projects.some(p => p.id === root.projectId)) throw ctx.notFound('project', root.projectId);
       for (const [index, thread] of family.threads.entries()) {
         thread.archived = family.archived[index]!;
         ctx.threads.set(thread.id, thread);

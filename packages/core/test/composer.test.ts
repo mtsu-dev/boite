@@ -144,11 +144,20 @@ test('an offline first prompt creates one thread, transfers its queue and retain
   await c.call('composer.put', { section: 'drafts', id: retained.id, expectedRevision: restarted.revision, value: cached });
   await waitFor(() => h.core.composer.storage.get('drafts', retained.id).value?.input.paused === true);
   expect(h.core.journal.listThreads()).toHaveLength(1);
+  const last = h.core.journal.listThreads()[0]!.id;
   await c.call('projects.remove', { projectId: project.id });
   const deliveries = h.core.journal.db.query("SELECT section, status, thread_id, fingerprint FROM composer_deliveries WHERE section = 'drafts'").all();
   expect(deliveries).toHaveLength(2);
   expect(deliveries).toContainEqual({ section: 'drafts', status: 'delivered', thread_id: null, fingerprint: '' });
   expect(deliveries).toContainEqual(expect.objectContaining({ section: 'drafts', status: 'delivered', thread_id: expect.any(String) }));
+  await c.call('projects.add', { path: project.path });
+  await c.call('threads.remove', { threadId: last });
+  h.core.journal.db.query('UPDATE thread_deletions SET deleted_at = 0 WHERE thread_id = ?').run(last);
+  h.core.threads.purgeDeleted();
+  expect(h.core.journal.db.query('SELECT section, status, thread_id, fingerprint FROM composer_deliveries').all()).toEqual([
+    { section: 'drafts', status: 'delivered', thread_id: null, fingerprint: '' },
+    { section: 'drafts', status: 'delivered', thread_id: null, fingerprint: '' },
+  ]);
 });
 
 test('a known failed draft creation cleans its workspace and permits retrying the same queued input', async () => {

@@ -314,7 +314,7 @@ function kept(): { finished_at: number; provider_id: string; model: string | nul
   return harness.core.journal.db.query('SELECT * FROM removed_turn_usage ORDER BY finished_at, rowid').all() as ReturnType<typeof kept>;
 }
 
-test('removing a project leaves usage.history as it was, to the turn and the token, and only its ranking loses the threads', async () => {
+test('removing a project preserves usage totals and hides its ranking entries until restoration', async () => {
   const { echo, codex } = await threads();
   const journal = harness.core.journal;
   journal.putProject({ id: 'prj_staying', name: 'Staying', path: harness.dataDir, createdAt: D0 });
@@ -350,9 +350,12 @@ test('removing a project leaves usage.history as it was, to the turn and the tok
   await client.call('projects.remove', { projectId: echo.projectId! });
   expect(journal.getThread(echo.id)).toBeNull();
   expect(journal.getThread(codex.id)).toBeNull();
-  const after = await read();
-  expect(after.map((history) => history.rows)).toEqual(before.map((history) => history.rows));
-  expect(after.map((history) => history.threads.map((thread) => thread.threadId))).toEqual([[staying.id], [], [staying.id], []]);
+  expect(await read()).toEqual(before.map(history => ({
+    ...history,
+    threads: history.threads.filter(thread => thread.projectId !== echo.projectId),
+  })));
+  await client.call('projects.add', { path: echo.cwd });
+  expect(await read()).toEqual(before);
 });
 
 test('purging a deleted conversation leaves usage.history as it was', async () => {
@@ -393,7 +396,7 @@ test('a removed project keeps its history and usage attribution', async () => {
   expect(kept()).toEqual([]);
   expect(await client.call('usage.history', query)).toEqual({ ...before, threads: [] });
   await client.call('projects.add', { path: thread.cwd });
-  expect(await client.call('usage.history', query)).toEqual({ ...before, threads: before.threads.map(row => ({ ...row, archived: true })) });
+  expect(await client.call('usage.history', query)).toEqual(before);
   expect(harness.core.journal.listMessages(threadId).find(message => message.role === 'user')?.parts[0])
     .toMatchObject({ type: 'text', text: 'whisper the launch codes' });
 });

@@ -35,10 +35,15 @@ test('asset collection preserves shared references and pending uploads through r
   h.core.threads.purgeDeleted();
   expect(count()).toBe(1); // The other conversation still references it.
   await a.call('composer.asset.put', { attachment: { ...attachment, data: 'bmV4dA==' } });
-  await b.call('projects.remove', { projectId: h.core.threads.require(two.threadId).projectId! });
+  const project = h.core.projects.require(h.core.threads.require(two.threadId).projectId);
+  await b.call('projects.remove', { projectId: project.id });
+  expect(h.core.composer.storage.get('inputs', two.threadId).value?.input.attachments).toEqual([replacement]);
   expect(count()).toBe(1); // The hidden project keeps its saved attachment.
-  expect((await b.call('composer.put', { section: 'inputs', id: two.threadId, expectedRevision: 1, value: null })).accepted).toBe(true);
-  expect(count()).toBe(1); // The pending upload survives deletion of every saved reference.
+  await b.call('projects.add', { path: project.path });
+  await b.call('threads.remove', { threadId: two.threadId });
+  h.core.journal.db.query('UPDATE thread_deletions SET deleted_at = 0 WHERE thread_id = ?').run(two.threadId);
+  h.core.threads.purgeDeleted();
+  expect(count()).toBe(1); // a's pending upload survives deletion of every saved reference.
   a.close();
   await waitFor(() => count() === 0, 1000);
   expect(count()).toBe(0);

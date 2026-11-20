@@ -479,7 +479,7 @@ test('archiving a parent or removing its project retires an unnamed remote child
   expect(held.has(orphan.id)).toBe(false);
 
   expect(await owner.call('projects.add', { path: project.path })).toMatchObject({ id: project.id });
-  expect(await owner.call('threads.get', { threadId: other.id })).toMatchObject({ id: other.id, archived: true });
+  expect(await owner.call('threads.get', { threadId: other.id })).toMatchObject({ id: other.id, archived: false });
 });
 
 test('a stop sent again because its answer was lost does not stop the instruction that follows it', async () => {
