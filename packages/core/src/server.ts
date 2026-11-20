@@ -659,6 +659,7 @@ export function startServer(options: ServerOptions): RunningServer {
         if ('stream' in socket.data) { browserStreamOpened(core, socket as ServerWebSocket<StreamSocketData>); return; }
         const connection = socket.data.connection;
         connection.attach(socket as ServerWebSocket<SocketData>);
+        connection.onClose(() => incoming.drop(connection));
         connections.add(connection);
         network.wake();
         if (socket.data.peer !== null) peers.set(connection, socket.data.peer);
@@ -721,7 +722,6 @@ export function startServer(options: ServerOptions): RunningServer {
         core.threads.focus.disconnect(socket.data.connection.id);
         void core.drafts.disconnect(socket.data.connection.id).catch(error => core.log('warn', `draft cleanup failed: ${String(error)}`));
         void core.attachmentUploads.disconnect(socket.data.connection.id).catch(error => core.log('warn', `attachment cleanup failed: ${String(error)}`));
-        incoming.drop(socket.data.connection);
         socket.data.connection.close(1000);
         clearTimeout(helloTimers.get(socket.data.connection));
         helloTimers.delete(socket.data.connection);
@@ -785,14 +785,7 @@ export function startServer(options: ServerOptions): RunningServer {
         }
       }
     },
-    closePlugin(pluginId: string): void {
-      for (const connection of connections) {
-        if (connection.identity.principal !== 'plugin' || connection.identity.pluginId !== pluginId) continue;
-        connection.close(RpcCloseCode.Unauthorized, 'plugin token revoked');
-        // Revocation takes effect before the WebSocket transport reports its close.
-        incoming.drop(connection);
-      }
-    },
+    closePlugin(pluginId: string): void { for (const c of connections) if (c.identity.principal === 'plugin' && c.identity.pluginId === pluginId) c.close(RpcCloseCode.Unauthorized, 'plugin token revoked'); },
     reveal(target): number {
       // Owner windows only: a paired phone or an agent has no window of the owner's
       // to raise, and a desktop-app plugin, often the caller itself, draws none of Boite's.
