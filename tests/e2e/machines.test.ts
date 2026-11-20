@@ -229,9 +229,11 @@ test('two real cores pair, route turns independently, reconnect and survive a re
     await page.click(id('panel-add'));
     await page.waitFor(`document.querySelector('${id('panel-add-menu')} [data-value="terminal-toggle"]')`);
     await page.click(`${id('panel-add-menu')} [data-value="terminal-toggle"]`);
-    // PowerShell expands Windows short paths such as RUNNER~1 in its prompt.
+    // A shell may open with a plain "$" prompt. Ask it for the actual path
+    // through the same input and output the owner uses.
+    const terminalText = "document.querySelector('[data-testid=terminal-drawer] .xterm-rows')?.textContent";
     try {
-      await page.waitFor(`document.querySelector('[data-testid=terminal-drawer] .xterm-rows')?.textContent.includes(${JSON.stringify(basename(second.dataDir))})`);
+      await page.waitFor(`${terminalText}?.trim().length > 0`);
     } catch (error) {
       const [terminal, screen] = await Promise.allSettled([
         b.call('terminals.open', { threadId: tb.id, cols: 80, rows: 24 }).then(state => ({ output: state.output.slice(-4096), sequence: state.sequence, shell: state.shell, windowsPty: state.windowsPty })),
@@ -251,13 +253,15 @@ test('two real cores pair, route turns independently, reconnect and survive a re
     await page.evaluate('globalThis.__boiteTest.workspace.active.reload()');
     expect(await page.evaluate(`document.activeElement?.classList.contains('xterm-helper-textarea')`)).toBe(true);
     // Ordinary keyboard events exercise xterm's key handler, unlike insertText.
-    for (const char of 'echo remote-terminal-e2e') {
-      await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: char, text: char });
-      await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: char });
+    for (const command of [process.platform === 'win32' ? 'cmd /c cd' : 'pwd', 'echo remote-terminal-e2e']) {
+      for (const char of command) {
+        await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: char, text: char });
+        await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: char });
+      }
+      await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+      await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
     }
-    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
-    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
-    await page.waitFor(`document.querySelector('[data-testid=terminal-drawer] .xterm-rows')?.textContent.split('remote-terminal-e2e').length >= 3`);
+    await page.waitFor(`${terminalText}?.includes(${JSON.stringify(basename(second.dataDir))}) && ${terminalText}?.split('remote-terminal-e2e').length >= 3`);
     await capture('terminal-remote-real-desktop.png');
     await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
     await capture('terminal-remote-real-phone.png');
