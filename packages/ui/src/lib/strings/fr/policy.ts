@@ -19,7 +19,6 @@ export const fr: Translation = {
     },
     none: 'Le fichier ne verrouille rien.',
     failedClosed: 'Le fichier est illisible : chaque réglage qu’il peut verrouiller prend sa valeur la plus stricte jusqu’à sa correction.',
-    problemsTopic: 'Problèmes de politique',
     problemsOne: 'La politique de votre organisation a un problème',
     problemsMany: 'La politique de votre organisation a {count} problèmes',
     closedTitle: 'La politique de votre organisation est illisible',

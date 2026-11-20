@@ -24,7 +24,6 @@ export const fr: Translation = {
     ownerOnly: "Seulement dans l'application du propriétaire",
     launcher: 'Ouvrir une surface dans ce panneau',
     untitled: 'Navigateur',
-    closePanel: 'Fermer le panneau',
     findPanel: 'Chercher un panneau',
     noPanelMatch: 'Aucun panneau ne correspond',
     roles: {
