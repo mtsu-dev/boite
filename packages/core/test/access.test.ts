@@ -6,12 +6,13 @@
  * method added after this test was written.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join, parse } from 'node:path';
 import { DEVICE_HOME_CREDENTIAL_STORES, type RpcMethodName } from '@boite/contracts';
 import { connect } from '../src/client.ts';
+import * as paths from '../src/paths.ts';
 import { AGENT_METHODS, DEVICE_METHODS, assertAllowed } from '../src/access.ts';
 import type { Connection } from '../src/router.ts';
 import { assertDeviceFile, assertDeviceProjectFolder } from '../src/workdir.ts';
@@ -504,6 +505,54 @@ describe('a paired device reads a thread\'s changes and files', () => {
       if (before === undefined) delete process.env.XDG_CONFIG_HOME;
       else process.env.XDG_CONFIG_HOME = before;
       rmSync(config, { force: true, recursive: true });
+    }
+  });
+
+  test.each(['fallback', 'shared XDG'] as const)('protects the custom account resolver’s %s directory', async location => {
+    const home = mkdtempSync(join(tmpdir(), 'boite-login-home-'));
+    const id = 'synthetic-login';
+    const config = join(home, 'shared');
+    const root = location === 'fallback' ? join(home, `.${id}`) : join(config, 'vendor', id);
+    const folder = join(harness.dataDir, 'providers');
+    const profile = location === 'fallback'
+      ? { isolation: {} }
+      : { isolation: { XDG_CONFIG_HOME: '{isolationDir}' }, env: { XDG_CONFIG_HOME: config }, session: [`vendor/${id}/token.txt`] };
+    const homePath = spyOn(paths, 'homePath').mockReturnValue(home);
+    try {
+      mkdirSync(root, { recursive: true });
+      writeFileSync(join(root, 'token.txt'), 'synthetic login only');
+      mkdirSync(folder, { recursive: true });
+      writeFileSync(join(folder, `${id}.json`), JSON.stringify({
+        id, schemaVersion: 1, name: id, shortName: id, protocol: 'acp', roots: ['{isolationDir}'],
+        profiles: { [paths.currentOs()]: { detect: {}, executable: [{ kind: 'path', value: 'synthetic-cli' }], ...profile } },
+        auth: { kind: 'oauth-cli', session: ['token.txt'] }, models: [],
+        capabilities: { approvals: true, hooks: false, checkpoint: false, images: false, planMode: false, resume: true },
+      }));
+      expect(harness.core.providers.load().rejected).toEqual([]);
+      const provider = harness.core.providers.require(id);
+      expect(harness.core.accounts.defaultLocation(provider)).toBe(location === 'fallback' ? root : config);
+
+      const owner = await harness.connect();
+      const account = (await owner.call('accounts.list', {})).find(account => account.providerId === 'echo')!;
+      const project = await owner.call('projects.add', { path: root });
+      const { id: threadId } = await owner.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: account.id });
+      const phone = await pairedDevice();
+      try {
+        const attempts = [
+          await thrown(phone.call('projects.add', { path: root })),
+          await thrown(phone.call('files.read', { threadId, path: 'token.txt' })),
+        ];
+        expect(attempts[0]).toThrow('folder that holds keys or tokens');
+        expect(attempts[1]).toThrow('credential files');
+        if (location === 'shared XDG') {
+          const other = join(config, 'vendor', 'unrelated-project');
+          mkdirSync(other, { recursive: true });
+          expect((await phone.call('projects.add', { path: other })).path).toBe(other);
+        }
+      } finally { phone.close(); }
+    } finally {
+      homePath.mockRestore();
+      rmSync(home, { force: true, recursive: true });
     }
   });
 

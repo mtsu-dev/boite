@@ -4,6 +4,7 @@ import { basename, dirname, join, relative, resolve } from 'node:path';
 import type { Project, ThreadId, ThreadSummary } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { inside, keyOf } from './checkouts.ts';
+import { finishCheckoutRecovery, type CheckoutGit, type CheckoutGitResult } from './checkout-recovery.ts';
 import { refused } from './errors.ts';
 import { occupiesCheckout } from './threads/occupancy.ts';
 
@@ -82,22 +83,19 @@ export async function withVacantCheckout<T>(core: Core, project: Project, path: 
   }
 }
 
-interface GitResult { code: number; stdout: string; stderr: string }
-type Git = (args: string[]) => Promise<GitResult>;
-
-interface CheckoutMove { path: string; staged: string; admin: string }
+interface CheckoutMove { path: string; staged: string; admin: string; commit?: string }
 const TEMPORARY_PREFIX = '.boite-removing-';
 const moveKey = async (path: string) => `checkout-removal:${keyOf(join(await realKey(dirname(path)), basename(path)))}`;
 const savedAt = (staged: string) => join(dirname(staged), 'saved');
+const heldPointerAt = (staged: string) => join(dirname(staged), 'git-pointer');
 
 /** An interrupted cleanup must be restored by its owner before the sweep can see it. */
 export function stagedForRemoval(path: string): boolean {
   return basename(path) === 'checkout' && basename(dirname(path)).startsWith(TEMPORARY_PREFIX);
 }
 
-async function checkoutAdmin(path: string): Promise<string | null> {
+async function checkoutAdmin(path: string, dotGit = join(path, '.git')): Promise<string | null> {
   try {
-    const dotGit = join(path, '.git');
     if (!(await lstat(dotGit)).isFile()) return null;
     const pointer = /^gitdir: (.+)$/.exec((await readFile(dotGit, 'utf8')).trimEnd())?.[1];
     return pointer ? realKey(resolve(path, pointer)) : null;
@@ -107,7 +105,7 @@ async function checkoutAdmin(path: string): Promise<string | null> {
   }
 }
 
-const failure = (stderr: string): GitResult => ({ code: 1, stdout: '', stderr });
+const failure = (stderr: string): CheckoutGitResult => ({ code: 1, stdout: '', stderr });
 const statusArgs = (path: string) => ['-C', path, '-c', 'core.fsmonitor=', 'status', '--porcelain=v1', '-z', '--untracked-files=normal', '--ignored=matching'];
 
 /** Resolves directory aliases without following a tracked symlink itself. */
@@ -170,28 +168,30 @@ async function putBack(saved: string, staged: string): Promise<void> {
   await emptyDirectories(saved);
 }
 
-async function restoreCheckout(move: CheckoutMove, git: Git): Promise<void> {
+async function restoreCheckout(move: CheckoutMove, git: CheckoutGit): Promise<void> {
   const { path, staged, admin } = move;
   const saved = savedAt(staged);
-  if (await checkoutAdmin(staged) !== admin && await checkoutAdmin(saved) !== admin) {
+  const pointer = heldPointerAt(staged);
+  if (await checkoutAdmin(staged) !== admin && await checkoutAdmin(saved) !== admin && await checkoutAdmin(staged, pointer) !== admin) {
     throw refused(`cannot prove the checkout staged for ${path} still belongs to ${admin}`, { path, staged });
   }
   if (lstatSync(path, { throwIfNoEntry: false })) throw refused(`cannot restore ${path}: it already exists; the checkout stays at ${staged}`, { path, staged });
   if (!existsSync(staged)) await mkdir(staged);
   if (existsSync(saved)) await putBack(saved, staged);
+  if (existsSync(pointer)) await restoreFile(pointer, join(staged, '.git'));
   const restored = await git(['worktree', 'move', staged, path]);
   if (restored.code !== 0) throw refused(`cannot restore ${path} from ${staged}: ${restored.stderr.trim() || `git exited ${restored.code}`}`, { path, staged });
 }
 
 /** The caller holds the repository's registration gate while resuming a recorded move. */
-export async function restoreInterruptedCheckout(core: Core, project: Project, path: string, branch: string, git: Git): Promise<void> {
+export async function restoreInterruptedCheckout(core: Core, project: Project, path: string, branch: string | null, git: CheckoutGit): Promise<void> {
   const key = await moveKey(path);
   const move = core.journal.getSetting(key) as CheckoutMove | undefined;
   if (!move) return;
   const listed = await git(['worktree', 'list', '--porcelain', '-z']);
   if (listed.code !== 0) throw refused(`cannot inspect the checkout staged for ${path}: ${listed.stderr}`, { path });
   const registered = listed.stdout.split('\0\0').map(record => record.split('\0'))
-    .filter(entry => entry.includes(`branch refs/heads/${branch}`))
+    .filter(entry => entry.includes(branch === null ? 'detached' : `branch refs/heads/${branch}`))
     .flatMap(entry => entry.find(field => field.startsWith('worktree '))?.slice(9) ?? []);
   const [keys, stagedKey, originalKey] = await Promise.all([Promise.all(registered.map(realKey)), realKey(move.staged), realKey(move.path)]);
   const atStaged = keys.includes(stagedKey);
@@ -208,32 +208,38 @@ export async function restoreInterruptedCheckout(core: Core, project: Project, p
   } else if (existsSync(move.staged) || atOriginal && await checkoutAdmin(move.path) !== move.admin) {
     throw refused(`cannot verify the registered checkout at ${move.staged} for ${path}`, { path, staged: move.staged });
   }
-  const saved = savedAt(move.staged);
-  if (existsSync(saved)) {
-    // Git had already removed its registration. Recovery can check out the surviving ref.
-    reportSavedCheckout(core, move.path, saved);
-  } else if (existsSync(dirname(move.staged))) {
-    await rmdir(dirname(move.staged));
-  }
+  await finishRemoval(core, move, git);
   core.journal.deleteSetting(key);
 }
 
-function reportSavedCheckout(core: Core, path: string, saved: string): void {
-  core.log('warn', `kept files from ${path} for recovery at ${saved}; remove this copy manually after checking it`, {
-    source: 'worktrees', event: 'worktree.recovery-saved', data: { path, recoveryPath: saved },
-  });
+async function finishRemoval(core: Core, move: CheckoutMove, git: CheckoutGit): Promise<void> {
+  const recoveryPath = savedAt(move.staged);
+  // Old interrupted moves can still have the pointer in saved/.git.
+  for (const pointer of [heldPointerAt(move.staged), join(recoveryPath, '.git')]) {
+    if (!lstatSync(pointer, { throwIfNoEntry: false })) continue;
+    if (await checkoutAdmin(move.staged, pointer) !== move.admin) {
+      throw refused(`cannot verify the Git pointer kept at ${pointer}`, { path: move.path });
+    }
+    await unlink(pointer);
+  }
+  await finishCheckoutRecovery(core, { path: move.path, commit: move.commit ?? null, recoveryPath }, git);
 }
 
 /** Reclaims a clean directory only by rmdir, then asks Git to remove its obsolete registration. */
-export async function removeCleanCheckout(core: Core, path: string, git: Git): Promise<GitResult> {
+export async function removeCleanCheckout(core: Core, path: string, git: CheckoutGit): Promise<CheckoutGitResult> {
   if (!existsSync(path)) return git(['worktree', 'remove', path]);
   const admin = await checkoutAdmin(path);
   if (!admin) return failure(`cannot verify the Git directory of ${path}`);
   const key = await moveKey(path);
+  if (core.journal.getSetting(key)) return failure(`an interrupted removal of ${path} still needs recovery`);
+  const head = await git(['-C', path, 'rev-parse', '--verify', 'HEAD^{commit}']);
+  if (head.code !== 0) return head;
+  const commit = head.stdout.trim();
+  if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(commit)) return failure(`cannot verify the Git commit of ${path}`);
   const temporary = mkdtempSync(join(dirname(path), TEMPORARY_PREFIX));
   const staged = join(temporary, 'checkout');
   const saved = savedAt(staged);
-  const move = { path, staged, admin };
+  const move = { path, staged, admin, commit };
   const release = core.worktrees.reservations.reserve(staged, [await realKey(temporary)]);
   let removed = false;
   try {
@@ -251,6 +257,7 @@ export async function removeCleanCheckout(core: Core, path: string, git: Git): P
     const savedStatus = await git(statusArgs(saved));
     if (savedStatus.code !== 0) return savedStatus;
     if (savedStatus.stdout || savedStatus.stderr) return failure('the tracked files changed during cleanup');
+    await rename(join(saved, '.git'), heldPointerAt(staged));
     try { await emptyDirectories(staged); }
     catch (error) {
       if (['ENOTEMPTY', 'EEXIST'].includes((error as NodeJS.ErrnoException).code ?? '')) return failure('a file appeared during cleanup');
@@ -259,16 +266,17 @@ export async function removeCleanCheckout(core: Core, path: string, git: Git): P
     const result = await git(['worktree', 'remove', staged]);
     if (result.code !== 0) return result;
     removed = true;
-    // A writer with a tracked file already open can still change it after the last status.
-    reportSavedCheckout(core, path, saved);
+    // A writer with a tracked file already open can still have changed it while Git ran.
+    await finishRemoval(core, move, git);
+    core.journal.deleteSetting(key);
     return result;
   } finally {
     try {
       if (!removed) {
         if (existsSync(staged) || existsSync(saved)) await restoreCheckout(move, git);
         await rmdir(temporary);
+        core.journal.deleteSetting(key);
       }
-      core.journal.deleteSetting(key);
     }
     finally { release(); }
   }

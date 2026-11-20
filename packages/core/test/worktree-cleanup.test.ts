@@ -1,8 +1,11 @@
-import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, utimesSync, writeFileSync, writeSync } from 'node:fs';
+import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmdirSync, utimesSync, writeFileSync, writeSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import type { ThreadSummary } from '@boite/contracts';
 import { assertAllowed } from '../src/access.ts';
+import { runCli } from '../src/cli.ts';
+import { realKey, restoreInterruptedCheckout } from '../src/checkout-removal.ts';
+import { Journal } from '../src/journal.ts';
 import { WorktreeCleanup } from '../src/worktree-cleanup.ts';
 import { worktreeRoot } from '../src/worktree.ts';
 import { startTestCore, type TestCore } from './harness.ts';
@@ -46,6 +49,7 @@ async function repoProject(): Promise<{ id: string; path: string }> {
   const path = join(harness.dataDir, 'repo');
   mkdirSync(path, { recursive: true });
   git(path, 'init', '-q', '-b', 'main');
+  git(path, 'config', 'core.autocrlf', 'false');
   writeFileSync(join(path, 'README.md'), 'hello\n');
   git(path, 'add', 'README.md');
   git(path, 'commit', '-q', '-m', 'init');
@@ -136,6 +140,10 @@ describe('settled worktree cleanup', () => {
     const removed = await cleanup.run();
     expect(removed).toEqual([expect.objectContaining({ path: expect.any(String), reason: 'clean', branch: thread.branch, branchDeleted: true })]);
     expect(existsSync(thread.cwd)).toBe(false);
+    if (process.platform !== 'darwin') {
+      expect(readdirSync(dirname(thread.cwd)).filter(name => name.startsWith('.boite-removing-'))).toEqual([]);
+      expect(await client.call('worktrees.recoveries', {})).toEqual([]);
+    }
     expect(branches(project)).toEqual(['main']);
     expect((await summary(thread.id)).worktreeRemoved).toMatchObject({ path: thread.cwd, reason: 'clean', branch: thread.branch, branchDeleted: true });
 
@@ -228,9 +236,15 @@ describe('settled worktree cleanup', () => {
 
   test.skipIf(process.platform === 'win32')('keeps a tracked write through an open handle after the last status', async () => {
     const project = await repoProject();
+    writeFileSync(join(project.path, 'unchanged.txt'), 'tracked content\n');
+    writeFileSync(join(project.path, 'open.txt'), 'before\n');
+    git(project.path, 'add', 'unchanged.txt', 'open.txt');
+    git(project.path, 'commit', '-qm', 'add another file');
     const thread = await worktreeThread(project, 'Late tracked write');
+    const commit = git(thread.cwd, 'rev-parse', 'HEAD');
     await client.call('threads.archive', { threadId: thread.id });
     const fd = openSync(join(thread.cwd, 'README.md'), 'a');
+    const stillOpen = openSync(join(thread.cwd, 'open.txt'), 'a');
     const spawn = harness.core.procs.spawn.bind(harness.core.procs);
     let saved: string | undefined;
     const removing = spyOn(harness.core.procs, 'spawn').mockImplementation((id, command, args, options) => {
@@ -249,10 +263,60 @@ describe('settled worktree cleanup', () => {
       expect(fstatSync(fd).nlink).toBeGreaterThan(0);
       expect(readFileSync(join(saved!, 'README.md'), 'utf8')).toBe('hello\nlate edit\n');
       expect(log.mock.calls.some(([, message]) => message.includes(saved!))).toBe(true);
+      // This descriptor was unchanged through both statuses and Git's removal.
+      writeSync(stillOpen, 'written after cleanup returned\n');
+      expect(readFileSync(join(saved!, 'open.txt'), 'utf8')).toBe('before\nwritten after cleanup returned\n');
+      expect(existsSync(join(saved!, '.git'))).toBe(false);
+      if (process.platform === 'linux') expect(readdirSync(saved!).sort()).toEqual(['README.md', 'open.txt']);
+      expect(JSON.parse(readFileSync(join(dirname(saved!), 'recovery.json'), 'utf8'))).toMatchObject({ path: thread.cwd, commit });
     } finally {
       log.mockRestore();
       closeSync(fd);
+      closeSync(stillOpen);
     }
+  });
+
+  test('detaches a recovery when a completed Git removal was interrupted', async () => {
+    const project = await repoProject();
+    const thread = await worktreeThread(project, 'Interrupted removal');
+    const path = thread.cwd;
+    const parent = dirname(path);
+    const temporary = join(parent, '.boite-removing-interrupted');
+    const staged = join(temporary, 'checkout');
+    const saved = join(temporary, 'saved');
+    const admin = await realKey(git(path, 'rev-parse', '--absolute-git-dir'));
+    const commit = git(path, 'rev-parse', 'HEAD');
+    mkdirSync(saved, { recursive: true });
+    git(project.path, 'worktree', 'move', path, staged);
+    for (const name of ['.git', 'README.md']) renameSync(join(staged, name), join(saved, name));
+    rmdirSync(staged);
+    git(project.path, 'worktree', 'remove', staged);
+    writeFileSync(join(saved, 'notes.txt'), 'untracked recovery\n');
+    const projectRow = harness.core.projects.require(project.id);
+    const key = `checkout-removal:${await realKey(path)}`;
+    harness.core.journal.setSetting(key, { path, staged, admin, commit });
+
+    // Git can now reuse the old administrative directory for another checkout.
+    git(project.path, 'worktree', 'add', '--detach', path);
+    await restoreInterruptedCheckout(harness.core, projectRow, path, thread.branch!, async args => {
+      const result = Bun.spawnSync({ cmd: ['git', ...args], cwd: project.path, env: FIXTURE_GIT_ENV, windowsHide: true });
+      return { code: result.exitCode, stdout: result.stdout.toString(), stderr: result.stderr.toString() };
+    });
+    expect(existsSync(join(saved, '.git'))).toBe(false);
+    if (process.platform !== 'darwin') expect(readdirSync(saved)).toEqual(['notes.txt']);
+    expect(readFileSync(join(saved, 'notes.txt'), 'utf8')).toBe('untracked recovery\n');
+    const recovery = { path, commit, recoveryPath: saved };
+    expect(JSON.parse(readFileSync(join(temporary, 'recovery.json'), 'utf8'))).toMatchObject(recovery);
+    expect(harness.core.journal.getSetting(key)).toBeUndefined();
+    const reopened = new Journal(join(harness.dataDir, 'journal.db'));
+    try { expect(reopened.getSetting('checkout-recoveries')).toEqual([recovery]); }
+    finally { reopened.close(); }
+    let output = '';
+    const cli = await runCli(['projects', 'recoveries', '--core', harness.url, '--json'], {
+      cwd: project.path, env: { BOITE_TOKEN: harness.token }, out: text => { output += text; }, err: text => { throw new Error(text); },
+    });
+    expect(cli).toBe(0);
+    expect(JSON.parse(output)).toEqual([recovery]);
   });
 
   test('keeps a branch that advances to another merged commit during cleanup', async () => {

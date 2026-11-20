@@ -27,6 +27,7 @@ export const USAGE = `usage: boite <command> [args] [--json]
                                  with addProjects can add and hold a local folder.
   projects archive|unarchive|remove <p>
                                  the owner's; removing leaves the folder on disk
+  projects recoveries            list files kept after worktree removal, owner only
 ${CONTROL_HELP}
   attach <file>                  publish a file in chat, up to 512 MB
   proof <message-id> <output-line> <unchecked> [capture]
