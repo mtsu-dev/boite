@@ -884,12 +884,12 @@ See [releasing](releasing.md) for bundle configurations and installed layouts.
 The Windows suite defaults to
 `apps/shell/src-tauri/target/release/boite-shell.exe`, or
 `BOITE_E2E_SHELL_EXE` when set (a `build:shell:dev` leaves
-`boite-dev-shell.exe` instead, which the default never names). It rejects a missing or stale shell, UI, core or
-worker before running interactions. With a shared Cargo target, preserve the
-shell executable, installer, adjacent core bundle/runtime, workers and CLI
-shims from the same build before another worktree replaces them. Test that copy
-through `BOITE_E2E_SHELL_EXE`. Filenames and timestamps alone do not identify the
-branch; inspect the running UI over CDP for installation claims.
+`boite-dev-shell.exe` instead, which the default never names). It checks the
+shell's embedded build marker against this checkout's shell and UI sources,
+target and channel. The Tauri build driver captures the executable beside this
+checkout's staged core and CLI, even when Cargo uses a shared target. An
+explicit `BOITE_E2E_SHELL_EXE` still needs a matching build marker. The suite
+also checks the core and workers before running interactions.
 
 A hidden shell whose page never reaches the debugging port fails with "the
 browser never exposed a page", followed by every distinct answer the port gave

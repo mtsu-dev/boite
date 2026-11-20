@@ -18,7 +18,7 @@
  *
  * The shell exe in `src-tauri/target/release` runs whatever `boite-core.exe`
  * sits beside it (`resolve_core` in `src-tauri/src/local_core/resolve.rs`), which is what the
- * end to end suite drives, so the copy goes there too whenever that exe exists.
+ * end to end suite drives, so the adjacent files are staged there as well.
  * `tests/e2e/shell.test.ts` refuses a sidecar older than the core sources and
  * names the fix, `bun run stage:core`, which is this script after
  * `build-core.ts` (`build:core` on Windows, `build:core:exe` elsewhere).
@@ -42,7 +42,6 @@ const coreDist = join(repo, 'packages', 'core', 'dist');
 const binaries = join(shell, 'src-tauri', 'binaries');
 // `tauri build --target <triple>` writes under the triple's own directory.
 const release = join(shell, 'src-tauri', 'target', ...(cross ? [triple] : []), 'release');
-const shellExe = join(release, process.platform === 'win32' ? 'boite-shell.exe' : 'boite-shell');
 
 function refuse(message: string): never {
   console.error(`stage-sidecar: ${message}`);
@@ -217,26 +216,4 @@ export function stageCore(targetDir: string, exeName: string): void {
 }
 
 stageCore(binaries, `boite-core-${triple}${suffix}`);
-
-// Cargo may use a shared target directory. Snapshot its shell into this
-// checkout so a later build elsewhere cannot replace the executable under test.
-const metadata = Bun.spawnSync(['cargo', 'metadata', '--no-deps', '--format-version', '1', '--manifest-path', join(shell, 'src-tauri', 'Cargo.toml')], {
-  stdout: 'pipe', stderr: 'pipe', windowsHide: true,
-});
-if (metadata.exitCode !== 0) refuse(`cargo metadata failed: ${metadata.stderr.toString()}`);
-const target = JSON.parse(metadata.stdout.toString()).target_directory as string;
-const builtShell = join(target, ...(cross ? [triple] : []), 'release', `boite-shell${suffix}`);
-if (resolve(builtShell) !== resolve(shellExe) && existsSync(builtShell)) {
-  mkdirSync(release, { recursive: true });
-  copyFileSync(builtShell, shellExe);
-  console.log(`stage-sidecar: shell snapshot ${shellExe}`);
-}
-
-if (existsSync(shellExe)) {
-  stageCore(release, `boite-core${suffix}`);
-} else {
-  console.log(
-    `stage-sidecar: ${shellExe} does not exist, nothing staged beside it. ` +
-      'Build it with `bun run --cwd apps/shell tauri build --no-bundle`.',
-  );
-}
+stageCore(release, `boite-core${suffix}`);

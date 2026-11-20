@@ -152,7 +152,6 @@ jobs:
             throw "Unsupported build channel: $env:BUILD_CHANNEL"
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          bun run apps/shell/scripts/stage-sidecar.ts
       # The UI and core bundles just packaged hold no cut feature above the build's kind
       # (docs/internals/experiments.md#out-of-the-build).
       - name: Feature cut of this build
