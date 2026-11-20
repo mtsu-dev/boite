@@ -101,7 +101,7 @@ test('a phone long press is the shared sheet from its first frame: docked, its c
     expect(sheet.dataset['mobileSheet']).toBe('true');
     expect([sheet.style.left, sheet.style.bottom]).toEqual(['0px', '0px']);
     await settle();
-    expect(Array.from(sheet.children).map((one) => one.getAttribute('data-value') ?? one.className.split(' ')[0])).toEqual(['section', 'pin', 'rule', 'delete']);
+    expect(Array.from(sheet.children, (one) => one.getAttribute('data-value') ?? one.getAttribute('role'))).toEqual(['presentation', 'pin', 'separator', 'delete']);
     expect(sheet.querySelector('.section')?.textContent).toBe('Project and branch');
     const pin = sheet.querySelector('[data-value=pin]')!;
     expect(pin.lastElementChild?.classList.contains('check')).toBe(true);
