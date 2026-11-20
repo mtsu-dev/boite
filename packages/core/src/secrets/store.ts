@@ -326,7 +326,7 @@ export class SecretStore {
     }
   }
 
-  #assertLiveUse(entry: TransitEntry): void {
+  #assertLiveUse(entry: Transit): void {
     if (this.#transit.get(entry.id) !== entry) throw refused('ref: this secret was erased or never existed; ask for it again', { field: 'ref', expected: 'a live ref' });
     if (entry.expiresAt <= this.now()) {
       this.#eraseTransit(entry);

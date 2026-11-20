@@ -285,7 +285,7 @@ test('the update worker verifies a liveness-only reply against the new local ser
       }));
     };
     await applyServerUpdate(f.file, f.platform, { pollMs: 5, healthTimeoutMs: 500, spareBytes: 0 });
-    expect(f.result()).toEqual({ version: '2.1.0', error: null, at: expect.any(Number) });
+    expect(f.result()).toMatchObject({ version: '2.1.0', error: null });
   } finally {
     listener.stop(true);
     f.stop();

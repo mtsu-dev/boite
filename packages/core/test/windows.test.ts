@@ -190,7 +190,7 @@ describe('window capture', () => {
     const finish = harness.core.journal.lastTurn(threadId)!.finishedAt!;
     harness.core.journal.db.query('UPDATE coordination_letters SET created_at = ? WHERE id = ?').run(finish - 1, 'letter_contact');
     expect(await agent.call('windows.list', { threadId })).toMatchObject({ support: { available: true } });
-    harness.core.journal.append({ type: 'coordination.status', threadId, version: 1, payload: { id: 'letter_contact', status: 'delivered', error: null } });
+    harness.core.journal.append({ type: 'coordination.status', threadId, version: 1, payload: { id: 'letter_contact', status: 'delivered', error: null } }, () => undefined);
     expect(await thrown(agent.call('devices.sessions', { threadId }))).toThrow('this conversation is handling contact instructions');
     const other = await echoThread(harness, owner, 'other');
     expect(await thrown(agent.call('windows.list', { threadId: other.threadId }))).toThrow(`windows.list is for thread ${threadId}`);
