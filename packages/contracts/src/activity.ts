@@ -171,6 +171,21 @@ function eventKind(store: RowSource<Delegated>, thread: ThreadSummary, kind: Thr
   return kind === 'waiting' ? activityKind(store, thread.id, kind)! : kind;
 }
 
+/** The stop shown in Activity, using message unread state only for older cores. */
+export function unreadInterruptionAt(thread: ThreadSummary): number | undefined {
+  const wait = thread.backgroundWait;
+  if (wait?.state !== 'interrupted') return undefined;
+  const read = thread.interruptionReadAt === undefined ? !thread.unread : thread.interruptionReadAt === wait.at;
+  return read ? undefined : wait.at;
+}
+
+/** Acknowledging an interruption leaves any unread reply in Activity. */
+export function activityThreadState(thread: ThreadSummary, delegated: Delegated): ThreadState | null {
+  const kind = threadState(thread, delegated);
+  return kind === 'interrupted' && unreadInterruptionAt(thread) === undefined
+    ? threadState({ ...thread, backgroundWait: null }, delegated) : kind;
+}
+
 /**
  * Activity's rows in its order, each one event: the one derivation behind the page, its sections, the rail's badge,
  * the phone's tab, a project's "Needs you" count and `boite state inbox`, so none of them can disagree. It keeps only
@@ -181,15 +196,14 @@ function eventKind(store: RowSource<Delegated>, thread: ThreadSummary, kind: Thr
  */
 export function activityEvents<E extends ActivitySource<{ id: string; store: RowSource<Delegated> }>>(all: readonly E[]): ActivityEvent<E>[] {
   const entries = all.filter(entry => feedThread(entry.thread) && !entry.thread.agentSessionId);
-  const stateOf = (entry: E) => threadState(entry.thread, rowAsks(entry.machine.store, entry.thread.id));
+  const stateOf = (entry: E) => activityThreadState(entry.thread, rowAsks(entry.machine.store, entry.thread.id));
   const key = (entry: E, id = entry.thread.id) => `${entry.machine.id}\n${id}`;
   const byKey = new Map(entries.map(entry => [key(entry), entry]));
   const parentOf = (entry: E) => entry.thread.parentThreadId ? byKey.get(key(entry, entry.thread.parentThreadId)) : undefined;
   const listedKind = (entry: E): ThreadState | null => {
     const kind = stateOf(entry);
     if (kind === null || !LISTED.has(kind)) return null;
-    // A failure or a stop is news until it is read, as a finish is: opening the thread or Mark all as read clears it.
-    return (kind === 'error' || kind === 'interrupted') && !entry.thread.unread ? null : kind;
+    return kind === 'error' && !entry.thread.unread ? null : kind;
   };
   // A sub-agent that failed while its parent still works is the parent's to handle: nothing asks the user yet.
   const listed = entries.filter(entry => {

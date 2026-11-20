@@ -1,4 +1,4 @@
-import { ownerThreadSelection, pullRequestAddress, type AccountId, type ProviderId, type RpcResult, type ThreadId } from '@boite/contracts';
+import { ownerThreadSelection, pullRequestAddress, unreadInterruptionAt, type AccountId, type ProviderId, type RpcResult, type ThreadId } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { promptOrigin } from '../client-preferences.ts';
 import { invalidParams, messageOf, refused } from '../errors.ts';
@@ -182,7 +182,11 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
       ctx.connection.subscriptions.delete(params.open.previous);
       ctx.connection.setStreamChannels?.(params.open.previous, undefined);
     }
-    if (params.open.markRead) { core.threads.markRead(params.threadId); thread.unread = false; }
+    if (params.open.markRead) {
+      const read = core.threads.markRead(params.threadId, unreadInterruptionAt(thread), true);
+      thread.unread = read.unread;
+      thread.interruptionReadAt = read.interruptionReadAt ?? thread.interruptionReadAt;
+    }
     return { ...thread, opened: params.open.requests === false ? {} : {
       permissions: core.threads.listPermissions(params.threadId), questions: core.threads.listQuestions(params.threadId)
     } };
@@ -230,7 +234,7 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
   core.router.register('threads.moveCancel', (params) => core.threads.moves.cancel(params.threadId));
   core.router.register('threads.pin',(params) => core.threads.pin(params.threadId, params.pinned !== false));
   core.router.register('threads.markRead', (params) => {
-    core.threads.markRead(params.threadId);
+    core.threads.markRead(params.threadId, params.interruptionAt);
     return { ok: true } as const;
   });
   core.router.register('threads.trustContactHistory', (params) => {

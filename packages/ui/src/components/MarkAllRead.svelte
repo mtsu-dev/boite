@@ -15,7 +15,7 @@
   const readable = $derived(readableThreads(rows));
 
   function markAll() {
-    for (const [machine, ids] of readable) void machine.store.markRead(ids);
+    for (const [machine, requests] of readable) void machine.store.markRead(requests);
   }
 </script>
 

@@ -13,7 +13,7 @@ import type {
 } from '@boite/contracts';
 import { ReadingCache } from '../reading-cache';
 import { DeviceSnapshots, readingPage } from './device-snapshots';
-import { INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, READING_PAGE_BYTES } from '@boite/contracts';
+import { INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, READING_PAGE_BYTES, unreadInterruptionAt } from '@boite/contracts';
 import { DeferredParts } from './deferred-parts';
 import { askPage, ThreadPreloads } from './thread-preload';
 import { lightPage, NewerPages, setMessagesAfter, type ReadingPosition } from './reading-pages.svelte';
@@ -441,6 +441,9 @@ export class Threads {
       secretRead?.apply(secrets);
       // Read child requests too, so the sidebar can link to their unanswered questions.
       if (options.requests !== false) this.ctx.requests.readChildren(client, threadId);
+      const interruptionAt = thread.interruptionReadAt === undefined ? undefined : unreadInterruptionAt(thread);
+      if (interruptionAt !== undefined) await client.call('threads.markRead', { threadId, interruptionAt });
+      if (!newest()) return;
       if (thread.unread) {
         await client.call('threads.markRead', { threadId });
         if (!newest()) return;

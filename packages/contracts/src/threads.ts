@@ -258,6 +258,8 @@ export interface ThreadSummary {
    * agents; missing on older cores.
    */
   backgroundWait?: BackgroundWait | null;
+  /** Last background interruption acknowledged in Activity. Null on a new interruption, missing on older cores. */
+  interruptionReadAt?: Timestamp | null;
   /**
    * A move asked for while the thread's turn ran, applied when that turn
    * ends (`threads.move`, `agent.move`). In memory only: null after a core
@@ -847,7 +849,8 @@ export interface ThreadsRpcMethods {
   'threads.restore': { params: { threadId: ThreadId }; result: ThreadSummary };
   /** Pin or unpin (`pinned: false`) a thread. An archived thread keeps its pin for when it comes back. */
   'threads.pin': { params: { threadId: ThreadId; pinned?: boolean }; result: ThreadSummary };
-  'threads.markRead': { params: { threadId: ThreadId }; result: { ok: true } };
+  /** Acknowledge unread messages, or just the background interruption with the given timestamp. */
+  'threads.markRead': { params: { threadId: ThreadId; interruptionAt?: Timestamp }; result: { ok: true } };
   /**
    * Owner only. Accept the contact mail outside a shared project that the
    * thread's history consumed (`Thread.contactHold`), so its turns and tools
