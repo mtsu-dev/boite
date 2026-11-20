@@ -226,6 +226,7 @@
         const preview = historyAtRisk && !botRoute ? await store.previewAccountSwitch(thread.id, target.accountId) : null;
         const resumes = preview?.session === 'resume';
         if (historyAtRisk && !resumes) {
+          chip?.close();
           slider?.close();
           const from = providerName(store, thread.providerId);
           const to = providerName(store, target.providerId);

@@ -3,6 +3,7 @@ import type { TurnContext, TurnResult } from '../src/drivers/types.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import { echoDriver } from '../src/drivers/echo.ts';
 import { ModelProbes } from '../src/drivers/model-probes.ts';
+import { connect } from '../src/client.ts';
 import type { ModelInfo } from '@boite/contracts';
 import { continuationInput } from '../src/continuation.ts';
 import { sessionReferenced } from '../src/threads/native-sessions.ts';
@@ -111,11 +112,15 @@ test('a switch back starts fresh with the whole history when what came since is 
   };
   await run('opening request');
   await client.call('threads.update', { threadId, accountId: 'second-account', model: 'echo' });
-  const preview = () => client.call('threads.previewAccountSwitch', { threadId, accountId });
-  expect(await preview()).toEqual({ session: 'resume' });
-  for (let index = 0; index < 7; index++) await run(`work ${index}`);
-  expect(await preview()).toEqual({ session: 'fresh' });
-  expect(await thrown(client.call('threads.update', { threadId, accountId, model: 'echo', requireSavedSession: true }))).toThrow('saved session can no longer resume');
+  const { grant } = await client.call('pairing.grant', {});
+  const phone = await connect(h.url, '', { grant, client: { name: 'pwa', version: 'test' } });
+  try {
+    const preview = () => phone.call('threads.previewAccountSwitch', { threadId, accountId });
+    expect(await preview()).toEqual({ session: 'resume' });
+    for (let index = 0; index < 7; index++) await run(`work ${index}`);
+    expect(await preview()).toEqual({ session: 'fresh' });
+    expect(await thrown(phone.call('threads.update', { threadId, accountId, model: 'echo', requireSavedSession: true }))).toThrow('saved session can no longer resume');
+  } finally { phone.close(); }
   expect(h.core.threads.require(threadId).accountId).toBe('second-account');
   expect(await client.call('threads.update', { threadId, accountId, model: 'echo' })).toMatchObject({ sessionId: null });
   await run('back');

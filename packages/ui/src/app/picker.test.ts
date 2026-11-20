@@ -106,21 +106,23 @@ test('a long thread asks for an unused account and switches straight back to its
   const thread = await client.call('threads.create', { projectId: store.projects.find(project => project.kind !== 'drafts')!.id, providerId: 'echo', accountId: first.id });
   await client.call('turns.start', { threadId: thread.id, prompt: 'Save the first session' });
   await store.open(thread.id);
-  await waitFor(() => store.openThread?.id === thread.id && store.openThread.turns.some(turn => turn.status === 'done'));
+  await waitFor(() => store.openThread?.id === thread.id && !store.busy && !!store.openThread.context
+    && store.openThread.turns.some(turn => turn.status === 'done'));
   const firstSession = store.openThread!.sessionId;
   expect(firstSession).not.toBeNull();
   async function pickAccount(id: string) {
-    store.openThread!.context = { tokens: 210_000, window: 400_000, at: Date.now() };
     if (!document.querySelector('[data-testid=composer-picker-menu]')) {
       query<HTMLButtonElement>('[data-testid=composer-picker]').click();
     }
     await menuLoaded();
     query<HTMLButtonElement>('[data-testid=picker-account]').click();
     await waitFor(() => seats().includes(`echo::${id}`));
+    store.openThread!.context = { tokens: 210_000, window: 400_000, at: Date.now() };
     query<HTMLButtonElement>(`[data-instance="echo::${id}"]`).click();
   }
   await pickAccount(second.id);
   await waitFor(() => document.querySelector('[data-testid=confirm-dialog]') !== null);
+  await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') === null);
   expect(query('[data-testid=confirm-dialog]').textContent).toContain('starts a new session');
   query<HTMLButtonElement>('[data-testid=confirm-ok]').click();
   await waitFor(() => store.openThread?.accountId === second.id && document.querySelector('[data-testid=confirm-dialog]') === null);
