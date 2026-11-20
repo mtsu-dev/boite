@@ -46,9 +46,12 @@ function trusted(ctx: FakeContext): CoordinationPeer[] {
 export const trusts = (ctx: FakeContext, coreId: string) => trusted(ctx).some(peer => peer.coreId === coreId);
 const reads = (ctx: FakeContext, coreId: string) => trusted(ctx).some(peer => peer.coreId === coreId && peer.readThreads === true);
 
-const contactStates = new WeakMap<FakeContext, { state: () => ContactsState; check: (thread: Thread) => void }>();
+const contactStates = new WeakMap<FakeContext, { state: () => ContactsState; check: (thread: Thread) => void; starts: Set<ThreadId> }>();
 export function registerContactState(ctx: FakeContext, state: () => ContactsState, check: (thread: Thread) => void): void {
-  contactStates.set(ctx, { state, check });
+  contactStates.set(ctx, { state, check, starts: new Set() });
+}
+export function recordFakeContactStart(ctx: FakeContext, threadId: ThreadId): void {
+  contactStates.get(ctx)?.starts.add(threadId);
 }
 export const fakeContacts = (ctx: FakeContext) => contactStates.get(ctx)?.state();
 export const checkContactTier = (ctx: FakeContext, thread: Thread) => contactStates.get(ctx)?.check(thread);
@@ -56,13 +59,15 @@ const rejected = (message: string) => new RpcFailure({ code: RpcErrorCode.Refuse
 const deliveredAt = new WeakMap<AgentLetter, number>();
 
 export function assertFakeContactTool(ctx: FakeContext, threadId: string, method: string): void {
-  const state = fakeContacts(ctx);
+  const contacts = contactStates.get(ctx);
+  const relations = contacts?.state().relations;
+  const bot = ctx.agents.builtinThread('contacts');
   for (const id of contactHistory(ctx, threadId)) {
     const lastFinished = ctx.threads.get(id)?.turns.findLast(turn => turn.finishedAt !== null)?.finishedAt ?? 0;
     const recent = ctx.letters.get(id)?.some(letter => letter.to.coreId === ctx.identity.coreId && letter.to.threadId === id
       && (letter.contact !== undefined || letter.origin === 'contact') && (deliveredAt.get(letter) ?? letter.createdAt) >= lastFinished
       && (letter.status === 'delivered' || letter.status === 'uncertain' || letter.status === 'received' && letter.expiresAt > ctx.now()));
-    if (state?.bot?.threadId === id || state?.relations?.some(relation => relation.local.threadId === id) || recent) {
+    if (id === bot || contacts?.starts.has(id) || relations?.some(relation => relation.local.threadId === id) || recent) {
       throw new RpcFailure({ code: RpcErrorCode.Refused, message: contactToolRefusal(method), data: { threadId } });
     }
   }
