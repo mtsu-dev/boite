@@ -606,7 +606,8 @@ export class TurnContexts {
           this.#core.sharedCompute?.assertSpawn(threadId);
           const spawned = this.#core.procs.spawn(threadId, cmd, args, {
             ...opts,
-            env: agentEnvOf(this.#core, threadId, { ...(opts?.env ?? process.env), ...env }),
+            env: agentEnvOf(this.#core, threadId, { ...process.env, ...opts?.env, ...env }),
+            envIsComplete: true,
           });
           const installs = this.#core.providers.installs;
           installs.acquire(provider.id);

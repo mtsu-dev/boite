@@ -79,9 +79,9 @@ not what you ask of it.
   that way.
 - Messages a contact sends outside a shared project wait under Messages
   until you press Deliver or Refuse. They expire if you do not decide.
-- The Operator holds letters that look dangerous as Flags (Secret,
-  Destructive, Injection) and decides what to do with them. This is pattern
-  matching, not a guarantee.
+- Letters that match a dangerous pattern appear as Flags. Secret and
+  Injection letters wait under Messages for you to deliver or refuse.
+  The Operator can refuse flagged letters and deliver Destructive letters.
 - Weakest model allowed, in the Contacts settings, refuses contact traffic
   from agents on weaker models (Frontier, Mid, Small). It is a cost rule
   based on what the other side says, not a security boundary.

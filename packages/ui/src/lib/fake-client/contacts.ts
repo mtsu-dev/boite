@@ -1,5 +1,5 @@
 /** Contacts: another owner's Boite, linked for agent work on the projects each side opens. Seeded with Chris. */
-import { CONTACT_REQUEST_WANTS, RpcErrorCode, type Contact, type ContactFlag, type ContactInvite, type ContactRelation, type ContactRequest, type ContactRequestWant, type ContactsState, type ContactTailscale, type ModelTier, type Thread } from '@boite/contracts';
+import { CONTACT_REQUEST_WANTS, contactFlagNeedsOwner, RpcErrorCode, type Contact, type ContactFlag, type ContactInvite, type ContactRelation, type ContactRequest, type ContactRequestWant, type ContactsState, type ContactTailscale, type ModelTier, type Thread } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { encodeInvite, INVITE_PREFIX, inviteShare, readInvite } from '../contact-link';
 import type { FakeContext, FakeMethods } from './context';
@@ -868,12 +868,12 @@ export function contactMethods(ctx: FakeContext) {
       return { relations: relations.length, projects: before - contact.grants.length };
     },
     'contacts.bot.flag': async (params) => {
-      // Delivering wakes the letter's thread: a Release starts nothing in Contacts.
       if (params?.deliver === true) ctx.startGate('contacts');
       botCall(params?.threadId);
       if (typeof params.deliver !== 'boolean') throw invalid('deliver: expected true or false', 'deliver');
       const flag = (contactState(ctx).flags ?? []).find(entry => entry.id === params.id);
       if (!flag || flag.status !== 'open') throw invalid('id: expected an open flag', 'id');
+      if (params.deliver && contactFlagNeedsOwner(flag)) throw refuse('only the owner can deliver this letter from Contacts', 'deliver');
       if (params.reason !== undefined) text(params.reason, 'reason', 500);
       flag.status = params.deliver ? 'delivered' : 'refused';
       changed();

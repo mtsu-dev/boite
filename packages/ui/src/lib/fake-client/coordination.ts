@@ -1,8 +1,8 @@
 /** Coordination between threads, on this core and on the other fake cores it trusts. */
-import { coordinationReach, defaultCoordinationConfig, fitTranscript, reachRefusal, RpcErrorCode, TRANSCRIPT_ENTRY_PAGE, TRANSCRIPT_ENTRY_TEXT, TRANSCRIPT_READ_ENTRIES, transcriptStretch, type AgentAddress, type AgentContact, type AgentLetter, type AgentMatch, type AgentRelation, type Contact, type ContactRequest, type ContactsState, type CoordinationConfig, type HeldContactLetter, type CoordinationPeer, type CoordinationView, type Thread, type ThreadId } from '@boite/contracts';
+import { contactFlagNeedsOwner, contactToolRefusal, coordinationReach, defaultCoordinationConfig, fitTranscript, reachRefusal, RpcErrorCode, TRANSCRIPT_ENTRY_PAGE, TRANSCRIPT_ENTRY_TEXT, TRANSCRIPT_READ_ENTRIES, transcriptStretch, type AgentAddress, type AgentContact, type AgentLetter, type AgentMatch, type AgentRelation, type Contact, type ContactRequest, type ContactsState, type CoordinationConfig, type HeldContactLetter, type CoordinationPeer, type CoordinationView, type Thread, type ThreadId } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { archiveProject } from './project-archive';
-import { approveContactMail, contactMailRoute, holdContactMail } from './contact-hold';
+import { approveContactMail, contactHistory, contactMailRoute, holdContactMail } from './contact-hold';
 import type { FakeContext, FakeMethods } from './context';
 
 /** Every fake core of this page by id, what a remote letter or directory reaches. */
@@ -53,6 +53,20 @@ export function registerContactState(ctx: FakeContext, state: () => ContactsStat
 export const fakeContacts = (ctx: FakeContext) => contactStates.get(ctx)?.state();
 export const checkContactTier = (ctx: FakeContext, thread: Thread) => contactStates.get(ctx)?.check(thread);
 const rejected = (message: string) => new RpcFailure({ code: RpcErrorCode.Refused, message });
+const deliveredAt = new WeakMap<AgentLetter, number>();
+
+export function assertFakeContactTool(ctx: FakeContext, threadId: string, method: string): void {
+  const state = fakeContacts(ctx);
+  for (const id of contactHistory(ctx, threadId)) {
+    const lastFinished = ctx.threads.get(id)?.turns.findLast(turn => turn.finishedAt !== null)?.finishedAt ?? 0;
+    const recent = ctx.letters.get(id)?.some(letter => letter.to.coreId === ctx.identity.coreId && letter.to.threadId === id
+      && (letter.contact !== undefined || letter.origin === 'contact') && (deliveredAt.get(letter) ?? letter.createdAt) >= lastFinished
+      && (letter.status === 'delivered' || letter.status === 'uncertain' || letter.status === 'received' && letter.expiresAt > ctx.now()));
+    if (state?.bot?.threadId === id || state?.relations?.some(relation => relation.local.threadId === id) || recent) {
+      throw new RpcFailure({ code: RpcErrorCode.Refused, message: contactToolRefusal(method), data: { threadId } });
+    }
+  }
+}
 
 function groupStamp(source: FakeContext, gateway: FakeContext): string | null {
   const roster = source.roster;
@@ -151,6 +165,8 @@ export function decideFakeMail(ctx: FakeContext, id: unknown, accept: unknown): 
     .find(({ threadId, letter }) => letter.status === 'received' && letter.to.coreId === ctx.identity.coreId && letter.expiresAt > ctx.now() && mailRoute(ctx, threadId, letter) === 'owner');
   if (!found) throw invalid('id: expected a contact letter waiting for the owner', 'id');
   const { threadId, letter } = found;
+  const flag = fakeContacts(ctx)?.flags?.find(entry => entry.status === 'open' && entry.letterId === letter.id);
+  if (flag) flag.status = accept ? 'delivered' : 'refused';
   if (accept) {
     approveContactMail(ctx, letter.id);
     deliverPending(ctx, threadId);
@@ -335,7 +351,9 @@ function reachable(ctx: FakeContext, threadId: ThreadId): { contact: AgentContac
 /** As the core's letter scopes: contact mail outside a shared project holds the thread before it is delivered. */
 /** What the contact's trust or the owner lets through to this thread, as the core's gate decides. */
 export function mailRoute(ctx: FakeContext, threadId: ThreadId, letter: AgentLetter): ReturnType<typeof contactMailRoute> {
-  const contact = letter.contact && fakeContacts(ctx)?.contacts.find(entry => entry.coreId === letter.contact!.coreId);
+  const state = fakeContacts(ctx);
+  if (letter.contact && state?.flags?.some(flag => flag.status === 'open' && flag.letterId === letter.id && contactFlagNeedsOwner(flag))) return 'owner';
+  const contact = letter.contact && state?.contacts.find(entry => entry.coreId === letter.contact!.coreId);
   return contactMailRoute(ctx, threadId, letter, contact ? contact.trusted : false);
 }
 
@@ -366,7 +384,13 @@ function deliverPending(ctx: FakeContext, threadId: ThreadId): void {
     }
     // As the core's `#ready`: mail held for the owner stays received until delivered or refused.
     if (mailRoute(ctx, threadId, letter) === 'owner') continue;
-    if (letter.origin === 'contact') { holdUnassociated(ctx, threadId, letter); letter.status = 'delivered'; ctx.emit('collaboration.changed', { threadId }); continue; }
+    if (letter.origin === 'contact') {
+      holdUnassociated(ctx, threadId, letter);
+      letter.status = 'delivered';
+      deliveredAt.set(letter, ctx.now());
+      ctx.emit('collaboration.changed', { threadId });
+      continue;
+    }
     const sender = forwarding?.source ?? cores.get(letter.from.coreId);
     const source = forwarding?.thread ?? sender?.threads.get(letter.from.threadId);
     if (!sender || !source) continue;
@@ -378,6 +402,7 @@ function deliverPending(ctx: FakeContext, threadId: ThreadId): void {
     if (thread.projectId !== null && ctx.projects.find(project => project.id === thread.projectId)?.archived) archiveProject(ctx, thread.projectId, false);
     holdUnassociated(ctx, threadId, letter);
     letter.status = 'delivered';
+    deliveredAt.set(letter, ctx.now());
     if (forwarding) forwarding.canonical.status = 'delivered';
     sender.emit('collaboration.changed', { threadId: source.id });
     ctx.emit('collaboration.changed', { threadId });

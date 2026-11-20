@@ -206,8 +206,10 @@ reason in its status. When the data directory sits on another filesystem than
 the installation, the same room is checked beside the data directory too,
 since a rollback must then copy the snapshot across; the live data already
 sits on that disk, so the copy is the only thing added there. A copy cut short is
-deleted. Health must report the target version and that service's new PID
-within 30 seconds.
+deleted. Within 30 seconds the worker must see a healthy reply and verify
+the target version and new main PID. Loopback `/health` reports both fields.
+Public requests get liveness only. For a service bound to a non-loopback
+address, the worker verifies the version, PID and endpoint in `core.json`.
 Failure restores both the previous installation and its data snapshot before
 restarting. The snapshot is renamed back into place, never copied a second
 time, so a rollback needs no room beyond what the update checked: a second

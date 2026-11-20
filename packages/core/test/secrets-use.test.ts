@@ -42,6 +42,28 @@ async function repoThread(): Promise<{ owner: Awaited<ReturnType<TestCore['conne
 
 const bun = process.execPath;
 
+test('a pipe recipient checks its configuration in the same cwd and environment before the ref is used', async () => {
+  h = await startTestCore();
+  const { owner, root, threadId } = await repoThread();
+  writeFileSync(join(root, 'recipient.ts'), `
+    import { existsSync } from 'node:fs';
+    const input = await Bun.stdin.text();
+    if (process.argv[2] === 'check' && input !== '') process.exit(4);
+    const configured = process.env.RECIPIENT_CONFIG && existsSync(process.env.RECIPIENT_CONFIG);
+    if (!configured) process.exit(3);
+    if (process.argv[2] === 'put' && input.length > 0) console.log('stored');
+  `);
+  const ref = await saveSecret(h, owner, threadId, 'API_KEY', secretValue());
+  const use = {
+    action: 'pipe' as const, command: bun, args: ['recipient.ts', 'put'], cwd: root,
+    env: { RECIPIENT_CONFIG: 'recipient.json' }, checkArgs: ['recipient.ts', 'check'],
+  };
+  expect(await thrown(owner.call('secrets.use', { threadId, ref, use }))).toThrow('recipient check exited with code 3');
+  writeFileSync(join(root, 'recipient.json'), '{}');
+  expect(await owner.call('secrets.use', { threadId, ref, use })).toMatchObject({ action: 'pipe', exitCode: 0, stdout: 'stored\n' });
+  expect(await thrown(owner.call('secrets.use', { threadId, ref, use }))).toThrow('erased or never existed');
+});
+
 test('write puts the value in an ignored env file, keeps its other lines, and refuses a path outside, a tracked file and a file git does not ignore', async () => {
   h = await startTestCore();
   const { owner, root, threadId } = await repoThread();

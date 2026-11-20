@@ -1,11 +1,12 @@
 /** A thread's working directory: files, git, the panel and published artifacts. */
-import { ARTIFACT_MAX_BYTES, ATTACHMENT_MAX_BYTES, PANEL_SURFACE_KINDS, RpcErrorCode, VIEW_BLOCK_MAX_BYTES, VIEW_DEFAULT_HEIGHT, VIEW_MAX_BYTES, VIEW_TITLE_MAX, chatPreviewSizeProblem, viewDocument, viewTitleOf, type FileContent, type FileEntry, type GitDiff, type GitStatus, type Message, type PanelSurface } from '@boite/contracts';
+import { ARTIFACT_MAX_BYTES, ATTACHMENT_MAX_BYTES, PANEL_SURFACE_KINDS, RpcErrorCode, VIEW_BLOCK_MAX_BYTES, VIEW_DEFAULT_HEIGHT, VIEW_MAX_BYTES, VIEW_TITLE_MAX, chatPreviewSizeProblem, deviceBound, viewDocument, viewTitleOf, type FileContent, type FileEntry, type GitDiff, type GitStatus, type Message, type PanelSurface } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { FAKE_CHANGES, FAKE_DIFFS, FAKE_MEDIA, FAKE_MEDIA_PATHS, fakeBytes, fakeLanguage } from './files';
 import { seededArtifact } from './agents-demo';
 import { refusal, T0 } from './shared';
 import type { FakeContext, FakeMethods } from './context';
 import { fakeSharedFile } from './shared-access';
+import { inFakeCredentialStore } from './projects';
 
 /** A stable time per path, so two runs of a capture read the same tree. */
 function fileTime(ctx: FakeContext, path: string): number {
@@ -72,6 +73,9 @@ function inside(ctx: FakeContext, cwd: string, path: unknown, what: string, expe
     else if (parts.pop() === undefined) throw refusal(`${what} leaves the thread's working directory: ${path}`);
   }
   const relative = parts.join('/');
+  if (deviceBound(ctx.bus.principal) && inFakeCredentialStore(`${root}/${relative}`)) {
+    throw refusal(`a paired device does not read credential files; open ${path} on the owner's machine`);
+  }
   if (expect === undefined) return relative;
   const isFile = ctx.files.has(relative) || FAKE_MEDIA[relative] !== undefined;
   const isDir = isDirPath(ctx, relative);

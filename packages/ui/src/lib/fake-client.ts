@@ -18,6 +18,7 @@ import {
   StreamGate,
   accessRefusal,
   checkRpcParams,
+  contactToolMethod,
   type CoreInfo,
   type CoreLogContext,
   type ExperimentId,
@@ -47,7 +48,7 @@ import { brainMethods } from './fake-client/brain';
 import { FakeContext, type FakeClientOptions, type FakeMethods } from './fake-client/context';
 import { hookMethods, recordHookRun } from './fake-client/hooks';
 import { logMethods, seedDiagnostics } from './fake-client/logs';
-import { coordinationMethods, registerCore, trusts, unregisterCore } from './fake-client/coordination';
+import { assertFakeContactTool, coordinationMethods, registerCore, trusts, unregisterCore } from './fake-client/coordination';
 import { delegationMethods, seedDelegationDemo } from './fake-client/delegation';
 import { seedBoardDemo } from './fake-client/board-demo';
 import { seedSubagentsDemo } from './fake-client/subagents-demo';
@@ -429,6 +430,9 @@ export class FakeClient implements ObservableClient {
     params = checked.params as RpcParams<M>;
     // The admin policy's gate runs before the method, as the core's router does.
     policyGate(this.#ctx, method, params);
+    if (bus.principal === 'agent' && this.#ctx.agentThreadId && contactToolMethod(method)) {
+      assertFakeContactTool(this.#ctx, this.#ctx.agentThreadId, method);
+    }
     const result = await bus.hold(this.#dispatch(method, params)) as RpcResult<M>;
     if (this.#ctx.rttMs > 0) {
       // An answer still on its way back when the socket changed never arrives.

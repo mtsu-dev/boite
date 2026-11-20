@@ -85,6 +85,9 @@ export function agentEnvFor(
     [AGENT_ENV.coreUrl]: fields.coreUrl,
     [AGENT_ENV.token]: fields.token,
   };
+  for (const key of Object.keys(env)) {
+    if ((platform === 'win32' ? key.toUpperCase() : key) === 'BOITE_DATA_DIR') delete env[key];
+  }
   if (fields.cliDir === null) return env;
   const key = platform === 'win32'
     ? Object.keys(env).find((name) => name.toLowerCase() === 'path') ?? 'PATH'

@@ -1,5 +1,5 @@
 /** Projects, their files and the Claude Code and Codex sessions they can import. */
-import { PROJECT_NAME_MAX, RpcErrorCode, type ImportableSession, type Project, type Thread, type ThreadId, type Turn } from '@boite/contracts';
+import { DEVICE_HOME_CREDENTIAL_STORES, PROJECT_NAME_MAX, RpcErrorCode, type ImportableSession, type Project, type Thread, type ThreadId, type Turn } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { missingFolder, pathKey } from './checks';
 import { FAKE_FILES, scoreFakeFile } from './files';
@@ -41,6 +41,14 @@ export function folderToAdd(value: unknown, method: string): { path: string; nam
 /** The fake machine's home folder, which holds `DATA_DIR`. */
 const HOME = 'C:\\Users\\you';
 
+export function inFakeCredentialStore(path: string): boolean {
+  const key = pathKey(path), home = pathKey(HOME);
+  return DEVICE_HOME_CREDENTIAL_STORES.some(name => {
+    const root = pathKey(`${home}/${name}`);
+    return key === root || key.startsWith(`${root}/`);
+  });
+}
+
 /** The core's `assertDeviceProjectFolder`, without links to follow: not boite's data folder, not the home folder or above, not a folder that holds keys. */
 function deviceProjectFolder(path: string): void {
   const key = pathKey(path), data = pathKey(DATA_DIR), home = pathKey(HOME);
@@ -50,8 +58,8 @@ function deviceProjectFolder(path: string): void {
   if (home === key || home.startsWith(`${key}/`) || !key.includes('/')) {
     throw new RpcFailure({ code: RpcErrorCode.Refused, message: `a paired device does not add the home folder, a folder that contains it or a disk root as a project, since it holds every login on this machine; add a folder inside it, or add ${path} on the owner's machine`, data: { field: 'path', path, expected: `a folder inside ${HOME}, not ${HOME} itself or a parent of it` } });
   }
-  if (key.split('/').some(part => DEVICE_SECRET_DIRS.has(part))) {
-    throw new RpcFailure({ code: RpcErrorCode.Refused, message: `a paired device does not add a folder that holds keys or tokens as a project; add ${path} on the owner's machine`, data: { field: 'path', path, expected: `a folder outside ${[...DEVICE_SECRET_DIRS].join(', ')}` } });
+  if (inFakeCredentialStore(path) || key.split('/').some(part => DEVICE_SECRET_DIRS.has(part))) {
+    throw new RpcFailure({ code: RpcErrorCode.Refused, message: `a paired device does not add a folder that holds keys or tokens as a project: ${path}`, data: { field: 'path', path, expected: 'a project folder outside credential stores' } });
   }
 }
 

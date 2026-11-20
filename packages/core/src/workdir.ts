@@ -15,7 +15,7 @@ import type { FileHandle } from 'node:fs/promises';
 import { open, readdir, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { FILES_LIST_MAX, FILE_MAX_BYTES, FILE_ROUTE, FILE_TICKET_TTL_MS, deviceBound } from '@boite/contracts';
+import { DEVICE_HOME_CREDENTIAL_STORES, FILES_LIST_MAX, FILE_MAX_BYTES, FILE_ROUTE, FILE_TICKET_TTL_MS, deviceBound } from '@boite/contracts';
 import type { FileContent, FileEntry, ThreadId, Timestamp } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { locateFile } from './files.ts';
@@ -84,6 +84,13 @@ function homeCredentialEntry(home: string, real: string): string | null {
   return first.startsWith('.') || /^(appdata|library)$/i.test(first) ? first : null;
 }
 
+function isDedicatedCredentialStore(home: string, path: string, real: string): boolean {
+  return DEVICE_HOME_CREDENTIAL_STORES.some(name => {
+    const store = join(home, name);
+    return contains(store, path) || contains(realOf(store), real);
+  });
+}
+
 /**
  * Inside a readable tree, a paired device still leaves three things to the owner.
  * The core's own data (journal, accounts, tokens) when a project contains it,
@@ -107,7 +114,8 @@ export function assertDeviceFile(core: Core, threadId: ThreadId, cwd: string, pa
   const parts = relative(base, target).split(sep).filter(Boolean);
   const home = realOf(homePath());
   const entry = [base, ...deviceRoots(core, threadId)].some((root) => contains(root, home)) ? homeCredentialEntry(home, target) : null;
-  if (entry !== null || parts.some((part) => DEVICE_SECRET_DIRS.has(part.toLowerCase())) || DEVICE_SECRET_FILE.test(basename(target))) {
+  if (entry !== null || isDedicatedCredentialStore(home, resolve(cwd, path ?? ''), target)
+    || parts.some((part) => DEVICE_SECRET_DIRS.has(part.toLowerCase())) || DEVICE_SECRET_FILE.test(basename(target))) {
     throw refused(`a paired device does not read credential files${entry === null ? '' : ` (the home folder's ${entry} holds logins)`}; open ${path ?? ''} on the owner's machine`, { threadId });
   }
 }
@@ -117,9 +125,8 @@ export function assertDeviceFile(core: Core, threadId: ThreadId, cwd: string, pa
  * read from, so it is held to the same rules first: not boite's data folder or
  * inside it, not the home folder, one of its parents or a disk root (they hold
  * every login), and not a folder that holds keys or tokens or one inside it.
- * A folder inside a hidden entry of the home folder is allowed: it is a root
- * of its own, and the entry's other folders stay out of it. Its links are
- * followed, as a read follows them.
+ * A hidden project and a cloud drive can still be added. Links are followed,
+ * as they are for a read, including links to a dedicated credential store.
  */
 export function assertDeviceProjectFolder(core: Core, folder: string): void {
   const real = realOf(folder);
@@ -130,8 +137,8 @@ export function assertDeviceProjectFolder(core: Core, folder: string): void {
   if (contains(real, home) || dirname(real) === real) {
     throw refused(`a paired device does not add the home folder, a folder that contains it or a disk root as a project, since it holds every login on this machine; add a folder inside it, or add ${folder} on the owner's machine`, { field: 'path', path: folder, expected: `a folder inside ${home}, not ${home} itself or a parent of it` });
   }
-  if (real.split(sep).some((part) => DEVICE_SECRET_DIRS.has(part.toLowerCase()))) {
-    throw refused(`a paired device does not add a folder that holds keys or tokens as a project; add ${folder} on the owner's machine`, { field: 'path', path: folder, expected: `a folder outside ${[...DEVICE_SECRET_DIRS].join(', ')}` });
+  if (isDedicatedCredentialStore(home, resolve(folder), real) || real.split(sep).some((part) => DEVICE_SECRET_DIRS.has(part.toLowerCase()))) {
+    throw refused(`a paired device does not add a folder that holds keys or tokens as a project: ${folder}`, { field: 'path', path: folder, expected: 'a project folder outside credential stores' });
   }
 }
 

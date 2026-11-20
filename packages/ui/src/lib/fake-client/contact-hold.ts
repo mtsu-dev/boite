@@ -25,7 +25,7 @@ function heldMail(ctx: FakeContext): Map<ThreadId, string[]> {
   return held;
 }
 
-function history(ctx: FakeContext, threadId: ThreadId): ThreadId[] {
+export function contactHistory(ctx: FakeContext, threadId: ThreadId): ThreadId[] {
   const ids: ThreadId[] = [];
   for (let thread = ctx.threads.get(threadId); thread && !ids.includes(thread.id); thread = thread.parentThreadId ? ctx.threads.get(thread.parentThreadId) : undefined) {
     ids.push(thread.id);
@@ -35,7 +35,7 @@ function history(ctx: FakeContext, threadId: ThreadId): ThreadId[] {
 }
 
 function holdOf(ctx: FakeContext, threadId: ThreadId): Thread['contactHold'] {
-  const contacts = [...new Set(history(ctx, threadId).flatMap(id => heldMail(ctx).get(id) ?? []))];
+  const contacts = [...new Set(contactHistory(ctx, threadId).flatMap(id => heldMail(ctx).get(id) ?? []))];
   return contacts.length ? { contacts } : null;
 }
 
@@ -61,7 +61,7 @@ export function holdContactMail(ctx: FakeContext, threadId: ThreadId, contacts: 
 }
 
 export function trustContactMail(ctx: FakeContext, threadId: ThreadId): void {
-  const ids = history(ctx, threadId);
+  const ids = contactHistory(ctx, threadId);
   for (const id of ids) heldMail(ctx).delete(id);
   settle(ctx, ids);
 }

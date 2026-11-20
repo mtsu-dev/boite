@@ -270,6 +270,28 @@ async function updateFixture() {
     stop: () => rmSync(root, { recursive: true, force: true }) };
 }
 
+test('the update worker verifies a liveness-only reply against the new local service record', async () => {
+  const f = await updateFixture();
+  const listener = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => Response.json({ ok: true }) });
+  try {
+    f.plan.healthUrl = `${listener.url}health`;
+    writeFileSync(f.file, JSON.stringify(f.plan));
+    writeFileSync(join(f.operation, 'admitted'), f.id);
+    const control = f.platform.control;
+    f.platform.control = async (unit, action) => {
+      await control(unit, action);
+      if (action === 'start') writeFileSync(join(f.data, 'core.json'), JSON.stringify({
+        version: f.plan.version, pid: f.state.pid, host: '127.0.0.1', port: listener.port,
+      }));
+    };
+    await applyServerUpdate(f.file, f.platform, { pollMs: 5, healthTimeoutMs: 500, spareBytes: 0 });
+    expect(f.result()).toEqual({ version: '2.1.0', error: null, at: expect.any(Number) });
+  } finally {
+    listener.stop(true);
+    f.stop();
+  }
+});
+
 const uuid = (c: string) => `${c.repeat(8)}-${c.repeat(4)}-${c.repeat(4)}-${c.repeat(4)}-${c.repeat(12)}`;
 
 const treeSize = (path: string): number => {

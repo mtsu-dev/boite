@@ -1,12 +1,12 @@
 import {createHash} from 'node:crypto';
 import {homedir} from 'node:os';
 import {join, isAbsolute, resolve} from 'node:path';
-import {existsSync} from 'node:fs';
+import {existsSync, realpathSync} from 'node:fs';
 import type {Core} from '../core.ts';
 import type {ProtectedExecutionInput} from '../execution-policy.ts';
 import type {ProtectedDriverExecution} from '../drivers/protected.ts';
 import type {AccessBinding} from './access-scopes.ts';
-import {policyFile} from './file-policy.ts';
+import {inside, policyFile} from './file-policy.ts';
 import {sharedExecutionProtection, sharedPermissionSupport} from './compute-policy.ts';
 import type {PermissionMode} from '@boite/contracts';
 import {refused} from '../errors.ts';
@@ -98,9 +98,14 @@ export class SharedNativeExecution {
         ...['OPENCODE_CONFIG', 'OPENCODE_CONFIG_DIR'].flatMap(name => environment[name] ? [selectedPath(name, '')] : []),
       ] : protocol === 'muse' ? ['XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME'].map(name =>
         join(selectedPath(name, join(home, name === 'XDG_CONFIG_HOME' ? '.config' : name === 'XDG_DATA_HOME' ? '.local/share' : '.local/state')), 'muse')) : [];
+    const data = realpathSync(this.#core.dataDir);
+    // Worktrees kept under the data directory have their own private root.
+    // A checkout containing the directory must omit all of its contents.
+    const coreCredentials = binding.checkoutPath !== data && inside(data, binding.checkoutPath)
+      ? [join(data, 'core.json'), join(data, 'core.lock')] : [data];
     return {scope: scopes[0]!, additionalScopes: scopes.slice(1), checkout: binding.checkoutPath,
       route: {providerId: thread.providerId, accountId: thread.accountId, permissionMode: thread.permissionMode, ...(binding.compute ? {profileId: binding.compute.job.profileId} : {})},
-      credentialPaths: [...(account.isolationDir ? [account.isolationDir] : []), ...['.claude', '.codex', '.ssh', '.aws', '.config'].map(p => join(homedir(), p)), ...credentialFiles, ...providerCredentials],
+      credentialPaths: [...coreCredentials, ...(account.isolationDir ? [account.isolationDir] : []), ...['.claude', '.codex', '.ssh', '.aws', '.config'].map(p => join(homedir(), p)), ...credentialFiles, ...providerCredentials],
       executables: [process.execPath], readOverrides, expiresAt: Number.MAX_SAFE_INTEGER};
   }
   private key(input: ProtectedExecutionInput, id: string): string { return createHash('sha256').update(JSON.stringify([input, this.#core.threads.require(id).contextMode?.tools ?? null])).digest('hex'); }

@@ -13,7 +13,7 @@ import { CONTACT_JOIN_ROUTE, CONTACT_LINK_ROUTE } from './contacts/store.ts';
 import type { ContactSocketData } from './contacts/link-hello.ts';
 import { LAZY_MCP_ROUTE } from './mcp/lazy.ts';
 import { tailnetAddress } from './group/addresses.ts';
-import { encryptedLink, hostName, isLoopbackAddress, isLoopbackHost, RELAYED_LINK_HEADER } from './server/peer.ts';
+import { encryptedLink, hostName, isLoopbackAddress, isLoopbackHost, localHealthProbe, RELAYED_LINK_HEADER } from './server/peer.ts';
 import { parseRelayPath, RelayHub, type RelaySocketData } from './group/relay.ts';
 import { browserStreamMessage, browserStreamOpened, browserStreamRequest, type StreamSocketData } from './server/browser-stream.ts';
 import { isAllowedOrigin, SHELL_ORIGINS } from './server/origin.ts';
@@ -521,7 +521,9 @@ export function startServer(options: ServerOptions): RunningServer {
       }
 
       if (url.pathname === '/health') {
-        return Response.json({ ok: true, version: core.version, pid: process.pid, bundleHash: core.bundleHash });
+        const details = localHealthProbe(self.requestIP(request)?.address ?? null, request.headers) ?
+          { version: core.version, pid: process.pid, bundleHash: core.bundleHash } : {};
+        return Response.json({ ok: true, ...details }, { headers: { 'cache-control': 'no-store' } });
       }
 
       if (url.pathname === SHUTDOWN_PATH) return shutdownResponse(core, request);
