@@ -104,14 +104,17 @@
   const timeline = $derived(shaped.timeline);
   const days = $derived(dayBreaks(timeline)); // The messages that open a new day, a divider above each.
   const placement = $derived(store.openThread?.id === threadId ? store.messagePlacement?.(threadId, messages) ?? null : null);
-  const cut = new ReactiveTimelineRows(() => ({ timeline, breaks: placement?.gaps })), gapRows = new GapRows();
-  let indexedRevision: string | undefined, indexedOrder: ReadingPosition['order'];
+  const localRows = new ReactiveTimelineRows(() => ({ timeline, breaks: placement?.gaps })), gapRows = new GapRows();
+  const cut = $derived(store.timelineRows?.(threadId, timeline)?.rows ?? localRows);
+  let indexedRevision: string | undefined, indexedOrder: ReadingPosition['order'], indexedRows: TimelineRow[] | undefined;
+  let lastCut: ReactiveTimelineRows | undefined;
   const positional = $derived((placement?.first ?? null) !== null);
   const gapped = $derived.by(() => {
     const placed = gapRows.place(cut.build(), messages, placement?.gaps ?? NO_GAPS);
-    indexedRevision = revision; indexedOrder = order;
+    indexedRevision = revision; indexedOrder = order; indexedRows = placed.rows;
     // A row that grew or was cut weighs something else until it is measured.
-    if (placed.at(cut.changedFrom) < slots.dirty) slots.dirty = placed.at(cut.changedFrom);
+    slots.dirty = Math.min(slots.dirty, lastCut === cut ? placed.at(cut.changedFrom) : 0);
+    lastCut = cut;
     return placed;
   });
   const rows = $derived(gapped.rows);
@@ -146,13 +149,7 @@
   const estimates = new RowEstimates((count) => gapHeight(count)), slots = new SlotTotals<TimelineRow>(heights, row => estimates.of(row));
   /** Where the reader is, and the rows on the page by id (lib/reading-anchor.ts). */
   const anchors = new ReadingAnchor(savedReading);
-  const savedTop = untrack(() => {
-    void rows;
-    if (indexedRevision && savedReading?.revision === indexedRevision && savedReading.slots) slots.restore(savedReading.slots, rows, timelineOrder);
-    const anchor = savedReading?.pinned ? undefined : anchors.current;
-    const at = anchor ? rows.findIndex(row => row.id === anchor.id) : -1;
-    return at < 0 ? savedReading?.top ?? 0 : Math.max(0, (slots.totals(rows, timelineOrder)[at] ?? 0) - anchor!.offset);
-  });
+  const savedTop = untrack(() => anchors.restore(savedReading, slots, rows, timelineOrder, indexedRevision));
   let scrollTop = $state(savedTop);
   let column = $state<HTMLDivElement | undefined>(undefined);
   function rememberAnchor() {
@@ -184,7 +181,8 @@
     anchors.cancelPending();
     if (!viewport || !store.readingPositions) return;
     store.readingPositions.delete(threadId);
-    store.readingPositions.set(threadId, { top: scrollTop, pinned, heights: new Map(heights), anchor: anchors.saved(), height: viewHeight, reservePrompt, followPrompt: promptTarget, revision: indexedRevision, slots: indexedRevision ? slots.save(READING_CACHE_MESSAGES) : undefined, order: indexedOrder });
+    const index = slots.save(READING_CACHE_MESSAGES);
+    store.readingPositions.set(threadId, { top: scrollTop, pinned, heights: new Map(heights), anchor: anchors.saved(), height: viewHeight, reservePrompt, followPrompt: promptTarget, revision: indexedRevision, slots: index, rows: index && indexedRows ? new WeakRef(indexedRows) : undefined, order: indexedOrder });
     while (store.readingPositions.size > 32) store.readingPositions.delete(store.readingPositions.keys().next().value!);
   });
   let viewHeight = $state(savedReading?.height ?? 0);
@@ -375,7 +373,8 @@
     return lastView = sameView(lastView, { start, end, first, above: total[start] ?? 0, below: whole - (total[end] ?? 0) });
   });
   const rendered = $derived(rows.slice(view.start, view.end));
-  const history = new HistoryPrepare(); $effect(() => { const all = rows, { start, end } = view; untrack(() => history.prepare(all, start, end)); });
+  const history = new HistoryPrepare(); $effect(() => { const { start, end } = view; history.schedule(rows, start, end); });
+  onDestroy(() => history.cancel());
   $effect(() => { void view; untrack(() => warmth.wake(() => ({ rows, start: view.start, end: view.end }), () => { warmed += 1; flushSync(); }, id => layOut(anchors.nodes.get(id)))); }); onDestroy(() => warmth.stop()); // Off-screen answers render in a worker, edge slices mount and lay out in idle time (lib/row-cost.ts).
   /**
    * A rendered message's real height replaces its estimate. One above what the user reads would push the text down

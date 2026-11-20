@@ -609,7 +609,13 @@ export class Store {
   loadNewer() { return this.#ctx.threads.newer.loadNewer(); }
   loadLatest() { return this.#ctx.threads.newer.loadLatest(); }
   /** Where `messages` of `threadId` sit in it and what is missing between them (`lib/store/message-positions`). */
-  messagePlacement(threadId: string, messages: readonly Message[]) { return this.#ctx.positions.placement(threadId, messages); }
+  messagePlacement(threadId: string, messages: readonly Message[]) {
+    return this.timelineRows(threadId, messages)?.placement ?? this.#ctx.positions.placement(threadId, messages);
+  }
+  timelineRows(threadId: string, timeline: readonly Message[]) {
+    const open = this.#ctx.threads.openThread;
+    if (open?.id === threadId && open.messages === timeline) return this.#ctx.threads.timelineRows.get(open);
+  }
   get loadingRange() { return this.#ctx.positions.loading; }
   loadRange(from: number, limit: number, landing?: () => void, below?: MessageId) { return this.#ctx.positions.loadRange(from, limit, landing, below); }
   loadAttachments(threadId: ThreadId, message: Message) { return loadAttachments(this.#ctx, threadId, message); }

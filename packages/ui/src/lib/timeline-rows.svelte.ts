@@ -1,6 +1,7 @@
-import type { MemoryEvent, Message } from '@boite/contracts';
+import type { MemoryEvent, Message, Thread } from '@boite/contracts';
 import { failureKind } from './failed-attempts';
 import { TimelineRows, type TimelineRow } from './timeline-rows';
+import type { Placement } from './store/message-positions.svelte';
 
 function builder(): TimelineRows {
   return new TimelineRows(read => {
@@ -47,6 +48,8 @@ export class ReactiveTimelineRows {
     this.#input = () => value;
   }
 
+  get hasRows(): boolean { return this.#rows.length > 0; }
+
   build(): TimelineRow[] {
     const before = this.#historyRows, after = this.#liveRows;
     if (before === this.#before && after === this.#after) {
@@ -59,4 +62,36 @@ export class ReactiveTimelineRows {
     this.order = before.length && after.length ? `${this.#history.order}\0${this.#live.order}` : this.#history.order || this.#live.order;
     return this.#rows = before.concat(after);
   }
+}
+
+class ThreadTimeline {
+  readonly #placement;
+  readonly rows: ReactiveTimelineRows;
+
+  constructor(thread: Thread, readPlacement: () => Placement) {
+    this.#placement = $derived.by(readPlacement);
+    let previous: ReadonlyMap<string, unknown> | undefined;
+    const breaks = $derived.by(() => {
+      const next = this.#placement.gaps;
+      const known = previous;
+      if (known && known.size === next.size && [...next.keys()].every(id => known.has(id))) return known;
+      return previous = next.size ? next : undefined;
+    });
+    this.rows = new ReactiveTimelineRows(() => ({ timeline: thread.messages, breaks }));
+  }
+
+  get placement(): Placement { return this.#placement; }
+}
+
+/** A held page owns its row projection and message placement. */
+export class ThreadTimelineRows {
+  readonly #entries = new WeakMap<Thread, ThreadTimeline>();
+
+  constructor(private readonly placementOf: (thread: Thread) => Placement) {}
+
+  prepare(thread: Thread): void {
+    if (!this.#entries.has(thread)) this.#entries.set(thread, new ThreadTimeline(thread, () => this.placementOf(thread)));
+  }
+
+  get(thread: Thread): ThreadTimeline | undefined { return this.#entries.get(thread); }
 }

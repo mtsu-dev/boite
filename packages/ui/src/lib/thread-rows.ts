@@ -40,9 +40,10 @@ export function patchRow(row: ThreadSummary, next: ThreadSummary): void {
  * and every reaction reading them ran again. Nothing is deleted, since a
  * thread holds messages, turns and pages a summary does not carry.
  */
-export function patchFields<T extends object>(held: T, next: Partial<T>): void {
+export function patchFields<T extends object>(held: T, next: Partial<T>): T {
   const target = held as Record<string, unknown>;
   for (const [key, value] of Object.entries(next)) if (!same(target[key], value)) target[key] = value;
+  return held;
 }
 
 /**
@@ -161,26 +162,36 @@ export function mergeResumed(held: Thread, fetched: Thread): void {
     const kept = held.messages.slice(0, from === -1 ? held.messages.length : from).filter((message) => !fresh.has(message.id));
     fetched.messages = [...kept, ...fetched.messages];
   }
-  const freshTurns = new Set(fetched.turns.map((turn) => turn.id));
-  fetched.turns = [...held.turns.filter((turn) => !freshTurns.has(turn.id)), ...fetched.turns];
+  const turnStart = held.turns.length - fetched.turns.length;
+  if (turnStart >= 0 && fetched.turns.every((turn, index) => sameValue(held.turns[turnStart + index], turn))) {
+    fetched.turns = held.turns;
+  } else {
+    const freshTurns = new Set(fetched.turns.map((turn) => turn.id));
+    fetched.turns = [...held.turns.filter((turn) => !freshTurns.has(turn.id)), ...fetched.turns];
+  }
   fetched.messagesBefore = held.messagesBefore;
   delete fetched.messagesFrom;
   delete fetched.messagesUnchanged;
 }
 
+/** A verified resume already owns its arrays. An unproved page can reuse its
+ * equal prefix without constructing an id map or writing unchanged entries. */
+function reconcilePage<T extends { id: string }>(held: T[], fresh: T[]): T[] {
+  if (held === fresh) return held;
+  let first = 0;
+  while (first < held.length && first < fresh.length && sameValue(held[first], fresh[first])) first++;
+  if (first === fresh.length && first === held.length) return held;
+  const byId = new Map(held.slice(first).map(item => [item.id, item]));
+  return [...held.slice(0, first), ...fresh.slice(first).map(item => {
+    const previous = byId.get(item.id);
+    return previous && sameValue(previous, item) ? previous : item;
+  })];
+}
+
 /** Keep unchanged messages and turns; a preview cannot certify a previously loaded suffix. */
 export function reconcileThread(held: Thread, fresh: Thread): Thread {
-  const messages = new Map(held.messages.map(message => [message.id, message]));
-  fresh.messages = fresh.messages.map(message => {
-    const previous = messages.get(message.id);
-    if (!previous) return message;
-    if (previous === message) return previous;
-    return sameValue(previous, message) ? previous : message;
-  });
-  const turns = new Map(held.turns.map(turn => [turn.id, turn]));
-  fresh.turns = fresh.turns.map(turn => sameValue(turns.get(turn.id), turn) ? turns.get(turn.id)! : turn);
-  if (fresh.messages.length === held.messages.length && fresh.messages.every((message, index) => message === held.messages[index])) fresh.messages = held.messages;
-  if (fresh.turns.length === held.turns.length && fresh.turns.every((turn, index) => turn === held.turns[index])) fresh.turns = held.turns;
+  fresh.messages = reconcilePage(held.messages, fresh.messages);
+  fresh.turns = reconcilePage(held.turns, fresh.turns);
   if (fresh.messagesSync === undefined) delete held.messagesSync;
   Object.assign(held, fresh);
   return held;

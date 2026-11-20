@@ -26,7 +26,7 @@ const NONE: Placement = { first: null, gaps: new Map() };
  * messages held. Positions are read from one core and stay with its store.
  */
 export class MessagePositions {
-  /** Bumped by every page noted, so a placement read before it is read again. */
+  /** Bumped when a page changes the known positions. */
   version = $state(0);
   /** True while a page read by position is in flight. */
   loading = $state(false);
@@ -43,9 +43,16 @@ export class MessagePositions {
     else known = new Map();
     this.#threads.set(threadId, known);
     // The threads read last stay; a store that opened a hundred threads keeps the positions of 64.
+    let changed = this.#threads.size > 64;
     while (this.#threads.size > 64) this.#threads.delete(this.#threads.keys().next().value!);
-    messages.forEach((message, index) => known.set(message.id, offset + index));
-    this.version += 1;
+    messages.forEach((message, index) => {
+      const at = offset + index;
+      if (known.get(message.id) !== at) {
+        known.set(message.id, at);
+        changed = true;
+      }
+    });
+    if (changed) this.version += 1;
   }
 
   /**
