@@ -54,7 +54,7 @@ test('worker lookup preserves sibling sources and bundled files before an explic
     };\n`;
     writeFileSync(join(sourceDir, 'platform/linux-tcp-worker.ts'), worker('embedded worker ready'));
     const binary = join(dir, process.platform === 'win32' ? 'lookup.exe' : 'lookup');
-    const build = Bun.spawnSync([process.execPath, 'build', '--compile', '--splitting', '--bytecode', '--format=esm',
+    const build = Bun.spawnSync([process.execPath, 'build', '--compile', '--splitting', '--bytecode', '--bytecode-depth=1', '--format=esm',
       '--minify-whitespace', '--minify-syntax', 'src/main.ts', 'src/platform/linux-tcp-worker.ts', '--outfile', binary],
     { cwd: dir, stdout: 'pipe', stderr: 'pipe', windowsHide: true });
     expect(build.exitCode).toBe(0);

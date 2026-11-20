@@ -9,7 +9,8 @@
  * output because the core has top-level awaits. Identifiers stay readable in
  * logged stacks: only whitespace and syntax are minified. Split the embedded
  * chunks so startup can load its bytecode without loading the command and
- * provider chunks alongside it.
+ * provider chunks alongside it. Limit precompilation of nested functions to
+ * keep the bytecode cache smaller.
  */
 import { bunTarget, shellTarget } from '../../../apps/shell/scripts/targets.ts';
 import { requirePinnedBun } from '../../../scripts/ci/bun-version.ts';
@@ -37,7 +38,7 @@ const runtime = target ? await bunRuntime(target).catch((error: unknown) => {
 }) : undefined;
 const result = Bun.spawnSync([
   process.execPath, 'build', '--compile', ...(target ? [`--target=${target}`, `--compile-executable-path=${runtime}`] : []),
-  '--minify-whitespace', '--minify-syntax', '--splitting', '--bytecode', '--format=esm', '--env=BOITE_RELEASE_*',
+  '--minify-whitespace', '--minify-syntax', '--splitting', '--bytecode', '--bytecode-depth=1', '--format=esm', '--env=BOITE_RELEASE_*',
   // The build's kind and its features' flags: `--version=<version>` compiles another kind (scripts/ci/feature-cut.ts).
   ...defineFlags(option('version')),
   'src/compiled-main.ts', 'src/artifact-retention-worker.ts', 'src/platform/linux-tcp-worker.ts', '--outfile', option('outfile') ?? `dist/boite-core${suffix}`,
