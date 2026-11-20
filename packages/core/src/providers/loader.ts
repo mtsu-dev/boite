@@ -502,6 +502,12 @@ export class ProviderRegistry {
   }
 }
 
+export function registerUpdateMethods(core: Core): void {
+  core.router.register('providers.updates', (params) => core.updates.list(params.refresh === true));
+  core.router.register('providers.update', (params) => core.updates.update(core.providers.require(params.providerId).id));
+  core.router.register('providers.updateSkip', (params) => core.updates.skip(core.providers.require(params.providerId).id, params.version));
+}
+
 export function registerProviderMethods(core: Core): void {
   const logInstall = installLogger(core);
   // The loaded descriptors in full, what each resolves to and the rejections:
