@@ -146,6 +146,8 @@ export interface ThreadSummary {
    * `thread.updated` carries it only when the hold changed. Absent on older cores.
    */
   contactHold?: { contacts: string[] } | null;
+  /** Tools are restricted by contact mail in this thread's history. The owner can clear this with `threads.trustContactHistory`. Absent on older cores. */
+  contactToolsHeld?: boolean;
   /** Date marked done, or automatically archived after a PR merge. Cleared on restore or manual archive. */
   doneAt?: Timestamp | null;
   /**

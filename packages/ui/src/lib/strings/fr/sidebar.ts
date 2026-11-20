@@ -60,9 +60,11 @@ export const fr: Translation = {
     archivedNotice: 'Ce fil a été mis de côté',
     contactHold: {
       title: 'Courrier d’un contact : fil bloqué',
+      toolsTitle: 'Courrier d’un contact : outils restreints',
+      toolsBody: 'Boite restreint les outils sensibles car cette conversation a lu des messages d’un contact.',
       body: 'Son historique contient des messages de {contacts}, envoyés hors d’un projet partagé. Boite ne peut pas borner ce qu’ils demandent, il refuse donc tout tour ici.',
       trust: 'Faire confiance à cet historique',
-      trustTip: 'L’agent retrouve ses outils habituels et lit ce courrier comme le reste de son historique.',
+      trustTip: 'Faire confiance à l’historique lève les restrictions liées à ce courrier.',
       ownerOnly: 'Faites-lui confiance depuis l’ordinateur qui fait tourner cette Boite.'
     },
     worktreeGone: {

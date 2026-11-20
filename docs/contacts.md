@@ -79,6 +79,10 @@ not what you ask of it.
   that way.
 - Messages a contact sends outside a shared project wait under Messages
   until you press Deliver or Refuse. They expire if you do not decide.
+- After a conversation reads a contact's messages, Boite can restrict sensitive
+  tools. The owner can press **Trust this history** in the chat to lift the
+  restrictions caused by those messages. Shared project and contact permissions
+  still apply.
 - Letters that match a dangerous pattern appear as Flags. Secret and
   Injection letters wait under Messages for you to deliver or refuse.
   The Operator can refuse flagged letters and deliver Destructive letters.

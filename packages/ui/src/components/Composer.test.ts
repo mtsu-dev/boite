@@ -4,6 +4,8 @@ import { flushSync, mount, unmount } from 'svelte';
 import { RpcErrorCode, type RpcParams } from '@boite/contracts';
 import App from '../App.svelte';
 import { FakeClient } from '../lib/fake-client';
+import { fakeCore } from '../lib/fake-client/coordination';
+import { recordContactDelivery } from '../lib/fake-client/contact-hold';
 import { TestComposerCore } from '../test/composer-core';
 import { RpcFailure } from '../lib/client';
 import { defaultPrefs, PREFS_STORAGE_KEY, STASH_STORAGE_KEY } from '../lib/prefs';
@@ -1058,6 +1060,15 @@ test('a thread that cannot run draws its notice in the box\'s place, not a disab
   expect(query<HTMLElement>('[data-testid=contact-hold]').classList.contains('replaces')).toBe(true);
   store.openThread!.contactHold = null;
   await waitFor(() => !card.hidden);
+  expect(input().value).toBe('one more change');
+  const { coreId } = await store.client!.call('collaboration.identity', {});
+  recordContactDelivery(fakeCore(coreId)!, 't-trace');
+  await waitFor(() => document.querySelector('[data-testid=contact-hold-trust]') !== null);
+  expect(input().disabled).toBe(false);
+  expect(card.hidden).toBe(false);
+  query<HTMLButtonElement>('[data-testid=contact-hold-trust]').click();
+  await waitFor(() => document.querySelector('[data-testid=contact-hold]') === null);
+  expect(call).toHaveBeenCalledWith('threads.trustContactHistory', { threadId: 't-trace' });
   expect(input().value).toBe('one more change');
 });
 
