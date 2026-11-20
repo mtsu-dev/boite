@@ -61,7 +61,7 @@ function paragraphEnd(held: string, text: string): number {
 }
 
 export const OUTBOUND_MAX_BUFFERED_BYTES = 32 * 1024 * 1024;
-export const OUTBOUND_MAX_PENDING_PARTS = 1024;
+const OUTBOUND_MAX_PENDING_PARTS = 1024;
 export const OUTBOUND_CONGESTION_TIMEOUT_MS = 10_000;
 /** How far a chunked answer runs ahead of the socket before it waits for a drain. */
 const CHUNK_BACKLOG = 1024 * 1024;

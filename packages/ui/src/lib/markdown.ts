@@ -26,7 +26,7 @@ function escape(text: string): string {
 const HEADING = /^(#{1,6})\s+(.+)$/;
 
 /** The anchor a heading titled `title` gets: what a `#fragment` link to it names. */
-export function headingId(title: string): string {
+function headingId(title: string): string {
   return title.toLowerCase().replace(/[^\p{L}\p{N}_ -]/gu, '').trim().replace(/\s+/g, '-');
 }
 

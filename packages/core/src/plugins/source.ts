@@ -126,7 +126,7 @@ export interface FetchedFile {
  * The paths a manifest's `provides.ui` names, read loosely: the manifest
  * reader judges the rest, this only picks which blobs to read beside it.
  */
-export function uiPathsOf(text: string): { path: string; max: number }[] {
+function uiPathsOf(text: string): { path: string; max: number }[] {
   let raw: unknown;
   try { raw = JSON.parse(text); } catch { return []; }
   const ui = (raw as { provides?: { ui?: Record<string, unknown> } } | null)?.provides?.ui;

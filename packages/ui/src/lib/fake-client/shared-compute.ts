@@ -16,7 +16,7 @@ const terminal=(job:SharedComputeJob)=>['done','failed','cancelled','revoked'].i
 /** A remote job's thread, whose history starts at the job like the core's. */
 function sharedWorker(ctx:FakeContext,threadId:string):boolean{return [...stateOf(ctx).jobs.values()].some(r=>r.job.worker?.threadId===threadId);}
 export function setSharedNativeExecution(ctx:FakeContext,available:boolean):void{stateOf(ctx).nativeProtected=available;}
-export function sharedPermission(protocol:Protocol,mode:PermissionMode,providerId?:string):boolean{
+function sharedPermission(protocol:Protocol,mode:PermissionMode,providerId?:string):boolean{
   if(protocol==='pi')return mode==='yolo'||mode==='bypassPermissions';
   if(protocol==='acp')return providerId==='opencode'&&(mode==='default'||mode==='plan');
   return protocol!=='echo'||mode==='default';

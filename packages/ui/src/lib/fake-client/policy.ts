@@ -13,7 +13,7 @@ import type { FakeContext } from './context';
 const FILE = '/etc/boite/policy.json';
 
 /** Every key a control shows, locked. Same shape as the core's `readPolicy` answer. */
-export const MANAGED_POLICY: AdminPolicy = {
+const MANAGED_POLICY: AdminPolicy = {
   analytics: 'basic',
   updates: { app: 'check', server: 'off', agents: 'off' },
   providers: { deny: ['grok'] },
@@ -46,7 +46,7 @@ const STRICTEST: AdminPolicy = {
 };
 
 /** The keys `values` locks, in the contract's order, as the core's `lockedKeys`. */
-export function lockedKeysOf(values: AdminPolicy): PolicyKey[] {
+function lockedKeysOf(values: AdminPolicy): PolicyKey[] {
   const on: PolicyKey[] = [];
   if (values.analytics !== undefined) on.push('analytics');
   for (const kind of ['app', 'server', 'agents'] as const) if (values.updates?.[kind] !== undefined) on.push(`updates.${kind}`);

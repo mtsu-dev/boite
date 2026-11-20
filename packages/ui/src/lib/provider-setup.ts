@@ -24,7 +24,7 @@ export type SetupStep =
   | 'external'
   | 'ready';
 
-export function installRunning(install: ProviderInstallState | null): boolean {
+function installRunning(install: ProviderInstallState | null): boolean {
   return install !== null && install.state !== 'absent' && install.state !== 'installed' && install.state !== 'failed';
 }
 

@@ -5,7 +5,7 @@ import type { Store } from './store.svelte';
 import { noteUpkeep } from './agent-upkeep';
 
 /** A thread an agent is busy in right now: a turn running, queued, or waiting on the user. */
-export function agentThreadLive(thread: ThreadSummary): boolean {
+function agentThreadLive(thread: ThreadSummary): boolean {
   return !!thread.agentSessionId && !thread.archived && threadActive(thread.status);
 }
 

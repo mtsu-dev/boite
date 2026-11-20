@@ -15,12 +15,12 @@ import { refused } from './errors.ts';
 import { currentOs } from './paths.ts';
 
 /** How many files a walk keeps before giving up on the rest. */
-export const FILE_CAP = 20_000;
+const FILE_CAP = 20_000;
 /** How long a walk stays good for, so a mention typed letter by letter walks once. */
-export const WALK_TTL_MS = 5_000;
+const WALK_TTL_MS = 5_000;
 /** The default and the largest page a query hands back. */
-export const FILES_LIMIT = 50;
-export const FILES_LIMIT_MAX = 200;
+const FILES_LIMIT = 50;
+const FILES_LIMIT_MAX = 200;
 
 const ALWAYS_SKIPPED = new Set(['.git', '.boite', 'node_modules']);
 

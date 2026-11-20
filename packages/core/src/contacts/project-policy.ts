@@ -5,7 +5,7 @@ import { memberThreadId } from './member-address.ts';
 
 export const sameProject = (a: SharedProjectRef, b: SharedProjectRef): boolean => a.ownerCoreId === b.ownerCoreId && a.coreId === b.coreId && a.projectId === b.projectId;
 export const projectAddress = (project: SharedProjectRef, threadId: string) => ({coreId: project.ownerCoreId, threadId: project.ownerCoreId === project.coreId ? threadId : memberThreadId(project.coreId, threadId)});
-export const disabledCompute = (): SharedComputePolicy => ({ enabled: false, profiles: [], permissionMode: 'default', maxConcurrent: null });
+const disabledCompute = (): SharedComputePolicy => ({ enabled: false, profiles: [], permissionMode: 'default', maxConcurrent: null });
 export const initialAccess = (project: SharedProjectRef): SharedProjectAccess => ({ project, revision: 1, board: false, compute: disabledCompute(), revokedAt: null });
 
 export function projectRef(value: unknown, field = 'project'): SharedProjectRef {

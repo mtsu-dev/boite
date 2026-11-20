@@ -18,10 +18,10 @@ type PendingAttachments = Partial<Record<'goal' | 'loop', Attachment[]>>;
 /** How a goal stopped working: met, waiting on the user, or paused by a failed or stopped turn. */
 export interface GoalOutcome { threadId: string; outcome: 'complete' | 'blocked' | 'stopped'; text: string }
 /** Reviews of a `/goal2` before it stops for the user. */
-export const GOAL_REVIEW_ROUNDS = 5;
+const GOAL_REVIEW_ROUNDS = 5;
 const newReview = (): GoalReview => ({ phase: 'working', maxRounds: GOAL_REVIEW_ROUNDS, reviewerThreadId: null, claimTurnId: null, delivered: 0, verdicts: [] });
 /** Completion claims one open checklist item may send back before the review decides alone. */
-export const CHECKLIST_BOUNCES = 2;
+const CHECKLIST_BOUNCES = 2;
 /** The review a reviewer conversation's first turn answers. */
 interface ReviewRun { threadId: string; generation: number; round: number }
 
@@ -606,7 +606,7 @@ export function validateLoop(loop: NonNullable<RpcParams<'threads.activity.set'>
   if (!Number.isInteger(loop.intervalMs) || loop.intervalMs > 86_400_000 || (loop.intervalMs !== 0 && loop.intervalMs < 1000) || (loop.intervalMs === 0 && !loop.maxIterations)) throw invalidParams('loop.intervalMs must be from 1000 to 86400000, or 0 with maxIterations');
 }
 
-export function taskStatus(value: unknown): AgentTask['status'] { return value === 'completed' ? 'completed' : value === 'in_progress' || value === 'inProgress' ? 'in_progress' : 'pending'; }
+function taskStatus(value: unknown): AgentTask['status'] { return value === 'completed' ? 'completed' : value === 'in_progress' || value === 'inProgress' ? 'in_progress' : 'pending'; }
 
 function createdTaskId(text: string | null): string | null {
   try {
@@ -641,7 +641,7 @@ function pauseActivity(state: ThreadActivity, error: string | null): boolean {
 }
 
 /** Only a final standalone marker outside fenced or indented code is a signal. */
-export function goalSignal(text: string): 'complete' | 'blocked' | null {
+function goalSignal(text: string): 'complete' | 'blocked' | null {
   let fence: string | null = null;
   let last = '';
   for (const line of text.split(/\r?\n/)) {
@@ -658,7 +658,7 @@ export function goalSignal(text: string): 'complete' | 'blocked' | null {
   if (/^ {0,3}\[BOITE_GOAL_BLOCKED\][ \t]*$/.test(last)) return 'blocked';
   return null;
 }
-export function normalizeTasks(items: unknown[]): AgentTask[] {
+function normalizeTasks(items: unknown[]): AgentTask[] {
   return items.flatMap((value, index) => {
     if (!value || typeof value !== 'object') return [];
     const row = value as Record<string, unknown>;

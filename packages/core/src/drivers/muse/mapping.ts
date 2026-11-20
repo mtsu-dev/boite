@@ -78,7 +78,7 @@ const HOST_SETTINGS_SINCE = [1, 4, 13];
  * Applied only to a Muse executable whose `.muse-version` beside it names a
  * release that has the setting.
  */
-export const MUSE_HOST_SETTINGS = ['-c', 'run.reminder_roster={}'];
+const MUSE_HOST_SETTINGS = ['-c', 'run.reminder_roster={}'];
 
 export function museHostArgs(executable: string): string[] {
   if (!basename(executable).toLowerCase().startsWith('muse')) return [];

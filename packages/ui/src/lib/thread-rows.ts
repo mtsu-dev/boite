@@ -109,7 +109,7 @@ export function summaryOf(thread: Thread): ThreadSummary {
 }
 
 /** A panel key of the machine `machineId`: prefixed with its id, or bare on a store that has none. */
-export function ownsPanelKey(machineId: string, key: string): boolean {
+function ownsPanelKey(machineId: string, key: string): boolean {
   if (!machineId) return !key.startsWith('[');
   try {
     const parsed: unknown = JSON.parse(key);

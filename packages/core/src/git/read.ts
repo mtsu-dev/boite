@@ -22,7 +22,7 @@ interface GitRun {
 }
 
 /** How long a read may take before its git is stopped and the panel told. */
-export const GIT_READ_TIMEOUT_MS = 30_000;
+const GIT_READ_TIMEOUT_MS = 30_000;
 
 /**
  * How many short reads (a deadline of `GIT_READ_TIMEOUT_MS` or less) one core

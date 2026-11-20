@@ -12,8 +12,8 @@ export { proxyKey } from './subscription-proxy-auth.ts';
 
 /** The gateway models both OpenCode versions were last offered, kept so a restart can start a turn on one. */
 const OPENCODE_MODELS_SETTING = 'subscription-proxy-opencode-models';
-export const PROXY_URL_ENV = 'BOITE_SUBSCRIPTION_PROXY_URL';
-export const PROXY_KEY_ENV = 'BOITE_SUBSCRIPTION_PROXY_KEY';
+const PROXY_URL_ENV = 'BOITE_SUBSCRIPTION_PROXY_URL';
+const PROXY_KEY_ENV = 'BOITE_SUBSCRIPTION_PROXY_KEY';
 const CODEX_CATALOG_ENV = 'BOITE_SUBSCRIPTION_PROXY_CODEX_CATALOG';
 /**
  * The start of every model id the core injected into an agent as a provider of
@@ -293,7 +293,7 @@ const OPEN_MODEL = /gpt-oss|kimi|qwen|llama|deepseek|mistral|mixtral|glm/i;
  * `antigravity/claude-opus-5-5` is a Claude model; an unknown name falls back
  * to a vendor prefix, so `codex/computer-use-preview` is an OpenAI model.
  */
-export function proprietaryFamily(id: string): ModelFamily | null {
+function proprietaryFamily(id: string): ModelFamily | null {
   const slash = id.lastIndexOf('/');
   const name = id.slice(slash + 1);
   if (OPEN_MODEL.test(name)) return null;

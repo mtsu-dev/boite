@@ -8,10 +8,10 @@ import type { Bus, EventPayload } from './bus.ts';
 import { invalidParams } from './errors.ts';
 import { costOrRates } from './usage.ts';
 
-export const LOG_FILE_BYTES = 2 * 1024 * 1024;
+const LOG_FILE_BYTES = 2 * 1024 * 1024;
 export const LOG_FILE_COUNT = 8;
 /** The shell writes `shell.0..3.ndjson` beside the core's files, in the same format. */
-export const SHELL_LOG_FILE_COUNT = 4;
+const SHELL_LOG_FILE_COUNT = 4;
 const PENDING_RECORDS = 1024;
 /** Records kept in memory only: written while persistence fails, or dropped from a full pending buffer. */
 const UNPERSISTED_RECORDS = 4096;
@@ -24,7 +24,7 @@ const CLOCK_SKEW_MS = 10 * 60_000;
 /** A process that exits cleanly this soon after its start is counted in a batch, not written on its own. */
 export const SHORT_PROCESS_MS = 2000;
 /** How long a turn's batch of short processes gathers before it is written. */
-export const PROCESS_BATCH_MS = 10_000;
+const PROCESS_BATCH_MS = 10_000;
 const SWEEP_MS = 1000;
 
 /** The short processes of one turn, written as one `process.batch` record. */
@@ -565,7 +565,7 @@ function sortNewest(records: CoreLogRecord[], order: (record: CoreLogRecord, ind
 }
 
 /** The program's file name, without its folder: which tool ran, never where the user keeps it. */
-export function executableName(exe: string | null | undefined): string | null {
+function executableName(exe: string | null | undefined): string | null {
   if (!exe) return null;
   const name = exe.split(/[\\/]/).pop() ?? '';
   return name.length > 0 ? name.slice(0, 80) : null;

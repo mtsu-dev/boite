@@ -27,7 +27,7 @@ export const ICON_MAX_BYTES = 256 * 1024;
 /** The largest `index.html`, manifest or `package.json` parsed for a declared icon or a stack. */
 export const MANIFEST_MAX_BYTES = 256 * 1024;
 /** How many names one folder listing reads before it stops. */
-export const DIR_MAX_ENTRIES = 2_000;
+const DIR_MAX_ENTRIES = 2_000;
 
 export type DetectedIcon =
   | { kind: 'image'; mime: string; bytes: Uint8Array; version: string; source: string }
@@ -38,7 +38,7 @@ export type DetectedIcon =
  * Folders listed (not walked) for files named like a logo, an icon or a
  * favicon. An earlier folder wins a tie.
  */
-export const SCAN_DIRS: readonly string[] = [
+const SCAN_DIRS: readonly string[] = [
   '', 'public', 'static', 'assets', 'docs', 'images', 'img', 'media', 'art', 'web', 'resources', 'branding',
   '.github', 'src', 'src/assets', 'src/app', 'app', 'static/img', 'public/images', 'public/img', 'public/icons',
   'docs/assets', 'docs/images', 'assets/images', 'assets/icons', 'buildResources', 'store',
@@ -77,7 +77,7 @@ const ANDROID_SCORE = 2_600;
 const MANIFEST_SCORE = 3_000;
 
 /** Lower is better; null for a name that is not a logo's. */
-export function nameRank(file: string): number | null {
+function nameRank(file: string): number | null {
   const stem = parse(file).name.toLowerCase();
   if (stem === 'logo') return 0;
   if (['app-icon', 'appicon', 'app_icon', 'icon', 'brand', 'logotype'].includes(stem)) return 2;
@@ -91,7 +91,7 @@ export function nameRank(file: string): number | null {
 }
 
 /** Lower is better; null for a type that is not kept. */
-export function extRank(file: string): number | null {
+function extRank(file: string): number | null {
   const ext = extname(file).toLowerCase();
   const order = ['.svg', '.png', '.webp', '.jpg', '.ico'];
   if (ext === '.jpeg') return 3;
@@ -308,7 +308,7 @@ const PACKAGE_STACKS: readonly [string, TechIconId][] = [
 ];
 
 /** The stack the folder reads as, from marker files at its root. */
-export async function detectTech(root: string, rootNames?: string[]): Promise<TechIconId | null> {
+async function detectTech(root: string, rootNames?: string[]): Promise<TechIconId | null> {
   const names = rootNames ?? (await listNames(root));
   const has = (rel: string) => exists(join(root, rel));
   const hasExt = (ext: string) => names.some((name) => extname(name.replace(/\/$/, '')).toLowerCase() === ext);

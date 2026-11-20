@@ -43,7 +43,7 @@ export function scheduleText(schedule: AgentSchedule): string {
 }
 
 /** Occurrences in a row ending in `[quiet]` after which a routine without a check is told it could take one. */
-export const QUIET_RUN_HINT = 3;
+const QUIET_RUN_HINT = 3;
 /** How often the scheduler looks for spent single-date routines to remove. */
 const SWEEP_MS = 3_600_000;
 
@@ -51,7 +51,7 @@ const SWEEP_MS = 3_600_000;
  * What a due occurrence of a routine without a check adds to its prompt once
  * its last `QUIET_RUN_HINT` ended in `[quiet]`: a check would have spared them.
  */
-export function quietRunHint(routine: AgentRoutine, fullAccess: boolean): string {
+function quietRunHint(routine: AgentRoutine, fullAccess: boolean): string {
   const command = `boite mochi schedule '{"id":${JSON.stringify(routine.id)},"check":"<command>"}'`;
   return `Boite: this routine ended in [quiet] its last ${routine.quietRun} times. If it only watches for something, give it a check: a command that prints only what should wake you and nothing when all is as before, so a time with nothing new costs no turn. `
     + (fullAccess ? `Add one with ${command}; the rest of the routine stays as it is.` : 'Your thread asks before commands, so ask the user to add one in the routine\'s editor.');

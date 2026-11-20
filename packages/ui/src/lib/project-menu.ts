@@ -11,7 +11,7 @@ import { count, projectName } from './format';
 import { undo } from './undo.svelte';
 
 /** Asks before a project leaves Boite, then removes it. Its folder, when there is one left, stays. */
-export async function confirmRemoveProject(owner: Store, project: Project): Promise<void> {
+async function confirmRemoveProject(owner: Store, project: Project): Promise<void> {
   const sure = await confirm.ask({
     title: fill(strings.sidebar.removeProjectTitle, { project: projectName(project) }),
     body: strings.sidebar.removeProjectBody,

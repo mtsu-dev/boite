@@ -13,7 +13,7 @@ import { applyColors, COLORS_EVENT, startColors } from './theme-colors';
 export type Theme = 'system' | 'dark' | 'light' | 'grain';
 
 /** What a setting means once `system` has asked the OS. */
-export type ResolvedTheme = 'dark' | 'light' | 'grain';
+type ResolvedTheme = 'dark' | 'light' | 'grain';
 
 export const THEME_STORAGE_KEY = 'boite.theme';
 
@@ -42,7 +42,7 @@ export function readTheme(): Theme {
   }
 }
 
-export function writeTheme(theme: Theme): void {
+function writeTheme(theme: Theme): void {
   try {
     window.localStorage.setItem(THEME_STORAGE_KEY, theme);
   } catch {
@@ -51,7 +51,7 @@ export function writeTheme(theme: Theme): void {
 }
 
 /** What the setting means right now: `system` asks the OS, the others answer for themselves. */
-export function resolveTheme(theme: Theme): ResolvedTheme {
+function resolveTheme(theme: Theme): ResolvedTheme {
   if (theme !== 'system') return theme;
   return typeof window.matchMedia === 'function' && window.matchMedia(LIGHT_QUERY).matches ? 'light' : 'dark';
 }

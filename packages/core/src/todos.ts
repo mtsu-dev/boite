@@ -75,7 +75,7 @@ function withGoals(core: Core, todos: Todo[]): Todo[] {
 }
 
 /** Open first, then what a thread claimed, then what the user confirmed, each newest first. */
-export function orderTodos(todos: Todo[]): Todo[] {
+function orderTodos(todos: Todo[]): Todo[] {
   return todos
     .map((todo, index) => ({ todo, index }))
     .sort((a, b) =>
@@ -113,7 +113,7 @@ function send(core: Core, projectId: ProjectId, todos: Todo[]): Todo[] {
 }
 
 /** The project a thread belongs to: the agent names its thread, never a project of its own. */
-export function projectOfThread(core: Core, threadId: ThreadId): ProjectId {
+function projectOfThread(core: Core, threadId: ThreadId): ProjectId {
   return core.projects.require(core.threads.require(threadId).projectId).id;
 }
 
@@ -126,7 +126,7 @@ function checkText(text: unknown): string {
   return trimmed;
 }
 
-export function listTodos(core: Core, threadId: ThreadId): Todo[] {
+function listTodos(core: Core, threadId: ThreadId): Todo[] {
   const projectId = projectOfThread(core, threadId);
   linkedThreads(core, projectId);
   return orderTodos([...withGoals(core, stored(core, projectId)), ...(core.sharedBoard?.todos(projectId) ?? [])]);

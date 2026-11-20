@@ -29,7 +29,7 @@ type ProviderList = { loaded: ProviderSummary[]; rejected: ProviderRejected[] };
  * reads the owner's own configuration. The single `default` model leaves the
  * agent on the model it is configured with until `providers.probe` reads its list.
  */
-export function localAcpDescriptor(id: ProviderId, command: LocalAcpCommand, executable: { kind: 'file' | 'path'; value: string }, os: Os): Record<string, unknown> {
+function localAcpDescriptor(id: ProviderId, command: LocalAcpCommand, executable: { kind: 'file' | 'path'; value: string }, os: Os): Record<string, unknown> {
   return {
     id,
     schemaVersion: 1,

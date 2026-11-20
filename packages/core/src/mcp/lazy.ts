@@ -25,7 +25,7 @@ import { LineSplitter, STDOUT_LINE_MAX } from '../drivers/lines.ts';
 /** Where the sessions reach the servers: `<route><registration>/<server name>`. */
 export const LAZY_MCP_ROUTE = '/mcp/lazy/';
 /** Set to `0` in the core's environment to give sessions the servers as configured. */
-export const LAZY_MCP_ENV = 'BOITE_LAZY_MCP';
+const LAZY_MCP_ENV = 'BOITE_LAZY_MCP';
 
 /** A server of the user's config that runs as a child process speaking MCP on stdio. */
 export interface StdioServer { command: string; args: string[]; env: Record<string, string> }

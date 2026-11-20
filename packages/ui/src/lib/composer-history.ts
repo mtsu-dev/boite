@@ -38,7 +38,7 @@ interface History {
 
 export const HISTORY_LIMIT = 200;
 /** A pause this long in typing starts a new step. */
-export const HISTORY_PAUSE_MS = 1000;
+const HISTORY_PAUSE_MS = 1000;
 
 const histories = new WeakMap<ComposerState, History>();
 

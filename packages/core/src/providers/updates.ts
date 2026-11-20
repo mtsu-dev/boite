@@ -48,7 +48,7 @@ const CHECK_PARALLEL = 2;
 const UPDATE_TIMEOUT_MS = 15 * 60 * 1000;
 
 /** The synthetic thread an update's processes are traced under. */
-export function updateThreadId(providerId: ProviderId): string {
+function updateThreadId(providerId: ProviderId): string {
   return `update:${providerId}`;
 }
 

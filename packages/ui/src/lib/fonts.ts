@@ -23,7 +23,7 @@ export const MONOS = ['geist', 'jetbrains', 'system'] as const;
 export type Mono = (typeof MONOS)[number];
 
 export const DEFAULT_FONT: Font = 'inter';
-export const DEFAULT_MONO: Mono = 'geist';
+const DEFAULT_MONO: Mono = 'geist';
 
 function readKey<T extends string>(key: string, known: readonly T[], fallback: T): T {
   try {

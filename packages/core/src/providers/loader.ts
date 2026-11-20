@@ -40,7 +40,7 @@ import { registerLocalCommands } from './local-command.ts';
  * user never picks it, so it ships only when `BOITE_ECHO=1` is in the
  * environment, which the test harness, the e2e suite and the bench set.
  */
-export function echoEnabled(): boolean {
+function echoEnabled(): boolean {
   return process.env['BOITE_ECHO'] === '1';
 }
 

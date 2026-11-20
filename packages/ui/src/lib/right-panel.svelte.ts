@@ -29,7 +29,7 @@ import { FileDocuments, type FileDocument, type FileSaved, type FileWrite } from
 export type SurfaceKind = 'desk' | 'agents' | 'messages' | 'trace' | 'browser' | 'agent-browser' | 'changes' | 'files' | 'file' | 'tasks' | 'device' | 'window' | 'council' | 'plugin';
 
 /** Every kind a stored layout may name, and what `parse` checks a blob against. */
-export const SURFACE_KINDS: readonly SurfaceKind[] = [
+const SURFACE_KINDS: readonly SurfaceKind[] = [
   'desk',
   'agents',
   'messages',
@@ -102,9 +102,9 @@ export const PANEL_VERSION = 1;
 export const PANEL_DEFAULT = 420;
 export const PANEL_MIN = 300;
 /** The chat column never drops under this, whatever the drag asks for. */
-export const SIBLING_MIN = 360;
+const SIBLING_MIN = 360;
 
-export const AGENTS_SURFACE_ID = 'agents';
+const AGENTS_SURFACE_ID = 'agents';
 
 interface Persisted {
   version: number;

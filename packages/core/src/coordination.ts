@@ -36,7 +36,7 @@ const AUTO_PAUSE_PREFIX = 'coordination-autopause:';
 /** Letters one hook, steer or wake hands over. */
 const BATCH = 4;
 /** The longest `collaboration.wait`: a CLI call stays under its five-minute RPC deadline. */
-export const WAIT_MAX_MS = 300_000;
+const WAIT_MAX_MS = 300_000;
 export { coordinationUrl, RESIDENT_LETTER_TTL_MS, SWEEP_PROBES };
 type Row = { data: string; fingerprint: string | null };
 

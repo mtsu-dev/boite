@@ -137,7 +137,7 @@ export function navOf(family: SettingsFamily, owner: boolean): SettingsTab[] {
  * Experiments exists only where the primary machine's build runs experiments
  * (a Nightly or a source build, never a Release).
  */
-export function pageAvailable(tab: SettingsTab, owner: boolean): boolean {
+function pageAvailable(tab: SettingsTab, owner: boolean): boolean {
   return (owner || !ownerOnly(tab)) && (tab !== 'experiments' || experimentsShown());
 }
 

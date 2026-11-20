@@ -38,7 +38,7 @@ export function unavailableResourceBytes(note = 'No supported per-agent counter'
 }
 
 /** A safe projection of thread identity and current measurements for phones. */
-export function resourceSnapshot(
+function resourceSnapshot(
   sampledAt: number,
   live: ThreadId[],
   threadOf: (threadId: ThreadId) => ThreadSummary | null,

@@ -27,7 +27,7 @@ export type FeatureId = 'chat-artifacts' | 'preview-comments' | 'open-chat-links
 
 export const FEATURES_STORAGE_KEY = 'boite.features';
 
-export const FEATURE_IDS: FeatureId[] = ['chat-artifacts', 'preview-comments', 'open-chat-links', 'edge-scrollbars', 'whip'];
+const FEATURE_IDS: FeatureId[] = ['chat-artifacts', 'preview-comments', 'open-chat-links', 'edge-scrollbars', 'whip'];
 
 const DEFAULTS: Record<FeatureId, boolean> = { 'chat-artifacts': true, 'preview-comments': true, 'open-chat-links': false, 'edge-scrollbars': true, whip: true };
 

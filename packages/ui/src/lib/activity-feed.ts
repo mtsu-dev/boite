@@ -13,7 +13,7 @@ import { describeTool, permissionSentence } from './tool-summary';
  */
 export type FeedSource<M> = { machine: M; thread: ThreadSummary; project: Project | undefined };
 /** `needs`: the user acts; `updates`: the user reads. A sub-agent sits in its parent's section. */
-export type FeedSection = 'needs' | 'updates';
+type FeedSection = 'needs' | 'updates';
 /** The one thing a Needs you row asks the user to do, offered on the row itself: each opens the thread where it is done. */
 export type FeedVerb = 'answer' | 'allow' | 'review';
 /** `place`: where the row lives in words (its project, a bot's name, Drafts), for its place line; `reason` repeats it
@@ -75,7 +75,7 @@ export function feedQuestion(owner: Pick<Requests, 'pendingQuestions'>, threadId
 }
 
 /** Why the thread waits on the user, in a few words, and since when; null when its request is not known here. */
-export function waitingReason(owner: Requests, thread: ThreadSummary): { text: string; since: number } | null {
+function waitingReason(owner: Requests, thread: ThreadSummary): { text: string; since: number } | null {
   const question = owner.pendingQuestions.find(q => q.threadId === thread.id);
   if (question) return { text: question.text.trim().split('\n')[0]!.trim(), since: question.createdAt };
   const permission = owner.pendingPermissions.find(p => p.threadId === thread.id);
