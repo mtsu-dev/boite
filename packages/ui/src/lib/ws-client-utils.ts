@@ -2,6 +2,15 @@
 import { RPC_MAX_FRAME_BYTES, RPC_PATH, withoutTrailingSlashes } from '@boite/contracts';
 import type { SocketLike } from './client';
 
+/** Closes a socket with its handlers taken off first, so its close reaches nothing. */
+export function closeQuietly(socket: SocketLike): void {
+  socket.onopen = null;
+  socket.onmessage = null;
+  socket.onclose = null;
+  socket.onerror = null;
+  socket.close();
+}
+
 /**
  * 1 s, 2 s, 4 s, 8 s, then 10 s forever, each 20 % either way at random, so
  * the phones of a core that restarts do not all knock at the same instant.

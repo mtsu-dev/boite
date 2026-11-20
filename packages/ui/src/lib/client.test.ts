@@ -1,5 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
-import { PROTOCOL_VERSION, RPC_CHUNK_MARK, RPC_MAX_FRAME_BYTES, RpcCloseCode, RpcErrorCode, type CoreInfo } from '@boite/contracts';
+import { createHash, generateKeyPairSync, sign } from 'node:crypto';
+import { PROTOCOL_VERSION, RPC_CHUNK_MARK, RPC_MAX_FRAME_BYTES, RpcCloseCode, RpcErrorCode, deviceRevokedInput, type CoreInfo } from '@boite/contracts';
+import { deviceKey } from './device-key';
 import { RpcFailure, WsClient, defaultBackoff, openDeadline, readyAgain, rpcUrl, streamUrl, wasDropped, type SocketLike } from './client';
 import { frameStream } from './remote-browser-stream';
 import { watchAbsence, watchWake } from './ws-client-utils';
@@ -1149,6 +1151,54 @@ describe('WsClient', () => {
     expect(unauthorized).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ code: RpcErrorCode.Unauthorized, message: 'the token is wrong' }));
     expect(client.state).toBe('closed');
     expect(sockets).toHaveLength(2);
+  });
+
+  test('a group key survives an unverified refusal and is revoked by a signed hello refusal', async () => {
+    const { privateKey, publicKey: key } = generateKeyPairSync('ed25519');
+    const publicKey = key.export({ type: 'spki', format: 'pem' }).toString();
+    const coreId = createHash('sha256').update(publicKey).digest('hex');
+    const device = await deviceKey();
+    const sockets: FakeSocket[] = [];
+    const revoked = vi.fn();
+    const client = new WsClient({
+      url: 'http://192.0.2.1:8777', token: '', paired: true,
+      signer: { key: async () => device, coreId },
+      onRevoked: revoked, backoff: () => 0, socketFactory: collect(sockets),
+    });
+    try {
+      const opening = client.connect();
+      sockets[0]!.open();
+      await vi.waitFor(() => expect(sockets[0]!.sent).toHaveLength(1));
+      const first = sockets[0]!.frame(0);
+      sockets[0]!.receive({ jsonrpc: '2.0', id: first.id, result: { core: { ...CORE, coreId }, principal: 'session' } });
+      await opening;
+      sockets[0]!.close(RpcCloseCode.DeviceRevoked);
+      expect(revoked).not.toHaveBeenCalled();
+
+      const reconnect = async (index: number) => {
+        await vi.waitFor(() => expect(sockets.length).toBeGreaterThan(index));
+        const socket = sockets[index]!;
+        socket.open();
+        return socket;
+      };
+      const second = await reconnect(1);
+      const replayed = (first.params!.device as { nonce: string }).nonce;
+      const refusal = (nonce: string) => ({
+        code: RpcErrorCode.Unauthorized, message: 'Device removed from group', data: {
+          reason: 'device-revoked', publicKey,
+          sig: sign(null, Buffer.from(deviceRevokedInput(coreId, nonce, device.id)), privateKey).toString('base64'),
+        },
+      });
+      second.receive({ jsonrpc: '2.0', id: second.frame(0).id, error: { code: RpcErrorCode.Unauthorized, message: 'Unauthorized' } });
+      const third = await reconnect(2);
+      third.receive({ jsonrpc: '2.0', id: third.frame(0).id, error: refusal(replayed) });
+      const fourth = await reconnect(3);
+      expect(revoked).not.toHaveBeenCalled();
+      const last = fourth.frame(0);
+      fourth.receive({ jsonrpc: '2.0', id: last.id, error: refusal((last.params!.device as { nonce: string }).nonce) });
+      await vi.waitFor(() => expect(revoked).toHaveBeenCalledExactlyOnceWith());
+      expect(client.state).toBe('closed');
+    } finally { client.close(); }
   });
 
   test('a key another machine refuses is not retried, while the shell core keeps being asked', async () => {

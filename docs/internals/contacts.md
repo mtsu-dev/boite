@@ -1196,6 +1196,13 @@ authority waits for an active native turn to finish; it cannot enter the old
 unrestricted process. Unsupported protocols and legacy unscoped native mail stay
 held.
 
+Contact mail admitted into a conversation continues to restrict browser,
+desktop, device, window and secret tools on that conversation and its
+descendants after the receiving turn ends. The owner's trust action lifts
+this restriction on the admitted history. An active contact relation, a
+contact-created thread or a captured shared-project boundary can still
+restrict tools on its own.
+
 The file policy denies environment variants, private keys, credential
 directories/files, hard links and paths outside that checkout. Both the supplied spelling and
 the canonical target are classified. Foreign Windows drive-relative, UNC,

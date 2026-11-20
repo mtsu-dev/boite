@@ -107,7 +107,12 @@ test('a phone added on one member says hello on every member with one key, and o
   // The revocation closed the phone's sockets on both machines: let them finish before the next one opens.
   await settled(a, 0);
   await settled(b, 0);
-  await refused(a, open(a.url, { device: helloFor(phone, deviceId, id(a)) }), 'removed from the group');
+  const hello = helloFor(phone, deviceId, id(a)) as { nonce: string };
+  const { reason } = await rejection(open(a.url, { device: hello }));
+  const proof = (reason as { rpc: { data: DeviceRevokedData } }).rpc.data;
+  expect(proof).toMatchObject({ reason: 'device-revoked', publicKey: a.core.coordination.card().publicKey });
+  expect(verify(null, Buffer.from(deviceRevokedInput(id(a), hello.nonce, deviceId)), createPublicKey(proof.publicKey), Buffer.from(proof.sig, 'base64'))).toBe(true);
+  await settled(a, 0);
   await refused(b, open(b.url, { device: helloFor(phone, deviceId, id(b)) }), 'removed from the group');
   // A device a machine never heard of is told to come back, never that it was removed.
   const stranger = phoneKey();

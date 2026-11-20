@@ -156,8 +156,8 @@ export type FileLocker = (file: string) => HeldFileLock | null;
 export interface ProcessPlatform {
   /** Model tool execution only. Trusted account/control processes never gain authority from this descriptor. */
   protectedExecution?: NativeExecutionBoundary;
-  /** Resolve a stdin-only recipient into the caller's OS sandbox, when it has one. */
-  secretPipeRecipient?(command: string, args: string[], env: Record<string, string | undefined>): {
+  /** Resolve a stdin-only recipient into the OS route of the core-owned thread checkout. */
+  secretPipeRecipient?(command: string, args: string[], env: Record<string, string | undefined>, threadCwd: string): {
     command: string; args: string[]; env: Record<string, string | undefined>;
   };
   serverUpdates?: ServerUpdatePlatform;

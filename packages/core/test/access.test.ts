@@ -7,10 +7,10 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join, parse } from 'node:path';
-import type { RpcMethodName } from '@boite/contracts';
+import { DEVICE_HOME_CREDENTIAL_STORES, type RpcMethodName } from '@boite/contracts';
 import { connect } from '../src/client.ts';
 import { AGENT_METHODS, DEVICE_METHODS, assertAllowed } from '../src/access.ts';
 import type { Connection } from '../src/router.ts';
@@ -438,7 +438,7 @@ describe('a paired device reads a thread\'s changes and files', () => {
   test('a project the owner made at the home folder keeps every hidden entry of it from the device', () => {
     // The check resolves paths and reads nothing, so the real home folder is safe to name here.
     const home = homedir();
-    const core = { dataDir: harness.dataDir, threads: { require: () => ({ cwd: home, projectId: 'p' }) }, projects: { require: () => ({ id: 'p', path: home }) }, settings: { get: () => ({}) } } as unknown as Parameters<typeof assertDeviceFile>[0];
+    const core = { dataDir: harness.dataDir, providers: harness.core.providers, accounts: harness.core.accounts, threads: { require: () => ({ cwd: home, projectId: 'p' }) }, projects: { require: () => ({ id: 'p', path: home }) }, settings: { get: () => ({}) } } as unknown as Parameters<typeof assertDeviceFile>[0];
     for (const path of ['.codex/auth.json', '.config/gh/hosts.yml', '.gemini/oauth_creds.json', '.local/share/opencode/auth.json', '.pi/agent/auth.json', '.bash_history', 'AppData/Roaming/rclone/rclone.conf']) {
       expect(() => assertDeviceFile(core, 't', home, path)).toThrow('credential files');
     }
@@ -453,6 +453,8 @@ describe('a paired device reads a thread\'s changes and files', () => {
       const worktree = join(shared, 'site-p');
       const core = {
         dataDir: harness.dataDir,
+        providers: harness.core.providers,
+        accounts: harness.core.accounts,
         threads: { require: (id: string) => ({ cwd: id === 'wt' ? worktree : project, projectId: 'p' }) },
         projects: { require: () => ({ id: 'p', path: project }) },
         settings: { get: () => ({ worktreeStorage: { mode: 'shared', directory: shared } }) },
@@ -467,16 +469,41 @@ describe('a paired device reads a thread\'s changes and files', () => {
 
   test('dedicated credential stores cannot become device project roots or expose files in owner-added projects', () => {
     const home = homedir();
-    for (const path of ['.codex', '.gemini', '.pi', '.claude', '.config/gh', '.local/share/opencode', '.local/share/keyrings', '.config/rclone', '.password-store', '.mozilla', '.config/chromium']) {
+    const shipped = join(import.meta.dir, '../src/providers/shipped');
+    const declaredRoots = readdirSync(shipped).filter(file => file.endsWith('.json')).flatMap(file =>
+      JSON.parse(readFileSync(join(shipped, file), 'utf8')).roots as string[]);
+    const protectedRoots = new Set(['{agentsDir}', '{isolationDir}', ...DEVICE_HOME_CREDENTIAL_STORES.map(root => `{home}/${root}`)]);
+    expect([...new Set(declaredRoots)].filter(root => !protectedRoots.has(root))).toEqual([]);
+    const providerRoots = declaredRoots.filter(root => root.startsWith('{home}/')).map(root => root.slice('{home}/'.length));
+    for (const path of ['.config/muse', '.gemini', '.config/gh', '.local/share/keyrings', '.config/rclone', '.password-store', '.mozilla', '.config/chromium', ...new Set(providerRoots)]) {
       const root = join(home, path, 'nested');
       const core = {
         dataDir: harness.dataDir,
+        providers: harness.core.providers,
+        accounts: harness.core.accounts,
         threads: { require: () => ({ cwd: root, projectId: 'p' }) },
         projects: { require: () => ({ id: 'p', path: root }) },
         settings: { get: () => ({}) },
       } as unknown as Parameters<typeof assertDeviceFile>[0];
       expect(() => assertDeviceProjectFolder(core, root)).toThrow('folder that holds keys or tokens');
-      expect(() => assertDeviceFile(core, 't', root, 'settings.db')).toThrow('credential files');
+      expect(() => assertDeviceFile(core, 't', root, 'auth.json')).toThrow('credential files');
+    }
+  });
+
+  test('a relocated native login stays protected without blocking other projects in the same configuration folder', () => {
+    const before = process.env.XDG_CONFIG_HOME;
+    const config = mkdtempSync(join(tmpdir(), 'boite-provider-config-'));
+    try {
+      process.env.XDG_CONFIG_HOME = config;
+      const root = join(config, 'muse');
+      mkdirSync(root);
+      writeFileSync(join(root, 'auth.json'), '{"test":true}');
+      expect(() => assertDeviceProjectFolder(harness.core, root)).toThrow('folder that holds keys or tokens');
+      expect(() => assertDeviceProjectFolder(harness.core, join(config, 'unrelated-project'))).not.toThrow();
+    } finally {
+      if (before === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = before;
+      rmSync(config, { force: true, recursive: true });
     }
   });
 

@@ -7,7 +7,7 @@ import { dirname, join, normalize, resolve, sep } from 'node:path';
 import { eventThreadId, type BroadcastOptions, type EventPayload } from './bus.ts';
 import { mayReceiveEvent } from './access.ts';
 import type { Core } from './core.ts';
-import { messageOf } from './errors.ts';
+import { messageOf, RpcFailure } from './errors.ts';
 import { JOIN_ROUTE } from './group.ts';
 import { CONTACT_JOIN_ROUTE, CONTACT_LINK_ROUTE } from './contacts/store.ts';
 import type { ContactSocketData } from './contacts/link-hello.ts';
@@ -461,7 +461,12 @@ export function startServer(options: ServerOptions): RunningServer {
   const relays = new RelayHub(core, (credential) => {
     if (typeof credential !== 'string') {
       // A device of the group carried to another member: its signature for this machine, never one made for another.
-      try { return { sessionId: core.group.clients.authenticateDevice(credential, { name: 'pwa', version: '' }).sessionId }; } catch { return null; }
+      try {
+        return { sessionId: core.group.clients.authenticateDevice(credential, { name: 'pwa', version: '' }).sessionId };
+      } catch (error) {
+        if (error instanceof RpcFailure && (error.data as { reason?: string } | undefined)?.reason === 'device-revoked') return { revocation: error.toError() };
+        return null;
+      }
     }
     const identity = authenticateToken(core, credential);
     return identity === null || identity.principal === 'agent' || identity.principal === 'plugin' ? null : { sessionId: identity.sessionId };

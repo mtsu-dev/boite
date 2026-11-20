@@ -99,11 +99,7 @@ export class GroupClients {
     const id = deviceId(publicKey);
     // Before the grant is spent: a removed key gets a refusal that leaves the link good for the key the app makes next.
     if (this.#group.roster?.deviceKeys?.some((device) => device.id === id && device.removed)) {
-      const { coreId, publicKey } = this.#group.core.coordination.card();
-      const data = nonce === null ? undefined : {
-        reason: 'device-revoked', publicKey,
-        sig: this.#group.core.coordination.signature(Buffer.from(deviceRevokedInput(coreId, nonce, id))).toString('base64'),
-      } satisfies DeviceRevokedData;
+      const data = nonce === null ? undefined : this.#revocation(nonce, id);
       throw unauthorized('this device was removed from the group: it needs a new key, which the app makes when it is added again', data);
     }
     const role = this.#group.core.sessions.redeem(grant, id, nonce);
@@ -130,19 +126,25 @@ export class GroupClients {
     if (roster === null) throw this.#ungrouped(raw.nonce);
     const known = typeof raw.id === 'string' ? roster.deviceKeys?.find((device) => device.id === raw.id) : undefined;
     if (known === undefined) throw unavailable('this machine has not heard of this device yet: its group tells it within seconds');
-    const entry = liveDeviceKeys(roster).find((device) => device === known);
-    if (entry === undefined) throw unauthorized('this device was removed from the group');
     if (typeof raw.at !== 'number' || Math.abs(now - raw.at) > DEVICE_HELLO_SKEW_MS) {
       throw refused('the device hello is dated more than two minutes from this machine\'s clock: set the clock of this device or that machine');
     }
     if (typeof raw.nonce !== 'string' || raw.nonce.length < 16 || raw.nonce.length > 64) throw refused('device.nonce: expected 16 to 64 characters');
-    if (!deviceSigned(entry.publicKey, deviceHelloInput(this.#group.selfId(), raw.at, raw.nonce), raw.sig)) throw unauthorized('the device hello is not signed by its key for this machine');
+    if (!deviceSigned(known.publicKey, deviceHelloInput(this.#group.selfId(), raw.at, raw.nonce), raw.sig)) throw unauthorized('the device hello is not signed by its key for this machine');
+    const entry = liveDeviceKeys(roster).find((device) => device === known);
+    if (entry === undefined) throw unauthorized('this device was removed from the group', this.#revocation(raw.nonce, known.id));
     for (const [nonce, until] of this.#deviceNonces) if (until <= now) this.#deviceNonces.delete(nonce);
     const key = `${entry.id}:${raw.nonce}`;
     if (this.#deviceNonces.has(key)) throw refused('this device hello was already used');
     if (this.#deviceNonces.size >= DEVICE_NONCES_MAX) throw unavailable('too many device hellos at once: try again in a minute');
     this.#deviceNonces.set(key, raw.at + DEVICE_HELLO_SKEW_MS * 2);
     return { sessionId: this.#deviceSession(entry, client, now), role: entry.role, deviceId: entry.id };
+  }
+
+  #revocation(nonce: string, id: string): DeviceRevokedData {
+    const { coreId, publicKey } = this.#group.core.coordination.card();
+    const sig = this.#group.core.coordination.signature(Buffer.from(deviceRevokedInput(coreId, nonce, id))).toString('base64');
+    return { reason: 'device-revoked', publicKey, sig };
   }
 
   /** The refusal that says this machine is in no group, signed over the nonce of the hello it answers. */

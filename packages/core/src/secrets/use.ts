@@ -141,6 +141,7 @@ async function capped(stream: ReadableStream<Uint8Array>): Promise<{ bytes: Uint
 interface PreparedSecretExec extends Omit<SecretExecUse, 'env'> {
   env: Record<string, string | undefined>;
   timeoutMs: number;
+  threadCwd: string;
 }
 
 export function prepareSecretExec(cwd: string, use: SecretExecUse): PreparedSecretExec {
@@ -160,7 +161,7 @@ export function prepareSecretExec(cwd: string, use: SecretExecUse): PreparedSecr
   try { real = realpathSync(workdir); } catch { throw refused(`cwd: ${use.cwd} does not exist`, { field: 'cwd', expected: `a folder inside ${root}` }); }
   if (real !== root && !inside(root, real)) throw refused(`cwd: ${use.cwd} is outside the conversation's folder`, { field: 'cwd', expected: `a folder inside ${root}` });
   const base = use.env !== undefined && typeof use.env === 'object' ? use.env : process.env;
-  return { ...use, cwd: real, timeoutMs, env: { ...base } };
+  return { ...use, cwd: real, threadCwd: root, timeoutMs, env: { ...base } };
 }
 
 export async function checkSecretRecipient(core: Core, threadId: ThreadId, use: PreparedSecretExec, mask: (text: string) => string, connection: Connection | undefined): Promise<void> {
@@ -174,7 +175,7 @@ export async function checkSecretRecipient(core: Core, threadId: ThreadId, use: 
 /** With no value, the same launcher checks the pipe recipient with empty stdin. */
 export async function execSecret(core: Core, threadId: ThreadId, use: PreparedSecretExec, value: Uint8Array | undefined, mask: (text: string) => string, connection: Connection | undefined): Promise<Extract<SecretUseResult, { action: 'run' | 'pipe' }>> {
   const recipient = use.action === 'pipe'
-    ? core.procs.platform.secretPipeRecipient?.(use.command, use.args, use.env)
+    ? core.procs.platform.secretPipeRecipient?.(use.command, use.args, use.env, use.threadCwd)
     : undefined;
   const { command, args } = recipient ?? use;
   const env = { ...(recipient?.env ?? use.env) };

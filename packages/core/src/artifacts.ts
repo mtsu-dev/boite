@@ -109,7 +109,7 @@ export async function publishProof(core: Core, params: RpcParams<'artifacts.prov
     if (error instanceof ProofInputError) throw invalidParams(error.message, { field: error.field });
     throw error;
   }
-  return publish(core, threadId, params.path, [proof]);
+  return publish(core, threadId, params.path, [core.secrets.maskPart(threadId, proof)]);
 }
 
 async function publish(core: Core, threadId: string, path: string | undefined, parts: MessagePart[]): Promise<Message> {

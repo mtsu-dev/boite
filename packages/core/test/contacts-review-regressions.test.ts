@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {holdAccountTurns, startTestCore, waitFor, type TestCore} from './harness.ts';
 import {connect, type CoreClient} from '../src/client.ts';
 import {thrown} from './settle.ts';
-import {protectLetters} from '../src/contacts/letter-scopes.ts';
+import {assertContactTool, protectLetters} from '../src/contacts/letter-scopes.ts';
 import {setDriver,getDriver} from '../src/drivers/index.ts';
 import {memberThreadId} from '../src/contacts/member-address.ts';
 import type {AgentLetter} from '@boite/contracts';
@@ -354,6 +354,25 @@ test.each(['protected','unprotected'] as const)('contact mail outside a shared p
     expect((await (await reopened.connect()).call('threads.get',{threadId:fresh.id})).contactHold).toBeNull();
   }finally{providers.require=require;providers.get=get;access.execution.support=support;restore();}
 },30000);
+
+test('contact tool restrictions survive a delivered direct reply and a later automatic turn', async () => {
+  const { a, b } = await pair();
+  await b.c.call('contacts.update', { coreId: a.id, trusted: true });
+  const letter = await a.c.call('collaboration.send', {
+    threadId: a.t.id, to: { coreId: b.id, threadId: b.t.id }, text: 'Ordinary contact note', requestId: 'direct-reply',
+  });
+  await waitFor(() => b.h.core.coordination.get(b.t.id).messages.some(item => item.id === letter.id && item.status === 'delivered'));
+  await waitFor(() => b.h.core.threads.require(b.t.id).status === 'idle');
+  const later = b.h.core.threads.startTurn(b.t.id, 'Continue the work', { kind: 'resume', reason: 'wake' });
+  await waitFor(() => b.h.core.journal.getTurn(later.id)?.finishedAt != null);
+  const child = b.h.core.threads.create({ projectId: b.p.id, providerId: 'echo', accountId: b.t.accountId },
+    { id: 'thr_direct_child', branch: null, parentThreadId: b.t.id });
+  for (const threadId of [b.t.id, child.id]) {
+    expect(() => assertContactTool(b.h.core, threadId, 'secrets.use')).toThrow();
+  }
+  await b.c.call('threads.trustContactHistory', { threadId: b.t.id });
+  expect(() => assertContactTool(b.h.core, child.id, 'secrets.use')).not.toThrow();
+}, 30_000);
 
 test('SEC-01 consumed associations intersect their live authority instead of replacing earlier history',async()=>{
   const {a,b}=await pair(),c=await side('charlie');await link(c,b);

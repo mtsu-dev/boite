@@ -66,8 +66,9 @@ the plugin should not get, then press Allow.
   plugins, Boite's updates, pairing or your contacts.
 - To change its grants later, press the gear on its card, then Edit under
   Authorizations. A running service or app restarts with the new ones.
-- What a plugin does in your name is marked: a message it sent reads "By
-  plugin" and its name, and a thread it archived says so.
+- A message sent by a plugin names it under "By plugin". A conversation
+  resumed by a plugin shows its name where work resumed. An archived thread
+  also records which plugin archived it.
 - An older plugin shows Reaches all of Boite: its program gets your own
   access, not a list of permissions.
 

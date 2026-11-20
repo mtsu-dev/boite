@@ -121,14 +121,16 @@ export function coreHref(endpointUrl: string, path: string): string {
  * keeps for it, where it keeps it. Null for an address that is no relay, or a
  * member it holds nothing for.
  */
-export function relayKeyFor(url: string): string | DeviceHello | null {
+export function relayKeyFor(url: string): string | { coreId: string; hello: DeviceHello } | null {
   const relay = parseGroupRelayUrl(url);
   if (relay === null) return null;
   const stored = readStoredEndpoint();
   const held = [stored?.url === relay.member ? stored : undefined, readEnvironments().find((env) => env.url === relay.member)].filter((place) => place !== undefined);
   const signs = held.find((place) => place.signs !== undefined)?.signs;
-  const hello = signs === undefined ? undefined : heldDeviceKey()?.hello(signs);
-  if (hello !== undefined) return hello;
+  if (signs !== undefined) {
+    const hello = heldDeviceKey()?.hello(signs);
+    if (hello !== undefined) return { coreId: signs, hello };
+  }
   return held.find((place) => place.token !== '')?.token ?? null;
 }
 

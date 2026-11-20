@@ -2,7 +2,7 @@
 import { contactFlagNeedsOwner, contactToolRefusal, coordinationReach, defaultCoordinationConfig, fitTranscript, reachRefusal, RpcErrorCode, TRANSCRIPT_ENTRY_PAGE, TRANSCRIPT_ENTRY_TEXT, TRANSCRIPT_READ_ENTRIES, transcriptStretch, type AgentAddress, type AgentContact, type AgentLetter, type AgentMatch, type AgentRelation, type Contact, type ContactRequest, type ContactsState, type CoordinationConfig, type HeldContactLetter, type CoordinationPeer, type CoordinationView, type Thread, type ThreadId } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { archiveProject } from './project-archive';
-import { approveContactMail, contactHistory, contactMailRoute, holdContactMail } from './contact-hold';
+import { approveContactMail, contactHistory, contactMailRoute, contactToolsHeld, holdContactMail, recordContactDelivery } from './contact-hold';
 import type { FakeContext, FakeMethods } from './context';
 
 /** Every fake core of this page by id, what a remote letter or directory reaches. */
@@ -67,7 +67,7 @@ export function assertFakeContactTool(ctx: FakeContext, threadId: string, method
     const recent = ctx.letters.get(id)?.some(letter => letter.to.coreId === ctx.identity.coreId && letter.to.threadId === id
       && (letter.contact !== undefined || letter.origin === 'contact') && (deliveredAt.get(letter) ?? letter.createdAt) >= lastFinished
       && (letter.status === 'delivered' || letter.status === 'uncertain' || letter.status === 'received' && letter.expiresAt > ctx.now()));
-    if (id === bot || contacts?.starts.has(id) || relations?.some(relation => relation.local.threadId === id) || recent) {
+    if (id === bot || contacts?.starts.has(id) || relations?.some(relation => relation.local.threadId === id) || contactToolsHeld(ctx, id) || recent) {
       throw new RpcFailure({ code: RpcErrorCode.Refused, message: contactToolRefusal(method), data: { threadId } });
     }
   }
@@ -362,8 +362,13 @@ export function mailRoute(ctx: FakeContext, threadId: ThreadId, letter: AgentLet
   return contactMailRoute(ctx, threadId, letter, contact ? contact.trusted : false);
 }
 
-function holdUnassociated(ctx: FakeContext, threadId: ThreadId, letter: AgentLetter): void {
-  if (mailRoute(ctx, threadId, letter) === 'tool-free') holdContactMail(ctx, threadId, [letter.contact!.name]);
+function recordDelivery(ctx: FakeContext, threadId: ThreadId, letter: AgentLetter): void {
+  if (letter.contact) {
+    if (mailRoute(ctx, threadId, letter) === 'tool-free') holdContactMail(ctx, threadId, [letter.contact.name]);
+    else recordContactDelivery(ctx, threadId);
+  }
+  letter.status = 'delivered';
+  deliveredAt.set(letter, ctx.now());
 }
 
 /** Mail the owner was told about: the Contacts notice reads `contacts.get` again once per letter. */
@@ -390,9 +395,7 @@ function deliverPending(ctx: FakeContext, threadId: ThreadId): void {
     // As the core's `#ready`: mail held for the owner stays received until delivered or refused.
     if (mailRoute(ctx, threadId, letter) === 'owner') continue;
     if (letter.origin === 'contact') {
-      holdUnassociated(ctx, threadId, letter);
-      letter.status = 'delivered';
-      deliveredAt.set(letter, ctx.now());
+      recordDelivery(ctx, threadId, letter);
       ctx.emit('collaboration.changed', { threadId });
       continue;
     }
@@ -405,9 +408,7 @@ function deliverPending(ctx: FakeContext, threadId: ThreadId): void {
     if (!sameProject && !(config.remote && (sender === ctx ? sourceConfig.projects : sourceConfig.machine(ctx.identity.coreId)))) continue;
     if (forwarding ? !forwarding.allowed() : sender !== ctx && !(trusts(ctx, sender.identity.coreId) && trusts(sender, ctx.identity.coreId))) continue;
     if (thread.projectId !== null && ctx.projects.find(project => project.id === thread.projectId)?.archived) archiveProject(ctx, thread.projectId, false);
-    holdUnassociated(ctx, threadId, letter);
-    letter.status = 'delivered';
-    deliveredAt.set(letter, ctx.now());
+    recordDelivery(ctx, threadId, letter);
     if (forwarding) forwarding.canonical.status = 'delivered';
     sender.emit('collaboration.changed', { threadId: source.id });
     ctx.emit('collaboration.changed', { threadId });

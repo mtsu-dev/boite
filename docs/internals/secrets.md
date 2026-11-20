@@ -56,8 +56,11 @@ metadata never enter that index.
   same executable with the given argument and empty standard input, in the
   same directory and environment. A failed check leaves the ref available
   until its original expiry. On BoiteOS a pipe from a sandboxed thread runs
-  the check and the recipient inside that thread's sandbox. The RPC accepts
-  an array of check arguments.
+  the check and the recipient inside that thread's sandbox. The core selects
+  the execution route from the thread's checkout. BoiteOS refuses an unknown
+  checkout or a recipient directory on a different route. A host route
+  requires an explicitly configured host project. The RPC accepts an array
+  of check arguments.
 - `write` sets `VAR=<value>` in an env file, preserving other lines and line
   endings. Every line that sets `VAR` gets the value, since loaders read the
   last one, each keeping its indent and `export`. The destination must be inside the conversation's folder, untracked
