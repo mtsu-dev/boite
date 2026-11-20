@@ -10,9 +10,9 @@ import { strings } from './strings';
 import { CARDS, kindName } from './surface-labels';
 import type { ControlId } from './work-prefs.svelte';
 
-export type ControlGroupId = 'header' | 'composer' | 'sidebar' | 'panel';
+type ControlGroupId = 'header' | 'composer' | 'sidebar' | 'panel';
 
-export interface ControlEntry {
+interface ControlEntry {
   id: ControlId;
   label: string;
   /** A lucide icon, or the surface whose own icon the row draws. */

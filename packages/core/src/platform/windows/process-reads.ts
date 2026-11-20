@@ -182,7 +182,7 @@ export function createdAtOfPid(readApi: () => ProcessAccess | null, pid: number,
 }
 
 /** When the process was created, in ms since the Unix epoch. */
-export function createdAtOf(api: ProcessReads, handle: number): number | null {
+function createdAtOf(api: ProcessReads, handle: number): number | null {
   return creationIdentityOf(api, handle)?.startedAt ?? null;
 }
 

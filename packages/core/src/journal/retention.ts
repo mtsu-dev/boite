@@ -5,7 +5,7 @@ import { messageOfError } from './stream-buffer.ts';
 import { TRAIL_CURSOR } from './trail.ts';
 
 /** How long events are kept. The projections hold the state; events are the recent trail. */
-export const EVENT_RETENTION_MS = 30 * 86_400_000;
+const EVENT_RETENTION_MS = 30 * 86_400_000;
 /** How long the trail events (`TRAIL_ONLY`) written before they stopped are kept. */
 export const TRAIL_RETENTION_MS = 3 * 86_400_000;
 const RETENTION_FIRST_MS = 60_000;
@@ -16,7 +16,7 @@ const RETENTION_EVERY_MS = 86_400_000;
  * its batch to the time its last tick took (`Pace`): a slow disk or a busy
  * machine gets smaller batches, never longer ticks.
  */
-export const TICK_TARGET_MS = 40;
+const TICK_TARGET_MS = 40;
 
 /** A batch size that follows the time its last tick took, between `min` and `max`. */
 export class Pace {
@@ -38,13 +38,13 @@ export class Pace {
  * value is read alone. Cold pages on a loaded machine cost ten times warm
  * ones, so the pace never grows past what a cold tick reads in about 100 ms.
  */
-export const bytePace = (): Pace => new Pace(512 * 1024, 64 * 1024, 2 * 1024 * 1024);
+const bytePace = (): Pace => new Pace(512 * 1024, 64 * 1024, 2 * 1024 * 1024);
 /**
  * Rows a tick reads or deletes. A cold row costs up to about 45 µs on the
  * 4.2 GB journal: 2,000 keeps a tick under 100 ms when the pace has grown on
  * warm rows.
  */
-export const rowPace = (): Pace => new Pace(1_000, 100, 2_000);
+const rowPace = (): Pace => new Pace(1_000, 100, 2_000);
 /** Events a retention tick looks at: deleting one cold event cost up to 125 µs with its indexes. */
 export const eventPace = (): Pace => new Pace(500, 100, 600);
 

@@ -38,7 +38,7 @@ const SOURCE_TEXT: Record<AutonomousSource, string> = {
   delegation: 'the results of its subagents or a workflow', 'pull-request': 'news of a pull request', goal: 'the next turn of its goal',
 };
 /** What `admit` throws: the turn waits (`whenAdmitted`) or, for a resume, is dropped. */
-export const AGENT_HELD = 'agent-held';
+const AGENT_HELD = 'agent-held';
 export function isAgentHeld(error: unknown): boolean {
   return error instanceof RpcFailure && (error.data as { reason?: unknown } | undefined)?.reason === AGENT_HELD;
 }
@@ -115,7 +115,7 @@ export const EVENT_HEADER = 'Events from Boite about your desk and your projects
 const ROUTINE_MORE_ROOM = 160;
 
 /** The facts a routine carries, the latest per thread, with one line for the threads left out under the cap. */
-export function routinePrompt(facts: readonly Pick<AgentFact, 'key' | 'text'>[], others: number): string {
+function routinePrompt(facts: readonly Pick<AgentFact, 'key' | 'text'>[], others: number): string {
   const more = others > 0 ? `\n- ${others} other ${others === 1 ? 'thread' : 'threads'} changed too and ${others === 1 ? 'is' : 'are'} not listed here: \`boite threads\` shows them with your desk.` : '';
   return `${eventPrompt(facts)}${more}`;
 }

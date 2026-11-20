@@ -21,7 +21,7 @@ const RUN_MAX_BYTES = 4 * 1024 * 1024;
 const RUN_TIMEOUT_MS = 60_000;
 /** An agent command: how long it may run and how much of each stream comes back. */
 export const COMMAND_TIMEOUT_MS = PLUGIN_COMMAND_TIMEOUT_MS;
-export const COMMAND_OUTPUT_MAX_BYTES = 1024 * 1024;
+const COMMAND_OUTPUT_MAX_BYTES = 1024 * 1024;
 const COMMAND_ARGS_MAX = 256;
 const COMMAND_ARG_MAX_BYTES = 32 * 1024;
 

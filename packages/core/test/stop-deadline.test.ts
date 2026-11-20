@@ -6,7 +6,8 @@ import type { Driver, TurnContext, TurnResult } from '../src/drivers/types.ts';
 import type { SpawnedProcess } from '../src/procs.ts';
 import type { NativeProcessExit } from '../src/platform/types.ts';
 import type { ProcessRecord } from '@boite/contracts';
-import { STOP_DEADLINE, STOP_DEADLINE_ERROR } from '../src/threads/turn-runner.ts';
+import { STOP_DEADLINE } from '../src/threads/turn-runner.ts';
+import { STOP_DEADLINE_ERROR } from '../src/threads/turn-attempts.ts';
 import { echoThread, startTestCore, waitFor } from './harness.ts';
 import type { TestCore } from './harness.ts';
 

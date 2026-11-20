@@ -66,7 +66,8 @@ Keep this machine awake while agents work: the machine that runs the agents
 does not go to sleep while a turn runs or waits in the queue, even with the
 app closed. A conversation waiting for your answer does not keep it awake, and
 the screen may still turn off. It is on by default; the switch sits with
-Stop what agents leave running.
+Stop what agents leave running. On a machine with nothing to hold it awake
+(Linux without systemd), the switch says so under its name.
 
 ### Resource limits
 
@@ -79,21 +80,22 @@ Stop what agents leave running.
 - Memory reserved for other apps, MB: 0 uses 10% of RAM, at least 3072 MB.
   Below 12288 MB of RAM it uses 25%.
 
-When Boite stops a process, a card "Process stopped to free memory" appears
-beside the tool that was interrupted, with the reason and a Memory settings
-button. Only the owner changes these settings: a paired phone cannot.
+When Boite stops a process, a card "A process was stopped to free memory"
+appears in the notification corner, with the reason and a Memory settings
+button, whichever page or conversation is open. Close it with its X. Only the owner changes these settings: a paired phone cannot.
 
 ## On Linux and macOS
 
 - The memory guard works everywhere. The CPU cap, the foreground guard, the
-  audio mute and Stop what agents leave running are Windows only.
+  audio mute and Stop what agents leave running are Windows only. All four
+  are greyed out there, with "Works only on a Windows machine".
 - Boite tracks the processes it starts directly. A program that leaves its
   process group can keep running after its conversation stops.
 - On Linux, when a system memory limit slows a conversation's processes
   instead of failing them, Boite tells you and the agent in the chat. It
   stops nothing for that.
 - On macOS, an agent's memory is its processes' physical footprint, and an
-  agent's CPU is not available. The machine's CPU is still shown.
+  agent's CPU reads Not available. The machine's CPU is still shown.
 
 ## Going further
 

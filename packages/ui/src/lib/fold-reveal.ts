@@ -26,7 +26,7 @@ export function scrollerOf(node: Element): HTMLElement | null {
 }
 
 /** How far to scroll so `section` shows more of itself without its top leaving `scroller`. */
-export function revealDelta(section: DOMRect, scroller: DOMRect, paddingBottom = 0): number {
+function revealDelta(section: DOMRect, scroller: DOMRect, paddingBottom = 0): number {
   const below = section.bottom - (scroller.bottom - paddingBottom);
   const room = section.top - scroller.top - MARGIN;
   return Math.max(0, Math.min(below, room));

@@ -114,7 +114,7 @@ export const fr: Translation = {
     projectMissingBody: "Le dossier {path} n'existe plus : il a été supprimé, déplacé ou renommé. Remettez-le en place pour continuer ici, ou retirez le projet de Boite.",
     projectMissingCheck: 'Vérifier à nouveau',
     removeProjectTitle: 'Retirer {project} de Boite ?',
-    removeProjectBody: 'Ses fils partent avec lui. Les fichiers sur le disque restent où ils sont.',
+    removeProjectBody: 'Ses fils, leur historique et leur usage restent enregistrés : ajoutez le dossier à nouveau pour les retrouver. Les fichiers sur le disque restent où ils sont.',
     remove: 'Retirer',
     threadMenu: 'Actions du fil',
     unsentDraft: 'Brouillon non envoyé',

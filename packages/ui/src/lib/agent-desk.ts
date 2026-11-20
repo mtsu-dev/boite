@@ -70,7 +70,7 @@ export function runningTurn(thread: Pick<Thread, 'turns'> | null | undefined) {
 }
 
 /** A thread the bot is done with: merged, finished or archived. The rest it still handles. */
-export function deskDone(watch: Pick<AgentWatch, 'state' | 'stalledSince' | 'pullRequest'>): boolean {
+function deskDone(watch: Pick<AgentWatch, 'state' | 'stalledSince' | 'pullRequest'>): boolean {
   const state = deskState(watch);
   return state === 'merged' || state === 'done' || state === 'archived';
 }

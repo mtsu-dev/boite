@@ -119,7 +119,7 @@ function titleOf(record: Record): string | null {
 }
 
 /** Consumes records one at a time; `finish()` closes the tools no result reached. */
-export class TranscriptReader {
+class TranscriptReader {
   private readonly turns: TranscriptTurn[] = [];
   private agentTitle: string | null = null;
   private cwd: string | null = null;

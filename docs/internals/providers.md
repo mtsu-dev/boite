@@ -6,7 +6,7 @@ Boite runs and how to connect one, read [supported agents](../supported-agents.m
 ## Subscription proxy
 
 Settings, Providers offers an optional subscription proxy for Claude, Codex and
-both OpenCode versions, and for Grok when the gateway is Douane.
+both OpenCode versions, and for Grok and Antigravity when the gateway is Douane.
 Choose Douane or CLIProxyAPI, enter the gateway's API URL and its limits dashboard
 URL, enable the switch and save. The API URL accepts an origin or a path ending
 in `/v1`. Model discovery runs on the machine hosting the core. The agent's own
@@ -31,7 +31,7 @@ resume it under another ("This chat uses openai").
 
 While the proxy is enabled, Claude, Codex and both OpenCode versions show one account named
 after the gateway, Douane or CLIProxyAPI, with the API URL's origin, and so
-does Grok behind Douane. It has no rename,
+do Grok and Antigravity behind Douane. It has no rename,
 check, remove or add actions, and the provider row reads Ready · via Douane.
 The composer, delegation profiles, the default model and Limits show the same
 account. This account is a view in the UI, not a stored account. Threads,
@@ -49,8 +49,10 @@ Douane's default dashboard path is `/admin/#quotas`; CLIProxyAPI uses
 proprietary model stays in its own harness: Claude lists Claude models and
 Codex lists OpenAI models, whatever routing prefix the gateway gives them, while
 Grok and Muse models are listed by neither. Grok's models are listed by Grok
-alone, behind Douane. Gemini models are offered to both,
-because Antigravity, their own harness, cannot run through a gateway. Open
+alone, behind Douane. Gemini models are offered to both:
+Antigravity, their own harness, runs through Douane alone and lists them itself
+from the Gemini API (`/v1beta/models`), so behind CLIProxyAPI Claude and Codex
+are the only way to reach them. Open
 models (`gpt-oss`, Kimi, Qwen, Llama, DeepSeek, Mistral, GLM) are offered to
 each harness whose API the gateway advertises for them, under any routing
 prefix. A name the rules do not recognize takes its vendor from the routing
@@ -171,9 +173,29 @@ a sign-in means for Boite's own copy: [accounts](accounts.md#moving-a-login-to-d
 Which agents the proxy serves is decided per provider, not per protocol
 (`subscriptionProxyServes` in the contract): the Claude and Codex protocols
 whole, and both OpenCode versions by their ids, because ACP is also what
-Antigravity and other agents speak, and those keep their own configuration. Grok is served by
-its id too, and by Douane alone (`SUBSCRIPTION_PROXY_KIND_PROVIDERS`): behind
-CLIProxyAPI it keeps its own sign-in.
+other agents speak, and those keep their own configuration. Grok and
+Antigravity are served by their ids too, and by Douane alone
+(`SUBSCRIPTION_PROXY_KIND_PROVIDERS`): behind CLIProxyAPI they keep their own
+sign-in.
+
+Antigravity (agy 1.4.5) has a gateway mode of its own. The core points
+`GEMINI_HOME` at `<dataDir>/subscription-proxy/antigravity/<id>`, where `<id>`
+is the first 24 hex digits of the SHA-256 of the gateway's origin, and keeps
+`{"auth":{"type":"gateway"}}` in its `antigravity-acp/settings.json`.
+`AGY_LLM_GATEWAY_URL` carries the origin, without `/v1`, and
+`AGY_LLM_GATEWAY_API_KEY` the proxy key, sent as a bearer token. The agent then
+lists the gateway's models itself from `GET /v1beta/models?pageSize=1000` and
+runs turns on `POST /v1beta/models/<model>:streamGenerateContent?alt=sse`,
+which Douane serves from its pooled Google accounts. The core reads no OpenAI
+catalog for it. The account's own directory, with its `oauth-personal`
+settings and its sign-in, is not touched, so turning the proxy off gives the
+native sign-in back. The profile's shared skills are mirrored into the gateway
+home as into an account's. A conversation started under one home is not found
+under the other. A sign-in started while the proxy is on runs without its
+environment, so the token lands in the account's own directory, and the models
+its session lists stay out of the catalog, which keeps the gateway's. Turning the
+proxy on runs the startup account defaults again, so an installed agent it
+starts serving gets its default account back when its last one was removed.
 
 Grok moves to the gateway by its environment and stays the same agent. Its CLI
 lists the gateway's Grok models itself, from
@@ -307,8 +329,7 @@ Shipped descriptors and dependency manifests own version pins.
 
 A descriptor loads or is refused with the file, the field and what was expected.
 An unknown field is a refusal, a user file may not take a shipped id, and `roots`
-is checked before anything else. `providers.dryRun` validates a file and prints
-the plan without writing anything.
+is checked before anything else.
 
 ## The fields
 
@@ -900,13 +921,6 @@ Completions `image_url` part. OpenCode 1 stays at `images: false`: 1.19.2 also
 advertises images, but replaces one with an error text for a gateway model
 that declares no image input, which is every model the gateway block lists.
 
-`BOITE_E2E_OPENCODE2_BINARY=/absolute/path/to/opencode2 bun test packages/core/test/opencode2.compat.test.ts`
-uses the installed binary with a local API and disposable profiles. On 2.1.1
-it covers model discovery, a file-reading tool, cold resume, plan mode, stop
-and another turn while a version 1 database is locked and its plugin API is
-incompatible. It needs no login or external model. Windows and macOS remain
-unchecked by this run.
-
 ## A local ACP command
 
 The Providers page has a Local ACP command card for any agent that speaks ACP
@@ -931,8 +945,8 @@ in-memory client runs too) and refuses with the field it names (`name`,
 
 The core writes an ordinary user descriptor to `<dataDir>/providers/<id>.json`
 (`localAcpDescriptor` in `packages/core/src/providers/local-command.ts`) and
-reloads, so the loader, the ACP driver and `providers.dryRun` treat it like a
-file written by hand. It has no login and no isolation: the default account
+reloads, so the loader and the ACP driver treat it like a file written by
+hand. It has no login and no isolation: the default account
 starts the agent with its own sign-in and settings. Its only model is
 `default`, which leaves the agent on the model it is configured with until the
 models probe reads the agent's list. A file that fails to load is deleted again

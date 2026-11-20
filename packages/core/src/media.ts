@@ -40,7 +40,7 @@ function slotOf(partIndex: number, size: DisplaySize): number {
  * bytes of a larger copy. Null when Bun cannot decode it or refuses its size;
  * AVIF would be smaller still, but Bun's Linux build cannot encode it.
  */
-export async function makeDisplay(source: string | Uint8Array, size: DisplaySize = 'large'): Promise<Uint8Array | null> {
+async function makeDisplay(source: string | Uint8Array, size: DisplaySize = 'large'): Promise<Uint8Array | null> {
   if (typeof Bun.Image !== 'function') return null;
   const { max, quality } = DISPLAY_SIZES[size];
   try {
@@ -61,7 +61,7 @@ interface Job {
 }
 
 /** A ThumbHash render of the picture as a PNG data URL, or null when Bun cannot decode it or refuses its size. */
-export async function makePreview(data: string): Promise<string | null> {
+async function makePreview(data: string): Promise<string | null> {
   if (typeof Bun.Image !== 'function') return null;
   try {
     return await new Bun.Image(Buffer.from(data, 'base64'), { maxPixels: PREVIEW_MAX_PIXELS }).placeholder();

@@ -6,7 +6,7 @@ import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { PLUGIN_MANIFEST_FILE, type Account, type PluginManifest } from '@boite/contracts';
 import { connect } from '../src/client.ts';
 import { getDriver } from '../src/drivers/index.ts';
-import { parsePluginPool, verifyPluginDownload } from '../src/plugins.ts';
+import { parsePluginPool, verifyPluginDownload } from '../src/plugins/record.ts';
 import { ACTIVATION_FILE } from '../src/plugins/activation.ts';
 import { fetchManifest, refOfPath } from '../src/plugins/source.ts';
 import type { SpawnedProcess } from '../src/procs.ts';

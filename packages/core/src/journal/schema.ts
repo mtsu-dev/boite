@@ -18,7 +18,7 @@ import { createKeptProcesses } from './kept-processes.ts';
 import { createMessageStats } from './thread-stats.ts';
 import { ARTIFACT_ROW } from './artifact-references.ts';
 
-export const SCHEMA_VERSION = 51;
+export const SCHEMA_VERSION = 52;
 
 /** Raised when the journal was written by a newer core than this one. */
 export class JournalTooNewError extends Error {
@@ -189,7 +189,7 @@ export function migrate(db: Database, file: string): { from: number; to: number 
   }
   if (version < 10) { db.exec('ALTER TABLE threads ADD COLUMN speed TEXT'); version = 10; }
   // `foreign_keys` is off, so the REFERENCES ... ON DELETE CASCADE clauses below
-  // are dead and deleteThreadsOfProject clears these tables itself. Turning it
+  // are dead and deleteThreads clears these tables itself. Turning it
   // on first needs putThread and putTurn moved from INSERT OR REPLACE to
   // INSERT ... ON CONFLICT(id) DO UPDATE: a REPLACE deletes the old row, and the
   // cascade would wipe that thread's coordination rows and that turn's request
@@ -510,6 +510,12 @@ export function migrate(db: Database, file: string): { from: number; to: number 
   if (!hasColumn('turns', 'switched')) {
     db.exec('ALTER TABLE turns ADD COLUMN switched TEXT');
     version = 51;
+  }
+  // A removed project keeps its row, its threads and everything they wrote: it
+  // only leaves the lists, and adding its folder again brings it all back.
+  if (!hasColumn('projects', 'removed_at')) {
+    db.exec('ALTER TABLE projects ADD COLUMN removed_at INTEGER');
+    version = 52;
   }
   createSharedProjects(db);
   createSharedBoard(db);

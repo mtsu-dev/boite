@@ -70,7 +70,7 @@ export const HIDDEN_RELEASE_MS = 5 * 60_000;
  * chord with Shift or Alt, or on any other key, means nothing to a shell and
  * stays the app's.
  */
-export function shellOwnsKey(event: KeyboardEvent): boolean {
+function shellOwnsKey(event: KeyboardEvent): boolean {
   return event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && /^[a-z[\]\\^_@ ]$/i.test(event.key);
 }
 
@@ -114,7 +114,7 @@ function canDraw(): boolean {
  * Any CSS colour as `#rrggbb`, the only form xterm takes for a decoration.
  * A theme token can be `oklch(...)` or `color-mix(...)`: the canvas resolves it.
  */
-export function hexColour(colour: string, fallback: string): string {
+function hexColour(colour: string, fallback: string): string {
   if (/^#[0-9a-f]{6}$/i.test(colour)) return colour;
   probe ??= document.createElement('canvas').getContext('2d', { willReadFrequently: true });
   if (!probe || colour.length === 0) return fallback;

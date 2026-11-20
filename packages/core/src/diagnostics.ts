@@ -401,7 +401,7 @@ function threadLine(thread: DiagnosticThread): string {
 }
 
 /** The export: the sections a developer reads first, then the whole timeline, oldest first. */
-export function renderExport(summary: DiagnosticSummary, records: readonly CoreLogRecord[], tails: readonly { name: string; text: string }[]): string {
+function renderExport(summary: DiagnosticSummary, records: readonly CoreLogRecord[], tails: readonly { name: string; text: string }[]): string {
   const environment = summary.environment;
   const lines: string[] = [
     'Boite diagnostics',

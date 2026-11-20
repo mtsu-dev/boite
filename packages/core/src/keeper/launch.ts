@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
  * `--keeper`, which `compiled-main.ts` sends to the keeper before it loads
  * the core.
  */
-export function keeperCommand(dataDir: string, socketPath: string): string[] {
+function keeperCommand(dataDir: string, socketPath: string): string[] {
   const near = (path: string): string | null => {
     const file = fileURLToPath(new URL(path, import.meta.url));
     return existsSync(file) ? file : null;
@@ -35,7 +35,7 @@ export function keeperCommand(dataDir: string, socketPath: string): string[] {
 }
 
 /** The systemd user unit whose main process is this core, or null. */
-export async function ownUserUnit(): Promise<string | null> {
+async function ownUserUnit(): Promise<string | null> {
   if (process.platform !== 'linux' || !process.env['INVOCATION_ID']) return null;
   let cgroup: string;
   try { cgroup = readFileSync('/proc/self/cgroup', 'utf8'); } catch { return null; }
@@ -55,7 +55,7 @@ async function systemctl(args: string[]): Promise<string | null> {
 }
 
 /** `MemoryHigh`, `MemoryMax` and `CPUWeight` of the unit, as `systemd-run --property` arguments. Unset ones are left out. */
-export function unitLimits(show: string): string[] {
+function unitLimits(show: string): string[] {
   const out: string[] = [];
   for (const line of show.split('\n')) {
     const match = /^(MemoryHigh|MemoryMax|CPUWeight)=(\d+)$/.exec(line.trim());
@@ -64,7 +64,7 @@ export function unitLimits(show: string): string[] {
   return out;
 }
 
-export function keeperUnitName(socketPath: string): string {
+function keeperUnitName(socketPath: string): string {
   return basename(socketPath).replace(/\.sock$/, '').replace(/[^A-Za-z0-9_.-]/g, '-').replace(/^keeper-/, 'boite-keeper-');
 }
 

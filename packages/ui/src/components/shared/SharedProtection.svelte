@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { markFeature } from '@boite/contracts';
   import type { SharedFileOverride, SharedProjectScope, SharedProjectView, SharedReviewConfig } from '@boite/contracts';
   import type { Choice, PickPatch, Store } from '../../lib/store.svelte';
   import { errorText } from '../../lib/errors';
@@ -60,8 +59,6 @@
     catch (e) { error = errorText(e); }
     finally { busy = false; }
   }
-  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
-  markFeature('boite-feature:contacts');
 </script>
 
 <section class="protection" data-testid="shared-protection">

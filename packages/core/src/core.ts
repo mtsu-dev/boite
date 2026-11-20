@@ -239,7 +239,7 @@ export class Core {
   /** What the user's own hooks did since this core started, for Settings. */
   readonly hooks: HookLedger;
   readonly terminals: TerminalStore;
-  /** Agent sessions on the keeper, with `BOITE_KEEPER=1` (`keeper/kept-agents.ts`). */
+  /** Agent sessions on the keeper, null with `BOITE_KEEPER=0` or on Windows (`keeper/kept-agents.ts`). */
   readonly keptAgents: KeptAgents | null;
   readonly secrets: SecretStore;
   readonly stopArtifactRetention: () => Promise<void>;
@@ -497,7 +497,9 @@ export class Core {
     this.procs.applySettings(this.settings.get());
     // `BOITE_KEEP_AWAKE=0`: tests and a host that must never be held awake by this core.
     const platformHold = this.procs.platform.keepAwake;
-    this.keepAwake = new KeepAwake(this, options.keepAwake ?? (process.env.BOITE_KEEP_AWAKE === '0' || !platformHold ? null : onLost => platformHold(onLost)));
+    const platformAvailable = this.procs.platform.keepAwakeAvailable;
+    this.keepAwake = new KeepAwake(this, options.keepAwake ?? (process.env.BOITE_KEEP_AWAKE === '0' || !platformHold ? null : onLost => platformHold(onLost)),
+      undefined, options.keepAwake === undefined && platformAvailable ? () => platformAvailable() : undefined);
     dropRetiredAccounts(this);
     this.accounts.ensureDefaults();
     this.accounts.recheckSignedOut();

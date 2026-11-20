@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { markFeature } from '@boite/contracts';
   import type { Snippet } from 'svelte';
   import type { ThreadId } from '@boite/contracts';
   import { Closing } from '../../lib/closing.svelte';
@@ -57,8 +56,6 @@
     event.preventDefault();
     open(true);
   }
-  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
-  markFeature('boite-feature:contacts');
 </script>
 
 <span class="choice">

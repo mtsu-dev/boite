@@ -64,7 +64,7 @@ function readForwarded(value: unknown): Forwarded {
 }
 
 /** The kinds a device chose, each once, in the settings' order. */
-export function validateKinds(value: unknown, method: string): NotificationKind[] {
+function validateKinds(value: unknown, method: string): NotificationKind[] {
   if (!Array.isArray(value) || value.some(kind => !NOTIFICATION_KINDS.includes(kind))) {
     throw invalidParams(`${method} kinds must be a list of ${NOTIFICATION_KINDS.join(', ')}`, { field: 'kinds', expected: NOTIFICATION_KINDS });
   }

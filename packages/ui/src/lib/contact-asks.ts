@@ -7,13 +7,13 @@ import type { Store } from './store.svelte';
  * (`CoordinationView.requests`): what it asked the Contacts bot, and on the
  * bot's own thread what it forwarded to a contact and what it settled for one.
  */
-export type AskRole = 'asked' | 'forwarded' | 'settled';
+type AskRole = 'asked' | 'forwarded' | 'settled';
 /**
  * Where a request stands: kept on this member for the group's Bots machine
  * (`host`), with the Contacts bot (`bot`), waiting for the owner's card
  * (`owner`), sent on to the contact (`sent`), then `answered` or `refused`.
  */
-export type AskState = 'host' | 'bot' | 'owner' | 'sent' | 'answered' | 'refused';
+type AskState = 'host' | 'bot' | 'owner' | 'sent' | 'answered' | 'refused';
 export interface ContactAsk {
   /** The timeline row's id, `contact-request:<direction>:<id>`. */
   id: string;
@@ -26,7 +26,7 @@ export interface ContactAsk {
 
 const PREFIX = 'contact-request:';
 
-export function askState(request: ContactRequest): AskState {
+function askState(request: ContactRequest): AskState {
   if (request.status === 'accepted') return 'answered';
   if (request.status === 'refused') return 'refused';
   return request.stage ?? 'sent';

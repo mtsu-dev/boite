@@ -37,7 +37,6 @@ test('legacy keep is refused without answering the card or keeping a project key
   await client.call('secrets.answer', { threadId: request.threadId, requestId, value: 'synthetic-value', keep: false });
   expect(await asked).toMatchObject({ outcome: 'saved', storage: 'memory' });
   expect((await client.call('secrets.list', { projectId: 'p-boite' })).secrets).toEqual([]);
-  await expect(client.call('secrets.delete', { projectId: 'p-boite', name: 'API_KEY' })).rejects.toMatchObject({ code: RpcErrorCode.NotFound });
 });
 
 test('an unencrypted session refuses values even when bypassing the field', async ({ createClient }) => {

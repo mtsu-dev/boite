@@ -11,7 +11,7 @@ async function machine(id: string, name: string): Promise<FakeClient> {
   const client = new FakeClient({ delayMs: 0, coreId: id, coreName: name, publicUrl: `https://${id}.test` });
   clients.push(client);
   await client.connect();
-  client.reportDesktopExperiments(['teams']);
+  client.reportDesktopExperiments([]);
   return client;
 }
 

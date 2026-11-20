@@ -467,7 +467,7 @@ const LARGE_CHARS = 4 * 1024;
  * and lengths of the large fields tell most changes apart for nothing, the
  * large strings are compared directly, and only the small rest is stringified.
  */
-export function samePart(left: MessagePart, right: MessagePart): boolean {
+function samePart(left: MessagePart, right: MessagePart): boolean {
   if (left === right) return true;
   const a = left as unknown as Record<string, unknown>, b = right as unknown as Record<string, unknown>;
   if (a.type !== b.type || a.status !== b.status) return false;

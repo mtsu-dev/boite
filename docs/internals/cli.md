@@ -495,8 +495,10 @@ boite preview-close <file.html>    stop serving that preview
 boite show <file>[:line]         open the file in the panel, at that line
 boite diff [file]                open the changes surface, or one file's diff
 boite browse <url>               open the url in a new tab of this conversation's browser (http, https)
-boite open trace|tasks|changes|files [dir]
+boite open trace|tasks|changes|files|workflow [dir|run-id]
 boite status                     git status: branch, upstream, one row per change
+boite journal-check [table rowid] [--limit <n>]
+                                 read-only journal diagnostics, owner only (see Diagnostics)
 boite ask <question> [option ...] [--multiple] [--open <url>]
 boite secret list
 boite secret ask <NAME> --why <reason> [--placeholder <example>] [--timeout <minutes>]
@@ -568,7 +570,7 @@ parent's checkout ([delegation](delegation.md#children-in-their-own-worktree)).
 `delegate wait` returns `needs_input` as soon as a child asks something
 ([delegation](delegation.md#questions-from-a-child)).
 
-`delegate council`, behind the Council experiment, has 2 to 6 models (three
+`delegate council` has 2 to 6 models (three
 providers by default) review one request alone and read-only, each with a score
 out of 10, while the user can follow in the salon; `--timeout` sets the minutes
 a round may last, 30 by default. `--models a:<effort>,b:<effort>` gives each
@@ -584,8 +586,8 @@ Coordination commands are documented in [coordination](coordination.md#agent-com
 child controls in [delegation](delegation.md#agent-commands), and plan/output
 commands in [workflows](workflows.md#commands).
 
-`team` lets a mochi talk with the other mochis of its teams, behind the Teams
-experiment: group or private posts, reading, and cards that ask the owner to
+`team` lets a mochi talk with the other mochis of its teams: group or
+private posts, reading, and cards that ask the owner to
 create, join or leave a team ([teams](teams.md#commands)).
 
 Mochis schedule work from their own conversation. `mochi schedule` accepts `name`, `prompt`, `schedule` and an optional `check`
@@ -830,8 +832,8 @@ or claimed cards, with the count in the refusal; the user's adds have no limit.
 
 `goal track` starts a reviewed goal on the agent's own thread whose objective is
 the user's last prompt (a steer included), verbatim, and, on a project thread that is not incognito, a linked card on the project board. It is
-refused unless the desktop app has the Automatic goals experiment on, while a
-goal or a loop is under way, and when that prompt already started a goal
+refused when the owner turned automatic goals off on this machine (`autoGoals`,
+reason `auto-goals-off`), while a goal or a loop is under way, and when that prompt already started a goal
 ([automatic goals](goals.md#automatic-goals)).
 
 `ask` draws a question card in the thread without stopping the agent: the
@@ -860,8 +862,8 @@ each: key, value as JSON, the page and card it sits on and, quoted, the name
 that app shows (`agentCpuCapPercent 75 resources#limits "Plafond CPU de tous
 les agents"`). The list is `REQUESTABLE_SETTINGS` in
 `packages/contracts/src/setting-requests.ts`, then that app's experiments as
-`experiment.<id>` (`experiment.whip true experiments#whip "Whip"`), the
-experiments its build still has a switch for; credentials, account ids and browser profiles are not in it.
+`experiment.<id>` (`experiment.<id> true experiments#<id> "<name>"`), the
+experiments its build still has a switch for, none today; credentials, account ids and browser profiles are not in it.
 
 Language, experiments and names come from the apps: each says them after every
 hello and on every change (`client.preferences`, a paired phone included), with
@@ -879,7 +881,7 @@ way `ask` draws a question: the agent keeps working and the card outlives the
 turn and a restart. The value is JSON when it parses (`60`, `false`, `null`,
 `["https://a.example"]`) and the bare word otherwise. It is refused when the
 key is not in the list (the refusal lists them), when `settings.set` would
-refuse the value, when the setting already holds it (`experiment.whip
+refuse the value, when the setting already holds it (`deviceStream
 is already true`: the agent learns the state before the user has to say it),
 when a card on that key is already open in the thread, and for an experiment
 when the value is not true or false or no app has reported yet.
@@ -1162,6 +1164,16 @@ issue would be public and signed by the owner's GitHub login, so the agent
 gives the user the link and the user submits it, or submits it from
 Settings > Diagnostics. [Trace](trace.md#structured-diagnostics)
 owns the record format, rotation, anonymization and query bounds.
+
+`boite journal-check` reads the journal for broken rows without changing
+anything (`journal.inspect`): a message or a turn whose thread is gone, a turn
+filed under another thread, a message still streaming after its turn ended,
+JSON that does not parse or is too large, and similar. It prints how many rows
+it checked and one line per issue, at most 100 rows a page (`--limit`, up to
+200). When rows remain it prints the command for the next page, `boite
+journal-check <table> <rowid>`. It is owner only: from the owner's terminal
+it needs no thread, and inside a thread's agent environment it is refused.
+`--json` keeps the result.
 
 ## Where the command lives
 

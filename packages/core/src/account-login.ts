@@ -9,10 +9,11 @@ import { join } from 'node:path';
 import type { Account, ProviderDescriptor } from '@boite/contracts';
 import type { Core } from './core.ts';
 import type { AcpLoginCatalog } from './drivers/acp/login.ts';
-import { rememberSessionModels } from './drivers/index.ts';
+import { forgetProbes, rememberSessionModels } from './drivers/index.ts';
 import { launchTemp } from './drivers/launch-temp.ts';
 import { messageOf } from './errors.ts';
 import { removeDir } from './fs-retry.ts';
+import { activeSubscriptionProxy } from './subscription-proxy.ts';
 
 export interface LoginFolders {
   /** The empty folder the catalog session opens in, as a probe's does. */
@@ -51,7 +52,9 @@ export function loginFolders(core: Core, account: Account, provider: ProviderDes
  * that announced the signed-in account: that announcement drops the list the
  * account had, and a picker asking next finds this one instead of starting the
  * agent again. A sign-in that read none says why in the log; the next look at
- * the models probes as before.
+ * the models probes as before. While a subscription proxy serves the provider,
+ * the agent runs on the proxy's models, not on the ones its own sign-in lists:
+ * that list stays out of the catalog.
  */
 export async function publishLoginCatalog(
   core: Core,
@@ -61,6 +64,7 @@ export async function publishLoginCatalog(
   threadId: string,
 ): Promise<void> {
   const context = { source: provider.id, event: 'provider.loginCatalog', threadId };
+  if (activeSubscriptionProxy(core, provider) !== null) return;
   if (catalog.created === null) {
     if (catalog.error !== null) core.logs.record('warn', `The ${provider.name} sign-in did not list its models: ${catalog.error}`, context);
     return;
@@ -68,6 +72,11 @@ export async function publishLoginCatalog(
   try {
     const models = await rememberSessionModels(provider, account.id, catalog.created);
     if (models === null || core.journal.isClosed() || core.journal.getAccount(account.id)?.status !== 'ok') return;
+    // The proxy came on while the list was read: what the driver kept is the native one.
+    if (activeSubscriptionProxy(core, provider) !== null) {
+      forgetProbes({ providerId: provider.id, accountId: account.id });
+      return;
+    }
     core.bus.emit('providers.probed', { providerId: provider.id, accountId: account.id, models, probedAt: Date.now() });
     core.logs.record('info', `The ${provider.name} sign-in listed ${models.length} models`, { ...context, data: { models: models.length } });
   } catch (error) {

@@ -124,11 +124,11 @@ export { IMAGE_MIME_TYPES, IMAGE_MAX_EDGE, ATTACHMENT_MAX_BYTES, ATTACHMENTS_PER
 export type { ImageMimeType } from './attachment-limits.ts';
 
 export { PREVIEW_REFERENCES_PER_TURN, previewReferencesError, previewPrompt } from './preview';
-export { previewToolOutputs, previewToolPart, inputPreview, longerThan, TOOL_OUTPUT_INLINE_CHARS, TOOL_OUTPUT_PREVIEW_CHARS, TOOL_OUTPUT_FOLDED_CHARS, TOOL_INPUT_INLINE_CHARS, TOOL_INPUT_PREVIEW_CHARS, TOOL_DOCUMENTS_INLINE_CHARS } from './message-preview';
+export { previewToolOutputs, previewToolPart, TOOL_OUTPUT_INLINE_CHARS, TOOL_OUTPUT_PREVIEW_CHARS } from './message-preview';
 export { forTransport, projectLiveMessage, projectLivePart, projectMessage, MESSAGE_SENT_MAX_BYTES, type TransportOptions } from './transport.ts';
 export { boundedMessageWindow } from './message-window.ts';
-export { STREAM_CHANNELS, StreamGate, partChannel, streamChannelsProblem, withoutLiveOutput, type StreamChannel } from './stream-channels.ts';
-export { lastAgentText, notificationExcerpt, requestExcerpt, requestKind, NOTIFICATION_TEXT_CHARS } from './notification-text';
+export { StreamGate, partChannel, type StreamChannel } from './stream-channels.ts';
+export { lastAgentText, notificationExcerpt, requestExcerpt, requestKind } from './notification-text';
 export { nativeAgentsOfTool, collectNativeAgents } from './native-agents.ts';
 export { collectProcessAgents, processAgentCommand } from './process-agents.ts';
 
@@ -225,54 +225,51 @@ export interface RpcEvents extends
 export type RpcEventName = keyof RpcEvents;
 
 export { attachmentError, answerAttachmentError, decodedBytes } from './attachment-validation.ts';
-export { AUTO_COMPACT_MOMENTS, AUTO_COMPACT_TOKENS, DEFAULT_AUTO_COMPACT, AUTO_GOAL_MIN_CHARS, BROWSER_ORIGINS_MAX, CACHE_KEEPALIVE_HOURS, MODEL_FAVORITES_MAX, checkSettingsPatch, compareModelFavorites, keepLaterFavorites, type AutoCompact, type AutoCompactMoment, type CacheKeepalive, type SettingsPatchCheck } from './settings-validation.ts';
-export { checkRpcParams, type RpcParamsCheck } from './rpc-params.ts';
-export { TITLE_MODEL_DEFAULTS, defaultTitleModel, newestModel } from './title-models.ts';
-export { ChangeLog, LIST_CHANGES_IDS, listCursorProblem } from './list-changes.ts';
-export { GOAL_TRACKER_DEFAULTS, GOAL_CHECKLIST_MAX_ITEMS, GOAL_CHECKLIST_SOURCE_MAX, GOAL_CHECKLIST_TEXT_MAX, defaultTrackerModel, trackerEffort, type GoalTrackerRule } from './goal-tracker.ts';
-export { DEVICE_METHODS, DEVICE_EVENTS, AGENT_EVENTS, AGENT_METHODS, SUBSCRIBED_EVENTS, accessRefusal, agentHearsEvent, pluginMayCall, pluginMayHear, deviceBound, deviceDiffRef, eventThreadId, mayHearEvent, PLUGIN_SELF_EVENTS, PLUGIN_SELF_METHODS, pluginSelfCall, type AccessRefusal, type Caller } from './access.ts';
+export { AUTO_COMPACT_MOMENTS, AUTO_COMPACT_TOKENS, DEFAULT_AUTO_COMPACT, AUTO_GOAL_MIN_CHARS, CACHE_KEEPALIVE_HOURS, MODEL_FAVORITES_MAX, checkSettingsPatch, compareModelFavorites, keepLaterFavorites, type AutoCompact, type AutoCompactMoment, type CacheKeepalive } from './settings-validation.ts';
+export { checkRpcParams } from './rpc-params.ts';
+export { defaultTitleModel } from './title-models.ts';
+export { ChangeLog, listCursorProblem } from './list-changes.ts';
+export { GOAL_TRACKER_DEFAULTS, GOAL_CHECKLIST_MAX_ITEMS, GOAL_CHECKLIST_SOURCE_MAX, GOAL_CHECKLIST_TEXT_MAX, defaultTrackerModel, trackerEffort } from './goal-tracker.ts';
+export { DEVICE_METHODS, DEVICE_EVENTS, AGENT_EVENTS, AGENT_METHODS, SUBSCRIBED_EVENTS, accessRefusal, agentHearsEvent, pluginMayCall, deviceBound, eventThreadId, mayHearEvent, PLUGIN_SELF_EVENTS, type Caller } from './access.ts';
 export {
-  AGENTS_ALONE_SECTION, APP_LANGUAGES, CLIENT_APP_PATTERN, CLIENT_LABELS_MAX, CLIENT_LABEL_CHARS, MACHINE_SETTINGS, PLUGIN_ADD_SECTION, REQUESTABLE_SETTINGS, REQUESTABLE_SETTING_KEYS, SETTING_REASON_MAX, SETTINGS_PAGES, SETTINGS_SECTION_PATTERN,
-  botCard, checkClientPreferences, checkSettingRequest, settledExperiment, currentSetting, effectiveSetting, experimentOf, isExperimentKey, isMachineSetting, isRequestableSetting, isSettingsPage, readSettings,
-  sameClientPreferences, sameSetting, settingAnswerText, settledMachineSetting, settledSetting,
-  type AppLanguage, type BotAsk, type ClientPreferences, type ExperimentSettingKey, type MachineSetting, type RequestableKey, type RequestableSetting, type SettingAsk, type SettingCardAsk,
-  type SettingMachine, type SettingNormalizer, type SettingOutcome, type SettingPlace, type SettingReading, type SettingRequestCheck, type SettingRequestParams, type SettingsPage,
+  APP_LANGUAGES, MACHINE_SETTINGS, PLUGIN_ADD_SECTION, REQUESTABLE_SETTINGS, REQUESTABLE_SETTING_KEYS, SETTINGS_PAGES, botCard, checkClientPreferences, checkSettingRequest, settledExperiment, currentSetting, effectiveSetting, experimentOf, isExperimentKey, isMachineSetting, isSettingsPage, readSettings,
+  sameClientPreferences, settingAnswerText, settledMachineSetting, settledSetting,
+  type BotAsk, type ClientPreferences, type MachineSetting, type RequestableKey, type RequestableSetting, type SettingAsk, type SettingCardAsk,
+  type SettingMachine, type SettingReading, type SettingRequestParams, type SettingsPage,
   type SettingsReading,
 } from './setting-requests.ts';
 export {
-  BUILD_KINDS, BUILD_KIND_NAMES, COMPILED_BUILD_KIND, EXPERIMENTAL_SETTINGS_STAGE, FEATURE_CUTS, buildKindOf, featureCompiled, featureDefines, featureFlag, featureMarker, markFeature, loadedFeatures, featureRuns, stageRuns,
-  EXPERIMENT_IDS, EXPERIMENT_STAGES, EXPERIMENTAL_SETTINGS, effectiveExperiments, experimentListed, experimentRefusal, experimentStartRefusal, experimentalSettingRefusal, experimentsRun, holdExperimentalSettings, keepStoredExperimentalSettings,
-  isExperimentId, isExperimentalSetting, isReleaseVersion, listedExperiments,
-  type BuildKind, type ExperimentId, type ExperimentalSetting, type FeatureStage,
+  BUILD_KINDS, FEATURE_CUTS, buildKindOf, featureCompiled, featureDefines, featureFlag, featureMarker, markFeature, stageRuns,
+  EXPERIMENT_IDS, EXPERIMENT_STAGES, FINISHED_EXPERIMENT_IDS, withFinished, effectiveExperiments, experimentListed, experimentRefusal, experimentStartRefusal, experimentsRun,
+  isReleaseVersion, listedExperiments,
+  type BuildKind, type ExperimentId, type FeatureStage, type FinishedExperimentId,
 } from './experiments.ts';
 export {
-  AGENT_AVATAR_MAX, AGENT_DAILY_BUDGET, AGENT_DOMAIN_MAX, AGENT_INSTRUCTIONS_MAX, AGENT_NAME_MAX, AGENT_PICTURE_CODE, AGENT_PICTURE_MAX_BYTES, AGENT_PICTURE_TYPES,
+  AGENT_DAILY_BUDGET, AGENT_PICTURE_CODE, AGENT_PICTURE_MAX_BYTES, AGENT_PICTURE_TYPES,
   AGENT_PROJECTS_MAX, AGENT_SETTING_KEYS, AGENT_STATUSES, isAgentPicture,
-  agentModelRef, agentModelRoute, agentProjectIds, agentSettingAnswerText, agentSettingProposal, agentSettingValue, builtinSettingRefusal, checkAgentSettingRequest, isAgentSettingKey,
-  normalizeAgentSetting, settledAgentSetting,
+  agentModelRoute, agentSettingAnswerText, agentSettingProposal, agentSettingValue, builtinSettingRefusal, checkAgentSettingRequest, normalizeAgentSetting, settledAgentSetting,
   type AgentSettingApplyParams, type AgentSettingAsk, type AgentSettingChoice, type AgentSettingContext, type AgentSettingKey, type AgentSettingReading,
-  type AgentSettingRequestCheck, type AgentSettingRequestParams, type AgentSettingsReading, type AgentSettingsReadParams,
+  type AgentSettingRequestParams, type AgentSettingsReading, type AgentSettingsReadParams,
 } from './agent-setting-requests.ts';
 export {
   BOT_CARD_NOTE, checkAgentCreate,
-  type AgentCreateApproveParams, type AgentCreateAsked, type AgentCreateCheck, type AgentCreateContext, type AgentCreated, type AgentCreateParams, type AgentCreateResult, type AgentCreation,
+  type AgentCreateApproveParams, type AgentCreateAsked, type AgentCreateContext, type AgentCreated, type AgentCreateParams, type AgentCreateResult, type AgentCreation,
 } from './agent-create.ts';
-export { SPEECH_CATALOGUE, SPEECH_CUSTOM_ID, SPEECH_DEFAULT_MODEL, isSpeechModelId, speechUrlProblem, type SpeechCatalogueModel, type SpeechModelTier, type SpeechBackend } from './speech-models.ts';
+export { SPEECH_CATALOGUE, SPEECH_CUSTOM_ID, SPEECH_DEFAULT_MODEL, isSpeechModelId, speechUrlProblem, type SpeechCatalogueModel } from './speech-models.ts';
 
 export { sideQuestionSnapshot } from './side-question-snapshot.ts';
 export { deriveThreadCapabilities, protocolSupportsSteering, type ThreadCapabilitySnapshot } from './thread-capabilities.ts';
 export { resumeAnchor, snapshotOptionsProblem } from './thread-sync.ts';
-export { IMAGE_INLINE_CHARS, previewFileData, previewImageData, type ImagePreviews } from './file-preview.ts';
+export { previewImageData, type ImagePreviews } from './file-preview.ts';
 export { imageSize } from './image-size.ts';
 export {
-  VIEW_ROUTE, VIEW_MAX_BYTES, VIEW_BLOCK_MAX_BYTES, VIEW_WIDTH, VIEW_NARROW_WIDTH, VIEW_BLEED, VIEW_NARROW_BELOW, VIEW_MIN_HEIGHT, VIEW_MAX_HEIGHT, VIEW_DEFAULT_HEIGHT, VIEW_TITLE_MAX,
+  VIEW_ROUTE, VIEW_MAX_BYTES, VIEW_BLOCK_MAX_BYTES, VIEW_WIDTH, VIEW_NARROW_WIDTH, VIEW_BLEED, VIEW_DEFAULT_HEIGHT, VIEW_TITLE_MAX,
   VIEW_CONTENT_POLICY, VIEW_SANDBOX, VIEW_TOKENS, VIEW_HEIGHT_EXPRESSION, VIEW_GUIDE_LINE, VIEW_HELP,
   clampViewHeight, viewFrameHeight, viewThemeFragment, readViewMessage, viewDocument, viewTitleOf,
-  type InlineView, type ViewCheckCapture, type ViewTheme, type ViewHostMessage, type ViewPageMessage,
-} from './view.ts';
+  type InlineView, type ViewCheckCapture, type ViewTheme, type ViewHostMessage, } from './view.ts';
 
 export { effectiveCompaction, type CompactionTarget, type CompactionPolicy } from './settings';
 
-export { composerBatch, type ComposerBatch } from './composer-batch';
+export { composerBatch } from './composer-batch';
 export { composerActivity, isComposerActivity, stableComposerValue } from './composer-activity';
 export { permissionAutoDecision } from './permissions';
