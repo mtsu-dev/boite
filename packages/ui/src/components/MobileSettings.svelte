@@ -34,6 +34,8 @@
   import CompactionSettings from './CompactionSettings.svelte';
   import SettingsPageHeader from './SettingsPageHeader.svelte';
   import SettingsSection from './SettingsSection.svelte';
+  import CacheKeepaliveSettings from './CacheKeepaliveSettings.svelte';
+  import DeviceStreamSettings from './DeviceStreamSettings.svelte';
   import PolicyBanner from './PolicyBanner.svelte';
   import PolicyLock from './PolicyLock.svelte';
   import PolicySettings from './PolicySettings.svelte';
@@ -301,10 +303,12 @@
         </div>
       {:else if shown === 'advanced'}
         <div class="page index" data-testid="mobile-settings-advanced">
-          <!-- Compaction is the one card of System a phone carries, under the machine it changes. -->
+          <!-- The cards of System a phone carries, under the machine they change: the prompt cache, compaction and the Device panel's stream. -->
           {#if target.owner}
             {#if bar}<div class="bar inline">{@render bar()}</div>{/if}
+            <CacheKeepaliveSettings store={target} />
             <div class="card-slot" id="settings-auto-compact"><CompactionSettings store={target} /></div>
+            <DeviceStreamSettings store={target} />
           {/if}
         </div>
       {:else if shown === 'accounts' && target.owner}
@@ -343,7 +347,7 @@
       {:else if shown === 'plugins' && target.owner}
         <PluginsPage store={target} />
       {:else if shown === 'experiments'}
-        <ExperimentsPage {store} {target} {bar} />
+        <ExperimentsPage />
       {:else if shown === 'diagnostics' && target.owner}
         <div class="stack">
           <DiagnosticsPage store={target} {onopenthread} />

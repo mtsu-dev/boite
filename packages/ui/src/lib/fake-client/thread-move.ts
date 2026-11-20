@@ -13,7 +13,7 @@ export function fakeMoveNote(from: MoveEnd, to: MoveEnd, branch: string | null):
 }
 
 /** What the history of a thread the agent moved itself says, as the core's `agentMoveNote`. */
-export function fakeAgentMoveNote(from: MoveEnd, to: MoveEnd, branch: string | null): string {
+function fakeAgentMoveNote(from: MoveEnd, to: MoveEnd, branch: string | null): string {
   return `You moved this thread from project ${from.name} (${from.cwd}) to project ${to.name} (${to.cwd}). Your working directory is now ${whereOf(to, branch)}.`;
 }
 

@@ -15,22 +15,11 @@ import type { Store } from './store.svelte';
 /** Files dropped on the shell window, wherever they land (`lib/native-drop.ts`). */
 export { receiveDroppedFiles } from './native-drop';
 
-export interface Holder {
-  /** What is attached now, read again before each file: a removal made meanwhile counts. */
-  held(): Attachment[];
-  /** One attachment that passed every cap. */
-  add(attachment: Attachment): void;
-  /** Held attachments swapped for the lighter copies a fitted turn made of them (`lib/turn-fit.ts`). */
-  replace(lighter: Map<Attachment, Attachment>): void;
-  /** Null when images go anywhere, as files given with an answer do. */
-  noImages: { provider: string } | null;
-  codec?: ImageCodec;
-  /** The box the files go to: their fit waits for any other running there (`lib/turn-fit.ts`). */
-  box?: object;
-}
+/** Null when images go anywhere; else the provider that takes none, named in the refusal. */
+type NoImages = { provider: string } | null;
 
 /** Why a file cannot even start: `stop` when no later file can either. */
-function admission(file: File, held: Attachment[], noImages: Holder['noImages']): { refused: string; stop: boolean } | null {
+function admission(file: File, held: Attachment[], noImages: NoImages): { refused: string; stop: boolean } | null {
   if (held.length >= ATTACHMENTS_PER_TURN) {
     return { refused: fill(strings.composer.attachTooMany, { name: file.name, max: String(ATTACHMENTS_PER_TURN) }), stop: true };
   }
@@ -46,7 +35,7 @@ function admission(file: File, held: Attachment[], noImages: Holder['noImages'])
  * against `held`. The byte total is left to the caller, which fits the turn
  * when the file passes it (`lib/turn-fit.ts`).
  */
-async function readFile(file: File, held: () => Attachment[], noImages: Holder['noImages'], codec?: ImageCodec): Promise<{ attachment: Attachment } | { refused: string }> {
+async function readFile(file: File, held: () => Attachment[], noImages: NoImages, codec?: ImageCodec): Promise<{ attachment: Attachment } | { refused: string }> {
   // Without image input nothing becomes an image: a HEIC, BMP or TIFF goes as the file it is.
   let ready = file;
   if (noImages === null && isReducible(file)) {
@@ -87,54 +76,6 @@ async function fitWith(held: () => Attachment[], incoming: Attachment[], codec?:
 
 function same(one: Attachment[], other: Attachment[]): boolean {
   return one.length === other.length && one.every((attachment, at) => other[at] === attachment);
-}
-
-/**
- * Files read into attachments one at a time. Files go in as they are read
- * while the turn stays under its byte total; the ones after that wait for the
- * rest of the batch, and the turn is fitted once with them (`fitWith`), the
- * images already held included. A refused file says why and the rest go on.
- * Returns the first reason, or null. `lib/attachments.ts` owns the caps.
- */
-export async function gatherAttachments(files: File[], holder: Holder): Promise<string | null> {
-  let refused: string | null = null;
-  const refuse = (message: string): void => { refused ??= message; };
-  const waiting: { attachment: Attachment; name: string }[] = [];
-  for (const file of files) {
-    const denied = admission(file, [...holder.held(), ...waiting.map(item => item.attachment)], holder.noImages);
-    if (denied) {
-      refuse(denied.refused);
-      if (denied.stop) break;
-      continue;
-    }
-    const result = await readFile(file, () => holder.held(), holder.noImages, holder.codec);
-    if ('refused' in result) refuse(result.refused);
-    else if (waiting.length > 0 || passesTotal(holder.held(), result.attachment)) waiting.push({ attachment: result.attachment, name: file.name });
-    else holder.add(result.attachment);
-  }
-  if (waiting.length > 0) {
-    const admit = (): Promise<void> => admitFitted(waiting, holder, refuse);
-    await (holder.box ? queued(holder.box, admit) : admit());
-  }
-  return refused;
-}
-
-/** The files past the byte total, in once the whole turn is fitted, as many as it then holds. */
-async function admitFitted(waiting: { attachment: Attachment; name: string }[], holder: Holder, refuse: (message: string) => void): Promise<void> {
-  const fitted = await fitWith(() => holder.held(), waiting.map(item => item.attachment), holder.codec);
-  if (fitted.lighter.size > 0) holder.replace(fitted.lighter);
-  waiting.forEach((item, at) => {
-    const attachment = fitted.incoming[at]!;
-    if (holder.held().length >= ATTACHMENTS_PER_TURN) {
-      refuse(fill(strings.composer.attachTooMany, { name: item.name, max: String(ATTACHMENTS_PER_TURN) }));
-      return;
-    }
-    if (passesTotal(holder.held(), attachment)) {
-      refuse(fill(strings.composer.attachTotalTooLarge, { name: item.name, max: bytes(ATTACHMENTS_TOTAL_MAX_BYTES) }));
-      return;
-    }
-    holder.add(attachment);
-  });
 }
 
 /**

@@ -12,7 +12,6 @@ import {
   type ProviderLogin,
   type ProviderRejected,
   type ProviderSummary,
-  type RpcResult,
 } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { writesTitles } from '../drivers/index.ts';
@@ -46,7 +45,7 @@ import { addSessionFilePaths, below, providerLoginHome, providerSessionFiles } f
  * user never picks it, so it ships only when `BOITE_ECHO=1` is in the
  * environment, which the test harness, the e2e suite and the bench set.
  */
-export function echoEnabled(): boolean {
+function echoEnabled(): boolean {
   return process.env['BOITE_ECHO'] === '1';
 }
 
@@ -485,58 +484,6 @@ export class ProviderRegistry {
     return this.list().loaded.filter((provider) => provider.available && provider.enabled !== false);
   }
 
-  /**
-   * Validate a user descriptor without loading it. The file has to be one of
-   * ours: the answer says whether a path exists and hands back the first thing
-   * a parser choked on, which on any path the caller names is a way to read the
-   * machine one error message at a time.
-   */
-  dryRun(file: string): RpcResult<'providers.dryRun'> {
-    const root = resolve(this.#dataDir, 'providers');
-    const resolved = resolve(file);
-    const inside = relative(root, resolved);
-    if (inside.startsWith('..') || resolve(inside) === inside || !resolved.endsWith('.json')) {
-      return {
-        ok: false,
-        rejected: {
-          file,
-          field: 'file',
-          expected: `a .json file under ${root}`,
-          message: 'a descriptor is read from the providers directory of the data directory, nowhere else',
-        },
-      };
-    }
-    try {
-      const raw: unknown = JSON.parse(readFileSync(resolved, 'utf8'));
-      const shippedIds = new Set(
-        [...this.entries.values()].filter((entry) => entry.source === 'shipped').map((entry) => entry.descriptor.id),
-      );
-      const descriptor = validateDescriptor(raw, file, shippedIds, this.#dataDir);
-      const entry: LoadedProvider = { descriptor, source: 'user', file };
-      const profile = profileFor(descriptor);
-      return {
-        ok: true,
-        summary: summarize(entry, this.installs, this.#dataDir),
-        plan: {
-          roots: descriptor.roots,
-          env: profile === undefined ? [] : Object.keys(profile.isolation),
-          closes: profile?.close?.processes ?? [],
-        },
-      };
-    } catch (error) {
-      if (error instanceof Rejection) return { ok: false, rejected: error.rejected };
-      return {
-        ok: false,
-        rejected: {
-          file,
-          field: 'file',
-          expected: 'a readable JSON descriptor',
-          message: error instanceof Error ? error.message : String(error),
-        },
-      };
-    }
-  }
-
   #userFiles(): string[] {
     const dir = join(this.#dataDir, 'providers');
     if (!existsSync(dir)) return [];
@@ -691,7 +638,6 @@ export function registerProviderMethods(core: Core): void {
     const provider = core.providers.require(params.providerId);
     return core.providers.installs.uninstall(provider.id, core.providers.installBlock(provider.id));
   });
-  core.router.register('providers.dryRun', (params) => core.providers.dryRun(params.file));
   core.router.register('providers.setEnabled', async (params) => {
     const provider = core.providers.require(params.providerId);
     if (typeof params.enabled !== 'boolean') {

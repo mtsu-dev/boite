@@ -55,7 +55,7 @@ export interface Sealing {
 interface SealedRequest { v: 1; epk: string; iv: string; ct: string }
 interface SealedResponse { v: 1; iv: string; ct: string }
 
-export class SealFailure extends Error {}
+class SealFailure extends Error {}
 
 const b64 = (bytes: Uint8Array): string => Buffer.from(bytes).toString('base64url');
 

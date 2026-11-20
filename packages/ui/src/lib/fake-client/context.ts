@@ -69,7 +69,7 @@ import {
   type Turn,
   type Usage,
 } from '@boite/contracts';
-import { effectiveExperiments, experimentStartRefusal, holdExperimentalSettings } from '@boite/contracts';
+import { effectiveExperiments } from '@boite/contracts';
 import { CLOSED_AGENT_DEFAULTS, OPEN_AGENT_DEFAULTS } from '@boite/contracts';
 
 /** `?agents=closed`: the two agent settings as a new install holds them. */
@@ -332,8 +332,6 @@ export class FakeContext {
   todos: Todo[] = [];
   /** Per thread, the user's message that started its automatic goal, as the core's `auto-goal:<thread>` row. */
   readonly autoGoalMessages = new Map<string, string>();
-  /** The experiments a queued prompt was queued with, read by `turns.start` while the composer delivers it. */
-  queuedExperiments: readonly string[] | null = null;
   /** The working tree `files.list`, `files.read` and `files.write` share. */
   readonly files = new Map<string, string>(Object.entries(FAKE_TREE));
   readonly artifacts = new Map<string, ArtifactContent>();
@@ -378,16 +376,11 @@ export class FakeContext {
   experimentsInForce(): ExperimentId[] {
     return effectiveExperiments(this.desktopExperiments ?? this.clientPreferences?.experiments ?? [], this.core.version);
   }
-  /** The settings in force, as the core's `SettingsStore.get`: `settings` is what is stored, and a Release reads the ones that are experiments as off. */
+  /** The settings in force, as the core's `SettingsStore.get`: what is stored, read as is in every build. */
   settingsInForce(): Settings {
-    return holdExperimentalSettings({ ...this.settings }, this.core.version);
+    return { ...this.settings };
   }
 
-  /** As the core's `contactsGate`: a Release starts nothing new in an experiment, and still reads and removes what exists. */
-  startGate(id: ExperimentId): void {
-    const refusal = experimentStartRefusal(id, this.core.version);
-    if (refusal !== null) throw new RpcFailure({ code: RpcErrorCode.Refused, message: refusal, data: { reason: 'experiment-off' } });
-  }
   speech: SpeechConfig = { engine: 'local', language: '', apiProvider: 'groq', fallback: false, executable: '', modelPath: '', model: SPEECH_DEFAULT_MODEL };
   readonly speechStatus: SpeechStatus = { revision: 'fake-voice', engine: 'local', ready: true, localReady: true, groqKeySet: false, openrouterKeySet: false, installing: false, downloadedBytes: 0, totalBytes: 0, error: null, canInstallRuntime: true, models: fakeSpeechModels(), downloading: null, runtimeOutdated: false };
   readonly speechRequests = new Map<string, symbol>();

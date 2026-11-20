@@ -39,6 +39,7 @@
   import { retryOrReload } from './lib/retry-load';
   import { warmOfflineConversations } from './lib/sw';
   import { experimentOn } from './lib/experiments.svelte';
+  import { featureOn } from './lib/features.svelte';
   import { contactsShown, contactsViews } from './lib/contacts-views.svelte';
   import { whipEntry } from './lib/whip-entry.svelte';
   import { rightPanel } from './lib/right-panel.svelte';
@@ -209,9 +210,9 @@
   });
   // With the first open thread, so the corner is there before a stop lands in it; a stop elsewhere asks for it too.
   $effect(() => { if (store.openThread || store.memoryStop) need('MemoryCorner'); });
-  // The Whip's control, then its rope, the first time its switch is on (lib/whip-entry.svelte.ts).
+  // The Whip's control, then its rope, the first time its switch in Appearance is on (lib/whip-entry.svelte.ts).
   $effect(() => {
-    if (store.booted && experimentOn('whip')) whipEntry.need(error => { store.error = String(error); });
+    if (store.booted && featureOn('whip')) whipEntry.need(error => { store.error = String(error); });
   });
   // Browser profiles live on this computer, whichever machine is in view: they
   // are kept by the core this shell started (lib/browser-profiles.svelte.ts).
@@ -680,7 +681,7 @@
   {/if}
   <UndoToast onerror={(error) => (store.error = errorText(error))} />
   {#if (store.page === 'chat' || store.memoryStop) && deferred.MemoryCorner}{@const MemoryCorner = deferred.MemoryCorner}<MemoryCorner {store} chat={store.page === 'chat'} />{/if}
-  {#if store.booted && experimentOn('whip') && whipEntry.overlay}{@const WhipOverlay = whipEntry.overlay}
+  {#if store.booted && featureOn('whip') && whipEntry.overlay}{@const WhipOverlay = whipEntry.overlay}
     <WhipOverlay onerror={(error) => (store.error = errorText(error))} />
   {/if}
 </div>

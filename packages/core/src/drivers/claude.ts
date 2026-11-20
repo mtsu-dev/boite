@@ -14,7 +14,7 @@ import { ThreadSessions } from './thread-sessions.ts';
 const MINUTE_MS = 60_000;
 
 /** A `PostToolBatch` hook is the step boundary, and a swap goes on in the same turn (`claude/step.ts`). */
-export const CLAUDE_CAPABILITIES: DriverCapabilities = { stepSwap: true };
+const CLAUDE_CAPABILITIES: DriverCapabilities = { stepSwap: true };
 
 /**
  * One session per thread. `warmProcessMinutes` at zero keeps the old rule, one

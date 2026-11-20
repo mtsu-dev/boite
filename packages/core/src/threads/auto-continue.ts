@@ -14,14 +14,6 @@ export const AUTO_CONTINUE = RESUME_TIMING.carryOn;
 /** Why a turn stopped before its answer, and so what its resume tells the agent. */
 export type StopReason = Exclude<PlannedReason, 'limit'>;
 
-/** How the resumed turn's opening reads in the conversation. */
-export const AUTO_CONTINUE_LABEL: Record<StopReason, string> = {
-  error: RESUME_TEXT.error.label,
-  crash: RESUME_TEXT.crash.label,
-  compaction: RESUME_TEXT.compaction.label,
-  background: RESUME_TEXT.background.label,
-};
-
 /** Left by a core the owner stopped on purpose: the next one resumes nothing it cut. */
 const STOPPED_KEY = 'auto-continue-stopped';
 /** An error is quoted to the agent up to this many characters. */

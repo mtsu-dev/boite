@@ -23,7 +23,6 @@
   import { keepFocus } from '../lib/focus';
   import { contextLevel, contextPercent } from '../lib/tokens';
   import { speedControl } from '../lib/model-speeds';
-  import type { ComposerTarget } from '../lib/composer-target';
   import { desktopSettings, settingsDestination } from '../lib/settings-tabs';
   import { machineAway } from '../lib/machine-away';
   import { declineHint } from '../lib/composer-placeholder';
@@ -49,14 +48,11 @@
    * Nothing comes or goes with a decision docked above: the row keeps its
    * place and its controls. A pick on a thread is saved at once, after the
    * switch warnings; on a draft the whole choice is remembered. `choice`,
-   * `picking` and `dictating` are the composer's, bound here. An agent's box
-   * (`target`) keeps stop, attach, dictation and send; its model chips save
-   * the agent's own setting, and a group's box shows its recipients in their place.
+   * `picking` and `dictating` are the composer's, bound here.
    */
   let {
     store,
     key,
-    target = null,
     bot = null,
     botGone = false,
     botRoute = null,
@@ -79,7 +75,6 @@
     store: Store;
     /** The open thread's id, or the draft's stash key. */
     key: string;
-    target?: ComposerTarget | null;
     /** The persistent agent this box writes to, by name: its model, effort and mode are its settings, which the chips show. */
     bot?: string | null;
     /** The bot's account is gone: the chips name the banner's remedy instead of its settings. */
@@ -114,14 +109,14 @@
   let chip = $state<ModelPicker | undefined>(undefined);
   let options = $state<ComposerOptions | undefined>(undefined);
   let slider = $state<EffortSlider | undefined>(undefined);
-  let stopping = $derived(!!(target ? target.busy && target.stop : store.busy));
+  let stopping = $derived(store.busy);
   /** The turn stands still on the owner's answer (a permission, a question it stopped for): Deny or Skip is the way out, Escape still stops. */
-  let held = $derived(!target && store.openThread?.status === 'waiting');
+  let held = $derived(store.openThread?.status === 'waiting');
   /** One round button at the row's end: Stop while a turn runs and nothing typed waits to go, Send otherwise. */
   /** Nothing reaches a machine out of reach: no Stop, and Send queues what is written for its return. */
-  let stopShown = $derived(stopping && !held && !answering && !waiting && !(canSend && typed) && (!!target || !machineAway(store)));
+  let stopShown = $derived(stopping && !held && !answering && !waiting && !(canSend && typed) && !machineAway(store));
   /** Send declines: a permission waits and the box holds something to send. */
-  let declines = $derived(!target && !answering && !waiting && canSend && declining ? declineHint(declining) : null);
+  let declines = $derived(!answering && !waiting && canSend && declining ? declineHint(declining) : null);
   /** Why Answer cannot act yet: nothing picked or typed. */
   let answerWaits = $derived(answering && !typed && !repliesOf(store).picks[answering.id]?.length
     ? (answering.options.length > 0 ? strings.chat.questionPickOrType : strings.chat.questionTypeFirst) : null);
@@ -129,7 +124,7 @@
   let picker = $state<HTMLInputElement | undefined>(undefined);
   let bar = $state<HTMLDivElement | undefined>(undefined);
 
-  let bound = $derived(!target && store.openThread !== null);
+  let bound = $derived(store.openThread !== null);
   let contextUsed = $derived(store.openThread?.context ? contextPercent(store.openThread.context, store.settings ? effectiveCompaction(store.settings, store.openThread).autoCompact : null) : null);
   /**
    * Keep the ring available before a reading arrives. A nearly full context
@@ -137,7 +132,7 @@
    */
   let showContext = $derived(work.shows('header.context') || contextLevel(contextUsed) === 'full');
   /** Every agent can read uploaded files through its local tools. */
-  let canAttach = $derived(!!target || (provider !== null && provider !== undefined));
+  let canAttach = $derived(provider !== null && provider !== undefined);
 
   // Older modes keep their execution policy until the user makes a choice.
   let displayedMode = $derived<PermissionMode>(shownMode(choice?.permissionMode ?? 'default', provider));
@@ -153,7 +148,7 @@
   });
   /** The open thread's provider was turned off in Providers: the core refuses its next turn. */
   let providerOff = $derived.by(() => {
-    const entry = !target && store.openThread ? store.providerOf(store.openThread.providerId) : null;
+    const entry = store.openThread ? store.providerOf(store.openThread.providerId) : null;
     return entry && !store.providerOn(entry.id) ? entry : null;
   });
   /**
@@ -179,14 +174,14 @@
   // folder the core found a `.git` in. No answer yet, or an older core that
   // never gives one, is no repository: a switch the core would refuse is noise.
   let draftRepository = $derived(
-    !target && work.shows('composer.worktree') && store.draft && !store.draftInDrafts ? store.projects.find((project) => project.id === store.draft?.projectId)?.repository === true : false
+    work.shows('composer.worktree') && store.draft && !store.draftInDrafts ? store.projects.find((project) => project.id === store.draft?.projectId)?.repository === true : false
   );
 
   // The reasoning chip belongs to the model the choice is on, and a model that
   // offers no scale (an agent that keeps its own) gets no chip at all.
   let effortLevels = $derived((store.modelOf(choice)?.effort?.levels ?? []).filter(level => provider?.protocol === 'claude-sdk' || level.id !== 'ultrathink'));
   // An agent keeps no speed of its own: its chips offer none.
-  let speedOptions = $derived(speedControl(choice && !target && !bot ? store.modelsOf(choice.providerId, choice.accountId) : [], choice));
+  let speedOptions = $derived(speedControl(choice && !bot ? store.modelsOf(choice.providerId, choice.accountId) : [], choice));
   let speeds = $derived(speedOptions.speeds);
   let activeEffort = $derived(choice?.effort ?? store.modelOf(choice)?.effort?.default ?? null);
   /** The model has a scale but no default: its agent picks the level until the user does. */
@@ -206,14 +201,6 @@
   /** On a thread only the model and the effort change and they are saved at once; on a draft the whole choice is remembered. */
   async function pick(patch: PickPatch) {
     if (!choice || picking) return;
-    if (target?.selection) {
-      // Another model runs on its own scale, at its default level until one is picked.
-      const changedModel = patch.model !== undefined || patch.accountId !== undefined;
-      const next = { ...choice, ...patch, effort: patch.effort !== undefined ? patch.effort : changedModel ? null : choice.effort };
-      picking = true;
-      try { await target.selection.save(next); } finally { picking = false; }
-      return;
-    }
     const thread = store.openThread;
 
     if (thread) {
@@ -293,11 +280,6 @@
   function pickMode(id: string) {
     const mode = id as PermissionMode;
     if (!choice || picking) return;
-    if (target?.selection) {
-      picking = true;
-      void target.selection.save({ ...choice, permissionMode: mode }).finally(() => { picking = false; });
-      return;
-    }
     if (botRoute) {
       picking = true;
       void saveBot({ permissionMode: mode }).finally(() => { picking = false; });
@@ -332,9 +314,6 @@
   {#key `${key}:${store.draft?.projectId ?? ''}`}
   <ComposerOptions bind:this={options} worktree={!answering && store.draft && draftRepository ? store.draft.worktree : null} {canAttach} onattach={() => picker?.click()} onworktree={() => store.setDraftWorktree(!store.draft?.worktree)} {onmention} {oncommand} />
   {/key}
-  {#if target && !target.selection}
-  <div class="chips">{#if target.chips}{@render target.chips()}{/if}</div>
-  {:else}
   <!-- The model chip stays named while the box answers a question: the next turn runs on it. -->
   <!-- One row on a phone as on a desktop: what runs the turn (model, effort), then how it runs (permission) with the context at the end. -->
   <div class="chips">
@@ -370,7 +349,6 @@
     <!-- Outside desktop-options: a phone keeps a plugin's buttons. -->
     {#if store === workspace.primary}<PluginSlotButtons slot="composer" threadId={store.openThread?.id ?? null} compact />{/if}
   </div>
-  {/if}
   {#if canAttach}
     <input
       bind:this={picker}
@@ -401,7 +379,7 @@
   {/if}
   <!-- While a turn runs on an empty box, Stop takes Send's place; typing brings Send back, and the turn's Stop moves to the foot's line (Composer's `stopsTurn`). -->
   {#if stopShown}
-    <button type="button" class="icon quiet stop" data-testid="composer-stop" title={strings.composer.stop} aria-label={strings.composer.stop} onmousedown={keepFocus} onclick={() => { if (target) target.stop?.(); else void store.stop(); }}>
+    <button type="button" class="icon quiet stop" data-testid="composer-stop" title={strings.composer.stop} aria-label={strings.composer.stop} onmousedown={keepFocus} onclick={() => void store.stop()}>
       <Square size={12} strokeWidth={2.5} />
     </button>
   {/if}

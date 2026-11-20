@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import type { PermissionRequest, QuestionRequest, ThreadSummary } from '@boite/contracts';
-import { activityFeed, feedOperation, needsYouCount, readableThreads, storeNeeds } from './activity-feed';
+import { activityFeed, feedOperation, readableThreads, storeNeeds } from './activity-feed';
 
 const NOW = Date.UTC(2026, 10, 7, 12);
 
@@ -93,8 +93,6 @@ test('one event per row: a sub-agent shares its parent\'s row only for the same 
     ['asks', false, 'needs', 'answer'],
     ['stopped', false, 'updates', null]
   ]);
-  // Every count says the rows the section lists.
-  expect(needsYouCount(threads.map(t => ({ machine, thread: t, project: undefined })))).toBe(2);
 });
 
 test('Mark all as read clears every failure, stop and finish, never a decision; a read failure stays off the feed', () => {

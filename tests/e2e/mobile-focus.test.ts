@@ -39,7 +39,7 @@ async function ask() {
 beforeAll(async () => {
   const port = await freePort();
   server = await startDevUi(port);
-  url = `http://127.0.0.1:${port}/?fake=1&open=recent`;
+  url = `http://127.0.0.1:${port}/?fake=1&open=recent&contactNotice=0`;
   page = await BrowserPage.launch({ url, windowSize: { width: 1280, height: 900 } });
   await page.waitFor(`document.querySelector('[data-testid=composer-input]')`);
 }, 60_000);

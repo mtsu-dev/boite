@@ -57,6 +57,16 @@ The language is saved on this device only, and changes everywhere at once,
 with no reload. Dates and numbers follow the language, in your machine's
 region. App update errors stay in English.
 
+### The whip
+
+The Whip button sits with the buttons at the bottom of the app rail, or on
+a phone in the top bar of Activity, Contacts and Mochis. Press it and an animated whip follows your pointer or
+finger: flick to crack it, click or tap to drop it. With reduced motion
+turned on in your system settings, the button is greyed and does nothing.
+
+To hide the button, turn off Whip in Settings, Appearance. The switch belongs
+to this device.
+
 ## Connect an AI
 
 Boite runs an agent you already pay for. An agent already signed in on this

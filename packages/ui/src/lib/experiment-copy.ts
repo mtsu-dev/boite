@@ -9,11 +9,5 @@ import { strings } from './strings';
  * same rows as the page.
  */
 export function experimentCopy(): Partial<Record<ExperimentId, { title: string; hint: string }>> {
-  return {
-    whip: strings.experiments.whip,
-    contacts: strings.experiments.contacts,
-    'auto-goal': strings.experiments.autoGoal,
-    teams: strings.experiments.teams,
-    debates: strings.experiments.debates
-  };
+  return { ...strings.experiments };
 }

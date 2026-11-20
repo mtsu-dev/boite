@@ -28,7 +28,7 @@ import type { TurnResult } from '../drivers/types.ts';
 import { compactionTail } from './background-compact.ts';
 
 /** The journal setting holding a thread's saved sessions, erased with the thread (`Journal.deleteThreads`). */
-export const ACCOUNT_SESSIONS_PREFIX = 'account-sessions:';
+const ACCOUNT_SESSIONS_PREFIX = 'account-sessions:';
 
 /** A native session the thread left on an account, as a switch back finds it. */
 export interface SavedSession {
@@ -63,7 +63,7 @@ export interface Restored { sessionId: string; resumeAt: string | null; context:
  * Why a switch back to `to` cannot resume `saved`, or null when it can: the
  * one place that decides between resuming and starting fresh.
  */
-export function resumeRefusal(core: Core, thread: ThreadSummary, to: { providerId: ProviderId }, saved: SavedSession): string | null {
+function resumeRefusal(core: Core, thread: ThreadSummary, to: { providerId: ProviderId }, saved: SavedSession): string | null {
   if (saved.providerId !== to.providerId) return 'it ran on another provider';
   if (saved.cwd !== thread.cwd) return 'the thread moved to another folder since';
   // Measured as the prompt will carry it, files as the paths of their copies.

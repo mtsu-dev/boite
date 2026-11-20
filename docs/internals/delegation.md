@@ -260,7 +260,7 @@ structured output, commands and recovery.
 
 ## Council
 
-A [council](council.md), behind the Council experiment, asks several models to
+A [council](council.md) asks several models to
 review one request over read-only child threads, each alone, with a score. Their
 answers return to the parent in one message, and `council again` asks the same
 members for one more round. `boite delegate council` starts one, `delegate list`

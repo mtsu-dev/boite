@@ -67,7 +67,7 @@ export function same(a: FileEntry | undefined, b: FileEntry | undefined): boolea
  * `verified` holds parents already checked during one snapshot; restores pass
  * none, so each write checks its parents just before it happens.
  */
-export async function checkedPath(root: string, name: string, verified?: Set<string>): Promise<string> {
+async function checkedPath(root: string, name: string, verified?: Set<string>): Promise<string> {
   if (!name || isAbsolute(name) || name.split(/[\\/]/).includes('..') || !contains(root, join(root, name))) {
     throw refused(`file checkpoint path ${name}: expected a relative path inside ${root}`, { field: 'path', path: name });
   }
@@ -84,7 +84,7 @@ export async function checkedPath(root: string, name: string, verified?: Set<str
 }
 
 /** One file at a time, bounded before allocation. Never follows a file symlink. */
-export async function readEntry(path: string, cached?: CachedFile, permit?: SharedFilePermit): Promise<(CachedFile & { bytes?: Buffer }) | null> {
+async function readEntry(path: string, cached?: CachedFile, permit?: SharedFilePermit): Promise<(CachedFile & { bytes?: Buffer }) | null> {
   return readEntryAt(path, await fileMetadata(path), cached, permit);
 }
 
@@ -325,7 +325,7 @@ export async function collectSharedBlobs(shared: string, graceMs: number): Promi
  * framed. A mismatch is replaced. Any other write error removes the partial
  * file this attempt created.
  */
-export async function writeCheckpointBlob(dest: string, hash: string, bytes: Buffer): Promise<void> {
+async function writeCheckpointBlob(dest: string, hash: string, bytes: Buffer): Promise<void> {
   try {
     await writeFile(dest, bytes, { flag: 'wx', mode: 0o600 });
     return;

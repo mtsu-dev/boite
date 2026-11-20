@@ -6,8 +6,6 @@ import { RESUME_TIMING, type ResumePlanner } from './resume.ts';
 
 /** Mutable so a test can shorten them (`threads/resume.ts`). */
 export const LIMIT_RESUME = RESUME_TIMING.limit;
-/** How the resumed turn's opening reads in the conversation. */
-export const LIMIT_RESUME_LABEL = RESUME_TEXT.limit.label;
 
 /** Two readings of the same window can differ by the second their reset was rounded to. */
 const SAME_WINDOW_MS = 120_000;

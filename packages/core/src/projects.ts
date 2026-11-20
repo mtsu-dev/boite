@@ -51,7 +51,7 @@ export function hasGitMarker(folder: string, timeoutMs = GIT_PROBE_TIMEOUT_MS): 
 }
 
 /** How long one icon detection may read the folder before it is given up. */
-export const ICON_DETECT_TIMEOUT_MS = 5_000;
+const ICON_DETECT_TIMEOUT_MS = 5_000;
 /** Detections running at once in the background. */
 const ICON_WORKERS = 2;
 

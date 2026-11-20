@@ -143,7 +143,7 @@ export class Threads {
   /**
    * Where a thread opens: a persistent agent's own thread and a team's chat on
    * the Bots page, beside the bots and the teams they list, every other one in
-   * the chat. A team's chat needs the Teams experiment for it.
+   * the chat.
    */
   pageOf(thread: Pick<ThreadSummary, 'agentSessionId' | 'teamId'>): 'chat' | 'agents' {
     return onBotsPage(thread) ? 'agents' : 'chat';

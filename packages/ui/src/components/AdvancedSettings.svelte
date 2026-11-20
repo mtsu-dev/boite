@@ -12,13 +12,16 @@
   import SaveStatus from './SaveStatus.svelte';
   import { Autosave, typed } from '../lib/autosave.svelte';
   import CompactionSettings from './CompactionSettings.svelte';
+  import CacheKeepaliveSettings from './CacheKeepaliveSettings.svelte';
+  import DeviceStreamSettings from './DeviceStreamSettings.svelte';
   import SchedulerSettings from './SchedulerSettings.svelte';
   import PhoneSettings from './PhoneSettings.svelte';
   import { strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
 
   /**
-   * What most people never touch: how many turns run at once, how a phone
+   * What most people never touch: how many turns run at once, keeping the
+   * prompt cache warm, compaction, the Device panel's live stream, how a phone
    * reaches this machine without a server of the group in between, which
    * browser origins may reach this core, the core this window talks to, and
    * on a desktop the terminal's cursor and the scrollbars' manner.
@@ -58,7 +61,9 @@
 <div class="page" data-testid="advanced-page">
 
   <SchedulerSettings {store} />
+  <CacheKeepaliveSettings {store} />
   <CompactionSettings {store} />
+  <DeviceStreamSettings {store} />
 
   <PhoneSettings {store} />
 

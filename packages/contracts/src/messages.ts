@@ -280,7 +280,7 @@ export type MessagePart =
   /**
    * A council the turn started (`boite delegate council`): a client draws its
    * card from the thread's `council.list`, with the round, the status and the salon to open.
-   * One without the Council experiment draws nothing.
+   * A client from before the Council was finished, without its experiment on, draws nothing.
    */
   | { type: 'council'; councilId: string; topic: string }
   /** The same card in a message stored before the council replaced debates: a stored debate stays readable. */

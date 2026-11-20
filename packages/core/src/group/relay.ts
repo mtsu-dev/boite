@@ -46,7 +46,7 @@ import { ticketAddresses } from './addresses.ts';
 /** One address of the other member gets this long to open. */
 const DIAL_MS = 4000;
 /** While no address has opened, the next one is tried this long after the last, without waiting for it to fail. */
-export const DIAL_STAGGER_MS = 250;
+const DIAL_STAGGER_MS = 250;
 /** The other member is asked for a sign of life after this long without a frame from it. */
 export const UPSTREAM_PING_MS = 10_000;
 /** After this long without a frame from the other member, a pong included, both halves of a pipe close. */
@@ -95,7 +95,7 @@ function carried(rest: string): 'socket' | 'stream' | 'http' | null {
  * handed to `discard` when it opens anyway. Null when none opens, or when
  * `stopped` says the caller no longer waits before the next attempt.
  */
-export function firstOpen<T>(
+function firstOpen<T>(
   targets: readonly string[],
   open: (target: string, signal: AbortSignal) => Promise<T>,
   discard: (value: T) => void,

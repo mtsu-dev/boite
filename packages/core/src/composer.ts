@@ -1,5 +1,5 @@
 import type { ComposerChoice, ComposerQueuedPrompt, ComposerRecord, ComposerValue, RpcParams, ThreadSummary, Turn } from '@boite/contracts';
-import { composerInputThreadId, effectiveExperiments, isComposerKey, privateTerminalComposerId } from '@boite/contracts';
+import { composerInputThreadId, isComposerKey, privateTerminalComposerId } from '@boite/contracts';
 import type { Core } from './core.ts';
 import type { Connection } from './router.ts';
 import { promptOrigin } from './client-preferences.ts';
@@ -311,8 +311,7 @@ export class Composer {
             if (item.previewReferences?.length) throw refused('Activity commands do not accept page references.');
             this.#core.activity.set({ threadId: id, ...activity, attachments }, undefined, choice);
           } else this.#core.threads.startTurn(id, { prompt: batch.text, attachments, previews: batch.previewReferences }, { kind: 'user', requestId: batch.requestId, sentFrom: batch.entries[0]!.sentFrom ?? null }, { expectedSelectionVersion: (followsThread ? target : current).selectionVersion ?? 0, choice,
-            // Decided from the experiments the prompt was queued with, so a restart keeps what it meant.
-            autoGoal: startsAutoGoal(batch.text, effectiveExperiments(item.experiments ?? [], this.#core.version), this.#core.settings.get().autoGoalMinChars) ? batch.text : undefined });
+            autoGoal: startsAutoGoal(batch.text, this.#core.settings.get()) ? batch.text : undefined });
           this.#complete(section, recordId, batch.entries.map(entry => entry.id));
         });
       } catch (error) {

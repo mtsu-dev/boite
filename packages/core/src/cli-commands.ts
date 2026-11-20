@@ -34,7 +34,7 @@ export function isPluginCommandWord(word: string | undefined): boolean {
 // own module (control-cli.ts, plugin-cli.ts) loads only when that command runs.
 
 /** Commands control-cli.ts answers, with the words that follow them. */
-export const CONTROL_COMMANDS = ['threads', 'thread', 'questions', 'answer', 'permissions', 'allow', 'deny'] as const;
+const CONTROL_COMMANDS = ['threads', 'thread', 'questions', 'answer', 'permissions', 'allow', 'deny'] as const;
 /** `thread` actions control-cli.ts answers; `new` and `move <project>` without a target stay with the agent's own commands. */
 export const THREAD_ACTIONS = ['show', 'send', 'stop', 'done', 'archive', 'unarchive', 'remove', 'rename', 'deleted', 'restore'] as const;
 

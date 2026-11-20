@@ -36,7 +36,7 @@ const KEEPER = 'agents:keeper:';
 const LAST_PASS = 'agents:memory-pass:';
 type Pass = NonNullable<AgentStatus['memory']>;
 /** A pass still running after this is stopped and recorded as failed. */
-export const MEMORY_PASS_MAX_MS = 10 * 60_000;
+const MEMORY_PASS_MAX_MS = 10 * 60_000;
 const ASKED_MAX = 6_000;
 const ANSWERED_MAX = 8_000;
 /** What one `boite mochi remember` line may hold. */
@@ -86,7 +86,7 @@ If nothing is worth remembering, answer only SUMMARY: no change`,
 }
 
 /** The second turn of a pass that answered past the cap: its own rewrite back, to cut down. */
-export function memoryRetryPrompt(agent: Pick<AgentProfile, 'name'>, rewrite: string): string {
+function memoryRetryPrompt(agent: Pick<AgentProfile, 'name'>, rewrite: string): string {
   return [
     `Your rewrite of ${agent.name}'s MEMORY.md has ${rewrite.length} characters: past ${AGENT_MEMORY_MAX} it is refused and the old file stays.`,
     `Answer again in the same shape (the SUMMARY line, then the whole file between <memory> and </memory>), under ${MEMORY_TARGET} characters: keep every pointer (paths, addresses, ids), cut each line down to it, merge lines and drop what is finished. Do not use tools.`,

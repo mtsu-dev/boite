@@ -39,7 +39,7 @@ const when = (at: number | null): string => (at === null ? 'never' : new Date(at
 const memory = (bytes: number): string => `${Math.round(bytes / MB)} MB`;
 
 /** The lines of one `agent.state` reading. */
-export function stateLines(reading: StateReading): string[] {
+function stateLines(reading: StateReading): string[] {
   switch (reading.domain) {
     case 'version': {
       const v = reading.version;

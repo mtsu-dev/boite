@@ -150,7 +150,6 @@ export interface GatewayMoveOutcome {
 }
 
 export interface SubscriptionProxyRpcMethods {
-  'subscriptionProxy.key': { params: { key: string | null }; result: { configured: boolean } };
   /** Owner-only, atomic configuration and optional private-key update; an omitted key keeps it. */
   'subscriptionProxy.configure': { params: { subscriptionProxy: SubscriptionProxy; key?: string | null }; result: Settings };
   /**

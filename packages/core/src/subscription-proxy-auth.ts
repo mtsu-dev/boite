@@ -12,14 +12,9 @@ export function proxyKey(core: Core): string {
   return typeof key === 'string' && key ? key : 'boite-subscription-proxy';
 }
 
-export function hasProxyKey(core: Core): boolean {
-  const key = core.journal.getSetting(KEY_SETTING);
-  return typeof key === 'string' && key.length > 0;
-}
-
 export function validateProxyKey(key: unknown): asserts key is string | null {
   if (key !== null && (typeof key !== 'string' || key.length > 4096 || !key.trim() || /[\u0000-\u0020\u007f]/.test(key))) {
-    throw invalidParams('subscriptionProxy.key must be null or a non-empty token without whitespace');
+    throw invalidParams('subscriptionProxy.configure key must be null or a non-empty token without whitespace');
   }
 }
 

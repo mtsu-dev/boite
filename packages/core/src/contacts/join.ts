@@ -27,7 +27,7 @@ const JOIN_BODY_MAX = 16_384;
  * still being issued. Short, because the zone's own servers are asked
  * (`public-dns.ts`): the name is found the moment Tailscale publishes it.
  */
-export const JOIN_RETRY_MS = 5_000;
+const JOIN_RETRY_MS = 5_000;
 const JOIN_TIMEOUT_MS = 10_000;
 
 /**

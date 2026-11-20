@@ -6,8 +6,8 @@ import type { SessionContext } from '../types.ts';
 /** The one variable the extension reads: the thread's limit, the switch and the core's thresholds, as JSON. */
 export const COMPACTION_ENV = 'BOITE_COMPACTION';
 /** Set in `details` of every compaction entry the extension writes, so the divider says `background`. */
-export const BACKGROUND_MARKER = 'boiteBackground';
-export const COMPACTION_EXTENSION = 'pi-compaction.mjs';
+const BACKGROUND_MARKER = 'boiteBackground';
+const COMPACTION_EXTENSION = 'pi-compaction.mjs';
 const RUN_MODULE = 'pi-compaction-run.mjs';
 
 /**

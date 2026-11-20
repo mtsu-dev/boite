@@ -49,7 +49,7 @@ const START_TIMEOUT_MS = 15_000;
 const EARLY_EXIT_MS = 1_000;
 const APP_LOG_BYTES = 1024 * 1024;
 /** macOS: the variable `open --env` gives each app it opens, which tells the core's copy from the user's. */
-export const LAUNCH_MARK = 'BOITE_DESKTOP_LAUNCH';
+const LAUNCH_MARK = 'BOITE_DESKTOP_LAUNCH';
 const READY = 'boite-desktop-ready';
 /** Where distributions put the accessibility bus launcher, which is not on PATH. */
 const ATSPI_LAUNCHERS = ['/usr/libexec/at-spi-bus-launcher', '/usr/lib/at-spi2-core/at-spi-bus-launcher', '/usr/lib/at-spi-bus-launcher', '/usr/lib64/at-spi-bus-launcher'];
@@ -103,7 +103,7 @@ export function macosProgram(program: string, which: (name: string) => string | 
 }
 
 /** The `.app` folder holding a bundle's executable, or null. */
-export function macosBundle(executable: string): string | null {
+function macosBundle(executable: string): string | null {
   const at = executable.indexOf('.app/Contents/MacOS/');
   return at === -1 ? null : executable.slice(0, at + 4);
 }
@@ -144,7 +144,7 @@ export function xauthority(cookie: Uint8Array): Buffer {
  * keyring that wants a new password, a portal or a notifier never opens a
  * window over the agent's app; the accessibility bus is started by the core.
  */
-export function busConfig(dir: string): string {
+function busConfig(dir: string): string {
   const escaped = dir.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
   return `<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN" "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
 <busconfig>

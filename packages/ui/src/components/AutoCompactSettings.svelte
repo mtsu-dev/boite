@@ -3,7 +3,7 @@
   import { untrack } from 'svelte';
   import { CircleCheck, Hourglass, Ruler, Timer } from '@lucide/svelte';
   import { AUTO_COMPACT_MOMENTS, AUTO_COMPACT_TOKENS, type AutoCompact, type AutoCompactMoment, type CompactionPolicy, type CompactionTarget } from '@boite/contracts';
-  import { compactionPatch, compactionPolicy } from '../lib/compaction-settings';
+  import { CompactionWrites, compactionPolicy } from '../lib/compaction-settings';
   import { fill, strings } from '../lib/strings';
   import { formatTokens } from '../lib/format';
   import type { Store } from '../lib/store.svelte';
@@ -18,8 +18,11 @@
    * between turns. Turn-end and background moments apply from 85% of it, never
    * gating cache expiry.
    */
-  let { store, target, embedded = false }: { store: Store; target?: CompactionTarget; embedded?: boolean } = $props();
+  let { store, target, embedded = false, writes }: { store: Store; target?: CompactionTarget; embedded?: boolean; writes?: CompactionWrites } = $props();
   const uid = $props.id();
+  /** The card's queue, shared with background compaction below; a card of its own when alone. */
+  const own = new CompactionWrites();
+  const queue = () => writes ?? own;
 
   /** Start with idle moments only and leave the independent token limit off. */
   const FIRST: AutoCompact = { tokens: null, moments: ['background', 'cache-expiry'] };
@@ -45,12 +48,11 @@
   /** A switch saves when it flips; a refusal puts it back. */
   /** Every control builds the whole rule from the saved one, so none moves while a save is on its way. */
   let saving = $state(false);
-  let inflight: Promise<boolean> | null = null;
-  async function savePolicy(patch: Partial<CompactionPolicy>, machine = store, scope = target) {
-    while (inflight) await inflight.catch(() => false);
+  let pending = 0;
+  function savePolicy(patch: Partial<CompactionPolicy>, machine = store, scope = target) {
     saving = true;
-    const sent = inflight = machine.saveSettings(compactionPatch(machine.settings, scope, patch)).finally(() => { saving = false; if (inflight === sent) inflight = null; });
-    return sent;
+    pending++;
+    return queue().save(machine, scope, patch).finally(() => { if (--pending === 0) saving = false; });
   }
   async function save(next: AutoCompact | null, input?: HTMLInputElement, machine = store, scope = target) {
     const ok = await savePolicy({ autoCompact: next }, machine, scope);
@@ -80,7 +82,7 @@
    */
   let typedFor: { store: Store; target?: CompactionTarget } | null = null;
   const sizeSave = new Autosave(async () => {
-    while (inflight) await inflight.catch(() => false);
+    await queue().idle();
     const destination = typedFor ?? { store, target };
     const current = compactionPolicy(destination.store.settings, destination.target).autoCompact;
     if (!current || current.tokens === null) { dirty = false; return; }
@@ -91,7 +93,7 @@
   export async function flush() {
     await sizeSave.flush();
     await summarySave.flush();
-    while (inflight) await inflight.catch(() => false);
+    await queue().idle();
   }
   $effect(() => () => void sizeSave.flush());
   let summary = $state('');
@@ -100,7 +102,6 @@
   const currentSummary = $derived(compactionPolicy(store.settings, target).compactionSummary ?? '');
   $effect(() => { const value = currentSummary; untrack(() => { if (!summaryDirty) summary = value; }); });
   const summarySave = new Autosave(async () => {
-    while (inflight) await inflight.catch(() => false);
     const destination = summaryFor ?? { store, target };
     const sent = summary;
     await saved(savePolicy({ compactionSummary: sent.trim() || null }, destination.store, destination.target));

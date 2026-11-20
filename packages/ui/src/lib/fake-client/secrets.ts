@@ -207,9 +207,6 @@ export function secretMethods(ctx: FakeContext) {
         if (!ctx.projects.some((project) => project.id === params.projectId)) throw ctx.notFound('project', params.projectId);
       } else ctx.thread(params.threadId);
       return { secrets: [], storage: STORAGE, encrypted: encrypted(ctx) };
-    },
-    'secrets.delete': async (params) => {
-      throw new RpcFailure({ code: RpcErrorCode.NotFound, message: 'Secret Drop keeps no persistent project keys', data: { projectId: params.projectId, name: params.name, field: 'name', expected: 'no persistent project key' } });
     }
   } satisfies Partial<FakeMethods>;
 }

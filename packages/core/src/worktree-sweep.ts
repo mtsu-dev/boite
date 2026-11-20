@@ -18,7 +18,7 @@ import { git as readGit } from './git/read.ts';
 import { inside, keyOf } from './checkouts.ts';
 import { fetchedRepositories } from './pull-requests.ts';
 
-export { inside, keyOf } from './checkouts.ts';
+export { inside } from './checkouts.ts';
 import { assertCheckoutVacant, realKey, removeCleanCheckout, restoreInterruptedCheckout, withVacantCheckout } from './checkout-removal.ts';
 import { listCheckoutRecoveries } from './checkout-recovery.ts';
 export { realKey } from './checkout-removal.ts';

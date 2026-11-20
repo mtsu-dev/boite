@@ -13,7 +13,7 @@ function firstLine(stderr: string): string {
   return stderr.trim().split('\n')[0] ?? '';
 }
 
-export function notARepository(threadId: ThreadId, stderr: string): never {
+function notARepository(threadId: ThreadId, stderr: string): never {
   const detail = firstLine(stderr);
   throw refused(
     `the working directory of thread ${threadId} is not inside a git repository${detail.length === 0 ? '' : `: ${detail}`}`,

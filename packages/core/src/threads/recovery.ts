@@ -14,7 +14,7 @@ import { addErrorPart, closeAsError, openTurnMessage } from './turn-error.ts';
 export const CRASH_WHILE_RUNNING = 'The core stopped while this turn was running.';
 /** The same, for a turn that resumes by itself once the core started (`threads/auto-continue.ts`). */
 export const CRASH_RESUMING = 'The core stopped while this turn was running; Boite resumes it.';
-export const CRASH_WHILE_QUEUED = 'The core stopped while this turn was queued; send the prompt again.';
+const CRASH_WHILE_QUEUED = 'The core stopped while this turn was queued; send the prompt again.';
 
 /**
  * Closes what a core that died mid-turn left open, before the next one

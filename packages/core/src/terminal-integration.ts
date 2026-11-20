@@ -19,13 +19,13 @@ import type { TerminalShell } from '@boite/contracts';
 import type { Shell } from './terminals.ts';
 
 /** Commands the recent list returns, newest first. */
-export const HISTORY_COMMANDS = 500;
+const HISTORY_COMMANDS = 500;
 /** How much of the end of a history file is read: a few thousand commands. */
 const HISTORY_TAIL_BYTES = 512 * 1024;
 /** The integration reports its history file in the first output; past this much, it is not looked for. */
 const ANNOUNCE_SCAN_CHARS = 64 * 1024;
 
-export const BASH_INTEGRATION = String.raw`# Boite shell integration: marks prompts and commands for the terminal and
+const BASH_INTEGRATION = String.raw`# Boite shell integration: marks prompts and commands for the terminal and
 # saves each command to the history file as soon as it runs.
 if [ -r ~/.bashrc ]; then . ~/.bashrc; fi
 if [ -n "\${__boite_integration-}" ]; then return 0 2>/dev/null; fi
@@ -55,7 +55,7 @@ builtin printf '\e]633;P;HistoryFile=%s\a' "\${HISTFILE-$HOME/.bash_history}"
 `.replaceAll('\\${', '${');
 
 /** Windows PowerShell 5.1 has no `e escape: the control characters are built from [char]. */
-export const POWERSHELL_INTEGRATION = String.raw`
+const POWERSHELL_INTEGRATION = String.raw`
 if ($Global:__BoiteIntegration) { return }
 $Global:__BoiteIntegration = $true
 $Global:__BoiteE = [char]27

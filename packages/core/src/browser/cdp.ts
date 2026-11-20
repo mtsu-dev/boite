@@ -19,7 +19,7 @@ interface Waiting { resolve(value: Record<string, unknown>): void; reject(error:
 /** What a command may take before the page is called stuck. */
 const COMMAND_TIMEOUT_MS = 30_000;
 
-export class CdpError extends Error {}
+class CdpError extends Error {}
 
 /** The connection is live, but the session awaiting this command has detached. */
 export class CdpSessionDetachedError extends CdpError {

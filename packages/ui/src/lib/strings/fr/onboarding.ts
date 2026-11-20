@@ -91,7 +91,6 @@ export const fr: Translation = {
       onPhoneSettings: "Les notifications et l'application sur l'écran d'accueil sont dans les Réglages.",
       title: 'Éloignez-vous. Gardez le fil.',
       phone: 'Sur votre téléphone',
-      phoneBody: 'Scannez un QR code et votre téléphone retrouve les fils de toutes vos machines, avec les notifications.',
       pair: 'Ajouter un appareil',
       machines: 'Un autre Boite',
       machinesBody: 'Pilotez depuis cette application un Boite qui tourne sur un serveur ou un autre ordinateur.',

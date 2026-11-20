@@ -22,7 +22,7 @@ const hash = (messages: Message[], options: Options) => createHash('sha256').upd
 const toolPreviews = (options: { compactTools?: boolean; compactToolParts?: boolean }) => !!(options.compactTools || options.compactToolParts);
 
 /** Validate new options before an opening can change the socket or unread state. */
-export function checkSnapshotOptions(options: Options): void {
+function checkSnapshotOptions(options: Options): void {
   const problem = snapshotOptionsProblem(options) ?? pageBytesProblem(options.maxBytes);
   if (problem) throw invalidParams(`threads.get.${problem.field}: expected ${problem.expected}`, problem);
 }

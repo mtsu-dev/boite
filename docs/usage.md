@@ -109,8 +109,8 @@ The timer is an estimate from what the agent reports or the provider
 documents. It does not check the cache, and changing the model or account
 resets it.
 
-Keep the prompt cache warm is an experiment: it exists in Nightly builds
-only, in Settings, Experiments, and is off by default.
+Keep the prompt cache warm is in Settings, System, and is off by default.
+Only the owner sees it.
 While a conversation waits on its agents or workflows, Boite sends a one-word
 turn shortly before the cache lapses, for at most 12 hours by default (1 to
 24). Each ping counts as usage, and a ping that misses the cache ends the

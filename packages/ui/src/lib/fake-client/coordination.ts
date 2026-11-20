@@ -53,7 +53,7 @@ export function registerContactState(ctx: FakeContext, state: () => ContactsStat
 export function recordFakeContactStart(ctx: FakeContext, threadId: ThreadId): void {
   contactStates.get(ctx)?.starts.add(threadId);
 }
-export const fakeContacts = (ctx: FakeContext) => contactStates.get(ctx)?.state();
+const fakeContacts = (ctx: FakeContext) => contactStates.get(ctx)?.state();
 export const checkContactTier = (ctx: FakeContext, thread: Thread) => contactStates.get(ctx)?.check(thread);
 const rejected = (message: string) => new RpcFailure({ code: RpcErrorCode.Refused, message });
 const deliveredAt = new WeakMap<AgentLetter, number>();
@@ -267,7 +267,7 @@ function relationOf(ctx: FakeContext, threadId: ThreadId, other: AgentAddress): 
  * As the core's `requests.ofThread`: what this thread asked, and on the
  * Contacts bot's thread what it forwarded and what it settled, oldest first.
  */
-export function fakeThreadRequests(ctx: FakeContext, threadId: ThreadId): ContactRequest[] {
+function fakeThreadRequests(ctx: FakeContext, threadId: ThreadId): ContactRequest[] {
   const state = fakeContacts(ctx);
   if (!state) return [];
   const self = ctx.identity.coreId;

@@ -1,11 +1,11 @@
 import { expect, test, vi } from 'vitest';
-import { botsHost, botsHostAway, ensureOperator, operatorHost } from './operator';
+import { botsHost, botsHostAway, ensureOperator, operatorHost, operatorOnOpen } from './operator';
 import type { Store } from './store.svelte';
 
 /** A machine as `operatorHost` reads it: its owner, its link, its client and its place in the group. */
-function machine(self: string, group: { settingsHome?: string; botsHome?: string } = {}, connected = true, call: (method: string) => unknown = () => ({})): Store {
+function machine(self: string, group: { id?: string; settingsHome?: string; botsHome?: string } = {}, connected = true, call: (method: string) => unknown = () => ({})): Store {
   const cores = ['core-a', 'core-b', 'core-c'].map(coreId => ({ coreId, name: coreId.toUpperCase() }));
-  return { owner: true, connection: connected ? 'ready' : 'closed', client: { call: vi.fn(async (method: string) => call(method)) }, group: { id: 'grp', self, cores, ...group } } as unknown as Store;
+  return { owner: true, connection: connected ? 'ready' : 'closed', groupKnown: true, client: { call: vi.fn(async (method: string) => call(method)) }, group: { id: 'grp', self, cores, ...group } } as unknown as Store;
 }
 
 test('the Operator goes to the Mochis machine and only there, else the Settings machine, else this window', () => {
@@ -39,4 +39,58 @@ test('turning Contacts on while the Mochis machine is offline makes no Operator 
   await ensureOperator(a, [b, c]);
   expect(c.client!.call).toHaveBeenCalledWith('agents.builtin.ensure', expect.objectContaining({ kind: 'contacts' }));
   for (const store of [a, b]) expect(store.client!.call).not.toHaveBeenCalledWith('agents.builtin.ensure', expect.anything());
+});
+
+test('Contacts opened gives the group its Operator once a session, and a failure lets the next opening try again', async () => {
+  const ensures = (store: Store) => vi.mocked(store.client!.call).mock.calls.filter(([method]) => method === 'agents.builtin.ensure').length;
+  let refuse = true;
+  const none = (method: string) => {
+    if (method === 'contacts.get') return { bot: null };
+    if (method === 'agents.builtin.ensure' && refuse) throw new Error('selection: no signed-in account on this machine to run the mochi');
+    return {};
+  };
+  const home = machine('core-a', {}, true, none);
+  operatorOnOpen(home, []);
+  await vi.waitFor(() => expect(home.error).toContain('no signed-in account'));
+  expect(ensures(home)).toBe(1);
+  refuse = false;
+  operatorOnOpen(home, []);
+  await vi.waitFor(() => expect(ensures(home)).toBe(2));
+  // Made: opening Contacts again asks nothing more in this session.
+  operatorOnOpen(home, []);
+  await new Promise(resolve => setTimeout(resolve, 10));
+  expect(vi.mocked(home.client!.call).mock.calls.length).toBe(4);
+  // The group got its Operator: another of its machines opening Contacts asks nothing either.
+  const sibling = machine('core-b', {}, true, none);
+  operatorOnOpen(sibling, [home]);
+  await new Promise(resolve => setTimeout(resolve, 10));
+  expect(sibling.client!.call).not.toHaveBeenCalled();
+  // A machine of the group already has one: this one makes none.
+  const other = machine('core-b', {}, true, () => ({ bot: { id: 'operator' } }));
+  const fresh = machine('core-a', {}, true, none);
+  expect(await ensureOperator(fresh, [other])).toBe(true);
+  expect(vi.mocked(other.client!.call)).toHaveBeenCalledWith('contacts.get', {});
+  expect(ensures(fresh) + ensures(other)).toBe(0);
+});
+
+test('another group\'s Operator does not stand in for this group\'s', async () => {
+  const has = (method: string) => method === 'contacts.get' ? { bot: { id: 'theirs' } } : {};
+  const none = (method: string) => method === 'contacts.get' ? { bot: null } : {};
+  const home = machine('core-a', { id: 'ours' }, true, none);
+  const other = machine('core-x', { id: 'other-grp' }, true, has);
+  operatorOnOpen(home, [other]);
+  await vi.waitFor(() => expect(home.client!.call).toHaveBeenCalledWith('agents.builtin.ensure', expect.objectContaining({ kind: 'contacts' })));
+  expect(other.client!.call).not.toHaveBeenCalled();
+});
+
+test('a machine whose group is still loading may hold the Operator: none is made until it answers', async () => {
+  const none = (method: string) => method === 'contacts.get' ? { bot: null } : {};
+  const home = machine('core-a', { id: 'loading' }, true, none);
+  const peer = { ...machine('core-b', { id: 'loading' }, true, () => ({ bot: { id: 'operator' } })), groupKnown: false, group: null } as unknown as Store;
+  expect(await ensureOperator(home, [peer])).toBe(false);
+  expect(home.client!.call).not.toHaveBeenCalled();
+  // Its group known, it is asked and its Operator is the group's.
+  const known = machine('core-b', { id: 'loading' }, true, () => ({ bot: { id: 'operator' } }));
+  expect(await ensureOperator(home, [known])).toBe(true);
+  expect(vi.mocked(home.client!.call).mock.calls.filter(([method]) => method === 'agents.builtin.ensure')).toHaveLength(0);
 });

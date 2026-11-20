@@ -27,7 +27,7 @@ import { worktreeRoot } from './worktree.ts';
 import type { SharedFilePermit } from './contacts/access-policy.ts';
 
 /** How much of a file decides whether it is text: one NUL in there and it is not. */
-export const TEXT_PROBE_BYTES = 8000;
+const TEXT_PROBE_BYTES = 8000;
 
 export interface InsidePath {
   absolute: string;
@@ -162,7 +162,7 @@ function contains(root: string, target: string): boolean {
   return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
 }
 
-export function relativeForm(root: string, target: string): string {
+function relativeForm(root: string, target: string): string {
   return relative(root, target).split(sep).join('/');
 }
 
@@ -322,7 +322,7 @@ function byName(a: { name: string }, b: { name: string }): number {
  * is: following every one to decide would cost a stat per entry on a tree
  * nobody asked to walk, and the link is followed when a client opens it.
  */
-export async function listDirectory(cwd: string, path: string | undefined): Promise<FileEntry[]> {
+async function listDirectory(cwd: string, path: string | undefined): Promise<FileEntry[]> {
   const directory = path === undefined || path === '' ? '.' : path;
   const what = 'files.list path';
   const target = existingInside(cwd, directory, 'dir', what);
@@ -418,7 +418,7 @@ export function mediaOf(path: string): { kind: 'image' | 'video' | 'audio' | 'bi
  * `FILE_MAX_BYTES` takes the url too, whatever its extension says, so a
  * gigabyte of log never becomes one JSON frame.
  */
-export async function readFileContent(core: Core, cwd: string, path: string, permit?: SharedFilePermit): Promise<FileContent> {
+async function readFileContent(core: Core, cwd: string, path: string, permit?: SharedFilePermit): Promise<FileContent> {
   const found = existingInside(cwd, path, 'file', 'files.read path');
   const modifiedAt = Math.round(Number(found.stats.mtimeNs) / 1e6);
   const size = Number(found.stats.size);
@@ -487,7 +487,7 @@ export async function readFileContent(core: Core, cwd: string, path: string, per
 }
 
 /** The editor's save: the file may be new, its directory may not. */
-export async function writeFileText(
+async function writeFileText(
   cwd: string,
   path: string,
   text: string,
@@ -736,7 +736,7 @@ export class FileTickets {
 }
 
 /** The working directory a read is resolved against, held to the project for a paired device or a plugin. */
-export function readCwd(core: Core, threadId: ThreadId, ctx: RpcContext, path?: string): string {
+function readCwd(core: Core, threadId: ThreadId, ctx: RpcContext, path?: string): string {
   const cwd = threadCwd(core, threadId);
   if (deviceBound(ctx.connection.identity.principal)) {
     assertDeviceReadable(core, threadId);

@@ -6,11 +6,11 @@ import { spoken } from '../coordination-lookup.ts';
 import { usageGroups } from '../journal/usage-sums.ts';
 import { usageTotal } from '../usage.ts';
 
-export const DELEGATION_WAIT_DEFAULT_MS = 600_000;
-export const DELEGATION_WAIT_MAX_MS = 3_600_000;
+const DELEGATION_WAIT_DEFAULT_MS = 600_000;
+const DELEGATION_WAIT_MAX_MS = 3_600_000;
 const PAGE_CHARS = 16_000;
 
-export function delegationWaitTimeout(value: number | undefined): number {
+function delegationWaitTimeout(value: number | undefined): number {
   const timeout = value === undefined ? DELEGATION_WAIT_DEFAULT_MS : value;
   if (!Number.isInteger(timeout) || timeout < 0 || timeout > DELEGATION_WAIT_MAX_MS) throw invalidParams('timeoutMs: expected an integer from 0 to 3600000');
   return timeout;

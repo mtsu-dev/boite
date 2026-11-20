@@ -13,7 +13,8 @@ import { dirname, join, parse } from 'node:path';
 import { DEVICE_HOME_CREDENTIAL_STORES, type RpcMethodName } from '@boite/contracts';
 import { connect } from '../src/client.ts';
 import * as paths from '../src/paths.ts';
-import { AGENT_METHODS, DEVICE_METHODS, assertAllowed } from '../src/access.ts';
+import { AGENT_METHODS, DEVICE_METHODS } from '@boite/contracts';
+import { assertAllowed } from '../src/access.ts';
 import type { Connection } from '../src/router.ts';
 import { assertDeviceFile, assertDeviceProjectFolder } from '../src/workdir.ts';
 import { echoThread, startTestCore, testProject } from './harness.ts';
@@ -172,7 +173,6 @@ describe('the access gate', () => {
     expect(refusedNames).not.toContain('projects.add');
     expect(refusedNames).toContain('accounts.add');
     expect(refusedNames).toContain('settings.set');
-    expect(refusedNames).toContain('providers.dryRun');
     expect(refusedNames).toContain('accounts.login');
     expect(refusedNames).toContain('resources.killTree');
     expect(refusedNames).toContain('trace.get');
@@ -301,7 +301,6 @@ describe('the access gate', () => {
       const failures: string[] = [];
       const attempts: (() => Promise<unknown>)[] = [
         () => phone.call('settings.set', { listenOnLan: true }),
-        () => phone.call('providers.dryRun', { file: 'C:\\Windows\\win.ini' }),
         () => phone.call('accounts.add', { providerId: 'echo', label: 'from the phone' }),
       ];
       for (const attempt of attempts) {
@@ -314,7 +313,6 @@ describe('the access gate', () => {
       }
       expect(failures).toEqual([
         'settings.set is for the owner only',
-        'providers.dryRun is for the owner only',
         'accounts.add is for the owner only',
       ]);
       // Nothing else went through: the gate runs before the handler.

@@ -15,7 +15,7 @@ import { writeTurnError } from './turn-error.ts';
 import { folderPresent, restoreThreadCwd, ThreadCwdGone } from './cwd.ts';
 import { abortable } from '../abortable.ts';
 
-export { STOP_DEADLINE, STOP_DEADLINE_ERROR } from './turn-attempts.ts';
+export { STOP_DEADLINE } from './turn-attempts.ts';
 
 /**
  * One turn from the scheduler to its end: the driver started and awaited,

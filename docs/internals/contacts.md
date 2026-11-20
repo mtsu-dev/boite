@@ -1,7 +1,7 @@
 # Contacts
 
-Behind the Contacts experiment ([experiments](experiments.md)). Not ready for a
-stable channel: a full security pass and a network pass come first.
+On in every build, with no switch ([experiments](experiments.md#contacts)).
+A full security pass and a network pass are still to come.
 
 A contact is another owner's Boite. Your agents and theirs work together on the
 projects each side opens to the other, and on nothing else. A contact never
@@ -542,9 +542,10 @@ write to.
 
 ## The Contacts mochi
 
-Turning on the Contacts experiment creates a built-in [mochi](mochis.md#built-in-mochis),
-named Operator in English and Standardiste in French
-(`agents.builtin.ensure { kind: 'contacts' }`), once for the group: on the
+Opening Contacts the first time, the page or the column, creates a built-in
+[mochi](mochis.md#built-in-mochis), never at boot, named Operator in English
+and Standardiste in French (`agents.builtin.ensure { kind: 'contacts' }`,
+from `operatorOnOpen` in `lib/operator.ts`), once for the group: on the
 Mochis machine, or with no Mochis role on the Settings machine, else on the
 window's machine ([machines](machines.md)). It is the switchboard: the
 one thread that sends, receives and settles requests. Its domain and
@@ -1054,8 +1055,7 @@ grants. `sharedProjects.configure` on the owning host selects its permitted
 delegation profiles, permission mode and optional host concurrency limit.
 `null` inherits host settings, not a new default ceiling. Peers receive route
 names/models/capabilities, never account IDs, credentials or environment.
-`SharedComputeAllocation` expresses an explicit contribution such as four
-local children and five remote children. A workflow step's `compute` target
+A workflow step's `compute` target
 selects one host. Shared-compute plans have no new default concurrency ceiling;
 an explicit plan limit and each host's contribution/resource settings still
 apply. Ordinary plans keep their existing limits. No exchange/hop counter is

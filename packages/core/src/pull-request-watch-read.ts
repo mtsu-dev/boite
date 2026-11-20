@@ -109,7 +109,7 @@ export function parseFingerprint(raw: string): Fingerprint {
   };
 }
 
-export type CheckStatus = 'pending' | 'passed' | 'failed';
+type CheckStatus = 'pending' | 'passed' | 'failed';
 export interface WatchCheck {
   name: string; status: CheckStatus; conclusion: string; required: boolean; url: string;
   /** Its name without its workflow: what the base branch's rules call it. */

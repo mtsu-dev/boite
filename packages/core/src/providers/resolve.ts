@@ -72,7 +72,7 @@ export interface ResolvedCommand {
  * drivers spawn through node's `child_process.spawn`, which refuses one with
  * EINVAL, so a PATH hit on one is not a way to start the agent.
  */
-export function isLauncherScript(path: string): boolean {
+function isLauncherScript(path: string): boolean {
   return process.platform === 'win32' && /\.(cmd|bat|ps1)$/i.test(path);
 }
 
@@ -81,7 +81,7 @@ export function isLauncherScript(path: string): boolean {
  * directory that holds a real program of that name. `scripts` keeps them, for a
  * profile that names a launcher script itself and maps it to its program.
  */
-export function whichProgram(name: string, scripts = false): string | null {
+function whichProgram(name: string, scripts = false): string | null {
   // Named outright: Bun.which alone would keep the PATH the process started with.
   const PATH = process.env['PATH'] ?? '';
   const found = which(name, PATH);

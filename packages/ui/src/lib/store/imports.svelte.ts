@@ -1,5 +1,4 @@
 import type { ImportableSession, ProjectId } from '@boite/contracts';
-import { isExperimentEnabled } from '../experiments';
 import type { StoreContext } from './context';
 
 /** The import dialog: agent sessions found on disk, brought in as threads. */
@@ -11,12 +10,11 @@ export class Imports {
 
   /**
    * The import dialog for one project: opens at once, the list arrives when the
-   * core has read the files. Behind the `session-import` experiment: a chord or
-   * a palette row that reaches here with it off does nothing.
+   * core has read the files.
    */
   async openImports(projectId: ProjectId): Promise<void> {
     const client = this.ctx.client;
-    if (!client || !isExperimentEnabled('session-import')) return;
+    if (!client) return;
     this.imports = { projectId, sessions: [], loading: true, running: null };
     try {
       const sessions = await client.call('imports.list', { projectId });

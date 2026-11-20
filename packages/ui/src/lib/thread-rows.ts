@@ -1,7 +1,7 @@
 import type { MessageId, MessagePart, ProjectId, RpcParams, Thread, ThreadId, ThreadLoad, ThreadProgress, ThreadSummary } from '@boite/contracts';
 import { resumeAnchor } from '@boite/contracts';
 import { sameValue } from './plain-data';
-export { resumeAnchor, workingChildren, type WorkingChildren } from '@boite/contracts';
+export { workingChildren, type WorkingChildren } from '@boite/contracts';
 
 /** Same value: primitives by identity, the small objects of a summary (load, context, cache) by content. */
 function same(a: unknown, b: unknown): boolean {
@@ -132,7 +132,7 @@ export function summaryOf(thread: Thread): ThreadSummary {
 }
 
 /** A panel key of the machine `machineId`: prefixed with its id, or bare on a store that has none. */
-export function ownsPanelKey(machineId: string, key: string): boolean {
+function ownsPanelKey(machineId: string, key: string): boolean {
   if (!machineId) return !key.startsWith('[');
   try {
     const parsed: unknown = JSON.parse(key);

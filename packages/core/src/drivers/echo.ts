@@ -127,7 +127,7 @@ const TOOL_CONTEXT_TOKENS = 25;
 const DIRECTIVE =
   /\[(?:sleep:\d+|tool-stream|tool(?::\d+)?|command:\d+|diff|doc|image|permission(?::\d+)?|question|think|compact|spawn:[^\]]*|process|flood:\d+|error|notice|capacity:\d+|usage-limit:-?\d+)\]|\bquestion\b/g;
 
-export function parsePrompt(prompt: string): Segment[] {
+function parsePrompt(prompt: string): Segment[] {
   const segments: Segment[] = [];
   // Historical directives are data: a stopped sleep or tool must not run again.
   const history = [...prompt.matchAll(/<(conversation-history|interrupted-user-messages|recent-history)>\n[\s\S]*?\n<\/\1>/g)];
@@ -166,7 +166,7 @@ export function parsePrompt(prompt: string): Segment[] {
 }
 
 /** What the fake model claims to reason about: the prompt with its directives cut. */
-export function thinkingFor(prompt: string): string {
+function thinkingFor(prompt: string): string {
   DIRECTIVE.lastIndex = 0;
   return `thinking about: ${prompt.replace(DIRECTIVE, '').trim()}`;
 }

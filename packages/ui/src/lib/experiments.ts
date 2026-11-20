@@ -38,7 +38,7 @@ export { EXPERIMENT_IDS, type ExperimentId };
 
 export const EXPERIMENTS_STORAGE_KEY = 'boite.experiments';
 /** `off` once this device keeps its own experiments rather than the desktop app's. */
-export const FOLLOW_STORAGE_KEY = 'boite.experiments.follow';
+const FOLLOW_STORAGE_KEY = 'boite.experiments.follow';
 /** The desktop app's experiments as last heard, so a reload starts with them before the hello. */
 export const DESKTOP_STORAGE_KEY = 'boite.experiments.desktop';
 /** The version of the primary machine's core as last heard, so a reload lists the right switches before the hello. */
@@ -120,9 +120,13 @@ export function experimentsBuild(): string {
   return stored(BUILD_STORAGE_KEY) ?? build ?? RELEASE_VERSION;
 }
 
-/** Whether experiments exist in the build that decides: false on a Release, where Settings has no Experiments page. */
+/**
+ * Whether Settings has an Experiments page: the build that decides runs
+ * experiments and lists at least one switch. A Release runs none, and a build
+ * whose features are all finished has nothing to list.
+ */
 export function experimentsAvailable(): boolean {
-  return experimentsRun(experimentsBuild());
+  return experimentsRun(experimentsBuild()) && listedSwitches().length > 0;
 }
 
 /** The switches the Experiments page lists in the build that decides, in order. */
@@ -203,7 +207,7 @@ export function followDesktopOf(owner: object | null): void {
  * one as chosen, which a Release core does not cut down, else the historic
  * one of a core from before it.
  */
-export function desktopHeard(said: { desktop?: ExperimentId[] | null; desktopChosen?: ExperimentId[] | null; experiments?: ExperimentId[]; chosen?: ExperimentId[] }): ExperimentId[] | null {
+export function desktopHeard(said: { desktop?: readonly string[] | null; desktopChosen?: readonly string[] | null; experiments?: readonly string[]; chosen?: readonly string[] }): readonly string[] | null {
   return said.desktopChosen ?? said.chosen ?? said.desktop ?? said.experiments ?? null;
 }
 
@@ -213,7 +217,7 @@ export function desktopHeard(said: { desktop?: ExperimentId[] | null; desktopCho
  * the same core keeps the set heard last, through reloads and restarts, but
  * a primary that moved to another machine forgets the previous one's.
  */
-export function heardDesktop(owner: object, experiments: readonly ExperimentId[] | null, core: string | null = null): void {
+export function heardDesktop(owner: object, experiments: readonly string[] | null, core: string | null = null): void {
   if (owner !== leader || !canFollowDesktop()) return;
   const last = heard();
   if (experiments === null && (last === null || core === null || last.core === null || last.core === core)) return;

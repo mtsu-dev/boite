@@ -2,7 +2,7 @@ import type { AccountQuota } from '@boite/contracts';
 import { quotaAccountName } from './quota-reader.svelte';
 
 /** From this share on, a use of the account Douane cannot explain is worth a notice outside the limits view. */
-export const OUTSIDE_NOTICE_PERCENT = 10;
+const OUTSIDE_NOTICE_PERCENT = 10;
 
 export interface OutsideNotice { account: string; provider: string; percent: number }
 

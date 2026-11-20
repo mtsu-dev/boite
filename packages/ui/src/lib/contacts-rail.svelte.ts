@@ -1,17 +1,14 @@
 /*
  * The contacts column on the window's right edge: whether it is folded, kept
- * on this device. The column itself loads with its experiment; the Contacts
+ * on this device. The column itself loads through `contacts-entry.ts`; the Contacts
  * side of the list column holds its fold (Sidebar.svelte).
  */
 
-import { experimentOn } from './experiments.svelte';
-
 /**
- * The rail is available to the owner while the Contacts experiment is on.
- * A paired device can send a human reply from a shared conversation.
+ * The rail is available to the owner. A paired device can send a human reply from a shared conversation.
  */
 export function contactsShown(store: { owner: boolean }): boolean {
-  return experimentOn('contacts') && store.owner;
+  return store.owner;
 }
 
 /** The column's width; the right panel leaves it this much room. */

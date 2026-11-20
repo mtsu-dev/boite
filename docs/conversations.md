@@ -193,7 +193,7 @@ logo, pick Refresh icon in Manage project.
 - [First steps](first-steps.md): your first project and conversation.
 - [Models](models.md): change the agent or model in a conversation.
 - [Secrets](secrets.md): give an agent a key without pasting it in the chat.
-- [Experiments](experiments.md): unfinished features, in Nightly builds.
+- [Experiments](experiments.md): unfinished features, in Nightly builds; none today.
 - Technical reference: [drafts](internals/drafts.md),
   [titles](internals/titles.md), [imports](internals/imports.md),
   [project icons](internals/project-icons.md).

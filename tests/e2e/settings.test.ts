@@ -216,10 +216,10 @@ test('the mochis are in the app rail on the desktop and in the phone bar, with n
   // The agents fixture, so the rail has bots to draw.
   await page.navigate(`${uiUrl}/?fake=1&open=recent&agents=1`);
   await page.waitFor(`document.querySelector('${id('nav-settings')}')`);
-  // Bots are on in every build: the Experiments page has no switch for them.
-  await page.click(id('nav-settings')); await page.click(id('settings-tab-experiments'));
-  await page.waitFor(`document.querySelector('${id('experiment-whip')}')`);
-  expect(await page.evaluate(`document.querySelector('${id('experiment-resident-agents')}')`)).toBeNull();
+  // Bots are on in every build, with no switch: Settings has no Experiments page at all.
+  await page.click(id('nav-settings'));
+  await page.waitFor(`document.querySelector('${id('settings-tab-general')}')`);
+  expect(await page.evaluate(`document.querySelector('${id('settings-tab-experiments')}')`)).toBeNull();
   await page.click(id('settings-back'));
   await page.waitFor(`document.querySelector('${id('app-rail')} ${id('rail-bot')}') && document.querySelector('${id('app-rail')} ${id('rail-add')}')`);
   expect(await page.evaluate(`document.querySelector('${id('app-rail')} ${id('view-threads')}').getAttribute('aria-current')`)).toBe('page');

@@ -3,7 +3,6 @@
   import { teamsParts } from '../lib/teams-entry';
   import { untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
-  import { experimentOn } from '../lib/experiments.svelte';
   import { pinnedQuotas, PINNED_QUOTA_WIDTH } from '../lib/pinned-quotas.svelte';
   import Deferred from './Deferred.svelte';
   import { parts } from '../lib/deferred-parts';
@@ -38,14 +37,14 @@
   let thread = $derived(store.openThread);
   const phone = new MediaQuery('(max-width: 720px)');
   let dockAvailable = $derived(phone.current ? store.page === 'chat' && store.sidebarOpen : !store.sidebarCollapsed);
-  let pinnedHere = $derived(experimentOn('pinned-quotas') && pinnedQuotas.current.pinned
+  let pinnedHere = $derived(pinnedQuotas.current.pinned
     && (!phone.current || !store.sidebarOpen)
     && !(pinnedQuotas.wantsDock(store) && dockAvailable));
   let discussion = $state<HTMLElement>();
   let quotaRoom = $state<HTMLElement>();
   $effect(() => {
     const box = discussion, column = quotaRoom, owner = store;
-    if (!box || !column || !experimentOn('pinned-quotas') || !pinnedQuotas.current.pinned) return;
+    if (!box || !column || !pinnedQuotas.current.pinned) return;
     const measure = () => pinnedQuotas.crowded.set(owner, (box.clientWidth - column.clientWidth) / 2 < PINNED_QUOTA_WIDTH + 24);
     let frame = 0;
     const observer = new ResizeObserver(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(measure); });
@@ -92,13 +91,13 @@
   let TeamChat = $state.raw<typeof import('./teams/TeamChat.svelte').default>();
   let loadingTeamChat: Promise<void> | undefined;
   $effect(() => {
-    if (thread?.teamId && !TeamChat) loadingTeamChat ??= teamsParts?.TeamChat().then(module => { TeamChat = module.default; }).catch(() => { loadingTeamChat = undefined; });
+    if (thread?.teamId && !TeamChat) loadingTeamChat ??= teamsParts.TeamChat().then(module => { TeamChat = module.default; }).catch(() => { loadingTeamChat = undefined; });
   });
   // A salon opened as a thread (a link, the palette) draws as it does in the panel, loaded the same way.
   let CouncilSalon = $state.raw<typeof import('./council/CouncilSalon.svelte').default>();
   let loadingSalon: Promise<void> | undefined;
   $effect(() => {
-    if (thread?.councilId && !CouncilSalon) loadingSalon ??= loadCouncilSalon()?.then(module => { CouncilSalon = module.default; }).catch(() => { loadingSalon = undefined; });
+    if (thread?.councilId && !CouncilSalon) loadingSalon ??= loadCouncilSalon().then(module => { CouncilSalon = module.default; }).catch(() => { loadingSalon = undefined; });
   });
   let project = $derived(store.openProject);
   let draftChoice = $derived(store.defaultChoice());
@@ -143,7 +142,7 @@
   <section class="chat" class:drafting={!thread && !sending} bind:this={chat} data-testid="chat">
     {#if thread?.forkOrigin}{#key thread.id}<ForkReturn {store} {thread} />{/key}{/if}
     <div class="discussion" class:draft-body={!thread && !sending} bind:this={discussion} data-testid={!thread && !sending ? 'draft-empty' : undefined}>
-    {#if experimentOn('pinned-quotas') && pinnedQuotas.current.pinned}<div class="quota-room" bind:this={quotaRoom} aria-hidden="true"></div>{/if}
+    {#if pinnedQuotas.current.pinned}<div class="quota-room" bind:this={quotaRoom} aria-hidden="true"></div>{/if}
     {#if thread}
       <!-- One timeline per thread: the heights it measured and the ids that
            already played the rise belong to that thread alone, and kept across

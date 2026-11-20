@@ -42,9 +42,9 @@ const PAGES: Record<SettingsTab, SettingsPage> = {
   'task-manager': { phone: 'page' },
   resources: { owner: true, machine: true, phone: 'page', phoneCards: ['limits', 'tasks'] },
   machines: { phone: 'page', phoneCards: ['machines', 'group'] },
-  advanced: { machine: true, phone: 'sections', phoneCards: ['auto-compact'] },
+  advanced: { machine: true, phone: 'sections', phoneCards: ['auto-compact', 'background-compaction', 'cache-keepalive', 'device-stream'] },
   diagnostics: { owner: true, machine: true, phone: 'page' },
-  experiments: { machine: true, phone: 'page' }
+  experiments: { device: true, phone: 'page' }
 };
 
 /** The cards of a long desktop page that a phone shows on a page of their own, and that page. */
@@ -66,7 +66,7 @@ const SECTION_PAGES: Partial<Record<SettingsTab, Record<string, { page: PhoneSec
 export type PhoneSectionPage = 'conversations' | 'archived' | 'worktrees';
 
 /** Cards on shared pages that write to the owner's machine. */
-const OWNER_CARDS = new Set(['privacy', 'execution', 'origins', 'auto-compact', 'device-stream', 'background-compaction']);
+const OWNER_CARDS = new Set(['privacy', 'execution', 'origins', 'auto-compact', 'device-stream', 'background-compaction', 'cache-keepalive']);
 
 /**
  * The families Settings lists, desktop nav and phone list alike, each page a
@@ -111,6 +111,7 @@ const MERGED: Partial<Record<SettingsTab, SettingsTab>> = {
 const MOVED: Partial<Record<SettingsTab, Record<string, SettingsTab>>> = {
   appearance: { workspace: 'general' },
   resources: { quiet: 'general' },
+  experiments: { 'background-compaction': 'advanced', 'cache-keepalive': 'advanced', 'device-stream': 'advanced' },
   // The browser has its own entry, out of Providers: its profiles are not a provider's.
   accounts: { 'browser-profiles': 'browser' },
   general: { secrets: 'accounts', 'browser-profiles': 'browser', windows: 'machines', 'window-exclusions': 'machines' }
@@ -143,7 +144,7 @@ export function navOf(family: SettingsFamily, owner: boolean): SettingsTab[] {
  * Experiments exists only where the primary machine's build runs experiments
  * (a Nightly or a source build, never a Release).
  */
-export function pageAvailable(tab: SettingsTab, owner: boolean): boolean {
+function pageAvailable(tab: SettingsTab, owner: boolean): boolean {
   return (owner || !ownerOnly(tab)) && (tab !== 'experiments' || experimentsShown());
 }
 

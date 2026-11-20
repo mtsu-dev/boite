@@ -10,12 +10,12 @@ import antigravityTile from '../assets/providers/antigravity.png';
  */
 
 /** A fill that follows the theme: `dark` on the dark and grain themes, `light` on light. */
-export interface ThemedFill {
+interface ThemedFill {
   dark: string;
   light: string;
 }
 
-export interface LogoPath {
+interface LogoPath {
   d: string;
   fill: string | ThemedFill;
   evenOdd?: boolean;

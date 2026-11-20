@@ -8,7 +8,7 @@ import { whenIdle as afterPaint } from './idle';
 /** What a row of the timeline costs before it is drawn: its estimate, and its Markdown rendered off the main thread. */
 
 /** Under this many characters a page renders here cheaply enough: no worker for it. */
-export const PREPARE_FROM = 16_384;
+const PREPARE_FROM = 16_384;
 
 /**
  * A page of history renders its Markdown in a worker (`prepareBlocks`): the
@@ -72,7 +72,7 @@ export class HistoryPrepare {
 /** What mounting one slice is taken to cost until one has been timed, in ms: an idle period with less left mounts nothing. */
 export const WARM_SLICE_MS = 12;
 /** The delay between two steps where the browser has no idle callbacks. */
-export const WARM_WAIT_MS = 200;
+const WARM_WAIT_MS = 200;
 /** An idle period lasts 50 ms at most: a slice timed over this still mounts, alone, in a whole one. */
 const IDLE_MAX_MS = 45;
 

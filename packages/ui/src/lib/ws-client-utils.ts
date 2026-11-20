@@ -111,9 +111,9 @@ export const RESUME_PROBE_MS = 4_000;
  */
 export const RACE_AFTER_HIDDEN_MS = 8_000;
 /** How often a visible page compares its clocks to notice that the system slept. */
-export const WAKE_TICK_MS = 1_000;
+const WAKE_TICK_MS = 1_000;
 /** A wall clock that ran this much further than the page's own clock in one tick: the system slept. */
-export const WAKE_JUMP_MS = 5_000;
+const WAKE_JUMP_MS = 5_000;
 
 /**
  * Calls `woke(slept)` when the system wakes from a sleep the page stayed

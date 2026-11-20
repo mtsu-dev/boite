@@ -13,7 +13,7 @@ const PREFIX = 'pr-watches:';
 /** The shortest wait the loop schedules between two passes of its own. */
 const MIN_PASS_GAP_MS = 1_000;
 /** Watches one conversation may hold. */
-export const WATCH_LIMIT = 10;
+const WATCH_LIMIT = 10;
 
 export interface WatchTiming {
   /** Between two fingerprint reads of one pull request. */

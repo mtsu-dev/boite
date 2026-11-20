@@ -362,7 +362,7 @@ export class IndexedSnapshotDb implements SnapshotDb {
 }
 
 /** Why a thread is never written: incognito, or its page holds a secret card. */
-export function snapshotAllowed(thread: Pick<Thread, 'incognito' | 'messages'>): boolean {
+function snapshotAllowed(thread: Pick<Thread, 'incognito' | 'messages'>): boolean {
   if (thread.incognito) return false;
   return !thread.messages.some(message => message.parts.some(part => part.type === 'secret_request'));
 }

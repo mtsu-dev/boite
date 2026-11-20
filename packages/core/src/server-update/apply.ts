@@ -10,7 +10,7 @@ export { UNSAVED_DATA };
 const pause = (ms: number) => new Promise<void>(done => setTimeout(done, ms));
 
 /** Snapshots kept beside the installation; each still holds a whole journal. */
-export const KEPT_BACKUPS = 2;
+const KEPT_BACKUPS = 2;
 
 /** Bytes the data snapshot copies: everything but `UNSAVED_DATA`, symlinks not followed. */
 function snapshotBytes(dataDir: string): number {

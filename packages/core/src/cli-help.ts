@@ -130,7 +130,7 @@ ${PLUGIN_HELP}
   todo add <text>                add a card for the user
   todo claim <id>                mark a card finished, awaiting the user
   goal track                     a reviewed goal and checklist on the user's
-                                 last prompt (the Automatic goals experiment)
+                                 last prompt, unless automatic goals are off
   threads find <words>           locate threads by words of their chat, title,
                                  project, branch or model
   threads read <thread>          its conversation (--last <n>, --before <ms>; --entry <id> --offset <n>: the rest of a cut entry; --entry <id> --tool <id> [--offset <n>]: your own thread's tool output)
@@ -164,7 +164,7 @@ ${BOT_HELP}
                                  project or the one named by --project.
   delegate list [--details]      every subagent, workflow and council: state, model, time
   delegate council <request>     independent read-only answers with scores /10
-                                 in one message. Requires the Council experiment.
+                                 in one message.
                                  --models <model>[:<effort>],... from delegate
                                  models, --effort <level> (xhigh) for other
                                  members, --request-file <path>, repeat

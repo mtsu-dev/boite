@@ -141,7 +141,7 @@ export function linkedPullRequests(core: Core, threadIds: readonly string[]): Ma
 }
 
 /** A desk line's pull request, in a few words: `PR #12 open, checks failing`. */
-export function pullRequestText(pr: AgentWatchPullRequest | null): string {
+function pullRequestText(pr: AgentWatchPullRequest | null): string {
   return pr ? `PR #${pr.number} ${pr.state}${pr.checks ? `, checks ${pr.checks}` : ''}` : '';
 }
 
@@ -189,7 +189,7 @@ function contextInputs(core: Core, agent: AgentProfile, guided: boolean): Contex
  * later the records, must not send the whole block again. The mochi reads its
  * prompt when it comes due, and the block lists it whenever it goes out.
  */
-export function routineBlock(routines: readonly AgentRoutine[]): { routineLines: string[]; routinesHashed: unknown[] } {
+function routineBlock(routines: readonly AgentRoutine[]): { routineLines: string[]; routinesHashed: unknown[] } {
   const coming = routines.filter(r => !spentAgentRoutine(r));
   return {
     routineLines: coming.map(r => `- ${JSON.stringify(r.name)} (${r.id}): ${scheduleText(r.schedule)}${r.enabled ? r.nextAt !== null ? `, next ${new Date(r.nextAt).toISOString()}` : ', done' : ', off'}${r.check ? `, wakes you only when its check prints something new: ${JSON.stringify(r.check)}` : ''}`),

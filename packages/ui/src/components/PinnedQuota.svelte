@@ -2,7 +2,7 @@
   import PrivateText from './PrivateText.svelte';
   import { untrack } from 'svelte';
   import { Gauge, PinOff, RefreshCw } from '@lucide/svelte';
-  import { chipChoice } from '../lib/composer-target';
+  import { chipChoice } from '../lib/composer-choice';
   import { startPointerDrag } from '../lib/pointer-drag';
   import { quotaReader, shownQuotas, quotaAccountName, quotaCredits, remainingPercent, quotaTone } from '../lib/quota-reader.svelte';
   import { pinnedQuotaRows } from '../lib/pinned-quota-target';
@@ -66,7 +66,7 @@
     event.preventDefault();
     pinnedQuotas.set(true, next);
   }
-  let choice = $derived(chipChoice(store, store.openThread, null));
+  let choice = $derived(chipChoice(store, store.openThread));
   let provider = $derived(choice ? store.providerOf(choice.providerId) : null);
   let reader = $derived(quotaReader(store.endpointUrl ?? 'here', store.core));
   let rows = $derived(pinnedQuotaRows(shownQuotas(reader.rows ?? [], store.accounts, store.providers), choice, provider, store.settings));

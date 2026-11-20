@@ -9,5 +9,12 @@ export const strings = {
       title: 'Hide scrollbars until the pointer is near',
       hint: 'They take no room and can still be dragged. Mouse and pen only'
     },
+    whip: {
+      title: 'Whip',
+      hint: 'A Whip button beside the other controls: an animated whip follows your pointer or finger. Flick to crack it, click or tap to drop it',
+      action: 'Throw the whip',
+      drop: 'Drop the whip',
+      off: 'The whip needs animations, which are off in your system settings (Windows: Accessibility > Visual effects > Animation effects)'
+    },
   }
 } as const;

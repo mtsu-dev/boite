@@ -22,7 +22,7 @@ import type { SpawnedPipedProcess } from './procs.ts';
 import { logAccountStatus, logLoginState } from './account-log.ts';
 
 /** The thread a login process is traced under. It is a name, never a real thread. */
-export function loginThreadId(accountId: AccountId): string {
+function loginThreadId(accountId: AccountId): string {
   return `login:${accountId}`;
 }
 

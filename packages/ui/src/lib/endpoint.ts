@@ -10,11 +10,11 @@ import { insideTauri } from './endpoint-main';
 import { readStoredEndpoint, brought, signsOf, isEndpoint, type Endpoint } from './endpoint-storage';
 
 export { DROPPED_HOLD_MS, DROPPED_STORAGE_KEY, clearMemberDropped, keepDropped, isDropped, droppedAt, droppedSince, isMemberDropped, memberDroppedAt, setDropped } from './endpoint-dropped';
-export { ENVIRONMENTS_STORAGE_KEY, defaultEnvironmentLabel, readEnvironments, storeEnvironments, refreshLocalEnvironment, upsertEnvironment, forgetGroupOf, rememberSession, rememberDevice, removeEnvironment, removeBrought, type StoredEnvironment } from './endpoint-env';
-export { MAIN_STORAGE_KEY, readMainMachine, storeMainMachine, openOnMainMachine, insideTauri, servesThisPage, type MainMachine } from './endpoint-main';
-export { ENDPOINT_STORAGE_KEY, readStoredEndpoint, storeEndpoint, clearStoredEndpoint, opens, type Endpoint } from './endpoint-storage';
+export { readEnvironments, refreshLocalEnvironment, upsertEnvironment, forgetGroupOf, rememberSession, rememberDevice, removeEnvironment, removeBrought, type StoredEnvironment } from './endpoint-env';
+export { readMainMachine, storeMainMachine, openOnMainMachine, insideTauri, servesThisPage, type MainMachine } from './endpoint-main';
+export { readStoredEndpoint, storeEndpoint, clearStoredEndpoint, opens, type Endpoint } from './endpoint-storage';
 
-export const CORE_QUERY_PARAM = 'core';
+const CORE_QUERY_PARAM = 'core';
 
 /**
  * A pairing link pasted by hand: the core it names and the grant inside it.
@@ -230,7 +230,7 @@ export function signsFor(url: string): string | undefined {
 }
 
 /** Addresses of the machines of this device's group, as its members last listed them: a link to one asks nothing. */
-export const GROUP_ADDRESSES_STORAGE_KEY = 'boite.group.addresses';
+const GROUP_ADDRESSES_STORAGE_KEY = 'boite.group.addresses';
 
 export function rememberGroupAddresses(addresses: readonly string[]): void {
   try { window.localStorage.setItem(GROUP_ADDRESSES_STORAGE_KEY, JSON.stringify([...new Set(addresses.map(withoutTrailingSlashes))].slice(0, 256))); } catch { /* storage refused */ }

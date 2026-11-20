@@ -2,9 +2,9 @@ import { describe, expect, test, vi } from 'vitest';
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { PROTOCOL_VERSION, RPC_CHUNK_MARK, RPC_MAX_FRAME_BYTES, RpcCloseCode, RpcErrorCode, deviceRevokedInput, type CoreInfo } from '@boite/contracts';
 import { deviceKey } from './device-key';
-import { RpcFailure, WsClient, defaultBackoff, openDeadline, readyAgain, rpcUrl, streamUrl, wasDropped, type SocketLike } from './client';
+import { RpcFailure, WsClient, readyAgain, wasDropped, type SocketLike } from './client';
 import { frameStream } from './remote-browser-stream';
-import { watchAbsence, watchWake } from './ws-client-utils';
+import { defaultBackoff, openDeadline, rpcUrl, streamUrl, watchAbsence, watchWake } from './ws-client-utils';
 
 const CORE: CoreInfo = {
   version: '2.0.0-beta.1',

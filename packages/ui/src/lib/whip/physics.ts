@@ -1,6 +1,5 @@
-import { markFeature } from '@boite/contracts';
 /**
- * The rope simulation behind the whip experiment.
+ * The rope simulation behind the Whip.
  *
  * Ported from OpenWhip's `overlay.html`
  * (https://github.com/GitFrog1111/OpenWhip, MIT), whose tuning is what makes
@@ -408,6 +407,3 @@ function neighbour(pts: Point[], i: number): { x: number; y: number } {
   const b = pts[n - 1]!;
   return { x: 2 * b.x - a.x, y: 2 * b.y - a.y };
 }
-
-// Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
-markFeature('boite-feature:whip');

@@ -21,7 +21,7 @@ import { FIREWALL_PROMPT_REFUSED } from '../types.ts';
 const POWERSHELL = `${process.env['SystemRoot'] ?? 'C:\\Windows'}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
 
 /** The only profile the rule Boite adds covers. */
-export const ALLOW_PROFILE = 'Private';
+const ALLOW_PROFILE = 'Private';
 
 /** ERROR_CANCELLED, the Win32 error Start-Process -Verb RunAs fails with when the prompt is refused. */
 const ELEVATION_CANCELLED = 1223;

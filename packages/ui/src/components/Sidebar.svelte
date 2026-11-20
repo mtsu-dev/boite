@@ -93,7 +93,7 @@
   let ContactRows = $state<typeof import('./home/ContactRows.svelte').default>();
   $effect(() => {
     if (!contactsSide || ContactRows) return;
-    void contactsParts?.ContactRows().then(module => { ContactRows = module.default; }).catch(() => {});
+    void contactsParts.ContactRows().then(module => { ContactRows = module.default; }).catch(() => {});
   });
   const foldLabel = $derived(contactsRail.folded ? strings.contacts.rail.show : strings.contacts.rail.hide);
   $effect(() => { if (showRows && scrollRoot) void tick().then(() => { if (scrollRoot && showRows) scrollRoot.scrollTop = savedScroll; }); });

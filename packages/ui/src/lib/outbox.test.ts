@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { unansweredFailure } from './client';
+import { unansweredFailure } from './rpc-error';
 import { FakeClient } from './fake-client';
 import { Store } from './store.svelte';
 import { readDraftJournal, writeDraftJournal } from './draft-journal';

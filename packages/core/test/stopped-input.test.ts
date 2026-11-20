@@ -127,7 +127,9 @@ test('stopped file attachments remain readable when resuming a native session', 
 });
 
 test('a native command stays bare and does not consume interrupted instructions', async () => {
-  const { seen, start, stop, complete } = await setup('native-session');
+  const { client, seen, start, stop, complete } = await setup('native-session');
+  // An instruction this long would start an automatic goal, on by default, and its own turns: this test counts only the thread's prompts.
+  await client.call('settings.set', { autoGoals: false });
   await start('Establish the native session');
   await complete();
   const instruction = 'Keep the entire specification: ' + 'constraint '.repeat(1500);

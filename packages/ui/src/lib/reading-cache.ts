@@ -6,7 +6,7 @@ export const READING_CACHE_BYTES = 4 * 1024 * 1024;
 export const READING_CACHE_MESSAGES = 2000;
 /** At most this many timelines are kept, and this many bytes of them together. */
 export const READING_CACHE_THREADS = 16;
-export const READING_CACHE_TOTAL = 4 * READING_CACHE_BYTES;
+const READING_CACHE_TOTAL = 4 * READING_CACHE_BYTES;
 
 function documentChars(document: ToolDocument): number {
   if (document.kind === 'diff') return document.oldText.length + document.newText.length;

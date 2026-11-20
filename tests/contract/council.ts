@@ -1,4 +1,4 @@
-/** The council behind its experiment behaves alike on the real core and the in-memory transport (`docs/internals/council.md`). */
+/** The council behaves alike on the real core and the in-memory transport (`docs/internals/council.md`). */
 import { RpcErrorCode } from '../../packages/contracts/src/index.ts';
 import type { ContractEnv, Scenario } from './scenarios.ts';
 
@@ -21,15 +21,14 @@ async function until(what: string, ready: () => boolean): Promise<void> {
     await new Promise(resolve => setTimeout(resolve, 5));
   }
 }
-const experiments = (env: ContractEnv, on: boolean) =>
-  env.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: on ? ['debates'] : [], labels: {} });
+/** An app that reports no experiment, as a Release does: the council is on in every build all the same. */
+const noExperiments = (env: ContractEnv) =>
+  env.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: [], labels: {} });
 
 export const COUNCIL_SCENARIOS: Record<string, Scenario> = {
-  'a council waits for its experiment; a start is checked and idempotent, the salon runs no agent, posts aim with @, a closed round waits for what comes next and a closed council takes nothing more': async (env: ContractEnv) => {
-    await experiments(env, false);
-    same((await refused(env.call('council.list', {}), RpcErrorCode.Refused)).reason, 'experiment-off', 'a list with the experiment off');
-    same((await refused(env.call('council.start', { threadId: 'none', request: 'x', models: ['a', 'b'] }), RpcErrorCode.Refused)).reason, 'experiment-off', 'a start with the experiment off');
-    await experiments(env, true);
+  'a council answers with no experiment reported; a start is checked and idempotent, the salon runs no agent, posts aim with @, a closed round waits for what comes next and a closed council takes nothing more': async (env: ContractEnv) => {
+    await noExperiments(env);
+    check(Array.isArray((await env.call('council.list', {})).councils), 'council.list with no experiment reported');
     const started: string[] = [];
     try {
       const { loaded } = await env.call('providers.list', {});
@@ -106,7 +105,6 @@ export const COUNCIL_SCENARIOS: Record<string, Scenario> = {
       same((await refused(env.call('council.closeRound', { councilId: second.id }), RpcErrorCode.Refused)).status, 'stopped', 'closing a stopped round');
     } finally {
       for (const councilId of started) await env.call('council.stop', { councilId }).catch(() => undefined);
-      await experiments(env, false);
     }
   },
 };

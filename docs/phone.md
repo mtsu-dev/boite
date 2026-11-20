@@ -144,5 +144,5 @@ computer screen.
 - [Machines](machines.md): groups, several computers and switching.
 - [Server](server.md): a machine without the desktop app, or on Android.
 - [Mochis](mochis.md): the Mochis tab.
-- [Experiments](experiments.md): Contacts and the other unfinished features, in Nightly builds.
+- [Contacts](contacts.md): other owners' Boites, in the contacts section under the projects.
 - Technical reference: [phone](internals/phone.md), [Android](internals/android.md).

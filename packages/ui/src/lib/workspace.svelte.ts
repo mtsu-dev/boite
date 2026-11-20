@@ -102,7 +102,7 @@ export function machineHealth(machine: Machine, primary: Store): MachineHealth {
  */
 export const PRIMARY_PATIENCE_MS = 2000;
 /** How long the window keeps its loading screen while another machine may still answer in place of the one it opened on. */
-export const STAND_IN_WAIT_MS = 6000;
+const STAND_IN_WAIT_MS = 6000;
 /** How long the group links wait for the remembered machines to be in: a connection that never ends must not hide the group's other machines for good. */
 export const SETTLE_WAIT_MS = 30_000;
 

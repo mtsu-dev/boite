@@ -7,9 +7,6 @@ import { MuseTurn } from './muse/turn.ts';
 import type { Driver, SessionContext, TurnContext, TurnHandle } from './types.ts';
 import { noteWarmSession } from './driver-log.ts';
 import { ThreadSessions } from './thread-sessions.ts';
-export { choiceFor, museExecutable, museHostArgs } from './muse/mapping.ts';
-export { modelsFrom, readCatalogEfforts } from './muse/models.ts';
-export { mintUuidV7, MspError } from './muse/rpc.ts';
 
 const MINUTE_MS = 60_000;
 

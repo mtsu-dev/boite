@@ -14,7 +14,7 @@ export interface TurnInput {
  * stopped before its answer, a restart continuing a running turn, a restart
  * that cut a subagent, or a wake the agent scheduled (`scheduled-wakes.ts`).
  */
-export type ResumeReason = 'limit' | 'carry-on' | 'handoff' | 'delegation-restart' | 'wake' | 'manual';
+type ResumeReason = 'limit' | 'carry-on' | 'handoff' | 'delegation-restart' | 'wake' | 'manual';
 
 /** An idempotency key: a second start with the same one returns the first turn (`threads/inputs.ts`). */
 interface Keyed { requestId?: string }

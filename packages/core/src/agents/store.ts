@@ -58,7 +58,7 @@ const UNREAD = 'agents:unread:';
 export const INTRO_PROMPT = 'You were just created. Introduce yourself to the user in two sentences. Read your instructions and create the routines they call for '
   + '(for example "check every day" means a daily routine, with `boite mochi schedule`; one that only watches for something gets a "check"), then say what you will do and when.';
 /** The turn after the owner changed an agent's instructions. */
-export const INSTRUCTIONS_PROMPT = 'The user changed your instructions. Check that your routines still match them (`boite mochi routines`, `boite mochi schedule`, `boite mochi unschedule`) '
+const INSTRUCTIONS_PROMPT = 'The user changed your instructions. Check that your routines still match them (`boite mochi routines`, `boite mochi schedule`, `boite mochi unschedule`) '
   + 'and tell the user in one or two lines what changes for them.';
 
 /** `memory`: the MEMORY.md the session last read, which the next change is told against. */

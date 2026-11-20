@@ -20,7 +20,7 @@ import { contactsParts } from './contacts-entry';
 import { prefetchAllowed } from './prefetch';
 
 /** What a press needs from a machine's store. */
-export interface PreloadStore {
+interface PreloadStore {
   preload(threadId: string): () => void;
 }
 
@@ -32,16 +32,16 @@ export interface PreloadWorkspace {
 /** How long a released press waits for its click before giving the thread back. */
 export const PRESS_GRACE_MS = 400;
 /** A press held longer than this is a drag or a long press, not a click on its way. */
-export const PRESS_HOLD_MS = 8_000;
+const PRESS_HOLD_MS = 8_000;
 
 const views: Record<string, () => Promise<unknown>> = {
   settings: () => import('../components/SettingsShell.svelte'),
   agents: () => import('../components/agents/AgentsPage.svelte'),
-  home: () => contactsParts?.HomePage() ?? Promise.resolve(undefined)
+  home: () => contactsParts.HomePage()
 };
 
 /** False under a driven browser, unless its own test asked for it. */
-export function preloadAllowed(nav: { webdriver?: boolean } = navigator): boolean {
+function preloadAllowed(nav: { webdriver?: boolean } = navigator): boolean {
   return nav.webdriver !== true || window.__BOITE_PRESS_PRELOAD_TEST__ === true;
 }
 

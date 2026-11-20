@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { markFeature } from '@boite/contracts';
   import { ArrowLeft, ChevronDown, Ellipsis } from '@lucide/svelte';
   import type { AgentProfile, Team, Thread } from '@boite/contracts';
   import type { AgentsView } from '../../lib/agents.svelte';
@@ -53,8 +52,6 @@
     busy = true;
     try { await pickTeamAction(store, current, id); } finally { busy = false; }
   }
-  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
-  markFeature('boite-feature:teams');
 </script>
 
 <header class="agent-head team-head" class:compact={!onback} data-testid="team-header" data-paused={team?.paused ? 'true' : undefined} data-archived={team?.archived ? 'true' : undefined}>

@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { AGENT_ENV, DEVICE_METHODS, RpcErrorCode, type ThreadSummary } from '@boite/contracts';
-import { AGENT_METHODS } from '../src/access.ts';
+import { AGENT_METHODS } from '@boite/contracts';
 import { runCli } from '../src/cli.ts';
 import { connect, type CoreClient } from '../src/client.ts';
 import { setDriver } from '../src/drivers/index.ts';

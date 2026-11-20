@@ -38,7 +38,7 @@ interface History {
 
 export const HISTORY_LIMIT = 200;
 /** A pause this long in typing starts a new step. */
-export const HISTORY_PAUSE_MS = 1000;
+const HISTORY_PAUSE_MS = 1000;
 
 const histories = new WeakMap<ComposerState, History>();
 
@@ -161,7 +161,7 @@ export function redoStep(state: ComposerState, selection?: { start: number; end:
   return travel(state, 'redo', selection);
 }
 
-/** How many steps each way, for tests and the context menu. */
+/** How many steps each way, for tests. */
 export function historyDepth(state: ComposerState): { undo: number; redo: number } {
   const history = histories.get(state);
   return { undo: history?.undo.length ?? 0, redo: history?.redo.length ?? 0 };

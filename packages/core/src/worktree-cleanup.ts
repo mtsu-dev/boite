@@ -30,7 +30,7 @@ import { autoRemoveWorktreesKey, worktreeRemovalKey } from './worktree-cleanup-s
 import { inside, realKey, WorktreeSweep, type Listed } from './worktree-sweep.ts';
 
 /** How long every thread in a worktree must have been put away: Undo and second thoughts come first. */
-export const SETTLED_GRACE_MS = 60 * 60_000;
+const SETTLED_GRACE_MS = 60 * 60_000;
 const START_DELAY_MS = 5 * 60_000;
 const INTERVAL_MS = 10 * 60_000;
 /** Removals per pass: a backlog of a hundred worktrees drains over an hour, not in one burst of git. */

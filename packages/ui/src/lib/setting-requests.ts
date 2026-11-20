@@ -5,9 +5,9 @@
  * are in `packages/contracts/src/setting-requests.ts`, the core's cards in
  * `packages/core/src/threads/cards.ts`.
  */
-import { COORDINATION_REACH, EXPERIMENT_STAGES, experimentOf, type AutoCompactMoment, type ProviderSummary, type RequestableKey, type RequestableSetting, type SettingAsk, type SettingCardAsk, type SettingsPage } from '@boite/contracts';
+import { COORDINATION_REACH, EXPERIMENT_STAGES, experimentOf, type AutoCompactMoment, type ProviderSummary, type RequestableKey, type RequestableSetting, type SettingAsk, type SettingCardAsk } from '@boite/contracts';
 import { experimentCopy } from './experiment-copy';
-import { settingsDestination } from './settings-tabs';
+import { movedTo, settingsDestination, type SettingsTab } from './settings-tabs';
 import { formatLocale } from './i18n.svelte';
 import { fill, strings } from './strings';
 import { formatTokens } from './format';
@@ -31,6 +31,8 @@ function graduated(key: string): { title: string; switched: boolean } | null {
   if (id === 'open-chat-links') return { title: strings.features.openChatLinks.title, switched: true };
   if (id === 'preview-comments') return { title: strings.features.previewComments.title, switched: true };
   if (id === 'edge-scrollbars') return { title: strings.features.edgeScrollbars.title, switched: true };
+  if (id === 'whip') return { title: strings.features.whip.title, switched: true };
+  if (id === 'auto-goal') return { title: strings.settings.autoGoals, switched: true };
   if (id === 'press-preload') return { title: strings.settingRequest.loadOnPress, switched: false };
   // Finished since: on in every build, with no switch (`EXPERIMENT_STAGES`).
   if (id === 'resident-agents') return { title: strings.agents.heading, switched: false };
@@ -39,6 +41,9 @@ function graduated(key: string): { title: string; switched: boolean } | null {
   if (id === 'pinned-quotas') return { title: strings.quotas.pin, switched: false };
   if (id === 'prompt-cache') return { title: strings.settingRequest.promptCacheTimer, switched: false };
   if (id === 'recording-indicators') return { title: strings.settingRequest.recordingActions, switched: false };
+  if (id === 'contacts') return { title: strings.contacts.heading, switched: false };
+  if (id === 'teams') return { title: strings.teamChat.heading, switched: false };
+  if (id === 'debates') return { title: strings.council.salon, switched: false };
   const known = experimentOf(key);
   if (known !== null && EXPERIMENT_STAGES[known] === 'release') return { title: strings.settingRequest.formerExperiment, switched: false };
   return null;
@@ -94,6 +99,7 @@ export function settingHelp(key: RequestableKey): string | null {
     shortAnswers: [effects.shortAnswers, s.shortAnswersHint],
     toolSummaries: [effects.toolSummaries, s.toolSummariesHint],
     titleModel: [s.titleModelHint],
+    autoGoals: [effects.autoGoals, s.autoGoalsHint],
     threadDoneRetentionDays: [s.archived.doneRetentionHint],
     threadDeletionRetentionDays: [s.deleted.retentionHint],
     worktreeStorage: [`${worktrees.storageProject}: ${worktrees.storageProjectHint} .boite/worktrees`, `${worktrees.storageShared}: ${worktrees.storageSharedHint}`, worktrees.storageNewOnly],
@@ -115,6 +121,7 @@ export function settingHelp(key: RequestableKey): string | null {
     compactionByType: [s.compactionInheritanceHint],
     compactionSummary: [s.compactionSummaryHint],
     autoResumeLimitedThreads: [effects.autoResume, strings.quotas.autoResumeHint],
+    cacheKeepalive: [effects.cacheKeepalive, s.cacheKeepaliveHint],
     backgroundCompaction: [effects.backgroundCompaction, s.backgroundCompactionHint],
     deviceStream: [effects.deviceStream, s.deviceStreamHint],
     groupThreads: [strings.machines.groupThreadsHint],
@@ -168,14 +175,16 @@ export function settingValueText(key: RequestableKey, value: unknown, providers:
   return JSON.stringify(value);
 }
 
-export function settingsPageLabel(page: SettingsPage): string {
+export function settingsPageLabel(page: SettingsTab): string {
   const tabs = strings.settings.tabs;
-  const labels: Record<SettingsPage, string> = {
+  const labels: Record<SettingsTab, string> = {
+    home: tabs.home,
     general: tabs.general,
     appearance: tabs.appearance,
     keyboard: tabs.keyboard,
     voice: strings.speech.heading,
     accounts: tabs.accounts,
+    browser: tabs.browser,
     plugins: tabs.plugins,
     brain: strings.brain.heading,
     usage: tabs.usage,
@@ -184,6 +193,7 @@ export function settingsPageLabel(page: SettingsPage): string {
     resources: tabs.resources,
     machines: tabs.machines,
     advanced: tabs.advanced,
+    diagnostics: tabs.diagnostics,
     experiments: tabs.experiments,
   };
   return labels[page];
@@ -220,6 +230,7 @@ export function settingsSectionLabel(section: string, providers: readonly Provid
     execution: settings.execution,
     origins: strings.machines.browserOrigins,
     'auto-compact': settings.autoCompact,
+    'cache-keepalive': settings.cacheKeepalive,
     'device-stream': settings.deviceStream,
     'background-compaction': settings.backgroundCompaction,
   };
@@ -231,8 +242,14 @@ export function settingsReachable({ page, section }: Pick<SettingAsk, 'page' | '
   return settingsDestination(page, section, client);
 }
 
+/** The current Settings location of a card that may name an older route. */
+export function settingPlace({ page, section }: SettingAsk): { page: SettingsTab; section: SettingAsk['section'] } {
+  return { page: movedTo(page, section) ?? page, section };
+}
+
 /** `Resources › Limits`, the trail under a card. */
-export function settingPlaceText(setting: SettingAsk, providers: readonly ProviderSummary[] = []): string {
+export function settingPlaceText(asked: SettingAsk, providers: readonly ProviderSummary[] = []): string {
+  const setting = settingPlace(asked);
   const section = setting.section === null ? null : settingsSectionLabel(setting.section, providers);
   return [settingsPageLabel(setting.page), section].filter((part): part is string => part !== null).join(' › ');
 }
