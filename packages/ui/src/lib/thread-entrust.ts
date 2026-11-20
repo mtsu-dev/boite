@@ -19,7 +19,7 @@ import { fill, strings } from './strings';
 type Entrustable = Pick<ThreadSummary, 'id'> & Movable;
 
 /** A thread the owner can hand over: the same ordinary, kept conversation in a project a move takes. */
-export function canEntrust(store: Store, thread: Entrustable): boolean {
+function canEntrust(store: Store, thread: Entrustable): boolean {
   return experimentOn('resident-agents') && store.owner && canMove(thread);
 }
 

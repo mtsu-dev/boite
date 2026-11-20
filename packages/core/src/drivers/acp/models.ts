@@ -87,7 +87,7 @@ export function categoryOption(
  * `thinking`, a category of its own, which is read when the standard one is
  * absent.
  */
-export const EFFORT_CATEGORIES: readonly SessionConfigOptionCategory[] = ['thought_level', 'thinking'];
+const EFFORT_CATEGORIES: readonly SessionConfigOptionCategory[] = ['thought_level', 'thinking'];
 
 /** The session's effort select, under whichever category the agent filed it. */
 export function effortOption(options: SessionConfigOption[] | null): SessionConfigOption | null {

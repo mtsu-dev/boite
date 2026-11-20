@@ -8,7 +8,7 @@ import type { ModelInfo, Protocol } from './index.ts';
  * asked for, which is what a Codex nobody probed yet gets; Claude's is the
  * CLI's own alias for its newest Haiku.
  */
-export interface TitleModelRule {
+interface TitleModelRule {
   /** Matched against model ids, best family first. */
   families: readonly RegExp[];
   fallback: string;

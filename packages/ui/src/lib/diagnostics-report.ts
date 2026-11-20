@@ -17,7 +17,7 @@ export const REPORT_BATCH = 50;
 export const REPORT_QUEUE = 200;
 export const REPORT_INTERVAL_MS = 5_000;
 /** A gap this long between two ticks of a one-second timer, while the page is visible, is a frozen interface. */
-export const FREEZE_MS = 2_000;
+const FREEZE_MS = 2_000;
 const FREEZE_TICK_MS = 1_000;
 /** Longer than this, the machine most likely slept: not the app's fault. */
 const SLEEP_MS = 60_000;

@@ -28,8 +28,6 @@ export interface SearchField {
   penalty?: number;
 }
 
-/** Threads shown before any typing: the most recent ones, whatever the project. */
-export const RECENT_THREADS = 8;
 /** The most rows the list ever holds: every command still fits under the recent threads. */
 export const PALETTE_LIMIT = 32;
 

@@ -16,7 +16,7 @@ export interface ContactsOptions {
   worktree: boolean;
 }
 
-export const CONTACTS_HELP = `Contacts mochi (only its own thread):
+const CONTACTS_HELP = `Contacts mochi (only its own thread):
   contacts                       requests waiting on you, relations, open flags,
                                  contacts and the projects you may use
   contacts forward <request-id> <contact>[/<thread-id>] [text]
@@ -61,7 +61,7 @@ function flagLine(flag: ContactFlag): string {
   return `${flag.id} ${flag.kind} from ${flag.contact}${flag.letterId ? `, letter ${flag.letterId} held` : ''}${flag.threadId ? ` to ${flag.threadId}` : ''}: ${flag.reason}`;
 }
 
-export function viewLines(view: ContactsBotView): string[] {
+function viewLines(view: ContactsBotView): string[] {
   const pending = view.requests.filter(request => request.status === 'pending');
   const flags = view.flags.filter(flag => flag.status === 'open');
   return [

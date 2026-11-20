@@ -94,7 +94,10 @@ test('an offline first prompt creates one thread, transfers its queue and retain
   await c.call('composer.put', { section: 'drafts', id: retained.id, expectedRevision: restarted.revision, value: cached });
   await waitFor(() => h.core.composer.storage.get('drafts', retained.id).value?.input.paused === true);
   expect(h.core.journal.listThreads()).toHaveLength(1);
-  await c.call('projects.remove', { projectId: project.id });
+  const last = h.core.journal.listThreads()[0]!.id;
+  await c.call('threads.remove', { threadId: last });
+  h.core.journal.db.query('UPDATE thread_deletions SET deleted_at = 0 WHERE thread_id = ?').run(last);
+  h.core.threads.purgeDeleted();
   expect(h.core.journal.db.query('SELECT section, status, thread_id, fingerprint FROM composer_deliveries').all()).toEqual([
     { section: 'drafts', status: 'delivered', thread_id: null, fingerprint: '' },
     { section: 'drafts', status: 'delivered', thread_id: null, fingerprint: '' },
@@ -454,7 +457,6 @@ test('archived and deleted targets cannot execute queued input', async () => {
   h = await startTestCore({ dataDir: restartDir });
   const a = await h.connect();
   const { threadId } = await echoThread(h, a);
-  const projectId = h.core.threads.require(threadId).projectId!;
   await a.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0, value: { input: { ...value().input, queued: [{ id: 'before-archive', text: 'delivered before archive', attachments: [] }] } } });
   await waitFor(() => h.core.journal.listTurns(threadId).some(turn => turn.status === 'done'));
   await a.call('threads.archive', { threadId });
@@ -469,7 +471,8 @@ test('archived and deleted targets cannot execute queued input', async () => {
   expect(h.core.composer.storage.get('inputs', threadId).value?.input.queued).toHaveLength(1);
   const offline = h.core.composer.storage.get('inputs', threadId);
   expect((await a.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: offline.revision, value: offline.value })).accepted).toBe(true);
-  await a.call('projects.remove', { projectId });
+  h.core.journal.db.query('UPDATE thread_deletions SET deleted_at = 0 WHERE thread_id = ?').run(threadId);
+  h.core.threads.purgeDeleted();
   expect((await a.call('composer.list', {})).some(record => record.section === 'inputs' && record.id === threadId)).toBe(false);
   expect(h.core.composer.storage.queued.has(JSON.stringify(['inputs', threadId]))).toBe(false);
   expect(h.core.journal.db.query('SELECT COUNT(*) AS n FROM composer_deliveries WHERE thread_id = ? OR record_id = ?').get(threadId, threadId)).toEqual({ n: 0 });

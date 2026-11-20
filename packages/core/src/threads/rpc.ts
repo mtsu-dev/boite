@@ -244,7 +244,7 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
     // A subagent put away as done takes a new prompt, as it takes a letter from its parent.
     const thread = core.threads.require(params.threadId);
     const preferences = core.clients.use(ctx.connection);
-    const autoGoal = startsAutoGoal(params.prompt, preferences?.experiments, core.settings.get().autoGoalMinChars) ? params.prompt : undefined;
+    const autoGoal = startsAutoGoal(params.prompt, core.settings.get()) ? params.prompt : undefined;
     const start = () => core.threads.startTurn(params.threadId, { prompt: params.prompt, attachments, previews: params.previewReferences ?? [] }, { kind: 'user', requestId: params.clientRequestId, sentFrom: promptOrigin(ctx.connection, preferences), plugin: pluginActor(core, ctx.connection.identity) }, { expectedSelectionVersion: params.expectedSelectionVersion, autoGoal });
     return core.delegation.retirements.revivable(thread) ? core.delegation.retirements.revive(thread, start) : start();
   });

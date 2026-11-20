@@ -9,7 +9,7 @@ import { cliEnv, liveSetup, ONE_SHOT_TITLE, THINKING_DISPLAY_FLAG } from './quer
 import { stepHooks, type StepHost } from './step.ts';
 
 /** Claude Code's own subagent and workflow tools; `Task` is the older name of `Agent`. */
-export const NATIVE_SUBAGENT_TOOLS = ['Agent', 'Task', 'Workflow'] as const;
+const NATIVE_SUBAGENT_TOOLS = ['Agent', 'Task', 'Workflow'] as const;
 
 /** What the options take from the session that opens the query. */
 export interface OptionsHost {

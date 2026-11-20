@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'bun:test';
 import { botView } from '../src/contacts/bot.ts';
-import { memberThreadId } from '../src/contacts/members.ts';
+import { memberThreadId } from '../src/contacts/member-address.ts';
 import { contactsBotOf } from './contacts-fixture.ts';
 import { startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';

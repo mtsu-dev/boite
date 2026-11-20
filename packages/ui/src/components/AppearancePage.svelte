@@ -6,7 +6,6 @@
   import { FONT_KEY, FONTS, MONO_KEY, MONOS, readFont, readMono, setFont, setMono, type Font, type Mono } from '../lib/fonts';
   import { percent } from '../lib/format';
   import { currentZoom, inShell, setZoom, stepZoom, subscribeZoom, wantedZoom, ZOOM_DEFAULT, ZOOM_STEPS } from '../lib/zoom';
-  import { isExperimentEnabled, subscribeExperiments } from '../lib/experiments';
   import { effectiveGlass, hasMaterialChoice, readGlass, setGlass, supportedGlass, type Glass } from '../lib/glass';
   import { fill, LOCALES, localeSetting, setLocaleSetting, strings, type LocaleSetting } from '../lib/i18n.svelte';
   import { readTheme, setTheme, THEME_STORAGE_KEY, type Theme } from '../lib/theme';
@@ -18,10 +17,12 @@
   import { controlGroups } from '../lib/control-groups';
   import type { Store } from '../lib/store.svelte';
   import SurfaceIcon from './SurfaceIcon.svelte';
+  import { featureOn } from '../lib/features.svelte';
+  import { setFeature } from '../lib/features';
 
   /**
-   * Visual choices only: language, theme, colours, widths, faces, zoom and the
-   * buttons shown. What the app does (how a turn's changes show, where a window
+   * Visual choices only: language, theme, colours, widths, the Whip, faces,
+   * zoom and the buttons shown. What the app does (how a turn's changes show, where a window
    * starts, the terminal's renderer) lives under General, and the terminal's
    * cursor and the edge scrollbars under Advanced. `phone`: what a phone reads
    * and looks like; the column width and the header's buttons are the desktop's.
@@ -74,19 +75,13 @@
   const smallest = ZOOM_STEPS[0] ?? ZOOM_DEFAULT;
   const largest = ZOOM_STEPS[ZOOM_STEPS.length - 1] ?? ZOOM_DEFAULT;
 
-  // Grain rides behind an experiment, so the fourth option comes and goes with
-  // the switch on the Experiments page rather than on a reload.
-  let grain = $state(untrack(() => isExperimentEnabled('theme-grain')));
-
   let themes = $derived<{ id: Theme; label: string }[]>([
     { id: 'system', label: strings.settings.themeSystem },
     { id: 'dark', label: strings.settings.themeDark },
     { id: 'light', label: strings.settings.themeLight },
-    ...(grain ? [{ id: 'grain' as const, label: strings.settings.themeGrain }] : [])
+    { id: 'grain', label: strings.settings.themeGrain }
   ]);
 
-  // `readTheme` answers `system` for a grain that lost its experiment, which is
-  // the fallback the segmented control has to show.
   let theme = $state<Theme>(untrack(() => readTheme()));
 
   let chatWidth = $state<ChatWidth>(untrack(() => readChatWidth()));
@@ -139,10 +134,6 @@
     });
     // Ctrl+= moves the zoom from anywhere, this page included.
     const stopZoom = subscribeZoom((factor) => { zoom = factor; });
-    const stopExperiments = subscribeExperiments(() => {
-      grain = isExperimentEnabled('theme-grain');
-      theme = readTheme();
-    });
     // A face picked in another window restamps this one (`startFonts`); the buttons follow it.
     const followFaces = (event: StorageEvent) => {
       if (event.key === FONT_KEY) font = readFont();
@@ -152,7 +143,7 @@
     window.addEventListener('storage', followFaces);
     const followTheme = () => { theme = readTheme(); };
     window.addEventListener(COLORS_EVENT, followTheme);
-    return () => { stopZoom(); stopExperiments(); window.removeEventListener('storage', followFaces); window.removeEventListener(COLORS_EVENT, followTheme); };
+    return () => { stopZoom(); window.removeEventListener('storage', followFaces); window.removeEventListener(COLORS_EVENT, followTheme); };
   });
 
   function pickMaterial(next: Glass) {
@@ -233,6 +224,12 @@
         </div>
       </div>
     {/if}
+    <!-- The Whip's button in the rail, or the phone's bar: on until a person would rather not see it. -->
+    <label class="switch-row" for="{uid}-whip" id="settings-whip">
+      <span class="text"><span class="ui-label" id="{uid}-whip-name">{strings.features.whip.title}</span><span class="hint" id="{uid}-whip-effect">{strings.features.whip.hint}</span></span>
+      <input id="{uid}-whip" aria-labelledby="{uid}-whip-name" aria-describedby="{uid}-whip-effect" type="checkbox" role="switch" checked={featureOn('whip')} data-testid="setting-whip"
+        onchange={event => setFeature('whip', event.currentTarget.checked)} />
+    </label>
   </section>
 
   <section class="card" id="settings-reading">

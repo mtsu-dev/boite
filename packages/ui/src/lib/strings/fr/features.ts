@@ -11,5 +11,12 @@ export const fr: Translation = {
       title: 'Masquer les barres de défilement loin du pointeur',
       hint: 'Elles ne prennent pas de place et restent déplaçables. Souris et stylet uniquement'
     },
+    whip: {
+      title: 'Fouet',
+      hint: 'Un bouton Fouet à côté des autres commandes : un fouet animé suit le pointeur ou le doigt. Un geste vif le fait claquer, un clic ou un appui le lâche',
+      action: 'Sortir le fouet',
+      drop: 'Lâcher le fouet',
+      off: "Le fouet a besoin des animations, désactivées dans les réglages du système (Windows : Accessibilité > Effets visuels > Effets d'animation)"
+    },
   }
 };

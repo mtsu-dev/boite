@@ -21,7 +21,7 @@ const INVITE_TTL = DAY;
 const DECLINED = 'The owner declined this request.';
 /** The core's cap on the relations a contact may hold here. */
 const MAX_RELATIONS = 64;
-const NO_BOT = 'turn on Contacts in Settings > Experiments: it creates the Contacts mochi';
+const NO_BOT = 'open Contacts in the app: opening it the first time creates the Contacts mochi';
 const BOT_ONLY = 'contacts.bot.*: only the Contacts mochi\'s thread calls this';
 const SMALL = new Set(['haiku', 'lite', 'oss', 'mini', 'nano']);
 const FRONTIER = new Set(['opus', 'fable', 'sol', 'luna']);
@@ -144,7 +144,10 @@ function seed(ctx: FakeContext): ContactsState {
       text: 'An agent on a project like the Boite pairing flow: our site embeds it and the redirect loops after login.',
       gitRemote: 'https://github.com/chris/website.git',
       createdAt: at - 12 * 60_000,
-      status: 'pending'
+      // `?contactNotice=0`: already refused, so a page measured for something else shows no contact notice.
+      ...(typeof location !== 'undefined' && new URLSearchParams(location.search).get('contactNotice') === '0'
+        ? { status: 'refused' as const, reason: 'Not now', decidedBy: 'owner' as const, decidedAt: at - 11 * 60_000 }
+        : { status: 'pending' as const })
     },
     {
       id: 'creq-done',
@@ -376,7 +379,7 @@ export function contactMethods(ctx: FakeContext) {
     const staged = destination.agents.builtin('contacts') !== null;
     if (!staged && (request.want === 'talk' || request.want === 'thread')) {
       // Like the core: only an Operator puts threads in touch.
-      Object.assign(request, { status: 'refused', reason: `${reciprocal.name === '' ? 'It' : contact.name} has no Operator to put threads in touch; its owner turns Contacts on in Settings > Experiments`, decidedAt: ctx.now() });
+      Object.assign(request, { status: 'refused', reason: `${reciprocal.name === '' ? 'It' : contact.name} has no Operator to put threads in touch; its owner opens Contacts in the app to create it`, decidedAt: ctx.now() });
       return;
     }
     const copy: ContactRequest = {
@@ -448,7 +451,6 @@ export function contactMethods(ctx: FakeContext) {
     relate(request, thread, by);
     return thread;
   };
-  // As the core's `contactsGate`: what starts something new is refused on a Release; reads, refusals and removals answer in every build.
   return {
     'contacts.get': async () => {
       const state = structuredClone({ ...contactState(ctx), bot: botOf(ctx), mail: fakeHeldMail(ctx) });
@@ -458,7 +460,6 @@ export function contactMethods(ctx: FakeContext) {
       return state;
     },
     'contacts.invite': async (params) => {
-      ctx.startGate('contacts');
       if (params?.share !== undefined && typeof params.share !== 'boolean') throw invalid('share: expected true or false', 'share');
       if (params?.internet !== undefined && typeof params.internet !== 'boolean') throw invalid('internet: expected true or false', 'internet');
       const state = contactState(ctx);
@@ -497,7 +498,6 @@ export function contactMethods(ctx: FakeContext) {
       return { cancelled };
     },
     'contacts.join': async (params) => {
-      ctx.startGate('contacts');
       const link = typeof params?.link === 'string' ? params.link.trim() : '';
       if (!link.startsWith(INVITE_PREFIX)) throw invalid(`link: expected an invitation starting with ${INVITE_PREFIX}`, 'link');
       const card = readInvite(link);
@@ -545,7 +545,6 @@ export function contactMethods(ctx: FakeContext) {
       return structuredClone(contact);
     },
     'contacts.update': async (params) => {
-      if (params?.trusted === true) ctx.startGate('contacts');
       const state = contactState(ctx);
       if (params?.trusted !== undefined && typeof params.trusted !== 'boolean') throw invalid('trusted: expected a boolean', 'trusted');
       const name = params?.name === undefined ? undefined : text(params.name, 'name', 100).trim();
@@ -573,7 +572,6 @@ export function contactMethods(ctx: FakeContext) {
       return structuredClone(contact);
     },
     'contacts.grant': async (params) => {
-      ctx.startGate('contacts');
       if (params?.readThreads !== undefined && typeof params.readThreads !== 'boolean') throw invalid('readThreads: expected true or false', 'readThreads');
       const machine = memberOf(params?.machine);
       const contact = contactOf(contactState(ctx), params?.coreId);
@@ -617,11 +615,9 @@ export function contactMethods(ctx: FakeContext) {
       return { ok: true as const };
     },
     'contacts.decideMail': async (params) => {
-      if (params?.accept === true) ctx.startGate('contacts');
       return decideFakeMail(ctx, params?.id, params?.accept);
     },
     'contacts.decide': async (params) => {
-      if (params?.accept === true) ctx.startGate('contacts');
       if (typeof params?.accept !== 'boolean') throw invalid('accept: expected a boolean', 'accept');
       const state = contactState(ctx);
       const request = state.requests.find(entry => entry.id === params.id && entry.direction === 'in');
@@ -675,7 +671,6 @@ export function contactMethods(ctx: FakeContext) {
       return structuredClone(state.settings);
     },
     'contacts.tailscaleKey': async (params) => {
-      if (params?.key !== null) ctx.startGate('contacts');
       const key = params?.key;
       if (key !== null && (typeof key !== 'string' || !/^tskey-[A-Za-z0-9_-]{10,200}$/.test(key.trim()))) throw invalid('key: expected a Tailscale API key starting with tskey-, or null to clear it', 'key');
       const state = contactState(ctx);
@@ -693,7 +688,6 @@ export function contactMethods(ctx: FakeContext) {
       return fakeContactRoutes(ctx).map(({ contact }) => ({ name: contact.name, coreId: contact.coreId, projects: bot ? contact.offers.map(offer => offer.name) : [], link: contact.link }));
     },
     'collaboration.ask': async (params) => {
-      ctx.startGate('contacts');
       const state = contactState(ctx);
       const thread = ctx.thread(params?.threadId);
       const config = coordinationConfig(ctx, params.threadId);
@@ -754,7 +748,6 @@ export function contactMethods(ctx: FakeContext) {
       });
     },
     'contacts.bot.forward': async (params) => {
-      ctx.startGate('contacts');
       botCall(params?.threadId);
       const state = contactState(ctx);
       const request = state.requests.find(entry => entry.id === params.id && entry.direction === 'out' && entry.status === 'pending' && entry.stage === 'bot');
@@ -783,7 +776,6 @@ export function contactMethods(ctx: FakeContext) {
       return structuredClone(request);
     },
     'contacts.bot.connect': async (params) => {
-      ctx.startGate('contacts');
       botCall(params?.threadId);
       const request = incoming(params.id, true);
       // As the core: the mochi alone connects only to a thread of a project opened to the contact.
@@ -795,7 +787,6 @@ export function contactMethods(ctx: FakeContext) {
       return structuredClone(request);
     },
     'contacts.bot.start': async (params) => {
-      ctx.startGate('contacts');
       botCall(params?.threadId);
       const request = incoming(params.id, true);
       const thread = await startFor(request, params, 'bot');
@@ -803,7 +794,6 @@ export function contactMethods(ctx: FakeContext) {
       return { request: structuredClone(request), threadId: thread.id };
     },
     'contacts.bot.share': async (params) => {
-      ctx.startGate('contacts');
       botCall(params?.threadId);
       const request = incoming(params.id, false);
       const wanted = text(params.project, 'project', 500).trim().toLowerCase();
@@ -816,7 +806,6 @@ export function contactMethods(ctx: FakeContext) {
     },
     'contacts.bot.askOwner': async (params) => {
       // A card that carries a plan proposes new work; a note for the owner does not.
-      if (params?.connect !== undefined || params?.start !== undefined) ctx.startGate('contacts');
       botCall(params?.threadId);
       const request = incoming(params.id, false);
       if (contactState(ctx).contacts.find(entry => entry.coreId === request.coreId)?.trusted) throw refuse(`id: ${request.contact} is trusted; act on the request yourself`, 'id');
@@ -868,8 +857,6 @@ export function contactMethods(ctx: FakeContext) {
       return { relations: relations.length, projects: before - contact.grants.length };
     },
     'contacts.bot.flag': async (params) => {
-      // Delivering wakes the letter's thread: a Release starts nothing in Contacts.
-      if (params?.deliver === true) ctx.startGate('contacts');
       botCall(params?.threadId);
       if (typeof params.deliver !== 'boolean') throw invalid('deliver: expected true or false', 'deliver');
       const flag = (contactState(ctx).flags ?? []).find(entry => entry.id === params.id);

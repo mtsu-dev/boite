@@ -87,7 +87,7 @@ export function principalOf(role: PairingRole): Principal {
   return role === 'owner' ? 'owner' : 'session';
 }
 
-export function hashToken(token: string): string {
+function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 

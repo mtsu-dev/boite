@@ -807,10 +807,7 @@ shellTest('voice capture loads its packaged worklet under the native content sec
 shellTest('a Whip crack moves the native window and restores its position', async () => {
   if (!page) throw new Error('the shell page is missing');
   await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
-  await page.click(testid('nav-settings'));
-  await page.click(testid('settings-tab-experiments'));
-  await page.click(testid('experiment-whip'));
-  await page.click(testid('settings-back'));
+  // The Whip is on by default (Settings > Appearance).
   await page.waitFor(`document.querySelector('[data-testid=whip-button]')`);
   const result = await page.evaluate<{ origin: { x: number; y: number }; final: { x: number; y: number }; moved: boolean }>(`(async () => {
     const position = () => window.__TAURI_INTERNALS__.invoke('plugin:window|outer_position', { label: 'main' });
@@ -841,10 +838,6 @@ shellTest('a Whip crack moves the native window and restores its position', asyn
   await page.screenshot(join(import.meta.dir, '.artifacts', 'shell-whip.png'));
   await page.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
   await page.waitFor(`document.querySelector('[data-testid=whip-canvas]') === null`);
-  await page.click(testid('nav-settings'));
-  await page.click(testid('settings-tab-experiments'));
-  await page.click(testid('experiment-whip'));
-  await page.click(testid('settings-back'));
   await page.send('Emulation.setEmulatedMedia', { features: [] });
 }, TIMEOUT);
 

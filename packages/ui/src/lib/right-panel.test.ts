@@ -3,19 +3,8 @@ import { DEFAULT_BROWSER_PROFILE, PRIVATE_BROWSER_PROFILE, type Settings } from 
 import { browserBridge } from './browser-bridge';
 import { browserProfiles } from './browser-profiles.svelte';
 import { work } from './work-prefs.svelte';
-import {
-  PANEL_DEFAULT,
-  PANEL_MIN,
-  PANEL_STORAGE_KEY,
-  PANEL_VERSION,
-  PANEL_WIDTH_KEY,
-  RightPanelStore,
-  ZOOM_DEFAULT,
-  ZOOM_STEPS,
-  clampPanel,
-  panelOverChat,
-  stepZoom
-} from './right-panel.svelte';
+import { PANEL_DEFAULT, PANEL_MIN, PANEL_STORAGE_KEY, PANEL_VERSION, PANEL_WIDTH_KEY, RightPanelStore, clampPanel, panelOverChat } from './right-panel.svelte';
+import { ZOOM_DEFAULT, ZOOM_STEPS, stepZoom } from './zoom';
 
 function panel(threadId = 't-1') {
   const root = new RightPanelStore();

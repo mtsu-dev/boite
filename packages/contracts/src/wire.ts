@@ -53,8 +53,6 @@ export interface RpcNotification<E extends RpcEventName = RpcEventName> {
   params: RpcEvents[E];
 }
 
-export type RpcFrame = RpcRequest | RpcResponse | RpcNotification;
-
 export const RpcErrorCode = {
   ParseError: -32700,
   InvalidRequest: -32600,

@@ -1,5 +1,4 @@
-/** The council methods (`docs/internals/council.md`). Who may call which is in `access.ts`; each refuses while the experiment is off. */
-import { markFeature } from '@boite/contracts';
+/** The council methods (`docs/internals/council.md`). Who may call which is in `access.ts`. */
 import { COUNCIL_DEFAULT_EFFORT } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { accountFor, catalog, PROBE_TIMEOUT_MS, providersNamed } from '../delegation/routes.ts';
@@ -47,7 +46,6 @@ export function registerCouncil(core: Core, probe: ProviderProbe): void {
     return params;
   };
   core.router.register('council.start', async params => {
-    core.council.gate();
     const body = object(params);
     const { parent, routes, known } = core.council.admit(body);
     if (known) return known;
@@ -61,6 +59,3 @@ export function registerCouncil(core: Core, probe: ProviderProbe): void {
   core.router.register('council.closeRound', params => core.council.closeRound(object(params)));
   core.router.register('council.stop', (params, ctx) => core.council.stop(object(params), ctx.connection.identity.principal));
 }
-
-// Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
-markFeature('boite-feature:debates');

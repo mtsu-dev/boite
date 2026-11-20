@@ -2,7 +2,7 @@
   import { strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import type { CompactionTarget } from '@boite/contracts';
-  import { compactionPatch, compactionPolicy } from '../lib/compaction-settings';
+  import { CompactionWrites, compactionPolicy } from '../lib/compaction-settings';
   import InfoTip from './InfoTip.svelte';
 
   /**
@@ -12,20 +12,22 @@
    * Common background compaction stays local; per-type policies follow the
    * group's compaction defaults when the machine inherits its settings.
    */
-  let { store, target, embedded = false }: { store: Store; target?: CompactionTarget; embedded?: boolean } = $props();
+  let { store, target, embedded = false, writes }: { store: Store; target?: CompactionTarget; embedded?: boolean; writes?: CompactionWrites } = $props();
   const uid = $props.id();
+  /** The card's queue, shared with the automatic compaction beside it; a card of its own when alone. */
+  const own = new CompactionWrites();
+  const queue = () => writes ?? own;
 
   /** A switch saves when it flips; a refusal puts it back. */
   let saving = $state(false);
-  let inflight: Promise<boolean> | null = null;
-  export async function flush() {
-    while (inflight) await inflight.catch(() => false);
+  export function flush() {
+    return queue().idle();
   }
   async function save(input: HTMLInputElement) {
     saving = true;
-    const sent = inflight = store.saveSettings(compactionPatch(store.settings, target, { backgroundCompaction: input.checked })).finally(() => { saving = false; if (inflight === sent) inflight = null; });
-    const ok = await sent;
-    if (!ok) input.checked = !input.checked;
+    try {
+      if (!await queue().save(store, target, { backgroundCompaction: input.checked }).catch(() => false)) input.checked = !input.checked;
+    } finally { saving = false; }
   }
 </script>
 

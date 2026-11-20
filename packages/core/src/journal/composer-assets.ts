@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 
 /** Read attachment IDs from one indexed record, without decoding uploaded bytes. */
-export function storedComposerAssets(db: Database, section: string, id: string): string[] {
+function storedComposerAssets(db: Database, section: string, id: string): string[] {
   return (db.query(`SELECT json_extract(a.value, '$.assetId') AS id FROM composer_records r, json_each(r.value, '$.input.attachments') a WHERE r.section = ?1 AND r.id = ?2
     UNION SELECT json_extract(a.value, '$.assetId') AS id FROM composer_records r, json_each(r.value, '$.input.queued') q, json_each(q.value, '$.attachments') a WHERE r.section = ?1 AND r.id = ?2`).all(section, id) as { id: string }[]).map(row => row.id);
 }

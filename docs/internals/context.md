@@ -95,9 +95,10 @@ The `PreCompact` callback reads the current policy even in a warm session.
 Explicit instructions in `/compact <text>` take precedence: the callback adds
 nothing in that case. An empty common value installs no summary policy and
 imposes no word count. The setting is `compactionSummary`, also available inside
-`compactionByType`. Other drivers keep their own summary prompt. The offline
-control test (`BOITE_TEST_CLAUDE_CONTROLS=1`) checks that configured guidance
-reaches Claude's summary request.
+`compactionByType`. Other drivers keep their own summary prompt.
+`packages/core/test/claude.compact.test.ts` checks what the callback returns
+for each setting; no test checks that the guidance reaches Claude's summary
+request.
 
 The control is disabled while a turn runs, before a native session exists, or
 when the driver cannot compact. ACP must advertise the command. Compaction can make a provider
@@ -143,7 +144,7 @@ disables Boite's automatic triggers and restores the driver's native policy
 for that target. Removing a target restores live inheritance, without copying
 thresholds. The override map replaces the previous map on `settings.set` and
 follows the group's settings home alongside `autoCompact`. The common
-`backgroundCompaction` experiment stays local to its machine.
+`backgroundCompaction` setting stays local to its machine.
 
 All drivers resolve the policy at preparation and before each turn. Idle
 compaction and background copies use the same resolver. A policy change
@@ -311,8 +312,8 @@ is the detail its summary drops.
 
 ### Background compaction
 
-`Settings.backgroundCompaction` is an experiment, off by default, that the
-owner turns on under Settings, Experiments, for the machine picked above the
+`Settings.backgroundCompaction` is off by default. The owner turns it on
+under Settings, System, Automatic compaction, for the machine picked above the
 card, the one that runs the thread (an agent asks with
 `boite settings request backgroundCompaction true --why "..."`). It works
 with the `autoCompact` rule above and does nothing without one. Like `deviceStream`,
@@ -419,7 +420,7 @@ and resident mochis use the policy for their own type. Incognito threads and a
 session waiting to resume at an entry take no copy; their token limit still
 applies.
 
-Limits of the experiment: copies are held in memory, so a restart forgets them
+Limits: copies are held in memory, so a restart forgets them
 (the tail marker is persisted). A copy runs outside the scheduler's account
 slots and its usage is recorded on no turn; the running totals it ends on are
 kept for the session that resumes it ([usage](usage.md#the-api-estimate)). An unused Claude copy's transcript
@@ -705,7 +706,8 @@ applies both every 6 hours, and the end of a turn trims a thread once it holds
 checkpoints are kept for the newest 50 turns of a conversation". The same
 pass, and the removal of a thread's checkpoints, then deletes the shared
 files no thread links to any more.
-They survive restarts and leave with a permanently removed project or thread.
+They survive restarts and leave with a purged thread; a removed project keeps
+them for when its folder comes back.
 
 Each snapshot is limited to 20000 files and 128 MiB of saved content. A file
 above 16 MiB is not copied: the snapshot keeps only its metadata, so a change

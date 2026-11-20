@@ -33,10 +33,13 @@ export function registerTraceMethods(core: Core): void {
         status: thread.status,
         live,
         load: core.procs.loadOf(threadId) ?? { processes: live.length, cpuPercent: 0, memoryBytes: 0 },
+        // A CPU this machine cannot read (macOS) is unknown, not 0 %.
+        loadAvailable: core.procs.loadAvailableOf(threadId),
       });
     }
     return out.sort((a, b) => b.load.cpuPercent - a.load.cpuPercent);
   });
+  core.router.register('resources.keepAwake', () => core.keepAwake.status());
   core.router.register('resources.killTree', (params) => {
     core.threads.require(params.threadId);
     return { killed: core.procs.killTree(params.threadId) };

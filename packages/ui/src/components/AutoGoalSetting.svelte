@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { markFeature } from '@boite/contracts';
   import { untrack } from 'svelte';
   import { TextQuote } from '@lucide/svelte';
   import { AUTO_GOAL_MIN_CHARS } from '@boite/contracts';
@@ -8,8 +7,10 @@
   import InfoTip from './InfoTip.svelte';
 
   /**
-   * The `autoGoalMinChars` setting under the Automatic goals switch: how long
-   * a prompt must be before it starts a reviewed goal (`docs/internals/goals.md`).
+   * The `autoGoals` switch of the machine, on unless turned off, and under it
+   * while on the `autoGoalMinChars` setting: how long a prompt must be before
+   * it starts a reviewed goal (`docs/internals/goals.md`). A row of the card
+   * How agents answer (`AgentRepliesSettings.svelte`).
    */
   let { store }: { store: Store } = $props();
   const uid = $props.id();
@@ -24,6 +25,15 @@
   });
   let valid = $derived(typeof chars === 'number' && Number.isInteger(chars) && chars >= AUTO_GOAL_MIN_CHARS.min && chars <= AUTO_GOAL_MIN_CHARS.max);
 
+  let on = $derived(store.settings?.autoGoals !== false);
+  /** A switch saves when it flips; a refusal puts it back. */
+  let switching = $state(false);
+  async function toggle(input: HTMLInputElement) {
+    switching = true;
+    const ok = await store.saveSettings({ autoGoals: input.checked }).finally(() => { switching = false; });
+    if (!ok) input.checked = !input.checked;
+  }
+
   let saving = $state(false);
   async function save() {
     if (!valid) return;
@@ -32,21 +42,29 @@
     const ok = await store.saveSettings({ autoGoalMinChars: chars as number }).finally(() => { saving = false; });
     if (ok) dirty = false;
   }
-  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
-  markFeature('boite-feature:auto-goal');
 </script>
 
-<!-- The core decides on the owner's machine, so a paired device does not see the threshold. -->
+<!-- The core decides on the owner's machine, so a paired device does not see the switch or the threshold. -->
 {#if store.owner && store.settings}
+  <label for="{uid}-on" class="switch-row" id="settings-auto-goals">
+    <span class="text">
+      <span class="ui-label-box"><span class="ui-label" id="{uid}-on-name">{strings.settings.autoGoals}</span><InfoTip topic={strings.settings.autoGoals} text={strings.settings.autoGoalsHint} /></span>
+      <span class="hint" id="{uid}-on-effect">{strings.settings.effects.autoGoals}</span>
+    </span>
+    <input id="{uid}-on" aria-labelledby="{uid}-on-name" aria-describedby="{uid}-on-effect" type="checkbox" role="switch" data-testid="setting-auto-goals"
+      checked={on} disabled={switching} onchange={(event) => void toggle(event.currentTarget)} />
+  </label>
+{/if}
+{#if store.owner && store.settings && on}
   <div class="option" data-testid="auto-goal-settings">
     <span class="icon"><TextQuote size={18} strokeWidth={1.75} /></span>
-    <label for="{uid}-chars" class="name"><span class="ui-label">{strings.experiments.autoGoal.minChars}</span><InfoTip topic={strings.experiments.autoGoal.minChars} text={strings.experiments.autoGoal.minCharsHint} /></label>
+    <label for="{uid}-chars" class="name"><span class="ui-label">{strings.settings.autoGoalMinChars}</span><InfoTip topic={strings.settings.autoGoalMinChars} text={strings.settings.autoGoalMinCharsHint} /></label>
     <span class="field">
       <input id="{uid}-chars" type="number" inputmode="numeric" min={AUTO_GOAL_MIN_CHARS.min} max={AUTO_GOAL_MIN_CHARS.max} step="100"
         data-testid="auto-goal-min-chars" aria-invalid={!valid}
         aria-describedby={valid ? undefined : `${uid}-chars-error`} disabled={saving} bind:value={chars}
         oninput={(event) => { dirty = event.currentTarget.valueAsNumber !== saved; }} onchange={() => void save()} />
-      <span class="unit ui-label">{strings.experiments.autoGoal.unit}</span>
+      <span class="unit ui-label">{strings.settings.autoGoalUnit}</span>
     </span>
     {#if !valid}
       <span class="field-error" id="{uid}-chars-error" data-testid="auto-goal-min-chars-error">{fill(strings.settings.numberRange, { min: String(AUTO_GOAL_MIN_CHARS.min), max: String(AUTO_GOAL_MIN_CHARS.max) })}</span>

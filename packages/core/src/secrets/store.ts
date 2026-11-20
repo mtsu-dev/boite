@@ -328,10 +328,6 @@ export class SecretStore {
     return { secrets: [], storage: 'memory' };
   }
 
-  async delete(_projectId: ProjectId, name: string): Promise<void> {
-    throw notFound(`no key named ${String(name)} is kept: Secret Drop is temporary`, { field: 'name', expected: 'no stored project keys' });
-  }
-
   #eraseTransit(entry: Transit): void {
     entry.value.fill(0);
     this.#transit.delete(entry.id);

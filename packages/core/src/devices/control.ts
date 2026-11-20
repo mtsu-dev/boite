@@ -51,7 +51,7 @@ import type { DeviceStreams, StreamOptions } from './stream.ts';
 
 const SCOPE = 'system:devices';
 /** What T3 Code waits too: a cold emulator takes a minute or two. */
-export const BOOT_TIMEOUT_MS = 180_000;
+const BOOT_TIMEOUT_MS = 180_000;
 const COMMAND_TIMEOUT_MS = 15_000;
 /** A capture is shared by every viewer that asks within this long, so a phone and a desktop cost one screencap. */
 const CAPTURE_REUSE_MS = 200;
@@ -59,7 +59,7 @@ const SESSIONS_MAX = 4;
 /** Sizes and qualities remembered per device for `previous`: a desktop and a phone each ask their own. */
 const FRAME_KINDS_MAX = 8;
 /** Where `boite device` and the panel send someone whose stream is off. */
-export const STREAM_OFF = 'the live stream is off: the owner turns it on in Settings > Experiments, or an agent asks with `boite settings request deviceStream true --why "..."`';
+export const STREAM_OFF = 'the live stream is off: the owner turns it on in Settings > System, or an agent asks with `boite settings request deviceStream true --why "..."`';
 
 
 /** What a listed device needs to be driven: its adb serial or simulator UDID. */

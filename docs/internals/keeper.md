@@ -1,14 +1,16 @@
 # Keeper
 
-A thread's terminal can outlive the core that opened it. With `BOITE_KEEPER=1`
-on Linux or macOS, the core asks a small process, the keeper, to start each
-thread shell. The keeper holds the PTY, so a restart, an update or a crash of
-the core leaves the shell running, and the next core takes it back with what
-it printed meanwhile. With the same setting, the process of each thread's
-agent session runs in the keeper too, on pipes: the core reads its output
-through the socket and tells the keeper which bytes the journal has
-committed. A restart still ends those turns; taking them back is the next
-step. The setting is off by default.
+A thread's terminal can outlive the core that opened it. On Linux and macOS
+the core asks a small process, the keeper, to start each thread shell. The
+keeper holds the PTY, so a restart, an update or a crash of the core leaves
+the shell running, and the next core takes it back with what it printed
+meanwhile. The process of each thread's agent session runs in the keeper
+too, on pipes: the core reads its output through the socket and tells the
+keeper which bytes the journal has committed. A restart still ends those
+turns; taking them back is the next step. The keeper is on by default;
+`BOITE_KEEPER=0` in the core's environment turns it off, and the core then
+holds its shells and agents itself, so a restart ends them. Windows has no
+keeper.
 
 The code is in `packages/core/src/keeper/`: `protocol.ts` (the wire),
 `server.ts` (the keeper), `pipe-process.ts` (a process on pipes, in the
@@ -83,10 +85,11 @@ it takes the shell back, masked as any output is.
 4. `terminals.list` and `terminals.open` wait for that step, so a client that
    connects first sees the shell, not an empty tab.
 
-A core with `BOITE_KEEPER=1` connects at startup, once the shells are
+A core with the keeper on connects at startup, once the shells are
 restored, starting a keeper if none listens, and stays attached while it
-runs. A keeper with no core and nothing to hold exits after 60 s
-(`KEEPER_IDLE_MS`).
+runs. Neither step holds up the core's start: the restore only waits for a
+keeper already listening, and the launch runs in the background. A keeper
+with no core and nothing to hold exits after 60 s (`KEEPER_IDLE_MS`).
 
 ## Agent sessions
 
@@ -163,6 +166,12 @@ goes with the shell. The keeper does not exit before that grace is over.
 - A frame without a line break past 64 MiB closes that connection.
 - The keeper cannot start a shell: the core gets `failed` with the system's
   message, and `terminals.open` refuses with it.
+- The keeper does not start or cannot be reached: a thread shell opened then
+  starts in the core, as with the keeper off, and a restart ends it. An open
+  during a launch waits for it, 5 s at most. The first such shell of an outage
+  logs a `keeper.terminal-direct` warning; when the keeper went away earlier
+  rather than failing that launch, it also asks for one again in the
+  background, as each agent launch does.
 
 ## Limits
 
@@ -174,11 +183,12 @@ goes with the shell. The keeper does not exit before that grace is over.
 
 ## Measured
 
-`bun bench/keeper-restart.ts 3` on boite-m1, 2026-11-07, Bun 1.4.2: three
-core restarts of one thread shell that prints 64 KiB while no core is
-attached.
+`bun bench/keeper-restart.ts 3` on boite-m1, 2026-11-07, Bun 1.4.2, when
+the keeper was opt-in: three core restarts of one thread shell that prints
+64 KiB while no core is attached. The bench now runs the keeper by default;
+`BOITE_KEEPER=0` gives the other column. Neither was run again.
 
-| | Keeper off | `BOITE_KEEPER=1` |
+| | `BOITE_KEEPER=0` | Keeper on |
 | --- | --- | --- |
 | Shell pid after each restart | a new shell (4 pids for 3 restarts) | the same pid |
 | Output the next core had | 0 bytes | 65,713, 131,508, 197,303 bytes |
@@ -191,8 +201,9 @@ the binary itself, shared with the core in the page cache, and 22.5 MB its
 own.
 
 `BOITE_KEEPER=1 bun bench/keeper-agent.ts 64 20` on boite-m1, 2026-11-07,
-Bun 1.4.2: the echo driver's child started by `procs.spawnChild` with `keep`
-(the keeper) and without (the core's pipes), in one core.
+Bun 1.4.2, when the keeper was opt-in; the variable is no longer needed. The
+echo driver's child started by `procs.spawnChild` with `keep` (the keeper)
+and without (the core's pipes), in one core.
 
 | | Core's pipes | Keeper |
 | --- | --- | --- |
@@ -225,3 +236,8 @@ session launched in the millisecond its predecessor was stopped, which must
 keep running, one the keeper starts after the core closed, which it ends, and
 a `KeptChild` that emits `close` only after a reader got the last line of
 stdout.
+
+`keeper.test.ts` also starts a core whose keeper cannot make its socket's
+directory: `terminals.open` still answers with a shell whose parent is the
+core, and the warning is logged. The test preload sets `BOITE_KEEPER=0`, so
+other tests start no keeper; the keeper files set it to `1`.

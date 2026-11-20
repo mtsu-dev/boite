@@ -1,7 +1,7 @@
 import { NEEDS_RANK, statusRank, threadState, type Delegated, type ThreadState } from '@boite/contracts';
 
 /** The status order and a row's asks: Activity's derivation, shared with the core (contracts/src/activity.ts). */
-export { NEEDS_RANK, rowAsks, statusRank, type RowSource } from '@boite/contracts';
+export { rowAsks, type RowSource } from '@boite/contracts';
 
 /** What "Needs you" holds everywhere (Activity's section, the rail's badge, a project's header): the user's turn and failures to act on. */
 export function needsYou(state: ThreadState | null): boolean {

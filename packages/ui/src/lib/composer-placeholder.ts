@@ -12,11 +12,10 @@ const SUBJECT_MAX = 60;
  * message is the other way out beside Deny and Allow once (Send itself says
  * it declines, `declineHint`). A state that changes what Send does says so
  * instead: the machine is away, or the account is gone. A thread
- * still loading keeps its usual words: the conversation's centre says it loads. `target` is a side box's own text, `bot` the persistent agent
+ * still loading keeps its usual words: the conversation's centre says it loads. `bot` is the persistent agent
  * whose thread this is.
  */
 export function composerPlaceholder(input: {
-  target: { placeholder: string } | null;
   /** The agent works. */
   replying: boolean;
   /**
@@ -38,7 +37,6 @@ export function composerPlaceholder(input: {
   provider: string | null;
 }): string {
   const t = strings.composer;
-  if (input.target) return input.target.placeholder;
   if (input.accountGone) return t.placeholderPickAccount;
   if (input.offline && input.away) return fill(t.placeholderAway, { machine: input.machine });
   if (input.offline) return fill(input.onThread ? t.placeholderOffline : t.placeholderOfflineDraft, { machine: input.machine });

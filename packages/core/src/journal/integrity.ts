@@ -32,7 +32,7 @@ const CHECKERS: Record<JournalInspectionTable, (journal: Journal, row: Row, add:
 
 const ALIASES: Record<JournalInspectionTable,string> = { threads:'t',turns:'t',messages:'m',turn_requests:'r',background_observations:'b',coordination_letters:'c' };
 
-export function validateInspection(params: RpcParams<'journal.inspect'>): { cursor: JournalInspectionCursor; limit: number } {
+function validateInspection(params: RpcParams<'journal.inspect'>): { cursor: JournalInspectionCursor; limit: number } {
   if (!params || typeof params !== 'object') throw invalidParams('journal.inspect: expected an object');
   const limit = params.limit ?? 100;
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500) throw invalidParams('limit: expected an integer from 1 to 500');

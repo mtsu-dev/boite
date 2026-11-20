@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ThreadSummary, Turn } from '@boite/contracts';
+
+const { invoke } = vi.hoisted(() => ({ invoke: vi.fn<(command: string, args?: Record<string, unknown>) => Promise<unknown>>() }));
+vi.mock('@tauri-apps/api/core', () => ({ invoke }));
+
 import {
   finishNotifies,
   limitsKey,
@@ -12,6 +16,7 @@ import {
   pushCovers,
   readNotificationKinds,
   readNotifications,
+  requestNotificationPermission,
   sendNotification,
   setNotificationSender,
   shouldNotify,
@@ -254,7 +259,7 @@ describe('sendNotification', () => {
     setNotificationSender(async () => {
       throw new Error('no surface');
     });
-    await expect(sendNotification({ title: 'a', body: 'b', threadId: 't-1' })).resolves.toBeUndefined();
+    await expect(sendNotification({ title: 'a', body: 'b', threadId: 't-1' })).resolves.toBe(true);
   });
 
   test('on the web, a click on the toast opens its thread and closes the toast', async () => {
@@ -299,5 +304,30 @@ describe('sendNotification', () => {
       stop();
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe('the desktop shell with no way to show a toast', () => {
+  const toast: Toast = { title: 'Done', body: 'The trace tab is finished.', threadId: 't-1' };
+  beforeEach(() => { (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = { invoke: () => undefined }; });
+  afterEach(() => {
+    delete (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+    invoke.mockReset();
+  });
+
+  test('a Linux machine without notify-send says so, where a toast that failed once does not turn the switch off', async () => {
+    invoke.mockImplementation(async (command) => {
+      if (command === 'notify') throw new Error('"notify-send" could not start');
+      return command === 'notify_supported' ? false : undefined;
+    });
+    await expect(requestNotificationPermission()).resolves.toBe('unavailable');
+    await expect(sendNotification(toast)).resolves.toBe(false);
+    // The same failure where the shell can notify: a passing refusal, the switch stays on.
+    invoke.mockImplementation(async (command) => {
+      if (command === 'notify') throw new Error('busy');
+      return command === 'notify_supported' ? true : undefined;
+    });
+    await expect(requestNotificationPermission()).resolves.toBe('granted');
+    await expect(sendNotification(toast)).resolves.toBe(true);
   });
 });

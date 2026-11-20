@@ -123,7 +123,7 @@ export function keeperSocketPath(dataDir: string, env: Record<string, string | u
 }
 
 /** `$XDG_RUNTIME_DIR/boite`, else a directory of this user's under the system's temporary one. */
-export function keeperRuntimeDir(env: Record<string, string | undefined> = process.env): string {
+function keeperRuntimeDir(env: Record<string, string | undefined> = process.env): string {
   const runtime = env['XDG_RUNTIME_DIR'];
   if (runtime !== undefined && runtime.startsWith('/')) return join(runtime, 'boite');
   return join(tmpdir(), `boite-${userInfo().uid}`);

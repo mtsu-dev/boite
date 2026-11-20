@@ -20,15 +20,15 @@ export const BLOB_MIN_CHARS = 32 * 1024;
  * the bytes of the large `messages` rows (2026-10-17 journal), and no SQL
  * reader looks into a tool output.
  */
-export const TOOL_OUTPUT_BLOB_MIN_CHARS = 4 * 1024;
+const TOOL_OUTPUT_BLOB_MIN_CHARS = 4 * 1024;
 /**
  * `codec` of a `part_blobs` row: 0 is the UTF-8 text in `data`, 1 is zstd
  * level 3 of that text, stored as a BLOB in the same column. A value is
  * compressed when that saves at least 5 %: tool outputs holding base64
  * screenshots in JSON came to 73 % of their size, plain tool text to 42 %.
  */
-export const CODEC_TEXT = 0;
-export const CODEC_ZSTD = 1;
+const CODEC_TEXT = 0;
+const CODEC_ZSTD = 1;
 const ZSTD_LEVEL = 3;
 const ZSTD_MAX_SHARE = 0.95;
 const MARK = '$blob';
@@ -80,7 +80,7 @@ export function addPartBlobCodecs(db: Database): void {
 export type Packed = Map<string, Uint8Array | null>;
 
 /** What a value is stored as: zstd when that saves bytes, else its UTF-8 text. */
-export function encodeValue(value: string, packed?: Packed): { data: Uint8Array; codec: number } {
+function encodeValue(value: string, packed?: Packed): { data: Uint8Array; codec: number } {
   const ready = packed?.get(value);
   if (ready) return { data: ready, codec: CODEC_ZSTD };
   const bytes = Buffer.from(value, 'utf8');
@@ -90,7 +90,7 @@ export function encodeValue(value: string, packed?: Packed): { data: Uint8Array;
 }
 
 /** `encodeValue` for each of `values`, compressed on Bun's thread pool. */
-export async function packValues(values: Iterable<string>): Promise<Packed> {
+async function packValues(values: Iterable<string>): Promise<Packed> {
   const unique = [...new Set(values)];
   const packed = await Promise.all(unique.map(async value => {
     const bytes = Buffer.from(value, 'utf8');
@@ -104,7 +104,7 @@ export async function packValues(values: Iterable<string>): Promise<Packed> {
 const utf8 = new TextDecoder('utf-8', { ignoreBOM: true });
 
 /** The text of a stored value. */
-export function decodeValue(data: string | Uint8Array, codec: number): string {
+function decodeValue(data: string | Uint8Array, codec: number): string {
   if (codec !== CODEC_ZSTD) return typeof data === 'string' ? data : utf8.decode(data);
   return utf8.decode(Bun.zstdDecompressSync(data as Uint8Array));
 }

@@ -22,7 +22,7 @@ export const POOL_PROVIDERS: readonly ProviderId[] = ['antigravity', 'claude', '
 /** A schema 2 manifest carries its skills and prompts inline; anything past this is not one. */
 export const MANIFEST_MAX_BYTES = 256 * 1024;
 /** Schema 1 keeps the cap it had before skills and prompts could take room. */
-export const MANIFEST_V1_MAX_BYTES = 64 * 1024;
+const MANIFEST_V1_MAX_BYTES = 64 * 1024;
 
 const FIELDS_V1 = ['schema', 'id', 'name', 'version', 'description', 'homepage', 'executable', 'artifacts', 'provides'] as const;
 const FIELDS_V2 = [...FIELDS_V1, 'runtime', 'permissions', 'settings'] as const;
@@ -32,7 +32,7 @@ const FEATURES_V2 = [...FEATURES_V1, 'service', 'commands', 'skills', 'prompt', 
 const RUNNING_FEATURES = ['accountPools', 'desktopApp', 'gateway', 'service', 'commands'] as const;
 
 /** What a schema 2 plugin may add to agents and to the composer, so its share of every guide stays small. */
-export const PLUGIN_LIMITS = {
+const PLUGIN_LIMITS = {
   name: 40,
   description: 200,
   usage: 200,

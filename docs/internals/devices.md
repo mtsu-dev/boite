@@ -99,7 +99,7 @@ client, the panel opens on the Device tab (`lib/device-watch.ts`).
 
 ## Live stream
 
-The `deviceStream` setting (Settings › Experiments, off by default) plays an
+The `deviceStream` setting (Settings › System, owner only, off by default) plays an
 Android emulator or phone as H.264 video through
 [scrcpy](https://github.com/Genymobile/scrcpy). Off, nothing below runs and the
 panel behaves as described above. An agent asks for it with

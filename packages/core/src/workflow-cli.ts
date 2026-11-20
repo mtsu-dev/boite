@@ -9,7 +9,7 @@ import { executionsUsed, type WorkflowNode, type WorkflowPlan, type WorkflowRun,
 import type { CoreClient } from './client.ts';
 import { worktreeLine } from './delegation/messages.ts';
 
-export const WORKFLOW_HELP = `A workflow is a JSON plan the core runs for you: every step is a child
+const WORKFLOW_HELP = `A workflow is a JSON plan the core runs for you: every step is a child
 agent, a step starts as soon as the steps it depends on end, and the results
 come back to you in one message. Nothing has to be enabled first.
 

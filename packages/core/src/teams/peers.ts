@@ -9,7 +9,6 @@
  * post's author in the team by the group identity of the machine asking, never
  * in what it says.
  */
-import { markFeature } from '@boite/contracts';
 import { randomUUID } from 'node:crypto';
 import {
   TEAM_BRIEF_MAX, TEAM_MEMBERS_MAX, TEAM_NAME_MAX, TEAM_POST_MAX,
@@ -302,8 +301,6 @@ export class TeamPeers {
     const raw = fields(payload, 'payload');
     switch (operation) {
       case 'team.bot': {
-        // A machine with the experiment off lets no bot of its own enter a team.
-        this.#store.gate();
         const bot = this.#store.localBot(raw.ref, 'bot');
         return { botId: bot.botId, name: bot.name };
       }
@@ -312,7 +309,6 @@ export class TeamPeers {
       case 'team.read': {
         const team = this.#hosted(raw.teamId);
         const member = this.#speaker(team, peer, raw.botId);
-        this.#store.gate();
         return this.#store.page(team, member.key, { before: raw.before as number | undefined, limit: raw.limit as number | undefined });
       }
       case 'team.report': return this.#reported(peer, raw);
@@ -336,7 +332,7 @@ export class TeamPeers {
     return member;
   }
 
-  /** A batch from the machine holding a team. Nobody else speaks for it. Not gated: the holder's switch decides. */
+  /** A batch from the machine holding a team. Nobody else speaks for it. */
   #took(peer: CoordinationPeer, raw: Fields): unknown {
     const team = teamOf(raw.team);
     const posts = postsOf(raw.posts, team.id);
@@ -351,8 +347,6 @@ export class TeamPeers {
   #posted(peer: CoordinationPeer, raw: Fields): TeamPost {
     const team = this.#hosted(raw.teamId);
     const member = this.#speaker(team, peer, raw.botId);
-    // A final answer goes as a local bot's does: the switch stops commands, not a turn already under way.
-    if (raw.answer !== true) this.#store.gate();
     const audience = audienceOf(raw.audience, 'audience');
     const to = audience === 'private' ? [this.#store.recipient(team, Array.isArray(raw.to) ? raw.to[0] : undefined)] : undefined;
     return this.#store.postAs(team, { id: raw.id, author: member.key, text: raw.text, audience, to, inReplyTo: raw.inReplyTo, turnId: textOrNull(raw.turnId, 'turnId', 100) });
@@ -384,7 +378,6 @@ export class TeamPeers {
   async #forOwner(peer: CoordinationPeer, raw: Fields): Promise<unknown> {
     const team = this.#hosted(raw.teamId);
     if (!team.members.some(member => member.coreId === peer.coreId)) throw refused(`teamId: ${peer.name} has no mochi in ${team.name}`, { field: 'teamId', reason: 'not-your-bot' });
-    this.#store.gate();
     if (raw.action === 'add') {
       const bot = await this.bot(raw.bot, 'bot');
       if (!team.members.some(member => member.botId === bot.botId)) this.#store.addMember({ teamId: team.id, botId: bot.botId }, bot);
@@ -441,12 +434,10 @@ export class TeamPeers {
   }
 
   async create(params: RpcParams<'teams.create'>): Promise<Team> {
-    this.#store.gate();
     return this.#store.create(params, await this.#resolved(params.members));
   }
 
   async propose(params: RpcParams<'teams.propose'>): Promise<{ questionId: RequestId }> {
-    this.#store.gate();
     this.#store.caller(params.threadId);
     return this.#store.propose(params, await this.#resolved(params.members));
   }
@@ -459,7 +450,6 @@ export class TeamPeers {
   async addMember(params: RpcParams<'teams.members.add'>): Promise<Team> {
     const team = typeof params.teamId === 'string' ? this.#store.get(params.teamId) : null;
     if (team === null || team.host === this.#self) {
-      this.#store.gate();
       return this.#store.addMember(params, this.#distant(params.botId) ? await this.bot(params.botId, 'botId') : undefined);
     }
     const card = this.#heldElsewhere(team, params.card);
@@ -556,6 +546,3 @@ export class TeamPeers {
     return unavailable(`${peer.name} did not answer (${messageOf(error)}); ${away}`, { reason: 'unreachable' });
   }
 }
-
-// Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
-markFeature('boite-feature:teams');

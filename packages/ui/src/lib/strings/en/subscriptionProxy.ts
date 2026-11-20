@@ -3,7 +3,7 @@ export const strings = {
     offLine: 'Sends Claude and Codex through one gateway, such as Douane, instead of the accounts signed in here.',
     heading: 'Subscription proxy',
     enable: 'Use a subscription proxy',
-    hint: 'Claude and Codex use this machine\'s gateway, Grok does too behind Douane, and OpenCode 2 adds its other models to its own. Limits opens its dashboard inside Boite. Other agents keep their own configuration.',
+    hint: 'Claude and Codex use this machine\'s gateway, Grok and Antigravity do too behind Douane, and OpenCode 2 adds its other models to its own. Limits opens its dashboard inside Boite. Other agents keep their own configuration.',
     baseUrl: 'API URL', dashboardUrl: 'Limits dashboard URL', key: 'API key (optional)',
     keyHint: 'Leave empty to keep the saved key. This is the proxy\'s API key, not its dashboard management key. In local mode, Boite creates a client key when none is saved.',
     clearKey: 'Remove saved key', save: 'Save proxy', saved: 'Proxy saved',
@@ -12,7 +12,7 @@ export const strings = {
     openGateway: 'Open {name}',
     signInHint: 'Sign in with Open {name}, then reload here. If the page stays blank, this dashboard may block embedded views.',
     mixedContent: 'This page uses HTTPS. Set an HTTPS dashboard URL to view it here, or open the HTTP dashboard separately.',
-    enabledHint: 'When on, the accounts signed in on this machine are no longer used for Claude and Codex, nor for Grok behind Douane.',
+    enabledHint: 'When on, the accounts signed in on this machine are no longer used for Claude and Codex, nor for Grok and Antigravity behind Douane.',
     /** Limits' switch, which a phone reaches too. */
     use: 'Use {name}',
     switchFailed: 'Could not switch {name}: {error}',

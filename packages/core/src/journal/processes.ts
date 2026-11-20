@@ -2,11 +2,11 @@ import type { Database } from 'bun:sqlite';
 import { processAgentCommand, type ProcessRecord } from '@boite/contracts';
 
 /** The newest trace rows a thread keeps; live rows and agent CLI rows stay on top. */
-export const PROCESS_ROWS_KEPT = 2000;
+const PROCESS_ROWS_KEPT = 2000;
 /** Exits between two prunes of a thread that never goes idle. */
 const PRUNE_EVERY_EXITS = 500;
 /** A thread is pruned by the background pass once it holds this many rows past what it keeps. */
-export const PROCESS_ROWS_SLACK = 500;
+const PROCESS_ROWS_SLACK = 500;
 
 /**
  * The columns of a `processes` row as `ProcessRow` reads them, with the
@@ -46,7 +46,7 @@ const digestOf = (text: string): bigint => BigInt.asIntN(64, Bun.hash.xxHash64(t
  * A hook that runs tens of thousands of times in a thread stores its command
  * line once.
  */
-export function internCommandLine(db: Database, threadId: string, text: string): number {
+function internCommandLine(db: Database, threadId: string, text: string): number {
   const digest = digestOf(text);
   const found = db.query('SELECT id FROM command_lines WHERE thread_id = ? AND digest = ? AND text = ?').get(threadId, digest, text) as { id: number } | null;
   if (found !== null) return found.id;

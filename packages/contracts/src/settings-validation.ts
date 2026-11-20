@@ -302,6 +302,7 @@ const SETTING_RULES: { readonly [K in keyof Settings]-?: FieldRule<K> } = {
   threadMemoryCapMb: amount('threadMemoryCapMb') as FieldRule<'threadMemoryCapMb'>,
   agentMemoryBudgetPercent: value => typeof value === 'number' && Number.isInteger(value) && value >= 10 && value <= 90 ? value
     : refuse('agentMemoryBudgetPercent must be an integer between 10 and 90'),
+  autoGoals: bool('autoGoals') as FieldRule<'autoGoals'>,
   autoGoalMinChars: value => typeof value === 'number' && Number.isInteger(value) && value >= AUTO_GOAL_MIN_CHARS.min && value <= AUTO_GOAL_MIN_CHARS.max ? value
     : refuse(`autoGoalMinChars must be an integer between ${AUTO_GOAL_MIN_CHARS.min} and ${AUTO_GOAL_MIN_CHARS.max}`),
   memoryReserveMb: value => typeof value === 'number' && Number.isInteger(value) && (value === 0 || (value >= 256 && value <= 1048576)) ? value

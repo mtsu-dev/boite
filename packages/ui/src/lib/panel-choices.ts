@@ -47,7 +47,7 @@ export function notePanelUse(store: Store, thread: string, id: string): void {
 }
 
 /** At most this many rows in the used group: a short list read at a glance, the rest stay in their families. */
-export const USED_MAX = 4;
+const USED_MAX = 4;
 
 /**
  * The panels this thread really showed or picked (noted), newest first. When

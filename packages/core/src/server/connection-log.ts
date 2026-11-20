@@ -4,8 +4,8 @@ import type { RpcFailure } from '../errors.ts';
 import type { ServerConnection } from './connection.ts';
 
 /** An RPC slower than this is worth a debug line; slower than the second, a warning. */
-export const SLOW_RPC_DEBUG_MS = 1_000;
-export const SLOW_RPC_WARN_MS = 10_000;
+const SLOW_RPC_DEBUG_MS = 1_000;
+const SLOW_RPC_WARN_MS = 10_000;
 
 /**
  * Methods that hold their answer on purpose until something happens: a wait
