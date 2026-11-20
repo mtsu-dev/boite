@@ -7,18 +7,22 @@ import { Journal } from '../src/journal.ts';
 import { GROUP_POLL_MS, KILL_GRACE_MS, stopGroup } from '../src/platform/posix-kill.ts';
 import type { Signaller } from '../src/platform/posix-kill.ts';
 import { platform as windows } from '../src/platform/windows/index.ts';
-import { running } from '../src/process-entry.ts';
+import { running, stopProcess } from '../src/process-entry.ts';
 import { ProcRegistry } from '../src/procs.ts';
 
 test('Windows stops skip reaped children and propagate real kill failures', () => {
   let kills = 0;
   const error = new Error('access denied');
   const kill = () => { kills++; throw error; };
+  const stop = (state: Parameters<typeof running>[0]) => {
+    const alive = running(state);
+    return stopProcess(windows, 'fixture', 100, true, alive(), () => windows.stopChild(100, alive, kill));
+  };
   for (const state of [{ exitCode: 0, signalCode: null }, { exitCode: null, signalCode: 'SIGTERM' }]) {
-    expect(() => windows.stopChild(100, running(state), kill)).not.toThrow();
+    expect(() => stop(state)).not.toThrow();
   }
   expect(kills).toBe(0);
-  expect(() => windows.stopChild(100, running({ exitCode: null, signalCode: null }), kill)).toThrow(error);
+  expect(() => stop({ exitCode: null, signalCode: null })).toThrow(error);
   expect(kills).toBe(1);
 });
 
