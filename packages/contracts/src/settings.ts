@@ -1,6 +1,6 @@
 import type { BrowserProfile } from './browser';
 import type { AccountId, ProviderId, RequestId } from './ids';
-import type { ExperimentId } from './experiments.ts';
+import type { ExperimentId, FinishedExperimentId } from './experiments.ts';
 import type { ClientPreferences, SettingAsk, SettingRequestParams } from './setting-requests.ts';
 import type { AutoCompact, CacheKeepalive } from './settings-validation.ts';
 import type { SubscriptionProxy } from './subscription-proxy';
@@ -402,7 +402,7 @@ export interface SettingsRpcMethods {
    * follows the computer's switches from its first hello. A core from before
    * `desktopChosen` answers without it.
    */
-  'client.preferences': { params: ClientPreferences; result: { ok: true; desktop: ExperimentId[] | null; desktopChosen?: ExperimentId[] | null } };
+  'client.preferences': { params: ClientPreferences; result: { ok: true; desktop: (ExperimentId | FinishedExperimentId)[] | null; desktopChosen?: (ExperimentId | FinishedExperimentId)[] | null } };
 }
 
 export interface SettingsRpcEvents {
@@ -416,8 +416,9 @@ export interface SettingsRpcEvents {
    * the stages takes it for: a Release names no experiment there. `chosen`
    * is the list as that app chose it, not cut down: the device that follows
    * it keeps this one and reads it for the build that decides, so a Release
-   * in between erases nobody's switches. A core from before `chosen` sends
+   * in between erases nobody's switches. Both also name every finished id
+   * (`FINISHED_EXPERIMENT_IDS`), for an app from before its removal. A core from before `chosen` sends
    * `experiments` alone. Kept in memory, like the reports.
    */
-  'client.desktopExperiments': { experiments: ExperimentId[]; chosen?: ExperimentId[] };
+  'client.desktopExperiments': { experiments: (ExperimentId | FinishedExperimentId)[]; chosen?: (ExperimentId | FinishedExperimentId)[] };
 }

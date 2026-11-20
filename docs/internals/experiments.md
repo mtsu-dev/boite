@@ -297,10 +297,11 @@ Finished, with no switch: the Grain theme (a choice in Appearance), Claude
 Code [session import](imports.md), the [prompt cache](prompt-cache.md)
 timer, click markers and navigation keys in native browser recordings (never
 typed text or password input), pinned model quotas (see
-[placement and behavior](development.md#ui-spacing-and-motion)), Mochis
-(`resident-agents`, the one finished id still listed), [Contacts](#contacts),
-[Teams](#teams) and the [Council](#council). Their code reads no experiment
-any more. Finished, with a switch of their own elsewhere: the [Whip](#whip)
+[placement and behavior](development.md#ui-spacing-and-motion)),
+[Contacts](#contacts), [Teams](#teams) and the [Council](#council): their
+code reads no experiment any more. Mochis are finished too, but their UI still
+reads `resident-agents`, the one id left in the list. Finished, with a switch
+of their own elsewhere: the [Whip](#whip)
 (Settings > Appearance, on by default, `whip` in `lib/features.ts`) and
 [automatic goals](goals.md#automatic-goals) (the owner setting `autoGoals` in
 Settings > General > Agent replies, on by default, with its threshold

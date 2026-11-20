@@ -239,9 +239,9 @@ export {
 } from './setting-requests.ts';
 export {
   BUILD_KINDS, FEATURE_CUTS, buildKindOf, featureCompiled, featureDefines, featureFlag, featureMarker, markFeature, stageRuns,
-  EXPERIMENT_IDS, EXPERIMENT_STAGES, effectiveExperiments, experimentListed, experimentRefusal, experimentStartRefusal, experimentsRun,
+  EXPERIMENT_IDS, EXPERIMENT_STAGES, FINISHED_EXPERIMENT_IDS, withFinished, effectiveExperiments, experimentListed, experimentRefusal, experimentStartRefusal, experimentsRun,
   isReleaseVersion, listedExperiments,
-  type BuildKind, type ExperimentId, type FeatureStage,
+  type BuildKind, type ExperimentId, type FeatureStage, type FinishedExperimentId,
 } from './experiments.ts';
 export {
   AGENT_DAILY_BUDGET, AGENT_PICTURE_CODE, AGENT_PICTURE_MAX_BYTES, AGENT_PICTURE_TYPES,

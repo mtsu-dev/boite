@@ -1,8 +1,11 @@
-import { checkClientPreferences, effectiveExperiments, sameClientPreferences, type ClientPreferences, type ExperimentId, type SentFrom, type SettingsReading } from '@boite/contracts';
+import { checkClientPreferences, effectiveExperiments, sameClientPreferences, withFinished, type ClientPreferences, type ExperimentId, type FinishedExperimentId, type SentFrom, type SettingsReading } from '@boite/contracts';
 import { RpcErrorCode } from '@boite/contracts';
 import { RpcFailure } from './errors.ts';
 import type { Connection } from './router.ts';
 import { CORE_VERSION } from './version.ts';
+
+/** An id as apps are told it: a finished one too, which an app from before its removal still gates on (`withFinished`). */
+type Told = ExperimentId | FinishedExperimentId;
 
 /** Apps remembered by id, so a reconnect compares with the app's last report; the oldest goes first. */
 const APPS_KEPT = 64;
@@ -16,7 +19,9 @@ const APPS_KEPT = 64;
  * told the desktop app's list twice: in force here (`desktopExperiments`),
  * which is all an app from before the stages reads, and as it chose it
  * (`desktopChosen`), which a phone keeps and reads for its own build, so a
- * Release in between loses nobody's switches. Kept in memory only:
+ * Release in between loses nobody's switches. Both lists also name every
+ * finished id (`withFinished`), on in every build, so a phone older than
+ * this core still shows those features. Kept in memory only:
  * an app says it again after every hello. Agents read the app the user last
  * used: the one that last sent a prompt or changed a preference, or the first
  * to report once that app's socket closed. A phone that merely reconnects in a
@@ -38,12 +43,12 @@ export class ClientPreferencesBook {
    * in this build and as chosen.
    */
   readonly #reported: (preferences: ClientPreferences, before: readonly ExperimentId[] | null) => void;
-  readonly #desktopMoved: (moved: { experiments: ExperimentId[]; chosen: ExperimentId[] }) => void;
+  readonly #desktopMoved: (moved: { experiments: Told[]; chosen: Told[] }) => void;
   readonly #version: string;
 
   constructor(
     reported: (preferences: ClientPreferences, before: readonly ExperimentId[] | null) => void,
-    desktopMoved: (moved: { experiments: ExperimentId[]; chosen: ExperimentId[] }) => void = () => {},
+    desktopMoved: (moved: { experiments: Told[]; chosen: Told[] }) => void = () => {},
     version: string = CORE_VERSION,
   ) {
     this.#reported = reported;
@@ -75,17 +80,17 @@ export class ClientPreferencesBook {
     if (!local && this.#desktop?.local === true) return;
     const changed = this.#desktop === null || this.#desktop.experiments.join() !== experiments.join();
     this.#desktop = { experiments: [...experiments], local };
-    if (changed) this.#desktopMoved({ experiments: effectiveExperiments(experiments, this.#version), chosen: [...experiments] });
+    if (changed) this.#desktopMoved({ experiments: withFinished(effectiveExperiments(experiments, this.#version)), chosen: withFinished(experiments) });
   }
 
   /** What the followed desktop app has in force in this build, or null before one reported: what the core's own gates read, and what an app from before the stages is handed. */
-  desktopExperiments(): ExperimentId[] | null {
-    return this.#desktop === null ? null : effectiveExperiments(this.#desktop.experiments, this.#version);
+  desktopExperiments(): Told[] | null {
+    return this.#desktop === null ? null : withFinished(effectiveExperiments(this.#desktop.experiments, this.#version));
   }
 
   /** The switches the followed desktop app chose, whatever this build runs, or null before one reported: what a phone keeps. */
-  desktopChosen(): ExperimentId[] | null {
-    return this.#desktop === null ? null : [...this.#desktop.experiments];
+  desktopChosen(): Told[] | null {
+    return this.#desktop === null ? null : withFinished(this.#desktop.experiments);
   }
 
   /** A prompt from this socket: its app is the one the user uses now. */

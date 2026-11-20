@@ -2,7 +2,7 @@ import { afterEach, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { EXPERIMENT_IDS, EXPERIMENT_STAGES, FEATURE_CUTS, buildKindOf, effectiveExperiments, experimentRefusal, experimentStartRefusal, featureCompiled, featureDefines, featureMarker, stageRuns, isReleaseVersion, listedExperiments, type ClientPreferences, type ExperimentId } from '@boite/contracts';
+import { EXPERIMENT_IDS, EXPERIMENT_STAGES, FEATURE_CUTS, buildKindOf, effectiveExperiments, experimentRefusal, experimentStartRefusal, featureCompiled, featureDefines, featureMarker, stageRuns, isReleaseVersion, listedExperiments, withFinished, type ClientPreferences, type ExperimentId } from '@boite/contracts';
 import { connect } from '../src/client.ts';
 import { echoThread, startTestCore, type TestCore } from './harness.ts';
 
@@ -136,8 +136,9 @@ test('a former experiment\'s card says it is finished, and the former experiment
   await finished;
 
   // The historic field and the chosen list: every feature is in force, whatever the app chose.
-  // An older app still names the experiments since finished: they are dropped, and every feature is in force.
-  expect(await owner.call('client.preferences', report(GRADUATED))).toEqual({ ok: true, desktop: [...EXPERIMENT_IDS], desktopChosen: [] });
+  // An older app still names the experiments since finished: the core drops them from its own reading, and
+  // names every finished id back in both lists, for a phone older than it that still gates on them.
+  expect(await owner.call('client.preferences', report(GRADUATED))).toEqual({ ok: true, desktop: withFinished([...EXPERIMENT_IDS]), desktopChosen: withFinished([]) });
   const read = await owner.call('agent.settings', { threadId });
   expect(read.settings.filter(setting => setting.key.startsWith('experiment.'))).toEqual([]);
   expect(read.settings.find(setting => setting.key === 'cacheKeepalive')).toMatchObject({ value: null, page: 'advanced', section: 'cache-keepalive' });

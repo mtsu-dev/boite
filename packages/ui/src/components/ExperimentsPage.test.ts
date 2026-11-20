@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, onTestFinished, test } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
-import { EXPERIMENT_IDS } from '@boite/contracts';
+import { EXPERIMENT_IDS, withFinished } from '@boite/contracts';
 import ExperimentsPage from './ExperimentsPage.svelte';
 import { DESKTOP_STORAGE_KEY, EXPERIMENTS_STORAGE_KEY, chosenExperiments, desktopHeard, followDesktopOf, heardBuild, heardDesktop, readExperiments, setExperiment, writeExperiments } from '../lib/experiments';
 import { experimentsShown } from '../lib/experiments.svelte';
@@ -73,12 +73,13 @@ test('a phone keeps the list its desktop app chose and has every feature, before
   for (let i = 0; i < 10; i++) { await Promise.resolve(); flushSync(); }
   expect(JSON.parse(window.localStorage.getItem(DESKTOP_STORAGE_KEY)!).experiments).toEqual(['resident-agents']);
   expect(readExperiments()).toEqual(ALL);
-  expect(await client.call('client.preferences', { app: 'app-old-0001', language: 'en', experiments: [], labels: {} })).toEqual({ ok: true, desktop: ALL, desktopChosen: ['resident-agents'] });
+  expect(await client.call('client.preferences', { app: 'app-old-0001', language: 'en', experiments: [], labels: {} })).toEqual({ ok: true, desktop: withFinished(ALL), desktopChosen: withFinished(['resident-agents']) });
   const said: unknown[] = [];
   client.on('client.desktopExperiments', (payload) => said.push(payload));
   client.reportDesktopExperiments(['resident-agents']);
   for (let i = 0; i < 10; i++) { await Promise.resolve(); flushSync(); }
-  expect(said).toEqual([{ experiments: ALL, chosen: ['resident-agents'] }]);
+  // Both lists also name the finished ids, for a phone older than the core; this app keeps only the ones it knows.
+  expect(said).toEqual([{ experiments: withFinished(ALL), chosen: withFinished(['resident-agents']) }]);
   expect(chosenExperiments()).toEqual(['resident-agents']);
   heardBuild(store, NIGHTLY);
   expect(readExperiments()).toEqual(ALL);

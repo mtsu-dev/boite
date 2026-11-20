@@ -207,7 +207,7 @@ export function followDesktopOf(owner: object | null): void {
  * one as chosen, which a Release core does not cut down, else the historic
  * one of a core from before it.
  */
-export function desktopHeard(said: { desktop?: ExperimentId[] | null; desktopChosen?: ExperimentId[] | null; experiments?: ExperimentId[]; chosen?: ExperimentId[] }): ExperimentId[] | null {
+export function desktopHeard(said: { desktop?: readonly string[] | null; desktopChosen?: readonly string[] | null; experiments?: readonly string[]; chosen?: readonly string[] }): readonly string[] | null {
   return said.desktopChosen ?? said.chosen ?? said.desktop ?? said.experiments ?? null;
 }
 
@@ -217,7 +217,7 @@ export function desktopHeard(said: { desktop?: ExperimentId[] | null; desktopCho
  * the same core keeps the set heard last, through reloads and restarts, but
  * a primary that moved to another machine forgets the previous one's.
  */
-export function heardDesktop(owner: object, experiments: readonly ExperimentId[] | null, core: string | null = null): void {
+export function heardDesktop(owner: object, experiments: readonly string[] | null, core: string | null = null): void {
   if (owner !== leader || !canFollowDesktop()) return;
   const last = heard();
   if (experiments === null && (last === null || core === null || last.core === null || last.core === core)) return;

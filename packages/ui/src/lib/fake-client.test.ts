@@ -61,6 +61,14 @@ test('banked resets refuse agent and paired transports before changing a support
   expect(updated).toEqual([]);
 });
 
+test('a method the core lacks is unknown to a paired device before access is checked, as the router answers', async ({ createClient }) => {
+  const client = await createClient({ delayMs: 0 });
+  client.becomes('session');
+  // An older phone still calls the removed deletion: the core says the method does not exist, not that the phone may not call it.
+  await expect(client.call('secrets.delete' as 'secrets.list', {} as never)).rejects.toMatchObject({ code: RpcErrorCode.MethodNotFound });
+  client.becomes('owner');
+});
+
 test('fake Claude creation discovers its native catalog before refusing an unlisted model', async ({ createClient }) => {
   const client = await createClient({ delayMs: 0 });
   const account = (await client.call('accounts.list', {})).find(account => account.providerId === 'claude' && account.status === 'ok');

@@ -27,6 +27,21 @@
 export const EXPERIMENT_IDS = ['resident-agents'] as const;
 export type ExperimentId = (typeof EXPERIMENT_IDS)[number];
 
+/**
+ * Finished features that left `EXPERIMENT_IDS`, which an app older than this
+ * core still gates on. The core names them in what it tells apps of the
+ * desktop app they follow (`withFinished`), as a core from before their
+ * removal did, so a phone that has not updated yet keeps showing them; a
+ * current app drops them as unknown ids.
+ */
+export const FINISHED_EXPERIMENT_IDS = ['whip', 'contacts', 'auto-goal', 'teams', 'debates', 'theme-grain', 'session-import', 'prompt-cache', 'recording-indicators', 'pinned-quotas'] as const;
+export type FinishedExperimentId = (typeof FINISHED_EXPERIMENT_IDS)[number];
+
+/** A desktop app's list as the core hands it to apps: these ids plus every finished one (`FINISHED_EXPERIMENT_IDS`). */
+export function withFinished(experiments: readonly ExperimentId[]): (ExperimentId | FinishedExperimentId)[] {
+  return [...experiments, ...FINISHED_EXPERIMENT_IDS];
+}
+
 export function isExperimentId(id: unknown): id is ExperimentId {
   return typeof id === 'string' && (EXPERIMENT_IDS as readonly string[]).includes(id);
 }

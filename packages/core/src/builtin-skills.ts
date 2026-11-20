@@ -191,7 +191,7 @@ then place the page in your answer with the printed image line.
 };
 
 /**
- * Listed only while the Council experiment is on, and never to a council's own
+ * Listed to every thread but a council's own
  * member (`threads/turn-context.ts`). It holds the mechanism alone: whom to ask,
  * what to ask and what to do with the answers belong to the user's instructions.
  */
