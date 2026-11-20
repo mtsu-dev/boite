@@ -297,15 +297,18 @@ At most 20 PRs can be linked to one conversation.
 ### Watching a pull request
 
 `boite pr watch [<url|number>]` asks Boite to babysit a PR for the agent, so
-the agent ends its turn instead of polling CI. With nothing named it watches
+the agent ends its turn while CI and reviews run. With nothing named it watches
 the conversation's only linked PR, or its only open one; a number names a
 linked PR; a URL not linked yet is linked first. It prints what the first
-read saw (head, checks running and failed, a conflict) and wakes nothing for
-it. `boite pr unwatch [<url|number>]` stops one watch, or all of them.
+read saw (head, checks running and failed, the base tip's first failure and a
+conflict if present). `boite pr unwatch [<url|number>]` stops one watch, or all of
+them.
 
 The core (`packages/core/src/pull-request-watch.ts`) wakes the conversation
 with one message, a `pull-request` turn, when:
 
+- the base branch's current commit has a failed check. It names the branch,
+  commit, first failure and check link apart from the pull request's checks;
 - the first check of a head fails; failures after it on that head wait until
   no CI job runs and go out together as its verdict, unless only an aggregate
   gate is new (a required job such as `CI required` that started once every
@@ -341,7 +344,8 @@ with one message, a `pull-request` turn, when:
 
 The message names each change with its link. A change waits 20 seconds for
 the rest of its burst and for a running turn to end, then everything waiting
-goes out together; the same state never wakes twice.
+goes out together. The core records the wake and clears its pending changes
+in the same database transaction, so a restart cannot deliver the batch twice.
 
 Each watched PR costs one GraphQL query a minute, a fingerprint of its state,
 mergeability, merge state, head, place in the merge queue, check counts by state, comment and review counts, edits

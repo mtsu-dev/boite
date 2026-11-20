@@ -23,7 +23,7 @@ pull request's CI after each merge.
 `ci` and `PR title` also run on `merge_group`. A group runs `ci` in `queue`
 mode against its `main` base: the same path rules as a pull request, with the
 diff covering every pull request ahead of it, and the Windows, macOS, desktop,
-E2E, stress, Docker and APK jobs a pull request run leaves out
+full E2E, stress, Docker and APK jobs
 ([pull request runs](#pull-request-runs)). `Bundle size` skips there, since it
 compares a pull request with its base. A group's `PR
 title` checks the squash title of its last commit, the one `main` receives.
@@ -293,9 +293,12 @@ the two Windows core shards and `Native Windows protection`. Each Windows core
 shard builds the userspace sandbox helper and runs its half of the ordinary
 suite with it; the native job builds the helper again and runs the opt-in
 native protection fixtures, about 11 minutes, beside them instead of before
-the suite. Other pull requests leave Windows out. macOS, desktop packages, E2E, stress,
-Docker and the APKs skip: the [merge queue](#merge-queue) runs them on top of
-`main`.
+the suite. Changes to the UI, contracts, E2E fixtures or unknown inputs also
+run `E2E 1/5` on Windows. It covers Changes and keyboard focus at desktop
+and phone widths, and stopping a running Mochi on a phone. Its test log and available
+captures are uploaded even if another job fails. The [merge queue](#merge-queue)
+runs all five shards, macOS, desktop packages, stress, Docker and APKs on top
+of `main`.
 
 The native job also archives `windows-null-access-matrix`: a standalone,
 opt-in comparison of host and LPAC NUL opens with four requested access masks.

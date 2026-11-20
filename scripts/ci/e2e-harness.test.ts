@@ -61,6 +61,21 @@ test('every E2E shard stops a hung run before its job limit and uploads the repo
   expect(upload).toMatch(/if: failure\(\) \|\| cancelled\(\)\n\s+with:\n\s+name: e2e-\$\{\{ env\.E2E_SHARD \}\}-failure-captures\n\s+path: tests\/e2e\/\.artifacts\//);
 });
 
+test('the focused PR run exercises desktop and paired phone and retains its results', () => {
+  const workflow = Bun.YAML.parse(readFileSync(join(repo, '.github/workflows/ci.yml'), 'utf8')) as {
+    jobs: Record<string, { if: string; steps: { if?: string; name?: string; run?: string; with?: { name?: string } }[] }>;
+  };
+  const { ui, 'e2e-1': first, 'e2e-2': second } = workflow.jobs;
+  expect(ui!.if).toContain("needs.changes.outputs.e2ePr == 'true'");
+  expect(first!.if).toContain("needs.changes.outputs.e2ePr == 'true'");
+  expect(second!.if).not.toContain('e2ePr');
+  const run = first!.steps.find(step => step.name === 'Browser and core end-to-end tests');
+  expect(run?.run).toContain('tests/e2e/phone-changes.test.ts');
+  expect(run?.run).toContain('tests/e2e/mobile-focus.test.ts');
+  const upload = first!.steps.find(step => step.with?.name === 'e2e-${{ env.E2E_SHARD }}-results');
+  expect(upload?.if).toBe('always()');
+});
+
 test('every E2E teardown names a deadline of at least 30 s', () => {
   // Bun gives a hook 5 s by default. Closing a browser on the Windows runner
   // took 7 s, and the file failed after all its tests had passed.

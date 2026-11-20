@@ -644,7 +644,9 @@ export function watchStatus(watch: import('@boite/contracts').PullRequestWatch):
   const { total, running, failed } = seen.checks;
   const checks = total === 0 ? 'no checks' : `${total} checks, ${running} running, ${failed} failed`;
   const queue = seen.queue ? `merge queue position ${seen.queue.position}` : null;
-  return [`head ${seen.head}`, checks, seen.conflicting ? `conflicts with ${seen.base}` : null, seen.behind ? `behind ${seen.base}` : null, queue, paused].filter(Boolean).join('; ');
+  const baseFailure = seen.baseFailure;
+  const baseStatus = baseFailure ? `base ${seen.base} (${baseFailure.sha.slice(0, 7)}): ${baseFailure.name} failed (${baseFailure.conclusion.toLowerCase()})${baseFailure.url ? ` ${baseFailure.url}` : ''}` : null;
+  return [`head ${seen.head}`, checks, baseStatus, seen.conflicting ? `conflicts with ${seen.base}` : null, seen.behind ? `behind ${seen.base}` : null, queue, paused].filter(Boolean).join('; ');
 }
 
 /**
