@@ -175,6 +175,17 @@ test('another login than the provider own one is named on the line', () => {
   expect(accountButton()!.getAttribute('aria-label')).toBe(`Claude, Personal, ${strings.composer.switchAccount}`);
 });
 
+test('Escape from a model row restores focus to the picker trigger', async () => {
+  await mountAt('recent');
+  const trigger = document.querySelector<HTMLButtonElement>('[data-testid=composer-picker]')!;
+  trigger.click();
+  const firstRow = () => document.querySelector<HTMLButtonElement>('[data-testid=composer-picker-menu] [data-row]:not(:disabled)');
+  await waitFor(() => firstRow() !== null);
+  firstRow()!.focus();
+  key(firstRow()!, 'Escape');
+  expect(document.activeElement).toBe(trigger);
+});
+
 test('a column of hundreds of models draws its first rows until asked for all', async () => {
   await mountAt('recent');
 

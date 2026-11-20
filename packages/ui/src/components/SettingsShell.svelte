@@ -1,4 +1,6 @@
 <script lang="ts">
+  import EmptyState from './EmptyState.svelte';
+  import SearchField from './SearchField.svelte';
   import { desktopShell } from '../lib/shell-platform';
   import { openArchived } from '../lib/archived-view.svelte';
   import { MediaQuery } from 'svelte/reactivity';
@@ -7,7 +9,7 @@
   import BrainPage from './BrainPage.svelte';
   import SettingsPageHeader from './SettingsPageHeader.svelte';
   import PolicyLock from './PolicyLock.svelte';
-  import { ChevronDown, ChevronLeft, ChevronRight, Search } from '@lucide/svelte';
+  import { ChevronDown, ChevronLeft, ChevronRight } from '@lucide/svelte';
   import { SETTINGS_ICONS, SETTINGS_ICON_SIZE, SETTINGS_ICON_STROKE } from '../lib/settings-icons';
   import KeyboardPage from './KeyboardPage.svelte';
   import LimitsPage from './LimitsPage.svelte';
@@ -413,14 +415,14 @@
 {/snippet}
 <!-- The search of Settings' home: it finds every page, card and single setting. The phone's home opens on the same field. -->
 {#snippet searchField(phone: boolean)}
-  <label class="search" class:phone data-testid="settings-home">
-    <Search size={14} strokeWidth={1.75} aria-hidden="true" />
-    <input type="search" bind:this={field} bind:value={query} oninput={() => (active = 0)} placeholder={strings.settings.search} aria-label={strings.settings.search} data-testid="settings-search" onkeydown={onkey} spellcheck="false" autocomplete="off" />
-  </label>
+  <div class="search" class:phone data-testid="settings-home">
+    <SearchField bind:input={field} bind:value={query} oninput={() => (active = 0)}
+      placeholder={strings.settings.search} data-testid="settings-search" onkeydown={onkey} />
+  </div>
 {/snippet}
 {#snippet searchResults()}
   {#if results.length === 0}
-    <p class="hint" data-testid="settings-search-empty">{strings.settings.searchEmpty}</p>
+    <EmptyState compact line={strings.settings.searchEmpty} testid="settings-search-empty" />
   {:else}
     <div class="card flush results" data-testid="settings-search-results">
       {#each results as entry, index (`${entry.tab}:${entry.section}:${entry.label}`)}
@@ -566,33 +568,10 @@
   .tab.home + .family { margin-top: var(--space-4); }
   .family-head { margin: 0; padding: 0 12px var(--space-2); color: var(--color-subtle); font-size: var(--text-meta); font-weight: 500; }
 
-  /* The search heads the nav, on the chrome like the rows under it. */
-  .search {
-    flex: none;
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    height: 38px;
-    margin: 0 0 var(--space-2);
-    padding: 0 12px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-hover);
-    color: var(--color-subtle);
-    transition: border-color var(--dur-2);
-  }
-  /* A field brightens its edge on focus, as every field does (app.css): an autofocused search wore an accent frame. */
-  .search:focus-within { border-color: var(--color-composer-focus); }
-  .search :global(svg) { flex: none; }
-  .search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; box-shadow: none; outline: none; font-size: var(--text-base); color: var(--color-foreground); }
-  .search input::-webkit-search-cancel-button { display: none; }
-  /* The phone's home: the field spans its column, first under the header, a finger tall. */
-  .search.phone { width: auto; height: var(--touch-target); margin: 0 0 var(--space-5); background: var(--color-surface); }
-  .search.phone input { font-size: var(--text-md); }
-
+  .search { flex: none; margin-bottom: var(--space-2); }
+  .search.phone { width: auto; margin-bottom: var(--space-5); }
   /* What the search finds, in the page's column. */
   .found { padding: var(--space-8) max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)); }
-  .hint { margin: 0; color: var(--color-muted-foreground); font-size: var(--text-base); }
   .results { display: grid; }
   .result {
     display: flex;
@@ -716,7 +695,7 @@
     .settings { gap: 0; }
     /* In a row, the head is the first chip, then the search, then each page a chip. */
     .title { height: var(--control); margin: 0; font-size: var(--text-sm); white-space: nowrap; }
-    .search { width: 180px; height: var(--control); margin: 0; }
+    .search { width: 180px; margin: 0; }
     .tab { width: auto; min-height: var(--row); white-space: nowrap; padding: 6px 10px; font-size: var(--text-sm); }
     .family { flex-direction: row; }
     .family + .family, .tab.home + .family { margin-top: 0; }

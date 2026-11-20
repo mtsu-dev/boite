@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { tick } from 'svelte';
-  import { Check, ChevronDown, PanelRight, Plus, Search } from '@lucide/svelte';
+  import EmptyState from './EmptyState.svelte';
+  import SearchField from './SearchField.svelte';
+  import { Check, ChevronDown, PanelRight, Plus } from '@lucide/svelte';
   import { fill, strings } from '../lib/strings';
-  import { Closing } from '../lib/closing.svelte';
+  import { AnchoredPopover } from '../lib/anchored-popover.svelte';
   import { floating } from '../lib/floating';
   import { panelSwitch } from '../lib/panel-switch.svelte';
-  import type { MenuItem } from '../lib/menu';
+  import { menuRows, type MenuItem } from '../lib/menu';
 
   /**
    * The open panel's door (`PanelDoor.svelte`): its icon and name with a
@@ -21,7 +22,7 @@
   let { inPanel = false, add = false }: { inPanel?: boolean; add?: boolean } = $props();
   const Glyph = $derived(panelSwitch.glyph ?? PanelRight);
 
-  const popover = new Closing();
+  const popover = new AnchoredPopover(() => root, () => trigger);
   let root = $state<HTMLDivElement>();
   let trigger = $state<HTMLButtonElement>();
   let field = $state<HTMLInputElement>();
@@ -50,34 +51,22 @@
     items = panelSwitch.items();
     query = '';
     popover.show();
-    void tick().then(() => {
-      const list = root?.querySelector<HTMLElement>('.launcher');
-      // A phone sheet does not raise the keyboard over its own rows: the search waits for a tap.
-      if (list?.dataset['mobileSheet']) list.focus({ preventScroll: true });
-      else field?.focus({ preventScroll: true });
-    });
-  }
-  function close(refocus = true): void {
-    popover.hide();
-    if (refocus) trigger?.focus({ preventScroll: true });
+    void popover.focusOnOpen(() => root?.querySelector<HTMLElement>('.launcher') ?? undefined, () => field);
   }
   function toggle(event: MouseEvent): void {
     event.stopPropagation();
-    if (popover.open) close(false);
+    if (popover.open) popover.close(false);
     else open();
   }
   function pick(item: MenuItem | undefined): void {
     if (!item || item.disabled) return;
-    close();
+    popover.close();
     panelSwitch.pick(item.id);
   }
 
-  function rows(): HTMLElement[] {
-    return root ? Array.from(root.querySelectorAll<HTMLElement>('[data-row]:not(:disabled)')) : [];
-  }
   function onkeydown(event: KeyboardEvent): void {
-    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); return; }
-    const list = rows();
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); popover.close(); return; }
+    const list = menuRows(root);
     const at = list.indexOf(document.activeElement as HTMLElement);
     const inField = document.activeElement === field;
     if (event.key === 'Enter' && inField) { event.preventDefault(); pick(first); return; }
@@ -93,13 +82,9 @@
   function onTriggerKey(event: KeyboardEvent): void {
     if (event.key === 'ArrowDown' && !popover.open) { event.preventDefault(); open(); }
   }
-  function onWindowPointerdown(event: PointerEvent): void {
-    if (!popover.open || (root && event.target instanceof Node && root.contains(event.target))) return;
-    close(false);
-  }
 </script>
 
-<svelte:window onpointerdown={onWindowPointerdown} />
+<svelte:window onpointerdown={popover.outside} />
 
 <div class="menu door-menu" bind:this={root}>
   {#if add}
@@ -122,11 +107,10 @@
   {#if popover.shown}
     <div class="launcher" class:closing={popover.closing} role="dialog" aria-label={strings.thread.panelMenu} tabindex="-1" data-testid="panel-add-menu"
       {onkeydown} use:popover.attach onanimationend={popover.end}
-      use:floating={{ anchor: () => trigger ?? null, placement: 'bottom', align: 'end', cap: 640, dismiss: () => close(false) }}>
-      <label class="find">
-        <Search size={16} strokeWidth={1.75} aria-hidden="true" />
-        <input type="search" bind:this={field} bind:value={query} placeholder={strings.rightPanel.findPanel} aria-label={strings.rightPanel.findPanel} autocomplete="off" spellcheck="false" data-testid="panel-find" />
-      </label>
+      use:floating={{ anchor: () => trigger ?? null, placement: 'bottom', align: 'end', cap: 640, dismiss: () => popover.close(false) }}>
+      <div class="find">
+        <SearchField bind:input={field} bind:value={query} placeholder={strings.rightPanel.findPanel} data-testid="panel-find" />
+      </div>
       <div class="rows" role="menu" aria-label={strings.thread.panelMenu}>
         {#each shown as item (item.id)}
           {#if item.separator && item.label}
@@ -145,7 +129,7 @@
             </button>
           {/if}
         {:else}
-          <p class="none" data-testid="panel-find-none">{strings.rightPanel.noPanelMatch}</p>
+          <EmptyState compact line={strings.rightPanel.noPanelMatch} testid="panel-find-none" />
         {/each}
       </div>
     </div>
@@ -160,12 +144,7 @@
     font-size: var(--text-base); font-weight: 400; animation: pop var(--motion-duration) var(--motion-curve); transform-origin: top right; }
   .launcher.closing { animation: pop-out var(--motion-duration) var(--motion-curve); pointer-events: none; }
   .launcher:focus { outline: none; }
-  /* The search stays on top while the rows scroll under it. */
-  .find { flex: none; display: flex; align-items: center; gap: var(--space-2); height: var(--control-head); margin: var(--space-1); padding: 0 var(--space-2);
-    border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-background); color: var(--color-muted-foreground); }
-  .find:focus-within { border-color: var(--color-muted-foreground); }
-  .find input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; color: var(--color-foreground); font: inherit; }
-  .find input:focus { outline: none; }
+  .find { flex: none; margin: var(--space-1); }
   .rows { display: flex; flex-direction: column; gap: 1px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
   .rows > * { flex: none; }
   .section { padding: var(--space-3) var(--overlay-row-pad) var(--space-2); font-size: var(--text-meta); font-weight: 600; color: var(--color-subtle); pointer-events: none; }
@@ -187,9 +166,7 @@
   .words .name { font-weight: 500; }
   .hint { font-size: var(--text-sm); color: var(--color-muted-foreground); line-height: 1.3; }
   .check { display: flex; flex: none; color: var(--color-accent); }
-  .none { margin: 0; padding: var(--space-4) var(--overlay-row-pad); color: var(--color-muted-foreground); font-size: var(--text-sm); text-align: center; }
   /* A phone sheet: the rows at a finger's height, the search a finger's too. */
   .launcher:global([data-mobile-sheet='true']) { padding-inline: var(--space-2); }
-  .launcher:global([data-mobile-sheet='true']) .find { height: var(--touch-target); font-size: 16px; }
   .launcher:global([data-mobile-sheet='true']) .row { min-height: var(--touch-target); }
 </style>

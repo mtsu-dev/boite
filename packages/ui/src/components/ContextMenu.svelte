@@ -1,11 +1,10 @@
 <script lang="ts">
   import { tick, untrack } from 'svelte';
-  import { Check } from '@lucide/svelte';
   import { Closing } from '../lib/closing.svelte';
   import { contextMenu, type ContextMenuState } from '../lib/context-menu.svelte';
   import { restoreFocus } from '../lib/focus';
-  import { dangerLast, type MenuItem } from '../lib/menu';
-  import BackRow from './BackRow.svelte';
+  import { dangerLast, menuRows, moveMenuFocus, type MenuItem } from '../lib/menu';
+  import MenuRows from './MenuRows.svelte';
 
   const GAP = 6;
 
@@ -49,13 +48,9 @@
       }
       left = Math.max(GAP, Math.min(current.x, window.innerWidth - el.offsetWidth - GAP));
       top = Math.max(GAP, Math.min(current.y, window.innerHeight - el.offsetHeight - GAP));
-      rows()[0]?.focus({ preventScroll: true });
+      menuRows(root)[0]?.focus({ preventScroll: true });
     });
   });
-
-  function rows(): HTMLElement[] {
-    return root ? Array.from(root.querySelectorAll<HTMLElement>('[data-row]:not(:disabled)')) : [];
-  }
 
   /**
    * The rows go with the menu, and a focus left on the page lets the next
@@ -103,17 +98,7 @@
       pick(target);
       return;
     }
-    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && event.key !== 'Home' && event.key !== 'End') return;
-    const list = rows();
-    if (list.length === 0) return;
-    event.preventDefault();
-    const active = document.activeElement as HTMLElement | null;
-    const index = active ? list.indexOf(active) : -1;
-    let next = 0;
-    if (event.key === 'ArrowDown') next = (index + 1) % list.length;
-    else if (event.key === 'ArrowUp') next = (index - 1 + list.length) % list.length;
-    else if (event.key === 'End') next = list.length - 1;
-    list[next]?.focus();
+    moveMenuFocus(event, menuRows(root), false);
   }
 </script>
 
@@ -147,42 +132,7 @@
     data-mobile-sheet={sheet ? 'true' : undefined}
     oncontextmenu={(event) => event.preventDefault()}
   >
-    {#each dangerLast(request.items) as item (item.id)}
-      {#if item.separator && item.label}
-        <!-- A labelled rule opens a group, as in Menu.svelte: a long menu names its groups. -->
-        <div class="section ui-label" role="presentation">{item.label}</div>
-      {:else if item.separator}
-        <div class="rule" role="separator"></div>
-      {:else if item.back}
-        <BackRow label={item.label} title={item.title} disabled={item.disabled} tabindex={-1} data-value={item.id} data-testid={item.testid} onclick={() => pick(item)} />
-      {:else}
-        <button
-          type="button"
-          class="row"
-          class:danger={item.danger}
-          class:active={item.active}
-          class:clip={item.clip}
-          role={item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
-          aria-checked={item.checked}
-          tabindex="-1"
-          disabled={item.disabled}
-          title={item.title}
-          data-row
-          data-value={item.id}
-          data-testid={item.testid}
-          onclick={() => pick(item)}
-        >
-          {#if item.glyph}
-            <span class="glyph" aria-hidden="true"><item.glyph size={16} strokeWidth={1.75} /></span>
-          {/if}
-          <span class="label ui-label">{item.label}</span>
-          {#if item.hint}
-            <span class="hint ui-label">{item.hint}</span>
-          {/if}
-          {#if item.checked || item.active}<span class="check"><Check size={14} aria-hidden="true" /></span>{/if}
-        </button>
-      {/if}
-    {/each}
+    <MenuRows ordered={dangerLast(request.items)} {pick} {sheet} atPointer />
   </div>
 {/if}
 
@@ -222,95 +172,4 @@
     padding-inline: var(--space-2);
   }
 
-  .section {
-    flex-shrink: 0;
-    padding: var(--space-3) var(--overlay-row-pad) var(--space-2);
-    font-size: var(--text-meta);
-    font-weight: 600;
-    color: var(--color-subtle);
-  }
-
-  .section:first-child { padding-top: var(--space-1); }
-  .context-menu[data-mobile-sheet='true'] .section { padding-top: var(--space-4); }
-  .context-menu[data-mobile-sheet='true'] .section:first-child { padding-top: 0; }
-
-  .row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2);
-    width: 100%;
-    height: auto;
-    min-height: var(--overlay-row);
-    padding: var(--space-1) var(--overlay-row-pad);
-    border: none;
-    border-radius: var(--radius-overlay-row);
-    background: transparent;
-    color: var(--color-foreground);
-    text-align: left;
-  }
-
-  /* Hover fills only under a hovering pointer, so a touch leaves none behind;
-     keyboard focus wears the shared accent ring (app.css). */
-  @media (hover: hover) {
-    .row:hover:not(:disabled) {
-      background: var(--color-hover);
-    }
-  }
-
-  /* A full width row does not shrink under the finger, it fills one step more. */
-  .row:active:not(:disabled) {
-    transform: none;
-    background: var(--color-active);
-  }
-
-  .row.danger {
-    color: var(--color-danger);
-  }
-
-  /* Glyph to label as in Menu.svelte: the gap and 2 px. */
-  .glyph {
-    display: flex;
-    flex: 0 0 16px;
-    margin-right: 2px;
-    color: var(--color-muted-foreground);
-  }
-
-  .danger .glyph {
-    color: inherit;
-  }
-
-  .label {
-    flex: 1;
-    min-width: 0;
-    white-space: normal;
-    overflow-wrap: anywhere;
-  }
-
-  /* One line ending in an ellipsis, as in Menu.svelte (`MenuItem.clip`). */
-  .clip .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-  /* The one selection mark, as in Menu.svelte: 14 px, at the row's far edge. */
-  .check {
-    display: flex;
-    flex: 0 0 14px;
-    color: var(--color-accent);
-  }
-
-  .hint {
-    font-size: var(--text-sm);
-    color: var(--color-subtle);
-    white-space: nowrap;
-  }
-
-  .rule {
-    flex-shrink: 0;
-    height: 1px;
-    margin: var(--space-1) var(--overlay-row-pad);
-    background: var(--color-border);
-  }
-
-  /* A rule only ever separates: none at either end of the menu, never two in a row. */
-  /* A back row draws its own rule (BackRow.svelte): no second one under it. */
-  .rule:first-child, .rule:last-child, .rule + .rule, .context-menu :global(.back-rule + .rule) { display: none; }
 </style>

@@ -11,7 +11,7 @@
 </script>
 
 <label class:compact>
-  <Search size={compact ? 13 : 14} strokeWidth={1.75} />
+  <Search size={compact ? 13 : 14} strokeWidth={1.75} aria-hidden="true" />
   <input {...attributes} bind:this={input} bind:value type="search" autocomplete="off" autocapitalize="off" spellcheck="false"
     {placeholder} aria-label={placeholder} />
 </label>

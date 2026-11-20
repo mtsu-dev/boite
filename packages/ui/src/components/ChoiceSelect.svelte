@@ -7,9 +7,10 @@
   // it sits in is `position: relative`).
   import { tick, type Snippet } from 'svelte';
   import { Check, ChevronDown, ChevronRight, LayoutGrid } from '@lucide/svelte';
-  import { Closing } from '../lib/closing.svelte';
+  import { AnchoredPopover } from '../lib/anchored-popover.svelte';
   import { curated } from '../lib/curated';
   import { floating } from '../lib/floating';
+  import { menuRows, moveMenuFocus } from '../lib/menu';
 
   let { label, options, value, fallback = '', onpick, preview, testid, optionTestid, face, front, all, row = false }: {
     /** What is chosen: the list's name and the sheet's title. */
@@ -35,7 +36,7 @@
     row?: boolean;
   } = $props();
 
-  const popover = new Closing();
+  const popover = new AnchoredPopover(() => root, () => trigger);
   let root = $state<HTMLDivElement>();
   let trigger = $state<HTMLButtonElement>();
   let sheet = $state(false);
@@ -46,41 +47,30 @@
   // The keys land on the option in use; a phone sheet holds the focus itself, as a menu's does.
   $effect(() => {
     if (!popover.open) { sheet = false; everything = false; return; }
-    void tick().then(() => {
-      const list = root?.querySelector<HTMLElement>('[role=menu]');
-      sheet = !!list?.dataset['mobileSheet'];
-      if (sheet) list?.focus({ preventScroll: true });
-      else (rows().find((row) => row.getAttribute('aria-checked') === 'true') ?? rows()[0])?.focus({ preventScroll: true });
+    void popover.focusOnOpen(() => root?.querySelector<HTMLElement>('[role=menu]') ?? undefined, (atSheet) => {
+      sheet = atSheet;
+      const options = menuRows(root);
+      return options.find((row) => row.getAttribute('aria-checked') === 'true') ?? options[0];
     });
   });
-
-  function rows(): HTMLElement[] {
-    return root ? [...root.querySelectorAll<HTMLElement>('[role=menuitemradio], [role=menuitem]')] : [];
-  }
 
   /** The rest of the list opens where "All" stood, the first of them in focus. */
   function openAll() {
     const at = listed.length;
     everything = true;
-    void tick().then(() => rows().filter((row) => row.getAttribute('role') === 'menuitemradio')[at]?.focus({ preventScroll: true }));
+    void tick().then(() => root?.querySelectorAll<HTMLElement>('[role=menuitemradio]')[at]?.focus({ preventScroll: true }));
   }
 
   function pick(id: T) {
-    popover.hide();
-    trigger?.focus({ preventScroll: true });
+    popover.close();
     onpick(id);
   }
 
-  function onWindowPointerdown(event: PointerEvent) {
-    if (!popover.open || (root && event.target instanceof Node && root.contains(event.target))) return;
-    popover.hide();
-  }
 
   function onkeydown(event: KeyboardEvent) {
     if (event.key === 'Escape' && popover.open) {
       event.stopPropagation();
-      popover.hide();
-      trigger?.focus({ preventScroll: true });
+      popover.close();
       return;
     }
     if (!popover.open) {
@@ -91,24 +81,15 @@
     // options stay in the page while it fades, so they leave the tab order first.
     if (event.key === 'Tab') {
       const current = document.activeElement;
-      for (const option of rows()) if (option !== current) option.tabIndex = -1;
+      for (const option of menuRows(root)) if (option !== current) option.tabIndex = -1;
       popover.hide();
       return;
     }
-    const list = rows();
-    const index = list.indexOf(document.activeElement as HTMLElement);
-    let next = -1;
-    if (event.key === 'ArrowDown') next = (index + 1) % list.length;
-    else if (event.key === 'ArrowUp') next = (index - 1 + list.length) % list.length;
-    else if (event.key === 'Home') next = 0;
-    else if (event.key === 'End') next = list.length - 1;
-    if (next < 0) return;
-    event.preventDefault();
-    list[next]?.focus({ preventScroll: true });
+    moveMenuFocus(event, menuRows(root));
   }
 </script>
 
-<svelte:window onpointerdown={onWindowPointerdown} />
+<svelte:window onpointerdown={popover.outside} />
 
 <div class="choice-select" class:row bind:this={root}>
   <button type="button" class="trigger" class:bare={!preview} aria-haspopup="menu" aria-expanded={popover.open} aria-label="{label}: {shown?.name ?? fallback}"
@@ -124,14 +105,14 @@
       data-testid="{testid}-list">
       {#if sheet}<div class="sheet-title" aria-hidden="true">{label}</div>{/if}
       {#each listed as option (option.id)}
-        <button type="button" class="option" role="menuitemradio" aria-checked={option.id === value} data-testid={optionTestid(option.id)} disabled={option.disabled} onclick={() => pick(option.id)}>
+        <button type="button" class="option" role="menuitemradio" data-row aria-checked={option.id === value} data-testid={optionTestid(option.id)} disabled={option.disabled} onclick={() => pick(option.id)}>
           {#if preview}<span class="preview" aria-hidden="true">{@render preview(option.id)}</span>{/if}
           <span class="name ui-label" style:font-family={face?.(option.id)}>{option.name}</span>
           <span class="check" aria-hidden="true">{#if option.id === value}<Check size={14} strokeWidth={2} />{/if}</span>
         </button>
       {/each}
       {#if all && listed.length < options.length}
-        <button type="button" class="option all" role="menuitem" aria-expanded="false" data-testid="{testid}-all" onclick={(event) => { event.stopPropagation(); openAll(); }}>
+        <button type="button" class="option all" role="menuitem" data-row aria-expanded="false" data-testid="{testid}-all" onclick={(event) => { event.stopPropagation(); openAll(); }}>
           <span class="preview all-mark" aria-hidden="true"><LayoutGrid size={16} strokeWidth={1.75} /></span>
           <span class="name ui-label">{all}</span>
         </button>
