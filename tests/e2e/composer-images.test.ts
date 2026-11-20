@@ -32,14 +32,24 @@ test('goals and loops accept pasted images in existing threads and drafts on des
       await page.click('[data-testid=composer-send]');
       await page.waitFor(`import('/src/lib/store.svelte.ts').then(({store}) => store.openThread?.activity?.${kind}?.status === 'complete')`);
       expect(await page.evaluate(`import('/src/lib/store.svelte.ts').then(({store}) => store.error)`)).toBeNull();
-      const parts = await page.evaluate<unknown[][]>(`import('/src/lib/store.svelte.ts').then(({store}) => store.openThread.messages.filter(m => m.role === 'user' && m.parts.some(p => p.type === 'text' && p.text.includes('the reference') && p.activity?.kind === '${kind}')).map(m => m.parts.filter(p => p.type === 'image')))`);
-      expect(parts).toHaveLength(kind === 'goal' ? 1 : 2);
-      expect(parts[0]).toHaveLength(1);
-      if (kind === 'loop') expect(parts[1]).toHaveLength(0);
-      await page.waitFor('Array.from(document.querySelectorAll("[data-testid=image-part]")).some(img => img.naturalWidth === 240)');
-      await page.evaluate('Array.from(document.querySelectorAll("[data-testid=image-part]")).at(-1).closest(".bubble").scrollIntoView({block:"start"})');
+      const sent = await page.evaluate<{ id: string; images: number }[]>(`import('/src/lib/store.svelte.ts').then(({store}) => store.openThread.messages.filter(m => m.role === 'user' && m.parts.some(p => p.type === 'text' && p.text.includes('the reference') && p.activity?.kind === '${kind}')).map(m => ({ id: m.id, images: m.parts.filter(p => p.type === 'image').length })))`);
+      expect(sent.map(message => message.images)).toEqual(kind === 'goal' ? [1] : [1, 0]);
+      const bubble = `[data-mid="${sent[0]!.id}"]`;
+      await page.waitFor(`document.querySelector(${JSON.stringify(bubble)})`);
+      await page.evaluate(`document.querySelector(${JSON.stringify(bubble)}).scrollIntoView({ block: 'start' })`);
+      await page.waitFor(`(() => {
+        const image = document.querySelector(${JSON.stringify(bubble + ' [data-testid=image-part]')});
+        return image?.naturalWidth === 192 && image.naturalHeight === 96;
+      })()`);
       await page.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
       await page.screenshot(join(import.meta.dir, '.artifacts', `image-${kind}-${phone ? 'phone' : 'desktop'}.png`));
+      await page.click(bubble + ' [data-testid=image-open]');
+      await page.waitFor(`(() => {
+        const image = document.querySelector('[data-testid=image-viewer] img');
+        return image?.naturalWidth === 240 && image.naturalHeight === 120;
+      })()`);
+      await page.click('[data-testid=image-viewer-close]');
+      await page.waitFor('!document.querySelector("[data-testid=image-viewer]")');
     }
   } finally { await page?.close(); await server.close(); }
 }, 60_000);
