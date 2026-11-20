@@ -108,7 +108,7 @@ export function askPage(ctx: StoreContext, opener: Opener, client: Client, threa
 }
 
 /** Re-read the held window beyond the snapshot, within the normal count and byte bounds of each page. */
-function refreshHeldWindow(ctx: StoreContext, client: Client, held: Thread, fresh: Thread, current: () => boolean): Promise<void> | undefined {
+function refreshHeldWindow(ctx: StoreContext, client: Client, held: Thread, fresh: Thread, current: () => boolean, paintHeld: boolean): Promise<void> | undefined {
   const first = fresh.messages[0]?.id;
   const last = fresh.messages.at(-1)?.id;
   const older = first === undefined || fresh.messagesBefore === null ? 0 : lastIndexById(held.messages, first);
@@ -117,6 +117,10 @@ function refreshHeldWindow(ctx: StoreContext, client: Client, held: Thread, fres
   if (older <= 0 && newer <= 0) return;
 
   return (async () => {
+    // A local reply can arrive in the same frame as the click. Keep the
+    // follow-up page reads out of the frame drawing the retained window.
+    if (paintHeld && typeof requestIdleCallback === 'function' && globalThis.document?.visibilityState === 'visible')
+      await new Promise<void>(resolve => { whenIdle(resolve, { timeout: 100 }); });
     const turns = new Map<string, Thread['turns'][number]>();
     for (const direction of ['before', 'after'] as const) {
       const before = direction === 'before';
@@ -230,7 +234,7 @@ export class ThreadPreloads {
   cancelRepair(): void { this.#repairing = null; }
 
   /** Reuse the certified part of a held window and read any remaining pages before displaying the answer. */
-  revalidate(client: Client, fresh: Thread, held: Thread | undefined, deviceSnapshot: boolean, around: MessageId | undefined, proofFirst: MessageId | undefined, newest: () => boolean): Promise<boolean> | undefined {
+  revalidate(client: Client, fresh: Thread, held: Thread | undefined, deviceSnapshot: boolean, around: MessageId | undefined, proofFirst: MessageId | undefined, newest: () => boolean, paintHeld: boolean): Promise<boolean> | undefined {
     const { readingThreads, readingPositions } = this.opener;
     const prefixProofs = this.ctx.store.core?.features?.threadPrefixProofs === true;
     let replaced = false;
@@ -262,7 +266,7 @@ export class ThreadPreloads {
     if (held && prefixProofs) {
       const mark = readingThreads.mark();
       const current = () => newest() && !readingThreads.droppedSince(fresh.id, mark);
-      const repair = refreshHeldWindow(this.ctx, client, held, fresh, current);
+      const repair = refreshHeldWindow(this.ctx, client, held, fresh, current, paintHeld);
       if (repair) {
         this.#repairing = fresh;
         return repair.catch(error => {

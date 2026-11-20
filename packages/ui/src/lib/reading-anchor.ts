@@ -1,4 +1,6 @@
 import type { ReadingPosition } from './store/reading-pages.svelte';
+import type { SlotTotals } from './message-window';
+import type { TimelineRow } from './timeline-rows';
 
 /**
  * The row at the top of the reader's view and how far its top is from the
@@ -31,6 +33,18 @@ export class ReadingAnchor {
   constructor(saved: ReadingPosition | undefined) {
     this.current = saved?.anchor ? { id: saved.anchor.row ?? saved.anchor.id, offset: saved.anchor.offset, message: saved.anchor.id } : undefined;
     this.restoring = Boolean(saved?.anchor && !saved.pinned);
+  }
+
+  /** Restore the saved heights and locate the reader within the current rows. */
+  restore(saved: ReadingPosition | undefined, slots: SlotTotals<TimelineRow>, rows: TimelineRow[], order: string, revision: string | undefined): number {
+    if (!saved) return 0;
+    if (saved.slots && (saved.rows?.deref() === rows || revision && saved.revision === revision)) {
+      slots.restore(saved.slots, rows, order);
+    }
+    const anchor = this.current;
+    if (saved.pinned || !anchor) return saved.top;
+    const at = rows.findIndex(row => row.id === anchor.id);
+    return at < 0 ? saved.top : Math.max(0, (slots.totals(rows, order)[at] ?? 0) - anchor.offset);
   }
 
   /** Reads the anchor: the first row of `column`, whose children the rows are, that reaches the viewport. */

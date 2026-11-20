@@ -609,13 +609,16 @@ the turn's other events, which no channel holds back.
   subscription, unread acknowledgement and fresh snapshot run in the background.
   Unchanged messages and turns keep their identities through revalidation.
   If the snapshot only proves part of the held window, bounded pages
-  revalidate the rest while that window stays on screen.
+  revalidate the rest while that window stays on screen. On browsers with
+  idle callbacks, a return starts that extra work after the cached paint.
   The cache retains up to 16 visits, at most 4 MiB of text per thread and
   16 MiB in total, with a 2,000-message bound per thread. The open thread
   maintains the weight of its held messages in blocks of 64. A leave reuses
   those weights to reserve space or reject an oversized page. The cache
-  projects eligible pages at idle or on a quick return. Once the page is idle,
-  a plain copy replaces the deep `$state` proxy the timeline drew.
+  projects eligible pages at idle or on a quick return. An unchanged page
+  keeps its reactive row projection, message placement and slot totals within
+  the visit bounds. Off-screen Markdown preparation starts at idle.
+  Compacted pages and visits without a prepared projection keep a plain copy.
 - Once a machine is ready and the page idle (`requestIdleCallback`, else
   1 s), its first sidebar threads are read ahead into the same cache
   (`IdlePreloads` in `lib/store/thread-preload.ts`): up to 4, one at a time,

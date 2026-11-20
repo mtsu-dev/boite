@@ -2,6 +2,7 @@ import { INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, READING_PAGE_BYTES, type Mess
 import type { StoreContext } from './context';
 import type { SlotIndex } from '../message-window';
 import type { readingOrder } from '../message-order';
+import type { TimelineRow } from '../timeline-rows';
 
 /**
  * Where a reader left a thread: the scroll, the measured heights, and the
@@ -24,6 +25,7 @@ export interface ReadingPosition {
   reservePrompt?: string | null;
   followPrompt?: string | null;
   slots?: SlotIndex;
+  rows?: WeakRef<TimelineRow[]>;
   order?: ReturnType<typeof readingOrder> | undefined;
   revision?: string;
 }

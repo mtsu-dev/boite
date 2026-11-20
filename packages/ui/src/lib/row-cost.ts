@@ -3,6 +3,7 @@ import { prepareBlocks } from './markdown';
 import { ESTIMATE, estimateSlot, slotClasses } from './message-window';
 import { answerText, paragraphBlocks } from './message-display';
 import { rowEstimate, shownText, type TimelineRow } from './timeline-rows';
+import { whenIdle as afterPaint } from './idle';
 
 /** What a row of the timeline costs before it is drawn: its estimate, and its Markdown rendered off the main thread. */
 
@@ -19,6 +20,23 @@ export const PREPARE_FROM = 16_384;
  */
 export class HistoryPrepare {
   readonly #sent = new WeakSet<TimelineRow>();
+  #pending: (() => void) | undefined;
+  #cancel: (() => void) | undefined;
+
+  schedule(rows: readonly TimelineRow[], start: number, end: number): void {
+    this.#pending = () => { this.prepare(rows, start, end); };
+    this.#cancel ??= afterPaint(() => {
+      this.#cancel = undefined;
+      const pending = this.#pending;
+      this.#pending = undefined;
+      pending?.();
+    }, { timeout: 100 });
+  }
+
+  cancel(): void {
+    this.#cancel?.();
+    this.#cancel = this.#pending = undefined;
+  }
 
   /**
    * Sends the blocks of `rows` outside `[start, end)` not sent yet; answers how

@@ -29,6 +29,7 @@ import { RpcFailure, wasDropped } from '../client';
 import { wasClosed } from '../rpc-error';
 import { strings } from '../strings';
 import { onBotsPage } from '../experiments.svelte';
+import { ThreadTimelineRows } from '../timeline-rows.svelte';
 import { archiveWhile, keepArchived, pinWhile } from './optimistic';
 
 /** What a rewind hands back to the composer: the removed message's content, and how the agent forgets it. */
@@ -59,6 +60,7 @@ export class Threads {
    */
   rewinding = $state<Record<ThreadId, MessageId>>({});
   readonly readingPositions = new Map<string, ReadingPosition>();
+  readonly timelineRows = new ThreadTimelineRows(thread => this.ctx.positions.placement(thread.id, thread.messages));
   readonly readingThreads = new ReadingCache(threadId => this.snapshots.drop(threadId));
   readonly readingWeights = new LiveWeights(() => this.openThread?.messages, () => lightPage(this.ctx));
   subscribedThreadId: ThreadId | null = null;
@@ -164,7 +166,7 @@ export class Threads {
     // A bare row whose page never came holds nothing (navigation clears `loadingThreadId` before this runs): reopened, it loads.
     if (!thread || (thread.messages.length === 0 && this.#unloaded.has(thread.id))) return;
     const id = thread.id;
-    const copy = (held: Thread) => $state.snapshot(held) as Thread;
+    const copy = (held: Thread) => this.timelineRows.get(held)?.rows.hasRows ? held : $state.snapshot(held) as Thread;
     const settle = () => this.openThread?.id !== id && this.preloads.waitingThreadId !== id;
     const compacted = this.readingWeights.compacted;
     if (compacted) {
@@ -378,8 +380,8 @@ export class Threads {
     const deselect = this.openThread?.id !== threadId && s.delegationSelectedAgentId && s.delegationSelectedAgentId !== threadId;
     // Paint a recent visit in this task. Its revalidation and subscription can
     // take a whole network round trip without holding the reader's text back.
-    const row = this.threads.find(thread => thread.id === threadId);
-    if (held) held = this.#showHeld(Object.assign(held, row), navigate);
+    const row = this.rowOf(threadId);
+    if (held) held = this.#showHeld(held, navigate, row);
     else if (row) {
       this.#unloaded.add(threadId);
       this.#show({ ...row, messages: [], turns: [], commands: [], messagesBefore: null }, navigate);
@@ -431,7 +433,7 @@ export class Threads {
         ? client.call('threads.unsubscribe', { threadId: previous }).catch(() => undefined)
         : Promise.resolve();
       this.ctx.composer.settle(threadId);
-      const repair = this.preloads.revalidate(client, thread, held, snapshot !== undefined, around, proofFirst, newest);
+      const repair = this.preloads.revalidate(client, thread, held, snapshot !== undefined, around, proofFirst, newest, previousThread?.id !== threadId);
       if (repair && !await repair) { if (!newest()) await retire(); return; }
       // A window that now reaches the end says so, over the cursor a held copy had.
       if (held && thread.messagesAfter === undefined) delete held.messagesAfter;
@@ -493,8 +495,8 @@ export class Threads {
   }
 
   /** A plain visit becomes a new proxy on screen that does not write through to it: later changes go to what this answers. */
-  #showHeld(held: Thread, navigate: boolean): Thread {
-    this.#show(held, navigate);
+  #showHeld(held: Thread, navigate: boolean, row?: ThreadSummary): Thread {
+    this.#show(row ? patchFields(held, row) : held, navigate);
     const shown = this.openThread;
     if (!shown || Object.is(shown, held) || shown.id !== held.id) return held; // Object.is: a proxy of `held` is another object, without `===`'s dev warning.
     this.readingThreads.replace(held.id, held, shown);
@@ -506,6 +508,7 @@ export class Threads {
     const s = this.ctx.store;
     if (this.openThread?.id !== thread.id) this.#leaveFor(thread.id);
     this.openThread = thread;
+    this.timelineRows.prepare(this.openThread);
     if (navigate) {
       s.page = this.pageOf(thread);
       s.sidebarOpen = false;
