@@ -16,25 +16,23 @@
    * when it happens next, before anything is saved. The time zone is this
    * device's and never asked; a routine saved elsewhere keeps its own.
    */
-  let { view, agentId = null, routine = null, prompt: initialPrompt = '', ondone, oncancel }: {
+  let { view, agentId = null, routine = null, ondone, oncancel }: {
     view: AgentsView;
     /** The agent it belongs to; null lets the person pick one. */
     agentId?: string | null;
     /** The routine being edited, or null for a new one. */
     routine?: AgentRoutine | null;
-    /** What to do, already written: a message turned into a routine. */
-    prompt?: string;
     ondone: (routine: AgentRoutine) => void;
     oncancel?: () => void;
   } = $props();
 
   type Mode = AgentSchedule['kind'] | 'days';
-  const initial = untrack(() => ({ routine, agentId, prompt: initialPrompt }));
+  const initial = untrack(() => ({ routine, agentId }));
   const from = initial.routine?.schedule;
   const tomorrowAt9 = (() => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); return d.getTime(); })();
 
   let owner = $state(initial.routine?.agentId ?? initial.agentId ?? '');
-  let prompt = $state(initial.routine?.prompt ?? initial.prompt);
+  let prompt = $state(initial.routine?.prompt ?? '');
   let name = $state(initial.routine?.name ?? '');
   /** The command that decides whether an occurrence wakes the bot; empty wakes it every time. */
   let check = $state(initial.routine?.check ?? '');

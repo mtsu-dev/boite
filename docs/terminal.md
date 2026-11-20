@@ -13,8 +13,11 @@ agent works, or to finish a sign-in that asks questions in a terminal.
    keyboard, and a tab's cross ends every shell of that tab.
 
 The shell keeps running when you switch conversations, reload the app or open
-a second window: the screen comes back with its recent output. Archiving the
-conversation closes its shells. Stopping a turn ends what the agent started,
+a second window: the screen comes back with its recent output. On macOS and
+Linux it also keeps running through an update or a restart of Boite, with what
+it printed meanwhile; Quit ends it. To turn that off, set `BOITE_KEEPER=0` in
+the environment Boite starts with. Archiving the conversation closes its
+shells. Stopping a turn ends what the agent started,
 never your shell.
 
 ## Tabs and splits

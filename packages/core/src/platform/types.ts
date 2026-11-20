@@ -175,6 +175,8 @@ export interface ProcessPlatform {
    * machine has none; `onLost` hears when a hold taken ends by itself.
    */
   keepAwake?(onLost: (reason: string) => void): (() => void) | null;
+  /** Whether `keepAwake` has an inhibitor to hold here, asked before any turn needs one. True when missing. */
+  keepAwakeAvailable?(): boolean;
   retain(jobs: ProcessEventSink, guards: GuardEventSink): void;
   /** Resolves once nothing native is left holding the user's state: hooks, muted sessions. */
   release(): Promise<void>;

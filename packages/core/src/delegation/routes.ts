@@ -111,7 +111,7 @@ export function providersNamed(core: Core, model: string): ProviderId[] | undefi
 }
 
 /** How long a list re-read for a missing model answers the next miss on that provider and account. */
-export const MISS_REFRESH_MS = 60_000;
+const MISS_REFRESH_MS = 60_000;
 /** Per core: when each provider and account's list was re-read for a miss, and the read while it runs. */
 const missRefreshes = new WeakMap<Core, Map<string, { at: number; read: Promise<unknown> }>>();
 

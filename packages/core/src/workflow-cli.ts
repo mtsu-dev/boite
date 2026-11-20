@@ -10,7 +10,7 @@ import type { CoreClient } from './client.ts';
 import { Usage } from './cli-args.ts';
 import { worktreeLine } from './delegation/messages.ts';
 
-export const WORKFLOW_HELP = `A workflow is a JSON plan the core runs for you: every step is a child
+const WORKFLOW_HELP = `A workflow is a JSON plan the core runs for you: every step is a child
 agent, a step starts as soon as the steps it depends on end, and the results
 come back to you in one message. Delegation need not be enabled. If it is
 enabled and paused, the pause blocks plan checks and new runs.

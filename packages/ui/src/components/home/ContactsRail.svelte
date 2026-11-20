@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { markFeature } from '@boite/contracts';
   import { onMount } from 'svelte';
   import { House, UserPlus } from '@lucide/svelte';
   import { openContact } from '../../lib/contacts.svelte';
@@ -27,8 +26,6 @@
     let frame = requestAnimationFrame(() => { frame = requestAnimationFrame(() => { drawn = true; }); });
     return () => cancelAnimationFrame(frame);
   });
-  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
-  markFeature('boite-feature:contacts');
 </script>
 
 <aside class="contacts-rail" class:collapsed={folded} class:drawn inert={folded} aria-label={labels.heading} data-testid="contacts-rail">

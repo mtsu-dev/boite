@@ -14,7 +14,7 @@ import type { CoreClient } from './client.ts';
 export const NO_CONTACT = 'no other thread is reachable; the user can turn communication on in the thread\'s Communication settings and link machines in Machines';
 
 /** The default wait stays under a two-minute tool timeout. */
-export const WAIT_DEFAULT_S = 90;
+const WAIT_DEFAULT_S = 90;
 export const WAIT_MAX_S = 300;
 
 export interface AgentsOptions {
@@ -50,7 +50,7 @@ function clock(at: number): string {
 }
 
 /** What to type to reach a contact: its thread id here, `<machine>/<thread>` elsewhere. */
-export function shortAddress(contact: AgentContact, selfCore: string): string {
+function shortAddress(contact: AgentContact, selfCore: string): string {
   return contact.coreId === selfCore ? contact.threadId : `${contact.machine.replace(/\s+/g, '-')}/${contact.threadId}`;
 }
 
@@ -101,7 +101,7 @@ const RELATION: Record<AgentRelation, string> = {
   resident: 'the mochi your project is entrusted to', project: 'same project', 'other-project': 'other project', machine: 'other machine',
 };
 /** Past this, `send` and `reply` remind the agent that a message is read best short. */
-export const COMPACT_CHARS = 600;
+const COMPACT_CHARS = 600;
 
 function letterLine(letter: AgentLetter, self: AgentAddress): string {
   const incoming = letter.to.coreId === self.coreId && letter.to.threadId === self.threadId;

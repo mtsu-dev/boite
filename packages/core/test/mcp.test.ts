@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'bun:test';
 import { pathToFileURL } from 'node:url';
 import { AGENT_ENV } from '@boite/contracts';
-import { AGENT_METHODS } from '../src/access.ts';
+import { AGENT_METHODS } from '@boite/contracts';
 import { boundedMcpResult, dispatchMcpTool, MCP_MAX_RESULT_BYTES, MCP_TOOLS, requestWithCancellation } from '../src/mcp/tools.ts';
 import type { CoreClient } from '../src/client.ts';
 import { echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';

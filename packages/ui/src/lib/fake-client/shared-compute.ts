@@ -16,7 +16,7 @@ const terminal=(job:SharedComputeJob)=>['done','failed','cancelled','revoked'].i
 /** A remote job's thread, whose history starts at the job like the core's. */
 function sharedWorker(ctx:FakeContext,threadId:string):boolean{return [...stateOf(ctx).jobs.values()].some(r=>r.job.worker?.threadId===threadId);}
 export function setSharedNativeExecution(ctx:FakeContext,available:boolean):void{stateOf(ctx).nativeProtected=available;}
-export function sharedPermission(protocol:Protocol,mode:PermissionMode,providerId?:string):boolean{
+function sharedPermission(protocol:Protocol,mode:PermissionMode,providerId?:string):boolean{
   if(protocol==='pi')return mode==='yolo'||mode==='bypassPermissions';
   if(protocol==='acp')return providerId==='opencode'&&(mode==='default'||mode==='plan');
   return protocol!=='echo'||mode==='default';
@@ -128,7 +128,6 @@ export function sharedComputeMethods(ctx:FakeContext){
     'sharedCompute.host':async p=>{requireShared(ctx,p.sharedProjectId);return {threadId:stateOf(ctx).bindings.get(p.sharedProjectId)??null};},
     'sharedCompute.models':async p=>{const {shared}=computeSource(ctx,p);return cloneShared(routes(hostFor(ctx,shared,p.host),shared));},
     'sharedCompute.start':async p=>{
-      ctx.startGate('contacts');
       const {shared,local}=computeSource(ctx,p);
       for(const key of Object.keys(p))if(!['threadId','sharedProjectId','requestId','host','profileId','task','title','baseCommit','claimId'].includes(key))throw invalidShared(`compute.${key}: expected only job fields`);
       sharedText(p.requestId,'requestId');sharedText(p.task,'task',12000);if(p.title!==undefined)sharedText(p.title,'title',120);
@@ -163,7 +162,6 @@ export function sharedComputeMethods(ctx:FakeContext){
       return cloneShared(record.job);
     },
     'sharedCompute.send':async p=>{
-      ctx.startGate('contacts');
       computeSource(ctx,p);const found=job(p),{host,shared}=found,text=sharedText(p.text,'text',4000),requestId=sharedText(p.requestId,'requestId');
       if(found.record.job.host.coreId!==ctx.identity.coreId&&!remoteShared(ctx,shared))throw refusedShared('compute.host: unavailable');
       const record=stateOf(host).jobs.get(found.record.job.id)!;

@@ -8,7 +8,7 @@ import { priceUsage } from './pricing/index.ts';
 export const MAX_USAGE_EDGES = 367;
 
 /** How many threads each ranking of `usage.history` keeps. */
-export const TOP_THREADS = 10;
+const TOP_THREADS = 10;
 
 export function emptyUsage(): Usage {
   return {
@@ -117,7 +117,7 @@ export function sessionUsage(core: Core, threadId: ThreadId, generation: number 
  * the ratio's 95th percentile is 2.6, and the 357 turns above 3 all charged a
  * session's earlier turns again, most after a background compaction's swap.
  */
-export const COST_GUARD = { ratio: 3, marginUsd: 0.25 };
+const COST_GUARD = { ratio: 3, marginUsd: 0.25 };
 
 /**
  * What the turn's tokens cost at rates when its reported cost is implausible
@@ -136,7 +136,7 @@ export function costOrRates(model: string | null, usage: Usage): number | null {
   return totalTokens(usage) === 0 ? null : priceUsage(model, usage)?.cost ?? null;
 }
 
-export function usageOf(core: Core, threadId?: ThreadId): { byThread: Record<ThreadId, Usage>; total: Usage } {
+function usageOf(core: Core, threadId?: ThreadId): { byThread: Record<ThreadId, Usage>; total: Usage } {
   const groups = threadId === undefined
     ? usageGroups(core.journal.db, { key: 't.thread_id', where: '1' })
     : usageGroups(core.journal.db, { key: 't.thread_id', where: 't.thread_id = ?' }, threadId);
@@ -196,7 +196,7 @@ export function priceGroup(core: Core, row: UsageSums & { provider_id: ProviderI
   return priced(groupUsage(core, row), row, row.model);
 }
 
-export function usageHistory(core: Core, edges: number[], providerId?: ProviderId): UsageHistory {
+function usageHistory(core: Core, edges: number[], providerId?: ProviderId): UsageHistory {
   // The turns an older core recorded come as their own group, which the row counts as estimated.
   const rows = new Map<string, UsageHistoryRow>();
   for (const row of core.journal.usageByBucket(edges)) {

@@ -6,7 +6,7 @@ import {removeDir} from '../fs-retry.ts';
 import type {SessionContext, TurnContext} from './types.ts';
 import {PROTECTED_TOOL, PROTECTED_COMMIT, PROTECTED_DESCRIPTION, PROTECTED_SCHEMA, PROTECTED_COMMIT_DESCRIPTION, protectedTool, protectedCommit} from './protected.ts';
 
-export const protectedDefinitions = [
+const protectedDefinitions = [
   {name: PROTECTED_TOOL, description: PROTECTED_DESCRIPTION, inputSchema: PROTECTED_SCHEMA},
   {name: PROTECTED_COMMIT, description: PROTECTED_COMMIT_DESCRIPTION, inputSchema: {type: 'object', additionalProperties: false, properties: {message: {type: 'string', minLength: 1, maxLength: 500}}, required: ['message']}},
 ];

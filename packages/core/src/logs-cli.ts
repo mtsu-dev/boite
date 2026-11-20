@@ -14,7 +14,7 @@ import { readSync } from 'node:fs';
 import type { CoreClient } from './client.ts';
 import { Usage } from './cli-args.ts';
 
-export const LOGS_HELP = `boite logs: Boite's own diagnostics (the app, its shell and its clients)
+const LOGS_HELP = `boite logs: Boite's own diagnostics (the app, its shell and its clients)
 
   logs [filters]                 recent records, oldest first, one per line
     --limit <n>                  how many (default 100; owner up to 1000, agent 500)
@@ -47,7 +47,7 @@ interface LogFlags {
 }
 
 /** `30m`, `2h`, `1d`, `90s` back from now, or any date `Date.parse` reads. */
-export function parseSince(raw: string, now = Date.now()): number {
+function parseSince(raw: string, now = Date.now()): number {
   const relative = /^(\d+(?:\.\d+)?)\s*(s|m|min|h|d)$/i.exec(raw.trim());
   if (relative) {
     const unit = { s: 1000, m: 60_000, min: 60_000, h: 3_600_000, d: 86_400_000 }[relative[2]!.toLowerCase() as 's' | 'm' | 'min' | 'h' | 'd'];

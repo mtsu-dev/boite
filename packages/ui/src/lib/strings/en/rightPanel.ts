@@ -24,7 +24,6 @@ export const strings = {
     launcher: 'Open a surface in this panel',
     untitled: 'Browser',
     /** The open door's last row on a desktop, beside the head's own close. */
-    closePanel: 'Close the panel',
     /** The panel launcher's search (PanelSwitcher.svelte), and what it says when nothing matches. */
     findPanel: 'Find a panel',
     noPanelMatch: 'No panel matches',

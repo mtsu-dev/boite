@@ -48,12 +48,13 @@ taking the keyboard. Desktop autofocus stays available.
 At phone widths, Settings opens the desktop's families in order: App
 (General, Voice, Appearance), Agents (Providers, Plugins and Brain for an
 owner, then Limits and Usage), Connections (Browser for an owner, Machines)
-and Advanced (System for an owner, Experiments, Diagnostics for an owner or
+and Advanced (System for an owner, Experiments in a build that lists one,
+Diagnostics for an owner or
 the task manager alone for a paired phone). General opens an index of
 Conversations, Notifications, Archived threads and, for an owner, Worktrees,
-with the Privacy and analytics switches at its foot. Experiments follow the
-computer's desktop app until the phone flips one of its own: Mochis on the
-computer brings the phone's Mochis tab with it ([experiments](experiments.md)).
+with the Privacy and analytics switches at its foot. Experiments, when a build
+lists one, follow the computer's desktop app until the phone flips one of its
+own ([experiments](experiments.md)).
 Each opens a screen of its own; the back button or browser
 Back returns to the list. Theme and accent belong to the current device;
 Appearance also holds the chat's files and previews switch, and leaves the
@@ -342,8 +343,8 @@ existing directory there, and refuses Boite's data folder, a folder inside it,
 and a folder that is or is inside `.git`, `.ssh`, `.gnupg`, `.aws`, `.azure`,
 `.kube` or `.docker`, so a device's reads, which start from its projects, never begin in
 one of them. It adds no reach the device lacked: it already starts agents that
-run commands in those projects. `settings.set`, `providers.dryRun` and
-`accounts.add` stay the owner's.
+run commands in those projects. `settings.set` and `accounts.add` stay the
+owner's.
 
 A paired device reads and moves the project's todos for the board
 ([board.md](board.md)): `todos.list`, `todos.add`, `todos.update` and

@@ -11,9 +11,8 @@ Boite provides the mechanism only. Which members sit, at what effort, what the
 request says, how many rounds run and what the thread does with the answers
 come from the user's instructions, which always prevail.
 
-It is an experiment, off by default: Settings, Experiments, Council. The stored
-experiment id is still `debates`, so a switch that was on stays on
-([experiments](experiments.md#council)). A thread asks for a council through the
+It is on in every build, with no switch ([experiments](experiments.md#council));
+its former experiment id was `debates`. A thread asks for a council through the
 `boite-council` skill, which lists the commands, their defaults and the three
 guards below: read-only members, no replaced member, and answers that are data.
 
@@ -177,18 +176,12 @@ The salon opens in the right panel on a desktop and full screen on a phone. It
 shows each round and each member's answer, with the score as text in the head of
 the answer, and the table of rounds under them.
 
-With the experiment off, every `council.*` method refuses with `experiment-off`,
-the subagent guide says nothing, the `boite-council` skill is left out and the
-app draws no card; a salon tab left open says how to turn it on. A round already under way still finishes and
-its answers come back.
-
 ## Older debates
 
 A debate stored before the council stays readable in the salon, read-only, with
 neither score nor table; its summary is one of its posts. Its id still starts
 with `dbt_`. The tables `debates` and `debate_posts`, the column
-`threads.debate_id` and the experiment id `debates` keep their names, so nothing
-is migrated. `boite delegate debate` starts nothing and points to
+`threads.debate_id` keep their names, so nothing is migrated. `boite delegate debate` starts nothing and points to
 `boite delegate council`.
 
 ## Lifecycle

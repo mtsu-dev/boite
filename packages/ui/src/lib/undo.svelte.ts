@@ -6,7 +6,7 @@
 /** How long the way back stays offered. */
 export const UNDO_MS = 8000;
 
-export interface UndoOffer {
+interface UndoOffer {
   id: number;
   message: string;
   run: () => Promise<unknown>;

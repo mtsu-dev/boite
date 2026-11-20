@@ -10,7 +10,7 @@ import { isLoading } from './draft-attachments';
  * `data:` URL: a 2,000 px screenshot decoded whole, about 9 MB, for 56 px,
  * and a new multi-megabyte string on each render of the strip.
  */
-export const THUMB_WIDTH = 112;
+const THUMB_WIDTH = 112;
 export const THUMB_HEIGHT = 84;
 
 function bytesOf(data: string): Uint8Array<ArrayBuffer> {
@@ -40,7 +40,7 @@ async function decode(blob: Blob, width: number, height: number): Promise<ImageB
  * `source` is the file `data` was read from, when this device has it: its
  * bytes need no decoding from base64 on the main thread.
  */
-export async function makeThumbnail(data: string, mimeType: string, width = THUMB_WIDTH, height = THUMB_HEIGHT, source?: Blob): Promise<Blob | null> {
+async function makeThumbnail(data: string, mimeType: string, width = THUMB_WIDTH, height = THUMB_HEIGHT, source?: Blob): Promise<Blob | null> {
   if (typeof createImageBitmap !== 'function') return null;
   const size = imageSize(data);
   let bitmap: ImageBitmap | null = null;

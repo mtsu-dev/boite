@@ -3,7 +3,7 @@ import { memoryHeading, spentAgentRoutine } from '@boite/contracts';
 import type { CoreClient } from '../client.ts';
 import { targetOf } from '../control-cli.ts';
 
-export const BOT_ACTIONS = 'memory, remember, routines, schedule, unschedule, watch or unwatch';
+const BOT_ACTIONS = 'memory, remember, routines, schedule, unschedule, watch or unwatch';
 
 
 /** `boite mochi ...` (`boite agent` before) from a bot's own thread. Authentication stays in the existing boite CLI. */

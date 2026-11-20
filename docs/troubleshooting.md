@@ -63,8 +63,8 @@ ones it started. Turn the switch off on the same page to stop it.
 - Boite refuses to open the first time: the build is signed ad hoc. Allow it
   in System Settings, Privacy & Security, or run once
   `xattr -cr /Applications/Boite.app`.
-- No desktop notification when a conversation finishes out of sight: native
-  notifications are not available on macOS yet.
+- A desktop notification shows as coming from Script Editor, and a click on
+  it does not open the conversation: Boite shows it through AppleScript.
 
 ## Common problems on Linux
 
@@ -78,8 +78,13 @@ ones it started. Turn the switch off on the same page to stop it.
   browser instead.
 - Dictation says it is unavailable: the Linux app cannot use the microphone.
   Open Boite in a browser connected to the same machine to dictate.
-- No desktop notification when a conversation finishes out of sight: native
-  notifications are not available on Linux yet.
+- "This computer cannot show notifications": Boite shows them with
+  `notify-send`. Install it (`libnotify-bin` on Debian and Ubuntu,
+  `libnotify` elsewhere), then turn notifications on again. A click on a
+  notification does not open the conversation.
+- Keep this machine awake says the machine has no sleep inhibitor: Boite
+  holds it with `systemd-inhibit`. Without systemd, the machine sleeps by its
+  own power settings.
 
 ## Common problems on every system
 
@@ -89,8 +94,8 @@ ones it started. Turn the switch off on the same page to stop it.
   missing.
 - On macOS and Linux, a process that leaves its group can outlive its
   conversation, and a hard crash of the app can leave its core running.
-- The CPU cap, focus protection and audio muting work on Windows only. The
-  memory guard works everywhere.
+- The CPU cap, focus protection and audio muting work on Windows only, and
+  their controls are greyed out elsewhere. The memory guard works everywhere.
 - "Claude Code did not start within 90 s": Claude Code stayed silent at
   launch twice in a row, often because one of your MCP servers never answers.
   Boite stopped it and tried once more with a new conversation that carries

@@ -2,7 +2,7 @@ import type { ThreadStatus, WorkflowStatus, WorkflowStepStatus } from '@boite/co
 import { strings } from './strings';
 
 /** The hue a status mark draws, shared by threads, agents, workflow runs and their steps. */
-export type StatusTone = 'running' | 'waiting' | 'queued' | 'error' | 'done' | 'stopped' | 'skipped' | 'paused' | 'unread' | 'idle';
+type StatusTone = 'running' | 'waiting' | 'queued' | 'error' | 'done' | 'stopped' | 'skipped' | 'paused' | 'unread' | 'idle';
 export type StatusMarkProps = { tone: StatusTone; label: string };
 
 /** A thread's mark: an idle thread with news to read shows it, the rest show their status. */

@@ -149,7 +149,7 @@ export function touchesImageReference(text: string, attachments: Attachment[], e
  * whole, and its image with it once no other reference names that image.
  * `edit` is the range of the old text the edit replaced. True when it did so.
  */
-export function editAcrossImageReferences(store: Store, key: string, value: string, edit: { start: number; end: number } | undefined): boolean {
+function editAcrossImageReferences(store: Store, key: string, value: string, edit: { start: number; end: number } | undefined): boolean {
   const state = store.composerStates[key];
   if (!state || !edit || edit.end <= edit.start) return false;
   const old = state.text;

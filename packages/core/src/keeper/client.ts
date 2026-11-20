@@ -5,7 +5,8 @@
  * closes only lets go of the socket: what the keeper holds keeps running for
  * the next core.
  *
- * Off by default: `BOITE_KEEPER=1` turns it on, Linux and macOS only.
+ * On by default on Linux and macOS; `BOITE_KEEPER=0` turns it off. Windows
+ * keeps every process in the shell's job and has no keeper.
  */
 
 import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -27,7 +28,7 @@ const LAUNCH_POLL_MS = 50;
 const ANSWER_MS = 5_000;
 
 export function keeperEnabled(env: Record<string, string | undefined> = process.env, platform: NodeJS.Platform = process.platform): boolean {
-  return env['BOITE_KEEPER'] === '1' && (platform === 'linux' || platform === 'darwin');
+  return env['BOITE_KEEPER'] !== '0' && (platform === 'linux' || platform === 'darwin');
 }
 
 /** The token the keeper checks, created on first use, owner only. */
@@ -44,6 +45,9 @@ export function keeperToken(dataDir: string): string {
   chmodSync(file, 0o600);
   return token;
 }
+
+/** The keeper could not be reached, did not answer or is stopping: the caller may run the process itself. */
+export class KeeperUnavailable extends Error {}
 
 /** One process the keeper holds for this core. */
 export class KeptTerminal {
@@ -156,6 +160,8 @@ export class KeeperClient {
   /** The keeper's pid, from the last `welcome`. */
   get keeperPid(): number | null { return this.#keeperPid; }
   #keeperPid: number | null = null;
+  /** Set by the keeper's `stopping` frame, cleared by the next keeper's welcome. */
+  #stopping = false;
 
   /**
    * Attaches to the keeper. With `launch`, one is started when none listens.
@@ -196,12 +202,12 @@ export class KeeperClient {
 
   async spawnTerminal(tag: KeptTag, cmd: string, args: string[], options: { cwd: string; env: Record<string, string | undefined>; cols: number; rows: number }): Promise<KeptTerminal> {
     await this.connect({ launch: true });
-    if (!this.connected) throw new Error('the keeper is not reachable');
+    if (!this.connected) throw new KeeperUnavailable('the keeper is not reachable');
     const env: Record<string, string> = {};
     for (const [key, value] of Object.entries(options.env)) if (value !== undefined) env[key] = value;
     const req = this.#nextRequest++;
     const info = await new Promise<KeptProcess>((resolve, reject) => {
-      const timer = setTimeout(() => { this.#waiting.delete(req); reject(new Error('the keeper did not start the process within five seconds')); }, ANSWER_MS);
+      const timer = setTimeout(() => { this.#waiting.delete(req); reject(new KeeperUnavailable('the keeper did not start the process within five seconds')); }, ANSWER_MS);
       this.#waiting.set(req, { resolve, reject, timer });
       this.#send({ op: 'spawn', req, tag, cmd, args, cwd: options.cwd, env, cols: options.cols, rows: options.rows });
     });
@@ -221,10 +227,10 @@ export class KeeperClient {
       await this.connect({ launch: true });
       // The connect under way was the startup one, which starts no keeper.
       if (!this.connected) await this.connect({ launch: true });
-      if (!this.connected) throw new Error('the keeper is not reachable');
+      if (!this.connected) throw new KeeperUnavailable('the keeper is not reachable');
       const req = this.#nextRequest++;
       await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(() => { this.#waiting.delete(req); reject(new Error('the keeper did not start the process within five seconds')); }, ANSWER_MS);
+        const timer = setTimeout(() => { this.#waiting.delete(req); reject(new KeeperUnavailable('the keeper did not start the process within five seconds')); }, ANSWER_MS);
         // Called in the `spawned` frame's own tick: the output after it on the socket finds the child.
         this.#waiting.set(req, {
           resolve: (info) => {
@@ -260,7 +266,7 @@ export class KeeperClient {
     this.#closed = true;
     this.#frames?.close();
     this.#frames = null;
-    for (const waiting of this.#waiting.values()) { clearTimeout(waiting.timer); waiting.reject(new Error('the keeper client is closed')); }
+    for (const waiting of this.#waiting.values()) { clearTimeout(waiting.timer); waiting.reject(new KeeperUnavailable('the keeper client is closed')); }
     this.#waiting.clear();
     for (const answer of this.#listing.values()) answer([]);
     this.#listing.clear();
@@ -277,14 +283,14 @@ export class KeeperClient {
         await Bun.sleep(LAUNCH_POLL_MS);
         socket = await this.#open();
       }
-      if (socket === null) throw new Error(`the keeper did not listen on ${this.socketPath} within ${LAUNCH_MS / 1000} s`);
+      if (socket === null) throw new KeeperUnavailable(`the keeper did not listen on ${this.socketPath} within ${LAUNCH_MS / 1000} s`);
     }
     if (this.#closed) { socket.close(); return null; }
     this.#frames = socket;
     const answer = new Promise<KeptProcess[]>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('the keeper did not answer hello within five seconds')), ANSWER_MS);
+      const timer = setTimeout(() => reject(new KeeperUnavailable('the keeper did not answer hello within five seconds')), ANSWER_MS);
       this.#welcome = (processes) => { clearTimeout(timer); resolve(processes); };
-      this.#refused = (message) => { clearTimeout(timer); reject(new Error(`the keeper refused this core: ${message}`)); };
+      this.#refused = (message) => { clearTimeout(timer); reject(new KeeperUnavailable(`the keeper refused this core: ${message}`)); };
     });
     socket.send({ op: 'hello', token, protocol: KEEPER_PROTOCOL, pid: process.pid, version: CORE_VERSION });
     try {
@@ -323,7 +329,7 @@ export class KeeperClient {
 
   #receive(frame: FromKeeper): void {
     switch (frame.op) {
-      case 'welcome': this.#keeperPid = frame.pid; this.#welcome?.(frame.processes); return;
+      case 'welcome': this.#keeperPid = frame.pid; this.#stopping = false; this.#welcome?.(frame.processes); return;
       case 'refused': this.#refused?.(frame.message); return;
       case 'spawned': {
         const waiting = this.#waiting.get(frame.req);
@@ -336,7 +342,8 @@ export class KeeperClient {
         const waiting = this.#waiting.get(frame.req);
         if (waiting === undefined) return;
         this.#waiting.delete(frame.req); clearTimeout(waiting.timer);
-        waiting.reject(new Error(frame.message));
+        // A keeper that is stopping refuses every launch: that is the keeper gone, not the program failing.
+        waiting.reject(this.#stopping ? new KeeperUnavailable(frame.message) : new Error(frame.message));
         return;
       }
       case 'data': { const kept = this.#kept.get(frame.id); if (kept instanceof KeptTerminal) kept.data(decodeBytes(frame.data), frame.replay === true, frame.at); return; }
@@ -350,7 +357,7 @@ export class KeeperClient {
       }
       case 'listed': { const answer = this.#listing.get(frame.req); this.#listing.delete(frame.req); answer?.(frame.processes); return; }
       // Told to stop while this core is attached: the exits of what it ends follow, then the socket closes.
-      case 'stopping': this.#options.log('warn', `the keeper stops: ${frame.reason}`); return;
+      case 'stopping': this.#stopping = true; this.#options.log('warn', `the keeper stops: ${frame.reason}`); return;
     }
   }
 
@@ -365,7 +372,7 @@ export class KeeperClient {
   #lost(): void {
     this.#frames = null;
     if (this.#closed) return;
-    for (const waiting of this.#waiting.values()) { clearTimeout(waiting.timer); waiting.reject(new Error('the keeper connection was lost')); }
+    for (const waiting of this.#waiting.values()) { clearTimeout(waiting.timer); waiting.reject(new KeeperUnavailable('the keeper connection was lost')); }
     this.#waiting.clear();
     for (const answer of this.#listing.values()) answer([]);
     this.#listing.clear();

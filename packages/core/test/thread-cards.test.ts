@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test';
 import { mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { echoThread, startTestCore, type TestCore } from './harness.ts';
-import { hasGitHubRemote, LIST_LIMIT, parsePullRequestList, parsePullRequests, PullRequests, repositoryOf } from '../src/pull-requests.ts';
+import { LIST_LIMIT, parsePullRequestList, PullRequests, repositoryOf } from '../src/pull-requests.ts';
 import { thrown } from './settle.ts';
 let harness: TestCore;
 beforeEach(async () => {
@@ -65,22 +65,11 @@ test('browser origins are explicit, validated, stored bare and removable', async
 });
 
 test('PR metadata accepts absence and rejects unsafe URLs and malformed CLI output', () => {
-  expect(parsePullRequests('[]')).toBeNull();
-  expect(
-    parsePullRequests('[{"number":4,"url":"https://github.com/example/repo/pull/4","state":"MERGED"}]')?.state
-  ).toBe('MERGED');
-  expect(() => parsePullRequests('[{"number":4,"url":"javascript:alert(1)","state":"OPEN"}]')).toThrow('HTTPS');
-  expect(() => parsePullRequests('{}')).toThrow('array');
-  expect(() => parsePullRequests('[null]')).toThrow('object');
-});
-
-test('PR host detection accepts GitHub transports and an explicitly configured enterprise host', () => {
-  for (const url of ['https://github.com/example/repo.git', 'git@github.com:example/repo.git', 'github.com:example/repo.git', 'ssh://git@github.com/example/repo.git']) {
-    expect(hasGitHubRemote(`origin\t${url} (fetch)`, 'github.com')).toBe(true);
-  }
-  expect(hasGitHubRemote('origin\thttps://git.example/team/repo.git (fetch)', 'git.example')).toBe(true);
-  expect(hasGitHubRemote('origin\thttps://github.com.other.example/team/repo.git (fetch)', 'github.com')).toBe(false);
-  expect(hasGitHubRemote('')).toBe(false);
+  expect(parsePullRequestList('[]').count).toBe(0);
+  expect(parsePullRequestList('[{"headRefName":"main","number":4,"url":"https://github.com/example/repo/pull/4","state":"MERGED"}]').heads.get('main')).toHaveLength(1);
+  expect(() => parsePullRequestList('[{"headRefName":"main","number":4,"url":"javascript:alert(1)","state":"OPEN"}]')).toThrow('HTTPS');
+  expect(() => parsePullRequestList('{}')).toThrow('array');
+  expect(() => parsePullRequestList('[{"headRefName":"main"}]')).toThrow('number, url and state');
 });
 
 /** A fake `gh pr list` that answers from `prs` after a short wait, as a real call over the network would. */

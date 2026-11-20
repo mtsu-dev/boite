@@ -14,12 +14,12 @@ const list = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
 const name = (value: unknown): string => typeof value === 'string' ? value.slice(0, 200) : '';
 
 /** How long the rules of one repository and base are trusted before they are read again. */
-export const RULES_TTL_MS = 10 * 60_000;
+const RULES_TTL_MS = 10 * 60_000;
 /** How long a failed read waits before the next one, with what was known before. */
-export const RULES_RETRY_MS = 2 * 60_000;
+const RULES_RETRY_MS = 2 * 60_000;
 
 /** The two REST reads: the rulesets that apply to the branch, and its classic protection, readable without admin rights. */
-export function requiredPaths(repository: string, base: string): { rules: string; branch: string } {
+function requiredPaths(repository: string, base: string): { rules: string; branch: string } {
   const branch = encodeURIComponent(base);
   return { rules: `repos/${repository}/rules/branches/${branch}?per_page=100`, branch: `repos/${repository}/branches/${branch}` };
 }

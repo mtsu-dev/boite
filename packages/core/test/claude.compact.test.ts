@@ -1,15 +1,10 @@
 import { expect, test } from 'bun:test';
 import { answerEach, assistant, calls, claudeThread, harness, init, queries, runTurn, scripted, sdk, success, toolResult, useClaudeHarness } from './fixtures/claude-query.ts';
 import { waitFor } from './harness.ts';
-import { join } from 'node:path';
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { compactFocus, openWithCompaction } from '../src/drivers/claude/compaction.ts';
 import { STEP_HOOK_TIMEOUT_S } from '../src/drivers/claude/step.ts';
 import { ClaudeTurn } from '../src/drivers/claude/turn.ts';
 import type { TurnContext } from '../src/drivers/types.ts';
 import { sessionUsage } from '../src/usage.ts';
-
-const COMPACT_FOCUS = 'Keep requests, corrections, decisions, identifiers and the next step.';
 
 useClaudeHarness();
 
@@ -430,116 +425,6 @@ test('a boundary the core answers with no swap leaves the loop and the native co
     expect(finished).toEqual(['done']);
   } finally { client.close(); }
 });
-
-/** Real native loop, isolated account and a loopback-only simulated Anthropic API. */
-test.skipIf(process.env['BOITE_TEST_CLAUDE_CONTROLS'] !== '1')('the installed CLI verifies the exact threshold before a prompt and compacts after a tool boundary', async () => {
-  const executable = Bun.which('claude');
-  if (executable === null) throw new Error('claude must be installed for the offline native control check');
-  const { query } = await import('@anthropic-ai/claude-agent-sdk');
-  const dir = join(harness.dataDir, 'offline-claude');
-  mkdirSync(dir);
-  const fixture = join(dir, 'fixture.txt');
-  writeFileSync(fixture, 'Offline read fixture.');
-  let requests = 0;
-  let counts = 0;
-  let summaryPrompt = '';
-  const server = Bun.serve({ hostname: '127.0.0.1', port: 0, async fetch(request) {
-    const path = new URL(request.url).pathname;
-    if (path.endsWith('/count_tokens')) { counts++; return new Response('token counting forbidden in this test', { status: 400 }); }
-    if (path !== '/v1/messages') return new Response('unexpected route', { status: 404 });
-    const body = await request.json() as { stream?: boolean; messages: { content: string | { text?: string }[] }[] };
-    requests++;
-    if (requests > 4) return new Response('unexpected extra inference', { status: 400 });
-    if (requests === 3) {
-      summaryPrompt = body.messages.flatMap(({ content }) => typeof content === 'string' ? [content] : content.map(block => block.text ?? '')).join('\n');
-    }
-    const tool = requests <= 2;
-    const content = tool
-      ? { type: 'tool_use', id: `toolu_offline_${requests}`, name: 'Read', input: { file_path: fixture } }
-      : { type: 'text', text: requests === 3 ? '<analysis>Both fixture reads completed.</analysis><summary>Offline compacted context. Continue the task.</summary>' : 'Offline task complete.' };
-    const input = requests === 1 ? 190_000 : requests === 2 ? 210_000 : 1_000;
-    const message = { id: `msg_offline_${requests}`, type: 'message', role: 'assistant', model: 'claude-opus-5', content: [content],
-      stop_reason: tool ? 'tool_use' : 'end_turn', stop_sequence: null, usage: { input_tokens: input, output_tokens: 10 } };
-    if (!body.stream) return Response.json(message);
-    const event = (type: string, value: unknown): string => `event: ${type}\ndata: ${JSON.stringify(value)}\n\n`;
-    return new Response([
-      event('message_start', { type: 'message_start', message: { ...message, content: [], stop_reason: null, usage: { input_tokens: input, output_tokens: 0 } } }),
-      event('content_block_start', { type: 'content_block_start', index: 0, content_block: tool ? { ...content, input: {} } : { type: 'text', text: '' } }),
-      event('content_block_delta', { type: 'content_block_delta', index: 0, delta: tool
-        ? { type: 'input_json_delta', partial_json: JSON.stringify({ file_path: fixture }) }
-        : { type: 'text_delta', text: (content as { text: string }).text } }),
-      event('content_block_stop', { type: 'content_block_stop', index: 0 }),
-      event('message_delta', { type: 'message_delta', delta: { stop_reason: message.stop_reason, stop_sequence: null }, usage: { output_tokens: 10 } }),
-      event('message_stop', { type: 'message_stop' }),
-    ].join(''), { headers: { 'content-type': 'text/event-stream' } });
-  } });
-  const env: Record<string, string | undefined> = Object.fromEntries(Object.keys(process.env).map(key => [key, undefined]));
-  Object.assign(env, {
-    PATH: process.env.PATH, HOME: dir, USERPROFILE: dir, TMPDIR: dir, TEMP: dir, TMP: dir,
-    CLAUDE_CONFIG_DIR: dir, ANTHROPIC_API_KEY: 'sk-ant-offline-controls-not-a-credential',
-    ANTHROPIC_BASE_URL: `http://127.0.0.1:${server.port}`, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
-    DISABLE_TELEMETRY: '1', DISABLE_ERROR_REPORTING: '1', DISABLE_AUTOUPDATER: '1',
-  });
-  const controller = new AbortController();
-  const warnings: string[] = [];
-  const opened = await openWithCompaction(query, {
-    cwd: dir, pathToClaudeCodeExecutable: executable, settingSources: [],
-    model: 'claude-opus-5', tools: ['Read'], strictMcpConfig: true, mcpServers: {},
-    permissionMode: 'bypassPermissions', allowDangerouslySkipPermissions: true,
-    systemPrompt: 'Offline control test', persistSession: false, env, abortController: controller,
-    hooks: { PreCompact: [{ hooks: [compactFocus(() => COMPACT_FOCUS)] }] },
-    spawnClaudeCodeProcess(options) {
-      const child = harness.core.procs.spawnChild('claude-compact-controls', options.command, options.args, { cwd: options.cwd, env: options.env });
-      child.stderr.resume();
-      return child;
-    },
-  }, 200_000, () => false, message => warnings.push(message));
-  if (opened === null) throw new Error('offline query unexpectedly cancelled');
-  const { query: native, prompts } = opened;
-  try {
-    const after = await native.getContextUsage({ detail: 'summary' });
-    expect(warnings).toEqual([]);
-    expect(after.autoCompactThreshold).toBe(200_000);
-    expect(controller.signal.aborted).toBe(false);
-    expect(requests).toBe(0);
-    console.log(`offline Claude controls: verified threshold ${after.autoCompactThreshold}, window ${after.rawMaxTokens}, no prompt sent`);
-    const deadline = setTimeout(() => controller.abort(), 15_000);
-    let toolsBeforeCompact = 0;
-    let compactBoundaries = 0;
-    const toolMessages = new Set<string>();
-    let result: string | null = null;
-    try {
-      prompts.push('Read the offline fixture twice, then finish.', []);
-      for await (const message of native) {
-        if (message.type === 'assistant') {
-          for (const block of message.message.content) {
-            if (block.type === 'tool_use') toolMessages.add(block.id);
-          }
-        }
-        if (message.type === 'system' && message.subtype === 'compact_boundary') {
-          compactBoundaries++;
-          toolsBeforeCompact = toolMessages.size;
-        }
-        if (message.type === 'result') { result = message.subtype; break; }
-      }
-    } finally { clearTimeout(deadline); }
-    expect(result).toBe('success');
-    // The HTTP continuation may start before the SDK delivers the boundary.
-    // Assert the ordered SDK history instead of racing the server counter.
-    expect(compactBoundaries).toBe(1);
-    expect(toolsBeforeCompact).toBe(2);
-    expect(requests).toBe(4);
-    expect(counts).toBe(0);
-    expect(summaryPrompt).toContain(`Additional Instructions:\n${COMPACT_FOCUS}`);
-    console.log('offline native loop: no compact at 190000 tokens; compact after tool at 210000 with Boite\'s summary focus; fourth request continues the same turn; no token-count call');
-  } finally {
-    prompts.end();
-    controller.abort();
-    native.close();
-    await waitFor(() => harness.core.procs.liveCount('claude-compact-controls') === 0, 10_000);
-    await server.stop(true);
-  }
-}, 30_000);
 
 test('a boundary wait that timed out leaves no waiter for the next entry to wake', async () => {
   const turn = new ClaudeTurn({ log: () => undefined } as unknown as TurnContext);

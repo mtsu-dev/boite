@@ -21,7 +21,7 @@ import type { SpawnedPipedProcess } from './procs.ts';
 import { logAccountStatus, logLoginState } from './account-log.ts';
 
 /** The thread a login process is traced under. It is a name, never a real thread. */
-export function loginThreadId(accountId: AccountId): string {
+function loginThreadId(accountId: AccountId): string {
   return `login:${accountId}`;
 }
 
@@ -323,8 +323,10 @@ export class AccountStore {
    * every account carries, plus the isolation variables, which only an account
    * with a directory of its own does. Preparing the account is part of it, so
    * the seed files and the browser launcher are on disk before any spawn.
+   * `gateway: false` leaves the subscription proxy out: a sign-in is the
+   * agent's own and lands in the account's directory, whatever the proxy is.
    */
-  accountEnv(account: Account, provider: ProviderDescriptor, thread: Pick<ThreadSummary, 'parentThreadId' | 'agentSessionId'> = {}): Record<string, string> {
+  accountEnv(account: Account, provider: ProviderDescriptor, thread: Pick<ThreadSummary, 'parentThreadId' | 'agentSessionId'> = {}, { gateway = true }: { gateway?: boolean } = {}): Record<string, string> {
     const profile = profileFor(provider);
     if (profile === undefined) return {};
     this.prepare(account, provider);
@@ -340,7 +342,7 @@ export class AccountStore {
     }
     if (provider.quirks?.includes('antigravity') === true) Object.assign(env, antigravityCertificates(currentOs(), process.env, existsSync));
     // OpenCode 2's own background compaction follows the thread type, off included; the driver adds the limit once it knows the window.
-    return openCodeBackgroundCompaction(provider.id, effectiveCompaction(this.#core.settings.get(), thread).backgroundCompaction, { ...env, ...subscriptionProxyEnv(this.#core, provider) });
+    return openCodeBackgroundCompaction(provider.id, effectiveCompaction(this.#core.settings.get(), thread).backgroundCompaction, { ...env, ...(gateway ? subscriptionProxyEnv(this.#core, provider) : {}) });
   }
 
   /**
@@ -451,7 +453,7 @@ export class AccountStore {
     const argv = provider.login.command;
     if (argv === undefined) throw refused('the login command is empty', { accountId, field: 'login.command' });
     const command = argv.map((part) => part.split('{isolationDir}').join(isolationDir));
-    const env = agentEnv(provider, this.accountEnv(account, provider));
+    const env = agentEnv(provider, this.accountEnv(account, provider, {}, { gateway: false }));
     for (const [key, value] of Object.entries(provider.login.env ?? {})) {
       env[key] = value.split('{isolationDir}').join(isolationDir);
     }
@@ -507,7 +509,7 @@ export class AccountStore {
     const isolationDir = account.isolationDir;
     if (isolationDir !== null) mkdirSync(isolationDir, { recursive: true });
     const place = (value: string) => (isolationDir === null ? value : value.split('{isolationDir}').join(isolationDir));
-    const env = agentEnv(provider, this.accountEnv(account, provider));
+    const env = agentEnv(provider, this.accountEnv(account, provider, {}, { gateway: false }));
     for (const [key, value] of Object.entries(provider.login.env ?? {})) env[key] = place(value);
     const [first, ...args] = argv.map(place);
     if (first === undefined) throw refused('the login command is empty', { accountId, field: 'login.command' });
@@ -553,7 +555,7 @@ export class AccountStore {
         field: 'executable',
       });
     }
-    const env = agentEnv(provider, this.accountEnv(account, provider));
+    const env = agentEnv(provider, this.accountEnv(account, provider, {}, { gateway: false }));
 
     let acp: AcpLoginRun;
     let folders: ReturnType<typeof loginFolders> | null = null;
@@ -603,7 +605,7 @@ export class AccountStore {
         // Cancellation may have arrived while the module loaded.
         if (run.cancelled) { this.#logins.delete(account.id); this.#emitLogin(account.id, 'failed', 'Sign-in cancelled', run, 1); return; }
         const login = runCodexLogin({ executable: launch.executable, args: [...launch.prefix, ...(profile?.launch?.args ?? [])],
-          cwd: account.isolationDir!, env: agentEnv(provider, this.accountEnv(account, provider)),
+          cwd: account.isolationDir!, env: agentEnv(provider, this.accountEnv(account, provider, {}, { gateway: false })),
           spawnChild: (cmd, args, opts) => this.#core.procs.spawnChild(loginThreadId(account.id), cmd, args, opts),
           onLine: line => this.#onLoginLine(account.id, line),
         });

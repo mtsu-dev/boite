@@ -192,7 +192,8 @@ export class Journal {
 
   putProject(project: Project): void {
     this.db
-      .query('INSERT OR REPLACE INTO projects (id, name, path, created_at, archived, worktree_default) VALUES (?, ?, ?, ?, ?, ?)')
+      .query(`INSERT OR REPLACE INTO projects (id, name, path, created_at, archived, worktree_default, removed_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, (SELECT removed_at FROM projects WHERE id = ?1))`)
       .run(project.id, project.name, project.path, project.createdAt, project.archived === true ? 1 : 0, project.worktreeDefault === true ? 1 : 0);
   }
 
@@ -203,13 +204,6 @@ export class Journal {
         AND (parent_thread_id IS NULL OR EXISTS (SELECT 1 FROM threads parent WHERE parent.id = threads.parent_thread_id AND parent.agent_session_id IS NOT NULL))
         AND project_id IS NOT NULL AND id NOT IN (SELECT thread_id FROM thread_deletions) GROUP BY project_id`).all() as { project_id: string; count: number; done: number }[];
     return new Map(rows.map((row) => [row.project_id, { archived: row.count, done: row.done }]));
-  }
-
-  deleteProject(projectId: string): void {
-    for (const prefix of ['project-auto-archive-merged-pr:', 'project-auto-remove-worktrees:', 'todos:']) this.deleteSetting(`${prefix}${projectId}`);
-    this.db.query('DELETE FROM projects WHERE id = ?').run(projectId);
-    this.db.query('DELETE FROM project_icons WHERE project_id = ?').run(projectId);
-    this.db.query('DELETE FROM workflow_templates WHERE project_id = ?').run(projectId);
   }
 
   /** What every project's icon reads as, bytes left out: one small query per list. */
@@ -242,14 +236,31 @@ export class Journal {
       );
   }
 
+  /** A listed project; a removed one reads as gone. */
   getProject(projectId: string): Project | null {
-    const row = this.db.query('SELECT * FROM projects WHERE id = ?').get(projectId) as ProjectRow | null;
+    const row = this.db.query('SELECT * FROM projects WHERE id = ? AND removed_at IS NULL').get(projectId) as ProjectRow | null;
     return row === null ? null : toProject(row);
   }
 
   listProjects(): Project[] {
-    const rows = this.db.query('SELECT * FROM projects ORDER BY rowid').all() as ProjectRow[];
+    const rows = this.db.query('SELECT * FROM projects WHERE removed_at IS NULL ORDER BY rowid').all() as ProjectRow[];
     return rows.map(toProject);
+  }
+
+  /** The projects `projects.remove` took out of the lists, newest first. */
+  listRemovedProjects(): Project[] {
+    const rows = this.db.query('SELECT * FROM projects WHERE removed_at IS NOT NULL ORDER BY removed_at DESC').all() as ProjectRow[];
+    return rows.map(toProject);
+  }
+
+  /** Hides a project and, with it, its threads (`VISIBLE_THREADS`); nothing is deleted. */
+  markProjectRemoved(projectId: string, at: number): void {
+    this.db.query('UPDATE projects SET removed_at = ? WHERE id = ?').run(at, projectId);
+  }
+
+  /** Lists a removed project again, unarchived, under `name`, with its saved threads. */
+  restoreRemovedProject(projectId: string, name: string): void {
+    this.db.query('UPDATE projects SET removed_at = NULL, archived = 0, name = ? WHERE id = ?').run(name, projectId);
   }
 
   // -- threads --------------------------------------------------------------
@@ -290,13 +301,6 @@ export class Journal {
     for (const thread of candidates) this.getThread(thread.id);
   }
 
-  deleteThreadsOfProject(projectId: string): string[] {
-    const rows = this.db.query('SELECT id FROM threads WHERE project_id = ?').all(projectId) as { id: string }[];
-    const ids = rows.map(row => row.id);
-    this.deleteThreads(ids, { keepUsage: true });
-    return ids;
-  }
-
   /** Hide the stopped family while keeping its rows and deletion time across restarts. */
   stageThreadDeletion(rootId: string, threads: ThreadSummary[]): void {
     this.flushDeltas();
@@ -314,7 +318,8 @@ export class Journal {
   listDeletedThreads(): DeletedThreadSummary[] {
     const rows = this.db.query(`SELECT t.*, d.deleted_at, (SELECT MAX(created_at) FROM messages WHERE thread_id = t.id AND role = 'user') AS last_user_message_at
       FROM threads t JOIN thread_deletions d ON t.id = d.thread_id
-      WHERE d.root_id = t.id ORDER BY d.deleted_at DESC, d.rowid DESC`).all() as (ThreadRow & { deleted_at: number })[];
+      WHERE d.root_id = t.id AND NOT EXISTS (SELECT 1 FROM projects p WHERE p.id = t.project_id AND p.removed_at IS NOT NULL)
+      ORDER BY d.deleted_at DESC, d.rowid DESC`).all() as (ThreadRow & { deleted_at: number })[];
     return rows.map(row => ({ ...toThread(row), deletedAt: row.deleted_at }));
   }
 

@@ -157,8 +157,13 @@ test('two real cores pair, route turns independently, reconnect and survive a re
     await page.waitFor(`document.querySelectorAll('[data-group-member="true"]').length === 2`);
     expect((await a.call('group.get', {}))?.id).toBe((await b.call('group.get', {}))?.id);
     expect(await page.evaluate(`document.querySelector('${id('machine-add-open')}') === null`)).toBe(true);
-    await b.call('settings.set', { warmProcessMinutes: 2, agentCpuCapPercent: 35 });
-    await a.call('settings.set', { asyncQuestions: false, warmProcessMinutes: 7, agentCpuCapPercent: 85 });
+    // A limit each machine keeps for itself: the CPU cap where it acts (a Windows Job Object), elsewhere the
+    // memory budget, since off Windows the CPU field is greyed out and nobody can change it there.
+    const windows = process.platform === 'win32';
+    const limit = windows ? 'agentCpuCapPercent' : 'agentMemoryBudgetPercent';
+    const limitField = `${id('resources-page')} ${id(windows ? 'cpu-cap' : 'memory-budget')}`;
+    await b.call('settings.set', { warmProcessMinutes: 2, [limit]: 35 });
+    await a.call('settings.set', { asyncQuestions: false, warmProcessMinutes: 7, [limit]: 85 });
     // The first core becomes the group's default machine: both cores store the choice, and the second takes its synced settings.
     const home = (await a.call('group.get', {}))!.self;
     await page.click(id('group-home-pick'));
@@ -170,7 +175,7 @@ test('two real cores pair, route turns independently, reconnect and survive a re
     for (let attempt = 0; attempt < 50 && (await b.call('group.get', {}))?.settingsHome !== home; attempt++) await Bun.sleep(100);
     expect((await b.call('group.get', {}))?.settingsHome).toBe(home);
     await page.waitFor(`document.querySelector('[data-core-id="${home}"] ${id('machine-home')}') !== null && document.querySelectorAll('${id('machine-home')}').length === 1`);
-    expect(await b.call('settings.get', {})).toMatchObject({ asyncQuestions: false, warmProcessMinutes: 2, agentCpuCapPercent: 35 });
+    expect(await b.call('settings.get', {})).toMatchObject({ asyncQuestions: false, warmProcessMinutes: 2, [limit]: 35 });
     // Protection changes the machine its bar picks, here the second one, while the window stays on the first.
     // Resources is a section of Diagnostics.
     await page.click(id('settings-tab-diagnostics'));
@@ -178,12 +183,14 @@ test('two real cores pair, route turns independently, reconnect and survive a re
     await page.click(id('settings-machine'));
     await page.waitFor(`document.querySelector('${id('settings-machine-menu')} [data-value="${second.url}"]')`);
     await page.click(`${id('settings-machine-menu')} [data-value="${second.url}"]`);
-    await page.waitFor(`document.querySelector('${id('settings-follows')}') && document.querySelector('${id('resources-page')} input[type=number]')?.value === '35'`);
-    await page.type(`${id('resources-page')} input[type=number]`, '45');
-    await page.evaluate(`document.querySelector('${id('resources-page')} input[type=number]').closest('form').requestSubmit()`);
-    await page.waitFor(`globalThis.__boiteTest.workspace.machines.find(machine => machine.id === ${JSON.stringify(second.url)})?.store.settings?.agentCpuCapPercent === 45`);
-    expect((await b.call('settings.get', {})).agentCpuCapPercent).toBe(45);
-    expect((await a.call('settings.get', {})).agentCpuCapPercent).toBe(85);
+    await page.waitFor(`document.querySelector('${id('settings-follows')}') && document.querySelector('${limitField}')?.value === '35'`);
+    expect(await page.evaluate(`document.querySelector('${id('resources-page')} ${id('cpu-cap')}').disabled`)).toBe(!windows);
+    expect(await page.evaluate(`document.querySelector('${limitField}').disabled`)).toBe(false);
+    await page.type(limitField, '45');
+    await page.evaluate(`document.querySelector('${limitField}').closest('form').requestSubmit()`);
+    await page.waitFor(`globalThis.__boiteTest.workspace.machines.find(machine => machine.id === ${JSON.stringify(second.url)})?.store.settings?.${limit} === 45`);
+    expect((await b.call('settings.get', {}))[limit]).toBe(45);
+    expect((await a.call('settings.get', {}))[limit]).toBe(85);
     expect(await page.evaluate(`globalThis.__boiteTest.workspace.active.machineId`)).not.toBe(second.url);
     expect(await page.evaluate(`globalThis.__boiteTest.workspace.active.openThread?.id === ${JSON.stringify(ta.id)}`)).toBe(true);
     await page.click(id('settings-back'));

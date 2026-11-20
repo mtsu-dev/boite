@@ -1,5 +1,4 @@
 import { accentHex, colorTools, detailTokens, normalizeHex, paletteTokens, parseColorState, type ColorState, type Palette, type PaletteDetails, type ColorRole } from './color-math.ts';
-export { parseColorState } from './color-math.ts';
 
 export type ColorMode = 'dark' | 'light';
 export type PaletteId = 'default' | 'oled' | 'catppuccin' | 'tokyo-night' | 'nord' | 'gruvbox' | 'amethyst';

@@ -1,4 +1,4 @@
-import { BROWSER_HOST_BATCH_MAX, BROWSER_HOST_MESSAGE_MAX, browserProfileIdError, DEFAULT_BROWSER_PROFILE, PRIVATE_BROWSER_PROFILE } from '@boite/contracts';
+import { BROWSER_HOST_BATCH_MAX, BROWSER_HOST_BATCH_BYTES, browserProfileIdError, DEFAULT_BROWSER_PROFILE, PRIVATE_BROWSER_PROFILE } from '@boite/contracts';
 import type { Connection } from '../router.ts';
 import { refused } from '../errors.ts';
 import { Cdp } from './cdp.ts';
@@ -65,7 +65,7 @@ export class BrowserHost {
       throw refused(`browser.hostReply messages must be a list of 1 to ${BROWSER_HOST_BATCH_MAX} DevTools messages`);
     }
     for (const message of messages) {
-      if (typeof message !== 'string' || message.length > BROWSER_HOST_MESSAGE_MAX) throw refused(`each browser.hostReply message must be a string of at most ${BROWSER_HOST_MESSAGE_MAX} characters`);
+      if (typeof message !== 'string' || message.length > BROWSER_HOST_BATCH_BYTES) throw refused(`each browser.hostReply message must be a string of at most ${BROWSER_HOST_BATCH_BYTES} characters`);
     }
     // A profile whose relay already ended (its tabs closed) has nobody to read the rest.
     const relay = this.#relays.get(profile);

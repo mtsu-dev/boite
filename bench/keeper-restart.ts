@@ -1,6 +1,6 @@
 /** A thread shell across core restarts, with and without the keeper.
- * Run: bun bench/keeper-restart.ts [restarts=3]            (keeper off: what a restart did before)
- *      BOITE_KEEPER=1 bun bench/keeper-restart.ts [restarts=3]
+ * Run: bun bench/keeper-restart.ts [restarts=3]
+ *      BOITE_KEEPER=0 bun bench/keeper-restart.ts [restarts=3]   (keeper off: a restart ends the shell)
  * Each round prints a marker, prints 64 KiB while no core is attached, then
  * restarts the core on the same data directory and opens the shell again.
  * Prints JSON: whether the shell's pid survived, the bytes of its output the
@@ -12,6 +12,7 @@ import { readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { connect } from '../packages/core/src/client.ts';
 import { Core } from '../packages/core/src/core.ts';
+import { keeperEnabled } from '../packages/core/src/keeper/client.ts';
 import { startServer } from '../packages/core/src/server.ts';
 import { threadTerminalId } from '../packages/core/src/terminals.ts';
 import { echoThread, removeDir, startTestCore, waitFor } from '../packages/core/test/harness.ts';
@@ -19,7 +20,7 @@ import { echoThread, removeDir, startTestCore, waitFor } from '../packages/core/
 const argument = process.argv.slice(2).find(value => /^\d+$/.test(value));
 const restarts = Number(argument ?? 3);
 assert(Number.isInteger(restarts) && restarts >= 1 && restarts <= 20);
-const keeper = process.env.BOITE_KEEPER === '1';
+const keeper = keeperEnabled();
 process.env.BOITE_KEEPER_IDLE_MS = '1000';
 
 const alive = (pid: number): boolean => { try { process.kill(pid, 0); return true; } catch { return false; } };

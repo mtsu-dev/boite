@@ -16,8 +16,10 @@ describe('the settings families', () => {
     expect(familyOf('home')).toBeNull();
   });
 
-  test('round 20: Voice, Usage, Plugins and Experiments open as pages of their own, not as sections of an unrelated parent', () => {
-    for (const tab of ['voice', 'usage', 'plugins', 'experiments', 'keyboard', 'limits', 'machines'] as const) expect(desktopPage(tab, true)).toBe(tab);
+  test('round 20: Voice, Usage and Plugins open as pages of their own, not as sections of an unrelated parent', () => {
+    for (const tab of ['voice', 'usage', 'plugins', 'keyboard', 'limits', 'machines'] as const) expect(desktopPage(tab, true)).toBe(tab);
+    // No build lists an experiment today: the Experiments page leaves Settings, and a link to it lands on Home.
+    expect(desktopPage('experiments', true)).toBe('home');
     expect(desktopPage('voice', false)).toBe('voice');
     expect(sectionsOf('general', true)).toEqual([]);
     expect(sectionsOf('limits', true)).toEqual([]);
@@ -28,7 +30,7 @@ describe('the settings families', () => {
     expect(phonePage('voice', null, true)).toBe('voice');
     expect(phonePage('voice', null, false)).toBe('voice');
     expect(phonePage('usage', null, true)).toBe('usage');
-    expect(phonePage('experiments', null, true)).toBe('experiments');
+    expect(phonePage('experiments', null, true)).toBe('home');
     expect(phonePage('resources', null, true)).toBe('diagnostics');
     expect(phonePage('resources', null, false)).toBe('home');
     // A phone turns plugins on and off and sets them as the desktop does; a paired device has no such page.
@@ -88,19 +90,19 @@ describe('the settings families', () => {
 
   test('Home lists every page this window may open, the ones merged into another under their own name too', () => {
     // The nav names only Diagnostics: a tile is where Memory and processes and the task manager are found by name.
-    expect(homeOf('advanced', true)).toEqual(['advanced', 'experiments', 'diagnostics', 'resources', 'task-manager']);
-    expect(homeOf('advanced', false)).toEqual(['advanced', 'experiments', 'task-manager']);
+    expect(homeOf('advanced', true)).toEqual(['advanced', 'diagnostics', 'resources', 'task-manager']);
+    expect(homeOf('advanced', false)).toEqual(['advanced', 'task-manager']);
     expect(homeOf('connections', false)).toEqual(['machines']);
-    for (const family of SETTINGS_FAMILIES) expect(homeOf(family.id, true)).toEqual([...family.pages]);
+    for (const family of SETTINGS_FAMILIES) expect(homeOf(family.id, true)).toEqual(family.pages.filter((tab) => tab !== 'experiments'));
   });
 
   test('the nav lists each family\'s pages as peers, in the phone\'s order, and leaves out one merged into another', () => {
     expect(navOf('app', true)).toEqual(['general', 'keyboard', 'voice', 'appearance']);
     expect(navOf('agents', true)).toEqual(['accounts', 'plugins', 'brain', 'limits', 'usage']);
     expect(navOf('connections', true)).toEqual(['browser', 'machines']);
-    expect(navOf('advanced', true)).toEqual(['advanced', 'experiments', 'diagnostics']);
+    expect(navOf('advanced', true)).toEqual(['advanced', 'diagnostics']);
     // A paired device: no Diagnostics, so the task manager is its own page; Providers, Plugins and Instructions are the owner's.
-    expect(navOf('advanced', false)).toEqual(['advanced', 'experiments', 'task-manager']);
+    expect(navOf('advanced', false)).toEqual(['advanced', 'task-manager']);
     expect(navOf('agents', false)).toEqual(['limits', 'usage']);
   });
 });

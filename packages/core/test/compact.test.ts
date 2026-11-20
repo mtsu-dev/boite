@@ -335,8 +335,8 @@ describe('automatic compaction', () => {
     const client = await h.connect();
     const { threadId } = await quiet(client);
     await turn(client, threadId, 'x'.repeat(950));
-    const stopped = client.next('turn.finished', t => t.threadId === threadId);
-    await client.call('turns.start', { threadId, prompt: `[sleep:5000] ${'x'.repeat(950)}` });
+    const started = await client.call('turns.start', { threadId, prompt: `[sleep:5000] ${'x'.repeat(950)}` });
+    const stopped = client.next('turn.finished', t => t.id === started.id);
     await client.call('turns.stop', { threadId });
     expect((await stopped).status).toBe('stopped');
     await client.call('settings.set', { autoCompact: { tokens: 1000, moments: [] } });
@@ -560,7 +560,8 @@ describe('automatic compaction', () => {
       await pause(100);
       expect(await compactions(client, botId)).toHaveLength(1);
       expect(seen.get(botId)?.at(-1)).toBeNull();
-      await client.call('settings.set', { autoCompact: { tokens: 1500, moments: [] }, compactionByType: {} });
+      // A prompt this long would start an automatic goal, on by default: this one only measures compaction.
+      await client.call('settings.set', { autoCompact: { tokens: 1500, moments: [] }, compactionByType: {}, autoGoals: false });
       await turn(client, botId, 'x'.repeat(1500));
       await pause(180);
       expect(await compactions(client, botId)).toHaveLength(2);

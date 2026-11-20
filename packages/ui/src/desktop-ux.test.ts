@@ -15,6 +15,8 @@ import { clampPanel, rightPanel } from './lib/right-panel.svelte';
 import { contactsRail } from './lib/contacts-rail.svelte';
 import { AgentsView, openAgent } from './lib/agents.svelte';
 import { saveAgent } from './lib/agent-menu';
+import { teamsOf } from './lib/teams.svelte';
+import { botEngine } from './lib/agents-view.svelte';
 import { subagentsAtWork, threadsAtWork } from './lib/work-counts';
 
 /**
@@ -46,7 +48,7 @@ afterEach(() => {
 });
 
 test('a maximized panel stays with its thread: the Contacts page beside the list is not squeezed to nothing', async () => {
-  writeExperiments(['contacts']);
+  writeExperiments([]);
   await mountOnFake();
   try {
     if (!store.panelOpen) store.togglePanel();
@@ -64,7 +66,7 @@ test('a maximized panel stays with its thread: the Contacts page beside the list
 });
 
 test('contacts are a place at the top of the rail, under Activity and above the bots, never a side of the Mochis column: its head folds the column on the right, a row opens a contact', async () => {
-  writeExperiments(['resident-agents', 'contacts']);
+  writeExperiments(['resident-agents']);
   await mountOnFake();
   try {
     // A first start finds the column folded; the rail keeps Contacts with the places, right under Activity.
@@ -118,7 +120,7 @@ test('contacts are a place at the top of the rail, under Activity and above the 
 });
 
 test('a panel widened while the contacts column was folded gives the chat its room back when the column unfolds', async () => {
-  writeExperiments(['contacts']);
+  writeExperiments([]);
   expect(contactsRail.folded).toBe(true);
   const stored = rightPanel.width;
   rightPanel.width = 700;
@@ -183,7 +185,7 @@ test('a docked side panel leaves the list column alone: the thread list beside a
 });
 
 test('the rail puts teams first, and a picture moved with the keyboard keeps its new place on this device', async () => {
-  writeExperiments(['resident-agents', 'teams']);
+  writeExperiments(['resident-agents']);
   localStorage.removeItem('boite.rail.order');
   await mountOnFake('/?fake=1&agents=1');
   try {
@@ -273,6 +275,64 @@ test("a right click on a mochi's rail picture opens its menu, not the webview's,
     await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=edit]') !== null);
     query<HTMLButtonElement>('[data-testid=context-menu] [data-value=edit]').click();
     await waitFor(() => store.page === 'agents' && bot.getAttribute('aria-current') === 'page');
+  } finally {
+    store.showChat();
+  }
+});
+
+test("a right click on a team's rail picture opens the team's menu, and its picks reach the team", async () => {
+  writeExperiments(['resident-agents']);
+  await mountOnFake('/?fake=1&agents=1');
+  try {
+    const view = AgentsView.of(store);
+    await view.refresh();
+    const [first] = view.snapshot!.profiles;
+    const created = await store.client!.call('teams.create', { name: 'Menu crew', members: [first!.id] });
+    const teamId = created.id;
+    await waitFor(() => document.querySelector(`[data-testid=rail-team][data-team-id="${teamId}"]`) !== null);
+    const picture = query<HTMLButtonElement>(`[data-testid=rail-team][data-team-id="${teamId}"]`);
+    const menu = () => {
+      const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 30, clientY: 80 });
+      picture.dispatchEvent(event);
+      return event;
+    };
+    expect(menu().defaultPrevented).toBe(true);
+    await waitFor(() => document.querySelector('[data-testid=context-menu]') !== null);
+    const values = [...document.querySelectorAll<HTMLElement>('[data-testid=context-menu] [data-value]')].map(row => row.dataset['value']);
+    expect(values).toEqual(expect.arrayContaining(['open', 'edit', 'pause', 'archive']));
+    // Pause reaches the team on its machine.
+    query<HTMLButtonElement>('[data-testid=context-menu] [data-value=pause]').click();
+    await waitFor(() => teamsOf(store).teams.find(team => team.id === teamId)?.paused === true);
+    const pick = async (value: string) => {
+      menu();
+      await waitFor(() => document.querySelector(`[data-testid=context-menu] [data-value=${value}]`) !== null);
+      query<HTMLButtonElement>(`[data-testid=context-menu] [data-value=${value}]`).click();
+    };
+    // Open, then Edit, each from the engine settings: the team's chat takes their place, Edit with its dialog filled with the team.
+    botEngine(store);
+    await waitFor(() => document.querySelector('[data-testid=agents-engine-settings]') !== null);
+    await pick('open');
+    await waitFor(() => document.querySelector(`[data-testid=team-chat][data-team-id="${teamId}"]`) !== null && document.querySelector('[data-testid=agents-engine-settings]') === null);
+    botEngine(store);
+    await waitFor(() => document.querySelector('[data-testid=agents-engine-settings]') !== null);
+    await pick('edit');
+    await waitFor(() => document.querySelector<HTMLInputElement>('[data-testid=team-dialog-name]')?.value === 'Menu crew');
+    expect(document.querySelector('[data-testid=agents-engine-settings]')).toBeNull();
+    expect(store.page).toBe('agents');
+    await waitFor(() => picture.getAttribute('aria-current') === 'page');
+    query<HTMLButtonElement>('[data-testid=team-dialog-close]').click();
+    await waitFor(() => document.querySelector('[data-testid=team-dialog]') === null);
+    // A refusal shows in this window.
+    const report = vi.spyOn(store, 'reportError');
+    const call = store.client!.call.bind(store.client!);
+    const refuse = vi.spyOn(store.client!, 'call').mockImplementation(((method: string, params: unknown) => method === 'teams.pause' ? Promise.reject(new Error('refused')) : call(method as never, params as never)) as typeof call);
+    try {
+      await pick('resume');
+      await waitFor(() => report.mock.calls.some(([error]) => (error as Error).message === 'refused'));
+    } finally {
+      refuse.mockRestore();
+      report.mockRestore();
+    }
   } finally {
     store.showChat();
   }

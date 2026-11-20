@@ -1,5 +1,5 @@
 /** Delivery scenarios run unchanged against WebSocket cores and the render fixture. */
-import { RpcErrorCode, type ComposerValue } from '../../packages/contracts/src/index.ts';
+import { RpcErrorCode, type ComposerValue, type ExperimentId } from '../../packages/contracts/src/index.ts';
 import type { ContractEnv, Scenario } from './scenarios.ts';
 
 function check(ok: unknown, reason: string): asserts ok { if (!ok) throw new Error(reason); }
@@ -34,7 +34,8 @@ async function batching(env: ContractEnv, incognito: boolean) {
     { id: `${prefix}-one`, text: 'first', attachments: [{ ...meta, assetId }], choice },
     { id: `${prefix}-two`, text: 'second', attachments: [], choice: { ...choice, speed: null } },
     { id: `${prefix}-three`, text: 'third', attachments: [], choice: { ...choice, permissionMode: 'plan' } },
-    { id: `${prefix}-four`, text: 'fourth', attachments: [], choice: { ...choice, permissionMode: 'plan' }, experiments: ['auto-goal'] },
+    // Queued by an app from when Automatic goals were an experiment: the id is dropped, so it batches with the third.
+    { id: `${prefix}-four`, text: 'fourth', attachments: [], choice: { ...choice, permissionMode: 'plan' }, experiments: ['auto-goal'] as unknown as ExperimentId[] },
   ] } };
   const put = { section: 'inputs' as const, id: thread.id, expectedRevision: 0, value };
   const first = await env.call('composer.put', put);
@@ -50,7 +51,7 @@ async function batching(env: ContractEnv, incognito: boolean) {
   const received = await env.call('threads.get', { threadId: thread.id });
   const messages = received.messages.filter(message => message.role === 'user');
   const texts = messages.map(message => message.parts.flatMap(part => part.type === 'text' ? [part.text] : []).join(''));
-  check(JSON.stringify(texts) === JSON.stringify(['first\n\nsecond', 'third', 'fourth']), `choice or auto-goal batching drift: ${JSON.stringify(texts)}`);
+  check(JSON.stringify(texts) === JSON.stringify(['first\n\nsecond', 'third\n\nfourth']), `choice or experiment batching drift: ${JSON.stringify(texts)}`);
   check(messages[0]?.parts.some(part => part.type === 'file' && part.data === attachment.data), 'batched attachment was lost');
   // Delivery collects no-longer-referenced uploads. An offline cache uploads its bytes again before replay.
   await env.call('composer.asset.put', { attachment, ...(incognito ? { incognito: true } : {}) });
@@ -80,7 +81,7 @@ export const COMPOSER_SCENARIOS: Record<string, Scenario> = {
     check((await env.call('threads.get', { threadId: thread.id })).turns.length === 0, 'putting away the thread delivered paused input');
     peer.disconnect();
   },
-  'composer batches equal choices, splits distinct choices and auto-goal flags, and replays accepted ids once': env => batching(env, false),
+  'composer batches equal choices, splits distinct choices, ignores a graduated experiment\'s flag, and replays accepted ids once': env => batching(env, false),
   'composer incognito batching and attachment delivery match ordinary queues': env => batching(env, true),
   'terminal composer receipt survives disconnect while an incognito turn is active': async env => {
     const { thread } = await target(env, true);

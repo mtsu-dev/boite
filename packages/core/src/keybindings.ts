@@ -16,7 +16,7 @@ import type { Keybindings, KeybindingCommand } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { invalidParams, refused } from './errors.ts';
 
-export const KEYBINDINGS_FILE = 'keybindings.json';
+const KEYBINDINGS_FILE = 'keybindings.json';
 /** An editor writes a file in more than one event; the read waits for the burst to end. */
 const SETTLE_MS = 120;
 

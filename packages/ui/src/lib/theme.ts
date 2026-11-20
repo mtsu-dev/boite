@@ -1,13 +1,11 @@
 /*
- * The theme setting: system, dark, light, or grain while the `theme-grain`
- * experiment is on. Dark is the palette on `:root`, so it stamps nothing; the
+ * The theme setting: system, dark, light or grain. Dark is the palette on `:root`, so it stamps nothing; the
  * others stamp `data-theme` and `app.css` swaps the tokens or paints the
  * ground. The inline script in `index.html` runs the same rule before the
  * stylesheet arrives, so a reload never flashes the wrong ground; this module
  * owns it from the mount on.
  */
 
-import { isExperimentEnabled, subscribeExperiments } from './experiments';
 import { startAccent } from './accent';
 import { startFonts } from './fonts';
 import { applyColors, COLORS_EVENT, startColors } from './theme-colors';
@@ -15,7 +13,7 @@ import { applyColors, COLORS_EVENT, startColors } from './theme-colors';
 export type Theme = 'system' | 'dark' | 'light' | 'grain';
 
 /** What a setting means once `system` has asked the OS. */
-export type ResolvedTheme = 'dark' | 'light' | 'grain';
+type ResolvedTheme = 'dark' | 'light' | 'grain';
 
 export const THEME_STORAGE_KEY = 'boite.theme';
 
@@ -32,23 +30,19 @@ const LIGHT_QUERY = '(prefers-color-scheme: light)';
 
 /**
  * The stored theme, `system` when nothing is stored, when storage is refused,
- * or when the stored id is one this build does not offer. Grain is one of those
- * until its experiment is on: turning the experiment off puts a grain window
- * back on the system theme without touching what is stored, so turning it back
- * on returns the choice the user had made.
+ * or when the stored id is one this build does not offer.
  */
 export function readTheme(): Theme {
   try {
     const raw = window.localStorage.getItem(THEME_STORAGE_KEY);
     if (raw === null || !THEMES.includes(raw as Theme)) return 'system';
-    if (raw === 'grain' && !isExperimentEnabled('theme-grain')) return 'system';
     return raw as Theme;
   } catch {
     return 'system';
   }
 }
 
-export function writeTheme(theme: Theme): void {
+function writeTheme(theme: Theme): void {
   try {
     window.localStorage.setItem(THEME_STORAGE_KEY, theme);
   } catch {
@@ -57,7 +51,7 @@ export function writeTheme(theme: Theme): void {
 }
 
 /** What the setting means right now: `system` asks the OS, the others answer for themselves. */
-export function resolveTheme(theme: Theme): ResolvedTheme {
+function resolveTheme(theme: Theme): ResolvedTheme {
   if (theme !== 'system') return theme;
   return typeof window.matchMedia === 'function' && window.matchMedia(LIGHT_QUERY).matches ? 'light' : 'dark';
 }
@@ -81,19 +75,17 @@ export function setTheme(theme: Theme): void {
 
 /**
  * Applies the stored theme, follows `prefers-color-scheme` while the setting
- * reads `system`, and repaints when an experiment is switched, since grain
- * exists only while `theme-grain` is on. Returns the function that drops both
- * listeners.
+ * reads `system`, and repaints when another window stores a theme. Returns
+ * the function that drops the listeners.
  */
 export function startTheme(): () => void {
   const stopAccent = startAccent();
   const stopFonts = startFonts();
   const stopColors = startColors();
   applyTheme(readTheme());
-  const stopExperiments = subscribeExperiments(() => applyTheme(readTheme()));
   const onstorage = (event: StorageEvent) => { if (event.key === THEME_STORAGE_KEY || event.key === null) applyTheme(readTheme()); };
   window.addEventListener('storage', onstorage);
-  const cleanup = () => { stopExperiments(); stopAccent(); stopFonts(); stopColors(); window.removeEventListener('storage', onstorage); };
+  const cleanup = () => { stopAccent(); stopFonts(); stopColors(); window.removeEventListener('storage', onstorage); };
   if (typeof window.matchMedia !== 'function') return cleanup;
   const query = window.matchMedia(LIGHT_QUERY);
   const onchange = () => {

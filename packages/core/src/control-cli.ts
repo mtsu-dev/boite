@@ -40,7 +40,7 @@ export function spawnedLines(spawned: AgentSpawn, machine: string | undefined, p
 }
 
 /** What an agent's own `thread done` prints. */
-export function doneLine(done: { when: 'turn-end' | 'done' }): string {
+function doneLine(done: { when: 'turn-end' | 'done' }): string {
   return done.when === 'turn-end' ? 'This thread goes to Done when this turn ends; the user can restore it.' : 'This thread is in Done; the user can restore it.';
 }
 

@@ -4,6 +4,7 @@ import { join, sep } from 'node:path';
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { echoThread, removeDir, startTestCore } from './harness.ts';
 import type { TestCore } from './harness.ts';
+import { thrown } from './settle.ts';
 import { newId } from '../src/ids.ts';
 import { lockDataDir } from '../src/data-lock.ts';
 import { parseFlags, prepareDataDir, withUtf8Locale } from '../src/main.ts';
@@ -49,27 +50,67 @@ test('shutdown still stops owned children and closes the journal when both start
 });
 
 describe('projects', () => {
-  test('removing a project drains turns and deletes its projection rows', async () => {
+  test('removing a project drains turns, keeps every row, and adding its folder back restores it', async () => {
     const client = await harness.connect();
     const { threadId } = await echoThread(harness, client);
-    const projectId = harness.core.projects.require(harness.core.threads.require(threadId).projectId).id;
+    const project = harness.core.projects.require(harness.core.threads.require(threadId).projectId);
     await client.call('turns.start', { threadId, prompt: '[sleep:60000]', clientRequestId: 'remove-request' });
     expect(harness.core.journal.turnRequest(threadId, 'remove-request')).not.toBeNull();
-    await client.call('projects.remove', { projectId });
+    const messages = harness.core.journal.listMessages(threadId).length;
+    expect(messages).toBeGreaterThan(0);
+    await client.call('projects.remove', { projectId: project.id });
     expect(harness.core.scheduler.state().running).toHaveLength(0);
-    expect(harness.core.journal.listTurns(threadId)).toEqual([]);
-    expect(harness.core.journal.listMessages(threadId)).toEqual([]);
+    // Out of every list, still on disk.
+    expect((await client.call('projects.list', {})).some((listed) => listed.id === project.id)).toBe(false);
     expect(harness.core.journal.getThread(threadId)).toBeNull();
-    expect(harness.core.journal.turnRequest(threadId, 'remove-request')).toBeNull();
+    expect(harness.core.journal.listTurns(threadId)).toHaveLength(1);
+    expect(harness.core.journal.listMessages(threadId)).toHaveLength(messages);
+
+    const restored = await client.call('projects.add', { path: project.path });
+    expect(restored.id).toBe(project.id);
+    expect(harness.core.journal.getThread(threadId)).toMatchObject({ id: threadId, projectId: project.id, archived: false });
+    expect(harness.core.journal.listTurns(threadId)).toHaveLength(1);
+    expect(harness.core.journal.listMessages(threadId)).toHaveLength(messages);
   });
-  test('removing a project stops remaining processes before deleting their rows', async () => {
+  test('a thread archived before its project is removed comes back as it was, and an add during the removal is refused before any write', async () => {
+    const client = await harness.connect();
+    const { threadId } = await echoThread(harness, client);
+    const project = harness.core.projects.require(harness.core.threads.require(threadId).projectId);
+    await client.call('threads.archive', { threadId, archived: true });
+    const before = harness.core.journal.getThread(threadId)!;
+    const open = (await echoThread(harness, client, 'still open')).threadId;
+    expect(harness.core.threads.require(open).projectId).toBe(project.id);
+    const removing = harness.core.projects.remove(project.id);
+    expect(() => harness.core.projects.add(project.path)).toThrow('this project is being removed');
+    // Another client cannot reopen a thread to run a turn on it while its project goes.
+    expect(() => harness.core.threads.archive(open, false)).toThrow('its project is being removed');
+    await removing;
+    expect((await client.call('projects.list', {})).some((listed) => listed.id === project.id)).toBe(false);
+    await client.call('projects.add', { path: project.path });
+    expect(harness.core.journal.getThread(threadId)).toEqual(before);
+  });
+  test('a removal that fails leaves the project listed and its open threads open', async () => {
+    const client = await harness.connect();
+    const { threadId } = await echoThread(harness, client);
+    const projectId = harness.core.threads.require(threadId).projectId!;
+    const stopThread = harness.core.terminals.stopThread.bind(harness.core.terminals);
+    harness.core.terminals.stopThread = async () => { throw new Error('a shell would not stop'); };
+    try {
+      expect(await thrown(client.call('projects.remove', { projectId }))).toThrow();
+    } finally {
+      harness.core.terminals.stopThread = stopThread;
+    }
+    expect(harness.core.journal.getThread(threadId)?.archived).toBe(false);
+    expect((await client.call('projects.list', {})).some((listed) => listed.id === projectId)).toBe(true);
+  });
+  test('removing a project stops remaining processes and keeps their trace', async () => {
     const client = await harness.connect();
     const { threadId } = await echoThread(harness, client);
     const projectId = harness.core.projects.require(harness.core.threads.require(threadId).projectId).id;
     harness.core.procs.spawnChild(threadId, process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { cwd: harness.dataDir });
     await client.call('projects.remove', { projectId });
     expect(harness.core.procs.liveCount(threadId)).toBe(0);
-    expect(harness.core.journal.listProcesses(threadId, 10)).toEqual([]);
+    expect(harness.core.journal.listProcesses(threadId, 10)).toHaveLength(1);
   });
   test('a path that is not a directory is refused with the path', async () => {
     const client = await harness.connect();

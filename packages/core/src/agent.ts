@@ -181,7 +181,7 @@ export function checkSurface(cwd: string, surface: PanelSurface): PanelSurface {
   return { kind: kind as 'trace' | 'tasks' };
 }
 
-export function checkTasks(tasks: unknown): AgentTask[] {
+function checkTasks(tasks: unknown): AgentTask[] {
   if (!Array.isArray(tasks)) throw refused('threads.tasks.set takes a list of tasks', {});
   const problem = agentTaskLimitProblem(tasks.length);
   if (problem) throw refused(problem, { count: tasks.length });

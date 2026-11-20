@@ -38,7 +38,7 @@ function sha256(text: string): string {
  * A missing file or one past its cap is refused like a manifest field, so the
  * preview says which and an install never starts.
  */
-export function uiFromFetched(manifest: PluginManifest, files: Record<string, FetchedFile>): UiTexts | null {
+function uiFromFetched(manifest: PluginManifest, files: Record<string, FetchedFile>): UiTexts | null {
   const ui = manifest.provides.ui;
   if (ui === undefined) return null;
   const texts: UiTexts = {};
@@ -61,7 +61,7 @@ export function uiFromFetched(manifest: PluginManifest, files: Record<string, Fe
  * what the previous record still names: an update that fails keeps the
  * interface that worked, and `pruneUi` drops the rest once the record commits.
  */
-export async function writeUi(dir: string, texts: UiTexts): Promise<InstalledUi> {
+async function writeUi(dir: string, texts: UiTexts): Promise<InstalledUi> {
   const folder = join(dir, UI_DIR);
   mkdirSync(folder, { recursive: true });
   const out: InstalledUi = {};
@@ -82,7 +82,7 @@ export async function writeUi(dir: string, texts: UiTexts): Promise<InstalledUi>
 }
 
 /** Deletes the interface files the record no longer names: an older version's, a failed update's. */
-export async function pruneUi(dir: string, keep: InstalledUi | null): Promise<void> {
+async function pruneUi(dir: string, keep: InstalledUi | null): Promise<void> {
   const folder = join(dir, UI_DIR);
   if (!existsSync(folder)) return;
   const kept = new Set(KEYS.flatMap((key) => (keep?.[key] === undefined ? [] : [`${keep[key]}${EXTENSION[key]}`])));
@@ -93,7 +93,7 @@ export async function pruneUi(dir: string, keep: InstalledUi | null): Promise<vo
 }
 
 /** The texts an install wrote, each checked against the digest its record names. Null when one is gone or altered. */
-export function readInstalledUi(dir: string, ui: InstalledUi): UiTexts | null {
+function readInstalledUi(dir: string, ui: InstalledUi): UiTexts | null {
   const texts: UiTexts = {};
   for (const key of KEYS) {
     const digest = ui[key];
@@ -123,7 +123,7 @@ export function readDevUi(devPath: string, manifest: PluginManifest): UiTexts {
 }
 
 /** What `plugins.ui` hands a client for one plugin. */
-export function uiBundle(manifest: PluginManifest, permissions: PluginPermission[], texts: UiTexts | null, error: string | null, settings: PluginUiBundle['settings']): PluginUiBundle {
+function uiBundle(manifest: PluginManifest, permissions: PluginPermission[], texts: UiTexts | null, error: string | null, settings: PluginUiBundle['settings']): PluginUiBundle {
   const script = texts?.script ?? null;
   const style = texts?.style ?? null;
   return {

@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AgentLetter } from '@boite/contracts';
 import type { CoreClient } from '../src/client.ts';
-import { memberThreadId } from '../src/contacts/members.ts';
+import { memberThreadId } from '../src/contacts/member-address.ts';
 import { RpcFailure } from '../src/errors.ts';
 import { startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';

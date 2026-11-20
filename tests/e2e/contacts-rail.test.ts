@@ -22,9 +22,7 @@ const clipped = (selector: string) => `(() => {
 test('the contacts column\'s rows hold their text: the empty row\'s wrapped tip grows it instead of spilling over the title', async () => {
   const page = await BrowserPage.launch({ url: 'about:blank', windowSize: { width: 1280, height: 900 } });
   try {
-    await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `
-      localStorage.setItem('boite.experiments', JSON.stringify(['contacts']));
-      localStorage.setItem('boite.contacts-rail-folded', '0');` });
+    await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('boite.contacts-rail-folded', '0');` });
     await page.navigate(`http://127.0.0.1:${port}/?fake=1&open=recent`);
     await page.waitFor(`document.querySelector('${id('rail-contact')}')`);
     expect(await page.evaluate<string[]>(clipped(id('rail-contact')))).toEqual([]);
@@ -42,7 +40,6 @@ test('the contacts column\'s rows hold their text: the empty row\'s wrapped tip 
 test('contact requests appear above desktop and phone pages and open the request to answer', async () => {
   const page = await BrowserPage.launch({ url: 'about:blank', windowSize: { width: 1440, height: 900 } });
   try {
-    await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('boite.experiments', JSON.stringify(['contacts']));` });
     await page.navigate(`http://127.0.0.1:${port}/?fake=1&open=recent`);
     await page.waitFor(`document.querySelector('${id('contact-request-notice')}')`);
     await page.evaluate(`globalThis.__boiteTest.setTheme('dark')`);
@@ -72,7 +69,6 @@ test('a request shows the plan the Operator wrote on desktop and phone, and Acce
   const page = await BrowserPage.launch({ url: 'about:blank', windowSize: { width: 1440, height: 900 } });
   const card = `${id('contact-requests')} ${id('contact-request-creq-plan')}`;
   try {
-    await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('boite.experiments', JSON.stringify(['contacts']));` });
     await page.navigate(`http://127.0.0.1:${port}/?fake=1&plan=1`);
     await page.waitFor(`document.querySelector('${id('contact-request-notice')}')`);
     await page.evaluate(`globalThis.__boiteTest.setTheme('dark')`);
@@ -119,7 +115,6 @@ test('the shared project picker searches every linked machine on desktop and pho
   const search = id('contact-open-core-chris-search');
   const remoteGrant = `${id('contact-grant-p-notes')}[data-machine-id="http://builder.test"]`;
   try {
-    await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('boite.experiments', JSON.stringify(['contacts']));` });
     await page.navigate(`http://127.0.0.1:${port}/?fake=1&machines=1`);
     await page.waitFor(`globalThis.__boiteTest?.workspace.machines.length === 2`);
     await page.evaluate(`globalThis.__boiteTest.setTheme('dark'); globalThis.__boiteTest.workspace.active.showHome('core-chris')`);
