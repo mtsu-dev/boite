@@ -265,13 +265,12 @@ export class ProcRegistry {
     opts = this.#admitted(opts);
     const protectedLaunch = this.protection.launch(threadId, cmd, args, opts);
     const [command, env] = launchOf(protectedLaunch?.command ?? cmd, protectedLaunch?.env ?? opts.env ?? process.env);
+    const extra = Math.max(0, Math.floor(opts.extraPipes ?? 0));
     const proc = startResolved(command, env, (executable) => Bun.spawn({
       cmd: [executable, ...(protectedLaunch?.args ?? args)],
       cwd: protectedLaunch?.cwd ?? opts.cwd,
       env,
-      stdin: 'pipe',
-      stdout: 'pipe',
-      stderr: 'pipe',
+      stdio: ['pipe', 'pipe', 'pipe', ...Array.from({ length: extra }, () => 'pipe' as const)],
       windowsHide: true,
       detached: this.platform.detachedChildren,
     }));

@@ -6,8 +6,9 @@
 import { closeSync, constants, existsSync, fchmodSync, fstatSync, ftruncateSync, lstatSync, openSync, readFileSync, realpathSync, statSync, writeSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import type { SecretExecUse, SecretUseResult, SecretWriteUse, ThreadId } from '@boite/contracts';
+import { RpcErrorCode } from '@boite/contracts';
 import type { Core } from '../core.ts';
-import { refused } from '../errors.ts';
+import { RpcFailure, refused } from '../errors.ts';
 import { git } from '../git/read.ts';
 import type { Connection } from '../router.ts';
 
@@ -16,6 +17,12 @@ const RUN_TIMEOUT_MS = 10 * 60_000;
 const RUN_MAX_TIMEOUT_MS = 60 * 60_000;
 const VARIABLE = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/;
 const encoder = new TextEncoder();
+
+export class SecretLauncherVersionRefusal extends RpcFailure {
+  constructor(component: 'os' | 'osd', diagnostic: string) {
+    super(RpcErrorCode.Refused, `BoiteOS version mismatch: update ${component} and retry with the same ref (${diagnostic.trim()})`);
+  }
+}
 
 function inside(root: string, path: string): boolean {
   const rel = relative(root, path);
@@ -182,27 +189,36 @@ export async function execSecret(core: Core, threadId: ThreadId, use: PreparedSe
   // Bun takes its own copy at spawn. Drop the transient JS string even if spawn throws.
   if (use.action === 'run' && value !== undefined) env[use.as!] = new TextDecoder().decode(value);
   let spawned;
-  try { spawned = core.procs.spawnPiped(threadId, command, args, { cwd: use.cwd, env, agentRoot: false }); }
+  try { spawned = core.procs.spawnPiped(threadId, command, args, { cwd: use.cwd, env, agentRoot: false, extraPipes: recipient?.versionRefusal ? 1 : 0 }); }
   finally { if (use.action === 'run') delete env[use.as!]; }
   let timedOut = false;
   const stop = (): void => { try { spawned.stop(); } catch { /* already gone */ } };
   const timer = setTimeout(() => { timedOut = true; stop(); }, use.timeoutMs);
   const detach = connection?.onClose?.(stop);
+  const reportFd = recipient?.versionRefusal ? spawned.proc.stdio[3] : null;
   try {
     const stdin = spawned.proc.stdin;
-    if (use.action === 'pipe' && value !== undefined) stdin.write(value);
-    await stdin.end();
+    let inputError: unknown;
+    try {
+      if (use.action === 'pipe' && value !== undefined) stdin.write(value);
+      await stdin.end();
+    } catch (error) { inputError = error; }
     const [stdout, stderr, exitCode] = await Promise.all([capped(spawned.proc.stdout), capped(spawned.proc.stderr), spawned.exited]);
     const decoder = new TextDecoder();
+    const rawStderr = decoder.decode(stderr.bytes);
     const result = {
       action: use.action, exitCode, timedOut,
-      stdout: mask(decoder.decode(stdout.bytes)), stderr: mask(decoder.decode(stderr.bytes)),
+      stdout: mask(decoder.decode(stdout.bytes)), stderr: mask(rawStderr),
       truncated: stdout.truncated || stderr.truncated,
     };
     stdout.bytes.fill(0);
     stderr.bytes.fill(0);
+    const refusal = reportFd != null && recipient?.versionRefusal?.(reportFd, exitCode, rawStderr);
+    if (refusal) throw new SecretLauncherVersionRefusal(refusal, result.stderr);
+    if (inputError !== undefined) throw inputError;
     return result;
   } finally {
+    if (reportFd != null) closeSync(reportFd);
     clearTimeout(timer);
     detach?.();
   }

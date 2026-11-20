@@ -20,7 +20,7 @@ import type { Connection } from '../router.ts';
 import { markRunning } from '../threads/lifecycle.ts';
 import { SecretIndex, type TransitEntry } from './index-file.ts';
 import { maskDeep, SecretMasks } from './mask.ts';
-import { checkSecretRecipient, execSecret, prepareSecretExec, writeSecret } from './use.ts';
+import { checkSecretRecipient, execSecret, prepareSecretExec, SecretLauncherVersionRefusal, writeSecret } from './use.ts';
 import { assertContactTool } from '../contacts/letter-scopes.ts';
 
 type AskParams = RpcMethods['secrets.ask']['params'];
@@ -47,7 +47,7 @@ const SWEEP_EVERY_MS = 60_000;
 const encoder = new TextEncoder();
 
 const threadScope = (threadId: string): string => `thread:${threadId}`;
-interface Transit extends TransitEntry { turnId: TurnId; value: Uint8Array }
+interface Transit extends TransitEntry { turnId: TurnId; value: Uint8Array; inUse?: boolean }
 
 export class SecretStore {
   readonly masks = new SecretMasks();
@@ -313,21 +313,27 @@ export class SecretStore {
       signal?.throwIfAborted();
       this.#assertLiveUse(entry);
     }
-    // Claim synchronously after all checks: concurrent uses cannot share a buffer.
-    this.#transit.delete(entry.id);
+    // Reserve synchronously. Lifecycle events can still retire a reserved ref.
+    entry.inUse = true;
     const value = entry.value;
+    let consumed = true;
     try {
-      this.core.logs.info(`Secret ${entry.name} used: ${action}`, { source: 'secrets', event: 'secret.used', threadId: thread.id, data: { name: entry.name, action, kind: 'transit' } });
       if (params.use.action === 'write') return await writeSecret(this.core, thread.id, thread.cwd, params.use, value);
       return await execSecret(this.core, thread.id, execution!, value, mask, connection);
+    } catch (error) {
+      consumed = !(error instanceof SecretLauncherVersionRefusal);
+      throw error;
     } finally {
-      value.fill(0);
+      entry.inUse = false;
+      if (consumed || this.#transit.get(entry.id) !== entry) this.#eraseTransit(entry);
       this.#arm();
+      if (consumed) this.core.logs.info(`Secret ${entry.name} used: ${action}`, { source: 'secrets', event: 'secret.used', threadId: thread.id, data: { name: entry.name, action, kind: 'transit' } });
     }
   }
 
   #assertLiveUse(entry: Transit): void {
     if (this.#transit.get(entry.id) !== entry) throw refused('ref: this secret was erased or never existed; ask for it again', { field: 'ref', expected: 'a live ref' });
+    if (entry.inUse) throw refused('ref: this secret is already in use', { field: 'ref', expected: 'an unused ref' });
     if (entry.expiresAt <= this.now()) {
       this.#eraseTransit(entry);
       throw refused('ref: this secret expired after ten minutes and was erased; ask for it again', { field: 'ref', expected: 'a live ref' });
@@ -348,7 +354,7 @@ export class SecretStore {
   }
 
   #eraseTransit(entry: Transit): void {
-    entry.value.fill(0);
+    if (!entry.inUse) entry.value.fill(0);
     this.#transit.delete(entry.id);
     // Keep hashes (never the value) for late output and diagnostic masking until shutdown.
   }
