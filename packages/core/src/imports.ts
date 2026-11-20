@@ -214,7 +214,7 @@ export class ImportStore {
           foreign = { file: candidate, cwd: read.cwd };
           continue;
         }
-        if (read.turns.length === 0) continue;
+        if (read.turns.length === 0 || read.titlePrompt === null) continue;
         file = candidate;
         transcript = read;
         break;
@@ -223,13 +223,12 @@ export class ImportStore {
         if (foreign) throw refused(`transcript cwd: expected ${project.path}`, { ...foreign, field: 'cwd', expected: project.path });
         throw refused('this transcript has no prompt to import', { file });
       }
-      const first = transcript.turns[0]!;
       const summary = this.core.threads.createImported(
         {
           projectId: project.id,
           providerId: provider.id,
           accountId: account.id,
-          title: transcript.agentTitle ?? titleFromPrompt(first.prompt),
+          title: transcript.agentTitle ?? titleFromPrompt(transcript.titlePrompt!),
           cwd: project.path,
         },
         {
