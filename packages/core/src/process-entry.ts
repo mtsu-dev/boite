@@ -6,7 +6,7 @@ export const running = (proc: { exitCode: number | null; signalCode: unknown }) 
 
 /** A thread stop continues even when a registered process exits during its own kill. */
 export function killEntry(entry: Entry): Promise<void> | undefined {
-  try { return entry.kill(); } catch { return undefined; }
+  try { return entry.kill() ?? undefined; } catch { return undefined; }
 }
 
 /** Capture the tree before the root exits. taskkill still needs a live root while it runs. */
@@ -18,6 +18,6 @@ export function stopProcess(platform: ProcessPlatform, threadId: string, pid: nu
     if (assigned) platform.terminateSubtree?.(threadId, pid);
     else fallback = platform.terminateUnassigned(pid);
   }
-  const stop = fallback instanceof Promise ? fallback.then(kill, kill) : kill();
+  const stop = fallback instanceof Promise ? fallback.then(kill, kill) : kill() ?? undefined;
   return descendants === undefined ? stop : Promise.all([descendants, stop]).then(() => undefined);
 }
