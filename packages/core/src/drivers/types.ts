@@ -289,7 +289,8 @@ export interface TurnContext {
   /**
    * The context meter: what the agent's last request carried and the model's
    * window when the agent names it. The core writes it on the thread and
-   * tells the clients; a driver calls it once per turn, at the end.
+   * tells the clients; a driver calls it once per turn, at the end, and may
+   * call it mid-turn when the agent empties or compacts its context.
    */
   context(use: Omit<import('@boite/contracts').ContextUse, 'at'>): void;
   /**

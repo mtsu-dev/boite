@@ -18,7 +18,7 @@ see the exact counts:
 
 The numbers come from the agent itself: Boite never estimates them. The ring
 stays empty until the agent sends a first measurement. On a Claude thread,
-`/clear` empties it at once, and What the agent sees opens the system prompt
+`/clear` empties it at once, a compaction lowers it at once to what is left, and What the agent sees opens the system prompt
 and tool definitions of the last request, with an estimated size.
 
 ## Compact the conversation
