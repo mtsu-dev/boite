@@ -3,7 +3,7 @@ import type { HarnessUpdate, ProviderSummary, PullRequestWatch, StateReading, Th
 import { connect } from '../src/client.ts';
 import { QuotaStore } from '../src/quotas.ts';
 import { readState } from '../src/state.ts';
-import { startTestCore, waitFor, type TestCore } from './harness.ts';
+import { echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';
 
 let harness: TestCore | undefined;
 afterEach(async () => { await harness?.stop(); harness = undefined; });
@@ -76,6 +76,44 @@ test('S3: Muse goes through Douane when the gateway verified its native pool, an
   expect(reading(await readState(harness.core, 'route'), 'route').route.providers).toEqual([{ id: 'muse', name: 'Muse', viaGateway: true }]);
   state.mockReturnValue({ ...pool, nativeMuse: false });
   expect(reading(await readState(harness.core, 'route'), 'route').route.providers).toEqual([{ id: 'muse', name: 'Muse', viaGateway: false }]);
+});
+
+test('Activity shows a new interruption in a read conversation until that interruption is acknowledged', async () => {
+  harness = await startTestCore();
+  const { core } = harness;
+  const owner = await harness.connect();
+  const parent = await echoThread(harness, owner, 'Parent');
+  const child = await echoThread(harness, owner, 'Child');
+  const thread = core.journal.getThread(child.threadId)!;
+  core.journal.putThread({ ...thread, parentThreadId: parent.threadId });
+  const stopped = async (request: string) => {
+    const done = owner.next('turn.finished', turn => turn.threadId === thread.id);
+    await owner.call('turns.start', { threadId: thread.id, prompt: 'Track a build', clientRequestId: request });
+    const turn = await done;
+    expect(turn.status).toBe('done');
+    await owner.call('threads.markRead', { threadId: thread.id });
+    const history = core.threads.agentState.backgroundHistory;
+    const origin = { providerId: thread.providerId, sessionGeneration: thread.sessionGeneration ?? 0, parentTurnId: turn.id };
+    history.observe(thread.id, [{ id: request, kind: 'shell', description: 'Build', toolId: null, startedAt: turn.finishedAt! - 1 }], origin, turn.finishedAt!);
+    history.cancelSession(thread.id, origin, Date.now() + 1);
+    const snapshot = await owner.call('threads.get', { threadId: thread.id });
+    expect(snapshot).toMatchObject({ unread: false, backgroundWait: { state: 'interrupted' } });
+    return snapshot.backgroundWait?.state === 'interrupted' ? snapshot.backgroundWait.at : NaN;
+  };
+  const listed = async () => reading(await readState(core, 'inbox'), 'inbox').inbox.some(row => row.threadId === thread.id && row.kind === 'stopped');
+  const first = await stopped('activity-build-1');
+  expect(await listed()).toBe(true);
+  await owner.call('threads.markRead', { threadId: thread.id });
+  expect(await listed()).toBe(true);
+  core.journal.putThread({ ...core.journal.getThread(thread.id)!, unread: true });
+  await owner.call('threads.markRead', { threadId: thread.id, interruptionAt: first });
+  expect(await listed()).toBe(false);
+  expect(await owner.call('threads.get', { threadId: thread.id })).toMatchObject({ unread: true, interruptionReadAt: first });
+  await stopped('activity-build-2');
+  await owner.call('threads.markRead', { threadId: thread.id, interruptionAt: first });
+  expect(await listed()).toBe(true);
+  await owner.call('threads.get', { threadId: thread.id, open: { markRead: true } });
+  expect(await listed()).toBe(false);
 });
 
 test('S4: a paired device reads as connected while one of its sockets is open, and not once it closes', async () => {

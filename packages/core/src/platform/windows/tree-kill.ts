@@ -1,4 +1,51 @@
 import { dlopen, FFIType } from 'bun:ffi';
+import { KILL_EXIT_CODE } from '@boite/contracts';
+import { listJobPids } from './jobs-packets.ts';
+import { creationIdentityOf, parentPidOf, type ProcessReads } from './process-reads.ts';
+
+type JobProcesses = ProcessReads & Parameters<typeof listJobPids>[0] & {
+  openProcess(access: number, pid: number): number;
+  inJob(job: number, proc: number): boolean;
+  close(handle: number): void;
+  terminateProcess(proc: number, code: number): boolean;
+};
+
+/** Take a fresh job membership snapshot, even if its start notifications have not arrived. */
+export function killJobSubtree(api: JobProcesses, job: number, rootPid: number): void {
+  const access = 0x0401; // PROCESS_QUERY_INFORMATION | PROCESS_TERMINATE
+  const root = api.openProcess(access, rootPid);
+  if (!root) return;
+  const handles = [root];
+  const roots = new Map<number, { handle: number; birth: bigint; parent: number | null }>();
+  try {
+    const members = listJobPids(api, job);
+    if (!members?.has(rootPid) || !api.inJob(job, root)) return;
+    for (const pid of members) {
+      const handle = pid === rootPid ? root : api.openProcess(access, pid);
+      if (!handle) continue;
+      if (pid !== rootPid) handles.push(handle);
+      if (!api.inJob(job, handle)) continue;
+      const identity = creationIdentityOf(api, handle);
+      if (identity) roots.set(pid, { handle, birth: BigInt(identity.incarnation), parent: parentPidOf(api, handle) });
+    }
+    if (!roots.has(rootPid)) return;
+    const children = new Map<number, number[]>();
+    for (const [pid, child] of roots) {
+      if (child.parent === null) continue;
+      const parent = roots.get(child.parent);
+      if (parent && parent.birth <= child.birth) {
+        const siblings = children.get(child.parent) ?? [];
+        siblings.push(pid);
+        children.set(child.parent, siblings);
+      }
+    }
+    const subtree = new Set([rootPid]);
+    for (const pid of subtree) for (const child of children.get(pid) ?? []) subtree.add(child);
+    for (const pid of [...subtree].reverse()) api.terminateProcess(roots.get(pid)!.handle, KILL_EXIT_CODE);
+  } finally {
+    for (const handle of handles) api.close(handle);
+  }
+}
 
 /** Enough to keep the process object, and so its pid, alive: Windows grants it on nearly any process. */
 const PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
@@ -23,6 +70,7 @@ function runTaskkill(pid: number): Promise<unknown> {
   // Not through procs.spawn: taskkill must not join the thread it stops.
   const taskkill = Bun.spawn({
     cmd: ['taskkill', '/T', '/F', '/PID', String(pid)],
+    timeout: 5_000,
     stdin: 'ignore', stdout: 'ignore', stderr: 'ignore', windowsHide: true,
   });
   return taskkill.exited;

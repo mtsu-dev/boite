@@ -1,4 +1,4 @@
-import { chatPreviewSizeProblem, decodedBytes, ownerThreadRequestKey, ownerThreadSelection, partChannel, permissionAutoDecision, type RpcResult, type StreamChannel, type ThreadId } from '@boite/contracts';
+import { chatPreviewSizeProblem, decodedBytes, ownerThreadRequestKey, ownerThreadSelection, partChannel, permissionAutoDecision, unreadInterruptionAt, type RpcResult, type StreamChannel, type ThreadId } from '@boite/contracts';
 import { noteUserMessage } from './checklist';
 import { startAutoGoal, startsAutoGoal } from './activity';
 import { createFakeThread, publishFakeThread } from './create-thread';
@@ -413,7 +413,8 @@ export function threadMethods(ctx: FakeContext) {
       const unchanged = tail !== null && params.after !== undefined && known?.from === params.after && known.hash === (proof?.from === params.after ? proof.hash : snapshotHash(tail, params));
       // As the core: where the page's first message sits, or the resume tail's `after`.
       const first = tail !== null ? params.after : page.messages[0]?.id;
-      const snapshot = { ...thread, turns, messages: unchanged ? [] : page.messages.map(project), messagesBefore: page.before,
+      const summary = toSummary(thread);
+      const snapshot = { ...thread, backgroundWait: summary.backgroundWait, interruptionReadAt: summary.interruptionReadAt, turns, messages: unchanged ? [] : page.messages.map(project), messagesBefore: page.before,
         ...(page.after === null ? {} : { messagesAfter: page.after }), messageOffset: Math.max(0, thread.messages.findIndex(message => message.id === first)),
         ...(tail !== null ? { messagesFrom: params.after } : {}), ...(proof ? { messagesSync: proof } : {}), ...(unchanged ? { messagesUnchanged: true as const } : {}) };
       if (!params.open) return pagingReply(snapshot);
@@ -424,8 +425,12 @@ export function threadMethods(ctx: FakeContext) {
         ctx.bus.subscribed.delete(params.open.previous);
         ctx.bus.streams.forget(params.open.previous);
       }
-      if (params.open.markRead && thread.unread) { thread.unread = false; ctx.touch(thread); }
-      snapshot.unread = thread.unread;
+      const interruptionAt = unreadInterruptionAt(summary);
+      if (params.open.markRead && (thread.unread || interruptionAt !== undefined)) {
+        thread.unread = snapshot.unread = false;
+        if (interruptionAt !== undefined) thread.interruptionReadAt = snapshot.interruptionReadAt = interruptionAt;
+        ctx.touch(thread);
+      }
       const opened = params.open.requests === false ? {} : {
         permissions: [...ctx.pendingPermissions.values()].map(item => item.request).filter(item => item.threadId === thread.id).sort((a, b) => a.createdAt - b.createdAt),
         questions: [...ctx.pendingQuestions.values()].map(item => item.request).filter(item => item.threadId === thread.id).sort((a, b) => a.createdAt - b.createdAt)
@@ -664,9 +669,15 @@ export function threadMethods(ctx: FakeContext) {
     'threads.markRead': async (params) => {
       const thread = ctx.thread(params.threadId);
       // As the core: a thread already read is not written again, so nothing is announced.
-      if (!thread.unread) return { ok: true };
-      thread.unread = false;
-      ctx.touch(thread);
+      if (params.interruptionAt !== undefined) {
+        if (unreadInterruptionAt(toSummary(thread)) === params.interruptionAt) {
+          thread.interruptionReadAt = params.interruptionAt;
+          ctx.touch(thread);
+        }
+      } else if (thread.unread) {
+        thread.unread = false;
+        ctx.touch(thread);
+      }
       return { ok: true };
     },
     'threads.trustContactHistory': async (params) => {

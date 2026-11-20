@@ -20,6 +20,8 @@ async function deleteArchived(page: BrowserPage, threadId: string): Promise<void
   await page.click(`[data-testid=archived-list] [data-testid="archived-menu-${threadId}"]`);
   await page.waitFor(`document.querySelector('[data-testid="archived-menu-${threadId}-menu"]:not(.closing) [data-testid=archived-delete]')`);
   await page.click(`[data-testid="archived-menu-${threadId}-menu"] [data-testid=archived-delete]`);
+  await page.waitFor(`document.querySelector('[data-testid=confirm-ok]')`);
+  await page.click('[data-testid=confirm-ok]');
 }
 let port: number;
 
@@ -100,13 +102,17 @@ for (const width of [1280, 390]) {
         const hasDelete = await page.evaluate<boolean>(`Array.from(document.querySelectorAll('[role=menu]:not(.closing) [role=menuitem]')).some(b => b.textContent.trim() === 'Delete')`);
         expect(hasDelete).toBe(true);
         await page.evaluate(`Array.from(document.querySelectorAll('[role=menu]:not(.closing) [role=menuitem]')).find(b => b.textContent.trim() === 'Delete').click()`);
+        await page.waitFor(`document.querySelector('[data-testid=confirm-dialog]')`);
+        expect(await page.evaluate(`document.querySelector('[data-testid=confirm-dialog]').textContent.includes('30 days')`)).toBe(true);
+        expect(await page.evaluate(`document.querySelector('[data-testid=confirm-alt]').textContent.trim()`)).toBe('Archive');
+        await page.screenshot(join(import.meta.dir, '.artifacts', `thread-delete-confirm-${width}.png`));
+        await page.click('[data-testid=confirm-ok]');
       };
       await openMenu();
       await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
       await page.screenshot(join(import.meta.dir, '.artifacts', `thread-delete-menu-${width}.png`));
       await chooseDelete();
       await page.waitFor(`!globalThis.__boiteTest.workspace.active.threads.some(t => t.id === ${JSON.stringify(id)})`);
-      expect(await page.evaluate(`document.querySelector('[data-testid=confirm-dialog]') === null`)).toBe(true);
       expect(await page.evaluate(`globalThis.__boiteTest.workspace.active.client.call('threads.list', { includeArchived: true }).then(rows => rows.some(t => t.id === ${JSON.stringify(id)}))`)).toBe(false);
       await page.waitFor(`document.querySelector('[data-testid=undo-action]')`);
       await page.screenshot(join(import.meta.dir, '.artifacts', `thread-delete-undo-${width}.png`));
@@ -134,7 +140,6 @@ for (const width of [1280, 390]) {
       await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
       await page.screenshot(join(import.meta.dir, '.artifacts', `thread-delete-archive-${width}.png`));
       await deleteArchived(page, archivedId);
-      expect(await page.evaluate(`document.querySelector('[data-testid=confirm-dialog]') === null`)).toBe(true);
       await page.waitFor(`!document.querySelector('[data-testid=archived-list] [data-thread-id="${archivedId}"]')`);
       expect(await page.evaluate(`globalThis.__boiteTest.workspace.active.client.call('threads.list', { includeArchived: true }).then(rows => rows.some(t => t.id === ${JSON.stringify(archivedId)}))`)).toBe(false);
       expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);

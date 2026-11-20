@@ -8,6 +8,7 @@ import { Store } from '../lib/store.svelte';
 import { projectMenu } from '../lib/project-menu';
 import { contextMenu } from '../lib/context-menu.svelte';
 import { archivedFocus } from '../lib/archived-focus.svelte';
+import { confirm } from '../lib/confirm.svelte';
 
 let running: Record<string, unknown> | null = null;
 const cleanups: (() => void)[] = [];
@@ -239,6 +240,8 @@ test('an archived row reads without restoring and keeps Delete behind its menu',
   const remove = document.querySelector<HTMLElement>('[data-testid=archived-delete]')!;
   expect(remove.closest('li')?.dataset['threadId']).toBe('t-trace');
   remove.click();
+  expect(confirm.current?.altLabel).toBeUndefined();
+  confirm.answer('confirm');
   await vi.waitFor(() => expect(row()).toBeNull());
 });
 

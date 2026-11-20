@@ -7,7 +7,6 @@ import { MemoryGuard } from './memory-guard.ts';
 import type { MemoryProcess } from './memory-guard-logic.ts';
 import { registryPlatform } from './platform/index.ts';
 import { type KnownProcess, type ProcessIdentity, unseenIdentity } from './process-identity.ts';
-import { killBunChild, stopGroup } from './platform/posix-kill.ts';
 import type { GuardStatus, NativeProcessExit, NativeProcessInfo, ProcessPlatform } from './platform/types.ts';
 import { bunUsage, ResourceCollection } from './resource-usage.ts';
 import { traceWrite } from './trace-writes.ts';
@@ -19,7 +18,7 @@ import { launchOf } from './git/command.ts';
 import { ExecutionProtections } from './execution-protection.ts';
 import { closeProcessResources, protectionRunner } from './protection-runner.ts';
 import { processEventDiagnostic } from './process-event-diagnostics.ts';
-import { killEntry, running } from './process-entry.ts';
+import { killEntry, running, stopProcess } from './process-entry.ts';
 
 import type { ChildProcess, ManagedStop, ProcessEntry as Entry, SpawnedChild, SpawnedPipedProcess, SpawnedProcess, SpawnedTerminal, SpawnOptions, TerminalSpawnOptions, ProcRegistryOptions } from './process-spawn-types.ts';
 export type { ProcRegistryOptions, ChildProcess, ManagedStop, PipedChildProcess, SpawnedChild, SpawnedPipedProcess, SpawnedProcess, SpawnedTerminal, SpawnOptions, TerminalSpawnOptions } from './process-spawn-types.ts';
@@ -33,12 +32,6 @@ const FORGET_DELAY_MS = 30_000;
  * child it means to keep does so well inside that.
  */
 const ORPHAN_GRACE_MS = 10_000;
-/**
- * Off Windows each child leads a process group of its own, so its kill reaches
- * what it started (platform/posix-kill.ts). On Windows the thread's job does that.
- */
-const OWN_GROUP = process.platform !== 'win32';
-
 /**
  * The one launcher. Nothing in the core reaches `Bun.spawn` directly: a child
  * that skips this registry is invisible to the trace and survives killTree.
@@ -76,8 +69,7 @@ export class ProcRegistry {
   #knownSweptAt = 0;
   /** A sweep waiting for the thread to stay idle, cancelled by its next turn. */
   readonly #sweepTimers = new Map<ThreadId, ReturnType<typeof setTimeout>>();
-  /** Group stops still inside their grace off Windows, and taskkill fallbacks on it: what `killAll` waits for. */
-  /** Group stops under way, SIGKILL included, by the thread they stop when it is known. */
+  /** Pending group, tree and fallback stops, by the thread they stop when it is known. */
   readonly #stops = new Map<Promise<void>, ThreadId | undefined>();
   readonly #childStops = new WeakMap<SpawnedChild, ManagedStop>();
   #reapOrphans = true;
@@ -242,15 +234,16 @@ export class ProcRegistry {
         ? { stdio: ['ignore', 'pipe', 'pipe', ...Array.from({ length: extra }, () => 'pipe' as const)] as ['ignore', 'pipe', 'pipe'] }
         : { stdin: 'ignore' as const, stdout: 'pipe' as const, stderr: 'pipe' as const }),
       windowsHide: opts.showWindow !== true,
-      detached: OWN_GROUP,
+      detached: this.platform.detachedChildren,
     }) as ChildProcess);
     const fds = extra ? (proc.stdio as unknown[]).slice(3).map(Number) : undefined;
     if (opts.showWindow === true) this.#shown.add(threadId);
 
+    const kill = () => this.platform.stopChild(proc.pid, running(proc), () => proc.kill());
     const record = this.#register(threadId, proc.pid, cmd, args, {
       root: opts.agentRoot !== false,
       startup: opts.startup === true,
-      kill: () => killBunChild(proc),
+      kill,
       running: running(proc),
       usage: () => bunUsage(proc),
     });
@@ -260,7 +253,7 @@ export class ProcRegistry {
       return code;
     });
 
-    return { record, proc, exited, stop: this.#managedStop(proc.pid, running(proc), () => killBunChild(proc), exited), ...(fds ? { fds } : {}) };
+    return { record, proc, exited, stop: this.#managedStop(threadId, proc.pid, running(proc), kill, exited), ...(fds ? { fds } : {}) };
   }
 
   /**
@@ -279,19 +272,20 @@ export class ProcRegistry {
       stdout: 'pipe',
       stderr: 'pipe',
       windowsHide: true,
-      detached: OWN_GROUP,
+      detached: this.platform.detachedChildren,
     }));
 
+    const kill = () => this.platform.stopChild(proc.pid, running(proc), () => proc.kill());
     const record = this.#register(threadId, proc.pid, cmd, args, {
       root: opts.agentRoot !== false,
       startup: opts.startup === true,
-      kill: () => killBunChild(proc),
+      kill,
       running: running(proc),
       usage: () => bunUsage(proc),
     });
 
     const exited = proc.exited.then((code) => { this.onExit(threadId, record.pid, code, undefined, record); return code; });
-    return { record, proc, exited, stop: this.#managedStop(proc.pid, running(proc), () => killBunChild(proc), exited) };
+    return { record, proc, exited, stop: this.#managedStop(threadId, proc.pid, running(proc), kill, exited) };
   }
 
   /**
@@ -324,7 +318,7 @@ export class ProcRegistry {
     const record = this.#register(threadId, proc.pid, cmd, args, {
       root: false,
       running: running(proc),
-      kill: () => process.platform === 'win32' ? proc.kill() : hangUpShell(this.platform, threadId, proc.pid, (signal) => proc.kill(signal), proc.exited),
+      kill: () => hangUpShell(this.platform, threadId, proc.pid, signal => proc.kill(signal), proc.exited),
       usage: () => bunUsage(proc),
     });
 
@@ -344,7 +338,7 @@ export class ProcRegistry {
   adopt(threadId: ThreadId, pid: number, cmd: string, args: string[], control: { running: () => boolean; kill: () => Promise<void> | undefined; exited: Promise<number | null>; root?: boolean; startup?: boolean; child?: SpawnedChild }): { record: ProcessRecord; exited: Promise<number | null> } {
     this.#admitted({});
     const record = this.#register(threadId, pid, cmd, args, { root: control.root === true, startup: control.startup === true, running: control.running, kill: control.kill, usage: () => null }, false);
-    if (control.child !== undefined) this.#childStops.set(control.child, this.#managedStop(record.pid, control.running, control.kill, control.exited));
+    if (control.child !== undefined) this.#childStops.set(control.child, this.#managedStop(threadId, record.pid, control.running, control.kill, control.exited));
     return { record, exited: control.exited.then((code) => { this.onExit(threadId, record.pid, code, undefined, record); return code; }) };
   }
 
@@ -378,13 +372,13 @@ export class ProcRegistry {
       env,
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
-      detached: OWN_GROUP,
+      detached: this.platform.detachedChildren,
     });
     const pid = child.pid;
     // It never started (a missing or refused executable): nothing runs to trace or stop, and its 'error' reaches the caller.
     if (pid === undefined) return child.once('error', (error) => forgetOnMissing(command, executable, error));
 
-    const kill = (): Promise<void> | undefined => OWN_GROUP ? stopGroup(pid, running(child)) : void child.kill();
+    const kill = () => this.platform.stopChild(pid, running(child), () => child.kill());
     const record = this.#register(threadId, pid, cmd, args, {
       root: opts.agentRoot !== false,
       startup: opts.startup === true,
@@ -397,7 +391,7 @@ export class ProcRegistry {
       child.once('exit', () => resolve());
       child.once('error', () => resolve());
     });
-    this.#childStops.set(child, this.#managedStop(record.pid, running(child), kill, exited));
+    this.#childStops.set(child, this.#managedStop(threadId, record.pid, running(child), kill, exited));
 
     child.once('exit', (code) => this.onExit(threadId, record.pid, code, undefined, record));
     // A started child may emit 'error' and no 'exit'; without this it would stay live all session.
@@ -417,11 +411,10 @@ export class ProcRegistry {
    * holds the process's handle, so the pid is still the root's, and the backend
    * takes its own hold in the same tick; after it the pid may be a stranger's.
    */
-  #managedStop(pid: number, running: () => boolean, kill: () => Promise<void> | undefined, exited: Promise<unknown>): ManagedStop {
+  #managedStop(threadId: ThreadId, pid: number, running: () => boolean, kill: () => Promise<void> | undefined, exited: Promise<unknown>): ManagedStop {
     return () => {
-      const tree = pid > 0 && running() ? this.platform.terminateUnassigned(pid) : undefined;
-      const stop = tree instanceof Promise ? tree.then(kill, kill) : kill();
-      this.#trackStop(stop);
+      const stop = stopProcess(this.platform, threadId, pid, !this.unassigned.has(pid), pid > 0 && running(), kill);
+      this.#trackStop(stop, threadId);
       return Promise.all([stop, exited.catch(() => null)]).then(() => undefined);
     };
   }
@@ -625,11 +618,10 @@ export class ProcRegistry {
     processEventDiagnostic('registry.stop-requested', {threadId, registered: entries.length});
     const terminated = this.platform.terminate(threadId);
     for (const entry of entries) {
-      if (terminated && !this.unassigned.has(entry.record.pid)) continue;
-      if (entry.record.pid <= 0) continue;
-      // The own kill waits for the tree kill, which /T needs the root alive for; as in `managedStop`, only while held.
-      const fallback = entry.running() ? this.platform.terminateUnassigned(entry.record.pid) : undefined;
-      this.#trackStop(fallback instanceof Promise ? fallback.then(() => killEntry(entry), () => killEntry(entry)) : killEntry(entry), threadId);
+      const { pid } = entry.record;
+      const assigned = !this.unassigned.has(pid);
+      if (pid <= 0 || (terminated && assigned)) continue;
+      this.#trackStop(stopProcess(this.platform, threadId, pid, assigned, entry.running(), () => killEntry(entry)), threadId);
     }
     return entries.length;
   }
@@ -652,7 +644,7 @@ export class ProcRegistry {
   }
 
   /** Project removal waits for exit records; `native` drains untraced job members, `stops` the thread's group stops up to their SIGKILL. */
-  async stopAndWait(threadId: ThreadId): Promise<void> { this.killTree(threadId); await this.waitForExit(threadId); }
+  async stopAndWait(threadId: ThreadId): Promise<void> { this.killTree(threadId); await this.waitForExit(threadId, undefined, { stops: true }); }
   async waitForExit(threadId: ThreadId, pids?: number[], options: {native?: boolean, stops?: boolean} = {}): Promise<void> {
     const deadline = Date.now() + 5000;
     if (options.stops) await Promise.all([...this.#stops].flatMap(([stop, owner]) => (owner === threadId ? [stop] : [])));
@@ -838,7 +830,7 @@ export class ProcRegistry {
     for (const measured of sample.workingSets ?? []) {
       const entry = this.#live.get(threadId)?.get(measured.pid);
       if (entry !== undefined) memory?.push({ threadId, pid: measured.pid, exe: entry.record.exe, bytes: measured.committedBytes ?? measured.bytes, root: entry.root });
-      else if (this.capability().os !== 'windows') memory?.push({ threadId, pid: measured.pid, exe: measured.exe ?? 'process', bytes: measured.bytes, root: false });
+      else if (!this.platform.memoryVictimsMustBeRegistered) memory?.push({ threadId, pid: measured.pid, exe: measured.exe ?? 'process', bytes: measured.bytes, root: false });
     }
     return { processes, cpuPercent: sample.cpuPercent, memoryBytes: sample.memoryBytes };
   }
@@ -881,7 +873,7 @@ export class ProcRegistry {
     this.memory.sample(processes.reduce((sum, process) => sum + process.bytes, 0), processes, (victim) => {
       const entry = this.#live.get(victim.threadId)?.get(victim.pid);
       if (entry?.root) return false;
-      if (this.capability().os === 'windows') return entry !== undefined && this.platform.terminateProcess(victim.threadId, victim.pid);
+      if (this.platform.memoryVictimsMustBeRegistered) return entry !== undefined && this.platform.terminateProcess(victim.threadId, victim.pid);
       try {
         if (entry === undefined) return this.platform.terminateProcess(victim.threadId, victim.pid);
         this.#trackStop(entry.kill() ?? undefined, victim.threadId);

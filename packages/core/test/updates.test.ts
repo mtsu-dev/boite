@@ -497,7 +497,7 @@ describe('harness updates', () => {
     await client.call('providers.update', { providerId: 'update-fake' });
     const update = only(await failed);
     expect(update.current).toBe('1.0.0');
-    expect(update.message).toBe('Fake updating agent ran its updater and still reports 1.0.0: Upgrade failed for npm (exit code 1).');
+    expect(update).toMatchObject({ failedPhase: 'install', message: 'Fake updating agent ran its updater and still reports 1.0.0: Upgrade failed for npm (exit code 1).' });
   });
 
   test('npm permission failures report the denied path rather than progress or the log location', async () => {
@@ -600,7 +600,7 @@ describe('harness updates', () => {
     // An index apt could not fetch is no answer: the old one would say nothing is newer.
     writeFileSync(layout.offline, '');
     const offline = only(await client.call('providers.updates', { refresh: true }));
-    expect(offline.state).toBe('failed');
+    expect(offline).toMatchObject({ state: 'failed', failedPhase: 'check' });
     expect(offline.message).toContain("could not read the package index: W: Failed to fetch");
     rmSync(layout.offline);
     expect(only(await client.call('providers.updates', { refresh: true }))).toMatchObject({ route: 'self', current: '1.0.0', latest: '1.4.0', pending: true, state: 'idle' });

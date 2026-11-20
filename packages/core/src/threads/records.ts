@@ -61,6 +61,7 @@ export function withLoad(core: Core, thread: ThreadSummary): ThreadSummary {
   const putAway = thread.archived && archiveReason?.type !== 'pr-merged';
   const tasks = putAway ? [] : core.threads?.agentState.background.get(thread.id) ?? [];
   const watches = core.pullRequestWatches?.of(thread.id) ?? [];
+  const wait = thread.parentThreadId || core.delegation?.remote.parentOf(thread.id) ? backgroundWaitOf(core, thread, tasks) : null;
   return {
     ...thread,
     archiveReason,
@@ -72,7 +73,8 @@ export function withLoad(core: Core, thread: ThreadSummary): ThreadSummary {
     requestSince: busy || tasks.length > 0 || watches.some(pullRequestWatchWaits) ? core.journal.requestSince(thread.id) : null,
     progress: busy ? core.threads?.progress?.get(thread.id) ?? null : null,
     backgroundWork: tasks.length === 0 ? null : { kinds: tasks.map(task => task.kind), since: Math.min(...tasks.map(task => task.startedAt)) },
-    backgroundWait: thread.parentThreadId || core.delegation?.remote.parentOf(thread.id) ? backgroundWaitOf(core, thread, tasks) : null,
+    backgroundWait: wait,
+    ...(wait?.state === 'interrupted' ? { interruptionReadAt: thread.interruptionReadAt ?? null } : {}),
     // An archived row, put away or done, has no move to apply.
     pendingMove: thread.archived ? null : core.threads?.moves?.pendingOf(thread.id) ?? null,
     moveNote: thread.agentSessionId ? null : pendingMoveNote(core, thread.id),

@@ -19,7 +19,7 @@ import { createMessageStats } from './thread-stats.ts';
 import { ARTIFACT_ROW } from './artifact-references.ts';
 import { STATED_TURN } from './turn-rows.ts';
 
-export const SCHEMA_VERSION = 52;
+export const SCHEMA_VERSION = 53;
 
 /** Raised when the journal was written by a newer core than this one. */
 export class JournalTooNewError extends Error {
@@ -517,6 +517,7 @@ export function migrate(db: Database, file: string): { from: number; to: number 
     db.exec('ALTER TABLE projects ADD COLUMN removed_at INTEGER');
     version = 52;
   }
+  if (!hasColumn('threads', 'interruption_read_at')) db.exec('ALTER TABLE threads ADD COLUMN interruption_read_at INTEGER');
   createSharedProjects(db);
   createSharedBoard(db);
   createSharedCompute(db);

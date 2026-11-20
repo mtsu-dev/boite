@@ -69,8 +69,8 @@ immediately after spawn and use `windowsHide: true`. Closing the core's jobs
 ends their member processes. An empty thread job is forgotten after 30 seconds;
 a job that still reports members remains held. A pid that could not join its
 job, or any pid of a thread with no job, is stopped by `taskkill /T /F` started
-asynchronously, so the core keeps serving while it starts. The child's own kill
-runs once taskkill ends, since `/T` needs the root alive to find the tree, and
+asynchronously with a five-second deadline. The child's own kill runs once
+taskkill ends, since `/T` needs the root alive to find the tree, and
 `killAll` at shutdown waits for both. Taskkill gets only a pid the core
 spawned and has not seen exit, held as described under managed stops below; a
 process the core did not spawn or saw exit gets only its own kill.
@@ -624,26 +624,25 @@ the core's cgroup namespace. `memory.max` is read when present and never
 required. The notice follows `memoryProtection` and stops nothing.
 
 Registered POSIX children start detached in their own process group.
-`resources.killTree` sends group SIGTERM, probes every 100 ms and sends SIGKILL
-two seconds later only if the group remains. It can reach members after the
-leader exits. A child that starts its own session escapes that group.
-Each spawn also returns its own `stop`, bound to that process: it stops the
-process and, on Linux and macOS, its group, even after the process exited and
-left the registry, and resolves once the stop ended and the process exited.
-It never reaches the scope's other processes. A short system command
+`resources.killTree` captures each live root's current descendants, including
+processes in separate sessions. It sends SIGTERM to the group and captured
+processes, probes every 100 ms, and sends SIGKILL to survivors after two seconds.
+The group and the captured births remain usable after the leader exits. A
+descendant that reparented before the capture is reachable only through the
+group or another registered root. Each spawn also returns a `stop` bound to
+that spawn. It resolves once its subtree stop and the process exit finish.
+A short system command
 (`tailscale`, the firewall, device SDK tools) runs through `runCommand`
 (`packages/core/src/run-command.ts`): at its deadline it is stopped that way
 and its pipes are given half a second to close, so a helper holding them
-cannot hold the caller. On Windows the stop goes through `taskkill /T` only
-while the root has not exited: until Bun reports the exit it holds the
-process's handle, so the pid is still the root's. In that same tick the
-backend opens a handle of its own on the root and keeps it until taskkill
-ended (`platform/windows/tree-kill.ts`), so a root that exits meanwhile keeps
-its pid. After the exit, the pid may be another process's, and only the
-root's own kill runs. A helper of a root that
-already exited is not reached there. Normal
-shutdown waits for escalation; a hard shell kill does not guarantee core exit
-on Linux/macOS.
+cannot hold the caller. On Windows a managed stop on a live, assigned root
+reads the job's current membership and opens handles for the root and its
+descendants. It verifies their membership and births, then stops children
+before parents. Other members of the same job keep running. For an unassigned
+root the backend opens its own handle in the tick the spawner saw it live and
+holds it until `taskkill /T` ends, retaining the PID while taskkill runs.
+Normal shutdown waits for escalation. A hard shell kill can cut it short on
+Linux and macOS.
 
 A core that dies without stopping its agents takes their groups with it on
 Linux and macOS too (`platform/posix-group-watch.ts`). One `sh` per core

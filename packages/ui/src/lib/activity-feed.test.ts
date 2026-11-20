@@ -102,7 +102,7 @@ test('Mark all as read clears every failure, stop and finish, never a decision; 
   const permissions = [{ id: 'p', threadId: 'push', toolName: 'Bash', input: { command: 'git push' }, description: null, createdAt: NOW - 5_000 }] as unknown as PermissionRequest[];
   const threads = [
     thread('failed', { status: 'error', unread: true }),
-    thread('stopped', { unread: true, backgroundWait: { state: 'interrupted', for: 'tests', reason: 'core-restarted', at: NOW } }),
+    thread('stopped', { interruptionReadAt: null, backgroundWait: { state: 'interrupted', for: 'tests', reason: 'core-restarted', at: NOW } }),
     thread('done', { unread: true }),
     thread('asks', { status: 'waiting', openQuestions: 1 }),
     thread('push', { status: 'waiting' }),
@@ -113,8 +113,8 @@ test('Mark all as read clears every failure, stop and finish, never a decision; 
   const machine = { id: 'local', store: { pendingQuestions: questions, pendingPermissions: permissions, subagents: () => null } };
   const feed = activityFeed(threads.map(t => ({ machine, thread: t, project: undefined })));
   expect(feed.map(row => row.thread.id).sort()).toEqual(['asks', 'done', 'failed', 'push', 'stopped']);
-  expect(readableThreads(feed)).toEqual(new Map([[machine, ['failed', 'stopped', 'done']]]));
+  expect(readableThreads(feed)).toEqual(new Map([[machine, [{ threadId: 'failed' }, { threadId: 'stopped', interruptionAt: NOW }, { threadId: 'done' }]]]));
   // Once read, only the decisions are left.
-  const after = activityFeed(threads.map(t => ({ machine, thread: { ...t, unread: false }, project: undefined })));
-  expect(after.map(row => row.thread.id).sort()).toEqual(['asks', 'push']);
+  const after = activityFeed(threads.map(t => ({ machine, thread: { ...t, unread: t.id === 'stopped', ...(t.id === 'stopped' ? { interruptionReadAt: NOW } : {}) }, project: undefined })));
+  expect(after.map(row => [row.thread.id, row.kind]).sort()).toEqual([['asks', 'question'], ['push', 'permission'], ['stopped', 'done']]);
 });

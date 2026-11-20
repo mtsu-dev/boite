@@ -3,6 +3,7 @@ import type { ContextPreset, ContextRequest, ThreadContextMode } from './context
 import type { AgentLetter } from './coordination';
 import type { AccountId, MessageId, ProjectId, ProviderId, ThreadId, Timestamp, TurnId } from './ids';
 import type { AgentShape } from './imports';
+import type { JournalInspection, JournalInspectionCursor } from './journal-inspection';
 import type { Attachment, Message, MoveNotice, PendingMove, PreviewReference } from './messages';
 import type { OwnerThreadRequest } from './owner-thread';
 import type { PermissionRequest } from './permissions';
@@ -15,6 +16,8 @@ import type { DeletedThreadSummary } from './settings';
 import type { StreamChannel } from './stream-channels';
 import type { MessageSync } from './thread-sync';
 import type { ThreadRecovery, Turn } from './turns';
+
+export * from './journal-inspection';
 
 export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'yolo' | 'plan' | 'dontAsk';
 
@@ -125,29 +128,7 @@ export interface ThreadWorktreeRemoval {
   removedAt: Timestamp;
 }
 
-/** Provenance of a copied conversation; native history and seeded history remain distinct. */
-export const JOURNAL_INSPECTION_TABLES = ['threads', 'turns', 'messages', 'turn_requests', 'background_observations', 'coordination_letters'] as const;
-export type JournalInspectionTable = typeof JOURNAL_INSPECTION_TABLES[number];
-export interface JournalInspectionCursor { table: JournalInspectionTable; afterRowid: number }
-export interface JournalInspectionIssue {
-  table: JournalInspectionTable;
-  rowId: number;
-  code: 'missing-thread' | 'missing-turn' | 'turn-thread-mismatch' | 'terminal-streaming-message' | 'invalid-queue-hold'
-    | 'oversized-json' | 'malformed-json' | 'invalid-fork-origin' | 'fork-origin-owner-mismatch'
-    | 'invalid-background-observation' | 'background-owner-mismatch' | 'background-parent-mismatch'
-    | 'request-message-mismatch' | 'invalid-letter-owner';
-  field: string;
-  /** Fixed diagnostic expectation, never stored text, IDs, payloads or credentials. */
-  expected: string;
-}
-export interface JournalInspection {
-  issues: JournalInspectionIssue[];
-  checked: number;
-  cursor: JournalInspectionCursor | null;
-  /** Further rows remain. Concurrent pages do not form an atomic global integrity proof. */
-  truncated: boolean;
-}
-
+/** Provenance of a copied conversation. */
 export interface ForkOrigin {
   threadId: ThreadId;
   messageId: MessageId | null;
@@ -258,6 +239,8 @@ export interface ThreadSummary {
    * agents; missing on older cores.
    */
   backgroundWait?: BackgroundWait | null;
+  /** Last background interruption acknowledged in Activity. Null on a new interruption, missing on older cores. */
+  interruptionReadAt?: Timestamp | null;
   /**
    * A move asked for while the thread's turn ran, applied when that turn
    * ends (`threads.move`, `agent.move`). In memory only: null after a core
@@ -847,7 +830,8 @@ export interface ThreadsRpcMethods {
   'threads.restore': { params: { threadId: ThreadId }; result: ThreadSummary };
   /** Pin or unpin (`pinned: false`) a thread. An archived thread keeps its pin for when it comes back. */
   'threads.pin': { params: { threadId: ThreadId; pinned?: boolean }; result: ThreadSummary };
-  'threads.markRead': { params: { threadId: ThreadId }; result: { ok: true } };
+  /** Acknowledge unread messages, or just the background interruption with the given timestamp. */
+  'threads.markRead': { params: { threadId: ThreadId; interruptionAt?: Timestamp }; result: { ok: true } };
   /**
    * Owner only. Accept the contact mail outside a shared project that the
    * thread's history consumed (`Thread.contactHold`), so its turns and tools

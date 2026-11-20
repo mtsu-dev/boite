@@ -1,7 +1,7 @@
 import { archiveState, archiveStateKey } from './merged-pr-archive-state.ts';
 import { assertIdleFamily } from './threads/completion.ts';
 import { AgentDoneRequests } from './threads/agent-done.ts';
-import { previewReferencesError, previewPrompt, threadActive, DEFAULT_THREAD_DELETION_RETENTION_DAYS, type AgentProfile } from '@boite/contracts';
+import { previewReferencesError, previewPrompt, threadActive, unreadInterruptionAt, DEFAULT_THREAD_DELETION_RETENTION_DAYS, type AgentProfile } from '@boite/contracts';
 import type {
   Account, AccountId, Attachment,
   ImageMimeType,
@@ -471,10 +471,12 @@ export class ThreadStore {
     }
   }
 
-  markRead(threadId: ThreadId): void {
+  markRead(threadId: ThreadId, interruptionAt?: number, messages = interruptionAt === undefined): ThreadSummary {
     const thread = this.require(threadId);
-    if (!thread.unread) return;
-    this.#save({ ...thread, unread: false }, 'thread.read');
+    const acknowledge = interruptionAt !== undefined && unreadInterruptionAt(this.#withLoad(thread)) === interruptionAt;
+    if (!acknowledge && !(messages && thread.unread)) return thread;
+    return this.#save({ ...thread, unread: !messages && thread.unread,
+      ...(acknowledge ? { interruptionReadAt: interruptionAt } : {}) }, 'thread.read');
   }
 
   async remove(threadId: ThreadId): Promise<void> {
