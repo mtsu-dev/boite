@@ -273,6 +273,16 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       - *native-helper
+      - name: Report System32 ntdll provenance
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $image = "$env:WINDIR\System32\ntdll.dll"
+          Write-Host "NWP runner-image=$env:ImageVersion os=$([Environment]::OSVersion.Version) file-version=$((Get-Item -LiteralPath $image).VersionInfo.FileVersion)"
+          Get-FileHash -LiteralPath $image -Algorithm SHA256 | Format-List
+          Get-AuthenticodeSignature -FilePath $image | Select-Object Status | Format-List
+          python tests/diagnostics/windows-debug-map/read-native-image.py $image --download-pdb "$env:RUNNER_TEMP\nwp-ntdll.pdb"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: LPAC parent creation prerequisite (non-acceptance)
         continue-on-error: true
         env:
