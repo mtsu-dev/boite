@@ -7,6 +7,12 @@ import { RpcFailure } from './client';
 const toolRead = (method: string) => method === 'messages.toolOutput' || method === 'messages.toolPart';
 const asRead = (method: string, read: Promise<{ output: string }>) => method === 'messages.toolPart' ? read.then(({ output }) => ({ part: { output } })) : read;
 
+function gate() {
+  let release!: () => void;
+  const promise = new Promise<void>(resolve => { release = resolve; });
+  return { promise, release };
+}
+
 test('returning to a cached thread paints its history before the core replies', async ({ ready }) => {
   const { store, client } = await ready({ delayMs: 0, long: true });
   await store.open('t-long');
@@ -69,6 +75,96 @@ test('a quiet revalidation keeps the pages already loaded above the tail', async
     ]);
   } finally {
     asked.mockRestore();
+  }
+});
+
+test.for(['visibility', 'deadline', 'navigation'] as const)('a held window reads before idle and finishes on %s', async (wake, { ready }) => {
+  const { store, client } = await ready({ delayMs: 0, long: true });
+  await store.open('t-long');
+  for (let page = 0; page < 3; page++) await store.loadOlder();
+  const first = store.openThread!.messages[0]!;
+  first.parts = [{ type: 'text', text: 'old cached history' }];
+  await store.open('t-bench');
+
+  const visible = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+  const idle = vi.fn((_callback: IdleRequestCallback) => 1);
+  const cancel = vi.fn();
+  vi.stubGlobal('requestIdleCallback', (callback: IdleRequestCallback, options?: IdleRequestOptions) =>
+    options?.timeout === 100 ? idle(callback) : 2);
+  vi.stubGlobal('cancelIdleCallback', cancel);
+  const call = client.call.bind(client);
+  const pageGate = gate();
+  const requested = vi.fn();
+  const spy = vi.spyOn(client, 'call').mockImplementation(async (method, params) => {
+    if (method === 'messages.list') {
+      requested();
+      if (requested.mock.calls.length === 2) await pageGate.promise;
+    }
+    return call(method, params);
+  });
+  const opening = store.open('t-long');
+  try {
+    await vi.waitFor(() => expect(requested).toHaveBeenCalledTimes(2), { timeout: 500 });
+    expect(idle).not.toHaveBeenCalled();
+    pageGate.release();
+    await vi.waitFor(() => expect(idle).toHaveBeenCalled(), { interval: 1 });
+    if (wake === 'visibility') {
+      visible.mockReturnValue('hidden');
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(cancel).toHaveBeenCalledWith(1);
+    } else if (wake === 'navigation') {
+      const switching = store.open('t-bench');
+      expect(cancel).toHaveBeenCalledWith(1);
+      await switching;
+    }
+    await opening;
+    expect(cancel).toHaveBeenCalledWith(1);
+    if (wake === 'navigation') {
+      expect(store.openThread?.id).toBe('t-bench');
+    } else {
+      expect(store.openThread!.messages).toHaveLength(400);
+      expect(store.openThread!.messages[0]!.parts[0]).not.toMatchObject({ text: 'old cached history' });
+    }
+  } finally {
+    pageGate.release();
+    for (const [callback] of idle.mock.calls) callback({ didTimeout: true, timeRemaining: () => 0 });
+    await opening;
+    spy.mockRestore();
+    visible.mockRestore();
+    vi.unstubAllGlobals();
+  }
+});
+
+test('the replacement already read on return is shown while earlier pages are still in flight', async ({ ready }) => {
+  const { store, client } = await ready({ delayMs: 0, long: true });
+  await store.open('t-long');
+  for (let page = 0; page < 3; page++) await store.loadOlder();
+  const thread = store.openThread!;
+  const message = thread.messages.at(-1)!;
+  const current = message.parts[0];
+  message.parts = [{ type: 'text', text: 'old cached tail' }];
+  delete thread.messagesSync;
+  await store.open('t-bench');
+
+  const call = client.call.bind(client);
+  const reading = gate();
+  const pageGate = gate();
+  const spy = vi.spyOn(client, 'call').mockImplementation(async (method, params) => {
+    if (method === 'messages.list') {
+      reading.release();
+      await pageGate.promise;
+    }
+    return call(method, params);
+  });
+  const opening = store.open('t-long');
+  try {
+    await reading.promise;
+    expect(store.openThread!.messages).toHaveLength(400);
+    expect(store.openThread!.messages.at(-1)!.parts[0]).toEqual(current);
+  } finally {
+    pageGate.release();
+    await opening;
+    spy.mockRestore();
   }
 });
 

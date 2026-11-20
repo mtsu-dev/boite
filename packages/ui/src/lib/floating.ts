@@ -21,6 +21,7 @@ export function floating(node: HTMLElement, options: { anchor: () => HTMLElement
   let backdropMotion: MutationObserver | null = null;
   let closeHistory = () => {};
   let sheet = false;
+  let placed = false;
   let desktopWidth = '';
   let desktopOrigin = '';
   function setSheet(next: boolean) {
@@ -54,7 +55,13 @@ export function floating(node: HTMLElement, options: { anchor: () => HTMLElement
         else if (!closing && !held) { held = true; closeHistory = mobileOverlay(dismiss); }
       });
       backdropMotion.observe(node, { attributes: true, attributeFilter: ['class'] });
-      closeHistory = mobileOverlay(dismiss);
+      if (placed) {
+        // On a resize the sheet can react before the phone's screen. Wait for
+        // its media query to update so Back reaches the sheet first.
+        let release = () => {};
+        const frame = requestAnimationFrame(() => { release = mobileOverlay(dismiss); });
+        closeHistory = () => { cancelAnimationFrame(frame); release(); };
+      } else closeHistory = mobileOverlay(dismiss);
     } else {
       closeHistory();
       closeHistory = () => {};
@@ -82,6 +89,7 @@ export function floating(node: HTMLElement, options: { anchor: () => HTMLElement
   const margin = 12;
   function place() {
     setSheet(window.matchMedia('(max-width: 720px)').matches && options.sheet !== false);
+    placed = true;
     const anchor = options.anchor();
     if (!anchor) return;
     const box = anchor.getBoundingClientRect();

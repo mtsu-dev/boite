@@ -9,22 +9,16 @@ interface Block { chars: Weight; compact: () => Compacted }
 /** Weights follow the reactive messages in this mounted timeline, including edits to a held part. */
 export class LiveWeights {
   readonly #messages = new WeakMap<Message, Weight>();
-  #page: readonly Message[] | undefined;
-  #blocks: Block[] = [];
+  #pages = new WeakMap<readonly Message[], Block[]>();
   #activeBlocks = $derived.by(() => {
     const page = this.activePage();
-    if (!page || page.length > READING_CACHE_MESSAGES) {
-      this.reset();
-      return null;
-    }
-    if (this.#page !== page) {
-      this.reset();
-      this.#page = page;
-    }
+    if (!page || page.length > READING_CACHE_MESSAGES) return null;
+    let blocks = this.#pages.get(page);
+    if (!blocks) this.#pages.set(page, blocks = []);
     const count = Math.ceil(page.length / BLOCK_MESSAGES);
-    this.#blocks.length = Math.min(this.#blocks.length, count);
-    while (this.#blocks.length < count) this.#blocks.push(this.#blockWeight(page, this.#blocks.length * BLOCK_MESSAGES));
-    return this.#blocks.slice();
+    blocks.length = Math.min(blocks.length, count);
+    while (blocks.length < count) blocks.push(this.#blockWeight(page, blocks.length * BLOCK_MESSAGES));
+    return blocks.slice();
   });
   #bytes = $derived.by(() => {
     const blocks = this.#activeBlocks;
@@ -61,8 +55,7 @@ export class LiveWeights {
   }
 
   reset(): void {
-    this.#page = undefined;
-    this.#blocks = [];
+    this.#pages = new WeakMap();
   }
 
   message(message: Message): number {

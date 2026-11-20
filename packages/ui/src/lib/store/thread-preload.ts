@@ -18,6 +18,7 @@ import { INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, MESSAGE_PAGE_MAX, READING_PAG
 import { wasDropped, type Client } from '../client';
 import { wasClosed } from '../rpc-error';
 import { whenIdle } from '../idle';
+import { sameValue } from '../plain-data';
 import { readingCacheBytes } from '../reading-cache';
 import { compareRecent } from '../thread-order';
 import { lastIndexById, mergeResumed, snapshotResume } from '../thread-rows';
@@ -107,20 +108,40 @@ export function askPage(ctx: StoreContext, opener: Opener, client: Client, threa
   return { subscribed, fetched, around, proofFirst };
 }
 
+/** Publish what the snapshot already replaced without losing the reader's surrounding window. */
+function showCheckedWindow(held: Thread, fresh: Thread, older: number, newer: number): void {
+  delete held.messagesSync;
+  const end = held.messages.length - newer;
+  if (end - older !== fresh.messages.length) held.messages.splice(older, end - older, ...fresh.messages);
+  for (const [index, message] of fresh.messages.entries()) {
+    const at = older + index;
+    if (!sameValue(held.messages[at], message)) held.messages[at] = message;
+    // Live events see one copy of the row shared by the displayed and repairing windows.
+    fresh.messages[index] = held.messages[at]!;
+  }
+  const turns = new Map(fresh.turns.map(turn => [turn.id, turn]));
+  for (let index = held.turns.length - 1; index >= 0 && turns.size; index--) {
+    const previous = held.turns[index]!;
+    const turn = turns.get(previous.id);
+    if (!turn) continue;
+    turns.delete(turn.id);
+    if (!sameValue(previous, turn)) held.turns[index] = turn;
+  }
+  if (turns.size) held.turns.push(...turns.values());
+  if (!older) held.messagesBefore = fresh.messagesBefore;
+  if (!newer) setMessagesAfter(held, fresh.messagesAfter);
+}
+
 /** Re-read the held window beyond the snapshot, within the normal count and byte bounds of each page. */
-function refreshHeldWindow(ctx: StoreContext, client: Client, held: Thread, fresh: Thread, current: () => boolean, paintHeld: boolean): Promise<void> | undefined {
+function refreshHeldWindow(ctx: StoreContext, client: Client, held: Thread, fresh: Thread, current: () => boolean, changed: boolean): Promise<void> | undefined {
   const first = fresh.messages[0]?.id;
   const last = fresh.messages.at(-1)?.id;
-  const older = first === undefined || fresh.messagesBefore === null ? 0 : lastIndexById(held.messages, first);
+  const older = first === undefined || fresh.messagesBefore === null ? 0 : Math.max(0, lastIndexById(held.messages, first));
   const lastIndex = last === undefined || !fresh.messagesAfter ? -1 : lastIndexById(held.messages, last);
   const newer = lastIndex < 0 ? 0 : held.messages.length - lastIndex - 1;
   if (older <= 0 && newer <= 0) return;
 
-  return (async () => {
-    // A local reply can arrive in the same frame as the click. Keep the
-    // follow-up page reads out of the frame drawing the retained window.
-    if (paintHeld && typeof requestIdleCallback === 'function' && globalThis.document?.visibilityState === 'visible')
-      await new Promise<void>(resolve => { whenIdle(resolve, { timeout: 100 }); });
+  const repair = (async () => {
     const turns = new Map<string, Thread['turns'][number]>();
     for (const direction of ['before', 'after'] as const) {
       const before = direction === 'before';
@@ -149,6 +170,8 @@ function refreshHeldWindow(ctx: StoreContext, client: Client, held: Thread, fres
     for (const turn of fresh.turns) turns.set(turn.id, turn);
     fresh.turns = [...turns.values()].sort((a, b) => a.queuedAt - b.queuedAt);
   })();
+  if (changed) showCheckedWindow(held, fresh, older, newer);
+  return repair;
 }
 
 export class ThreadPreloads {
@@ -158,6 +181,8 @@ export class ThreadPreloads {
   #claimed: Preload | null = null;
   /** The fresh portion of a window whose remaining pages are being checked. */
   #repairing: Thread | null = null;
+  /** Releases a projection waiting for the cached view to paint. */
+  #finishProjection: (() => void) | undefined;
   /** The first sidebar threads, read ahead once the machine is ready and the page idle. */
   readonly idle: IdlePreloads;
 
@@ -231,12 +256,36 @@ export class ThreadPreloads {
     return this.#waiting?.threadId;
   }
 
-  cancelRepair(): void { this.#repairing = null; }
+  cancelRepair(): void {
+    this.#repairing = null;
+    this.#finishProjection?.();
+  }
+
+  /** The RPCs have finished. Only reconciling the repaired window waits for a paint. */
+  #waitToProject(): Promise<void> | undefined {
+    const doc = globalThis.document;
+    if (typeof requestIdleCallback !== 'function' || doc?.visibilityState !== 'visible') return;
+    return new Promise(resolve => {
+      const finish = () => {
+        if (this.#finishProjection !== finish) return;
+        this.#finishProjection = undefined;
+        clearTimeout(deadline);
+        cancelIdle();
+        doc.removeEventListener('visibilitychange', finish);
+        resolve();
+      };
+      this.#finishProjection = finish;
+      const deadline = setTimeout(finish, 100);
+      const cancelIdle = whenIdle(finish, { timeout: 100 });
+      doc.addEventListener('visibilitychange', finish);
+    });
+  }
 
   /** Reuse the certified part of a held window and read any remaining pages before displaying the answer. */
   revalidate(client: Client, fresh: Thread, held: Thread | undefined, deviceSnapshot: boolean, around: MessageId | undefined, proofFirst: MessageId | undefined, newest: () => boolean, paintHeld: boolean): Promise<boolean> | undefined {
     const { readingThreads, readingPositions } = this.opener;
     const prefixProofs = this.ctx.store.core?.features?.threadPrefixProofs === true;
+    const changed = fresh.messagesUnchanged !== true;
     let replaced = false;
     if (fresh.messagesFrom !== undefined && held) {
       const confirmedAt = proofFirst === undefined || proofFirst === held.messages[0]?.id ? 0 : lastIndexById(held.messages, proofFirst);
@@ -266,12 +315,13 @@ export class ThreadPreloads {
     if (held && prefixProofs) {
       const mark = readingThreads.mark();
       const current = () => newest() && !readingThreads.droppedSince(fresh.id, mark);
-      const repair = refreshHeldWindow(this.ctx, client, held, fresh, current, paintHeld);
+      const repair = refreshHeldWindow(this.ctx, client, held, fresh, current, changed);
       if (repair) {
         this.#repairing = fresh;
         return repair.catch(error => {
           if (current() && !((wasDropped(error) || wasClosed(error)) && this.ctx.store.connection !== 'ready')) this.ctx.fail(error);
-        }).then(() => {
+        }).then(async () => {
+          if (current() && paintHeld) await this.#waitToProject();
           if (!current()) return false;
           place();
           return true;

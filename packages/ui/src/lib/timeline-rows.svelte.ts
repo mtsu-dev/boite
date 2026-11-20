@@ -41,7 +41,9 @@ export class ReactiveTimelineRows {
   #prefix = $derived.by(() => this.#input().timeline.slice(0, this.#boundary));
   #suffix = $derived.by(() => this.#input().timeline.slice(this.#boundary));
   #historyRows = $derived.by(() => this.#history.build(this.#prefix, this.#input().memory, this.#input().breaks));
-  #liveRows = $derived.by(() => this.#live.build(this.#suffix, this.#input().memory, this.#input().breaks));
+  // Record a completed reactive evaluation even when the builder reuses its rows.
+  // The next mount can reconnect the live projection without building it again.
+  #liveRows = $derived.by(() => ({ rows: this.#live.build(this.#suffix, this.#input().memory, this.#input().breaks) }));
 
   constructor(input: () => Input) {
     const value = $derived.by(input);
@@ -51,7 +53,7 @@ export class ReactiveTimelineRows {
   get hasRows(): boolean { return this.#rows.length > 0; }
 
   build(): TimelineRow[] {
-    const before = this.#historyRows, after = this.#liveRows;
+    const before = this.#historyRows, after = this.#liveRows.rows;
     if (before === this.#before && after === this.#after) {
       this.changedFrom = this.#rows.length;
       return this.#rows;

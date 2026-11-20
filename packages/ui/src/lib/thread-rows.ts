@@ -113,8 +113,10 @@ export function resumeRequest(threadId: ThreadId, held: Pick<Thread, 'messages' 
 
 /** A core with prefix proofs can reuse the window it proved. An open can re-read pages above it. */
 export function snapshotResume(threadId: ThreadId, held: Thread | undefined, prefixProofs: boolean, paged = false): Pick<RpcParams<'threads.get'>, 'threadId' | 'after' | 'sync'> {
+  const recorded = held?.messagesSync;
+  if (prefixProofs && !recorded?.prefix) return { threadId, sync: true };
   const resume = resumeRequest(threadId, held);
-  const proof = held?.messagesSync?.from === resume.after ? held?.messagesSync : undefined;
+  const proof = recorded?.from === resume.after ? recorded : undefined;
   if (prefixProofs) {
     if (!held || !proof?.prefix) return { threadId, sync: true };
     const first = proof.prefix.first === held.messages[0]?.id ? 0 : paged ? lastIndexById(held.messages, proof.prefix.first) : -1;

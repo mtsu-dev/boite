@@ -542,13 +542,13 @@
 
 <div class="app" class:shell={inShell} class:ready={booted} class:phone-chat={!inShell && !mobileRecovery && store.page === 'chat' && mobileScreen === 'chat'} class:off-chat={!inShell && store.page !== 'chat'} class:tabbed={!inShell && mobileTabs} class:railed={railShown} class:quitting style:--bar-left={barLeft} bind:this={appRoot}>
   {#if railShown}<AppRail {store} />{/if}
-  {#if !inShell && narrow.current && booted}
+  {#if !inShell && booted}
     {#if earlyPairing}
       <MobilePairing {store} screen={mobileScreen} navigate={(screen) => { mobileScreen = screen; }} onpaired={() => { mobileScreen = 'threads'; }} />
     {:else if mobileNavigation.current}
       {@const MobileNavigation = mobileNavigation.current}
       <MobileNavigation {store} recover={mobileRecovery} bind:screen={mobileScreen} bind:tabbed={mobileTabs} />
-    {:else if mobileNavigation.failed}
+    {:else if narrow.current && mobileNavigation.failed}
       <p class="mobile-navigation-failed" role="alert" data-testid="mobile-navigation-failed">
         <span>{strings.parts.navigationFailed}</span>
         <button type="button" data-testid="mobile-navigation-retry" onclick={() => void retryOrReload(() => mobileNavigation.load())}>{strings.common.retry}</button>
