@@ -225,6 +225,9 @@ export const DEVICE_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>
   // Sums of the same finished turns per day, provider and model. The thread
   // titles it names are the ones `threads.list` already shows the device.
   'usage.history',
+  // One thread's turns with their usage and model: what `usage.history` already
+  // sums for the device, turn by turn, with no message text.
+  'usage.thread',
   // The limit bars of the accounts `accounts.list` already names, and the gateway's.
   // A device reads what the core holds: forcing a refresh, switching monitoring and
   // spending a reset stay the owner's (core access.ts).

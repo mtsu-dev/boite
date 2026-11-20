@@ -198,11 +198,20 @@ test('the machine menu reads one machine or adds every connected one, and names 
   try {
     mounted = page({ store: here.store });
     await settle();
-    expect(document.querySelector('[data-testid=usage-machine-filter]')?.textContent).toContain('Here');
+    // The page opens on every connected machine.
+    expect(document.querySelector('[data-testid=usage-machine-filter]')?.textContent).toContain('All machines');
     expect(document.querySelector('[data-testid=usage-total]')?.textContent).toBe('Not reported');
+    expect(builderCall).toHaveBeenCalled();
+    expect(document.querySelector('[data-provider=claude]')).not.toBeNull();
+    expect(document.querySelector('[data-provider=codex]')).not.toBeNull();
+
+    click('[data-testid=usage-machine-filter]');
+    await settle();
+    click('[data-testid=usage-machine-filter-menu] [data-value="http://here"]');
+    await settle();
+    expect(document.querySelector('[data-testid=usage-machine-filter]')?.textContent).toContain('Here');
     expect(document.querySelector('[data-provider=claude]')).not.toBeNull();
     expect(document.querySelector('[data-provider=codex]')).toBeNull();
-    expect(builderCall).not.toHaveBeenCalled();
 
     click('[data-testid=usage-machine-filter]');
     await settle();
@@ -256,4 +265,124 @@ test('the machine menu reads one machine or adds every connected one, and names 
   } finally {
     workspace.machines = [];
   }
+});
+
+test('a project row narrows the page to that project, and a thread row opens its own page and comes back', async () => {
+  const spent = { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0, costUsdEquivalent: 0.25 };
+  const call = vi.fn(async (method: string, params: { edges: number[]; projectId?: string | null; threadId?: string; providerId?: string }) => {
+    if (method === 'usage.thread') {
+      return {
+        thread: { threadId: 'big', projectId: 'gone', title: 'Big thread', providerId: 'claude', archived: true, turns: 2001, usage: spent },
+        turns: [{ turnId: 'turn-1', finishedAt: params.edges[0]! + 1, providerId: 'claude', model: 'opus', usage: null, price: null }],
+        reported: 1,
+        priced: 1,
+        truncated: true,
+        children: []
+      };
+    }
+    const read = history(params.edges, 'claude');
+    read.threads = [{ threadId: 'big', projectId: 'gone', title: 'Big thread', providerId: 'claude', archived: true, turns: 2, usage: spent }];
+    read.projects = [
+      { projectId: 'live', name: 'live', removed: false, turns: 1, usage: spent },
+      { projectId: 'gone', name: 'gone', removed: true, turns: 2, usage: spent },
+      { projectId: 'silent', name: 'silent', removed: true, turns: 1, usage: { ...spent, inputTokens: 0, outputTokens: 0, costUsdEquivalent: null } }
+    ];
+    return read;
+  });
+  mounted = page({ store: store(call) });
+  await settle();
+  click('[data-testid=usage-project-filter]');
+  await settle();
+  expect(document.querySelector('[data-testid=usage-project-filter-menu]')?.textContent).toContain('silent (Removed)');
+  click('[data-testid=usage-project-filter]');
+  await settle();
+  const rows = [...document.querySelectorAll<HTMLButtonElement>('[data-testid=usage-projects] button')];
+  // A removed project still counts, named as removed.
+  expect(rows).toHaveLength(2);
+  const gone = rows.find((row) => row.textContent?.includes('gone'))!;
+  expect(gone.textContent).toContain('Removed');
+  gone.click();
+  await settle();
+  expect(call).toHaveBeenLastCalledWith('usage.history', expect.objectContaining({ projectId: 'gone' }));
+  expect(document.querySelector('[data-testid=usage-project-filter]')?.textContent).toContain('gone');
+  expect(document.querySelector('[data-testid=usage-projects]')).toBeNull();
+
+  click('[data-testid=usage-provider-filter]');
+  await settle();
+  click('[data-testid=usage-provider-filter-menu] [data-value=claude]');
+  await settle();
+  click('[data-testid=usage-threads] li button');
+  await settle();
+  expect(call).toHaveBeenLastCalledWith('usage.thread', expect.objectContaining({ threadId: 'big', providerId: 'claude' }));
+  expect(document.querySelector('[data-testid=usage-thread-title]')?.textContent).toContain('Big thread');
+  expect(document.querySelector('[data-testid=usage-thread-total]')?.textContent).toBe('15');
+  expect(document.querySelector('[data-testid=usage-thread-chart-note]')?.textContent).toContain('latest');
+  expect(document.querySelectorAll('[data-testid=usage-thread-turns] tbody tr')).toHaveLength(1);
+  // A thread whose conversation is not on this machine's list has nothing to open.
+  expect(document.querySelector('[data-testid=usage-thread-open]')).toBeNull();
+  click('[data-testid=usage-thread-back]');
+  await settle();
+  expect(document.querySelector('[data-testid=usage-thread-page]')).toBeNull();
+  expect(document.querySelector('[data-testid=usage-project-filter]')?.textContent).toContain('gone');
+});
+
+const projectHistory = (edges: number[], projectId: string, name: string, removed = false): UsageHistory => {
+  const result = history(edges, 'historical-provider');
+  const usage = { ...result.rows[0]!.usage, inputTokens: 15 };
+  result.rows[0] = { ...result.rows[0]!, reported: 2, usage };
+  result.projects = [{ projectId, name, removed, turns: 2, usage }];
+  return result;
+};
+
+test('a core that ignores the project parameter cannot supply the filtered totals', async () => {
+  const call = vi.fn(async (_method: string, { edges, projectId }: { edges: number[]; projectId?: string }) =>
+    projectId ? history(edges, 'historical-provider') : projectHistory(edges, 'active-project', 'Active project'));
+  mounted = page({ store: store(call) });
+  await settle();
+  click('[data-testid=usage-projects] button');
+  await settle();
+  expect(document.querySelector('[role=alert]')?.textContent).toContain('did not filter usage');
+  expect(document.querySelector('[data-testid=usage-total]')).toBeNull();
+});
+
+test('a cached range restores its project menu and ranking while the fresh read is pending', async () => {
+  const call = vi.fn(async (_method: string, { edges }: { edges: number[] }) => edges.length === 31
+    ? projectHistory(edges, 'monthly', 'Monthly project') : projectHistory(edges, 'weekly', 'Weekly project'));
+  const owner = store(call);
+  mounted = page({ store: owner });
+  await settle();
+  click('[data-testid=usage-range-7]');
+  await settle();
+  expect(document.querySelector('[data-testid=usage-projects]')?.textContent).toContain('Weekly project');
+  call.mockImplementationOnce(async () => new Promise(() => {}));
+  click('[data-testid=usage-range-30]');
+  await settle();
+  expect(document.querySelector('[aria-busy=true] [data-testid=usage-total]')?.textContent).toBe('15');
+  expect(document.querySelector('[data-testid=usage-projects]')?.textContent).toContain('Monthly project');
+  await unmount(mounted);
+  await unmount(band!);
+  call.mockImplementationOnce(async () => new Promise(() => {}));
+  mounted = page({ store: owner });
+  await settle();
+  expect(document.querySelector('[data-testid=usage-project-filter]')).not.toBeNull();
+  expect(document.querySelector('[data-testid=usage-projects]')?.textContent).toContain('Monthly project');
+  click('[data-testid=usage-provider-filter]');
+  await settle();
+  expect(document.querySelector('[data-testid=usage-provider-filter-menu]')?.textContent).toContain('historical-provider');
+});
+
+test('a selected removed project keeps its name and can be cleared in an empty range', async () => {
+  const call = vi.fn(async (_method: string, { edges }: { edges: number[] }) => edges.length === 31
+    ? projectHistory(edges, 'removed-project', 'Removed prototype', true) : { edges, projects: [], threads: [], rows: [] });
+  mounted = page({ store: store(call) });
+  await settle();
+  click('[data-testid=usage-projects] button');
+  await settle();
+  click('[data-testid=usage-range-7]');
+  await settle();
+  expect(document.querySelector('[data-testid=usage-project-filter]')?.textContent).toContain('Removed prototype');
+  expect(document.querySelector('.scope-name')?.textContent).toContain('Removed prototype');
+  click('[data-testid=usage-project-clear]');
+  await settle();
+  expect(call.mock.lastCall?.[1]).not.toHaveProperty('projectId');
 });

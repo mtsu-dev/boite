@@ -17,7 +17,7 @@
   type Group = keyof typeof strings.policy.groups;
   /** Which group each key is listed under. A record over every key, so a new key cannot go unlisted. */
   const GROUP: Record<PolicyKey, Group> = {
-    analytics: 'privacy', issueReports: 'privacy', dictation: 'privacy', 'previews.remoteResources': 'privacy',
+    analytics: 'privacy', issueReports: 'privacy', dictation: 'privacy', 'previews.remoteResources': 'privacy', modelPrices: 'privacy',
     'updates.app': 'updates', 'updates.server': 'updates', 'updates.agents': 'updates',
     'providers.allow': 'providers', 'providers.deny': 'providers', gateway: 'providers', 'gateway.allowedBaseUrls': 'providers', quotaReads: 'providers',
     'plugins.install': 'tools', 'plugins.recommended': 'tools', agentBrowser: 'tools', 'agentBrowser.searchUrl': 'tools', agentDesktop: 'tools', pullRequests: 'tools',
