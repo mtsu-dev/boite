@@ -47,7 +47,6 @@ export function sharedProjectMethods(ctx: FakeContext) {
       notifyShared(ctx,s.id); return sharedView(ctx,s);
     },
     'sharedProjects.configure': async p => {
-      // Turning a part on starts something; turning it off stays open in every build.
       const s = requireShared(ctx,p.sharedProjectId), {index} = endpoints(ctx,s); assertSharedActive(ctx,s);
       if (p.board !== undefined && typeof p.board !== 'boolean') throw invalidShared('board: expected a boolean');
       if (p.computeThreadId !== undefined && p.compute === undefined) throw invalidShared('computeThreadId: expected compute policy');

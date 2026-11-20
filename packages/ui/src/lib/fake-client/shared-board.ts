@@ -100,7 +100,6 @@ export function sharedTodos(ctx:FakeContext,projectId:string):Todo[]{
   });
 }
 export async function applySharedBoard(ctx:FakeContext,p:import('@boite/contracts').RpcParams<'sharedBoard.apply'>){
-      // As the core: a new card, an edit or a claim is new work; removing and releasing stay open in every build.
       const {shared,source}=check(ctx,p),command=commandOf(p.command),host=authority(ctx,shared);
       if(source.kind==='agent'&&(command.kind==='remove'||command.kind==='update'&&command.status==='done'))throw refusedShared('sharedBoard: only the user confirms or removes a card');
       if(!host){
