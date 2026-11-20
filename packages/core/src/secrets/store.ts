@@ -47,7 +47,7 @@ const SWEEP_EVERY_MS = 60_000;
 const encoder = new TextEncoder();
 
 const threadScope = (threadId: string): string => `thread:${threadId}`;
-interface Transit extends TransitEntry { turnId: TurnId; value: Uint8Array; inUse?: boolean }
+interface Transit extends TransitEntry { turnId: TurnId; value: Uint8Array; inUse?: boolean; recipient?: string }
 
 export class SecretStore {
   readonly masks = new SecretMasks();
@@ -303,25 +303,34 @@ export class SecretStore {
     const entry = this.#transit.get(parsed.id);
     if (entry === undefined) throw refused('ref: this secret was erased or never existed; ask for it again', { field: 'ref', expected: 'a live ref' });
     if (entry.threadId !== thread.id || entry.projectId !== thread.projectId) throw refused('ref: this secret belongs to another conversation', { field: 'ref', expected: 'a ref this conversation received' });
+    if (entry.inUse) throw refused('ref: this secret is already in use', { field: 'ref', expected: 'an unused ref' });
     this.#assertLiveUse(entry);
     const execution = params.use.action === 'write' ? null : prepareSecretExec(thread.cwd, params.use);
+    const recipient = execution === null ? undefined : JSON.stringify([execution.action, execution.command, execution.args, execution.cwd]);
+    if (entry.recipient !== undefined && entry.recipient !== recipient) {
+      throw refused('ref: retry the same recipient after a launcher version refusal, or ask for a new ref', { field: 'use', expected: 'the original action, command, args and cwd' });
+    }
     const mask = (text: string): string => this.mask(thread.id, text);
     signal?.throwIfAborted();
-    if (execution?.checkArgs !== undefined) {
-      await checkSecretRecipient(this.core, thread.id, execution, mask, connection);
-      if (connection?.identity.principal === 'agent') assertContactTool(this.core, thread.id, 'secrets.use');
-      signal?.throwIfAborted();
-      this.#assertLiveUse(entry);
-    }
     // Reserve synchronously. Lifecycle events can still retire a reserved ref.
     entry.inUse = true;
     const value = entry.value;
-    let consumed = true;
+    let consumed = false;
     try {
+      if (execution?.checkArgs !== undefined) {
+        await checkSecretRecipient(this.core, thread.id, execution, mask, connection);
+        if (connection?.identity.principal === 'agent') assertContactTool(this.core, thread.id, 'secrets.use');
+        signal?.throwIfAborted();
+        this.#assertLiveUse(entry);
+      }
+      consumed = true;
       if (params.use.action === 'write') return await writeSecret(this.core, thread.id, thread.cwd, params.use, value);
       return await execSecret(this.core, thread.id, execution!, value, mask, connection);
     } catch (error) {
-      consumed = !(error instanceof SecretLauncherVersionRefusal);
+      if (error instanceof SecretLauncherVersionRefusal) {
+        consumed = false;
+        entry.recipient ??= recipient;
+      }
       throw error;
     } finally {
       entry.inUse = false;
@@ -333,7 +342,6 @@ export class SecretStore {
 
   #assertLiveUse(entry: Transit): void {
     if (this.#transit.get(entry.id) !== entry) throw refused('ref: this secret was erased or never existed; ask for it again', { field: 'ref', expected: 'a live ref' });
-    if (entry.inUse) throw refused('ref: this secret is already in use', { field: 'ref', expected: 'an unused ref' });
     if (entry.expiresAt <= this.now()) {
       this.#eraseTransit(entry);
       throw refused('ref: this secret expired after ten minutes and was erased; ask for it again', { field: 'ref', expected: 'a live ref' });
