@@ -357,7 +357,8 @@ test('removing a project preserves usage totals and hides its ranking entries un
   expect(journal.getThread(codex.id)).toBeNull();
   expect(await read()).toEqual(before.map(history => ({
     ...history,
-    threads: history.threads.filter(thread => thread.projectId !== echo.projectId),
+    threads: history.threads.map(thread => thread.projectId === project.id ? { ...thread, archived: true } : thread),
+    projects: history.projects?.map(entry => entry.projectId === project.id ? { ...entry, removed: true } : entry),
   })));
   expect((await client.call('projects.add', { path: project.path })).id).toBe(project.id);
   expect(await read()).toEqual(before);

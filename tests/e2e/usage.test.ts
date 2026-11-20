@@ -104,7 +104,8 @@ afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
 test('the desktop page charts each day by provider, reads a column on hover and keys, and lists models and threads', async () => {
   await openUsage();
   expect(await attribute('[data-testid=usage-chart]', 'aria-valuemax')).toBe('29');
-  expect(await count('[data-testid=usage-providers] li')).toBeGreaterThanOrEqual(8);
+  // Only providers that ran in the range are listed, each in its own colour.
+  expect(await count('[data-testid=usage-providers] li')).toBe(7);
   expect(await page.evaluate(`[...document.querySelectorAll('[data-testid=usage-providers] li')].map(li => li.dataset.provider)`)).toEqual(expect.arrayContaining(['claude', 'codex', 'opencode', 'grok', 'antigravity', 'pi', 'muse']));
   // The total says in plain words what the token count misses, never a turns ratio.
   expect(await page.text('[data-testid=usage-coverage]')).toContain('reported no token count');

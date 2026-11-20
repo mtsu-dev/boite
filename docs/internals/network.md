@@ -59,6 +59,7 @@ the OpenCode server, protected bridges, health checks).
 | 44 | External links | Docs, Tailscale admin, release notes, runtime downloads, in the system browser | A click | A normal browser request | No | Do not click | None: opened by the user in the system browser, outside Boite |
 | 45 | agent-desktop download | `registry.npmjs.org`, the pinned `agent-desktop` release | A conversation's first virtual desktop or `boite desktop` command on a core without it | GET, IP | On; on Linux, with the desktop tools | None | `agentDesktop: false` |
 | 46 | Worktree default branch lookup | The selected Git remote of the project | Making a worktree that starts from the project's default branch | Git HEAD lookup and, if the commit is missing, a fetch using the repository's Git configuration | Only for repositories with a remote | Use a project without a remote to work locally | None: initiated by creating a worktree in a project with a configured remote |
+| 47 | Model prices | `models.dev/api.json` | The first price lookup when the cached rates are missing or a day old; a lookup of an unknown model, at most once an hour and once per model; an hour after a failure | GET with the user agent `boite` and the stored ETag, IP | On | None | `modelPrices: false` |
 
 ## Flows with no user switch
 
@@ -70,6 +71,7 @@ Each one is either blocked by a policy key or started by the user:
 - Row 30, pull request discovery and watch: `pullRequests`.
 - Row 32, the agent browser: `agentBrowser`.
 - Row 45, the agent-desktop download: `agentDesktop`.
+- Row 46, model prices for the usage page: `modelPrices`.
 - Row 33, remote resources in previews: `previews.remoteResources`.
 - Rows 5, 7, 20, 22, 23, 26, 27 and 29, downloads, installs, credential moves
   and reports the user clicks: blocked by `updates.app`, `updates.server`,

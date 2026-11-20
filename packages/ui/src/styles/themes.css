@@ -411,6 +411,8 @@ html[data-chat-width='full'] {
   --series-6: #e26092;
   --series-7: #008300;
   --series-8: #e34948;
+  --series-l: 60%;
+  --series-c: 0.15;
   --shadow-e1: inset 0 1px 0 rgb(255 255 255 / 0.6), 0 1px 2px rgb(0 0 0 / 0.07), 0 6px 14px -8px rgb(0 0 0 / 0.14);
   --shadow-e2: 0 8px 24px rgb(0 0 0 / 0.12), 0 0 0 1px rgb(0 0 0 / 0.06);
   --shadow-e3: 0 20px 60px rgb(0 0 0 / 0.18), 0 0 0 1px rgb(0 0 0 / 0.08);

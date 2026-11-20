@@ -1,4 +1,5 @@
 import { PolicyStore, policyFileFor } from './policy.ts';
+import { initPricing } from './pricing/index.ts';
 import { MergedPrAsk } from './merged-pr-ask.ts';
 import { PullRequests } from './pull-requests.ts';
 import { LinkedPullRequests } from './linked-pull-requests.ts';
@@ -390,6 +391,8 @@ export class Core {
       log: (level, message, data) => this.logs[level](message, { source: 'policy', event: 'policy.read', data }),
       changed: (state) => this.bus.emit('policy.changed', state),
     });
+    // Where fetched model prices are kept; nothing is read or fetched until a price is looked up.
+    initPricing({ dataDir: this.dataDir, log: (level, message, data) => this.logs[level](message, { source: 'pricing', event: 'pricing.fetch', ...(data ? { data } : {}) }), blocked: () => this.policy.modelPricesOff() });
     let phaseAt = performance.now();
     const phase = (event: string, message: string, data?: Record<string, string | number | boolean | null>): void => {
       const now = performance.now();

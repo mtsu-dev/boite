@@ -153,8 +153,9 @@
     usage: [
       { id: 'usage-overview', label: strings.usage.overview },
       { id: 'usage-chart', label: strings.usage.chart },
-      { id: 'usage-breakdown', label: strings.usage.breakdown },
-      { id: 'usage-threads', label: strings.usage.threads }
+      { id: 'usage-threads', label: strings.usage.threads },
+      { id: 'usage-projects', label: strings.usage.projects },
+      { id: 'usage-breakdown', label: strings.usage.breakdown }
     ],
     limits: [{ id: 'limit-resume', label: strings.quotas.autoResume }],
     resources: [

@@ -2,30 +2,37 @@ import type { Database } from 'bun:sqlite';
 import type { AgentTotals, Turn } from '@boite/contracts';
 import { parseJson, toTurn, type TurnRow } from './rows.ts';
 import { usageGroups, type UsageGroup } from './usage-sums.ts';
+import { writeTurnUsage } from './usage-slots.ts';
 
 /** The last stated selection and its partial index exclude turns that never ran and cache pings. */
 export const STATED_TURN = "started_at IS NOT NULL AND COALESCE(json_extract(execution, '$.operation'), '') <> 'keepalive'";
 
 export function writeTurn(db: Database, turn: Turn): void {
-  db.query(
-    `INSERT OR REPLACE INTO turns (id, thread_id, status, queued_at, started_at, finished_at, usage, error, execution, checkpoint, queue_hold, agent_totals, quiet, switched)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    turn.id,
-    turn.threadId,
-    turn.status,
-    turn.queuedAt,
-    turn.startedAt,
-    turn.finishedAt,
-    turn.usage === null ? null : JSON.stringify(turn.usage),
-    turn.error,
-    turn.execution === undefined ? null : JSON.stringify(turn.execution),
-    turn.checkpoint ? JSON.stringify(turn.checkpoint) : null,
-    turn.queueHold ? JSON.stringify(turn.queueHold) : null,
-    turn.agentTotals ? JSON.stringify(turn.agentTotals) : null,
-    turn.quiet ? 1 : 0,
-    turn.switched ? JSON.stringify(turn.switched) : null,
-  );
+  const usage = turn.usage === null ? null : JSON.stringify(turn.usage);
+  const execution = turn.execution === undefined ? null : JSON.stringify(turn.execution);
+  // The usage page's slots move with the turn, in one transaction (`usage-slots.ts`).
+  db.transaction(() => {
+    writeTurnUsage(db, { id: turn.id, thread_id: turn.threadId, finished_at: turn.finishedAt, usage, execution });
+    db.query(
+      `INSERT OR REPLACE INTO turns (id, thread_id, status, queued_at, started_at, finished_at, usage, error, execution, checkpoint, queue_hold, agent_totals, quiet, switched)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      turn.id,
+      turn.threadId,
+      turn.status,
+      turn.queuedAt,
+      turn.startedAt,
+      turn.finishedAt,
+      usage,
+      turn.error,
+      execution,
+      turn.checkpoint ? JSON.stringify(turn.checkpoint) : null,
+      turn.queueHold ? JSON.stringify(turn.queueHold) : null,
+      turn.agentTotals ? JSON.stringify(turn.agentTotals) : null,
+      turn.quiet ? 1 : 0,
+      turn.switched ? JSON.stringify(turn.switched) : null,
+    );
+  })();
 }
 
 /**

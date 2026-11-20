@@ -14,6 +14,7 @@ import { createSharedReview } from '../contacts/review-journal.ts';
 import { createTeamMachines, createTeams } from '../teams/journal.ts';
 import { createCouncil } from '../council/journal.ts';
 import { createRemovedTurnUsage } from './usage-sums.ts';
+import { createUsageSlots } from './usage-slots.ts';
 import { createKeptProcesses } from './kept-processes.ts';
 import { createMessageStats } from './thread-stats.ts';
 import { ARTIFACT_ROW } from './artifact-references.ts';
@@ -520,6 +521,9 @@ export function migrate(db: Database, file: string): { from: number; to: number 
     version = 52;
   }
   if (!hasColumn('threads', 'interruption_read_at')) db.exec('ALTER TABLE threads ADD COLUMN interruption_read_at INTEGER');
+  // The usage page's sums per 15 minutes, kept by the turn and thread writers and built once from every finished turn (`usage-slots.ts`).
+  // The integration branch also stamped version 53 before it had usage slots.
+  if (!objects.has('usage_slots')) db.transaction(() => createUsageSlots(db))();
   createSharedProjects(db);
   createSharedBoard(db);
   createSharedCompute(db);

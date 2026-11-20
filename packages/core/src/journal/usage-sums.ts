@@ -1,5 +1,5 @@
 import type { Database, SQLQueryBindings } from 'bun:sqlite';
-import { REMOVED_PROJECTS } from './thread-rows.ts';
+import { addRemovedUsage, addSums, usageBySlots } from './usage-slots.ts';
 
 /** What `usageByBucket` and `usageByThread` sum over a group of finished turns. */
 export interface UsageSums {
@@ -33,6 +33,8 @@ export interface UsageGroupRow extends UsageSums {
 
 export interface UsageSumRow extends UsageGroupRow {
   bucket: number;
+  /** Null for a thread in no project and for a turn a removal erased. */
+  project_id: string | null;
 }
 
 export interface UsageThreadRow extends UsageSums {
@@ -100,66 +102,100 @@ export function createRemovedTurnUsage(db: Database): void {
  * leave nothing (`docs/internals/drafts.md`), even when a project removal takes them.
  */
 export function keepRemovedTurnUsage(db: Database, threadIds: readonly string[]): void {
-  db.query(
-    `INSERT INTO removed_turn_usage (finished_at, provider_id, model, usage)
-     SELECT t.finished_at, ${TURN_ROUTE}, t.usage
-     FROM turns t LEFT JOIN threads th ON th.id = t.thread_id
-     WHERE t.thread_id IN (SELECT value FROM json_each(?)) AND t.finished_at IS NOT NULL
+  const kept = `FROM turns t LEFT JOIN threads th ON th.id = t.thread_id
+     WHERE t.thread_id IN (SELECT value FROM json_each(?1)) AND t.finished_at IS NOT NULL
        AND COALESCE(th.incognito, 0) = 0
-       AND NOT EXISTS (SELECT 1 FROM threads p WHERE p.id = th.parent_thread_id AND p.incognito = 1)`,
-  ).run(JSON.stringify(threadIds));
+       AND NOT EXISTS (SELECT 1 FROM threads p WHERE p.id = th.parent_thread_id AND p.incognito = 1)`;
+  db.query(`INSERT INTO removed_turn_usage (finished_at, provider_id, model, usage) SELECT t.finished_at, ${TURN_ROUTE}, t.usage ${kept}`).run(JSON.stringify(threadIds));
+  // The slots count the copies as a removed turn: under no project. The caller takes back the turns' own shares as it erases them.
+  addRemovedUsage(db, `SELECT t.finished_at AS f, t.usage AS u, t.execution AS e, NULL AS pid, th.provider_id AS tp, th.model AS tm ${kept}`, JSON.stringify(threadIds));
 }
 
 /**
- * Finished turns summed per bucket, provider and model: bucket `i` holds the
- * turns with `edges[i] <= finished_at < edges[i + 1]`, those still in `turns`
- * and those a removal erased (`removed_turn_usage`). A turn saved before
- * execution snapshots counts under its thread's provider and model. Token
- * buckets are summed as each turn stored them (`Usage`), the turns an older
- * core recorded apart from the others.
+ * Finished turns summed per bucket, project, provider and model: bucket `i`
+ * holds the turns with `edges[i] <= finished_at < edges[i + 1]`, those still
+ * in `turns` and those a removal erased (`removed_turn_usage`, no project).
+ * Read from `usage_slots` (`usage-slots.ts`), and from the raw turns only in a
+ * slot an edge cuts. A turn saved before execution snapshots counts under its
+ * thread's provider and model. Token buckets are summed as each turn stored
+ * them (`Usage`), the turns an older core recorded apart from the others.
  */
 export function usageByBucket(db: Database, edges: readonly number[]): UsageSumRow[] {
-  return db
-    .query(
-      `WITH e AS (SELECT CAST(key AS INTEGER) AS i, value AS lo, LEAD(value) OVER (ORDER BY CAST(key AS INTEGER)) AS hi FROM json_each(?)),
-       x AS (
-         SELECT e.i AS bucket, t.usage, ${LEGACY},
-           ${TURN_ROUTE}
-         FROM e JOIN turns t ON t.finished_at >= e.lo AND t.finished_at < e.hi
-         LEFT JOIN threads th ON th.id = t.thread_id
-         WHERE e.hi IS NOT NULL
-         UNION ALL
-         SELECT e.i, t.usage, ${LEGACY}, t.provider_id, t.model
-         FROM e JOIN removed_turn_usage t ON t.finished_at >= e.lo AND t.finished_at < e.hi
-         WHERE e.hi IS NOT NULL
-       )
-       SELECT bucket, provider_id, model, legacy, ${USAGE_SUMS}
-       FROM x GROUP BY bucket, provider_id, model, legacy ORDER BY bucket, provider_id, model, legacy`,
-    )
-    .all(JSON.stringify(edges)) as UsageSumRow[];
+  return usageBySlots(db, edges);
+}
+
+/** One finished turn as `turnsInRange` reads it: `[finished_at, thread_id, usage, execution]`. */
+type TurnValues = [number, string, string | null, string | null];
+
+/** The thread columns a usage row names. */
+interface ThreadNames { id: string; title: string; project_id: string | null; provider_id: string; model: string | null; archived: number }
+
+/** One turn's sums, read from its stored JSON as `USAGE_SUMS` reads it in SQL. */
+export function turnSums(usage: Partial<Record<string, unknown>> | null): UsageSums {
+  const number = (key: string) => (typeof usage?.[key] === 'number' ? usage[key] : 0);
+  const cost = typeof usage?.costUsdEquivalent === 'number' ? usage.costUsdEquivalent : null;
+  const marked = usage !== null && usage.buckets !== undefined && usage.buckets !== null;
+  const tokens = number('inputTokens') + number('outputTokens') + number('cacheReadTokens') + number('cacheWriteTokens');
+  return {
+    legacy: usage !== null && !marked ? 1 : 0,
+    turns: 1,
+    reported: usage === null ? 0 : 1,
+    priced: cost === null ? 0 : 1,
+    input_tokens: number('inputTokens'),
+    output_tokens: number('outputTokens'),
+    cache_read_tokens: number('cacheReadTokens'),
+    cache_write_tokens: number('cacheWriteTokens'),
+    cache_write_hour_tokens: number('cacheWriteHourTokens'),
+    cost,
+    tokenless_cost: marked && tokens === 0 && cost !== null ? cost : 0,
+  };
+}
+
+/** The provider and model a turn ran on, as `TURN_ROUTE` reads them. */
+export function turnRoute(execution: { providerId?: unknown; model?: unknown } | null, thread: { provider_id: string; model: string | null } | undefined): { provider_id: string; model: string | null } {
+  if (execution === null) return { provider_id: thread?.provider_id ?? '', model: thread?.model ?? null };
+  return {
+    provider_id: typeof execution.providerId === 'string' ? execution.providerId : thread?.provider_id ?? '',
+    model: typeof execution.model === 'string' ? execution.model : null,
+  };
 }
 
 /**
  * The same sums per thread, provider and model over `[from, to)`, with what a
- * list needs to name each thread. The turns a removal erased name no thread
- * and stay out. Hidden projects still count toward the bucket totals.
+ * list needs to name each thread: one read of the turns in range, each JSON
+ * parsed once. The turns a removal erased name no thread and stay out.
+ * `threadIds` keeps only those threads' turns.
  */
-export function usageByThread(db: Database, from: number, to: number): UsageThreadRow[] {
-  return db
-    .query(
-      `WITH x AS (
-         SELECT t.thread_id, t.usage, ${LEGACY},
-           ${TURN_ROUTE}
-         FROM turns t LEFT JOIN threads th ON th.id = t.thread_id
-         WHERE t.finished_at >= ? AND t.finished_at < ?
-           AND (th.project_id IS NULL OR th.project_id NOT IN (${REMOVED_PROJECTS}))
-       )
-       SELECT x.thread_id, x.provider_id, x.model, x.legacy, COALESCE(th.title, '') AS title, th.project_id,
-         COALESCE(th.provider_id, '') AS thread_provider_id, COALESCE(th.archived, 0) AS archived, ${USAGE_SUMS}
-       FROM x LEFT JOIN threads th ON th.id = x.thread_id
-       GROUP BY x.thread_id, x.provider_id, x.model, x.legacy`,
-    )
-    .all(from, to) as UsageThreadRow[];
+export function usageByThread(db: Database, from: number, to: number, threadIds?: readonly string[]): UsageThreadRow[] {
+  const turns = (threadIds === undefined
+    ? db.query('SELECT finished_at, thread_id, usage, execution FROM turns WHERE finished_at >= ? AND finished_at < ?').values(from, to)
+    : db.query(`SELECT t.finished_at, t.thread_id, t.usage, t.execution FROM json_each(?) j CROSS JOIN turns t ON t.thread_id = j.value
+        WHERE t.finished_at >= ? AND t.finished_at < ?`).values(JSON.stringify(threadIds), from, to)) as TurnValues[];
+  const ids = [...new Set(turns.map((turn) => turn[1]))];
+  const threads = new Map<string, ThreadNames>();
+  for (const row of db.query('SELECT id, title, project_id, provider_id, model, archived FROM threads WHERE id IN (SELECT value FROM json_each(?))').all(JSON.stringify(ids)) as ThreadNames[]) {
+    threads.set(row.id, row);
+  }
+  const groups = new Map<string, UsageThreadRow>();
+  for (const [, threadId, usageJson, executionJson] of turns) {
+    const thread = threads.get(threadId);
+    const sums = turnSums(usageJson === null ? null : JSON.parse(usageJson) as Record<string, unknown>);
+    const route = turnRoute(executionJson === null ? null : JSON.parse(executionJson) as { providerId?: unknown; model?: unknown } | null, thread);
+    const key = JSON.stringify([threadId, route.provider_id, route.model, sums.legacy]);
+    const into = groups.get(key);
+    if (into !== undefined) { addSums(into, sums); continue; }
+    groups.set(key, {
+      ...sums,
+      thread_id: threadId,
+      provider_id: route.provider_id,
+      model: route.model,
+      title: thread?.title ?? '',
+      project_id: thread?.project_id ?? null,
+      thread_provider_id: thread?.provider_id ?? '',
+      archived: thread?.archived ?? 0,
+    });
+  }
+  return [...groups.values()];
 }
 
 /**

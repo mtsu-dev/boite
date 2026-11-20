@@ -11,31 +11,47 @@ estimate](#the-api-estimate)).
 ## The page
 
 - The range is 7, 30 or 90 days, ending today. The measure is tokens, API cost
-  or turns, and every card follows it. The provider filter also applies to the
-  chart, breakdown and thread ranking, using each turn's execution provider.
-- With more than one machine connected, the machine menu reads one machine or
-  all of them. It opens on the machine the window is on. All machines asks
-  each connected core for `usage.history` over the same days and adds the
-  answers; a machine not connected or whose read failed is named above the
-  page and left out of the totals. Top threads then name their machine, and a
-  thread of another machine opens on it.
-- The overview gives the total for the range and one row per provider with its
-  share, including providers with no turns and historical providers no longer
-  configured. Each row and the total show how many turns reported tokens and
-  costs. Missing reports stay unknown; partial totals include only known data.
-- Per day is a column chart stacked by provider, one column per local calendar
-  day. Hovering or tapping a column opens every provider's value for that day.
-  The chart also takes the keyboard focus: the arrow keys, Home and End move
-  between days and a screen reader reads the same values.
+  or turns, and every card follows it. The provider and project filters apply
+  to the chart, breakdown and thread ranking, using each turn's execution
+  provider and its thread's project (`usage.history` `projectId`; `null` is
+  the threads in no project). Removed projects are offered, tagged Removed.
+- The page opens on All machines: it asks each connected core for
+  `usage.history` over the same days and draws each answer as it lands. A
+  machine not connected or whose read failed is named above the page and left
+  out of the totals. The machine menu narrows to one; a project picked on
+  another machine reads that machine only.
+- Answers are remembered per window, 24 filter sets per machine: going back
+  to a range or filter shows the last answer at once, dimmed while it is read
+  again. A `turn.finished` rereads only the machine it came from, at most once
+  every 1.5 s, and only the newest request of a machine writes the page.
+- The overview gives the total for the range, a bar of each provider's share,
+  one row per provider that ran in the range, and the chart. Each provider has
+  its own colour (`--provider-<id>` in `tokens.css`, one lightness and chroma
+  per theme); a provider Boite does not know gets a hue drawn from its id.
+  Each row and the total show how many turns reported tokens and costs.
+  Missing reports stay unknown; partial totals include only known data.
+- The chart is a column chart stacked by provider, one column per local
+  calendar day. Hovering or tapping a column opens every provider's value for
+  that day. The chart also takes the keyboard focus: the arrow keys, Home and
+  End move between days and a screen reader reads the same values.
+- Biggest threads are the ten threads that spent the most by the chosen
+  measure, the first drawn larger. A click opens the thread's page
+  (`UsageThreadPage.svelte`, `usage.thread`): its totals, a chart by model
+  (golden-angle hues), its models with their rates, its subagents, and its
+  turns newest first, 50 at a time. Totals and reporting coverage count the
+  entire filtered range. The chart, model breakdown and turn list keep up to
+  the latest 2,000 matching turns and the chart names that limit. Open the
+  conversation shows only for a thread still in that machine's list.
+- Projects ranks what each project spent (`UsageHistory.projects`, which
+  ignores the project filter); a click narrows the page to it.
 - Breakdown lists each model with its turns, tokens, input, output, cache and
   cost. A model recorded with its provider's prefix, as a delegated thread
   records `claude/claude-opus-5-5`, shares the row of the same model without
   it. The "i" beside a model gives the public rates its tokens were priced at,
   or says the cost is the one its agent reported. By day is the same table
   with one row per day that had a turn, which doubles as the chart's table
-  view.
-- Top threads are the ten threads that spent the most by the chosen measure.
-  A thread still in the sidebar opens on click; an archived one is marked.
+  view. The line under it names the price table: live from models.dev with its
+  date, or the one bundled with the core (`UsageHistory.pricing`).
 
 ## The limits tab
 
@@ -323,9 +339,11 @@ them in SQLite:
   If an older core returns rows or conversations from other providers for a
   filtered request, the page reports the unsupported filter and asks for an
   update instead of showing those totals as filtered usage.
-- Removing a project, or purging the deleted conversations
-  (`threadDeletionRetentionDays`), erases their turns but not what they spent.
-  In the transaction that erases them, the journal first copies each finished
+- A removed project keeps its conversations and turns. Usage can still filter
+  by that project and show its ranked conversations. Adding the folder again
+  restores the project and reopens the conversations archived by the removal.
+  When a deleted conversation is purged (`threadDeletionRetentionDays`),
+  its turns leave the journal. The same transaction first copies each finished
   turn into `removed_turn_usage`: the time it finished, the provider and model
   resolved as above, and its stored `Usage`. Nothing there names the turn, its
   conversation or its project. Buckets, the `providerId` filter and the count of
@@ -381,8 +399,47 @@ the date it was generated. Each model is four numbers (input, output, cache
 read, cache write) because the table ships in the core bundle, whose size CI
 checks ([bundle growth](ci.md#bundle-growth)). `bun scripts/model-rates.ts` regenerates it from
 [models.dev](https://models.dev), the catalogue OpenCode prices with; a path
-argument reads a saved copy instead. `packages/core/src/pricing/index.ts`
-matches a model and computes the cost.
+argument reads a saved copy instead. The filter that picks the models is
+`packages/core/src/pricing/reduce.ts`, shared by the script and the fetch
+below. `packages/core/src/pricing/index.ts` matches a model and computes the
+cost.
+
+#### Fetched rates
+
+A model released after a build is priced without a new release: the core
+fetches `https://models.dev/api.json` itself (`packages/core/src/pricing/live.ts`).
+
+- Nothing happens at startup. `initPricing` in `core.ts` only records the data
+  directory. The first price lookup reads the cache, and starts a fetch in the
+  background when the cache is missing or more than 24 hours old. The lookup
+  stays synchronous on the table in memory; the next one sees the new rates.
+  One fetch runs at a time.
+- A lookup that finds no model forces a fetch, at most once an hour and once
+  per unknown id. The placeholder model `default` and an empty model never
+  fetch. After a failure, nothing is fetched for an hour.
+- The request is a plain GET with the user agent `boite`, no user data, a
+  10 second timeout and redirects refused. It sends the stored `ETag` as
+  `If-None-Match`; a 304 keeps the table and moves its fetch time, so a day
+  with no change costs one round trip.
+- The catalogue (about 7 MB) is reduced by the same filter as the script, and
+  only the result is written, atomically (a temporary file, then a rename), to
+  `<BOITE_DATA_DIR>/pricing/rates.json`:
+  `{ source, fetchedAt, etag, models }`, about 150 entries, under 10 KB.
+- A catalogue without an `anthropic` or `openai` section, or that keeps fewer
+  than half the bundled ids, is rejected: the previous table stays and one
+  warning is logged. So is an HTTP error, a timeout or a bad JSON body.
+- The table a lookup reads is the bundled one overlaid by the cached one, so a
+  cache from an older catalogue never removes a model the build knows. Offline,
+  a cache of any age is used, else the bundled table. A model neither knows
+  keeps the cost the agent reported, as before.
+- `pricingStatus()` (`usage.history`'s `pricing`) says `live` with the cache's
+  source and fetch time when a fetched table is in use, else `bundled` with the
+  date in `rates.json`.
+- The admin policy key `modelPrices: false` stops the fetch
+  ([admin policy](enterprise.md)); the cached and bundled tables still price.
+  `BOITE_MODEL_PRICES_URL` names another catalogue, and an empty value fetches
+  nothing: the test preload and the E2E cores set it empty, and a process that
+  never called `initPricing` (a test, a script) never fetches.
 
 - A model id matches without its route or variant: a provider prefix
   (`claude/`, `codex/`, `anthropic/`), Bedrock's `anthropic.`, Vertex's
