@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { markFeature } from '@boite/contracts';
   import { ChevronRight, UserPlus, UsersRound } from '@lucide/svelte';
   import { contactRows, initialsOf, openContact, watchContacts } from '../../lib/contacts.svelte';
   import { count } from '../../lib/format';
@@ -31,8 +30,6 @@
   const rows = $derived(contactRows(watched()));
   const waiting = $derived(rows.reduce((sum, row) => sum + row.waiting, 0));
   const show = (owner: Store, coreId: string | null) => void openContact(owner, coreId);
-  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
-  markFeature('boite-feature:contacts');
 </script>
 
 <section class="contacts" data-testid="sidebar-contacts">

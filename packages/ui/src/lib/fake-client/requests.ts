@@ -1,5 +1,5 @@
 /** Permission requests and questions: asked by a turn, answered by the user. */
-import { RpcErrorCode, agentSettingAnswerText, checkClientPreferences, checkSettingRequest, effectiveExperiments, experimentalSettingRefusal, isMachineSetting, MACHINE_SETTINGS, settledMachineSetting, settledExperiment, type SettingMachine, type ClientPreferences, type ExperimentId, checkSettingsPatch, readSettings, settingAnswerText, settledSetting, type Message, type MessagePart, type PermissionRequest, type QuestionAnswer, type QuestionOption, type QuestionRequest, type AgentSettingAsk, type SettingAsk, type SettingCardAsk, type SettingRequestParams, type Settings, type TeamAsk, type Thread, type ThreadId, type Turn } from '@boite/contracts';
+import { RpcErrorCode, agentSettingAnswerText, checkClientPreferences, checkSettingRequest, effectiveExperiments, withFinished, isMachineSetting, MACHINE_SETTINGS, settledMachineSetting, settledExperiment, type SettingMachine, type ClientPreferences, type ExperimentId, checkSettingsPatch, readSettings, settingAnswerText, settledSetting, type Message, type MessagePart, type PermissionRequest, type QuestionAnswer, type QuestionOption, type QuestionRequest, type AgentSettingAsk, type SettingAsk, type SettingCardAsk, type SettingRequestParams, type Settings, type TeamAsk, type Thread, type ThreadId, type Turn } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { fakeCore } from './coordination';
 import { checkAnswer, checkAsk } from './checks';
@@ -203,8 +203,6 @@ export function requestSetting(ctx: FakeContext, thread: Thread, turn: Turn, par
   }
   const checked = checkSettingRequest(params, settings, (patch) => {
     const result = checkSettingsPatch(patch);
-    const experiment = result.ok ? experimentalSettingRefusal(result.patch, ctx.core.version) : null;
-    if (experiment !== null) return { ok: false, message: experiment.message, field: experiment.key };
     return result.ok ? { ok: true, patch: result.patch } : { ok: false, message: result.message, field: result.field };
   }, open, ctx.clientPreferences, machine, ctx.core.version);
   if (!checked.ok) throw new RpcFailure({ code: RpcErrorCode.Refused, message: checked.message, data: checked.data });
@@ -386,7 +384,7 @@ export function requestMethods(ctx: FakeContext) {
       ctx.clientApps.set(preferences.app, preferences);
       ctx.clientPreferences = preferences;
       settleSettings(ctx, ctx.settingsInForce(), { preferences, before });
-      return { ok: true, desktop: ctx.desktopExperiments === null ? null : effectiveExperiments(ctx.desktopExperiments, ctx.core.version), desktopChosen: ctx.desktopExperiments === null ? null : [...ctx.desktopExperiments] };
+      return { ok: true, desktop: ctx.desktopExperiments === null ? null : withFinished(effectiveExperiments(ctx.desktopExperiments, ctx.core.version)), desktopChosen: ctx.desktopExperiments === null ? null : withFinished(ctx.desktopExperiments) };
     },
     'questions.skip': async (params) => {
       const pending = ctx.pendingQuestions.get(params.questionId);

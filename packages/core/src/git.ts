@@ -5,8 +5,6 @@ import { gitFailed } from './git/errors.ts';
 import { parseNumstat, parseStatus } from './git/porcelain.ts';
 import { git } from './git/read.ts';
 import { assertDeviceFile, assertDeviceReadable, threadCwd } from './workdir.ts';
-export { gitDiff } from './git/diff.ts';
-export { parseBranchHeader, parseNumstat, parseStatus } from './git/porcelain.ts';
 
 export async function gitStatus(core: Core, threadId: ThreadId): Promise<GitStatus> {
   core.sharedAccess.denyTool(threadId);

@@ -572,7 +572,7 @@ test('a council member named by its family resolves over a list an earlier core 
   const { accountId, threadId } = await agyThread(client);
   // What a core from before the family list saved: the level in the id, no family and no scale.
   saveCatalog(harness!.core, 'agy-fake', accountId, { models: ['high', 'medium', 'low'].map(level => ({ id: `gemini-3.8-flash-${level}`, name: `Gemini 3.8 Flash (${level})` })), probedAt: Date.now() });
-  await client.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: ['debates'], labels: {} });
+  await client.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: [], labels: {} });
   const council = await client.call('council.start', { threadId, request: 'Review the plan.', models: ['agy-fake/gemini-3.8-flash', 'echo/echo'] });
   expect(council.members[0]).toMatchObject({ providerId: 'agy-fake', model: 'gemini-3.8-flash', effort: 'high', readOnly: 'approvals' });
   expect(council.warnings).toContain(`${council.members[0]!.name} has no xhigh effort, so it runs at high.`);

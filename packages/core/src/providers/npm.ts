@@ -106,7 +106,7 @@ function scriptIn(root: string, name: string, bin: string | null): string | null
 }
 
 /** Node beside the install first, since that is the one its shims would run, then PATH, then Bun. */
-export function scriptRuntime(root: string): string | null {
+function scriptRuntime(root: string): string | null {
   const windows = currentOs() === 'windows';
   const exe = windows ? 'node.exe' : 'node';
   const beside = windows ? join(root, '..', exe) : join(root, '..', '..', 'bin', exe);

@@ -124,7 +124,7 @@ function sanitize(value: unknown, budget: Budget, depth: number): unknown {
   return Object.fromEntries(entries);
 }
 
-export function sanitizeAntigravityPayload(payload: unknown): unknown {
+function sanitizeAntigravityPayload(payload: unknown): unknown {
   return sanitize(payload, { nodes: NODE_BUDGET, chars: CHAR_BUDGET }, 0);
 }
 

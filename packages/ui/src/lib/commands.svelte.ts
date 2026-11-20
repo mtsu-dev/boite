@@ -4,7 +4,6 @@
  */
 
 import type { KeybindingCommand } from '@boite/contracts';
-import { experimentOn } from './experiments.svelte';
 import type { PaletteItem } from './palette';
 import { strings } from './strings';
 import type { Store } from './store.svelte';
@@ -41,7 +40,7 @@ export function appCommands(store: Store, phone: boolean): PaletteItem[] {
   // a paired device, so they are not offered to one. Adding a project is the
   // device's too once its core says so (`deviceProjects`).
   if (store.addsProjects) items.push(row('add-project', strings.palette.addProject, 'folder open'));
-  if (store.owner && store.projects.length > 0 && experimentOn('session-import')) items.push(row('import-session', strings.palette.importSession, 'transcript history resume'));
+  if (store.owner && store.projects.length > 0) items.push(row('import-session', strings.palette.importSession, 'transcript history resume'));
   if (open) {
     items.push(row('pin', open.pinned ? strings.palette.unpin : strings.palette.pin, 'favourite top'));
     items.push(row('rename', strings.palette.rename, 'title'));

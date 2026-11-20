@@ -139,17 +139,10 @@ export interface SecretsRpcMethods {
     params: { threadId: ThreadId } | { projectId: ProjectId };
     result: { secrets: SecretKeyInfo[]; storage: SecretStorage; encrypted: boolean };
   };
-  /** Legacy method: no persistent keys remain, so this returns NotFound. */
-  'secrets.delete': {
-    params: { projectId: ProjectId; name: string };
-    result: { ok: true };
-  };
 }
 
 export interface SecretsRpcEvents {
   /** A card opened. The timeline carries the same card as a `secret_request` part. */
   'secret.requested': SecretRequest;
   'secret.resolved': { requestId: RequestId; threadId: ThreadId; status: SecretAskOutcome; ref: string | null };
-  /** Legacy event shape retained for older clients; the current core never emits it. */
-  'secrets.changed': { projectId: ProjectId; names: string[] };
 }

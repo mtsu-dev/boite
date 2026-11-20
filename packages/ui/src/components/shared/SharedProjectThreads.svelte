@@ -1,10 +1,8 @@
 <script lang="ts">
-  import { markFeature } from '@boite/contracts';
   import { untrack, type Snippet } from 'svelte';
   import { MessageSquare, Settings2, SquareKanban } from '@lucide/svelte';
   import type { SharedProjectScope, SharedProjectThread } from '@boite/contracts';
   import type { Store } from '../../lib/store.svelte';
-  import { experimentOn } from '../../lib/experiments.svelte';
   import { errorText } from '../../lib/errors';
   import { sameSharedProject } from '../../lib/shared-ui';
   import { fill, strings } from '../../lib/strings';
@@ -18,7 +16,7 @@
   let error = $state('');
   $effect(() => {
     const client = store.client, id = thread?.id;
-    if (!active || !id || !experimentOn('contacts') || store.connection !== 'ready' || !client) return;
+    if (!active || !id || store.connection !== 'ready' || !client) return;
     let alive = true, version = 0;
     const load = () => {
       const request = ++version;
@@ -42,8 +40,6 @@
     store.shared.boards[scope.threadId] = scope.sharedProjectId;
     store.showBoard();
   }
-  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
-  markFeature('boite-feature:contacts');
 </script>
 
 {#if projects.length}<div class="person" data-testid="shared-local-person">{strings.shared.you} · {localMachine}</div>{/if}

@@ -1,10 +1,8 @@
 <script lang="ts">
-  import { markFeature } from '@boite/contracts';
   import { AtSign, LoaderCircle, Square } from '@lucide/svelte';
-  import { COUNCIL_AUTHOR, COUNCIL_EXPERIMENT, COUNCIL_LEGACY_SUMMARY, COUNCIL_LIMITS, COUNCIL_MENTION_END, COUNCIL_OWNER, COUNCIL_SYSTEM, councilMention, councilOver, councilScore, councilTable, type CouncilPost, type ThreadId } from '@boite/contracts';
+  import { COUNCIL_AUTHOR, COUNCIL_LEGACY_SUMMARY, COUNCIL_LIMITS, COUNCIL_MENTION_END, COUNCIL_OWNER, COUNCIL_SYSTEM, councilMention, councilOver, councilScore, councilTable, type CouncilPost, type ThreadId } from '@boite/contracts';
   import { councilRoom, faceOf, followCouncil } from '../../lib/council.svelte';
   import { errorText } from '../../lib/errors';
-  import { experimentOn } from '../../lib/experiments.svelte';
   import { count, dayClock, fullTime } from '../../lib/format';
   import { hasKeyboard } from '../../lib/live-input';
   import type { PaletteItem } from '../../lib/palette';
@@ -33,7 +31,7 @@
   } = $props();
   const labels = $derived(strings.council);
 
-  const reader = $derived(experimentOn(COUNCIL_EXPERIMENT) ? councilRoom(store, councilId) : null);
+  const reader = $derived(councilRoom(store, councilId));
   followCouncil(() => reader);
   const council = $derived(reader?.value?.council ?? null);
   const posts = $derived([...(reader?.value?.posts ?? [])].sort((a, b) => a.seq - b.seq));
@@ -227,8 +225,6 @@
     void council?.roundsDone;
     if (pinned && scroller) scroller.scrollTop = scroller.scrollHeight;
   });
-  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
-  markFeature('boite-feature:debates');
 </script>
 
 <section class="salon" data-testid="council-salon" data-council-id={councilId} data-status={council?.status}>

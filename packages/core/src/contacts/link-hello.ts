@@ -13,9 +13,9 @@ export interface ContactSocketData { contact: { coreId: string; routeId: string;
 export const CONTACT_LINK_ROUTE = '/coordination/contact/link';
 export const HELLO_INPUT = 'boite-contact-hello\n';
 /** What the dialed core signs back for a dial that asks it to prove its key (`x-boite-probe: 1`). */
-export const PROOF_INPUT = 'boite-contact-proof\n';
+const PROOF_INPUT = 'boite-contact-proof\n';
 /** What a core signs over the hello of a probe from a core it neither knows nor gave a seat (`x-boite-refusal`). */
-export const REFUSAL_INPUT = 'boite-contact-refusal\n';
+const REFUSAL_INPUT = 'boite-contact-refusal\n';
 
 /** What a host signs, after a hello dated by another clock, over that hello and its own time (`x-boite-clock`, `x-boite-clock-proof`). */
 export const CLOCK_INPUT = 'boite-contact-clock\n';

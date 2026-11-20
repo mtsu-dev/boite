@@ -7,10 +7,9 @@ import { assertSearchActive, searchJournalChat } from './journal-reads.ts';
 import { threadRef } from './contacts/project-policy.ts';
 
 /** At most this many words in a search. */
-export const SEARCH_WORDS = 8;
+const SEARCH_WORDS = 8;
 /** Matches returned by one core. */
-export const SEARCH_RESULTS = 20;
-export { TRANSCRIPT_READ_ENTRIES as READ_ENTRIES, TRANSCRIPT_ENTRY_TEXT as ENTRY_TEXT, TRANSCRIPT_ENTRY_PAGE as ENTRY_PAGE };
+const SEARCH_RESULTS = 20;
 /** The longest entry text an older core sends in a page: 4,000 characters and " ...". */
 const OLDER_ENTRY_TEXT = 4004;
 
@@ -118,7 +117,7 @@ export function readTranscript(db: Database, threadId: string, contact: AgentCon
 
 /**
  * The newest `limit` entries before `before`, oldest first, and whether older
- * ones remain. Each carries the first `ENTRY_TEXT` characters of its text; a
+ * ones remain. Each carries the first `TRANSCRIPT_ENTRY_TEXT` characters of its text; a
  * longer one names its whole `length` and the `next` offset of the rest.
  * The caller fits the page to the read budget.
  */
@@ -144,7 +143,7 @@ export function transcript(db: Database, threadId: string, limit: number, before
   return { entries: entries.reverse(), more };
 }
 
-/** Up to `ENTRY_PAGE` characters of one entry's text from `offset`, its whole `length`, and `next` while some remain. */
+/** Up to `TRANSCRIPT_ENTRY_PAGE` characters of one entry's text from `offset`, its whole `length`, and `next` while some remain. */
 function transcriptEntry(db: Database, threadId: string, id: string, offset: number, held?: Held, sanitize?: (value: string) => string): { entries: AgentTranscriptEntry[]; more: boolean } {
   const row = db.query('SELECT id, role, parts, created_at FROM messages WHERE id = ? AND thread_id = ?').get(id, threadId) as Row | null;
   if (!row) throw invalidParams(`entry: ${id} is not an entry of this thread`);
@@ -167,7 +166,7 @@ function remoteTools(tools: string[]): string[] {
  * older core ignores the request and sends a page, which is refused rather
  * than shown as the text asked for.
  */
-export function checkTranscript(value: unknown, entry?: { entry?: string; offset?: number }): { entries: AgentTranscriptEntry[]; more: boolean } {
+function checkTranscript(value: unknown, entry?: { entry?: string; offset?: number }): { entries: AgentTranscriptEntry[]; more: boolean } {
   const raw = value as { entries?: unknown; more?: unknown } | null;
   if (!raw || !Array.isArray(raw.entries) || raw.entries.length > 100 || typeof raw.more !== 'boolean') throw invalidParams('transcript: expected at most 100 entries and a more flag');
   const single = entry?.entry !== undefined;
@@ -193,7 +192,7 @@ export function checkTranscript(value: unknown, entry?: { entry?: string; offset
 /**
  * `contact`'s transcript from another core, checked. A page is cut to this
  * core's preview and read budget whatever that core sent: an entry longer
- * than `ENTRY_TEXT` keeps its start and names the rest from there, which the
+ * than `TRANSCRIPT_ENTRY_TEXT` keeps its start and names the rest from there, which the
  * sending core reads back by `entry` and `offset`.
  */
 export function remoteTranscript(contact: AgentContact, value: unknown, entry?: { entry?: string; offset?: number }): AgentTranscript {
@@ -251,7 +250,7 @@ export function partialList(answer: unknown, max = 100): PartialList {
 }
 
 /**
- * One tool call's output from `offset`, `ENTRY_PAGE` characters at a time, as
+ * One tool call's output from `offset`, `TRANSCRIPT_ENTRY_PAGE` characters at a time, as
  * an entry naming the tool: the whole result a carried history cut
  * (`continuation.ts`). Only the thread that ran the call reads it.
  */

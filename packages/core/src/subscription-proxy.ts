@@ -7,13 +7,13 @@ import { invalidParams, refused, unavailable, RpcFailure } from './errors.ts';
 import { isOpenCode, OPENCODE_V2 } from './providers/opencode.ts';
 import { hostAgentsEnabled, profileFor } from './providers/resolve.ts';
 import { shareProfile } from './profile-share.ts';
-import { ensureLocalProxyKey, prepareLocalProxyKey, hasProxyKey, proxyKey, validateProxyKey as validateKey, writeProxyKey as writeKey, PROXY_AUTH_ERROR } from './subscription-proxy-auth.ts';
+import { ensureLocalProxyKey, prepareLocalProxyKey, proxyKey, validateProxyKey as validateKey, writeProxyKey as writeKey, PROXY_AUTH_ERROR } from './subscription-proxy-auth.ts';
 export { proxyKey } from './subscription-proxy-auth.ts';
 
 /** The gateway models both OpenCode versions were last offered, kept so a restart can start a turn on one. */
 const OPENCODE_MODELS_SETTING = 'subscription-proxy-opencode-models';
-export const PROXY_URL_ENV = 'BOITE_SUBSCRIPTION_PROXY_URL';
-export const PROXY_KEY_ENV = 'BOITE_SUBSCRIPTION_PROXY_KEY';
+const PROXY_URL_ENV = 'BOITE_SUBSCRIPTION_PROXY_URL';
+const PROXY_KEY_ENV = 'BOITE_SUBSCRIPTION_PROXY_KEY';
 const CODEX_CATALOG_ENV = 'BOITE_SUBSCRIPTION_PROXY_CODEX_CATALOG';
 /**
  * The start of every model id the core injected into an agent as a provider of
@@ -293,7 +293,7 @@ const OPEN_MODEL = /gpt-oss|kimi|qwen|llama|deepseek|mistral|mixtral|glm/i;
  * `antigravity/claude-opus-5-5` is a Claude model; an unknown name falls back
  * to a vendor prefix, so `codex/computer-use-preview` is an OpenAI model.
  */
-export function proprietaryFamily(id: string): ModelFamily | null {
+function proprietaryFamily(id: string): ModelFamily | null {
   const slash = id.lastIndexOf('/');
   const name = id.slice(slash + 1);
   if (OPEN_MODEL.test(name)) return null;
@@ -399,15 +399,6 @@ function openCodeModels(core: Core, proxy: SubscriptionProxy, rows: Record<strin
 }
 
 export function registerSubscriptionProxy(core: Core): void {
-  core.router.register('subscriptionProxy.key', async ({ key }) => {
-    validateKey(key);
-    try { writeKey(core, key); }
-    catch { throw unavailable('Subscription proxy key could not be saved'); }
-    // The last answer was read with the previous key.
-    core.quotas.gateway.reset();
-    await prepareLocalProxyKey(core);
-    return { configured: hasProxyKey(core) };
-  });
   core.router.register('subscriptionProxy.quotas', ({ refresh }) => {
     if (refresh !== undefined && typeof refresh !== 'boolean') throw invalidParams('subscriptionProxy.quotas refresh must be a boolean');
     return core.quotas.gateway.read(refresh === true);

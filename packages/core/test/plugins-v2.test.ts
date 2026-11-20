@@ -187,7 +187,7 @@ describe('plugins v2 end to end', () => {
 
       // The guide lists the command, writes the skill and carries the prompt.
       const lines = pluginGuideLines(harness.core.plugins.installedPlugins());
-      const guide = agentGuide(true, false, [], false, false, false, lines);
+      const guide = agentGuide(true, false, [], false, false, lines);
       expect(guide).toContain('`boite hello-threads [--json]`: Lists recent threads.');
       expect(guide).toContain('From the Hello plugin: Greet the user once.');
       const skill = join(harness.dataDir, 'plugins', 'hello', 'skills', 'hello-guide', 'SKILL.md');

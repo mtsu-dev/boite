@@ -49,7 +49,7 @@ export function mergeCommands(first: readonly AgentCommand[], rest: readonly Age
  * `/name rest` becomes the slash command's prompt followed by ` rest`. A
  * command the agent itself advertises wins, as it does over the brain's.
  */
-export function expandPluginSlash(prompt: string, plugins: readonly InstalledPlugin[], driverCommands: readonly AgentCommand[] = []): string {
+function expandPluginSlash(prompt: string, plugins: readonly InstalledPlugin[], driverCommands: readonly AgentCommand[] = []): string {
   const name = /^\/([^\s]+)(?:\s|$)/.exec(prompt)?.[1];
   if (!name || driverCommands.some((command) => command.name === name)) return prompt;
   for (const plugin of plugins) {

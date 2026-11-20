@@ -20,7 +20,7 @@ import type { ThreadSummary, Turn } from '@boite/contracts';
 import type { Core } from '../core.ts';
 
 /** Per-thread settings key; `journal.ts` deletes it with the thread. */
-export const COORDINATION_SENT_PREFIX = 'coordination-sent:';
+const COORDINATION_SENT_PREFIX = 'coordination-sent:';
 
 interface GuideSent { hash: string; sessionGeneration: number }
 

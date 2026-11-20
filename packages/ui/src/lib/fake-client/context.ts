@@ -68,7 +68,7 @@ import {
   type Turn,
   type Usage,
 } from '@boite/contracts';
-import { effectiveExperiments, experimentStartRefusal, holdExperimentalSettings } from '@boite/contracts';
+import { effectiveExperiments } from '@boite/contracts';
 import { CLOSED_AGENT_DEFAULTS, OPEN_AGENT_DEFAULTS } from '@boite/contracts';
 
 /** `?agents=closed`: the two agent settings as a new install holds them. */
@@ -311,6 +311,8 @@ export class FakeContext {
   readonly activityAttachments = new Map<string, Attachment[]>();
   processes: ProcessRecord[] = [];
   memoryState: MemoryState = 'ok';
+  /** Whether this machine has a sleep inhibitor to hold: `?awake=missing` shows one without (`resources.keepAwake`). */
+  keepAwakeAvailable = true;
   readonly usage = new Map<ThreadId, Usage>();
   /** Moves asked for during a turn, applied when it ends, as the core's `ThreadMove.waiting`. Memory only. */
   readonly waitingMoves = new Map<ThreadId, { projectId: string; by: 'user' | 'agent'; stopBackground: boolean | undefined; at: number }>();
@@ -327,8 +329,6 @@ export class FakeContext {
   todos: Todo[] = [];
   /** Per thread, the user's message that started its automatic goal, as the core's `auto-goal:<thread>` row. */
   readonly autoGoalMessages = new Map<string, string>();
-  /** The experiments a queued prompt was queued with, read by `turns.start` while the composer delivers it. */
-  queuedExperiments: readonly string[] | null = null;
   /** The working tree `files.list`, `files.read` and `files.write` share. */
   readonly files = new Map<string, string>(Object.entries(FAKE_TREE));
   readonly artifactUrls = new Set<string>();
@@ -370,16 +370,11 @@ export class FakeContext {
   experimentsInForce(): ExperimentId[] {
     return effectiveExperiments(this.desktopExperiments ?? this.clientPreferences?.experiments ?? [], this.core.version);
   }
-  /** The settings in force, as the core's `SettingsStore.get`: `settings` is what is stored, and a Release reads the ones that are experiments as off. */
+  /** The settings in force, as the core's `SettingsStore.get`: what is stored, read as is in every build. */
   settingsInForce(): Settings {
-    return holdExperimentalSettings({ ...this.settings }, this.core.version);
+    return { ...this.settings };
   }
 
-  /** As the core's `contactsGate`: a Release starts nothing new in an experiment, and still reads and removes what exists. */
-  startGate(id: ExperimentId): void {
-    const refusal = experimentStartRefusal(id, this.core.version);
-    if (refusal !== null) throw new RpcFailure({ code: RpcErrorCode.Refused, message: refusal, data: { reason: 'experiment-off' } });
-  }
   speech: SpeechConfig = { engine: 'local', language: '', apiProvider: 'groq', fallback: false, executable: '', modelPath: '', model: SPEECH_DEFAULT_MODEL };
   readonly speechStatus: SpeechStatus = { revision: 'fake-voice', engine: 'local', ready: true, localReady: true, groqKeySet: false, openrouterKeySet: false, installing: false, downloadedBytes: 0, totalBytes: 0, error: null, canInstallRuntime: true, models: fakeSpeechModels(), downloading: null, runtimeOutdated: false };
   readonly speechRequests = new Map<string, symbol>();
@@ -626,6 +621,9 @@ export class FakeContext {
       this.settings.subscriptionProxy = { enabled: search?.get('gatewayOn') === '1', kind: gateway, baseUrl: 'https://gateway.example.test/v1',
         dashboardUrl: gateway === 'douane' ? 'https://gateway.example.test/admin/#quotas' : 'https://gateway.example.test/management.html#/quota' };
     }
+    // `?os=linux` or `macos`: a core where the Windows-only guards and caps do nothing, and macOS reads no CPU.
+    const os = search?.get('os') === 'linux' || search?.get('os') === 'macos' ? search.get('os') as 'linux' | 'macos' : 'windows';
+    this.keepAwakeAvailable = search?.get('awake') !== 'missing';
     const hostname = options.hostname === undefined ? options.coreName ?? 'studio' : options.hostname;
     this.core = {
       ...(hostname ? { hostname } : {}),
@@ -633,17 +631,17 @@ export class FakeContext {
       coreId,
       protocolVersion: PROTOCOL_VERSION,
       features: { draftPreparation: true, attachmentUploads: true, threadSnapshots: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, pluginGrants: true, projectBoard: true, deviceProjects: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, sharedProjects: 1, listChanges: true },
-      os: 'windows',
+      os,
       channel: 'stable',
       pid: 4242,
       startedAt: T0,
       endpoint: { host: '127.0.0.1', port: 8777 },
       dataDir: DATA_DIR,
-      trace: {
-        os: 'windows',
+      trace: os === 'windows' ? {
+        os,
         mode: 'events',
         note: 'Job object completion port: every process this thread launched is reported exactly, including the ones its children launched.'
-      }
+      } : { os, mode: 'poll', note: 'direct children only; Job Objects are Windows-only' }
     };
     this.scheduler = {
       running: [],

@@ -329,8 +329,7 @@ Shipped descriptors and dependency manifests own version pins.
 
 A descriptor loads or is refused with the file, the field and what was expected.
 An unknown field is a refusal, a user file may not take a shipped id, and `roots`
-is checked before anything else. `providers.dryRun` validates a file and prints
-the plan without writing anything.
+is checked before anything else.
 
 ## The fields
 
@@ -922,13 +921,6 @@ Completions `image_url` part. OpenCode 1 stays at `images: false`: 1.19.2 also
 advertises images, but replaces one with an error text for a gateway model
 that declares no image input, which is every model the gateway block lists.
 
-`BOITE_E2E_OPENCODE2_BINARY=/absolute/path/to/opencode2 bun test packages/core/test/opencode2.compat.test.ts`
-uses the installed binary with a local API and disposable profiles. On 2.1.1
-it covers model discovery, a file-reading tool, cold resume, plan mode, stop
-and another turn while a version 1 database is locked and its plugin API is
-incompatible. It needs no login or external model. Windows and macOS remain
-unchecked by this run.
-
 ## A local ACP command
 
 The Providers page has a Local ACP command card for any agent that speaks ACP
@@ -953,8 +945,8 @@ in-memory client runs too) and refuses with the field it names (`name`,
 
 The core writes an ordinary user descriptor to `<dataDir>/providers/<id>.json`
 (`localAcpDescriptor` in `packages/core/src/providers/local-command.ts`) and
-reloads, so the loader, the ACP driver and `providers.dryRun` treat it like a
-file written by hand. It has no login and no isolation: the default account
+reloads, so the loader and the ACP driver treat it like a file written by
+hand. It has no login and no isolation: the default account
 starts the agent with its own sign-in and settings. Its only model is
 `default`, which leaves the agent on the model it is configured with until the
 models probe reads the agent's list. A file that fails to load is deleted again

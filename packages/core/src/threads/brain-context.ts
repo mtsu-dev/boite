@@ -14,7 +14,7 @@ import type { ThreadSummary, Turn } from '@boite/contracts';
 import type { Core } from '../core.ts';
 
 /** Per-thread settings key; `journal.ts` deletes it with the thread. */
-export const BRAIN_SENT_PREFIX = 'brain-sent:';
+const BRAIN_SENT_PREFIX = 'brain-sent:';
 
 interface BrainSent { hash: string; sessionGeneration: number; turnId: string }
 

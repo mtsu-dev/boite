@@ -26,7 +26,7 @@ const LEGACY_CARRY_ON_KEY = 'auto-continues';
 const PING_YIELD_MS = 1_000;
 
 /** The account, model and session a usage limit was hit on: a resume on another one would not be the same work. */
-export interface LimitSelection {
+interface LimitSelection {
   providerId: string;
   accountId: string;
   model: string | null;

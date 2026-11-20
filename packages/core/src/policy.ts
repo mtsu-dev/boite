@@ -24,7 +24,7 @@ import { POLICY_KEYS, type AdminPolicy, type PolicyKey, type PolicyProblem, type
 import { refused, unavailable, type RpcFailure } from './errors.ts';
 
 /** How often the file is looked at for a change: a stat, nothing read unless it moved. */
-export const POLICY_POLL_MS = 3000;
+const POLICY_POLL_MS = 3000;
 /** A policy is a few hundred bytes; anything past this is not one. */
 const MAX_POLICY_BYTES = 256 * 1024;
 const UPDATE_VALUES: readonly UpdatePolicy[] = ['off', 'check', 'auto'];

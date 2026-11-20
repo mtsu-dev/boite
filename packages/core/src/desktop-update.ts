@@ -18,7 +18,7 @@ const AGENT_POLL_MS = 250;
  * a phone from another address, a plugin or the CLI under another name; none
  * of them holds this machine's installer.
  */
-export function isLocalWindow(connection: Connection): boolean {
+function isLocalWindow(connection: Connection): boolean {
   return connection.identity.principal === 'owner' && connection.identity.sessionId === null
     && connection.remote === false && connection.clientName === 'shell';
 }

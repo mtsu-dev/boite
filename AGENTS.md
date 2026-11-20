@@ -149,8 +149,7 @@ and assertions when making the suite faster.
   restart, its socket, what it buffers and when it exits.
 - [Workflows](docs/internals/workflows.md): JSON plans of delegated steps and their graph.
 - [Council](docs/internals/council.md): several models review one request alone and
-  read-only behind an experiment, each with a score, and the salon the owner
-  follows.
+  read-only, each with a score, and the salon the owner follows.
 - [Mochis](docs/internals/mochis.md): Boite's persistent agents, each a thread with a name,
   memory, routines and a desk, their `boite mochi` commands and their guide.
 - [Teams](docs/internals/teams.md): mochis and the owner in one group, routing, delivery

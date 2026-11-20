@@ -12,7 +12,7 @@ const scratch = mkdtempSync(join(tmpdir(), 'boite-build-windows-protected-'));
 const journal = new Journal(join(scratch, 'journal.db')), procs = new ProcRegistry(journal, new Bus());
 try {
   const directory = join(import.meta.dir, '../src/platform/windows');
-  const sources = ['protected-tool.c', 'protected-null.c', 'protected-null.h', 'protected-null-native.h', 'protected-null-contracts.h', 'protected-null-startup.h'];
+  const sources = ['protected-tool.c', 'protected-null.c', 'protected-null.h', 'protected-null-native.h', 'protected-null-contracts.h'];
   const compiler = selectedCompiler || (process.platform === 'win32' ? Bun.which('clang') || Bun.which('gcc')
     || ['C:\\mingw64\\bin\\gcc.exe', 'C:\\ProgramData\\mingw64\\mingw64\\bin\\gcc.exe'].find(existsSync) : Bun.which('x86_64-w64-mingw32-gcc'));
   if (!compiler) throw new Error('execution.windows.compiler: install a Windows SDK clang or MinGW compiler before building the userspace helper');

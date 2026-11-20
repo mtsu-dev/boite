@@ -22,7 +22,7 @@ import { browserCodec, fitWithin, renamed, type Decoded, type Encoded, type Imag
 /** Past this long edge a screenshot's text stops being readable: the fitting never goes under it. */
 export const FIT_FLOOR_EDGE = 1280;
 /** Least loss first. Sizes fall along the list, so a binary search finds the first that fits. */
-export const FIT_STEPS: readonly { edge: number; quality: number }[] = [
+const FIT_STEPS: readonly { edge: number; quality: number }[] = [
   { edge: 2000, quality: 0.75 },
   { edge: 2000, quality: 0.65 },
   { edge: 1800, quality: 0.6 },

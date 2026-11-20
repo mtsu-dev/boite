@@ -36,7 +36,6 @@ import { projectRef } from './project-policy.ts';
 import { memberThreadId } from './member-address.ts';
 import { memberAdmission, projectAdmission } from './admission.ts';
 import { contactFace } from './face.ts';
-export { memberThreadId } from './member-address.ts';
 
 const MIRROR = 'contacts:relayed';
 const MIRROR_PENDING = 'contacts:relayed-pending';

@@ -26,6 +26,11 @@ export function keepAwakeCommands(os: 'linux' | 'macos', find: Find = name => Bu
   return ['sleep:idle', 'idle'].map(what => [inhibit, `--what=${what}`, '--who=Boite', '--why=Agents are working', '--mode=block', cat]);
 }
 
+/** Whether this machine has a helper to hold, so the Keep awake switch can say when it has none. */
+export function keepAwakeAvailable(os: 'linux' | 'macos', find: Find = name => Bun.which(name)): boolean {
+  return keepAwakeCommands(os, find).length > 0;
+}
+
 /**
  * Holds the inhibitor until the returned function is called. `onLost` hears
  * when no command could hold it, or when the helper ended by itself.

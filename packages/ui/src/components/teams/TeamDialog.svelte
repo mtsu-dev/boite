@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { markFeature } from '@boite/contracts';
   import { onMount, tick } from 'svelte';
   import { Check, X } from '@lucide/svelte';
   import type { Team } from '@boite/contracts';
@@ -138,8 +137,6 @@
     event.preventDefault();
     (event.shiftKey ? last : first).focus({ preventScroll: true });
   }
-  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
-  markFeature('boite-feature:teams');
 </script>
 
 <svelte:window onkeydowncapture={onkeydown} />

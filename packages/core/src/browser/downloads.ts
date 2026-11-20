@@ -42,7 +42,7 @@ const RISK: BrowserDownloadKind[] = ['executable', 'script', 'archive', 'documen
 const MACROS = new Set(['docm', 'xlsm', 'pptm']);
 
 /** What the first bytes of a file say it is; null when they say nothing known. */
-export function sniffDownload(head: Uint8Array): BrowserDownloadKind | null {
+function sniffDownload(head: Uint8Array): BrowserDownloadKind | null {
   const at = (offset: number, ...bytes: number[]) => bytes.every((byte, i) => head[offset + i] === byte);
   const ascii = (offset: number, text: string) => at(offset, ...[...text].map(char => char.charCodeAt(0)));
   if (ascii(0, 'MZ') || at(0, 0x7f, 0x45, 0x4c, 0x46) || at(0, 0xfe, 0xed, 0xfa, 0xce) || at(0, 0xfe, 0xed, 0xfa, 0xcf)

@@ -19,7 +19,7 @@ import { checkSizes, extractRelease, markExecutable, reachesThroughLink } from '
 import { upToDate } from './install-latest.ts';
 
 /** Room left on the volume after the archive and the unpacked files, so nothing fills the disk. */
-export const FREE_SPACE_MARGIN = 256 * 1024 * 1024;
+const FREE_SPACE_MARGIN = 256 * 1024 * 1024;
 
 /** What the manager writes back to the rest of the core. */
 export interface InstallSink {

@@ -5,7 +5,6 @@ import { flushSync, mount, unmount } from 'svelte';
 import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
 import { activityFeed, feedGroups } from '../lib/activity-feed';
-import { setExperiment } from '../lib/experiments';
 import { workspace } from '../lib/workspace.svelte';
 import ActivityRow from './ActivityRow.svelte';
 import ContactInboxRows from './home/ContactInboxRows.svelte';
@@ -198,13 +197,11 @@ test('the menu stands in one place on every kind of card, Needs you and Updates 
     await unmount(mounted); mounted = undefined;
   }
   // A contact request: its menu (another project to accept into) in the same place.
-  setExperiment('contacts', true);
   workspace.machines = [{ id: 'local', label: 'Local', store }];
   mounted = mount(ContactInboxRows, { target: document.body, props: { store } });
   await vi.waitFor(() => { flushSync(); expect(document.querySelector('[data-testid=activity-contact]')).not.toBeNull(); });
   place(document.querySelector<HTMLElement>('[data-testid=activity-contact]')!, '.pair');
   expect(menus).toEqual([...Array(4).fill('Thread actions'), 'More actions']);
-  setExperiment('contacts', false);
   workspace.machines = [];
 });
 

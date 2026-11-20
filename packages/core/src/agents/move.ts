@@ -53,24 +53,24 @@ import type { AgentStore } from './store.ts';
 import { boolean, ids, integer, object, oneOf, text } from './validation.ts';
 
 /** The brain files a move carries, in this order. `skills/` stays behind. */
-export const MOVED_BRAIN_FILES = ['AGENTS.md', 'MEMORY.md', MEMORY_ARCHIVE] as const;
+const MOVED_BRAIN_FILES = ['AGENTS.md', 'MEMORY.md', MEMORY_ARCHIVE] as const;
 /** What the brain files may weigh together, in UTF-8 bytes. */
-export const MOVE_BRAIN_MAX = 96_000;
+const MOVE_BRAIN_MAX = 96_000;
 /** The conversation excerpts a move carries, in characters, newest first; each message is cut by `messageExcerpt`. */
-export const MOVE_HISTORY_MAX = 48_000;
+const MOVE_HISTORY_MAX = 48_000;
 /** At most this many messages of the conversation. */
-export const MOVE_MESSAGES_MAX = 200;
+const MOVE_MESSAGES_MAX = 200;
 /** Facts still waiting for the bot. */
-export const MOVE_FACTS_MAX = 100;
+const MOVE_FACTS_MAX = 100;
 /**
  * The whole payload as JSON, in bytes: the sealed body is base64 and must stay
  * under `MAX_BODY` (262 144), which leaves room for the envelope.
  */
-export const MOVE_PAYLOAD_MAX = 180_000;
+const MOVE_PAYLOAD_MAX = 180_000;
 /** The longest `data:` URL a moved picture may be: whatever the payload bound leaves, never more than a stored picture. */
 const PICTURE_URL_MAX = Math.min(MOVE_PAYLOAD_MAX, Math.ceil(AGENT_PICTURE_MAX_BYTES / 3) * 4 + 64);
 /** How many times a move sends what changed while it waited (facts, profile, settings, brain, routines), before it gives up and keeps the bot. */
-export const MOVE_FACT_ROUNDS = 3;
+const MOVE_FACT_ROUNDS = 3;
 /** The answer that the target read no `bot.move`: its Boite is older than this feature. */
 const OLD_CORE = 'operation: expected';
 const MOVED_OUT = 'agents:moved-out:';

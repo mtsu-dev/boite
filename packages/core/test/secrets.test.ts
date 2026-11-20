@@ -176,7 +176,6 @@ test('project keys and replacement are unavailable, and an agent only reads comp
   const agent = await connect(h.url, h.core.agents.tokenFor(threadId));
   try {
     expect(await agent.call('secrets.list', { threadId })).toMatchObject({ secrets: [], storage: 'memory', encrypted: true });
-    expect(await thrown(agent.call('secrets.delete', { projectId, name: 'API_KEY' }))).toThrow();
     expect(await thrown(agent.call('secrets.list', { projectId }))).toThrow();
     expect(await thrown(agent.call('secrets.answer', { threadId, requestId: 'sreq_whatever', declined: true }))).toThrow();
     expect(await thrown(agent.call('secrets.ask', { threadId, name: 'API_KEY', reason: 'again', replace: true } as never))).toThrow('replace');
@@ -235,7 +234,6 @@ test('a phone answers over an encrypted link only, and declines over any', async
     expect(cardPart(h, threadId, card.requestId)?.status).toBe('pending');
     await plain.call('secrets.answer', { threadId, requestId: card.requestId, declined: true });
     expect(await card.asked).toMatchObject({ outcome: 'declined' });
-    expect(await thrown(plain.call('secrets.delete', { projectId, name: 'DEPLOY_TOKEN' }))).toThrow('encrypted link');
   } finally { plain.close(); }
 
   // On this machine, loopback both ways.
@@ -245,7 +243,6 @@ test('a phone answers over an encrypted link only, and declines over any', async
     const card = await openCard(h, owner, threadId, 'API_KEY');
     await local.call('secrets.answer', { threadId, requestId: card.requestId, value: secretValue(), keep: false });
     expect(await card.asked).toMatchObject({ outcome: 'saved' });
-    expect(await thrown(local.call('secrets.delete', { projectId, name: 'DEPLOY_TOKEN' }))).toThrow('Secret Drop is temporary');
   } finally { local.close(); }
   expect(h.core.secrets.index.data.kept).toEqual([]);
 });
