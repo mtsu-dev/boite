@@ -67,10 +67,6 @@ const SQLITE_INIT_CLOSE_MS = 2_000;
  */
 const WRITER_CLOSE_GRACE_MS = 2_000;
 
-// ---------------------------------------------------------------------------
-// The session: one agent process per thread
-// ---------------------------------------------------------------------------
-
 /**
  * One app-server per thread, initialized and opened once. Warm retention reuses
  * it between turns until idle expiry, a stop, an archive, shutdown or new setup.
@@ -541,10 +537,7 @@ export class CodexSession {
     return exitSentence('codex agent', code, this.#lastStderr, diagnostic);
   }
 
-  /**
-   * End the accepted turn and release the child through the registry. Keep its
-   * writer discoverable until close, even when a replacement has been acquired.
-   */
+  /** Keep the writer discoverable until close or the exit grace deadline, even across replacement. */
   #drop(): void {
     if (this.#ended) return;
     this.#ended = true;
