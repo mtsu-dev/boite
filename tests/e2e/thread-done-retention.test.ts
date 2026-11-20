@@ -32,6 +32,7 @@ for (const width of [1280, 390]) {
         await page.waitFor(`document.querySelector('[data-testid=archived-list]')`);
       };
       await enterGeneral();
+      if (phone) await openArchive();
       await page.waitFor(`document.querySelector('[data-testid=done-retention-days]')`);
       expect(await page.evaluate(`document.querySelector('[data-testid=done-retention-days]').value`)).toBe('3');
       await page.evaluate(`document.querySelector('[data-testid=done-retention-days]').scrollIntoView({block:'center'})`);
@@ -45,14 +46,13 @@ for (const width of [1280, 390]) {
       // A valid value saves when the field changes, with no Save button.
       await page.choose('[data-testid=done-retention-days]', '7');
       await page.waitFor(`globalThis.__boiteTest.workspace.active.settings.threadDoneRetentionDays === 7`);
-      await openArchive();
+      if (!phone) await openArchive();
       const doneAt = await page.evaluate<number>(`globalThis.__boiteTest.workspace.active.client.call('threads.get', {threadId: ${JSON.stringify(threadId)}}).then(t => t.doneAt)`);
       expect(await page.evaluate(`document.querySelector('[data-testid=done-expires]').textContent.includes(new Date(${doneAt + 7 * 86_400_000}).toLocaleString())`)).toBe(true);
-      if (phone) await page.click('[data-testid=mobile-settings-back]');
-      else await enterGeneral();
+      if (!phone) await enterGeneral();
       await page.choose('[data-testid=done-retention-days]', '0');
       await page.waitFor(`globalThis.__boiteTest.workspace.active.settings.threadDoneRetentionDays === 0`);
-      await openArchive();
+      if (!phone) await openArchive();
       expect(await page.evaluate(`document.querySelector('[data-testid=done-expires]')`)).toBeNull();
       await page.click(`[data-thread-id="${threadId}"] [data-testid=archived-restore]`);
       await page.waitFor(`!document.querySelector('[data-thread-id="${threadId}"] [data-testid=archived-restore]')`);

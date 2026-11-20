@@ -264,15 +264,16 @@ test.skipIf(process.platform === "win32")("a real shell keeps its screen while h
     const account = (await client.call("accounts.list", {})).find((a) => a.providerId === "echo")!;
     const thread = await client.call("threads.create", { projectId: project.id, providerId: "echo", accountId: account.id, title: "Shell" });
     page = await BrowserPage.launch({ url: pairingUrlOf(core), windowSize: { width: 1440, height: 900 } });
-    const openShell = async () => {
+    const selectThread = async () => {
       await page!.waitFor('document.querySelector("[data-testid=status-connection]")?.dataset.state === "ready"');
       await page!.click(`[data-thread-id="${thread.id}"]`);
       await page!.waitFor('document.querySelector("[data-testid=thread-header][data-status]")');
-      await chord(page!, "j", "KeyJ", 74);
-      await page!.waitFor('document.activeElement?.classList.contains("xterm-helper-textarea")');
-      await page!.waitFor(`(${screenText}).includes("$ ")`);
     };
-    await openShell();
+    const shellFocused = 'document.activeElement?.classList.contains("xterm-helper-textarea")';
+    await selectThread();
+    await chord(page, "j", "KeyJ", 74);
+    await page.waitFor(shellFocused);
+    await page.waitFor(`(${screenText}).includes("$ ")`);
 
     // Ctrl+K cuts the line at the cursor in bash. It used to open the palette instead.
     await page.send("Input.insertText", { text: "echo keptCUT" });
@@ -296,14 +297,15 @@ test.skipIf(process.platform === "win32")("a real shell keeps its screen while h
     expect(await page.evaluate('document.activeElement?.dataset.testid')).toBe("composer-input");
     await chord(page, "j", "KeyJ", 74);
     await page.waitFor('document.querySelector("[data-testid=terminal-drawer] .terminal-screen")?.dataset.kept === "1"');
-    await page.waitFor('document.activeElement?.classList.contains("xterm-helper-textarea")');
+    await page.waitFor(shellFocused);
     await settled(page);
     await page.screenshot("tests/e2e/.artifacts/terminal-real-desktop.png");
 
-    // A reload redraws the screen from the core's snapshot, with the question in it.
-    // Answering it again typed `1;2c` into whatever was running, on every reopen.
+    // Selecting the thread after reload restores its drawer from the core's snapshot.
+    // Answering the restored question again would type `1;2c` into the running program.
     await page.reload();
-    await openShell();
+    await selectThread();
+    await page.waitFor(shellFocused);
     await page.waitFor(`${answers} === 1`);
     await new Promise((resolve) => setTimeout(resolve, 600));
     expect(await page.evaluate(answers)).toBe(1);

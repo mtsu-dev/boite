@@ -210,6 +210,11 @@ test('archive and delete leave a project draft on desktop and phone', async () =
         await page.waitFor(`document.querySelector('${id('thread-menu-trigger')}')`);
         await page.click(id('thread-menu-trigger'));
         await page.click(`${id('thread-menu-trigger-menu')} [data-value=${action}]`);
+        if (action === 'delete') {
+          await page.waitFor(`document.querySelector('${id('confirm-dialog')}')`);
+          expect(await page.evaluate(`${state}.openThread?.title`)).toBe('Navigation check');
+          await page.click(id('confirm-ok'));
+        }
         await page.waitFor(`${state}.openThread === null && ${state}.draft?.projectId === 'p-boite'`);
         expect(await page.evaluate(`!!document.querySelector('${id('composer-input')}')`)).toBe(true);
         expect(await page.evaluate(`${state}.openThread`)).toBeNull();
