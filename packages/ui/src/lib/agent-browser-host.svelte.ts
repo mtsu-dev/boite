@@ -13,12 +13,12 @@ import type { BrowserHostRelay, HostBridge, HostClient } from './browser-host';
 export const agentHost = $state({ active: false });
 
 /** Whether this app can host the agent browser of `store`'s core at all. */
-export function canHostAgentBrowser(store: Pick<Store, 'localCore' | 'owner'>): boolean {
+function canHostAgentBrowser(store: Pick<Store, 'localCore' | 'owner'>): boolean {
   return store.localCore && store.owner && typeof browserBridge.events === 'function' && 'relay' in browserBridge && typeof browserBridge.setCookies === 'function' && /Windows/.test(navigator.userAgent);
 }
 
 /** Hosts until the returned stop runs: a reconnect makes a new relay, the core having dropped the last. */
-export function hostAgentBrowser(store: Store): () => void {
+function hostAgentBrowser(store: Store): () => void {
   const client = store.client;
   if (!client || !canHostAgentBrowser(store)) return () => {};
   let stopped = false, relay: BrowserHostRelay | null = null;

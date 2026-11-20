@@ -21,7 +21,7 @@ export interface CodexSkillsListed {
 }
 
 /** The skills Codex listed, by name: what the menu shows and where each one's `SKILL.md` is. */
-export interface CodexSkills {
+interface CodexSkills {
   commands: AgentCommand[];
   paths: Map<string, string>;
 }
@@ -51,7 +51,7 @@ export function skillsOf(listed: CodexSkillsListed): CodexSkills {
  * Codex's own composer sends one: the text names it `$name`, and a skill item
  * points at its file so Codex loads it. Anything else is the text alone.
  */
-export function promptInput(prompt: string, skills: ReadonlyMap<string, string>): ({ type: 'text'; text: string; text_elements: [] } | { type: 'skill'; name: string; path: string })[] {
+function promptInput(prompt: string, skills: ReadonlyMap<string, string>): ({ type: 'text'; text: string; text_elements: [] } | { type: 'skill'; name: string; path: string })[] {
   const match = LEADING.exec(prompt);
   const name = match?.[2];
   const path = name === undefined ? undefined : skills.get(name);

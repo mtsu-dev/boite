@@ -2,16 +2,16 @@ import { fitTranscript, TRANSCRIPT_ENTRY_PAGE, TRANSCRIPT_ENTRY_TEXT, TRANSCRIPT
 import type { Database } from 'bun:sqlite';
 import { address, text } from './coordination-letter.ts';
 import { invalidParams } from './errors.ts';
+import { searchChat, type ChatSearch } from './chat-search.ts';
+import { searchJournalChat } from './journal-reads.ts';
 import { threadRef } from './contacts/project-policy.ts';
 
 /** At most this many words in a search; each costs one scan of the candidates' chat. */
-export const SEARCH_WORDS = 8;
+const SEARCH_WORDS = 8;
 /** Matches returned by one core. */
-export const SEARCH_RESULTS = 20;
-export { TRANSCRIPT_READ_ENTRIES as READ_ENTRIES, TRANSCRIPT_ENTRY_TEXT as ENTRY_TEXT, TRANSCRIPT_ENTRY_PAGE as ENTRY_PAGE };
+const SEARCH_RESULTS = 20;
 /** The longest entry text an older core sends in a page: 4,000 characters and " ...". */
 const OLDER_ENTRY_TEXT = 4004;
-const EXCERPT_SIDE = 90;
 
 /** Lower-cased words of at least two characters, deduplicated, or a refusal naming the field. */
 export function searchWords(query: unknown): string[] {
@@ -38,51 +38,29 @@ export function spoken(parts: MessagePart[]): string {
   return parts.flatMap(part => part.type === 'text' ? [part.text] : part.type === 'error' ? [`[error] ${part.message}`] : []).join('\n');
 }
 
-function excerpt(text: string, word: string): string {
-  const at = text.toLowerCase().indexOf(word);
-  const start = Math.max(0, at - EXCERPT_SIDE);
-  const end = Math.min(text.length, at + word.length + EXCERPT_SIDE);
-  return `${start > 0 ? '... ' : ''}${text.slice(start, end).replace(/\s+/g, ' ').trim()}${end < text.length ? ' ...' : ''}`;
-}
-
-const CHAT_TEXT = "j.value->>'type' = 'text' AND m.role IN ('user', 'assistant')";
-
 /**
  * Contacts among `candidates` where every word appears in a field or in the
- * chat. Field matches rank first, then the most recently active.
+ * chat. Field matches rank first, then the most recently active. The chat is
+ * searched off the core's thread (`journal-reads.ts`): the caller awaits, so it
+ * checks again afterwards what the asker may still reach. `redact` leaves out
+ * the messages the shared file policy withholds.
  */
-export function searchContacts(db: Database, candidates: AgentContact[], words: string[], readChat = true, sanitize?: (value: string) => string): AgentMatch[] {
+export async function searchContacts(db: Database, candidates: AgentContact[], words: string[], readChat = true, redact = false): Promise<AgentMatch[]> {
   if (candidates.length === 0) return [];
-  const ids = JSON.stringify(candidates.map(contact => contact.threadId));
-  const inChat = new Map<string, Set<string>>();
-  for (const word of readChat ? words : []) {
-    const rows = db.query(`SELECT DISTINCT m.thread_id AS id${sanitize ? ", j.value->>'text' AS text" : ''} FROM messages m, json_each(m.parts) j WHERE m.thread_id IN (SELECT value FROM json_each(?)) AND ${CHAT_TEXT} AND instr(lower(j.value->>'text'), ?) > 0`).all(ids, word) as { id: string; text?: string }[];
-    inChat.set(word, new Set(rows.filter(row => !sanitize || sanitize(row.text!) === row.text).map(row => row.id)));
-  }
-  const matches: AgentMatch[] = [];
-  for (const contact of candidates) {
-    const matched = new Set<Field>();
-    const chatWords: string[] = [];
-    let all = true;
-    for (const word of words) {
-      const hit = fields(contact).filter(([, value]) => value.toLowerCase().includes(word)).map(([field]) => field);
-      for (const field of hit) matched.add(field);
-      const chat = inChat.get(word)?.has(contact.threadId) === true;
-      if (chat) chatWords.push(word);
-      if (hit.length === 0 && !chat) { all = false; break; }
-    }
-    if (!all) continue;
-    if (chatWords.length > 0) matched.add('chat');
-    matches.push({ ...contact, matched: [...matched], excerpts: chatWords.length > 0 ? excerpts(db, contact.threadId, chatWords, sanitize) : [] });
-  }
-  const fieldHits = (match: AgentMatch) => match.matched.filter(field => field !== 'chat').length;
-  return matches.sort((a, b) => fieldHits(b) - fieldHits(a) || (b.activeAt ?? 0) - (a.activeAt ?? 0)).slice(0, SEARCH_RESULTS);
-}
-
-/** Up to three recent excerpts of one thread's chat, around the first word each message contains. */
-function excerpts(db: Database, threadId: string, words: string[], sanitize?: (value: string) => string): string[] {
-  const rows = db.query(`SELECT j.value->>'text' AS text FROM messages m, json_each(m.parts) j WHERE m.thread_id = ? AND ${CHAT_TEXT} AND instr(lower(j.value->>'text'), ?) > 0 ORDER BY m.created_at DESC LIMIT 3`).all(threadId, words[0]!) as { text: string }[];
-  return rows.filter(row => !sanitize || sanitize(row.text) === row.text).map(row => excerpt(row.text, words.find(word => row.text.toLowerCase().includes(word)) ?? words[0]!));
+  const matched = new Map<string, Set<Field>>();
+  const search: ChatSearch = { words, redact, results: SEARCH_RESULTS, candidates: candidates.map(contact => {
+    const hit = new Set<Field>();
+    const fieldWords = words.filter(word => {
+      const found = fields(contact).filter(([, value]) => value.toLowerCase().includes(word));
+      for (const [field] of found) hit.add(field);
+      return found.length > 0;
+    });
+    matched.set(contact.threadId, hit);
+    return { threadId: contact.threadId, fieldWords, fieldHits: hit.size, activeAt: contact.activeAt ?? 0 };
+  }) };
+  const hits = readChat ? await searchJournalChat(db, search) : searchChat(null, search);
+  const contacts = new Map(candidates.map(contact => [contact.threadId, contact]));
+  return hits.map(hit => ({ ...contacts.get(hit.threadId)!, matched: [...matched.get(hit.threadId)!, ...(hit.chat ? ['chat' as const] : [])], excerpts: hit.excerpts }));
 }
 
 /** What a read asks: a page of the newest entries before `before`, or one entry's text from `offset`. */
@@ -138,7 +116,7 @@ export function readTranscript(db: Database, threadId: string, contact: AgentCon
 
 /**
  * The newest `limit` entries before `before`, oldest first, and whether older
- * ones remain. Each carries the first `ENTRY_TEXT` characters of its text; a
+ * ones remain. Each carries the first `TRANSCRIPT_ENTRY_TEXT` characters of its text; a
  * longer one names its whole `length` and the `next` offset of the rest.
  * The caller fits the page to the read budget.
  */
@@ -164,7 +142,7 @@ export function transcript(db: Database, threadId: string, limit: number, before
   return { entries: entries.reverse(), more };
 }
 
-/** Up to `ENTRY_PAGE` characters of one entry's text from `offset`, its whole `length`, and `next` while some remain. */
+/** Up to `TRANSCRIPT_ENTRY_PAGE` characters of one entry's text from `offset`, its whole `length`, and `next` while some remain. */
 function transcriptEntry(db: Database, threadId: string, id: string, offset: number, held?: Held, sanitize?: (value: string) => string): { entries: AgentTranscriptEntry[]; more: boolean } {
   const row = db.query('SELECT id, role, parts, created_at FROM messages WHERE id = ? AND thread_id = ?').get(id, threadId) as Row | null;
   if (!row) throw invalidParams(`entry: ${id} is not an entry of this thread`);
@@ -187,7 +165,7 @@ function remoteTools(tools: string[]): string[] {
  * older core ignores the request and sends a page, which is refused rather
  * than shown as the text asked for.
  */
-export function checkTranscript(value: unknown, entry?: { entry?: string; offset?: number }): { entries: AgentTranscriptEntry[]; more: boolean } {
+function checkTranscript(value: unknown, entry?: { entry?: string; offset?: number }): { entries: AgentTranscriptEntry[]; more: boolean } {
   const raw = value as { entries?: unknown; more?: unknown } | null;
   if (!raw || !Array.isArray(raw.entries) || raw.entries.length > 100 || typeof raw.more !== 'boolean') throw invalidParams('transcript: expected at most 100 entries and a more flag');
   const single = entry?.entry !== undefined;
@@ -213,7 +191,7 @@ export function checkTranscript(value: unknown, entry?: { entry?: string; offset
 /**
  * `contact`'s transcript from another core, checked. A page is cut to this
  * core's preview and read budget whatever that core sent: an entry longer
- * than `ENTRY_TEXT` keeps its start and names the rest from there, which the
+ * than `TRANSCRIPT_ENTRY_TEXT` keeps its start and names the rest from there, which the
  * sending core reads back by `entry` and `offset`.
  */
 export function remoteTranscript(contact: AgentContact, value: unknown, entry?: { entry?: string; offset?: number }): AgentTranscript {
@@ -271,7 +249,7 @@ export function partialList(answer: unknown, max = 100): PartialList {
 }
 
 /**
- * One tool call's output from `offset`, `ENTRY_PAGE` characters at a time, as
+ * One tool call's output from `offset`, `TRANSCRIPT_ENTRY_PAGE` characters at a time, as
  * an entry naming the tool: the whole result a carried history cut
  * (`continuation.ts`). Only the thread that ran the call reads it.
  */

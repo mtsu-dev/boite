@@ -133,7 +133,7 @@ async function boundedJson(response: Response, max: number): Promise<unknown> {
  * `refresh` marks a read the user asked for: Douane reads every account first
  * and reports a failure at once instead of after several in a row.
  */
-export async function fetchGatewayQuotas(proxy: SubscriptionProxy, key: string, names?: (providerId: string) => string | null, max = MAX_BYTES, refresh = false): Promise<Pick<SubscriptionProxyQuotas, 'providers' | 'updatedAt' | 'nativeMuse'> | null> {
+async function fetchGatewayQuotas(proxy: SubscriptionProxy, key: string, names?: (providerId: string) => string | null, max = MAX_BYTES, refresh = false): Promise<Pick<SubscriptionProxyQuotas, 'providers' | 'updatedAt' | 'nativeMuse'> | null> {
   let response: Response;
   try {
     response = await fetch(`${proxyApiUrl(proxy)}/quotas${refresh ? '?refresh=1' : ''}`, {

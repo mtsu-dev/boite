@@ -217,7 +217,7 @@ export function ownTokens(result: SDKResultMessage): number {
  * when the totals did not grow, or when `before` is unknown or larger than
  * what the CLI holds now, which means it restored an older save.
  */
-export function heldGrowth(result: SDKResultMessage, before: HeldUsage | null): HeldUsage | null {
+function heldGrowth(result: SDKResultMessage, before: HeldUsage | null): HeldUsage | null {
   if (before === null || result.modelUsage === undefined) return null;
   const now = heldUsage(result);
   const grown = {

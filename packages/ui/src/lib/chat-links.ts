@@ -151,7 +151,7 @@ class Forward {
   }
 }
 
-export type BracketLink = { index: number; end: number; label: string; target: string; angle: boolean };
+type BracketLink = { index: number; end: number; label: string; target: string; angle: boolean };
 
 /**
  * The `[label](destination)` links of a text, read in linear time. A regex
@@ -163,7 +163,7 @@ export type BracketLink = { index: number; end: number; label: string; target: s
  * parentheses, and a `!` before the `[` belongs to the link, as
  * `!?\[([^\]\n]+)\]\(\s*(?:<([^>\n]+)>|((?:[^\s()]|\([^()]*\))+))\s*\)` reads.
  */
-export class BracketLinks {
+class BracketLinks {
   readonly #label: Forward;
   readonly #word: Forward;
   readonly #angle: Forward;

@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import type { QuotaWindow } from '@boite/contracts';
 
 /** Where the server writes its sign-in, under `GEMINI_HOME`. */
-export const ANTIGRAVITY_TOKEN_FILE = join('antigravity-acp', 'acp_token.json');
+const ANTIGRAVITY_TOKEN_FILE = join('antigravity-acp', 'acp_token.json');
 const ENDPOINTS = ['https://daily-cloudcode-pa.googleapis.com', 'https://cloudcode-pa.googleapis.com'];
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const TIMEOUT_MS = 10_000;
@@ -35,7 +35,7 @@ function window(id: string, label: string, quota: Json): QuotaWindow[] {
 }
 
 /** `retrieveUserQuotaSummary`: one window per enabled bucket, named after its group and its period. */
-export function antigravitySummaryWindows(raw: unknown): QuotaWindow[] {
+function antigravitySummaryWindows(raw: unknown): QuotaWindow[] {
   const root = obj(raw);
   const groups = Array.isArray(root['groups']) && root['groups'].some((group) => Array.isArray(obj(group)['buckets']) && (obj(group)['buckets'] as unknown[]).length > 0)
     ? root['groups'] as unknown[]
@@ -58,7 +58,7 @@ export function antigravitySummaryWindows(raw: unknown): QuotaWindow[] {
 }
 
 /** `fetchAvailableModels`: per-model quotas, the highest use of each family kept. No reset cadence is invented. */
-export function antigravityModelWindows(raw: unknown): QuotaWindow[] {
+function antigravityModelWindows(raw: unknown): QuotaWindow[] {
   const windows = new Map<string, QuotaWindow>();
   for (const [modelId, rawModel] of Object.entries(obj(obj(raw)['models']))) {
     const model = obj(rawModel);

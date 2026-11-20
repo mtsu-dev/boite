@@ -32,7 +32,7 @@ type MessageHead = Pick<Message, 'id' | 'turnId' | 'state'>;
 type MessageCopy = Pick<Message, 'id' | 'threadId' | 'turnId' | 'state'>;
 
 /** The suffix a fork's title takes after its source's. */
-export const FORK_TITLE_SUFFIX = ' (fork)';
+const FORK_TITLE_SUFFIX = ' (fork)';
 
 /**
  * Editing a sent prompt (`threads.rewind`) and branching a conversation

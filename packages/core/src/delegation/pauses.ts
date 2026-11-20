@@ -15,7 +15,7 @@ export function pauseOver(current: Pause | null, by: PauseOrigin, at = Date.now(
 }
 
 /** A prompt the owner wrote to the conversation after `at`: not one Boite, a routine or another agent opened. */
-export function ownerWroteSince(core: Core, threadId: string, at: number): boolean {
+function ownerWroteSince(core: Core, threadId: string, at: number): boolean {
   return core.journal.db.query(`SELECT 1 FROM messages WHERE thread_id = ? AND role = 'user' AND created_at > ?
     AND json_extract(parts, '$[0].startedBy') IS NULL AND json_extract(parts, '$[0].activity') IS NULL LIMIT 1`).get(threadId, at) !== null;
 }

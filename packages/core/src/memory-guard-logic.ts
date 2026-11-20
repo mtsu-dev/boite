@@ -37,7 +37,7 @@ const MACHINE_KILL_FLOOR_BYTES = 256 * 1024 * 1024;
  * processes: an eighth of the reserve, at most 256 MiB. Below it the shortage
  * comes from other programs and the kill frees too little to restore anything.
  */
-export function machineKillFloor(reserveBytes: number): number {
+function machineKillFloor(reserveBytes: number): number {
   return Math.min(MACHINE_KILL_FLOOR_BYTES, reserveBytes / 8);
 }
 

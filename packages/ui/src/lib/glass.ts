@@ -46,7 +46,7 @@ export function hasMaterialChoice(supported: readonly Glass[]): boolean {
   return supported.some((kind) => kind !== 'solid');
 }
 
-export function writeGlass(kind: Glass): void {
+function writeGlass(kind: Glass): void {
   try {
     window.localStorage.setItem(GLASS_STORAGE_KEY, kind);
   } catch {

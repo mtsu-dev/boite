@@ -12,7 +12,6 @@
   import PluginsPage from './PluginsPage.svelte';
   import { COMMAND_GROUPS } from '../lib/keybindings';
   import { experimentsListed, experimentsShown } from '../lib/experiments.svelte';
-  import { experimentsRun } from '@boite/contracts';
   import { experimentCopy } from '../lib/experiment-copy';
   import { fill, strings } from '../lib/strings';
   import type { SettingsTab, Store } from '../lib/store.svelte';
@@ -46,8 +45,8 @@
   /**
    * The pages that change one machine (`machinePage`) take it from the bar
    * above them; the others are this window's (appearance), the whole group's (machines) or
-   * pick their own (usage, which also reads every machine). Experiments mixes
-   * this device's switches with a machine's, so its bar sits above the latter.
+   * pick their own (usage, which also reads every machine). Experiments holds
+   * this device's switches alone.
    */
   /** Machines this window controls, and the window's own whatever its role there. */
   let choices = $derived(workspace.machines.filter((machine) => machine.store === store || (machine.store.connection === 'ready' && machine.store.owner)));
@@ -165,11 +164,15 @@
       ...(store.owner ? [{ id: 'windows', label: strings.windows.settings.allowedHeading }, { id: 'window-exclusions', label: strings.windows.settings.exclusionsHeading }] : [])
     ],
     advanced: [
-      ...(store.owner ? [{ id: 'execution', label: strings.settings.execution }, { id: 'phone', label: strings.phone.heading }, { id: 'origins', label: strings.machines.browserOrigins }] : []),
+      ...(store.owner ? [
+        { id: 'execution', label: strings.settings.execution }, { id: 'cache-keepalive', label: strings.settings.cacheKeepalive },
+        { id: 'background-compaction', label: strings.settings.backgroundCompaction }, { id: 'device-stream', label: strings.settings.deviceStream },
+        { id: 'phone', label: strings.phone.heading }, { id: 'origins', label: strings.machines.browserOrigins }
+      ] : []),
       ...(desktopSettings(narrow.current) ? [{ id: 'details', label: strings.settings.terminalAndScrollbars }] : []),
       { id: 'core', label: strings.settings.core }
     ],
-    experiments: [...experimentsListed().map((id) => ({ id, label: experimentCopy()[id]?.title ?? id })), ...(store.owner && experimentsRun(target.core?.version) ? [{ id: 'background-compaction', label: strings.settings.backgroundCompaction }, { id: 'device-stream', label: strings.settings.deviceStream }] : [])],
+    experiments: experimentsListed().map((id) => ({ id, label: experimentCopy()[id]?.title ?? id })),
     diagnostics: [
       { id: 'diagnostics-status', label: strings.diagnostics.status },
       { id: 'diagnostics-problems', label: strings.diagnostics.problems },
@@ -217,7 +220,7 @@
   /** One title per screen, at the top of its card: the page's own name, as the nav lists it. */
   let title = $derived(tab === 'home' ? strings.settings.tabs.home : tabs.find((entry) => entry.id === tab)?.label ?? '');
   let info = $derived(infoOf(tab));
-  let scopePicks = $derived(bar && tab !== 'experiments' && choices.length > 1 && chosen !== undefined);
+  let scopePicks = $derived(bar && choices.length > 1 && chosen !== undefined);
   /**
    * Where the page's settings apply, said once under the title, for most of
    * its cards ("Saved on this device", "Agent settings apply on studio", the
@@ -260,6 +263,7 @@
     ['general', 'agent-replies', strings.settings.promptSuggestions],
     ['general', 'agent-replies', strings.settings.titleModel],
     ['general', 'agent-replies', strings.settings.goalTrackerModel],
+    ['general', 'agent-replies', strings.settings.autoGoals],
     ['general', 'conversations', strings.features.chatArtifacts.title],
     ...(inShell ? [['general', 'conversations', strings.features.openChatLinks.title] as [SettingsTab, string, string]] : []),
     ['general', 'conversations', strings.features.previewComments.title],
@@ -273,6 +277,7 @@
     ['appearance', 'theme', strings.settings.accent],
     ['appearance', 'theme', strings.settings.material],
     ['appearance', 'theme', strings.settings.language],
+    ['appearance', 'theme', strings.features.whip.title],
     ['advanced', 'details', strings.features.edgeScrollbars.title],
     ['advanced', 'details', strings.settings.terminalCursor],
     ['appearance', 'reading', strings.settings.font],
@@ -510,7 +515,7 @@
             </p>
           {/if}
         </header>
-        {#if bar && tab !== 'experiments'}{@render machineNotes()}{/if}
+        {#if bar}{@render machineNotes()}{/if}
         {#key target}
         <PolicyBanner store={target} />
         {#if tab === 'home'}<SettingsHome {store} target={chosen?.store ?? store} families={homeFamilies} onopen={go} />{/if}
@@ -554,8 +559,7 @@
       {:else if page === 'plugins'}
         <PluginsPage store={target} />
       {:else if page === 'experiments'}
-        <!-- Shown alone it carries the bar between its two halves; under Advanced, the bar above serves both. -->
-        <ExperimentsPage {store} {target} bar={bar && page === tab ? machineBar : undefined} />
+        <ExperimentsPage />
       {:else if page === 'diagnostics'}
         <DiagnosticsPage store={target} {onopenthread} />
       {:else if page === 'resources'}

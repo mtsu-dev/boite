@@ -2,9 +2,9 @@ import { describe, expect, test } from 'bun:test';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { normalizeCoreLogText, RpcErrorCode, type ProcessRecord, type RpcEvents, type Turn } from '@boite/contracts';
+import { LOG_MESSAGE_CHARS, normalizeCoreLogText, RpcErrorCode, type ProcessRecord, type RpcEvents, type Turn } from '@boite/contracts';
 import { Bus } from '../src/bus.ts';
-import { DiagnosticLogs, LOG_FILE_COUNT, LOG_MESSAGE_CHARS, redactLogText, SHORT_PROCESS_MS } from '../src/logs.ts';
+import { DiagnosticLogs, LOG_FILE_COUNT, SHORT_PROCESS_MS } from '../src/logs.ts';
 import { runCli } from '../src/cli.ts';
 import { connect } from '../src/client.ts';
 import { setDriver } from '../src/drivers/index.ts';
@@ -64,8 +64,8 @@ describe('bounded persistent diagnostics', () => {
       expect(live.at(-1)?.kind).toBe('provider-output');
       bus.emit('core.log', { level: 'warn', at: 3, message: 'codex agent: protocol error -32000: disk full', source: 'codex' });
       expect((await logs.query({ limit: 1 }))[0]?.message).toBe('codex agent: protocol error -32000: disk full');
-      expect(redactLogText(redactLogText(message, [secret]), [secret])).toBe(redactLogText(message, [secret]));
-      expect(redactLogText('failure code -32000 params={"prompt":"secret text","parts":["private tail"]}')).toBe('failure code -32000 params=[redacted]');
+      expect(normalizeCoreLogText(normalizeCoreLogText(message, [secret]), [secret])).toBe(normalizeCoreLogText(message, [secret]));
+      expect(normalizeCoreLogText('failure code -32000 params={"prompt":"secret text","parts":["private tail"]}')).toBe('failure code -32000 params=[redacted]');
     } finally { bus.dispose(); await logs.close(); rmSync(directory, { recursive: true, force: true }); }
   });
 

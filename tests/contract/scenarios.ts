@@ -979,6 +979,16 @@ export const SCENARIOS: Record<string, Scenario> = {
     // The invitation it minted names this machine: pasted here, it is refused by field.
     same((await refusedWith(env.call('group.join', { invite }), RpcErrorCode.Refused, ['field'])).field, 'invite', 'joining its own invitation');
   },
+  'resources.keepAwake says whether the machine is held awake and whether it can be, to the owner only': async (env) => {
+    const status = await env.call('resources.keepAwake', {});
+    same(Object.keys(status).sort(), ['available', 'held'], 'the keys');
+    same(status.held, false, 'held with no turn');
+    check(typeof status.available === 'boolean', 'available is not a boolean');
+    const setup = await echo(env);
+    const own = await thread(env, setup, 'own');
+    const agent = await env.peer({ agentThreadId: own.id });
+    await refusedWith(agent.call('resources.keepAwake', {}), RpcErrorCode.Refused);
+  },
 };
 
 /**

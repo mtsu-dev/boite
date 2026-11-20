@@ -147,7 +147,7 @@ test('a mochi wearing an imported picture takes it along: the target stores the 
 test('a mochi on its way to another machine joins no team meanwhile, and its archived team follows it', async () => {
   const { desk, owner, pcId } = await group();
   const { agent } = await makeAgent(desk, owner);
-  await owner.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: ['teams'], labels: {} });
+  await owner.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: [], labels: {} });
   const old = desk.core.teams.create({ name: 'Old crew', members: [agent.id] });
   desk.core.teams.archive({ teamId: old.id, archived: true });
   const request = desk.core.coordination.request.bind(desk.core.coordination);
@@ -165,7 +165,7 @@ test('a mochi on its way to another machine joins no team meanwhile, and its arc
 test('an archived team whose member left before teams followed moves comes back: with the mochi where its move went, without one nobody can find', async () => {
   const { desk, owner, deskId, pcId } = await group();
   const { agent } = await makeAgent(desk, owner);
-  await owner.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: ['teams'], labels: {} });
+  await owner.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: [], labels: {} });
   const gone = await makeAgent(desk, owner, { name: 'Gone' });
   const old = desk.core.teams.create({ name: 'Old crew', members: [agent.id, gone.agent.id] });
   desk.core.teams.archive({ teamId: old.id, archived: true });

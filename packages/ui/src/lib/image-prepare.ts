@@ -14,11 +14,11 @@ import { ATTACHMENT_MAX_BYTES, IMAGE_MAX_EDGE, IMAGE_MIME_TYPES } from '@boite/c
 
 /** The long edge an image is brought to: past it Claude refuses a request carrying many images. */
 export { IMAGE_MAX_EDGE };
-export const JPEG_QUALITY = 0.85;
+const JPEG_QUALITY = 0.85;
 /** Over this an image is not even decoded: a phone's canvas would not hold it. */
 export const IMAGE_SOURCE_MAX_BYTES = 50 * 1024 * 1024;
 /** Under this, an image already within `IMAGE_MAX_EDGE` in a format agents read goes untouched. */
-export const IMAGE_KEEP_BYTES = 512 * 1024;
+const IMAGE_KEEP_BYTES = 512 * 1024;
 
 const HEIC_TYPES = ['image/heic', 'image/heif', 'image/heic-sequence', 'image/heif-sequence'];
 const HEIC_NAME = /\.(heic|heif)$/i;

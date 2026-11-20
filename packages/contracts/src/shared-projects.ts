@@ -145,8 +145,6 @@ export interface SharedComputeRoute {
   permissionMode: PermissionMode;
   protection: SharedExecutionProtection;
 }
-/** A host or a workflow can express 4 local + 5 remote without a protocol-imposed split. */
-export interface SharedComputeAllocation { project: SharedProjectRef; children: number }
 export interface SharedComputeStart {
   requestId: string;
   host: SharedProjectRef;

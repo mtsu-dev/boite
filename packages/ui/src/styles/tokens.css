@@ -366,9 +366,7 @@
   --fold-caret: 12px;
   --fold-gap: 7px;
   --fold-inset: 10px;
-  --fold-inset-nested: 6px;
   --fold-indent: calc(var(--fold-inset) + var(--fold-caret) + var(--fold-gap));
-  --fold-indent-nested: calc(var(--fold-inset-nested) + var(--fold-caret) + var(--fold-gap));
   /* Shared alignment for tool, reasoning and answered-question disclosures. */
   --activity-gap: 8px;
   --activity-padding: 4px;

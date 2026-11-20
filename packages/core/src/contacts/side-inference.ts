@@ -7,7 +7,7 @@ import { assertDriverRunnable, getDriver } from '../drivers/index.ts';
 import { newId } from '../ids.ts';
 
 export interface InferenceRoute {providerId: string; accountId: string; model: string | null; effort: string | null}
-export function withoutBoiteCredentials(env: Record<string, string | undefined>): Record<string, string | undefined> {
+function withoutBoiteCredentials(env: Record<string, string | undefined>): Record<string, string | undefined> {
   const agent = new Set<string>(Object.values(AGENT_ENV)), clean: Record<string, string | undefined> = {};
   for (const [name, value] of Object.entries(env)) {
     const upper = name.toUpperCase();

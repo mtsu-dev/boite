@@ -5,7 +5,6 @@
   import type { Store } from '../lib/store.svelte';
   import { clampSidebar, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN } from '../lib/prefs';
   import { strings } from '../lib/strings';
-  import { experimentOn } from '../lib/experiments.svelte';
   import { pinnedQuotas } from '../lib/pinned-quotas.svelte';
   import Deferred from './Deferred.svelte';
   import { parts } from '../lib/deferred-parts';
@@ -14,8 +13,7 @@
   /**
    * The column right of the app rail, for the thread list and the Bots list
    * alike: one width the user drags, one fold from the title bar, the head on
-   * top, an optional subhead that stays put (the Bots search) and the rows in
-   * one scroll. On a desktop it reaches the window's top, its head level with
+   * top and the rows in one scroll. On a desktop it reaches the window's top, its head level with
    * the main column's bar; the limits, the machines and Settings live on the
    * app rail.
    *
@@ -32,7 +30,6 @@
     scroller = $bindable(),
     onscroll,
     head,
-    subhead,
     children
   }: {
     store: Store;
@@ -45,8 +42,6 @@
     scroller?: HTMLDivElement;
     onscroll?: () => void;
     head: Snippet;
-    /** What stays put between the head and the rows, like the Agents search. */
-    subhead?: Snippet;
     children: Snippet;
   } = $props();
 
@@ -145,13 +140,12 @@
   data-quota-dock-target=""
   onmousedown={dragTop}
 >
-  <div class="views" class:scrolled={scrolled && !subhead}>{@render head()}</div>
-  {@render subhead?.()}
+  <div class="views" class:scrolled>{@render head()}</div>
   <div class="scroll" class:scrolled data-project-list={kind === 'sidebar' ? '' : undefined} bind:this={scroller}
     onscroll={() => { scrolled = (scroller?.scrollTop ?? 0) > 0; measureMore(); onscroll?.(); }}>
     {@render children()}
   </div>
-  {#if (store.page === 'chat' || store.page === 'agents') && dockVisible && experimentOn('pinned-quotas') && pinnedQuotas.current.pinned && pinnedQuotas.wantsDock(store)}
+  {#if (store.page === 'chat' || store.page === 'agents') && dockVisible && pinnedQuotas.current.pinned && pinnedQuotas.wantsDock(store)}
     <Deferred part={parts.PinnedQuota} quiet>{#snippet children(PinnedQuota)}<PinnedQuota {store} dock />{/snippet}</Deferred>
   {/if}
   <!-- No app rail below 720 pixels: the drawer's foot keeps the update button, and its card opens as a sheet. -->

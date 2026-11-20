@@ -62,8 +62,8 @@ export const strings = {
     youInText: 'you',
     paused: 'Paused: posts wait and reach the mochis when the team resumes.',
     archived: 'This team is archived and takes no more posts.',
-    /** In the composer's place when the core does not answer for the team: the Teams experiment off, or an older core. */
-    unavailable: 'Posting here needs the Teams experiment, in the desktop app under Settings, Experiments.',
+    /** In the composer's place when the core does not answer for the team: an older core, where Teams were an experiment. */
+    unavailable: 'This team does not answer here yet: update Boite on the machine that holds it.',
     empty: 'No posts yet. Write to the whole team, or name a mochi with {mention}.',
     earlier: 'Show earlier posts',
     newer: 'Show newer posts',

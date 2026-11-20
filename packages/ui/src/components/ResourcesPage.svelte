@@ -20,6 +20,8 @@
   let memoryReserve = $state(untrack(() => store.settings?.memoryReserveMb ?? 0));
   const resources = $derived([...store.resources].sort((a, b) => b.load.memoryBytes - a.load.memoryBytes));
   const memoryEnabled = $derived(store.settings?.memoryProtection !== false);
+  /** Only Windows caps the agents' CPU (a Job Object): elsewhere the field says so and stays put. */
+  const offWindows = $derived(!!store.core && store.core.os !== 'windows');
   let confirming = $state<ThreadId | null>(null);
   const limitsSave = new Autosave(async () => {
     if (!await store.saveSettings({ agentCpuCapPercent: cpuCap, ...(memoryEnabled ? { agentMemoryBudgetPercent: memoryBudget, threadMemoryCapMb: memoryCap, memoryReserveMb: memoryReserve } : {}) })) throw new Error('');
@@ -66,7 +68,9 @@
       }} />
     </label>
     <form onsubmit={(event) => { event.preventDefault(); void limitsSave.flush(); }} {...typed(limitsSave)}>
-      <label><span class="name"><span class="ui-label">{strings.settings.agentCpuCapPercent}</span><InfoTip topic={strings.settings.agentCpuCapPercent} text={strings.settings.agentCpuCapHint} /></span><input type="number" min="0" max="100" required bind:value={cpuCap} /></label>
+      <label><span class="name"><span class="ui-label">{strings.settings.agentCpuCapPercent}</span><InfoTip topic={strings.settings.agentCpuCapPercent} text={strings.settings.agentCpuCapHint} /></span><input disabled={offWindows} aria-label={strings.settings.agentCpuCapPercent} data-testid="cpu-cap" type="number" min="0" max="100" required bind:value={cpuCap} />
+        {#if offWindows}<span class="hint" data-testid="cpu-cap-windows-only">{strings.protection.windowsOnly}</span>{/if}
+      </label>
       <label><span class="name"><span class="ui-label">{strings.settings.agentMemoryBudgetPercent}</span><InfoTip topic={strings.settings.agentMemoryBudgetPercent} text={strings.settings.agentMemoryBudgetHint} /></span><input disabled={!memoryEnabled} aria-label={strings.settings.agentMemoryBudgetPercent} data-testid="memory-budget" type="number" min="10" max="90" step="1" required bind:value={memoryBudget} />
         {#if memoryEnabled && store.memory}<span class="hint" data-testid="memory-budget-resolved">{strings.resources.resolved(store.memory.limits.budgetMb)}</span>{/if}
       </label>
@@ -92,11 +96,12 @@
   <section class="card" id="settings-tasks">
     <h2 class="tasks-heading"><span class="ui-label">{strings.protection.tasks}</span><span class="live-dot" aria-hidden="true"></span></h2>
     <label for="{uid}-reap-orphans" class="switch-row">
-      <span class="text"><span class="ui-label-box"><span class="ui-label" id="{uid}-reap-orphans-name">{strings.settings.reapOrphans}</span><InfoTip topic={strings.settings.reapOrphans} text={strings.settings.reapOrphansHint} /><SyncMark {store} key="reapOrphans" /></span><span class="hint" id="{uid}-reap-orphans-effect">{strings.settings.effects.reapOrphans}</span></span>
-      <input id="{uid}-reap-orphans" aria-labelledby="{uid}-reap-orphans-name" aria-describedby="{uid}-reap-orphans-effect" type="checkbox" role="switch" data-testid="setting-reap-orphans" checked={store.settings?.reapOrphans ?? true} onchange={(event) => void toggled(event.currentTarget, reapOrphans => store.saveSettings({ reapOrphans }))} />
+      <span class="text"><span class="ui-label-box"><span class="ui-label" id="{uid}-reap-orphans-name">{strings.settings.reapOrphans}</span><InfoTip topic={strings.settings.reapOrphans} text={strings.settings.reapOrphansHint} /><SyncMark {store} key="reapOrphans" /></span><span class="hint" id="{uid}-reap-orphans-effect" data-testid={offWindows ? 'reap-orphans-windows-only' : undefined}>{offWindows ? strings.protection.windowsOnly : strings.settings.effects.reapOrphans}</span></span>
+      <!-- Off Windows every traced process is the core's direct child, which the sweep never stops: the switch would do nothing. -->
+      <input id="{uid}-reap-orphans" disabled={offWindows} aria-labelledby="{uid}-reap-orphans-name" aria-describedby="{uid}-reap-orphans-effect" type="checkbox" role="switch" data-testid="setting-reap-orphans" checked={store.settings?.reapOrphans ?? true} onchange={(event) => void toggled(event.currentTarget, reapOrphans => store.saveSettings({ reapOrphans }))} />
     </label>
     <label for="{uid}-keep-awake" class="switch-row">
-      <span class="text"><span class="ui-label-box"><span class="ui-label" id="{uid}-keep-awake-name">{strings.settings.keepAwake}</span><InfoTip topic={strings.settings.keepAwake} text={strings.settings.keepAwakeHint} /></span><span class="hint" id="{uid}-keep-awake-effect">{strings.settings.effects.keepAwake}</span></span>
+      <span class="text"><span class="ui-label-box"><span class="ui-label" id="{uid}-keep-awake-name">{strings.settings.keepAwake}</span><InfoTip topic={strings.settings.keepAwake} text={strings.settings.keepAwakeHint} /></span><span class="hint" id="{uid}-keep-awake-effect" data-testid={store.keepAwake?.available === false ? 'keep-awake-unavailable' : undefined}>{store.keepAwake?.available === false ? strings.settings.keepAwakeUnavailable : strings.settings.effects.keepAwake}</span></span>
       <input id="{uid}-keep-awake" aria-labelledby="{uid}-keep-awake-name" aria-describedby="{uid}-keep-awake-effect" type="checkbox" role="switch" data-testid="setting-keep-awake" checked={store.settings?.keepAwake ?? true} onchange={(event) => void toggled(event.currentTarget, keepAwake => store.saveSettings({ keepAwake }))} />
     </label>
   </section>
@@ -112,7 +117,7 @@
         <button class="quiet title" data-preload-thread={entry.threadId} onclick={() => void store.open(entry.threadId)}><span class="ui-label">{entry.title}</span></button>
         <span class="load" data-testid="resource-load">
           <span>{entry.load.processes} {strings.resources.processes}</span>
-          <span>{cpu(entry.load.cpuPercent)}</span>
+          <span>{entry.loadAvailable?.cpu === false ? strings.resources.unknown : cpu(entry.load.cpuPercent)}</span>
           <span>{bytes(entry.load.memoryBytes)}</span>
         </span>
         {#if confirming === entry.threadId}
@@ -152,6 +157,8 @@
   dd[data-state="critical"] { color: var(--color-danger); }
   form { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; padding: var(--space-3) 0; }
   form label { display: grid; gap: 6px; justify-items: start; }
+  /* A field that cannot act here (memory guard off, a CPU cap off Windows) reads as such, like a disabled switch. */
+  form input:disabled { opacity: .45; cursor: not-allowed; }
   form .name { display: inline-flex; align-items: center; font-size: var(--text-sm); color: var(--color-muted-foreground); }
   /* A PID and a run time are figures, not code: the sans in tabular figures, at the size of the name beside them. */
   td { font-size: var(--text-sm); }

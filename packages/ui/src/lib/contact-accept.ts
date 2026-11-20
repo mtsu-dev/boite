@@ -1,4 +1,3 @@
-import { markFeature } from '@boite/contracts';
 import type { ContactRequest, Project } from '@boite/contracts';
 import { projectName } from './format';
 import type { MenuItem } from './menu';
@@ -39,6 +38,3 @@ export function acceptProject(store: Store, request: ContactRequest): Project | 
 export function acceptItems(store: Store, chosen: Project | null): MenuItem[] {
   return openable(store).map(project => ({ id: project.id, label: projectName(project), projectTile: { project, store }, checked: project.id === chosen?.id, radio: true }));
 }
-
-// Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
-markFeature('boite-feature:contacts');

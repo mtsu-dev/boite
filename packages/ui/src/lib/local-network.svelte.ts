@@ -10,7 +10,7 @@
  * `local-network-access`. A browser without either (Safari, Firefox, an older
  * Chrome) never blocks such a socket: `unknown` asks nothing of the user.
  */
-export type LocalNetworkAccess = 'granted' | 'prompt' | 'denied' | 'unknown';
+type LocalNetworkAccess = 'granted' | 'prompt' | 'denied' | 'unknown';
 
 const NAMES = ['local-network', 'local-network-access'] as const;
 

@@ -208,7 +208,8 @@ describe('background compaction', () => {
       expect(inTurn).toBe(1);
       expect(copy.stops()).toBe(1);
       // The limit reached by the end of the turn starts a second copy, cut at that end, which the idle thread takes.
-      const before = run.thread.sessionId;
+      // The echo session the turn ran on, the thread read back after the turn may already hold the swapped one.
+      const before = `echo-${run.childId}`;
       await waitFor(() => (h.core.journal.getThread(run.childId)!.sessionGeneration ?? 0) === 1);
       expect(h.core.journal.getThread(run.childId)!.sessionId).toBe(`${before}~${run.turn.id}`);
       // The dropped copy's late success is thrown away.

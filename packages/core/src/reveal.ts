@@ -38,7 +38,7 @@ function machineOf(core: Core, raw: unknown): string | undefined {
  * knows, an agent id, or the app updates. A target on this core carries no
  * `coreId`, so the window handles it as it did before machines were named.
  */
-export function revealTarget(core: Core, raw: unknown): UiRevealTarget {
+function revealTarget(core: Core, raw: unknown): UiRevealTarget {
   const target = raw as Record<string, unknown> | null | undefined;
   if (target?.['kind'] === 'thread' && typeof target['threadId'] === 'string') {
     const threadId = target['threadId'];

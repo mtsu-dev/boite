@@ -237,7 +237,7 @@ const SUBSCRIPTION_OF: Readonly<Record<string, string>> = { copilot: 'copilot', 
 /** The cores with a move running: one at a time, or two would race on the gateway's list. */
 const moving = new WeakSet<Core>();
 
-export async function moveToGateway(core: Core, ids: unknown, token: unknown, target?: unknown): Promise<{ outcomes: GatewayMoveOutcome[] }> {
+async function moveToGateway(core: Core, ids: unknown, token: unknown, target?: unknown): Promise<{ outcomes: GatewayMoveOutcome[] }> {
   if (!Array.isArray(ids) || ids.length === 0 || ids.length > 200 || ids.some(id => typeof id !== 'string' || id.length > 300)) {
     throw invalidParams('ids must be 1 to 200 item ids from subscriptionProxy.movePlan', { field: 'ids' });
   }

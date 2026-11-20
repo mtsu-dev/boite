@@ -49,8 +49,8 @@ async function capture(current: BrowserPage, name: string) {
 }
 
 for (const [label, viewport] of [['desktop', DESKTOP], ['phone', PHONE]] as const) {
-  test(`the cards open the salon, live and finished, with the experiment on (${label})`, async () => {
-    const current = await launch(['debates'], viewport);
+  test(`the cards open the salon, live and finished (${label})`, async () => {
+    const current = await launch([], viewport);
     await current.waitFor(`document.querySelectorAll('${id('council-card')}[data-status]').length === 3`);
     expect(await current.text(`${id('council-card')}[data-council-id="cnl_demo_live"] ${id('council-card-status')}`)).toBe('Round 2');
     await current.evaluate(`document.querySelector('${id('council-card')}[data-council-id="cnl_demo_live"]').scrollIntoView({ block: 'end' })`);
@@ -94,9 +94,9 @@ for (const [label, viewport] of [['desktop', DESKTOP], ['phone', PHONE]] as cons
   }, 90_000);
 }
 
-test('with the experiment off the thread keeps its text and draws no card', async () => {
-  const current = await launch([], DESKTOP);
-  expect(await current.evaluate<number>(`document.querySelectorAll('${id('council-card')}').length`)).toBe(0);
-  await capture(current, 'off-desktop.png');
+test('the Council is finished: a device that switched its old experiment off still draws the cards', async () => {
+  const current = await launch(['whip'], DESKTOP);
+  await current.waitFor(`document.querySelectorAll('${id('council-card')}[data-status]').length === 3`);
+  await capture(current, 'stored-off-desktop.png');
   expect(current.errors()).toEqual([]);
 }, 60_000);

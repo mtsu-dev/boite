@@ -12,7 +12,7 @@ export type UsageRange = (typeof USAGE_RANGES)[number];
  * The provider stack, bottom first. Fixed, so a provider keeps its place
  * whatever the range shows; one missing here stacks after them, by name.
  */
-export const PROVIDER_ORDER = ['claude', 'codex', 'opencode', 'opencode-v2', 'grok', 'antigravity', 'pi', 'muse', 'vibe', 'hermes', 'echo'] as const;
+const PROVIDER_ORDER = ['claude', 'codex', 'opencode', 'opencode-v2', 'grok', 'antigravity', 'pi', 'muse', 'vibe', 'hermes', 'echo'] as const;
 const KNOWN = new Set<string>(PROVIDER_ORDER);
 
 /**
@@ -189,7 +189,7 @@ export interface UsageBucket {
   coverage: Record<string, { turns: number; reported: number; priced: number }>;
 }
 
-export interface ModelRow extends UsageTotals {
+interface ModelRow extends UsageTotals {
   providerId: string;
   model: string | null;
   value: number;
@@ -199,7 +199,7 @@ export interface ModelRow extends UsageTotals {
   olderCore?: boolean;
 }
 
-export interface DayRow extends UsageTotals {
+interface DayRow extends UsageTotals {
   start: number;
   value: number;
 }

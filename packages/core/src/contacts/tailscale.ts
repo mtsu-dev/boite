@@ -29,7 +29,7 @@ export interface Device {
 
 export type Policy = Pick<ContactTailscale, 'policy' | 'policyFix'>;
 
-export class TailscaleFailure extends Error {}
+class TailscaleFailure extends Error {}
 
 export function checkApiKey(value: unknown): string {
   if (typeof value !== 'string' || !/^tskey-[A-Za-z0-9_-]{10,200}$/.test(value.trim())) {

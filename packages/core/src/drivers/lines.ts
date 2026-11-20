@@ -120,7 +120,7 @@ export class LineSplitter {
  * given up on. Under the ACP driver's exit grace, so a drained exit still wins
  * over the connection error it caused.
  */
-export const STDERR_DRAIN_MS = 200;
+const STDERR_DRAIN_MS = 200;
 
 /**
  * Resolves once `stream` has ended, so a child's last stderr line is read, or

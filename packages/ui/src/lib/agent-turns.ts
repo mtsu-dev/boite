@@ -34,7 +34,7 @@ export interface TurnFold {
 }
 
 /** The folded turns the user opened, for as long as the app runs: turn ids are unique across threads. */
-export const openedTurns = new SvelteSet<string>();
+const openedTurns = new SvelteSet<string>();
 
 /** How long a turn worked, in the one duration style (`40s`, `3m 00s`, `1h 05m`), never under a second. */
 export function workedTime(ms: number): string {

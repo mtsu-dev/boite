@@ -171,7 +171,7 @@ const HOUR = 60 * 60 * 1000;
  * How long a request id is remembered. A client retries a lost answer within
  * seconds, and a routine's ids carry its occurrence, so none comes back later.
  */
-export const REQUEST_RETENTION_MS = 30 * 24 * HOUR;
+const REQUEST_RETENTION_MS = 30 * 24 * HOUR;
 
 /**
  * Drops `agents.record` events older than the cutoff. Nothing reads their
@@ -179,7 +179,7 @@ export const REQUEST_RETENTION_MS = 30 * 24 * HOUR;
  * the revision never goes back. The inner query names the partial index
  * `events_agents` with its WHERE clause written the same way.
  */
-export const PRUNE_RECORD_EVENTS = "DELETE FROM events WHERE id IN (SELECT id FROM events WHERE type IN ('agents.record', 'agents.limits') AND type = 'agents.record' AND ts < ? AND id < (SELECT MAX(id) FROM events WHERE type IN ('agents.record', 'agents.limits')))";
+const PRUNE_RECORD_EVENTS = "DELETE FROM events WHERE id IN (SELECT id FROM events WHERE type IN ('agents.record', 'agents.limits') AND type = 'agents.record' AND ts < ? AND id < (SELECT MAX(id) FROM events WHERE type IN ('agents.record', 'agents.limits')))";
 
 /** What an `agents.record` event says: which record changed, not the record again. */
 function recordEvent(kind: AgentEntityKind, record: { id: string; revision: number }): { kind: AgentEntityKind; id: string; revision: number } {

@@ -1,5 +1,5 @@
 import { Store, store } from './store.svelte';
-import type { AgentPane } from './store/layout.svelte';
+import { showDeviceNotices, type AgentPane } from './store/layout.svelte';
 import { INITIAL_PAGE_BYTES, RpcErrorCode, threadActive, withoutTrailingSlashes, type AgentAddress, type GroupCore } from '@boite/contracts';
 import { WsClient } from './client';
 import {
@@ -102,7 +102,7 @@ export function machineHealth(machine: Machine, primary: Store): MachineHealth {
  */
 export const PRIMARY_PATIENCE_MS = 2000;
 /** How long the window keeps its loading screen while another machine may still answer in place of the one it opened on. */
-export const STAND_IN_WAIT_MS = 6000;
+const STAND_IN_WAIT_MS = 6000;
 /** How long the group links wait for the remembered machines to be in: a connection that never ends must not hide the group's other machines for good. */
 export const SETTLE_WAIT_MS = 30_000;
 
@@ -543,8 +543,8 @@ export class Workspace {
   }
 
   /**
-   * The window moves to `target`, which takes over the sidebar, the search and
-   * the notifications as they were. It is where the next start opens, unless
+   * The window moves to `target`, which takes over the sidebar and the search
+   * as they were; the notifications are the device's already (`Layout`). It is where the next start opens, unless
    * the owner chose a machine for that (`main`).
    */
   #moveTo(target: Store): void {
@@ -554,7 +554,6 @@ export class Workspace {
     target.sidebarWidth = previous.sidebarWidth;
     target.sidebarCollapsed = previous.sidebarCollapsed;
     target.search = previous.search;
-    target.notifications = previous.notifications;
     this.active = target;
     const saved = readEnvironments().find(e => e.url === target.endpointUrl);
     if (saved) storeEndpoint(saved);
@@ -888,6 +887,7 @@ export class Workspace {
 export const workspace = new Workspace();
 // A bot's imported picture comes from the machine on screen first, then the others of the group.
 pictureSources(() => [workspace.active, ...workspace.machines.map(machine => machine.store)]);
+showDeviceNotices(() => workspace.active); // The device's notifications switch speaks on the machine on screen.
 // A toast about a machine this page does not serve names that machine as its pushes do.
 setNotificationCore((store) => {
   const machine = workspace.machines.find((entry) => entry.store === store);

@@ -12,14 +12,12 @@
    * subagents at work stand above the card (`AgentDock`), a permission on
    * its command row in the timeline (`PermissionCard`).
    */
-  let { store, thread, agentBox }: {
+  let { store, thread }: {
     store: Store;
     thread: Store['openThread'];
-    /** The box speaks to an agent: no thread activity under it. */
-    agentBox: boolean;
   } = $props();
 
-  let asking = $derived(!!thread && !agentBox && questionsWaiting(store, thread.id) > 0);
+  let asking = $derived(!!thread && questionsWaiting(store, thread.id) > 0);
 
   // The question's card and the permission row load at idle, so the first ask draws at once.
   $effect(prefetchIdleParts);
@@ -28,7 +26,7 @@
 <div class="deck">
 {#if asking && thread}
   <Deferred part={threadDecision}>{#snippet children(ThreadDecision)}<ThreadDecision {store} threadId={thread.id} />{/snippet}</Deferred>
-{:else if !agentBox}<ThreadActivity {store} />{/if}
+{:else}<ThreadActivity {store} />{/if}
 </div>
 
 <style>

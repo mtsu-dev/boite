@@ -45,7 +45,7 @@ const ORDER: readonly OnboardingStep[] = ['welcome', 'profile', 'agents', 'usage
 const PHONE_ORDER: readonly OnboardingStep[] = ['welcome', 'reach'];
 
 /** The width under which the app draws its phone layout, the one Settings switches on too. */
-export const PHONE_QUERY = '(max-width: 720px)';
+const PHONE_QUERY = '(max-width: 720px)';
 
 /** Whether this window is the phone layout of a browser, never the desktop shell. */
 export function onPhone(): boolean {

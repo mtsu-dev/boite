@@ -7,7 +7,6 @@
  * chat. A machine with a member on it keeps a mirror (`mirror.ts`), the team's
  * row and the posts it may have, so a letter runs there as it does here.
  */
-import { markFeature } from '@boite/contracts';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -84,16 +83,6 @@ export class TeamStore {
   get #db() { return this.#core.journal.db; }
   get #self(): string { return this.#core.coordination.card().coreId; }
 
-  #open(): boolean {
-    const experiments = this.#core.clients.desktopExperiments() ?? this.#core.clients.current()?.experiments ?? [];
-    return experiments.includes('teams');
-  }
-
-  /** The `teams` experiment: off, the machine holding a team refuses its methods, and a machine lets no bot of its own join a team. */
-  gate(): void {
-    if (!this.#open()) throw refused('teams need the Teams experiment, which is off in the desktop app (Settings, Experiments)', { reason: 'experiment-off' });
-  }
-
   // Teams.
 
   #team(row: TeamRow): Team {
@@ -135,7 +124,6 @@ export class TeamStore {
   /** The teams this machine holds, the only ones its owner sees here: a mirror shows on the machine holding its team. */
   hosted(): Team[] { return this.#all().filter(team => team.host === this.#self); }
 
-  #mirrors(): boolean { return this.#db.query('SELECT 1 FROM teams WHERE host <> ? LIMIT 1').get(this.#self) !== null; }
 
   /** A bot of this machine in a team. Its key stays the one it joined with; `coreId` says where it runs now. */
   memberHere(team: Pick<Team, 'members'>, botId: string): TeamMember | undefined {
@@ -206,17 +194,10 @@ export class TeamStore {
     return bot;
   }
 
-  /**
-   * A team the calling bot belongs to, and its key there. The experiment is
-   * the word of the machine holding the team: off here, a team held here
-   * refuses, and a team held elsewhere goes on asking there.
-   */
+  /** A team the calling bot belongs to, and its key there. */
   mine(threadId: unknown, ref: unknown): { team: Team; bot: AgentProfile; key: TeamParty } {
-    const open = this.#open();
-    if (!open && !this.#mirrors()) this.gate();
     const bot = this.caller(threadId);
     const team = this.#named(ref, bot.id);
-    if (!open && team.host === this.#self) this.gate();
     return { team, bot, key: this.memberHere(team, bot.id)!.key };
   }
 
@@ -294,17 +275,12 @@ export class TeamStore {
   }
 
   list(params: RpcParams<'teams.list'> = {}): Team[] {
-    const open = this.#open();
-    if (!open && (params.threadId === undefined || !this.#mirrors())) this.gate();
     const botId = params.threadId === undefined ? null : this.caller(params.threadId).id;
-    const teams = (botId === null ? this.hosted() : this.#all().filter(team => this.memberHere(team, botId) !== undefined && (open || team.host !== this.#self)))
+    return (botId === null ? this.hosted() : this.#all().filter(team => this.memberHere(team, botId) !== undefined))
       .filter(team => params.archived === true || !team.archived);
-    if (!open && teams.length === 0) this.gate();
-    return teams;
   }
 
   create(params: RpcParams<'teams.create'>, elsewhere?: ReadonlyMap<string, TeamBot>): Team {
-    this.gate();
     const ask = params.card === undefined ? null : this.card(params.card, 'create');
     const name = this.#checkName(params.name);
     const brief = this.#checkBrief(params.brief);
@@ -339,7 +315,6 @@ export class TeamStore {
   }
 
   update(params: RpcParams<'teams.update'>): Team {
-    this.gate();
     const team = this.#require(params.teamId);
     const change: Partial<Stored> = {};
     if (params.name !== undefined) change.name = this.#checkName(params.name, team.id);
@@ -355,7 +330,6 @@ export class TeamStore {
   }
 
   archive(params: RpcParams<'teams.archive'>): Team {
-    this.gate();
     const asked = this.#require(params.teamId);
     if (typeof params.archived !== 'boolean') throw invalidParams('archived: expected a boolean');
     if (asked.archived === params.archived) return asked;
@@ -367,7 +341,6 @@ export class TeamStore {
   }
 
   pause(params: RpcParams<'teams.pause'>): Team {
-    this.gate();
     const team = this.#require(params.teamId);
     if (typeof params.paused !== 'boolean') throw invalidParams('paused: expected a boolean');
     if (team.paused === params.paused) return team;
@@ -402,7 +375,6 @@ export class TeamStore {
   }
 
   addMember(params: RpcParams<'teams.members.add'>, guest?: TeamBot): Team {
-    this.gate();
     const team = this.#require(params.teamId);
     const ask = params.card === undefined ? null : this.card(params.card, 'invite');
     if (ask !== null && ask.kind === 'invite' && ask.teamId !== team.id) throw refused(`card: it asks about another team, ${ask.teamName}`, { field: 'card' });
@@ -417,7 +389,6 @@ export class TeamStore {
   }
 
   removeMember(params: RpcParams<'teams.members.remove'>): Team {
-    this.gate();
     const team = this.#require(params.teamId);
     const ask = params.card === undefined ? null : this.card(params.card, 'leave');
     if (ask !== null && ask.kind === 'leave' && ask.teamId !== team.id) throw refused(`card: it asks about another team, ${ask.teamName}`, { field: 'card' });
@@ -630,7 +601,6 @@ export class TeamStore {
 
   /** The owner's post. `to` lists bot ids: the composer's recipients, or the one reader of a private post. */
   ownerPost(params: RpcParams<'teams.post'>): TeamPost {
-    this.gate();
     const team = this.#require(params.teamId);
     const audience = params.audience ?? 'team';
     if (audience !== 'team' && audience !== 'private') throw invalidParams('audience: expected team or private');
@@ -663,7 +633,6 @@ export class TeamStore {
       const { team, key } = this.mine(params.threadId, params.team);
       return this.page(team, key, params);
     }
-    this.gate();
     return this.page(this.#named(params.team, null), TEAM_OWNER, params);
   }
 
@@ -716,7 +685,6 @@ export class TeamStore {
   #cardRef(bot: TeamBot): string { return bot.coreId === this.#self ? bot.botId : `${bot.coreId}/${bot.botId}`; }
 
   propose(params: RpcParams<'teams.propose'>, elsewhere?: ReadonlyMap<string, TeamBot>): { questionId: RequestId } {
-    this.gate();
     const bot = this.caller(params.threadId);
     const name = this.#checkName(params.name);
     const brief = this.#checkBrief(params.brief);
@@ -739,6 +707,3 @@ export class TeamStore {
     return this.#draw(params.threadId, `${bot.name} asks to leave the team ${JSON.stringify(team.name)}.`, { kind: 'leave', by: bot.id, teamId: team.id, teamName: team.name, botId: bot.id });
   }
 }
-
-// Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
-markFeature('boite-feature:teams');
