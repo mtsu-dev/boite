@@ -785,7 +785,14 @@ export function startServer(options: ServerOptions): RunningServer {
         }
       }
     },
-    closePlugin(pluginId: string): void { for (const c of connections) if (c.identity.principal === 'plugin' && c.identity.pluginId === pluginId) c.close(RpcCloseCode.Unauthorized, 'plugin token revoked'); },
+    closePlugin(pluginId: string): void {
+      for (const connection of connections) {
+        if (connection.identity.principal !== 'plugin' || connection.identity.pluginId !== pluginId) continue;
+        connection.close(RpcCloseCode.Unauthorized, 'plugin token revoked');
+        // Revocation takes effect before the WebSocket transport reports its close.
+        incoming.drop(connection);
+      }
+    },
     reveal(target): number {
       // Owner windows only: a paired phone or an agent has no window of the owner's
       // to raise, and a desktop-app plugin, often the caller itself, draws none of Boite's.
