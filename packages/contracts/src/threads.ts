@@ -14,7 +14,7 @@ import type { MemoryEvent } from './scheduler';
 import type { DeletedThreadSummary } from './settings';
 import type { StreamChannel } from './stream-channels';
 import type { MessageSync } from './thread-sync';
-import type { Turn } from './turns';
+import type { ThreadRecovery, Turn } from './turns';
 
 export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'yolo' | 'plan' | 'dontAsk';
 
@@ -320,6 +320,8 @@ export interface ThreadSummary {
    * missing on older cores.
    */
   retry?: ThreadRetry | null;
+  /** The interrupted turn the owner can resume without resending its request. */
+  recovery?: ThreadRecovery | null;
   /**
    * The wake the agent asked for with its ScheduleWakeup tool, which the core
    * keeps across restarts and opens as a turn when it is due (`ThreadWake`).

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Hourglass } from '@lucide/svelte';
   import Notice from './Notice.svelte';
+  import ResumeTurnControls from './ResumeTurnControls.svelte';
   import { clockTime, elapsed } from '../lib/format';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
@@ -13,6 +14,7 @@
    */
   let { store }: { store: Store } = $props();
   let retry = $derived(store.openThread?.retry ?? null);
+  let recovery = $derived(store.openThread?.recovery ?? null);
   let now = $state(Date.now());
   let pending = $state(false);
 
@@ -42,6 +44,9 @@
 </script>
 
 {#snippet giveUp()}
+  {#if retry?.kind === 'usage-limit' && recovery?.turnId === retry.turnId}
+    <ResumeTurnControls {store} {recovery} />
+  {/if}
   <button type="button" class="small" data-testid="thread-retry-cancel" disabled={pending || store.connection !== 'ready'} onclick={cancel}>
     <span class="ui-label">{retry?.kind === 'capacity' ? strings.thread.retryCapacityCancel : strings.thread.retryLimitCancel}</span>
   </button>

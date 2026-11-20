@@ -1,9 +1,9 @@
-import type { RpcEvents, ThreadId, ThreadRetry, ThreadSummary, Turn, TurnId } from '@boite/contracts';
+import type { RpcEvents, RpcParams, ThreadId, ThreadRecovery, ThreadRetry, ThreadSummary, Turn, TurnId } from '@boite/contracts';
 import type { Core } from '../core.ts';
-import { messageOf } from '../errors.ts';
+import { messageOf, refused } from '../errors.ts';
 import type { ThreadStore } from '../threads.ts';
 import { withLoad } from './records.ts';
-import { RESUME_TEXT, type PlannedReason } from './resume-text.ts';
+import { CARRY_ON, RESUME_TEXT, type PlannedReason } from './resume-text.ts';
 
 /**
  * Mutable so a test can shorten them. `limit`: how long after a window's reset
@@ -48,6 +48,7 @@ export interface Plan {
 
 export interface Entry {
   plan?: Plan;
+  recovery?: ThreadRecovery;
   /** Carry-on resumes sent since the user last wrote or a turn of another kind finished well. */
   streak?: number;
   /** The last turn a plan was made for: a turn is resumed once. */
@@ -127,9 +128,15 @@ export class ResumePlanner {
   admitted(turn: Turn): boolean {
     if (turn.execution?.operation !== 'resume') return false;
     const entry = this.#load()[turn.threadId];
-    const source = entry?.plan?.turnId ?? entry?.handled;
-    return source !== undefined && [false, true].some(limit =>
-      this.#core.journal.turnRequest(turn.threadId, requestId(source, limit))?.turn_id === turn.id);
+    const source = entry?.plan?.turnId ?? entry?.handled ?? entry?.recovery?.turnId;
+    return source !== undefined && [requestId(source, false), requestId(source, true)].some(id =>
+      this.#core.journal.turnRequest(turn.threadId, id)?.turn_id === turn.id);
+  }
+
+  manuallyAdmitted(turn: Turn): boolean {
+    if (turn.execution?.operation !== 'resume') return false;
+    const source = this.#load()[turn.threadId]?.handled;
+    return source !== undefined && this.#core.journal.turnRequest(turn.threadId, manualRequestId(source))?.turn_id === turn.id;
   }
 
   close(): void {
@@ -158,12 +165,59 @@ export class ResumePlanner {
     return { kind: 'auto-continue', turnId: plan.turnId, at: plan.at, attempt: (entry!.streak ?? 0) + 1, attempts: RESUME_TIMING.carryOn.delaysMs.length, resetsAt: null };
   }
 
+  recoveryOf(thread: ThreadSummary): ThreadRecovery | null {
+    if (thread.archived || thread.parentThreadId || (thread.status !== 'error' && thread.status !== 'idle')) return null;
+    const recovery = this.#load()[thread.id]?.recovery;
+    return recovery && this.lastTurn(thread.id)?.id === recovery.turnId ? recovery : null;
+  }
+
+  offer(turn: Turn, recovery: Omit<ThreadRecovery, 'turnId'>): void {
+    if (this.#closed || this.#core.journal.isClosed() || this.lastTurn(turn.threadId)?.id !== turn.id) return;
+    const record = this.#load();
+    record[turn.threadId] = { ...record[turn.threadId], recovery: { ...recovery, turnId: turn.id } };
+    this.#save(record);
+    this.#announce(turn.threadId);
+  }
+
+  resume({ threadId, turnId, model, expectedSelectionVersion }: RpcParams<'turns.resume'>): Turn {
+    const thread = this.threads.require(threadId);
+    const id = manualRequestId(turnId);
+    const receipt = this.#core.journal.turnRequest(threadId, id);
+    const accepted = receipt && this.#core.journal.getTurn(receipt.turn_id);
+    if (accepted) {
+      if (model !== undefined && model !== accepted.execution?.model) throw refused('this turn already resumed on another model');
+      return accepted;
+    }
+    const recovery = this.recoveryOf(thread);
+    const source = this.lastTurn(threadId);
+    if (recovery?.turnId !== turnId || source?.id !== turnId) throw refused('turnId must name the latest interrupted turn of this thread', { field: 'turnId', threadId, turnId });
+    const changed = model !== undefined && model !== thread.model;
+    if (changed && (recovery.kind !== 'usage-limit' || thread.agentSessionId)) throw refused('the model can only change when resuming an ordinary conversation after a usage limit');
+    const lead = recovery.kind === 'usage-limit' ? `A usage limit interrupted the previous turn. ${CARRY_ON}` : CARRY_ON;
+    const choice = changed ? { ...thread, model, effort: null, speed: null } : undefined;
+    return this.threads.startTurn(threadId, { ...this.threads.handoff.continuation(source, lead), display: 'Resumed interrupted work' },
+      { kind: 'resume', reason: 'manual', requestId: id }, {
+        choice, expectedSelectionVersion,
+        persistAdmission: () => {
+          const record = this.#load();
+          record[threadId] = { handled: turnId, resumedWindow: record[threadId]?.resumedWindow };
+          this.#core.journal.setSetting(KEY, record);
+          return () => {
+            this.#cached = record;
+            this.#disarm(threadId);
+          };
+        },
+      });
+  }
+
   /** Plans the resume of `turn`, the thread's last, at `plan.at`. The caller decided it is due. */
   schedule(threadId: ThreadId, turn: Turn, plan: Omit<Plan, 'turnId' | 'dispatching'>, message: string): void {
     if (this.#closed || this.#core.journal.isClosed()) return;
     const full: Plan = { ...plan, turnId: turn.id };
     const record = this.#load();
-    record[threadId] = { ...record[threadId], handled: turn.id, plan: full };
+    const current = record[threadId];
+    const recovery = current?.recovery?.turnId === turn.id ? current.recovery : { kind: 'interrupted' as const, turnId: turn.id };
+    record[threadId] = { ...current, handled: turn.id, plan: full, recovery };
     this.#save(record);
     this.#arm(threadId, full.at - Date.now());
     this.log('info', threadId, message, 'planned', full);
@@ -186,7 +240,8 @@ export class ResumePlanner {
     if (entry === undefined || plan === undefined || plan.dispatching || !which(plan)) return false;
     this.#disarm(threadId);
     const { plan: _, ...rest } = entry;
-    record[threadId] = { ...rest, handled: plan.turnId };
+    const recovery = rest.recovery?.turnId === plan.turnId ? { ...rest.recovery, detail: reason } : rest.recovery;
+    record[threadId] = { ...rest, handled: plan.turnId, recovery };
     this.#save(record);
     this.log('info', threadId, `The ${what(plan)} of turn ${plan.turnId} is cancelled: ${reason}`, 'cancelled', plan);
     this.#announce(threadId);
@@ -216,12 +271,7 @@ export class ResumePlanner {
 
   /** The thread's latest turn that is not a cache ping. */
   lastTurn(threadId: ThreadId): Turn | null {
-    const rows = this.#core.journal.db.query('SELECT id FROM turns WHERE thread_id = ? ORDER BY rowid DESC LIMIT 50').all(threadId) as { id: string }[];
-    for (const row of rows) {
-      const turn = this.#core.journal.getTurn(row.id);
-      if (turn !== null && turn.execution?.operation !== 'keepalive') return turn;
-    }
-    return null;
+    return this.#core.journal.lastTurn(threadId, true);
   }
 
   log(level: 'info' | 'warn', threadId: ThreadId, message: string, event: string, plan: Plan | null = null, extra: Record<string, string> = {}, reason: PlannedReason | undefined = plan?.reason): void {
@@ -274,21 +324,24 @@ export class ResumePlanner {
     record[threadId] = { ...entry, plan: { ...plan, dispatching: true } };
     this.#save(record);
     let sent: TurnId | null = null;
+    let failure: string | undefined;
     try {
       // The request id makes the resume one turn whatever happens: a second call returns the first.
       const limit = plan.reason === 'limit';
       const source = this.#core.journal.getTurn(plan.turnId);
-      const input = source && (plan.reason === 'crash' || plan.reason === 'error' || limit)
-        ? this.threads.handoff.continuation(source, plan.prompt) : { prompt: plan.prompt };
+      const input = source ? this.threads.handoff.continuation(source, plan.prompt) : { prompt: plan.prompt };
       const turn = this.threads.startTurn(threadId, { ...input, display: RESUME_TEXT[plan.reason].label },
         { kind: 'resume', reason: limit ? 'limit' : 'carry-on', requestId: requestId(plan.turnId, limit) });
       sent = turn.id;
       this.log('info', threadId, `Turn ${turn.id} resumes the thread after turn ${plan.turnId} stopped (${plan.reason})`, 'started', plan);
     } catch (error) {
-      this.log('warn', threadId, `The ${what(plan)} of turn ${plan.turnId} could not start: ${messageOf(error)}`, 'failed', plan);
+      failure = messageOf(error);
+      this.log('warn', threadId, `The ${what(plan)} of turn ${plan.turnId} could not start: ${failure}`, 'failed', plan);
     } finally {
       const after = this.#load();
-      after[threadId] = settled(after[threadId] ?? entry, plan, sent);
+      const updated = settled(after[threadId] ?? entry, plan, sent);
+      if (failure && updated.recovery?.turnId === plan.turnId) updated.recovery = { ...updated.recovery, detail: failure };
+      after[threadId] = updated;
       this.#save(after);
       this.#announce(threadId);
     }
@@ -323,6 +376,11 @@ export class ResumePlanner {
     if (entry.plan !== undefined && !entry.plan.dispatching) this.cancel(turn.threadId, 'the thread was answered since');
     // The user's own words end the row: whatever stops next is a new problem.
     if (turn.execution?.operation === undefined) this.forget(turn.threadId);
+    else if (entry.recovery && !entry.plan?.dispatching) {
+      const current = this.#load();
+      current[turn.threadId] = { ...current[turn.threadId], recovery: undefined };
+      this.#save(current);
+    }
   }
 
   /** A copy of the record: read from the journal once, then kept, since every thread row asks for it. */
@@ -398,6 +456,8 @@ function requestId(turnId: TurnId, limit: boolean): string {
   return `${limit ? 'limit-resume' : 'auto-continue'}_${turnId}`;
 }
 
+function manualRequestId(turnId: TurnId): string { return `manual-resume_${turnId}`; }
+
 /**
  * The row once `plan` went out, failed to or may have: the turn is handled, a
  * usage limit's window is spent, and a carry-on resume `sent` counts in the
@@ -405,6 +465,7 @@ function requestId(turnId: TurnId, limit: boolean): string {
  */
 function settled(entry: Entry, plan: Plan, sent: TurnId | null | false): Entry {
   const { plan: _, ...rest } = entry;
+  if (sent && rest.recovery?.turnId === plan.turnId) delete rest.recovery;
   if (plan.reason === 'limit') return { ...rest, handled: plan.turnId, ...(plan.resetsAt !== undefined ? { resumedWindow: plan.resetsAt } : {}) };
   return { ...rest, handled: plan.turnId, streak: (rest.streak ?? 0) + (sent ? 1 : 0), ...(sent ? { resumeTurnId: sent } : {}) };
 }

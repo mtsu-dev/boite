@@ -5,6 +5,13 @@ import type { AgentTotals, Usage } from './usage';
 
 export type TurnStatus = 'queued' | 'running' | 'done' | 'stopped' | 'error';
 
+export interface ThreadRecovery {
+  turnId: TurnId;
+  kind: 'usage-limit' | 'interrupted';
+  resetsAt?: Timestamp | null;
+  detail?: string;
+}
+
 /** Execution target frozen at admission; permissionMode follows the user's live selection. */
 export type TurnExecution = Pick<ThreadSummary,
   'providerId' | 'accountId' | 'model' | 'effort' | 'speed' | 'permissionMode' | 'sessionId' | 'sessionResumeAt'
@@ -271,6 +278,8 @@ export interface TurnsRpcMethods {
   'turns.stop': { params: { threadId: ThreadId; expectedTurnId?: TurnId }; result: { stopped: boolean } };
   /** Resume or discard exactly one unsent prompt held after restart, retaining its execution selection. */
   'turns.recover': { params: { threadId: ThreadId; turnId: TurnId; action: 'resume' | 'discard' }; result: Turn };
+  /** Resume the latest interrupted turn, optionally with another model of the selected account. */
+  'turns.resume': { params: { threadId: ThreadId; turnId: TurnId; model?: string | null; expectedSelectionVersion?: number }; result: Turn };
   /**
    * Cancels the retry the core planned for the thread (`ThreadSummary.retry`).
    * A capacity retry's turn then fails with the provider's refusal; a usage

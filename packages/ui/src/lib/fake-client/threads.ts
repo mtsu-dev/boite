@@ -10,7 +10,7 @@ import { isThreadTerminal, protectedThreadIdsError, threadActive } from '@boite/
 /** Threads and their messages: create, read, select, archive, and the turn entry points. */
 import { DEFAULT_THREAD_DONE_RETENTION_DAYS, DEFAULT_THREAD_DELETION_RETENTION_DAYS, attachmentError, previewReferencesError, MESSAGE_PAGE, MESSAGE_PAGE_MAX, MESSAGE_PAGE_MAX_BYTES, RPC_MAX_FRAME_BYTES, RpcErrorCode, type AgentProfile, type AgentWhere, type Attachment, type Message, type MessageId, type MoveEnd, type PreviewReference, type RpcParams, type Thread, type Turn } from '@boite/contracts';
 import { steerUser } from './user-steering';
-import { recoverTurn } from './recovery';
+import { recoverTurn, resumeTurn } from './recovery';
 import { RpcFailure } from '../client';
 import { decodeBase64 } from '../attachment-save';
 import { checkEffort, checkModel, checkRunnable, defaultModel } from './checks';
@@ -861,6 +861,7 @@ export function threadMethods(ctx: FakeContext) {
       return { stopped };
     },
     'turns.recover': params => recoverTurn(ctx, params),
+    'turns.resume': async params => resumeTurn(ctx, params),
     'agent.where': async (params) => {
       const thread = ctx.thread(params.threadId);
       const project = ctx.projects.find((one) => one.id === thread.projectId);

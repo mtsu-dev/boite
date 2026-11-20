@@ -24,7 +24,8 @@ export class ThreadRecovery {
   readonly #core: Core;
 
   constructor(core: Core) {
-    this.#core = core;}
+    this.#core = core;
+  }
 
   /**
    * A core that dies mid-turn leaves that turn `running` or `queued` in the
@@ -62,8 +63,9 @@ export class ThreadRecovery {
       }
       const thread = this.#core.journal.getThread(turn.threadId);
       const target = turn.execution;
+      const manual = this.#core.threads.resumes.manuallyAdmitted(turn);
       if (previous === 'queued' && turn.startedAt === null && target && thread && !thread.archived && !thread.parentThreadId
-        && (!target.operation || this.#core.threads.resumes.admitted(turn))) {
+        && (!target.operation || manual || this.#core.threads.resumes.admitted(turn))) {
         if (recentCrash && !turn.queueHold && Date.now() - turn.queuedAt <= HANDOFF.maxAgeMs) {
           this.#core.scheduler.enqueue(turn, target.accountId, { recovering: true });
           counts.requeued += 1;
@@ -71,7 +73,7 @@ export class ThreadRecovery {
           continue;
         }
         // An expired automatic continuation has nothing new for the owner to resume.
-        if (target.operation) {
+        if (target.operation && !manual) {
           this.#core.threads.markQueuedStopped(turn.id);
           counts.stopped += 1;
           continue;
@@ -94,11 +96,20 @@ export class ThreadRecovery {
         this.#core.logs.info(`Turn ${turn.id} was stopped by a restart handoff; the thread's next turn resumes it`, { source: 'turns', event: 'turn.recovery.handed-over', threadId: turn.threadId, turnId: turn.id });
         continue;
       }
-      const resumes = previous === 'running' && this.#core.threads.autoContinue.resumesCrashed(turn);
+      const blocker = previous === 'running' ? this.#core.threads.autoContinue.crashBlocker(turn) : null;
+      const resumes = previous === 'running' && blocker === null;
       this.#core.journal.db.transaction(() => {
         this.#failStuckTurn(turn, previous === 'running' ? resumes ? CRASH_RESUMING : CRASH_WHILE_RUNNING : CRASH_WHILE_QUEUED);
         if (previous === 'queued' && turn.execution?.operation === 'coordination') this.#core.coordination.queuedCancelled(turn.threadId, turn.id);
       })();
+      const operation = turn.execution?.operation;
+      if (previous === 'running' && thread && !thread.archived && !thread.parentThreadId
+        && operation !== 'compact' && operation !== 'coordination' && operation !== 'keepalive') {
+        this.#core.threads.resumes.offer(turn, {
+          kind: 'interrupted',
+          detail: blocker ?? 'the core stopped unexpectedly',
+        });
+      }
       counts.failed += 1;
       this.#core.log(
         'warn',
@@ -134,7 +145,7 @@ export class ThreadRecovery {
     }
     if (thread.archived) throw refused('cannot resume a prompt on an archived thread', { threadId });
     const target = turn.execution;
-    if (!target || target.operation || thread.parentThreadId) throw refused('only an unsent conversation prompt can be resumed', { turnId });
+    if (!target || (target.operation && !this.#core.threads.resumes.manuallyAdmitted(turn)) || thread.parentThreadId) throw refused('only an unsent conversation prompt can be resumed', { turnId });
     this.#core.threads.codeCheckpoints.assertAvailable(thread.cwd);
     const provider = this.#core.providers.require(target.providerId);
     const account = this.#core.accounts.require(target.accountId);

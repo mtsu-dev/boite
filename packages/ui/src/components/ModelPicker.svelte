@@ -28,6 +28,7 @@
     disabled = false,
     readonly = false,
     hint = '',
+    actionLabel,
     onpick
   }: {
     store: Store;
@@ -41,6 +42,8 @@
     readonly?: boolean;
     /** The chip's title in place of its own: whose setting it shows, or why it cannot change here. */
     hint?: string;
+    /** Wording for callers that use a pick to perform an action. */
+    actionLabel?: string;
     onpick: (patch: PickPatch) => void;
   } = $props();
 
@@ -115,8 +118,8 @@
     class="ui-chip trigger"
     aria-haspopup="menu"
     aria-expanded={popover.open}
-    aria-label={[label, accountLabel].filter(Boolean).join(', ')}
-    title={hint || (locked ? strings.composer.lockedHint : strings.composer.picker)}
+    aria-label={actionLabel ?? [label, accountLabel].filter(Boolean).join(', ')}
+    title={actionLabel ?? (hint || (locked ? strings.composer.lockedHint : strings.composer.picker))}
     data-testid="composer-picker"
     {disabled}
     onclick={toggle}
@@ -127,8 +130,8 @@
     {:else}
       <Sparkles size={14} strokeWidth={1.75} />
     {/if}
-    <span class="label ui-label">{label}</span>
-    {#if accountLabel}<span class="account ui-label" data-testid="composer-picker-account"><PrivateText text={accountLabel} /></span>{/if}
+    <span class="label ui-label">{actionLabel ?? label}</span>
+    {#if accountLabel && !actionLabel}<span class="account ui-label" data-testid="composer-picker-account"><PrivateText text={accountLabel} /></span>{/if}
     <ChevronDown size={12} strokeWidth={2} />
   </button>
   {/if}

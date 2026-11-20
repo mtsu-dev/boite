@@ -77,6 +77,11 @@ account every five minutes, even with no window open.
 
 ## Resume after a usage limit
 
+When a usage limit stops a request, the conversation shows the reset time
+when the provider supplies it. Choose Resume to continue the request, or
+Resume with another model to pick one available on the same account for that
+turn. The model selected for later messages stays as it was.
+
 Resume threads after a usage limit, in Settings, Limits, is off by default.
 Turned on, a Claude or Codex thread stopped by a subscription limit resumes by
 itself a minute after the limit resets, once per window. Stop, a new message

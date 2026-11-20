@@ -14,7 +14,7 @@ export interface TurnInput {
  * stopped before its answer, a restart continuing a running turn, a restart
  * that cut a subagent, or a wake the agent scheduled (`scheduled-wakes.ts`).
  */
-export type ResumeReason = 'limit' | 'carry-on' | 'handoff' | 'delegation-restart' | 'wake';
+export type ResumeReason = 'limit' | 'carry-on' | 'handoff' | 'delegation-restart' | 'wake' | 'manual';
 
 /** An idempotency key: a second start with the same one returns the first turn (`threads/inputs.ts`). */
 interface Keyed { requestId?: string }
@@ -84,7 +84,7 @@ export function autonomousSource(origin: TurnOrigin): AutonomousSource | null {
     case 'coordination': return origin.owner ? null : 'coordination';
     case 'background': case 'delegation': case 'pull-request': return origin.kind;
     case 'goal-check': return 'delegation';
-    case 'resume': return origin.reason === 'handoff' || origin.reason === 'delegation-restart' ? null : 'resume';
+    case 'resume': return origin.reason === 'handoff' || origin.reason === 'delegation-restart' || origin.reason === 'manual' ? null : 'resume';
     default: return null;
   }
 }

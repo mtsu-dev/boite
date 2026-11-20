@@ -8,6 +8,7 @@ import {
   accountVendor,
   apiErrorReason,
   apiErrorStatusOf,
+  apiRefusal,
   cacheLifeOf,
   commandsOf,
   contentBlocks,
@@ -566,8 +567,9 @@ export class ClaudeTurn {
         else this.#authFrame = { content };
         return;
       }
-      if (this.#status !== 'error') this.#refusal = message.error === 'overloaded' ? { kind: 'capacity' } : message.error === 'rate_limit' ? { kind: 'usage-limit', resetsAt: this.#rejectedUntil } : undefined;
-      this.fail(apiErrorReason(message.error, content, accountVendor(this.ctx.thread.model)));
+      const reason = apiErrorReason(message.error, content, accountVendor(this.ctx.thread.model));
+      if (this.#status !== 'error') this.#refusal = apiRefusal(message.error, reason, this.#rejectedUntil);
+      this.fail(reason);
       return;
     }
     const body = message.message as { id?: string; model?: string; content?: unknown; usage?: unknown } | undefined;
@@ -676,8 +678,6 @@ export class ClaudeTurn {
     if (this.ctx.resumeAt) return message.errors.length > 0 ? message.errors.join('; ') : 'the agent could not resume its session at the cut';
     return message.errors.some((error) => MISSING_SESSION.test(error)) ? message.errors.join('; ') : null;
   }
-
-  // -- parts ----------------------------------------------------------------
 
   #message(): MessageId {
     if (this.#messageId === null) this.#messageId = this.ctx.emit.startMessage('assistant');

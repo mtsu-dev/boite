@@ -1,6 +1,6 @@
 import type { SDKAssistantMessageError, SDKMessage, SDKResultMessage, SlashCommand } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentCommand, AgentTotals, BackgroundTask, ToolDocument, Usage } from '@boite/contracts';
-import type { PromptCacheLife } from '../types.ts';
+import type { PromptCacheLife, TurnRefusal } from '../types.ts';
 import { imageDocument } from '../documents.ts';
 import { stringify } from '../tool-text.ts';
 
@@ -441,6 +441,15 @@ export function apiErrorReason(error: SDKAssistantMessageError, content: unknown
   const sentence = namedErrorSentence(error, vendor);
   if (sentence === null) return said;
   return said === sentence ? sentence : `${sentence} ${said}`;
+}
+
+/** A gateway can report an exhausted subscription in its API error text, without a rate-limit event. */
+export function apiRefusal(error: SDKAssistantMessageError, reason: string, rejectedUntil: number | null): TurnRefusal | undefined {
+  if (error === 'overloaded') return { kind: 'capacity' };
+  if (error !== 'rate_limit' && !(error === 'server_error' && /\bAPI Error: 503 no available subscription for this model\b/i.test(reason))) return;
+  const reset = /\bused up until (\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z)\b/i.exec(reason)?.[1];
+  const parsed = reset === undefined ? NaN : Date.parse(reset);
+  return { kind: 'usage-limit', resetsAt: rejectedUntil ?? (Number.isFinite(parsed) ? parsed : null) };
 }
 
 /** The CLI's `task_type` as the kinds the UI draws. */

@@ -94,7 +94,12 @@ says why and asks the agent to carry on without repeating work:
 | Background work the agent waited on ended without waking it (failed, vanished, cut by a restart or an [agent update](agent-updates.md#background-work)) | Resumed after background work was interrupted | 1 min, then 5 min; 3 s after a restart |
 
 A crash resume quotes the cut turn's request like a handoff continuation. When
-a crash paused the conversation's subagent team or workflow runs, the prompt
+the turn carried corrections, the continuation includes their full text and the
+thread's current task list. The same input is used after a compaction or a
+manual resume of interrupted work. When automatic recovery is exhausted or
+blocked, the thread shows the reason and offers Resume.
+
+When a crash paused the conversation's subagent team or workflow runs, the prompt
 asks the agent to check them and run `boite delegate resume`; a parent that had
 no turn running gets a resume for that alone.
 

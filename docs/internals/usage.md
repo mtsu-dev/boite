@@ -522,6 +522,13 @@ during a wait fails the turn the usual way.
 
 ### Usage limit
 
+The thread shows `recovery` with the interrupted turn and the reset time the
+provider reported, even with automatic resume off. `turns.resume` accepts that
+turn's ID and an optional model from the current account's catalogue. The model
+only applies to the continuation. The admission commits the prompt, its receipt
+and the cancellation of any automatic plan together. The continuation keeps its
+saved selection if the core stops before sending it.
+
 Settings > Limits has "Resume threads after a usage limit"
 (`autoResumeLimitedThreads`, off by default). With it on, a turn that failed
 on a usage limit plans one resume a minute after the window resets
@@ -540,8 +547,8 @@ instead if the setting went off, the thread was archived, answered, stopped or
 is busy, its provider, account, model or session generation changed, a card
 waits for the user, or the user paused its team. A cache ping in the way
 stops and lets it go; it neither cancels the plan nor counts as the turn that
-answered. A plan a core caught while dispatching is dropped at the next start,
-since its turn may have gone out.
+answered. At startup a dispatching plan with an admission receipt is settled.
+A dispatching plan without a receipt is armed again.
 The resume is a `resume` turn with the request id `limit-resume_<turnId>`,
 labelled "Resumed after the usage limit reset", whose prompt asks the agent to
 continue without repeating work.
