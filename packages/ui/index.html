@@ -35,6 +35,20 @@
         background: var(--color-background, __PALETTE_grain-background__);
         color: var(--color-foreground, __PALETTE_dark-default-foreground__);
       }
+
+      #boot-status {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        margin: 0;
+        font: 15px system-ui, sans-serif;
+      }
+
+      html:not([lang='fr']) #boot-status [lang='fr'],
+      html[lang='fr'] #boot-status [lang='en'] {
+        display: none;
+      }
     </style>
     <!-- The same rule as lib/theme.ts, run before the first paint: dark stamps nothing. -->
     <script>
@@ -89,9 +103,22 @@
          so each sentence is here once per language of LOCALES;
          src/lib/boot-notice.test.ts checks that. -->
     <script>
+      var bootLanguage = (function () {
+        var languages = [].concat(navigator.languages || [], navigator.language);
+        var setting;
+        try { setting = localStorage.getItem('boite.locale'); } catch (e) {}
+        if (setting === 'fr' || setting === 'en') return setting;
+        for (var i = 0; i < languages.length; i++) {
+          if (typeof languages[i] !== 'string') continue;
+          var code = languages[i].trim().toLowerCase().split('-')[0];
+          if (code === 'en' || code === 'fr') return code;
+        }
+        return 'en';
+      })();
+      document.documentElement.lang = bootLanguage;
       window.addEventListener('load', function () {
         var app = document.getElementById('app');
-        if (window.__boiteBooted || !app || app.childElementCount > 0) return;
+        if (window.__boiteBooted || !app) return;
         // Safari 15.4 and Chrome 111 are the first to have all four.
         var floor = false;
         try {
@@ -113,8 +140,7 @@
             retry: 'Réessayer'
           }
         };
-        var language = (navigator.language || '').toLowerCase().split('-')[0];
-        var text = Object.prototype.hasOwnProperty.call(notices, language) ? notices[language] : notices.en;
+        var text = notices[bootLanguage];
         var note = document.createElement('div');
         note.setAttribute('role', 'alert');
         note.style.cssText = 'margin:0;padding:32px 24px;max-width:520px;font:15px/1.5 system-ui,-apple-system,sans-serif';
@@ -131,12 +157,13 @@
           note.appendChild(again);
           window.addEventListener('online', function () { location.reload(); });
         }
+        app.textContent = '';
         app.appendChild(note);
       });
     </script>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app"><p id="boot-status" role="status" data-testid="boot-status"><span lang="en">Starting</span><span lang="fr">Démarrage</span></p></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
