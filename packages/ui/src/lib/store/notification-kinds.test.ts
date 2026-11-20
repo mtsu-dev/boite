@@ -1,9 +1,18 @@
-import { afterEach, expect } from 'vitest';
+import { afterEach, expect, vi } from 'vitest';
+
+const { invoke } = vi.hoisted(() => ({ invoke: vi.fn<(command: string, args?: Record<string, unknown>) => Promise<unknown>>() }));
+vi.mock('@tauri-apps/api/core', () => ({ invoke }));
+
 import { test } from '../../test/fake-client';
 import { PUSH_HOME_STORAGE_KEY, setPushHomeClient } from '../notify';
+import { strings } from '../strings';
+import { showDeviceNotices } from './layout.svelte';
 
 afterEach(() => {
   setPushHomeClient(null);
+  showDeviceNotices(null);
+  delete (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+  invoke.mockReset();
   localStorage.clear();
 });
 
@@ -37,4 +46,26 @@ test('kinds changed while another machine is shown go to the machine holding the
   setPushHomeClient((address) => (address === 'https://home.test' ? home.store.client : null));
   shown.store.setNotificationKind('questions', false);
   expect(calls).toEqual([{ on: 'home', params: { kinds: ['approvals', 'finished', 'errors', 'limits'] } }]);
+});
+
+test('a machine in the background that finds no way to show a toast turns the switch off on the machine shown, and says so there', async ({ ready }) => {
+  localStorage.clear();
+  const away = await ready();
+  const shown = await ready();
+  away.store.visible = false;
+  showDeviceNotices(() => shown.store);
+  // A Linux desktop shell without notify-send.
+  (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = { invoke: () => undefined };
+  invoke.mockImplementation(async (command) => {
+    if (command === 'notify') throw new Error('"notify-send" could not start');
+    return command === 'notify_supported' ? false : undefined;
+  });
+  expect(shown.store.notifications).toBe(true);
+  // A turn finishes on the machine not shown: its toast is the one that finds no way out.
+  await away.client.call('turns.start', { threadId: 't-trace', prompt: 'finish' });
+  await away.client.settled();
+  await vi.waitFor(() => expect(shown.store.notifications).toBe(false));
+  expect(away.store.notifications).toBe(false);
+  expect(shown.store.error).toBe(strings.settings.notificationsUnavailable);
+  expect(away.store.error).toBeNull();
 });

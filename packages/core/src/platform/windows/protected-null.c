@@ -16,7 +16,7 @@ struct NB_PROCESS {
   NB_PROCESS *next;
   DWORD id, parent, first; HANDLE handle, measurement; NB_STEP step; NB_THREAD_HANDLE *threads; size_t thread_count, thread_capacity;
   ULONGLONG startup_deadline, step_deadline;
-  uintptr_t ntdll, sites[2]; BYTE originals[2]; DWORD flags; int startup, image;
+  uintptr_t ntdll, sites[2]; DWORD ntdll_size; BYTE originals[2]; DWORD flags; int startup, image;
 };
 typedef struct {NB_PROCESS *processes; HANDLE job; PSID package, registry; DWORD root, last_pid, last_tid, last_event; int stopping;} NB_DEBUG;
 static NB_PROCESS *nb_process(NB_DEBUG *d, DWORD id) {
@@ -113,25 +113,32 @@ static int nb_patch(NB_PROCESS *p, uintptr_t address, BYTE byte) {
   if (!VirtualProtectEx(p->handle, (void *)address, 1, protection, &ignored)) ok = 0;
   return ok;
 }
+static int nb_within(const NB_PROCESS *p, ULONGLONG rva, ULONGLONG length) {
+  return rva <= p->ntdll_size && length <= p->ntdll_size - rva;
+}
 static int nb_export(NB_PROCESS *p, const IMAGE_NT_HEADERS64 *nt, const char *wanted, uintptr_t *out) {
   IMAGE_DATA_DIRECTORY range = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT]; IMAGE_EXPORT_DIRECTORY exports;
-  if (!range.VirtualAddress || range.Size < sizeof(exports) || range.VirtualAddress > 0x264000 - range.Size ||
-      !nb_read(p, p->ntdll + range.VirtualAddress, &exports, sizeof(exports)) || exports.NumberOfNames > 4096 || exports.NumberOfFunctions > 4096) return 0;
+  if (!range.VirtualAddress || range.Size < sizeof(exports) || range.Size > p->ntdll_size || range.VirtualAddress > p->ntdll_size - range.Size ||
+      !nb_read(p, p->ntdll + range.VirtualAddress, &exports, sizeof(exports)) || exports.NumberOfNames > 4096 || exports.NumberOfFunctions > 4096 ||
+      !nb_within(p, exports.AddressOfNames, (ULONGLONG)exports.NumberOfNames * 4) ||
+      !nb_within(p, exports.AddressOfNameOrdinals, (ULONGLONG)exports.NumberOfNames * 2) ||
+      !nb_within(p, exports.AddressOfFunctions, (ULONGLONG)exports.NumberOfFunctions * 4)) return 0;
   for (DWORD i = 0; i < exports.NumberOfNames; ++i) {
     DWORD name_rva = 0, fn_rva = 0; WORD ordinal = 0; char name[64];
-    if (!nb_read(p, p->ntdll + exports.AddressOfNames + i * 4, &name_rva, 4) || name_rva > 0x264000 - sizeof(name) ||
+    if (!nb_read(p, p->ntdll + exports.AddressOfNames + i * 4, &name_rva, 4) || !nb_within(p, name_rva, sizeof(name)) ||
         !nb_read(p, p->ntdll + name_rva, name, sizeof(name)) || !memchr(name, 0, sizeof(name))) return 0;
     if (strcmp(name, wanted)) continue;
     if (!nb_read(p, p->ntdll + exports.AddressOfNameOrdinals + i * 2, &ordinal, 2) || ordinal >= exports.NumberOfFunctions ||
-        !nb_read(p, p->ntdll + exports.AddressOfFunctions + ordinal * 4, &fn_rva, 4) || fn_rva >= 0x264000 ||
+        !nb_read(p, p->ntdll + exports.AddressOfFunctions + ordinal * 4, &fn_rva, 4) || !nb_within(p, fn_rva, 8) ||
         (fn_rva >= range.VirtualAddress && fn_rva < range.VirtualAddress + range.Size)) return 0;
     *out = p->ntdll + fn_rva; return 1;
   }
   return 0;
 }
 static int nb_image(NB_PROCESS *p, HANDLE file, void *base) {
-  /* Basename is only a candidate filter. Kernel file identity AND full hash are
-   * checked before the sole supported startup site is used. */
+  /* Basename is only a candidate filter. The kernel file identity must be the
+   * system ntdll, and its mapped headers must match the host's own ntdll, so
+   * every offset below is read from the build this machine actually runs. */
   wchar_t path[32768], system[MAX_PATH];
   if (!file) return 1; /* Missing ntdll provenance still fails at startup. */
   if (!GetFinalPathNameByHandleW(file, path, 32768, FILE_NAME_NORMALIZED)) return 0;
@@ -140,29 +147,22 @@ static int nb_image(NB_PROCESS *p, HANDLE file, void *base) {
   if (p->ntdll || !GetSystemDirectoryW(system, MAX_PATH) || wcslen(system) + 11 >= MAX_PATH) return 0;
   memcpy(system + wcslen(system), L"\\ntdll.dll", sizeof(L"\\ntdll.dll"));
   HANDLE reference = CreateFileW(system, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, 0, NULL);
-  BY_HANDLE_FILE_INFORMATION a, b; char sha[65]; int verified = reference != INVALID_HANDLE_VALUE &&
+  BY_HANDLE_FILE_INFORMATION a, b; int verified = reference != INVALID_HANDLE_VALUE &&
     GetFileInformationByHandle(file, &a) && GetFileInformationByHandle(reference, &b) && a.dwVolumeSerialNumber == b.dwVolumeSerialNumber &&
-    a.nFileIndexHigh == b.nFileIndexHigh && a.nFileIndexLow == b.nFileIndexLow && nb_file_sha(file, sha) && !strcmp(sha, NB_NTDLL_SHA);
+    a.nFileIndexHigh == b.nFileIndexHigh && a.nFileIndexLow == b.nFileIndexLow;
   if (reference != INVALID_HANDLE_VALUE) CloseHandle(reference);
   if (!verified) return 0;
   p->ntdll = (uintptr_t)base;
-  IMAGE_DOS_HEADER dos; IMAGE_NT_HEADERS64 nt; BYTE loader[sizeof(route_loader_code)];
-  if (!nb_read(p, p->ntdll, &dos, sizeof(dos)) || dos.e_magic != IMAGE_DOS_SIGNATURE || dos.e_lfanew < 0 || dos.e_lfanew > 4096 ||
+  const BYTE *mapped = (const BYTE *)GetModuleHandleW(L"ntdll.dll");
+  const IMAGE_NT_HEADERS64 *own = mapped ? (const IMAGE_NT_HEADERS64 *)(mapped + ((const IMAGE_DOS_HEADER *)mapped)->e_lfanew) : NULL;
+  IMAGE_DOS_HEADER dos; IMAGE_NT_HEADERS64 nt;
+  if (!own || !nb_read(p, p->ntdll, &dos, sizeof(dos)) || dos.e_magic != IMAGE_DOS_SIGNATURE || dos.e_lfanew < 0 || dos.e_lfanew > 4096 ||
       !nb_read(p, p->ntdll + dos.e_lfanew, &nt, sizeof(nt)) || nt.Signature != IMAGE_NT_SIGNATURE || nt.FileHeader.Machine != IMAGE_FILE_MACHINE_AMD64 ||
-      nt.FileHeader.TimeDateStamp != 0x64d8ddf5 || nt.OptionalHeader.SizeOfImage != 0x264000 || nt.OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC ||
-      !nb_read(p, p->ntdll + ROUTE_LOADER_START, loader, sizeof(loader)) || memcmp(loader, route_loader_code, sizeof(loader))) return 0;
-  /* RSDS matches the provenance header in addition to the full file hash. */
-  IMAGE_DATA_DIRECTORY dd = nt.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG]; int guid = 0;
-  if (dd.Size > 4096 || dd.Size % sizeof(IMAGE_DEBUG_DIRECTORY)) return 0;
-  for (DWORD i = 0; i < dd.Size / sizeof(IMAGE_DEBUG_DIRECTORY); ++i) {
-    IMAGE_DEBUG_DIRECTORY debug;
-    struct {DWORD magic; GUID guid; DWORD age;} rsds;
-    if (!nb_read(p, p->ntdll + dd.VirtualAddress + i * sizeof(debug), &debug, sizeof(debug))) return 0;
-    if (debug.Type == IMAGE_DEBUG_TYPE_CODEVIEW && debug.SizeOfData >= sizeof(rsds) &&
-        nb_read(p, p->ntdll + debug.AddressOfRawData, &rsds, sizeof(rsds)) && rsds.magic == 0x53445352 &&
-        !memcmp(&rsds.guid, &route_native_guid, sizeof(GUID)) && rsds.age == 1) guid = 1;
-  }
-  if (!guid || !nb_export(p, &nt, "NtCreateFile", &p->sites[0]) || !nb_export(p, &nt, "NtOpenFile", &p->sites[1]) || p->sites[0] == p->sites[1]) return 0;
+      nt.OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC || nt.FileHeader.TimeDateStamp != own->FileHeader.TimeDateStamp ||
+      nt.OptionalHeader.SizeOfImage != own->OptionalHeader.SizeOfImage || nt.OptionalHeader.CheckSum != own->OptionalHeader.CheckSum ||
+      nt.OptionalHeader.SizeOfImage < 4096 || nt.OptionalHeader.SizeOfImage > 0x1000000) return 0;
+  p->ntdll_size = nt.OptionalHeader.SizeOfImage;
+  if (!nb_export(p, &nt, "NtCreateFile", &p->sites[0]) || !nb_export(p, &nt, "NtOpenFile", &p->sites[1]) || p->sites[0] == p->sites[1]) return 0;
   const char *names[] = {"NtCreateFile", "NtOpenFile"};
   for (unsigned i = 0; i < 2; ++i) {
     BYTE code[8]; void *host = (void *)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), names[i]);
@@ -274,13 +274,24 @@ static int nb_delegate(NB_DEBUG *d, NB_PROCESS *p, DWORD tid, CONTEXT *c, int ap
   return 1;
 }
 
+/* A debugged process raises its first breakpoint in the loader, before any
+ * image entry point or TLS callback runs. Accept it only as a first-chance
+ * INT3 that the host's own mapping of the same ntdll holds inside one of its
+ * functions with code after it, so padding between or at the end of functions
+ * and bytes the target changed all fail. */
+static int nb_loader_break(NB_PROCESS *p, uintptr_t address, DWORD first_chance) {
+  const BYTE *host = (const BYTE *)GetModuleHandleW(L"ntdll.dll"); DWORD64 owner = 0; BYTE byte = 0;
+  if (!first_chance || !host || address < p->ntdll || address - p->ntdll >= p->ntdll_size) return 0;
+  DWORD rva = (DWORD)(address - p->ntdll); const BYTE *local = host + rva;
+  PRUNTIME_FUNCTION function = RtlLookupFunctionEntry((DWORD64)(uintptr_t)local, &owner, NULL);
+  return function && owner == (DWORD64)(uintptr_t)host && rva >= function->BeginAddress && rva + 1 < function->EndAddress &&
+    *local == 0xcc && nb_read(p, address, &byte, 1) && byte == 0xcc;
+}
 static int nb_exception(NB_DEBUG *d, NB_PROCESS *p, DEBUG_EVENT *e, DWORD *continuation) {
   DWORD code = e->u.Exception.ExceptionRecord.ExceptionCode; uintptr_t address = (uintptr_t)e->u.Exception.ExceptionRecord.ExceptionAddress;
   HANDLE thread = nb_thread_handle(p, e->dwThreadId); CONTEXT c; ZeroMemory(&c, sizeof(c)); c.ContextFlags = CONTEXT_FULL;
   *continuation = DBG_EXCEPTION_NOT_HANDLED;
-  if (code == EXCEPTION_BREAKPOINT && p->image && !p->startup && e->dwThreadId == p->first && address == p->ntdll + ROUTE_LOADER_BREAK) {
-    BYTE code_bytes[sizeof(route_loader_code)];
-    if (!nb_read(p, p->ntdll + ROUTE_LOADER_START, code_bytes, sizeof(code_bytes)) || memcmp(code_bytes, route_loader_code, sizeof(code_bytes))) return 0;
+  if (code == EXCEPTION_BREAKPOINT && p->image && !p->startup && e->dwThreadId == p->first && nb_loader_break(p, address, e->u.Exception.dwFirstChance)) {
     p->startup = 1; p->startup_deadline = 0; *continuation = DBG_CONTINUE;
     return 1;
   }

@@ -68,6 +68,14 @@ fn notify(app: AppHandle, webview: Webview, title: String, body: String, thread_
     platform::notify(app, title, body, thread_id)
 }
 
+/// Whether `notify` can show a toast on this machine: false on a Linux
+/// desktop without `notify-send`, where the UI turns the switch off and says so.
+#[tauri::command]
+fn notify_supported(webview: Webview) -> Result<bool, String> {
+    quota_window::only_ui(&webview)?;
+    Ok(platform::notify_supported())
+}
+
 /// Set by an update just before `app.restart()`. On Linux and macOS the
 /// restart starts the new shell while the old one still holds `shell.lock`:
 /// the new one would wake the exiting one and quit, leaving no window. It
@@ -215,6 +223,7 @@ pub fn run() {
         tray::quit_shell,
         tray::quit_guard,
         notify,
+        notify_supported,
         presence::user_presence,
         closing::close_behavior,
         autostart::launch_at_login,

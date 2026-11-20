@@ -38,6 +38,20 @@ export interface ThreadResources {
   live: ProcessRecord[];
   /** The latest sample of the whole tree, the same one `ThreadSummary.load` carries. */
   load: ThreadLoad;
+  /** As `AgentResourceUsage.loadAvailable`: false is a reading this machine could not take (CPU on macOS), not a zero. Missing on an older core. */
+  loadAvailable?: { cpu: boolean; memory: boolean };
+}
+
+/**
+ * The machine's sleep inhibitor while agents work (`settings.keepAwake`).
+ * `available` false: this machine has none Boite can hold (Linux without
+ * `systemd-inhibit`, `BOITE_KEEP_AWAKE=0`) or it refused the hold, so the
+ * setting changes nothing here.
+ */
+export interface KeepAwakeStatus {
+  /** Held now: a turn runs or waits for a slot, or one rested under five seconds ago. */
+  held: boolean;
+  available: boolean;
 }
 
 /** Read and write mean storage reads/writes for disk, download/upload for network. */
@@ -128,6 +142,8 @@ export interface TraceRpcMethods {
   'resources.machine': { params: Record<string, never>; result: MachineResourceSnapshot };
   /** Owner-only machine memory reading and the limits actually applied by the governor. */
   'resources.memoryStatus': { params: Record<string, never>; result: MemoryStatus };
+  /** Owner-only: whether the machine is kept awake now, and whether it can be. Missing on an older core. */
+  'resources.keepAwake': { params: Record<string, never>; result: KeepAwakeStatus };
   'resources.killTree': { params: { threadId: ThreadId }; result: { killed: number } };
 }
 
