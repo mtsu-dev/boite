@@ -32,30 +32,46 @@
   const weekday = $derived(new Intl.DateTimeFormat(formatLocale(), { weekday: 'short' }));
   const dayMonth = $derived(new Intl.DateTimeFormat(formatLocale(), { day: 'numeric', month: 'short' }));
 
-  /** An estimate of a label's width at the tick size, wide enough to keep two labels apart. */
-  const CHAR = 6.5;
-  /**
-   * Labels counted back from today on a regular step. A label pinned to an edge
-   * of the plot, or one longer than the step allows, is skipped rather than
-   * drawn over its neighbour.
-   */
-  let xLabels = $derived.by(() => {
+  let dateTicks = $state<SVGGElement>();
+  const dates = $derived.by(() => {
     if (buckets.length === 0 || plotWidth === 0) return [];
     const every = Math.max(1, Math.ceil(64 / band));
-    const chosen: { index: number; text: string; x: number; anchor: 'start' | 'middle' | 'end' }[] = [];
-    let limit = Infinity;
+    const candidates: { index: number; text: string; centre: number }[] = [];
     for (let index = buckets.length - 1; index >= 0; index -= every) {
       const centre = left + band * (index + 0.5);
       const text = days <= 7 ? weekday.format(buckets[index]!.start) : dayMonth.format(buckets[index]!.start);
-      const size = text.length * CHAR;
-      const anchor = centre + size / 2 > left + plotWidth ? 'end' : centre - size / 2 < left ? 'start' : 'middle';
-      const x = anchor === 'end' ? left + plotWidth : anchor === 'start' ? left : centre;
-      const start = anchor === 'end' ? x - size : anchor === 'start' ? x : x - size / 2;
-      if (start + size + 8 > limit) continue;
-      chosen.push({ index, text, x, anchor });
-      limit = start;
+      candidates.push({ index, text, centre });
     }
-    return chosen;
+    return candidates;
+  });
+
+  type DateLabel = { index: number; text: string; x: number; anchor: 'start' | 'middle' | 'end' };
+  let xLabels = $state.raw<DateLabel[]>([]);
+  $effect(() => {
+    const ticks = dateTicks;
+    if (!ticks) return;
+    const candidates = dates;
+    const startOfPlot = left;
+    const endOfPlot = left + plotWidth;
+    // Use the rendered font and locale before placing labels against each other.
+    const measure = () => {
+      const chosen: DateLabel[] = [];
+      let limit = Infinity;
+      for (const [position, { index, text, centre }] of candidates.entries()) {
+        const size = (ticks.children[position] as SVGTextElement).getComputedTextLength();
+        if (size > endOfPlot - startOfPlot) continue;
+        const anchor = centre + size / 2 > endOfPlot ? 'end' : centre - size / 2 < startOfPlot ? 'start' : 'middle';
+        const x = anchor === 'end' ? endOfPlot : anchor === 'start' ? startOfPlot : centre;
+        const start = anchor === 'end' ? x - size : anchor === 'start' ? x : x - size / 2;
+        if (start + size + 8 > limit) continue;
+        chosen.push({ index, text, x, anchor });
+        limit = start;
+      }
+      xLabels = chosen;
+    };
+    measure();
+    document.fonts?.addEventListener('loadingdone', measure);
+    return () => document.fonts?.removeEventListener('loadingdone', measure);
   });
 
   /** Each column's segments, bottom up, with the gap taken off the top of all but the last. */
@@ -158,6 +174,11 @@
           {/each}
         </g>
       {/each}
+      <g visibility="hidden" bind:this={dateTicks}>
+        {#each dates as { index, text } (index)}
+          <text class="tick">{text}</text>
+        {/each}
+      </g>
       {#each xLabels as entry (entry.index)}
         <text class="tick" x={entry.x} y={HEIGHT - 6} text-anchor={entry.anchor}>{entry.text}</text>
       {/each}

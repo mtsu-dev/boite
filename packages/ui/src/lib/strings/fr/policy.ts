@@ -51,7 +51,8 @@ export const fr: Translation = {
       'network.groups': 'Groupes',
       'network.contacts': 'Contacts',
       'network.push': 'Notifications push',
-      pullRequests: 'Pull requests'
+      pullRequests: 'Pull requests',
+      modelPrices: 'Mise à jour des prix des modèles'
     },
     values: {
       on: 'Autorisé',
