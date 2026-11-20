@@ -97,6 +97,7 @@ export const STRICTEST_POLICY: AdminPolicy = Object.freeze({
   agentDesktop: false,
   network: { lan: false, tailscaleServe: false, groups: false, contacts: false, push: false },
   pullRequests: false,
+  modelPrices: false,
 }) as AdminPolicy;
 
 /** The keys a policy's values lock, in `POLICY_KEYS` order. A `true` that restricts nothing locks nothing. */
