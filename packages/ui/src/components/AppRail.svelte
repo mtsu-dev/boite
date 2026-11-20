@@ -39,7 +39,7 @@
   import { parts } from '../lib/deferred-parts';
   import { QuotaReorder } from '../lib/quota-reorder.svelte';
   import { railOrder } from '../lib/rail-order.svelte';
-  import { subagentsAtWork, threadsAtWork } from '../lib/work-counts';
+  import { subagentsAtWork, threadsAtWork, workCountLabel } from '../lib/work-counts';
 
   /**
    * The column down the window's left edge, on a desktop, the same in every
@@ -92,13 +92,9 @@
   const waitingLabel = $derived(waiting === 1 ? strings.app.rail.waitingOne : fill(strings.app.rail.waitingMany, { count: String(waiting) }));
   /** The conversations at work on every machine, as the projects' Working counts read them: the Threads button's count. */
   const working = $derived(threadsAtWork(stores));
-  const workingLabel = $derived(working === 1 ? strings.app.rail.workingOne : fill(strings.app.rail.workingMany, { count: String(working) }));
   /** Their subagents at work, the lighter number beside it. */
   const helpers = $derived(subagentsAtWork(stores));
-  const busyLabel = $derived([
-    working ? workingLabel : null,
-    helpers ? helpers === 1 ? strings.app.rail.subagentsOne : fill(strings.app.rail.subagentsMany, { count: String(helpers) }) : null
-  ].filter(Boolean).join(', ') || null);
+  const busyLabel = $derived(workCountLabel(working, helpers));
   const tally = (value: number) => value > 99 ? '99+' : count(value);
   const unreadLabel = (value: number) => value === 1 ? strings.app.rail.unreadOne : fill(strings.app.rail.unreadMany, { count: String(value) });
   /**
