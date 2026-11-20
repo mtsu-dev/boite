@@ -22,7 +22,6 @@ export type PanelSurface =
   | { kind: 'workflow'; runId?: string };
 
 export const PANEL_SURFACE_KINDS = ['file', 'files', 'diff', 'browser', 'trace', 'tasks', 'workflow'] as const;
-export type PanelSurfaceKind = (typeof PANEL_SURFACE_KINDS)[number];
 
 export interface PanelRpcMethods {
   /**

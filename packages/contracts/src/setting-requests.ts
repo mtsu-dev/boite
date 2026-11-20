@@ -252,13 +252,6 @@ export interface BotAsk {
   model: string;
 }
 
-/**
- * How a settings card ended, the one option id its answer carries. Only
- * `refuse` and `open` are options the user answers with; the core writes
- * `applied` and `changed` itself when the setting changes.
- */
-export type SettingOutcome = 'applied' | 'changed' | 'refuse' | 'open';
-
 /** The card `agents.create` draws, with the one option the user answers with. */
 export function botCard(bot: AgentCreation, projects: string[], model: string): { text: string; setting: BotAsk; options: QuestionOption[] } {
   return { text: `Create the mochi ${JSON.stringify(bot.name)}, which runs with full access to this machine`, setting: { kind: 'bot', bot, projects, model }, options: [{ id: 'refuse', label: 'Decline' }] };

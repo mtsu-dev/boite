@@ -1044,8 +1044,7 @@ grants. `sharedProjects.configure` on the owning host selects its permitted
 delegation profiles, permission mode and optional host concurrency limit.
 `null` inherits host settings, not a new default ceiling. Peers receive route
 names/models/capabilities, never account IDs, credentials or environment.
-`SharedComputeAllocation` expresses an explicit contribution such as four
-local children and five remote children. A workflow step's `compute` target
+A workflow step's `compute` target
 selects one host. Shared-compute plans have no new default concurrency ceiling;
 an explicit plan limit and each host's contribution/resource settings still
 apply. Ordinary plans keep their existing limits. No exchange/hop counter is
