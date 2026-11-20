@@ -43,10 +43,11 @@ test('project menus keep Mark done separate from Archive, which can stop pending
   const labels = Array.from(document.querySelectorAll('[data-testid=context-menu] [data-row]')).map((el) => el.textContent?.trim());
   // The row's menu by intention: Open, then what it is called (typed or made again) and pinned, where it stands, the
   // move behind a door named after what it holds, Delete apart. t-bench still works, so Mark done is off and says why.
-  expect(labels).toEqual(['Open', 'Rename', 'Regenerate title', 'Pin', 'Mark done Still working', 'Archive', 'Move to a project ›', 'Delete']);
+  expect(labels).toEqual(['Open', 'Rename', 'Regenerate title', 'Pin', 'Mark done Still working', 'Archive', 'Move to a project', 'Delete']);
+  expect(query('[data-testid=context-menu] [data-value=more]').getAttribute('aria-haspopup')).toBe('menu');
   const groups = () => Array.from(query('[data-testid=context-menu]').querySelectorAll('[data-row], [role=separator]'))
     .map(el => el.getAttribute('role') === 'separator' ? '|' : el.textContent?.trim()).join(',');
-  expect(groups()).toBe('Open,|,Rename,Regenerate title,Pin,|,Mark done Still working,Archive,|,Move to a project ›,|,Delete');
+  expect(groups()).toBe('Open,|,Rename,Regenerate title,Pin,|,Mark done Still working,Archive,|,Move to a project,|,Delete');
   // The group opens its list in place, no panel in it (the panel selector has them), and Back returns.
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=more]').click();
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=copy]') !== null);

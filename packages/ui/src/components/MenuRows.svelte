@@ -19,7 +19,7 @@
     <!-- A labelled rule opens a section: its words, no line. -->
     <div class="section ui-label" class:sheet role="presentation"><PrivateText text={item.label} /></div>
   {:else if item.separator}
-    <div class="rule" role="separator"></div>
+    <div class="separator" role="separator"></div>
   {:else if item.back}
     <!-- One way back for every second level: it names the level and draws its own rule. -->
     <BackRow label={item.label} title={item.title} disabled={item.disabled} tabindex={atPointer ? -1 : undefined} data-value={item.id} data-testid={item.testid} onclick={() => pick(item)} />
@@ -41,6 +41,7 @@
     class:clip={item.clip}
     role={item.checked === undefined ? 'menuitem' : item.radio ? 'menuitemradio' : 'menuitemcheckbox'}
     aria-checked={item.checked}
+    aria-haspopup={item.submenu ? 'menu' : undefined}
     disabled={item.disabled}
     data-row
     data-value={item.id}
@@ -68,14 +69,14 @@
 {/each}
 
 <style>
-  .rule { height: 1px; background: var(--color-border); margin: var(--space-1) var(--overlay-row-pad); }
+  .separator { height: 1px; background: var(--color-border); margin: var(--space-1) var(--overlay-row-pad); }
   /* A section title is read, never tapped: its trimmed label box (`.ui-label`) reaches over the row above, which keeps the tap. */
   .section { padding: var(--space-3) var(--overlay-row-pad) var(--space-2); font-size: var(--text-meta); font-weight: 600; color: var(--color-subtle); pointer-events: none; }
   .section:first-child, :global(.sheet-title) + .section { padding-top: var(--space-1); }
   .section.sheet { padding-top: var(--space-4); }
   .section.sheet:first-child, :global(.sheet-title) + .section.sheet { padding-top: 0; }
-  .rule:first-child, .rule:last-child, .rule + .rule,
-  :global(.sheet-title) + .rule, :global(.heading) + .rule, :global(.back-rule) + .rule { display: none; }
+  .separator:first-child, .separator:last-child, .separator + .separator,
+  :global(.sheet-title) + .separator, :global(.heading) + .separator, :global(.back-rule) + .separator { display: none; }
   .label { display: flex; align-items: center; gap: var(--space-2); }
   .glyph { display: inline-flex; flex: 0 0 16px; color: var(--color-muted-foreground); margin-right: 2px; }
   .glyph.live { color: var(--color-live); }
@@ -111,7 +112,7 @@
   .status-dot[data-tone='offline'] { background: transparent; box-shadow: inset 0 0 0 1.5px var(--color-muted-foreground); }
   /* A one-line item is as tall as a context menu row; a hint below grows it.
      Labels are trimmed to their capitals, so the gap keeps descenders off the hint. */
-  .rule, .section, .item { flex: none; }
+  .separator, .section, .item { flex: none; }
 
   .item {
     display: flex;
