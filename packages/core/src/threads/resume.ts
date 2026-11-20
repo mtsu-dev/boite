@@ -118,6 +118,11 @@ export class ResumePlanner {
         plan = unsent;
         record[threadId] = { ...entry, plan };
       }
+      // Plans from before recovery notices still carry the interrupted turn and quota reset.
+      if (entry.recovery === undefined) {
+        record[threadId] = { ...entry, plan, recovery: recoveryForPlan(plan) };
+        changed = true;
+      }
       const startDelay = plan.reason === 'limit' ? RESUME_TIMING.limit.startDelayMs : RESUME_TIMING.carryOn.startDelayMs;
       this.#arm(threadId, Math.max(startDelay, plan.at - Date.now()));
     }
@@ -216,7 +221,7 @@ export class ResumePlanner {
     const full: Plan = { ...plan, turnId: turn.id };
     const record = this.#load();
     const current = record[threadId];
-    const recovery = current?.recovery?.turnId === turn.id ? current.recovery : { kind: 'interrupted' as const, turnId: turn.id };
+    const recovery = current?.recovery?.turnId === turn.id ? current.recovery : recoveryForPlan(full);
     record[threadId] = { ...current, handled: turn.id, plan: full, recovery };
     this.#save(record);
     this.#arm(threadId, full.at - Date.now());
@@ -450,6 +455,12 @@ function asRecord(value: unknown): Record_ {
 
 function what(plan: Plan): string {
   return plan.reason === 'limit' ? 'usage limit resume' : 'automatic resume';
+}
+
+function recoveryForPlan(plan: Plan): ThreadRecovery {
+  return plan.reason === 'limit'
+    ? { kind: 'usage-limit', turnId: plan.turnId, resetsAt: plan.resetsAt ?? null }
+    : { kind: 'interrupted', turnId: plan.turnId };
 }
 
 function requestId(turnId: TurnId, limit: boolean): string {

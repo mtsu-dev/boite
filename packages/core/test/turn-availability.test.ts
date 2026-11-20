@@ -399,12 +399,14 @@ test('an archived thread keeps the usage window it resumed after across a restar
   }
 });
 
-test('a planned resume survives a core restart and fires on the next core', async () => {
+test('a planned quota resume from an older core offers recovery and still fires', async () => {
   const h = await startTestCore({ settings: { autoResumeLimitedThreads: true } });
   const client = await h.connect();
   const { threadId } = await echoThread(h, client);
   const turn = await client.call('turns.start', { threadId, prompt: '[usage-limit:1500]' });
   await waitFor(() => retryOf(h, threadId)?.turnId === turn.id);
+  const { recovery: _, ...oldEntry } = h.core.threads.resumes.entry(threadId)!;
+  h.core.journal.setSetting('resumes', { [threadId]: oldEntry });
   client.close();
   await h.server.stop();
   await h.core.close();
@@ -412,6 +414,7 @@ test('a planned resume survives a core restart and fires on the next core', asyn
   const next = new Core({ dataDir: h.dataDir, token: h.token });
   try {
     expect(next.threads.list({}).find(thread => thread.id === threadId)?.retry?.kind).toBe('usage-limit');
+    expect(next.threads.get(threadId).recovery).toEqual({ kind: 'usage-limit', turnId: turn.id, resetsAt: oldEntry.plan!.resetsAt });
     await waitFor(() => next.journal.listTurns(threadId).length === 2, 5000);
     const resumed = next.journal.listTurns(threadId)[1]!;
     await waitFor(() => next.journal.getTurn(resumed.id)?.status === 'done');
