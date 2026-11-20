@@ -61,7 +61,9 @@ async function mountAt(open: 'landing' | 'recent'): Promise<FakeClient> {
   store.composerStates = {};
   closeTour();
   running = mount(App, { target });
-  await waitFor(() => store.booted && (open === 'landing' ? store.draft !== null : store.openThread !== null || store.draft !== null));
+  await waitFor(() => store.booted && (open === 'landing' ? store.draft !== null : store.openThread !== null || store.draft !== null)
+    && target.querySelector('[data-testid=composer-picker]') !== null
+    && target.querySelector('[data-testid=sidebar]') !== null);
   return store.client as FakeClient;
 }
 
@@ -582,16 +584,7 @@ test('a model the core already listed is picked at once, even while its list is 
     if (method === 'providers.probe' && (params as { providerId: string }).providerId === 'claude') await waitFor(() => !hold);
     return original.call(this, method, params) as never;
   });
-  window.history.replaceState(null, '', '/?fake=1&open=recent');
-  const target = document.createElement('div');
-  document.body.appendChild(target);
-  store.booted = false;
-  store.openThread = null;
-  store.draft = null;
-  store.composerStates = {};
-  closeTour();
-  running = mount(App, { target });
-  await waitFor(() => store.booted && (store.openThread !== null || store.draft !== null));
+  await mountAt('recent');
   document.querySelector<HTMLButtonElement>('[data-testid=new-thread]')!.click();
   await waitFor(() => store.draft !== null);
 

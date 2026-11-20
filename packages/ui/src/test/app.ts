@@ -148,8 +148,9 @@ export async function mountOnFake(search = '/?fake=1'): Promise<void> {
   // which is the point of it and not what these tests are about.
   closeTour();
   running = mount(App, { target });
-  // `.app.ready` is what the screen shows: outside the shell it also waits for the phone's navigation chunk (App.svelte).
-  await waitFor(() => store.booted && (store.openThread !== null || store.draft !== null) && document.querySelector('.app.ready') !== null);
+  // The app can finish connecting before its deferred conversation list is drawn.
+  await waitFor(() => store.booted && (store.openThread !== null || store.draft !== null)
+    && target.querySelector('.app.ready [data-testid=sidebar]') !== null);
 }
 
 /** The thread every workbench test works in, with an empty strip to start on. */

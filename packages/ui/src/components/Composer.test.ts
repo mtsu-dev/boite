@@ -233,7 +233,9 @@ async function mountOnFake(delayMs?: number, missing?: string[], composerState?:
   // The tour would be up over the composer on a device that has not seen it.
   closeTour();
   running = mount(App, { target });
-  await waitFor(() => store.booted && store.openThread !== null);
+  await waitFor(() => store.booted && store.openThread !== null
+    && target.querySelector('[data-testid=composer-input]') !== null
+    && target.querySelector('[data-testid=sidebar]') !== null);
   if (delayMs !== undefined) { store.attach(new FakeClient({ delayMs, ...(missing ? { missing } : {}), ...(composerState ? { composerState } : {}) })); await store.connect(); }
 }
 

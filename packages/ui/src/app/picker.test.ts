@@ -29,7 +29,7 @@ test('the picker rails the providers as logos and gives the shown one its accoun
   await waitFor(() => store.draft !== null);
 
   // A draft opens on the first available provider, its default model.
-  await waitFor(() => query('[data-testid=composer-picker]').textContent?.includes('Opus 5.5') === true);
+  await waitFor(() => document.querySelector('[data-testid=composer-picker]')?.textContent?.includes('Opus 5.5') === true);
 
   query<HTMLButtonElement>('[data-testid=composer-picker]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
@@ -135,7 +135,7 @@ test('a long thread asks for an unused account and switches straight back to its
 test('the picker reads an ACP agent models, showing the descriptor and a probing line meanwhile', async ({ app: _app }) => {
   query<HTMLButtonElement>('[data-testid=new-thread]').click();
   await waitFor(() => store.draft !== null);
-  await waitFor(() => query('[data-testid=composer-picker]').textContent?.includes('Opus 5.5') === true);
+  await waitFor(() => document.querySelector('[data-testid=composer-picker]')?.textContent?.includes('Opus 5.5') === true);
 
   query<HTMLButtonElement>('[data-testid=composer-picker]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
