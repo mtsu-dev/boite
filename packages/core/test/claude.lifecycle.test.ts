@@ -105,7 +105,7 @@ describe('claude driver', () => {
       expect(await runTurn(client, threadId, 'go on')).toBe('error');
       const error = harness.core.journal.listTurns(threadId).at(-1)?.error ?? '';
       expect(error).toContain('Claude could not compact this conversation');
-      expect(error).toContain(`Loaded into every request: ${entry} (60 KB)`);
+      expect(error).toContain(`likely in every request: ${entry} (60 KB)`);
       expect(error).not.toContain('refused the request as invalid');
       await Bun.sleep(100);
       expect(harness.core.journal.listTurns(threadId)).toHaveLength(1);

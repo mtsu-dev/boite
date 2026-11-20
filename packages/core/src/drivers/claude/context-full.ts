@@ -38,7 +38,11 @@ export function largeInstructionFiles(cwd: string): LoadedFile[] {
 
 const kilobytes = (bytes: number): string => `${Math.round(bytes / 1024)} KB`;
 
-/** Why the turn stopped and what frees the context, naming the large files `cwd` loads. */
+/**
+ * Why the turn stopped and what frees the context, naming the large files the
+ * CLI may load from `cwd` up: candidates, since the CLI's own choice (which
+ * files, what they import) is not visible from here.
+ */
 export function contextFullReason(cwd: string): string {
   const head = 'Claude could not compact this conversation: what every request carries refilled the compaction limit within three turns, three times in a row, so Boite does not resume it.';
   const files = largeInstructionFiles(cwd);
@@ -46,5 +50,5 @@ export function contextFullReason(cwd: string): string {
     return `${head} Shrink the instruction files the agent loads (AGENTS.md, CLAUDE.md) or what it reads at once, or raise the token limit in Settings, Advanced, Automatic compaction, then write to the thread.`;
   }
   const named = files.map(file => `${file.path} (${kilobytes(file.bytes)})`).join(', ');
-  return `${head} Loaded into every request: ${named}. Shrink ${files.length === 1 ? 'it' : 'them'}, then write to the thread.`;
+  return `${head} Large instruction files in the thread's folder and its parents, likely in every request: ${named}. Shrink ${files.length === 1 ? 'it' : 'them'}, then write to the thread.`;
 }
