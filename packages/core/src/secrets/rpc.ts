@@ -1,7 +1,7 @@
 /**
  * The `secrets.*` methods. Agents ask, use and list for their own thread
- * (`AGENT_METHODS`); answering with a value and deleting a key from a paired
- * device need a link nobody reads on the way (`Connection.encrypted`).
+ * (`AGENT_METHODS`); answering with a value from a paired device needs a link
+ * nobody reads on the way (`Connection.encrypted`).
  */
 import type { Core } from '../core.ts';
 import { refused } from '../errors.ts';
