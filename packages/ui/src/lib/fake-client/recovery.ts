@@ -68,7 +68,7 @@ export function resumeTurn(ctx: FakeContext, { threadId, turnId, model, expected
   }
   const recovery = thread.recovery;
   if (!recovery || recovery.turnId !== turnId || thread.archived || thread.parentThreadId || thread.turns.findLast(turn => turn.execution?.operation !== 'keepalive')?.id !== turnId) {
-    throw refusal('turnId must name the latest interrupted turn of this thread');
+    throw refusal('turnId must name the latest interrupted turn of this thread', { field: 'turnId', threadId, turnId });
   }
   if (expectedSelectionVersion !== undefined && expectedSelectionVersion !== (thread.selectionVersion ?? 0)) throw refusal('the agent selection changed');
   requireFakeCwd(ctx, thread);
