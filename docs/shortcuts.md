@@ -23,7 +23,7 @@ them. In the table, Ctrl means Ctrl on Windows and Linux and Cmd on macOS.
 | Ctrl+Shift+F | Open the file tree |
 | Ctrl+Shift+K | Open the tasks surface |
 | Ctrl+W | Close the active surface of the panel, never the window |
-| Ctrl+J | Open or hide the drawer under the chat: terminal or project board |
+| Ctrl+J | In Conversations, open or hide the terminal or project board under the chat |
 
 While a terminal has the keyboard, its own shortcuts come first:
 
