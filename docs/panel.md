@@ -71,6 +71,8 @@ The Tasks tab has four sections:
   Boite reads each one on GitHub about once a minute and wakes the agent when
   a check fails, the checks pass, a review or comment lands, the branch
   conflicts or it leaves the merge queue unmerged. Stop watching ends it.
+  If a check fails on the target branch, the watch identifies its commit
+  and first failure separately.
 - Agent tasks: the agent's own task list.
 - Project todos: the project's list. Type in Add a todo to add one. A card
   marked Awaiting you waits for your confirmation: Confirm it is done, or

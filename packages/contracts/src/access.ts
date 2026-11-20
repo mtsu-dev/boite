@@ -450,6 +450,7 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['agents.picture.put', 'storing an image file for a mochi to wear, bounded to 512 KB of PNG, JPEG, WebP or GIF whose bytes match their type; it changes no mochi, and unworn pictures are swept (agents/pictures.ts)'],
   ['agents.avatar.set', 'changing the face of a mochi of this machine, its own or another\'s, without a card: the owner asked that agents may dress mochis themselves (2026-11-01); only the avatar changes, to a picture this machine holds or a robot, never a name, instructions or access'],
   ['artifacts.publish', 'explicitly sharing a bounded snapshot from its own working directory in its own conversation'],
+  ['artifacts.prove', 'publishing recorded verification output and an optional checkout snapshot in its own conversation'],
   ['artifacts.read', 'reading back only a published snapshot belonging to its own conversation'],
   ['artifacts.view', 'showing one HTML page of its own working directory in its own conversation, embedded whole, on an opaque origin that loads and calls nothing'],
   ['artifacts.viewCheck', 'checking its own local HTML with the view sandbox in an isolated browser, returning captures without publishing or opening a panel'],

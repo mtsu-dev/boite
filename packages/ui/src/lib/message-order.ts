@@ -9,11 +9,11 @@ import { viewPart } from './inline-view';
  * shows them where they came, so a file is visible as soon as it is sent.
  */
 
-/** A message `artifacts.publish` wrote: an assistant message that is one file and nothing else. */
+/** A file or proof explicitly published to accompany the turn's answer. */
 export function publishedFile(message: Message): boolean {
   const part = message.parts[0];
-  return message.role === 'assistant' && message.parts.length === 1 &&
-    (part?.type === 'file' || (part?.type === 'artifact' && !part.view));
+  return message.role === 'assistant' && (part?.type === 'text' && part.proof === true ||
+    message.parts.length === 1 && (part?.type === 'file' || part?.type === 'artifact' && !part.view));
 }
 
 /** The first message of each turn: on a wake turn, the prompt it opened with. A line Boite adds to that turn later is not a second wake. */

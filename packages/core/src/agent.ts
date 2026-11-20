@@ -18,7 +18,7 @@ import { newToken } from './ids.ts';
 import { registerGitMethods } from './git.ts';
 import { registerTodoMethods } from './todos.ts';
 import { existingInside, registerWorkdirMethods, resolveInside } from './workdir.ts';
-import { publishArtifact, readArtifact } from './artifacts.ts';
+import { publishArtifact, publishProof, readArtifact } from './artifacts.ts';
 import { checkView, publishView, viewBlock } from './views.ts';
 
 /** More than a plan, and the tasks surface stops being readable anyway. */
@@ -242,6 +242,7 @@ export function registerAgentMethods(core: Core): void {
   core.router.register('browser.hostDetach', (_params, { connection }) => core.browser.hostDetach(connection));
   core.router.register('browser.hostReply', (params, { connection }) => core.browser.hostReply(params, connection));
   core.router.register('artifacts.publish', (params) => publishArtifact(core, params));
+  core.router.register('artifacts.prove', (params) => publishProof(core, params));
   core.router.register('artifacts.read', (params) => readArtifact(core, params));
   core.router.register('artifacts.view', (params) => publishView(core, params));
   core.router.register('artifacts.viewCheck', (params) => checkView(core, params));

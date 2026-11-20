@@ -272,7 +272,8 @@ is left out, since the copy cannot carry that scope. The cookies cross the conne
 action is the owner's alone and never automatic. Signing in directly works
 too: show the agent's browser and sign in there.
 
-An agent that meets a login page asks with `boite ask --open <url> "<site and
+An agent checks the current browser profile for an existing session before
+asking with `boite ask --open <url> "<site and
 why>" "Signed in" Skip`. The question card gets an Open button: it opens the
 page as `boite browse` does, in a new tab of the conversation's browser and
 its default profile, and shows the panel on the Browser tab, going to the

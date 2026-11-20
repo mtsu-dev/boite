@@ -67,14 +67,14 @@ export function agentGuide(asyncQuestions: boolean, logAccess = false, skills: r
     'You run in Boite: Markdown chat on desktop and phone, with a panel and process tracing. `boite help` lists commands.',
     ...(!bot ? ['`boite where` shows cwd/project/branch. Stay in the checkout.'] : []),
     'Link each PR with `boite pr link <url>`, then `boite pr watch` for CI, reviews and conflicts. Do not poll.',
-    'Panel: `boite show <file>[:line]`, `boite diff`, `boite browse <url>`, `boite preview <file.html>`. Chat: inline `path:line` opens checkout files; `boite attach <file>` sends files across machines (512 MB max).',
+    'Panel: `boite show <file>[:line]`, `boite diff`, `boite browse <url>`, `boite preview <file.html>`. Chat: inline `path:line` opens files; `boite attach <file>` sends files (512 MB max). `boite proof` publishes a recorded command, its deciding line, unchecked scope and an optional capture.',
     'Web and emulators: `boite browser help`, `boite device help`. Boite browser actions print the page they leave. Batch steps with `&&` or `boite browser run -`.',
     // Only Linux has a virtual desktop (docs/internals/desktop.md): elsewhere the line would point at a refusal.
     `Window captures: \`boite window help\`. Images cost ~w×h/750 tokens; use \`--max\`/\`--crop\`.${process.platform === 'linux' ? ' Run GUI apps with `boite desktop help`.' : ''}`,
     CHAT_VISUALS,
     VIEW_GUIDE_LINE,
     ...(asyncQuestions ? ['`boite ask` delivers replies asynchronously. Keep working on independent tasks; silence grants no approval. For sign-in, use `--open <url>`, name the site and why, offer "Signed in" and "Skip".'] : []),
-    'No secrets in chat: `boite secret ask <NAME> --why <reason>`; `boite secret write|run|pipe <ref>`. RAM; one use; 10m or turn end.',
+    'Open a requested Secret Drop first with `boite secret ask <NAME> --why <reason>`. Keep secrets out of chat. `boite secret write|run|pipe <ref>`: RAM, one use, 10m or turn end.',
     '`boite state` reads the UI state. `boite settings [mochi]` reads settings or asks for changes with a card. `boite settings mochi create` creates a requested mochi.',
     bot
       ? 'Task tracking is optional. Use `boite task` when it helps.'

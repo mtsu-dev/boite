@@ -557,6 +557,21 @@ export const SCENARIOS: Record<string, Scenario> = {
     const pending = await env.call('questions.list', { threadId });
     check(!pending.some((request) => request.id === questionId), 'an answered question is still pending');
   },
+  'artifacts.prove publishes a recorded command line and rejects invented output': async (env) => {
+    const setup = await echo(env);
+    const { id: threadId } = await thread(env, setup);
+    await finishedTurn(env, threadId, '[tool-stream]');
+    const { messages } = await env.call('threads.get', { threadId });
+    const message = messages.find(entry => entry.parts.some(part => part.type === 'tool'));
+    const part = message?.parts.find(entry => entry.type === 'tool');
+    check(message && part?.type === 'tool', 'the command is missing');
+    const source = { threadId, messageId: message.id, unchecked: 'Windows remains unchecked.' };
+    same((await refusedWith(env.call('artifacts.prove', { ...source, line: 'invented' }), RpcErrorCode.InvalidParams, ['field'])).field, 'line', 'invalid output field');
+    same((await refusedWith(env.call('artifacts.prove', { ...source, line: 'streamed', path: '' }), RpcErrorCode.InvalidParams, ['field'])).field, 'path', 'invalid capture field');
+    const proof = await env.call('artifacts.prove', { ...source, line: 'streamed' });
+    check(proof.parts.some(entry => entry.type === 'text' && entry.proof === true && entry.text.includes('streamed') && entry.text.includes(source.unchecked)), 'the proof omitted its line or remaining scope');
+    check((await env.call('threads.get', { threadId })).messages.some(entry => entry.id === proof.id), 'the proof was not stored');
+  },
   'questions.ask refuses empty text, too many options and a non-boolean multiple': async (env) => {
     const setup = await echo(env);
     const { id: threadId } = await thread(env, setup);

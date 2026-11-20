@@ -34,6 +34,10 @@ appears in its answer with a download button.
 While a turn runs, each file shows where the agent sent it. Once the turn
 ends, the files move under the last thing the agent wrote.
 
+Ask the agent to show a check it ran. It can publish the recorded command,
+the line that shows its result, what still needs checking and a capture.
+That evidence appears under the answer when the turn ends.
+
 ![An image and a video sent by the agent](images/chat-media-desktop.png)
 
 ## Links in answers
