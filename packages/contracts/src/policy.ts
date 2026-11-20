@@ -59,6 +59,8 @@ export interface AdminPolicy {
   };
   /** False stops reading pull requests through `gh`: discovery, links, watches and the merged-PR archive. */
   pullRequests?: boolean;
+  /** False stops fetching public model prices from models.dev; the usage page prices with the rates the core already has. */
+  modelPrices?: boolean;
 }
 
 /** Every key a policy can lock, as messages and `PolicyState.locked` name them. */
@@ -76,6 +78,7 @@ export const POLICY_KEYS = [
   'agentDesktop',
   'network.lan', 'network.tailscaleServe', 'network.groups', 'network.contacts', 'network.push',
   'pullRequests',
+  'modelPrices',
 ] as const;
 export type PolicyKey = typeof POLICY_KEYS[number];
 

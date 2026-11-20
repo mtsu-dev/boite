@@ -350,9 +350,15 @@ test('removing a project leaves usage.history as it was, to the turn and the tok
   await client.call('projects.remove', { projectId: echo.projectId! });
   expect(journal.getThread(echo.id)).toBeNull();
   expect(journal.getThread(codex.id)).toBeNull();
-  // Only the archived flag moves: removal archives the threads it stops.
-  const unarchived = (histories: typeof before) => histories.map((history) => ({ ...history, threads: history.threads.map((thread) => ({ ...thread, archived: false })) }));
-  expect(unarchived(await read())).toEqual(unarchived(before));
+  // Only two flags move: removal archives the threads it stops, and its project is now marked removed.
+  const unarchived = (histories: typeof before) => histories.map((history) => ({
+    ...history,
+    threads: history.threads.map((thread) => ({ ...thread, archived: false })),
+    projects: history.projects?.map((project) => ({ ...project, removed: false })),
+  }));
+  const after = await read();
+  expect(after[0]!.projects?.find((project) => project.projectId === echo.projectId)?.removed).toBe(true);
+  expect(unarchived(after)).toEqual(unarchived(before));
 });
 
 test('purging a deleted conversation leaves usage.history as it was', async () => {

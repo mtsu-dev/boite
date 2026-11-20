@@ -191,6 +191,23 @@ export const SCENARIOS: Record<string, Scenario> = {
     await env.call('threads.tasks.change', { threadId, action: 'done', id: chosen.id });
     same(await env.call('threads.tasks.get', { threadId }), tasks.map(task => task.id === chosen.id ? { ...task, status: 'completed' } : task), 'the task plan after completing one task');
   },
+  'thread usage applies the execution provider and reports coverage for the range': async (env) => {
+    const setup = await echo(env);
+    const { id: threadId } = await thread(env, setup);
+    await finishedTurn(env, threadId);
+    const finishedAt = (await env.call('threads.get', { threadId })).turns[0]?.finishedAt;
+    check(typeof finishedAt === 'number', 'the turn has no finish time');
+    const edges = [finishedAt, finishedAt + 1];
+    const detail = await env.call('usage.thread', { threadId, edges, providerId: setup.provider.id });
+    same(detail.thread.threadId, threadId, 'thread usage identity');
+    same(detail.thread.turns, 1, 'finished turns');
+    same(detail.turns.map((turn) => turn.providerId), [setup.provider.id], 'provider of the finished turn');
+    same(detail.reported, detail.turns.filter((turn) => turn.usage !== null).length, 'reported turns');
+    same(detail.priced, detail.turns.filter((turn) => turn.usage?.costUsdEquivalent != null).length, 'priced turns');
+    const other = await env.call('usage.thread', { threadId, edges, providerId: 'absent-provider' });
+    same([other.thread.turns, other.turns.length, other.reported, other.priced], [0, 0, 0, 0], 'usage for another provider');
+    await refusedWith(env.call('usage.thread', { threadId, edges, providerId: ' ' }), RpcErrorCode.InvalidParams);
+  },
   'where mochi creation asks first, a thread gets a card: Approve creates the mochi with full access, Decline creates none': async (env) => {
     const before = await env.call('settings.get', {});
     const setup = await echo(env);
