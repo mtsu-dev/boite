@@ -28,6 +28,8 @@ test.skipIf(process.platform !== 'linux')('a protected checkout containing the c
     const binding = {threadId: thread.id, checkoutPath: root, job: {id: null, sharedProjectId: 'synthetic-association', grantRevision: 1}} as AccessBinding;
     const registry = h.core.procs.protection;
     Object.defineProperty(registry, 'available', {value: true});
+    let installed: ReturnType<typeof captureExecutionPolicy> | null = null;
+    spyOn(registry, 'policy').mockImplementation(id => id === thread.id ? installed : null);
     const install = spyOn(registry, 'install').mockImplementation(async (_id, input) => {
       const policy = captureExecutionPolicy(input);
       const checkout = new ProtectedCheckout(policy);
@@ -35,6 +37,7 @@ test.skipIf(process.platform !== 'linux')('a protected checkout containing the c
         expect(readFileSync(join(checkout.root, 'project.txt'), 'utf8')).toBe('Project fixture');
         expect(existsSync(join(checkout.root, 'local-state'))).toBe(false);
       } finally { checkout.close(); }
+      installed = policy;
       return policy;
     });
     await new SharedNativeExecution(h.core, () => binding, () => {}).prepare(thread.id);
