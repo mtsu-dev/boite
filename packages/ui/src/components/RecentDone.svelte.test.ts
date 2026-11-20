@@ -4,6 +4,7 @@ import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
 import type { ProjectEntry } from '../lib/project-view.svelte';
 import { projectName } from '../lib/format';
+import { confirm } from '../lib/confirm.svelte';
 import type { ThreadSummary } from '@boite/contracts';
 import RecentDone from './RecentDone.svelte';
 
@@ -12,6 +13,7 @@ const sources: { client: FakeClient; store: Store; id: string }[] = [];
 // The row component loads on its own with the first rows: loaded once here, later imports resolve in the same turn.
 const settle = async () => { await import('./DoneThread.svelte'); for (let i = 0; i < 30; i++) { await Promise.resolve(); flushSync(); } };
 afterEach(async () => {
+  confirm.answer('cancel');
   if (mounted) await unmount(mounted); mounted = undefined;
   for (const source of sources.splice(0)) { source.store.detach(); source.client.close(); }
   vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear();
@@ -179,7 +181,10 @@ test('a done thread is deleted from its own menu, opened by right click or a lon
   const pick = contextMenu.current!.onpick;
   // Refused by the core: the banner says so and the row can be tried again.
   removals.mockRejectedValueOnce(new Error('refused'));
-  pick('delete'); await settle();
+  pick('delete');
+  expect(confirm.current?.altLabel).toBeUndefined();
+  expect(removals).not.toHaveBeenCalled();
+  confirm.answer('confirm'); await settle();
   expect(source.store.error).toBe('refused');
   expect((document.querySelector('[data-thread-id=t-trace] [data-testid=done-thread-open]') as HTMLButtonElement).disabled).toBe(false);
   source.store.error = null; removals.mockClear();
@@ -193,6 +198,7 @@ test('a done thread is deleted from its own menu, opened by right click or a lon
     return items;
   };
   expect(locked()).toEqual([true, true, true]);
+  confirm.answer('confirm');
   await settle();
   expect(locked()).toEqual([true, true, true]);
   expect(removals.mock.calls.filter(([method]) => method === 'threads.remove')).toHaveLength(1);
