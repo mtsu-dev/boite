@@ -13,7 +13,7 @@ export type InboxAsk = { machine: { id: string }; createdAt: number }
  * they asked) and the words; a letter also keeps its machine and thread, since
  * it is for one conversation there.
  */
-export function askKey(row: InboxAsk): string {
+function askKey(row: InboxAsk): string {
   return row.request
     ? JSON.stringify(['request', row.request.coreId, row.request.text.trim()])
     : JSON.stringify(['mail', row.machine.id, row.letter.contact, row.letter.thread, row.letter.text.trim()]);

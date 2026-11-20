@@ -13,7 +13,7 @@ export interface MenuFit {
 export const MENU_GAP = 6;
 export const MENU_MARGIN = 8;
 /** Above this much room the list stays above, whatever is below. */
-export const MENU_MIN_ABOVE = 200;
+const MENU_MIN_ABOVE = 200;
 
 export function fitMenu(
   anchor: { top: number; bottom: number },

@@ -94,15 +94,15 @@
   let listKept = $state(false);
   $effect.pre(() => { if (listShown) listKept = true; });
   $effect(() => { if (narrow.current && !listKept) return whenIdle(() => { listKept = true; }, { timeout: 4000, fallback: 1500 }); });
-  // The contacts under the projects, loaded with their experiment; a desktop window shows them in the column on the right.
+  // The contacts under the projects, loaded on first show; a desktop window shows them in the column on the right.
   let SidebarContacts = $state<typeof import('./home/SidebarContacts.svelte').default>();
   let ContactRequestNotice = $state<typeof import('./home/ContactRequestNotice.svelte').default>();
   let ContactInboxRows = $state<typeof import('./home/ContactInboxRows.svelte').default>();
   $effect(() => {
     if (!contactsShown(store) || SidebarContacts) return;
-    void contactsParts?.SidebarContacts().then(module => { SidebarContacts = module.default; }).catch(() => {});
-    void contactsParts?.ContactRequestNotice().then(module => { ContactRequestNotice = module.default; }).catch(() => {});
-    void contactsParts?.ContactInboxRows().then(module => { ContactInboxRows = module.default; }).catch(() => {});
+    void contactsParts.SidebarContacts().then(module => { SidebarContacts = module.default; }).catch(() => {});
+    void contactsParts.ContactRequestNotice().then(module => { ContactRequestNotice = module.default; }).catch(() => {});
+    void contactsParts.ContactInboxRows().then(module => { ContactInboxRows = module.default; }).catch(() => {});
   });
   let search = $state('');
   const query = $derived(search.trim().toLocaleLowerCase());

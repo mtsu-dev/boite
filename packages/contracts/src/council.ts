@@ -55,13 +55,6 @@ export function councilNearestEffort(levels: readonly string[], asked: string): 
     .sort((a, b) => EFFORT_ORDER.indexOf(b) - EFFORT_ORDER.indexOf(a))[0] ?? null;
 }
 
-/**
- * The experiment's id, under the feature's first name. Every device stores it
- * and an app drops the ids it does not know, so a new id would turn the feature
- * off for whoever had it on, and an older phone would keep reporting this one.
- */
-export const COUNCIL_EXPERIMENT = 'debates';
-
 /** The owner's posts. */
 export const COUNCIL_OWNER = 'owner';
 /** What the parent says changed before a new round. */

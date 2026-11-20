@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { untrack } from 'svelte';
   import { CalendarClock, Plus } from '@lucide/svelte';
   import type { AgentsView } from '../../lib/agents.svelte';
   import { strings } from '../../lib/strings';
@@ -8,23 +7,17 @@
 
   /**
    * An agent's planned work: each routine as a card, and the form that plans
-   * another, open at once when there is none yet or when a message was turned
-   * into one (`draft`). `compact`, on the desk: a small label with a plus,
+   * another, open at once when there is none yet. `compact`, on the desk: a small label with a plus,
    * each routine as one row, the form only when asked.
    */
-  let { view, agentId, draft = null, ondraft, compact = false }: {
+  let { view, agentId, compact = false }: {
     view: AgentsView;
     agentId: string;
-    /** What a message asked to plan: the form opens with it written in. */
-    draft?: string | null;
-    ondraft?: () => void;
     compact?: boolean;
   } = $props();
   const labels = $derived(strings.agents);
   const routines = $derived([...(view.snapshot?.routines.filter(r => r.agentId === agentId) ?? [])].sort((a, b) => (a.nextAt ?? Infinity) - (b.nextAt ?? Infinity) || b.updatedAt - a.updatedAt));
-  let adding = $state(untrack(() => draft !== null));
-  const prompt = untrack(() => draft ?? '');
-  $effect(() => { if (draft !== null) untrack(() => ondraft?.()); });
+  let adding = $state(false);
   const showForm = $derived(view.store.owner && (adding || (!compact && !routines.length)));
 </script>
 
@@ -45,7 +38,7 @@
     </div>
   {/if}
   {#if showForm}
-    <AgentSchedule {view} {agentId} {prompt} ondone={() => { adding = false; }} oncancel={routines.length || compact ? () => { adding = false; } : undefined} />
+    <AgentSchedule {view} {agentId} ondone={() => { adding = false; }} oncancel={routines.length || compact ? () => { adding = false; } : undefined} />
   {/if}
   {#if compact}
     <div class="desk-rows">

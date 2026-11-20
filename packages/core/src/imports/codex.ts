@@ -27,7 +27,7 @@ export function codexSessionsDir(home: string): string {
 const WALK_DEPTH = 3;
 
 /** Every rollout file under a sessions directory. A directory that cannot be read holds none. */
-export function rolloutFiles(dir: string, depth = 0): string[] {
+function rolloutFiles(dir: string, depth = 0): string[] {
   let entries: Dirent[];
   try {
     entries = readdirSync(dir, { withFileTypes: true });
@@ -57,7 +57,7 @@ export const LINE_MAX = 8 << 20;
  * longer line is given as null the moment it passes the bound, and the rest
  * of it is skipped unread into memory.
  */
-export async function readBoundedLines(
+async function readBoundedLines(
   file: string,
   max: (index: number) => number,
   take: (line: string | null, index: number) => boolean | void,
@@ -104,7 +104,7 @@ const lineMax = (index: number): number => (index === 0 ? META_LINE_MAX : LINE_M
 const OVERSIZED: RolloutReject = { field: 'line 1', expected: `a session_meta record of at most ${META_LINE_MAX} bytes` };
 
 /** What a list of sessions shows of one rollout. */
-export interface RolloutHead {
+interface RolloutHead {
   prompt: string;
   promptAt: number;
 }
@@ -114,7 +114,7 @@ export interface RolloutHead {
  * the first prompt: the read stops there. `head` is undefined when the prompt
  * was not looked for, null when the file has none.
  */
-export async function listRollout(
+async function listRollout(
   file: string,
   wants: (cwd: string) => boolean,
 ): Promise<{ meta: RolloutMeta; head: RolloutHead | null | undefined } | RolloutReject> {

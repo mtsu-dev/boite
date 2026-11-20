@@ -4,7 +4,8 @@ import type { SocketLike } from './client';
 import { deviceKey } from './device-key';
 import { WsClient } from './ws-client';
 import { machineKey } from '../test/machine-key';
-import { DROPPED_STORAGE_KEY, ENVIRONMENTS_STORAGE_KEY, isDropped, isMemberDropped, keepDropped, readEnvironments, rememberSession, removeBrought, type Endpoint } from './endpoint';
+import { ENVIRONMENTS_STORAGE_KEY } from './endpoint-env';
+import { DROPPED_STORAGE_KEY, isDropped, isMemberDropped, keepDropped, readEnvironments, rememberSession, removeBrought, type Endpoint } from './endpoint';
 import { GroupLinks, usableAddresses } from './group-links.svelte';
 import type { Machine, Workspace } from './workspace.svelte';
 

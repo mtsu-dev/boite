@@ -288,7 +288,7 @@
   </div>
 {/if}
 
-{#if selected && scope && contactsParts}{#await contactsParts.SharedThreadDialog() then module}<module.default {store} {scope} target={selected} onclose={() => { selected = null; }} />{/await}{/if}
+{#if selected && scope}{#await contactsParts.SharedThreadDialog() then module}<module.default {store} {scope} target={selected} onclose={() => { selected = null; }} />{/await}{/if}
 
 <style>
   .sharing { display: flex; gap: 8px; align-items: center; padding: 2px 12px; font-size: var(--text-xs); color: var(--color-muted-foreground); }

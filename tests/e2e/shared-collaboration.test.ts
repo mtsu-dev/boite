@@ -23,9 +23,8 @@ afterAll(async () => { await server?.close(); }, 30_000);
 // Explicit two-core in-memory transport. Real sealing/network/provider boundaries
 // are exercised by the core E2E fixtures, never by a browser's fake-client setup.
 const prepare = `(async () => {
-  const [{sharedFlow}, {workspace}, {setExperiment}] = await Promise.all([
-    import('/src/test/shared-flow.ts'), import('/src/lib/workspace.svelte.ts'), import('/src/lib/experiments.ts')]);
-  setExperiment('contacts', true);
+  const [{sharedFlow}, {workspace}] = await Promise.all([
+    import('/src/test/shared-flow.ts'), import('/src/lib/workspace.svelte.ts')]);
   const pair = await sharedFlow(); window.__sharedFlow = pair;
   const store = workspace.active;
   store.detach(); store.attach(pair.a); await store.connect(); await store.open(pair.local.id);

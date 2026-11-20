@@ -15,7 +15,7 @@ const ACTIONS = new Set(['directory', 'read', 'letter', 'board', 'compute', 'fil
 const REASONS = new Set(['normal-file', 'host-override', 'secret-file', 'path-boundary', 'secret-content', 'unsupported-tool', 'scoped-request', 'request-denied', 'publication']);
 const CLASSES = new Set(['environment', 'private-key', 'credential', 'secret', 'outside-project']);
 /** All free text and identities are deliberately omitted, even host-attested names and paths. */
-export function sharedReviewPrompt(events: SharedAccessEvent[]): string {
+function sharedReviewPrompt(events: SharedAccessEvent[]): string {
   const data = events.map((event, index) => ({
     event: index + 1, actor: event.actor.kind === 'human' ? 'contact human' : 'shared agent',
     action: ACTIONS.has(event.action) ? event.action : 'unknown',

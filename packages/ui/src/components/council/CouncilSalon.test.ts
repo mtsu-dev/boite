@@ -1,7 +1,9 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
-import { COUNCIL_EXPERIMENT, RpcErrorCode, type Message } from '@boite/contracts';
-import { setExperiment } from '../../lib/experiments';
+import { RpcErrorCode, type ExperimentId, type Message } from '@boite/contracts';
+
+/** The Council's id while it was an experiment, as an older core still reports it. */
+const COUNCIL_EXPERIMENT = 'debates' as unknown as ExperimentId;
 import { FakeClient } from '../../lib/fake-client';
 import { RpcFailure } from '../../lib/rpc-error';
 import { strings } from '../../lib/strings';
@@ -18,7 +20,6 @@ afterEach(async () => {
   for (const component of mounted.splice(0)) await unmount(component);
   for (const close of closers.splice(0)) close();
   workspace.machines = []; workspace.active = previousActive;
-  setExperiment(COUNCIL_EXPERIMENT, false);
   vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear();
 });
 
@@ -43,7 +44,6 @@ const tableRows = () => all('[data-testid=council-table] tr').map(row => [...row
  * `on` is the device's old Council switch, which no build reads any more.
  */
 async function demo(on = true) {
-  setExperiment(COUNCIL_EXPERIMENT, on);
   const client = new FakeClient({ delayMs: 0, councilDemo: true });
   const store = new Store();
   store.attach(client);

@@ -7,7 +7,7 @@
 
 export type ChatWidth = 'comfortable' | 'wide' | 'full';
 
-export const CHAT_WIDTHS: readonly ChatWidth[] = ['comfortable', 'wide', 'full'];
+const CHAT_WIDTHS: readonly ChatWidth[] = ['comfortable', 'wide', 'full'];
 
 export const CHAT_WIDTH_STORAGE_KEY = 'boite.chatWidth';
 

@@ -1,5 +1,5 @@
 /** Navigation keeps a prepared process briefly, even when post-turn retention is disabled. */
-export const VIEW_GRACE_MS = 30_000;
+const VIEW_GRACE_MS = 30_000;
 
 export class SessionRetention {
   viewed = false;

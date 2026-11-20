@@ -101,7 +101,6 @@ export const strings = {
       onPhoneSettings: 'Notifications and the home screen app are in Settings.',
       title: 'Step away. Keep the conversation.',
       phone: 'On your phone',
-      phoneBody: 'Scan a QR code and your phone gets the conversations of all your machines, with notifications.',
       pair: 'Add a device',
       machines: 'Another Boite',
       machinesBody: 'Drive a Boite running on a server or another computer from this app.',

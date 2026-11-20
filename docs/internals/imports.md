@@ -107,7 +107,7 @@ what Boite ran itself.
 ## From the UI
 
 The import was an experiment and is now on in every build, with no switch
-(`session-import` is `normal` in `EXPERIMENT_STAGES`,
+(its old id `session-import` left `EXPERIMENT_STAGES`,
 [experiments](experiments.md)): the project menu has the row, the palette the
 command, and the `import-session` chord runs it.
 

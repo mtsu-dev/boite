@@ -18,7 +18,7 @@ import type { Core } from './core.ts';
 import type { ProcessPlatform } from './platform/types.ts';
 
 /** How long after the last working thread the hold is given back. */
-export const RELEASE_AFTER_MS = 5_000;
+const RELEASE_AFTER_MS = 5_000;
 /** Thread and turn events come in bursts: one check serves them. */
 const SETTLE_MS = 100;
 

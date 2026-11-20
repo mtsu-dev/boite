@@ -29,7 +29,7 @@ import type { KeeperClient } from './client.ts';
 import type { KeptChild } from './kept-child.ts';
 
 /** Past this much stdout read and not yet committed, the commit runs at once rather than at the stream's pace. */
-export const FORCE_COMMIT_BYTES = 4 * 1024 * 1024;
+const FORCE_COMMIT_BYTES = 4 * 1024 * 1024;
 
 interface Ledger {
   child: KeptChild;

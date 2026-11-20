@@ -86,7 +86,7 @@ const TAB_ID = /^browser:[a-zA-Z0-9:-]{1,100}$/;
  * `act`: twice a DevTools call's 30 s, which covers a navigation (30 s, then 10 s
  * for the DOM), an evaluate (30 s and 5 s) and the longest wait an agent asks (15 s).
  */
-export const BROWSER_STEP_MS: Readonly<Record<BrowserCommandStep, number>> = { start: 90_000, attach: 60_000, wake: 30_000, act: 60_000 };
+const BROWSER_STEP_MS: Readonly<Record<BrowserCommandStep, number>> = { start: 90_000, attach: 60_000, wake: 30_000, act: 60_000 };
 /**
  * A recording runs between its commands, under no bound; its own commands
  * evaluate in the recorder's page with 60 s each (`browser/recorder.ts`), and a
@@ -96,7 +96,7 @@ export const BROWSER_STEP_MS: Readonly<Record<BrowserCommandStep, number>> = { s
 const RECORDING_ACT_MS = 110_000;
 /** Commands that only report state: they answer at once, never behind the conversation's queue. */
 const READS: ReadonlySet<BrowserAction['kind']> = new Set(['status', 'profiles', 'downloads', 'recipes', 'recipe-get']);
-export const DISCARDED_RECORDING_ERROR = "the recording was discarded because the agent's turn ended while it was running: stop it with recording-stop in the turn that started it";
+const DISCARDED_RECORDING_ERROR = "the recording was discarded because the agent's turn ended while it was running: stop it with recording-stop in the turn that started it";
 
 /** The late work of a command given up past a bound stops at its next step. */
 function abandoned(running: Running): Error {

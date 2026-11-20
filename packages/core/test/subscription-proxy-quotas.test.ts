@@ -241,8 +241,8 @@ test('a new key is asked again at once, whether saved alone or with the configur
   await owner.call('subscriptionProxy.configure', { subscriptionProxy: proxy, key: 'wrong-key' });
   expect((await owner.call('subscriptionProxy.quotas', {})).status).toBe('unavailable');
 
-  // The corrected key alone: the next plain read asks the gateway with it.
-  await owner.call('subscriptionProxy.key', { key: 'good-key' });
+  // The corrected key: the next plain read asks the gateway with it.
+  await owner.call('subscriptionProxy.configure', { subscriptionProxy: proxy, key: 'good-key' });
   expect((await owner.call('subscriptionProxy.quotas', {})).status).toBe('ready');
   expect(seen).toEqual(['Bearer wrong-key', 'Bearer good-key']);
 

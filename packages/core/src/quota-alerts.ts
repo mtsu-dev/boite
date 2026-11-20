@@ -9,7 +9,7 @@ const FIRED = 'quota-alerts.fired';
  * read is one HTTP request, or one short app-server for Codex; the minute of
  * cache and the failure backoff of the quota store still apply.
  */
-export const QUOTA_ALERTS = { pollMs: 300_000 };
+const QUOTA_ALERTS = { pollMs: 300_000 };
 /** How far above a threshold the share left climbs back before it may alert again without a reset. */
 const REARM_POINTS = 10;
 

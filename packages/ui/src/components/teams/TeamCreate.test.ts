@@ -1,6 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
-import { setExperiment } from '../../lib/experiments';
 import { FakeClient } from '../../lib/fake-client';
 import { Store } from '../../lib/store.svelte';
 import { workspace } from '../../lib/workspace.svelte';
@@ -19,7 +18,6 @@ afterEach(async () => {
   for (const component of mounted.splice(0)) await unmount(component);
   for (const close of closers.splice(0)) close();
   workspace.machines = []; workspace.active = previousActive;
-  setExperiment('teams', false);
   vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear();
   document.documentElement.classList.remove('agents-detail-open');
 });
@@ -42,16 +40,15 @@ async function machine(names: string[], at: { coreId?: string; coreName?: string
   store.attach(client);
   closers.push(() => { store.detach(); client.close(); });
   await store.connect();
-  client.reportDesktopExperiments(['teams']);
+  client.reportDesktopExperiments([]);
   const bots = [];
   for (const name of names) bots.push(await client.call('agents.profile.save', { value: { name, domain: '', instructions: '', avatar: '', status: 'active', projectIds: [],
     selection: { providerId: 'echo', accountId: 'a-echo', model: 'echo-1', effort: null, permissionMode: 'default' } } }));
   return { client, store, bots };
 }
 
-/** This computer with three bots and no team yet, the Teams experiment on in the app and on the core. */
+/** This computer with three bots and no team yet. */
 async function computer() {
-  setExperiment('teams', true);
   const local = await machine(['Huginn', 'Jeux', 'Muninn']);
   workspace.machines = [{ id: 'local', label: 'Local', store: local.store }]; workspace.active = local.store;
   return local;
@@ -181,7 +178,6 @@ test("the mochis of a machine outside the group are listed greyed with why, and 
 });
 
 test("a mochi of another machine of the group joins from the dialog under its machine's name, and an edit keeps it one row until it is taken out", async () => {
-  setExperiment('teams', true);
   const local = await machine(['Huginn'], { coreId: 'desk', coreName: 'Desk', publicUrl: 'https://desk.test' });
   // Its second bot: no bot of this machine has that id, so nothing here can pass for it.
   const remote = await machine(['Ratatosk', 'Munin'], { coreId: 'firebat', coreName: 'Firebat', publicUrl: 'https://firebat.test' });

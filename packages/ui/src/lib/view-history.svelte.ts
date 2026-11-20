@@ -84,7 +84,7 @@ export class Trail {
 }
 
 /** What the active machine shows, or null while it shows nothing a button could come back to. */
-export function currentView(): View | null {
+function currentView(): View | null {
   const store = workspace.active;
   if (store.page === 'settings') return { store, page: 'settings', tab: store.settingsTab };
   if (store.page === 'agents') return { store, page: 'agents' };

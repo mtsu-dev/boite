@@ -2,7 +2,7 @@ import { afterEach, expect, spyOn, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { EXPERIMENT_STAGES, type AgentLetter, type ContactRequest, type ExperimentId, type FeatureStage } from '@boite/contracts';
+import type { AgentLetter, ContactRequest } from '@boite/contracts';
 import { agentsCommand } from '../src/agents-cli.ts';
 import type { AgentFact } from '../src/agents/runtime.ts';
 import type { CoreClient } from '../src/client.ts';
@@ -218,7 +218,7 @@ test('an ask that names its contact reaches that contact\'s Operator with no tur
   const card = await hostClient.call('contacts.bot.askOwner', { threadId: hostBot.threadId, id: sixth.incoming.id, connect: hostThread });
   expect(await thrown(hostClient.call('contacts.decide', { id: sixth.incoming.id, accept: true, threadId: hostBot.threadId }))).toThrow('other than this one');
   // A team chat takes no letter from a contact: picking it settles nothing.
-  await hostClient.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: ['teams'], labels: {} });
+  await hostClient.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: [], labels: {} });
   const team = host.core.teams.create({ name: 'Scheduler team', members: [(await makeAgent(host, hostClient, { name: 'Scheduler' })).agent.id] });
   expect(await thrown(hostClient.call('contacts.decide', { id: sixth.incoming.id, accept: true, threadId: team.threadId }))).toThrow('team chat');
   expect(here(sixth.incoming.id)).toMatchObject({ status: 'pending' });
@@ -446,56 +446,3 @@ test('boite contacts sends each command\'s words to its method, as the mochi typ
   expect(await thrown(run(['refuse', 'creq_1']))).toThrow('contacts refuse needs the reason');
   expect(await thrown(run(['dance']))).toThrow('contacts expects forward');
 });
-
-test('with Contacts tagged nightly, a Release starts nothing from the Contacts mochi: a plan or a share accepted on a card made as a Nightly does not run, and no new plan is proposed', async () => {
-  const dataDir = mkdtempSync(join(tmpdir(), 'boite-bot-stages-'));
-  // Contacts are finished today: this keeps the start gate (contacts/gate.ts) proved for the day a feature like it is not.
-  const stages = EXPERIMENT_STAGES as Record<ExperimentId, FeatureStage>;
-  const was = stages.contacts;
-  stages.contacts = 'nightly';
-  try {
-    const { host, hostClient, guestClient, hostName, hostBot, guestThread } = await linked({ host: dataDir });
-    const ask = async (words: string) => {
-      const asked = await guestClient.call('collaboration.ask', { threadId: guestThread, contact: hostName, text: words });
-      await waitFor(() => incomingOf(host, asked.id) !== undefined, 10000);
-      return incomingOf(host, asked.id)!;
-    };
-    const project = host.core.journal.listProjects()[0]!;
-    // As a Nightly: one card with a plan to start a thread, one to open a project, and a request left for later.
-    const planned = await ask('Someone to check the release script');
-    const plan = await hostClient.call('contacts.bot.askOwner', { threadId: hostBot.threadId, id: planned.id, start: { project: project.name, brief: 'Check the release script' } });
-    const wanted = await ask('The changelog project');
-    const share = await hostClient.call('contacts.bot.share', { threadId: hostBot.threadId, id: wanted.id, project: project.name, reason: 'They asked for it' });
-    const later = await ask('Someone for the docs');
-    hostClient.close();
-    await cores.splice(cores.indexOf(host), 1)[0]!.stop();
-
-    const release = await startTestCore({ dataDir, version: '2.0.0' });
-    cores.push(release);
-    const owner = await release.connect();
-    const here = (id: string) => release.core.contacts.requests.list().find(request => request.id === id)!;
-    const threads = release.core.journal.listThreads().length;
-    const grants = () => release.core.contacts.list().flatMap(contact => contact.grants).length;
-    expect(here(planned.id)).toMatchObject({ status: 'pending', stage: 'owner', plan: { kind: 'start' } });
-
-    await owner.call('questions.answer', { threadId: hostBot.threadId, questionId: plan.questionId, optionIds: ['accept'] });
-    await owner.call('questions.answer', { threadId: hostBot.threadId, questionId: share.questionId, optionIds: ['yes'] });
-    await waitFor(() => here(planned.id).stage === 'bot' && here(wanted.id).stage === 'bot', 10000);
-    // Nothing started and nothing opened: both requests wait, back with the bot.
-    expect(release.core.journal.listThreads().length).toBe(threads);
-    expect(grants()).toBe(0);
-    expect(here(planned.id)).toMatchObject({ status: 'pending', stage: 'bot' });
-    expect(here(wanted.id)).toMatchObject({ status: 'pending', stage: 'bot' });
-
-    // A new proposal is refused with the reason; a note for the owner and a refusal still go through.
-    const refusal = 'experiment.contacts runs in Nightly and Dev builds only, and this machine runs a Release (2.0.0)';
-    expect(await thrown(owner.call('contacts.bot.askOwner', { threadId: hostBot.threadId, id: later.id, start: { project: project.name, brief: 'Docs' } }))).toThrow(refusal);
-    expect(await thrown(owner.call('contacts.decide', { id: planned.id, accept: true }))).toThrow(refusal);
-    expect((await owner.call('contacts.bot.refuse', { threadId: hostBot.threadId, id: later.id, reason: 'Not in this build' })).status).toBe('refused');
-    owner.close();
-  } finally {
-    stages.contacts = was;
-    for (const core of cores.splice(0)) await core.stop();
-    rmSync(dataDir, { recursive: true, force: true });
-  }
-}, 60000);

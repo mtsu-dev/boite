@@ -13,4 +13,3 @@
  */
 
 export { fill, strings } from './i18n.svelte';
-export type { Messages, Strings } from './i18n.svelte';

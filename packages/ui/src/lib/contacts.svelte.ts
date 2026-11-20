@@ -2,7 +2,7 @@
  * The Home page's state for one machine: its contacts, their requests, the
  * contact settings and the Tailscale side, read with `contacts.get` and read
  * again on `contacts.updated`. The Contacts page, lists and request notice
- * load it with the Contacts experiment.
+ * load it when they first show.
  */
 
 import type { Contact, ContactInvite, ContactRequest, ContactSettings, ContactsState, ContactTailscale, ProjectId, ThreadId } from '@boite/contracts';

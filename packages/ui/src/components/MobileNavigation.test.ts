@@ -2,7 +2,6 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { projectName } from '../lib/format';
 import type { ThreadSummary } from '@boite/contracts';
 import { flushSync, mount, unmount } from 'svelte';
-import { setExperiment } from '../lib/experiments';
 import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
 import { workspace } from '../lib/workspace.svelte';
@@ -20,7 +19,6 @@ afterEach(async () => {
   if (mounted) await unmount(mounted);
   mounted = undefined; store?.detach(); client?.close();
   workspace.machines = []; workspace.active = previousActive;
-  setExperiment('contacts', false);
   activityReturn.away = null; activityReturn.back = null;
   vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear();
 });
@@ -323,7 +321,6 @@ test('a parent on another machine shows its working sub-agents, counted, and Rec
 
 test("a contact's page opened from the list leaves for the board on the chat screen, and Back returns to the list", async () => {
   everyQueryMatches();
-  setExperiment('contacts', true);
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
   workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
