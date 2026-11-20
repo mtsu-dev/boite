@@ -165,6 +165,14 @@ export const SCENARIOS: Record<string, Scenario> = {
   ...CONTACT_MAIL_SCENARIOS,
   ...CONTACTS_BOT_SCENARIOS,
   ...TEAM_SCENARIOS,
+  'turns.resume refuses a completed turn without opening another turn': async env => {
+    const { id: threadId } = await thread(env, await echo(env));
+    const { id: turnId } = await env.call('turns.start', { threadId, prompt: 'Finish this once' });
+    await until('the completed turn', async () => (await summary(env, threadId)).status === 'idle');
+    const data = await refusedWith(env.call('turns.resume', { threadId, turnId }), RpcErrorCode.Refused);
+    same(data, { field: 'turnId', threadId, turnId }, 'the rejected source');
+    same((await env.call('threads.get', { threadId })).turns.map(turn => turn.id), [turnId], 'the turns after refusal');
+  },
   'terminal creation retries keep the first thread and turn after its selection changes': async env => {
     const setup = await echo(env);
     const request = { project: setup.projectId, model: `${setup.provider.id}/${setup.model}`, prompt: 'Open a conversation', clientRequestId: 'contract-create-prompt' };
