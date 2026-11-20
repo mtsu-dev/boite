@@ -274,17 +274,8 @@ export class Projects {
     }
   }
 
-  async removeProject(projectId: ProjectId): Promise<void> {
-    const client = this.ctx.client;
-    const clientGeneration = this.ctx.clientGeneration;
-    if (!client) return;
-    try {
-      await client.call('projects.remove', { projectId });
-      if (!this.ctx.currentClient(client, clientGeneration)) return;
-      await this.dropProject(projectId);
-    } catch (error) {
-      if (this.ctx.currentClient(client, clientGeneration)) this.ctx.fail(error);
-    }
+  removeProject(projectId: ProjectId): Promise<void> {
+    return this.ctx.command('projects.remove', { projectId }, () => this.dropProject(projectId));
   }
 
   /**
@@ -437,41 +428,19 @@ export class Projects {
   }
 
   /** Asks the core to read the project's folder for its icon again. */
-  async refreshProjectIcon(projectId: ProjectId): Promise<void> {
-    const client = this.ctx.client;
-    const clientGeneration = this.ctx.clientGeneration;
-    if (!client) return;
-    try {
-      const project = await client.call('projects.refreshIcon', { projectId });
-      if (this.ctx.currentClient(client, clientGeneration)) this.upsertProject(project);
-    } catch (error) {
-      if (this.ctx.currentClient(client, clientGeneration)) this.ctx.fail(error);
-    }
+  refreshProjectIcon(projectId: ProjectId): Promise<void> {
+    return this.ctx.command('projects.refreshIcon', { projectId }, this.#applyProject);
   }
 
-  async renameProject(projectId: ProjectId, name: string): Promise<void> {
-    const client = this.ctx.client;
-    const generation = this.ctx.clientGeneration;
-    if (!client) return;
-    try {
-      const project = await client.call('projects.rename', { projectId, name });
-      if (this.ctx.currentClient(client, generation)) this.upsertProject(project);
-    } catch (error) {
-      if (this.ctx.currentClient(client, generation)) this.ctx.fail(error);
-    }
+  renameProject(projectId: ProjectId, name: string): Promise<void> {
+    return this.ctx.command('projects.rename', { projectId, name }, this.#applyProject);
   }
 
-  async setProjectWorktreeDefault(projectId: ProjectId, enabled: boolean): Promise<void> {
-    const client = this.ctx.client;
-    const clientGeneration = this.ctx.clientGeneration;
-    if (!client) return;
-    try {
-      const project = await client.call('projects.setWorktreeDefault', { projectId, enabled });
-      if (this.ctx.currentClient(client, clientGeneration)) this.upsertProject(project);
-    } catch (error) {
-      if (this.ctx.currentClient(client, clientGeneration)) this.ctx.fail(error);
-    }
+  setProjectWorktreeDefault(projectId: ProjectId, enabled: boolean): Promise<void> {
+    return this.ctx.command('projects.setWorktreeDefault', { projectId, enabled }, this.#applyProject);
   }
+
+  #applyProject = (project: Project): void => this.upsertProject(project);
 
   /** Project policy writes under way, by policy, client generation and project. */
   #policyWrites = $state<string[]>([]);

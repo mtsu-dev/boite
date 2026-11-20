@@ -111,37 +111,36 @@ export function askPage(ctx: StoreContext, opener: Opener, client: Client, threa
 function refreshHeldWindow(ctx: StoreContext, client: Client, held: Thread, fresh: Thread, current: () => boolean): Promise<void> | undefined {
   const first = fresh.messages[0]?.id;
   const last = fresh.messages.at(-1)?.id;
-  let older = first === undefined || fresh.messagesBefore === null ? 0 : lastIndexById(held.messages, first);
+  const older = first === undefined || fresh.messagesBefore === null ? 0 : lastIndexById(held.messages, first);
   const lastIndex = last === undefined || !fresh.messagesAfter ? -1 : lastIndexById(held.messages, last);
-  let newer = lastIndex < 0 ? 0 : held.messages.length - lastIndex - 1;
+  const newer = lastIndex < 0 ? 0 : held.messages.length - lastIndex - 1;
   if (older <= 0 && newer <= 0) return;
 
   return (async () => {
     const turns = new Map<string, Thread['turns'][number]>();
-    while (current() && older > 0 && fresh.messagesBefore !== null) {
-      const page = await client.call('messages.list', {
-        threadId: fresh.id, before: fresh.messagesBefore, limit: Math.min(older, MESSAGE_PAGE_MAX),
-        maxBytes: READING_PAGE_BYTES, ...lightPage(ctx),
-      });
-      if (!current() || page.messages.length === 0) break;
-      ctx.positions.note(fresh.id, page.messages, page.offset);
-      fresh.messageOffset = page.offset ?? fresh.messageOffset;
-      fresh.messages = [...page.messages, ...fresh.messages];
-      fresh.messagesBefore = page.before;
-      older -= page.messages.length;
-      for (const turn of page.turns ?? []) if (!turns.has(turn.id)) turns.set(turn.id, turn);
-    }
-    while (current() && newer > 0 && fresh.messagesAfter) {
-      const page = await client.call('messages.list', {
-        threadId: fresh.id, after: fresh.messagesAfter, limit: Math.min(newer, MESSAGE_PAGE_MAX),
-        maxBytes: READING_PAGE_BYTES, ...lightPage(ctx),
-      });
-      if (!current() || page.messages.length === 0) break;
-      ctx.positions.note(fresh.id, page.messages, page.offset);
-      fresh.messages.push(...page.messages);
-      setMessagesAfter(fresh, page.after);
-      newer -= page.messages.length;
-      for (const turn of page.turns ?? []) if (!turns.has(turn.id)) turns.set(turn.id, turn);
+    for (const direction of ['before', 'after'] as const) {
+      const before = direction === 'before';
+      let remaining = before ? older : newer;
+      while (current() && remaining > 0) {
+        const cursor = before ? fresh.messagesBefore : fresh.messagesAfter || null;
+        if (cursor === null) break;
+        const page = await client.call('messages.list', {
+          threadId: fresh.id, [direction]: cursor, limit: Math.min(remaining, MESSAGE_PAGE_MAX),
+          maxBytes: READING_PAGE_BYTES, ...lightPage(ctx),
+        });
+        if (!current() || page.messages.length === 0) break;
+        ctx.positions.note(fresh.id, page.messages, page.offset);
+        if (before) {
+          fresh.messageOffset = page.offset ?? fresh.messageOffset;
+          fresh.messages = [...page.messages, ...fresh.messages];
+          fresh.messagesBefore = page.before;
+        } else {
+          fresh.messages.push(...page.messages);
+          setMessagesAfter(fresh, page.after);
+        }
+        remaining -= page.messages.length;
+        for (const turn of page.turns ?? []) if (!turns.has(turn.id)) turns.set(turn.id, turn);
+      }
     }
     for (const turn of fresh.turns) turns.set(turn.id, turn);
     fresh.turns = [...turns.values()].sort((a, b) => a.queuedAt - b.queuedAt);
