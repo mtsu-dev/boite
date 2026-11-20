@@ -16,17 +16,17 @@ export const SCREENCAST_ACK_PACE_MS = 100;
 /** A page that sent nothing for this long is at rest: it is shown a still, and scrolling is over. */
 export const SCREENCAST_SETTLE_MS = 200;
 /** This many pictures within the window, while the viewer scrolls, is motion. */
-export const SCREENCAST_MOTION_FRAMES = 4;
-export const SCREENCAST_MOTION_WINDOW_MS = 300;
+const SCREENCAST_MOTION_FRAMES = 4;
+const SCREENCAST_MOTION_WINDOW_MS = 300;
 /** The JPEG quality of the half-size pictures sent in motion, at most. */
-export const SCREENCAST_MOTION_QUALITY = 50;
+const SCREENCAST_MOTION_QUALITY = 50;
 /** Pictures and messages that may wait for a viewer's socket; a picture past it is dropped, and acknowledged. */
 export const VIEWER_OUTPUT_LIMIT = 64;
 /** The JPEG quality of a page at rest when the viewer names none. */
 export const DEFAULT_QUALITY = 70;
 /** The widest and tallest picture when the viewer names no width. */
 export const DEFAULT_MAX_WIDTH = 1280;
-export const MAX_HEIGHT = 4320;
+const MAX_HEIGHT = 4320;
 /** A viewer whose socket holds more than this unsent is disconnected. */
 export const MAX_SOCKET_BUFFER_BYTES = 8 * 1024 * 1024;
 /** After a change of document or size, the still that shows it is taken this long after the last one. */

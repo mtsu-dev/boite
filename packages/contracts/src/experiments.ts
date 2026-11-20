@@ -19,9 +19,28 @@
  * docs/internals/experiments.md.
  */
 
-/** The switches this build knows, in the order Settings lists them. */
-export const EXPERIMENT_IDS = ['theme-grain', 'session-import', 'prompt-cache', 'resident-agents', 'whip', 'recording-indicators', 'contacts', 'pinned-quotas', 'auto-goal', 'teams', 'debates'] as const;
+/**
+ * The switches this build knows, in the order Settings lists them. A finished
+ * feature leaves this list once nothing reads its id: an app or a core that
+ * hears an id it does not know drops it.
+ */
+export const EXPERIMENT_IDS = ['resident-agents'] as const;
 export type ExperimentId = (typeof EXPERIMENT_IDS)[number];
+
+/**
+ * Finished features that left `EXPERIMENT_IDS`, which an app older than this
+ * core still gates on. The core names them in what it tells apps of the
+ * desktop app they follow (`withFinished`), as a core from before their
+ * removal did, so a phone that has not updated yet keeps showing them; a
+ * current app drops them as unknown ids.
+ */
+export const FINISHED_EXPERIMENT_IDS = ['whip', 'contacts', 'auto-goal', 'teams', 'debates', 'theme-grain', 'session-import', 'prompt-cache', 'recording-indicators', 'pinned-quotas'] as const;
+export type FinishedExperimentId = (typeof FINISHED_EXPERIMENT_IDS)[number];
+
+/** A desktop app's list as the core hands it to apps: these ids plus every finished one (`FINISHED_EXPERIMENT_IDS`). */
+export function withFinished(experiments: readonly ExperimentId[]): (ExperimentId | FinishedExperimentId)[] {
+  return [...experiments, ...FINISHED_EXPERIMENT_IDS];
+}
 
 export function isExperimentId(id: unknown): id is ExperimentId {
   return typeof id === 'string' && (EXPERIMENT_IDS as readonly string[]).includes(id);
@@ -33,17 +52,7 @@ export type BuildKind = (typeof BUILD_KINDS)[number];
 export type FeatureStage = BuildKind;
 
 export const EXPERIMENT_STAGES: Record<ExperimentId, FeatureStage> = {
-  'theme-grain': 'release',
-  'session-import': 'release',
-  'prompt-cache': 'release',
   'resident-agents': 'release',
-  whip: 'release',
-  'recording-indicators': 'release',
-  contacts: 'release',
-  'pinned-quotas': 'release',
-  'auto-goal': 'release',
-  teams: 'release',
-  debates: 'release',
 };
 
 /**
@@ -94,20 +103,14 @@ function refusalTail(stage: FeatureStage, version: string | null | undefined): s
  * Bun nor Rolldown folds a call or a constant imported from another module.
  * So the lazy entry of a feature writes its flag directly:
  *
- *   if (typeof __BOITE_HAS_WHIP__ === 'undefined' || __BOITE_HAS_WHIP__) await import('./whip')
+ *   if (typeof __BOITE_HAS_SAMPLE__ === 'undefined' || __BOITE_HAS_SAMPLE__) await import('./sample')
  *
  * With the flag defined as `false` the branch and its dynamic import go, and
- * the feature's modules are in no chunk. The five flags below belong to
- * features since finished: no build defines them any more, so their entries
- * always load the feature, still lazily.
+ * the feature's modules are in no chunk. A feature with a cut declares its
+ * flag below; none has one today.
  */
 declare global {
   const __BOITE_BUILD_KIND__: BuildKind | undefined;
-  const __BOITE_HAS_WHIP__: boolean | undefined;
-  const __BOITE_HAS_DEBATES__: boolean | undefined;
-  const __BOITE_HAS_AUTO_GOAL__: boolean | undefined;
-  const __BOITE_HAS_TEAMS__: boolean | undefined;
-  const __BOITE_HAS_CONTACTS__: boolean | undefined;
 }
 
 /** The kind this bundle was compiled as, or null when it runs from source. */
@@ -137,13 +140,11 @@ export function featureDefines(version: string | null | undefined, stages: Recor
  * bundle. Each of them writes its marker, the literal `featureMarker(id)`
  * gives, in the module its lazy entry loads; `scripts/ci/feature-cut.ts`
  * fails a build whose bundle holds the marker of a feature above its kind,
- * and one that lost the marker of a feature it must hold. None today: the
- * five that had a cut (the Whip, the Council, Contacts, Teams and Automatic
- * goals) are finished, so every build holds them.
+ * and one that lost the marker of a feature it must hold. None today.
  */
 export const FEATURE_CUTS: Partial<Record<ExperimentId, { ui: boolean; core: boolean }>> = {};
 
-const LOADED = new Set<string>();
+const MARKED: string[] = [];
 
 /**
  * Every module of a cut feature calls this at its top level with its marker
@@ -152,12 +153,7 @@ const LOADED = new Set<string>();
  * however it was imported.
  */
 export function markFeature(marker: string): void {
-  LOADED.add(marker);
-}
-
-/** The markers of the feature modules loaded so far. */
-export function loadedFeatures(): readonly string[] {
-  return [...LOADED];
+  MARKED.push(marker);
 }
 
 /** The marker of a feature's code in a bundle. Built here from two parts, so this file never carries one. */

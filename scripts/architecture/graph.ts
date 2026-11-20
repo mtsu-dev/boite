@@ -6,8 +6,6 @@ export type Graph = Map<string, string[]>;
 const scanner = new Bun.Transpiler({ loader: 'ts' });
 const aliases = new Map([
   ['@boite/contracts', 'packages/contracts/src/index.ts'],
-  ['@boite/core', 'packages/core/src/index.ts'],
-  ['@boite/core/client', 'packages/core/src/client.ts'],
 ]);
 
 interface SvelteScript { content: { start: number; end: number } }

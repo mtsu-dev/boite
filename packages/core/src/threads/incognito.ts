@@ -65,7 +65,7 @@ function insideRoot(dataDir: string, path: string): boolean {
 }
 
 /** One conversation's folder, after its processes stopped. A path outside the root is left alone. */
-export async function eraseIncognitoFolder(dataDir: string, path: string, log: (message: string) => void): Promise<boolean> {
+async function eraseIncognitoFolder(dataDir: string, path: string, log: (message: string) => void): Promise<boolean> {
   return !insideRoot(dataDir, path) || await removeDir(path, log);
 }
 

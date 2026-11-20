@@ -4,7 +4,8 @@ import { contactsViews } from './contacts-views.svelte';
 import { contactsRail } from './contacts-rail.svelte';
 import type { Store } from './store.svelte';
 
-vi.mock('./contacts-entry', () => ({ contactsParts: null }));
+// The screens never arrive here: the test reads what the views ask of the core, not what they draw.
+vi.mock('./contacts-entry', () => ({ contactsParts: { HomePage: () => new Promise(() => {}), ContactsRail: () => new Promise(() => {}) } }));
 
 const cores = ['core-a', 'core-c'].map(coreId => ({ coreId, name: coreId.toUpperCase() }));
 

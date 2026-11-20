@@ -13,7 +13,7 @@ export type UsageRange = (typeof USAGE_RANGES)[number];
  * its place whatever the range shows. Additional providers keep their own
  * series, reusing palette colours when necessary.
  */
-export const PROVIDER_ORDER = ['claude', 'codex', 'opencode', 'grok', 'antigravity', 'pi', 'muse'] as const;
+const PROVIDER_ORDER = ['claude', 'codex', 'opencode', 'grok', 'antigravity', 'pi', 'muse'] as const;
 const SPARE_SLOTS = ['var(--series-7)', 'var(--series-8)'];
 export const OTHER = 'other';
 
@@ -166,7 +166,7 @@ export interface UsageBucket {
   coverage: Record<string, { turns: number; reported: number; priced: number }>;
 }
 
-export interface ModelRow extends UsageTotals {
+interface ModelRow extends UsageTotals {
   providerId: string;
   model: string | null;
   value: number;
@@ -176,7 +176,7 @@ export interface ModelRow extends UsageTotals {
   olderCore?: boolean;
 }
 
-export interface DayRow extends UsageTotals {
+interface DayRow extends UsageTotals {
   start: number;
   value: number;
 }

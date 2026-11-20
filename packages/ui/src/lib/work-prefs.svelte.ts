@@ -20,7 +20,7 @@ export type PanelStart = 'launcher' | 'files' | 'changes';
  * screen and nothing else: the palette and the shortcuts still reach what it
  * opened, and whatever is open stays open.
  */
-export const CONTROL_IDS = [
+const CONTROL_IDS = [
   'header.branch',
   'header.context',
   'header.terminal',

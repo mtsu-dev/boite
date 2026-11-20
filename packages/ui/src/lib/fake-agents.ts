@@ -59,7 +59,7 @@ export interface AgentRunner {
 }
 
 /** A member of the group as a move sees it: its name, whether it takes bots, and its agents. */
-export interface FakeMember { coreId: string; name: string; botMove: boolean; agents: FakeAgents | undefined }
+interface FakeMember { coreId: string; name: string; botMove: boolean; agents: FakeAgents | undefined }
 
 /** What a move carries from one fake core to another. */
 interface BotParcel {

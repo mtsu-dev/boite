@@ -13,7 +13,7 @@ const DISMISSED_MAX = 200;
 
 const keyOf = (threadKey: string, turnId: string): string => `${threadKey}\u0000${turnId}`;
 
-export function dismissSuggestion(threadKey: string, suggestion: PromptSuggestion): void {
+function dismissSuggestion(threadKey: string, suggestion: PromptSuggestion): void {
   dismissed.add(keyOf(threadKey, suggestion.turnId));
   if (dismissed.size > DISMISSED_MAX) {
     const oldest = dismissed.values().next().value;
@@ -26,7 +26,7 @@ export function dismissSuggestion(threadKey: string, suggestion: PromptSuggestio
  * dismissed it. Whether a box can offer it now (empty, idle, no card
  * waiting) is the composer's call.
  */
-export function suggestionOf(threadKey: string, suggestion: PromptSuggestion | null | undefined): PromptSuggestion | null {
+function suggestionOf(threadKey: string, suggestion: PromptSuggestion | null | undefined): PromptSuggestion | null {
   if (!suggestion || suggestion.text.trim().length === 0) return null;
   return dismissed.has(keyOf(threadKey, suggestion.turnId)) ? null : suggestion;
 }

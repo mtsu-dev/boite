@@ -1,7 +1,7 @@
 import { afterEach, expect, test, spyOn } from 'bun:test';
 import type { AccountQuota } from '@boite/contracts';
-import { QuotaStore, claudeQuotaWindows, claudeUsageAgent, codexQuotaWindows } from '../src/quotas.ts';
-import { claudeQuotaDetails, codexQuotaDetails, museQuotaReading } from '../src/quota-details.ts';
+import { QuotaStore, claudeQuotaWindows } from '../src/quotas.ts';
+import { claudeQuotaDetails, claudeUsageAgent, codexQuotaDetails, codexQuotaWindows, museQuotaReading } from '../src/quota-details.ts';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { codexQuotaError } from '../src/drivers/codex/models.ts';

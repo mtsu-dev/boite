@@ -21,7 +21,7 @@ import { closeProcessResources, protectionRunner } from './protection-runner.ts'
 import { processEventDiagnostic } from './process-event-diagnostics.ts';
 
 import type { ChildProcess, ManagedStop, ProcessEntry as Entry, SpawnedChild, SpawnedPipedProcess, SpawnedProcess, SpawnedTerminal, SpawnOptions, TerminalSpawnOptions, ProcRegistryOptions } from './process-spawn-types.ts';
-export type { ProcRegistryOptions, ChildProcess, ManagedStop, PipedChildProcess, SpawnedChild, SpawnedPipedProcess, SpawnedProcess, SpawnedTerminal, SpawnOptions, TerminalSpawnOptions } from './process-spawn-types.ts';
+export type { ProcRegistryOptions, ManagedStop, SpawnedChild, SpawnedPipedProcess, SpawnedProcess, SpawnedTerminal, SpawnOptions, TerminalSpawnOptions } from './process-spawn-types.ts';
 
 export const STARTUP_PRIORITY = { ms: 30_000 };
 /** How long an exited pid stays in its thread's history, for a late job event. */

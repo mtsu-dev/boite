@@ -12,7 +12,7 @@ export const TRAIL_ONLY = new Set(['message.started', 'message.part', 'artifact.
  * 467,073 rows of a 4.4 GB journal (2026-10-17), one INSERT per part change.
  */
 export const UNWRITTEN = new Set(['message.part', 'artifact.published']);
-export const TRAIL_TEXT_CHARS = 1024;
+const TRAIL_TEXT_CHARS = 1024;
 /** The setting holding the id the trail walk passed (`pruneTrail`). */
 export const TRAIL_CURSOR = 'events:trail-pruned-through';
 

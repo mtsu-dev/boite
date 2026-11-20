@@ -4,10 +4,6 @@
   "private": true,
   "license": "MIT",
   "type": "module",
-  "exports": {
-    ".": "./src/index.ts",
-    "./client": "./src/client.ts"
-  },
   "scripts": {
     "start": "bun run bin/core.ts",
     "dev": "bun run --watch src/main.ts",

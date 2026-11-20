@@ -21,7 +21,7 @@ export function appCommands(executable: string, pluginId: string): string[] {
 }
 
 /** The line the core shows for a gateway: how it runs it. */
-export function gatewayCommands(executable: string): string[] {
+function gatewayCommands(executable: string): string[] {
   return [`${executable} --config <its data directory>/${executable}.toml`];
 }
 

@@ -329,8 +329,7 @@ Shipped descriptors and dependency manifests own version pins.
 
 A descriptor loads or is refused with the file, the field and what was expected.
 An unknown field is a refusal, a user file may not take a shipped id, and `roots`
-is checked before anything else. `providers.dryRun` validates a file and prints
-the plan without writing anything.
+is checked before anything else.
 
 ## The fields
 
@@ -946,8 +945,8 @@ in-memory client runs too) and refuses with the field it names (`name`,
 
 The core writes an ordinary user descriptor to `<dataDir>/providers/<id>.json`
 (`localAcpDescriptor` in `packages/core/src/providers/local-command.ts`) and
-reloads, so the loader, the ACP driver and `providers.dryRun` treat it like a
-file written by hand. It has no login and no isolation: the default account
+reloads, so the loader and the ACP driver treat it like a file written by
+hand. It has no login and no isolation: the default account
 starts the agent with its own sign-in and settings. Its only model is
 `default`, which leaves the agent on the model it is configured with until the
 models probe reads the agent's list. A file that fails to load is deleted again

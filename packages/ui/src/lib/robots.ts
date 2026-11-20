@@ -37,7 +37,7 @@ export const ROBOT_PARTS: Record<RobotNumberPart, number> = { shape: 6, color: 1
 export const ROBOT_ROWS: RobotNumberPart[] = ['shape', 'color', 'eyes', 'mouth', 'top', 'cheeks', 'gear'];
 export const ROBOT_FAMILIES: RobotFamily[] = ['jelly', 'bubble', 'capsule', 'retro'];
 /** The family a robot drawn from an id belongs to: the jelly blobs. */
-export const DEFAULT_FAMILY: RobotFamily = 'jelly';
+const DEFAULT_FAMILY: RobotFamily = 'jelly';
 /** The first pastel color: what the styles other than Jelly wore before colors were shared. */
 const PASTEL = 9;
 

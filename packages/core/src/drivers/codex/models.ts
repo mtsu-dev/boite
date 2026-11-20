@@ -90,7 +90,7 @@ function modelsFrom(provider: ProviderDescriptor, data: CodexModel[]): ModelInfo
 }
 
 /** Same bounded pagination for a prepared host and a disposable discovery process. */
-export async function listModels(rpc: CodexRpc, provider: ProviderDescriptor): Promise<ModelInfo[]> {
+async function listModels(rpc: CodexRpc, provider: ProviderDescriptor): Promise<ModelInfo[]> {
   const data: CodexModel[] = [];
   let cursor: string | null = null;
   const deadline = Date.now() + PROBE_TIMEOUT_MS;

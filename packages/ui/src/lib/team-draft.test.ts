@@ -18,7 +18,7 @@ async function machine() {
   store.attach(client);
   await store.connect();
   cleanups.push(() => { store.detach(); client.close(); });
-  client.reportDesktopExperiments(['teams']);
+  client.reportDesktopExperiments([]);
   const bots: string[] = [];
   for (const name of ['Alpha', 'Beta', 'Gamma']) {
     const profile = await client.call('agents.profile.save', { value: { name, domain: '', instructions: '', avatar: '', status: 'active', projectIds: [], selection: { providerId: 'echo', accountId: 'a-echo', model: 'echo-1', effort: null, permissionMode: 'default' } } });

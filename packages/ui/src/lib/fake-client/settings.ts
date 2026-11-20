@@ -10,13 +10,9 @@ import { applyPolicy, checkPolicySettings } from './policy';
 
 export function settingsMethods(ctx: FakeContext) {
   const methods = {
-    'subscriptionProxy.key': async ({ key }) => {
-      if (key !== null && (typeof key !== 'string' || key.length > 4096 || !key.trim() || /[\u0000-\u0020\u007f]/.test(key))) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'subscriptionProxy.key must be null or a non-empty token without whitespace' });
-      return { configured: key !== null };
-    },
     'subscriptionProxy.configure': async ({ subscriptionProxy, key }) => {
       if (!subscriptionProxy || typeof subscriptionProxy !== 'object') throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'subscriptionProxy configuration is required' });
-      if (key !== undefined && key !== null && (typeof key !== 'string' || key.length > 4096 || !key.trim() || /[\u0000-\u0020\u007f]/.test(key))) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'subscriptionProxy.key must be null or a non-empty token without whitespace' });
+      if (key !== undefined && key !== null && (typeof key !== 'string' || key.length > 4096 || !key.trim() || /[\u0000-\u0020\u007f]/.test(key))) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'subscriptionProxy.configure key must be null or a non-empty token without whitespace' });
       const checked = checkSettingsPatch({ subscriptionProxy });
       if (!checked.ok) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: checked.message, data: { field: checked.field } });
       // As the core: local mode stores the Douane plugin's loopback URLs, whatever was sent.

@@ -54,8 +54,8 @@ test('external packages, strings and comments do not become workspace dependenci
 });
 
 test('a new workspace subpath must declare its source mapping', () => {
-  expect(() => dependencyGraph(new Map([['a.ts', "import '@boite/core/new-api';"]])))
-    .toThrow('a.ts: unmapped workspace import @boite/core/new-api');
+  expect(() => dependencyGraph(new Map([['a.ts', "import '@boite/contracts/new-api';"]])))
+    .toThrow('a.ts: unmapped workspace import @boite/contracts/new-api');
 });
 
 test('a component script is a module: its imports are edges and its component imports resolve', () => {
@@ -76,13 +76,13 @@ test('a component script is a module: its imports are edges and its component im
 
 test('a component script or markup expression that imports the core breaks the UI boundary', () => {
   const graph = dependencyGraph(new Map([
-    ['packages/ui/src/components/Panel.svelte', "<script lang=\"ts\">import { core } from '@boite/core';</script>"],
-    ['packages/ui/src/components/Button.svelte', "<button onclick={() => import('@boite/core')}>{`import('./NotAnImport.svelte')`}</button>"],
-    ['packages/core/src/index.ts', 'export const core = 1;'],
+    ['packages/ui/src/components/Panel.svelte', "<script lang=\"ts\">import { core } from '../../../core/src/core';</script>"],
+    ['packages/ui/src/components/Button.svelte', "<button onclick={() => import('../../../core/src/core')}>{`import('./NotAnImport.svelte')`}</button>"],
+    ['packages/core/src/core.ts', 'export const core = 1;'],
   ]));
   expect(boundaryViolations(graph)).toEqual([
-    'packages/ui/src/components/Panel.svelte -> packages/core/src/index.ts: the UI must use contracts, not core implementation',
-    'packages/ui/src/components/Button.svelte -> packages/core/src/index.ts: the UI must use contracts, not core implementation',
+    'packages/ui/src/components/Panel.svelte -> packages/core/src/core.ts: the UI must use contracts, not core implementation',
+    'packages/ui/src/components/Button.svelte -> packages/core/src/core.ts: the UI must use contracts, not core implementation',
   ]);
 });
 

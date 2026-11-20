@@ -70,7 +70,7 @@ class AgentPictures {
 export const agentPictures = new AgentPictures();
 
 /** The edge, in pixels, a still picture is shrunk to before it is sent: four times the largest avatar drawn. */
-export const PICTURE_EDGE = 256;
+const PICTURE_EDGE = 256;
 
 /**
  * The file the owner picked, as the `data:` URL `agents.picture.put` takes: a

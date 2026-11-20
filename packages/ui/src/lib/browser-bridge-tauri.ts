@@ -28,7 +28,7 @@ const EVENT = 'browser://event';
 type Invoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
 
 /** CSS pixels to the window's logical pixels, under an interface zoom of `factor`. */
-export function scaleRect(rect: SurfaceRect | null, factor: number): SurfaceRect | null {
+function scaleRect(rect: SurfaceRect | null, factor: number): SurfaceRect | null {
   if (!rect || factor === 1) return rect;
   return { x: rect.x * factor, y: rect.y * factor, width: rect.width * factor, height: rect.height * factor };
 }

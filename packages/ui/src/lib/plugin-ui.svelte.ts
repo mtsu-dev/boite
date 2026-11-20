@@ -19,17 +19,17 @@ import type { Client } from './client';
 import { errorText as messageOf } from './errors';
 
 /** Where a plugin button goes. */
-export const PLUGIN_SLOTS = ['thread-header', 'composer', 'sidebar'] as const;
+const PLUGIN_SLOTS = ['thread-header', 'composer', 'sidebar'] as const;
 export type PluginSlot = (typeof PLUGIN_SLOTS)[number];
 
 /** What a button, a command or a panel tab is told about where it was used. */
-export interface PluginSlotContext {
+interface PluginSlotContext {
   /** The open conversation on the plugin's machine, or null on another machine's or none. */
   threadId: string | null;
 }
 
 /** What a message action is told about the message it was picked on. */
-export interface PluginMessageContext {
+interface PluginMessageContext {
   threadId: string;
   messageId: string;
   role: 'user' | 'assistant';

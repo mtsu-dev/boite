@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, onTestFinished, test } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
-import { EXPERIMENT_IDS } from '@boite/contracts';
+import { EXPERIMENT_IDS, withFinished } from '@boite/contracts';
 import ExperimentsPage from './ExperimentsPage.svelte';
 import { DESKTOP_STORAGE_KEY, EXPERIMENTS_STORAGE_KEY, chosenExperiments, desktopHeard, followDesktopOf, heardBuild, heardDesktop, readExperiments, setExperiment, writeExperiments } from '../lib/experiments';
 import { experimentsShown } from '../lib/experiments.svelte';
@@ -51,8 +51,8 @@ test('every feature is on in every build whatever storage holds, and with no swi
     expect(desktopPage('experiments', true), version).toBe('home');
     expect(phonePage('experiments', null, true), version).toBe('home');
   }
-  // A flip from an old path is stored for a later experiment and changes nothing in force.
-  setExperiment('debates', false);
+  // A flip from an old path changes nothing in force.
+  setExperiment('resident-agents', false);
   expect(readExperiments()).toEqual(ALL);
   // The page, were it drawn, lists nothing.
   running = mount(ExperimentsPage, { target: document.body });
@@ -67,19 +67,20 @@ test('a phone keeps the list its desktop app chose and has every feature, before
   followDesktopOf(store);
   onTestFinished(() => { followDesktopOf(null); store.detach(); client.close(); });
   // The core says both: the list in force, as an app from before the stages reads it, and the list as chosen beside it.
-  client.reportDesktopExperiments(['whip', 'teams']);
+  client.reportDesktopExperiments(['resident-agents']);
   store.attach(client);
   await store.connect();
   for (let i = 0; i < 10; i++) { await Promise.resolve(); flushSync(); }
-  expect(JSON.parse(window.localStorage.getItem(DESKTOP_STORAGE_KEY)!).experiments).toEqual(['whip', 'teams']);
+  expect(JSON.parse(window.localStorage.getItem(DESKTOP_STORAGE_KEY)!).experiments).toEqual(['resident-agents']);
   expect(readExperiments()).toEqual(ALL);
-  expect(await client.call('client.preferences', { app: 'app-old-0001', language: 'en', experiments: [], labels: {} })).toEqual({ ok: true, desktop: ALL, desktopChosen: ['whip', 'teams'] });
+  expect(await client.call('client.preferences', { app: 'app-old-0001', language: 'en', experiments: [], labels: {} })).toEqual({ ok: true, desktop: withFinished(ALL), desktopChosen: withFinished(['resident-agents']) });
   const said: unknown[] = [];
   client.on('client.desktopExperiments', (payload) => said.push(payload));
-  client.reportDesktopExperiments(['whip', 'teams']);
+  client.reportDesktopExperiments(['resident-agents']);
   for (let i = 0; i < 10; i++) { await Promise.resolve(); flushSync(); }
-  expect(said).toEqual([{ experiments: ALL, chosen: ['whip', 'teams'] }]);
-  expect(chosenExperiments()).toEqual(['whip', 'teams']);
+  // Both lists also name the finished ids, for a phone older than the core; this app keeps only the ones it knows.
+  expect(said).toEqual([{ experiments: withFinished(ALL), chosen: withFinished(['resident-agents']) }]);
+  expect(chosenExperiments()).toEqual(['resident-agents']);
   heardBuild(store, NIGHTLY);
   expect(readExperiments()).toEqual(ALL);
 });
@@ -89,25 +90,26 @@ test('the followed cache keeps the chosen list a new core sends, and the histori
   followDesktopOf(owner);
   onTestFinished(() => followDesktopOf(null));
   heardBuild(owner, RELEASE);
-  heardDesktop(owner, desktopHeard({ experiments: ALL, chosen: ['whip', 'teams'] }), 'core-a');
-  expect(JSON.parse(window.localStorage.getItem(DESKTOP_STORAGE_KEY)!).experiments).toEqual(['whip', 'teams']);
+  heardDesktop(owner, desktopHeard({ experiments: ALL, chosen: ['resident-agents'] }), 'core-a');
+  expect(JSON.parse(window.localStorage.getItem(DESKTOP_STORAGE_KEY)!).experiments).toEqual(['resident-agents']);
   // A core from before the separate field says one list only: that one is kept.
-  heardDesktop(owner, desktopHeard({ experiments: ['debates'] }), 'core-a');
-  expect(JSON.parse(window.localStorage.getItem(DESKTOP_STORAGE_KEY)!).experiments).toEqual(['debates']);
+  heardDesktop(owner, desktopHeard({ experiments: [] }), 'core-a');
+  expect(JSON.parse(window.localStorage.getItem(DESKTOP_STORAGE_KEY)!).experiments).toEqual([]);
   expect(desktopHeard({ desktop: null })).toBeNull();
-  expect(desktopHeard({ desktop: ['teams'], desktopChosen: ['teams', 'whip'] })).toEqual(['teams', 'whip']);
+  expect(desktopHeard({ desktop: ALL, desktopChosen: [] })).toEqual([]);
 });
 
 test('a core that has heard no desktop app keeps its own set, not another machine\'s', () => {
-  window.localStorage.setItem(EXPERIMENTS_STORAGE_KEY, '["whip"]');
+  // An id since finished and removed is dropped from what storage holds.
+  window.localStorage.setItem(EXPERIMENTS_STORAGE_KEY, '["whip", "resident-agents"]');
   const owner = {};
   followDesktopOf(owner);
   onTestFinished(() => followDesktopOf(null));
-  heardDesktop(owner, ['contacts'], 'core-a');
+  heardDesktop(owner, [], 'core-a');
   heardDesktop(owner, null, 'core-a');
-  expect(chosenExperiments()).toEqual(['contacts']);
+  expect(chosenExperiments()).toEqual([]);
   heardDesktop(owner, null, 'core-b');
-  expect(chosenExperiments()).toEqual(['whip']);
+  expect(chosenExperiments()).toEqual(['resident-agents']);
 });
 
 test('the desktop app follows no one', async () => {
@@ -116,7 +118,7 @@ test('the desktop app follows no one', async () => {
   onTestFinished(() => { delete shell.__TAURI_INTERNALS__; followDesktopOf(null); });
   const owner = {};
   followDesktopOf(owner);
-  heardDesktop(owner, ['whip']);
+  heardDesktop(owner, ['resident-agents']);
   running = mount(ExperimentsPage, { target: document.body });
   flushSync();
   await tick();

@@ -2,7 +2,6 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import { RpcErrorCode } from '@boite/contracts';
 import { confirm } from '../../lib/confirm.svelte';
-import { setExperiment } from '../../lib/experiments';
 import { inviteShare, readInvite } from '../../lib/contact-link';
 import { contactsOf } from '../../lib/contacts.svelte';
 import { FakeClient } from '../../lib/fake-client';
@@ -29,12 +28,10 @@ afterEach(async () => {
   workspace.machines = [];
   workspace.active = primary;
   document.body.innerHTML = '';
-  setExperiment('contacts', false);
   localStorage.clear();
 });
 
 async function connect(): Promise<Store> {
-  setExperiment('contacts', true);
   const store = new Store();
   store.machineId = 'home';
   store.attach(new FakeClient({ delayMs: 0 }));
@@ -333,7 +330,6 @@ test('a shared project shows its board as four counts that follow its cards; a c
 });
 
 test('the counts read again after a reconnect that may have missed an update, and after a first read that failed', async () => {
-  setExperiment('contacts', true);
   const store = new Store();
   store.machineId = 'home';
   const client = new FakeClient({ delayMs: 0 });

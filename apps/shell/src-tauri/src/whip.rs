@@ -1,4 +1,4 @@
-//! The Whip experiment moves the native window and returns it to its origin.
+//! The Whip moves the native window and returns it to its origin.
 
 use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
 use std::time::Duration;

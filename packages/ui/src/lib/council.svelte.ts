@@ -8,7 +8,7 @@
  * `refused`; that core's desktop turning the experiment on reads it again.
  */
 
-import { COUNCIL_EXPERIMENT, RpcErrorCode, type Council, type CouncilPost, type CouncilRpcEvents, type ThreadId } from '@boite/contracts';
+import { RpcErrorCode, type Council, type CouncilPost, type CouncilRpcEvents, type ThreadId } from '@boite/contracts';
 import { untrack } from 'svelte';
 import type { Client } from './client';
 import { RpcFailure } from './rpc-error';
@@ -73,8 +73,8 @@ class CouncilReader<T> {
     this.#reading += 1;
     if (client) {
       const changed = client.on('council.changed', event => { if (this.#concerns(event)) this.#soon(); });
-      // An older core gates councils on the desktop's experiments: a read made before it heard of them was refused.
-      const switched = client.on('client.desktopExperiments', ({ experiments }) => { if (experiments.includes(COUNCIL_EXPERIMENT)) this.#soon(); });
+      // A core from before the Council was finished gated it on the desktop's `debates` experiment: a read made before it heard of it was refused.
+      const switched = client.on('client.desktopExperiments', ({ experiments, chosen }) => { if ([...experiments, ...chosen ?? []].includes('debates' as never)) this.#soon(); });
       this.#release = () => { changed(); switched(); };
     } else this.#release = null;
     if (ready) void this.refresh();

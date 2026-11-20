@@ -727,7 +727,7 @@ function sameOrigin(origin: { from: SentFrom }, before: SentFrom | null): boolea
  * which machine "open it" means. The name is the client's own word, quoted.
  * The app's language says how the screens the agent talks about are worded.
  */
-export function sentFromNote(from: SentFrom): string {
+function sentFromNote(from: SentFrom): string {
   const where = from.client === 'shell'
     ? `the Boite desktop app${from.device === null ? '' : ` on the computer ${JSON.stringify(from.device)}`}`
     : from.device === 'phone' ? 'the Boite web app on a phone'

@@ -31,7 +31,7 @@ export function cachePages(db: Database): Database {
  * alive until it runs again: after binding a 20 MB string and dropping it, RSS
  * stayed 21 MiB higher; prepared and finalized, 1.2 MiB (Bun 1.4.2, 2026-10-15).
  */
-export const LARGE_BIND_CHARS = 64 * 1024;
+const LARGE_BIND_CHARS = 64 * 1024;
 
 const large = (value: SQLQueryBindings): boolean =>
   (typeof value === 'string' && value.length > LARGE_BIND_CHARS) || (ArrayBuffer.isView(value) && value.byteLength > LARGE_BIND_CHARS);

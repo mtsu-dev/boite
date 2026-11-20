@@ -17,7 +17,7 @@ const QUERY_TIMEOUT_MS = 2_000;
 let servers: { at: number; addresses: string[] } | null = null;
 
 /** Whether `host` is a name Tailscale publishes for Funnel. */
-export function isFunnelName(host: string): boolean { return host.toLowerCase().endsWith(`.${ZONE}`); }
+function isFunnelName(host: string): boolean { return host.toLowerCase().endsWith(`.${ZONE}`); }
 
 async function zoneServers(): Promise<string[]> {
   if (servers !== null && Date.now() - servers.at < SERVERS_TTL_MS) return servers.addresses;

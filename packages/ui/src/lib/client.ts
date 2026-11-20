@@ -3,8 +3,7 @@ import type { DeviceKey } from './device-key';
 import type { ClientName, CoreInfo, DeviceHello, Principal, RpcEventName, RpcEvents, RpcMethodName, RpcParams, RpcResult } from '@boite/contracts';
 import type { RpcFailure } from './rpc-error';
 
-export { RpcFailure, droppedFailure, wasDropped, unansweredFailure, wasUnanswered } from './rpc-error';
-export { defaultBackoff, openDeadline, rpcUrl, streamUrl } from './ws-client-utils';
+export { RpcFailure, droppedFailure, wasDropped, wasUnanswered } from './rpc-error';
 export { WsClient } from './ws-client';
 
 export type ClientState = 'idle' | 'connecting' | 'ready' | 'closed';

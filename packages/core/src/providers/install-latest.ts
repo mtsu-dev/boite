@@ -1,7 +1,7 @@
 import type { ProviderInstall } from '@boite/contracts';
 
 /** How long reading the publisher's version and manifest may take together. */
-export const LATEST_TIMEOUT_MS = 15_000;
+const LATEST_TIMEOUT_MS = 15_000;
 /** How old a publisher's answer may be before a provider list reads it again. */
 export const LATEST_MAX_AGE_MS = 60 * 60 * 1000;
 /** And before an install or a managed update does. */

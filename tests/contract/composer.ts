@@ -1,5 +1,5 @@
 /** Delivery scenarios run unchanged against WebSocket cores and the render fixture. */
-import { RpcErrorCode, type ComposerValue } from '../../packages/contracts/src/index.ts';
+import { RpcErrorCode, type ComposerValue, type ExperimentId } from '../../packages/contracts/src/index.ts';
 import type { ContractEnv, Scenario } from './scenarios.ts';
 
 function check(ok: unknown, reason: string): asserts ok { if (!ok) throw new Error(reason); }
@@ -34,8 +34,8 @@ async function batching(env: ContractEnv, incognito: boolean) {
     { id: `${prefix}-one`, text: 'first', attachments: [{ ...meta, assetId }], choice },
     { id: `${prefix}-two`, text: 'second', attachments: [], choice: { ...choice, speed: null } },
     { id: `${prefix}-three`, text: 'third', attachments: [], choice: { ...choice, permissionMode: 'plan' } },
-    // Queued when Automatic goals were an experiment: the flag no longer means anything, so it batches with the third.
-    { id: `${prefix}-four`, text: 'fourth', attachments: [], choice: { ...choice, permissionMode: 'plan' }, experiments: ['auto-goal'] },
+    // Queued by an app from when Automatic goals were an experiment: the id is dropped, so it batches with the third.
+    { id: `${prefix}-four`, text: 'fourth', attachments: [], choice: { ...choice, permissionMode: 'plan' }, experiments: ['auto-goal'] as unknown as ExperimentId[] },
   ] } };
   const put = { section: 'inputs' as const, id: thread.id, expectedRevision: 0, value };
   const first = await env.call('composer.put', put);

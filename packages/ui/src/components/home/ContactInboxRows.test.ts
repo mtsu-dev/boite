@@ -1,7 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import { ContactsView } from '../../lib/contacts.svelte';
-import { setExperiment } from '../../lib/experiments';
 import { FakeClient } from '../../lib/fake-client';
 import { Store, store as primary } from '../../lib/store.svelte';
 import { workspace } from '../../lib/workspace.svelte';
@@ -17,7 +16,6 @@ afterEach(async () => {
   workspace.machines = [];
   workspace.active = primary;
   document.body.innerHTML = '';
-  setExperiment('contacts', false);
   localStorage.clear();
   vi.restoreAllMocks();
 });
@@ -33,7 +31,6 @@ async function machine(id: string, label: string): Promise<{ id: string; label: 
 
 /** Activity's contact rows over these machines, once the fake's pending ask from Chris shows. */
 async function draw(...labels: string[]): Promise<void> {
-  setExperiment('contacts', true);
   workspace.machines = await Promise.all(labels.map((label, index) => machine(`m${index}`, label)));
   workspace.active = workspace.machines[0]!.store;
   mounted = mount(ContactInboxRows, { target: document.body, props: { store: workspace.machines[0]!.store } });

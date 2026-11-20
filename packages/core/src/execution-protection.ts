@@ -210,4 +210,4 @@ export class ExecutionProtections {
 }
 
 /** Unpredictable, host-only trace scope for the native prerequisite command. */
-export const protectionProbeThread = (): string => `protection-probe-${randomUUID()}`;
+const protectionProbeThread = (): string => `protection-probe-${randomUUID()}`;

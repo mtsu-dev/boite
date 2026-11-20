@@ -110,7 +110,7 @@ test('configuration and private key roll back together without leaking to events
   const oldKey = 'previous-private-proxy-token', newKey = 'replacement-private-proxy-token';
   harness = await startTestCore({ settings: { subscriptionProxy: previous } });
   const owner = await harness.connect();
-  await owner.call('subscriptionProxy.key', { key: oldKey });
+  await owner.call('subscriptionProxy.configure', { subscriptionProxy: previous, key: oldKey });
   const broadcasts: unknown[] = [];
   const errors: unknown[] = [];
   const off = owner.on('settings.updated', value => broadcasts.push(value));
@@ -215,7 +215,6 @@ test('real RPC discovers gateway models, separates the key and restores native a
   const phone = await connect(harness.url, '', { grant, client: { name: 'pwa', version: 'test' } });
   try {
     expect((await phone.call('settings.get', {})).subscriptionProxy).toEqual(proxy);
-    expect(await thrown(phone.call('subscriptionProxy.key', { key: null }))).toThrow('owner');
     expect(await thrown(phone.call('subscriptionProxy.configure', { subscriptionProxy: proxy, key: null }))).toThrow('owner');
     expect((await phone.call('providers.probe', { providerId: 'codex', accountId: codex.id })).models).toEqual(b.models);
     // The phone switches the owner's gateway off, and only that: the address and key stay.
@@ -276,7 +275,7 @@ for (const providerId of ['opencode', 'opencode-v2'] as const) test(`${providerI
   const url = `http://127.0.0.1:${gateway.port}/v1`;
   harness = await startTestCore({ settings: { subscriptionProxy: config(url) } });
   const owner = await harness.connect();
-  await owner.call('subscriptionProxy.key', { key: 'gateway-key' });
+  await owner.call('subscriptionProxy.configure', { subscriptionProxy: config(url), key: 'gateway-key' });
   await owner.call('providers.setEnabled', { providerId, enabled: true });
   // The gateway is the login: no sign-in of OpenCode's own is asked for.
   const account = await owner.call('accounts.add', { providerId, label: 'Gateway OpenCode' });
@@ -414,7 +413,7 @@ test('Grok runs through Douane by its environment alone, and keeps its own sign-
   const url = `http://127.0.0.1:${gateway.port}/v1`;
   harness = await startTestCore({ settings: { subscriptionProxy: config(url) } });
   const owner = await harness.connect();
-  await owner.call('subscriptionProxy.key', { key: 'gateway-key' });
+  await owner.call('subscriptionProxy.configure', { subscriptionProxy: config(url), key: 'gateway-key' });
   const provider = harness.core.providers.require('grok');
   // The gateway is the login: no sign-in of Grok's own is asked for.
   const account = await owner.call('accounts.add', { providerId: 'grok', label: 'Gateway Grok' });
@@ -473,7 +472,7 @@ test('Antigravity runs through Douane in a gateway home of its own, and keeps it
   const origin = `http://127.0.0.1:${gateway.port}`;
   harness = await startTestCore({ settings: { subscriptionProxy: config(`${origin}/v1`) } });
   const owner = await harness.connect();
-  await owner.call('subscriptionProxy.key', { key: 'gateway-key' });
+  await owner.call('subscriptionProxy.configure', { subscriptionProxy: config(`${origin}/v1`), key: 'gateway-key' });
   const provider = harness.core.providers.require('antigravity');
   // The gateway is the login: no Google sign-in of the account is asked for.
   const account = await owner.call('accounts.add', { providerId: 'antigravity', label: 'Gateway Antigravity' });

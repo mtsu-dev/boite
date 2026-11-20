@@ -43,7 +43,7 @@ function overflowProblem(found: Overflow): string {
   return `at ${column}px wide the page is cut on the right and the reader cannot scroll sideways: ${past}. Use fluid widths (.grid, minmax(0, 1fr), max-width: 100%) and SVG with a viewBox and width:100%.`;
 }
 
-export async function probePage(cdp: Cdp, url: string, widths: readonly number[], check?: ViewCheckOptions): Promise<PageProbe> {
+async function probePage(cdp: Cdp, url: string, widths: readonly number[], check?: ViewCheckOptions): Promise<PageProbe> {
   const { targetId } = await cdp.send<{ targetId: string }>('Target.createTarget', { url: 'about:blank' });
   const { sessionId } = await cdp.send<{ sessionId: string }>('Target.attachToTarget', { targetId, flatten: true });
   const errors: string[] = [];

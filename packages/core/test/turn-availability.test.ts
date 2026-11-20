@@ -7,7 +7,8 @@ import { Core } from '../src/core.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnContext } from '../src/drivers/types.ts';
 import { CAPACITY_CONTINUE_PROMPT, CAPACITY_RETRY } from '../src/threads/turn-attempts.ts';
-import { LIMIT_RESUME, LIMIT_RESUME_LABEL } from '../src/threads/limit-resume.ts';
+import { LIMIT_RESUME } from '../src/threads/limit-resume.ts';
+import { RESUME_TEXT } from '../src/threads/resume-text.ts';
 import { echoThread, removeDir, rolledBackArchive, startTestCore, waitFor, type TestCore } from './harness.ts';
 
 const delays = [...CAPACITY_RETRY.delaysMs];
@@ -206,7 +207,7 @@ test('a thread stopped by a usage limit resumes once at the reset, never for a w
     expect(resumed.execution?.operation).toBe('resume');
     await waitFor(() => h.core.journal.getTurn(resumed.id)?.status === 'done');
     const opening = (await client.call('threads.get', { threadId })).messages.find(message => message.turnId === resumed.id && message.role === 'system');
-    expect(opening?.parts[0]?.type === 'text' ? opening.parts[0].displayText : null).toBe(LIMIT_RESUME_LABEL);
+    expect(opening?.parts[0]?.type === 'text' ? opening.parts[0].displayText : null).toBe(RESUME_TEXT.limit.label);
 
     // Within two minutes of the window it already resumed after: no second resume.
     const again = await client.call('turns.start', { threadId, prompt: '[usage-limit:600]' });
