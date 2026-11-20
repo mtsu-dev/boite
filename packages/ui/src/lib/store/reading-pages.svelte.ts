@@ -1,6 +1,7 @@
 import { INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, READING_PAGE_BYTES, type Message, type MessageId, type Thread, type ThreadId } from '@boite/contracts';
 import type { StoreContext } from './context';
 import type { SlotIndex } from '../message-window';
+import type { readingOrder } from '../message-order';
 
 /**
  * Where a reader left a thread: the scroll, the measured heights, and the
@@ -23,6 +24,7 @@ export interface ReadingPosition {
   reservePrompt?: string | null;
   followPrompt?: string | null;
   slots?: SlotIndex;
+  order?: ReturnType<typeof readingOrder> | undefined;
   revision?: string;
 }
 

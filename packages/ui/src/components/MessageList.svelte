@@ -42,7 +42,7 @@
   import { rowIndexOf, seam, type TimelineRow } from '../lib/timeline-rows';
   import { ReactiveTimelineRows } from '../lib/timeline-rows.svelte';
   import { promptAtRow } from '../lib/message-outline';
-  import { readingRevision } from '../lib/store/reading-pages.svelte';
+  import { readingRevision, type ReadingPosition } from '../lib/store/reading-pages.svelte';
   import { READING_CACHE_MESSAGES } from '../lib/reading-cache';
   import { GapRows, NO_GAPS, READ_AHEAD, RangeAsk, gapHeight, heldNear, loadKeepingReader, wantedRange } from '../lib/history-gaps';
   import TimelineGap from './TimelineGap.svelte';
@@ -55,7 +55,7 @@
   import { MediaQuery } from 'svelte/reactivity';
   import { MessageReveal } from '../lib/message-reveal.svelte';
   import { ViewPlacement, turnViews, viewPart } from '../lib/inline-view';
-  import { filesLast, firstAssistantByTurn, firstByTurn, publishedFile, quietKeepalives } from '../lib/message-order';
+  import { filesLast, firstAssistantByTurn, firstByTurn, publishedFile, quietKeepalives, readingOrder } from '../lib/message-order';
 
   /** A phone has no room left of the bubbles for the outline rail: it is not drawn there. */
   const narrow = new MediaQuery('(max-width: 720px)');
@@ -94,26 +94,28 @@
   /** The pages each turn published: its answer places them, or they go after it once the turn ends (`placeViews`). */
   let shownViews: ReadonlyMap<string, Message[]> | undefined;
   const views = $derived.by(() => (shownViews = turnViews(grouped.timeline, shownViews)));
+  const savedReading = untrack(() => store.readingPositions?.get(threadId));
+  const revision = $derived(readingRevision(store.openThread, threadId, messages));
+  const order = $derived(revision && messages.length <= READING_CACHE_MESSAGES ? (savedReading?.revision === revision && savedReading.order) || readingOrder(messages) : undefined);
   /** A finished turn's published files go after its answer, its pages after them; Boite's cache pings are one line; an agent's own thread folds its finished turns (`lib/agent-turns.ts`). */
   const agentTimeline = new AgentTimeline(), viewPlacement = new ViewPlacement();
-  const placed = $derived(viewPlacement.build(filesLast(grouped.timeline, shownTurns), shownTurns, views));
+  const placed = $derived(viewPlacement.build(filesLast(grouped.timeline, shownTurns, grouped.timeline === messages ? order?.files : undefined), shownTurns, views));
   const shaped = $derived(agentTimeline.build(quietKeepalives(placed, shownTurns), shownTurns, memoryPassOf(store, threadId)));
   const timeline = $derived(shaped.timeline);
   const days = $derived(dayBreaks(timeline)); // The messages that open a new day, a divider above each.
   const placement = $derived(store.openThread?.id === threadId ? store.messagePlacement?.(threadId, messages) ?? null : null);
   const cut = new ReactiveTimelineRows(() => ({ timeline, breaks: placement?.gaps })), gapRows = new GapRows();
-  let indexedRevision: string | undefined;
+  let indexedRevision: string | undefined, indexedOrder: ReadingPosition['order'];
   const positional = $derived((placement?.first ?? null) !== null);
   const gapped = $derived.by(() => {
     const placed = gapRows.place(cut.build(), messages, placement?.gaps ?? NO_GAPS);
-    indexedRevision = readingRevision(store.openThread, threadId, messages);
+    indexedRevision = revision; indexedOrder = order;
     // A row that grew or was cut weighs something else until it is measured.
     if (placed.at(cut.changedFrom) < slots.dirty) slots.dirty = placed.at(cut.changedFrom);
     return placed;
   });
   const rows = $derived(gapped.rows);
   const timelineOrder = $derived.by(() => { void rows; return gapped.gaps.length ? rows.map(row => row.id).join('\0') : cut.order; });
-  const savedReading = untrack(() => store.readingPositions?.get(threadId));
 
   const TAIL_GAP_MS = 100;
   let viewport = $state<HTMLDivElement | undefined>(undefined);
@@ -182,7 +184,7 @@
     anchors.cancelPending();
     if (!viewport || !store.readingPositions) return;
     store.readingPositions.delete(threadId);
-    store.readingPositions.set(threadId, { top: scrollTop, pinned, heights: new Map(heights), anchor: anchors.saved(), height: viewHeight, reservePrompt, followPrompt: promptTarget, revision: indexedRevision, slots: indexedRevision ? slots.save(READING_CACHE_MESSAGES) : undefined });
+    store.readingPositions.set(threadId, { top: scrollTop, pinned, heights: new Map(heights), anchor: anchors.saved(), height: viewHeight, reservePrompt, followPrompt: promptTarget, revision: indexedRevision, slots: indexedRevision ? slots.save(READING_CACHE_MESSAGES) : undefined, order: indexedOrder });
     while (store.readingPositions.size > 32) store.readingPositions.delete(store.readingPositions.keys().next().value!);
   });
   let viewHeight = $state(savedReading?.height ?? 0);
@@ -676,10 +678,10 @@
   // Finished and streaming messages are derived apart, so a delta never rescans the thread.
   const progress = new TurnProgress(() => messages);
   /** One model attribution per turn, independent of the rendered window and streamed parts. */
-  const firstAssistantInTurn = $derived(firstAssistantByTurn(messages));
+  const firstAssistantInTurn = $derived(order?.assistants ?? firstAssistantByTurn(messages));
   /** The last row of each turn: a later message of the same turn replaces an earlier one. */
   const lastInTurn = $derived(new Map(timeline.map((message): [string, string] => [message.turnId, message.id])));
-  const firstInTurn = $derived(firstByTurn(messages));
+  const firstInTurn = $derived(order?.first ?? firstByTurn(messages));
   /** Each turn end's files and the tool line its count joins (`lib/turn-changes.svelte.ts`). */
   const turnChanges = new TurnChanges(() => store, () => threadId, () => messages,
     () => timeline.filter(message => !cards.has(message.id) && !grouped.groups.has(message.id) && !shaped.folds.has(message.id) && !movedBy(message) && !startedFrom(message)));

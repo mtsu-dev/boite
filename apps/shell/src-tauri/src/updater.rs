@@ -2,10 +2,12 @@
 use std::{collections::HashMap, path::PathBuf, sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex}, time::{Duration, Instant}};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State, Webview};
-use tauri_plugin_updater::{Update, UpdaterExt};
+use tauri_plugin_updater::UpdaterExt;
 use crate::update_throttle::{rate_limit, Admit, Throttle};
 
 mod cache;
+mod pending;
+use pending::Pending;
 #[cfg(test)]
 mod feed_test;
 
@@ -49,7 +51,6 @@ pub struct Snapshot {
     supported: bool,
 }
 
-struct Pending { update: Update, verified: Option<Arc<Vec<u8>>> }
 pub struct AppUpdater {
     snapshot: Mutex<Snapshot>,
     pending: Mutex<Option<Pending>>,
@@ -96,6 +97,8 @@ impl AppUpdater {
         let cache = directory.join("verified-update.bin");
         if supported {
             cache::remove_installed(&cache, &version);
+            #[cfg(windows)]
+            crate::platform::windows_installer::discard(&cache.with_extension("exe"));
         }
         Self { snapshot: Mutex::new(Snapshot {
             phase: if error.is_some() { "error" } else { "idle" }.into(), current_version: version,
@@ -472,14 +475,16 @@ pub async fn app_update_check(webview: Webview, app: AppHandle, state: State<'_,
                 return Ok(state.change(&app, |s| { s.phase = "blocked".into(); s.version = Some(version);
                     s.notes = release.body; s.published_at = release.published_at; }));
             }
-            let retained = previous.filter(|pending| pending.update.version == update.version && pending.update.signature == update.signature)
-                .and_then(|pending| pending.verified);
-            let verified = match retained {
-                Some(bytes) => Some(bytes),
-                None => cache::load(&state.cache, &update).await?.map(Arc::new),
+            let pending = match previous.filter(|pending| pending.update.version == update.version
+                && pending.update.signature == update.signature && pending.length().is_some()) {
+                Some(mut pending) => { pending.update = update; pending }
+                None => {
+                    let bytes = cache::load(&state.cache, &update).await?;
+                    Pending::prepare(update, bytes, &state.cache).await?
+                }
             };
-            let length = verified.as_ref().map(|bytes| bytes.len() as u64);
-            *state.pending.lock().unwrap() = Some(Pending { update, verified });
+            let length = pending.length();
+            *state.pending.lock().unwrap() = Some(pending);
             Ok(state.change(&app, |s| { s.phase = if length.is_some() { "ready" } else { "available" }.into();
                 s.version = Some(version); s.received = length.unwrap_or(0); s.total = length;
                 s.notes = release.body; s.published_at = release.published_at; }))
@@ -514,7 +519,11 @@ pub async fn app_update_download(webview: Webview, app: AppHandle, state: State<
     match result {
         Ok(bytes) => {
             let size = bytes.len() as u64;
-            if let Some(pending) = state.pending.lock().unwrap().as_mut() { pending.verified = Some(Arc::new(bytes)); }
+            let pending = match Pending::prepare(update, Some(bytes), &state.cache).await {
+                Ok(pending) => pending,
+                Err(error) => return Ok(state.fail(&app, error)),
+            };
+            *state.pending.lock().unwrap() = Some(pending);
             Ok(state.change(&app, |s| { s.phase = "ready".into(); s.received = size; s.total = Some(size); }))
         }
         Err(e) => Ok(state.fail(&app, e)),
@@ -553,7 +562,7 @@ async fn install(app: AppHandle, state: State<'_, AppUpdater>, quiet: bool) -> R
     // A window on screen may be in use, even with nothing running: its restart would take it away.
     if quiet && crate::window::main_window(&app).is_some_and(|window| window.is_visible().unwrap_or(true)) { return Ok(false); }
     let pending = state.pending.lock().unwrap().take().ok_or("No downloaded update")?;
-    let bytes = pending.verified.clone().ok_or("Missing verified update payload")?;
+    let bytes = pending.length().ok_or("Missing verified update payload")?;
     if !state.install.lock().unwrap().start() {
         *state.pending.lock().unwrap() = Some(pending);
         return Ok(false);
@@ -590,22 +599,22 @@ async fn install(app: AppHandle, state: State<'_, AppUpdater>, quiet: bool) -> R
         }
     }
     if quiet { let _ = std::fs::write(&state.quiet_restart, ""); }
-    // Tauri revalidates the same bytes on installation. Windows exits once
-    // the installer launches. If launch fails, the next reconnect restarts the core.
+    // If launch fails, the next reconnect restarts the core.
     let version = pending.update.version.clone();
     crate::shell_log::info("updater", "shell.update.install", format!("starting the installer for app update {version}; the shell exits or restarts next"),
-        serde_json::json!({ "version": version, "bytes": bytes.len() as u64 }));
+        serde_json::json!({ "version": version, "bytes": bytes }));
     crate::shell_log::flush(Duration::from_millis(500));
+    let installer_app = app.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
         let installed = crate::update_stop::launch_if_allowed(
             || app_updates_blocked(quiet),
-            || pending.update.install(bytes.as_slice()).map_err(|e| e.to_string()),
+            || pending.install(&installer_app),
         );
         (pending, installed)
     }).await;
     match result {
         Ok((_pending, Ok(()))) => {
-            // Windows never gets here: Tauri exits once the installer starts.
+            // On Windows the launch path exits once the installer starts.
             std::env::set_var(crate::RESTARTED_AFTER_UPDATE, "1");
             crate::shell_log::info("updater", "shell.update.restart", format!("app update {version} installed; restarting the shell"), serde_json::json!({ "version": version }));
             crate::shell_log::flush(Duration::from_millis(500));
