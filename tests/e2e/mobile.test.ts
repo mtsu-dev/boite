@@ -464,6 +464,8 @@ test('a paired phone deletes a thread from its list and the toast offers undo', 
   await page.waitFor(`document.querySelector('[data-testid=mobile-thread-menu-${id}-menu] [data-value=delete]')`);
   await capture('mobile-paired-thread-delete-menu.png');
   await page.click(`[data-testid=mobile-thread-menu-${id}-menu] [data-value=delete]`);
+  await page.waitFor(`document.querySelector('[data-testid=confirm-ok]')`);
+  await page.click('[data-testid=confirm-ok]');
   await page.waitFor(`!document.querySelector('[data-testid=mobile-thread-${id}]') && !__boiteTest.workspace.active.threads.some(t => t.id === ${JSON.stringify(id)})`);
   await capture('mobile-paired-thread-deleted.png');
   expect(await page.evaluate('__boiteTest.workspace.active.error')).toBeNull();

@@ -142,6 +142,8 @@ above the message box or the bottom tabs.
   draft. Its agent starts again with your first message.
 - A project's Done list shows ten rows at a time; scroll it for the rest.
 - Delete done threads after (days) defaults to 3. Manual archives are kept.
+- Delete shows how long the conversation's machine keeps its history. Choose
+  Archive in the same dialog to put a current conversation aside.
 - The owner can restore a deleted conversation from Show deleted conversations
   for the number of days set in Keep deleted conversations for. Find both under
   Settings > General on desktop and Settings > General > Archived threads on

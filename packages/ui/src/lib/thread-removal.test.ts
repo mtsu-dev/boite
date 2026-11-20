@@ -139,11 +139,10 @@ test('deletion clears the owning machine composer and leaves colliding IDs on an
 
 test('deletion toast expires while Settings restoration, reconnect undo and session invalidation still work', async () => {
   const store = await ready();
-  const ask = vi.spyOn(confirm, 'ask').mockResolvedValue(false);
+  vi.spyOn(confirm, 'choose').mockResolvedValue('confirm');
   vi.useFakeTimers();
   try {
     expect(await deleteThread(store, store.threads.find(t => t.id === 't-trace')!)).toBe(true);
-    expect(ask).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(UNDO_MS - 1);
     expect(undo.current).not.toBeNull();
     await vi.advanceTimersByTimeAsync(1);
@@ -179,12 +178,26 @@ test('an older core keeps the conversation and explains which machine needs an u
   expect(undo.current).toBeNull();
 });
 
+test.each([0, 12])('deletion shows the owning machine’s retention (%s days) and offers Archive', async days => {
+  const store = await ready();
+  await store.saveSettings({ threadDeletionRetentionDays: days });
+  const thread = store.threads.find(t => t.id === 't-trace')!;
+  const removal = deleteThread(store, thread);
+  try {
+    expect(confirm.current?.body).toContain(days === 0 ? 'indefinitely' : '12 days');
+    expect(confirm.current?.altLabel).toBe(strings.sidebar.archive);
+  } finally { confirm.answer('alt'); await removal; }
+  expect(await store.client!.call('threads.deleted', {})).toEqual([]);
+  expect((await store.client!.call('threads.get', { threadId: thread.id })).archived).toBe(true);
+});
+
 test('a paired phone deletes a conversation and undo brings it back', async () => {
   const store = new Store();
   stores.push(store);
   store.attach(new FakeClient({ delayMs: 0, principal: 'session' }));
   await store.connect();
   expect(store.owner).toBe(false);
+  vi.spyOn(confirm, 'choose').mockResolvedValue('confirm');
   expect(await deleteThread(store, store.threads.find(t => t.id === 't-trace')!)).toBe(true);
   expect(store.threads.some(t => t.id === 't-trace')).toBe(false);
   await undo.take();

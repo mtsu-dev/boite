@@ -195,6 +195,10 @@ export const strings = {
     unpin: 'Unpin',
     archive: 'Archive',
     deleteUnavailable: 'Update Boite on the machine hosting this conversation to delete it. The conversation has been kept.',
+    deleteThreadTitle: 'Delete "{title}"?',
+    deleteThreadForever: 'This machine keeps deleted conversations indefinitely, until you permanently delete them.',
+    deleteThreadDay: 'This machine keeps deleted conversations for 1 day, then permanently deletes their history.',
+    deleteThreadDays: 'This machine keeps deleted conversations for {count} days, then permanently deletes their history.',
     deletedToast: 'Deleted "{title}". You can restore it from Settings.',
     /** The toast after an archive, with its way back: the button and Ctrl+Z. */
     archivedToast: 'Archived "{title}"',
