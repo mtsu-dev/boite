@@ -133,12 +133,11 @@ export function claudeCliRecordsFixture(cwd: string, sessionId: string): string 
     message: { role: 'user', content },
     ...extra,
   });
-  const assistant = (id: string, text: string, extra: Record<string, unknown> = {}): Record<string, unknown> => ({
+  const assistant = (id: string, ...texts: string[]): Record<string, unknown> => ({
     ...base,
     type: 'assistant',
     timestamp: at(),
-    message: { id, role: 'assistant', model: 'claude-sonnet-5', content: [{ type: 'text', text }] },
-    ...extra,
+    message: { id, role: 'assistant', model: 'claude-sonnet-5', content: texts.map((text) => ({ type: 'text', text })) },
   });
   const synthetic = (text: string, error: boolean): Record<string, unknown> => ({
     ...assistant(`syn_${clock}`, text),
@@ -151,9 +150,9 @@ export function claudeCliRecordsFixture(cwd: string, sessionId: string): string 
     user('<local-command-stdout>Set model to Sonnet 5</local-command-stdout>'),
     user('<bash-input>git status</bash-input>'),
     user('<bash-stdout>On branch main</bash-stdout><bash-stderr></bash-stderr>'),
-    user('<command-message>review is running…</command-message>\n<command-name>/review</command-name>\n<command-args>the last commit</command-args>'),
+    user('<command-message>review is running…</command-message>\n<command-name>/review</command-name>\n<command-args>the </command-args> tag</command-args>'),
     user([{ type: 'text', text: 'Review the last commit for bugs and report them.' }], { isMeta: true }),
-    assistant('msg_r', 'The commit looks fine.'),
+    assistant('msg_r', 'The commit ', 'looks fine.'),
     user('Now fix the typo in README.md'),
     assistant('msg_f', 'Started the build in the background.'),
     user('<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>'),

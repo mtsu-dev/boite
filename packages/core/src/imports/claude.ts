@@ -27,8 +27,6 @@ export const TOOL_OUTPUT_MAX = 20_000;
 /** One exchange of the transcript: the prompt and what the agent did with it. */
 export interface TranscriptTurn {
   prompt: string;
-  /** A slash or shell command rather than words to the agent. */
-  command: boolean;
   images: { mimeType: ImageMimeType; data: string }[];
   promptAt: number;
   /** The assistant's parts in order, text runs merged, every tool with its result. */
@@ -118,7 +116,8 @@ function typedOf(text: string): { text: string; command: boolean } | null {
   if (trimmed.startsWith('<command-name>') || trimmed.startsWith('<command-message>')) {
     const name = /<command-name>([\s\S]*?)<\/command-name>/.exec(trimmed)?.[1]?.trim();
     if (name !== undefined && name.length > 0) {
-      const args = /<command-args>([\s\S]*?)<\/command-args>/.exec(trimmed)?.[1]?.trim() ?? '';
+      // Up to the last closing tag: the CLI writes the arguments as typed, tags included.
+      const args = /<command-args>([\s\S]*)<\/command-args>/.exec(trimmed)?.[1]?.trim() ?? '';
       const slash = name.startsWith('/') ? name : `/${name}`;
       return { text: args.length > 0 ? `${slash} ${args}` : slash, command: true };
     }
@@ -176,6 +175,20 @@ function titleOf(record: Record): string | null {
   return null;
 }
 
+/** An assistant block as a part, or null for an empty or unknown one. */
+function partOf(block: Block): MessagePart | null {
+  if (block['type'] === 'text' && typeof block['text'] === 'string') {
+    return block['text'].length === 0 ? null : { type: 'text', text: block['text'] };
+  }
+  if (block['type'] === 'thinking' && typeof block['thinking'] === 'string') {
+    return block['thinking'].trim().length === 0 ? null : { type: 'thinking', text: block['thinking'] };
+  }
+  if (block['type'] === 'tool_use' && typeof block['id'] === 'string' && typeof block['name'] === 'string') {
+    return { type: 'tool', toolId: block['id'], name: block['name'], input: block['input'] ?? null, output: null, status: 'running' };
+  }
+  return null;
+}
+
 /** Consumes records one at a time; `finish()` closes the tools no result reached. */
 class TranscriptReader {
   private readonly turns: TranscriptTurn[] = [];
@@ -189,6 +202,9 @@ class TranscriptReader {
   /** The message the last assistant record belongs to: text merges within one. */
   private message: unknown = undefined;
   private readonly tools = new Map<string, Extract<MessagePart, { type: 'tool' }>>();
+
+  /** A listing keeps no reply, only whether there was one: commands before the first prompt can carry megabytes. */
+  constructor(private readonly listing = false) {}
 
   /**
    * True once a prompt that is not a command has been seen: what a listing
@@ -226,17 +242,9 @@ class TranscriptReader {
     const prompt = promptOf(record);
     if (prompt !== null) {
       if (this.turns.length === 0) this.cwd = typeof record.cwd === 'string' ? record.cwd : null;
-      const turn: TranscriptTurn = {
-        prompt: prompt.text,
-        command: prompt.command,
-        images: prompt.images,
-        promptAt: at,
-        parts: [],
-        answerAt: null,
-        lastAt: at,
-      };
+      const turn: TranscriptTurn = { prompt: prompt.text, images: prompt.images, promptAt: at, parts: [], answerAt: null, lastAt: at };
       this.turns.push(turn);
-      if (!turn.command && this.firstPrompt === null) this.firstPrompt = turn;
+      if (!prompt.command && this.firstPrompt === null) this.firstPrompt = turn;
       return;
     }
     const current = this.turns[this.turns.length - 1];
@@ -260,34 +268,21 @@ class TranscriptReader {
     if (synthetic && record.isApiErrorMessage !== true) return;
     if (!synthetic && typeof record.message?.model === 'string') this.model = record.message.model;
     const id = record.message?.id;
-    const sameMessage = id !== undefined && id === this.message;
+    // Text merges into the last part only within one message, this record's earlier blocks included.
+    let sameMessage = id !== undefined && id === this.message;
     this.message = id;
     for (const block of blocksOf(record.message?.content)) {
+      const part = partOf(block);
+      if (part === null) continue;
+      if (!synthetic) this.answered = true;
+      if (this.listing) continue;
       const last = current.parts[current.parts.length - 1];
-      if (block['type'] === 'text' && typeof block['text'] === 'string') {
-        if (block['text'].length === 0) continue;
-        if (sameMessage && last !== undefined && last.type === 'text') last.text += block['text'];
-        else current.parts.push({ type: 'text', text: block['text'] });
-      } else if (block['type'] === 'thinking' && typeof block['thinking'] === 'string') {
-        if (block['thinking'].trim().length === 0) continue;
-        current.parts.push({ type: 'thinking', text: block['thinking'] });
-      } else if (block['type'] === 'tool_use' && typeof block['id'] === 'string' && typeof block['name'] === 'string') {
-        const tool: Extract<MessagePart, { type: 'tool' }> = {
-          type: 'tool',
-          toolId: block['id'],
-          name: block['name'],
-          input: block['input'] ?? null,
-          output: null,
-          status: 'running',
-        };
-        current.parts.push(tool);
-        this.tools.set(block['id'], tool);
-      } else {
-        continue;
-      }
+      if (part.type === 'text' && sameMessage && last !== undefined && last.type === 'text') last.text += part.text;
+      else current.parts.push(part);
+      if (part.type === 'tool') this.tools.set(part.toolId, part);
+      sameMessage = true;
       if (current.answerAt === null) current.answerAt = at;
       current.lastAt = Math.max(current.lastAt, at);
-      if (!synthetic) this.answered = true;
     }
   }
 
@@ -311,7 +306,7 @@ class TranscriptReader {
  * only, which is what a list of sessions needs.
  */
 export async function readTranscript(file: string, listing = false): Promise<Transcript> {
-  const reader = new TranscriptReader();
+  const reader = new TranscriptReader(listing);
   await readLines(file, listing ? (line) => reader.lineForListing(line) : (line) => reader.line(line));
   return reader.finish();
 }
@@ -367,7 +362,7 @@ export interface TranscriptListing {
  * `summary` near the head need. Null when the transcript has no prompt.
  */
 export async function listTranscript(file: string): Promise<TranscriptListing | null> {
-  const reader = new TranscriptReader();
+  const reader = new TranscriptReader(true);
   const whole = await readLines(file, (line) => {
     reader.lineForListing(line);
     return !reader.hasPrompt;

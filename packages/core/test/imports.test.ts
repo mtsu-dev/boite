@@ -168,7 +168,8 @@ test('an imported thread shows only what the user typed, and is named after the 
   expect(shown).toEqual([
     { role: 'user', text: '/model' },
     { role: 'user', text: '!git status' },
-    { role: 'user', text: '/review the last commit' },
+    // Arguments are written as typed, a closing tag among them.
+    { role: 'user', text: '/review the </command-args> tag' },
     { role: 'assistant', text: 'The commit looks fine.' },
     { role: 'user', text: 'Now fix the typo in README.md' },
     // The reply to the task's notice stays the agent's, a part of its own.
