@@ -85,13 +85,15 @@ test('Activity shows a new interruption in a read conversation until that interr
   const parent = await echoThread(harness, owner, 'Parent');
   const child = await echoThread(harness, owner, 'Child');
   const thread = core.journal.getThread(child.threadId)!;
-  core.journal.putThread({ ...thread, parentThreadId: parent.threadId });
   const stopped = async (request: string) => {
+    // Establish the parent link after Echo finishes so its result does not wake the parent.
+    core.journal.putThread({ ...core.journal.getThread(thread.id)!, parentThreadId: null });
     const done = owner.next('turn.finished', turn => turn.threadId === thread.id);
     await owner.call('turns.start', { threadId: thread.id, prompt: 'Track a build', clientRequestId: request });
     const turn = await done;
     expect(turn.status).toBe('done');
     await waitFor(() => core.threads.require(thread.id).status === 'idle');
+    core.journal.putThread({ ...core.journal.getThread(thread.id)!, parentThreadId: parent.threadId });
     await owner.call('threads.markRead', { threadId: thread.id });
     const history = core.threads.agentState.backgroundHistory;
     const origin = { providerId: thread.providerId, sessionGeneration: thread.sessionGeneration ?? 0, parentTurnId: turn.id };
@@ -100,8 +102,6 @@ test('Activity shows a new interruption in a read conversation until that interr
     history.cancelSession(thread.id, origin, Date.now() + 1);
     const snapshot = await owner.call('threads.get', { threadId: thread.id });
     expect(snapshot).toMatchObject({ status: 'idle', unread: false, backgroundWait: { state: 'interrupted' } });
-    // The child's finished turn wakes its parent. Activity hides interruptions while that parent is still working.
-    await waitFor(() => core.threads.require(parent.threadId).status === 'idle');
     return snapshot.backgroundWait?.state === 'interrupted' ? snapshot.backgroundWait.at : NaN;
   };
   const inbox = async () => reading(await readState(core, 'inbox'), 'inbox').inbox;

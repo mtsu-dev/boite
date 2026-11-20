@@ -102,7 +102,10 @@ for (const width of [1280, 390]) {
         const hasDelete = await page.evaluate<boolean>(`Array.from(document.querySelectorAll('[role=menu]:not(.closing) [role=menuitem]')).some(b => b.textContent.trim() === 'Delete')`);
         expect(hasDelete).toBe(true);
         await page.evaluate(`Array.from(document.querySelectorAll('[role=menu]:not(.closing) [role=menuitem]')).find(b => b.textContent.trim() === 'Delete').click()`);
-        await page.waitFor(`document.querySelector('[data-testid=confirm-dialog]')`);
+        await page.waitFor(`(() => {
+          const dialog = document.querySelector('[data-testid=confirm-dialog]:not(.closing)');
+          return dialog && Number(getComputedStyle(dialog).opacity) === 1 && !document.querySelector('[role=menu]');
+        })()`);
         expect(await page.evaluate(`document.querySelector('[data-testid=confirm-dialog]').textContent.includes('30 days')`)).toBe(true);
         expect(await page.evaluate(`document.querySelector('[data-testid=confirm-alt]').textContent.trim()`)).toBe('Archive');
         await page.evaluate(`Promise.all(document.querySelector('[data-testid=confirm-dialog]').parentElement.getAnimations({subtree:true}).map(animation => animation.finished.catch(() => {})))`);
@@ -144,7 +147,7 @@ for (const width of [1280, 390]) {
       await page.waitFor(`!document.querySelector('[data-testid=archived-list] [data-thread-id="${archivedId}"]')`);
       expect(await page.evaluate(`globalThis.__boiteTest.workspace.active.client.call('threads.list', { includeArchived: true }).then(rows => rows.some(t => t.id === ${JSON.stringify(archivedId)}))`)).toBe(false);
       expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
-      // Phones show the retention controls on the same page as the archive.
+      // On the phone, Recently deleted is below the archive on the same page.
       if (width >= 720) {
         await page.click('[data-testid=nav-settings]');
         await page.click('[data-testid=settings-tab-general]');
