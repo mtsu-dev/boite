@@ -228,11 +228,6 @@ export function creditBalance(value: number): string {
   return formatters().credits.format(value);
 }
 
-export function cost(value: number | null): string {
-  if (value === null) return strings.common.unknown;
-  return `$${value.toFixed(3)}`;
-}
-
 export function json(value: unknown): string {
   try {
     return JSON.stringify(value, null, 2) ?? String(value);

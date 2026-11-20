@@ -10,9 +10,9 @@ import { insideTauri } from './endpoint-main';
 import { readStoredEndpoint, brought, signsOf, isEndpoint, type Endpoint } from './endpoint-storage';
 
 export { DROPPED_HOLD_MS, DROPPED_STORAGE_KEY, clearMemberDropped, keepDropped, isDropped, droppedAt, droppedSince, isMemberDropped, memberDroppedAt, setDropped } from './endpoint-dropped';
-export { ENVIRONMENTS_STORAGE_KEY, defaultEnvironmentLabel, readEnvironments, storeEnvironments, refreshLocalEnvironment, upsertEnvironment, forgetGroupOf, rememberSession, rememberDevice, removeEnvironment, removeBrought, type StoredEnvironment } from './endpoint-env';
-export { MAIN_STORAGE_KEY, readMainMachine, storeMainMachine, openOnMainMachine, insideTauri, servesThisPage, type MainMachine } from './endpoint-main';
-export { ENDPOINT_STORAGE_KEY, readStoredEndpoint, storeEndpoint, clearStoredEndpoint, opens, type Endpoint } from './endpoint-storage';
+export { readEnvironments, refreshLocalEnvironment, upsertEnvironment, forgetGroupOf, rememberSession, rememberDevice, removeEnvironment, removeBrought, type StoredEnvironment } from './endpoint-env';
+export { readMainMachine, storeMainMachine, openOnMainMachine, insideTauri, servesThisPage, type MainMachine } from './endpoint-main';
+export { readStoredEndpoint, storeEndpoint, clearStoredEndpoint, opens, type Endpoint } from './endpoint-storage';
 
 export const CORE_QUERY_PARAM = 'core';
 
