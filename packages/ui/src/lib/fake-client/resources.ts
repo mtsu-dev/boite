@@ -21,6 +21,16 @@ function usageProvider(providerId: unknown): string | undefined {
   return providerId;
 }
 
+function usageLedger(ctx: FakeContext) {
+  const projects = new Map(ctx.projects.map(project => [project.id, { name: project.name, removed: false }]));
+  const threads = new Map(ctx.threads);
+  for (const { project, threads: archived } of ctx.removedProjects.values()) {
+    projects.set(project.id, { name: project.name, removed: true });
+    for (const thread of archived) threads.set(thread.id, thread);
+  }
+  return { seeded: ctx.usageSeeded, finished: ctx.finished, projects, threads };
+}
+
 export function resources(ctx: FakeContext): ThreadResources[] {
   const out: ThreadResources[] = [];
   for (const thread of ctx.threads.values()) {
@@ -130,16 +140,17 @@ export function resourceMethods(ctx: FakeContext) {
       if (params.projectId !== undefined && params.projectId !== null && (typeof params.projectId !== 'string' || !params.projectId.trim())) {
         throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'projectId: expected a project id or null' });
       }
-      return fakeUsageHistory(edges, { seeded: ctx.usageSeeded, finished: ctx.finished, providerId, projectId: params.projectId });
+      return fakeUsageHistory(edges, { ...usageLedger(ctx), providerId, projectId: params.projectId });
     },
     'usage.thread': async (params) => {
       const edges = usageEdges(params?.edges);
       if (typeof params.threadId !== 'string' || !params.threadId.trim()) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'threadId: expected a thread id' });
       const providerId = usageProvider(params.providerId);
-      if (!ctx.threads.has(params.threadId) && !fakeUsageKnows(params.threadId, ctx.finished)) {
+      const ledger = usageLedger(ctx);
+      if (!ledger.threads.has(params.threadId) && !fakeUsageKnows(params.threadId, ledger.finished)) {
         throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `threadId: no thread ${params.threadId}` });
       }
-      return fakeUsageThread(params.threadId, edges, { seeded: ctx.usageSeeded, finished: ctx.finished, providerId });
+      return fakeUsageThread(params.threadId, edges, { ...ledger, providerId });
     },
   } satisfies Partial<FakeMethods>;
 }

@@ -22,6 +22,19 @@ test('usage.history filters one project, lists every project with removed ones, 
   const none = await client.call('usage.history', { edges, projectId: null });
   expect(total(none)).toBe(projects.get(null)!.turns);
   await expect(client.call('usage.history', { edges, projectId: ' ' })).rejects.toMatchObject({ code: RpcErrorCode.InvalidParams });
+
+  const project = (await client.call('projects.list', {})).find(project => project.id === 'p-boite')!;
+  const scope = { edges, projectId: project.id };
+  const threadId = 't-trace';
+  const before = await client.call('usage.thread', { edges, threadId });
+  expect(before.thread.archived).toBe(false);
+  await client.call('projects.remove', { projectId: project.id });
+  const removed = await client.call('usage.history', scope);
+  expect(removed.projects?.find(entry => entry.projectId === project.id)).toEqual({ ...projects.get(project.id), removed: true });
+  expect(removed.threads.find(thread => thread.threadId === threadId)).toMatchObject({ archived: true });
+  expect(await client.call('usage.thread', { edges, threadId })).toEqual({ ...before, thread: { ...before.thread, archived: true } });
+  expect((await client.call('projects.add', { path: project.path })).id).toBe(project.id);
+  expect(await client.call('usage.thread', { edges, threadId })).toEqual(before);
 });
 
 test('usage.thread gives a thread\'s turns oldest first, capped to the newest, and its subagents', async ({ ready }) => {
