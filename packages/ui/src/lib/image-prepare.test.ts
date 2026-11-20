@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { ATTACHMENT_MAX_BYTES, ATTACHMENTS_PER_TURN, type Attachment } from '@boite/contracts';
-import { gatherAttachments, receiveFiles } from './composer-attachments';
+import { ATTACHMENT_MAX_BYTES, ATTACHMENTS_PER_TURN, type Attachment, type ProviderSummary } from '@boite/contracts';
+import { receiveFiles } from './composer-attachments';
 import type { Store } from './store.svelte';
 import {
   IMAGE_MAX_EDGE,
@@ -151,69 +151,60 @@ describe('prepareImage', () => {
   });
 });
 
-describe('gatherAttachments', () => {
-  function holder(start: Attachment[] = [], noImages: { provider: string } | null = null, imageCodec?: ImageCodec) {
-    let held = start;
-    return {
-      get list() { return held; },
-      holder: {
-        held: () => held,
-        add: (one: Attachment) => { held = [...held, one]; },
-        replace: (lighter: Map<Attachment, Attachment>) => { held = held.map((one) => lighter.get(one) ?? one); },
-        noImages,
-        codec: imageCodec
-      }
-    };
+describe('receiveFiles', () => {
+  /** A store and a composer input whose tiles settle in place, or go when refused. */
+  function inbox() {
+    const store = { error: null } as unknown as Store;
+    const box = { input: {}, attachments: [] as Attachment[], placed() {}, replace() {}, settle(placeholder: Attachment, ready: Attachment | null) {
+      box.attachments = ready ? box.attachments.map(item => item === placeholder ? ready : item) : box.attachments.filter(item => item !== placeholder);
+    } };
+    return { store, box };
   }
+  const noImages = { name: 'Antigravity', capabilities: { images: false } } as unknown as ProviderSummary;
 
   test('a full turn of reduced screenshots goes in, the next one is refused by name', async () => {
     const fake = codec({ width: 1179, height: 2556 }, { 'image/jpeg': 150_000, 'image/png': 1_500_000 });
     const shots = Array.from({ length: ATTACHMENTS_PER_TURN + 1 }, (_, at) => file(`IMG_${at}.PNG`, 'image/png', 3_000_000));
-    const target = holder([], null, fake.codec);
-    const refused = await gatherAttachments(shots, target.holder);
-    expect(target.list).toHaveLength(ATTACHMENTS_PER_TURN);
-    expect(target.list.every((one) => one.kind === 'image' && one.mimeType === 'image/jpeg')).toBe(true);
-    expect(refused).toBe(`A turn carries at most ${ATTACHMENTS_PER_TURN} files, so IMG_${ATTACHMENTS_PER_TURN}.PNG was left out.`);
+    const { store, box } = inbox();
+    await receiveFiles(store, shots, box, null, fake.codec);
+    expect(box.attachments).toHaveLength(ATTACHMENTS_PER_TURN);
+    expect(box.attachments.every((one) => one.kind === 'image' && one.mimeType === 'image/jpeg')).toBe(true);
+    expect(store.error).toBe(`A turn carries at most ${ATTACHMENTS_PER_TURN} files, so IMG_${ATTACHMENTS_PER_TURN}.PNG was left out.`);
   });
 
   test('a provider without images refuses them before any decoding, a PDF still goes', async () => {
     const fake = codec({ width: 100, height: 100 }, { 'image/jpeg': 10 });
-    const target = holder([], { provider: 'Antigravity' }, fake.codec);
-    const refused = await gatherAttachments([file('a.png', 'image/png', 10), file('notes.pdf', 'application/pdf', 10)], target.holder);
-    expect(refused).toBe('Antigravity takes no images: send the prompt without them.');
-    expect(target.list.map((one) => one.name)).toEqual(['notes.pdf']);
+    const { store, box } = inbox();
+    await receiveFiles(store, [file('a.png', 'image/png', 10), file('notes.pdf', 'application/pdf', 10)], box, noImages, fake.codec);
+    expect(store.error).toBe('Antigravity takes no images: send the prompt without them.');
+    expect(box.attachments.map((one) => one.name)).toEqual(['notes.pdf']);
     expect(fake.encoded).toEqual([]);
   });
 
   test('a provider without images still takes HEIC, BMP and TIFF as plain files', async () => {
     const fake = codec({ width: 100, height: 100 }, { 'image/jpeg': 10 });
-    const target = holder([], { provider: 'Antigravity' }, fake.codec);
-    const refused = await gatherAttachments([file('IMG_0042.HEIC', 'image/heic', 10), file('scan.bmp', 'image/bmp', 10), file('scan.tiff', 'image/tiff', 10)], target.holder);
-    expect(refused).toBeNull();
-    expect(target.list).toMatchObject([{ kind: 'file', name: 'IMG_0042.HEIC' }, { kind: 'file', name: 'scan.bmp' }, { kind: 'file', name: 'scan.tiff' }]);
+    const { store, box } = inbox();
+    await receiveFiles(store, [file('IMG_0042.HEIC', 'image/heic', 10), file('scan.bmp', 'image/bmp', 10), file('scan.tiff', 'image/tiff', 10)], box, noImages, fake.codec);
+    expect(store.error).toBeNull();
+    expect(box.attachments).toMatchObject([{ kind: 'file', name: 'IMG_0042.HEIC' }, { kind: 'file', name: 'scan.bmp' }, { kind: 'file', name: 'scan.tiff' }]);
     expect(fake.encoded).toEqual([]);
   });
 
   test('a source over 50 MB says so, with its weight', async () => {
-    const target = holder();
-    const refused = await gatherAttachments([file('pano.jpg', 'image/jpeg', IMAGE_SOURCE_MAX_BYTES + 1)], target.holder);
-    expect(refused).toContain('pano.jpg weighs');
-    expect(target.list).toEqual([]);
+    const { store, box } = inbox();
+    await receiveFiles(store, [file('pano.jpg', 'image/jpeg', IMAGE_SOURCE_MAX_BYTES + 1)], box, null);
+    expect(store.error).toContain('pano.jpg weighs');
+    expect(box.attachments).toEqual([]);
   });
 
   test('an undecodable HEIC is attached as a file', async () => {
-    const target = holder([], null, codec(null).codec);
-    await gatherAttachments([file('IMG_0042.HEIC', 'image/heic', 1000)], target.holder);
-    expect(target.list).toMatchObject([{ kind: 'file', mimeType: 'image/heic', name: 'IMG_0042.HEIC' }]);
+    const { store, box } = inbox();
+    await receiveFiles(store, [file('IMG_0042.HEIC', 'image/heic', 1000)], box, null, codec(null).codec);
+    expect(box.attachments).toMatchObject([{ kind: 'file', mimeType: 'image/heic', name: 'IMG_0042.HEIC' }]);
   });
-});
 
-describe('receiveFiles', () => {
   test('a file refused once read leaves its slot to the next one past the cap, from this intake or a later one', async () => {
-    const store = { error: null } as unknown as Store;
-    const box = { input: {}, attachments: [] as Attachment[], placed() {}, replace() {}, settle(placeholder: Attachment, ready: Attachment | null) {
-      box.attachments = ready ? box.attachments.map(item => item === placeholder ? ready : item) : box.attachments.filter(item => item !== placeholder);
-    } };
+    const { store, box } = inbox();
     const notes = Array.from({ length: ATTACHMENTS_PER_TURN }, (_, at) => file(`note-${at}.txt`, 'text/plain', 10));
     // The heavy ones show as tiles like the rest: only their reads say they are too big.
     const heavy = (name: string) => file(name, 'application/octet-stream', ATTACHMENT_MAX_BYTES + 1);
