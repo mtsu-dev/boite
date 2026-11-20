@@ -264,13 +264,8 @@ async function startShell(options: Options, devDir: string, log: string): Promis
   }
   if (options.build) {
     run(['bun', 'run', 'build:shell:dev'], 'the Boite Dev build');
-    run(['bun', 'run', 'apps/shell/scripts/stage-sidecar.ts'], 'staging the core beside the shell');
   }
-  const manifest = join(ROOT, 'apps', 'shell', 'src-tauri', 'Cargo.toml');
-  const metadata = spawnSync('cargo', ['metadata', '--no-deps', '--format-version', '1', '--manifest-path', manifest], { encoding: 'utf8', windowsHide: true });
-  if (metadata.status !== 0) throw new Refusal(`cargo metadata failed: ${metadata.stderr}`, 1);
-  const target = (JSON.parse(metadata.stdout) as { target_directory: string }).target_directory;
-  const executable = join(target, 'release', process.platform === 'win32' ? 'boite-dev-shell.exe' : 'boite-dev-shell');
+  const executable = join(ROOT, 'apps', 'shell', 'src-tauri', 'target', 'release', process.platform === 'win32' ? 'boite-dev-shell.exe' : 'boite-dev-shell');
   if (!existsSync(executable)) throw new Refusal(`no Boite Dev shell at ${executable}: run without --no-build`, 1);
   const directory = devDir;
   const launchedAt = Date.now();

@@ -1,5 +1,6 @@
 /** Run the installed layout, from outside the checkout, without Bun on PATH. */
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { readFile, readlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { connect, type CoreClient } from '../../packages/core/src/client.ts';
@@ -8,6 +9,8 @@ import { startupEvidence } from './desktop-smoke-evidence.ts';
 
 const executable = resolve(process.argv[2] ?? '');
 if (!process.argv[2] || !existsSync(executable)) throw new Error('Expected an installed shell executable');
+const resident = process.argv.includes('--resident');
+if (resident && process.platform !== 'linux') throw new Error('The mounted AppImage smoke requires Linux');
 const directory = mkdtempSync(join(tmpdir(), 'boite-installed-'));
 const xdgDataHome = join(directory, "Données d'application");
 const data = process.platform === 'linux' ? join(xdgDataHome, 'boite2') : join(directory, 'data');
@@ -26,18 +29,21 @@ let corePid: number | undefined;
 // the stand-in CLI above; that discovery is what the smoke checks. Windows
 // still reads the runner's own profile, so its agents stay out.
 const hostAgents = process.platform === 'win32' ? '0' : undefined;
-const child = Bun.spawn([executable], {
+const launch = () => Bun.spawn([executable], {
   cwd: directory,
   env: { ...process.env, PATH: process.platform === 'win32' ? process.env.SystemRoot + '\\System32' : '/usr/bin:/bin',
     BOITE_CORE_COMMAND: undefined, BOITE_UI_DIR: undefined, BOITE_CLI_DIR: undefined,
     BOITE_CORE_EXECUTABLE: undefined, HOME: home,
     XDG_DATA_HOME: process.platform === 'linux' ? xdgDataHome : process.env.XDG_DATA_HOME,
     BOITE_DATA_DIR: process.platform === 'linux' ? undefined : data,
-    BOITE_SHELL_HIDDEN: '1', BOITE_CORE_RESIDENT: '0', BOITE_ECHO: '1', BOITE_HOST_AGENTS: hostAgents, BOITE_TELEMETRY_URL: '',
+    APPIMAGE_EXTRACT_AND_RUN: undefined,
+    BOITE_SHELL_HIDDEN: '1', BOITE_CORE_RESIDENT: resident ? '1' : '0', BOITE_ECHO: '1', BOITE_HOST_AGENTS: hostAgents, BOITE_TELEMETRY_URL: '',
     BOITE_TERMINAL_SHELL: process.platform === 'win32' ? process.env.ComSpec : '/bin/sh' },
   stdout: 'pipe', stderr: 'pipe', windowsHide: true,
   detached: process.platform !== 'win32',
 });
+const child = launch();
+let reopened: typeof child | undefined;
 const stdout = new Response(child.stdout).text();
 const stderr = new Response(child.stderr).text();
 const failures: unknown[] = [];
@@ -111,11 +117,53 @@ try {
     unwatch();
     await client.call('terminals.close', { id: terminalId });
   }
+  if (resident) {
+    const shellPath = await readlink(`/proc/${child.pid}/exe`);
+    if (!shellPath.includes('/.mount_')) throw new Error(`The AppImage shell did not start from a mount: ${shellPath}`);
+    const reader = await client.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: account.id, title: 'Resident smoke reader' });
+    child.kill();
+    await child.exited;
+    const corePath = await readlink(`/proc/${corePid}/exe`);
+    if (!corePath.startsWith(join(data, 'appimage-runtime') + '/')) {
+      throw new Error(`Resident core is still running from the AppImage: ${corePath}`);
+    }
+    const asset = /<script\b[^>]+src="([^"]+)"/.exec(page)?.[1];
+    if (!asset) throw new Error('The installed UI has no script to load after shell exit');
+    for (const path of [asset, '/manifest.webmanifest', '/sw.js']) {
+      const response = await fetch(new URL(path, origin), { signal: AbortSignal.timeout(5000) });
+      if (!response.ok || (await response.text()).includes('<!doctype html>')) {
+        throw new Error(`Resident core lost the PWA resource ${path} after the shell exited`);
+      }
+    }
+    const results = await client.call('collaboration.search', { threadId: reader.id, query: 'boite where' });
+    if (!results.matches.some(value => value.threadId === thread.id && value.matched.includes('chat'))) {
+      throw new Error('Resident core could not search journal messages after the shell exited');
+    }
+    const done = client.next('turn.finished', value => value.threadId === thread.id, 15_000);
+    await client.call('turns.start', { threadId: thread.id, prompt: '[spawn:boite where]' });
+    if ((await done).status !== 'done') throw new Error('Resident Echo turn failed after the shell exited');
+    const last = (await client.call('threads.get', { threadId: thread.id })).messages.filter(message => message.role === 'assistant').at(-1);
+    if (!last?.parts.some(part => part.type === 'text' && part.text.includes(`thread: ${thread.id}`))) {
+      throw new Error('Resident core could not run the packaged CLI after the shell exited');
+    }
+    reopened = launch();
+    // Wait until the new shell has actually adopted the original endpoint.
+    const deadline = Date.now() + seconds * 1000;
+    let attached = false;
+    while (Date.now() < deadline && reopened.exitCode === null) {
+      const logs = await readFile(join(data, 'logs', 'shell.0.ndjson'), 'utf8').catch(() => '');
+      if (logs.includes(`attached to the running core pid ${corePid} on port ${endpoint.port}`)) { attached = true; break; }
+      await Bun.sleep(100);
+    }
+    if (!attached) throw new Error('Reopening the AppImage did not attach to the resident core');
+    console.log('Mounted AppImage: PWA, packaged CLI and journal worker passed after shell exit, and reopened shell adopted the same core');
+  }
   console.log('Installed desktop: core startup, bundled UI, authenticated RPC, Unicode paths, file editing, traced CLI and terminal passed');
 } catch (error) {
   failures.push(error);
 } finally {
   client?.close();
+  if (reopened) { reopened.kill(); await reopened.exited; }
   if (process.platform !== 'win32') {
     // The group belongs to this spawn, including a core that failed before
     // publishing core.json. Killing only the shell would leave it orphaned.

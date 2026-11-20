@@ -95,6 +95,11 @@ impl Spawned {
 
 pub(super) fn spawn_core(launch: &Launch) -> Result<(Spawned, Option<CoreJob>), String> {
     let CoreCommand { program, args, working_directory } = launch.command.clone()?;
+    #[cfg(target_os = "linux")]
+    let deployed = super::appimage::prepare(&launch.directory, std::path::Path::new(&program), launch.resources.as_deref())?;
+    #[cfg(not(target_os = "linux"))]
+    let deployed: Option<PathBuf> = None;
+    let program = deployed.as_ref().map(|path| path.join("boite-core")).unwrap_or_else(|| PathBuf::from(program));
     let job = if launch.resident { None } else { Some(job::create_core_job()?) };
 
     let mut command = Command::new(&program);
@@ -120,15 +125,15 @@ pub(super) fn spawn_core(launch: &Launch) -> Result<(Spawned, Option<CoreJob>), 
     } else {
         Output::Ring(Arc::new(Mutex::new(VecDeque::with_capacity(TAIL_LINES))))
     };
-    if let Some(directory) = working_directory {
+    if let Some(directory) = deployed.as_ref().or(working_directory.as_ref()) {
         command.current_dir(directory);
     }
-    if let Some(resources) = &launch.resources { configure_core_resources(&mut command, resources); }
+    if let Some(resources) = deployed.as_ref().or(launch.resources.as_ref()) { configure_core_resources(&mut command, resources); }
     platform::prepare_command(&mut command);
 
     let mut child = command
         .spawn()
-        .map_err(|error| format!("the core could not be started with `{program}`: {error}"))?;
+        .map_err(|error| format!("the core could not be started with `{}`: {error}", program.display()))?;
 
     if let Some(ref owned) = job {
         if let Err(error) = job::assign(owned, &child) {
