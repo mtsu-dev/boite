@@ -1630,9 +1630,12 @@ step owner per process, continued thread exits and parked-event replay protect
 concurrent calls. Process/thread ledgers grow with the live workload; only
 startup, owned steps and draining have deadlines, not the entire tool session.
 
-This broker currently requires the pinned x64 ntdll SHA256
-`160ef9b82e2895ef48fa031cb1cf683a8b123febf7cf7d5590cd3104864424b3`, its
-verified exports and loader site. Unsupported images fail closed. Installations
+The broker supports whichever x64 ntdll build the machine runs, so a Windows
+update does not disable it. Each process's ntdll must be the system file by
+kernel file identity, with the same timestamp, size and checksum as the
+helper's own ntdll. Both hooked exports must match the helper's stub bytes and
+offsets. The loader's first breakpoint is accepted only on an INT3 inside an
+ntdll function in the helper's own mapping. Any other image fails closed. Installations
 whose direct probe succeeds keep direct execution. `protected-tool.exe
 --diagnose-null` prints the existing device DACL without changing it. Historical
 build 26100 direct NUL failures and the positive build 26200 native fixture do
