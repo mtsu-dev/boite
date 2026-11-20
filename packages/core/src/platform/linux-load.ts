@@ -258,6 +258,14 @@ export class LinuxLoad {
    * signal: a pid may have been given to an unrelated process in the meantime.
    * No capture when the root cannot be identified.
    */
+  /** Each registered root's thread, shared until membership changes. */
+  #ownerMap(): Map<number, string> {
+    if (this.#owners !== null) return this.#owners;
+    const owners = new Map<number, string>();
+    for (const [owner, roots] of this.#pids) for (const root of roots) owners.set(root, owner);
+    return this.#owners = owners;
+  }
+
   #captureTree(pid: number, threadId: string, order: 'root-first' | 'leaves-first', startedAt?: number | null) {
     const registered = this.#births.get(threadId);
     const birth = registered?.has(pid) ? registered.get(pid) : this.#last.get(threadId)?.births.get(pid);
@@ -267,8 +275,11 @@ export class LinuxLoad {
     const root = scan.stats.get(pid) ?? this.read(`/proc/${pid}/stat`);
     if (root === null || statField(root, 22) !== birth) return null;
     const tree = new Map([[pid, birth]]);
+    const owners = this.#ownerMap();
     for (const [member] of tree) {
       for (const child of this.#children(member, scan, true)) {
+        // Sampling's rule: a root registered to another thread owns its whole branch.
+        if (owners.has(child) && owners.get(child) !== threadId) continue;
         const stat = scan.stats.get(child) ?? this.read(`/proc/${child}/stat`);
         const childBirth = stat === null ? null : statField(stat, 22);
         if (stat === null || childBirth === null || !Number.isSafeInteger(childBirth) || statField(stat, 4) !== member) continue;
@@ -338,14 +349,11 @@ export class LinuxLoad {
     /** Descendants only the listing named: a parent it remembers may be stale, so their own stat line must name a counted parent. */
     const scanOnly = new Set<number>();
     const counted = new Set<number>();
+    /** Pids skipped because only the listing named them under a parent that was not counted. */
+    const staleEdge = new Set<number>();
     const at = this.now();
     const pending = new Set(pids);
-    let owners = this.#owners;
-    if (owners === null) {
-      owners = new Map<number, string>();
-      for (const [owner, roots] of this.#pids) for (const root of roots) owners.set(root, owner);
-      this.#owners = owners;
-    }
+    const owners = this.#ownerMap();
     const members: LinuxResourceProcess[] = [];
     const names = this.#names.get(threadId);
     const sampledNames = new Map<number, { birth: number | null; comm: string; exe: string | undefined }>();
@@ -359,7 +367,7 @@ export class LinuxLoad {
         : this.read(`/proc/${pid}/stat`);
       const used = stat === null ? null : cpuTicks(stat);
       if (used === null) continue;
-      if (scanOnly.has(pid) && !counted.has(statField(stat ?? '', 4) ?? -1)) continue;
+      if (scanOnly.has(pid) && !counted.has(statField(stat ?? '', 4) ?? -1)) { staleEdge.add(pid); continue; }
       const birth = stat === null ? null : statField(stat, 22);
       const expectedBirth = this.#births.get(threadId)?.get(pid);
       if (pids.has(pid) && expectedBirth != null && birth !== expectedBirth) continue;
@@ -381,6 +389,9 @@ export class LinuxLoad {
       for (const child of [...listed ?? [], ...scan.children.get(pid) ?? []]) {
         if (owners.has(child) && owners.get(child) !== threadId) continue;
         if (listed?.includes(child)) scanOnly.delete(child); else if (!pending.has(child)) scanOnly.add(child);
+        // A pid already turned away for a stale listing edge is visited again,
+        // once, now that a current children file confirms it.
+        if (listed?.includes(child) && staleEdge.delete(child)) pending.delete(child);
         pending.add(child);
       }
     }

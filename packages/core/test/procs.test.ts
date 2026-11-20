@@ -109,6 +109,28 @@ describe('procs', () => {
       expect(fallback).not.toHaveBeenCalled();
     } finally { await registry.close(); }
   });
+  test('a managed stop hands the subtree stop the recorded lineage through an exited intermediate, never a sibling', async () => {
+    let sink!: Parameters<ProcessPlatform['retain']>[0];
+    const lineages: Array<{ pid: number; root: string | null; descendants: string[] }> = [];
+    const registry = new ProcRegistry(harness.core.journal, new Bus(), {
+      ...createPosixPlatform('linux', null), attach: () => true,
+      retain: (events) => { sink = events; },
+      terminateSubtree: (_id, pid, lineage) => { lineages.push({ pid, root: lineage?.root ?? null, descendants: [...lineage?.descendants ?? []].sort() }); },
+    });
+    try {
+      const threadId = 'recorded-lineage';
+      const child = registry.spawn(threadId, process.execPath, ['-e', 'setTimeout(() => {}, 30000)']);
+      const root = child.record.pid;
+      const at = Date.now() + 1000;
+      const exe = 'C:\\tool.exe';
+      sink.started(threadId, 200, { exe, commandLine: null, parentPid: root, startedAt: at, incarnation: '20' });
+      sink.started(threadId, 300, { exe, commandLine: null, parentPid: 200, startedAt: at + 1, incarnation: '30' });
+      sink.started(threadId, 400, { exe, commandLine: null, parentPid: 1, startedAt: at + 2, incarnation: '40' });
+      sink.exited(threadId, 200, { exitCode: 0, cpuMs: null, peakMemoryBytes: null, ioBytes: null, startedAt: at, incarnation: '20' });
+      await child.stop();
+      expect(lineages).toEqual([{ pid: root, root: null, descendants: ['200:20', '300:30'] }]);
+    } finally { await registry.close(); }
+  });
   test.skipIf(process.platform !== 'win32')('a managed stop ends only its native job subtree without taskkill', async () => {
     const registry = harness.core.procs;
     const fallback = spyOn(registry.platform, 'terminateUnassigned');
@@ -335,6 +357,34 @@ describe('procs', () => {
       await waitFor(() => !isAlive(tool), 500);
     } finally {
       if (isAlive(tool)) process.kill(tool, 'SIGKILL');
+    }
+  });
+
+  test.skipIf(process.platform !== 'linux')('a thread stop leaves a descendant registered as another root alive, in its own session', async () => {
+    const threadId = 'posix-parent-root';
+    const otherId = 'posix-separate-root';
+    const root = harness.core.procs.spawn(threadId, 'sh', ['-c', 'setsid sh -c \'echo $$; exec sleep 30\' & wait']);
+    const reader = root.proc.stdout.getReader();
+    const { value } = await reader.read();
+    reader.releaseLock();
+    const other = Number(new TextDecoder().decode(value).trim());
+    expect(other).toBeGreaterThan(0);
+    let exited!: (code: number | null) => void;
+    const adopted = harness.core.procs.adopt(otherId, other, 'sleep', ['30'], {
+      running: () => isAlive(other),
+      kill: () => { if (isAlive(other)) process.kill(other, 'SIGKILL'); return undefined; },
+      exited: new Promise<number | null>(resolve => { exited = resolve; }),
+    });
+    try {
+      expect(isAlive(other)).toBe(true);
+      await harness.core.procs.stopAndWait(threadId);
+      expect(root.proc.exitCode ?? root.proc.signalCode).not.toBeNull();
+      expect(isAlive(other)).toBe(true);
+    } finally {
+      if (isAlive(other)) process.kill(other, 'SIGKILL');
+      await waitFor(() => !isAlive(other), 5000);
+      exited(null);
+      await adopted.exited;
     }
   });
 

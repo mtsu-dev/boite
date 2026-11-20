@@ -7,7 +7,7 @@ import { MemoryGuard } from './memory-guard.ts';
 import type { MemoryProcess } from './memory-guard-logic.ts';
 import { registryPlatform } from './platform/index.ts';
 import { type KnownProcess, type ProcessIdentity, unseenIdentity } from './process-identity.ts';
-import type { GuardStatus, NativeProcessExit, NativeProcessInfo, ProcessPlatform } from './platform/types.ts';
+import type { GuardStatus, NativeProcessExit, NativeProcessInfo, ProcessPlatform, SubtreeLineage } from './platform/types.ts';
 import { bunUsage, ResourceCollection } from './resource-usage.ts';
 import { traceWrite } from './trace-writes.ts';
 import { orphansOf, parentAtStart } from './process-orphans.ts';
@@ -413,10 +413,30 @@ export class ProcRegistry {
    */
   #managedStop(threadId: ThreadId, pid: number, running: () => boolean, kill: () => Promise<void> | undefined, exited: Promise<unknown>): ManagedStop {
     return () => {
-      const stop = stopProcess(this.platform, threadId, pid, !this.unassigned.has(pid), pid > 0 && running(), kill);
+      const stop = stopProcess(this.platform, threadId, pid, !this.unassigned.has(pid), pid > 0 && running(), kill, () => this.#lineage(threadId, pid));
       this.#trackStop(stop, threadId);
       return Promise.all([stop, exited.catch(() => null)]).then(() => undefined);
     };
+  }
+
+  /**
+   * The captured parent links under the live root `pid`: each traced process,
+   * running or exited, whose chain of recorded parents reaches that root's entry.
+   * Exited intermediates stay linked through `parent`; a pid alone links nothing.
+   */
+  #lineage(threadId: ThreadId, pid: number): SubtreeLineage {
+    const root = this.#live.get(threadId)?.get(pid);
+    const descendants = new Set<string>();
+    if (root === undefined) return { root: null, descendants };
+    for (const { entry } of this.known.get(threadId)?.values() ?? []) {
+      if (entry === root || entry.identity.incarnation === null) continue;
+      const passed = new Set<Entry>();
+      for (let above = entry.parent ?? null; above !== null && !passed.has(above); above = above.parent ?? null) {
+        if (above === root) { descendants.add(`${entry.record.pid}:${entry.identity.incarnation}`); break; }
+        passed.add(above);
+      }
+    }
+    return { root: root.identity.incarnation, descendants };
   }
 
   /** The `ManagedStop` of a child `spawnChild` returned, whose SDK-shaped type has no field for it. */
@@ -621,7 +641,7 @@ export class ProcRegistry {
       const { pid } = entry.record;
       const assigned = !this.unassigned.has(pid);
       if (pid <= 0 || (terminated && assigned)) continue;
-      this.#trackStop(stopProcess(this.platform, threadId, pid, assigned, entry.running(), () => killEntry(entry)), threadId);
+      this.#trackStop(stopProcess(this.platform, threadId, pid, assigned, entry.running(), () => killEntry(entry), () => this.#lineage(threadId, pid)), threadId);
     }
     return entries.length;
   }

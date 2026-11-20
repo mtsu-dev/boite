@@ -24,7 +24,7 @@ import { applyCpuCap, applyMemoryLimit, cpuRateOfJob, memoryLimitOfJob as readMe
 import { commandLineOf, consoleHost, cpuMsOf, createdAtOfPid, creationIdentityOf, exitCodeOf, exitStatusOf, imageNameOf,
   ioBytesOf, parentPidOf, peakMemoryOf, startedAs, whenCommandLineReads, workingSetOf } from './process-reads.ts';
 
-import type { NativeProcessExit, ProcessSample, ProcessEventSink, ProcessLimits } from '../types.ts';
+import type { NativeProcessExit, ProcessSample, ProcessEventSink, ProcessLimits, SubtreeLineage } from '../types.ts';
 
 // -- Win32 constants --------------------------------------------------------
 
@@ -383,9 +383,9 @@ export function terminateJobProcess(threadId: string, pid: number): boolean {
   if (api === null) return false;
   return api.terminateProcess(entry.handle, KILL_EXIT_CODE);
 }
-export function terminateJobSubtree(threadId: string, pid: number): void {
+export function terminateJobSubtree(threadId: string, pid: number, lineage?: SubtreeLineage): void {
   const job = threadJobs.get(threadId);
-  if (native !== null && job) killJobSubtree(native, job.handle, pid);
+  if (native !== null && job) killJobSubtree(native, job.handle, pid, lineage);
 }
 
 /**

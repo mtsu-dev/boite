@@ -152,6 +152,16 @@ export interface HeldFileLock {
 /** Locks `file`, created if missing, or answers null while another holder has it, one in this process included. */
 export type FileLocker = (file: string) => HeldFileLock | null;
 
+/**
+ * What the registry recorded under a root: the root's incarnation, and the
+ * `pid:incarnation` of each process whose captured parent chain reaches it,
+ * through intermediates that may have exited since.
+ */
+export interface SubtreeLineage {
+  root: string | null;
+  descendants: ReadonlySet<string>;
+}
+
 /** OS services used by the shared process registry. No native imports here. */
 export interface ProcessPlatform {
   /** Model tool execution only. Trusted account/control processes never gain authority from this descriptor. */
@@ -197,7 +207,7 @@ export interface ProcessPlatform {
   /** A held Windows handle, or a matching registered/sampled POSIX birth. */
   terminateProcess(threadId: string, pid: number, startedAt?: number | null): boolean;
   /** Stop this assigned root and its live descendants using handles in the same job. */
-  terminateSubtree?(threadId: string, pid: number): void;
+  terminateSubtree?(threadId: string, pid: number, lineage?: SubtreeLineage): void;
   /** Stop descendants that may have left a POSIX process group, while their root can still identify them. */
   stopDescendants?(threadId: string, pid: number): Promise<void> | undefined;
   /**
