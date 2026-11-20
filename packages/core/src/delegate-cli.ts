@@ -168,7 +168,7 @@ export async function delegateCommand(client: CoreClient, threadId: string, rest
         teamLine(view, runs),
         ...view.agents.flatMap(agent => agentRow(agent, now)),
         ...runs.map(run => runRow(run, now)),
-        ...councils.map(council => cli ? cli.councilRow(council, now) : `${council.id} council ${council.status}`),
+        ...(cli ? councils.map(council => cli.councilRow(council, now)) : []),
         ...(!view.agents.length && !runs.length && !councils.length ? ['No subagent yet: boite delegate spawn "<brief>" starts one.']
           : busyTeam ? ['Results arrive as messages: keep working or end your turn, do not poll.'] : []),
       ], { ...view, workflows: runs, councils });
