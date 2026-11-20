@@ -53,7 +53,7 @@ test('a dialog waiting for an answer holds the window chords', async ({ app: _ap
  * be offered them, once as the desktop, which must still have every one.
  */
 
-test('a paired device is offered none of the affordances the core refuses it', async () => {
+test('a paired device is offered none of the affordances the core refuses it', async ({ viewport }) => {
   await mountOnFake('/?fake=1&principal=session');
   expect(store.principal).toBe('session');
   expect(store.owner).toBe(false);
@@ -84,9 +84,15 @@ test('a paired device is offered none of the affordances the core refuses it', a
   expect(menuValues()).toEqual(['back', 'secrets', 'archive-project']);
   press('Escape');
   await waitFor(() => document.querySelector('[data-testid=context-menu]') === null);
-  // The phone's own header manages no project at all.
+  // Mobile navigation loads only once the window is narrow.
+  expect(document.querySelector('[data-testid=mobile-header]')).toBeNull();
+  viewport.resize(true);
   await showMobileThreads();
+  expect(document.querySelector('[data-testid=mobile-header]')).not.toBeNull();
+  // The phone's own header manages no project at all.
   expect(document.querySelector('[data-testid=mobile-project-actions]')).toBeNull();
+  viewport.resize(false);
+  await waitFor(() => document.querySelector('[data-testid=mobile-header]') === null);
 
   store.showSettings('machines');
   await waitFor(() => document.querySelector('[data-testid=machines-page]') !== null);
@@ -99,7 +105,8 @@ test('a paired device is offered none of the affordances the core refuses it', a
   expect(store.error).toBeNull();
 });
 
-test('the desktop still has every one of them', async ({ app: _app }) => {
+test('the desktop still has every one of them', async ({ viewport }) => {
+  await mountOnFake();
   expect(store.principal).toBe('owner');
   expect(store.owner).toBe(true);
 
@@ -165,9 +172,15 @@ test('the desktop still has every one of them', async ({ app: _app }) => {
   expect(menuValues()).toEqual(['new', 'copy', 'rename', 'archived', 'manage']);
   press('Escape');
   await waitFor(() => document.querySelector('[data-testid=context-menu]') === null);
-  // The phone's own header manages no project at all.
+  // Mobile navigation loads only once the window is narrow.
+  expect(document.querySelector('[data-testid=mobile-header]')).toBeNull();
+  viewport.resize(true);
   await showMobileThreads();
+  expect(document.querySelector('[data-testid=mobile-header]')).not.toBeNull();
+  // The phone's own header manages no project at all.
   expect(document.querySelector('[data-testid=mobile-project-actions]')).toBeNull();
+  viewport.resize(false);
+  await waitFor(() => document.querySelector('[data-testid=mobile-header]') === null);
 
   store.showSettings('machines');
   await waitFor(() => document.querySelector('[data-testid=group-add-device]') !== null);

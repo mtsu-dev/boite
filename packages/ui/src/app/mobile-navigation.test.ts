@@ -15,7 +15,8 @@ vi.mock('../lib/mobile-navigation', async (original) => {
   return { ...real, get mobileNavigation() { return navigation.part; } };
 });
 
-test('a navigation chunk that fails after the core answered says so, and a retry brings the phone header', async () => {
+test('a navigation chunk that fails after the core answered says so, and a retry brings the phone header', async ({ viewport }) => {
+  viewport.resize(true);
   const { LazyComponent } = await import('../lib/lazy-component.svelte');
   let calls = 0;
   navigation.part = new LazyComponent(() => {
