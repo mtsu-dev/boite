@@ -35,7 +35,7 @@ test('commands stay folded while live text remains visible during parallel activ
   `);
   // The call and the reasoning after it are one folded line that names the running call.
   await page.waitFor(`document.querySelector('${id('tool-group')}[data-live=true]')`);
-  await page.evaluate(`window.__deliveryParagraph = document.querySelector('${id('paragraph')}')`);
+  await page.evaluate(`void (window.__deliveryParagraph = document.querySelector('${id('paragraph')}'))`);
   for (const width of [1300, 390]) {
     await page.send('Emulation.setDeviceMetricsOverride', { width, height: 850, deviceScaleFactor: 1, mobile: width < 720 });
     expect(await page.evaluate(`document.querySelector('${id('tool-group-toggle')}').getAttribute('aria-expanded')`)).toBe('false');
