@@ -34,7 +34,7 @@
  */
 
 import type { ServerWebSocket } from 'bun';
-import { BROWSER_STREAM_ROUTE, BROWSER_STREAM_TICKET, FILE_ROUTE, GROUP_RELAY_ROUTE, PROTOCOL_VERSION, RPC_PATH, RpcCloseCode, RpcErrorCode, VIEW_ROUTE } from '@boite/contracts';
+import { BROWSER_STREAM_ROUTE, BROWSER_STREAM_TICKET, FILE_ROUTE, GROUP_RELAY_ROUTE, PROTOCOL_VERSION, RPC_PATH, RpcCloseCode, RpcErrorCode, VIEW_ROUTE, type RpcError } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { messageOf } from '../errors.ts';
 import { TextSocket } from '../ws-client.ts';
@@ -156,7 +156,7 @@ type Upstream = TextSocket;
  * token; null altogether for anything else.
  */
 /** The client's credential for this machine: its key, or a device's signature for this machine. */
-export type RelayAuthenticator = (credential: string | object) => { sessionId: string | null } | null;
+export type RelayAuthenticator = (credential: string | object) => { sessionId: string | null } | { revocation: RpcError } | null;
 
 /** What the core sees of the server's relay: how many sockets it carries, and a way to drop those to former members. */
 export interface RelaySink {
@@ -402,12 +402,16 @@ export class RelayPipe {
       return;
     }
     const { relay, ...rest } = frame.params;
-    // A failure here is this machine's, not the other member's: never Unauthorized, which the client would take for its key there being revoked.
     const holder = (typeof relay === 'string' && relay.length > 0 && relay.length <= 512) || (typeof relay === 'object' && relay !== null) ? this.#authenticate(relay) : null;
     if (holder === null) {
       // The machine behind it never sees this socket, and the client only knows it was refused: nobody else can tell. Never the key itself.
       this.#core.log('warn', `relay: refused to carry a client to ${this.coreId.slice(0, 8)}: ${relay === undefined ? 'its hello carried no relay key' : 'its relay key or signature opens nothing here'}`);
       this.#refuse(id, RpcErrorCode.Refused, `${this.#name()} carries to the other machines of its group only a client paired with it: hello relay must be this client's key for ${this.#name()}, or its device signature for it`, 1008);
+      return;
+    }
+    if ('revocation' in holder) {
+      const { code, message, data } = holder.revocation;
+      this.#refuse(id, code, message, RpcCloseCode.Unauthorized, data);
       return;
     }
     this.authenticated = true;
@@ -533,9 +537,9 @@ export class RelayPipe {
     return this.#core.info().hostname ?? 'this machine';
   }
 
-  #refuse(id: number | string, code: number, message: string, closeCode: number): void {
+  #refuse(id: number | string, code: number, message: string, closeCode: number, data?: unknown): void {
     try {
-      this.#socket?.send(JSON.stringify({ jsonrpc: '2.0', id, error: { code, message } }));
+      this.#socket?.send(JSON.stringify({ jsonrpc: '2.0', id, error: { code, message, data } }));
     } catch (error) {
       this.#core.log('warn', `relay: ${messageOf(error)}`);
     }

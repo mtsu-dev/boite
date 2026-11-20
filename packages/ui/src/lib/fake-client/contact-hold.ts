@@ -8,6 +8,7 @@ import type { FakeContext } from './context';
  * as it now stands, its own mail kept.
  */
 const mail = new WeakMap<FakeContext, Map<ThreadId, string[]>>();
+const toolHolds = new WeakMap<FakeContext, Set<ThreadId>>();
 // The shared-compute fake names its remote job threads, where a history stops.
 const workers = new WeakMap<FakeContext, (threadId: ThreadId) => boolean>();
 
@@ -56,13 +57,27 @@ function settle(ctx: FakeContext, changed: ThreadId[]): void {
 
 /** Mail from these contacts, outside a shared project, reached the thread; earlier holders stay. */
 export function holdContactMail(ctx: FakeContext, threadId: ThreadId, contacts: string[]): void {
+  recordContactDelivery(ctx, threadId);
   heldMail(ctx).set(threadId, [...new Set([...(heldMail(ctx).get(threadId) ?? []), ...contacts])]);
   settle(ctx, [threadId]);
 }
 
+export function recordContactDelivery(ctx: FakeContext, threadId: ThreadId): void {
+  let holds = toolHolds.get(ctx);
+  if (!holds) { holds = new Set(); toolHolds.set(ctx, holds); }
+  holds.add(threadId);
+}
+
+export function contactToolsHeld(ctx: FakeContext, threadId: ThreadId): boolean {
+  return toolHolds.get(ctx)?.has(threadId) ?? false;
+}
+
 export function trustContactMail(ctx: FakeContext, threadId: ThreadId): void {
   const ids = contactHistory(ctx, threadId);
-  for (const id of ids) heldMail(ctx).delete(id);
+  for (const id of ids) {
+    heldMail(ctx).delete(id);
+    toolHolds.get(ctx)?.delete(id);
+  }
   settle(ctx, ids);
 }
 

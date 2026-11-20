@@ -11,9 +11,12 @@ import { PLUGIN_PERMISSIONS, pluginClosedReason, pluginPermissionFor, type Plugi
 
 /** Dedicated stores can sit inside an otherwise legitimate project root. */
 export const DEVICE_HOME_CREDENTIAL_STORES: readonly string[] = [
-  '.codex', '.claude', '.gemini', '.pi', '.password-store', '.mozilla',
+  '.codex', '.claude', '.gemini', '.grok', '.hermes', '.pi', '.vibe', '.password-store', '.mozilla',
   '.config/gh', '.config/rclone', '.config/google-chrome', '.config/chromium',
-  '.local/share/opencode', '.local/share/keyrings',
+  '.config/muse', '.local/share/muse', '.local/state/muse',
+  '.config/opencode', '.local/share/opencode',
+  '.config/opencode-v2', '.local/share/opencode-v2', '.local/state/opencode-v2', '.cache/opencode-v2',
+  '.local/share/keyrings', 'AppData/Local/hermes',
   'AppData/Roaming/GitHub CLI', 'AppData/Roaming/Mozilla/Firefox',
   'AppData/Local/Google/Chrome/User Data', 'AppData/Local/Chromium/User Data',
   'Library/Application Support/Google/Chrome', 'Library/Application Support/Chromium',

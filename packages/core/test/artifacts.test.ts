@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test';
 import { writeFileSync, rmSync, openSync, ftruncateSync, closeSync, readdirSync, utimesSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { AGENT_ENV, ARTIFACT_MAX_BYTES, FILE_TICKET_TTL_MS } from '@boite/contracts';
+import { AGENT_ENV, ARTIFACT_MAX_BYTES, FILE_TICKET_TTL_MS, secretMask, type Message } from '@boite/contracts';
 import { Journal } from '../src/journal.ts';
 import { FileTickets } from '../src/workdir.ts';
 import { readArtifact } from '../src/artifacts.ts';
@@ -55,10 +55,15 @@ test('agent CLI publishes a real command result and its capture with the verific
   const tool = call.parts.find(part => part.type === 'tool')!;
   expect(tool.output).toBeTruthy();
   const line = tool.output!.trim().split(/\r?\n/)[0]!;
+  const marker = 'PROOF_TEST_VALUE_3429bc';
+  harness.core.secrets.masks.add('thread:another-thread', 'test', 'PROOF_VALUE', new TextEncoder().encode(marker));
+  const published = new Map<string, Message>();
+  await client.call('threads.subscribe', { threadId });
+  client.on('message.started', message => published.set(message.id, message));
   writeFileSync(join(harness.dataDir, 'desktop.png'), 'capture bytes');
   async function proof(result: string) {
     let out = '', err = '';
-    const code = await runCli(['proof', call.id, result, 'Windows reste à vérifier.', 'desktop.png', '--json'], {
+    const code = await runCli(['proof', call.id, result, `Windows reste à vérifier. ${marker}`, 'desktop.png', '--json'], {
       cwd: harness.dataDir, env: { [AGENT_ENV.threadId]: threadId, [AGENT_ENV.coreUrl]: harness.url, [AGENT_ENV.token]: harness.core.agents.tokenFor(threadId) },
       out: text => out += text, err: text => err += text,
     });
@@ -72,8 +77,11 @@ test('agent CLI publishes a real command result and its capture with the verific
     { type: 'text', text: expect.stringContaining(`${line}\n`), proof: true },
     expect.objectContaining({ type: 'file', name: 'desktop.png' }),
   ]);
-  expect(message.parts[0].text).toContain('Windows reste à vérifier.');
+  expect(message.parts[0].text).toContain(`Windows reste à vérifier. ${secretMask('PROOF_VALUE')}`);
+  expect(message.parts[0].text).not.toContain(marker);
   expect(harness.core.journal.getMessage(message.id)).toMatchObject({ turnId: turn.id, parts: message.parts });
+  await waitFor(() => published.has(message.id));
+  expect(published.get(message.id)?.parts).toEqual(message.parts);
   expect(turnResult(harness.core, finished)).toBe(answer);
 });
 

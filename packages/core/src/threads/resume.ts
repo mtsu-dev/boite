@@ -1,4 +1,4 @@
-import type { RpcEvents, RpcParams, ThreadId, ThreadRecovery, ThreadRetry, ThreadSummary, Turn, TurnId } from '@boite/contracts';
+import type { PluginActor, RpcEvents, RpcParams, ThreadId, ThreadRecovery, ThreadRetry, ThreadSummary, Turn, TurnId } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { messageOf, refused } from '../errors.ts';
 import type { ThreadStore } from '../threads.ts';
@@ -184,7 +184,7 @@ export class ResumePlanner {
     this.#announce(turn.threadId);
   }
 
-  resume({ threadId, turnId, model, expectedSelectionVersion }: RpcParams<'turns.resume'>): Turn {
+  resume({ threadId, turnId, model, expectedSelectionVersion }: RpcParams<'turns.resume'>, plugin?: PluginActor): Turn {
     const thread = this.threads.require(threadId);
     const id = manualRequestId(turnId);
     const receipt = this.#core.journal.turnRequest(threadId, id);
@@ -201,7 +201,7 @@ export class ResumePlanner {
     const lead = recovery.kind === 'usage-limit' ? `A usage limit interrupted the previous turn. ${CARRY_ON}` : CARRY_ON;
     const choice = changed ? { ...thread, model, effort: null, speed: null } : undefined;
     return this.threads.startTurn(threadId, { ...this.threads.handoff.continuation(source, lead), display: 'Resumed interrupted work' },
-      { kind: 'resume', reason: 'manual', requestId: id }, {
+      { kind: 'resume', reason: 'manual', requestId: id, plugin }, {
         choice, expectedSelectionVersion,
         persistAdmission: () => {
           const record = this.#load();

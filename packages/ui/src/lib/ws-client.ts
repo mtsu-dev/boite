@@ -4,7 +4,7 @@ import { RELEASE_VERSION } from './release';
 import { signedDeviceRevocation, signedUngrouped, type DeviceKey } from './device-key';
 import {
   PROTOCOL_VERSION, RPC_CHUNK_BYTES, RPC_MAX_FRAME_BYTES, RpcCloseCode, RpcErrorCode,
-  type ClientName, type CoreInfo, type DeviceHello, type DeviceRevokedData, type Principal, type UngroupedData,
+  type ClientName, type CoreInfo, type DeviceRevokedData, type Principal, type UngroupedData,
   type RpcEventName, type RpcMethodName, type RpcParams, type RpcResult, type StreamChannel, type ThreadId
 } from '@boite/contracts';
 import type { CallOptions, ClientState, EventHandler, FrameSocket, ObservableClient, Session, SocketLike, WsClientOptions } from './client';
@@ -12,7 +12,7 @@ import { RpcFailure, closedFailure, droppedFailure, transportFailure, unanswered
 import { receiveFrame, type Pending } from './ws-client-frames';
 import {
   IDLE_PROBE_MS, PROBE_DEADLINE_MS, QUIET_CALL_MS, RACE_AFTER_HIDDEN_MS, RESUME_PROBE_MS, MESSAGE_TOO_BIG, STEADY_MS, UPLOAD_FLOOR_BYTES_PER_S,
-  browserSocket, defaultBackoff, frameBytes, isLoopbackUrl, megabytes, openDeadline, pageHidden, quickRetry, rpcUrl, streamUrl
+  browserSocket, closeQuietly, defaultBackoff, frameBytes, isLoopbackUrl, megabytes, openDeadline, pageHidden, quickRetry, rpcUrl, streamUrl
 } from './ws-client-utils';
 
 /**
@@ -32,15 +32,6 @@ type Signer = Omit<NonNullable<WsClientOptions['signer']>, 'key'> & { key: Devic
 const NO_HANDLERS = new Map<string, Set<(payload: unknown) => void>>();
 const RESUMED = 'connection resumed; check the conversation before resending';
 
-/** Closes a socket with its handlers taken off first, so its close reaches nothing. */
-function closeQuietly(socket: SocketLike): void {
-  socket.onopen = null;
-  socket.onmessage = null;
-  socket.onclose = null;
-  socket.onerror = null;
-  socket.close();
-}
-
 export class WsClient implements ObservableClient {
   #options: Required<Omit<WsClientOptions, 'clientName' | 'version' | 'device' | 'grant' | 'ticket' | 'paired' | 'relay' | 'signer' | 'onDevice' | 'onSession' | 'onRevoked' | 'onUnauthorized' | 'onUngrouped'>> & {
     clientName: ClientName;
@@ -59,7 +50,7 @@ export class WsClient implements ObservableClient {
   #nonce: string;
   /** The token is a pairing's session key, so a hello it no longer opens is a revoke. */
   #paired: boolean;
-  #relay: (() => string | DeviceHello | null) | null;
+  #relay: NonNullable<WsClientOptions['relay']> | null;
   #signer: Signer | null;
   #replacedRevokedKey = false;
   #onDevice: ((device: string, coreId: string) => unknown) | null;
@@ -492,11 +483,6 @@ export class WsClient implements ObservableClient {
       socket.onclose = (event) => {
         if (aside()) { dropAside('connection closed'); return; }
         const wasReady = this.#state === 'ready';
-        if (wasReady && event?.code === RpcCloseCode.DeviceRevoked && this.#signer !== null) {
-          this.close();
-          this.#onRevoked?.();
-          return;
-        }
         const incompatible = event?.code === RpcCloseCode.ProtocolMismatch;
         if (incompatible) this.#manuallyClosed = true;
         const reason = event?.code === MESSAGE_TOO_BIG
@@ -541,7 +527,9 @@ export class WsClient implements ObservableClient {
         // The machine this hello is signed for, and its nonce: what a refusal saying it is in no group must be signed over.
         const meant = hello.device !== undefined && 'nonce' in hello.device ? { coreId: signer?.coreId ?? null, nonce: hello.device.nonce } : null;
         const sentAt = Date.now();
-        this.#send(socket, 'hello', { ...hello, ...(relay === null ? {} : { relay }) }, undefined, candidate?.pending ?? this.#pending).then(
+        const relayDevice = relay !== null && typeof relay !== 'string' ? relay : null;
+        const relayCredential = typeof relay === 'string' ? relay : relay?.hello;
+        this.#send(socket, 'hello', { ...hello, ...(relayCredential === undefined ? {} : { relay: relayCredential }) }, undefined, candidate?.pending ?? this.#pending).then(
           (result) => {
             if (aside()) {
               // The old socket proved alive first, or the client closed: this one goes, unheard.
@@ -605,6 +593,28 @@ export class WsClient implements ObservableClient {
             // A candidate refused is no verdict on the client: the reconnect after a dead probe hears it again.
             if (aside()) { dropAside(error instanceof Error ? error.message : String(error)); return; }
             if (settled || this.#socket !== socket) return;
+            const unauthorized = error instanceof RpcFailure && error.code === RpcErrorCode.Unauthorized;
+            const signedHello = signer !== null && grant === null;
+            let verified = false;
+            let retryClosed: SocketLike['onclose'] = null;
+            if (signedHello && unauthorized && (error.data as Partial<DeviceRevokedData> | undefined)?.reason === 'device-revoked') {
+              // The hello's error and the closing frame can arrive back to back.
+              retryClosed = socket.onclose;
+              closeQuietly(socket);
+              const deviceId = signer.key!.id;
+              const challenges = [meant, relayDevice?.hello.id === deviceId
+                ? { coreId: relayDevice.coreId, nonce: relayDevice.hello.nonce } : null];
+              const signatures = await Promise.all(challenges.map(challenge => challenge?.coreId
+                ? signedDeviceRevocation(challenge.coreId, challenge.nonce, deviceId, error.data).catch(() => false) : false));
+              if (settled || this.#socket !== socket) return;
+              verified = signatures.some(Boolean);
+            }
+            if (signedHello && unauthorized && !verified) {
+              fail(error.message);
+              if (retryClosed !== null) retryClosed({ code: RpcCloseCode.Unauthorized });
+              else socket.close();
+              return;
+            }
             const replacing = grant !== null && this.#replaceRevokedKey(error, signer);
             if (replacing) {
               // The core closes this socket after refusing the hello. Keep the current
@@ -632,20 +642,19 @@ export class WsClient implements ObservableClient {
             // retry would only say so again.
             // A session whose key stopped opening the core was revoked from
             // the desktop: retrying every ten seconds would never pair it again.
-            const revoked =
+            const revoked = verified ||
               (this.#principal === 'session' || (this.#paired && grant === null)) &&
-              error instanceof RpcFailure &&
-              error.code === RpcErrorCode.Unauthorized;
+              unauthorized;
             // A key another machine refused stays refused: only the core this
             // shell started changes its token under a client, on a restart, and
             // that one is followed through the retries.
-            const refused = this.#remote && error instanceof RpcFailure && error.code === RpcErrorCode.Unauthorized;
+            const refused = this.#remote && unauthorized;
             const permanent =
               revoked ||
               refused ||
               (error instanceof RpcFailure &&
                 (error.code === RpcErrorCode.InvalidParams || (grant !== null && error.code === RpcErrorCode.Unauthorized)));
-            if (error instanceof RpcFailure && error.code === RpcErrorCode.Unauthorized) this.#onUnauthorized?.(error);
+            if (unauthorized) this.#onUnauthorized?.(error);
             // Out of every group, the machine says so under its key: tried again all the same, as a group that lets it in
             // again tells it of this device. Unsigned, or signed by another machine, it is heard as "come back".
             if (error instanceof RpcFailure && error.code === RpcErrorCode.Unavailable && (error.data as Partial<UngroupedData> | undefined)?.reason === 'ungrouped' && meant?.coreId) {

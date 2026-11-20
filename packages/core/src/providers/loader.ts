@@ -35,6 +35,8 @@ import vibeShipped from './shipped/vibe.json';
 import echoShipped from './shipped/echo.json';
 import { detectionLogger, installLogger } from './install-log.ts';
 import { registerLocalCommands } from './local-command.ts';
+import { homePath } from '../paths.ts';
+import { ISOLATION_DEFAULTS, variableHome } from '../profile-share.ts';
 
 /**
  * Echo is the fake agent the tests and the bench drive: no CLI, it repeats the
@@ -411,6 +413,36 @@ export class ProviderRegistry {
 
   get(id: ProviderId): ProviderDescriptor | undefined {
     return this.entries.get(id)?.descriptor;
+  }
+
+  /** Declared roots and any relocations in this machine's provider profiles. */
+  credentialRoots(): string[] {
+    const protectedRoots = new Set<string>();
+    for (const { descriptor } of this.entries.values()) {
+      const roots = descriptor.roots.filter(root => isAbsolute(root) && !root.includes('{isolationDir}'));
+      for (const root of roots) protectedRoots.add(root);
+      const profile = profileFor(descriptor);
+      if (profile === undefined || descriptor.auth.kind === 'none') continue;
+      for (const key of Object.keys(profile.isolation)) {
+        const location = variableHome(key, profile);
+        if (location === null || !isAbsolute(location)) continue;
+        if (!key.startsWith('XDG_')) {
+          protectedRoots.add(location);
+          continue;
+        }
+        const segments = ISOLATION_DEFAULTS[key];
+        if (segments === undefined) continue;
+        const base = join(homePath(), ...segments);
+        // XDG homes are shared by applications. Only relocate the provider's own subtrees.
+        for (const root of roots) {
+          const child = relative(base, root);
+          if (child !== '' && child !== '..' && !child.startsWith(`..${sep}`) && !isAbsolute(child)) {
+            protectedRoots.add(join(location, child));
+          }
+        }
+      }
+    }
+    return [...protectedRoots];
   }
 
   require(id: ProviderId): ProviderDescriptor {
