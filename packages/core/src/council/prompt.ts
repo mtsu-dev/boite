@@ -1,4 +1,3 @@
-import { markFeature } from '@boite/contracts';
 import { COUNCIL_LIMITS, councilLabel, councilScore, councilTable, type Council, type CouncilMember } from '@boite/contracts';
 
 /**
@@ -88,6 +87,3 @@ export function endedMessage(council: Council): string {
     ...(council.roundsDone > 0 && !council.legacy ? [councilTable(council)] : []),
   ].join('\n\n');
 }
-
-// Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
-markFeature('boite-feature:debates');

@@ -48,7 +48,7 @@ run(`a mochi's cold wake, ${VARIANT}`, async () => {
   const { minTokens } = COLD_WAKE;
   try {
     const owner = await h.connect();
-    if (KEY.length > 0) await owner.call('subscriptionProxy.key', { key: KEY });
+    if (KEY.length > 0) await owner.call('subscriptionProxy.configure', { subscriptionProxy: (await owner.call('settings.get', {})).subscriptionProxy!, key: KEY });
     // The mochi gets no tool on the host: every request it makes is refused, the same way in both variants.
     void (async () => {
       while (denying) {

@@ -2,10 +2,9 @@
  * The Home page's state for one machine: its contacts, their requests, the
  * contact settings and the Tailscale side, read with `contacts.get` and read
  * again on `contacts.updated`. The Contacts page, lists and request notice
- * load it with the Contacts experiment.
+ * load it when they first show.
  */
 
-import { markFeature } from '@boite/contracts';
 import type { Contact, ContactInvite, ContactRequest, ContactSettings, ContactsState, ContactTailscale, ProjectId, ThreadId } from '@boite/contracts';
 import { untrack } from 'svelte';
 import { errorText } from './errors';
@@ -377,6 +376,3 @@ export async function copyText(text: string, field?: HTMLInputElement | HTMLText
     return !!field && !!document.execCommand?.('copy');
   }
 }
-
-// Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
-markFeature('boite-feature:contacts');

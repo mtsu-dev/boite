@@ -5,9 +5,6 @@ member reviews alone, read-only, without seeing the others, and gives a score
 out of 10 with its remarks. Use it for a second, third and fourth opinion on
 a diff, a plan or a design choice.
 
-Experimental, in Nightly builds only: turn it on in Settings, Experiments,
-Council.
-
 Nobody debates and nobody votes. The answers go back to the conversation that
 started the council, which can ask the same members for one more round. Each
 full pass is one round.
@@ -18,14 +15,13 @@ come from your instructions to the agent.
 
 ## Start a council
 
-1. Turn on the Council experiment.
-2. In a conversation, ask the agent for a council review, for example "ask a
+1. In a conversation, ask the agent for a council review, for example "ask a
    council to review this migration plan". You can name the models.
-3. The conversation shows a council card: the members' faces, the request,
+2. The conversation shows a council card: the members' faces, the request,
    the round or state, and Open the salon.
-4. When every member has answered, the agent gets one message with each answer
+3. When every member has answered, the agent gets one message with each answer
    and its score, then a table of scores by round.
-5. The agent can ask the same members for another round. They review the
+4. The agent can ask the same members for another round. They review the
    whole work again from scratch.
 
 Unless you or your instructions name others, the members are one model each from Claude Code, Codex and
@@ -94,5 +90,4 @@ plan mode.
 
 - [Subagents](subagents.md): handing work to one child at a time.
 - [Workflows](workflows.md): plans of many steps.
-- [Experiments](experiments.md): the switches in Settings, Experiments.
 - Technical reference: [council](internals/council.md).

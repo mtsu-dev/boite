@@ -11,7 +11,7 @@ test('queued prompts sit above the activity dock attached to the input', async (
   const server = await startUi(port);
   let page: BrowserPage | undefined;
   try {
-    page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&open=recent&machines=1`, windowSize: { width: 1300, height: 850 } });
+    page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&open=recent&machines=1&contactNotice=0`, windowSize: { width: 1300, height: 850 } });
     await page.click('[data-thread-id="t-trace"]');
     await page.waitFor(`globalThis.__boiteTest.workspace.active.openThread?.id === 't-trace'`);
     await page.evaluate(`(() => {

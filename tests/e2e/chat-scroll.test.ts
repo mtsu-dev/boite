@@ -77,7 +77,7 @@ test('reader input cancels the lift and input from another client preserves the 
 beforeAll(async () => {
   const port = await freePort();
   server = await startDevUi(port);
-  url = `http://127.0.0.1:${port}/?fake=1&open=recent&long=1`;
+  url = `http://127.0.0.1:${port}/?fake=1&open=recent&long=1&contactNotice=0`;
   page = await BrowserPage.launch({ url });
 }, 60_000);
 afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);

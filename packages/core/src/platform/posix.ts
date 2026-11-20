@@ -1,4 +1,4 @@
-import { keepAwakeCommands, posixKeepAwake } from './posix-keep-awake.ts';
+import { keepAwakeAvailable, keepAwakeCommands, posixKeepAwake } from './posix-keep-awake.ts';
 import { availableParallelism, totalmem } from 'node:os';
 import { CgroupMemoryReader } from './linux-cgroup.ts';
 import { LinuxLoad, linuxMachineMemory, linuxStartKey, linuxStartedAt } from './linux-load.ts';
@@ -40,6 +40,7 @@ export function createPosixPlatform(
     ...(os === 'linux' ? { serverUpdates: linuxServerUpdates(), androidServerUpdates: androidServerUpdates() } : {}),
     tailscaleCli: () => findTailscaleCli(os),
     keepAwake: onLost => posixKeepAwake(keepAwakeCommands(os), onLost),
+    keepAwakeAvailable: () => keepAwakeAvailable(os),
     // libX11 loads with the first `boite window` on an X11 session, never at startup.
     windowCapture: async () => {
       const refusal = windowCaptureRefusal(os, process.env);

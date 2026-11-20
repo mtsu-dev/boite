@@ -10,7 +10,7 @@ import type { ToolDocument } from '@boite/contracts';
  * on every `threads.get`, so an unbounded screenshot would be paid for on every
  * open of the thread; past the cap the reader gets a line saying so instead.
  */
-export const IMAGE_BASE64_MAX = 2 * 1024 * 1024;
+const IMAGE_BASE64_MAX = 2 * 1024 * 1024;
 
 function megabytes(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(1);

@@ -319,14 +319,12 @@ commands passed and refused, the macOS target checks and list filtering, the
 app bundle executable, the Windows command line quoting, and the service with
 fake hidden desktops. On Windows it starts a real hidden desktop, runs
 `charmap` on it, checks that its window is on that desktop and that `stop`
-ends it. `BOITE_E2E_DESKTOP=1` adds the pinned agent-desktop download and a
-snapshot, `set-value`, `get` and `screenshot` of `charmap` there;
-`BOITE_E2E_DESKTOP_SHOT=<file.png>` keeps the capture. A batch file run on a
-hidden desktop gets back arguments holding `&`, `%PATH%`, quotes and carets
-unchanged, and runs none of them. On macOS, in a GUI session that granted the
-terminal Accessibility and Screen Recording, `BOITE_E2E_DESKTOP=1` opens
-Calculator, clicks 7, captures its window and checks that the front app did
-not change.
+ends it. A batch file run on a hidden desktop gets back arguments holding
+`&`, `%PATH%`, quotes and carets unchanged, and runs none of them. On macOS,
+in a GUI session that granted the terminal Accessibility and Screen Recording,
+`BOITE_E2E_DESKTOP=1` opens Calculator, clicks 7, captures its window and
+checks that the front app did not change; `BOITE_E2E_DESKTOP_SHOT=<file.png>`
+keeps the capture.
 
 `BOITE_E2E_DESKTOP=1` with agent-desktop and `google-chrome` on `PATH` adds a
 live test: Chrome opens a page, agent-desktop finds its button in a snapshot,

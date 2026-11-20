@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
-import { recommendedPlugins } from '../src/plugins.ts';
+import { recommendedPlugins } from '../src/plugins/record.ts';
 import { startTestCore, waitFor } from './harness.ts';
 
 const live = process.env.BOITE_E2E_PLUGIN_INSTALL === '1' ? test : test.skip;

@@ -73,6 +73,17 @@ mod tests {
         assert!(only_bundle.contains(&("XDG_DATA_DIRS", None)));
         assert!(!appimage_scrub(appdir, None).iter().any(|(name, _)| *name == "XDG_DATA_DIRS"));
     }
+
+    #[test]
+    fn a_notification_passes_its_text_as_arguments_and_never_as_script() {
+        let args = |command: &Command| command.get_args().map(|arg| arg.to_string_lossy().into_owned()).collect::<Vec<_>>();
+        let linux = notify_command(false, "-t \"x\"", "body; rm -rf ~");
+        assert_eq!(linux.get_program(), "notify-send");
+        assert_eq!(args(&linux), ["--app-name=Boite", "--", "-t \"x\"", "body; rm -rf ~"]);
+        let mac = notify_command(true, "Done \"now\"", "a\\\" & do shell script \"id\"\nnext");
+        assert_eq!(mac.get_program(), "osascript");
+        assert_eq!(args(&mac), ["-e", r#"display notification "a\\\" & do shell script \"id\" next" with title "Done \"now\"""#]);
+    }
 }
 
 /// A shell that cannot start has no window of its own, and a launch from the
@@ -82,9 +93,8 @@ mod tests {
 pub(crate) fn alert(title: &str, text: &str) {
     eprintln!("[shell] {text}");
     let mut command = if cfg!(target_os = "macos") {
-        let quoted = |value: &str| format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""));
         let mut command = Command::new("osascript");
-        command.arg("-e").arg(format!("display alert {} message {} as critical", quoted(title), quoted(text)));
+        command.arg("-e").arg(format!("display alert {} message {} as critical", applescript_string(title), applescript_string(text)));
         command
     } else if let Some(zenity) = which("zenity") {
         let mut command = Command::new(zenity);
@@ -113,6 +123,41 @@ pub(crate) fn before_webview() {
     }
 }
 
-pub(crate) fn notify(_app: AppHandle, _title: String, _body: String, _thread_id: String) -> Result<(), String> {
-    Err("no system toast on this platform yet".to_string())
+/// A system notification through the desktop's own tool: `notify-send` on
+/// Linux, `osascript` on macOS. Neither tells the shell about a click, so the
+/// thread does not open from it. The tool runs on its own, never through a
+/// shell, and a thread reaps it: the command holds the main thread for no
+/// longer than the start. A missing tool is an error, which the UI turns into
+/// one "unavailable" message and the switch off.
+pub(crate) fn notify(_app: AppHandle, title: String, body: String, _thread_id: String) -> Result<(), String> {
+    let mut command = notify_command(cfg!(target_os = "macos"), &title, &body);
+    let mut child = command.spawn().map_err(|error| format!("{:?} could not start: {error}", command.get_program()))?;
+    std::thread::spawn(move || { let _ = child.wait(); });
+    Ok(())
+}
+
+/// Whether `notify` can show anything here: every Mac has `osascript`, a
+/// Linux desktop needs libnotify's `notify-send` on the PATH.
+pub(crate) fn notify_supported() -> bool {
+    cfg!(target_os = "macos") || which("notify-send").is_some()
+}
+
+fn notify_command(macos: bool, title: &str, body: &str) -> Command {
+    if macos {
+        let mut command = Command::new("osascript");
+        command.arg("-e").arg(format!("display notification {} with title {}", applescript_string(body), applescript_string(title)));
+        command
+    } else {
+        let mut command = Command::new("notify-send");
+        // `--` so a title that starts with a dash is not read as an option.
+        command.args(["--app-name=Boite", "--", title, body]);
+        command
+    }
+}
+
+/// An AppleScript string literal: its backslashes and quotes escaped, line
+/// breaks as spaces, so the text cannot end the literal and run as script.
+fn applescript_string(value: &str) -> String {
+    let flat: String = value.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
+    format!("\"{}\"", flat.replace('\\', "\\\\").replace('"', "\\\""))
 }

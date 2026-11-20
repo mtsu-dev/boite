@@ -36,7 +36,7 @@
   let ContactInboxRows = $state<typeof import('./home/ContactInboxRows.svelte').default>();
   $effect(() => {
     if (!contactsShown(store) || ContactInboxRows) return;
-    void contactsParts?.ContactInboxRows().then(module => { ContactInboxRows = module.default; }).catch(() => {});
+    void contactsParts.ContactInboxRows().then(module => { ContactInboxRows = module.default; }).catch(() => {});
   });
 
   // A thread or another draft opened from anywhere (a row here, the list, the palette, a notification) takes the card back.

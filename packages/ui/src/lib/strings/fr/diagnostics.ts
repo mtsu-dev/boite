@@ -57,7 +57,6 @@ export const fr: Translation = {
     includeLogs: 'Joindre les journaux anonymisés',
     preview: 'Aperçu',
     previewHint: 'Voici le texte que contiendra le ticket.',
-    previewUpdate: "Mettre à jour l'aperçu",
     submit: 'Créer le ticket',
     openGithub: 'Ouvrir sur GitHub',
     ghMissing: "GitHub CLI n'est pas configuré sur cette machine : le ticket s'ouvre dans votre navigateur. Glissez-y {file} pour joindre les journaux complets.",

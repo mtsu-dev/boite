@@ -25,7 +25,7 @@ import { pluginLaunch } from './launch.ts';
 
 const GATEWAY_FILE = 'gateway.json';
 /** Douane's own default port, taken when it is free. */
-export const GATEWAY_PREFERRED_PORT = 8787;
+const GATEWAY_PREFERRED_PORT = 8787;
 /** The recommended gateway the subscription proxy's local mode points at. */
 export const DOUANE_PLUGIN = 'douane';
 /** A development or test executable run instead of the installed one. */
@@ -64,12 +64,12 @@ const realClock: AppClock = {
  * `plugins/<id>/`, which an uninstall deletes. Douane keeps the folder it had
  * before it was a plugin; any other gateway gets one under `gateways/`.
  */
-export function gatewayDataDir(dataDir: string, id: string): string {
+function gatewayDataDir(dataDir: string, id: string): string {
   return id === DOUANE_PLUGIN ? join(dataDir, 'douane') : join(dataDir, 'gateways', id);
 }
 
 /** The core's environment minus every agent variable and the owner token: a gateway never talks to the core. */
-export function gatewayEnv(base: Record<string, string | undefined>): Record<string, string | undefined> {
+function gatewayEnv(base: Record<string, string | undefined>): Record<string, string | undefined> {
   const env: Record<string, string | undefined> = {};
   const agent = new Set<string>(Object.values(AGENT_ENV));
   for (const name of Object.keys(base)) {

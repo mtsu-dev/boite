@@ -30,7 +30,7 @@ export function recordingVideoType(codec: BrowserRecordingCodec | undefined): st
   return codec ? `video/mp4;codecs=${{ h264: 'avc1.640028', hevc: 'hvc1.1.6.L123.B0', av1: 'av01.0.08M.08' }[codec]}` : 'video/mp4';
 }
 /** Why a codec cannot record here, naming the ones that can; never a reason to switch codec. */
-export function unsupportedCodecError(codec: BrowserRecordingCodec, types: Record<BrowserRecordingCodec, string | null>): string {
+function unsupportedCodecError(codec: BrowserRecordingCodec, types: Record<BrowserRecordingCodec, string | null>): string {
   const available = BROWSER_RECORDING_CODECS.filter(other => types[other]).map(other => BROWSER_RECORDING_CODEC_LABELS[other]);
   return `${BROWSER_RECORDING_CODEC_LABELS[codec]} recording is not available on this desktop: its browser engine does not encode ${BROWSER_RECORDING_CODEC_LABELS[codec]} into MP4. ${available.length ? `It records ${available.join(', ')}.` : 'It records no MP4 codec.'}`;
 }

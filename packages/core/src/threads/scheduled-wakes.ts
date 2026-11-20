@@ -13,9 +13,9 @@ import { withLoad } from './records.ts';
 export const WAKE_TIMING = { graceMs: 30_000, startDelayMs: 3_000 };
 
 /** The tool an agent schedules its own next turn with (Claude Code's dynamic `/loop`). */
-export const WAKE_TOOL = 'ScheduleWakeup';
+const WAKE_TOOL = 'ScheduleWakeup';
 /** The conversation's label for the turn a wake opens. */
-export const WAKE_LABEL = 'Scheduled wake';
+const WAKE_LABEL = 'Scheduled wake';
 /** A CLI's own fire and the core's record are the same wake within this much (the CLI rounds up to the minute). */
 const SAME_WAKE_MS = 90_000;
 /** The journal setting holding every thread's wake. */

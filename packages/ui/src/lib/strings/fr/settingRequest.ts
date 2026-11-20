@@ -98,6 +98,8 @@ export const fr: Translation = {
       compactionByType: "Compaction par type d'agent",
       autoResumeLimitedThreads: 'Reprendre les fils après une limite d\'usage',
       deviceStream: "Flux en direct de l'appareil",
+      cacheKeepalive: 'Garder le cache du prompt au chaud',
+      autoGoals: 'Objectifs automatiques',
       backgroundCompaction: 'Compaction en arrière-plan',
       groupThreads: 'Laisser les autres machines lancer des fils et ajouter des projets ici',
       groupBots: "Laisser les mochis des autres machines s'occuper des projets ici",

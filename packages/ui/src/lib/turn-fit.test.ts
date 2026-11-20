@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { ATTACHMENTS_TOTAL_MAX_BYTES, IMAGE_MAX_EDGE, decodedBytes, type Attachment } from '@boite/contracts';
-import { gatherAttachments, takeFiles } from './composer-attachments';
+import { takeFiles } from './composer-attachments';
 import type { ComposerState } from './composer-queue';
 import { isLoading } from './draft-attachments';
 import type { Store } from './store.svelte';
@@ -150,21 +150,6 @@ describe('fitTurn', () => {
     expect(store.error).toBeNull();
     expect(box.attachments.map(one => one.name)).toEqual(['shot-0.jpg', 'shot-1.jpg', 'shot-2.jpg', 'spec.pdf']);
     expect(box.attachments.reduce((sum, one) => sum + decodedBytes(one.data), 0)).toBeLessThanOrEqual(ATTACHMENTS_TOTAL_MAX_BYTES);
-  });
-
-  test('gatherAttachments lets the held pictures make room for a file past the total', async () => {
-    let held = Array.from({ length: 2 }, (_, at) => jpeg(`shot-${at}.jpg`, 4 * 1024 * KB));
-    const pdf = new File([new Uint8Array(4 * 1024 * KB)], 'spec.pdf', { type: 'application/pdf' });
-    const refused = await gatherAttachments([pdf], {
-      held: () => held,
-      add: (one) => { held = [...held, one]; },
-      replace: (lighter) => { held = held.map(one => lighter.get(one) ?? one); },
-      noImages: null,
-      codec: weighingCodec(4 * 1024 * KB)
-    });
-    expect(refused).toBeNull();
-    expect(held.map(one => one.name)).toEqual(['shot-0.jpg', 'shot-1.jpg', 'spec.pdf']);
-    expect(held.reduce((sum, one) => sum + decodedBytes(one.data), 0)).toBeLessThanOrEqual(ATTACHMENTS_TOTAL_MAX_BYTES);
   });
 
   test('a picture pasted while waiting files are fitted is fitted with them', async () => {

@@ -37,7 +37,7 @@ export const MCP_TOOLS = {
   boite_question: { method: 'questions.ask', description: 'Ask an asynchronous question in this thread; the answer arrives later as a message.', schema: z.strictObject({ text, options: z.array(z.string().min(1).max(500)).max(20).optional(), multiple: z.boolean().optional() }), readOnly: false },
 } satisfies Record<string, { method: RpcMethodName; description: string; schema: z.ZodType; readOnly: boolean }>;
 
-export type McpToolName = keyof typeof MCP_TOOLS;
+type McpToolName = keyof typeof MCP_TOOLS;
 export interface McpResult {
   [key: string]: unknown;
   content: { type: 'text'; text: string }[];

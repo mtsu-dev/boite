@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, vi } from 'vitest';
 import { test } from '../test/fake-client';
 import { machineKey } from '../test/machine-key';
-import { INITIAL_PAGE_BYTES, PROTOCOL_VERSION, RpcErrorCode, TRACE_LIMIT, type ProcessRecord, type Thread, type ThreadStatus, type ThreadSummary } from '@boite/contracts';
+import { INITIAL_PAGE_BYTES, PROTOCOL_VERSION, resumeAnchor, RpcErrorCode, TRACE_LIMIT, type ProcessRecord, type Thread, type ThreadStatus, type ThreadSummary } from '@boite/contracts';
 import { RpcFailure, WsClient, droppedFailure, type SocketLike } from './client';
 import { FakeClient } from './fake-client';
 import { setNotificationSender, type Toast } from './notify';
@@ -9,7 +9,6 @@ import * as endpoints from './endpoint';
 import * as deviceKeys from './device-key';
 import { Store } from './store.svelte';
 import { LOCAL_RECOVERY_MS } from './store/connection.svelte';
-import { resumeAnchor } from './thread-rows';
 import { strings } from './strings';
 import { compareThreads } from './thread-order';
 import { confirm } from './confirm.svelte';

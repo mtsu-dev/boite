@@ -16,7 +16,7 @@ import {
 import { secureId } from './secure-id';
 import { strings } from './strings';
 
-export interface ProfileSource {
+interface ProfileSource {
   readonly settings: Settings | null;
   saveSettings(patch: Partial<Settings>): Promise<boolean>;
 }

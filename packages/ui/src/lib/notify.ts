@@ -170,8 +170,8 @@ export function limitToast(alert: QuotaAlert, key: string): Toast {
 }
 
 /** Where `sw.js` reads them. Not a `boite-ui-` cache: those go with each new build. */
-export const NOTIFICATION_WORDS_CACHE = 'boite-notify';
-export const NOTIFICATION_WORDS_PATH = '/notification-words';
+const NOTIFICATION_WORDS_CACHE = 'boite-notify';
+const NOTIFICATION_WORDS_PATH = '/notification-words';
 
 /**
  * Leaves the words where the service worker finds them. The core speaks no
@@ -186,7 +186,7 @@ export async function storeNotificationWords(words: Record<NotificationLabel, st
 }
 
 /** Where `sw.js` reads the page's language when it installs, to store that catalogue with the shell. */
-export const WORKER_LOCALE_PATH = '/locale';
+const WORKER_LOCALE_PATH = '/locale';
 
 /**
  * Leaves the language this page speaks beside the words. The next worker
@@ -360,29 +360,50 @@ async function webSender(toast: Toast): Promise<void> {
   };
 }
 
-/** Sends, and never throws: a toast that cannot go out is not an error the chat should show. */
-export async function sendNotification(toast: Toast): Promise<void> {
+/**
+ * Whether the desktop shell can show a toast on this machine: a Linux desktop
+ * without `notify-send` cannot. A shell that does not know the question
+ * answers with an error, read as yes, the way it behaved before.
+ */
+async function shellNotifies(): Promise<boolean> {
   try {
-    const send = sender ?? (desktopShell() ? shellSender : webSender);
-    await send(toast);
+    const { invoke } = await import('@tauri-apps/api/core');
+    return await invoke<boolean>('notify_supported');
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Sends, and never throws: a toast that cannot go out is not an error the chat
+ * should show. False only when the desktop shell has no way to show one on
+ * this machine, so the switch can go off and say so.
+ */
+export async function sendNotification(toast: Toast): Promise<boolean> {
+  const shell = sender === null && desktopShell();
+  try {
+    await (sender ?? (shell ? shellSender : webSender))(toast);
   } catch {
     /* no notification surface here */
+    if (shell) return shellNotifies();
   }
+  return true;
 }
 
 /**
  * Asks the platform for the permission ahead of the first toast, from the
  * settings switch: the prompt then arrives on a click the user made, not
- * in the middle of a turn. True when notifications may go out.
+ * in the middle of a turn. `unavailable`: the desktop shell has no way to
+ * show one on this machine.
  */
-export async function requestNotificationPermission(): Promise<boolean> {
+export async function requestNotificationPermission(): Promise<'granted' | 'denied' | 'unavailable'> {
   try {
-    // A Windows toast asks nobody: the system's own switch decides, silently.
-    if (desktopShell()) return true;
-    if (typeof Notification === 'undefined') return false;
-    if (Notification.permission === 'granted') return true;
-    return (await Notification.requestPermission()) === 'granted';
+    // A shell toast asks nobody: the system's own switch decides, silently.
+    if (desktopShell()) return await shellNotifies() ? 'granted' : 'unavailable';
+    if (typeof Notification === 'undefined') return 'denied';
+    if (Notification.permission === 'granted') return 'granted';
+    return (await Notification.requestPermission()) === 'granted' ? 'granted' : 'denied';
   } catch {
-    return false;
+    return 'denied';
   }
 }

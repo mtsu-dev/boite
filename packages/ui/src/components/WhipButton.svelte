@@ -1,11 +1,10 @@
 <script lang="ts">
-  import { markFeature } from '@boite/contracts';
   import type { Snippet } from 'svelte';
   import { whip } from '../lib/whip.svelte';
   import { strings } from '../lib/strings';
 
   /** `name`: the rail's name card, drawn beside the button in place of the native tooltip, as every rail button's. */
-  let { mobile = false, onthrown, name }: { mobile?: boolean; onthrown?: () => void; name?: Snippet<[string, string | null]> } = $props();
+  let { mobile = false, name }: { mobile?: boolean; name?: Snippet<[string, string | null]> } = $props();
 
   // The whip is all motion: under reduced motion the control stays visible,
   // greyed, and its tooltip says where the system turns animations back on.
@@ -28,12 +27,9 @@
     if (whip.held) { whip.held = false; return; }
     if (reduced()) return;
     whip.throw(event.clientX || window.innerWidth / 2, event.clientY || window.innerHeight / 2);
-    onthrown?.();
   }
 
-  const label = $derived(whip.held ? strings.experiments.whip.drop : off ? strings.experiments.whip.off : strings.experiments.whip.action);
-  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
-  markFeature('boite-feature:whip');
+  const label = $derived(whip.held ? strings.features.whip.drop : off ? strings.features.whip.off : strings.features.whip.action);
 </script>
 
 <button type="button" class="ghost icon whip" class:active={whip.held}

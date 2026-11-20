@@ -4,7 +4,6 @@
  * snapshot of posts a letter freezes, released when it never arrives, and the
  * final answer posted where the letter's envelope says.
  */
-import { markFeature } from '@boite/contracts';
 import { createHash } from 'node:crypto';
 import { teamPostVisible, TEAM_OWNER, TEAM_POST_MAX, type AgentLetter, type Team, type TeamAudience, type TeamMember, type TeamParty, type TeamPost, type Turn } from '@boite/contracts';
 import type { Core } from '../core.ts';
@@ -264,6 +263,3 @@ export class TeamSnapshots {
     return null;
   }
 }
-
-// Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
-markFeature('boite-feature:teams');

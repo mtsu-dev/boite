@@ -179,7 +179,7 @@ export async function moveThread(store: Store, threadId: ThreadId, projectId: Pr
 }
 
 /** What the move picker (`MoveProjectPicker.svelte`) lists for: the thread, on its own machine's store. */
-export interface MoveRequest {
+interface MoveRequest {
   store: Store;
   threadId: ThreadId;
   projectId: ProjectId | null;

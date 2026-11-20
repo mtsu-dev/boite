@@ -21,7 +21,7 @@ export interface AgentDesktopRelease {
   builds: Partial<Record<string, { entry: string; name: string; sha256: string }[]>>;
 }
 
-export const AGENT_DESKTOP_RELEASE: AgentDesktopRelease = {
+const AGENT_DESKTOP_RELEASE: AgentDesktopRelease = {
   version: '1.0.2',
   url: 'https://registry.npmjs.org/agent-desktop/-/agent-desktop-1.0.2.tgz',
   sha256: '6a2bbcc1bda2cf92a23e52675ad7ca3f36fd8cb2ac649cd01361bfc8b3820b28',

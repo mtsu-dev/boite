@@ -7,5 +7,6 @@ export const fr: Translation = {
     limits: 'Limites de ressources',
     tasks: 'Gestionnaire de tâches',
     windows: "La mise au second plan, le son et les limites de ressources s'appliquent sur un hôte Windows.",
+    windowsOnly: 'Fonctionne uniquement sur une machine Windows.',
   }
 };

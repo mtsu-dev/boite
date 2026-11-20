@@ -24,7 +24,7 @@ interface Copied {
 let last: Copied | null = null;
 
 /** The images `selected` (the slice of `text` from `start`) names; empty when none. */
-export function referencedImages(text: string, attachments: Attachment[], start: number, end: number): Map<number, Attachment> {
+function referencedImages(text: string, attachments: Attachment[], start: number, end: number): Map<number, Attachment> {
   const images = new Map<number, Attachment>();
   let at = 0;
   for (const part of imageTextParts(text, attachments)) {

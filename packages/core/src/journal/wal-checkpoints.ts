@@ -28,8 +28,8 @@ export interface CheckpointWorker {
 }
 
 type Mode = 'PASSIVE' | 'TRUNCATE';
-export interface CheckpointRequest { file: string; mode: Mode; state: Int32Array }
-export type CheckpointReply = { busy: number; log: number; checkpointed: number } | { error: string };
+interface CheckpointRequest { file: string; mode: Mode; state: Int32Array }
+type CheckpointReply = { busy: number; log: number; checkpointed: number } | { error: string };
 
 export const WAL_LIMIT_BYTES = 4 * 1024 * 1024;
 const TICK_MS = 1_000;

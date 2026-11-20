@@ -9,14 +9,14 @@
 import type { Message } from '@boite/contracts';
 
 /** What a title from a prompt is cut to, the same width a client uses on create. */
-export const PROMPT_TITLE_MAX = 60;
+const PROMPT_TITLE_MAX = 60;
 /**
  * What an agent's answer is cut to. The model is asked for under 40
  * characters, one sidebar line; this is the bound when it writes more.
  */
-export const AGENT_TITLE_MAX = 60;
+const AGENT_TITLE_MAX = 60;
 /** How much of the prompt and the answer an agent is shown to write the title. */
-export const TITLE_INPUT_MAX = 2000;
+const TITLE_INPUT_MAX = 2000;
 
 /** The text parts of a message, joined. Images, tools and thinking are not words. */
 export function textOf(message: Message): string {

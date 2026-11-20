@@ -1,4 +1,4 @@
-import { toMobileList } from './lib/mobile.ts';
+import { mobileAction } from './lib/mobile.ts';
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
@@ -8,7 +8,7 @@ let server: { close(): Promise<void> };
 let page: BrowserPage;
 let url: string;
 let button = '[data-testid="whip-button"]';
-const toggle = '[data-testid="experiment-whip"]';
+const toggle = '[data-testid="setting-whip"]';
 
 async function settled() {
   await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations()
@@ -160,11 +160,15 @@ afterEach(async () => { await page?.close(); }, 15_000);
 afterAll(async () => { await server?.close(); }, 30_000);
 
 async function enableWhip() {
+  // The Whip is on by default: start from a device that turned it off, then turn it on in Appearance.
+  await page.evaluate(`localStorage.setItem('boite.features', JSON.stringify({ whip: false }))`);
+  await page.navigate(url);
+  await page.waitFor('document.querySelector("[data-testid=nav-settings]")');
   expect(await page.evaluate(`document.querySelector('${button}') === null`)).toBe(true);
   await page.click('[data-testid=nav-settings]');
-  await page.click('[data-testid=settings-tab-experiments]');
-  // Fail promptly if the experiment is absent, rather than waiting for a click timeout.
-  expect(await page.evaluate(`!!document.querySelector('${toggle}')`)).toBe(true);
+  await page.click('[data-testid=settings-tab-appearance]');
+  // Fail promptly if the switch is absent, rather than waiting for a click timeout.
+  await page.waitFor(`!!document.querySelector('${toggle}')`);
   await page.click(toggle);
   await page.click('[data-testid=settings-back]');
   await page.waitFor(`document.querySelector('${button}')`);
@@ -233,7 +237,7 @@ test('Whip phone controls stay reachable with agents and disable mid-hit', async
   await page.waitFor(`document.querySelector('${button}')`);
   button = '[data-testid=whip-button-mobile]';
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-  await toMobileList(page);
+  await mobileAction(page, 'mobile-activity');
   await page.waitFor('document.querySelector("[data-testid=whip-button-mobile]")');
   await settled();
   expect(await page.evaluate(`(() => {
@@ -242,14 +246,13 @@ test('Whip phone controls stay reachable with agents and disable mid-hit', async
     return rect.left >= header.left && rect.right <= header.right && rect.top >= header.top && rect.bottom <= header.bottom && rect.width >= 44 && rect.height >= 44;
   })()`)).toBe(true);
   await page.screenshot(join(import.meta.dir, '.artifacts', 'whip-phone.png'));
-  // The phone control lives in the list's header; the bottom bar holds only the places.
+  // The phone control lives in a list's header (Activity here: the thread list's row is full); the bottom bar holds only the places.
   expect(await page.evaluate(`!document.querySelector('[data-testid=mobile-tabs] [data-testid=whip-button-mobile]')`)).toBe(true);
-  // The phone's own Experiments page, as its settings row opens it.
-  await page.evaluate(`__boiteTest.workspace.active.showSettings('experiments')`);
+  // The phone's own Appearance page, as its settings row opens it.
+  await page.evaluate(`__boiteTest.workspace.active.showSettings('appearance')`);
   await page.waitFor(`document.querySelector('${toggle}')`);
-  expect(await page.evaluate(`document.querySelector('[data-testid=experiment-resident-agents]')`)).toBeNull();
   await page.navigate(url);
-  await toMobileList(page);
+  await mobileAction(page, 'mobile-activity');
   await page.waitFor('document.querySelector("[data-testid=mobile-agents]")');
   await settled();
   expect(await page.evaluate(`(() => {
@@ -261,32 +264,32 @@ test('Whip phone controls stay reachable with agents and disable mid-hit', async
   await page.screenshot(join(import.meta.dir, '.artifacts', 'whip-agents-phone.png'));
   expect(await shake()).toBe(true);
   await verifyRope('whip-rope-phone.png', true);
-  await toMobileList(page);
+  await mobileAction(page, 'mobile-activity');
   await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
   await page.click(button);
   expect(await page.evaluate(`document.getElementById('app').getAnimations().length`)).toBe(0);
   expect(await page.evaluate(`document.querySelector('[data-testid=whip-canvas]') === null`)).toBe(true);
-  // The phone's own Experiments page, as its settings row opens it.
-  await page.evaluate(`__boiteTest.workspace.active.showSettings('experiments')`);
+  // The phone's own Appearance page, as its settings row opens it.
+  await page.evaluate(`__boiteTest.workspace.active.showSettings('appearance')`);
   await page.waitFor(`document.querySelector('${toggle}')`);
   await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
-  // Switching the experiment off mid-hit stops the shake with the rope. The phone's
+  // Switching the Whip off mid-hit stops the shake with the rope. The phone's
   // Settings is a page over the list, so the hit starts from the list's header and
-  // its Experiments page opens while the shake still runs.
-  await toMobileList(page);
+  // its Appearance page opens while the shake still runs.
+  await mobileAction(page, 'mobile-activity');
   expect(await page.evaluate(`(async () => {
     const running = await ${crack()};
     if (!running) return 'no shake';
-    __boiteTest.workspace.active.showSettings('experiments');
+    __boiteTest.workspace.active.showSettings('appearance');
     while (!document.querySelector('${toggle}') && running.playState === 'running') await new Promise(resolve => requestAnimationFrame(resolve));
     if (running.playState !== 'running') return 'hit ended before the switch';
     document.querySelector('${toggle}').click();
     return 'cracked';
   })()`)).toBe('cracked');
-  await toMobileList(page);
+  await mobileAction(page, 'mobile-activity');
   await page.waitFor(`document.querySelector('${button}') === null`);
   expect(await page.evaluate(`document.querySelector('[data-testid=whip-canvas]') === null`)).toBe(true);
   expect(await page.evaluate(`document.getElementById('app').getAnimations().length`)).toBe(0);
-  expect(await page.evaluate('JSON.parse(localStorage.getItem("boite.experiments")).includes("whip")')).toBe(false);
+  expect(await page.evaluate('JSON.parse(localStorage.getItem("boite.features")).whip')).toBe(false);
   expect(page.errors()).toEqual([]);
 }, 45_000);

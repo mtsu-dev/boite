@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, expect, test } from 'bun:test';
 import { startTestCore, type TestCore } from './harness.ts';
-import { DEVICE_METHODS } from '../src/access.ts';
+import { DEVICE_METHODS } from '@boite/contracts';
 import { thrown } from './settle.ts';
 let harness: TestCore;
 beforeEach(async () => { harness = await startTestCore(); });

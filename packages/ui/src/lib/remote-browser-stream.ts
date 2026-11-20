@@ -73,7 +73,7 @@ export function jpegBlob(base64: string): Blob {
 }
 
 /** The wait before opening the stream again after `failures` in a row. */
-export const streamBackoff = (failures: number): number => Math.min(500 * 2 ** failures, 10_000);
+const streamBackoff = (failures: number): number => Math.min(500 * 2 ** failures, 10_000);
 
 export interface FrameStreamOptions {
   client: Client;

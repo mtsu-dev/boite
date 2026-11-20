@@ -93,7 +93,7 @@ function serverPart(server: NonNullable<MachineReading['server']>): PlannedPart 
  * downloaded release is still an offer from here, and a request that found no
  * window open shows as failed with that reason until the window answers.
  */
-export function desktopPart(desktop: DesktopUpdateStatus | null, failure: { version: string; message: string } | null, requested: string | null = null): PlannedPart | null {
+function desktopPart(desktop: DesktopUpdateStatus | null, failure: { version: string; message: string } | null, requested: string | null = null): PlannedPart | null {
   const version = desktop?.version ?? failure?.version ?? null;
   if (version === null) return null;
   const phase = desktop?.version === version ? desktop.phase : null;
@@ -252,7 +252,7 @@ function readingOf(machine: Machine): MachineReading {
  * another. This computer's app downloads at the same moment and restarts last,
  * once its own core's agents are done: the restart would cut their updaters.
  */
-export class UpdateEverything {
+class UpdateEverything {
   running = $state(false);
   #dismissed = $state<string[]>(readDismissed());
 

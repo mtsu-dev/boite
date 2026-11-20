@@ -6,7 +6,7 @@
  * docs/internals/devices.md, "Live stream".
  */
 
-export const SCRCPY_VERSION = '5.0.1';
+const SCRCPY_VERSION = '5.0.1';
 /** The vendored server, checked before it is copied out of the core and pushed. */
 export const SCRCPY_SERVER = {
   name: `scrcpy-server-v${SCRCPY_VERSION}.jar`,
@@ -18,7 +18,7 @@ export const DEVICE_SERVER_PATH = `/data/local/tmp/boite-scrcpy-server-v${SCRCPY
 
 const CODEC_H264 = 0x68_32_36_34;
 /** The server's `TEXT_MAX_LENGTH`: longer text is cut there. */
-export const INJECT_TEXT_MAX_BYTES = 300;
+const INJECT_TEXT_MAX_BYTES = 300;
 /** The server's `CLIPBOARD_TEXT_MAX_LENGTH`: its message cap less the header. */
 export const CLIPBOARD_MAX_BYTES = (1 << 18) - 14;
 /** The server's `DeviceMessage.MAX_SIZE`: the longest message it sends back, header included. */

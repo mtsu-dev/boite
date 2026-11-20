@@ -4,11 +4,11 @@ import type { Core } from '../core.ts';
 import { messageOf } from '../errors.ts';
 
 /** A check that still runs after this long is stopped and counts as failed. */
-export const CHECK_TIMEOUT_MS = 60_000;
+const CHECK_TIMEOUT_MS = 60_000;
 /** What a check may print, in bytes read from each of its streams; the rest is dropped. */
-export const CHECK_OUTPUT_BYTES = 64 * 1024;
+const CHECK_OUTPUT_BYTES = 64 * 1024;
 /** What the agent reads of it, in characters: the start, then a line saying how much was cut. */
-export const CHECK_TEXT_MAX = 8_000;
+const CHECK_TEXT_MAX = 8_000;
 
 /** What a routine's check found: `text` is what the agent reads, empty when the command printed nothing. */
 export interface CheckResult { text: string; failed: boolean; print: string | null }
@@ -20,7 +20,7 @@ function shellOf(command: string): { exe: string; args: string[] } {
 }
 
 /** How long a check's output may still arrive once its shell has exited: a child it left behind can hold the pipes open for good. */
-export const CHECK_DRAIN_MS = 1_000;
+const CHECK_DRAIN_MS = 1_000;
 
 /**
  * Reads a stream up to the cap, dropping the rest so the child never blocks on a full pipe.

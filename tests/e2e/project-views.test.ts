@@ -195,6 +195,8 @@ test('phone folds a project from a tap on its header and finds it folded after a
   const fold = `document.getElementById(document.querySelector(${JSON.stringify(toggle)}).getAttribute('aria-controls'))`;
   // A finger on the tile, then on the name: both belong to the fold's target.
   const tap = async (part: string) => {
+    // A finger scrolls to a header first: the Contacts section below the projects lets the list scroll, so a reload may leave it under the sticky head.
+    await page.evaluate(`document.querySelector(${JSON.stringify(`${toggle} ${part}`)}).scrollIntoView({ block: 'center' })`);
     await page.waitFor(screensSettled);
     const at = await page.evaluate<{ x: number; y: number }>(`(() => { const r = document.querySelector(${JSON.stringify(`${toggle} ${part}`)}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
     await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...at, id: 1 }] });
