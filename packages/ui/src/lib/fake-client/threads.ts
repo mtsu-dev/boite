@@ -1,4 +1,4 @@
-import { chatPreviewSizeProblem, decodedBytes, ownerThreadRequestKey, ownerThreadSelection, partChannel, permissionAutoDecision, unreadInterruptionAt, type RpcResult, type StreamChannel, type ThreadId } from '@boite/contracts';
+import { chatPreviewSizeProblem, ownerThreadRequestKey, ownerThreadSelection, partChannel, permissionAutoDecision, unreadInterruptionAt, type RpcResult, type StreamChannel, type ThreadId } from '@boite/contracts';
 import { noteUserMessage } from './checklist';
 import { startAutoGoal, startsAutoGoal } from './activity';
 import { createFakeThread, publishFakeThread, writeFakeFork } from './create-thread';
@@ -289,7 +289,7 @@ export async function deleteExpiredDoneThreads(ctx: FakeContext, remove: (id: st
 export function threadMethods(ctx: FakeContext) {
   const creations = new Map<string, { key: string; created: Promise<string> }>();
   const promptCreations = new Map<string, { key: string; created: Promise<string> }>();
-  const removing = new Set<string>();
+  const removing = ctx.removingThreads;
   const methods = {
     ...sideQuestionMethods(ctx, (source, messages) => writeFakeFork(ctx, source, messages)),
     ...threadListMethods(ctx),
@@ -441,7 +441,7 @@ export function threadMethods(ctx: FakeContext) {
     },
     'messages.toolOutput': async (params) => ({ output: toolOf(ctx.thread(params.threadId), params).output }),
     'messages.toolPart': async (params) => pagingReply({ part: toolOf(ctx.thread(params.threadId), params) }),
-    'messages.attachment': async params => {
+    'messages.attachment': async (params): Promise<RpcResult<'messages.attachment'>> => {
       const thread = ctx.thread(params.threadId);
       if (!Number.isSafeInteger(params.partIndex) || params.partIndex < 0) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'messages.attachment.partIndex: expected a nonnegative integer', data: { field: 'partIndex', expected: 'a nonnegative integer' } });
       const problem = chatPreviewSizeProblem(params.previewMax);
@@ -451,7 +451,8 @@ export function threadMethods(ctx: FakeContext) {
       const part = message.parts[params.partIndex];
       if (part?.type !== 'file' && part?.type !== 'image') throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `part ${params.partIndex} is not an attachment of message ${params.messageId}`, data: { messageId: params.messageId, partIndex: params.partIndex } });
       if (params.previewMax === undefined) {
-        return { data: part.data, ...(params.ticket === true ? { mimeType: part.mimeType, bytes: decodedBytes(part.data) } : {}) };
+        if (params.ticket !== true || typeof URL.createObjectURL !== 'function') return { data: part.data };
+        return ctx.attachmentUrls.read(JSON.stringify([thread.id, message.id, params.partIndex]), part);
       }
       const key = JSON.stringify([thread.id, message.id, params.partIndex, params.previewMax]);
       const copy = await ctx.imagePreviews.read(key, params.previewMax, () => new Blob([decodeBase64(part.data)], { type: part.mimeType }));
@@ -720,11 +721,12 @@ export function threadMethods(ctx: FakeContext) {
         throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'the model selection changed; review the selected model and send again' });
       }
       const thread = ctx.thread(params.threadId);
+      const revive = ctx.canRevive(thread);
       const providerId = thread.providerId;
       const provider = ctx.providers.find(p => p.id === providerId);
       if (!provider) throw ctx.notFound('provider', providerId);
       // As the core, in its order: an archived or busy thread first, then whether the agent can run at all.
-      if (!thread.archived && !threadActive(thread.status) && !ctx.inFlight.has(thread.id)) {
+      if ((!thread.archived || revive) && !threadActive(thread.status) && !ctx.inFlight.has(thread.id)) {
         // A signed-out or removed account hands the thread to another of its agent first.
         const usable = thread.agentSessionId ? null : usableAccount(ctx, providerId, thread.accountId);
         if (usable && usable.id !== thread.accountId) moveToAccount(ctx, thread, usable);
@@ -745,6 +747,7 @@ export function threadMethods(ctx: FakeContext) {
         if (!config.enabled || config.paused) throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'delegation is disabled or paused' });
       }
       const messageIndex = thread.messages.length;
+      if (revive) Object.assign(thread, { archived: false, doneAt: null, archivedAt: null });
       const turn = ctx.startTurn(params.threadId, params.prompt, params.attachments ?? [], rootId ? 'delegation' : undefined, undefined, undefined, params.previewReferences ?? []);
       if (rootId) ctx.delegationTurns.set(rootId, (ctx.delegationTurns.get(rootId) ?? 0) + 1);
       if (key) ctx.turnRequests.set(key, { content, turn, messageId: thread.messages[messageIndex]!.id });

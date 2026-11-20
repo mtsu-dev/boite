@@ -10,6 +10,8 @@ export const strings = {
     projectFailedThreads: '{project}: {count} failed',
     projectMixedThreads: '{project}: {waiting} need you, {failed} failed',
     loadingProjects: 'Loading projects',
+    threadListFailed: 'Could not load all conversations from {machine}.',
+    threadListRetrying: 'Reloading conversations from {machine}.',
     projectDoneThreads: '{project}: {count} done',
     projectArchivedThreads: '{project}: {count} archived',
     /** The fold under the list for projects with no open conversation, and what choosing one does. */

@@ -3,13 +3,14 @@
   import type { Snippet } from 'svelte';
   import { strings } from '../lib/strings';
 
-  let { testid, heading, actions, children, actionLabel, actionTestid, onaction, close }: {
+  let { testid, heading, actions, children, actionLabel, actionTestid, keyboardAction = false, onaction, close }: {
     testid?: string;
     heading: Snippet;
     actions?: Snippet;
     children: Snippet;
     actionLabel: string;
     actionTestid?: string;
+    keyboardAction?: boolean;
     onaction: () => void;
     close: () => void;
   } = $props();
@@ -26,7 +27,7 @@
   <section class="body">{@render children()}</section>
   <div class="rule" role="separator"></div>
   <footer>
-    <button type="button" class="ghost" data-testid={actionTestid} onclick={onaction}><Settings2 size={15} /><span class="ui-label">{actionLabel}</span></button>
+    <button type="button" class="ghost" data-testid={actionTestid} data-row={keyboardAction || undefined} onclick={onaction}><Settings2 size={15} /><span class="ui-label">{actionLabel}</span></button>
   </footer>
 </div>
 

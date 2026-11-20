@@ -40,6 +40,7 @@
   import ProjectTile from './ProjectTile.svelte';
   import MachinePlace from './MachinePlace.svelte';
   import MachineOffline from './MachineOffline.svelte';
+  import ThreadListNotice from './ThreadListNotice.svelte';
   import ProjectRollup from './ProjectRollup.svelte';
   import { projectKey, projectView, type ProjectEntry } from '../lib/project-view.svelte';
   import { activeProject, archiveCount, projectSections, projectThreadView } from '../lib/project-threads.svelte';
@@ -346,6 +347,7 @@
   {/if}
   <!-- The filters on, in words on a line of their own: the row above keeps the views, the machine and three squares. -->
   {#if threadViews && !chatting}<FilterChips entries={groups} owner={store} prefix="mobile-" compact {atWork} />{/if}
+  {#if narrow.current && tabbed && !recover && listScreen === 'threads'}<ThreadListNotice {machines} />{/if}
 </header>
 
 {#if tabbed || leaving}
@@ -538,6 +540,7 @@
     @media (min-width: 480px) { .new .long { display: block; } .new .short { display: none; } }
     /* The filters' line under the row, the whole width. */
     .mobile-header > :global(.filter-chips) { flex-basis: 100%; padding-bottom: 4px; }
+    .mobile-header > :global(.thread-list-notice) { flex-basis: 100%; }
     .search { display: flex; flex: 1; min-width: 0; gap: 8px; align-items: center; padding: 0 0 0 12px; background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-lg); color: var(--color-muted-foreground); }
     .search > :global(svg) { flex: none; }
     /* The display options close the field's row, after a hairline. */

@@ -973,8 +973,7 @@ did: `toLocaleString` with a locale builds a new formatter per call.
 Every catalogue and the quota window are chunks of their own too, so a page
 downloads and parses only the language it speaks (`docs/internals/language.md`). Nine
 components the first frame does not draw load the same way
-(`lib/deferred-parts.ts`, the terminal drawer and, outside the shell, the
-phone's navigation, which the boot screen waits for): the image viewer, the
+(`lib/deferred-parts.ts`): the image viewer, the
 diff, the quota overview, the coordination panel, the updates notice, the
 robot face and the dictation button, prefetched in the idle pass. The
 dictation button draws a disabled microphone of the same size until its chunk
@@ -985,6 +984,12 @@ files at a time. Geist Mono ships as latin, latin-ext and rest subsets with
 its weight axis; its latin cut carries the arrows and box drawing a terminal
 draws. The text faces (Inter, Atkinson Hyperlegible Next, Source Sans 3, IBM
 Plex Sans) ship as latin and latin-ext.
+
+The HTML paints a localized Starting message with inline styles while it
+preloads the stylesheets. The entry applies them before mounting the app.
+Mobile pairing can open with the conversations navigation, chat, sidebar and
+Agents views still unloaded. The service worker precaches those views when
+it installs so a subsequent offline launch can still use them.
 
 A part whose chunk has not landed says it is loading, one whose chunk failed
 offers a retry, and every failed part asks again when the browser is back

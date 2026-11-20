@@ -16,6 +16,10 @@ async function capture(name: string) {
   await page.settleAnimations();
   await page.screenshot(join(import.meta.dir, '.artifacts', name));
 }
+async function press(key: string, code: number) {
+  await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key, code: key, windowsVirtualKeyCode: code, ...(key === 'Enter' ? { text: '\r' } : {}) });
+  await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key, code: key, windowsVirtualKeyCode: code });
+}
 beforeAll(async () => {
   const port = await freePort();
   server = await startUi(port);
@@ -36,12 +40,23 @@ test('project and recent cards show both hosts, PRs and user-message ordering on
   await page.waitFor(`document.querySelector('[data-testid=machine-status-menu]')`);
   expect(await page.evaluate(`document.querySelectorAll('[data-testid=machine-status-menu] .status-dot[data-tone=success]').length`)).toBe(2);
   expect(await page.evaluate(`document.querySelector('[data-testid=machine-status-menu]').innerText.includes('Connected')`)).toBe(false);
-  await capture('single-machine-menu.png');
+  await press('End', 35);
+  expect(await page.evaluate('document.activeElement.textContent.trim()')).toBe('Manage machines');
+  await press('ArrowDown', 40);
+  expect(await page.evaluate('document.activeElement.dataset.value')).toBe('all');
+  await press('ArrowUp', 38);
+  expect(await page.evaluate('document.activeElement.textContent.trim()')).toBe('Manage machines');
+  await capture('machine-menu-keyboard.png');
   await page.click('[data-testid=machine-status-menu] [data-value="http://builder.test"]');
   await page.waitFor(`document.querySelectorAll('${id('thread-row')}').length === 4`);
   await page.click(id('machine-status'));
   await page.click('[data-testid=machine-status-menu] [data-value=all]');
   await page.waitFor(`document.querySelectorAll('${id('thread-row')}').length === 8`);
+  await page.click(id('machine-status'));
+  await press('End', 35);
+  await press('Enter', 13);
+  await page.waitFor(`document.querySelector('${id('machine-card')}')`);
+  await page.click(id('settings-back'));
   await capture('projects-machines-desktop.png');
   await showThreadView(page, 'recent');
   const rows = await page.evaluate<string[]>(
@@ -72,6 +87,11 @@ test('project and recent cards show both hosts, PRs and user-message ordering on
   expect(await page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')).toBe(true);
   await page.evaluate(`document.documentElement.dataset.theme = 'light'`);
   await capture('recent-machines-phone-light.png');
+  await mobileAction(page, 'mobile-settings');
+  await page.click(id('mobile-settings-connection'));
+  await page.waitFor(`document.querySelectorAll('${id('machine-card')}').length === 2`);
+  await page.click(id('mobile-settings-back'));
+  await page.click(id('mobile-settings-leave'));
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   await page.click(id('nav-settings'));
   await page.click(id('settings-tab-machines'));
@@ -195,6 +215,12 @@ test('two real cores pair, route turns independently, reconnect and survive a re
     expect(await page.evaluate(`globalThis.__boiteTest.workspace.active.openThread?.id === ${JSON.stringify(ta.id)}`)).toBe(true);
     await page.click(id('settings-back'));
     await page.waitFor(`document.querySelector('[data-thread-id="${tb.id}"]')`);
+    await page.click(id('machine-status'));
+    await press('End', 35);
+    expect(await page.evaluate('document.activeElement.textContent.trim()')).toBe('Manage machines');
+    await press('Enter', 13);
+    await page.waitFor(`document.querySelector('${id('machine-card')}')`);
+    await page.click(id('settings-back'));
     await page.click(`[data-thread-id="${tb.id}"]`);
     await page.waitFor(`document.querySelector('${id('thread-title')}')?.textContent === 'Remote project'`);
     // The terminal is a row of the Panels door's list: the door opens the panel, whose switcher lists it.
@@ -264,7 +290,7 @@ test('two real cores pair, route turns independently, reconnect and survive a re
     await page.click(`[data-thread-id="${tb.id}"]`);
     await page.waitFor(`document.querySelector('${id('chat')}')?.textContent.includes('Only on the remote host')`);
     await page.waitFor(`globalThis.__boiteTest.workspace.active.settings?.asyncQuestions === false`);
-    expect(await page.evaluate(`globalThis.__boiteTest.workspace.active.settings.agentCpuCapPercent === 45 && globalThis.__boiteTest.workspace.active.settings.warmProcessMinutes === 2`)).toBe(true);
+    expect(await page.evaluate(`globalThis.__boiteTest.workspace.active.settings.${limit} === 45 && globalThis.__boiteTest.workspace.active.settings.warmProcessMinutes === 2`)).toBe(true);
     await page.click(id('nav-settings'));
     await page.click(id('settings-tab-machines'));
     const admin = await connect(restarted.url, restarted.token);
@@ -368,6 +394,13 @@ test('one invitation groups two real cores: the page connects the second by itse
     if (await page.evaluate(`globalThis.__boiteTest.workspace.active.page === 'settings'`)) await page.click(id('settings-back'));
     await page.waitFor(`document.querySelector('[data-thread-id="${tb.id}"]')`);
     expect(await b.call('sessions.list', {})).toHaveLength(1);
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+    await mobileAction(page, 'mobile-settings');
+    await page.click(id('mobile-settings-connection'));
+    await page.waitFor(`document.querySelectorAll('${id('machine-card')}').length === 2`);
+    await page.click(id('mobile-settings-back'));
+    await page.click(id('mobile-settings-leave'));
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
 
     // The address the second machine's key was saved for is retired, and somebody else listens there.
     // At start the first machine is asked before that key is sent: it never is, and the page reaches the second anew.

@@ -38,6 +38,7 @@
   import ProjectTile from './ProjectTile.svelte';
   import MachineIcon from './MachineIcon.svelte';
   import MachineOffline from './MachineOffline.svelte';
+  import ThreadListNotice from './ThreadListNotice.svelte';
   import ProjectRollup from './ProjectRollup.svelte';
   import RailFrame from './RailFrame.svelte';
   import FoldMore from './FoldMore.svelte';
@@ -262,6 +263,7 @@
       </SideHead>
     {:else}
       <ProjectViews entries={groups} {store} quiet={groups.length === 0 && needsAnAI(store) && !loading} />
+      {#if showRows && !archivedView.open}<ThreadListNotice machines={visible} />{/if}
     {/if}
   {/snippet}
     {#if contactsSide}

@@ -219,6 +219,7 @@ export class Store {
     ctx.off = [];
     ctx.composer.inputBoundaries = {};
     ctx.client = null;
+    ctx.connection.threadListIssue = null;
     ctx.threads.subscribedThreadId = null;
     ctx.delegation.delegationSubscribedThreadId = null;
   }
@@ -228,6 +229,7 @@ export class Store {
   // -------------------------------------------------------------------------
 
   get connection() { return this.#ctx.connection.connection; }
+  get threadListIssue() { return this.#ctx.connection.threadListIssue; }
   set connection(value) { this.#ctx.connection.connection = value; }
   get returns() { return this.#ctx.connection.returns; }
   get core() { return this.#ctx.connection.core; }
@@ -266,6 +268,7 @@ export class Store {
   pairWith(...args: Parameters<Connection['pairWith']>) { return this.#ctx.connection.pairWith(...args); }
   useLocalCore(...args: Parameters<Connection['useLocalCore']>) { return this.#ctx.connection.useLocalCore(...args); }
   reload(...args: Parameters<Connection['reload']>) { return this.#ctx.connection.reload(...args); }
+  retryThreadList() { return this.#ctx.connection.retryThreadList(); }
 
   // -------------------------------------------------------------------------
   // Pairing: store/pairing.svelte.ts

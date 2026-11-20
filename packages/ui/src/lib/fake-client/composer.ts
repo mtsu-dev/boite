@@ -246,14 +246,21 @@ export function composerMethods(ctx: FakeContext, methods: () => FakeMethods): P
       return copy(state.records.get(key) ?? { section, id, revision: 0, updatedAt: 0, value: null });
     },
     'composer.enqueue': async params => {
+      if (typeof params?.threadId !== 'string' || typeof params.prompt !== 'string' || !params.prompt.trim() || typeof params.clientRequestId !== 'string') {
+        throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'composer.enqueue: expected threadId, a non-empty prompt and clientRequestId' });
+      }
       const { threadId, prompt, clientRequestId: requestId } = params;
-      if (!prompt?.trim() || !/^[A-Za-z0-9_-]{8,128}$/.test(requestId)) throw refusal('composer.enqueue: expected a non-empty prompt and an 8 to 128 character request id');
       const thread = ctx.thread(threadId);
+      if (!/^[A-Za-z0-9_-]{8,128}$/.test(requestId)) throw refusal('clientRequestId must contain 8 to 128 URL-safe characters');
       const id = `cli_${threadId}:${requestId}`;
       const previous = ctx.turnRequests.get(`${threadId}:${requestId}`);
       if (previous) {
         if (previous.content !== JSON.stringify([prompt, []])) throw refusal('clientRequestId was already used for different content');
         return { requestId, status: 'sent', turnId: previous.turn.id };
+      }
+      if (ctx.canRevive(thread)) {
+        const started = await methods()['turns.start'](params);
+        return { requestId, status: 'sent', turnId: started.id };
       }
       const recordId = thread.incognito ? privateTerminalComposerId(threadId) : threadId;
       const key = keyOf('inputs', recordId);

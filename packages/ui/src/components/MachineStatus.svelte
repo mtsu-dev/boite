@@ -64,7 +64,7 @@
   {#if shown}
     <Menu {items} onpick={(id) => onfilter?.(id === 'all' ? null : id)} {label} variant="ghost" {testid} titled={!card} panelLabel={name}>
       {#snippet panel(close, rows)}
-        <PopoverFrame actionLabel={strings.connection.manage} onaction={() => { close(false); store.showSettings('machines'); }} close={() => close()}>
+        <PopoverFrame actionLabel={strings.connection.manage} keyboardAction onaction={() => { close(false); store.showSettings('machines'); }} close={() => close()}>
           {#snippet heading()}<Monitor size={17} /><span>{name}</span>{/snippet}
           {#if items.length}<div class="choices" role="menu" aria-label={strings.machines.filterHint}>{@render rows()}</div>{/if}
         </PopoverFrame>

@@ -18,15 +18,16 @@ export async function readThreadList(client: Client, core: CoreInfo | null, sinc
     const first = await client.call('threads.listChanges', { page: true, ...(since === null ? {} : { since }) });
     if (first.kind !== 'full' || !first.next) return first;
     firstPage(first.threads);
-    const threads = [...first.threads];
-    let next: string | undefined = first.next;
-    while (next && current()) {
-      const page: ThreadListChanges = await client.call('threads.listChanges', { page: next });
-      if (page.kind !== 'full') throw new Error('Expected a page of the full thread list');
-      threads.push(...page.threads);
-      next = page.next;
+    try {
+      return await remainingPages(client, first, current);
+    } catch (error) {
+      if (!current()) throw error;
+      // The server may already have consumed the continuation. Start a new
+      // snapshot and let the first one stay on screen until it is complete.
+      await new Promise(resolve => setTimeout(resolve, 250));
+      if (!current()) throw error;
+      return remainingPages(client, await client.call('threads.listChanges', { page: true }), current);
     }
-    return { kind: 'full', cursor: first.cursor, threads };
   }
   try {
     return await client.call('threads.listChanges', since === null ? {} : { since });
@@ -34,6 +35,19 @@ export async function readThreadList(client: Client, core: CoreInfo | null, sinc
     if (!(error instanceof RpcFailure) || (error.code !== RpcErrorCode.MethodNotFound && error.code !== RpcErrorCode.InvalidParams && error.code !== RpcErrorCode.Refused)) throw error;
     return { kind: 'full', cursor: null, threads: await client.call('threads.list', {}) };
   }
+}
+
+async function remainingPages(client: Client, first: ThreadListChanges, current: () => boolean): Promise<ThreadListAnswer> {
+  if (first.kind !== 'full' || !first.next) return first;
+  const threads = [...first.threads];
+  let next: string | undefined = first.next;
+  while (next && current()) {
+    const page: ThreadListChanges = await client.call('threads.listChanges', { page: next });
+    if (page.kind !== 'full') throw new Error('Expected a page of the full thread list');
+    threads.push(...page.threads);
+    next = page.next;
+  }
+  return { kind: 'full', cursor: first.cursor, threads };
 }
 
 /**

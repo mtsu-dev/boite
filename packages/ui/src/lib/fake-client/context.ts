@@ -1,6 +1,7 @@
 import { secureId } from '../secure-id';
 import { FakeComposerState } from './composer';
 import { FakeImagePreviews } from './image-preview';
+import { FakeAttachmentUrls } from './attachment-urls';
 import type { FakeArchiveState, MergedPrFixture } from './merged-pr-archive';
 /** The state one fake core keeps, and the plumbing every domain module shares. */
 import { observeProgress } from './progress';
@@ -284,6 +285,7 @@ export class FakeContext {
   readonly removedDefaultProviders = new Set<string>();
   readonly threads = new Map<ThreadId, Thread>();
   readonly deletedThreads = new Map<ThreadId, { threads: Thread[]; archived: boolean[]; deletedAt: number }>();
+  readonly removingThreads = new Set<ThreadId>();
   readonly coordination = new Map<ThreadId, CoordinationConfig>();
   readonly delegationConfigs = new Map<ThreadId, DelegationConfig>();
   readonly delegationAgents = new Map<ThreadId, DelegationRow[]>();
@@ -337,6 +339,7 @@ export class FakeContext {
   readonly artifacts = new Map<string, ArtifactContent>();
   readonly artifactUrls = new Set<string>();
   readonly imagePreviews = new FakeImagePreviews();
+  readonly attachmentUrls = new FakeAttachmentUrls();
   private storedSettings!: Settings;
 
   /** As in the core, policy values are read over the saved choices, never saved over them. */
@@ -766,6 +769,11 @@ export class FakeContext {
     const summary = structuredClone(toSummary(thread));
     this.emit('thread.updated', summary);
     return structuredClone(summary);
+  }
+
+  canRevive(thread: Thread): boolean {
+    return thread.archived && thread.doneAt != null && !this.removingThreads.has(thread.id)
+      && !!thread.parentThreadId && this.threads.get(thread.parentThreadId)?.archived === false;
   }
 
   setBackground(thread: Thread, tasks: BackgroundTask[], ended: 'no-longer-reported' | 'session-ended' = 'no-longer-reported'): void {

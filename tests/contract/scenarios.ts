@@ -368,6 +368,9 @@ export const SCENARIOS: Record<string, Scenario> = {
     const part = message.parts[partIndex];
     check(part?.type === 'file' && part.dataDeferred === true && part.data === '' && part.bytes === atob(data).length, 'the file was transferred before being requested');
     same((await env.call('messages.attachment', { threadId: created.id, messageId: message.id, partIndex })).data, data, 'downloaded attachment bytes');
+    const ticket = await env.call('messages.attachment', { threadId: created.id, messageId: message.id, partIndex, ticket: true });
+    check(typeof ticket.url === 'string' && ticket.url.length > 0, 'the ticketed original did not return a URL');
+    same([ticket.data, ticket.mimeType, ticket.bytes], ['', 'text/plain', atob(data).length], 'ticketed attachment metadata');
     const other = await thread(env, setup);
     await refusedWith(env.call('messages.attachment', { threadId: other.id, messageId: message.id, partIndex }), RpcErrorCode.NotFound, ['messageId']);
     await refusedWith(env.call('messages.attachment', { threadId: created.id, messageId: message.id, partIndex: -1 }), RpcErrorCode.InvalidParams, ['field']);
