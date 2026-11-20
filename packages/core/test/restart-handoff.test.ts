@@ -13,6 +13,27 @@ import { thrown } from './settle.ts';
 const DEFAULTS = { ...HANDOFF };
 afterEach(() => { Object.assign(HANDOFF, DEFAULTS); });
 
+test('a committed async answer is delivered once after its scheduler admission fails', async () => {
+  const h = await startTestCore();
+  try {
+    const client = await h.connect();
+    const { threadId } = await echoThread(h, client);
+    const { journal, scheduler, threads } = h.core;
+    const initial = await client.call('turns.start', { threadId, prompt: 'Plan the migration' });
+    await waitFor(() => journal.getTurn(initial.id)?.status === 'done');
+    const { questionId } = await client.call('questions.ask', { threadId, text: 'Which database?', options: ['SQLite'] });
+    const enqueue = spyOn(scheduler, 'enqueue').mockImplementation(() => { throw new Error('synthetic failure after durable admission'); });
+    try {
+      await client.call('questions.answer', { threadId, questionId, optionIds: ['1'] });
+    } finally { enqueue.mockRestore(); }
+    const accepted = journal.lastTurn(threadId)!;
+    expect(accepted.status).toBe('queued');
+    scheduler.enqueue(accepted, threads.require(threadId).accountId);
+    await waitFor(() => journal.getTurn(accepted.id)?.status === 'done');
+    expect(journal.listMessages(threadId).filter(message => message.role === 'user').map(textOf)).toEqual(['Plan the migration', '> Which database?\n\nSQLite']);
+  } finally { await h.stop(); }
+});
+
 function ask(h: TestCore): Promise<Response> {
   return fetch(`${h.url}/shutdown-for-update?pid=${process.pid}`, { method: 'POST', headers: { authorization: `Bearer ${h.token}` } });
 }

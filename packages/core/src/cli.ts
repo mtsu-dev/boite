@@ -542,7 +542,12 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
       else if (action === 'clear') change = { action };
       else if (action === 'start' || action === 'done' || action === 'remove') change = { action, id: want(1, 'a task id') };
       else throw new Usage(`task: unknown action ${action}`);
-      const activity = await client.call('threads.tasks.change', { threadId, ...change });
+      const { applyAgentTaskChange, isMethodNotFound } = await families();
+      const activity = await client.call('threads.tasks.change', { threadId, ...change }).catch(async (error: unknown) => {
+        if (!isMethodNotFound(error)) throw error;
+        const current = await client.call('threads.tasks.get', { threadId });
+        return client.call('threads.tasks.set', { threadId, tasks: applyAgentTaskChange(current, change) });
+      });
       print(activity.tasks.length === 0 ? ['tasks: none'] : activity.tasks.map(taskRow), activity.tasks);
     },
     todo: async () => {

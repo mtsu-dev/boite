@@ -101,10 +101,11 @@ keeps its name. The header shows the branch.
   checks the branch out there again with all its commits. Changes that were never committed are gone with
   the folder. When the branch is gone too, the conversation says which folder
   is missing.
-- Remove settled worktrees, in Manage project, deletes a worktree an hour
+- Remove settled worktrees, in Manage project, retires a worktree an hour
   after all its conversations are done or archived, only when its last commit
   is on another branch or in a merged pull request. It keeps worktrees with
-  uncommitted changes, including files Git ignores.
+  uncommitted changes, including files Git ignores. Boite logs where it saved
+  the files from a retired worktree. Check that copy before deleting it by hand.
 - Ask to finish after merge: once every pull request of a worktree conversation
   is merged or closed, Boite asks its agent whether the conversation is done.
   The agent moves it to Done or keeps it open when it still has something to

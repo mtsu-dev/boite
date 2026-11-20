@@ -200,15 +200,19 @@ export class DeferredInput {
     if (held === undefined || thread === null || thread.archived) return;
     if (this.#threads.isBusy(threadId) || this.#threads.runner.steering.has(threadId)) return;
     answers.delete(threadId);
+    let admitted = false;
     try {
       this.#threads.startTurn(threadId, held.join('\n\n'), undefined, { persistAdmission: () => {
         this.#save(threadId, []);
-        return () => {};
+        return () => { admitted = true; };
       } });
     } catch (error) {
-      // Kept for the next prompt the user sends, which carries them first.
-      answers.set(threadId, held);
-      this.#core.log('warn', `thread ${threadId}: async answers wait for the next prompt: ${messageOf(error)}`);
+      if (admitted) this.#core.log('warn', `thread ${threadId}: async answers were journaled but turn startup failed: ${messageOf(error)}`);
+      else {
+        // Kept for the next prompt the user sends, which carries them first.
+        answers.set(threadId, held);
+        this.#core.log('warn', `thread ${threadId}: async answers wait for the next prompt: ${messageOf(error)}`);
+      }
     }
     this.#changed(threadId);
   }
