@@ -316,7 +316,7 @@ function kept(): { finished_at: number; provider_id: string; model: string | nul
   return harness.core.journal.db.query('SELECT * FROM removed_turn_usage ORDER BY finished_at, rowid').all() as ReturnType<typeof kept>;
 }
 
-test('removing a project preserves usage totals and hides its ranking entries until restoration', async () => {
+test('removing a project preserves usage totals and marks its rankings until restoration', async () => {
   const { echo, codex } = await threads();
   const journal = harness.core.journal;
   const project = harness.core.projects.require(echo.projectId);
@@ -400,7 +400,14 @@ test('a removed project keeps its history and usage attribution', async () => {
 
   await client.call('projects.remove', { projectId: thread.projectId! });
   expect(kept()).toEqual([]);
-  expect(await client.call('usage.history', query)).toEqual({ ...before, threads: [] });
+  expect(await client.call('usage.history', { ...query, projectId: thread.projectId })).toEqual({
+    ...before,
+    threads: before.threads.map(thread => ({ ...thread, archived: true })),
+    projects: before.projects?.map(project => ({ ...project, removed: true })),
+  });
+  const detail = await client.call('usage.thread', { ...query, threadId });
+  expect(detail.thread).toEqual({ ...before.threads[0]!, archived: true });
+  expect(detail.turns).toHaveLength(1);
   await client.call('projects.add', { path: thread.cwd });
   expect(await client.call('usage.history', query)).toEqual(before);
   expect(harness.core.journal.listMessages(threadId).find(message => message.role === 'user')?.parts[0])
