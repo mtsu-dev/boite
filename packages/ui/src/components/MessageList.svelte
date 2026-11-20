@@ -94,6 +94,9 @@
   /** The pages each turn published: its answer places them, or they go after it once the turn ends (`placeViews`). */
   let shownViews: ReadonlyMap<string, Message[]> | undefined;
   const views = $derived.by(() => (shownViews = turnViews(grouped.timeline, shownViews)));
+  const savedReading = untrack(() => store.readingPositions?.get(threadId));
+  const revision = $derived(readingRevision(store.openThread, threadId, messages));
+  const order = $derived(revision && messages.length <= READING_CACHE_MESSAGES ? (savedReading?.revision === revision && savedReading.order) || readingOrder(messages) : undefined);
   /** A finished turn's published files go after its answer, its pages after them; Boite's cache pings are one line; an agent's own thread folds its finished turns (`lib/agent-turns.ts`). */
   const agentTimeline = new AgentTimeline(), viewPlacement = new ViewPlacement();
   const placed = $derived(viewPlacement.build(filesLast(grouped.timeline, shownTurns, grouped.timeline === messages ? order?.files : undefined), shownTurns, views));
@@ -113,9 +116,6 @@
   });
   const rows = $derived(gapped.rows);
   const timelineOrder = $derived.by(() => { void rows; return gapped.gaps.length ? rows.map(row => row.id).join('\0') : cut.order; });
-  const savedReading = untrack(() => store.readingPositions?.get(threadId));
-  const revision = $derived(readingRevision(store.openThread, threadId, messages));
-  const order = $derived(revision && messages.length <= READING_CACHE_MESSAGES ? (savedReading?.revision === revision && savedReading.order) || readingOrder(messages) : undefined);
 
   const TAIL_GAP_MS = 100;
   let viewport = $state<HTMLDivElement | undefined>(undefined);
