@@ -506,6 +506,7 @@ boite answer <id> <question-id> <option|text ...> [--text <note>] [--skip]
 boite permissions [<id>]         pending tool permissions
 boite allow|deny <id> <request-id>
 boite attach <file>               publish a file snapshot in chat, at most 512 MB
+boite proof <message-id> <output-line> <unchecked> [capture]
 boite view <file.html>            draw the page where a line ![title](file.html) of the answer places it, else at its end (--title <text>)
 boite view check <file.html>      check without publishing; save PNGs at desktop/phone widths (--script checks.js, --scheme dark|light)
 boite view help                   the rules of a page: layout, the app's look, theme, motion, checks

@@ -29,6 +29,8 @@ export const USAGE = `usage: boite <command> [args] [--json]
                                  the owner's; removing leaves the folder on disk
 ${CONTROL_HELP}
   attach <file>                  publish a file in chat, up to 512 MB
+  proof <message-id> <output-line> <unchecked> [capture]
+                                 publish verification from a recorded command
   show <file>[:line]             open a file in the panel, at a line
   diff [file]                    open the changes, or one file's diff
   browse <url>                   open a url in a new tab of this conversation's browser

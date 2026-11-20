@@ -541,12 +541,13 @@ export class Journal {
       .run(copy.id, copy.threadId, sourceId);
   }
 
-  getMessage(messageId: string): Message | null {
+  getMessage(messageId: string, threadId?: string): Message | null {
     this.flushDeltas();
     const open = this.stream.openCopy(messageId);
-    if (open !== undefined) return open;
+    if (open !== undefined) return threadId === undefined || open.threadId === threadId ? open : null;
     const row = this.db.query('SELECT * FROM messages WHERE id = ?').get(messageId) as MessageRow | null;
-    return row === null ? null : hydrate(this.db, toMessage(row));
+    if (row === null || (threadId !== undefined && row.thread_id !== threadId)) return null;
+    return hydrate(this.db, toMessage(row));
   }
 
   /** Held parts for a selected live message, without reading or writing its stored JSON. */

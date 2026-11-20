@@ -2,10 +2,10 @@ import { open, mkdir, rename, unlink, readFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { basename, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { ARTIFACT_MAX_BYTES, ATTACHMENT_MAX_BYTES, CHAT_PREVIEW_IMAGES, FILE_ROUTE, VIEW_ROUTE, chatPreviewSizeProblem, type ArtifactContent, type Message, type MessagePart, type RpcParams } from '@boite/contracts';
+import { ARTIFACT_MAX_BYTES, ATTACHMENT_MAX_BYTES, CHAT_PREVIEW_IMAGES, FILE_ROUTE, VIEW_ROUTE, ProofInputError, chatPreviewSizeProblem, proofPart, type ArtifactContent, type Message, type MessagePart, type RpcParams } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { existingInside, mediaOf } from './workdir.ts';
-import { invalidParams, refused } from './errors.ts';
+import { invalidParams, notFound, refused } from './errors.ts';
 import { newId } from './ids.ts';
 import type { SharedFilePermit } from './contacts/access-policy.ts';
 
@@ -91,19 +91,43 @@ async function snapshot(core: Core, cwd: string, path: string, permit?: SharedFi
 
 /** Snapshots survive edits, removal of the source, and core restarts. */
 export async function publishArtifact(core: Core, params: RpcParams<'artifacts.publish'>): Promise<Message> {
-  const thread = core.threads.require(params.threadId);
-  const permit = core.sharedAccess.file(thread.id, params.path, 'publish');
-  if (thread.archived) throw refused('artifacts.publish needs an active thread', { threadId: thread.id });
+  return publish(core, params.threadId, params.path, []);
+}
+
+export async function publishProof(core: Core, params: RpcParams<'artifacts.prove'>): Promise<Message> {
+  core.sharedAccess.denyTool(params.threadId);
+  const { threadId, messageId } = params;
+  core.threads.require(threadId);
+  const source = core.journal.getMessage(messageId, threadId);
+  if (!source) {
+    throw notFound(`message ${messageId} is not a message of thread ${threadId}`, { messageId });
+  }
+  let proof: MessagePart;
+  try {
+    proof = proofPart(params, source.parts);
+  } catch (error) {
+    if (error instanceof ProofInputError) throw invalidParams(error.message, { field: error.field });
+    throw error;
+  }
+  return publish(core, threadId, params.path, [proof]);
+}
+
+async function publish(core: Core, threadId: string, path: string | undefined, parts: MessagePart[]): Promise<Message> {
+  const method = parts.length ? 'artifacts.prove' : 'artifacts.publish';
+  const thread = core.threads.require(threadId);
+  const permit = path === undefined ? undefined : core.sharedAccess.file(thread.id, path, 'publish');
+  if (thread.archived) throw refused(`${method} needs an active thread`, { threadId });
   const turn = core.journal.lastTurn(thread.id);
-  if (!turn) throw refused('artifacts.publish needs a thread with a turn', { threadId: thread.id });
-  const { part, stored } = await snapshot(core, thread.cwd, params.path, permit);
+  if (!turn) throw refused(`${method} needs a thread with a turn`, { threadId });
+  if (path === undefined && !parts.length) throw invalidParams('artifacts.publish.path: expected a file path', { field: 'path' });
+  const file = path === undefined ? undefined : await snapshot(core, thread.cwd, path, permit);
   let committed = false;
   try {
-    if (core.threads.require(thread.id).archived) throw refused('artifacts.publish needs an active thread', { threadId: thread.id });
+    if (core.threads.require(thread.id).archived) throw refused(`${method} needs an active thread`, { threadId });
     permit?.check();
     const message: Message = {
       id: newId('msg_'), threadId: thread.id, turnId: turn.id, role: 'assistant', state: 'complete', createdAt: Date.now(),
-      parts: [part],
+      parts: file ? [...parts, file.part] : parts,
     };
     core.sharedAccess.published(thread.id, message.id, [permit]);
     core.journal.append({ type: 'artifact.published', threadId: thread.id, version: 1, payload: message }, () => core.journal.putMessage(message));
@@ -115,7 +139,7 @@ export async function publishArtifact(core: Core, params: RpcParams<'artifacts.p
     core.bus.emit('message.completed', { threadId: thread.id, messageId: message.id, state: 'complete' });
     return message;
   } finally {
-    if (!committed && stored) await unlink(stored).catch(() => {});
+    if (!committed && file?.stored) await unlink(file.stored).catch(() => {});
   }
 }
 

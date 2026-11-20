@@ -106,6 +106,10 @@ Put the proof where the user reads, in the answer:
 | Before and after | Both files attached, or one \`boite view\` page side by side |
 | Numbers, a timeline, a comparison | A \`\`\`mermaid fence in the answer (xychart-beta, timeline) or a table |
 
+Use \`boite proof <message-id> <output-line> <unchecked> [capture]\`
+to publish a recorded command with its deciding line and any remaining checks.
+Find the message ID with \`boite threads read <thread> --json\`.
+
 A link to a Markdown report proves nothing to the user: it opens as raw text.
 Notes for the next agent go in the project's docs, not in the answer.
 

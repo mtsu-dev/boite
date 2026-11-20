@@ -84,13 +84,15 @@ export function turnResult(core: Core, turn: Turn | null, rest: ResultRest = 'de
   // Each message's first 4,001 characters: the answer shown is the last message that says something.
   const rows = core.journal.db.query(`SELECT id, rowid AS position, substr((SELECT group_concat(substr(json_extract(value, '$.text'), 1, 4001), char(10))
     FROM json_each(messages.parts) WHERE json_extract(value, '$.type') = 'text'), 1, 4001) AS answer
-    FROM messages WHERE thread_id = ? AND turn_id = ? AND role = 'assistant' ORDER BY rowid DESC LIMIT 8`).all(turn.threadId, turn.id) as { id: string; position: number; answer: string | null }[];
+    FROM messages WHERE thread_id = ? AND turn_id = ? AND role = 'assistant'
+    AND json_extract(parts, '$[0].proof') IS NULL ORDER BY rowid DESC LIMIT 8`).all(turn.threadId, turn.id) as { id: string; position: number; answer: string | null }[];
   for (const row of rows) {
     const answer = row.answer?.trim();
     if (!answer) continue;
     // Lengths in characters (code points), as `delegation.result` counts them, summed in SQLite: the whole text never reaches here.
     const text = `SELECT m.rowid AS position, json_extract(p.value, '$.text') AS text FROM messages m, json_each(m.parts) p
-      WHERE m.thread_id = ?1 AND m.turn_id = ?2 AND m.role = 'assistant' AND json_extract(p.value, '$.type') = 'text'`;
+      WHERE m.thread_id = ?1 AND m.turn_id = ?2 AND m.role = 'assistant' AND json_extract(p.value, '$.type') = 'text'
+      AND json_extract(p.value, '$.proof') IS NULL`;
     const size = core.journal.db.query(`WITH parts AS (${text}) SELECT
       COALESCE(SUM(CASE WHEN position = ?3 THEN length(text) END), 0) + MAX(SUM(position = ?3) - 1, 0) AS own,
       COALESCE(SUM(CASE WHEN position < ?3 THEN length(text) + 1 END), 0) AS before,
@@ -136,7 +138,7 @@ export function resultPageOf(core: Core, agentId: ThreadId, turnIdParam: unknown
   // complete answer never become RPC response or process-memory strings.
   const parts = `SELECT m.rowid AS message_order, CAST(p.key AS INTEGER) AS part_order, json_extract(p.value, '$.text') AS text
     FROM messages m, json_each(m.parts) p WHERE m.thread_id = ?1 AND m.turn_id = ?2
-    AND m.role = 'assistant' AND json_extract(p.value, '$.type') = 'text'`;
+    AND m.role = 'assistant' AND json_extract(p.value, '$.type') = 'text' AND json_extract(p.value, '$.proof') IS NULL`;
   const count = core.journal.db.query(`WITH parts AS (${parts}) SELECT COALESCE(SUM(length(text)), 0) + MAX(COUNT(*) - 1, 0) AS total FROM parts`).get(agentId, turnId) as { total: number };
   if (offset > count.total) throw invalidParams(`offset: expected an integer from 0 to ${count.total}`);
   const row = core.journal.db.query(`WITH parts AS (${parts}), segments AS (

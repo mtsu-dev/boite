@@ -249,6 +249,15 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
       const message = await client.call('artifacts.publish', { threadId, path: absolute(io.cwd, want(0, 'a file')) });
       print([`attached: ${rest[0]}`, `message: ${message.id}`], message);
     },
+    proof: async () => {
+      if (rest.length < 3 || rest.length > 4) throw new Usage('boite proof <message-id> <output-line> <unchecked> [capture]');
+      const [messageId, line, unchecked, capture] = rest;
+      const message = await client.call('artifacts.prove', {
+        threadId, messageId: messageId!, line: line!, unchecked: unchecked!,
+        ...(capture === undefined ? {} : { path: absolute(io.cwd, capture) }),
+      });
+      print([`proof: ${message.id}`], message);
+    },
     delegate: async () => {
       const { DELEGATE_ACTIONS, delegateCommand } = await families();
       if (rest[0] === undefined) throw new Usage(`delegate needs ${DELEGATE_ACTIONS}`);

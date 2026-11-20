@@ -9,6 +9,7 @@ import { pruneArtifactSnapshots } from '../src/artifact-retention.ts';
 import { ARTIFACT_REFERENCES } from '../src/journal/artifact-references.ts';
 import { connect, type CoreClient } from '../src/client.ts';
 import { runCli } from '../src/cli.ts';
+import { turnResult } from '../src/delegation/results.ts';
 import { echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
 
@@ -42,6 +43,38 @@ test('agent CLI publishes immutable PDF bytes and subscribed clients receive the
   rmSync(path);
   const history = await client.call('threads.get', { threadId });
   expect(history.messages.find(m => m.id === sent.id)?.parts).toEqual(sent.parts);
+});
+
+test('agent CLI publishes a real command result and its capture with the verification limits', async () => {
+  const turn = await client.call('turns.start', { threadId, prompt: '[tool-stream] Review ready' });
+  await waitFor(() => harness.core.journal.getTurn(turn.id)?.status === 'done');
+  const finished = harness.core.journal.getTurn(turn.id);
+  const answer = turnResult(harness.core, finished);
+  expect(answer).toContain('Review ready');
+  const call = [...harness.core.journal.walkTurnMessages(threadId, turn.id)].find(message => message.parts.some(part => part.type === 'tool'))!;
+  const tool = call.parts.find(part => part.type === 'tool')!;
+  expect(tool.output).toBeTruthy();
+  const line = tool.output!.trim().split(/\r?\n/)[0]!;
+  writeFileSync(join(harness.dataDir, 'desktop.png'), 'capture bytes');
+  async function proof(result: string) {
+    let out = '', err = '';
+    const code = await runCli(['proof', call.id, result, 'Windows reste à vérifier.', 'desktop.png', '--json'], {
+      cwd: harness.dataDir, env: { [AGENT_ENV.threadId]: threadId, [AGENT_ENV.coreUrl]: harness.url, [AGENT_ENV.token]: harness.core.agents.tokenFor(threadId) },
+      out: text => out += text, err: text => err += text,
+    });
+    return { code, out, err };
+  }
+  expect(await proof('made up result')).toMatchObject({ code: expect.any(Number), err: expect.stringContaining('expected a line from exactly one completed command') });
+  const sent = await proof(line);
+  expect([sent.code, sent.err]).toEqual([0, '']);
+  const message = JSON.parse(sent.out);
+  expect(message.parts).toEqual([
+    { type: 'text', text: expect.stringContaining(`${line}\n`), proof: true },
+    expect.objectContaining({ type: 'file', name: 'desktop.png' }),
+  ]);
+  expect(message.parts[0].text).toContain('Windows reste à vérifier.');
+  expect(harness.core.journal.getMessage(message.id)).toMatchObject({ turnId: turn.id, parts: message.parts });
+  expect(turnResult(harness.core, finished)).toBe(answer);
 });
 
 test('refuses unrelated threads, outside paths, missing files, directories and oversized data', async () => {

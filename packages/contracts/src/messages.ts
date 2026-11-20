@@ -144,7 +144,7 @@ export type MessagePart =
    * `omitted`: characters a page left out of the end of `text` because the
    * message was too heavy to send whole (`MESSAGE_SENT_MAX_BYTES`). Never persisted.
    */
-  | { type: 'text'; text: string; complete?: boolean; displayText?: string; previewReferences?: PreviewReference[]; activity?: ActivityTurn; moved?: MoveNotice; startedBy?: ThreadLink; started?: ThreadLink; sentFrom?: SentFrom; byPlugin?: PluginActor; omitted?: number; teamPost?: TeamPostRef }
+  | { type: 'text'; text: string; complete?: boolean; displayText?: string; previewReferences?: PreviewReference[]; activity?: ActivityTurn; moved?: MoveNotice; startedBy?: ThreadLink; started?: ThreadLink; sentFrom?: SentFrom; byPlugin?: PluginActor; omitted?: number; teamPost?: TeamPostRef; proof?: true }
   /**
    * An image the user sent with the prompt, journalled with the message. A page
    * asked with `compactImages` leaves a large one's `data` empty, with
@@ -386,9 +386,49 @@ export function chatPreviewSizeProblem(value: unknown): { field: 'previewMax'; e
     : { field: 'previewMax', expected: CHAT_PREVIEW_SIZES.join(', ') };
 }
 
+export interface ProofSource { threadId: ThreadId; messageId: MessageId; line: string; unchecked: string; path?: string }
+
+export class ProofInputError extends Error {
+  constructor(readonly field: keyof ProofSource, expected: string) {
+    super(`artifacts.prove.${field}: ${expected}`);
+  }
+}
+
+function recordedCommand(tool: Extract<MessagePart, { type: 'tool' }>): string {
+  if (tool.status !== 'done' && tool.status !== 'error') return '';
+  const input = typeof tool.input === 'object' && tool.input ? tool.input as Record<string, unknown> : {};
+  const command = input.command ?? input.cmd;
+  if (typeof command === 'string') return command.trim();
+  return Array.isArray(command) && command.length > 0 && command.every(arg => typeof arg === 'string') ? JSON.stringify(command) : '';
+}
+
+/** Compose a journal-backed proof in the existing Markdown and attachment renderers. */
+export function proofPart(source: ProofSource, parts: readonly MessagePart[]): Extract<MessagePart, { type: 'text' }> {
+  if (typeof source.line !== 'string' || !source.line.trim() || source.line.length > 1000 || /[\r\n]/.test(source.line)) {
+    throw new ProofInputError('line', 'expected one output line of 1 to 1000 characters');
+  }
+  if (typeof source.unchecked !== 'string' || !source.unchecked.trim() || source.unchecked.length > 1000) {
+    throw new ProofInputError('unchecked', 'expected 1 to 1000 characters describing what remains unchecked');
+  }
+  if (source.path !== undefined && (typeof source.path !== 'string' || !source.path.trim())) {
+    throw new ProofInputError('path', 'expected a capture path inside the checkout');
+  }
+  const line = source.line.trim();
+  const commands = parts.flatMap(part => {
+    if (part.type !== 'tool' || !part.output?.split(/\r?\n/).some(output => output.trim() === line)) return [];
+    const command = recordedCommand(part);
+    return command ? [command] : [];
+  });
+  if (commands.length !== 1) throw new ProofInputError('line', 'expected a line from exactly one completed command in this message');
+  const lines = [commands[0], line].join('\n').split(/\r?\n/).map(row => `    ${row}`);
+  return { type: 'text', text: `${lines.join('\n')}\n\n${source.unchecked.trim()}`, proof: true };
+}
+
 export interface MessagesRpcMethods {
   /** Explicitly publish a bounded file snapshot from this thread's working directory. */
   'artifacts.publish': { params: { threadId: ThreadId; path: string }; result: Message };
+  /** Publish a line of a completed tool's output and optionally a snapshot from the thread's checkout. */
+  'artifacts.prove': { params: ProofSource; result: Message };
   /**
    * `view: true` asks for the address a published view opens as a page at
    * (`VIEW_ROUTE`), which only an artifact carrying `view` has; without it the
