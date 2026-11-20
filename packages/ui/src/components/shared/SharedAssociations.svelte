@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { markFeature } from '@boite/contracts';
   import { untrack } from 'svelte';
   import { ArrowRight, Link2, RefreshCw } from '@lucide/svelte';
   import type { Contact, ContactOffer, SharedProjectRef, SharedProjectScope } from '@boite/contracts';
@@ -59,8 +58,6 @@
     catch (e) { actionError = errorText(e); }
     finally { busy = false; }
   }
-  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
-  markFeature('boite-feature:contacts');
 </script>
 
 <div class="associations" data-testid="shared-associations" data-project={projectId}>

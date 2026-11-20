@@ -2,9 +2,11 @@
 
 An experiment is unfinished work behind a switch in Settings > Experiments.
 Every feature has a tag, `release`, `nightly` or `dev`, and exists only in the
-builds at or above it: a Release has none of the unfinished ones, in its
-behaviour and, the Contacts' core side aside
-([out of the build](#out-of-the-build)), in its files.
+builds at or above it: a Release has none of the unfinished ones.
+
+There is no experiment today: every feature is tagged `release`, so no build
+lists a switch and Settings has no Experiments page. The machinery below
+stays for the next one.
 
 ## Tags
 
@@ -13,8 +15,8 @@ Every feature has one tag, in `EXPERIMENT_STAGES`
 
 | Tag | Meaning | Ids |
 | --- | --- | --- |
-| `release` | Finished. On in every build, with no switch. | `theme-grain`, `session-import`, `prompt-cache`, `resident-agents` (Mochis), `recording-indicators`, `pinned-quotas` |
-| `nightly` | May change or go away. A switch in a Nightly and in a Dev build, absent from a Release. | `whip`, `contacts`, `auto-goal`, `teams`, `debates` (Council) |
+| `release` | Finished. On in every build, with no switch on the Experiments page. | `theme-grain`, `session-import`, `prompt-cache`, `resident-agents` (Mochis), `recording-indicators`, `pinned-quotas`, `whip`, `contacts`, `auto-goal`, `teams`, `debates` (Council) |
+| `nightly` | May change or go away. A switch in a Nightly and in a Dev build, absent from a Release. | none today |
 | `dev` | Being built. A switch in a Dev build only, absent from a Nightly and from a Release. | none today |
 
 A build has a kind, read from its version by one function, `buildKindOf`:
@@ -42,9 +44,9 @@ sides read: `featureRuns(id, version)`, `listedExperiments(version)` (the
 switches a build shows), `effectiveExperiments(chosen, version)` (what is on:
 every finished feature, plus the chosen ones whose tag the build reaches) and
 `experimentRefusal(id, version)` (why a build has no switch for an id). The
-refusal names the builds that have it and this one: "experiment.whip runs in Nightly and Dev
-builds only, and this machine runs a Release (2.0.0)". A stored
-choice for a feature the build lacks is ignored and kept.
+refusal names the builds that have it and this one: "experiment.<id> runs in
+Nightly and Dev builds only, and this machine runs a Release (2.0.0)". A
+stored choice for a feature the build lacks is ignored and kept.
 `experimentsRun(version)` and `isReleaseVersion(version)` remain for the
 places that ask about the nightly tag as a whole.
 
@@ -52,61 +54,37 @@ In a Dev build the Experiments page lists the features of two tags, so each
 switch shows its own beside its name ("Nightly", "Dev only"), on the desktop
 and on a phone. A Nightly lists one tag and shows none.
 
-Three core settings are experiments too (`EXPERIMENTAL_SETTINGS`, tagged
-`nightly` by `EXPERIMENTAL_SETTINGS_STAGE`):
+The three core settings that used to be experiments,
 [Keep the prompt cache warm](prompt-cache.md#keeping-the-cache-warm)
 (`cacheKeepalive`), [Background compaction](context.md#background-compaction)
 (`backgroundCompaction`) and [Device live stream](devices.md#live-stream)
-(`deviceStream`).
+(`deviceStream`), are ordinary owner settings now, off by default, in
+Settings > System on the desktop and on a phone. The core reads them as
+stored in every build, and an agent may ask for any of them with a settings
+card (`REQUESTABLE_SETTINGS`). A card asked while background compaction or
+the stream was an experiment still names the Experiments page: its button
+and its trail lead to System (`settingPlace` in `lib/setting-requests.ts`).
 
 ## Who decides
 
 Each side decides for the build it is. No protocol field says "experiments
 run": the version in the hello (`info.version`) is enough.
 
-- The core (`client-preferences.ts`, `settings.ts`, `threads/cards.ts`)
-  normalizes the experiments an app reports with `effectiveExperiments` for
-  its own version, so nothing it gates runs because an app claimed it. It
-  refuses a settings card for an experiment its build does not run
-  (`experimentRefusal`), refuses a patch that turns an experimental setting on
-  in a Release (`experimentalSettingRefusal`) and reads those settings as off
-  there. `holdExperimentalSettings(settings, version)` is that reading: in a
-  Release it returns the settings with `cacheKeepalive` null and
-  `backgroundCompaction` and `deviceStream` false, the per-type compaction
-  policies included, and leaves the saved file alone, so a machine that goes
-  back to a Nightly finds its choice. A save on a Release never writes that
-  reading back: `keepStoredExperimentalSettings(stored, patch, version)` drops
-  the three settings from the patch and gives every per-type compaction policy
-  the background choice already stored (a type customized for the first time
-  takes the common stored one), so changing a compaction limit, or saving the
-  values the app read, stores no "off". The copy from the group's settings
-  home is the exception: `settings.follow` stores what the home holds, and
-  the client that makes the copy reads both ends with
-  `settings.get { stored: true }`, the settings as saved, so a Release home
-  never hands a Nightly follower its own reading as a choice
-  (`packages/ui/src/lib/settings-sync.ts`). The core also starts nothing new
-  in Contacts on a Release (`contacts/gate.ts`, `experimentStartRefusal`):
-  inviting, joining, granting, offering, asking, accepting a request or mail,
-  trusting a contact, storing a Tailscale key and the Contacts mochi's
-  forwards are refused with the Nightly reason, while reading, refusing,
-  revoking and removing what exists still answer. The same holds for what a
-  Nightly left in the data directory: accepting an association, turning its
-  board, compute or reviewer on, a new, edited or claimed card
-  (`sharedBoard.apply`, `todos.update` on a shared card), a path override and
-  a follow-up to a compute job are refused, while declining, turning off,
-  removing a card, releasing a claim, cancelling a job and revoking go
-  through. The Contacts mochi proposes no plan (`contacts.bot.askOwner` with
-  `connect` or `start`), and a Yes on a card drawn as a Nightly opens and
-  starts nothing: the build is read when the owner answers and again when the
-  plan runs, and the request goes back to the mochi. A letter the mochi held as a
-  Nightly is not delivered either (`contacts.bot.flag` with `deliver: true`):
-  its flag stays open, and blocking it still answers. A workflow step meets
-  the same refusal, since the compute service reads the build itself. A
-  contact's Nightly meets it too while the listener still runs: its
-  `compute.start`, `compute.send` and a new, edited or claimed card in
-  `board.apply` are refused, and its reads, cancels, removals and releases
-  answer.
-  `packages/core/test/feature-stages.test.ts` covers it.
+- The core (`client-preferences.ts`, `threads/cards.ts`) normalizes the
+  experiments an app reports with `effectiveExperiments` for its own version,
+  so nothing it gates runs because an app claimed it, and it refuses a
+  settings card for an experiment its build does not run
+  (`experimentRefusal`). Teams, the Council and automatic goals are finished:
+  the core runs them in every build, whatever an app reports, so no list held
+  in memory can turn them off after a restart. Automatic goals have their own
+  switch, the owner setting `autoGoals` (on unless `false`), which belongs to
+  the machine: `startsAutoGoal` and `boite goal track` read it with the
+  threshold `autoGoalMinChars`, and a track the owner turned off is refused
+  with the reason `auto-goals-off`. `settings.get` returns the settings as
+  stored, with the policy overlay; `{ stored: true }` is still accepted, and
+  `settings-sync.ts` still asks for it, for a core from before this change.
+  The Contacts' start gate (`contacts/gate.ts`, `experimentStartRefusal`)
+  refuses nothing while Contacts are `release`.
 - The app (`packages/ui/src/lib/experiments.ts`) follows the version of its
   primary machine's core: the Store `followDesktopOf` names says it on every
   hello (`heardBuild`, from `store/events.ts` and `store/connection.svelte.ts`).
@@ -114,28 +92,25 @@ run": the version in the hello (`info.version`) is enough.
   before any hello with nothing stored it uses its own build version
   (`RELEASE_VERSION`). A second machine's core is not heard. `readExperiments()`
   and `isExperimentEnabled()` return what is in force,
-  `effectiveExperiments(chosen, thatVersion)`: with empty storage the six
-  finished features are on, and on a Release no experiment is, whatever
-  storage holds. `setExperiment` refuses an id without a switch in that build.
-  The stored choice (`boite.experiments`) is never rewritten by a version: a
-  device that goes back to a Nightly finds its switches. The app still reports
-  its chosen list in `client.preferences`; the core normalizes it for its own
-  gates and tells phones the desktop app's list twice: in force in its build
-  on the historic field, and as chosen on a separate one.
-- Settings lists `listedExperiments(version)` and has no Experiments page when
-  experiments do not run (`pageAvailable` in `lib/settings-tabs.ts`, desktop
-  nav, search and phone list): a route or a card that points there lands on
-  Home, the page Settings opens on. The three machine settings and the Automatic goals threshold
-  show only while the core of the machine being configured is not a Release.
-  A card about an experiment without a switch in this build can only be
-  refused, and says why.
+  `effectiveExperiments(chosen, thatVersion)`: every finished feature is on,
+  whatever storage holds. `setExperiment` refuses an id without a switch in
+  that build. The stored choice (`boite.experiments`) is never rewritten by a
+  version. The app still reports its chosen list in `client.preferences`; the
+  core normalizes it for its own gates and tells phones the desktop app's
+  list twice: in force in its build on the historic field, and as chosen on a
+  separate one.
+- Settings has an Experiments page only where the build runs experiments and
+  lists at least one switch (`experimentsAvailable`, read by `pageAvailable`
+  in `lib/settings-tabs.ts`, the desktop nav, search and the phone list): a
+  route or a card that points there lands on Home, the page Settings opens
+  on. Today no build lists one, so the page is gone everywhere. A card about
+  an experiment without a switch in this build can only be refused, and says
+  why; a card about a finished one says it is no longer an experiment.
 - The in-memory client (`lib/fake-client`) has a core version like the real
   one (`FakeClientOptions.version`, `?fake=1&version=2.0.0`), gives it to
-  `checkSettingRequest` and `readSettings`, and gates teams, council and
-  automatic goals on the list in force. It shares the core's helpers for the
-  three experimental settings (the refusal, the reading as off, the stored
-  values a save keeps, `settings.get { stored: true }`) and for the Contacts
-  calls a Release refuses.
+  `checkSettingRequest`, reads the settings as stored, and runs teams, the
+  council and automatic goals in every build, automatic goals following
+  `autoGoals` as the core does.
 
 ## Tagging and promoting a feature
 
@@ -154,27 +129,32 @@ everywhere. Then, in the same change: drop its entry
 from `lib/experiment-copy.ts` and `lib/strings/*/experiments.ts`
 (`experiment-copy.test.ts` fails otherwise), name it in `graduated()` of
 `lib/setting-requests.ts` so an old card keeps a readable title, and move its
-guide text out of [the experiments guide](../experiments.md). The checks of a
-finished id at its call sites keep passing and are deleted later; the id stays
-in `EXPERIMENT_IDS` until they are. A finished feature a person would still
-want off gets a switch in `lib/features.ts`, on the Settings page it belongs
-to, as [chat files and previews](chat-files.md),
+guide text out of [the experiments guide](../experiments.md). A feature that
+was cut from a build leaves `FEATURE_CUTS` and `scripts/ci/feature-modules.ts`,
+and its modules drop their `markFeature` call; its lazy entries may stay, the
+flag they read being defined by no build any more. The checks of a finished
+id at its call sites keep passing and are deleted later; the id stays in
+`EXPERIMENT_IDS` until they are. A finished feature a person would still want
+off gets a switch in `lib/features.ts` or an owner setting, on the Settings
+page it belongs to, as [chat files and previews](chat-files.md),
 [open chat links](chat-files.md#open-chat-links-in-their-apps),
-[preview comments](panel.md#preview-comments) and the
-[pointer interactions](interactions.md) did.
+[preview comments](panel.md#preview-comments), the
+[pointer interactions](interactions.md), the [Whip](#whip) (Appearance) and
+[automatic goals](goals.md#automatic-goals) (`autoGoals`, General) did.
 
 ## Out of the build
 
-A build below a feature's tag does not ship the feature's code, with one
-exception: the Contacts' core side stays in every build and is refused at run
-time (the table below says why). Refusing at run time is not enough for the
-rest: the bundler has to drop the modules.
+A build below a feature's tag does not ship the feature's code. Refusing at
+run time is not enough: the bundler has to drop the modules. No feature is
+cut today (`FEATURE_CUTS` is empty): the Whip, the Council, Contacts, Teams
+and Automatic goals were, and are finished, so every build holds them. What
+follows is how the next one is cut.
 
 A packaged build knows its kind when it is compiled. `featureDefines(version)`
 turns the stamped version into `__BOITE_BUILD_KIND__`, the one constant, and
-one boolean per tagged feature derived from it and from `EXPERIMENT_STAGES`
-(`__BOITE_HAS_WHIP__`, `__BOITE_HAS_DEBATES__`, `__BOITE_HAS_AUTO_GOAL__`,
-`__BOITE_HAS_TEAMS__`, `__BOITE_HAS_CONTACTS__`). Three builds receive them:
+one boolean per feature not tagged `release`, derived from it and from
+`EXPERIMENT_STAGES` (`__BOITE_HAS_<ID>__`; today none). Three builds receive
+them:
 
 - the UI, through Vite's `define` (`packages/ui/vite.config.ts`), from the
   root `package.json`;
@@ -191,8 +171,8 @@ bundle also refuses what it was compiled without, whatever version it hears
 (`featureCompiled`, read by `featureRuns`).
 
 Neither Bun nor Rolldown folds a call, or a constant imported from another
-module, so a helper cannot carry the gate. Each feature has one lazy entry
-that writes its flag in full before a dynamic import:
+module, so a helper cannot carry the gate. Each cut feature has one lazy
+entry that writes its flag in full before a dynamic import:
 
 ```ts
 if (typeof __BOITE_HAS_WHIP__ === 'undefined' || __BOITE_HAS_WHIP__) return import('./whip/feature');
@@ -203,40 +183,33 @@ Defined as `false`, the branch and its import are dropped and no chunk holds
 the feature's modules. Nothing else may import those modules: one static
 import elsewhere puts them back in every build.
 
-What is cut, in a build below the feature's tag:
+The five finished features keep their entries, now always taken: in the UI
+`lib/whip-entry.svelte.ts`, `lib/council-entry.ts`, `lib/teams-entry.ts`,
+`lib/contacts-entry.ts` and their parts in `lib/deferred-parts.ts`; in the
+core `council-entry.ts` (with `delegate-cli.ts`), `teams-entry.ts` and
+`auto-goal-entry.ts`. The core's entries also hold the stand-in a build
+without the feature would get, written for exactly what the rest of the core
+calls; no build reaches it today. In the core a store is built in the
+constructor and a prompt is admitted in one synchronous step, so the entries
+there use `require` behind the flag, not `import()`: Bun drops a folded
+`require` the same way. The journal's tables are created in every build.
 
-| Feature | UI | Core | What stays in every build, and why |
-| --- | --- | --- | --- |
-| Whip | cut: `lib/whip-entry.svelte.ts` loads `lib/whip/feature.ts` (the control, the Escape key), then the rope with its physics and sounds | has no core side | nothing |
-| Council (`debates`) | cut: the salon through `lib/council-entry.ts`, the card through its gated part in `lib/deferred-parts.ts`, with `lib/council.svelte.ts` | cut: the store and the RPC methods through `council-entry.ts`, the `boite delegate council` command through `delegate-cli.ts` | the tables (`council/journal.ts`, read by `journal/schema.ts`), the strings and the contract types |
-| Automatic goals | cut: the threshold setting through `lib/auto-goal-entry.ts` | cut: `auto-goal.ts` (which prompt starts a goal, starting it, `boite goal track`) through `auto-goal-entry.ts` | the goal engine (`activity.ts`), a finished feature that also runs the goal an automatic start made; the `autoGoalMinChars` setting; one line of the agent guide; the strings |
-| Teams | cut: the chat, the dialog, the header through `lib/teams-entry.ts`, the request card through its gated part in `lib/deferred-parts.ts` | cut: the store with its peers, snapshots and mirror, the RPC methods and `boite team` through `teams-entry.ts` | the tables (`teams/journal.ts`); `coordination-team.ts`, which renders a letter's team part and asks the store; in the UI `lib/teams.svelte.ts`, the list the rails read (empty where the core has no team), and `lib/team-requests.ts` |
-| Contacts | cut: the page, the column, the rows, the notices and the shared thread dialog through `lib/contacts-entry.ts`, the shared project rows and dialog through their gated parts in `lib/deferred-parts.ts` | not cut | the whole core side. A Release still reads, revokes and removes what a Nightly left and keeps the access limits of a shared thread; 30 modules call its stores (`coordination.ts`, `threads/turn-context.ts`, `workdir.ts`, `artifacts.ts`, `server.ts`). Cutting it means a Release drops those reads and refuses to run a thread bound to a contact: a decision, not a refactor. In the UI: the column's fold (`lib/contacts-rail.svelte.ts`), the ask row and remote chip of a thread, `lib/operator.ts` |
-
-In the core a store is built in the constructor and a prompt is admitted in
-one synchronous step, so the entries there use `require` behind the flag, not
-`import()`: Bun drops a folded `require` the same way. A build without the
-feature gets a stand-in from the entry, written for exactly what the rest of
-the core calls: the Council owns no thread, a team letter is not received,
-no prompt starts a goal, and every RPC method of the feature is refused with
-the tag and the build. The journal's tables are created in every build, so
-what a Nightly left is kept and ignored.
-
-For Contacts' core the run-time rule alone holds in a Release: no switch, a
-refusal that names the tag, the code in the bundle.
+Contacts' core side was never cut, and its start gate (`contacts/gate.ts`)
+refuses nothing while Contacts are `release`.
 
 ### The proof
 
 `FEATURE_CUTS`, beside the tags, says which features are cut from which
 bundle, and `scripts/ci/feature-modules.ts` lists the modules of each: all
-that its lazy entry loads and nothing else imports. Every one of them calls
-`markFeature('boite-feature:<id>')` at its top level (a component in its
-script). A call with an effect is one thing no bundler drops, where an unused
-constant goes as soon as a module is imported by name: so a module that
-reaches a bundle carries its marker there however it got in.
-`scripts/ci/feature-cut.ts` reads a bundle and fails when it holds the marker
-of a feature cut from that bundle and tagged above its kind (a leak), or lacks the marker of a feature it
-must hold (the marker went, and the first check would pass on anything):
+that its lazy entry loads and nothing else imports. Both are empty today.
+Every listed module calls `markFeature('boite-feature:<id>')` at its top
+level (a component in its script). A call with an effect is one thing no
+bundler drops, where an unused constant goes as soon as a module is imported
+by name: so a module that reaches a bundle carries its marker there however
+it got in. `scripts/ci/feature-cut.ts` reads a bundle and fails when it holds
+the marker of a feature cut from that bundle and tagged above its kind (a
+leak), or lacks the marker of a feature it must hold (the marker went, and
+the first check would pass on anything):
 
 ```sh
 bun scripts/ci/feature-cut.ts           # packages/ui/dist and packages/core/dist, as the kind package.json says
@@ -245,11 +218,15 @@ bun scripts/ci/feature-cut.ts --build   # builds the UI and the core for the thr
 
 The desktop jobs of `desktop.yml` run the first form on what they just
 packaged, the compiled core included, so a Nightly and a Release are each
-checked as what they are; the Linux x64 job also runs the second.
+checked as what they are; the Linux x64 job also runs the second. With
+nothing cut, both pass on any bundle that builds.
 `scripts/ci/feature-cut.test.ts` plants a leak and a lost marker, checks the
-marker call in every listed module, fails on a file of a feature's directory
-that is in neither list of `feature-modules.ts`, and bundles a direct import
-of each cut core store as a Release with Bun itself: the scan must see it.
+marker call in every listed module and that no other module calls
+`markFeature`, fails on a file of a feature's directory that is in neither
+list of `feature-modules.ts`, checks that the five finished features' entries
+still write their flag in full, and bundles a cut module with Bun itself as
+a Release, once imported directly and once behind its flag: the scan must see
+the first and not the second.
 
 ### Adding a feature so it can be cut
 
@@ -264,7 +241,7 @@ of each cut core store as a Release with Bun itself: the scan must see it.
    `null`: draw nothing, or refuse with `experimentRefusal(id, version)`.
 4. Call `markFeature('boite-feature:<id>')` at the top level of every module
    of the feature, list them in `scripts/ci/feature-modules.ts`, add the
-   feature to `FEATURE_CUTS`, and name its entry in the table of
+   feature to `FEATURE_CUTS`, and name its entry in
    `scripts/ci/feature-cut.test.ts`.
 5. Run `bun scripts/ci/feature-cut.ts --build`. A leak names the chunk that
    holds the marker: find who imports the feature outside its entry.
@@ -272,13 +249,13 @@ of each cut core store as a Release with Bun itself: the scan must see it.
 A service the core builds at startup follows `teams-entry.ts`: a `require`
 behind the flag, and a stand-in typed with `Pick` of the real class for the
 members the rest of the core calls, so a new caller fails the type check
-until the stand-in answers it. `feature-stages.test.ts` starts a core with the
-flag set to `false` (`compiledWithout`) and checks the refusals.
+until the stand-in answers it.
 
 ## Devices and the desktop app
 
 The client switches are off by default and belong to this device. They do not
-change a core's settings. A phone has its own Experiments row in Settings.
+change a core's settings. A phone has its own Experiments row in Settings
+while the page exists.
 
 A phone or a browser starts with the switches of the desktop app on its primary
 machine, and changes when that app does. The core answers each app's report
@@ -308,25 +285,28 @@ the phone's page follows the desktop app again. The desktop app follows no one.
 ## Other client switches
 
 `EXPERIMENT_IDS` in `packages/contracts/src/experiments.ts` lists the ids;
-`lib/experiment-copy.ts` supplies the labels of those with a switch.
-
-| Switch | What it adds |
-| --- | --- |
-| Automatic goals (`auto-goal`) | A long prompt starts a reviewed goal and a board card, and `boite goal track` lets the agent start one; see [automatic goals](goals.md#automatic-goals). Its threshold (`autoGoalMinChars`) is an owner-only core setting shown under the switch. |
+`lib/experiment-copy.ts` supplies the labels of those with a switch. None
+has one today.
 
 Finished, with no switch: the Grain theme (`theme-grain`, a choice in
 Appearance), Claude Code [session import](imports.md) (`session-import`), the
 [prompt cache](prompt-cache.md) timer (`prompt-cache`), click markers and
 navigation keys in native browser recordings (`recording-indicators`, never
-typed text or password input) and pinned model quotas (`pinned-quotas`, see
-[placement and behavior](development.md#ui-spacing-and-motion)).
+typed text or password input), pinned model quotas (`pinned-quotas`, see
+[placement and behavior](development.md#ui-spacing-and-motion)), Mochis
+(`resident-agents`), [Contacts](#contacts) (`contacts`), [Teams](#teams)
+(`teams`) and the [Council](#council) (`debates`). Finished, with a switch of
+their own elsewhere: the [Whip](#whip) (`whip`, Settings > Appearance, on by
+default) and [automatic goals](goals.md#automatic-goals) (`auto-goal`, the
+owner setting `autoGoals` in Settings > General > Agent replies, on by
+default, with its threshold `autoGoalMinChars` under it while on).
 
-The page also has the three owner-only core settings named above, separate
-from the client switches. They change execution on the machine picked in the
-bar above them, which starts on the window's machine, and affect its clients;
-none follows the desktop's experiment preferences. A thread takes the switch
-of the machine it runs on: flipped for the desktop's own core, background
-compaction does nothing for a thread on a server.
+The three owner settings that were experiments, the cache keepalive,
+background compaction and the device live stream, are in Settings > System,
+off by default. They change execution on the machine picked in the bar above
+them and affect its clients. A thread takes the setting of the machine it
+runs on: turned on for the desktop's own core, background compaction does
+nothing for a thread on a server.
 
 ## Whip
 
@@ -337,8 +317,10 @@ On a phone, drag the rope with a finger and release to drop it. Escape also drop
 The rail's control remains available to drop or rethrow while the previous rope falls.
 After release, Escape resumes its usual app action.
 The opening arc uses unstretched links and fits the available side of the screen.
-The physics and canvas load only when the experiment is enabled; the animation
-loop and audio context close when it is turned off.
+Its switch is in Settings > Appearance, on by default (`whip` in
+`lib/features.ts`, kept on the device). The physics and canvas load only
+while it is on; the animation loop and audio context close when it is turned
+off.
 
 A crack plays one of six recorded cracks from Boite Legacy's sprite, with a
 synthesized burst as the fallback, and shakes the native Boite window before
@@ -359,35 +341,32 @@ switch.
 
 ## Teams
 
-Teams of mochis ([teams](teams.md)). The switch gates
-the `teams.*` methods and `boite team` commands on the teams a machine holds,
-on the core, which reads the desktop app's experiments, and the team lines of
-the mochis' guide. A machine with its switch off lets no mochi of its own enter a
-team; a mochi already in a team another machine holds stays in it, and that
-machine's switch decides ([teams](teams.md#across-machines)). Letters
-already in a mochi's inbox still go out once it is off. In the app it shows the
-Teams section above the mochis on the Mochis page, on the desktop and on the
-phone, and the team chats there ([teams](teams.md#in-the-app)); a phone
-follows the desktop's switch.
+Teams of mochis ([teams](teams.md)), finished: the `teams.*` methods and
+`boite team` commands, and the team lines of the mochis' guide, are there in
+every build, whatever an app reports, so a restart of the core turns nothing
+off. In the app it shows the Teams section above the mochis on the Mochis
+page, on the desktop and on the phone, and the team chats there
+([teams](teams.md#in-the-app)).
 
 ## Council
 
-Several AIs review one request ([council](council.md)). The id is still
-`debates`, the name it had before the council, so a switch that was on stays on.
-It gates every `council.*` method and `boite delegate council` on the core,
-which reads the desktop app's experiments and refuses them with
-`experiment-off`, and the council line of the subagent guide and the
-`boite-council` skill. In the app it draws the card in the thread that started
-a council and the salon, in the right panel on a desktop and full screen on a
-phone; a phone follows the desktop's switch. Turning it off does not stop a
-round under way: its answers still come back.
+Several AIs review one request ([council](council.md)), finished. The id is
+still `debates`, the name it had before the council. Every `council.*`
+method, `boite delegate council`, the council line of the subagent guide and
+the `boite-council` skill are there in every build. In the app it draws the
+card in the thread that started a council and the salon, in the right panel
+on a desktop and full screen on a phone.
 
 ## Contacts
 
-Turning it on creates the Contacts mochi
-([contacts](contacts.md#the-contacts-mochi)) on the window's machine and on
-every connected owner machine with a contact, once; turning it off leaves the
-mochi on the core, like any mochi. A paired phone only flips its own switch.
+Contacts are finished. Opening them the first time in a session, the page or
+the unfolded column, gives the group its one Contacts mochi, the Operator
+([contacts](contacts.md#the-contacts-mochi)), never at boot
+(`operatorOnOpen` in `lib/operator.ts`): when a connected owner machine
+already has one nothing is made, else it is made on `operatorHost` (the
+Bots machine, else the Settings machine, else the window's). A failure, or no
+machine to hold it yet, lets the next opening try again. A paired phone makes
+none.
 
 The contacts column and the Contacts page ([contacts](contacts.md)). On a
 desktop window the contacts stand in a column on the right edge, the thread
@@ -413,24 +392,26 @@ policy lines to paste when it is open, and the weakest model tier a contact's
 request may run on.
 
 In a thread, a letter the core labelled with a contact shows that contact's
-name in a dashed "remote" chip beside the sender. The chip is drawn whatever
-the switch says: the label comes from the core. Turning the switch off closes
-the Contacts page if it is open; contacts, grants and requests stay on the core.
+name in a dashed "remote" chip beside the sender: the label comes from the
+core.
 
 ## Verification
 
 `packages/core/test/feature-stages.test.ts` covers the three kinds and the
-three tags with a feature of each, the refusals and the build's constants.
-`ExperimentsPage.test.ts` covers the tags in the app: the tags a Dev build
-shows and the dev feature a Nightly does not list, the five switches a
-Nightly lists, the finished features on with empty storage, a Release that
-turns the experiments off and drops the page while the stored choice stays,
-and the machine settings hidden for a Release core. `tests/e2e/feature-stages.test.ts`
-captures Settings on a Nightly and on a Release, desktop and phone.
-`lib/feature-entries.test.ts` covers the lazy entries of the Whip and the
-Council, and `scripts/ci/feature-cut.test.ts` [the proof](#the-proof).
+three tags with a stand-in feature of each, the build's constants, a Release
+core with every feature on before any app reported, the `autoGoals` setting for
+prompts and `boite goal track`, the card of a former experiment, the three
+machine settings saved like any other, and Contacts starting something on a
+Release. `ExperimentsPage.test.ts` covers the app: every feature on whatever
+storage holds and no Experiments page while no switch is listed, a phone that
+keeps its desktop app's list, the followed cache and the desktop app that
+follows no one. `tests/e2e/feature-stages.test.ts` captures Settings on a Dev
+and on a Release build, desktop and phone, with no Experiments page.
+`lib/feature-entries.test.ts` covers the lazy entries of the Whip, the Council
+and Contacts, and `scripts/ci/feature-cut.test.ts` [the proof](#the-proof),
+with a synthetic module that stands in for a cut feature.
 
-`whip.test.ts` covers the toggle, persistence, desktop and phone layout, drop and rethrow, whole
+`whip.test.ts` covers the switch in Appearance, persistence, desktop and phone layout, drop and rethrow, whole
 interface movement, rope drawing and release, cancellation and reduced motion. `shell.test.ts` verifies
 native window movement and restoration, and refusal from a browser child webview.
 

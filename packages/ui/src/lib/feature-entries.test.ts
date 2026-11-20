@@ -1,11 +1,13 @@
 import { afterEach, expect, onTestFinished, test, vi } from 'vitest';
 import { followDesktopOf, heardBuild, writeExperiments } from './experiments';
+import { resetFeatures, setFeature } from './features';
 import { whipEntry } from './whip-entry.svelte';
 import { councilBuilt, loadCouncilSalon } from './council-entry';
 import { parts } from './deferred-parts';
 
 afterEach(() => {
   writeExperiments([]);
+  resetFeatures();
   window.localStorage.clear();
 });
 
@@ -16,15 +18,15 @@ function primarySays(version: string): void {
   heardBuild(owner, version);
 }
 
-test('the Whip is fetched the first time its switch is on, the control before the rope, and never on a Release', async () => {
+test('the Whip is fetched the first time its Appearance switch is on, the control before the rope, on a Release too', async () => {
   const failed = vi.fn();
   primarySays('2.0.0');
-  writeExperiments(['whip']);
+  setFeature('whip', false);
   whipEntry.need(failed);
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 50));
   expect(whipEntry.feature).toBeUndefined();
 
-  primarySays('2.0.0-nightly.20261113.1');
+  setFeature('whip', true);
   whipEntry.need(failed);
   await vi.waitFor(() => expect(whipEntry.overlay).toBeDefined(), { timeout: 10_000 });
   expect(whipEntry.feature?.WhipButton).toBeDefined();

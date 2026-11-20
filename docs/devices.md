@@ -42,8 +42,8 @@ iOS Simulators are view only in the panel: the agent drives them itself.
 
 ### Live device stream
 
-Experimental, in Nightly builds only: turn it on in Settings, Experiments,
-Live device stream.
+Off by default: turn it on in Settings, System, Live device stream. Only the
+owner sees the switch, and it changes that machine only.
 
 Without it, the panel shows screenshots, a few per second, and only printable
 ASCII text reaches an Android device. With it on, an Android emulator or phone
@@ -124,7 +124,6 @@ stops it, when you archive the conversation, or when Boite stops.
 
 - [The right panel](panel.md): the Device and Window surfaces.
 - [The agent's browser](browser.md): web pages the agent drives.
-- [Experiments](experiments.md): features still being finished.
 - [Phone](phone.md): watching a device from a paired phone.
 - Technical reference: [devices](internals/devices.md),
   [windows](internals/windows.md), [desktop](internals/desktop.md)

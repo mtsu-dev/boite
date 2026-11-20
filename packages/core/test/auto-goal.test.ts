@@ -96,20 +96,27 @@ test('a prompt of 1500 characters with the experiment on starts a reviewed goal 
   held.release();
 });
 
-test('1499 characters, the experiment off, or a command start no goal', async () => {
+test('1499 characters, the owner\'s setting off, or a command start no goal', async () => {
   h = await startTestCore();
   roles();
   const on = await desktop();
   await on.client.call('turns.start', { threadId: on.threadId, prompt: prompt(1499) });
   await waitFor(() => h.core.journal.listTurns(on.threadId).some(turn => turn.status === 'done'));
-  const off = await desktop([]);
-  await off.client.call('turns.start', { threadId: off.threadId, prompt: prompt(1500) });
-  await waitFor(() => h.core.journal.listTurns(off.threadId).some(turn => turn.status === 'done'));
+  // A command is exempt while the setting is on.
   const { threadId } = await echoThread(h, on.client, 'command');
   await on.client.call('turns.start', { threadId, prompt: `/cost ${prompt(1500)}` });
-  await waitFor(() => h.core.journal.listTurns(threadId).length > 0);
+  await waitFor(() => h.core.journal.listTurns(threadId).some(turn => turn.status === 'done'));
+  await on.client.call('settings.set', { autoGoals: false });
+  const off = await desktop();
+  await off.client.call('turns.start', { threadId: off.threadId, prompt: prompt(1500) });
+  await waitFor(() => h.core.journal.listTurns(off.threadId).some(turn => turn.status === 'done'));
   for (const id of [on.threadId, off.threadId, threadId]) expect(goalOf(id)).toBeNull();
   expect(await cards(on.client, on.threadId)).toEqual([]);
+  // An app that reports no experiment changes nothing: the setting decides.
+  await on.client.call('settings.set', { autoGoals: true });
+  const plain = await desktop([]);
+  await plain.client.call('turns.start', { threadId: plain.threadId, prompt: prompt(1500) });
+  await waitFor(() => goalOf(plain.threadId) !== null);
 });
 
 test('the threshold is the owner\'s setting, validated from 200 to 20000', async () => {
@@ -155,7 +162,7 @@ test('a queued long prompt keeps the decision it was queued with across a core r
   expect(h.core.journal.listMessages(threadId).find(message => message.role === 'user')!.parts[0]).toMatchObject({ text });
 });
 
-test('goal track starts once on the last prompt, then refuses; refuses with the experiment off or a goal running', async () => {
+test('goal track starts once on the last prompt, then refuses; refuses with the owner\'s setting off or a goal running', async () => {
   h = await startTestCore();
   // Held turns keep each goal under way while the agent calls again.
   const held = roles({ hold: true });
@@ -184,12 +191,12 @@ test('goal track starts once on the last prompt, then refuses; refuses with the 
   await client.call('threads.activity.set', { threadId: busy.threadId, goal: { objective: 'keep going' } });
   expect((await boite(busy.threadId, ['goal', 'track'])).err).toContain('already has a goal or a loop');
 
-  // The desktop app turns the experiment off.
-  await client.call('client.preferences', report([]));
+  // The owner turns automatic goals off on the machine.
+  await client.call('settings.set', { autoGoals: false });
   const plain = await echoThread(h, client, 'plain');
   await client.call('turns.start', { threadId: plain.threadId, prompt: 'Two things' });
   await waitFor(() => h.core.threads.runner.handles.has(plain.threadId));
-  expect((await boite(plain.threadId, ['goal', 'track'])).err).toContain('needs the Automatic goals experiment');
+  expect((await boite(plain.threadId, ['goal', 'track'])).err).toContain('the owner turned off on this machine');
   expect(goalOf(plain.threadId)).toBeNull();
   held.release();
 });
@@ -207,7 +214,7 @@ test('the card of an automatic goal is claimed once its review passes', async ()
   expect(list[0]).toMatchObject({ status: 'claimed', goalThreadId: threadId });
 });
 
-test('the agent guide names goal track only while the experiment is on', () => {
+test('the agent guide names goal track only while automatic goals are on', () => {
   expect(agentGuide(true, false, [], false, true)).toContain('`boite goal track`');
   expect(agentGuide(true, false, [], false, false)).not.toContain('goal track');
 });
@@ -228,18 +235,26 @@ test('the prompt that starts an automatic goal is its first goal turn: one turn 
   expect(h.core.journal.listTurns(threadId)).toHaveLength(1);
 });
 
-test('a queued batch never lends one prompt\'s experiments to another', async () => {
+test('a queued long prompt starts its goal from the machine\'s setting, whatever experiments its item names', async () => {
   h = await startTestCore();
   roles();
   const { client, threadId } = await desktop([]);
   const text = prompt(1500);
   const value: ComposerValue = { input: { text: '', attachments: [], paused: false, queued: [
-    { id: 'short-off', text: 'A short one', attachments: [], experiments: [] },
-    { id: 'long-on', text, attachments: [], experiments: ['auto-goal'] },
+    { id: 'long-none', text, attachments: [], experiments: [] },
   ] } };
   await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0, value });
   await waitFor(() => goalOf(threadId) !== null, 5000);
   expect(goalOf(threadId)).toMatchObject({ objective: text, auto: true });
+  // The setting off, an item that still names the old experiment starts none.
+  await client.call('settings.set', { autoGoals: false });
+  const off = await desktop([]);
+  const stale: ComposerValue = { input: { text: '', attachments: [], paused: false, queued: [
+    { id: 'long-tagged', text, attachments: [], experiments: ['auto-goal'] },
+  ] } };
+  await off.client.call('composer.put', { section: 'inputs', id: off.threadId, expectedRevision: 0, value: stale });
+  await waitFor(() => h.core.journal.listTurns(off.threadId).some(turn => turn.status === 'done'), 5000);
+  expect(goalOf(off.threadId)).toBeNull();
 });
 
 test('goal track takes the user\'s last prompt, a steer included', async () => {

@@ -255,7 +255,7 @@ export interface CouncilRpcMethods {
    * at the same effort may not. A level written on a route that its model lacks
    * refuses the council, as does a route that cannot run: a member is never
    * replaced. `roles` gives a member, named as `models` writes it, a text of its
-   * own beside the request. Refused while the experiment is off.
+   * own beside the request.
    */
   'council.start': {
     params: { threadId: ThreadId; request: string; models?: string[]; effort?: string | null; roles?: Record<string, string>; timeoutMinutes?: number; requestId?: string };

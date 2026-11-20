@@ -8,7 +8,6 @@
   import { AgentsView, agentOfThread, agentRows, firstDeskVisit, lastOpenedAgent, openAgent, rememberAgent, statusOf, type AgentFocus } from '../../lib/agents.svelte';
   import { agentDirectory } from '../../lib/agent-directory.svelte';
   import { agentsIntent, takeAgentsIntent } from '../../lib/agents-view.svelte';
-  import { experimentOn } from '../../lib/experiments.svelte';
   import { mobileOverlay } from '../../lib/mobile-history';
   import { mobileChrome } from '../../lib/mobile-chrome.svelte';
   import { titleSlot } from '../../lib/title-slot.svelte';
@@ -69,13 +68,13 @@
   /** The agent thread on screen: an ordinary thread left open from the chat is not drawn here. */
   const thread = $derived(store.openThread?.agentSessionId ? store.openThread : null);
   /** A team's chat on screen, while Teams is on (`docs/internals/teams.md`): the rail lists the teams above the bots. */
-  const teamThread = $derived(!thread && store.openThread?.teamId && experimentOn('teams') ? store.openThread : null);
+  const teamThread = $derived(!thread && store.openThread?.teamId ? store.openThread : null);
   const team = $derived(teamThread ? teamsOf(store).ofThread(teamThread.id) : null);
-  // The team's dialog and header load with the experiment, out of the builds below its tag (lib/teams-entry.ts).
+  // The team's dialog and header load through their entry (lib/teams-entry.ts).
   let TeamDialog = $state.raw<typeof import('../teams/TeamDialog.svelte').default>();
   let TeamHeader = $state.raw<typeof import('../teams/TeamHeader.svelte').default>();
   $effect(() => {
-    if (!experimentOn('teams') || TeamDialog || !teamsParts) return;
+    if (TeamDialog || !teamsParts) return;
     void Promise.all([teamsParts.TeamDialog(), teamsParts.TeamHeader()]).then(([dialog, header]) => { TeamDialog = dialog.default; TeamHeader = header.default; }).catch(() => {});
   });
   /** The dialog that creates a team by hand is open (`docs/internals/teams.md`, In the app). */
@@ -138,8 +137,8 @@
       const intent = takeAgentsIntent(store);
       if (intent?.kind === 'new-bot') focus = { kind: 'new' };
       else if (intent?.kind === 'engine') focus = { kind: 'engine' };
-      else if (intent?.kind === 'new-team' && experimentOn('teams') && store.owner) creatingTeam = true;
-      else if (intent?.kind === 'team' && experimentOn('teams')) {
+      else if (intent?.kind === 'new-team' && store.owner) creatingTeam = true;
+      else if (intent?.kind === 'team') {
         // Asked from the rail, which stopped any load in flight: select again even when this thread was already asked for.
         showTeamChat(intent.threadId, true);
         if (intent.edit && store.owner) editingTeam = intent.teamId;

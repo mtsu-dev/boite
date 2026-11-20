@@ -11,9 +11,11 @@ import { thrown } from './settle.ts';
 import { waitForComputeJob } from './shared-compute-fixture.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnResult } from '../src/drivers/types.ts';
+import { restoreStages, tagStage } from './stage-seam.ts';
 
 const cores: TestCore[] = [], dirs: string[] = [];
 afterEach(async () => {
+  restoreStages();
   for (const h of cores.splice(0).reverse()) await h.stop();
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
@@ -826,7 +828,8 @@ test('a workflow can retry a local host rejection that never reserved or dispatc
   expect(a.h.core.workflows.get(a.threadId, run.id).status).toBe('done');
   expect(a.h.core.journal.listChildThreads()).toHaveLength(1);
 }, 30000);
-test('a Release host admits no job and no follow-up a contact\'s Nightly sends, and still answers a read and a cancel', async () => {
+test('with Contacts tagged nightly, a Release host admits no job and no follow-up a contact\'s Nightly sends, and still answers a read and a cancel', async () => {
+  tagStage('contacts', 'nightly');
   const {a, b, scope, baseCommit, enable} = await pair(); await enable(b);
   const unblock = holdAccountTurns(b.h, b.accountId);
   try {

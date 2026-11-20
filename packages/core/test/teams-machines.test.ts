@@ -10,7 +10,7 @@ import { PeerRefusal } from '../src/coordination-wire.ts';
 import { answerPostId } from '../src/teams/snapshots.ts';
 import { makeAgent, scripted, settled, turnsOf, type Answer } from './agent-fixture.ts';
 import { removeDir, startTestCore, waitFor, type TestCore } from './harness.ts';
-import { thrown } from './settle.ts';
+import { rejection, thrown } from './settle.ts';
 
 /* A team across machines (`docs/internals/teams.md`): `host` holds it, `away` runs a member. Every scenario speaks over the real transport between two cores of a test group. */
 
@@ -36,7 +36,7 @@ async function join(h: TestCore, first: TestCore) {
   await waitFor(() => first.core.group.peers().some(peer => peer.coreId === id) && h.core.group.peers().some(peer => peer.coreId === firstId));
 }
 
-/** Two machines of a test group, each with the experiment on and one bot: Ada on `host`, Bob on `away`. */
+/** Two machines of a test group, each with one bot: Ada on `host`, Bob on `away`. */
 async function machines() {
   // Kept for the restart a scenario wants: the harness removes only a directory it made.
   const directory = () => { const dir = mkdtempSync(joinPath(tmpdir(), 'boite-teams-')); dirs.push(dir); return dir; };
@@ -271,37 +271,29 @@ test('when the machine holding the team is away a command says so and loses noth
   expect(posts(back, team).filter(post => post.id === 'kept')).toHaveLength(1);
 }, 120_000);
 
-test('the experiment: a machine with it off lets no mochi of its own join, and the holder\'s switch decides what its team takes', async () => {
+test('teams are on in every build: a machine whose app reports none still lets its mochis join, and an older machine with its switch off is named', async () => {
   const { host, away, hostOwner, awayOwner, awayId, ada, bob, adaKey, bobKey } = await machines();
   speak((prompt, threadId) => (threadId === bob.threadId && prompt.includes('answer me') ? { text: 'answered' } : { text: '[quiet]' }));
 
-  await experiment(awayOwner, false);
-  const refused = await boiteAs(host, ada.threadId, ['team', 'propose', '--name', 'Crew', '--members', `${awayId}/Bob`]);
-  expect(refused.code).not.toBe(0);
-  expect(refused.err).toContain('Teams experiment');
-  expect(await thrown(hostOwner.call('teams.create', { name: 'Crew', members: [ada.agent.id, `${awayId}/Bob`] }))).toThrow('Teams experiment');
+  // An older machine, where Teams were an experiment, refuses with its own switch: the holder names it and says why.
+  const request = host.core.coordination.request.bind(host.core.coordination);
+  host.core.coordination.request = async (peer: CoordinationPeer, operation, payload) => {
+    if (operation === 'team.bot') throw new PeerRefusal('experiment.teams runs in Nightly and Dev builds only; teams need the Teams experiment on this machine');
+    return request(peer, operation, payload);
+  };
+  const older = await rejection(hostOwner.call('teams.create', { name: 'Crew', members: [ada.agent.id, `${awayId}/Bob`] }));
+  expect(older.reason).toMatchObject({ message: expect.stringContaining('Teams experiment'), rpc: { data: { reason: 'experiment-off' } } });
+  host.core.coordination.request = request;
 
-  await experiment(awayOwner);
+  // Both apps report no experiment at all: nothing is off.
+  await experiment(awayOwner, false);
+  await experiment(hostOwner, false);
   const team = await hostOwner.call('teams.create', { name: 'Crew', members: [ada.agent.id, `${awayId}/Bob`] });
   await waitFor(() => away.core.teams.get(team.id) !== null);
-
-  // Off on the member's machine, once in: letters arrive and its commands go to the holder, whose switch it is.
-  await experiment(awayOwner, false);
-  host.core.teams.ownerPost({ teamId: team.id, id: 'one', text: '@Bob one' });
-  await waitFor(() => prompts(bob.threadId).some(prompt => prompt.includes('@Bob one')));
-  expect((await boiteAs(away, bob.threadId, ['team', 'list'])).out).toContain('Crew');
-  expect((await boiteAs(away, bob.threadId, ['team', 'say', 'Crew', 'still', 'here', '--request-id', 'off-here'])).out).toContain('in Crew (off-here)');
-  await experiment(awayOwner);
-
-  // Off on the holder: commands say why; a letter already on its way ends in its answer.
   host.core.teams.ownerPost({ teamId: team.id, id: 'two', text: '@Bob answer me' });
   await waitFor(() => prompts(bob.threadId).some(prompt => prompt.includes('answer me')));
-  await experiment(hostOwner, false);
-  const off = await boiteAs(away, bob.threadId, ['team', 'say', 'Crew', 'not', 'now']);
-  expect(off.code).not.toBe(0);
-  expect(off.err).toContain('Teams experiment');
+  expect((await boiteAs(away, bob.threadId, ['team', 'say', 'Crew', 'still', 'here', '--request-id', 'off-here'])).out).toContain('in Crew (off-here)');
   await waitFor(() => (host.core.journal.db.query("SELECT COUNT(*) AS n FROM team_posts WHERE author = ? AND text = 'answered'").get(bobKey) as { n: number }).n === 1);
-  await experiment(hostOwner);
   expect(host.core.teams.get(team.id)!.members.map(member => member.key)).toEqual([adaKey, bobKey]);
 }, 120_000);
 

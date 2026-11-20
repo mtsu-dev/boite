@@ -332,7 +332,9 @@ test('the parent learns dynamic workflows and coordination within a compact prom
   // Then 6 for "mochi", the name bots took, three times in the settings line (4696 measured on Linux 2026-11-13).
   // Then 35 for the page printed after each browser action (4731 measured on Linux 2026-11-14).
   // Then 119 for `boite state`, what the user sees read-only, so an agent asked about Boite stops guessing (4850 measured on Linux 2026-11-17).
-  expect(Buffer.byteLength(prompt.replaceAll(h.dataDir, '<data>'))).toBeLessThan(process.platform === 'linux' ? 4851 : 4817);
+  // Then 621 for the Council line, the boite-council skill and the `boite goal track` line, on in every build once the
+  // Council and automatic goals stopped being experiments (5471 measured on Linux 2026-11-19).
+  expect(Buffer.byteLength(prompt.replaceAll(h.dataDir, '<data>'))).toBeLessThan(process.platform === 'linux' ? 5472 : 5438);
   runs.get(threadId)!.finish();
   await waitFor(() => h.core.threads.require(threadId).status === 'idle');
   await owner.call('turns.start', { threadId, prompt: 'Continue' });

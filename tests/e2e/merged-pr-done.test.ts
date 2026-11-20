@@ -36,6 +36,8 @@ for (const width of [1280, 390]) {
           const row = store.threads.find(row => row.id === thread.id);
           if (row) { row.runningSince = started; row.requestSince = started; }
         });
+        // The prompt is long only to stream for a while: it must not become an automatic goal, whose review turns would hold the ask back.
+        await store.client.call('settings.set', {autoGoals:false});
         await store.client.call('turns.start', {threadId:thread.id, prompt:'The change is merged. '.repeat(200) + 'Final merge report retained.'});
         return thread.id;
       })()`);

@@ -5,7 +5,6 @@
  * load it with the Contacts experiment.
  */
 
-import { markFeature } from '@boite/contracts';
 import type { Contact, ContactInvite, ContactRequest, ContactSettings, ContactsState, ContactTailscale, ProjectId, ThreadId } from '@boite/contracts';
 import { untrack } from 'svelte';
 import { errorText } from './errors';
@@ -377,6 +376,3 @@ export async function copyText(text: string, field?: HTMLInputElement | HTMLText
     return !!field && !!document.execCommand?.('copy');
   }
 }
-
-// Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
-markFeature('boite-feature:contacts');

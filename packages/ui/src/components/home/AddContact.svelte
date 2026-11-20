@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { markFeature } from '@boite/contracts';
   import { lockedBy } from '../../lib/policy';
   import { onDestroy, tick, untrack } from 'svelte';
   import { Check, Copy, ExternalLink, Globe, Link2, Share2, TriangleAlert } from '@lucide/svelte';
@@ -68,8 +67,6 @@
     if (!link) return;
     if (await view.join(link)) pasted = '';
   }
-  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
-  markFeature('boite-feature:contacts');
 </script>
 
 <div class="switch-row invite-row">

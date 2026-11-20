@@ -99,23 +99,15 @@ const by = (council: Council, model: string) => council.members.find(member => m
 const childRows = (h: TestCore) => h.core.journal.db.query('SELECT COUNT(*) AS n FROM debate_children').get();
 const councilRows = (h: TestCore) => h.core.journal.db.query('SELECT COUNT(*) AS n FROM debates').get();
 
-test('the council is refused with a reason, and left out of the agent guide, while the experiment is off', async () => {
-  const d = driver(() => 'Fine.');
+test('the council answers before any app reported its switches, as after a core restart, and its guide lines are always there', async () => {
+  driver(() => 'Fine.\nScore: 8/10');
   const { h, owner, threadId, start } = await setup(false);
-  expect((await failure(() => start())).rpc.data).toMatchObject({ reason: 'experiment-off' });
-  expect((await failure(() => owner.call('council.list', {}))).rpc.data).toMatchObject({ reason: 'experiment-off' });
-  const cli = await boite(h, threadId, ['delegate', 'council', REQUEST, '--models', 'twin/alpha,twin/beta']);
-  expect(cli.code).not.toBe(0);
-  expect(cli.err).toContain('Council experiment');
-  expect(councilRows(h)).toEqual({ n: 0 });
-  expect(subagentGuide(DEFAULT_DELEGATION_CONFIG, false, false)).not.toContain('delegate council');
-  expect(subagentGuide(DEFAULT_DELEGATION_CONFIG, false, true)).toContain('delegate council');
-  expect(subagentGuide(DEFAULT_DELEGATION_CONFIG, false, true)).toContain('boite-council');
-  expect(h.core.delegation.instructions(threadId, 'ask the council about it')).not.toContain('delegate council');
-  // The skill is listed only with the experiment on: it names a command that would be refused.
-  h.core.threads.startTurn(threadId, 'First');
-  await waitFor(() => d.runs.some(run => run.status === 'done'));
-  expect(d.runs[0]!.prompt).not.toContain('boite-council');
+  const started = await start();
+  expect(started.id).toBeString();
+  expect((await owner.call('council.list', {})).councils.map(council => council.id)).toContain(started.id);
+  expect(subagentGuide(DEFAULT_DELEGATION_CONFIG, false)).toContain('delegate council');
+  expect(subagentGuide(DEFAULT_DELEGATION_CONFIG, false)).toContain('boite-council');
+  expect(h.core.delegation.instructions(threadId, 'ask the council about it')).toContain('delegate council');
 });
 
 test('a member\'s guide lists neither the council skill nor the one about proving a change; its parent\'s lists both', async () => {

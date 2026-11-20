@@ -120,9 +120,13 @@ export function experimentsBuild(): string {
   return stored(BUILD_STORAGE_KEY) ?? build ?? RELEASE_VERSION;
 }
 
-/** Whether experiments exist in the build that decides: false on a Release, where Settings has no Experiments page. */
+/**
+ * Whether Settings has an Experiments page: the build that decides runs
+ * experiments and lists at least one switch. A Release runs none, and a build
+ * whose features are all finished has nothing to list.
+ */
 export function experimentsAvailable(): boolean {
-  return experimentsRun(experimentsBuild());
+  return experimentsRun(experimentsBuild()) && listedSwitches().length > 0;
 }
 
 /** The switches the Experiments page lists in the build that decides, in order. */

@@ -9,6 +9,7 @@ import { workspace } from '../lib/workspace.svelte';
 import MobileNavigation from './MobileNavigation.svelte';
 import { activityReturn } from '../lib/activity-return.svelte';
 import { tabHeader } from '../lib/tab-header.svelte';
+import { whipEntry } from '../lib/whip-entry.svelte';
 
 let mounted: ReturnType<typeof mount> | undefined;
 let client: FakeClient;
@@ -163,8 +164,14 @@ test('the header holds the search, opened in place, the new thread and the Setti
   expect(list()).toBe('Activity');
   // Activity answers what is asked: it creates nothing, the thread list's "+" is one tab away.
   expect(id('mobile-new')).toBeNull();
+  // The Whip waits in Activity's header: the thread list's row is full with its views, three squares, "New" and the gear.
+  whipEntry.need(error => { throw error; });
+  await vi.waitFor(() => expect(whipEntry.feature).toBeDefined());
+  await settle();
+  expect(id('whip-button-mobile')).not.toBeNull();
   id('mobile-conversations')!.click(); await settle();
   expect(list()).toBe('Threads');
+  expect(id('whip-button-mobile')).toBeNull();
   // The new thread is the header's one labelled action, filled, its short word in sight at a phone's width.
   expect(id('mobile-new')?.classList.contains('primary')).toBe(true);
   expect(id('mobile-new')?.getAttribute('aria-label')).toBe('New thread');
@@ -261,7 +268,8 @@ test('a parent on another machine shows its working sub-agents, counted, and Rec
     // A child is never a row of its own.
     expect(document.querySelector('[data-thread-id="child-1"]')).toBeNull();
 
-    const rows = () => [...document.querySelectorAll<HTMLElement>('.mobile-list .row')].map(row => row.dataset['threadId']);
+    // Conversations only: the Contacts rows under them land when the contacts load, on in every build.
+    const rows = () => [...document.querySelectorAll<HTMLElement>('.mobile-list .row[data-thread-id]')].map(row => row.dataset['threadId']);
     const everything = rows().length;
     expect(everything).toBeGreaterThan(1);
     // The filter lives in the display menu; once on, it is a chip in words under the head, the button keeps its glyph.
@@ -516,7 +524,9 @@ test('a machine out of reach keeps its projects\' count of what needs the user, 
   store.connection = 'closed';
   await settle();
   expect(document.querySelector('[data-testid=mobile-project-group][data-project-id=p-boite]')).not.toBeNull();
-  expect(counts()).toEqual(reached);
+  // The conversations' count stays; a contact's ask, which Contacts (on in every build) add to the tab, is read live
+  // and leaves it with the connection. Only p-boite has a conversation waiting here.
+  expect(counts()).toEqual({ card: reached.card, tab: reached.card });
 });
 
 test('the Mochis search lent to the header carries no thread display options, though the thread list was the last screen', async () => {

@@ -3,35 +3,48 @@
  * Each loads once something shows it, so the boot bundle carries neither.
  */
 
-import { contactsShown } from './contacts-rail.svelte';
+import { untrack } from 'svelte';
+import { contactsRail, contactsShown } from './contacts-rail.svelte';
 import { contactsParts } from './contacts-entry';
-import { experimentOn } from './experiments.svelte';
+import { groupLoading, operatorHost, operatorOnOpen } from './operator';
 import { strings } from './strings';
+import type { Store } from './store.svelte';
 
 export { contactsShown };
 
-type Machine = { owner: boolean; page: string; showChat(): void };
-
 /**
  * Loads the page while a machine shows it and the column on a desktop-wide
- * window, and sends a machine whose contacts went away (the experiment
- * turned off, a paired device) from their page back to the chat. Call it
- * while the component starts: its effects live as long as the component.
+ * window, gives the group its Operator the first time either opens
+ * (`operatorOnOpen`), and sends a machine whose contacts went away (a paired
+ * device) from their page back to the chat. Call it while the component
+ * starts: its effects live as long as the component.
  */
-export function contactsViews(current: () => Machine, machines: () => readonly { store: Machine }[], narrow: () => boolean) {
+export function contactsViews(current: () => Store, machines: () => readonly { store: Store }[], narrow: () => boolean) {
   const views = $state<{
     HomePage?: typeof import('../components/home/HomePage.svelte').default;
     ContactsRail?: typeof import('../components/home/ContactsRail.svelte').default;
     homeError: string;
   }>({ homeError: '' });
   $effect(() => {
-    if (current().page !== 'home' || !experimentOn('contacts') || views.HomePage) return;
+    if (current().page !== 'home' || !contactsShown(current()) || views.HomePage) return;
     void contactsParts?.HomePage().then(module => { views.HomePage = module.default; })
       .catch(() => { views.homeError = strings.contacts.loadFailed; });
   });
   $effect(() => {
     if (!contactsShown(current()) || narrow() || views.ContactsRail) return;
     void contactsParts?.ContactsRail().then(module => { views.ContactsRail = module.default; }).catch(() => {});
+  });
+  // Waits for the group's answer, which names the machine that holds the
+  // Operator, and follows that machine: reached again while Contacts stay
+  // open, it gets the Operator then.
+  $effect(() => {
+    const store = current();
+    const open = contactsShown(store) && (store.page === 'home' || (contactsRail.shown(store) && !narrow()));
+    if (!open || store.connection !== 'ready' || !store.groupKnown) return;
+    const stores = machines().map(machine => machine.store);
+    // A machine whose group is still loading may hold the Operator: wait for it, then ask.
+    if (groupLoading(store, stores)) return;
+    if (operatorHost(store, stores)) untrack(() => operatorOnOpen(store, stores));
   });
   $effect(() => {
     for (const machine of machines()) if (machine.store.page === 'home' && !contactsShown(machine.store)) machine.store.showChat();

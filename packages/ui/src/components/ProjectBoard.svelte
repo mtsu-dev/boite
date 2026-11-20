@@ -5,7 +5,6 @@
   import { BOARD_COLUMNS, cardColumn, type BoardColumn } from '../lib/board';
   import { separator, type MenuItem } from '../lib/menu';
   import { fill, strings } from '../lib/strings';
-  import { experimentOn } from '../lib/experiments.svelte';
   import { errorText } from '../lib/errors';
   import { secureId } from '../lib/secure-id';
   import { sameSharedProject, sharedTodo } from '../lib/shared-ui';
@@ -53,7 +52,7 @@
     if (projectId) untrack(() => void store.loadTodos(threadId));
   });
   $effect(() => {
-    if (experimentOn('contacts') && store.connection === 'ready') untrack(() => { void store.shared.load(threadId).catch(e => { error = errorText(e); }); });
+    if (store.connection === 'ready') untrack(() => { void store.shared.load(threadId).catch(e => { error = errorText(e); }); });
   });
   $effect(() => { const captured = scope; if (captured) return untrack(() => store.shared.watch(captured, ['board', 'threads'])); });
   async function apply(todo: Todo, command: BoardEdit) {

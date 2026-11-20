@@ -5,7 +5,8 @@
  * nothing less direct (`packages/contracts/src/experiments.ts`): in a build
  * below the Teams' tag it is `false`, the `require` calls below are dropped
  * and the bundle holds neither module. From source and in tests it is not
- * defined. `require` and not `import()`: the core builds its stores in its
+ * defined, and the Teams are finished (`release`), so no build defines it
+ * today. `require` and not `import()`: the core builds its stores in its
  * constructor, which cannot wait.
  *
  * A build without the Teams gets a stand-in that answers what the rest of

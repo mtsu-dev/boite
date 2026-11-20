@@ -159,7 +159,7 @@ test('the gear opens Settings on its home: a tile per page under its family, the
   expect(tiles('app')).toEqual(['general', 'keyboard', 'voice', 'appearance']);
   expect(tiles('agents')).toEqual(['accounts', 'plugins', 'brain', 'limits', 'usage']);
   expect(tiles('connections')).toEqual(['browser', 'machines']);
-  expect(tiles('advanced')).toEqual(['advanced', 'experiments', 'diagnostics', 'resources', 'task-manager']);
+  expect(tiles('advanced')).toEqual(['advanced', 'diagnostics', 'resources', 'task-manager']);
   // A tile says its page's state where there is one to read.
   expect(query('[data-testid=settings-home-appearance-status]').textContent).toBe('System · English');
   expect(query('[data-testid=settings-home-accounts-status]').textContent).toMatch(/connected|Connect a provider/);

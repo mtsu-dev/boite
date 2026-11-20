@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { markFeature } from '@boite/contracts';
   import { tick } from 'svelte';
   import { Archive, ArrowDown, ArrowUp, CornerDownRight, Lock, Pause, Reply } from '@lucide/svelte';
   import { TEAM_OWNER, type AgentProfile, type Message, type TeamParty, type TeamPostRef, type Thread } from '@boite/contracts';
@@ -45,8 +44,8 @@
   const pingNames = $derived(team?.members.map(member => member.name) ?? []);
   const loading = $derived(store.loadingThreadId === thread.id && thread.messages.length === 0);
 
-  /** Posting needs the experiment and a team that still takes posts; otherwise a note stands in the composer's place. */
-  const closed = $derived(!experimentOn('teams') || (directory.loaded && !team) ? labels.unavailable
+  /** Posting needs a team that still takes posts; otherwise a note stands in the composer's place. */
+  const closed = $derived(directory.loaded && !team ? labels.unavailable
     : team?.archived || thread.archived ? labels.archived : null);
   let reply = $state<TeamReply | null>(null);
   /** The chat is about these bots: their pictures keep their colours here (`lib/avatar-lit.ts`). */
@@ -124,8 +123,6 @@
     pinned = true;
     toBottom();
   }
-  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
-  markFeature('boite-feature:teams');
 </script>
 
 <section class="team-chat" data-testid="team-chat" data-team-id={team?.id}>

@@ -42,7 +42,7 @@ const PAGES: Record<SettingsTab, SettingsPage> = {
   machines: { phone: 'page' },
   advanced: { machine: true, phone: 'sections' },
   diagnostics: { owner: true, machine: true, phone: 'page' },
-  experiments: { machine: true, phone: 'page' }
+  experiments: { device: true, phone: 'page' }
 };
 
 /** The cards of a long desktop page that a phone shows on a page of their own, and that page. */

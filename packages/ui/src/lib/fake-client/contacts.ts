@@ -21,7 +21,7 @@ const INVITE_TTL = DAY;
 const DECLINED = 'The owner declined this request.';
 /** The core's cap on the relations a contact may hold here. */
 const MAX_RELATIONS = 64;
-const NO_BOT = 'turn on Contacts in Settings > Experiments: it creates the Contacts mochi';
+const NO_BOT = 'open Contacts in the app: opening it the first time creates the Contacts mochi';
 const BOT_ONLY = 'contacts.bot.*: only the Contacts mochi\'s thread calls this';
 const SMALL = new Set(['haiku', 'lite', 'oss', 'mini', 'nano']);
 const FRONTIER = new Set(['opus', 'fable', 'sol', 'luna']);
@@ -144,7 +144,10 @@ function seed(ctx: FakeContext): ContactsState {
       text: 'An agent on a project like the Boite pairing flow: our site embeds it and the redirect loops after login.',
       gitRemote: 'https://github.com/chris/website.git',
       createdAt: at - 12 * 60_000,
-      status: 'pending'
+      // `?contactNotice=0`: already refused, so a page measured for something else shows no contact notice.
+      ...(typeof location !== 'undefined' && new URLSearchParams(location.search).get('contactNotice') === '0'
+        ? { status: 'refused' as const, reason: 'Not now', decidedBy: 'owner' as const, decidedAt: at - 11 * 60_000 }
+        : { status: 'pending' as const })
     },
     {
       id: 'creq-done',
@@ -376,7 +379,7 @@ export function contactMethods(ctx: FakeContext) {
     const staged = destination.agents.builtin('contacts') !== null;
     if (!staged && (request.want === 'talk' || request.want === 'thread')) {
       // Like the core: only an Operator puts threads in touch.
-      Object.assign(request, { status: 'refused', reason: `${reciprocal.name === '' ? 'It' : contact.name} has no Operator to put threads in touch; its owner turns Contacts on in Settings > Experiments`, decidedAt: ctx.now() });
+      Object.assign(request, { status: 'refused', reason: `${reciprocal.name === '' ? 'It' : contact.name} has no Operator to put threads in touch; its owner opens Contacts in the app to create it`, decidedAt: ctx.now() });
       return;
     }
     const copy: ContactRequest = {

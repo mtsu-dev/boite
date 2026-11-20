@@ -6,11 +6,13 @@ import type { SharedProjectRef } from '@boite/contracts';
 import { connect } from '../src/client.ts';
 import { startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
+import { restoreStages, tagStage } from './stage-seam.ts';
 import { unavailable } from '../src/errors.ts';
 
 const cores: TestCore[] = [];
 const dirs: string[] = [];
 afterEach(async () => {
+  restoreStages();
   for (const core of cores.splice(0).reverse()) await core.stop();
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
@@ -65,7 +67,8 @@ async function asRelease(was: Awaited<ReturnType<typeof side>>) {
 }
 const NIGHTLY_ONLY = 'experiment.contacts runs in Nightly and Dev builds only, and this machine runs a Release (2.0.0)';
 
-test('a Release accepts no association a Nightly left pending, and still declines it', async () => {
+test('with Contacts tagged nightly, a Release accepts no association a Nightly left pending, and still declines it', async () => {
+  tagStage('contacts', 'nightly');
   const { a, b } = await pair();
   const offered = await b.client.call('sharedProjects.offer', { coreId: a.coreId, projectId: b.ref.projectId, remote: a.ref, requestId: 'offer' });
   const id = offered.shared.id;
@@ -77,7 +80,8 @@ test('a Release accepts no association a Nightly left pending, and still decline
   expect(release.h.core.sharedProjects.require(id).state).toBe('declined');
 }, 30000);
 
-test('a Release activates, creates and relaunches nothing in an association a Nightly left active, and still disables and revokes', async () => {
+test('with Contacts tagged nightly, a Release activates, creates and relaunches nothing in an association a Nightly left active, and still disables and revokes', async () => {
+  tagStage('contacts', 'nightly');
   const { a, b, scope } = await associated();
   const id = scope.sharedProjectId;
   await b.client.call('sharedProjects.configure', { sharedProjectId: id, board: true });

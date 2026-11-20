@@ -114,11 +114,13 @@ tracker adds one pass per user message and per finished turn.
 
 ## Automatic goals
 
-The client experiment Automatic goals (`auto-goal`, off by default) starts a
-reviewed goal without `/goal2`. A user prompt that starts a turn, on a thread
+Automatic goals start a reviewed goal without `/goal2`. They are on by
+default and belong to the machine: the owner setting `autoGoals` (Settings,
+General, Agent replies; on unless `false`) turns them off there, for every app
+and every device, and survives a core restart. A user prompt that starts a turn, on a thread
 with no goal or loop under way (a paused one counts), starts one when it holds
 at least `autoGoalMinChars` characters, 1500 by default. The owner sets that
-number under the switch on the Experiments page; the core accepts 200 to 20000.
+number under the switch, shown while it is on; the core accepts 200 to 20000.
 A steer, a slash command or a queued `/goal` or `/loop` never starts one, and a
 subagent's thread never does.
 
@@ -129,12 +131,10 @@ blocker it ends on counts, so no second run comes before the review. That
 holds across a core restart while the turn still waits in line
 (`auto-goal:<thread>` marks it `first`): the goal stays active and the next
 core runs the turn as the goal's. A turn the restart interrupts leaves the goal
-paused, as any goal turn does. A prompt
-queued with the experiment on never shares a delivery with one queued with it
-off. The core decides in `threads.startTurn` from the
-experiments of the app that sent the prompt (`turns.start`) or that queued it
-(the composer item's `experiments`), so a queued prompt keeps its decision
-across a restart and another device's switch never changes it. The goal carries
+paused, as any goal turn does. The core decides
+(`startsAutoGoal`) from its own settings when it starts the turn
+(`turns.start`) or delivers a queued prompt, so no app's report changes the
+decision. The goal carries
 `auto: true`, and the goal bar names it "Automatic goal". Its remove button
 drops it in one click.
 
@@ -150,11 +150,11 @@ An agent may ask for one below the threshold: `boite goal track`
 (`threads.goal.track`) starts the same goal on its own thread, its objective
 the user's last prompt, a steer included. Called during the turn, it makes that
 turn the goal's first, and its output tells the agent the claim marker. The
-core refuses it when the desktop app has the experiment off, when a goal or a
-loop is under way, and when that prompt already started a goal
+core refuses it when the owner turned automatic goals off on the machine
+(reason `auto-goals-off`), when a goal or a loop is under way, and when that prompt already started a goal
 (`auto-goal:<thread>` keeps its message).
-While the experiment is on, the agent guide of a top-level thread says to run
-it when the user's prompt lists several distinct requests.
+While they are on, the agent guide of a top-level thread says to run it when
+the user's prompt lists several distinct requests.
 
 ## Verification
 
@@ -168,7 +168,7 @@ answer without JSON, a tracker stuck on a pass, a goal finished by hand during
 a pass, models read again after an account change, and a restart. The opt-in
 `goal-tracker.live.test.ts` (`BOITE_E2E_CLAUDE=1`) runs one real goal on Haiku
 with the checklist on Automatic. `auto-goal.test.ts` covers automatic goals:
-the threshold and its edge, the experiment off, a command, a steer, a queued
+the threshold and its edge, the setting off, a command, a steer, a queued
 prompt across a restart, a first turn still in line across a restart for an
 update (its claim, its blocker), `goal track` and its refusals, and the card claimed
 after a passing review. UI unit tests cover `/goal2` in the slash menu,
