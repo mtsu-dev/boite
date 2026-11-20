@@ -168,6 +168,53 @@ test('a snapshot read that fails, the database blocked, opens the thread from th
   expect(store.loadingThreadId).toBeNull();
 });
 
+test('a slow snapshot mark cannot start history projection outside a new idle turn', async () => {
+  vi.useFakeTimers();
+  const idle = new Map<number, IdleRequestCallback>();
+  let next = 0;
+  vi.stubGlobal('requestIdleCallback', (callback: IdleRequestCallback) => { idle.set(++next, callback); return next; });
+  vi.stubGlobal('cancelIdleCallback', (id: number) => { idle.delete(id); });
+  const snapshots = new ThreadSnapshots({ db: new MemorySnapshotDb(), subtle: crypto.subtle, channel: null });
+  const marked = await snapshots.mark('core-a', 't1');
+  let release!: (mark: typeof marked) => void;
+  const gate = new Promise<typeof marked>(resolve => { release = resolve; });
+  vi.spyOn(snapshots, 'mark').mockReturnValue(gate);
+  setThreadSnapshots(snapshots);
+  const read = new Set<number>();
+  const messages = Array.from({ length: 33 }, (_, index) => ({
+    id: `m${index}`, state: 'complete',
+    get parts() { read.add(index); return [{ type: 'text', text: 'History' }]; },
+  }));
+  const page = { id: 't1', messages, turns: [] } as unknown as Thread;
+  const ctx = { store: { core: { coreId: 'core-a' }, principal: 'owner' }, connection: { endpointUrl: null } } as unknown as StoreContext;
+  const device = new DeviceSnapshots(ctx, { openThread: page, readingThreads: new Map(), readingPositions: new Map() }, new Set());
+  const runIdle = () => {
+    for (const [id, callback] of [...idle]) {
+      idle.delete(id);
+      callback({ didTimeout: false, timeRemaining: () => 50 });
+    }
+  };
+  try {
+    device.schedule('t1');
+    await vi.advanceTimersByTimeAsync(SNAPSHOT_WRITE_DELAY_MS);
+    runIdle();
+    release(marked);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(read.size).toBe(0);
+    expect(idle.size).toBeGreaterThan(0);
+    runIdle();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(read.size).toBe(16);
+    expect(idle.size).toBeGreaterThan(0);
+    runIdle();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(read.size).toBe(32);
+  } finally {
+    device.stop();
+    vi.useRealTimers();
+  }
+});
+
 test('a thread left away from its end, out of memory, reopens around the reader\'s message, not from its snapshot', async () => {
   const db = new MemorySnapshotDb();
   setThreadSnapshots(new ThreadSnapshots({ db, subtle: crypto.subtle }));

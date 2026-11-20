@@ -992,6 +992,22 @@ test('a saved message anchor is rendered even when the old scroll offset points 
   expect(document.querySelector<HTMLElement>('[data-testid=timeline]')!.scrollTop).toBe(250 * ESTIMATE);
 });
 
+test('reopening an unchanged reading window reuses its slot totals', async ({ ready }) => {
+  const { store: live } = await ready({ delayMs: 0, long: true });
+  await live.open('t-long');
+  const { messages, messagesSync } = live.openThread!;
+  expect(messagesSync).toBeDefined();
+  stubLayout(messages.length * ESTIMATE);
+  const mountList = () => mount(MessageList, { target: document.body, props: { store: live, threadId: 't-long', messages } });
+  running = mountList();
+  await settle();
+  await unmount(running);
+  const previous = windowStats.slots;
+  running = mountList();
+  flushSync();
+  expect(windowStats.slots - previous).toBe(0);
+});
+
 test('Ctrl+F counts matches in messages the window has not drawn, walks to them, and Escape closes it', async ({ ready }) => {
   window.localStorage.clear();
   // jsdom measures no range; the bar only reads one to decide whether to scroll.

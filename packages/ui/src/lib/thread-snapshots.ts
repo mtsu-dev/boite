@@ -85,8 +85,8 @@ export interface SnapshotDb {
    * same step as the write. Answers whether it was stored.
    */
   put(meta: SnapshotMeta, data: SnapshotData, mark: SnapshotMark, keyId: string): Promise<boolean>;
-  /** The thread's record goes, and its drop generation moves on. */
-  delete(machine: string, threadId: string): Promise<void>;
+  /** The thread's record goes and its drop generation moves on, unless an optional mark is stale. */
+  delete(machine: string, threadId: string, mark?: SnapshotMark): Promise<boolean>;
   /** The machine's key and every record of it go, and its purge generation moves on. */
   deleteMachine(machine: string): Promise<void>;
   /** `deleteMachine` for every machine reached at `url`, and the address's generation moves on, even with no machine at it yet; answers which. */
@@ -147,11 +147,13 @@ export class MemorySnapshotDb implements SnapshotDb {
     this.records.set(key, data);
     return true;
   }
-  async delete(machine: string, threadId: string) {
+  async delete(machine: string, threadId: string, mark?: SnapshotMark) {
+    if (mark && !unchanged(mark, this.#now(machine, threadId, mark.address))) return false;
     this.#bump(dropKey(machine, threadId));
     const key = recordKey(machine, threadId);
     this.meta.delete(key);
     this.records.delete(key);
+    return true;
   }
   #deleteMachine(machine: string) {
     this.#bump(purgeKey(machine));
@@ -323,12 +325,17 @@ export class IndexedSnapshotDb implements SnapshotDb {
       });
     }, false);
   }
-  delete(machine: string, threadId: string) {
-    return this.#write<void>(['meta', 'data', 'generations'], 'readwrite', t => {
-      this.#bump(t, dropKey(machine, threadId));
-      t.objectStore('meta').delete([machine, threadId]);
-      t.objectStore('data').delete([machine, threadId]);
-    }, undefined);
+  delete(machine: string, threadId: string, mark?: SnapshotMark) {
+    return this.#write<boolean>(STORES, 'readwrite', (t, answer) => {
+      const remove = () => {
+        this.#bump(t, dropKey(machine, threadId));
+        t.objectStore('meta').delete([machine, threadId]);
+        t.objectStore('data').delete([machine, threadId]);
+        answer(true);
+      };
+      if (mark) this.#now(t, machine, threadId, mark.address, now => { if (unchanged(mark, now)) remove(); });
+      else remove();
+    }, false);
   }
   deleteMachine(machine: string) {
     return this.#write<void>(STORES, 'readwrite', t => this.#deleteMachine(t, machine), undefined);
@@ -528,24 +535,34 @@ export class ThreadSnapshots {
    * thread since, or another key, keeps it out.
    */
   write(machine: string, url: string | null, thread: Thread, after: MessageId | null, mark: Promise<SnapshotMark> = this.mark(machine, thread.id, url)): Promise<boolean> {
+    return this.#write(machine, url, thread.id, mark, () => snapshotAllowed(thread) ? bytes(JSON.stringify({ thread, after })) : null, () => true);
+  }
+
+  /** A page prepared in idle slices uses the same encrypted record and generation checks. */
+  writePrepared(machine: string, url: string | null, threadId: string, mark: Promise<SnapshotMark>, plain: Uint8Array<ArrayBuffer> | null, current: () => boolean): Promise<boolean> {
+    return this.#write(machine, url, threadId, mark, () => plain, current);
+  }
+
+  #write(machine: string, url: string | null, threadId: string, mark: Promise<SnapshotMark>, prepare: () => Uint8Array<ArrayBuffer> | null, current: () => boolean): Promise<boolean> {
     return this.#serial(async () => {
       try {
         const marked = await mark;
-        if (!snapshotAllowed(thread)) { await this.#drop(machine, thread.id); return false; }
-        const plain = bytes(JSON.stringify({ thread, after }));
-        if (plain.byteLength > SNAPSHOT_BYTES) { await this.#drop(machine, thread.id); return false; }
+        if (!current()) return false;
+        const plain = prepare();
+        if (!plain || plain.byteLength > SNAPSHOT_BYTES) { await this.#drop(machine, threadId, marked); return false; }
         const held = await this.#key(machine, url, marked);
-        if (!held) return false;
+        if (!held || !current()) return false;
         const iv = crypto.getRandomValues(new Uint8Array(12));
-        const data = await this.#subtle.encrypt({ name: 'AES-GCM', iv, additionalData: bytes(recordKey(machine, thread.id)) }, held.key, plain);
+        const data = await this.#subtle.encrypt({ name: 'AES-GCM', iv, additionalData: bytes(recordKey(machine, threadId)) }, held.key, plain);
         await this.#loadIndex();
-        if (!await this.#db.put({ machine, threadId: thread.id, bytes: data.byteLength, openedAt: this.#now() }, { iv, data }, marked, held.id)) {
+        if (!current()) return false;
+        if (!await this.#db.put({ machine, threadId, bytes: data.byteLength, openedAt: this.#now() }, { iv, data }, marked, held.id)) {
           // A purge, a drop or another key came first, maybe from another window: what this page held of the key may be stale.
           this.#keys.delete(machine);
           return false;
         }
-        this.#noteIndex(machine, thread.id, true);
-        await this.#evict(machine, thread.id);
+        this.#noteIndex(machine, threadId, true);
+        await this.#evict(machine, threadId);
         return true;
       } catch {
         return false;
@@ -570,9 +587,8 @@ export class ThreadSnapshots {
     for (const meta of gone) await this.#drop(meta.machine, meta.threadId);
   }
 
-  async #drop(machine: string, threadId: string): Promise<void> {
-    await this.#db.delete(machine, threadId);
-    this.#noteIndex(machine, threadId, false);
+  async #drop(machine: string, threadId: string, mark?: SnapshotMark): Promise<void> {
+    if (await this.#db.delete(machine, threadId, mark)) this.#noteIndex(machine, threadId, false);
   }
 
   /**

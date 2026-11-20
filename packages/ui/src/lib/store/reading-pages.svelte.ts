@@ -1,5 +1,6 @@
 import { INITIAL_MESSAGE_PAGE, INITIAL_PAGE_BYTES, READING_PAGE_BYTES, type Message, type MessageId, type Thread, type ThreadId } from '@boite/contracts';
 import type { StoreContext } from './context';
+import type { SlotIndex } from '../message-window';
 
 /**
  * Where a reader left a thread: the scroll, the measured heights, and the
@@ -21,6 +22,17 @@ export interface ReadingPosition {
   height?: number;
   reservePrompt?: string | null;
   followPrompt?: string | null;
+  slots?: SlotIndex;
+  revision?: string;
+}
+
+/** Both halves of the core's proof must cover the displayed messages. */
+export function readingRevision(thread: Thread | null, id: string, messages: readonly Message[]): string | undefined {
+  const proof = thread?.messagesSync;
+  const prefix = proof?.prefix;
+  if (thread?.id !== id || thread.incognito || thread.messages !== messages || !proof || !prefix ||
+    prefix.first !== messages[0]?.id || proof.from !== messages[prefix.count]?.id) return;
+  return JSON.stringify([prefix.hash, proof.hash, messages.length]);
 }
 
 /**

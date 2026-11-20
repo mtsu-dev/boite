@@ -40,7 +40,10 @@
   import { TurnProgress } from '../lib/turn-progress.svelte';
   import { GAP, OVERSCAN, SlotTotals, WINDOW_FROM, atOrBefore, gapChanged, keepOnly, measurable, overscanAbove, reaches, sameView, slotGap, windowStats, type WindowView } from '../lib/message-window';
   import { rowIndexOf, seam, type TimelineRow } from '../lib/timeline-rows';
-  import { reactiveTimelineRows } from '../lib/timeline-rows.svelte';
+  import { ReactiveTimelineRows } from '../lib/timeline-rows.svelte';
+  import { promptAtRow } from '../lib/message-outline';
+  import { readingRevision } from '../lib/store/reading-pages.svelte';
+  import { READING_CACHE_MESSAGES } from '../lib/reading-cache';
   import { GapRows, NO_GAPS, READ_AHEAD, RangeAsk, gapHeight, heldNear, loadKeepingReader, wantedRange } from '../lib/history-gaps';
   import TimelineGap from './TimelineGap.svelte';
   import { latest } from '../lib/latest.svelte';
@@ -97,11 +100,13 @@
   const shaped = $derived(agentTimeline.build(quietKeepalives(placed, shownTurns), shownTurns, memoryPassOf(store, threadId)));
   const timeline = $derived(shaped.timeline);
   const days = $derived(dayBreaks(timeline)); // The messages that open a new day, a divider above each.
-  const cut = reactiveTimelineRows(), gapRows = new GapRows();
   const placement = $derived(store.openThread?.id === threadId ? store.messagePlacement?.(threadId, messages) ?? null : null);
+  const cut = new ReactiveTimelineRows(() => ({ timeline, breaks: placement?.gaps })), gapRows = new GapRows();
+  let indexedRevision: string | undefined;
   const positional = $derived((placement?.first ?? null) !== null);
   const gapped = $derived.by(() => {
-    const placed = gapRows.place(cut.build(timeline, undefined, placement?.gaps), messages, placement?.gaps ?? NO_GAPS);
+    const placed = gapRows.place(cut.build(), messages, placement?.gaps ?? NO_GAPS);
+    indexedRevision = readingRevision(store.openThread, threadId, messages);
     // A row that grew or was cut weighs something else until it is measured.
     if (placed.at(cut.changedFrom) < slots.dirty) slots.dirty = placed.at(cut.changedFrom);
     return placed;
@@ -140,6 +145,8 @@
   /** Where the reader is, and the rows on the page by id (lib/reading-anchor.ts). */
   const anchors = new ReadingAnchor(savedReading);
   const savedTop = untrack(() => {
+    void rows;
+    if (indexedRevision && savedReading?.revision === indexedRevision && savedReading.slots) slots.restore(savedReading.slots, rows, timelineOrder);
     const anchor = savedReading?.pinned ? undefined : anchors.current;
     const at = anchor ? rows.findIndex(row => row.id === anchor.id) : -1;
     return at < 0 ? savedReading?.top ?? 0 : Math.max(0, (slots.totals(rows, timelineOrder)[at] ?? 0) - anchor!.offset);
@@ -175,7 +182,7 @@
     anchors.cancelPending();
     if (!viewport || !store.readingPositions) return;
     store.readingPositions.delete(threadId);
-    store.readingPositions.set(threadId, { top: scrollTop, pinned, heights: new Map(heights), anchor: anchors.saved(), height: viewHeight, reservePrompt, followPrompt: promptTarget });
+    store.readingPositions.set(threadId, { top: scrollTop, pinned, heights: new Map(heights), anchor: anchors.saved(), height: viewHeight, reservePrompt, followPrompt: promptTarget, revision: indexedRevision, slots: indexedRevision ? slots.save(READING_CACHE_MESSAGES) : undefined });
     while (store.readingPositions.size > 32) store.readingPositions.delete(store.readingPositions.keys().next().value!);
   });
   let viewHeight = $state(savedReading?.height ?? 0);
@@ -202,14 +209,12 @@
   onDestroy(stopLift);
   const activePrompt = $derived.by(() => {
     void measured;
-    if (!pinned && promptTarget && timeline.some(message => message.id === promptTarget)) return promptTarget;
+    if (pinned) return drawnPrompts.at(-1)?.id ?? null;
     const total = totals(rows);
-    const at = pinned ? rows.length - 1 : atOrBefore(total, rows.length, scrollTop + 24);
-    for (let index = Math.min(at, rows.length - 1); index >= 0; index--) {
-      if (rows[index]?.message.role === 'user') return rows[index]!.message.id;
-    }
-    return null;
+    if (promptTarget && slots.positions.has(promptTarget)) return promptTarget;
+    return promptAtRow(drawnPrompts, slots.positions, atOrBefore(total, rows.length, scrollTop + 24));
   });
+  const drawnPrompts = $derived(timeline.filter(message => message.role === 'user'));
 
   /** To a message, or to the row of it that draws `part` when a long one is cut in several, and to the element `anchor` in that row. */
   function jumpToMessage(id: string, part?: number, offset?: number, anchor?: string) {
