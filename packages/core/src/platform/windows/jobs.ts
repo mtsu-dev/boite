@@ -88,6 +88,10 @@ function loadKernel32() {
       args: [FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.u64, FFIType.ptr],
       returns: FFIType.i32,
     },
+    // u64, not ptr: INVALID_HANDLE_VALUE must compare exactly.
+    CreateToolhelp32Snapshot: { args: [FFIType.u32, FFIType.u32], returns: FFIType.u64 },
+    Process32FirstW: { args: [FFIType.u64, FFIType.ptr], returns: FFIType.i32 },
+    Process32NextW: { args: [FFIType.u64, FFIType.ptr], returns: FFIType.i32 },
   });
 }
 
@@ -136,6 +140,13 @@ function nativeApi(k32: Kernel32, nt: Ntdll | null) {
     /** Key 0 on the port: the drain's signal to stop. Thread job keys start at 2. */
     wakeToStop: (port: number): boolean => k32.PostQueuedCompletionStatus(asPointer(port), 0, 0n, null) !== 0,
     openProcess: (access: number, pid: number): number => asHandle(k32.OpenProcess(access, 0, pid)),
+    /** TH32CS_SNAPPROCESS; 0 for INVALID_HANDLE_VALUE. Discovery hints only (process-snapshot.ts). */
+    snapshot: (): number => {
+      const handle = BigInt(k32.CreateToolhelp32Snapshot(0x2, 0));
+      return handle === INVALID_HANDLE_VALUE || handle === 0n ? 0 : Number(handle);
+    },
+    firstProcess: (snapshot: number, entry: Uint8Array): boolean => k32.Process32FirstW(BigInt(snapshot), ptr(entry)) !== 0,
+    nextProcess: (snapshot: number, entry: Uint8Array): boolean => k32.Process32NextW(BigInt(snapshot), ptr(entry)) !== 0,
     close: (handle: number): void => {
       k32.CloseHandle(asPointer(handle));
     },
@@ -385,7 +396,11 @@ export function terminateJobProcess(threadId: string, pid: number): boolean {
 }
 export function terminateJobSubtree(threadId: string, pid: number, lineage?: SubtreeLineage): void {
   const job = threadJobs.get(threadId);
-  if (native !== null && job) killJobSubtree(native, job.handle, pid, lineage);
+  if (native === null || !job) return;
+  const api = native;
+  // Another thread's job holds a separately registered scope, which its own stop ends.
+  const foreign = (handle: number) => [...threadJobs].some(([other, { handle: otherJob }]) => other !== threadId && api.inJob(otherJob, handle));
+  killJobSubtree(api, job.handle, pid, lineage, foreign);
 }
 
 /**

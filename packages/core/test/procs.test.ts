@@ -159,6 +159,34 @@ describe('procs', () => {
       await registry.stopAndWait(threadId);
     }
   }, 15_000);
+  test.skipIf(process.platform !== 'win32')('a managed stop ends a child the root started at once, before its job assignment', async () => {
+    const registry = harness.core.procs;
+    const fallback = spyOn(registry.platform, 'terminateUnassigned');
+    const threadId = 'native-early-child-stop';
+    const sibling = registry.spawn(threadId, process.execPath, ['-e', 'await Bun.sleep(30000)']);
+    // No stdin gate: the child can start before the registry assigns the root to the job.
+    const root = registry.spawn(threadId, process.execPath, ['-e', `
+      const tool = Bun.spawn([process.execPath, '-e', 'await Bun.sleep(30000)'], { stdout: 'ignore', stderr: 'ignore', windowsHide: true });
+      console.log(tool.pid);
+      await tool.exited;
+    `]);
+    let tool = 0;
+    try {
+      const reader = root.proc.stdout.getReader();
+      const { value } = await reader.read();
+      reader.releaseLock();
+      tool = Number(new TextDecoder().decode(value).trim());
+      expect(tool).toBeGreaterThan(0);
+      expect(isRunning(tool)).toBe(true);
+      await root.stop();
+      await waitFor(() => !isRunning(tool), 2000);
+      expect(sibling.proc.exitCode).toBeNull();
+      expect(fallback).not.toHaveBeenCalled();
+    } finally {
+      fallback.mockRestore();
+      await registry.stopAndWait(threadId);
+    }
+  }, 15_000);
   test.skipIf(process.platform !== 'win32')('spawnChild keeps native exit usage after the node exit callback', async () => {
     const threadId = 'native-child-usage';
     const child = harness.core.procs.spawnChild(threadId, process.execPath, ['-e', 'setTimeout(() => {}, 250)'], {
