@@ -140,6 +140,8 @@ export interface HarnessUpdate {
   state: 'idle' | 'checking' | 'updating' | 'failed';
   /** Why the last check or update failed, null otherwise. */
   message: string | null;
+  /** Present for failures classified by the machine that checked or installed the agent. */
+  failedPhase?: 'check' | 'install';
   checkedAt: Timestamp | null;
   /**
    * While `updating`: the running turns of this agent that have not paused

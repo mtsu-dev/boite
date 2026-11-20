@@ -473,6 +473,7 @@ export class HarnessUpdates {
             current: previous?.current ?? null,
             latest: previous?.latest ?? null,
             state: 'failed',
+            failedPhase: 'check',
             message: error instanceof Error ? error.message : String(error),
             checkedAt: Date.now(),
             program: target.program,
@@ -615,6 +616,7 @@ export class HarnessUpdates {
         route: target.route,
         ...confirmed,
         state: stuck ? 'failed' : 'idle',
+        ...(stuck ? { failedPhase: 'install' as const } : {}),
         message: stuck ? `${target.descriptor.name} ran its updater and still reports ${read.current}${reason === undefined ? '' : `: ${reason}`}` : null,
         checkedAt: Date.now(),
         program: this.#targetOf(id)?.program ?? target.program,
@@ -629,7 +631,7 @@ export class HarnessUpdates {
       this.#core.bus.emit('providers.updated', this.#core.providers.list());
     } catch (error) {
       const undone = error instanceof UpdateUndone ? { current: error.current } : {};
-      this.#entries.set(id, { ...before, ...undone, state: 'failed', message: error instanceof Error ? error.message : String(error), checkedAt: Date.now(), program: target.program });
+      this.#entries.set(id, { ...before, ...undone, state: 'failed', failedPhase: 'install', message: error instanceof Error ? error.message : String(error), checkedAt: Date.now(), program: target.program });
     }
     this.#writeReadings();
     this.#emit();
@@ -866,6 +868,7 @@ export class HarnessUpdates {
       skipped,
       state: entry.state,
       message: entry.message,
+      ...(entry.state === 'failed' && entry.failedPhase ? { failedPhase: entry.failedPhase } : {}),
       checkedAt: entry.checkedAt,
       ...(entry.state === 'updating' ? { waitingFor: this.#drains.get(providerId)?.waitingFor ?? 0 } : {}),
     };
