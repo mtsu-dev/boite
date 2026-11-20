@@ -112,11 +112,6 @@ function reasonOf<M>(owner: Owner, entry: FeedSource<M>, kind: ThreadState | nul
 /** Activity's events: the shared derivation (contracts/src/activity.ts). */
 const feedEvents = <M extends { id: string; store: RowSource<Delegated> }>(all: readonly FeedSource<M>[]) => activityEvents(all);
 
-/** How many rows Activity's Needs you section lists at its top level: the number its heading and every badge say. */
-export function needsYouCount<M extends { id: string; store: RowSource<Delegated> }>(all: readonly FeedSource<M>[]): number {
-  return feedEvents(all).filter(({ rank }) => rank <= NEEDS_RANK).length;
-}
-
 /** One machine's Needs you count over some of its threads (a project's, say): the same rows, the same number. */
 export function storeNeedsYou(store: RowSource<Delegated>, threads: readonly ThreadSummary[]): number {
   return storeNeeds(store, threads).count;

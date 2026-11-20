@@ -12,18 +12,6 @@ type PullRequest = ThreadSummary['pullRequest'];
 /** What a merge proof reads of a thread. The worktree cleanup also asks for a worktree whose thread was deleted. */
 export type CheckoutOwner = Pick<ThreadSummary, 'id' | 'cwd' | 'branch' | 'projectId'>;
 
-export function hasGitHubRemote(remotes: string, host = process.env.GH_HOST ?? 'github.com'): boolean {
-  return remotes.split('\n').some(line => {
-    const url = line.trim().split(/\s+/)[1];
-    if (!url) return false;
-    let remoteHost = '';
-    try { remoteHost = new URL(url).hostname; }
-    catch { /* Git also accepts SCP-style remotes. */ }
-    if (!remoteHost) remoteHost = url.match(/^(?:[^@/\s]+@)?([^:/\s]+):/)?.[1] ?? '';
-    return remoteHost.toLowerCase() === host.toLowerCase();
-  });
-}
-
 function pullRequestArray(text: string): unknown[] {
   const values: unknown = JSON.parse(text);
   if (!Array.isArray(values)) throw new Error('gh output must be a pull request array');
@@ -44,11 +32,6 @@ function toPullRequest(value: unknown): NonNullable<PullRequest> {
   if (url.protocol !== 'https:' || url.username || url.password)
     throw new Error('pull request url must use HTTPS without credentials');
   return { number: Number(item.number), url: url.href, state: item.state as 'OPEN' | 'CLOSED' | 'MERGED' };
-}
-
-export function parsePullRequests(text: string): PullRequest {
-  const values = pullRequestArray(text);
-  return values.length === 0 ? null : toPullRequest(values[0]);
 }
 
 type PullRequestList = {
