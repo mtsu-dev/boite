@@ -71,17 +71,6 @@ export function closeLoop(run: WorkflowRun, node: WorkflowNode, now: number): 'o
   return 'spent';
 }
 
-/** A loop that ran out of rounds: its closing step failed though every execution of it, if any, ended done. */
-export function loopSpent(run: WorkflowRun, node: WorkflowNode): boolean {
-  return node.exhausted === true && node.status === 'failed' && !!run.plan.steps.find(s => s.id === node.id)?.repeat;
-}
-
-/** A retry of a loop that ran out of rounds: one round more. */
-function loopAgain(run: WorkflowRun, node: WorkflowNode): void {
-  const step = run.plan.steps.find(s => s.id === node.id)!;
-  rewind(run, loopBody(run.nodes, step.repeat!.from, step.id), true);
-}
-
 function canonicalItem(item: unknown): string | undefined {
   return JSON.stringify(item, (_key, value: unknown) => value && typeof value === 'object' && !Array.isArray(value)
     ? Object.fromEntries(Object.entries(value).sort(([left], [right]) => left < right ? -1 : left === right ? 0 : 1))
@@ -121,7 +110,12 @@ export function retryWorkflowSteps(run: WorkflowRun, stepId?: string): boolean {
   const targets = new Set(run.nodes.filter(node =>
     (stepId === undefined || node.id === stepId) && (broken(node.status) || node.instances.some(inst => broken(inst.status)))));
   if (targets.size === 0) return false;
-  for (const node of targets) if (loopSpent(run, node)) loopAgain(run, node);
+  // The closing step of an exhausted loop failed despite its executions completing. Retry one more round.
+  for (const node of targets) {
+    if (node.exhausted !== true || node.status !== 'failed') continue;
+    const step = run.plan.steps.find(s => s.id === node.id);
+    if (step?.repeat) rewind(run, loopBody(run.nodes, step.repeat.from, step.id), true);
+  }
   for (const node of run.nodes) {
     for (const inst of node.instances) {
       if (inst.status === 'stopped' && inst.error === NOT_STARTED) {
