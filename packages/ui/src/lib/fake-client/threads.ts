@@ -15,6 +15,7 @@ import { RpcFailure } from '../client';
 import { decodeBase64 } from '../attachment-save';
 import { checkEffort, checkModel, checkRunnable, defaultModel } from './checks';
 import { moveToAccount, usableAccount } from './account-fallback';
+import { rememberAccountSession, savedAccountSession } from './account-sessions';
 import { writeTitle } from './titles';
 import { DATA_DIR, fakeWorktree, refusal, toSummary } from './shared';
 import { closeThreadTerminals } from './terminals';
@@ -489,6 +490,12 @@ export function threadMethods(ctx: FakeContext) {
       const copy = await ctx.imagePreviews.read(key, params.previewMax, () => new Blob([decodeBase64(part.data)], { type: part.mimeType }));
       return copy ?? { data: '', mimeType: 'image/webp', bytes: 0 };
     },
+    'threads.previewAccountSwitch': async ({ threadId, accountId }) => {
+      const thread = ctx.thread(threadId);
+      const account = ctx.accounts.find(item => item.id === accountId);
+      if (!account) throw ctx.notFound('account', accountId);
+      return { session: thread.accountId === accountId ? 'unchanged' : savedAccountSession(thread, account) ? 'resume' : 'fresh' };
+    },
     'threads.update': async (params) => {
       const thread = ctx.thread(params.threadId);
       if (params.expectedSelectionVersion !== undefined && params.expectedSelectionVersion !== (thread.selectionVersion ?? 0)) {
@@ -519,14 +526,17 @@ export function threadMethods(ctx: FakeContext) {
         if (!account || !provider?.available || account.status === 'unauthenticated') {
           throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'the selected account is unavailable' });
         }
+        const restored = savedAccountSession(thread, account);
+        if (params.requireSavedSession === true && !restored) throw refusal('the saved session can no longer resume; review the account switch again', { field: 'accountId', expected: 'an account with a resumable session' });
+        rememberAccountSession(thread);
         if (thread.background?.length) ctx.setBackground(thread, [], 'session-ended');
         thread.accountId = account.id;
         thread.providerId = account.providerId;
         thread.model = params.model === undefined ? defaultModel(provider) : params.model;
         thread.effort = null; thread.speed = null;
-        thread.sessionId = null;
+        thread.sessionId = restored?.sessionId ?? null;
         thread.sessionGeneration = (thread.sessionGeneration ?? 0) + 1;
-        thread.context = null;
+        thread.context = restored?.context ?? null;
         thread.commands = [];
         ctx.emit('thread.commands', { threadId: thread.id, commands: [] });
       }

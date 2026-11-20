@@ -426,6 +426,8 @@ export interface ProviderSummary {
   capabilities: ProviderCapabilities;
   /** How Boite starts login: a piped command, ACP, a terminal or a device-code protocol. */
   login: false | { kind: 'command' | 'acp' | 'terminal' | 'device' };
+  /** Steering implemented by this ACP variant. Availability still depends on its turn. */
+  acpSteering?: boolean;
   /** True when the provider cannot use its default login location. */
   alwaysIsolated: boolean;
   /** Where the managed install stands, null when this profile has no `install` block. */

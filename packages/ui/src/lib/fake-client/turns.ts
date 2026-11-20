@@ -14,6 +14,7 @@ import { applyWaitingMove } from './thread-move';
 import { applyWaitingDone } from './agent-done';
 import { sweepMergedPrFixtures } from './merged-pr-archive';
 import { autoTitle } from './titles';
+import { resumedAccountSession } from './account-sessions';
 import type { FakeContext } from './context';
 
 export async function stopTurn(ctx: FakeContext, threadId: ThreadId): Promise<boolean> {
@@ -142,8 +143,7 @@ type FakeOperation = 'compact' | 'delegation' | 'routine' | 'event' | 'pull-requ
 
 /**
  * The core's `threads/switch-notice.ts`: the difference from the last turn
- * that started, with what a new session would be handed when the account
- * changed, here every message of the thread whole.
+ * that started, with the fixture's whole messages the target session missed.
  */
 function turnSwitch(ctx: FakeContext, thread: Thread, execution: NonNullable<Turn['execution']>, turnId: string): TurnSwitch | undefined {
   if (execution.operation === 'keepalive') return undefined;
@@ -156,11 +156,14 @@ function turnSwitch(ctx: FakeContext, thread: Thread, execution: NonNullable<Tur
   const from = statedSelection(before.execution), to = statedSelection(execution);
   if (!selectionDiffers(from, to)) return undefined;
   const label = (id: string): string => ctx.accounts.find(account => account.id === id)?.label ?? '';
-  const history = thread.messages.filter(message => message.turnId !== turnId);
+  const resumed = resumedAccountSession(thread, to.accountId, execution.sessionId);
+  const after = resumed ? thread.turns.findIndex(turn => turn.id === resumed.after) : -1;
+  const missed = new Set(thread.turns.slice(after + 1).map(turn => turn.id));
+  const history = thread.messages.filter(message => message.turnId !== turnId && missed.has(message.turnId));
   const chars = history.reduce((sum, message) => sum + message.parts.reduce((size, part) => size + (part.type === 'text' ? part.text.length : 0), 0), 0);
   return {
     from: { ...from, account: label(from.accountId) }, to: { ...to, account: label(to.accountId) },
-    ...(from.accountId !== to.accountId ? { handover: { session: 'fresh' as const, full: history.length, cut: 0, omitted: 0, chars } } : {}),
+    ...(from.accountId !== to.accountId ? { handover: { session: resumed ? 'resumed' : 'fresh', full: history.length, cut: 0, omitted: 0, chars } } : {}),
   };
 }
 

@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { forgetWhich } from './which.ts';
 import {
+  acpSteeringKind,
   threadActive,
   type PolicyRefusalData,
   type ProviderDescriptor,
@@ -120,6 +121,7 @@ export function summarize(
     alwaysIsolated: entry.descriptor.isolation?.alwaysIsolated === true,
     models: entry.descriptor.models,
     capabilities: entry.descriptor.capabilities,
+    ...(acpSteeringKind(entry.descriptor) !== null ? { acpSteering: true } : {}),
     install: installs.stateOf(entry.descriptor.id, install),
     titles: writesTitles(entry.descriptor.protocol),
     enabled,

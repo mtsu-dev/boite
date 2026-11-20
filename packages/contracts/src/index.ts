@@ -262,7 +262,7 @@ export {
 export { SPEECH_CATALOGUE, SPEECH_CUSTOM_ID, SPEECH_DEFAULT_MODEL, isSpeechModelId, speechUrlProblem, type SpeechCatalogueModel, type SpeechModelTier, type SpeechBackend } from './speech-models.ts';
 
 export { sideQuestionSnapshot } from './side-question-snapshot.ts';
-export { deriveThreadCapabilities, protocolSupportsSteering, type ThreadCapabilitySnapshot } from './thread-capabilities.ts';
+export { acpSteeringKind, deriveThreadCapabilities, providerSupportsSteering, type ThreadCapabilitySnapshot } from './thread-capabilities.ts';
 export { resumeAnchor, snapshotOptionsProblem, type MessageSync } from './thread-sync.ts';
 export { IMAGE_INLINE_CHARS, previewFileData, previewImageData, type ImagePreviews } from './file-preview.ts';
 export { imageSize } from './image-size.ts';

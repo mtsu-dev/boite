@@ -616,6 +616,27 @@ export const SCENARIOS: Record<string, Scenario> = {
     const created = await env.call('threads.create', { projectId: setup.projectId, providerId: setup.provider.id, accountId: setup.account.id, title: '' });
     same([created.title, created.model, created.effort, created.cwd], ['New thread', setup.model, null, setup.projectPath], 'the new thread');
   },
+  'threads.previewAccountSwitch forecasts a fresh session and a saved session without mutating the thread': async (env) => {
+    const setup = await echo(env);
+    const created = await thread(env, setup);
+    const second = await env.call('accounts.add', { providerId: setup.provider.id, label: 'Second', useDefaultLocation: false });
+    const turn = await env.call('turns.start', { threadId: created.id, prompt: 'Remember this exchange' });
+    await until('the first account has a session', async () => (await env.call('threads.get', { threadId: created.id })).turns.some(item => item.id === turn.id && item.status === 'done'));
+    const preview = (accountId: string) => env.call('threads.previewAccountSwitch', { threadId: created.id, accountId });
+    const before = await summary(env, created.id);
+    check(before.sessionId !== null, 'the first account has a native session');
+    same((await preview(second.id)).session, 'fresh', 'preview for unused account');
+    same((await preview(setup.account.id)).session, 'unchanged', 'preview for current account');
+    same(await summary(env, created.id), before, 'preview leaves the thread intact');
+    await env.call('threads.update', { threadId: created.id, accountId: second.id });
+    const missed = await env.call('turns.start', { threadId: created.id, prompt: 'An exchange on the second account' });
+    await until('the second account finished its turn', async () => (await env.call('threads.get', { threadId: created.id })).turns.some(item => item.id === missed.id && item.status === 'done'));
+    same((await preview(setup.account.id)).session, 'resume', 'preview for saved account');
+    const restored = await env.call('threads.update', { threadId: created.id, accountId: setup.account.id, requireSavedSession: true });
+    same(restored.sessionId, before.sessionId, 'switch restores the previewed session');
+    const resumed = await env.call('turns.start', { threadId: created.id, prompt: 'Continue on the original account' });
+    await until('the turn reports a resumed session', async () => (await env.call('threads.get', { threadId: created.id })).turns.find(item => item.id === resumed.id)?.switched?.handover?.session === 'resumed');
+  },
   'threads.update keeps the title when the new one is empty': async (env) => {
     const setup = await echo(env);
     const created = await thread(env, setup, 'named');

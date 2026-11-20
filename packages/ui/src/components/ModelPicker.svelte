@@ -77,6 +77,8 @@
     await tick();
   }
 
+  export function close() { popover.hide(); }
+
   function toggle(event?: MouseEvent) {
     event?.stopPropagation();
     popover.toggle();

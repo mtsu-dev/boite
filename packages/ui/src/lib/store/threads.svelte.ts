@@ -6,6 +6,7 @@ import type {
   PermissionMode,
   ProjectId,
   ProviderId,
+  RpcParams,
   Thread,
   ThreadId,
   ThreadRewind,
@@ -87,6 +88,19 @@ export class Threads {
       return this.ctx.currentClient(client, generation) ? capabilities : null;
     } catch (error) {
       // Older cores keep their existing action checks until updated.
+      if (error instanceof RpcFailure && error.code === RpcErrorCode.MethodNotFound) return null;
+      throw error;
+    }
+  }
+
+  async previewAccountSwitch(threadId: ThreadId, accountId: string) {
+    const client = this.ctx.client;
+    const generation = this.ctx.clientGeneration;
+    if (!client) return null;
+    try {
+      const preview = await client.call('threads.previewAccountSwitch', { threadId, accountId });
+      return this.ctx.currentClient(client, generation) ? preview : null;
+    } catch (error) {
       if (error instanceof RpcFailure && error.code === RpcErrorCode.MethodNotFound) return null;
       throw error;
     }
@@ -634,7 +648,7 @@ export class Threads {
 
   async update(
     threadId: ThreadId,
-    patch: { title?: string; accountId?: string; model?: string | null; effort?: string | null; speed?: string | null; permissionMode?: PermissionMode; expectedSelectionVersion?: number }
+    patch: Omit<RpcParams<'threads.update'>, 'threadId'>
   ): Promise<boolean> {
     return (await this.updateRow(threadId, client => client.call('threads.update', { threadId, ...patch }))) !== null;
   }

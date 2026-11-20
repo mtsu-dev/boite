@@ -293,6 +293,11 @@ one turn's limits; an agent that cannot read images refuses them, as a fresh
 start does. Otherwise the thread starts fresh with the whole transfer, and
 the log says why (`thread.session-not-resumed`).
 
+Before warning about a fresh session on a long thread, the composer asks its
+core for `threads.previewAccountSwitch`. The preview reads the same saved-session
+and history checks as the switch. If the session stops being resumable before
+the switch commits, `threads.update` refuses the switch that relied on it.
+
 The saved sessions live in one journal setting per thread
 (`account-sessions:<thread>`, `packages/core/src/threads/account-sessions.ts`),
 erased with the thread and not copied by a fork. A resumed session takes a new

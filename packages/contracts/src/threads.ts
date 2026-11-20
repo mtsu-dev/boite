@@ -8,7 +8,7 @@ import type { Attachment, Message, MoveNotice, PendingMove, PreviewReference } f
 import type { OwnerThreadRequest } from './owner-thread';
 import type { PermissionRequest } from './permissions';
 import type { PluginActor } from './plugins';
-import type { ThreadCapabilities } from './providers';
+import type { ThreadControlsRpcMethods } from './thread-capabilities.ts';
 import type { PullRequestWatch } from './pull-requests';
 import type { BackgroundTask, BackgroundTaskObservation, BackgroundWait, QuestionRequest } from './questions';
 import type { MemoryEvent } from './scheduler';
@@ -596,7 +596,7 @@ export interface ThreadStats {
   prompts: number;
 }
 
-export interface ThreadsRpcMethods {
+export interface ThreadsRpcMethods extends ThreadControlsRpcMethods {
   /** Owner-only, private bounded diagnostic history, including earlier runs. */
   'journal.inspect': { params: { cursor?: JournalInspectionCursor | null; limit?: number }; result: JournalInspection };
   /**
@@ -680,8 +680,6 @@ export interface ThreadsRpcMethods {
   'threads.createFromPrompt': { params: OwnerThreadRequest; result: { thread: ThreadSummary; turn: Turn; project: string } };
   /** The system prompt, tools and parameters of a Claude thread's last request, read from its transcript. Refused on other providers. */
   'threads.agentShape': { params: { threadId: ThreadId }; result: AgentShape };
-  /** Supported operations and their current availability for this thread. */
-  'threads.capabilities': { params: { threadId: ThreadId }; result: ThreadCapabilities };
   /** What the whole conversation holds, past the pages a client loaded: its compactions and the prompts sent (`ThreadStats`). */
   'threads.stats': { params: { threadId: ThreadId }; result: ThreadStats };
   /**
@@ -730,6 +728,8 @@ export interface ThreadsRpcMethods {
       threadId: ThreadId;
       /** Select another account/provider for future turns in this conversation. */
       accountId?: AccountId;
+      /** The user skipped the history warning because the preview could resume a saved session. */
+      requireSavedSession?: true;
       expectedSelectionVersion?: number;
       title?: string;
       model?: string | null;

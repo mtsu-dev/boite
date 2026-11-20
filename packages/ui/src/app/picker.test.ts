@@ -99,6 +99,39 @@ test('the picker rails the providers as logos and gives the shown one its accoun
   expect(store.openThread?.model).toBe('claude-opus-5-5');
 });
 
+test('a long thread asks for an unused account and switches straight back to its saved session', async ({ app: _app }) => {
+  const client = store.client!;
+  const first = (await client.call('accounts.list', {})).find(account => account.providerId === 'echo')!;
+  const second = await client.call('accounts.add', { providerId: 'echo', label: 'Second Echo seat' });
+  const thread = await client.call('threads.create', { projectId: store.projects.find(project => project.kind !== 'drafts')!.id, providerId: 'echo', accountId: first.id });
+  await client.call('turns.start', { threadId: thread.id, prompt: 'Save the first session' });
+  await store.open(thread.id);
+  await waitFor(() => store.openThread?.id === thread.id && !store.busy && !!store.openThread.context
+    && store.openThread.turns.some(turn => turn.status === 'done'));
+  const firstSession = store.openThread!.sessionId;
+  expect(firstSession).not.toBeNull();
+  async function pickAccount(id: string) {
+    if (!document.querySelector('[data-testid=composer-picker-menu]')) {
+      query<HTMLButtonElement>('[data-testid=composer-picker]').click();
+    }
+    await menuLoaded();
+    query<HTMLButtonElement>('[data-testid=picker-account]').click();
+    await waitFor(() => seats().includes(`echo::${id}`));
+    store.openThread!.context = { tokens: 210_000, window: 400_000, at: Date.now() };
+    query<HTMLButtonElement>(`[data-instance="echo::${id}"]`).click();
+  }
+  await pickAccount(second.id);
+  await waitFor(() => document.querySelector('[data-testid=confirm-dialog]') !== null);
+  await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') === null);
+  expect(query('[data-testid=confirm-dialog]').textContent).toContain('starts a new session');
+  query<HTMLButtonElement>('[data-testid=confirm-ok]').click();
+  await waitFor(() => store.openThread?.accountId === second.id && document.querySelector('[data-testid=confirm-dialog]') === null);
+  await pickAccount(first.id);
+  await waitFor(() => store.openThread?.accountId === first.id || document.querySelector('[data-testid=confirm-dialog]') !== null);
+  expect(document.querySelector('[data-testid=confirm-dialog]')).toBeNull();
+  expect(store.openThread?.sessionId).toBe(firstSession);
+});
+
 test('the picker reads an ACP agent models, showing the descriptor and a probing line meanwhile', async ({ app: _app }) => {
   query<HTMLButtonElement>('[data-testid=new-thread]').click();
   await waitFor(() => store.draft !== null);
