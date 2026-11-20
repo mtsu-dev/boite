@@ -59,7 +59,7 @@ triggered while an earlier continuation starts. A new turn on the thread
 cancels its pending continuation while the provider's version check runs.
 Cache pings leave that continuation pending.
 
-An unreadable record or one older than one hour resumes nothing. Archived,
+An unreadable record or one older than one hour resumes no recorded turn. Archived,
 deleted or non-runnable threads are excluded; failed admission logs its reason.
 This protects admission identity, not exactly-once execution of arbitrary shell
 side effects. The agent must inspect what completed before relying on it.
@@ -75,6 +75,8 @@ pauses the team and the runs instead, marked as held by a restart: the parent
 agent resumes them with `boite delegate resume`
 ([delegation](delegation.md#stop-pause-and-resume),
 [workflows](workflows.md#failure-stop-and-restart)).
+The next core also retries delivery of completed workflow summaries that
+remain pending.
 
 Compactions and coordination wakes are excluded. A mochi's thread
 resumes like any conversation; a wake that was waiting for its thread to be

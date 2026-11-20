@@ -339,6 +339,40 @@ describe('settled worktree cleanup', () => {
     expect(readdirSync(dirname(thread.cwd)).filter(name => name.startsWith('.boite-removing-'))).toEqual([]);
   });
 
+  test.skipIf(process.platform !== 'linux')('keeps a late save that the Git clean filter maps to the original blob', async () => {
+    const project = await repoProject();
+    writeFileSync(join(project.path, '.gitattributes'), '*.fixture filter=recovery\n');
+    git(project.path, 'config', 'filter.recovery.clean', 'tr a-z A-Z');
+    git(project.path, 'config', 'filter.recovery.smudge', 'tr A-Z a-z');
+    writeFileSync(join(project.path, 'doc.fixture'), 'TEXT\n');
+    git(project.path, 'add', '.');
+    git(project.path, 'commit', '-qm', 'attributes');
+    const thread = await worktreeThread(project, 'Late filtered save');
+    const commit = git(thread.cwd, 'rev-parse', 'HEAD');
+    expect(readFileSync(join(thread.cwd, 'doc.fixture'), 'utf8')).toBe('text\n');
+    await client.call('threads.archive', { threadId: thread.id });
+
+    const spawn = harness.core.procs.spawn.bind(harness.core.procs);
+    let saved: string | undefined;
+    const removing = spyOn(harness.core.procs, 'spawn').mockImplementation((id, command, args, options) => {
+      if (command === 'git' && args[0] === 'worktree' && args[1] === 'remove') {
+        saved = join(dirname(args[2]!), 'saved');
+        const replacement = join(dirname(saved), 'replacement');
+        writeFileSync(replacement, 'TeXt\n');
+        renameSync(replacement, join(saved, 'doc.fixture'));
+      }
+      return spawn(id, command, args, options);
+    });
+    restoreSpawn = () => removing.mockRestore();
+
+    expect(await cleanup.run()).toEqual([expect.objectContaining({ branch: thread.branch })]);
+    expect(saved).toBeDefined();
+    expect(existsSync(thread.cwd)).toBe(false);
+    expect(await client.call('worktrees.recoveries', {})).toEqual([{ path: thread.cwd, commit, recoveryPath: saved! }]);
+    expect(readFileSync(join(saved!, 'doc.fixture'), 'utf8')).toBe('TeXt\n');
+    expect(readdirSync(saved!)).toEqual(['doc.fixture']);
+  });
+
   test('keeps the captured edit when its public name is published again', async () => {
     const project = await repoProject();
     const saved = join(harness.dataDir, 'captured-edit', 'saved');
@@ -404,6 +438,46 @@ describe('settled worktree cleanup', () => {
     rmSync(saved, { recursive: true });
     expect(await client.call('worktrees.recoveries', {})).toEqual([]);
     expect(harness.core.journal.getSetting('checkout-recoveries') ?? []).toEqual([]);
+  });
+
+  test('inventories a completed interrupted removal after restart without compacting the saved files', async () => {
+    const project = await repoProject();
+    const thread = await worktreeThread(project, 'Interrupted removal');
+    await client.call('threads.archive', { threadId: thread.id });
+    const path = thread.cwd;
+    const temporary = join(dirname(path), '.boite-removing-interrupted');
+    const staged = join(temporary, 'checkout');
+    const saved = join(temporary, 'saved');
+    const admin = await realKey(git(path, 'rev-parse', '--absolute-git-dir'));
+    const commit = git(path, 'rev-parse', 'HEAD');
+    mkdirSync(saved, { recursive: true });
+    git(project.path, 'worktree', 'move', path, staged);
+    renameSync(join(staged, 'README.md'), join(saved, 'README.md'));
+    renameSync(join(staged, '.git'), join(temporary, 'git-pointer'));
+    rmdirSync(staged);
+    git(project.path, 'worktree', 'remove', staged);
+    writeFileSync(join(saved, 'notes.txt'), 'late save\n');
+    const key = `checkout-removal:${await realKey(path)}`;
+    harness.core.journal.setSetting(key, { path, staged, admin, commit });
+
+    await cleanup.close();
+    client.close();
+    await harness.core.drain();
+    await harness.server.stop();
+    await harness.core.close();
+    const next = await startTestCore({ dataDir: harness.dataDir });
+    try {
+      const owner = await next.connect();
+      const recovery = { path, commit, recoveryPath: saved };
+      expect(await Promise.all([owner.call('worktrees.recoveries', {}), owner.call('worktrees.recoveries', {})]))
+        .toEqual([[recovery], [recovery]]);
+      expect(await owner.call('worktrees.recoveries', {})).toEqual([recovery]);
+      expect(next.core.journal.getSetting(key)).toBeUndefined();
+      expect(JSON.parse(readFileSync(join(temporary, 'recovery.json'), 'utf8'))).toMatchObject(recovery);
+      expect(existsSync(join(temporary, 'git-pointer'))).toBe(false);
+      expect(readFileSync(join(saved, 'notes.txt'), 'utf8')).toBe('late save\n');
+      expect(readFileSync(join(saved, 'README.md'), 'utf8')).toBe('hello\n');
+    } finally { await next.stop(); }
   });
 
   test('keeps a branch that advances to another merged commit during cleanup', async () => {

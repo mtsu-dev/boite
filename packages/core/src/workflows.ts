@@ -26,6 +26,7 @@ import { SharedWorkflowCompute } from './workflows/shared-compute.ts';
 import { MachineWorkflowSteps } from './workflows/machine-steps.ts';
 import { loopPrompt, stepPrompt, stepRole } from './workflows/prompt.ts';
 import { sentBack } from './workflows/follow-up.ts';
+import type { StartTurnOptions } from './threads/turn-origin.ts';
 import { delivered, endLeftovers, shapedOutput, stepAnswer } from './workflows/step-result.ts';
 export { registerWorkflowMethods } from './workflows/register.ts';
 
@@ -137,11 +138,13 @@ export class Workflows {
       else this.#undelivered.set(run.rootThreadId, new Set([run.id]));
     } else if (ids?.delete(run.id) && !ids.size) this.#undelivered.delete(run.rootThreadId);
   }
-  #save(run: WorkflowRun): void {
+  #write(run: WorkflowRun): void {
     run.updatedAt = Date.now();
     this.#core.journal.append({ type: 'workflow.changed', threadId: run.rootThreadId, version: 1, payload: { runId: run.id, status: run.status } }, db => {
       db.query('INSERT OR REPLACE INTO workflow_runs VALUES (?, ?, ?, ?, ?, ?)').run(run.id, run.rootThreadId, run.status, run.createdAt, run.updatedAt, JSON.stringify(run));
     });
+  }
+  #published(run: WorkflowRun): void {
     // After the write: a failed append leaves no record of a transition that did not persist,
     // and inside `committed` the record waits for the outer transaction.
     if (this.#heldLogs !== null) this.#heldLogs.push(run);
@@ -150,6 +153,10 @@ export class Workflows {
       try { this.#log.saved(run); } catch { /* A diagnostic storage failure must not break workflows. */ }
     }
     announceWorkflow(this.#core, run);
+  }
+  #save(run: WorkflowRun): void {
+    this.#write(run);
+    this.#published(run);
   }
   /** Load, change, save. `change` returns false to leave the record untouched. */
   #mutate(runId: string, change: (run: WorkflowRun) => boolean | void): WorkflowRun | null {
@@ -619,15 +626,19 @@ export class Workflows {
     if (threadActive(root.status)) { this.#core.threads.cacheKeepalive.yieldTo(root.id); return; }
     const display = `Workflow "${run.name}" ${run.status === 'done' ? 'finished' : 'failed'}`;
     try {
-      this.#handTo(root, runSummary(run), display);
-      this.#mutate(run.id, current => { current.delivered = true; current.deliveryError = null; });
+      this.#handTo(root, runSummary(run), display, () => {
+        // Commit the delivery with its turn so a restarted core cannot admit it twice.
+        const accepted = { ...run, delivered: true, deliveryError: null };
+        this.#write(accepted);
+        return () => this.#published(accepted);
+      });
     } catch (error) {
       // Said on the run, so the panel shows why the summary is held rather than waiting in silence.
       const reason = messageOf(error);
       // A persistent agent that is paused or out of budget gets the summary once it may run.
       if (isAgentHeld(error)) this.#core.agentRuntime.whenAdmitted(root.id, `workflow:${run.id}`, () => this.#deliver(run.id));
       this.#core.log('warn', `workflow ${run.id} result not delivered: ${reason}`);
-      this.#mutate(run.id, current => current.deliveryError === reason ? false : void (current.deliveryError = reason));
+      this.#mutate(run.id, current => current.delivered || current.deliveryError === reason ? false : void (current.deliveryError = reason));
     }
   }
 
@@ -648,8 +659,8 @@ export class Workflows {
   }
 
   /** One turn of the root carrying a prompt, on a persistent agent's thread as on any other. */
-  #handTo(root: ThreadSummary, prompt: string, display: string): void {
-    this.#core.threads.startTurn(root.id, { prompt, display }, { kind: 'delegation' });
+  #handTo(root: ThreadSummary, prompt: string, display: string, persistAdmission?: StartTurnOptions['persistAdmission']): void {
+    this.#core.threads.startTurn(root.id, { prompt, display }, { kind: 'delegation' }, { persistAdmission });
   }
 
   /** A held summary goes again once the owner resumes the team. */
@@ -723,11 +734,12 @@ export class Workflows {
     return resumed;
   }
 
-  /** Once the server listens after a restart handoff: the runs it left running launch their cut steps again. */
+  /** Once the server listens, resume running steps and hand over finished results left pending. */
   resumeAfterRestart(): number {
     if (this.#closed || this.#core.journal.isClosed()) return 0;
     const runs = this.#runsWhere("status = 'running'");
     for (const run of runs) this.#advance(run.id);
+    for (const run of this.#runsWhere("status = 'done' AND json_extract(data, '$.delivered') = 0")) this.#deliver(run.id);
     return runs.length;
   }
 

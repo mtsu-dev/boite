@@ -427,6 +427,61 @@ test.each(['result', 'failure notice'] as const)('a queued workflow %s starts no
   expect(pending.failuresNoticed ?? []).toEqual([]);
 });
 
+test('delivers a finished workflow after restart handoff without another user turn', async () => {
+  let first = true;
+  let stopping = false;
+  const { held, prompts } = scripted(ctx => {
+    if (!first) return 'acknowledged';
+    if (!ctx.thread.parentThreadId) {
+      const id = ctx.emit.startMessage('assistant');
+      ctx.emit.part(id, 0, { type: 'tool', toolId: 'last-tool', name: 'Read', input: {}, output: null, status: 'running' });
+    }
+    return { hold: true };
+  });
+  const h = await startTestCore({ onShutdown: () => { stopping = true; } });
+  cores.push(h);
+  const owner = await h.connect();
+  const { threadId } = await echoThread(h, owner, 'Parent');
+  h.core.threads.startTurn(threadId, { prompt: 'Keep the parent busy' });
+  await waitFor(() => held.has(threadId));
+  const run = h.core.workflows.start({ threadId, plan: { name: 'Pending summary', steps: [{ id: 'first', task: 'Finish' }] }, requestId: 'pending' }, 'user');
+  const instance = () => h.core.workflows.get(threadId, run.id).nodes[0]!.instances[0]!;
+  await waitFor(() => instance().threadId !== null && held.has(instance().threadId!));
+  held.get(instance().threadId!)!('Completed.');
+  await waitFor(() => h.core.workflows.get(threadId, run.id).status === 'done');
+  expect(h.core.workflows.get(threadId, run.id).delivered).toBe(false);
+  expect(h.core.threads.handoff.toolsRunning(threadId)).toBe(1);
+  expect(h.core.requestHandoffShutdown(1000)).toBe('accepted');
+  expect(held.has(threadId)).toBe(true);
+  held.get(threadId)!('Parent done');
+  await waitFor(() => stopping);
+  expect(h.core.journal.listTurns(threadId)).toHaveLength(1);
+  owner.close();
+  await h.core.drain();
+  await h.server.stop();
+  await h.core.close();
+
+  first = false;
+  const next = await startTestCore({ dataDir: h.dataDir });
+  cores.unshift(next);
+  expect(next.core.threads.handoff.handedOver).toBe(true);
+  const result = () => next.core.workflows.get(threadId, run.id);
+  await waitFor(() => result().delivered);
+  expect(result()).toMatchObject({ status: 'done', delivered: true, deliveryError: null });
+  await waitFor(() => next.core.threads.require(threadId).status === 'idle');
+  expect(next.core.journal.listTurns(threadId)).toHaveLength(2);
+  const summaries = () => prompts.filter(p => p.threadId === threadId && p.prompt.includes('Boite workflow done'));
+  expect(summaries().map(p => p.prompt)).toEqual([expect.stringContaining('Completed.')]);
+  await next.stop();
+  const again = await startTestCore({ dataDir: h.dataDir });
+  cores.unshift(again);
+  const ownerAgain = await again.connect();
+  await ownerAgain.call('turns.start', { threadId, prompt: 'Another turn' });
+  await waitFor(() => again.core.threads.require(threadId).status === 'idle');
+  expect(again.core.journal.listTurns(threadId)).toHaveLength(3);
+  expect(summaries()).toHaveLength(1);
+});
+
 test('a paused team pauses the run until an owner resumes it', async () => {
   const { held } = scripted(ctx => ctx.thread.parentThreadId ? { hold: true } : 'noted');
   const { h, owner, threadId } = await setup();

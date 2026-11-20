@@ -283,9 +283,12 @@ An update or a restart from the app hands the run over: each running step is
 cut at its next tool boundary and waits again with "Interrupted by a core
 restart", the run stays running, and the next core runs those steps again with
 that line in their prompt ([restart handoff](restart-handoff.md)). After a
-crash, or a handoff older than an hour, nothing resumes paid work by itself:
-running runs pause, marked as held by a restart, and each interrupted execution
-waits on its own thread. Resume runs it again with the same line in its prompt.
+crash or a handoff older than an hour, running runs pause, marked as held by
+a restart, and each interrupted execution waits on its own thread. Resume runs
+it again with the same line in its prompt. At startup, the core also attempts
+delivery of completed results still pending. A busy parent receives the result
+after its turn finishes. Admission of the summary turn and the delivery record
+commit together.
 
 A step sent back to work in its own conversation still counts for its run. When
 the owner stops a step, the run fails with it; a turn started later in that

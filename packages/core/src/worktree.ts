@@ -1,7 +1,7 @@
 import { appendFileSync, closeSync, existsSync, fstatSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { BRANCH_NAME_MAX, type Project, type ThreadId, type WorktreeStorage } from '@boite/contracts';
-import { CheckoutReservations } from './checkouts.ts';
+import { CheckoutReservations, keyOf } from './checkouts.ts';
 import { removeCleanCheckout, restoreInterruptedCheckout, withVacantCheckout } from './checkout-removal.ts';
 import type { Core } from './core.ts';
 import { folderGone, messageOf, refused } from './errors.ts';
@@ -86,9 +86,9 @@ export function worktreeRoot(projectPath: string, storage?: WorktreeStorage, pro
  * it then fails. `timeoutMs` bounds the wait and the work together; `work`
  * gets what is left of it.
  */
-export async function withRegistration<T>(cwd: string, work: (remainingMs: number | undefined) => Promise<T>, options: { timeoutMs?: number; assertActive?: () => void; what?: () => string } = {}): Promise<T> {
+export async function withRegistration<T>(cwd: string, work: (remainingMs: number | undefined) => Promise<T>, options: { timeoutMs?: number; assertActive?: () => void; what?: () => string; cwdIsCommonDir?: boolean } = {}): Promise<T> {
   const { timeoutMs, assertActive } = options;
-  const key = realpathSync(gitCommonDirOf(cwd) ?? cwd);
+  const key = keyOf(options.cwdIsCommonDir ? cwd : realpathSync(gitCommonDirOf(cwd) ?? cwd));
   const previous = registrations.get(key) ?? Promise.resolve();
   const release = Promise.withResolvers<void>();
   const tail = previous.then(() => release.promise);

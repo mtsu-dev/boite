@@ -19,7 +19,7 @@ import { inside, keyOf } from './checkouts.ts';
 import { fetchedRepositories } from './pull-requests.ts';
 
 export { inside } from './checkouts.ts';
-import { assertCheckoutVacant, realKey, removeCleanCheckout, restoreInterruptedCheckout, withVacantCheckout } from './checkout-removal.ts';
+import { assertCheckoutVacant, publishInterruptedCheckoutRecoveries, realKey, removeCleanCheckout, restoreInterruptedCheckout, withVacantCheckout } from './checkout-removal.ts';
 import { listCheckoutRecoveries } from './checkout-recovery.ts';
 export { realKey } from './checkout-removal.ts';
 import { withRegistration, worktreeRoot } from './worktree.ts';
@@ -358,6 +358,9 @@ export class WorktreeSweep {
 export function registerWorktreeMethods(core: Core, sweep: WorktreeSweep = new WorktreeSweep(core)): void {
   // Owner only, absent from DEVICE_METHODS: both name paths on the host, and a removal deletes a folder.
   core.router.register('worktrees.list', (params) => sweep.list(params.projectId));
-  core.router.register('worktrees.recoveries', () => listCheckoutRecoveries(core));
+  core.router.register('worktrees.recoveries', async () => {
+    await publishInterruptedCheckoutRecoveries(core, (commonDir, publish) => withRegistration(commonDir, publish, { cwdIsCommonDir: true }));
+    return listCheckoutRecoveries(core);
+  });
   core.router.register('worktrees.remove', (params) => sweep.remove(params));
 }

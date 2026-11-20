@@ -5,7 +5,7 @@ import type { Project, ThreadId, ThreadSummary } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { inside, keyOf } from './checkouts.ts';
 import { finishCheckoutRecovery, type CheckoutGit, type CheckoutGitResult } from './checkout-recovery.ts';
-import { refused } from './errors.ts';
+import { messageOf, refused } from './errors.ts';
 import { occupiesCheckout } from './threads/occupancy.ts';
 
 /** Resolve aliases, including a vanished folder through its nearest existing parent. */
@@ -85,7 +85,8 @@ export async function withVacantCheckout<T>(core: Core, project: Project, path: 
 
 interface CheckoutMove { path: string; staged: string; admin: string; commit?: string }
 const TEMPORARY_PREFIX = '.boite-removing-';
-const moveKey = async (path: string) => `checkout-removal:${keyOf(join(await realKey(dirname(path)), basename(path)))}`;
+const MOVE_PREFIX = 'checkout-removal:';
+const moveKey = async (path: string) => `${MOVE_PREFIX}${keyOf(join(await realKey(dirname(path)), basename(path)))}`;
 const savedAt = (staged: string) => join(dirname(staged), 'saved');
 const heldPointerAt = (staged: string) => join(dirname(staged), 'git-pointer');
 
@@ -212,7 +213,7 @@ export async function restoreInterruptedCheckout(core: Core, project: Project, p
   core.journal.deleteSetting(key);
 }
 
-async function finishRemoval(core: Core, move: CheckoutMove, git: CheckoutGit): Promise<void> {
+async function finishRemoval(core: Core, move: CheckoutMove, git?: CheckoutGit): Promise<void> {
   const recoveryPath = savedAt(move.staged);
   // Old interrupted moves can still have the pointer in saved/.git.
   for (const pointer of [heldPointerAt(move.staged), join(recoveryPath, '.git')]) {
@@ -223,6 +224,42 @@ async function finishRemoval(core: Core, move: CheckoutMove, git: CheckoutGit): 
     await unlink(pointer);
   }
   await finishCheckoutRecovery(core, { path: move.path, commit: move.commit ?? null, recoveryPath }, git);
+}
+
+/** Git removes the administrative directory last. If reused, it points to a new registered checkout. */
+async function registrationGone(move: CheckoutMove): Promise<boolean> {
+  if (!lstatSync(move.admin, { throwIfNoEntry: false })) return true;
+  const current = (await readFile(join(move.admin, 'gitdir'), 'utf8')).trimEnd();
+  if (!current) return false;
+  const pointer = resolve(move.admin, current);
+  const checkout = dirname(pointer);
+  return basename(pointer) === '.git' && await realKey(checkout) !== await realKey(move.staged)
+    && await checkoutAdmin(checkout) === move.admin;
+}
+
+/** Inventory publishes the files of completed removals, leaving unfinished Git moves to checkout reopening. */
+export async function publishInterruptedCheckoutRecoveries(core: Core, registered: (repository: string, work: () => Promise<void>) => Promise<void>): Promise<void> {
+  const rows = core.journal.db.query('SELECT key FROM settings WHERE key GLOB ?').all(`${MOVE_PREFIX}*`) as { key: string }[];
+  for (const { key } of rows) {
+    const move = core.journal.getSetting(key) as CheckoutMove | undefined;
+    if (!move || core.worktrees.reservations.holder(move.staged) !== null) continue;
+    const repository = dirname(dirname(move.admin));
+    const temporary = dirname(move.staged);
+    try {
+      await registered(repository, async () => {
+        // Re-read after taking the gate: an open or another inventory may have finished this move.
+        const current = core.journal.getSetting(key) as CheckoutMove | undefined;
+        if (current?.staged !== move.staged || !stagedForRemoval(move.staged)
+          || keyOf(dirname(temporary)) !== keyOf(dirname(move.path)) || await moveKey(move.path) !== key
+          || !lstatSync(temporary, { throwIfNoEntry: false })?.isDirectory() || lstatSync(move.staged, { throwIfNoEntry: false })
+          || !lstatSync(savedAt(move.staged), { throwIfNoEntry: false })?.isDirectory() || !await registrationGone(move)) return;
+        await finishRemoval(core, move);
+        core.journal.deleteSetting(key);
+      });
+    } catch (error) {
+      core.log('warn', `could not publish checkout recovery at ${savedAt(move.staged)}: ${messageOf(error)}`);
+    }
+  }
 }
 
 /** Reclaims a clean directory only by rmdir, then asks Git to remove its obsolete registration. */

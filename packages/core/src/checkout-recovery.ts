@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { constants, existsSync, lstatSync, mkdirSync, mkdtempSync, realpathSync, renameSync, unlinkSync, type BigIntStats } from 'node:fs';
-import { open, readdir, readlink, rename, rmdir, unlink } from 'node:fs/promises';
+import { open, readdir, readlink, rename, rm, rmdir, unlink, type FileHandle } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import type { WorktreeRecovery } from '@boite/contracts';
@@ -67,9 +67,9 @@ function stillSame(path: string, before: BigIntStats): boolean {
     && before.mode === after.mode && before.size === after.size && before.ctimeNs === after.ctimeNs && before.mtimeNs === after.mtimeNs;
 }
 
-type GitComparison = (capture: string, name: string) => Promise<boolean>;
+type GitComparison = (file: FileHandle, name: string) => Promise<boolean>;
 
-async function discardIdentical(path: string, capture: string, blob: Blob, name: string, comparison: GitComparison | null): Promise<boolean> {
+async function discardIdentical(path: string, blob: Blob, name: string, comparison: GitComparison | null): Promise<boolean> {
   const parent = dirname(path);
   const entry = lstatSync(path, { bigint: true });
   if (entry.isSymbolicLink() && blob.mode === '120000') {
@@ -88,7 +88,8 @@ async function discardIdentical(path: string, capture: string, blob: Blob, name:
     try {
       const before = await file.stat({ bigint: true });
       if (!before.isFile() || !canUnlink(path, parent, before) || !guard.held()) return false;
-      if (!await comparison(capture, name) || !canUnlink(path, parent, before) || !guard.held()) return false;
+      if (process.platform !== 'win32' && ((before.mode & 0o100n) !== 0n) !== (blob.mode === '100755')) return false;
+      if (!await comparison(file, name) || !canUnlink(path, parent, before) || !guard.held()) return false;
       unlinkSync(path);
       return true;
     } finally { guard.release(); }
@@ -115,7 +116,7 @@ async function compactEntry(root: string, path: string, blob: Blob, name: string
     renameSync(path, captured);
     const sameParent = () => isPhysicalPath(dirname(path)) && sameIdentity(parent, lstatSync(dirname(path), { bigint: true }));
     if (!sameParent()) return;
-    const discarded = await discardIdentical(captured, capture, blob, name, comparison).catch(() => false);
+    const discarded = await discardIdentical(captured, blob, name, comparison).catch(() => false);
     if (discarded || !sameParent() || !isPhysicalPath(dirname(captured))) return;
     restoreRecoveryName(captured, path);
   } finally {
@@ -142,22 +143,49 @@ async function compact(root: string, dir: string, blobs: Map<string, Blob>, comp
   if (isPhysicalPath(dir)) await rmdir(dir).catch(() => undefined);
 }
 
-/** Read attributes and conversion rules for the retired commit, without using the active index or checkout. */
-async function gitComparison(git: CheckoutGit, commit: string, index: string): Promise<GitComparison | null> {
+async function sameFileBytes(file: FileHandle, restored: string): Promise<boolean> {
+  const expected = await open(restored, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+  try {
+    const info = await expected.stat({ bigint: true });
+    if (!info.isFile() || info.size !== (await file.stat({ bigint: true })).size) return false;
+    const actualBytes = Buffer.allocUnsafe(64 * 1024);
+    const expectedBytes = Buffer.allocUnsafe(actualBytes.length);
+    for (;;) {
+      const actual = await file.read(actualBytes, 0, actualBytes.length, null);
+      const want = await expected.read(expectedBytes, 0, expectedBytes.length, null);
+      if (actual.bytesRead !== want.bytesRead) return false;
+      if (actual.bytesRead === 0) return true;
+      if (!actualBytes.subarray(0, actual.bytesRead).equals(expectedBytes.subarray(0, want.bytesRead))) return false;
+    }
+  } finally { await expected.close(); }
+}
+
+/** Materialize Git's checkout bytes with the retired commit's attributes in an empty worktree. */
+async function gitComparison(git: CheckoutGit, commit: string, temporary: string): Promise<GitComparison | null> {
   // The removed worktree's private configuration is no longer available.
   const worktreeConfig = await git(['config', '--type=bool', '--get', 'extensions.worktreeConfig']);
   if (worktreeConfig.stderr || !(worktreeConfig.code === 1 || worktreeConfig.code === 0 && worktreeConfig.stdout.trim() === 'false')) return null;
   const admin = await git(['rev-parse', '--absolute-git-dir']);
   const dir = admin.stdout.trim();
   if (admin.code !== 0 || admin.stderr || !isAbsolute(dir)) return null;
+  const index = join(temporary, 'index');
+  const checkout = join(temporary, 'checkout');
+  mkdirSync(checkout);
   const options = ['--no-replace-objects', '--literal-pathspecs', `--git-dir=${dir}`,
+    '-C', checkout, `--work-tree=${checkout}`,
     '-c', 'core.fsmonitor=false', '-c', 'core.sparseCheckout=false', '-c', 'core.splitIndex=false'];
-  const loaded = await git([...options, 'read-tree', `--index-output=${index}`, commit], index);
+  const loaded = await git([...options, 'read-tree', commit], index);
   if (loaded.code !== 0 || loaded.stderr) return null;
-  return async (capture, name) => {
-    const result = await git([...options, '-C', capture, `--work-tree=${capture}`,
-      'diff', '--quiet', '--no-ext-diff', '--no-textconv', '--', name], index);
-    return result.code === 0 && !result.stdout && !result.stderr;
+  return async (file, name) => {
+    const result = await git([...options, 'checkout-index', '--temp', '-z', '--', name], index);
+    if (result.code !== 0 || result.stderr) return false;
+    const tab = result.stdout.indexOf('\t');
+    if (tab === -1) return false;
+    const filename = result.stdout.slice(0, tab);
+    if (!/^\.merge_file_[a-zA-Z0-9]+$/.test(filename) || result.stdout.slice(tab + 1) !== `${name}\0`) return false;
+    const restored = join(checkout, filename);
+    try { return await sameFileBytes(file, restored); }
+    finally { await unlink(restored).catch(() => undefined); }
   };
 }
 
@@ -167,24 +195,22 @@ async function compactRecovery(saved: string, git: CheckoutGit, commit: string |
   const blobs = await committedBlobs(git, commit);
   if (blobs.size === 0) return;
   const temporary = mkdtempSync(join(tmpdir(), 'boite-recovery-git-'));
-  const index = join(temporary, 'index');
   try {
-    const comparison = await gitComparison(git, commit, index).catch(() => null);
+    const comparison = await gitComparison(git, commit, temporary).catch(() => null);
     await compact(root, root, blobs, comparison);
   } finally {
-    await unlink(index).catch(() => undefined);
-    await rmdir(temporary).catch(() => undefined);
+    await rm(temporary, { recursive: true, force: true }).catch(() => undefined);
   }
 }
 
 /** Publish only after Git has dropped its registration and the pointer is gone. */
-export async function finishCheckoutRecovery(core: Core, recovery: WorktreeRecovery, git: CheckoutGit): Promise<void> {
+export async function finishCheckoutRecovery(core: Core, recovery: WorktreeRecovery, git?: CheckoutGit): Promise<void> {
   const saved = recovery.recoveryPath;
   const temporary = dirname(saved);
   const manifest = join(temporary, 'recovery.json');
   const writing = `${manifest}.tmp`;
   if (existsSync(saved) && !existsSync(manifest)) {
-    await compactRecovery(saved, git, recovery.commit).catch(() => undefined);
+    if (git !== undefined) await compactRecovery(saved, git, recovery.commit).catch(() => undefined);
     if (existsSync(saved)) {
       if (existsSync(writing)) await unlink(writing);
       const file = await open(writing, 'wx');
@@ -196,7 +222,7 @@ export async function finishCheckoutRecovery(core: Core, recovery: WorktreeRecov
     }
   }
   if (existsSync(saved)) indexRecovery(core, recovery);
-  else {
+  else if (git !== undefined) {
     for (const file of [manifest, writing]) if (existsSync(file)) await unlink(file);
     if (existsSync(temporary)) await rmdir(temporary);
   }

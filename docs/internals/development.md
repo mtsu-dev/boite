@@ -276,9 +276,9 @@ minutes per pass. A worktree qualifies when all of these hold:
   file that stops cleanup. Boite restores that checkout, or recovers the
   recorded move on the next open after a crash. Once Git has removed its
   registration, Boite moves each candidate to a private directory and
-  compares it with the recorded commit using Git's content conversions.
-  It discards a regular file only when Git sees no difference and the
-  filesystem can exclude writers. A file
+  compares it byte for byte with the content Git checks out from the recorded
+  commit, including smudge filters and line endings. It discards a regular file
+  only while the filesystem excludes writers and the comparison succeeds. A file
   that stays open for writing can still receive edits after cleanup returns.
   Files with differences, open writers or unverifiable contents remain in
   the sibling directory's `saved` folder. If the original name is already
@@ -288,7 +288,9 @@ minutes per pass. A worktree qualifies when all of these hold:
   is removed. Each retained recovery has a `recovery.json` manifest with the
   original checkout path and commit. Its `saved` folder has no Git pointer.
   The owner can list the durable inventory with `boite projects recoveries`.
-  Listing also removes entries whose recovery paths are gone.
+  Listing publishes saved files from interrupted removals whose Git
+  registrations are already gone, without compacting those files. It also
+  removes inventory entries whose recovery paths are gone.
 - HEAD is on another local branch or remote-tracking ref, or a merged, non-fork
   GitHub pull request has that exact commit as its head. The proof is the one
   [merged pull requests](#merged-pull-requests) use, so a squash
