@@ -663,11 +663,11 @@ the locale map of an inline script: the language the page last spoke, which it
 writes beside the notification words, else the device's first language the
 build has, else English. The app mounts only with a catalogue, so an offline
 open needs it as much as the entry; the other languages stay on the wire until
-someone picks one. It also stores the navigation, conversation list, chat and
-agent views and their dependencies. `conversationAssets` in
-`packages/ui/vite.config.ts` lists those files in a `boite-offline` meta tag
-for the worker. On desktop the same build preloads the views with the entry
-and draws them together once connected. A fresh phone can pair before the views load
+someone picks one. Once a connection is accepted, the app asks the worker
+to store the phone navigation, conversation list, chat and agent views listed in
+`boite-offline-conversations`. On desktop the build preloads the views with
+the entry, reusing the document's links, and draws them together once connected.
+A fresh phone can pair before the views load
 (`tests/e2e/phone-startup.test.ts`, `tests/e2e/offline-phone.test.ts`). Every
 successful navigation refreshes the offline
 HTML. Network errors and HTTP 5xx responses fall back to that cached shell.

@@ -159,6 +159,8 @@ export interface ProcessPlatform {
   /** Resolve a stdin-only recipient into the OS route of the core-owned thread checkout. */
   secretPipeRecipient?(command: string, args: string[], env: Record<string, string | undefined>, threadCwd: string): {
     command: string; args: string[]; env: Record<string, string | undefined>;
+    /** Interpret the launcher's private report on fd 3, which the recipient cannot inherit. */
+    versionRefusal?: (reportFd: number, exitCode: number, stderr: string) => 'os' | 'osd' | null;
   };
   serverUpdates?: ServerUpdatePlatform;
   androidServerUpdates?: AndroidServerUpdatePlatform;

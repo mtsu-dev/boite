@@ -357,6 +357,13 @@ test.each(['protected','unprotected'] as const)('contact mail outside a shared p
 
 test('contact tool restrictions survive a delivered direct reply and a later automatic turn', async () => {
   const { a, b } = await pair();
+  const updates: [string, boolean | undefined][] = [];
+  b.h.core.bus.onAny((name, payload) => {
+    if (name === 'thread.updated') {
+      const thread = payload as { id: string; contactToolsHeld?: boolean };
+      updates.push([thread.id, thread.contactToolsHeld]);
+    }
+  });
   await b.c.call('contacts.update', { coreId: a.id, trusted: true });
   const letter = await a.c.call('collaboration.send', {
     threadId: a.t.id, to: { coreId: b.id, threadId: b.t.id }, text: 'Ordinary contact note', requestId: 'direct-reply',
@@ -369,8 +376,13 @@ test('contact tool restrictions survive a delivered direct reply and a later aut
     { id: 'thr_direct_child', branch: null, parentThreadId: b.t.id });
   for (const threadId of [b.t.id, child.id]) {
     expect(() => assertContactTool(b.h.core, threadId, 'secrets.use')).toThrow();
+    expect(await b.c.call('threads.get', { threadId })).toMatchObject({ contactHold: null, contactToolsHeld: true });
   }
+  expect(updates).toContainEqual([b.t.id, true]);
   await b.c.call('threads.trustContactHistory', { threadId: b.t.id });
+  expect(updates).toContainEqual([b.t.id, false]);
+  expect(updates).toContainEqual([child.id, false]);
+  expect(await b.c.call('threads.get', { threadId: child.id })).toMatchObject({ contactToolsHeld: false });
   expect(() => assertContactTool(b.h.core, child.id, 'secrets.use')).not.toThrow();
 }, 30_000);
 

@@ -4,6 +4,18 @@ import { runInNewContext } from 'node:vm';
 import { expect, test, vi } from 'vitest';
 import { stampWorkerCache } from './worker-stamp';
 
+test('conversation assets wait for the paired page and are kept in the offline cache', async () => {
+  const sw = worker();
+  const html = '<meta name="boite-offline-conversations" content="./assets/navigation.js ./assets/conversations.js ./assets/conversations.css ./elsewhere.js">';
+  sw.fetch.mockResolvedValue(new Response(html));
+  await sw.emit('install');
+  const chat = ['/assets/navigation.js', '/assets/conversations.js', '/assets/conversations.css'];
+  for (const path of chat) expect(sw.cache.addAll.mock.calls.flat(2)).not.toContain(path);
+  sw.cache.match.mockImplementation(async path => path === '/' ? new Response(html) : undefined);
+  await sw.emit('message', { data: { type: 'boite.cache-conversations' } });
+  expect(sw.cache.addAll).toHaveBeenLastCalledWith(chat);
+});
+
 const source = readFileSync(resolve('public/sw.js'), 'utf8');
 function worker(code = source, cacheNames = ['boite-ui-v1', 'another-app'], languages?: string[]) {
   const listeners = new Map<string, (event: any) => void>();
@@ -208,16 +220,6 @@ test('installation also caches the one catalogue this device speaks, so an offli
   expect(await install(['fr-FR'], 'xx')).toContain('/assets/strings.fr-ef.js');
 });
 
-test("installation also caches the phone navigation's files the build lists, and nothing outside assets", async () => {
-  const sw = worker();
-  sw.fetch.mockResolvedValue(new Response('<meta name="boite-offline" content="./assets/MobileNavigation-ab.js ./assets/activity-cd.js ./assets/MobileNavigation-ef.css ./elsewhere.js"><script src="./assets/index-ab.js"></script>'));
-  await sw.emit('install');
-  expect(sw.cache.addAll).toHaveBeenCalledExactlyOnceWith([
-    '/assets/index-ab.js', '/assets/MobileNavigation-ab.js', '/assets/activity-cd.js', '/assets/MobileNavigation-ef.css',
-    '/manifest.webmanifest', '/icons/icon-192.png', '/fonts/Inter-latin.woff2', '/fonts/GeistMono-latin.woff2'
-  ]);
-});
-
 test('activation keeps other apps caches and RPC is never handled', async () => {
   const sw = worker();
   await sw.emit('activate');
@@ -229,12 +231,12 @@ test('activation keeps other apps caches and RPC is never handled', async () => 
 test("a build's worker opens a cache of its own, and activating it drops the previous build's files", async () => {
   const stamped = stampWorkerCache(source, '0123456789abcdef');
   expect(stamped).not.toBe(source);
-  const sw = worker(stamped, ['boite-ui-v6', 'boite-ui-v6-fedcba9876543210', 'boite-ui-v6-0123456789abcdef', 'another-app']);
+  const sw = worker(stamped, ['boite-ui-v6', 'boite-ui-v7-fedcba9876543210', 'boite-ui-v7-0123456789abcdef', 'another-app']);
 
   await sw.emit('install');
-  expect(sw.caches.open).toHaveBeenCalledWith('boite-ui-v6-0123456789abcdef');
+  expect(sw.caches.open).toHaveBeenCalledWith('boite-ui-v7-0123456789abcdef');
   await sw.emit('activate');
-  expect(sw.caches.delete.mock.calls.map(([name]) => name)).toEqual(['boite-ui-v6', 'boite-ui-v6-fedcba9876543210']);
+  expect(sw.caches.delete.mock.calls.map(([name]) => name)).toEqual(['boite-ui-v6', 'boite-ui-v7-fedcba9876543210']);
 
   // A second build is a different file, which is what makes the browser install it.
   expect(stampWorkerCache(source, 'fedcba9876543210')).not.toBe(stamped);

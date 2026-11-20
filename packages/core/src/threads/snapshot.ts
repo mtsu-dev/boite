@@ -7,7 +7,7 @@ import type { AgentState } from './agent-state';
 import { readMemoryEvents } from './memory-read';
 import { previewDigests } from '../journal/part-blobs';
 import { transportProjection } from './transport';
-import { contactHold } from '../contacts/letter-scopes';
+import { contactHistoryHold } from '../contacts/letter-scopes';
 
 type Projection = ReturnType<typeof transportProjection>;
 type Options = Pick<RpcParams<'threads.get'>, 'limit' | 'maxBytes' | 'compactTools' | 'compactFiles' | 'compactImages' | 'compactToolParts' | 'around' | 'sync' | 'open'>;
@@ -77,7 +77,7 @@ export function threadSnapshot(core: Core, thread: ThreadSummary, after: string 
     ...(page.after === null ? {} : { messagesAfter: page.after }),
     messageOffset: positionOf(core, thread.id, tail === null ? page.messages[0]?.id : after),
     turns,
-    contactHold: contactHold(core, thread.id),
+    ...contactHistoryHold(core, thread.id),
   };
 }
 

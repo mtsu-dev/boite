@@ -50,22 +50,27 @@ function settle(ctx: FakeContext, changed: ThreadId[]): void {
     const thread = ctx.threads.get(id);
     if (!thread) continue;
     const hold = holdOf(ctx, id);
-    if (JSON.stringify(thread.contactHold ?? null) !== JSON.stringify(hold)) { thread.contactHold = hold; ctx.touch(thread); }
+    const toolsHeld = contactHistory(ctx, id).some(parent => contactToolsHeld(ctx, parent));
+    if (JSON.stringify(thread.contactHold ?? null) !== JSON.stringify(hold) || !!thread.contactToolsHeld !== toolsHeld) {
+      thread.contactHold = hold;
+      thread.contactToolsHeld = toolsHeld;
+      ctx.touch(thread);
+    }
     for (const child of ctx.threads.values()) if (child.parentThreadId === id && !sharedWorker(ctx, child.id)) queue.push(child.id);
   }
 }
 
 /** Mail from these contacts, outside a shared project, reached the thread; earlier holders stay. */
 export function holdContactMail(ctx: FakeContext, threadId: ThreadId, contacts: string[]): void {
-  recordContactDelivery(ctx, threadId);
   heldMail(ctx).set(threadId, [...new Set([...(heldMail(ctx).get(threadId) ?? []), ...contacts])]);
-  settle(ctx, [threadId]);
+  recordContactDelivery(ctx, threadId);
 }
 
 export function recordContactDelivery(ctx: FakeContext, threadId: ThreadId): void {
   let holds = toolHolds.get(ctx);
   if (!holds) { holds = new Set(); toolHolds.set(ctx, holds); }
   holds.add(threadId);
+  settle(ctx, [threadId]);
 }
 
 export function contactToolsHeld(ctx: FakeContext, threadId: ThreadId): boolean {

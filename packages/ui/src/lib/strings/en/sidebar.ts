@@ -75,9 +75,11 @@ export const strings = {
     /** Above the composer, or the done notice, of a thread whose worktree Boite removed. */
     contactHold: {
       title: 'Contact mail holds this thread',
+      toolsTitle: 'Contact mail restricts tools',
+      toolsBody: 'Boite limits sensitive tools because this conversation has read messages from a contact.',
       body: 'Its history holds messages from {contacts}, sent outside a shared project. Boite cannot bound what that mail asks, so it refuses every turn here.',
       trust: 'Trust this history',
-      trustTip: 'The agent then runs with its usual tools and reads that mail like the rest of its history.',
+      trustTip: 'Trusting the history lifts the restrictions caused by that mail.',
       ownerOnly: 'Trust it from the computer that runs this Boite.'
     },
     worktreeGone: {

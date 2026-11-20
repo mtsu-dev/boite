@@ -17,6 +17,7 @@ import {incomingContact} from './human-letters.ts';
  * them one by one; those letters, exactly as they were, no longer hold it.
  */
 interface LetterScope {bindings: AccessBinding[]; legacy: boolean; peers: string[]; holders?: string[]; trustedAt?: number; trusted?: string[]; toolsHeld?: boolean}
+type HistoryHold = { contactHold: { contacts: string[] } | null; contactToolsHeld: boolean };
 const checkedHistory = new WeakMap<Core, Set<string>>();
 
 /** The sender chooses a letter's id, so an approval covers its content too. */
@@ -191,11 +192,23 @@ export function letterScope(core: Core, threadId: string): LetterScope {
  * Such mail has no captured file authority, so every turn and tool is refused
  * until the owner trusts that history.
  */
-export function contactHold(core: Core, threadId: string): {contacts: string[]} | null {
-  const scope = letterScope(core, threadId);
-  if (!scope.legacy) return null;
-  const known = core.contacts.peers();
-  return {contacts: scope.holders!.map(coreId => known.find(peer => peer.coreId === coreId)?.name ?? coreId.slice(0, 8))};
+export function contactHistoryHold(core: Core, threadId: string): HistoryHold {
+  const holders = new Set<string>();
+  let legacy = false, toolsHeld = false;
+  for (const id of history(core, threadId)) {
+    const scope = storedScope(core, id);
+    if (!scope) continue;
+    toolsHeld ||= contactToolsHeld(core, id, scope);
+    if (scope.legacy) {
+      legacy = true;
+      for (const peer of scope.holders ?? scope.peers) holders.add(peer);
+    }
+  }
+  const known = legacy ? core.contacts.peers() : [];
+  return {
+    contactHold: legacy ? { contacts: [...holders].map(coreId => known.find(peer => peer.coreId === coreId)?.name ?? coreId.slice(0, 8)) } : null,
+    contactToolsHeld: toolsHeld,
+  };
 }
 
 /**
@@ -240,7 +253,7 @@ function announceHold(core: Core, changed: string[]): void {
     if (seen.has(id)) continue;
     seen.add(id);
     const thread = core.journal.getThread(id);
-    if (thread) core.bus.emit('thread.updated', {...withLoad(core, thread), contactHold: contactHold(core, id)});
+    if (thread) core.bus.emit('thread.updated', {...withLoad(core, thread), ...contactHistoryHold(core, id)});
     const children = core.journal.db.query('SELECT id FROM threads WHERE parent_thread_id=?').all(id) as {id: string}[];
     for (const child of children) if (!core.sharedCompute.journal.worker(child.id)) queue.push(child.id);
   }
@@ -261,7 +274,10 @@ export function protectLetters(core: Core, threadId: string, letters: AgentLette
   if (!external.length) {
     // Without a scope, a restart would read this delivered mail as an older core's history and hold the thread.
     const scope = storedScope(core, threadId) ?? {bindings: [], legacy: false, peers: [...new Set(contactMail.map(l => l.contact!.coreId))]};
-    if (scope.toolsHeld !== true) core.journal.setSetting(`shared-file-letters:${threadId}`, {...scope, toolsHeld: true} satisfies LetterScope);
+    if (scope.toolsHeld !== true) {
+      core.journal.setSetting(`shared-file-letters:${threadId}`, {...scope, toolsHeld: true} satisfies LetterScope);
+      announceHold(core, [threadId]);
+    }
     return;
   }
   if (external.some(gate.held)) throw refused('shared file policy: contact mail outside a shared project waits for the owner');
@@ -281,7 +297,7 @@ export function protectLetters(core: Core, threadId: string, letters: AgentLette
     if (busy) throw refused('shared file policy: contact letter waits for protected native preparation after the local turn');
     core.threads.releaseAgent(threadId);
   }
-  const before = JSON.stringify(contactHold(core, threadId));
+  const before = JSON.stringify(contactHistoryHold(core, threadId));
   const scope = storedScope(core, threadId) ?? {bindings: [], legacy: false, peers: []};
   scope.holders ??= scope.legacy ? [...scope.peers] : [];
   for (const letter of external) {
@@ -307,6 +323,6 @@ export function protectLetters(core: Core, threadId: string, letters: AgentLette
   }
   core.journal.setSetting(`shared-file-letters:${threadId}`, {...scope, toolsHeld: true});
   core.sharedAccess.execution.reconcile();
-  if (JSON.stringify(contactHold(core, threadId)) !== before) announceHold(core, [threadId]);
+  if (JSON.stringify(contactHistoryHold(core, threadId)) !== before) announceHold(core, [threadId]);
   core.sharedAccess.assertTurn(threadId);
 }

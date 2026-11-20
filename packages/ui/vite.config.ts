@@ -188,27 +188,34 @@ function conversationAssets(mobile: boolean): Plugin {
       order: 'post',
       handler(_html, context) {
         const bundle = context.bundle ?? {};
-        const files = new Set<string>();
-        const visit = (name: string) => {
+        const visit = (files: Set<string>, name: string) => {
           const file = bundle[name];
           if (file?.type !== 'chunk' || files.has(name)) return;
           files.add(name);
           for (const css of file.viteMetadata?.importedCss ?? []) files.add(css);
-          for (const imported of file.imports) visit(imported);
+          for (const imported of file.imports) visit(files, imported);
         };
-        for (const view of ['MobileNavigation', ...CONVERSATION_VIEWS]) {
-          const chunks = Object.values(bundle).filter(file => file.type === 'chunk' && Object.keys(file.modules).some(id => isView(id, view)));
-          if (chunks.length === 0) throw new Error(`${view}.svelte is missing its offline entry`);
-          for (const chunk of chunks) visit(chunk.fileName);
-        }
-        const paths = [...files].map(name => `./${name}`);
-        const offline = { tag: 'meta', attrs: { name: 'boite-offline', content: paths.join(' ') }, injectTo: 'head' as const };
-        if (mobile) return [offline];
+        const pathsFor = (views: readonly string[]) => {
+          const files = new Set<string>();
+          for (const view of views) {
+            const chunks = Object.values(bundle).filter(file => file.type === 'chunk' && Object.keys(file.modules).some(id => isView(id, view)));
+            if (chunks.length === 0) throw new Error(`${view}.svelte is missing its offline entry`);
+            for (const chunk of chunks) visit(files, chunk.fileName);
+          }
+          return [...files].map(name => `./${name}`);
+        };
+        if (mobile) return [];
+        const navigation = pathsFor(['MobileNavigation']);
+        const conversations = pathsFor(CONVERSATION_VIEWS);
+        const desktop = [...new Set([...conversations, ...pathsFor(['ActivityList'])])];
+        const offline = { tag: 'meta', attrs: { name: 'boite-offline-conversations', content: [...new Set([...navigation, ...conversations])].join(' ') }, injectTo: 'head' as const };
         // The app awaits these chunks on desktop. Start the graph before the
         // entry runs so its imports do not cost another trip for each layer.
         const preload = `(function(){if(new URLSearchParams(location.search).get('view')==='quotas'||` +
           `(window.__TAURI_INTERNALS__===undefined&&matchMedia('(max-width: 720px)').matches))return;` +
-          `${JSON.stringify(paths)}.forEach(function(path){var link=document.createElement('link');` +
+          `var linked=new Set(Array.from(document.querySelectorAll('link[rel="modulepreload"],link[rel="preload"],link[rel="stylesheet"]'),function(link){return link.href}));` +
+          `${JSON.stringify(desktop)}.forEach(function(path){` +
+          `if(linked.has(new URL(path,document.baseURI).href))return;var link=document.createElement('link');` +
           `link.href=path;link.crossOrigin='anonymous';if(/\\.css$/.test(path)){link.rel='preload';link.as='style'}` +
           `else{link.rel='modulepreload'}document.head.appendChild(link)})})()`;
         return [offline, { tag: 'script', children: preload, injectTo: 'head' }];

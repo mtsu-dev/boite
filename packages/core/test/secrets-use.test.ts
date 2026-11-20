@@ -42,6 +42,46 @@ async function repoThread(): Promise<{ owner: Awaited<ReturnType<TestCore['conne
 
 const bun = process.execPath;
 
+test.skipIf(process.platform !== 'linux').each(['os', 'osd'] as const)('a BoiteOS %s version refusal preserves the ref with or without a recipient check', async component => {
+  h = await startTestCore();
+  const { owner, root, threadId } = await repoThread();
+  const realRoute = h.core.procs.platform.secretPipeRecipient;
+  let compatible = false;
+  const legacyUsage = 'error: os agent exec: usage: os agent exec -- <program> <args...>; next: os agent exec -- <program> <args...>';
+  const legacyDaemon = 'error: agent exec: bad request: unknown field `secretCheckout`; next: os agent exec -- <program> <args...>';
+  const recipient = ['-e', `require('node:fs').writeFileSync('recipient-ran', String((await Bun.stdin.text()).length))`];
+  h.core.procs.platform.secretPipeRecipient = (command, args, env, cwd) => {
+    const route = realRoute!(command, args, env, cwd);
+    if (compatible) return { command, args, env };
+    const signal = component === 'osd' ? `require('node:fs').writeSync(3, 'OD');` : '';
+    const stderr = component === 'osd' ? legacyDaemon : legacyUsage;
+    return { ...route, command: bun, args: ['-e', `${signal} console.error(${JSON.stringify(stderr)}); process.exit(125)`] };
+  };
+  const socket = process.env.BOITEOS_AGENTS_SOCKET;
+  const sandbox = process.env.BOITEOS_THREAD;
+  process.env.BOITEOS_AGENTS_SOCKET = '/fixture/agents.sock';
+  delete process.env.BOITEOS_THREAD;
+  try {
+    const ref = await saveSecret(h, owner, threadId, 'API_KEY', secretValue());
+    const use = { action: 'pipe' as const, command: bun, args: recipient, cwd: root };
+    for (const checkArgs of [[], undefined]) {
+      const error = await thrown(owner.call('secrets.use', { threadId, ref, use: { ...use, checkArgs } }));
+      expect(error).toThrow(`BoiteOS version mismatch: update ${component} `);
+      expect(error).toThrow(component === 'osd' ? 'unknown field `secretCheckout`' : 'usage: os agent exec');
+      expect(existsSync(join(root, 'recipient-ran'))).toBe(false);
+    }
+    compatible = true;
+    expect(await owner.call('secrets.use', { threadId, ref, use })).toMatchObject({ exitCode: 0 });
+    expect(Number(readFileSync(join(root, 'recipient-ran'), 'utf8'))).toBeGreaterThan(0);
+    expect(await thrown(owner.call('secrets.use', { threadId, ref, use }))).toThrow('erased or never existed');
+  } finally {
+    for (const [name, value] of Object.entries({ BOITEOS_AGENTS_SOCKET: socket, BOITEOS_THREAD: sandbox })) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
+});
+
 test('a pipe recipient checks its configuration in the same cwd and environment before the ref is used', async () => {
   h = await startTestCore();
   const { owner, root, threadId } = await repoThread();
