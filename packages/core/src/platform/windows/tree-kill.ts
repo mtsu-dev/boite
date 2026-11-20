@@ -12,7 +12,7 @@ type JobProcesses = ProcessReads & Parameters<typeof listJobPids>[0] & {
   terminateProcess(proc: number, code: number): boolean;
 } & Partial<Omit<ProcessSnapshotApi, 'close'>>;
 
-/** At most this many processes outside the job are opened for one subtree stop. */
+/** At most this many processes outside the job are opened for one subtree stop, whether kept or refused. */
 export const MAX_EARLY_DESCENDANTS = 256;
 
 /**
@@ -84,10 +84,13 @@ function earlyDescendants(api: JobProcesses, job: number, verified: Map<number, 
   if (listed === null) return [];
   const found: number[] = [];
   const queue = [...verified.keys()];
+  // Every open attempt counts, refused candidates included: the limit bounds the handles held.
+  let attempts = 0;
   for (const parent of queue) {
     for (const pid of listed.get(parent) ?? []) {
       if (verified.has(pid) || members.has(pid)) continue;
-      if (found.length >= MAX_EARLY_DESCENDANTS) return found;
+      if (attempts >= MAX_EARLY_DESCENDANTS) return found;
+      attempts += 1;
       const handle = api.openProcess(0x0401, pid);
       if (!handle) continue;
       handles.push(handle);

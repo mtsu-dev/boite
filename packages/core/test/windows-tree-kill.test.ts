@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { killJobSubtree, treeKill } from '../src/platform/windows/tree-kill.ts';
+import { killJobSubtree, MAX_EARLY_DESCENDANTS, treeKill } from '../src/platform/windows/tree-kill.ts';
 
 test('the tree kill holds the root from the call until taskkill ended, while the root exits meanwhile', async () => {
   const steps: string[] = [];
@@ -171,6 +171,19 @@ test.each(['fails', 'short'] as const)('a snapshot that %s authorizes no process
   ];
   const { api, stopped, opened, closed } = fakeJob(processes, [100], listed);
   killJobSubtree(api, 1, 100);
+  expect(stopped).toEqual([100]);
+  expect([...closed].sort()).toEqual([...opened].sort());
+});
+
+test('rejected early candidates count toward the discovery open limit, and every handle opened is closed', () => {
+  // 300 processes listed under the root whose handles name another creator, then one real child.
+  const strangers = Array.from({ length: 300 }, (_, index) => ({ pid: 2000 + index, created: EPOCH + 50n, parent: 5 }));
+  const processes = [{ pid: 100, created: EPOCH + 10n, parent: 1 }, ...strangers, { pid: 600, created: EPOCH + 60n, parent: 100 }];
+  const listed = [{ pid: 100, parent: 1 }, ...strangers.map(({ pid }) => ({ pid, parent: 100 })), { pid: 600, parent: 100 }];
+  const { api, stopped, opened, closed } = fakeJob(processes, [100], listed);
+  killJobSubtree(api, 1, 100);
+  // One handle for the root and the snapshot's own, then at most the limit for discovery.
+  expect(opened.length - 2).toBe(MAX_EARLY_DESCENDANTS);
   expect(stopped).toEqual([100]);
   expect([...closed].sort()).toEqual([...opened].sort());
 });
