@@ -319,6 +319,7 @@ function kept(): { finished_at: number; provider_id: string; model: string | nul
 test('removing a project preserves usage totals and hides its ranking entries until restoration', async () => {
   const { echo, codex } = await threads();
   const journal = harness.core.journal;
+  const project = harness.core.projects.require(echo.projectId);
   const cwd = join(harness.dataDir, 'staying');
   mkdirSync(cwd);
   journal.putProject({ id: 'prj_staying', name: 'Staying', path: cwd, createdAt: D0 });
@@ -358,7 +359,7 @@ test('removing a project preserves usage totals and hides its ranking entries un
     ...history,
     threads: history.threads.filter(thread => thread.projectId !== echo.projectId),
   })));
-  expect((await client.call('projects.add', { path: echo.cwd })).id).toBe(echo.projectId);
+  expect((await client.call('projects.add', { path: project.path })).id).toBe(project.id);
   expect(await read()).toEqual(before);
 });
 
