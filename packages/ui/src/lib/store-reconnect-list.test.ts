@@ -101,6 +101,31 @@ test('a thread deleted and one archived while away leave the sidebar', async () 
   expect(store.threads.length).toBeGreaterThan(0);
 });
 
+test('a failed startup continuation restarts the full list without dropping visible rows', async () => {
+  const client = new FakeClient({ delayMs: 0, idle: 3000 });
+  const store = new Store();
+  stores.push(store);
+  store.attach(client);
+  const real = client.call.bind(client);
+  let starts = 0;
+  let continuations = 0;
+  vi.spyOn(client, 'call').mockImplementation(((method: string, params: { page?: unknown }, options?: never) => {
+    if (method === 'threads.listChanges' && params.page === true && ++starts === 2) {
+      expect(store.threads.length).toBeGreaterThan(0);
+      expect(store.threads.length).toBeLessThan(3000);
+    }
+    if (method === 'threads.listChanges' && typeof params.page === 'string' && ++continuations === 1) {
+      return Promise.reject(new Error('continuation timed out'));
+    }
+    return real(method as never, params as never, options);
+  }) as typeof client.call);
+  await store.connect();
+  expect(store.threads).toHaveLength((await real('threads.list', {})).length);
+  expect(starts).toBe(2);
+  expect(continuations).toBeGreaterThan(1);
+  expect(store.error).toBeNull();
+});
+
 test('a thread created while away joins the sidebar', async () => {
   const { client, store } = await connected();
   let created = '';

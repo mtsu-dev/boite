@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { KNOWN_DIVERGENCES, SCENARIOS, type ContractEnv } from '../../../../tests/contract/scenarios.ts';
 import { FakeClient } from './fake-client';
 
@@ -12,6 +12,7 @@ const clients: FakeClient[] = [];
 
 afterEach(() => {
   for (const client of clients.splice(0)) client.close();
+  vi.unstubAllGlobals();
 });
 
 async function env(client = new FakeClient({ delayMs: 0 })): Promise<ContractEnv> {
@@ -36,6 +37,12 @@ async function env(client = new FakeClient({ delayMs: 0 })): Promise<ContractEnv
 for (const [name, scenario] of Object.entries(SCENARIOS)) {
   const divergence = KNOWN_DIVERGENCES[name];
   test(name, async () => {
+    if (name.startsWith('deferred attachment metadata') && typeof URL.createObjectURL !== 'function') {
+      vi.stubGlobal('URL', class extends URL {
+        static createObjectURL = () => 'blob:contract-original';
+        static revokeObjectURL = () => {};
+      });
+    }
     if (divergence?.side !== 'fake') {
       await scenario(await env());
       return;

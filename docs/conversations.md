@@ -49,6 +49,9 @@ Add a project with Add a project at the bottom of the sidebar. The sidebar
 lists threads by project or by recent activity: switch between Projects and
 Recent in Display options.
 
+If a machine's conversation list is incomplete, press Try again in the list.
+The conversations already loaded stay available while Boite reloads it.
+
 Fold a project to hide its threads. Its heading shows the thread count just
 after the project name, on desktop and phone.
 

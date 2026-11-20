@@ -157,12 +157,11 @@
     const list = menuRows(root);
     if (list.length === 0) return;
     const active = document.activeElement as HTMLElement | null;
-    const index = active ? list.indexOf(active) : -1;
     const focused = shownItems.find((item) => item.id === active?.dataset['value']);
     if (event.key === 'Enter' || (event.key === 'ArrowRight' && focused?.submenu)) {
-      if (index < 0) return;
+      if (!focused || !active || !list.includes(active)) return;
       event.preventDefault();
-      if (focused) pick(focused);
+      pick(focused);
       return;
     }
     if (event.key === 'ArrowLeft') {

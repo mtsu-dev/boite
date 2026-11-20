@@ -11,6 +11,8 @@ export const fr: Translation = {
     projectFailedThreads: '{project} : {count} en échec',
     projectMixedThreads: '{project} : {waiting} vous attendent, {failed} en échec',
     loadingProjects: 'Chargement des projets',
+    threadListFailed: 'Impossible de charger toutes les conversations de {machine}.',
+    threadListRetrying: 'Rechargement des conversations de {machine}.',
     projectDoneThreads: '{project} : {count} terminés',
     projectArchivedThreads: '{project} : {count} archivés',
     idleProjects: 'Projets inactifs',

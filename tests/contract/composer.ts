@@ -15,7 +15,9 @@ async function refused(call: Promise<unknown>, expected: number) {
   }
   throw new Error(`expected refusal ${expected}`);
 }
-async function target(env: ContractEnv, incognito = false) {
+type ComposerTarget = Pick<ContractEnv, 'call' | 'newFolder'>;
+
+async function target(env: ComposerTarget, incognito = false) {
   const account = (await env.call('accounts.list', {})).find(account => account.providerId === 'echo')!;
   const project = incognito ? await env.call('projects.drafts', {}) : await env.call('projects.add', { path: await env.newFolder() });
   const thread = await env.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: account.id, ...(incognito ? { incognito: true } : {}) });
@@ -60,7 +62,37 @@ async function batching(env: ContractEnv, incognito: boolean) {
   check((await env.call('threads.get', { threadId: thread.id })).turns.length === received.turns.length, 'accepted input delivered twice');
 }
 
+export async function invalidEnqueue(env: ComposerTarget): Promise<void> {
+  const { thread } = await target(env);
+  for (const prompt of [' ', 42 as unknown as string]) {
+    await refused(env.call('composer.enqueue', { threadId: thread.id, prompt, clientRequestId: 'invalid-prompt' }), RpcErrorCode.InvalidParams);
+  }
+}
+
+export const revivedPrompt = 'Answer one more time';
+
+export async function reviveWithEnqueue(env: ComposerTarget): Promise<string> {
+  const { thread } = await target(env);
+  const child = await env.call('delegation.spawn', { threadId: thread.id, task: 'Return a short answer', requestId: 'retired-child' });
+  await until(async () => (await env.call('threads.get', { threadId: child.thread.id })).turns.some(turn => turn.status === 'done'));
+  const before = await env.call('threads.get', { threadId: child.thread.id });
+  if (!before.archived) await env.call('threads.archive', { threadId: before.id, onlyIfIdle: true });
+  const retired = await env.call('threads.get', { threadId: before.id });
+  check(retired.archived && retired.doneAt != null, 'child is not archived as done');
+  const request = { threadId: retired.id, prompt: revivedPrompt, clientRequestId: 'wake-child' };
+  const receipt = await env.call('composer.enqueue', request);
+  check(receipt.status === 'sent' && receipt.turnId, 'the retired child did not accept the turn');
+  const repeated = await env.call('composer.enqueue', request);
+  check(repeated.status === 'sent' && repeated.turnId === receipt.turnId, 'retry did not replay the same turn');
+  const resumed = await env.call('threads.get', { threadId: retired.id });
+  check(resumed.turns.length === retired.turns.length + 1, 'the child did not get exactly one turn');
+  await until(async () => (await env.call('threads.get', { threadId: retired.id })).turns.some(turn => turn.id === receipt.turnId && turn.status === 'done'));
+  return retired.id;
+}
+
 export const COMPOSER_SCENARIOS: Record<string, Scenario> = {
+  'composer enqueue validates its prompt before checking conversation state': invalidEnqueue,
+  'composer enqueue revives a retired child and replays its receipt': async env => { await reviveWithEnqueue(env); },
   'composer drafts on another device allow Mark done and removal, retaining input for restore': async env => {
     const { thread, choice } = await target(env);
     const peer = await env.peer();
