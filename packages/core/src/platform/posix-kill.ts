@@ -28,11 +28,11 @@ export const KILL_GRACE_MS = 2000;
 export const GROUP_POLL_MS = 100;
 
 /** Recheck a captured birth before every signal, even after its parent exited. */
-export function captureSignals<Birth>(tree: ReadonlyMap<number, Birth>, birthOf: (pid: number) => Birth | null, signal: (pid: number, name: NodeJS.Signals) => void) {
-  const leavesFirst = [...tree].reverse();
+export function captureSignals<Birth>(tree: Iterable<readonly [number, Birth]>, birthOf: (pid: number) => Birth | null, signal: (pid: number, name: NodeJS.Signals) => void) {
+  const members = [...tree];
   return (name: NodeJS.Signals | 0): number[] => {
     const signalled: number[] = [];
-    for (const [pid, expected] of leavesFirst) {
+    for (const [pid, expected] of members) {
       if (birthOf(pid) !== expected) continue;
       try {
         if (name !== 0) signal(pid, name);

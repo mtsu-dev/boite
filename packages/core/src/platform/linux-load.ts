@@ -258,7 +258,7 @@ export class LinuxLoad {
    * signal: a pid may have been given to an unrelated process in the meantime.
    * No capture when the root cannot be identified.
    */
-  captureTree(pid: number, threadId: string, startedAt?: number | null) {
+  #captureTree(pid: number, threadId: string, order: 'root-first' | 'leaves-first', startedAt?: number | null) {
     const registered = this.#births.get(threadId);
     const birth = registered?.has(pid) ? registered.get(pid) : this.#last.get(threadId)?.births.get(pid);
     if (birth == null || !Number.isSafeInteger(birth)) return null;
@@ -275,14 +275,19 @@ export class LinuxLoad {
         if (!tree.has(child)) tree.set(child, childBirth);
       }
     }
-    return captureSignals(tree, member => {
+    const members = order === 'leaves-first' ? [...tree].reverse() : tree;
+    return captureSignals(members, member => {
       const stat = this.read(`/proc/${member}/stat`);
       return stat === null || stat[stat.lastIndexOf(')') + 2] === 'Z' ? null : statField(stat, 22);
     }, this.signal);
   }
 
+  captureTree(pid: number, threadId: string) {
+    return this.#captureTree(pid, threadId, 'leaves-first');
+  }
+
   killTree(pid: number, threadId: string, startedAt?: number | null): boolean {
-    return this.captureTree(pid, threadId, startedAt)?.('SIGKILL').includes(pid) ?? false;
+    return this.#captureTree(pid, threadId, 'root-first', startedAt)?.('SIGKILL').includes(pid) ?? false;
   }
 
   add(threadId: string, pid: number): void {

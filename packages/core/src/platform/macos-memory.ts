@@ -143,7 +143,7 @@ export class MacMemory {
     }
     for (const member of victims) for (const child of children.get(member) ?? []) victims.add(child);
     const births = new Map([...victims].map(member => [member, tree.get(member)!.birth]));
-    return captureSignals(births, member => this.identify(member)?.birth ?? null, this.signal);
+    return captureSignals([...births].reverse(), member => this.identify(member)?.birth ?? null, this.signal);
   }
 
   killTree(pid: number, threadId: string, startedAt?: number | null): boolean {
