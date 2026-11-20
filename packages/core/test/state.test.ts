@@ -91,6 +91,7 @@ test('Activity shows a new interruption in a read conversation until that interr
     await owner.call('turns.start', { threadId: thread.id, prompt: 'Track a build', clientRequestId: request });
     const turn = await done;
     expect(turn.status).toBe('done');
+    await waitFor(() => core.threads.require(thread.id).status === 'idle');
     await owner.call('threads.markRead', { threadId: thread.id });
     const history = core.threads.agentState.backgroundHistory;
     const origin = { providerId: thread.providerId, sessionGeneration: thread.sessionGeneration ?? 0, parentTurnId: turn.id };
@@ -98,23 +99,26 @@ test('Activity shows a new interruption in a read conversation until that interr
     history.checkpoint(thread.id, turn.id);
     history.cancelSession(thread.id, origin, Date.now() + 1);
     const snapshot = await owner.call('threads.get', { threadId: thread.id });
-    expect(snapshot).toMatchObject({ unread: false, backgroundWait: { state: 'interrupted' } });
+    expect(snapshot).toMatchObject({ status: 'idle', unread: false, backgroundWait: { state: 'interrupted' } });
+    // The child's finished turn wakes its parent. Activity hides interruptions while that parent is still working.
+    await waitFor(() => core.threads.require(parent.threadId).status === 'idle');
     return snapshot.backgroundWait?.state === 'interrupted' ? snapshot.backgroundWait.at : NaN;
   };
-  const listed = async () => reading(await readState(core, 'inbox'), 'inbox').inbox.some(row => row.threadId === thread.id && row.kind === 'stopped');
+  const inbox = async () => reading(await readState(core, 'inbox'), 'inbox').inbox;
+  const stoppedRow = expect.objectContaining({ threadId: thread.id, kind: 'stopped' });
   const first = await stopped('activity-build-1');
-  expect(await listed()).toBe(true);
+  expect(await inbox()).toContainEqual(stoppedRow);
   await owner.call('threads.markRead', { threadId: thread.id });
-  expect(await listed()).toBe(true);
+  expect(await inbox()).toContainEqual(stoppedRow);
   core.journal.putThread({ ...core.journal.getThread(thread.id)!, unread: true });
   await owner.call('threads.markRead', { threadId: thread.id, interruptionAt: first });
-  expect(await listed()).toBe(false);
+  expect(await inbox()).not.toContainEqual(stoppedRow);
   expect(await owner.call('threads.get', { threadId: thread.id })).toMatchObject({ unread: true, interruptionReadAt: first });
   await stopped('activity-build-2');
   await owner.call('threads.markRead', { threadId: thread.id, interruptionAt: first });
-  expect(await listed()).toBe(true);
+  expect(await inbox()).toContainEqual(stoppedRow);
   await owner.call('threads.get', { threadId: thread.id, open: { markRead: true } });
-  expect(await listed()).toBe(false);
+  expect(await inbox()).not.toContainEqual(stoppedRow);
 });
 
 test('S4: a paired device reads as connected while one of its sockets is open, and not once it closes', async () => {
