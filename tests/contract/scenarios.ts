@@ -236,6 +236,16 @@ export const SCENARIOS: Record<string, Scenario> = {
   },
   ...COUNCIL_SCENARIOS,
   ...STATE_SCENARIOS,
+  'worktree recovery paths are visible to the owner only': async env => {
+    same(await env.call('worktrees.recoveries', {}), [], 'the empty recovery inventory');
+    const { id } = await thread(env, await echo(env), 'Worktree recovery access');
+    const agent = await env.peer({ agentThreadId: id });
+    try {
+      await refusedWith(agent.call('worktrees.recoveries', {}), RpcErrorCode.Refused);
+    } finally {
+      agent.disconnect();
+    }
+  },
   'agent.done refuses another thread, puts an idle one in Done and refuses it there': async (env) => {
     const setup = await echo(env);
     const own = await thread(env, setup, 'own');
