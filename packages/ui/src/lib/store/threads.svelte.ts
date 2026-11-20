@@ -863,11 +863,15 @@ export class Threads {
   }
 
   invalidateSync(threadId: ThreadId): void {
-    for (const thread of this.threadSnapshots(threadId)) delete thread.messagesSync;
+    for (const thread of this.threadSnapshots(threadId)) {
+      this.snapshots.changed(thread);
+      delete thread.messagesSync;
+    }
   }
 
   upsertTurn(threadId: ThreadId, turn: Thread['turns'][number]): void {
     for (const thread of this.threadSnapshots(threadId)) {
+      this.snapshots.changed(thread);
       const index = lastIndexById(thread.turns, turn.id);
       if (index >= 0) thread.turns[index] = turn;
       else thread.turns.push(turn);
