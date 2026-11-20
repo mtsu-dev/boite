@@ -35,6 +35,8 @@ pub(crate) mod dwm;
 #[cfg(windows)]
 pub(crate) mod windows;
 #[cfg(windows)]
+pub(crate) mod windows_installer;
+#[cfg(windows)]
 pub(crate) use windows::{alert, before_webview, foreground, idle_ms, memory_level, notify, notify_supported, prepare_command, suspend};
 #[cfg(not(windows))]
 mod posix;

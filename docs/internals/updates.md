@@ -154,8 +154,9 @@ policy permits automatic installation and both conditions hold:
 On Linux and macOS the shell takes `core.lock` after an acknowledged stop
 and holds it through installation, until restart or failure. It can also
 repair a failed startup if it can take the lock and confirm no core is
-starting or running. Windows still requires authenticated admission. The
-shell exits as NSIS launches, and NSIS does not hold the lock during copying.
+starting or running. On Windows, installers with `windows_data_lock` can
+also repair a failed startup. The shell exits as NSIS launches, and NSIS
+holds the startup lock while it copies the files.
 
 Otherwise the release stays downloaded and ready, offered as before,
 and the next check tries again without downloading it a second time. An
@@ -317,6 +318,9 @@ process identity and acquires the startup lock before proceeding without an
 endpoint. NSIS acquires the same lock before replacing files and aborts if a
 core obtained it during the handoff. A running core still grants authenticated
 admission.
+For signed Windows `-setup.exe` releases, the shell writes and pins the
+installer before offering to restart. It launches that prepared file after
+admission. NSIS extracts and installs the files after the old shell exits.
 An update replaces the whole application; it does not load a new core or UI
 alongside agents executing on the old version.
 
