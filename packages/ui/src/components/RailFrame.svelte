@@ -13,8 +13,7 @@
   /**
    * The column right of the app rail, for the thread list and the Bots list
    * alike: one width the user drags, one fold from the title bar, the head on
-   * top, an optional subhead that stays put (the Bots search) and the rows in
-   * one scroll. On a desktop it reaches the window's top, its head level with
+   * top and the rows in one scroll. On a desktop it reaches the window's top, its head level with
    * the main column's bar; the limits, the machines and Settings live on the
    * app rail.
    *
@@ -31,7 +30,6 @@
     scroller = $bindable(),
     onscroll,
     head,
-    subhead,
     children
   }: {
     store: Store;
@@ -44,8 +42,6 @@
     scroller?: HTMLDivElement;
     onscroll?: () => void;
     head: Snippet;
-    /** What stays put between the head and the rows, like the Agents search. */
-    subhead?: Snippet;
     children: Snippet;
   } = $props();
 
@@ -144,8 +140,7 @@
   data-quota-dock-target=""
   onmousedown={dragTop}
 >
-  <div class="views" class:scrolled={scrolled && !subhead}>{@render head()}</div>
-  {@render subhead?.()}
+  <div class="views" class:scrolled>{@render head()}</div>
   <div class="scroll" class:scrolled data-project-list={kind === 'sidebar' ? '' : undefined} bind:this={scroller}
     onscroll={() => { scrolled = (scroller?.scrollTop ?? 0) > 0; measureMore(); onscroll?.(); }}>
     {@render children()}
