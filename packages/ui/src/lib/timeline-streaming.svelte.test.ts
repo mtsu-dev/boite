@@ -1,5 +1,7 @@
 import { expect, test } from 'vitest';
 import type { Message } from '@boite/contracts';
+import { flushSync, mount, unmount } from 'svelte';
+import MessageOutline from '../components/MessageOutline.svelte';
 import { ReactiveTimelineRows } from './timeline-rows.svelte';
 
 function answer(index: number): Message {
@@ -36,4 +38,35 @@ test('the live window does not split a run of failed attempts', () => {
   messages.at(-1)!.state = 'complete';
   messages.at(-1)!.parts = [{ type: 'error', message: 'Latest failed attempt' }];
   expect(timeline.build().map(row => row.failures?.length)).toEqual([41]);
+});
+
+test('the outline indexes a prompt appended after history without rereading prior blocks', async () => {
+  let historyReads = 0;
+  const history = Array.from({ length: 512 }, (_, index): Message => ({
+    ...answer(index),
+    get role() {
+      historyReads++;
+      return index % 2 === 0 ? 'user' : 'assistant';
+    },
+  }));
+  const messages = $state<Message[]>(history);
+  const outline = mount(MessageOutline, {
+    target: document.body,
+    props: { messages, active: null, jump: () => {}, hasOlder: false, loading: false, loadOlder: () => {} },
+  });
+  try {
+    flushSync();
+    const rail = document.querySelector('[data-testid=message-outline]')!;
+    expect(rail.getAttribute('data-message-count')).toBe('256');
+    historyReads = 0;
+    messages.push({ ...answer(512), role: 'user' });
+    flushSync();
+    expect(historyReads).toBe(0);
+    expect(rail.getAttribute('data-message-count')).toBe('257');
+    messages.splice(-1);
+    flushSync();
+    expect(rail.getAttribute('data-message-count')).toBe('256');
+  } finally {
+    await unmount(outline);
+  }
 });

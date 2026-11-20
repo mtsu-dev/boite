@@ -13,8 +13,9 @@ export type ViewPart = Extract<MessagePart, { type: 'artifact' }> & { view: Inli
 
 /** The view a message is, when it is nothing else: `boite view` publishes each one as its own message. */
 export function viewPart(message: Message): ViewPart | null {
+  if (message.role !== 'assistant') return null;
   const part = message.parts[0];
-  return message.role === 'assistant' && message.parts.length === 1 && part?.type === 'artifact' && part.view ? (part as ViewPart) : null;
+  return part?.type === 'artifact' && part.view && message.parts.length === 1 ? (part as ViewPart) : null;
 }
 
 const sourceOf = (part: ViewPart) => part.view.source ?? part.name;

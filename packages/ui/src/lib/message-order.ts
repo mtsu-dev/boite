@@ -11,9 +11,9 @@ import { viewPart } from './inline-view';
 
 /** A message `artifacts.publish` wrote: an assistant message that is one file and nothing else. */
 export function publishedFile(message: Message): boolean {
+  if (message.role !== 'assistant') return false;
   const part = message.parts[0];
-  return message.role === 'assistant' && message.parts.length === 1 &&
-    (part?.type === 'file' || (part?.type === 'artifact' && !part.view));
+  return (part?.type === 'file' || (part?.type === 'artifact' && !part.view)) && message.parts.length === 1;
 }
 
 /** The first message of each turn: on a wake turn, the prompt it opened with. A line Boite adds to that turn later is not a second wake. */
@@ -32,31 +32,53 @@ export function firstAssistantByTurn(messages: readonly Message[]): Map<string, 
   return result;
 }
 
+/** Only indexes and ids, so a retained reading position never owns message bodies. */
+export function readingOrder(messages: readonly Message[]) {
+  return { files: filePlacements(messages), first: firstByTurn(messages), assistants: firstAssistantByTurn(messages) };
+}
+
+/** The last ordinary message to place each published file after. */
+function filePlacements(timeline: readonly Message[]): ReadonlyMap<number, number> {
+  const files = new Map<number, string>();
+  const lastOther = new Map<string, number>();
+  timeline.forEach((message, index) => {
+    if (publishedFile(message)) files.set(index, message.turnId);
+    else if (!viewPart(message)) lastOther.set(message.turnId, index);
+  });
+  const placements = new Map<number, number>();
+  for (const [file, turn] of files) {
+    const after = lastOther.get(turn);
+    if (after !== undefined && after > file) placements.set(file, after);
+  }
+  return placements;
+}
+
 /**
  * `timeline` with each finished turn's published files moved after its last
  * other message, in the order they were published. Views are left for
- * `placeViews`, which then draws them after the files. A file whose turn has
- * nothing else here (the rest is on a page not loaded yet) keeps its place.
- * The same array comes back when nothing moves.
+ * `ViewPlacement`, which puts them after the files. A turn with nothing else
+ * here keeps its place. The same array comes back when nothing moves.
  */
-export function filesLast(timeline: Message[], turns: readonly Pick<Turn, 'id' | 'status'>[]): Message[] {
+export function filesLast(timeline: Message[], turns: readonly Pick<Turn, 'id' | 'status'>[], placements = filePlacements(timeline)): Message[] {
+  if (placements.size === 0) return timeline;
   const live = new Set(turns.filter((turn) => turn.status === 'running' || turn.status === 'queued').map((turn) => turn.id));
-  const lastOther = new Map<string, number>();
-  timeline.forEach((message, index) => {
-    if (!publishedFile(message) && !viewPart(message)) lastOther.set(message.turnId, index);
-  });
-  const moves = (message: Message, index: number) =>
-    publishedFile(message) && !live.has(message.turnId) && (lastOther.get(message.turnId) ?? -1) > index;
-  if (!timeline.some(moves)) return timeline;
   const held = new Map<number, Message[]>();
+  const moved = new Set<number>();
+  for (const [file, after] of placements) {
+    const message = timeline[file]!;
+    if (live.has(message.turnId)) continue;
+    const list = held.get(after);
+    if (list) list.push(message);
+    else held.set(after, [message]);
+    moved.add(file);
+  }
+  if (moved.size === 0) return timeline;
   const placed: Message[] = [];
   timeline.forEach((message, index) => {
-    if (moves(message, index)) {
-      const after = lastOther.get(message.turnId)!;
-      held.set(after, [...(held.get(after) ?? []), message]);
-      return;
-    }
-    placed.push(message, ...(held.get(index) ?? []));
+    if (moved.has(index)) return;
+    placed.push(message);
+    const files = held.get(index);
+    if (files) placed.push(...files);
   });
   return placed;
 }
