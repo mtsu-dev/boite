@@ -40,3 +40,27 @@ test('a navigation chunk that fails after the core answered says so, and a retry
   expect(calls).toBe(2);
   expect(document.querySelector('[data-testid=mobile-navigation-failed]')).toBeNull();
 });
+
+test('resizing a ready desktop keeps the composer mounted while phone navigation loads', async ({ viewport }) => {
+  const { LazyComponent } = await import('../lib/lazy-component.svelte');
+  let finish: (() => void) | undefined;
+  navigation.part = new LazyComponent(async () => {
+    await new Promise<void>(resolve => { finish = resolve; });
+    return import('../components/MobileNavigation.svelte');
+  });
+
+  await mountOnFake('/?fake=1&open=recent');
+  await waitFor(() => document.querySelector('[data-testid=composer-input]') !== null);
+  const composer = document.querySelector('[data-testid=composer-input]');
+
+  viewport.resize(true);
+  await waitFor(() => finish !== undefined);
+  const whileLoading = document.querySelector('[data-testid=composer-input]');
+  const alertWhileLoading = document.querySelector('[data-testid=mobile-navigation-failed]');
+  finish!();
+  await waitFor(() => document.querySelector('[data-testid=mobile-header]') !== null);
+
+  expect(whileLoading).toBe(composer);
+  expect(alertWhileLoading).toBeNull();
+  expect(document.querySelector('[data-testid=composer-input]')).toBe(composer);
+});

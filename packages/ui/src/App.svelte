@@ -106,6 +106,7 @@
   let desktopViewsSettled = $state(!desktopStartup);
   let appRoot = $state<HTMLDivElement | undefined>(undefined);
   let mobileScreen = $state<'chat' | 'threads' | 'activity'>('chat'), mobileTabs = $state(false);
+  let waitForMobileNavigation = $state(!inShell && narrow.current);
   const mobileRecovery = $derived(!inShell && (store.pairingRequired || (!store.core && store.connection !== 'ready'))
     && !workspace.machines.some(machine => machine.store.connection === 'ready'));
   // A fresh phone uses the pairing controls before fetching the conversations navigation.
@@ -114,7 +115,11 @@
     && store.page === 'chat' && !mobileNavigation.current);
   // The machine the window opened on may still give way to one that answers.
   const booted = $derived(store.booted && desktopViewsSettled && !(workspace.waiting && store === workspace.primary)
-    && (inShell || !narrow.current || earlyPairing || mobileNavigation.current !== undefined || mobileNavigation.failed));
+    && (!waitForMobileNavigation || !narrow.current || earlyPairing || mobileNavigation.current !== undefined || mobileNavigation.failed));
+  // A resize can load the phone's header without tearing down the already open page.
+  $effect(() => {
+    if (!narrow.current && booted) waitForMobileNavigation = false;
+  });
   $effect(() => {
     if (!inShell && !MOBILE_BUILD && booted && workspace.machinesOr(store).some(({ store: machine }) => machine.client instanceof WsClient && machine.connection === 'ready')) {
       return warmOfflineConversations();
@@ -543,7 +548,7 @@
     {:else if mobileNavigation.current}
       {@const MobileNavigation = mobileNavigation.current}
       <MobileNavigation {store} recover={mobileRecovery} bind:screen={mobileScreen} bind:tabbed={mobileTabs} />
-    {:else}
+    {:else if mobileNavigation.failed}
       <p class="mobile-navigation-failed" role="alert" data-testid="mobile-navigation-failed">
         <span>{strings.parts.navigationFailed}</span>
         <button type="button" data-testid="mobile-navigation-retry" onclick={() => void retryOrReload(() => mobileNavigation.load())}>{strings.common.retry}</button>
