@@ -94,6 +94,11 @@ export class AccountSessions {
     return this.#read(threadId).saved[accountId] ?? null;
   }
 
+  canResume(thread: ThreadSummary, to: { id: AccountId; providerId: ProviderId }): boolean {
+    const saved = this.saved(thread.id, to.id);
+    return saved !== null && resumeRefusal(this.#core, thread, to, saved) === null;
+  }
+
   /** The resumed session's record when it is the thread's current generation. */
   #resumed(thread: ThreadSummary, stored = this.#read(thread.id)): ResumedSession | null {
     return stored.resumed !== undefined && stored.resumed.generation === (thread.sessionGeneration ?? 0) ? stored.resumed : null;

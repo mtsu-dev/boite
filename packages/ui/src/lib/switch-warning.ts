@@ -19,9 +19,8 @@ export interface CacheKey {
 }
 
 /**
- * Another account means a new native session, which receives bounded excerpts
- * of the conversation (`docs/internals/model-switching.md`), not what the old one held.
- * On a long thread that is most of it, so the user is asked first.
+ * On a long conversation, a fresh session would only receive excerpts.
+ * Ask the core whether the target account can resume its saved session first.
  */
 export function switchDropsHistory(thread: Pick<ThreadSummary, 'accountId' | 'context'>, accountId: string): boolean {
   return accountId !== thread.accountId && (thread.context?.tokens ?? 0) > SWITCH_WARNING_TOKENS;

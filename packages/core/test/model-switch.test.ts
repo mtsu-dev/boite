@@ -111,7 +111,12 @@ test('a switch back starts fresh with the whole history when what came since is 
   };
   await run('opening request');
   await client.call('threads.update', { threadId, accountId: 'second-account', model: 'echo' });
+  const preview = () => client.call('threads.previewAccountSwitch', { threadId, accountId });
+  expect(await preview()).toEqual({ session: 'resume' });
   for (let index = 0; index < 7; index++) await run(`work ${index}`);
+  expect(await preview()).toEqual({ session: 'fresh' });
+  expect(await thrown(client.call('threads.update', { threadId, accountId, model: 'echo', requireSavedSession: true }))).toThrow('saved session can no longer resume');
+  expect(h.core.threads.require(threadId).accountId).toBe('second-account');
   expect(await client.call('threads.update', { threadId, accountId, model: 'echo' })).toMatchObject({ sessionId: null });
   await run('back');
   expect(seen.at(-1)?.sessionId).toBeNull();

@@ -1,5 +1,5 @@
 import type { SessionConfigOption } from '@agentclientprotocol/sdk/unstable';
-import type { AccountId, ModelInfo, ProviderDescriptor, ProviderId, ThreadId } from '@boite/contracts';
+import { acpSteeringKind, type AccountId, type ModelInfo, type ProviderDescriptor, type ProviderId, type ThreadId } from '@boite/contracts';
 import { agentModelsOf, modelsFrom, plainObject } from './acp/models.ts';
 import { AcpSession, sessionKey, type AcpMemory } from './acp/session.ts';
 import { forgetCompaction, forgetFolder, forgetThreadResolution, type CompactionPlace } from './acp/opencode-compaction.ts';
@@ -225,6 +225,7 @@ export function createAcpDriver(deps: AcpDeps, memory: AcpMemory = { costPerProc
 
     startTurn(ctx: TurnContext): TurnHandle {
       const turn = new AcpTurn(ctx);
+      const steering = acpSteeringKind(ctx.provider);
       const warmMs = Math.max(0, ctx.warmProcessMinutes) * MINUTE_MS;
       const running = acquire(ctx, true);
       running.attach(turn, warmMs);
@@ -235,9 +236,8 @@ export function createAcpDriver(deps: AcpDeps, memory: AcpMemory = { costPerProc
         stop: (): void => {
           running.stopTurn(turn);
         },
-        // Plain ACP has no input while a prompt runs; Grok adds one.
-        ...(isGrok(ctx.provider) ? { steer: (text: string) => running.steer(turn, text) } : {}),
-        ...(ctx.provider.id === 'opencode-v2' ? { steer: (text, attachments, onAccepted, signal) => running.steerOpenCode(turn, text, attachments, onAccepted, signal) } : {}),
+        ...(steering === 'grok' ? { steer: (text: string) => running.steer(turn, text) } : {}),
+        ...(steering === 'opencode' ? { steer: (text, attachments, onAccepted, signal) => running.steerOpenCode(turn, text, attachments, onAccepted, signal) } : {}),
       };
     },
 

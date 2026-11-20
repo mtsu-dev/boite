@@ -94,6 +94,11 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
     return { ok: true };
   });
   core.router.register('threads.capabilities', params => threadCapabilities(core, params.threadId));
+  core.router.register('threads.previewAccountSwitch', params => {
+    const thread = requireAgent(core.threads, params.threadId);
+    const account = core.accounts.require(params.accountId);
+    return { session: account.id === thread.accountId ? 'unchanged' : core.threads.accountSessions.canResume(thread, account) ? 'resume' : 'fresh' };
+  });
   core.router.register('threads.stats', params => {
     core.threads.require(params.threadId);
     return { threadId: params.threadId, ...core.journal.threadStats(params.threadId) };

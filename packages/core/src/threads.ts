@@ -312,6 +312,7 @@ export class ThreadStore {
   update(params: {
     threadId: ThreadId;
     accountId?: AccountId;
+    requireSavedSession?: true;
     expectedSelectionVersion?: number;
     title?: string;
     model?: string | null;
@@ -342,6 +343,9 @@ export class ThreadStore {
     const switched = account.id !== thread.accountId;
     const provider = this.#core.providers.require(account.providerId);
     if (switched) {
+      if (params.requireSavedSession === true && !this.accountSessions.canResume(thread, account)) {
+        throw refused('the saved session can no longer resume; review the account switch again', { field: 'accountId', expected: 'an account with a resumable session' });
+      }
       assertDriverRunnable(provider.protocol, this.#core.providers.summary(provider.id), account, () => this.#core.providers.launcherScriptOnly(provider.id));
       next.accountId = account.id;
       next.providerId = provider.id;

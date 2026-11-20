@@ -70,8 +70,9 @@ device. A conversation with no message yet shows nothing.
 - The excerpts cover the opening and the most recent exchanges, about 20k
   tokens, plus tool results and recent images. Older details may be missing.
   Private reasoning and past approvals do not carry over.
-- When the conversation holds more than 200,000 tokens, Boite asks before it
-  switches account or agent. Compacting first changes nothing.
+- When the conversation holds more than 200,000 tokens, Boite asks before an
+  account switch that starts a fresh session. It switches directly when the
+  other account can resume its saved session.
 - An agent that cannot read images refuses a conversation that holds images.
 - The conversation, its folder and its worktree stay where they are.
 - After a change of account or agent, the line in the conversation says

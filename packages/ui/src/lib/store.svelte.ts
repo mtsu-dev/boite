@@ -632,6 +632,7 @@ export class Store {
     try { await client.call('turns.cancelRetry', { threadId }); } catch (error) { this.#ctx.fail(error); }
   }
   threadCapabilities(...args: Parameters<Threads['capabilities']>) { return this.#ctx.threads.capabilities(...args); }
+  previewAccountSwitch(...args: Parameters<Threads['previewAccountSwitch']>) { return this.#ctx.threads.previewAccountSwitch(...args); }
   threadStats(...args: Parameters<Threads['stats']>) { return this.#ctx.threads.stats(...args); }
   /** What the thread's last Claude request carried, read from its transcript on this store's machine. */
   agentShape(threadId: ThreadId): Promise<AgentShape> {

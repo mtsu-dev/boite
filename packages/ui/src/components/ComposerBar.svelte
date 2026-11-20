@@ -219,9 +219,13 @@
     if (thread) {
       const changedModel = patch.model !== undefined || patch.accountId !== undefined;
       const target = { ...choice, ...patch, effort: patch.effort !== undefined ? patch.effort : changedModel ? null : choice.effort, speed: patch.speed !== undefined ? patch.speed : changedModel ? null : choice.speed ?? null };
+      const expectedSelectionVersion = thread.selectionVersion ?? 0;
       picking = true;
       try {
-        if (switchDropsHistory(thread, target.accountId)) {
+        const historyAtRisk = switchDropsHistory(thread, target.accountId);
+        const preview = historyAtRisk && !botRoute ? await store.previewAccountSwitch(thread.id, target.accountId) : null;
+        const resumes = preview?.session === 'resume';
+        if (historyAtRisk && !resumes) {
           slider?.close();
           const from = providerName(store, thread.providerId);
           const to = providerName(store, target.providerId);
@@ -251,10 +255,12 @@
         }
         const accepted = await store.update(thread.id, {
           accountId: target.accountId, model: target.model, effort: target.effort, speed: target.speed,
-          expectedSelectionVersion: thread.selectionVersion ?? 0,
+          expectedSelectionVersion,
+          ...(resumes ? { requireSavedSession: true } : {}),
         });
         if (accepted) store.remember(target);
-      } finally { picking = false; }
+      } catch (error) { store.error = errorText(error); }
+      finally { picking = false; }
       return;
     }
 
