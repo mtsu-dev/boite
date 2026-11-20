@@ -1,7 +1,7 @@
 import { archiveState, archiveStateKey } from './merged-pr-archive-state.ts';
 import { assertIdleFamily } from './threads/completion.ts';
 import { AgentDoneRequests } from './threads/agent-done.ts';
-import { previewReferencesError, previewPrompt, threadActive, unreadInterruptionAt, DEFAULT_THREAD_DELETION_RETENTION_DAYS, type AgentProfile } from '@boite/contracts';
+import { previewReferencesError, previewPrompt, threadActive, unreadInterruptionAt, type AgentProfile } from '@boite/contracts';
 import type {
   Account, AccountId, Attachment,
   ImageMimeType,
@@ -61,7 +61,7 @@ import { ThreadListLog } from './threads/list-changes.ts';
 import { ProgressState } from './threads/progress.ts';
 import { eraseIncognito } from './threads/incognito.ts';
 import { AccountSessions } from './threads/account-sessions.ts';
-import { removeTranscripts, threadSessions, type NativeSession } from './threads/transcript-purge.ts';
+import { purgeExpiredThreads } from './threads/deletion-retention.ts';
 import { ThreadCreation } from './threads/creation.ts';
 import { accountRemoved, followedAgent } from './threads/account-fallback.ts';
 import { requireAgent } from './threads/agentless.ts';
@@ -529,23 +529,7 @@ export class ThreadStore {
     return this.#withLoad(this.require(threadId));
   }
 
-  /** Expiry uses the deletion date, never the conversation's creation or last message. */
-  purgeDeleted(): void {
-    const days = this.#core.settings.get().threadDeletionRetentionDays ?? DEFAULT_THREAD_DELETION_RETENTION_DAYS;
-    if (days === 0) return;
-    let sessions: NativeSession[] = [];
-    let purgedIds: string[] = [];
-    const purged = this.#core.journal.purgeDeletedThreads(Date.now() - days * 86_400_000, ids => {
-      sessions = threadSessions(this.#core.journal.db, ids);
-      purgedIds = ids;
-    });
-    if (purged > 0) {
-      // Gone for good: listeners drop what they still hold of them (queued input, remote delegations).
-      for (const threadId of purgedIds) this.#core.bus.emit('thread.removed', { threadId });
-      this.#core.bus.emit('thread.deletionsUpdated', {});
-      this.transcriptPurge = removeTranscripts(this.#core, sessions);
-    }
-  }
+  purgeDeleted(): void { purgeExpiredThreads(this.#core); }
 
   pin(threadId: ThreadId, pinned: boolean): ThreadSummary {
     const thread = this.require(threadId);

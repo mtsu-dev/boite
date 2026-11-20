@@ -341,7 +341,7 @@ export class Journal {
     if (threadIds.length === 0) return;
     // Foreign keys are off: clear dependent records, including unsent composer input.
     this.db.transaction(() => {
-      // A project removal or trash purge keeps what the usage page counts of the turns; an incognito erase does not.
+      // Trash purge keeps what the usage page counts of the turns; an incognito erase does not.
       if (options.keepUsage === true) keepRemovedTurnUsage(this.db, threadIds);
       for (const table of ['background_observations', 'turn_requests', 'turns', 'messages', 'native_agent_messages', 'part_blobs', 'streaming_parts', 'media_previews', 'media_displays', 'processes', 'command_lines', 'coordination_letters', 'coordination_wakes', 'events', 'pending_questions']) {
         const query = this.db.query(`DELETE FROM ${table} WHERE thread_id = ?`);

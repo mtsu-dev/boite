@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test';
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import type { ThreadSummary, Turn, Usage, WorkflowRun } from '@boite/contracts';
 import { echoThread, startTestCore } from './harness.ts';
 import type { TestCore } from './harness.ts';
@@ -317,8 +319,10 @@ function kept(): { finished_at: number; provider_id: string; model: string | nul
 test('removing a project preserves usage totals and hides its ranking entries until restoration', async () => {
   const { echo, codex } = await threads();
   const journal = harness.core.journal;
-  journal.putProject({ id: 'prj_staying', name: 'Staying', path: harness.dataDir, createdAt: D0 });
-  const staying: ThreadSummary = { ...echo, id: 'thr_staying', title: 'Staying work', projectId: 'prj_staying' };
+  const cwd = join(harness.dataDir, 'staying');
+  mkdirSync(cwd);
+  journal.putProject({ id: 'prj_staying', name: 'Staying', path: cwd, createdAt: D0 });
+  const staying: ThreadSummary = { ...echo, id: 'thr_staying', title: 'Staying work', projectId: 'prj_staying', cwd };
   journal.putThread(staying);
   const opus = { providerId: 'claude', model: 'claude-opus-5-5' };
   journal.putTurn(turn(echo, D0 + 1, usage(10, 5, 0, 0.25), opus));
@@ -354,7 +358,7 @@ test('removing a project preserves usage totals and hides its ranking entries un
     ...history,
     threads: history.threads.filter(thread => thread.projectId !== echo.projectId),
   })));
-  await client.call('projects.add', { path: echo.cwd });
+  expect((await client.call('projects.add', { path: echo.cwd })).id).toBe(echo.projectId);
   expect(await read()).toEqual(before);
 });
 
