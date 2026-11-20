@@ -95,6 +95,7 @@ test('Activity shows a new interruption in a read conversation until that interr
     const history = core.threads.agentState.backgroundHistory;
     const origin = { providerId: thread.providerId, sessionGeneration: thread.sessionGeneration ?? 0, parentTurnId: turn.id };
     history.observe(thread.id, [{ id: request, kind: 'shell', description: 'Build', toolId: null, startedAt: turn.finishedAt! - 1 }], origin, turn.finishedAt!);
+    history.checkpoint(thread.id, turn.id);
     history.cancelSession(thread.id, origin, Date.now() + 1);
     const snapshot = await owner.call('threads.get', { threadId: thread.id });
     expect(snapshot).toMatchObject({ unread: false, backgroundWait: { state: 'interrupted' } });
