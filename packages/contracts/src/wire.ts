@@ -1,24 +1,10 @@
 import type { ThreadId } from './ids';
-import type { RpcEventName, RpcEvents, RpcMethodName, RpcParams, RpcResult } from './index';
 import type { PairingRole } from './pairing';
 import type { ThreadSummary } from './threads';
 
 // ---------------------------------------------------------------------------
 // Wire frames: JSON-RPC 2.0 over one WebSocket, one JSON object per frame.
 // ---------------------------------------------------------------------------
-
-export interface RpcRequest<M extends RpcMethodName = RpcMethodName> {
-  jsonrpc: '2.0';
-  id: number | string;
-  method: M;
-  params: RpcParams<M>;
-  /**
-   * The client counts what it has received of this answer: one longer than
-   * `RPC_CHUNK_BYTES` then comes as chunk frames (`RPC_CHUNK_MARK`). A core
-   * without `features.chunkedAnswers` ignores the key and answers in one frame.
-   */
-  progress?: true;
-}
 
 /**
  * The first character of a chunk frame. A text frame that starts with it is
@@ -29,6 +15,7 @@ export interface RpcRequest<M extends RpcMethodName = RpcMethodName> {
  * would have sent whole. `bytes` is the UTF-8 size of this slice and `total`
  * that of the whole frame, so a client shows how much of the answer it holds
  * without decoding anything twice.
+ * A core without `features.chunkedAnswers` ignores `progress` and answers in one frame.
  */
 export const RPC_CHUNK_MARK = '\u001e';
 /** Answers above this many UTF-8 bytes go out as chunk frames of about this size, to a request that asked for `progress`. */
@@ -39,21 +26,6 @@ export interface RpcError {
   message: string;
   data?: unknown;
 }
-
-export interface RpcResponse<M extends RpcMethodName = RpcMethodName> {
-  jsonrpc: '2.0';
-  id: number | string;
-  result?: RpcResult<M>;
-  error?: RpcError;
-}
-
-export interface RpcNotification<E extends RpcEventName = RpcEventName> {
-  jsonrpc: '2.0';
-  method: E;
-  params: RpcEvents[E];
-}
-
-export type RpcFrame = RpcRequest | RpcResponse | RpcNotification;
 
 export const RpcErrorCode = {
   ParseError: -32700,

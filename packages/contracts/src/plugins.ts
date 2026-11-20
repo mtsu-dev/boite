@@ -9,9 +9,7 @@ import type { RpcEventName, RpcMethodName } from './index';
 
 /** The file a plugin repository carries at its root. */
 export const PLUGIN_MANIFEST_FILE = 'boite-plugin.json';
-/** The newest manifest schema this core reads. Schema 1 manifests still load as they always did. */
-export const PLUGIN_MANIFEST_SCHEMA = 2;
-/** Every manifest schema this core reads. */
+/** Every manifest schema this core reads. Schema 1 manifests still load as they always did. */
 export const PLUGIN_MANIFEST_SCHEMAS = [1, 2] as const;
 /** `${process.platform}-${process.arch}` keys an artifact may be published for. */
 export const PLUGIN_PLATFORMS = ['win32-x64', 'win32-arm64', 'darwin-x64', 'darwin-arm64', 'linux-x64', 'linux-arm64'] as const;
@@ -211,7 +209,6 @@ export interface PluginActor {
 // ---------------------------------------------------------------------------
 
 export const PLUGIN_SETTING_TYPES = ['switch', 'number', 'slider', 'text', 'select'] as const;
-export type PluginSettingType = (typeof PLUGIN_SETTING_TYPES)[number];
 /** A setting's key: a letter, then letters, digits and `_`, at most 40 characters. */
 export const PLUGIN_SETTING_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9_]{0,39}$/;
 /** How many settings one plugin may declare, and how long a text value or a select's list may be. */
