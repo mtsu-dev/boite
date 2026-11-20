@@ -14,7 +14,7 @@ import type { CoreLogContext } from '@boite/contracts';
  */
 import { messageOf } from '../../errors.ts';
 import type { SpawnedChild } from '../../procs.ts';
-import { isRpcEnvelope, StdioTransport, type StdioRequestOptions } from '../stdio.ts';
+import { dispatchJsonRpc, StdioTransport, type JsonRpcHandlers, type StdioRequestOptions } from '../stdio.ts';
 
 // ---------------------------------------------------------------------------
 // The transport: ndjson JSON-RPC over the child's stdio
@@ -45,7 +45,17 @@ export class CodexRpc {
     child: SpawnedChild,
     private readonly handlers: RpcHandlers,
   ) {
-    this.transport = new StdioTransport(child, 'codex agent', { message: message => this.dispatch(message), log: handlers.log, fault: handlers.fault });
+    const dispatch: JsonRpcHandlers = {
+      request: (id, method, params) => { void this.answer(id, method, params); },
+      notification: (method, params) => handlers.notification(method, params),
+      error: (_method, raw) => {
+        const { message, code } = raw as { message?: unknown; code?: unknown };
+        return new CodexRpcError(typeof message === 'string' ? message : JSON.stringify(raw), typeof code === 'number' ? code : null);
+      },
+    };
+    this.transport = new StdioTransport(child, 'codex agent', {
+      message: message => dispatchJsonRpc(this.transport, message, dispatch), log: handlers.log, fault: handlers.fault,
+    });
   }
 
   request<T>(method: string, params: unknown, options?: StdioRequestOptions): Promise<T> {
@@ -60,31 +70,6 @@ export class CodexRpc {
   /** The child is gone: every request still waiting is answered, loudly. */
   fail(reason: string, diagnostic?: string): void {
     this.transport.fail(reason, diagnostic);
-  }
-
-  private dispatch(message: Record<string, unknown>): void {
-    const method = message['method'];
-    const id = message['id'];
-    if (!isRpcEnvelope(message)) return this.transport.invalid();
-    if (typeof method === 'string' && id !== undefined && id !== null) {
-      void this.answer(id as number | string, method, message['params']);
-      return;
-    }
-    if (typeof method === 'string') {
-      this.handlers.notification(method, message['params']);
-      return;
-    }
-    if (typeof id !== 'number') return;
-    const entry = this.transport.take(id);
-    if (entry === undefined) return;
-    const error = message['error'];
-    if (error !== undefined && error !== null) {
-      const text = (error as { message?: unknown }).message;
-      const code = (error as { code?: unknown }).code;
-      entry.reject(new CodexRpcError(typeof text === 'string' ? text : JSON.stringify(error), typeof code === 'number' ? code : null));
-      return;
-    }
-    entry.resolve(message['result']);
   }
 
   private async answer(id: number | string, method: string, params: unknown): Promise<void> {

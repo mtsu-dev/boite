@@ -42,6 +42,8 @@ import { threadConfig } from './config.ts';
 import { updateTurnSettings } from './live-settings.ts';
 import { CodexTurn } from './turn.ts';
 import { CodexUsageReports } from './usage-report.ts';
+import { IdleTimer } from '../idle-timer.ts';
+import { SessionTurns } from '../session-turns.ts';
 import { CodexPrediction } from './prediction.ts';
 import { CodexRateLimits } from './rate-limits.ts';
 import { SpentWindows, turnError } from './availability.ts';
@@ -77,7 +79,7 @@ export class CodexSession {
   #exited: Promise<number | null> | null = null;
   #processClosed: Promise<void> = Promise.resolve();
   readonly #writer: CodexWriter;
-  #idle: Timer | null = null;
+  readonly #idle = new IdleTimer(() => this.#drop());
   /** The turn whose `turn/start` is in flight. Context updates also arrive while idle. */
   #current: CodexTurn | null = null;
   readonly #usage = new CodexUsageReports();
@@ -91,10 +93,12 @@ export class CodexSession {
   #contextSink: CodexTurn['ctx']['context'] | null = null;
   /** The context the process was opened with, for a hook that runs while no turn is. */
   #opener: SessionContext | null = null;
-  #queue: Promise<void> = Promise.resolve();
+  readonly #turns = new SessionTurns<CodexTurn>(turn => this.#runTurn(turn), (turn, error) => {
+    turn.fail(messageOf(error));
+    this.#endTurn(turn, true);
+  });
   /** The composer prediction asked after each completed turn (`prediction.ts`). */
   readonly #prediction = new CodexPrediction();
-  #running = 0;
   /** `agentMessage` items that are asynchronous questions: drawn as cards, their text deltas dropped. */
   readonly #asyncItems = new Set<string>();
   /** Codex's skills as the thread's commands: a leading `/name` sends one as a skill item. */
@@ -124,7 +128,7 @@ export class CodexSession {
   setViewed(viewed: boolean): void {
     this.#retention.setViewed(viewed);
     if (this.#drainingUsage) return;
-    this.#clearIdle();
+    this.#idle.clear();
     if (!viewed && !this.busy() && !this.#ended) this.#armIdle();
   }
 
@@ -142,22 +146,14 @@ export class CodexSession {
   }
 
   busy(): boolean {
-    return this.#running > 0;
+    return this.#turns.busy;
   }
 
   attach(turn: CodexTurn, warmMs: number): void {
     this.#retention.beginTurn();
     this.warmMs = warmMs;
-    this.#running += 1;
-    this.#clearIdle();
-    this.#queue = this.#queue.then(async () => {
-      try {
-        await this.#runTurn(turn);
-      } catch (error) {
-        turn.fail(messageOf(error));
-        this.#endTurn(turn, true);
-      }
-    });
+    this.#idle.clear();
+    this.#turns.enqueue(turn);
   }
 
   /** `turn/interrupt` is the only stop Codex has; `turn/completed` ends the turn. */
@@ -239,7 +235,7 @@ export class CodexSession {
     const remaining = this.#usage.drainMs;
     if (remaining === 0 || this.#closing) return this.#drop();
     this.#drainingUsage = true;
-    this.#armIdle(remaining);
+    this.#idle.arm(remaining);
   }
 
   async #runTurn(turn: CodexTurn): Promise<void> {
@@ -323,12 +319,12 @@ export class CodexSession {
   #endTurn(turn: CodexTurn, drop: boolean): void {
     if (this.#active === turn) this.#active = null;
     this.#clearStopGrace();
-    this.#running = Math.max(0, this.#running - 1);
+    this.#turns.end();
     if (drop || this.#closing) {
       this.#drop();
     } else if (turn.isStopped || this.#retention.idleMs(this.warmMs) <= 0) {
       this.release();
-    } else if (this.#running === 0 && !this.#retention.viewed) this.#armIdle();
+    } else if (!this.busy() && !this.#retention.viewed) this.#armIdle();
     turn.settle();
   }
 
@@ -550,7 +546,7 @@ export class CodexSession {
     if (this.#ended) return;
     this.#ended = true;
     this.#closing = true;
-    this.#clearIdle();
+    this.#idle.clear();
     this.#usage.clear();
     endOnClose(this.#current, 'the codex session was closed');
     this.#rpc?.fail('the codex session was closed');
@@ -561,19 +557,8 @@ export class CodexSession {
     this.#writer.release(this.#processClosed, () => this.onEnded(this));
   }
 
-  #armIdle(ms = this.#retention.idleMs(this.warmMs)): void {
-    this.#clearIdle();
-    this.#idle = setTimeout(() => {
-      this.#idle = null;
-      this.#drop();
-    }, ms);
-    this.#idle?.unref?.();
-  }
-
-  #clearIdle(): void {
-    if (this.#idle === null) return;
-    clearTimeout(this.#idle);
-    this.#idle = null;
+  #armIdle(): void {
+    this.#idle.arm(this.#retention.idleMs(this.warmMs));
   }
 
   #onNotification(method: string, raw: unknown): void {

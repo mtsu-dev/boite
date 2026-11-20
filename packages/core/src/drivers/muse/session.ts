@@ -7,6 +7,7 @@ import { writeLandsInside } from '../../workdir.ts';
 import type { QuestionAsk, SessionContext } from '../types.ts';
 import { exitSentence, exitWithin } from '../exit.ts';
 import { IdleTimer } from '../idle-timer.ts';
+import { SessionTurns } from '../session-turns.ts';
 import {
   addUsage,
   answerOf,
@@ -109,8 +110,10 @@ export class MuseSession {
   readonly #items = new Map<string, { kind: string; revision: number }>();
   readonly #approvals = new Map<string, OpenApproval>();
   readonly #questions = new Map<string, OpenQuestion>();
-  #queue: Promise<void> = Promise.resolve();
-  #running = 0;
+  readonly #turns = new SessionTurns<MuseTurn>(turn => this.#runTurn(turn), (turn, error) => {
+    turn.fail(messageOf(error));
+    this.#endTurn(turn, true);
+  });
   #closing = false;
   #ended = false;
 
@@ -142,22 +145,14 @@ export class MuseSession {
   }
 
   busy(): boolean {
-    return this.#running > 0;
+    return this.#turns.busy;
   }
 
   attach(turn: MuseTurn, warmMs: number): void {
     this.warmMs = warmMs;
     this.#retention.beginTurn();
-    this.#running += 1;
     this.#idle.clear();
-    this.#queue = this.#queue.then(async () => {
-      try {
-        await this.#runTurn(turn);
-      } catch (error) {
-        turn.fail(messageOf(error));
-        this.#endTurn(turn, true);
-      }
-    });
+    this.#turns.enqueue(turn);
   }
 
   /**
@@ -333,12 +328,12 @@ export class MuseSession {
     turn.settle();
     // Turns run one at a time: what the map holds was this turn's.
     this.#items.clear();
-    this.#running = Math.max(0, this.#running - 1);
+    this.#turns.end();
     if (drop || this.#closing || this.#retention.idleMs(this.warmMs) <= 0) {
       this.#drop();
       return;
     }
-    if (this.#running === 0 && !this.#retention.viewed) this.#armIdle();
+    if (!this.busy() && !this.#retention.viewed) this.#armIdle();
   }
 
   // -- the process ----------------------------------------------------------
@@ -551,7 +546,7 @@ export class MuseSession {
         this.#closing = true;
         const turn = this.#current;
         if (turn !== null) turn.fail(`Muse closed the session: ${textOf(params['reason']) || 'no reason given'}`);
-        else if (this.#running === 0) this.#drop();
+        else if (!this.busy()) this.#drop();
         return;
       }
       default:

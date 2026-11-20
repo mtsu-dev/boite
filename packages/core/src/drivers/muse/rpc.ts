@@ -23,7 +23,7 @@ import type { CoreLogContext } from '@boite/contracts';
  */
 import pkg from '../../../package.json';
 import type { SpawnedChild } from '../../procs.ts';
-import { isRecord, isRpcEnvelope, StdioTransport, type StdioRequestOptions } from '../stdio.ts';
+import { dispatchJsonRpc, isRecord, StdioTransport, type JsonRpcHandlers, type StdioRequestOptions } from '../stdio.ts';
 import type { InitializeResult } from './protocol.ts';
 import { CLIENT_NAME, CLIENT_TITLE, SCHEMA_VERSION } from './protocol.ts';
 
@@ -89,11 +89,21 @@ export class MuseRpc {
   private nextId = 1;
   private readonly transport: StdioTransport<number>;
 
-  constructor(
-    child: SpawnedChild,
-    private readonly handlers: RpcHandlers,
-  ) {
-    this.transport = new StdioTransport(child, 'muse host', { message: message => this.dispatch(message), log: handlers.log, fault: handlers.fault });
+  constructor(child: SpawnedChild, handlers: RpcHandlers) {
+    const dispatch: JsonRpcHandlers = {
+      // `approval/request` and `userInput/request`: Boite decides both through
+      // their notification and a command, so the request form is declined.
+      request: (id, method) => this.transport.write({
+        jsonrpc: '2.0',
+        id,
+        error: { code: -32601, message: `boite answers ${method} through its notification, not as a request` },
+      }),
+      notification: (method, params) => handlers.notification(method, isRecord(params) ? params : {}),
+      error: mspErrorOf,
+    };
+    this.transport = new StdioTransport(child, 'muse host', {
+      message: message => dispatchJsonRpc(this.transport, message, dispatch), log: handlers.log, fault: handlers.fault,
+    });
   }
 
   request<T>(method: string, params: unknown, options?: StdioRequestOptions): Promise<T> {
@@ -113,39 +123,6 @@ export class MuseRpc {
   /** The child is gone: every request still waiting is answered, loudly. */
   fail(reason: string, diagnostic?: string): void {
     this.transport.fail(reason, diagnostic);
-  }
-
-  private dispatch(message: Record<string, unknown>): void {
-    const method = message['method'];
-    const id = message['id'];
-    if (!isRpcEnvelope(message)) return this.transport.invalid();
-    if (typeof method === 'string' && id !== undefined && id !== null) {
-      // `approval/request` and `userInput/request`: Boite decides both through
-      // their notification and a command, so the request form is declined.
-      this.transport.write({
-        jsonrpc: '2.0',
-        id,
-        error: { code: -32601, message: `boite answers ${method} through its notification, not as a request` },
-      });
-      return;
-    }
-    if (typeof method === 'string') {
-      const params = message['params'];
-      this.handlers.notification(
-        method,
-        isRecord(params) ? params : {},
-      );
-      return;
-    }
-    if (typeof id !== 'number') return;
-    const entry = this.transport.take(id);
-    if (entry === undefined) return;
-    const error = message['error'];
-    if (error !== undefined && error !== null) {
-      entry.reject(mspErrorOf(entry.method, error));
-      return;
-    }
-    entry.resolve(message['result']);
   }
 }
 

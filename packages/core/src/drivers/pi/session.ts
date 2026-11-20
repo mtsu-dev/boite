@@ -7,6 +7,7 @@ import { profileFor, resolveLaunch } from '../../providers/resolve.ts';
 import type { LiveTurnSettings, SessionContext, TurnContext } from '../types.ts';
 import { exitSentence, exitWithin } from '../exit.ts';
 import { IdleTimer } from '../idle-timer.ts';
+import { SessionTurns } from '../session-turns.ts';
 import { stderrLines } from '../lines.ts';
 import {
   agentEnv,
@@ -80,8 +81,10 @@ export class PiSession {
   #current: PiTurn | null = null;
   #opening: PiTurn | null = null;
   #steered = false;
-  #queue: Promise<void> = Promise.resolve();
-  #running = 0;
+  readonly #turns = new SessionTurns<PiTurn>(turn => this.#runTurn(turn), (turn, error) => {
+    turn.fail(messageOf(error));
+    this.#endTurn(turn, true);
+  });
   #closing = false;
   #ended = false;
   /** Ends every process of the thread: the agent and whatever its tools left running. */
@@ -126,22 +129,14 @@ export class PiSession {
   }
 
   busy(): boolean {
-    return this.#running > 0;
+    return this.#turns.busy;
   }
 
   attach(turn: PiTurn, warmMs: number): void {
     this.warmMs = warmMs;
     this.#retention.beginTurn();
-    this.#running += 1;
     this.#idle.clear();
-    this.#queue = this.#queue.then(async () => {
-      try {
-        await this.#runTurn(turn);
-      } catch (error) {
-        turn.fail(messageOf(error));
-        this.#endTurn(turn, true);
-      }
-    });
+    this.#turns.enqueue(turn);
   }
 
   /**
@@ -442,12 +437,12 @@ export class PiSession {
 
   #endTurn(turn: PiTurn, drop: boolean): void {
     turn.settle();
-    this.#running = Math.max(0, this.#running - 1);
+    this.#turns.end();
     if (drop || this.#closing || this.#retention.idleMs(this.warmMs) <= 0) {
       this.#drop();
       return;
     }
-    if (this.#running === 0 && !this.#retention.viewed) this.#armIdle();
+    if (!this.busy() && !this.#retention.viewed) this.#armIdle();
   }
 
   // -- the process ----------------------------------------------------------

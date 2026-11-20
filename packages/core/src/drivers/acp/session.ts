@@ -18,6 +18,7 @@ import { grokLaunchArgs } from '../grok.ts';
 import { stderrLines } from '../lines.ts';
 import { exitSentence, exitWithin } from '../exit.ts';
 import { IdleTimer } from '../idle-timer.ts';
+import { SessionTurns } from '../session-turns.ts';
 import type { LiveTurnSettings, ProbeContext, ProbeFilter, SessionContext } from '../types.ts';
 import { OpenCommands } from './commands.ts';
 import { ModelRefused, SessionControls } from './controls.ts';
@@ -125,12 +126,15 @@ export class AcpSession {
   #active: AcpTurn | null = null;
   /** Armed by a stop on a prompt in flight: an agent that ignores the cancel is closed. */
   #stopTimer: Timer | null = null;
-  #queue: Promise<void> = Promise.resolve();
+  readonly #turns = new SessionTurns<AcpTurn>(turn => this.#runTurn(turn), (turn, error) => {
+    if (turn.isStopped) turn.stopNow();
+    else turn.fail(messageOf(error));
+    this.#endTurn(turn, true);
+  });
   /** Antigravity's shell commands, the ones that outlived their turn included. */
   readonly #commands = new OpenCommands();
   /** Grok answered `_x.ai/interject` with an error once: this process has no mid-turn input. */
   #interjectRefused = false;
-  #running = 0;
   #closing = false;
   #ended = false;
   #catalogValid = true;
@@ -249,7 +253,7 @@ export class AcpSession {
   }
 
   busy(): boolean {
-    return this.#running > 0;
+    return this.#turns.busy;
   }
 
   /**
@@ -274,17 +278,8 @@ export class AcpSession {
   attach(turn: AcpTurn, warmMs: number): void {
     this.#warmMs = warmMs;
     this.#retention.beginTurn();
-    this.#running += 1;
     this.#idle.clear();
-    this.#queue = this.#queue.then(async () => {
-      try {
-        await this.#runTurn(turn);
-      } catch (error) {
-        if (turn.isStopped) turn.stopNow();
-        else turn.fail(messageOf(error));
-        this.#endTurn(turn, true);
-      }
-    });
+    this.#turns.enqueue(turn);
   }
 
   /**
@@ -547,12 +542,12 @@ export class AcpSession {
     const outlived = !drop && !this.#closing && turn.antigravity && this.#commands.promote(turn.ctx);
     const dropping = drop || this.#closing || (!outlived && this.#retention.idleMs(this.#warmMs) <= 0);
     turn.settle();
-    this.#running = Math.max(0, this.#running - 1);
+    this.#turns.end();
     if (dropping) {
       this.#drop();
       return;
     }
-    if (this.#running === 0 && !this.#retention.viewed) this.#armIdle();
+    if (!this.busy() && !this.#retention.viewed) this.#armIdle();
   }
 
   #start(ctx: SessionContext): Promise<void> {

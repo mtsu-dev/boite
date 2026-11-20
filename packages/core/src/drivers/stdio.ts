@@ -21,6 +21,12 @@ interface Pending {
   cleanup(): void;
 }
 
+interface StdioHandlers {
+  message(message: Record<string, unknown>): void;
+  log(level: 'info' | 'warn' | 'error', message: string, context?: CoreLogContext): void;
+  fault?(reason: string): void;
+}
+
 /** Framing and request lifetime only: the adapter owns its protocol envelopes. */
 export class StdioTransport<Id extends string | number> {
   private readonly pending = new Map<Id, Pending>();
@@ -32,20 +38,12 @@ export class StdioTransport<Id extends string | number> {
 
   private readonly child: SpawnedChild;
   readonly #label: string;
-  readonly #handlers: {
-      message(message: Record<string, unknown>): void;
-      log(level: 'info' | 'warn' | 'error', message: string, context?: CoreLogContext): void;
-      fault?(reason: string): void;
-    };
+  readonly #handlers: StdioHandlers;
 
   constructor(
     child: SpawnedChild,
     label: string,
-    handlers: {
-      message(message: Record<string, unknown>): void;
-      log(level: 'info' | 'warn' | 'error', message: string, context?: CoreLogContext): void;
-      fault?(reason: string): void;
-    },
+    handlers: StdioHandlers,
   ) {
     this.child = child;
     this.#label = label;
@@ -186,8 +184,30 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-export function isRpcEnvelope(message: Record<string, unknown>): boolean {
+function isRpcEnvelope(message: Record<string, unknown>): boolean {
   const method = message['method'], id = message['id'];
   return (method === undefined || typeof method === 'string') &&
     (id === undefined || id === null || typeof id === 'string' || (typeof id === 'number' && Number.isFinite(id)));
+}
+
+export interface JsonRpcHandlers {
+  request(id: number | string, method: string, params: unknown): void;
+  notification(method: string, params: unknown): void;
+  error(method: string, raw: unknown): Error;
+}
+
+/** Muse and Codex use numeric request IDs and may receive server requests with string IDs. */
+export function dispatchJsonRpc(transport: StdioTransport<number>, message: Record<string, unknown>, handlers: JsonRpcHandlers): void {
+  if (!isRpcEnvelope(message)) return transport.invalid();
+  const { method, id, params, error, result } = message;
+  if (typeof method === 'string') {
+    if (typeof id === 'number' || typeof id === 'string') handlers.request(id, method, params);
+    else handlers.notification(method, params);
+    return;
+  }
+  if (typeof id !== 'number') return;
+  const entry = transport.take(id);
+  if (entry === undefined) return;
+  if (error === undefined || error === null) entry.resolve(result);
+  else entry.reject(handlers.error(entry.method, error));
 }
