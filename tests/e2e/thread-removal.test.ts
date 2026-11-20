@@ -73,7 +73,7 @@ for (const width of [1280, 390]) {
         const drawer = '[data-testid=archived-list]';
         await deleteArchived(page, await page.evaluate<string>(`document.querySelector('${drawer} li').dataset.threadId`));
         await page.waitFor(`document.querySelectorAll('${drawer} li').length === 6`);
-        expect(await page.evaluate(`document.querySelector('[data-testid=confirm-dialog]') === null`)).toBe(true);
+        await page.waitFor(`!document.querySelector('[data-testid=confirm-dialog]')`);
         await page.click('[data-testid=undo-action]');
         await page.waitFor(`globalThis.__boiteTest.workspace.active.openThread?.archived`);
         await page.click('[data-testid=nav-settings]');
