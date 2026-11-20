@@ -5,7 +5,6 @@ import type { Connection } from './router.ts';
 import { promptOrigin } from './client-preferences.ts';
 import { invalidParams, messageOf, notFound, refused } from './errors.ts';
 import { ComposerStorage, digest, recordKey } from './composer-storage.ts';
-import { composerValue } from './composer-validation.ts';
 import { steerUser, userSteeringUnavailable } from './threads/user-steering.ts';
 import { DraftReservationLedger, type DraftOwnership } from './threads/draft-reservation-ledger.ts';
 import { needsModelDiscovery } from './threads/selection.ts';
@@ -70,7 +69,10 @@ export class Composer {
     core.router.register('composer.enqueue', (params, ctx) => this.enqueue(params, ctx.connection));
     core.router.register('composer.asset.put', (params, ctx) => this.storage.putAsset(params.attachment, params.incognito === true, ctx.connection));
     core.router.register('composer.asset.get', (params, ctx) => this.storage.getAsset(params.assetId, ctx.connection.id));
-    core.router.register('composer.put', (params, ctx) => this.put(params, ctx.connection));
+    core.router.register('composer.put', async (params, ctx) => {
+      const { composerValue } = await import('./composer-validation.ts');
+      return this.#put(params, ctx.connection, composerValue);
+    });
   }
 
   start(): void {
@@ -111,6 +113,9 @@ export class Composer {
     if (typeof params?.threadId !== 'string' || typeof params.prompt !== 'string' || !params.prompt.trim() || typeof params.clientRequestId !== 'string') {
       throw invalidParams('composer.enqueue: expected threadId, a non-empty prompt and clientRequestId');
     }
+    // Load the schema before reading the outbox. Validation and the CAS write
+    // can then run together when the record is ready.
+    const { composerValue } = await import('./composer-validation.ts');
     const { threadId, prompt, clientRequestId: requestId } = params;
     const thread = this.#core.threads.require(threadId);
     const { turn } = checkTurnRequest(this.#core.journal, threadId, prompt, [], [], requestId);
@@ -152,13 +157,13 @@ export class Composer {
       this.storage.save('inputs', recordId, value, this.#connection);
       this.#schedule([record]);
     } else {
-      const saved = this.put({ section: 'inputs', id: recordId, expectedRevision: record.revision, value }, connection, false);
+      const saved = this.#put({ section: 'inputs', id: recordId, expectedRevision: record.revision, value }, connection, composerValue, false);
       if (!saved.accepted) throw refused('the composer changed; retry with the same clientRequestId');
     }
     return { requestId, status: value.input.paused ? 'held' as const : 'queued' as const };
   }
 
-  put(params: RpcParams<'composer.put'>, connection: Connection, returnsRecord = true): { accepted: boolean; record: ComposerRecord } {
+  #put(params: RpcParams<'composer.put'>, connection: Connection, parseValue: (value: unknown) => ComposerValue | null, returnsRecord = true): { accepted: boolean; record: ComposerRecord } {
     if (!params || !['inputs', 'drafts'].includes(params.section) || typeof params.id !== 'string' || !params.id || !Number.isSafeInteger(params.expectedRevision) || params.expectedRevision < 0) throw invalidParams('composer.put: expected section inputs/drafts, non-empty id and non-negative expectedRevision');
     if (params.section === 'inputs' && composerInputThreadId(params.id) !== params.id) throw notFound('composer.id: expected an existing thread');
     // Soft-deleted rows remain undoable. Missing rows cannot adopt an offline
@@ -169,7 +174,7 @@ export class Composer {
     this.storage.requireOwner(params, connection.id);
     const current = this.storage.get(params.section, params.id);
     if (current.revision !== params.expectedRevision) return { accepted: false, record: current };
-    const value = composerValue(params.value);
+    const value = parseValue(params.value);
     const captured = this.#captured.get(recordKey(params.section, params.id)) ?? [];
     if (captured.some(item => !value?.input.queued.some(next => next.id === item.id && digest(next) === digest(item)))) return { accepted: false, record: current };
     if (value) {

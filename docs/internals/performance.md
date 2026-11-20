@@ -1104,9 +1104,17 @@ exclude compression, responses, release calls and other RPCs.
 
 The entry loads the CLI for commands and the Core/server graph for server
 startup. Version metadata lives in `packages/core/src/version.ts`.
-The compiled launcher awaits the main module before dispatch, including with
-ESM bytecode. `packages/core/test/main-entry.test.ts` checks command imports,
-port refusal, the compiled binary and graceful lock release.
+The compiled launcher awaits the main module before dispatch. Its embedded ESM
+bytecode is split into chunks so the core can load the startup code separately
+from commands and drivers. The compiler limits bytecode depth to one. Compiling
+fewer nested functions ahead of time reduces the embedded bytecode cache.
+`packages/core/test/main-entry.test.ts` checks command imports, port refusal,
+the compiled binary and graceful lock release.
+
+Composer writes load the Zod schema when needed. The load happens before the
+outbox read, so validation and its compare-and-swap write run together.
+`packages/core/test/startup-imports.test.ts` checks that importing the core
+leaves Zod unloaded.
 
 Activity restoration selects threads with saved activities. Coordination
 recovery selects active threads and threads with potentially pending letters.
