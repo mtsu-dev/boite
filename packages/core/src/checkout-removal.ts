@@ -1,5 +1,5 @@
 import { existsSync, lstatSync, mkdtempSync } from 'node:fs';
-import { link, lstat, mkdir, readdir, readFile, realpath, rename, rm, rmdir, unlink } from 'node:fs/promises';
+import { link, lstat, mkdir, readdir, readFile, realpath, rename, rmdir, unlink } from 'node:fs/promises';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import type { Project, ThreadId, ThreadSummary } from '@boite/contracts';
 import type { Core } from './core.ts';
@@ -211,11 +211,17 @@ export async function restoreInterruptedCheckout(core: Core, project: Project, p
   const saved = savedAt(move.staged);
   if (existsSync(saved)) {
     // Git had already removed its registration. Recovery can check out the surviving ref.
-    core.log('warn', `kept files saved before removing ${path} at ${saved}`, { source: 'worktrees' });
+    reportSavedCheckout(core, move.path, saved);
   } else if (existsSync(dirname(move.staged))) {
     await rmdir(dirname(move.staged));
   }
   core.journal.deleteSetting(key);
+}
+
+function reportSavedCheckout(core: Core, path: string, saved: string): void {
+  core.log('warn', `kept files from ${path} for recovery at ${saved}; remove this copy manually after checking it`, {
+    source: 'worktrees', event: 'worktree.recovery-saved', data: { path, recoveryPath: saved },
+  });
 }
 
 /** Reclaims a clean directory only by rmdir, then asks Git to remove its obsolete registration. */
@@ -253,13 +259,15 @@ export async function removeCleanCheckout(core: Core, path: string, git: Git): P
     const result = await git(['worktree', 'remove', staged]);
     if (result.code !== 0) return result;
     removed = true;
-    for (const file of files) await rm(join(saved, file), { force: true });
-    await emptyDirectories(saved);
+    // A writer with a tracked file already open can still change it after the last status.
+    reportSavedCheckout(core, path, saved);
     return result;
   } finally {
     try {
-      if (!removed && (existsSync(staged) || existsSync(saved))) await restoreCheckout(move, git);
-      await rmdir(temporary);
+      if (!removed) {
+        if (existsSync(staged) || existsSync(saved)) await restoreCheckout(move, git);
+        await rmdir(temporary);
+      }
       core.journal.deleteSetting(key);
     }
     finally { release(); }

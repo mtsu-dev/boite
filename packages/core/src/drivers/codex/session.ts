@@ -307,7 +307,7 @@ export class CodexSession {
     }
 
     await turn.finished;
-    this.#usage.finish(turn);
+    if (!this.#ended) this.#usage.finish(turn);
     this.#current = null;
     this.#prediction.ask(this.#rpc, this.#threadId, turn);
     // Only OpenAI's own endpoint has a published lifetime; Codex never sends a

@@ -274,7 +274,11 @@ minutes per pass. A worktree qualifies when all of these hold:
   directory and sets aside its tracked files. The directory must be empty
   when removed, so a process with an open directory handle can still leave a
   file that stops cleanup. Boite restores that checkout, or recovers the
-  recorded move on the next open after a crash.
+  recorded move on the next open after a crash. A successful retirement keeps
+  the files in the sibling directory's `saved` folder, since an open file
+  handle can still write to them after the last status check. The
+  `worktree.recovery-saved` log record shows where to inspect and manually
+  remove the copy.
 - HEAD is on another local branch or remote-tracking ref, or a merged, non-fork
   GitHub pull request has that exact commit as its head. The proof is the one
   [merged pull requests](#merged-pull-requests) use, so a squash
@@ -283,9 +287,9 @@ minutes per pass. A worktree qualifies when all of these hold:
 
 `WorktreeSweep.removeSettled` reads the worktree again and applies the refusals
 of `worktrees.remove` without force, except that a proved merged head passes.
-It runs `git worktree remove` without `--force`, so git itself refuses a change
-that appeared meanwhile. The branch then goes with `git branch -d`, or after a
-merge proof with `git update-ref -d refs/heads/<branch> <sha>`, which deletes it
+After emptying the staged checkout with `rmdir`, it runs `git worktree remove`
+without `--force` to clear Git's registration. With a merge proof, it runs
+`git update-ref -d refs/heads/<branch> <sha>`, which deletes the branch
 only while it still points at the merged commit and no other worktree has it
 checked out. Remote branches are left to the forge's own "delete head branch"
 setting. A worktree kept for a reason is looked at again an hour later, or as

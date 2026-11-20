@@ -142,6 +142,19 @@ export interface BackgroundCompactionSetting {
   ratios: { startRatio: number; minTokens: number; tailTokens: number; tailShare: number; maxFailures: number; timeoutMs: number };
 }
 
+export interface LateUsageEntry<T> {
+  id: TurnId;
+  startedAt: Turn['startedAt'];
+  tally: T;
+}
+
+/** One native process can revise any of its completed turns until it closes. */
+export interface LateUsageReports<T> {
+  load(nativeTurnId: string): LateUsageEntry<T> | undefined;
+  save(nativeTurnId: string, entry: LateUsageEntry<T>, usage?: Usage): void;
+  close(): void;
+}
+
 export interface TurnContext {
   /** Immutable additional restriction for externally supplied work, never a provider/account replacement. */
   protectedExecution?: import('./protected.ts').ProtectedDriverExecution;
@@ -248,6 +261,7 @@ export interface TurnContext {
   reportProviderEvent?(): void;
   /** A revised usage total received after the driver has returned the turn result. */
   reportLateUsage?(usage: Usage): void;
+  openLateUsage?<T>(): LateUsageReports<T>;
   /** The running turn can now accept native user input. Does not report model progress. */
   inputReady?(): void;
   /** Native output or acknowledgement proves the first prompt belongs to this resumable session. */

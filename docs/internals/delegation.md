@@ -600,8 +600,10 @@ cleanup, it waits for the agent to exit and checks again after moving the
 checkout to a private sibling directory. Boite sets aside the tracked files
 and removes the checkout only as an empty directory. It restores the checkout
 if a file arrives during cleanup, and can recover a recorded move on the next
-open after a crash. Git deletes the branch only if it still points to the
-reserved commit. The result ends with
+open after a crash. After retirement the staged files stay at the recovery
+path recorded in the log, where the owner can inspect and remove them. Git
+deletes the branch only if it still points to the reserved commit. The result
+ends with
 `Worktree kept: <path> on branch <branch>, N commits beyond <base>`,
 uncommitted changes noted, and the `git merge <branch>` to run.
 Boite does not merge for the parent. A removed worktree is made again, from

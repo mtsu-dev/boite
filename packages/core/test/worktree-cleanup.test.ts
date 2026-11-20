@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, utimesSync, writeFileSync, writeSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import type { ThreadSummary } from '@boite/contracts';
 import { assertAllowed } from '../src/access.ts';
@@ -224,6 +224,35 @@ describe('settled worktree cleanup', () => {
     expect(await cleanup.run()).toEqual([]);
     expect(readFileSync(note, 'utf8')).toBe('keep me');
     expect(branches(project)).toContain(thread.branch!);
+  });
+
+  test.skipIf(process.platform === 'win32')('keeps a tracked write through an open handle after the last status', async () => {
+    const project = await repoProject();
+    const thread = await worktreeThread(project, 'Late tracked write');
+    await client.call('threads.archive', { threadId: thread.id });
+    const fd = openSync(join(thread.cwd, 'README.md'), 'a');
+    const spawn = harness.core.procs.spawn.bind(harness.core.procs);
+    let saved: string | undefined;
+    const removing = spyOn(harness.core.procs, 'spawn').mockImplementation((id, command, args, options) => {
+      if (command === 'git' && args[0] === 'worktree' && args[1] === 'remove') {
+        saved = join(dirname(args[2]!), 'saved');
+        writeSync(fd, 'late edit\n');
+      }
+      return spawn(id, command, args, options);
+    });
+    restoreSpawn = () => removing.mockRestore();
+    const log = spyOn(harness.core, 'log');
+    try {
+      expect(await cleanup.run()).toEqual([expect.objectContaining({ branch: thread.branch })]);
+      expect(saved).toBeDefined();
+      expect(existsSync(thread.cwd)).toBe(false);
+      expect(fstatSync(fd).nlink).toBeGreaterThan(0);
+      expect(readFileSync(join(saved!, 'README.md'), 'utf8')).toBe('hello\nlate edit\n');
+      expect(log.mock.calls.some(([, message]) => message.includes(saved!))).toBe(true);
+    } finally {
+      log.mockRestore();
+      closeSync(fd);
+    }
   });
 
   test('keeps a branch that advances to another merged commit during cleanup', async () => {

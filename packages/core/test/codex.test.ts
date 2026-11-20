@@ -1235,12 +1235,18 @@ describe('codex driver', () => {
     expect(harness!.core.journal.getTurn(ended.id)?.usage).toMatchObject({ inputTokens: 60, cacheReadTokens: 20, outputTokens: 10 });
   });
 
-  test('late usage from a previous turn does not overwrite the current turn', async () => {
+  test('late usage from an older turn uses the journal without changing the current turn', async () => {
     const { client, threadId } = await startThread({ warmProcessMinutes: 1 });
     const gate = join(harness!.dataDir, 'usage-ready');
     process.env['CODEX_FAKE_USAGE_GATE'] = gate;
     const { finished: firstFinished } = await startTurn(client, threadId, '[late-context]', 20000);
     const first = await firstFinished;
+    for (let i = 0; i < 16; i += 1) {
+      const { finished } = await startTurn(client, threadId, `Intervening prompt ${i}`);
+      expect((await finished).status).toBe('done');
+    }
+    const rows = () => harness!.core.journal.db.query(`SELECT count(*) AS total FROM settings WHERE key >= 'native-late-usage:' AND key < 'native-late-usage;'`).get() as { total: number };
+    expect(rows().total).toBe(17);
     const { finished } = await startTurn(client, threadId, '[slow]', 20000);
     await waitFor(() => fakeLog().includes('waiting for interrupt'));
     writeFileSync(gate, 'ready');
@@ -1248,7 +1254,8 @@ describe('codex driver', () => {
     await client.call('turns.stop', { threadId });
     expect((await finished).usage).toBeNull();
     expect(harness!.core.journal.getTurn(first.id)?.usage).toMatchObject({ inputTokens: 60, cacheReadTokens: 20, outputTokens: 10 });
-  });
+    await waitFor(() => rows().total === 0, 1500);
+  }, 20_000);
 
   test('late usage invalidates an already finished workflow', async () => {
     const { client, threadId } = await startThread({ warmProcessMinutes: 1 });
