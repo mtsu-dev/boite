@@ -335,8 +335,8 @@ describe('automatic compaction', () => {
     const client = await h.connect();
     const { threadId } = await quiet(client);
     await turn(client, threadId, 'x'.repeat(950));
-    const stopped = client.next('turn.finished', t => t.threadId === threadId);
-    await client.call('turns.start', { threadId, prompt: `[sleep:5000] ${'x'.repeat(950)}` });
+    const started = await client.call('turns.start', { threadId, prompt: `[sleep:5000] ${'x'.repeat(950)}` });
+    const stopped = client.next('turn.finished', t => t.id === started.id);
     await client.call('turns.stop', { threadId });
     expect((await stopped).status).toBe('stopped');
     await client.call('settings.set', { autoCompact: { tokens: 1000, moments: [] } });

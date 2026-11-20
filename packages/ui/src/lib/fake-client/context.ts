@@ -283,6 +283,8 @@ export class FakeContext {
   readonly removedDefaultProviders = new Set<string>();
   readonly threads = new Map<ThreadId, Thread>();
   readonly deletedThreads = new Map<ThreadId, { threads: Thread[]; archived: boolean[]; deletedAt: number }>();
+  /** Projects `projects.remove` took out of the lists, with their threads, as the core keeps their rows. */
+  readonly removedProjects = new Map<string, { project: Project; threads: Thread[]; open: ThreadId[] }>();
   readonly coordination = new Map<ThreadId, CoordinationConfig>();
   readonly delegationConfigs = new Map<ThreadId, DelegationConfig>();
   readonly delegationAgents = new Map<ThreadId, DelegationRow[]>();

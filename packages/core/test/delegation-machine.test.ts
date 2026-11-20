@@ -459,7 +459,7 @@ test('a parent archived or deleted before its child there was named retires that
   expect(pc.core.threads.require(child.id).archived).toBe(true);
   expect(held.has(child.id)).toBe(false);
 
-  // Deleted for good with its project: nothing of that parent stays here but the retirement, until a report names its child.
+  // Deleted for good: nothing of that parent stays here but the retirement, until a report names its child.
   mkdirSync(join(desk.dataDir, 'other'), { recursive: true });
   const project = await owner.call('projects.add', { path: join(desk.dataDir, 'other'), name: 'Other' });
   const parent = desk.core.threads.require(threadId);
@@ -468,7 +468,9 @@ test('a parent archived or deleted before its child there was named retires that
   expect((await cli(['delegate', 'spawn', 'Read HOLD-ON', '--machine', machine, '--project', 'notes', '--request-id', 'delete-lost'], desk, other.id)).err).toContain('lost start reply');
   const orphan = childrenOnPc().find(thread => thread.id !== child.id)!;
   await waitFor(() => held.has(orphan.id));
-  await owner.call('projects.remove', { projectId: project.id });
+  await owner.call('threads.remove', { threadId: other.id });
+  desk.core.journal.db.query('UPDATE thread_deletions SET deleted_at = 0 WHERE thread_id = ?').run(other.id);
+  desk.core.threads.purgeDeleted();
   expect(desk.core.delegation.remote.has(other.id)).toBe(false);
   away = false;
   await pc.core.delegation.remote.flush(deskId);

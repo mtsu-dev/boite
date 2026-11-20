@@ -35,7 +35,9 @@ test('asset collection preserves shared references and pending uploads through r
   h.core.threads.purgeDeleted();
   expect(count()).toBe(1); // The other conversation still references it.
   await a.call('composer.asset.put', { attachment: { ...attachment, data: 'bmV4dA==' } });
-  await b.call('projects.remove', { projectId: h.core.threads.require(two.threadId).projectId! });
+  await b.call('threads.remove', { threadId: two.threadId });
+  h.core.journal.db.query('UPDATE thread_deletions SET deleted_at = 0 WHERE thread_id = ?').run(two.threadId);
+  h.core.threads.purgeDeleted();
   expect(count()).toBe(1); // a's pending upload survives deletion of every saved reference.
   a.close();
   await waitFor(() => count() === 0, 1000);
