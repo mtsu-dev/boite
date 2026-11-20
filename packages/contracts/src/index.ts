@@ -232,7 +232,7 @@ export { checkRpcParams, type RpcParamsCheck } from './rpc-params.ts';
 export { TITLE_MODEL_DEFAULTS, defaultTitleModel, newestModel } from './title-models.ts';
 export { ChangeLog, LIST_CHANGES_IDS, listCursorProblem, THREAD_LIST_PAGE_BYTES, ThreadListPages } from './list-changes.ts';
 export { GOAL_TRACKER_DEFAULTS, GOAL_CHECKLIST_MAX_ITEMS, GOAL_CHECKLIST_SOURCE_MAX, GOAL_CHECKLIST_TEXT_MAX, defaultTrackerModel, trackerEffort, type GoalTrackerRule } from './goal-tracker.ts';
-export { DEVICE_METHODS, DEVICE_EVENTS, AGENT_EVENTS, AGENT_METHODS, SUBSCRIBED_EVENTS, accessRefusal, agentHearsEvent, pluginMayCall, pluginMayHear, deviceBound, deviceDiffRef, eventThreadId, mayHearEvent, PLUGIN_SELF_EVENTS, PLUGIN_SELF_METHODS, pluginSelfCall, type AccessRefusal, type Caller } from './access.ts';
+export { DEVICE_HOME_CREDENTIAL_STORES, DEVICE_METHODS, DEVICE_EVENTS, AGENT_EVENTS, AGENT_METHODS, SUBSCRIBED_EVENTS, accessRefusal, agentHearsEvent, pluginMayCall, pluginMayHear, deviceBound, deviceDiffRef, eventThreadId, mayHearEvent, PLUGIN_SELF_EVENTS, PLUGIN_SELF_METHODS, pluginSelfCall, type AccessRefusal, type Caller } from './access.ts';
 export {
   AGENTS_ALONE_SECTION, APP_LANGUAGES, CLIENT_APP_PATTERN, CLIENT_LABELS_MAX, CLIENT_LABEL_CHARS, MACHINE_SETTINGS, PLUGIN_ADD_SECTION, REQUESTABLE_SETTINGS, REQUESTABLE_SETTING_KEYS, SETTING_REASON_MAX, SETTINGS_PAGES, SETTINGS_SECTION_PATTERN,
   botCard, checkClientPreferences, checkSettingRequest, settledExperiment, currentSetting, effectiveSetting, experimentOf, isExperimentKey, isMachineSetting, isRequestableSetting, isSettingsPage, readSettings,

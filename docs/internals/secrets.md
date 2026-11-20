@@ -19,7 +19,7 @@ component `SecretCard.svelte`.
 boite secret ask <NAME> --why <reason> [--placeholder <example>] [--timeout <minutes>]
 boite secret write <ref> --env-file <path> --key <VAR> [--allow-unignored]
 boite secret run <ref> --as <VAR> -- <cmd> [args ...]
-boite secret pipe <ref> -- <cmd> [args ...]
+boite secret pipe <ref> [--check <arg>] -- <cmd> [args ...]
 ```
 
 Names are uppercase letters, digits and `_`, starting with a letter, at most
@@ -52,7 +52,12 @@ metadata never enter that index.
 ## Destinations
 
 - `run` gives the value to one command as the environment variable `VAR`.
-- `pipe` gives it to one command on standard input.
+- `pipe` gives it to one command on standard input. `--check` first runs the
+  same executable with the given argument and empty standard input, in the
+  same directory and environment. A failed check leaves the ref available
+  until its original expiry. On BoiteOS a pipe from a sandboxed thread runs
+  the check and the recipient inside that thread's sandbox. The RPC accepts
+  an array of check arguments.
 - `write` sets `VAR=<value>` in an env file, preserving other lines and line
   endings. Every line that sets `VAR` gets the value, since loaders read the
   last one, each keeping its indent and `export`. The destination must be inside the conversation's folder, untracked

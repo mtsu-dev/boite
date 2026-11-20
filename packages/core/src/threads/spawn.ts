@@ -27,7 +27,7 @@ const BOT_LEDGER = 'bot-spawns:';
  * event of its desk.
  */
 /** `answer`: the id of the letter that carries its first answer back, which the reach does not stop. */
-interface Origin { origin: ThreadLink; reported: boolean; coreId?: string; bot?: true; answer?: string; pending?: { turnId: string; text: string } }
+interface Origin { origin: ThreadLink; reported: boolean; coreId?: string; bot?: true; fromContact?: true; answer?: string; pending?: { turnId: string; text: string } }
 /** `spawned`: what a member answered, for a thread started on another machine. */
 interface Started { at: number; requestId: string; fingerprint: string; threadId: ThreadId; turnId: string; spawned?: AgentSpawn }
 
@@ -69,7 +69,7 @@ export class ThreadSpawns {
 
   useProbe(probe: ProviderProbe): void { this.#probe = probe; }
 
-  async spawn(params: RpcParams<'agent.spawn'>): Promise<AgentSpawn> {
+  async spawn(params: RpcParams<'agent.spawn'>, fromContact?: true): Promise<AgentSpawn> {
     const caller = this.#threads.require(params.threadId);
     const threadId = caller.id;
     if (caller.parentThreadId || this.#core.delegation.remote.parentOf(caller.id)) {
@@ -137,7 +137,7 @@ export class ThreadSpawns {
         agent: picked === null
           ? { providerId: caller.providerId, accountId: caller.accountId, ...(caller.model === null ? {} : { model: caller.model }), effort: caller.effort, speed: caller.speed ?? null, permissionMode: caller.permissionMode }
           : { ...picked, permissionMode: caller.permissionMode },
-        origin: { origin, reported: false },
+        origin: { origin, reported: false, ...(fromContact ? { fromContact } : {}) },
       // Worktree preparation can outlive the caller's agent socket and its archive.
       }, () => { if (this.#threads.require(threadId).archived) throw refused('an archived thread cannot start threads', { threadId, field: 'threadId', expected: 'a thread that is not archived' }); });
       this.#record(threadId, { at: now, requestId, fingerprint, threadId: created.id, turnId: turn.id });
@@ -518,6 +518,16 @@ export class ThreadSpawns {
   /** The thread's origin, when an agent started it. */
   originOf(threadId: ThreadId): ThreadLink | null {
     return (this.#core.journal.getSetting(`${ORIGIN}${threadId}`) as Origin | undefined)?.origin ?? null;
+  }
+
+  startedForContact(threadId: ThreadId): boolean {
+    const saved = this.#core.journal.getSetting(`${ORIGIN}${threadId}`) as Origin | undefined;
+    if (saved?.fromContact) return true;
+    if (!saved) return false;
+    if (!saved.coreId && this.#core.workforce.agentOfThread(saved.origin.threadId)?.builtin === 'contacts') return true;
+    // In earlier builds the request ledger may still identify a replaced Contacts mochi.
+    const starts = this.#core.journal.getSetting(`${LEDGER}${saved.origin.threadId}`) as Started[] | undefined;
+    return starts?.some(entry => entry.threadId === threadId && entry.requestId.startsWith('contacts-')) ?? false;
   }
 
   /** The machine of the thread that started this one, when it is another machine of the group. */

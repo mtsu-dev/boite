@@ -1,5 +1,5 @@
 /** External correspondence retains its execution authority with the history that consumed it. */
-import { threadActive } from '@boite/contracts';
+import { contactToolRefusal, threadActive } from '@boite/contracts';
 import {createHash} from 'node:crypto';
 import {realpathSync} from 'node:fs';
 import type {AgentLetter, HeldContactLetter} from '@boite/contracts';
@@ -54,6 +54,28 @@ function history(core: Core, threadId: string): string[] {
     thread = thread.parentThreadId ? core.journal.getThread(thread.parentThreadId) : null;
   }
   return ids;
+}
+
+/** Contact instructions do not confer authority to operate the owner's tools. */
+export function assertContactTool(core: Core, threadId: string, method: string): void {
+  const ids = history(core, threadId);
+  const relations = core.contacts.relations.list();
+  const bot = core.workforce.builtinThread('contacts');
+  // A letter held for review can reach the agent well after its receipt.
+  const recent = core.journal.db.query(`WITH last_turn AS (
+      SELECT coalesce(max(finished_at),0) AS at FROM turns WHERE thread_id=?1
+    ) SELECT 1 FROM coordination_letters, last_turn
+    WHERE thread_id=?1 AND direction='in' AND status IN ('received','delivered','uncertain')
+      AND (json_type(data,'$.contact')='object' OR json_extract(data,'$.origin')='contact')
+      AND (status <> 'received' OR json_extract(data,'$.expiresAt') > ?2)
+      AND (created_at >= last_turn.at OR EXISTS (SELECT 1 FROM events
+        WHERE thread_id=?1 AND ts >= last_turn.at AND type='coordination.status'
+          AND json_extract(payload,'$.id')=coordination_letters.id
+          AND json_extract(payload,'$.status') IN ('delivered','uncertain'))) LIMIT 1`);
+  if (ids.some(id => id === bot || relations.some(relation => relation.local.threadId === id)
+    || core.threads.spawns.startedForContact(id) || recent.get(id, Date.now()) !== null)) {
+    throw refused(contactToolRefusal(method), { threadId });
+  }
 }
 
 /** Unexpired contact mail outside a shared project still in this thread's inbox, oldest first. */

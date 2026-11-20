@@ -224,7 +224,8 @@ export class ProcRegistry {
   spawn(threadId: ThreadId, cmd: string, args: string[], opts: SpawnOptions = {}): SpawnedProcess {
     opts = this.#admitted(opts);
     const protectedLaunch = this.protection.launch(threadId, cmd, args, opts);
-    const [command, env] = launchOf(protectedLaunch?.command ?? cmd, protectedLaunch?.env ?? { ...process.env, ...opts.env });
+    const [command, env] = launchOf(protectedLaunch?.command ?? cmd,
+      protectedLaunch?.env ?? (opts.envIsComplete ? opts.env ?? {} : { ...process.env, ...opts.env }));
     const extra = Math.max(0, Math.floor(opts.extraPipes ?? 0));
     const proc = startResolved(command, env, (executable) => Bun.spawn({
       cmd: [executable, ...(protectedLaunch?.args ?? args)],

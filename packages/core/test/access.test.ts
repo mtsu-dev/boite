@@ -465,6 +465,21 @@ describe('a paired device reads a thread\'s changes and files', () => {
     }
   });
 
+  test('dedicated credential stores cannot become device project roots or expose files in owner-added projects', () => {
+    const home = homedir();
+    for (const path of ['.codex', '.gemini', '.pi', '.claude', '.config/gh', '.local/share/opencode', '.local/share/keyrings', '.config/rclone', '.password-store', '.mozilla', '.config/chromium']) {
+      const root = join(home, path, 'nested');
+      const core = {
+        dataDir: harness.dataDir,
+        threads: { require: () => ({ cwd: root, projectId: 'p' }) },
+        projects: { require: () => ({ id: 'p', path: root }) },
+        settings: { get: () => ({}) },
+      } as unknown as Parameters<typeof assertDeviceFile>[0];
+      expect(() => assertDeviceProjectFolder(core, root)).toThrow('folder that holds keys or tokens');
+      expect(() => assertDeviceFile(core, 't', root, 'settings.db')).toThrow('credential files');
+    }
+  });
+
   test('a project that holds boite\'s data folder does not open it to the device', async () => {
     const owner = await harness.connect();
     const { threadId } = await echoThread(harness, owner);

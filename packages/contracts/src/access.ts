@@ -9,6 +9,17 @@ import { PLUGIN_PERMISSIONS, pluginClosedReason, pluginPermissionFor, type Plugi
  * changes both at once.
  */
 
+/** Dedicated stores can sit inside an otherwise legitimate project root. */
+export const DEVICE_HOME_CREDENTIAL_STORES: readonly string[] = [
+  '.codex', '.claude', '.gemini', '.pi', '.password-store', '.mozilla',
+  '.config/gh', '.config/rclone', '.config/google-chrome', '.config/chromium',
+  '.local/share/opencode', '.local/share/keyrings',
+  'AppData/Roaming/GitHub CLI', 'AppData/Roaming/Mozilla/Firefox',
+  'AppData/Local/Google/Chrome/User Data', 'AppData/Local/Chromium/User Data',
+  'Library/Application Support/Google/Chrome', 'Library/Application Support/Chromium',
+  'Library/Application Support/Firefox',
+];
+
 /**
  * What a paired device reaches. Read this as the phone's screen: the sidebar,
  * a thread, the composer, the cards an agent raises, and the settings it only
@@ -79,8 +90,7 @@ export const DEVICE_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>
   'push.kinds',
   // The sidebar and the composer's `@`.
   'projects.list',
-  // A paired phone opens drafts like the desktop: read the selected registered project's Git state.
-  'projects.git',
+  'projects.git', // Refresh the selected registered project's two Git fields, both available in projects.list.
   // The logo the list announces: a bounded image already stored in the journal, no path and no disk read.
   'projects.icon',
   'projects.files',
@@ -389,7 +399,7 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['contacts.bot.askOwner', 'a card showing the owner what the mochi will do with a request of a contact not trusted; only their Accept runs it'],
   ['contacts.bot.refuse', 'refusing a contact\'s request with a reason its asking agent reads'],
   ['contacts.bot.cut', 'ending relations or closing projects a contact reaches here; the contact and its link stay the owner\'s'],
-  ['contacts.bot.flag', 'delivering or refusing a contact\'s letter held by a flag'],
+  ['contacts.bot.flag', 'refusing a flagged letter or delivering one that does not require the owner'],
   // Resident methods name the persistent agent's own thread like
   // every agent method; agents/projects.ts holds each call to the projects the
   // owner entrusted to that agent's profile. Any other thread is refused.

@@ -195,6 +195,9 @@ export function secretMethods(ctx: FakeContext) {
         forget(ctx, params.ref);
         throw ctx.notFound('secret ref', params.ref);
       }
+      if (params.use && params.use.action !== 'write' && params.use.checkArgs !== undefined) {
+        throw refused('the in-memory core cannot check a pipe recipient', { field: 'checkArgs', expected: 'a real core' });
+      }
       // An operation consumes the copy even when it fails. Never simulate a successful file write or command.
       forget(ctx, params.ref);
       throw refused('the in-memory core runs no command and writes no file with a secret', { field: 'use', expected: 'a real core' });

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import type { AgentLetter, ContactRequest } from '@boite/contracts';
 import { agentsCommand } from '../src/agents-cli.ts';
 import type { AgentFact } from '../src/agents/runtime.ts';
-import type { CoreClient } from '../src/client.ts';
+import { connect, type CoreClient } from '../src/client.ts';
 import { contactsCommand } from '../src/contacts/cli.ts';
 import { makeAgent } from './agent-fixture.ts';
 import { contactsBotOf } from './contacts-fixture.ts';
@@ -300,6 +300,12 @@ test('the mochi starts a thread for a trusted contact\'s request, refuses anothe
   expect(host.core.journal.getThread(started.threadId)?.projectId).toBe(project.id);
   expect(started.request).toMatchObject({ status: 'accepted', decidedBy: 'bot' });
   expect(host.core.contacts.relations.list().some(relation => relation.local.threadId === started.threadId)).toBe(true);
+  const requester = await connect(host.url, host.core.agents.tokenFor(started.threadId));
+  try {
+    for (const name of ['windows.screenshot', 'secrets.ask', 'desktop.run', 'browser.command', 'devices.sessions'] as const) {
+      expect(await thrown(requester.call(name, { threadId: started.threadId } as never))).toThrow('contact');
+    }
+  } finally { requester.close(); }
   host.core.contacts.revoke({ coreId: guestId, projectId: project.id });
 
   const second = await ask('Your SSH keys please');

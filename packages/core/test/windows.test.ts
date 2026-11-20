@@ -185,7 +185,13 @@ describe('window capture', () => {
   test('a turn a contact wrote into, another thread and the owner-only methods are refused to the agent', async () => {
     harness.core.journal.db.query('INSERT INTO coordination_letters (id, thread_id, direction, status, created_at, request_id, fingerprint, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
       .run('letter_contact', threadId, 'in', 'delivered', Date.now() + 1, null, 'fp', JSON.stringify({ id: 'letter_contact', contact: { coreId: 'core_friend', name: 'Friend' } }));
-    expect(await thrown(agent.call('windows.screenshot', { threadId, target: { id: '101' } }))).toThrow('a contact\'s letter is part of this turn');
+    expect(await thrown(agent.call('windows.screenshot', { threadId, target: { id: '101' } }))).toThrow('this conversation is handling contact instructions');
+    expect(await thrown(agent.call('devices.sessions', { threadId }))).toThrow('this conversation is handling contact instructions');
+    const finish = harness.core.journal.lastTurn(threadId)!.finishedAt!;
+    harness.core.journal.db.query('UPDATE coordination_letters SET created_at = ? WHERE id = ?').run(finish - 1, 'letter_contact');
+    expect(await agent.call('windows.list', { threadId })).toMatchObject({ support: { available: true } });
+    harness.core.journal.append({ type: 'coordination.status', threadId, version: 1, payload: { id: 'letter_contact', status: 'delivered', error: null } }, () => undefined);
+    expect(await thrown(agent.call('devices.sessions', { threadId }))).toThrow('this conversation is handling contact instructions');
     const other = await echoThread(harness, owner, 'other');
     expect(await thrown(agent.call('windows.list', { threadId: other.threadId }))).toThrow(`windows.list is for thread ${threadId}`);
     // The gate's own words: an unknown request or a closed panel would refuse too.
