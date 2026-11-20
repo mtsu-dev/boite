@@ -1,5 +1,5 @@
 /**
- * The rope simulation behind the whip experiment.
+ * The rope simulation behind the Whip.
  *
  * Ported from OpenWhip's `overlay.html`
  * (https://github.com/GitFrog1111/OpenWhip, MIT), whose tuning is what makes

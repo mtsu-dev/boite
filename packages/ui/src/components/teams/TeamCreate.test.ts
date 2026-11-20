@@ -47,7 +47,7 @@ async function machine(names: string[], at: { coreId?: string; coreName?: string
   return { client, store, bots };
 }
 
-/** This computer with three bots and no team yet, the Teams experiment on in the app and on the core. */
+/** This computer with three bots and no team yet. */
 async function computer() {
   const local = await machine(['Huginn', 'Jeux', 'Muninn']);
   workspace.machines = [{ id: 'local', label: 'Local', store: local.store }]; workspace.active = local.store;

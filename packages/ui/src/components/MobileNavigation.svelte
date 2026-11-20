@@ -80,7 +80,7 @@
   $effect.pre(() => { if (screen !== 'chat') lastList = screen; });
   const leaving = $derived(slide.direction === 'push');
   const listScreen = $derived(leaving ? lastList : screen);
-  // The contacts under the projects, loaded with their experiment; a desktop window shows them in the column on the right.
+  // The contacts under the projects, loaded on first show; a desktop window shows them in the column on the right.
   let SidebarContacts = $state<typeof import('./home/SidebarContacts.svelte').default>();
   let ContactRequestNotice = $state<typeof import('./home/ContactRequestNotice.svelte').default>();
   let ContactInboxRows = $state<typeof import('./home/ContactInboxRows.svelte').default>();
