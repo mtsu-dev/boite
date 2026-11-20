@@ -73,10 +73,17 @@ for (const width of [1280, 390]) {
       await page.waitFor(`document.querySelector('${done} [data-testid="done-thread-pr"]')?.dataset.state === 'MERGED'`);
       await page.settleAnimations();
       await page.screenshot(join(import.meta.dir, '.artifacts', `merged-pr-agent-done-${width}.png`));
+      const actionsVisible = `(() => {
+        const row = document.querySelector('${done}');
+        const time = row.querySelector('time');
+        const restore = row.querySelector('[data-testid="done-thread-restore"]');
+        const actions = restore.parentElement;
+        return getComputedStyle(time).opacity === '1' && getComputedStyle(actions).opacity === '1'
+          && restore.getBoundingClientRect().width > 0
+          && time.getBoundingClientRect().right <= restore.getBoundingClientRect().left;
+      })()`;
       await page.evaluate(`document.querySelector('${done} [data-testid="done-thread-open"]').focus()`);
-      await page.settleAnimations();
-      expect(await page.evaluate(`getComputedStyle(document.querySelector('${done} time')).opacity`)).toBe('0');
-      expect(await page.evaluate(`getComputedStyle(document.querySelector('${done} [data-testid="done-thread-restore"]')).opacity`)).toBe('1');
+      await page.waitFor(`document.querySelector('${done}').matches(':focus-within') && ${actionsVisible}`);
       if (width >= 720) {
         const point = await page.evaluate<{x:number; y:number}>(`(() => {
           document.activeElement.blur();
@@ -84,17 +91,13 @@ for (const width of [1280, 390]) {
           return {x:box.x + box.width / 2, y:box.y + 12};
         })()`);
         await page.send('Input.dispatchMouseEvent', {type:'mouseMoved', ...point});
-        await page.waitFor(`document.querySelector('${done}').matches(':hover') && getComputedStyle(document.querySelector('${done} time')).opacity === '0' && getComputedStyle(document.querySelector('${done} [data-testid="done-thread-restore"]')).opacity === '1'`);
-        expect(await page.evaluate(`document.querySelector('${done}').matches(':hover')`)).toBe(true);
-        expect(await page.evaluate(`getComputedStyle(document.querySelector('${done} time')).opacity`)).toBe('0');
+        await page.waitFor(`document.querySelector('${done}').matches(':hover') && ${actionsVisible}`);
         await page.screenshot(join(import.meta.dir, '.artifacts', `merged-pr-restore-hover-${width}.png`));
         await page.send('Input.dispatchMouseEvent', {type:'mouseMoved', x:width - 1, y:1});
       } else {
+        await page.evaluate('document.activeElement.blur()');
         await page.send('Emulation.setTouchEmulationEnabled', {enabled:true, maxTouchPoints:1});
-        await page.waitFor(`matchMedia('(hover: none)').matches && matchMedia('(pointer: coarse)').matches && getComputedStyle(document.querySelector('${done} time')).opacity === '1' && getComputedStyle(document.querySelector('${done} [data-testid="done-thread-restore"]')).display === 'none'`);
-        expect(await page.evaluate(`matchMedia('(hover: none)').matches && matchMedia('(pointer: coarse)').matches`)).toBe(true);
-        expect(await page.evaluate(`getComputedStyle(document.querySelector('${done} time')).opacity`)).toBe('1');
-        expect(await page.evaluate(`getComputedStyle(document.querySelector('${done} [data-testid="done-thread-restore"]')).display`)).toBe('none');
+        await page.waitFor(`matchMedia('(hover: none)').matches && matchMedia('(pointer: coarse)').matches && ${actionsVisible}`);
         await page.screenshot(join(import.meta.dir, '.artifacts', `merged-pr-running-touch-${width}.png`));
       }
       await page.evaluate('document.activeElement.blur()');

@@ -136,7 +136,7 @@
     width: 100%;
     height: auto;
     min-height: 32px;
-    padding: 6px calc(2 * var(--control-sm) + var(--pad-x)) 6px var(--pad-x);
+    padding: 6px calc(2 * max(var(--control-sm), var(--icon-button-target)) + var(--pad-x)) 6px var(--pad-x);
     gap: 4px;
     background: transparent;
   }
@@ -199,7 +199,7 @@
     .actions { opacity: 1; }
   }
   @media (max-width: 720px) {
-    .row { min-height: var(--touch-target); padding-right: calc(2 * var(--touch-target) + var(--pad-x)); }
+    .row { min-height: var(--touch-target); }
     .actions :is(.restore, :global(.trigger)) { min-height: var(--touch-target); min-width: var(--touch-target); }
     .title { font-size: var(--text-base); }
   }

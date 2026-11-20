@@ -149,6 +149,9 @@ above the message box or the bottom tabs.
   conversation before sending a message. Restoring brings back your message
   draft. Its agent starts again with your first message.
 - A project's Done list shows ten rows at a time; scroll it for the rest.
+  The row shows when each conversation was put away. To reveal Restore on
+  desktop, point to the row or focus it with the keyboard. Restore is visible
+  on touch screens.
 - Delete done threads after (days) defaults to 3. Manual archives are kept.
 - Delete shows how long the conversation's machine keeps its history. Choose
   Archive in the same dialog to put a current conversation aside.
