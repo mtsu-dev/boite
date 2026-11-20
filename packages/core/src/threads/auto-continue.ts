@@ -159,7 +159,8 @@ export class AutoContinues {
     if (result.refusal) return;
     if (result.cwdGone || result.contextFull) {
       // Handled: a later start that finds work this thread held (a team, a workflow run) resumes nothing either.
-      this.#resumes.settle(thread.id, { streak: 0, handled: turn.id });
+      const window = this.#resumes.entry(thread.id)?.resumedWindow;
+      this.#resumes.settle(thread.id, { streak: 0, handled: turn.id, ...(window !== undefined ? { resumedWindow: window } : {}) });
       return;
     }
     const error = (turn.error ?? result.error ?? 'unknown error').trim();
