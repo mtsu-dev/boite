@@ -144,7 +144,10 @@ function seed(ctx: FakeContext): ContactsState {
       text: 'An agent on a project like the Boite pairing flow: our site embeds it and the redirect loops after login.',
       gitRemote: 'https://github.com/chris/website.git',
       createdAt: at - 12 * 60_000,
-      status: 'pending'
+      // `?contactNotice=0`: already refused, so a page measured for something else shows no contact notice.
+      ...(typeof location !== 'undefined' && new URLSearchParams(location.search).get('contactNotice') === '0'
+        ? { status: 'refused' as const, reason: 'Not now', decidedBy: 'owner' as const, decidedAt: at - 11 * 60_000 }
+        : { status: 'pending' as const })
     },
     {
       id: 'creq-done',
