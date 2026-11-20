@@ -9,7 +9,7 @@ import type { CoreClient } from './client.ts';
 import type { CliIo } from './cli.ts';
 import { Usage } from './cli-args.ts';
 
-const SECRET_HELP = `boite secret: ask the user for a key on a card, then use it by ref without ever seeing it.
+export const SECRET_HELP = `boite secret: ask the user for a key on a card, then use it by ref without ever seeing it.
   boite secret list                                   compatibility: reports that no keys are stored
   boite secret ask <NAME> --why "<reason>" [--placeholder "<example>"] [--timeout <minutes>]
                                                       prints: saved secret:<ref> | declined | cancelled | timed_out

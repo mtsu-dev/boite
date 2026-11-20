@@ -16,7 +16,7 @@ export interface ContactsOptions {
   worktree: boolean;
 }
 
-const CONTACTS_HELP = `Contacts mochi (only its own thread):
+export const CONTACTS_HELP = `Contacts mochi (only its own thread):
   contacts                       requests waiting on you, relations, open flags,
                                  contacts and the projects you may use
   contacts forward <request-id> <contact>[/<thread-id>] [text]
