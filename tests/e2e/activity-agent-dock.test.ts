@@ -29,7 +29,8 @@ async function settle() {
 beforeAll(async () => {
   const port = await freePort();
   server = await startDevUi(port);
-  page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&team=1` });
+  // `contactNotice=0`: the demo contact notice would cover the line on a phone once the tasks open.
+  page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&team=1&contactNotice=0` });
   await page.waitFor(`document.querySelector('${id('thread-row')}[data-thread-id="t-trace"]')`);
   await size(false);
 }, 60_000);

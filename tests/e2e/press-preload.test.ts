@@ -31,7 +31,8 @@ async function load(): Promise<void> {
 beforeAll(async () => {
   const port = await freePort();
   server = await startUi(port);
-  url = `http://127.0.0.1:${port}/?fake=1&open=recent&rtt=${RTT_MS}`;
+  // `contactNotice=0`: no demo contact notice in the window the presses land in.
+  url = `http://127.0.0.1:${port}/?fake=1&open=recent&rtt=${RTT_MS}&contactNotice=0`;
   // `BrowserPage.launch` tells every page it is driven, as the guard expects to see.
   page = await BrowserPage.launch({ url, windowSize: { width: 1280, height: 900 } });
   await page.waitFor('document.querySelector("[data-testid=thread-row]")', 30_000);
