@@ -110,6 +110,8 @@ function scopedPlatform(hub: PlatformScopes): ProcessPlatform {
     ...(backend.startup ? {startup: (id: string, active: boolean) => {const native = existing(id); if (native !== undefined) backend.startup!(native, active);}} : {}),
     // A repeated shutdown must not fall back to killing an unscoped, possibly reused PID.
     terminate: id => {if (owner.closed) return true; const native = existing(id); return native !== undefined && backend.terminate(native);},
+    terminateSubtree: (id, pid) => {const native = existing(id); if (native !== undefined) backend.terminateSubtree?.(native, pid);},
+    stopDescendants: (id, pid) => {const native = existing(id); return native === undefined ? undefined : backend.stopDescendants?.(native, pid);},
     terminateProcess: (id, pid, startedAt) => {const native = existing(id); return native !== undefined && backend.terminateProcess(native, pid, startedAt);},
     sample: id => {const native = existing(id); return native === undefined ? null : backend.sample(native);},
     ...(backend.watchResources ? {watchResources: (active: boolean) => {if (!owner.closed) hub.watch(owner, active);}} : {}),

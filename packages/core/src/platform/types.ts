@@ -183,6 +183,12 @@ export interface ProcessPlatform {
   capability(): TraceCapability;
   applySettings(settings: Settings): void;
   attach(threadId: string, pid: number): boolean;
+  /** True when spawned children should lead a separate POSIX session. */
+  readonly detachedChildren: boolean;
+  /** Stop the child itself, and its process group when this platform uses them. */
+  stopChild(pid: number, running: () => boolean, signal: () => void): Promise<void> | undefined;
+  /** Native membership reports descendants before the memory governor can stop them. */
+  readonly memoryVictimsMustBeRegistered?: boolean;
   /** Reconcile captured exits when the native job is empty; true if occupied or unreadable. */
   hasProcesses?(threadId: string): boolean;
   /** Normal priority during agent initialization; platform CPU and memory caps still apply. */
@@ -190,6 +196,10 @@ export interface ProcessPlatform {
   terminate(threadId: string): boolean;
   /** A held Windows handle, or a matching registered/sampled POSIX birth. */
   terminateProcess(threadId: string, pid: number, startedAt?: number | null): boolean;
+  /** Stop this assigned root and its live descendants using handles in the same job. */
+  terminateSubtree?(threadId: string, pid: number): void;
+  /** Stop descendants that may have left a POSIX process group, while their root can still identify them. */
+  stopDescendants?(threadId: string, pid: number): Promise<void> | undefined;
   /**
    * Windows' fallback tree kill, for a pid outside the job: `killAll` waits for a returned promise.
    * Call it in the tick that saw the root running: it holds the root by a handle of its own from

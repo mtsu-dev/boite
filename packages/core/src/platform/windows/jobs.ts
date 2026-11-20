@@ -18,6 +18,7 @@ import { StartupPriority } from './startup-priority.ts';
 import { processEventDiagnostic } from '../../process-event-diagnostics.ts';
 import { UNNAMED_PROCESS } from '../../process-identity.ts';
 import { listJobPids } from './jobs-packets.ts';
+import { killJobSubtree } from './tree-kill.ts';
 import { applyCpuCap, applyMemoryLimit, cpuRateOfJob, memoryLimitOfJob as readMemoryLimit,
   OFF_TOTAL_USER_TIME, OFF_TOTAL_KERNEL_TIME, OFF_ACTIVE_PROCESSES, ACCOUNTING_SIZE } from './job-limits.ts';
 import { commandLineOf, consoleHost, cpuMsOf, createdAtOfPid, creationIdentityOf, exitCodeOf, exitStatusOf, imageNameOf,
@@ -67,6 +68,7 @@ function loadKernel32() {
       returns: FFIType.i32,
     },
     AssignProcessToJobObject: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
+    IsProcessInJob: { args: [FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
     TerminateJobObject: { args: [FFIType.ptr, FFIType.u32], returns: FFIType.i32 },
     TerminateProcess: { args: [FFIType.ptr, FFIType.u32], returns: FFIType.i32 },
     CreateIoCompletionPort: { args: [FFIType.u64, FFIType.ptr, FFIType.u64, FFIType.u32], returns: FFIType.ptr },
@@ -122,6 +124,10 @@ function nativeApi(k32: Kernel32, nt: Ntdll | null) {
       k32.QueryInformationJobObject(asPointer(job), klass, ptr(buffer), buffer.byteLength, null) !== 0,
     assign: (job: number, proc: number): boolean =>
       k32.AssignProcessToJobObject(asPointer(job), asPointer(proc)) !== 0,
+    inJob: (job: number, proc: number): boolean => {
+      const result = new Int32Array(1);
+      return k32.IsProcessInJob(asPointer(proc), asPointer(job), ptr(result)) !== 0 && result[0] !== 0;
+    },
     terminateJob: (job: number, exitCode: number): boolean =>
       k32.TerminateJobObject(asPointer(job), exitCode) !== 0,
     terminateProcess: (proc: number, exitCode: number): boolean =>
@@ -376,6 +382,10 @@ export function terminateJobProcess(threadId: string, pid: number): boolean {
   const api = ensureNative();
   if (api === null) return false;
   return api.terminateProcess(entry.handle, KILL_EXIT_CODE);
+}
+export function terminateJobSubtree(threadId: string, pid: number): void {
+  const job = threadJobs.get(threadId);
+  if (native !== null && job) killJobSubtree(native, job.handle, pid);
 }
 
 /**
