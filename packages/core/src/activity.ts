@@ -412,7 +412,12 @@ export class ActivityStore {
     // While its subagents or a workflow run, a goal turn past its first could only say they still run: the goal waits,
     // and the turn that brings their result back schedules the next run (`#finished`). The agent's own tasks may be a
     // server that runs for hours, so they hold nothing.
-    if (kind === 'goal' && state.goal!.iterations > 0 && backgroundWork(this.#core, threadId, { ownTasks: false, skip: child => this.#reviewers.has(child) || this.tracker.owns(child) })) { this.#schedule(threadId, BACKGROUND_RECHECK_MS); return; }
+    if (kind === 'goal' && state.goal!.iterations > 0 && backgroundWork(this.#core, threadId, { ownTasks: false, skip: child => this.#reviewers.has(child) || this.tracker.owns(child) })) {
+      // An active loop keeps its own time: the look comes at the nearer of the two.
+      const loopDue = state.loop?.status === 'active' && state.loop.nextRunAt !== null ? Math.max(0, state.loop.nextRunAt - Date.now()) : Infinity;
+      this.#schedule(threadId, Math.min(BACKGROUND_RECHECK_MS, loopDue));
+      return;
+    }
     const last = review?.verdicts.at(-1);
     // Only the first turn after a review carries its findings; later ones have them in the history.
     const feedback = review && last && last.verdict !== 'pass' && review.delivered < review.verdicts.length ? { round: last.round, feedback: last.summary } : undefined;
