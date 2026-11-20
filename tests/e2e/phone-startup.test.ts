@@ -37,6 +37,10 @@ test('a fresh browser paints startup with all client files pending', async () =>
         expect(await page.evaluate(`document.querySelector('${id('boot-status')}').innerText`)).toBe('Démarrage');
         const preloadsChat = `!!document.querySelector('link[rel=modulepreload][href*="/conversations-"]')`;
         expect(await page.evaluate<boolean>(preloadsChat)).toBe(!mobile);
+        expect(await page.evaluate(`(() => {
+          const links = [...document.querySelectorAll('link[rel=modulepreload], link[rel=preload], link[rel=stylesheet]')].map(link => link.href);
+          return links.filter((url, i) => links.indexOf(url) !== i);
+        })()`)).toEqual([]);
         const captures = process.env['BOITE_E2E_CAPTURES'];
         if (captures) await page.screenshot(join(captures, `${mobile ? 'phone' : 'desktop'}-startup.png`));
       } finally { await page.close(); }

@@ -37,6 +37,7 @@
   import { strings } from './lib/strings';
   import { activeLocale } from './lib/i18n.svelte';
   import { retryOrReload } from './lib/retry-load';
+  import { warmOfflineConversations } from './lib/sw';
   import { experimentOn } from './lib/experiments.svelte';
   import { contactsShown, contactsViews } from './lib/contacts-views.svelte';
   import { whipEntry } from './lib/whip-entry.svelte';
@@ -113,7 +114,12 @@
     && store.page === 'chat' && !mobileNavigation.current);
   // The machine the window opened on may still give way to one that answers.
   const booted = $derived(store.booted && desktopViewsSettled && !(workspace.waiting && store === workspace.primary)
-    && (inShell || earlyPairing || mobileNavigation.current !== undefined || mobileNavigation.failed));
+    && (inShell || !narrow.current || earlyPairing || mobileNavigation.current !== undefined || mobileNavigation.failed));
+  $effect(() => {
+    if (!inShell && !MOBILE_BUILD && booted && workspace.machinesOr(store).some(({ store: machine }) => machine.client instanceof WsClient && machine.connection === 'ready')) {
+      return warmOfflineConversations();
+    }
+  });
   // A core compacting its journal once before it serves: the start says so rather than only "Starting".
   let compacting = $state(false);
   $effect(() => {
@@ -125,13 +131,14 @@
     return () => { live = false; clearInterval(timer); };
   });
   if (desktopStartup || !narrow.current || readStoredEndpoint() || opensFromLink()) {
-    loadMobileNavigation();
+    if (!inShell && narrow.current) loadMobileNavigation();
+    if (desktopStartup) void activityPage.load().catch(() => undefined);
     const views = desktopStartup ? [sidebar, chatView, agentsLayout] : [sidebar, chatView];
     // Connect the core while the desktop's views load, then draw them together.
     void Promise.allSettled(views.map(view => view.load())).then(() => { desktopViewsSettled = true; });
   }
   $effect(() => {
-    if (!inShell && (!narrow.current || (store.booted && !earlyPairing))) untrack(loadMobileNavigation);
+    if (!inShell && narrow.current && store.booted && !earlyPairing) untrack(loadMobileNavigation);
   });
   // Wider than a phone (an iPhone on its side, a tablet, a desktop browser)
   // a lost or revoked pairing gets the same screen rather than a stale page.
@@ -530,7 +537,7 @@
 
 <div class="app" class:shell={inShell} class:ready={booted} class:phone-chat={!inShell && !mobileRecovery && store.page === 'chat' && mobileScreen === 'chat'} class:off-chat={!inShell && store.page !== 'chat'} class:tabbed={!inShell && mobileTabs} class:railed={railShown} class:quitting style:--bar-left={barLeft} bind:this={appRoot}>
   {#if railShown}<AppRail {store} />{/if}
-  {#if !inShell && booted}
+  {#if !inShell && narrow.current && booted}
     {#if earlyPairing}
       <MobilePairing {store} screen={mobileScreen} navigate={(screen) => { mobileScreen = screen; }} onpaired={() => { mobileScreen = 'threads'; }} />
     {:else if mobileNavigation.current}
