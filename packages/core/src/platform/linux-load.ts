@@ -252,11 +252,11 @@ export class LinuxLoad {
   }
 
   /**
-   * Stop one process and everything under it. Its children would be reparented
+   * Capture one process and everything under it. Its children would be reparented
    * away from the thread's roots and drop out of the next sample while still
    * holding their memory. Only a registered or sampled birth can authorize a
    * signal: a pid may have been given to an unrelated process in the meantime.
-   * False when the process itself could not be identified or signalled.
+   * No capture when the root cannot be identified.
    */
   captureTree(pid: number, threadId: string, startedAt?: number | null) {
     const registered = this.#births.get(threadId);

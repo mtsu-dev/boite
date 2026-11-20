@@ -114,12 +114,14 @@ describe('procs', () => {
     const fallback = spyOn(registry.platform, 'terminateUnassigned');
     const threadId = 'native-subtree-stop';
     const sibling = registry.spawn(threadId, process.execPath, ['-e', 'await Bun.sleep(30000)']);
-    const root = registry.spawn(threadId, process.execPath, ['-e', `
+    const root = registry.spawnPiped(threadId, process.execPath, ['-e', `
+      await Bun.stdin.text();
       const tool = Bun.spawn([process.execPath, '-e', 'await Bun.sleep(30000)'], { stdout: 'ignore', stderr: 'ignore', windowsHide: true });
       console.log(tool.pid);
       await tool.exited;
     `]);
     try {
+      root.proc.stdin.end();
       const reader = root.proc.stdout.getReader();
       const { value } = await reader.read();
       reader.releaseLock();
