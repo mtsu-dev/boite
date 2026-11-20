@@ -1,14 +1,14 @@
 import { chatPreviewSizeProblem, decodedBytes, ownerThreadRequestKey, ownerThreadSelection, partChannel, permissionAutoDecision, unreadInterruptionAt, type RpcResult, type StreamChannel, type ThreadId } from '@boite/contracts';
 import { noteUserMessage } from './checklist';
 import { startAutoGoal, startsAutoGoal } from './activity';
-import { createFakeThread, publishFakeThread } from './create-thread';
+import { createFakeThread, publishFakeThread, writeFakeFork } from './create-thread';
 import { trustContactMail } from './contact-hold';
 import { dismissMergedPr } from './merged-pr-archive';
 import { agentDoneMethods } from './agent-done';
 import { assertIdleFamily } from './completion';
 import { isThreadTerminal, protectedThreadIdsError, threadActive } from '@boite/contracts';
 /** Threads and their messages: create, read, select, archive, and the turn entry points. */
-import { DEFAULT_THREAD_DONE_RETENTION_DAYS, DEFAULT_THREAD_DELETION_RETENTION_DAYS, attachmentError, previewReferencesError, MESSAGE_PAGE, MESSAGE_PAGE_MAX, MESSAGE_PAGE_MAX_BYTES, RPC_MAX_FRAME_BYTES, RpcErrorCode, type AgentProfile, type AgentWhere, type Attachment, type Message, type MessageId, type MoveEnd, type PreviewReference, type RpcParams, type Thread, type Turn } from '@boite/contracts';
+import { DEFAULT_THREAD_DONE_RETENTION_DAYS, DEFAULT_THREAD_DELETION_RETENTION_DAYS, attachmentError, previewReferencesError, MESSAGE_PAGE, MESSAGE_PAGE_MAX, MESSAGE_PAGE_MAX_BYTES, RPC_MAX_FRAME_BYTES, RpcErrorCode, type AgentProfile, type AgentWhere, type Attachment, type Message, type MessageId, type MoveEnd, type PreviewReference, type RpcParams, type Thread } from '@boite/contracts';
 import { steerUser } from './user-steering';
 import { recoverTurn, resumeTurn } from './recovery';
 import { RpcFailure } from '../client';
@@ -46,39 +46,6 @@ function setStreamChannels(ctx: FakeContext, threadId: ThreadId, channels: Strea
       ctx.emitToThread(threadId, 'message.part', { threadId, messageId: message.id, partIndex, part: structuredClone(part) });
     });
   }
-}
-
-function writeFakeFork(ctx: FakeContext, source: Thread, kept: Message[], placed: ReturnType<typeof fakeWorktree> | null = null) {
-  const title = `${source.title} (fork)`;
-  const now = ctx.now();
-  const id = `t-${++ctx.seq}`;
-  const turnIds = new Map<string, string>();
-  const messages: Message[] = kept.map((message) => {
-    if (!turnIds.has(message.turnId)) turnIds.set(message.turnId, `turn-${++ctx.seq}`);
-    return { ...structuredClone(message), id: `m-${++ctx.seq}`, threadId: id, turnId: turnIds.get(message.turnId) ?? message.turnId, state: message.state === 'streaming' ? 'complete' : message.state };
-  });
-  const turns: Turn[] = source.turns.filter((turn) => turnIds.has(turn.id)).map((turn) => ({
-    ...structuredClone(turn),
-    id: turnIds.get(turn.id) ?? turn.id,
-    threadId: id,
-    status: turn.status === 'queued' || turn.status === 'running' ? 'stopped' : turn.status,
-    queueHold: null,
-    startedAt: turn.startedAt ?? turn.queuedAt,
-    finishedAt: turn.finishedAt ?? now,
-    usage: null,
-  }));
-  const thread: Thread = {
-    id, projectId: source.projectId, title, titleSource: source.titleSource,
-    providerId: source.providerId, accountId: source.accountId, model: source.model, effort: source.effort, speed: source.speed ?? null,
-    cwd: placed?.path ?? source.cwd, branch: placed?.branch ?? source.branch, branchNamingPending: placed?.namingPending ?? false, permissionMode: source.permissionMode,
-    status: 'idle', unread: false, archived: false, doneAt: null, pinned: false,
-    forkOrigin: { threadId: source.id, messageId: kept.at(-1)?.id ?? null, turnId: kept.at(-1)?.turnId ?? null, mode: 'seeded' },
-    sessionId: null, sessionGeneration: 1, selectionVersion: 0, load: null, context: null,
-    createdAt: now, updatedAt: now, messages, turns, commands: [], messagesBefore: null,
-  };
-  ctx.threads.set(id, thread);
-  ctx.emit('thread.created', structuredClone(toSummary(thread)));
-  return structuredClone(toSummary(thread));
 }
 
 /** A persistent agent's own thread: projectless, in its workspace folder, titled with its name. */
