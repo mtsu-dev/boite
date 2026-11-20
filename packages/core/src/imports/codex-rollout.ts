@@ -336,7 +336,7 @@ export class RolloutReader {
     }
     this.dialect = dialect;
     this.echoed = false;
-    this.turns.push({ prompt, images, promptAt: at, parts: [], answerAt: null, lastAt: at });
+    this.turns.push({ prompt, command: false, images, promptAt: at, parts: [], answerAt: null, lastAt: at });
   }
 
   /** Two messages in a row are one text part, a blank line between them. */
