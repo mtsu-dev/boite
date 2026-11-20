@@ -269,6 +269,32 @@ describe.skipIf(!ready)('installer hooks', () => {
     expect(crashedRun.scripts).toEqual(['stop-shell', 'stop-core']);
     expect(readFileSync(join(crashed, 'boite-core.exe'), 'utf8')).toBe('the new core\n');
     rmSync(join(data, 'boite2', 'core.lock'), { force: true });
+
+    // A core can acquire the lock before it writes any record or becomes
+    // visible to process discovery. Installation must refuse before copying.
+    const locked = idle('locked');
+    const holdingCore = join(base, 'holding-core.txt');
+    const coreHolder = Bun.spawn(['powershell', '-NoProfile', '-NonInteractive', '-Command',
+      "$f = [IO.File]::Open($env:BOITE_HOLD_FILE, 'OpenOrCreate', 'ReadWrite', 'ReadWrite'); $f.Lock(4611686018427387904, 1); Set-Content -LiteralPath $env:BOITE_HOLD_SIGNAL 'held'; Start-Sleep -Seconds 20"], {
+      env: { ...process.env, BOITE_HOLD_FILE: join(data, 'boite2', 'core.lock'), BOITE_HOLD_SIGNAL: holdingCore },
+      stdout: 'ignore', stderr: 'pipe', windowsHide: true,
+    });
+    started.push(coreHolder.pid);
+    try {
+      for (const deadline = Date.now() + 10_000; !existsSync(holdingCore);) {
+        if (Date.now() > deadline || coreHolder.exitCode !== null) throw new Error('the competing core did not lock the data file');
+        await Bun.sleep(50);
+      }
+      const installer = Bun.spawn([join(base, 'setup.exe'), '/S', `/D=${locked}`], { stdout: 'ignore', stderr: 'ignore', windowsHide: true });
+      started.push(installer.pid);
+      expect(await installer.exited).toBe(2);
+      expect(coreHolder.exitCode).toBeNull();
+      expect(readFileSync(join(locked, 'boite-core.exe')).equals(readFileSync(process.execPath))).toBe(true);
+      expect(bundles(locked)).toEqual({ core: true, ui: true, kept: true, aside: false });
+    } finally {
+      coreHolder.kill();
+      await coreHolder.exited;
+    }
     // A matching shell name in another installation stays running.
     expect(other.exitCode).toBeNull();
   }, 180_000);

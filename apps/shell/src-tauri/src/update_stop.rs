@@ -2,19 +2,16 @@
 //! 30 seconds at most, stops, and resumes after the restart. A core too old for that handoff
 //! keeps the earlier rule: it stays usable until it grants an idle stop.
 use std::io::{Read, Write};
-#[cfg(unix)]
-use std::fs::{File, OpenOptions};
+use std::fs::{File, OpenOptions, TryLockError};
 use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
 use std::sync::Mutex;
 use std::time::Duration;
 
-#[cfg(unix)]
-use {fs2::FileExt, serde::Deserialize};
+use serde::Deserialize;
 
 use crate::local_core::health::{health, read_core_file, same_core, HEALTH_TIMEOUT};
-#[cfg(unix)]
-use {crate::local_core::{health::CoreStart, starting::read_starting}, crate::platform::file_identity};
+use crate::local_core::{health::CoreStart, starting::read_starting};
 use crate::platform::process::Watched;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -77,7 +74,6 @@ pub(crate) fn launch_if_allowed(check: impl FnOnce() -> Result<(), String>, laun
 /// and its own shutdown, with a margin.
 pub(crate) const HANDOFF_EXIT: Duration = Duration::from_secs(60);
 
-#[cfg(unix)]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct LockRecord {
@@ -88,7 +84,6 @@ struct LockRecord {
     os_lock: bool,
 }
 
-#[cfg(unix)]
 fn core_is_running(directory: &Path) -> Result<bool, String> {
     let core = read_core_file(&directory.join("core.json"))?;
     Ok(core.is_some_and(|core| core.pid.is_some_and(|pid| same_core(pid, &core.start())))
@@ -97,18 +92,28 @@ fn core_is_running(directory: &Path) -> Result<bool, String> {
 
 /// Holds the same lock startup takes. A legacy PID record can still exclude
 /// us even without an OS lock. A live core must use authenticated admission.
-#[cfg(unix)]
 pub(crate) fn lock_without_core(directory: &Path) -> Result<Option<File>, String> {
     if core_is_running(directory)? { return Ok(None); }
     let path = directory.join("core.lock");
     let failed = |error: std::io::Error| format!("cannot lock {} for the update: {error}", path.display());
-    let mut lock = OpenOptions::new().read(true).write(true).create(true).truncate(false).open(&path).map_err(failed)?;
-    match FileExt::try_lock_exclusive(&lock) {
-        Ok(()) => {}
-        Err(error) if error.raw_os_error() == fs2::lock_contended_error().raw_os_error() => return Ok(None),
-        Err(error) => return Err(failed(error)),
+    let mut options = OpenOptions::new();
+    options.read(true).write(true).create(true).truncate(false);
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        // Windows pins the pathname while this handle is open. The whole-file
+        // lock overlaps the single byte the core locks near the end of the file range.
+        options.share_mode(3);
     }
-    if !file_identity::still_at(&lock, &path).map_err(failed)? || core_is_running(directory)? {
+    let mut lock = options.open(&path).map_err(failed)?;
+    match lock.try_lock() {
+        Ok(()) => {}
+        Err(TryLockError::WouldBlock) => return Ok(None),
+        Err(TryLockError::Error(error)) => return Err(failed(error)),
+    }
+    #[cfg(unix)]
+    if !crate::platform::file_identity::still_at(&lock, &path).map_err(failed)? { return Ok(None); }
+    if core_is_running(directory)? {
         return Ok(None);
     }
     let mut record = Vec::new();

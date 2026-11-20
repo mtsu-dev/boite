@@ -15,6 +15,8 @@ use crate::window::{show_main, Reveal, REVEAL_AFTER, REVEAL_ANYWAY};
 use crate::{quota_window, resident};
 
 pub(crate) mod health;
+#[cfg(target_os = "linux")]
+mod appimage;
 mod locate;
 mod resolve;
 mod spawn;
@@ -143,7 +145,6 @@ pub struct CoreState {
     /// Set while an update installs: the core was stopped so the installer can
     /// replace its files, and nothing may start it again from the old ones.
     held: AtomicBool,
-    #[cfg(unix)]
     install_lock: Mutex<Option<std::fs::File>>,
 }
 
@@ -162,7 +163,6 @@ impl CoreState {
             adopted: Mutex::new(None),
             launch,
             held: AtomicBool::new(false),
-            #[cfg(unix)]
             install_lock: Mutex::new(None),
         }
     }
@@ -170,7 +170,7 @@ impl CoreState {
     /// Waits for startup before holding reconnects, then asks the core to hand its turns to the
     /// next one and stop. A core too old for that is asked for an idle-only stop, which
     /// cancellation can still call off.
-    pub(crate) fn wait_for_install(&self, control: &Mutex<crate::update_stop::InstallState>, idle_only: bool, still: impl Fn() -> Result<bool, String>, committed: impl Fn()) -> Result<bool, String> {
+    pub(crate) fn wait_for_install(&self, control: &Mutex<crate::update_stop::InstallState>, idle_only: bool, locks_data: bool, still: impl Fn() -> Result<bool, String>, committed: impl Fn()) -> Result<bool, String> {
         use crate::update_stop;
         if self.held.swap(true, Ordering::SeqCst) { return Err(HELD.into()); }
         let stopped = (|| {
@@ -178,10 +178,9 @@ impl CoreState {
             // start. New resolutions see the hold and cannot spawn a sidecar.
             wait_for_endpoint(&self.slot, self.launch.patience())?;
             reap_child(self);
-            // On Windows the updater exits once NSIS starts. Repair without
-            // a live core needs NSIS to take over the lock for the copy.
-            #[cfg(unix)]
-            if let Some(lock) = update_stop::lock_without_core(&self.launch.directory)? {
+            // Windows installers predating the lock still need live admission.
+            let offline = if locks_data { update_stop::lock_without_core(&self.launch.directory)? } else { None };
+            if let Some(lock) = offline {
                 let mut state = control.lock().map_err(|_| "update admission state is poisoned")?;
                 if state.cancelled() || !still()? { return Ok(false); }
                 *self.install_lock.lock().unwrap() = Some(lock);
@@ -192,8 +191,7 @@ impl CoreState {
             if !update_stop::stop_for_update(&self.launch.directory, control, idle_only, still, committed)? {
                 return Ok(false);
             }
-            #[cfg(unix)]
-            {
+            if locks_data {
                 reap_child(self);
                 let lock = update_stop::lock_without_core(&self.launch.directory)?
                     .ok_or("another core took the data directory after shutdown; nothing was installed")?;
@@ -211,7 +209,6 @@ impl CoreState {
 
     /// The install did not happen: the next caller starts the core again.
     pub(crate) fn release_hold(&self) {
-        #[cfg(unix)]
         self.install_lock.lock().unwrap().take();
         self.held.store(false, Ordering::SeqCst);
     }

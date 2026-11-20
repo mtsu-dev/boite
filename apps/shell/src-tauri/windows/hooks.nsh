@@ -37,6 +37,60 @@
 ; .onInstFailed below is read here, at file level.
 !include LogicLib.nsh
 
+Var BoiteCoreLock
+
+; Match the core's LockFileEx byte (core/src/platform/windows/file-lock.ts).
+; Open without FILE_SHARE_DELETE so neither a legacy startup nor a process
+; on another handle can replace the pathname while NSIS installs.
+!macro BOITE_LOCK_CORE_DIR DATA
+  Push $0
+  Push $1
+  Push $2
+  CreateDirectory "${DATA}"
+  System::Call 'kernel32::CreateFileW(w "${DATA}\core.lock", i 0xc0000000, i 3, p 0, i 4, i 0x80, p 0) p.r0'
+  ${If} $0 != -1
+    System::Call '*(p 0, p 0, i 0, i 0x40000000, p 0) p.r1'
+    System::Call 'kernel32::LockFileEx(p r0, i 3, i 0, i 1, i 0, p r1) i.r2'
+    System::Free $1
+    ${If} $2 != 0
+      StrCpy $BoiteCoreLock $0
+    ${Else}
+      System::Call 'kernel32::CloseHandle(p r0)'
+    ${EndIf}
+  ${EndIf}
+  Pop $2
+  Pop $1
+  Pop $0
+  ${If} $BoiteCoreLock == ""
+    DetailPrint "Another Boite process owns the data directory. No files were replaced; retry after it exits."
+    SetErrorLevel 2
+    Abort
+  ${EndIf}
+!macroend
+
+!macro BOITE_UNLOCK_CORE_DIR
+  ${If} $BoiteCoreLock != ""
+    System::Call 'kernel32::CloseHandle(p $BoiteCoreLock)'
+    StrCpy $BoiteCoreLock ""
+  ${EndIf}
+!macroend
+
+; An empty lockfile left by an update has no legacy PID record. NSIS still
+; has to acquire the OS lock before proceeding.
+!macro BOITE_CORE_RECORD DATA OUT
+  StrCpy ${OUT} 0
+  ${If} ${FileExists} "${DATA}\core.lock"
+    StrCpy ${OUT} 1
+    ClearErrors
+    FileOpen $R7 "${DATA}\core.lock" r
+    ${IfNot} ${Errors}
+      FileSeek $R7 0 END ${OUT}
+      FileClose $R7
+    ${EndIf}
+    ClearErrors
+  ${EndIf}
+!macroend
+
 ; Runs stop-shell.ps1 with ACTION (find or stop) and pops its exit code in $0.
 !macro BOITE_SHELL_SCRIPT ACTION
   System::Call 'Kernel32::SetEnvironmentVariable(t "BOITE_SHELL_ACTION", t "${ACTION}") i'
@@ -66,7 +120,8 @@
 ; $1 holds the shell name the previous install registered, or "".
 !macro BOITE_NOTHING_RUNS DATA
   StrCpy $R9 0
-  ${IfNot} ${FileExists} "${DATA}\core.lock"
+  !insertmacro BOITE_CORE_RECORD "${DATA}" $R8
+  ${If} $R8 == 0
     !insertmacro BOITE_FILE_FREE "$INSTDIR\boite-core.exe" $R8
     ${If} $R8 == 1
       !insertmacro BOITE_FILE_FREE "$INSTDIR\${MAINBINARYNAME}.exe" $R8
@@ -116,7 +171,8 @@
       ${ExitDo}
     ${EndIf}
     ; A core holds the lock: no wait helps, the scripts decide.
-    ${If} ${FileExists} "${BOITE_DATA_ROOT}\${BOITE_DATA_NAME}\core.lock"
+    !insertmacro BOITE_CORE_RECORD "${BOITE_DATA_ROOT}\${BOITE_DATA_NAME}" $R8
+    ${If} $R8 != 0
       ${ExitDo}
     ${EndIf}
     ${IfNot} ${Silent}
@@ -220,6 +276,9 @@
     boite_core_writable:
     FileClose $1
   boite_core_free:
+  !if "${IDLE_ONLY}" == "1"
+    !insertmacro BOITE_LOCK_CORE_DIR "${BOITE_DATA_ROOT}\${BOITE_DATA_NAME}"
+  !endif
   ; An agent's `boite` command (boite.exe) that outlived its core holds that
   ; file the same way: it moves aside too, whatever the admission.
   ClearErrors
@@ -304,6 +363,7 @@ Function .onInstFailed
     !insertmacro BOITE_RESTORE_ASIDE core $BoiteCoreAside
     !insertmacro BOITE_RESTORE_ASIDE ui $BoiteUiAside
   ${EndIf}
+  !insertmacro BOITE_UNLOCK_CORE_DIR
 FunctionEnd
 
 !macro NSIS_HOOK_PREINSTALL
@@ -326,6 +386,7 @@ FunctionEnd
     ${EndIf}
     Pop $0
   ${EndIf}
+  !insertmacro BOITE_UNLOCK_CORE_DIR
 !macroend
 
 ; Before the template's deletions, so its final `RMDir "$INSTDIR"`, which only

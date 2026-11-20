@@ -312,6 +312,12 @@ packaged shell, and checks that busy and legacy cores remain running.
 The first silent upgrade from a core without idle admission needs an explicit
 stop after its work finishes, followed by a manual installer. An older in-app
 updater retains its previous interrupting behavior until it is replaced.
+Installers published with `windows_data_lock` let the shell repair an
+installation whose core cannot reach its endpoint. The shell checks the core's
+process identity and acquires the startup lock before proceeding without an
+endpoint. NSIS acquires the same lock before replacing files and aborts if a
+core obtained it during the handoff. A running core still grants authenticated
+admission.
 An update replaces the whole application; it does not load a new core or UI
 alongside agents executing on the old version.
 
@@ -340,8 +346,13 @@ restart the application. A panic inside a check or a download ends the same
 way: an async Tauri command that panics never answers the window, so each one
 runs its work under `catch_unwind` and reports the panic as an error. Nightlies
 through 2026-09-26 predate that guard and can remain on Checking for updates
-after a release-client panic; they need one manual replacement. A restart discards a previously downloaded cache and
-checks again. Only the channel preference persists in `update-channel.json`.
+after a release-client panic; they need one manual replacement. Downloads are
+written in chunks to a bounded temporary file. If the server supplies a strong
+ETag, a retry can continue from the downloaded byte offset. The shell verifies the complete
+package before publishing the verified cache and keeps the verified bytes for
+installation retries. After a restart it checks the release again and
+reverifies the cached package against its version and signature. The channel
+preference persists in `update-channel.json`.
 
 ## Scope
 
@@ -361,9 +372,10 @@ a remote machine; another machine asks it through its core, never directly. [Age
 
 The first version containing this updater must be installed manually. It only
 offers published releases containing a signed installer and `latest.json`.
-Drafts and unsigned historical builds are excluded. The native shell reads the
-repository's release list, so nightly prereleases and regular beta releases do
-not depend on GitHub's `latest` alias. It checks at most ten pages of 100 releases
-and reports when no matching signed release can be found.
+Drafts and unsigned historical builds are excluded. The native shell checks the
+published index for its selected channel with an ETag. When the index names an
+eligible update, the shell asks GitHub for that release's notes and manifest.
+If the index has never been published and returns 404, it checks at most ten
+pages of the release list.
 
 [Releasing](releasing.md) describes signature generation and the CI artifacts.
