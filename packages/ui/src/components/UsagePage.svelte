@@ -19,6 +19,11 @@
     if (kept.size > ANSWERS_PER_MACHINE) kept.delete(kept.keys().next().value!);
     answers.set(store, kept);
   }
+
+  function recalled(store: Store, key: string, firstEdge: number | undefined): Answer | undefined {
+    const kept = answers.get(store)?.get(key);
+    return kept?.edges[0] === firstEdge ? kept : undefined;
+  }
 </script>
 
 <script lang="ts">
@@ -61,6 +66,7 @@
   type MachineThread = UsageHistoryThread & { machine: Machine };
   type MachineProject = UsageHistoryProject & { machine: Machine };
   type MachineHistory = Omit<UsageHistory, 'threads' | 'projects'> & { threads: MachineThread[]; projects: MachineProject[] };
+  type ProjectChoice = Pick<MachineProject, 'machine' | 'projectId' | 'name' | 'removed'>;
   const ALL = '\u0000all';
   const PROJECTS_SHOWN = 6;
 
@@ -71,7 +77,7 @@
   /** `ALL` reads every connected machine, the default; null follows the machine the window is on. */
   let scope = $state<string | null>(ALL);
   /** One project of one machine: its machine alone is read, with the project's filter. */
-  let project = $state.raw<{ machine: Machine; projectId: string | null } | null>(null);
+  let project = $state.raw<ProjectChoice | null>(null);
   /** A thread's own page, opened from the ranking. */
   let detail = $state.raw<{ machine: Machine; threadId: string } | null>(null);
   let refreshes = $state(0);
@@ -82,8 +88,6 @@
   let failed = $state.raw(new Map<Machine, string>());
   let reading = $state.raw(new Set<Machine>());
   let edges = $state.raw<number[]>([]);
-  /** Every project each machine answered with, so the project menu still lists the others once one is chosen. */
-  let catalog = $state.raw(new Map<Machine, MachineProject[]>());
   /** Only the newest request writes, so a slow 90-day answer never lands over a 7-day one. */
   let latest = 0;
 
@@ -119,15 +123,28 @@
     )) {
       throw new Error(strings.usage.filterUnsupported);
     }
+    if (projectId !== undefined && (result.projects === undefined || result.threads.some((thread) => thread.projectId !== projectId))) {
+      throw new Error(strings.usage.filterUnsupported);
+    }
     return tag(source, result);
+  }
+
+  function tagProjects(source: Machine, projects: UsageHistoryProject[] = []): MachineProject[] {
+    return projects.map((entry) => ({ ...entry, machine: source }));
   }
 
   function tag(source: Machine, result: Answer): MachineHistory {
     return {
       ...result,
       threads: result.threads.map((thread) => ({ ...thread, machine: source })),
-      projects: (result.projects ?? []).map((entry) => ({ ...entry, machine: source }))
+      projects: tagProjects(source, result.projects)
     };
+  }
+
+  function keepProviders(results: Iterable<Answer>) {
+    const ids = new Set(historicalProviders);
+    for (const result of results) for (const row of result.rows) ids.add(row.providerId);
+    historicalProviders = [...ids];
   }
 
   /** No result at all rather than totals from machines this read did not count. */
@@ -161,11 +178,12 @@
       edges = at;
       const shown = new Map<Machine, MachineHistory>();
       for (const source of from) {
-        const kept = answers.get(source.store)?.get(key);
-        if (kept && kept.edges[0] === at[0]) shown.set(source, tag(source, kept));
+        const kept = recalled(source.store, key, at[0]);
+        if (kept) shown.set(source, tag(source, kept));
       }
       parts = shown;
       failed = new Map();
+      keepProviders(shown.values());
     }
     reading = new Set([...(only === undefined ? [] : reading), ...targets]);
     // All machines names each failure, even when only one of them could be asked.
@@ -176,8 +194,7 @@
         remember(source.store, key, result);
         parts = new Map(parts).set(source, result);
         if (failed.has(source)) failed = new Map([...failed].filter(([machine]) => machine !== source));
-        catalog = new Map(catalog).set(source, result.projects);
-        historicalProviders = [...new Set([...historicalProviders, ...result.rows.map((row) => row.providerId)])];
+        keepProviders([result]);
       }, (error: unknown) => {
         if (request !== latest) return;
         answers.get(source.store)?.delete(key);
@@ -200,7 +217,7 @@
     void store;
     untrack(() => {
       if (scope === ALL) return;
-      provider = null; scope = null; project = null; detail = null; historicalProviders = []; catalog = new Map();
+      provider = null; scope = null; project = null; detail = null; historicalProviders = [];
       clear();
     });
   });
@@ -256,7 +273,11 @@
   function pickProject(id: string) {
     if (id === '') { project = null; return; }
     const entry = projectList.find((item) => projectKey(item.machine, item.projectId) === id);
-    if (entry) project = { machine: entry.machine, projectId: entry.projectId };
+    if (entry) chooseProject(entry);
+  }
+
+  function chooseProject({ machine, projectId, name, removed }: ProjectChoice) {
+    project = { machine, projectId, name, removed };
   }
 
   function openDetail(thread: { machine: Machine; threadId: string }) {
@@ -279,25 +300,35 @@
     { id: ALL, label: strings.usage.allMachines, active: all },
     ...machines.map((machine) => ({ id: machine.id, label: machine.label, active: !all && machine === chosen }))
   ]);
-  /** The projects of the machines in scope, from their latest answers, biggest first. */
-  let projectList = $derived(rankProjects(scoped.flatMap((machine) => catalog.get(machine) ?? []), metric));
+  let projectList = $derived.by(() => {
+    const key = filterKey(range, provider, undefined);
+    const projects = scoped.flatMap((machine) => {
+      const shown = parts.get(machine);
+      if (shown) return shown.projects;
+      // Selecting a project only queries its machine. Keep the other choices for the same range and provider.
+      return project === null ? [] : tagProjects(machine, recalled(machine.store, key, edges[0])?.projects);
+    });
+    return rankProjects(projects, metric);
+  });
   let rankedProjects = $derived(projectList.filter((entry) => entry.value > 0));
+  let listedProject = $derived(project === null ? undefined : projectList.find((entry) => entry.machine === project!.machine && entry.projectId === project!.projectId));
+  let chosenProject = $derived(listedProject ?? project);
+  let menuProjects = $derived(project !== null && listedProject === undefined ? [...projectList, project] : projectList);
   let projectItems = $derived([
     { id: '', label: strings.usage.allProjects, active: project === null },
-    ...projectList.map((entry) => ({
+    ...menuProjects.map((entry) => ({
       id: projectKey(entry.machine, entry.projectId),
       label: `${projectName(entry)}${entry.removed ? ` (${strings.usage.removed})` : ''}${all ? ` · ${entry.machine.label}` : ''}`,
       active: project !== null && project.machine === entry.machine && project.projectId === entry.projectId
     }))
   ]);
-  let chosenProject = $derived(project === null ? null : projectList.find((entry) => entry.machine === project!.machine && entry.projectId === project!.projectId) ?? null);
   let threads = $derived(history === null ? [] : topThreads(history.threads, metric));
   let threadPeak = $derived(threads[0]?.value ?? 0);
   let projectPeak = $derived(rankedProjects[0]?.value ?? 0);
   let dayRows = $derived(view?.days.filter((day) => day.turns > 0) ?? []);
   let pricing = $derived(history?.pricing ?? null);
 
-  function projectName(entry: { machine: Machine; projectId: string | null; name: string | null; removed: boolean }): string {
+  function projectName(entry: ProjectChoice): string {
     if (entry.projectId === null) return strings.usage.noProject;
     return entry.name ?? entry.machine.store.projects.find((item) => item.id === entry.projectId)?.name ?? strings.usage.removedProject;
   }
@@ -418,7 +449,7 @@
         {/if}
         {#if projectItems.length > 1 || project !== null}
           <Menu items={projectItems} label={strings.usage.project} placement="bottom" testid="usage-project-filter" onpick={pickProject}>
-            <span class="filter-name ui-label">{project === null ? strings.usage.allProjects : chosenProject ? projectName(chosenProject) : strings.usage.project}</span><ChevronDown size={13} />
+            <span class="filter-name ui-label">{chosenProject === null ? strings.usage.allProjects : projectName(chosenProject)}</span><ChevronDown size={13} />
           </Menu>
         {/if}
         <Menu items={providerItems} label={strings.usage.provider} placement="bottom" testid="usage-provider-filter" onpick={(id) => { provider = id || null; }}>
@@ -539,7 +570,7 @@
             <ol class="projects" data-testid="usage-projects">
               {#each projectsOpen ? rankedProjects : rankedProjects.slice(0, PROJECTS_SHOWN) as entry (projectKey(entry.machine, entry.projectId))}
                 <li>
-                  <button type="button" class="ghost project" data-removed={entry.removed || undefined} onclick={() => { project = { machine: entry.machine, projectId: entry.projectId }; }}>
+                  <button type="button" class="ghost project" data-removed={entry.removed || undefined} onclick={() => chooseProject(entry)}>
                     <span class="title">
                       <span class="name">{projectName(entry)}{#if entry.removed}<span class="tag">{strings.usage.removed}</span>{/if}</span>
                       <small>{fill(strings.usage.threadTurns, { turns: formatMetric('turns', entry.turns) })}{#if all} · {entry.machine.label}{/if}</small>

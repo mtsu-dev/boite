@@ -38,8 +38,9 @@ subscription it is what the same tokens would cost on the API, not an
 invoice.
 
 Boite reads the current rates from models.dev about once a day, so a new
-model gets its price without an update. Offline, it uses the table it shipped
-with. The line under Breakdown says which one priced the page.
+model gets its price without an update. Offline, it uses the last table it
+fetched, with the shipped table filling in models missing from it. The line
+under Breakdown says whether Boite has fetched rates.
 
 - The "i" beside a model gives the rates it was priced at.
 - A model with no listed rate uses the cost its agent reported. A model with
