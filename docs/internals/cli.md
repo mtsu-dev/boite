@@ -495,8 +495,10 @@ boite preview-close <file.html>    stop serving that preview
 boite show <file>[:line]         open the file in the panel, at that line
 boite diff [file]                open the changes surface, or one file's diff
 boite browse <url>               open the url in a new tab of this conversation's browser (http, https)
-boite open trace|tasks|changes|files [dir]
+boite open trace|tasks|changes|files|workflow [dir|run-id]
 boite status                     git status: branch, upstream, one row per change
+boite journal-check [table rowid] [--limit <n>]
+                                 read-only journal diagnostics, owner only (see Diagnostics)
 boite ask <question> [option ...] [--multiple] [--open <url>]
 boite secret list
 boite secret ask <NAME> --why <reason> [--placeholder <example>] [--timeout <minutes>]
@@ -1162,6 +1164,16 @@ issue would be public and signed by the owner's GitHub login, so the agent
 gives the user the link and the user submits it, or submits it from
 Settings > Diagnostics. [Trace](trace.md#structured-diagnostics)
 owns the record format, rotation, anonymization and query bounds.
+
+`boite journal-check` reads the journal for broken rows without changing
+anything (`journal.inspect`): a message or a turn whose thread is gone, a turn
+filed under another thread, a message still streaming after its turn ended,
+JSON that does not parse or is too large, and similar. It prints how many rows
+it checked and one line per issue, at most 100 rows a page (`--limit`, up to
+200). When rows remain it prints the command for the next page, `boite
+journal-check <table> <rowid>`. It is owner only: from the owner's terminal
+it needs no thread, and inside a thread's agent environment it is refused.
+`--json` keeps the result.
 
 ## Where the command lives
 
