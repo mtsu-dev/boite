@@ -85,7 +85,7 @@ test('a published command and its output render literally even when they contain
     { type: 'tool', toolId: 'tool', name: 'Bash', status: 'done', input: { command }, output: line },
   ]);
   const box = document.createElement('div');
-  box.innerHTML = paragraphBlocks(proof.text).map(block => renderMarkdown(block)).join('');
+  box.innerHTML = paragraphBlocks(proof.text, false).map(block => renderMarkdown(block)).join('');
   expect(box.querySelector('pre code')?.textContent).toBe(`${command}\n${line}`);
   expect(box.querySelector('p')?.textContent).toBe('Windows pending.');
 });
