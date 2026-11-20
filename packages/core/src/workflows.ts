@@ -1,8 +1,8 @@
 import { deviceBound, threadActive } from '@boite/contracts';
 import { createHash } from 'node:crypto';
 import {
-  DEFAULT_WORKFLOW_LIMITS, WORKFLOW_LIMITS, checkPlan, checkSteps, closeLoop, conditionHolds, executionsUsed, itemLabel,
-  renderTask, resolvePath, retryWorkflowSteps, shapeMismatch, workflowContinuation, workflowExecutions, workflowLevels, workflowValues,
+  DEFAULT_WORKFLOW_LIMITS, WORKFLOW_LIMITS, checkPlan, checkSteps, openWorkflowNode, retryWorkflowSteps,
+  settleWorkflowNodes, shapeMismatch, workflowInstance, workflowLevels, workflowValues,
 } from '@boite/contracts';
 import type {
   DelegationConfig, Principal, RpcParams, ThreadSummary, Turn, WorkflowInstance, WorkflowNode, WorkflowPlan, WorkflowRun,
@@ -19,7 +19,7 @@ import { WorkflowLog } from './workflow-log.ts';
 import { mayResume, resumeTeam, running } from './workflows/resume.ts';
 import { listTemplates, removeTemplate, saveTemplate } from './workflows/templates.ts';
 import { planError, text } from './workflows/validation.ts';
-import { NOT_STARTED, clip, describe, failureNotice, runSummary, tooLong, unnoticed } from './workflows/notices.ts';
+import { NOT_STARTED, clip, failureNotice, runSummary, tooLong, unnoticed } from './workflows/notices.ts';
 import { askFinal, childEnd, unwoken } from './delegation/completion.ts';
 import { announceWorkflow, workflowUsage } from './workflows/usage.ts';
 import { SharedWorkflowCompute } from './workflows/shared-compute.ts';
@@ -315,7 +315,7 @@ export class Workflows {
         if (node.status !== 'waiting' || node.instances.length) continue;
         const deps = node.after.map(id => run!.nodes.find(n => n.id === id)!);
         if (!deps.every(dep => dep.status === 'done' || dep.status === 'skipped')) continue;
-        this.#open(run, node, values);
+        openWorkflowNode(run, node, values, Date.now(), id => this.#core.journal.getThread(id)?.archived === false);
         progress = opened = true;
       }
     }
@@ -335,45 +335,6 @@ export class Workflows {
     }
     this.#settle(runId);
   }
-  #open(run: WorkflowRun, node: WorkflowNode, values: Record<string, unknown>): void {
-    const step = run.plan.steps.find(s => s.id === node.id)!;
-    const now = Date.now();
-    const fail = (error: string) => Object.assign(node, { status: 'failed', error, startedAt: now, finishedAt: now });
-    if (step.when && !conditionHolds(step.when, values)) {
-      Object.assign(node, { status: 'skipped', startedAt: now, finishedAt: now });
-      return;
-    }
-    let items: unknown[] | null = null;
-    if (step.forEach) {
-      const list = resolvePath(values, step.forEach.split('.'));
-      if (!Array.isArray(list)) return void fail(`forEach: ${step.forEach} is ${describe(list)}, not a list`);
-      items = list;
-    }
-    const used = executionsUsed(run);
-    const count = items ? items.length : 1;
-    if (used + count > run.limits.maxSteps) return void fail(`${count} executions would pass this run's limit of ${run.limits.maxSteps} (${used} used); raise limits.maxSteps up to ${WORKFLOW_LIMITS.maxSteps} or narrow the list`);
-    if (items && items.length === 0) {
-      Object.assign(node, { status: 'done', startedAt: now, finishedAt: now });
-      closeLoop(run, node, now);
-      return;
-    }
-    const instances: WorkflowInstance[] = [];
-    const executions = workflowExecutions(run, node, items);
-    for (const [index, item] of (items ?? [undefined]).entries()) {
-      const task = renderTask(step.task, items ? { ...values, item, index } : values);
-      if (task.length > WORKFLOW_LIMITS.taskChars) return void fail(`the task is ${task.length} characters once filled in; the limit is ${WORKFLOW_LIMITS.taskChars}. Pass a field rather than a whole output`);
-      const { key, previous, itemIdentity } = executions[index]!;
-      instances.push({
-        key, itemIdentity, index: items ? index : null, label: items ? itemLabel(item) : '',
-        threadId: null, providerId: null, model: null, status: 'waiting', attempts: 0, task, result: null, output: null,
-        error: null, startedAt: null, finishedAt: null,
-        ...workflowContinuation(previous, node.freshRound === true, id => this.#core.journal.getThread(id)?.archived === false),
-      });
-    }
-    delete node.freshRound;
-    Object.assign(node, { instances, status: 'running', startedAt: now, error: null });
-  }
-
   #launch(run: WorkflowRun, node: WorkflowNode, inst: WorkflowInstance, config: DelegationConfig): void {
     if (this.#compute.launch(run, node, inst) || this.#machines.launch(run, node, inst)) return;
     const now = Date.now();
@@ -428,20 +389,12 @@ export class Workflows {
       this.#core.threads.startTurn(threadId, { prompt, display: correction ? 'Workflow output did not match' : inst.task ?? undefined }, { kind: 'delegation' });
     } catch (error) {
       this.#mutate(run.id, current => {
-        const found = this.#instance(current, inst.key);
+        const found = workflowInstance(current, inst.key);
         if (!found || found.status !== 'running') return false;
         Object.assign(found, { status: 'failed', error: `${correction ? 'output retry: ' : ''}${messageOf(error)}`, finishedAt: Date.now() });
       });
       if (correction) this.#ended({ runId: run.id, key: inst.key }, threadId);
     }
-  }
-
-  #instance(run: WorkflowRun, key: string): WorkflowInstance | undefined {
-    for (const node of run.nodes) {
-      const found = node.instances.find(i => i.key === key);
-      if (found) return found;
-    }
-    return undefined;
   }
 
   /** Node and run states from their executions; delivers the summary once the run ends by itself. */
@@ -467,21 +420,7 @@ export class Workflows {
 
   /** Every execution of an opened node finishes, including siblings of failed items. */
   #settleNodes(run: WorkflowRun): boolean {
-    let changed = false;
-    const now = Date.now();
-    for (const node of run.nodes) {
-      if (node.status !== 'running' || !node.instances.length) continue;
-      if (!node.instances.every(i => ended(i.status) && (!i.threadId || !this.#core.delegation.worktrees.isSettling(i.threadId)))) continue;
-      const failed = node.instances.find(i => i.status === 'failed');
-      const stopped = node.instances.find(i => i.status === 'stopped');
-      node.status = failed ? 'failed' : stopped ? 'stopped' : 'done';
-      node.error = (failed ?? stopped)?.error ?? null;
-      node.finishedAt = now;
-      // A step closing a loop that does not hold yet sends the loop round again.
-      closeLoop(run, node, now);
-      changed = true;
-    }
-    return changed;
+    return settleWorkflowNodes(run, Date.now(), threadId => this.#core.delegation.worktrees.isSettling(threadId));
   }
 
   // -- turns -------------------------------------------------------------------
@@ -502,7 +441,7 @@ export class Workflows {
     if (end.kind === 'maintenance') return;
     let correction = false, cut = false, leftovers = false, checkpoint = false;
     this.#mutate(entry.runId, run => {
-      const inst = this.#instance(run, entry.key);
+      const inst = workflowInstance(run, entry.key);
       // A replaced attempt cannot report into its successor.
       if (!inst || inst.status !== 'running' || inst.threadId !== turn.threadId) return false;
       // A checkpoint is no answer: the step runs on until the turn its background work wakes ends.
@@ -554,7 +493,7 @@ export class Workflows {
     const next = () => {
       const worktree = this.#core.delegation.worktrees.get(threadId);
       if (worktree) this.#mutate(entry.runId, run => {
-        const inst = this.#instance(run, entry.key);
+        const inst = workflowInstance(run, entry.key);
         if (!inst || inst.threadId !== threadId) return false;
         inst.worktree = worktree;
       });
@@ -574,7 +513,7 @@ export class Workflows {
   unwoken(threadId: string, tasks: string): void {
     const entry = this.#stepOf.get(threadId);
     const run = entry && !this.#closed ? this.#load(entry.runId) : null;
-    const inst = run?.status === 'running' ? this.#instance(run, entry!.key) : undefined;
+    const inst = run?.status === 'running' ? workflowInstance(run, entry!.key) : undefined;
     if (inst?.status !== 'running' || inst.threadId !== threadId) return;
     // A team paused since the checkpoint has not reached the run yet: the run takes that pause, and its resume asks.
     const config = this.#core.delegation.config(run!.rootThreadId);
@@ -600,7 +539,7 @@ export class Workflows {
     if (!entry || this.#closed || this.#core.threads.handoff.active) return;
     let ended = false;
     this.#mutate(entry.runId, run => {
-      const inst = this.#instance(run, entry.key);
+      const inst = workflowInstance(run, entry.key);
       // A Stop records the run stopped before it ends that work.
       if (run.status === 'stopped' || !inst || inst.status !== 'running' || inst.threadId !== threadId) return false;
       Object.assign(inst, { ...end, finishedAt: Date.now() });
@@ -652,7 +591,7 @@ export class Workflows {
     const entry = this.#stepOf.get(threadId);
     if (!entry) throw refused('boite workflow output works only inside a workflow step');
     const run = this.#load(entry.runId)!;
-    const inst = this.#instance(run, entry.key);
+    const inst = workflowInstance(run, entry.key);
     if (!inst || inst.status !== 'running' || inst.threadId !== threadId) throw refused(`step ${entry.key} is not running`);
     const shape: WorkflowShape | undefined = run.plan.steps.find(s => s.id === entry.key.split('#')[0])?.output;
     const mismatch = (shape === undefined ? null : shapeMismatch(value, shape)) ?? tooLong(value);
@@ -832,7 +771,7 @@ export class Workflows {
     if (!entry) return '';
     const run = this.#load(entry.runId);
     if (!run) return '';
-    const inst = this.#instance(run, entry.key);
+    const inst = workflowInstance(run, entry.key);
     if (inst?.threadId !== threadId || ended(inst.status)) return '';
     const shape = run.plan.steps.find(s => s.id === entry.key.split('#')[0])?.output;
     return `\n${stepRole(entry.runId, entry.key, shape !== undefined)}\n`;
