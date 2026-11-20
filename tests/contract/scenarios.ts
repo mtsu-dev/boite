@@ -563,8 +563,7 @@ export const SCENARIOS: Record<string, Scenario> = {
     await finishedTurn(env, threadId, '[tool-stream]');
     const { messages } = await env.call('threads.get', { threadId });
     const message = messages.find(entry => entry.parts.some(part => part.type === 'tool'));
-    const part = message?.parts.find(entry => entry.type === 'tool');
-    check(message && part?.type === 'tool', 'the command is missing');
+    check(message !== undefined, 'the command is missing');
     const source = { threadId, messageId: message.id, unchecked: 'Windows remains unchecked.' };
     same((await refusedWith(env.call('artifacts.prove', { ...source, line: 'invented' }), RpcErrorCode.InvalidParams, ['field'])).field, 'line', 'invalid output field');
     same((await refusedWith(env.call('artifacts.prove', { ...source, line: 'streamed', path: '' }), RpcErrorCode.InvalidParams, ['field'])).field, 'path', 'invalid capture field');
