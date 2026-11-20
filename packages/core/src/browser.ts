@@ -294,6 +294,8 @@ export class AgentBrowser {
     watchPage(tab, on, (accept, promptText) => void engine.cdp.send('Page.handleJavaScriptDialog', { accept, ...(promptText === undefined ? {} : { promptText }) }, sessionId).catch(() => {}),
       url => { tab.url = url; this.#remote.stale(tab); this.#changed(threadId); this.#engines.saveCookiesSoon(engine); });
     watchNetwork(() => tab.network, on);
+    // Sent before the script or the click that opened the window returns; Chrome's targetCreated can come after the next command (`TabsJoining.announce`).
+    on('Page.windowOpen', () => this.joining.announce(threadId, targetId));
     on('Page.frameAttached', params => { if (tab.frames.size < 500) tab.frames.add(String(params.frameId)); });
     on('Page.frameNavigated', params => { const frame = params.frame as { id: string }; if (tab.frames.size < 500) tab.frames.add(String(frame.id)); });
     // A frame moving to another process (`swap`) is still the page's: only a removed one goes.
@@ -343,13 +345,16 @@ export class AgentBrowser {
     const { threadId } = opener;
     const shut = () => engine.cdp.send('Target.closeTarget', { targetId: info.targetId }).then(() => {}, () => {});
     // Checked and held in the event's own turn: a burst of windows sees each other, and a command never waits on a refusal.
-    if (this.#full(threadId)) return shut();
+    if (this.#full(threadId)) { this.joining.adopted(info.openerId); return shut(); }
     const release = this.joining.reserve(threadId);
-    return this.joining.window(threadId, async () => {
+    const joined = this.joining.window(threadId, async () => {
       // A window nobody can drive is closed, and so is one whose conversation was archived while it attached.
       const tab = await this.#attach(engine, threadId, info.targetId, info.url).catch(() => null).finally(release);
       if (!tab) await shut();
     });
+    // Held before the page's announcement of it ends, so a command waiting on that sees this attach.
+    this.joining.adopted(info.openerId);
+    return joined;
   }
 
   #info(engine: Engine, info: { targetId: string; url: string; title: string }): void {
@@ -382,6 +387,7 @@ export class AgentBrowser {
     tab.engine.tabs.delete(id);
     this.#engines.idle(tab.engine);
     this.#remote.dropTab(id);
+    this.joining.forget(tab.targetId);
     const state = this.#threads.get(tab.threadId);
     if (state) {
       state.order = state.order.filter(other => other !== id);

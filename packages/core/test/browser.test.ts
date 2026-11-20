@@ -385,19 +385,11 @@ real('a command that names no tab waits for every window still joining, and a wi
   await run({ kind: 'click', selector: '#pop' });
   await run({ kind: 'open', url: url('/popup?next'), reuse: true });
   expect(tabs()).toEqual([[url(), false], [url('/popup?next'), true]]);
-  // The core hears of a window from Chrome's event, after the page's script returned: a slow
-  // runner (macOS x64) delivered it after the next command began, which then had nothing to wait for.
-  const joiningSeen = async () => {
-    for (let i = 0; i < 200 && browser.joining.count(threadId) === 0; i++) await Bun.sleep(10);
-    expect(browser.joining.count(threadId)).toBeGreaterThan(0);
-  };
   // A window opened while a command waits is waited for too.
   await evaluate(`window.open('/popup?one', 'one'); setTimeout(() => window.open('/popup?two', 'two'), 300); true`);
-  await joiningSeen();
   expect((await run({ kind: 'evaluate', expression: 'location.search' })).value).toBe('?two');
   // Archived while a window joins: the waiting command is refused and the window closes with the rest.
   await evaluate(`window.open('/popup?late', 'late'); true`);
-  await joiningSeen();
   const waiting = run({ kind: 'evaluate', expression: 'location.search' });
   await Bun.sleep(100);
   harness.core.journal.putThread({ ...harness.core.threads.require(threadId), archived: true });
