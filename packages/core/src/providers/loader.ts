@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { forgetWhich } from './which.ts';
 import {
   acpSteeringKind,
@@ -37,6 +37,19 @@ import { detectionLogger, installLogger } from './install-log.ts';
 import { registerLocalCommands } from './local-command.ts';
 import { homePath } from '../paths.ts';
 import { ISOLATION_DEFAULTS, variableHome } from '../profile-share.ts';
+import { providerLoginHome, providerSessionFiles } from './session-paths.ts';
+
+function below(root: string, path: string): boolean {
+  const child = relative(root, path);
+  return child !== '' && child !== '..' && !child.startsWith(`..${sep}`) && !isAbsolute(child);
+}
+
+/** XDG homes are shared. Protect a provider's subtree, or the file itself when it has no subtree. */
+function protectSessionFile(roots: Set<string>, home: string, name: string): void {
+  const path = join(home, name);
+  const parent = dirname(path);
+  if (path !== home) roots.add(below(home, parent) ? parent : path);
+}
 
 /**
  * Echo is the fake agent the tests and the bench drive: no CLI, it repeats the
@@ -415,15 +428,25 @@ export class ProviderRegistry {
     return this.entries.get(id)?.descriptor;
   }
 
-  /** Declared roots and any relocations in this machine's provider profiles. */
+  /** Declared roots, relocations and the default account's login files. */
   credentialRoots(): string[] {
     const protectedRoots = new Set<string>();
     for (const { descriptor } of this.entries.values()) {
       const roots = descriptor.roots.filter(root => isAbsolute(root) && !root.includes('{isolationDir}'));
       for (const root of roots) protectedRoots.add(root);
+      if (descriptor.auth.kind === 'none') continue;
       const profile = profileFor(descriptor);
-      if (profile === undefined || descriptor.auth.kind === 'none') continue;
-      for (const key of Object.keys(profile.isolation)) {
+      const login = providerLoginHome(descriptor, profile);
+      const loginRoot = resolve(login.path);
+      if (login.variable === null || !login.variable.startsWith('XDG_')) {
+        protectedRoots.add(loginRoot);
+      }
+      const { session, sqlite } = providerSessionFiles(descriptor, profile);
+      for (const name of session) protectSessionFile(protectedRoots, loginRoot, name);
+      if (sqlite !== undefined) {
+        for (const suffix of ['', '-wal', '-shm', '-journal']) protectSessionFile(protectedRoots, loginRoot, sqlite.file + suffix);
+      }
+      for (const key of Object.keys(profile?.isolation ?? {})) {
         const location = variableHome(key, profile);
         if (location === null || !isAbsolute(location)) continue;
         if (!key.startsWith('XDG_')) {
@@ -435,10 +458,7 @@ export class ProviderRegistry {
         const base = join(homePath(), ...segments);
         // XDG homes are shared by applications. Only relocate the provider's own subtrees.
         for (const root of roots) {
-          const child = relative(base, root);
-          if (child !== '' && child !== '..' && !child.startsWith(`..${sep}`) && !isAbsolute(child)) {
-            protectedRoots.add(join(location, child));
-          }
+          if (below(base, root)) protectedRoots.add(join(location, relative(base, root)));
         }
       }
     }
