@@ -267,6 +267,8 @@ test('a turn that ends right after a compaction, with no answer after it, resume
   try {
     const client = await h.connect();
     const { threadId } = await echoThread(h, client);
+    // This long prompt exercises compaction recovery without starting a goal.
+    await client.call('settings.set', { autoGoals: false });
     const first = await client.call('turns.start', {
       threadId, prompt: `Port the renderer. ${'x'.repeat(4_500)} Preserve transparent shadows. ${'y'.repeat(4_500)} Keep the blue button.`,
     });
