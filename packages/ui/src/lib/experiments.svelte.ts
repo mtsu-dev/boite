@@ -16,7 +16,7 @@ subscribeExperiments((enabled) => {
   mirror.available = experimentsAvailable();
 });
 
-/** Whether Settings has an Experiments page: false where the primary machine runs a Release. */
+/** Whether Settings has an Experiments page: false where the primary machine runs a Release, or lists no switch. */
 export function experimentsShown(): boolean {
   return mirror.available;
 }

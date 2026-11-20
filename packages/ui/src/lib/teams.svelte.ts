@@ -1,9 +1,9 @@
 /*
  * The teams of one machine (`docs/internals/teams.md`), read with `teams.list` and read
  * again on `teams.changed`, for the Teams section of the lists and the team
- * chat. A core that refuses the read (the Teams experiment off there, or an
- * older core) leaves the list empty; the desktop turning the experiment on
- * reads it again.
+ * chat. A core that refuses the read (an older core, with the Teams experiment
+ * off there or from before teams) leaves the list empty; that core's desktop
+ * turning the experiment on reads it again.
  */
 
 import type { Team, TeamParty, ThreadId, ThreadSummary } from '@boite/contracts';
@@ -57,7 +57,7 @@ export class TeamDirectory {
     this.#reading += 1;
     if (client) {
       const changed = client.on('teams.changed', () => { void this.refresh(); });
-      // The core gates teams on the desktop's experiments: a read made before it heard of them was refused.
+      // An older core gates teams on the desktop's experiments: a read made before it heard of them was refused.
       const switched = client.on('client.desktopExperiments', ({ experiments }) => { if (experiments.includes('teams')) void this.refresh(); });
       this.#release = () => { changed(); switched(); };
     } else this.#release = null;

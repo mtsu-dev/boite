@@ -1,4 +1,4 @@
-import { composerActivity as parse } from '@boite/contracts';
+import { composerActivity as parse, type Settings } from '@boite/contracts';
 import { autoGoalCode } from './auto-goal-entry.ts';
 import { invalidParams } from './errors.ts';
 export { isComposerActivity } from '@boite/contracts';
@@ -10,9 +10,8 @@ export function composerActivity(text: string) {
 
 /**
  * Whether a prompt that starts a turn also starts an automatic reviewed goal
- * (`auto-goal.ts`, behind its experiment's build flag). Never in a build
- * without automatic goals.
+ * (`auto-goal.ts`, through its lazy entry), with the machine's settings.
  */
-export function startsAutoGoal(text: string, experiments: readonly string[] | null | undefined, minChars?: number): boolean {
-  return autoGoalCode()?.startsAutoGoal(text, experiments, minChars) ?? false;
+export function startsAutoGoal(text: string, settings: Pick<Settings, 'autoGoals' | 'autoGoalMinChars'>): boolean {
+  return autoGoalCode()?.startsAutoGoal(text, settings) ?? false;
 }

@@ -61,13 +61,14 @@ the owner sees this setting.
 
 ## Automatic goals
 
-Experimental, in Nightly builds only: turn it on in Settings, Experiments
-(Automatic goals).
+A long prompt starts a reviewed goal on itself, with its checklist and a card
+on the project board. The agent may also start one when your prompt lists
+several requests. Remove the goal from the bar to drop it.
 
-A long prompt then starts a reviewed goal on itself, with its checklist and a
-card on the project board. Prompt length sets the threshold, 1500 characters
-by default. The agent may also start one when your prompt lists several
-requests. Remove the goal from the bar to drop it.
+Settings, General, Agent replies, Automatic goals turns them off on that
+machine, for every device connected to it; they are on by default. Prompt
+length, under the switch, sets the threshold: 1500 characters by default.
+Only the owner sees these settings.
 
 ## The project board
 
@@ -106,6 +107,5 @@ review and Done. Every conversation of the project shows the same board.
 - [Context](context.md): queued messages and loops.
 - [Subagents](subagents.md): delegation profiles.
 - [Terminal](terminal.md): the other tab of the drawer.
-- [Experiments](experiments.md): unfinished features, in Nightly builds.
 - Technical reference: [goals](internals/goals.md),
   [board](internals/board.md).

@@ -1,6 +1,5 @@
-import { markFeature } from '@boite/contracts';
 import { createHash } from 'node:crypto';
-import { COUNCIL_AUTHOR, COUNCIL_DEFAULT_EFFORT, COUNCIL_DEFAULT_MODELS, COUNCIL_EXPERIMENT, COUNCIL_LEGACY_SUMMARY, COUNCIL_LIMITS, COUNCIL_OWNER, COUNCIL_SYSTEM, councilHandles, councilMention, councilNames, councilNearestEffort, councilOver, councilSplitEffort, councilTable, threadActive } from '@boite/contracts';
+import { COUNCIL_AUTHOR, COUNCIL_DEFAULT_EFFORT, COUNCIL_DEFAULT_MODELS, COUNCIL_LEGACY_SUMMARY, COUNCIL_LIMITS, COUNCIL_OWNER, COUNCIL_SYSTEM, councilHandles, councilMention, councilNames, councilNearestEffort, councilOver, councilSplitEffort, councilTable, threadActive } from '@boite/contracts';
 import type { Council, CouncilMember, CouncilPost, CouncilReadOnly, CouncilStatus, Message, Principal, RpcParams, ThreadSummary, Turn } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { invalidParams, messageOf, notFound, refused } from '../errors.ts';
@@ -132,15 +131,8 @@ export class CouncilStore {
     });
   }
 
-  // -- gate and ownership -------------------------------------------------------
+  // -- ownership ----------------------------------------------------------------
 
-  enabled(): boolean {
-    const experiments = this.#core.clients.desktopExperiments() ?? this.#core.clients.current()?.experiments ?? [];
-    return experiments.includes(COUNCIL_EXPERIMENT);
-  }
-  gate(): void {
-    if (!this.enabled()) throw refused('the council needs the Council experiment, which is off in the desktop app (Settings, Experiments)', { reason: 'experiment-off' });
-  }
   /** A member's thread. */
   owns(threadId: string): boolean { return this.#children.has(threadId); }
   /** That thread is a member of a council this parent started, whose answers are the parent's to read. */
@@ -222,19 +214,16 @@ export class CouncilStore {
   // -- RPC ----------------------------------------------------------------------
 
   list(params: RpcParams<'council.list'> = {}): { councils: Council[] } {
-    this.gate();
     const rows = params.threadId === undefined ? this.#where('1 = 1') : this.#where('parent_thread_id = ?', text(params.threadId, 'threadId', 128));
     return { councils: rows.slice(0, LIST_LIMIT).map(council => this.#public(council)) };
   }
 
   get(params: RpcParams<'council.get'>): { council: Council; posts: CouncilPost[] } {
-    this.gate();
     const council = this.#require(params?.councilId);
     return { council: this.#public(council), posts: this.#posts(council.id) };
   }
 
   table(params: RpcParams<'council.table'>, principal: Principal): { table: string; council: Council } {
-    this.gate();
     const council = this.#require(params?.councilId);
     this.#own(council, params.threadId, principal);
     if (council.legacy) throw refused('a debate from before the council has no scores, so no table', { councilId: council.id });
@@ -260,7 +249,6 @@ export class CouncilStore {
    * members' lists; `start` asks again, as that wait can change the answer.
    */
   admit(params: RpcParams<'council.start'>) {
-    this.gate();
     const parent = this.#core.threads.require(text(params?.threadId, 'threadId', 128));
     if (parent.parentThreadId || this.#core.delegation.remote.parentOf(parent.id)) throw refused('a subagent cannot start a council; ask its parent', { threadId: parent.id });
     if (parent.teamId || parent.councilId) throw refused('a team chat or a council salon cannot start a council', { threadId: parent.id });
@@ -412,7 +400,6 @@ export class CouncilStore {
    * acted on them. `requestId` makes a retry start no second round.
    */
   again(params: RpcParams<'council.again'>, principal: Principal): Council {
-    this.gate();
     const council = this.#require(params?.councilId);
     this.#own(council, params.threadId, principal);
     const given = (value: unknown) => value !== undefined && value !== null && value !== '';
@@ -449,7 +436,6 @@ export class CouncilStore {
 
   /** The owner writes in the salon. Without `@`, every member reads it next round; with one, only that member. */
   post(params: RpcParams<'council.post'>): CouncilPost {
-    this.gate();
     const council = this.#require(params?.councilId);
     const body = text(params.text, 'text', COUNCIL_LIMITS.postChars);
     // One trimmed id for the lookup, the other councils' check and the insert, so a retry finds what it stored.
@@ -466,7 +452,6 @@ export class CouncilStore {
 
   /** Closes the round now: whoever has not answered is absent from it, with no score. */
   closeRound(params: RpcParams<'council.closeRound'>): Council {
-    this.gate();
     const council = this.#require(params?.councilId);
     if (council.status !== 'running') throw refused('no round is under way', { councilId: council.id, status: council.status });
     this.#closeRound(council.id);
@@ -479,7 +464,6 @@ export class CouncilStore {
    * that round closed and was paid for.
    */
   stop(params: RpcParams<'council.stop'>, principal: Principal): Council {
-    this.gate();
     const council = this.#require(params?.councilId);
     this.#own(council, params.threadId, principal);
     if (councilOver(council)) return this.#public(council);
@@ -889,6 +873,3 @@ export class CouncilStore {
     this.#off();
   }
 }
-
-// Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
-markFeature('boite-feature:debates');

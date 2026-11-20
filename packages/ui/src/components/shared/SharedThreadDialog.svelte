@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { markFeature } from '@boite/contracts';
   import type { AgentLetter, AgentTranscript, SharedProjectScope, SharedProjectThread } from '@boite/contracts';
   import { untrack } from 'svelte';
   import type { Store } from '../../lib/store.svelte';
@@ -48,8 +47,6 @@
     } catch (e) { if (generation === epoch) error = errorText(e); }
     finally { busy = false; }
   }
-  // Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
-  markFeature('boite-feature:contacts');
 </script>
 
 <SharedDialog title={target.agent.title} {onclose} testid="shared-thread-dialog">

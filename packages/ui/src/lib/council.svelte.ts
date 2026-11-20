@@ -3,12 +3,11 @@
  * thread's cards read the councils it started with `council.list`, a salon
  * reads its council and posts with `council.get`. Both read again on
  * `council.changed` for their own council or thread, a burst of changes making
- * one read. A core that refuses the read (the experiment off there, or an older
- * core without the council) leaves the reader `refused`; the desktop turning
- * the experiment on reads it again.
+ * one read. A core that refuses the read (an older core where the Council was
+ * an experiment and is off, or one without the council) leaves the reader
+ * `refused`; that core's desktop turning the experiment on reads it again.
  */
 
-import { markFeature } from '@boite/contracts';
 import { COUNCIL_EXPERIMENT, RpcErrorCode, type Council, type CouncilPost, type CouncilRpcEvents, type ThreadId } from '@boite/contracts';
 import { untrack } from 'svelte';
 import type { Client } from './client';
@@ -26,7 +25,7 @@ class CouncilReader<T> {
   value = $state.raw<T | null>(null);
   /** A first read answered, refused or failed: nothing then means nothing. */
   loaded = $state(false);
-  /** The core does not serve councils to this client: the experiment is off there, or it predates them. */
+  /** The core does not serve councils to this client: an older core, with the experiment off or from before them. */
   refused = $state(false);
   /** The council no longer exists. */
   missing = $state(false);
@@ -74,7 +73,7 @@ class CouncilReader<T> {
     this.#reading += 1;
     if (client) {
       const changed = client.on('council.changed', event => { if (this.#concerns(event)) this.#soon(); });
-      // The core gates councils on the desktop's experiments: a read made before it heard of them was refused.
+      // An older core gates councils on the desktop's experiments: a read made before it heard of them was refused.
       const switched = client.on('client.desktopExperiments', ({ experiments }) => { if (experiments.includes(COUNCIL_EXPERIMENT)) this.#soon(); });
       this.#release = () => { changed(); switched(); };
     } else this.#release = null;
@@ -184,6 +183,3 @@ export function followCouncil(reader: () => { store: Store; watch(): () => void;
     untrack(() => current.follow());
   });
 }
-
-// Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
-markFeature('boite-feature:debates');

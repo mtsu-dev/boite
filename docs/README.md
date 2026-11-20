@@ -55,7 +55,7 @@ the feature is for.
 ## Keeping it running
 
 - [Updates](updates.md): app updates and agent updates.
-- [Experiments](experiments.md): unfinished features you can turn on in a Nightly build.
+- [Experiments](experiments.md): unfinished features you can turn on in a Nightly build; none today.
 - [Privacy and network](privacy.md): what leaves your machine, and how to block it.
 - [Troubleshooting](troubleshooting.md): logs and problem reports.
 

@@ -101,7 +101,7 @@ test('reduced motion greys the control and says why, then gives it back when the
   cleanups.push(async () => { window.matchMedia = original; });
   const { button, click } = toy();
   expect(button.getAttribute('aria-disabled')).toBe('true');
-  expect(button.title).toBe(strings.experiments.whip.off);
+  expect(button.title).toBe(strings.features.whip.off);
   click();
   expect(whip.held).toBe(false);
   expect(playCrack).not.toHaveBeenCalled();
@@ -114,7 +114,7 @@ test('reduced motion greys the control and says why, then gives it back when the
     }
   });
   expect(button.getAttribute('aria-disabled')).toBe('false');
-  expect(button.title).toBe(strings.experiments.whip.action);
+  expect(button.title).toBe(strings.features.whip.action);
   click();
   expect(whip.held).toBe(true);
 });

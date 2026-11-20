@@ -5,7 +5,9 @@
  * Each flag is written in full because a bundler folds nothing less direct
  * (`packages/contracts/src/experiments.ts`): in a build below the Council's
  * tag it is `false`, the imports below are dropped and no chunk holds the
- * Council. From source and in tests it is not defined.
+ * Council. From source and in tests it is not defined. The Council is
+ * finished (`release`), so no build defines the flag today and the imports
+ * always run.
  */
 
 /** Whether this bundle holds the Council. */

@@ -8,7 +8,6 @@
   import { railBotState, type RailBotState } from '../../lib/app-rail';
   import { agentRows, liveActivity, previewOf, waitingOn, type ActivityKind, type AgentMood, type AgentRowData, type AgentsView } from '../../lib/agents.svelte';
   import { contextMenu } from '../../lib/context-menu.svelte';
-  import { experimentOn } from '../../lib/experiments.svelte';
   import type { AgentPane } from '../../lib/store/layout.svelte';
   import { strings } from '../../lib/strings';
   import { listNames, watchTeams, type TeamRow } from '../../lib/teams.svelte';
@@ -41,7 +40,7 @@
    * rows' menu, cut to what a bot has (`agentMenuItems`), on a right click or
    * a long press. A bot waiting to move once its turn ends says where it goes.
    *
-   * With the Teams experiment on, the owner's teams come first, in their own
+   * The owner's teams come first, in their own
    * card under their own heading (`docs/internals/teams.md`): one row per team, its
    * members' pictures, its name, who is in it, the time of its last post and
    * the dot of a chat not read. A row opens the team's chat in the card beside.
@@ -98,15 +97,14 @@
   const found = $derived(needle ? lists.flatMap(({ machine, view: owner }) =>
     (owner.snapshot?.profiles ?? []).filter(a => a.status === 'archived' && a.name.toLowerCase().includes(needle)).map(profile => ({ machine, profile }))) : []);
 
-  /** The listed machines' teams, read only while the experiment is on: the phone's list draws them, a desktop's column the open one. */
-  const watched = watchTeams(() => experimentOn('teams') ? lists.map(list => list.machine) : []);
+  /** The listed machines' teams: the phone's list draws them, a desktop's column the open one. */
+  const watched = watchTeams(() => lists.map(list => list.machine));
   /** The teams a search names, the one with the latest post first. */
   const teams = $derived(watched()
     .filter(({ team }) => !needle || team.name.toLowerCase().includes(needle))
     .sort((a, b) => lastPost(b) - lastPost(a) || a.team.name.localeCompare(b.team.name)));
-  const teamsOn = $derived(experimentOn('teams'));
   /** The Teams section: always while Teams is on, and under a search only over the teams it found. */
-  const teamsShown = $derived(teamsOn && (needle ? teams.length > 0 : true));
+  const teamsShown = $derived(needle ? teams.length > 0 : true);
   /** A paired phone tapped the greyed New team: the reason shows under the heading. */
   let guestNote = $state(false);
   function newTeam() {
@@ -184,7 +182,7 @@
   // On a phone the page's search and its one "+" (a bot, or a team in its menu) are the header's, as on every tab.
   $effect(() => {
     if (!phone.current) return;
-    const owner = view.store.owner, both = teamsOn && !!onnewteam;
+    const owner = view.store.owner, both = !!onnewteam;
     return tabHeader.lend({
       searchLabel: labels.search,
       searchTestid: 'agents-search-toggle',

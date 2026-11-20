@@ -6,7 +6,7 @@
  */
 
 import { Archive, ArchiveRestore, Pause, PenLine, Play } from '@lucide/svelte';
-import { markFeature, type Team } from '@boite/contracts';
+import type { Team } from '@boite/contracts';
 import { confirm } from './confirm.svelte';
 import { separator, type MenuItem } from './menu';
 import type { Store } from './store.svelte';
@@ -52,6 +52,3 @@ export async function pickTeamAction(store: Store, team: Team, id: string, repor
     void teamsOf(store).refresh();
   }
 }
-
-// Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
-markFeature('boite-feature:teams');

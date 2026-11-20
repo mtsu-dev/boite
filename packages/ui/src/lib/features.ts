@@ -16,17 +16,20 @@
  * A device that turned on its experiment keeps it on: the first read stores
  * that as its choice, since the Experiments page drops ids it no longer lists
  * the next time it saves.
+ *
+ * `whip` is the Whip's button beside the other controls, switched from
+ * Appearance: on by default, for a person who would rather not see it.
  */
 
 import { EXPERIMENTS_STORAGE_KEY } from './experiments';
 
-export type FeatureId = 'chat-artifacts' | 'preview-comments' | 'open-chat-links' | 'edge-scrollbars';
+export type FeatureId = 'chat-artifacts' | 'preview-comments' | 'open-chat-links' | 'edge-scrollbars' | 'whip';
 
 export const FEATURES_STORAGE_KEY = 'boite.features';
 
-export const FEATURE_IDS: FeatureId[] = ['chat-artifacts', 'preview-comments', 'open-chat-links', 'edge-scrollbars'];
+export const FEATURE_IDS: FeatureId[] = ['chat-artifacts', 'preview-comments', 'open-chat-links', 'edge-scrollbars', 'whip'];
 
-const DEFAULTS: Record<FeatureId, boolean> = { 'chat-artifacts': true, 'preview-comments': true, 'open-chat-links': false, 'edge-scrollbars': true };
+const DEFAULTS: Record<FeatureId, boolean> = { 'chat-artifacts': true, 'preview-comments': true, 'open-chat-links': false, 'edge-scrollbars': true, whip: true };
 
 /** The experiments this device turned on before they graduated, read from their old array. */
 function formerExperiments(): string[] {

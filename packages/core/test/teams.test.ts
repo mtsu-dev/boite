@@ -90,13 +90,9 @@ const holdDelivery = (h: TestCore) => {
   return () => spy.mockRestore();
 };
 
-test('teams stay closed while the experiment is off, and a machine in no group names no mochi of another', async () => {
+test('teams stay open whatever the app reports, and a machine in no group names no mochi of another', async () => {
   const { h, owner, bots, team } = await setup();
   await experiment(owner, false);
-  const off = await failure(() => owner.call('teams.list', {}));
-  expect(off.rpc.data).toMatchObject({ reason: 'experiment-off' });
-  expect((await failure(() => owner.call('teams.post', { teamId: team.id, id: 'x', text: 'hi' }))).rpc.data).toMatchObject({ reason: 'experiment-off' });
-  await experiment(owner);
   expect((await owner.call('teams.list', {})).teams.map(entry => entry.name)).toEqual(['Crew']);
   const alone = await failure(() => owner.call('teams.members.add', { teamId: team.id, botId: 'pc/Bob' }));
   expect(alone.message).toContain('this machine is in no group');
@@ -468,7 +464,7 @@ async function boiteAs(h: TestCore, threadId: string, args: string[]) {
   return { code, out, err };
 }
 
-test('boite team: a mochi lists, posts, reads and asks for cards; the experiment and other machines refuse', async () => {
+test('boite team: a mochi lists, posts, reads and asks for cards, whatever the app reports; other machines refuse', async () => {
   const { h, owner, bots: [ada, bob], team, key } = await setup(['Ada', 'Bob']);
   teamDriver();
   expect((await boiteAs(h, ada!.threadId, ['team', 'list'])).out).toContain('Crew: Ada, Bob');
@@ -488,10 +484,11 @@ test('boite team: a mochi lists, posts, reads and asks for cards; the experiment
   const remote = await boiteAs(h, ada!.threadId, ['team', 'invite', 'Crew', 'pc/Cy']);
   expect(remote.code).not.toBe(0);
   expect(remote.err).toContain('this machine is in no group');
+  // An app that reports no Teams closes nothing: they are on in every build.
   await experiment(owner, false);
-  const off = await boiteAs(h, ada!.threadId, ['team', 'list']);
-  expect(off.code).not.toBe(0);
-  expect(off.err).toContain('Teams experiment');
+  const listed = await boiteAs(h, ada!.threadId, ['team', 'list']);
+  expect(listed.code).toBe(0);
+  expect(listed.out).toContain('Crew');
   expect(team.members).toHaveLength(2);
 }, 30_000);
 

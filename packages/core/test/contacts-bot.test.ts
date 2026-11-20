@@ -2,7 +2,7 @@ import { afterEach, expect, spyOn, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { AgentLetter, ContactRequest } from '@boite/contracts';
+import { EXPERIMENT_STAGES, type AgentLetter, type ContactRequest, type ExperimentId, type FeatureStage } from '@boite/contracts';
 import { agentsCommand } from '../src/agents-cli.ts';
 import type { AgentFact } from '../src/agents/runtime.ts';
 import type { CoreClient } from '../src/client.ts';
@@ -257,7 +257,7 @@ test('with a mochi, an ordinary thread neither lists nor writes to a contact\'s 
   expect((await guest.core.coordination.directory(guestThread)).agents.some(agent => agent.coreId === hostId && agent.threadId === hostThread)).toBe(true);
   const direct = await send(guestThread, 'direct');
   await waitFor(() => lettersOf(host, hostThread).some(letter => letter.id === direct.id), 10000);
-  expect(await thrown(guestClient.call('collaboration.ask', { threadId: guestThread, text: 'Anyone on the docs?' }))).toThrow('Settings > Experiments');
+  expect(await thrown(guestClient.call('collaboration.ask', { threadId: guestThread, text: 'Anyone on the docs?' }))).toThrow('open Contacts in the app');
 }, 60000);
 
 test('the mochi starts a thread for a trusted contact\'s request, refuses another, and its share card opens a project only on the owner\'s Yes', async () => {
@@ -447,8 +447,12 @@ test('boite contacts sends each command\'s words to its method, as the mochi typ
   expect(await thrown(run(['dance']))).toThrow('contacts expects forward');
 });
 
-test('a Release starts nothing from the Contacts mochi: a plan or a share accepted on a card made as a Nightly does not run, and no new plan is proposed', async () => {
+test('with Contacts tagged nightly, a Release starts nothing from the Contacts mochi: a plan or a share accepted on a card made as a Nightly does not run, and no new plan is proposed', async () => {
   const dataDir = mkdtempSync(join(tmpdir(), 'boite-bot-stages-'));
+  // Contacts are finished today: this keeps the start gate (contacts/gate.ts) proved for the day a feature like it is not.
+  const stages = EXPERIMENT_STAGES as Record<ExperimentId, FeatureStage>;
+  const was = stages.contacts;
+  stages.contacts = 'nightly';
   try {
     const { host, hostClient, guestClient, hostName, hostBot, guestThread } = await linked({ host: dataDir });
     const ask = async (words: string) => {
@@ -490,6 +494,7 @@ test('a Release starts nothing from the Contacts mochi: a plan or a share accept
     expect((await owner.call('contacts.bot.refuse', { threadId: hostBot.threadId, id: later.id, reason: 'Not in this build' })).status).toBe('refused');
     owner.close();
   } finally {
+    stages.contacts = was;
     for (const core of cores.splice(0)) await core.stop();
     rmSync(dataDir, { recursive: true, force: true });
   }

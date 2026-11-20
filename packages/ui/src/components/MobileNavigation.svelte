@@ -21,6 +21,7 @@
   import Menu from './Menu.svelte';
   import { whipEntry } from '../lib/whip-entry.svelte';
   import { experimentOn } from '../lib/experiments.svelte';
+  import { featureOn } from '../lib/features.svelte';
   import { mobileChrome } from '../lib/mobile-chrome.svelte';
   import { focusOnMount } from '../lib/actions';
   import { watchRowCut } from '../lib/row-cut';
@@ -270,6 +271,7 @@
   /** A tab page's own search and "+", lent to this header (Bots): every tab's header reads title, magnifier, "+". */
   const lent = $derived(store.page === 'agents' && !recover ? tabHeader.controls : null);
   const searchable = $derived(!recover && !chatting && (store.page === 'chat' || lent !== null));
+  const newShown = $derived(tabbed && !recover && store.page === 'chat' && headerList === 'threads' && !(searching && searchable));
   function closeSearch() { searching = false; search = ''; tabHeader.query = ''; }
   // Another tab or page starts without the last one's search.
   let searchedOn: string | null = null;
@@ -339,11 +341,12 @@
   {#if threadViews}<span class="header-display"><DisplayOptions entries={groups} target={undefined} owner={store} prefix="mobile-" compact filters={filters} {atWork} onaddproject={store.addsProjects ? addProject : undefined} /></span>{/if}
   {#if searchable}<button class="ghost icon" data-testid={lent?.searchTestid ?? 'mobile-search-open'} aria-label={lent?.searchLabel ?? strings.mobile.search} title={lent?.searchLabel ?? strings.mobile.search} onclick={() => searching = true}><Search size={20} /></button>{/if}
   {/if}
-  {#if !recover && !chatting && experimentOn('whip') && whipEntry.feature}{@const WhipButton = whipEntry.feature.WhipButton}<WhipButton mobile />{/if}
+  <!-- The thread list's row is full with its views, three squares, "New" and the gear: the Whip waits on the other lists. -->
+  {#if !recover && !chatting && !newShown && featureOn('whip') && whipEntry.feature}{@const WhipButton = whipEntry.feature.WhipButton}<WhipButton mobile />{/if}
   {#if narrow.current && ContactRequestNotice && contactsShown(store)}<ContactRequestNotice {store} />{/if}
   <!-- One way to create per screen: a page (Bots, Contacts, Settings) owns its own. Activity answers what is
        asked, so it creates nothing; the thread list's "+" is one tab away. -->
-  {#if tabbed && !recover && store.page === 'chat' && headerList === 'threads' && !(searching && searchable)}
+  {#if newShown}
     <!-- A new conversation, the list's one labelled action: "New" where the row is narrow, "New thread" past it. -->
     <button class="primary new" data-testid="mobile-new" aria-label={strings.sidebar.newThread} disabled={draftOwner.connection !== 'ready'} onclick={() => void newThread()}><Plus size={14} aria-hidden="true" /><span class="ui-label short">{strings.sidebar.newShort}</span><span class="ui-label long">{strings.sidebar.newThread}</span></button>
   {:else if lent?.create && !(searching && searchable)}

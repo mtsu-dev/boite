@@ -1,4 +1,4 @@
-/** Teams of bots behind their experiment behave alike on the real core and the in-memory transport (`docs/internals/teams.md`). */
+/** Teams of bots behave alike on the real core and the in-memory transport (`docs/internals/teams.md`). */
 import { RpcErrorCode, type AgentProfile } from '../../packages/contracts/src/index.ts';
 import type { ContractEnv, Scenario } from './scenarios.ts';
 
@@ -14,14 +14,14 @@ async function refused(call: Promise<unknown>, code: number): Promise<Record<str
   check((e?.rpc?.code ?? e?.code) === code, `expected ${code}, got ${String(failure)}`);
   return e?.rpc?.data ?? e?.data ?? {};
 }
-const experiments = (env: ContractEnv, on: boolean) =>
-  env.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: on ? ['teams'] : [], labels: {} });
+/** An app that reports no experiment, as a Release does: teams are on in every build all the same. */
+const noExperiments = (env: ContractEnv) =>
+  env.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: [], labels: {} });
 
 export const TEAM_SCENARIOS: Record<string, Scenario> = {
-  'teams wait for their experiment; posts route by name, mochis read only what they may see, and a machine outside the group names no mochi': async (env: ContractEnv) => {
-    await experiments(env, false);
-    same((await refused(env.call('teams.list', {}), RpcErrorCode.Refused)).reason, 'experiment-off', 'the refusal with the experiment off');
-    await experiments(env, true);
+  'teams answer with no experiment reported; posts route by name, mochis read only what they may see, and a machine outside the group names no mochi': async (env: ContractEnv) => {
+    await noExperiments(env);
+    check(Array.isArray((await env.call('teams.list', {})).teams), 'teams.list with no experiment reported');
     const bots: AgentProfile[] = [];
     try {
       const { loaded } = await env.call('providers.list', {});
@@ -100,7 +100,6 @@ export const TEAM_SCENARIOS: Record<string, Scenario> = {
       check((await env.call('teams.list', { archived: true })).teams.some(entry => entry.id === team.id), 'an archived team is gone from the archived list');
     } finally {
       for (const agent of bots) await env.call('agents.profile.save', { id: agent.id, expectedRevision: agent.revision, value: { ...agent, status: 'archived' } }).catch(() => undefined);
-      await experiments(env, false);
     }
   },
 };

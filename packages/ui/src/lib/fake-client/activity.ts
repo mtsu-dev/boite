@@ -1,6 +1,6 @@
 /** A thread's goal, loop and task list, and the timer that runs them. */
 import { errorText } from '../errors';
-import { AUTO_GOAL_MIN_CHARS, attachmentError, effectiveExperiments, RpcErrorCode, threadActive, type AgentTask, type Thread, type ThreadActivity, type Turn } from '@boite/contracts';
+import { AUTO_GOAL_MIN_CHARS, attachmentError, RpcErrorCode, threadActive, type AgentTask, type Thread, type ThreadActivity, type Turn } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { refusal } from './shared';
 import { workflowAnswer, workflowChild } from './delegation';
@@ -258,9 +258,9 @@ function updateLoopClock(activity: ThreadActivity, params: ActivityControl): voi
 const NATIVE_COMMAND = /^\s*\/[\w:-]+(?:\s|$)/;
 const busy = (thread: Thread) => [thread.activity?.goal, thread.activity?.loop].some(item => item && item.status !== 'complete');
 
-/** As the core's `startsAutoGoal`: the sending app had `auto-goal` on, and the prompt, no command, reaches the owner's threshold. */
-export function startsAutoGoal(ctx: FakeContext, text: string, experiments: readonly string[] | null | undefined): boolean {
-  if (!effectiveExperiments(experiments ?? [], ctx.core.version).includes('auto-goal') || NATIVE_COMMAND.test(text)) return false;
+/** As the core's `startsAutoGoal`: automatic goals are on in the machine's settings, and the prompt, no command, reaches the owner's threshold. */
+export function startsAutoGoal(ctx: FakeContext, text: string): boolean {
+  if (ctx.settings.autoGoals === false || NATIVE_COMMAND.test(text)) return false;
   return text.trim().length >= (ctx.settings.autoGoalMinChars ?? AUTO_GOAL_MIN_CHARS.default);
 }
 
@@ -314,7 +314,7 @@ export function activityMethods(ctx: FakeContext) {
     'threads.goal.track': async (params) => {
       const thread = ctx.thread(params.threadId);
       if (thread.archived) throw refusal('goal track needs an existing, unarchived conversation');
-      if (!ctx.experimentsInForce().includes('auto-goal')) throw refusal('goal track needs the Automatic goals experiment, which is off in the desktop app (Settings, Experiments)');
+      if (ctx.settings.autoGoals === false) throw refusal('goal track needs automatic goals, which the owner turned off on this machine (Settings, General, Agent replies)');
       if (busy(thread)) throw refusal('this conversation already has a goal or a loop; it must finish or be removed first');
       const last = lastPrompt(thread);
       if (!last) throw refusal('this conversation has no prompt of the user to track');

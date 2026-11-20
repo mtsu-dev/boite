@@ -171,9 +171,15 @@ export interface Settings {
    */
   goalTracker?: GoalTrackerModel | null;
   /**
-   * With the `auto-goal` experiment on in the sending app, a prompt of at
-   * least this many characters that starts a turn also starts a reviewed goal
-   * with that prompt as its objective (`docs/internals/goals.md`). Missing:
+   * Automatic goals (`docs/internals/goals.md`): a long prompt starts a
+   * reviewed goal, and `boite goal track` lets an agent start one. False
+   * turns both off on this machine; missing or true, they are on.
+   */
+  autoGoals?: boolean;
+  /**
+   * With automatic goals on, a prompt of at least this many characters that
+   * starts a turn also starts a reviewed goal with that prompt as its
+   * objective (`docs/internals/goals.md`). Missing:
    * `AUTO_GOAL_MIN_CHARS.default`.
    */
   autoGoalMinChars?: number;
@@ -371,10 +377,11 @@ export interface SettingsRpcMethods {
   'telemetry.export': { params: Record<string, never>; result: Record<string, unknown> };
   'telemetry.retryForget': { params: Record<string, never>; result: TelemetryState };
   /**
-   * The settings in force. `stored` asks for the ones that are experiments as
-   * saved rather than as this build reads them (a Release reads them as off):
-   * what the copy to a following machine sends, so a hidden choice is never
-   * copied as "off". A core older than the stages ignores it and hides nothing.
+   * The settings in force. `stored` asks for them as saved: a core from
+   * before cacheKeepalive, backgroundCompaction and deviceStream became
+   * ordinary settings reads them as off in a Release, and the copy to a
+   * following machine must not take that reading for a choice. A current
+   * core reads nothing as off and answers the same either way.
    */
   'settings.get': { params: { stored?: boolean }; result: Settings };
   'settings.set': { params: Partial<Settings>; result: Settings };
