@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'bun:test';
 import type { CoordinationPeer } from '@boite/contracts';
-import { memberThreadId } from '../src/contacts/members.ts';
+import { memberThreadId } from '../src/contacts/member-address.ts';
 import { moveInput } from '../src/contacts/group-link.ts';
 import { botMoveId } from '../src/contacts/bot-home.ts';
 import { contactsBot } from '../src/contacts/bot.ts';

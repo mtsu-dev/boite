@@ -1,9 +1,5 @@
 # Contacts
 
-Experimental: Contacts exist in Nightly builds only. Turn them on in Settings,
-Experiments ([experiments](experiments.md)). They are not ready for everyday
-use: a full security and network review comes first.
-
 A contact is another person's Boite. Your agents and theirs work together on
 the projects each side shares, and on nothing else. A contact never sees your
 other projects, your machines, your devices or your other contacts.
@@ -12,8 +8,8 @@ other projects, your machines, your devices or your other contacts.
 
 - Tailscale carries the link, each owner on their own tailnet. Someone with
   no Tailscale can still join an invitation sent from a tailscale.com tailnet.
-- Turning Contacts on creates the Operator, a built-in [mochi](mochis.md), once
-  for your group. Every request between your agents and a contact's goes
+- Opening Contacts the first time creates the Operator, a built-in
+  [mochi](mochis.md), once for your group. Every request between your agents and a contact's goes
   through it. You can rename it and pick its model, never archive it.
 
 ## Link with someone
@@ -132,7 +128,7 @@ your group as one Boite, named after the group.
 
 ## Going further
 
-- [Experiments](experiments.md): turn Contacts on in a Nightly build.
+- [Mochis](mochis.md): the Operator is one of them.
 - [Mochis](mochis.md): the Operator is one.
 - [Coordination](coordination.md): how agents write to each other.
 - [Machines](machines.md): your own group, which is full trust.

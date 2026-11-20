@@ -20,6 +20,8 @@
 
   let { store }: { store: Store } = $props();
   const inShell = desktopShell();
+  /** Focus guard and Mute agents act only on a Windows machine: elsewhere they say so and stay put. */
+  const offWindows = $derived(!!store.core && store.core.os !== 'windows');
   /** Read once, as the tour opens: a window resized halfway keeps the screens it started with. */
   const phone = onPhone();
   const screens = $derived(steps(store.owner, phone));
@@ -180,8 +182,8 @@
               <label class="row"><Bell size={18} /><span class="ui-label">{strings.settings.notifications}</span><input type="checkbox" role="switch" data-testid="onboarding-notifications" checked={store.notifications} onchange={event => void store.setNotifications(event.currentTarget.checked)} /></label>
               {#if inShell}<label class="row"><Minimize2 size={18} /><span class="ui-label">{strings.settings.closeToTray}</span><input type="checkbox" role="switch" data-testid="onboarding-tray" checked={tray} disabled={!trayReady || trayBusy} onchange={event => void setTray(event.currentTarget.checked)} /></label>{/if}
               {#if store.owner}
-                <label class="row"><AppWindow size={18} /><span class="ui-label">{strings.settings.focusGuard}</span><input type="checkbox" role="switch" data-testid="onboarding-focus-guard" checked={store.settings?.focusGuard ?? true} onchange={event => void toggled(event.currentTarget, focusGuard => store.saveSettings({ focusGuard }))} /></label>
-                <label class="row"><VolumeX size={18} /><span class="ui-label">{strings.settings.muteAgents}</span><input type="checkbox" role="switch" data-testid="onboarding-mute" checked={store.settings?.muteAgents ?? true} onchange={event => void toggled(event.currentTarget, muteAgents => store.saveSettings({ muteAgents }))} /></label>
+                <label class="row"><AppWindow size={18} /><span><span class="ui-label">{strings.settings.focusGuard}</span>{#if offWindows}<span class="why">{strings.protection.windowsOnly}</span>{/if}</span><input type="checkbox" role="switch" data-testid="onboarding-focus-guard" checked={store.settings?.focusGuard ?? true} disabled={offWindows} onchange={event => void toggled(event.currentTarget, focusGuard => store.saveSettings({ focusGuard }))} /></label>
+                <label class="row"><VolumeX size={18} /><span><span class="ui-label">{strings.settings.muteAgents}</span>{#if offWindows}<span class="why">{strings.protection.windowsOnly}</span>{/if}</span><input type="checkbox" role="switch" data-testid="onboarding-mute" checked={store.settings?.muteAgents ?? true} disabled={offWindows} onchange={event => void toggled(event.currentTarget, muteAgents => store.saveSettings({ muteAgents }))} /></label>
               {/if}
             </div>
             {#if error}<p role="alert">{error}</p>{/if}
@@ -263,6 +265,7 @@
   .row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--color-border); }
   .row > span { flex: 1; font-size: var(--text-base); }
   .row :global(svg) { flex: none; color: var(--color-muted-foreground); }
+  .why { display: block; font-size: var(--text-sm); color: var(--color-muted-foreground); }
   input[type=checkbox] { appearance: none; position: relative; flex: 0 0 36px; width: 36px; height: 22px; margin: 0; border: 1px solid var(--color-edge); border-radius: 999px; background: var(--color-surface-3); cursor: pointer; }
   input::after { content: ''; position: absolute; width: 14px; height: 14px; top: 3px; left: 3px; border-radius: 50%; background: var(--color-muted-foreground); transition: transform var(--dur-2) var(--ease-out-quint); }
   input:checked { background: var(--color-foreground); } input:checked::after { background: var(--color-background); transform: translateX(14px); }

@@ -33,7 +33,7 @@ const DROPPED = 'group-bots:dropped:';
 /** The machines the last sync gave a lease to: one that loses every lease hears it once. */
 const LEASED = 'group-bots:leased';
 /** How long a request to another machine may take before it counts as unreachable. */
-export const REQUEST_MS = 10_000;
+const REQUEST_MS = 10_000;
 const SYNC_MS = 500;
 const RETRY_MS = [5_000, 15_000, 60_000, 300_000];
 const TEXT_MAX = 1_500;

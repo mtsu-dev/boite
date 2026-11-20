@@ -16,7 +16,7 @@ export interface CommandRun {
  * to close. A helper that left the command's group keeps them open past any
  * stop, and what had arrived is returned rather than waited on.
  */
-export const DRAIN_MS = 500;
+const DRAIN_MS = 500;
 
 /** A pipe read to its end, or until `cancel` gives up on it with what it gave. */
 function collect(stream: ReadableStream<Uint8Array>) {

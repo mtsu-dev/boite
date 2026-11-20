@@ -17,6 +17,7 @@ commands.allow = [
   "quit_shell",
   "quit_guard",
   "notify",
+  "notify_supported",
   "user_presence",
   "close_behavior",
   "launch_at_login",

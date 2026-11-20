@@ -3,14 +3,14 @@
 //! keeps the earlier rule: it stays usable until it grants an idle stop.
 use std::io::{Read, Write};
 #[cfg(unix)]
-use std::fs::{File, OpenOptions};
+use std::fs::{File, OpenOptions, TryLockError};
 use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
 use std::sync::Mutex;
 use std::time::Duration;
 
 #[cfg(unix)]
-use {fs2::FileExt, serde::Deserialize};
+use serde::Deserialize;
 
 use crate::local_core::health::{health, read_core_file, same_core, HEALTH_TIMEOUT};
 #[cfg(unix)]
@@ -103,10 +103,10 @@ pub(crate) fn lock_without_core(directory: &Path) -> Result<Option<File>, String
     let path = directory.join("core.lock");
     let failed = |error: std::io::Error| format!("cannot lock {} for the update: {error}", path.display());
     let mut lock = OpenOptions::new().read(true).write(true).create(true).truncate(false).open(&path).map_err(failed)?;
-    match FileExt::try_lock_exclusive(&lock) {
+    match lock.try_lock() {
         Ok(()) => {}
-        Err(error) if error.raw_os_error() == fs2::lock_contended_error().raw_os_error() => return Ok(None),
-        Err(error) => return Err(failed(error)),
+        Err(TryLockError::WouldBlock) => return Ok(None),
+        Err(TryLockError::Error(error)) => return Err(failed(error)),
     }
     if !file_identity::still_at(&lock, &path).map_err(failed)? || core_is_running(directory)? {
         return Ok(None);

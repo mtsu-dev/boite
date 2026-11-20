@@ -114,7 +114,7 @@ or two lines.
 `,
 };
 
-export const VISUAL_SKILL: BuiltinSkill = {
+const VISUAL_SKILL: BuiltinSkill = {
   name: 'boite-visual',
   description: 'A visual beyond a mermaid fence: a boite view page (simulator, animation, controls) or an HTML file to keep, what to draw and how to check it.',
   body: `# Show it visually
@@ -191,7 +191,7 @@ then place the page in your answer with the printed image line.
 };
 
 /**
- * Listed only while the Council experiment is on, and never to a council's own
+ * Listed to every thread but a council's own
  * member (`threads/turn-context.ts`). It holds the mechanism alone: whom to ask,
  * what to ask and what to do with the answers belong to the user's instructions.
  */
@@ -245,7 +245,7 @@ answer with \`Score: n/10\` or \`Score: none\`; without a score the table says
 };
 
 /** The diagnostic skill comes first: it is listed only while agents may read the logs. */
-export const BUILTIN_SKILLS: readonly BuiltinSkill[] = [REPORT_ISSUE_SKILL, PROVE_IT_SKILL, VISUAL_SKILL, COUNCIL_SKILL];
+const BUILTIN_SKILLS: readonly BuiltinSkill[] = [REPORT_ISSUE_SKILL, PROVE_IT_SKILL, VISUAL_SKILL, COUNCIL_SKILL];
 
 function render(skill: BuiltinSkill): string {
   return `---\nname: ${skill.name}\ndescription: ${JSON.stringify(skill.description)}\n---\n\n${skill.body}`;
@@ -314,7 +314,7 @@ function write(path: string, text: string): void {
 }
 
 /** Writes each skill when missing or different, and returns where each lives. A write that fails leaves that skill out. */
-export function ensureBuiltinSkills(dataDir: string, onError: (message: string) => void = () => {}): { name: string; description: string; path: string }[] {
+function ensureBuiltinSkills(dataDir: string, onError: (message: string) => void = () => {}): { name: string; description: string; path: string }[] {
   return ensureSkills(join(dataDir, 'skills'), BUILTIN_SKILLS, onError, 'built-in skill');
 }
 

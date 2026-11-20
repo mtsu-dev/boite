@@ -112,7 +112,7 @@ ${CONTROL_HELP}
                                  --open <url> adds an Open button for a page
                                  the user must sign in to, in your browser
   ask list                      read this thread's pending questions
-  secret list                    keys kept for this project, by name only
+  secret list                    compatibility: reports that no keys are stored
   secret ask <NAME> --why <text> ask the user for a key on a card; prints
                                  saved secret:<ref>, declined, cancelled or timed_out
   secret write|run|pipe <ref>    use it without seeing it; boite secret help
@@ -170,7 +170,7 @@ ${PLUGIN_HELP}
   todo add <text>                add a card for the user
   todo claim <id>                mark a card finished, awaiting the user
   goal track                     a reviewed goal and checklist on the user's
-                                 last prompt (the Automatic goals experiment)
+                                 last prompt, unless automatic goals are off
   threads find <words>           locate threads by words of their chat, title,
                                  project, branch or model
   threads read <thread>          its conversation (--last <n>, --before <ms>; --entry <id> --offset <n>: the rest of a cut entry; --entry <id> --tool <id> [--offset <n>]: your own thread's tool output)
@@ -203,7 +203,7 @@ ${BOT_HELP}
                                  --machine <name> runs it on another machine of the
                                  group, in its project named like yours or --project
   delegate list                  every subagent, workflow and council: state, model, time
-  delegate council <request>     with the Council experiment: several models answer it
+  delegate council <request>     several models answer it
                                  alone, read-only, each with a score out of 10, on code
                                  or anything else, with or without git; the answers
                                  come back as one message (--models <a>[:<effort>],

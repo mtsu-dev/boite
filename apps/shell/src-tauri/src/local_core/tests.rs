@@ -154,16 +154,16 @@ fn an_update_can_repair_a_failed_start_only_when_it_owns_the_idle_core_lock() {
     let control = Mutex::new(InstallState::Waiting);
     let path = directory.join("core.lock");
     let other = std::fs::File::create(&path).unwrap();
-    fs2::FileExt::lock_exclusive(&other).unwrap();
+    other.lock().unwrap();
     let blocked = state.wait_for_install(&control, false, || Ok(true), || panic!("another process holds the core lock"));
     assert!(blocked.is_err());
     assert!(spawned_pid(&state).is_none(), "admission must not try to start the broken sidecar");
     drop(other);
     assert!(state.wait_for_install(&control, false, || Ok(true), || {}).unwrap());
     let retry = std::fs::OpenOptions::new().read(true).write(true).open(&path).unwrap();
-    assert!(fs2::FileExt::try_lock_exclusive(&retry).is_err(), "startup stays blocked until the installer can take over");
+    assert!(matches!(retry.try_lock(), Err(std::fs::TryLockError::WouldBlock)), "startup stays blocked until the installer can take over");
     state.release_hold();
-    fs2::FileExt::try_lock_exclusive(&retry).unwrap();
+    retry.try_lock().unwrap();
     drop(retry);
     std::fs::remove_dir_all(directory).unwrap();
 }
@@ -298,7 +298,7 @@ fn a_core_stopped_for_an_install_stays_stopped_until_the_hold_is_released() {
     #[cfg(unix)]
     let competing_lock = || {
         let lock = std::fs::File::open(directory.join("core.lock")).unwrap();
-        fs2::FileExt::try_lock_exclusive(&lock).is_ok()
+        lock.try_lock().is_ok()
     };
     #[cfg(unix)]
     assert!(!competing_lock(), "the install must exclude a new core after the original core exits");

@@ -64,7 +64,7 @@ import { fetchManifest, readSource } from './plugins/source.ts';
 import { PluginInterfaces, checkDevUi, commitWithUi, previewUi, uiAtCommit, type UiTexts } from './plugins/ui.ts';
 import { INSTALL_SOURCE_WAIT_MS, PluginUpdateChecks, compareVersions, type UpdateSource } from './plugins/updates.ts';
 
-export { parsePluginPool, recommendedPlugins, recommendedUpdates, verifyPluginDownload, type InstalledPlugin } from './plugins/record.ts';
+export { type InstalledPlugin } from './plugins/record.ts';
 
 export class PluginStore {
   #core: Core;

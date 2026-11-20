@@ -6,7 +6,6 @@ import { startUi } from './lib/ui.ts';
 
 const ARTIFACTS = join(import.meta.dir, '.artifacts', 'setting-cards');
 const DESKTOP = { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false };
-const PHONE = { width: 390, height: 844, deviceScaleFactor: 1, mobile: true };
 
 let page: BrowserPage;
 let server: { close(): Promise<void> };
@@ -28,7 +27,7 @@ async function capture(name: string) {
 
 const DOCKED = '[data-testid="activity-question"] [data-testid="setting-card"][data-state="pending"]';
 
-test('an agent reads the app\'s language and experiments, and its card turns an experiment on in the chat', async () => {
+test('an agent reads the app\'s language and no experiment, and a sensitive card shows its switch in the chat', async () => {
   await page.send('Emulation.setDeviceMetricsOverride', DESKTOP);
   const thread = await page.evaluate(`(async () => {
     const store = window.__boiteTest.workspace.active;
@@ -36,33 +35,12 @@ test('an agent reads the app\'s language and experiments, and its card turns an 
     await window.__boiteTest.workspace.select(store, thread.id);
     return thread.id;
   })()`) as string;
-  // What \`boite settings\` reads: French, the experiment off, under the name the French page gives it.
+  // What \`boite settings\` reads: French, and no experiment, since every feature is finished.
   const read = await page.evaluate(`window.__boiteTest.workspace.active.client.call('agent.settings', { threadId: ${JSON.stringify(thread)} })`) as { app: { language: string }; settings: { key: string; value: unknown; label?: string }[] };
   expect(read.app.language).toBe('fr');
-  expect(read.settings.find(reading => reading.key === 'experiment.whip')).toMatchObject({ value: false, label: 'Fouet' });
   // A finished feature is on in every build: it is not a setting an agent reads or asks for.
-  expect(read.settings.find(reading => reading.key === 'experiment.resident-agents')).toBeUndefined();
+  expect(read.settings.filter(reading => reading.key.startsWith('experiment'))).toEqual([]);
   expect(read.settings.find(reading => reading.key === 'experiments')).toBeUndefined();
-
-  await page.evaluate(`window.__boiteTest.workspace.active.client.call('turns.start', { threadId: ${JSON.stringify(thread)}, prompt: 'show me the whip [settings-experiment]' })`);
-  await page.waitFor(`document.querySelector('${DOCKED} [data-testid="setting-switch"]')?.getBoundingClientRect().width > 0`);
-  expect(await page.evaluate(`document.querySelector('${DOCKED} [data-testid="setting-switch"]').checked`)).toBe(false);
-  expect(await page.evaluate(`document.querySelector('${DOCKED} [data-testid="setting-apply"]')`)).toBeNull();
-  await capture('experiment-desktop.png');
-
-  await page.send('Emulation.setDeviceMetricsOverride', PHONE);
-  await page.waitFor(`document.querySelector('${DOCKED}')?.getBoundingClientRect().width > 0`);
-  expect(await page.evaluate(`(() => { const card = document.querySelector('${DOCKED}').getBoundingClientRect(); return card.left >= 0 && card.right <= innerWidth; })()`)).toBe(true);
-  await capture('experiment-phone.png');
-  await page.send('Emulation.setDeviceMetricsOverride', DESKTOP);
-
-  // The switch in the card flips this device's experiment; the app's report settles the card.
-  await page.waitFor(`document.querySelector('${DOCKED} [data-testid="setting-switch"]')?.getBoundingClientRect().width > 0`);
-  await page.click(`${DOCKED} [data-testid="setting-switch"]`);
-  await page.waitFor(`document.querySelector('[data-testid="setting-card"][data-outcome="applied"]')`);
-  expect(await page.evaluate(`JSON.parse(localStorage.getItem('boite.experiments'))`)).toEqual(['whip']);
-  await page.waitFor(`window.__boiteTest.workspace.active.openThread?.messages.some(m => m.role === 'user' && m.parts.some(p => p.type === 'text' && p.text.includes('applied: experiment.whip is now true')))`);
-  await capture('experiment-applied-desktop.png');
 
   // A sensitive switch shows in the card too, beside its warning, once the agent has read the card's report.
   await page.waitFor(`window.__boiteTest.workspace.active.openThread.status === 'idle'`);

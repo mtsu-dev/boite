@@ -43,7 +43,7 @@ live('grok behind douane, live', () => {
     'an account that never signed in lists the gateway\'s Grok models as xAI names them and answers on one',
     async () => {
       const client = await harness.connect();
-      if (KEY.length > 0) await client.call('subscriptionProxy.key', { key: KEY });
+      if (KEY.length > 0) await client.call('subscriptionProxy.configure', { subscriptionProxy: (await client.call('settings.get', {})).subscriptionProxy!, key: KEY });
       const project = await client.call('projects.add', { path: projectDir, name: 'grok behind douane' });
       const account = await client.call('accounts.add', { providerId: 'grok', label: 'Gateway Grok' });
       expect(account.isolationDir).not.toBeNull();

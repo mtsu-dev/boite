@@ -201,8 +201,6 @@ export const MODE_POSTURE: Record<PermissionMode, { approvalMode: ApprovalMode; 
 /** A probe lists models and runs nothing: no writes, no shell, no durable session log. */
 export const PROBE_FLAGS = ['--no-session-log', '--disable-write', '--disable-shell'] as const;
 
-export type Timer = ReturnType<typeof setTimeout>;
-
 export interface ToolView {
   name: string;
   input: unknown;

@@ -1,8 +1,7 @@
 /**
  * Agent links between the machines this app holds owner connections to.
  * Two owner machines ready at the same time are linked for agent coordination
- * without a click, once per pair until one of them reconnects. A pair the user
- * unlinked in an earlier version stays unlinked.
+ * without a click, once per pair until one of them reconnects.
  */
 import { errorText } from './errors';
 import { untrack } from 'svelte';
@@ -11,22 +10,12 @@ import { workspace, type Machine } from './workspace.svelte';
 import { fill, strings } from './strings';
 import { bridgeMachines, closeBridges, forgetBridge, pruneBridges } from './agent-link-bridge';
 
-const UNLINKED_KEY = 'boite.agent-links.unlinked';
-
-function pairOf(a: string, b: string): string {
-  return [a, b].sort().join('|');
-}
-
-function unlinkedPairs(): Set<string> {
-  try {
-    const saved = JSON.parse(localStorage.getItem(UNLINKED_KEY) ?? '[]') as unknown;
-    return new Set(Array.isArray(saved) ? saved.filter((entry): entry is string => typeof entry === 'string') : []);
-  } catch { return new Set(); }
-}
-
-function isUnlinked(coreA: string, coreB: string): boolean {
-  return unlinkedPairs().has(pairOf(coreA, coreB));
-}
+/**
+ * The pairs an earlier version let the user unlink. Nothing has written it
+ * since that switch went away, so it only kept those pairs apart for good:
+ * it is dropped once, at start, and they link again like any other.
+ */
+const RETIRED_UNLINKED_KEY = 'boite.agent-links.unlinked';
 
 /** A loopback contact cannot be dialled by another machine. The authenticated
  * connection can supply its HTTPS origin when no public address was configured. */
@@ -124,7 +113,7 @@ class AgentAutoLink {
       if (!a.store.groupKnown || !b.store.groupKnown) { this.#tried.delete(key); return; }
       const [left, right] = await Promise.all([a.store.coordinationIdentity(), b.store.coordinationIdentity()]);
       // Two connections to one core are one machine.
-      if (left.coreId === right.coreId || isUnlinked(left.coreId, right.coreId)) return;
+      if (left.coreId === right.coreId) return;
       const [peersA, peersB] = await Promise.all([a.store.coordinationPeers(), b.store.coordinationPeers()]);
       // Machines of one group trust each other while both are members. A link written here
       // would outlive that: a machine removed from the group would keep reaching the other's agents.
@@ -149,6 +138,7 @@ class AgentAutoLink {
 
   /** Watches the owner machines for the life of the app; the returned function stops it. */
   start(): () => void {
+    try { localStorage.removeItem(RETIRED_UNLINKED_KEY); } catch { /* nothing kept */ }
     const stop = $effect.root(() => {
       $effect(() => {
         ownerMachines().map(machine => `${machine.id}\0${machine.store.groupKnown}\0${machine.store.group?.id ?? ''}`).join('\0');

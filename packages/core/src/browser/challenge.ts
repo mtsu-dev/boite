@@ -21,14 +21,14 @@ export interface ChallengePage {
   send(method: string, params?: Record<string, unknown>): Promise<unknown>;
 }
 
-export type ChallengeVendor = 'Cloudflare' | 'Turnstile' | 'reCAPTCHA' | 'hCaptcha' | 'DataDome' | 'HUMAN' | 'Akamai' | 'Amazon' | 'AWS WAF';
+type ChallengeVendor = 'Cloudflare' | 'Turnstile' | 'reCAPTCHA' | 'hCaptcha' | 'DataDome' | 'HUMAN' | 'Akamai' | 'Amazon' | 'AWS WAF';
 
 /**
  * `auto` clears by itself in a trusted browser. `checkbox` has a box to click.
  * `hold` (press and hold) and `puzzle` (images, a slider, letters to type)
  * need more than one click. `blocked` is a refusal with no check to pass.
  */
-export type ChallengeKind = 'auto' | 'checkbox' | 'hold' | 'puzzle' | 'blocked';
+type ChallengeKind = 'auto' | 'checkbox' | 'hold' | 'puzzle' | 'blocked';
 
 export interface Challenge {
   vendor: ChallengeVendor;
@@ -52,7 +52,7 @@ export interface ChallengeOutcome {
 }
 
 /** The whole wait: under the 15 s an agent's own wait may take, so the command answers inside the core's deadline. */
-export const CHALLENGE_WAIT_MS = 12_000;
+const CHALLENGE_WAIT_MS = 12_000;
 const POLL_MS = 300;
 /**
  * Cloudflare's widget runs its own check first and shows a box only when that
@@ -77,7 +77,7 @@ const CHECKBOX_LEFT_PX: Partial<Record<ChallengeVendor, number>> = { Cloudflare:
  * `scroll` brings the widget into view first, for the click. `at` asks
  * whether the widget receives that point.
  */
-export function detectScript(scroll = false, at?: { x: number; y: number }): string {
+function detectScript(scroll = false, at?: { x: number; y: number }): string {
   return `(() => {
   const d = document, w = window, q = s => d.querySelector(s);
   const seen = el => !!el && (!el.checkVisibility || el.checkVisibility({ visibilityProperty: true, opacityProperty: true }));
@@ -138,7 +138,7 @@ const VENDORS: ReadonlySet<string> = new Set<ChallengeVendor>(['Cloudflare', 'Tu
 const KINDS: ReadonlySet<string> = new Set<ChallengeKind>(['auto', 'checkbox', 'hold', 'puzzle', 'blocked']);
 
 /** The check on the page now, or null. Throws when the page cannot answer, as between two documents. */
-export async function detectChallenge(page: ChallengePage, scroll = false, at?: { x: number; y: number }): Promise<Challenge | null> {
+async function detectChallenge(page: ChallengePage, scroll = false, at?: { x: number; y: number }): Promise<Challenge | null> {
   const found = await page.evaluate(detectScript(scroll, at), 3000) as Partial<Challenge> | null;
   if (!found || typeof found !== 'object' || !VENDORS.has(String(found.vendor)) || !KINDS.has(String(found.kind))) return null;
   const box = found.box;
@@ -176,7 +176,7 @@ const between = (low: number, high: number) => low + Math.random() * (high - low
  * a button drawn over it would take the click instead, so nothing is pressed
  * and the answer is false.
  */
-export async function clickCheckbox(page: ChallengePage, box: NonNullable<Challenge['box']>, vendor: ChallengeVendor): Promise<boolean> {
+async function clickCheckbox(page: ChallengePage, box: NonNullable<Challenge['box']>, vendor: ChallengeVendor): Promise<boolean> {
   const x = box.x + Math.min(CHECKBOX_LEFT_PX[vendor] ?? 27, box.width / 2) + between(-3, 3);
   const y = box.y + box.height / 2 + between(-3, 3);
   const fromX = Math.max(2, box.x + box.width + between(60, 140)), fromY = Math.max(2, box.y - between(40, 110));

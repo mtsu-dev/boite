@@ -4,13 +4,14 @@
   import SyncMark from './SyncMark.svelte';
   import TitleModelSetting from './TitleModelSetting.svelte';
   import GoalTrackerSetting from './GoalTrackerSetting.svelte';
+  import AutoGoalSetting from './AutoGoalSetting.svelte';
   import { strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
 
   /**
    * How a machine's agents answer: the questions they may leave, the length
    * and the tool summaries of a reply, the models that title a thread and
-   * keep its checklist. Saved on the machine, so it has its own card under General.
+   * keep its checklist, and the automatic goals a long prompt starts. Saved on the machine, so it has its own card under General.
    */
   let { store }: { store: Store } = $props();
   const uid = $props.id();
@@ -56,5 +57,5 @@
     <input id="{uid}-suggest" aria-labelledby="{uid}-suggest-name" aria-describedby="{uid}-suggest-effect" type="checkbox" role="switch" data-testid="setting-prompt-suggestions"
       checked={store.settings?.promptSuggestions ?? true} disabled={!store.settings} onchange={(event) => void toggle('promptSuggestions', event.currentTarget)} />
   </label>
-  {#if store.settings}<TitleModelSetting {store} /><GoalTrackerSetting {store} />{/if}
+  {#if store.settings}<TitleModelSetting {store} /><GoalTrackerSetting {store} /><AutoGoalSetting {store} />{/if}
 </section>

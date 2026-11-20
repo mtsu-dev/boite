@@ -80,7 +80,7 @@ interface BlockEntry {
  * ("Now I'll check the tests.") as a thinking block, at most one per call,
  * instead of a text block. Older models write it as text.
  */
-export function writesProgressAsThinking(model: string | null): boolean {
+function writesProgressAsThinking(model: string | null): boolean {
   const match = model === null ? null : /claude-[a-z]+-(\d+)(?:-(\d{1,2}))?(?!\d)/.exec(model);
   if (match === null) return false;
   const major = Number(match[1]);

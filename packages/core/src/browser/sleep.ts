@@ -16,7 +16,7 @@ export const SLEEP_AFTER_MS = 30_000;
  * turn that works elsewhere for half an hour leaves the tab asleep, and its
  * next command wakes it.
  */
-export const TURN_HOLD_MS = 5 * 60_000;
+const TURN_HOLD_MS = 5 * 60_000;
 
 /** What the sleep of one tab needs of it: its page's DevTools session. */
 export interface Sleeper {

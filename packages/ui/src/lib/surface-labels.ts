@@ -29,7 +29,7 @@ export const CARDS: { kind: SurfaceKind; key: string }[] = [
  * launcher and the new-surface menu read it: the palette, the chords and an
  * agent still open the surface, and an open tab stays.
  */
-export function hiddenKind(kind: SurfaceKind): boolean {
+function hiddenKind(kind: SurfaceKind): boolean {
   return CARDS.some((card) => card.kind === kind) && !work.shows(`panel.${kind}` as ControlId);
 }
 

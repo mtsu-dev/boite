@@ -6,7 +6,8 @@ import { toThread, type ThreadRow } from './rows.ts';
 export const VISIBLE_THREADS = `SELECT *,
   EXISTS (SELECT 1 FROM threads parent WHERE parent.id = threads.parent_thread_id AND parent.agent_session_id IS NOT NULL) AS parent_is_bot,
   (SELECT MAX(created_at) FROM messages WHERE thread_id = threads.id AND role = 'user') AS last_user_message_at
-  FROM threads WHERE id NOT IN (SELECT thread_id FROM thread_deletions)`;
+  FROM threads WHERE id NOT IN (SELECT thread_id FROM thread_deletions)
+    AND (project_id IS NULL OR project_id NOT IN (SELECT id FROM projects WHERE removed_at IS NOT NULL))`;
 
 /**
  * Visible threads matching `filter`, in creation order. Every read of whole

@@ -50,8 +50,8 @@ export const strings = {
     over: 'The council is over: the salon takes no more messages.',
     loading: 'Loading the council',
     missing: 'This council no longer exists.',
-    /** The core does not answer for councils: the experiment off on the desktop, or an older core. */
-    unavailable: 'Following a council needs the Council experiment, in the desktop app under Settings, Experiments.',
+    /** The core does not answer for councils: an older core, where the Council was an experiment. */
+    unavailable: 'This machine does not answer for councils yet: update Boite on it.',
     empty: 'The members are reviewing. Their answers appear here.',
     /** The table of scores, as `councilTable` writes it. */
     table: {

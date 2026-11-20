@@ -143,7 +143,12 @@ export class PeerDesk {
         else if (envelope.operation === 'deliver') result = this.#side.receive(envelope.payload as AgentLetter, peer);
         else if (envelope.operation === 'search') {
           const words = searchWords(((envelope.payload as { words?: unknown })?.words as string[] | undefined)?.join?.(' '));
-          result = searchContacts(this.#core.journal.db, this.#side.directory(), words, currentPeer.readThreads === true);
+          const found = await searchContacts(this.#core.journal.db, this.#side.directory(), words, currentPeer.readThreads === true);
+          // The chat was read off this thread: a revoke or a thread closed meanwhile wins.
+          const now = this.#side.trusted().find(p => p.coreId === peer.coreId);
+          if (!now) throw refused('peer permission revoked');
+          const open = new Set(this.#side.directory().map(a => a.threadId));
+          result = found.filter(match => open.has(match.threadId) && (now.readThreads === true || !match.matched.includes('chat')));
         } else if (envelope.operation === 'read') {
           if (!currentPeer.readThreads) throw refused('agents on this machine are not allowed to read conversations; enable their access in Machines on the destination');
           const { threadId, ...query } = readParams(envelope.payload);
@@ -225,10 +230,13 @@ export class PeerDesk {
       const open = this.#side.contactDirectory(peer.coreId).map(redactSharedContact);
       const readable = open.filter(entry => this.#core.contacts.reach.mayRead(peer.coreId, entry.threadId));
       const closed = open.filter(entry => !this.#core.contacts.reach.mayRead(peer.coreId, entry.threadId));
-      const local = [...searchContacts(this.#core.journal.db, readable, words, true, redactSharedText), ...searchContacts(this.#core.journal.db, closed, words, false, redactSharedText)];
-      if (relayed) return local.slice(0, 100);
-      const held = await members.search(peer.coreId, words);
-      return listed([...local, ...held.entries], held.unavailable);
+      const found = [...await searchContacts(this.#core.journal.db, readable, words, true, true), ...await searchContacts(this.#core.journal.db, closed, words, false, true)];
+      const held = relayed ? null : await members.search(peer.coreId, words);
+      // The chat was read off this thread, and the group answered meanwhile: what the owner closed since is left out.
+      if (this.#core.sharedProjects.hasContact(peer.coreId)) throw refused('operation: associated projects require scoped contact.project queries');
+      const still = new Set(this.#side.contactDirectory(peer.coreId).map(entry => entry.threadId));
+      const local = found.filter(match => still.has(match.threadId) && (!match.matched.includes('chat') || this.#core.contacts.reach.mayRead(peer.coreId, match.threadId)));
+      return held ? listed([...local, ...held.entries], held.unavailable) : local.slice(0, 100);
     }
     if (operation === 'read') {
       const { threadId, ...query } = readParams(payload);

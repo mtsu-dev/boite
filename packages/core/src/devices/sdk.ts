@@ -108,7 +108,7 @@ export function parseAvdName(output: string): string | undefined {
 }
 
 /** `com.apple.CoreSimulator.SimRuntime.iOS-18-2` reads `iOS 18.2`. */
-export function runtimeName(runtime: string): string | undefined {
+function runtimeName(runtime: string): string | undefined {
   const match = /SimRuntime\.([A-Za-z]+)-([\d-]+)$/.exec(runtime);
   return match ? `${match[1]} ${match[2]!.replace(/-/g, '.')}` : undefined;
 }

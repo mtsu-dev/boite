@@ -21,7 +21,7 @@ const LOCK_FILES = new Set(['bun.lock', 'bun.lockb', 'package-lock.json', 'npm-s
   'poetry.lock', 'pipfile.lock', 'composer.lock', 'go.sum', 'flake.lock', 'uv.lock', 'packages.lock.json', 'pubspec.lock', 'mix.lock', 'podfile.lock']);
 const GENERATED_PATH = /(^|\/)(dist|vendor|node_modules|__generated__)\/|\.(lock|min\.js|min\.css|map|snap|pb\.go|g\.dart)$|_pb2\.py$|[._-]generated\.[a-z0-9]+$/i;
 
-export function generatedFile(path: string): boolean {
+function generatedFile(path: string): boolean {
   return LOCK_FILES.has(path.slice(path.lastIndexOf('/') + 1).toLowerCase()) || GENERATED_PATH.test(path);
 }
 
@@ -32,7 +32,7 @@ const where = (page: number, path: string) => `read it alone, up to ${REVIEW_FIL
  * Max-min fair split: the smallest asks are served whole and what they leave
  * goes to the rest. Never hands out more than `budget` in total.
  */
-export function fairShares(sizes: number[], budget: number): number[] {
+function fairShares(sizes: number[], budget: number): number[] {
   const shares = sizes.map(() => 0), order = sizes.map((_, i) => i).sort((a, b) => sizes[a]! - sizes[b]!);
   let left = Math.max(0, budget), waiting = sizes.length;
   for (const i of order) { shares[i] = Math.min(sizes[i]!, Math.floor(left / waiting)); left -= shares[i]!; waiting--; }
@@ -73,7 +73,7 @@ function noteOnly(patch: string, page: number, path: string): string {
 }
 
 /** One patch within `limit` characters, cut inside hunks when one of them does not fit whole. Never longer than `limit` once `limit` holds the note alone. */
-export function cutPatch(patch: string, limit: number, page: number, path: string): BudgetedPatch {
+function cutPatch(patch: string, limit: number, page: number, path: string): BudgetedPatch {
   if (patch.length <= limit) return { patch, omitted: 0 };
   const parts = hunks(patch), sizes = parts.map(lines => lines.join('\n').length + 1);
   const note = (shortened: number) => `[patch cut to fit the review budget: ${shortened} of ${parts.length} hunk${parts.length === 1 ? '' : 's'} shortened, ${patch.length} characters in all; ${where(page, path)}]`;

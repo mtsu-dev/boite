@@ -27,7 +27,6 @@ export const strings = {
     expand: 'Unfold this section',
     /** The pull requests the agent asked Boite to watch (`boite pr watch`). */
     watchSection: 'Pull request watches',
-    noWatches: 'No pull request watched',
     watchHint: 'Boite reads the pull request on GitHub about once a minute and wakes the agent when a check fails, the checks pass, a review or comment lands, the branch conflicts or it leaves the merge queue unmerged',
     watchNotRead: 'Not read yet',
     watchNoChecks: 'No checks',

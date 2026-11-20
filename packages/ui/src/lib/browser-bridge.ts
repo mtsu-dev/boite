@@ -4,10 +4,10 @@
  * that rectangle, which is the shape a Tauri child `Webview` takes.
  *
  * Three implementations. In the shell, `lib/browser-bridge-tauri.ts` drives a
- * real child webview the Rust side creates, moves and destroys. On `?fake=1` an
- * iframe is parked over the slot so a capture shows something. Anywhere else,
- * a phone or a plain browser, nothing paints and the slot keeps its one muted
- * line.
+ * real child webview the Rust side creates, moves and destroys. On `?fake=1`,
+ * from the dev server only, an iframe is parked over the slot so a capture
+ * shows something. Anywhere else, a phone or a plain browser, nothing paints
+ * and the slot keeps its one muted line.
  */
 import { TauriBridge } from './browser-bridge-tauri';
 import { linuxShell } from './shell-platform';
@@ -288,7 +288,8 @@ class NoBridge implements BrowserBridge {
 
 function pickBridge(): BrowserBridge {
   try {
-    if (new URLSearchParams(window.location.search).get('fake') === '1') return new FakeBridge();
+    // The fake page belongs to the dev server, like the fake client: a packaged build ignores the query.
+    if (import.meta.env.DEV && new URLSearchParams(window.location.search).get('fake') === '1') return new FakeBridge();
   } catch {
     /* no location to read: the bridge paints nothing */
   }

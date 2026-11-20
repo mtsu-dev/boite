@@ -5,7 +5,7 @@ import { GRANT_QUERY_PARAM, PAIR_QUERY_PARAM } from '../../../packages/contracts
 import { connect } from '../../../packages/core/src/client.ts';
 import { E2E_DIR_PREFIX, killProcessTreeAsync, removeDirectory } from './cleanup.ts';
 
-export { E2E_DIR_PREFIX, killProcessTree, killProcessTreeAsync, removeDirectory, sweepStaleDirectories } from './cleanup.ts';
+export { killProcessTree, removeDirectory } from './cleanup.ts';
 
 const MAIN = join(import.meta.dir, '..', '..', '..', 'packages', 'core', 'src', 'main.ts');
 /** The default: the end to end suite proves the sources, a bench may point elsewhere. */
