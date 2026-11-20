@@ -115,6 +115,37 @@ test('goal continues across turns, reports tasks and stops only on completion', 
   expect(thread.messages.filter(message => message.role === 'user').map(message => message.parts.filter(part => part.type === 'image').length)).toEqual([1, 0]);
 });
 
+test('a goal waits for the subagents it started instead of starting turn after turn', async () => {
+  const client = await h.connect();
+  const { threadId } = await echoThread(h, client);
+  const lane = { ...h.core.journal.getThread(threadId)!, id: 'lane', title: 'lane', parentThreadId: threadId, status: 'running' as const };
+  h.core.journal.putThread(lane);
+  const answers = ['Lanes still running.', 'Merged the lane.', 'Verified.\n[BOITE_GOAL_COMPLETE]'];
+  const prompts: string[] = [];
+  restore = setDriver('echo', {
+    protocol: 'echo',
+    startTurn(ctx) {
+      prompts.push(ctx.prompt);
+      const id = ctx.emit.startMessage('assistant');
+      ctx.emit.part(id, 0, { type: 'text', text: answers[prompts.length - 1] ?? 'Again.' });
+      ctx.emit.complete(id, 'complete');
+      return { stop() {}, done: Promise.resolve({ status: 'done', sessionId: null, usage: null }) };
+    },
+  });
+  h.core.activity.set({ threadId, goal: { objective: 'Merge the lanes' } });
+  await waitFor(() => prompts.length === 1 && h.core.threads.get(threadId).status === 'idle');
+  expect(prompts[0]).toContain('end your turn: Boite holds the goal');
+  // The lane still runs: another goal turn would only report that again.
+  await Bun.sleep(400);
+  expect(prompts).toHaveLength(1);
+  // The lane ends and its result wakes the conversation; the goal goes on after that turn.
+  h.core.journal.putThread({ ...lane, status: 'idle' });
+  h.core.threads.startTurn(threadId, 'lane: done');
+  await waitFor(() => h.core.activity.get(threadId).goal?.status === 'complete');
+  expect(prompts).toHaveLength(3);
+  expect(prompts[1]).toBe('lane: done');
+});
+
 test('a blocked goal waits for the user and resumes after the reply', async () => {
   const client = await h.connect();
   const { threadId } = await echoThread(h, client);

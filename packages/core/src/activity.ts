@@ -10,6 +10,7 @@ import type { ChildRoute } from './delegation/routes.ts';
 import { GoalTracker, modelRead, newChecklist } from './goal-tracker.ts';
 import type { ProviderProbe } from './providers/probe.ts';
 import { needsModelDiscovery } from './threads/selection.ts';
+import { backgroundWork } from './threads/background-work.ts';
 import { unlinkGoalCards } from './todos.ts';
 import { autoGoalCode } from './auto-goal-entry.ts';
 
@@ -22,6 +23,12 @@ const GOAL_REVIEW_ROUNDS = 5;
 const newReview = (): GoalReview => ({ phase: 'working', maxRounds: GOAL_REVIEW_ROUNDS, reviewerThreadId: null, claimTurnId: null, delivered: 0, verdicts: [] });
 /** Completion claims one open checklist item may send back before the review decides alone. */
 const CHECKLIST_BOUNCES = 2;
+/**
+ * How often a goal held by work its agent started looks again. The turn that
+ * brings that work's result back reschedules it at once; this only covers
+ * work that ends without waking the conversation.
+ */
+const BACKGROUND_RECHECK_MS = 30_000;
 /** The review a reviewer conversation's first turn answers. */
 interface ReviewRun { threadId: string; generation: number; round: number }
 
@@ -402,6 +409,10 @@ export class ActivityStore {
     // The checklist's check of the last turn decides what the next turn hears, or whether a claim goes back.
     if (kind === 'goal' && this.tracker.holds(threadId)) return;
     if (review?.phase === 'reviewing') { this.#startReview(threadId, thread); return; }
+    // While its subagents or a workflow run, a goal turn past its first could only say they still run: the goal waits,
+    // and the turn that brings their result back schedules the next run (`#finished`). The agent's own tasks may be a
+    // server that runs for hours, so they hold nothing.
+    if (kind === 'goal' && state.goal!.iterations > 0 && backgroundWork(this.#core, threadId, { ownTasks: false, skip: child => this.#reviewers.has(child) || this.tracker.owns(child) })) { this.#schedule(threadId, BACKGROUND_RECHECK_MS); return; }
     const last = review?.verdicts.at(-1);
     // Only the first turn after a review carries its findings; later ones have them in the history.
     const feedback = review && last && last.verdict !== 'pass' && review.delivered < review.verdicts.length ? { round: last.round, feedback: last.summary } : undefined;
