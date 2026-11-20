@@ -394,6 +394,39 @@ test('a failed turn of the conversation leaves its run going, and the result sti
   await waitFor(() => prompts.some(p => p.threadId === threadId && p.prompt.includes('B done')));
 });
 
+test.each(['result', 'failure notice'] as const)('a queued workflow %s starts no turn during shutdown', async kind => {
+  const { held } = scripted(() => ({ hold: true }));
+  const { h, threadId } = await setup();
+  h.core.threads.startTurn(threadId, { prompt: 'Keep the parent busy' });
+  await waitFor(() => held.has(threadId));
+  const steps = [{ id: 'first', profile: 'fast', task: 'First' }];
+  if (kind === 'failure notice') steps.push({ id: 'other', profile: 'fast', task: 'Other' });
+  const run = h.core.workflows.start({ threadId, plan: { name: 'Held delivery', steps }, requestId: 'held' }, 'user');
+  const first = () => h.core.workflows.get(threadId, run.id).nodes[0]!.instances[0]!;
+  await waitFor(() => first().threadId !== null && held.has(first().threadId!));
+  held.get(first().threadId!)!('', kind === 'result' ? 'done' : 'error');
+  await waitFor(() => {
+    const current = h.core.workflows.get(threadId, run.id);
+    return kind === 'result' ? current.status === 'done' : current.nodes[0]!.status === 'failed' && current.nodes[1]!.status === 'running';
+  });
+  const closed = new Promise<void>(resolve => {
+    // The workflow observer queues delivery before this observer starts its shutdown.
+    const off = h.core.bus.onCommitted((name, payload) => {
+      if (name !== 'turn.finished' || (payload as Turn).threadId !== threadId) return;
+      off();
+      h.core.workflows.beginClose();
+      resolve();
+    });
+  });
+  held.get(threadId)!('Parent done');
+  await closed;
+  await Bun.sleep(25);
+  expect(h.core.journal.listTurns(threadId)).toHaveLength(1);
+  const pending = h.core.workflows.get(threadId, run.id);
+  expect(pending.delivered).toBe(false);
+  expect(pending.failuresNoticed ?? []).toEqual([]);
+});
+
 test('a paused team pauses the run until an owner resumes it', async () => {
   const { held } = scripted(ctx => ctx.thread.parentThreadId ? { hold: true } : 'noted');
   const { h, owner, threadId } = await setup();
