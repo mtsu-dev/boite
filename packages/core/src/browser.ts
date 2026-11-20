@@ -143,6 +143,8 @@ export class AgentBrowser {
   readonly joining = new TabsJoining();
   /** Windows pages opened that `#adopt` took, per engine, until Chrome reports them gone: the event and the list never take one twice. */
   #adopted = new WeakMap<Engine, Set<string>>();
+  /** Targets destroyed during each outstanding inventory, including events in the same CDP read as its reply. */
+  #inventories = new WeakMap<Engine, Set<Set<string>>>();
   #announce = new Map<ThreadId, ReturnType<typeof setTimeout>>();
   #closed = false;
   /** Browsers started to check a page (`probe`): no conversation lists them, so they are closed by name. */
@@ -374,6 +376,7 @@ export class AgentBrowser {
   }
 
   #gone(engine: Engine, targetId: string): void {
+    for (const destroyed of this.#inventories.get(engine) ?? []) destroyed.add(targetId);
     this.#adopted.get(engine)?.delete(targetId);
     const tab = this.#tabAt(engine, targetId);
     if (tab) this.#drop(tab.id);
@@ -531,7 +534,8 @@ export class AgentBrowser {
   /** The current tab is the last window a page opened: a command that names no tab waits for those still joining. */
   async #joined(threadId: ThreadId): Promise<void> {
     await this.#listed(threadId);
-    if (await this.joining.windows(threadId)) this.#require(threadId);
+    await this.joining.windows(threadId);
+    this.#require(threadId);
   }
 
   /**
@@ -545,10 +549,19 @@ export class AgentBrowser {
   async #listed(threadId: ThreadId): Promise<void> {
     const engines = new Set((this.#threads.get(threadId)?.order ?? []).flatMap(id => { const engine = this.#tabs.get(id)?.engine; return engine && !engine.hosted ? [engine] : []; }));
     await Promise.all([...engines].map(async engine => {
-      const listed = await engine.cdp.send<{ targetInfos?: Array<{ targetId: string; type: string; openerId?: string; url: string }> }>('Target.getTargets', {}, undefined, TARGETS_LIST_MS).catch(() => null);
-      for (const info of listed?.targetInfos ?? []) {
-        const opener = info.openerId ? this.#tabAt(engine, info.openerId) : undefined;
-        if (opener?.threadId === threadId) void this.#adopt(engine, info);
+      const active = this.#inventories.get(engine) ?? new Set<Set<string>>();
+      this.#inventories.set(engine, active);
+      const destroyed = new Set<string>();
+      active.add(destroyed);
+      try {
+        const listed = await engine.cdp.send<{ targetInfos?: Array<{ targetId: string; type: string; openerId?: string; url: string }> }>('Target.getTargets', {}, undefined, TARGETS_LIST_MS).catch(() => null);
+        for (const info of listed?.targetInfos ?? []) {
+          if (!info.openerId || destroyed.has(info.targetId)) continue;
+          if (this.#tabAt(engine, info.openerId)?.threadId === threadId) void this.#adopt(engine, info);
+        }
+      } finally {
+        active.delete(destroyed);
+        if (!active.size) this.#inventories.delete(engine);
       }
     }));
   }
