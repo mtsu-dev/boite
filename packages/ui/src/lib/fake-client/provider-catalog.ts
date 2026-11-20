@@ -173,24 +173,5 @@ export function providerCatalogMethods(ctx: FakeContext) {
       ctx.emit('providers.updated', structuredClone(result));
       return result;
     },
-    'providers.dryRun': async (params) => {
-      const provider = ctx.providers[0];
-      if (!params.file.endsWith('.json') || !provider) {
-        return {
-          ok: false,
-          rejected: {
-            file: params.file,
-            field: 'file',
-            expected: 'a path ending in .json',
-            message: 'not a descriptor file'
-          }
-        };
-      }
-      return {
-        ok: true,
-        summary: structuredClone(provider),
-        plan: { roots: [DATA_DIR], env: ['BOITE_ISOLATION_DIR'], closes: [] }
-      };
-    },
   } satisfies Partial<FakeMethods>;
 }

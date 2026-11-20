@@ -21,7 +21,7 @@ export function lanAddress(
 }
 
 /** RFC 1918: 10/8, 172.16/12, 192.168/16, written as four numbers. */
-export function isPrivateV4(address: string): boolean {
+function isPrivateV4(address: string): boolean {
   const parts = address.split('.');
   if (parts.length !== 4 || parts.some((part) => !/^\d{1,3}$/.test(part) || Number(part) > 255)) return false;
   const [a, b] = parts.map(Number) as [number, number];
@@ -66,7 +66,7 @@ const NET = '/sys/class/net';
  * names decide, and sysfs still rules out every bridge (none has a physical
  * port) and every tunnel (`tun_flags`). Null means sysfs cannot be read.
  */
-export function sysfsAdapters(sys: SysNet): ((name: string) => boolean) | null {
+function sysfsAdapters(sys: SysNet): ((name: string) => boolean) | null {
   const names = sys.list(NET);
   if (names === null) return null;
   const physical = (name: string) => sys.has(`${NET}/${name}/device`);

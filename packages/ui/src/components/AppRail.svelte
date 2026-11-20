@@ -8,15 +8,21 @@
   import { count } from '../lib/format';
   import { machineName, workspace, type Machine } from '../lib/workspace.svelte';
   import { experimentOn } from '../lib/experiments.svelte';
+  import { featureOn } from '../lib/features.svelte';
   import { agentDirectory, followAgentDirectories } from '../lib/agent-directory.svelte';
-  import { agentRows, waitingOn, type AgentRowData } from '../lib/agents.svelte';
+  import { AgentsView, agentRows, resetBuiltin, waitingOn, type AgentRowData } from '../lib/agents.svelte';
+  import { agentMenuItems, pickAgentAction } from '../lib/agent-menu';
+  import { moveBot, moveItems } from '../lib/agent-move-flow';
+  import type { AgentProfile } from '@boite/contracts';
+  import type { AgentPane } from '../lib/store/layout.svelte';
   import { watchTeams, type TeamRow } from '../lib/teams.svelte';
   import { contactsShown } from '../lib/contacts-rail.svelte';
   import { contactsParts } from '../lib/contacts-entry';
   import { machineFilter } from '../lib/machine-filter.svelte';
   import { projectView } from '../lib/project-view.svelte';
-  import { botEngine, newBot, newTeam } from '../lib/agents-view.svelte';
-  import { separator } from '../lib/menu';
+  import { botEngine, newBot, newTeam, showTeam } from '../lib/agents-view.svelte';
+  import { teamsParts } from '../lib/teams-entry';
+  import { separator, type MenuItem } from '../lib/menu';
   import { contextMenu } from '../lib/context-menu.svelte';
   import { dragWindow } from '../lib/window-drag';
   import { isMac } from '../lib/keybindings';
@@ -33,7 +39,7 @@
   import { parts } from '../lib/deferred-parts';
   import { QuotaReorder } from '../lib/quota-reorder.svelte';
   import { railOrder } from '../lib/rail-order.svelte';
-  import { threadsAtWork } from '../lib/work-counts';
+  import { subagentsAtWork, threadsAtWork } from '../lib/work-counts';
 
   /**
    * The column down the window's left edge, on a desktop, the same in every
@@ -53,7 +59,7 @@
   /** A bot's name card says its machine once there are two. */
   const several = $derived(machines.length > 1);
   const botsOn = $derived(experimentOn('resident-agents'));
-  const teamsOn = $derived(botsOn && experimentOn('teams'));
+  const teamsOn = $derived(botsOn);
   const contactsOn = $derived(contactsShown(store));
 
   // Every machine's bots stay read while the rail is drawn, so their pictures say how each one stands.
@@ -87,6 +93,12 @@
   /** The conversations at work on every machine, as the projects' Working counts read them: the Threads button's count. */
   const working = $derived(threadsAtWork(stores));
   const workingLabel = $derived(working === 1 ? strings.app.rail.workingOne : fill(strings.app.rail.workingMany, { count: String(working) }));
+  /** Their subagents at work, the lighter number beside it. */
+  const helpers = $derived(subagentsAtWork(stores));
+  const busyLabel = $derived([
+    working ? workingLabel : null,
+    helpers ? helpers === 1 ? strings.app.rail.subagentsOne : fill(strings.app.rail.subagentsMany, { count: String(helpers) }) : null
+  ].filter(Boolean).join(', ') || null);
   const tally = (value: number) => value > 99 ? '99+' : count(value);
   const unreadLabel = (value: number) => value === 1 ? strings.app.rail.unreadOne : fill(strings.app.rail.unreadMany, { count: String(value) });
   /**
@@ -166,9 +178,53 @@
     if (!onList || store.openThread) store.startDraft(undefined, { refresh: false });
     store.sidebarCollapsed = false;
   }
-  function openTeamChat({ machine, team }: TeamRow) {
+  /** A team's chat, in place of any form the Mochis page shows; with `edit` its edit dialog over it. */
+  function openTeamChat({ machine, team }: TeamRow, edit = false) {
     workspace.showAgents(machine.store);
-    void workspace.select(machine.store, team.threadId);
+    showTeam(machine.store, team, edit);
+  }
+  /**
+   * A team's picture has the menu of its chat's head (`teamMenuItems`) on a right click, after Open, answered through
+   * its own machine; a refusal shows in this window. Edit opens its chat with the team's dialog over it. The menu's
+   * module comes with the Teams' screens (`lib/teams-entry.ts`), fetched once a team shows; a right click that comes
+   * before it waits for it, unless a newer click, key or menu takes over meanwhile.
+   */
+  function teamMenu(event: MouseEvent, row: TeamRow) {
+    const ask = ++teamMenuAsk;
+    if (teamMenuModule) { contextMenu.open(event, teamMenuItemsOf(teamMenuModule, row), action => pickTeam(teamMenuModule!, row, action)); return; }
+    event.preventDefault();
+    event.stopPropagation();
+    const opener = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+    const rect = opener?.getBoundingClientRect();
+    const at = event.clientX === 0 && event.clientY === 0 && rect ? { x: rect.left + 8, y: rect.bottom } : { x: event.clientX, y: event.clientY };
+    const before = contextMenu.current;
+    let overtaken = false;
+    const overtake = () => { overtaken = true; };
+    window.addEventListener('pointerdown', overtake, true);
+    window.addEventListener('keydown', overtake, true);
+    void teamsParts.teamMenu().then(module => {
+      teamMenuModule = module;
+      if (overtaken || ask !== teamMenuAsk || contextMenu.current !== before) return;
+      contextMenu.show(at, teamMenuItemsOf(module, row), action => pickTeam(module, row, action), opener);
+    }).catch(error => store.reportError(error, 'minor')).finally(() => {
+      window.removeEventListener('pointerdown', overtake, true);
+      window.removeEventListener('keydown', overtake, true);
+    });
+  }
+  type TeamMenuModule = typeof import('../lib/team-menu');
+  let teamMenuModule: TeamMenuModule | null = null;
+  /** The last team menu asked for: an older one still loading gives way. */
+  let teamMenuAsk = 0;
+  $effect(() => {
+    if (teams.length && !teamMenuModule) void teamsParts.teamMenu().then(module => { teamMenuModule = module; }).catch(() => {});
+  });
+  function teamMenuItemsOf(module: TeamMenuModule, row: TeamRow): MenuItem[] {
+    return [{ id: 'open', label: strings.common.open, glyph: MessageSquare }, separator('sep-open'), ...module.teamMenuItems(row.machine.store, row.team)];
+  }
+  function pickTeam(module: TeamMenuModule, row: TeamRow, action: string) {
+    if (action === 'open') openTeamChat(row);
+    else if (action === 'edit') openTeamChat(row, true);
+    else void module.pickTeamAction(row.machine.store, row.team, action, store);
   }
   /** What the Bots page's head offers, from anywhere: the page owns the forms (agents-view.svelte.ts). */
   function addMenu(anchor: HTMLElement) {
@@ -178,6 +234,48 @@
       ...(teamsOn && store.owner ? [{ id: 'team', label: strings.teamChat.newTeam }] : []),
       ...(store.owner ? [separator('sep-engine'), { id: 'engine', label: strings.agents.engineSettings }] : [])
     ], id => { if (id === 'bot') newBot(store); else if (id === 'team') newTeam(store); else botEngine(store); }, anchor);
+  }
+  /**
+   * A bot's picture has its row's menu (`agentMenuItems`) on a right click, answered through its own machine since
+   * ids can collide between machines. The rail has no name field: Rename opens its settings, as the column's head does.
+   */
+  function botMenu(event: MouseEvent, { machine, row }: Bot) {
+    const agent = row.profile;
+    const items = agentMenuItems(machine.store, agent, { open: machine.store === store && openBot === agent.id, leaving: !!row.status?.leaving });
+    contextMenu.open(event, items, action => void pickBot(machine, agent, action));
+  }
+  /**
+   * `agent` is the profile the menu was drawn from: Pin and Pause do what their label said, and each save reads the
+   * revision of a snapshot fetched after the pick, since the Bots page's view may never have loaded or kept its last
+   * visit's.
+   */
+  async function pickBot(machine: Machine, agent: AgentProfile, action: string) {
+    const show = (pane?: AgentPane) => workspace.showAgents(machine.store, agent.id, pane);
+    if (action === 'open') return show();
+    if (action === 'edit' || action === 'rename') return show('settings');
+    const owner = AgentsView.of(machine.store);
+    // The machines' picker opens where the menu stood at once; the snapshot is read once a destination is picked.
+    if (action === 'move') {
+      // The move's confirmation lists the projects it detaches: the fresh profile's, not the menu's.
+      contextMenu.follow(moveItems(machine.store, agent.id), target => void current(owner, agent.id).then(fresh => fresh && moveBot(owner, fresh, target, store)));
+      return;
+    }
+    if (!await current(owner, agent.id)) return;
+    if (action === 'reset') {
+      // A refusal lands in the Bots view's banner, which may not be on screen: the window's toast says it.
+      owner.error = '';
+      if (!await resetBuiltin(owner, agent) && owner.error) store.reportError(new Error(owner.error), 'minor');
+      return;
+    }
+    pickAgentAction(owner, agent, action, { open: () => show(), edit: () => show('settings'), rename: () => show('settings'), report: store });
+  }
+  /** Reads the bot's machine again: its profile now, or null, with the reason in the window's toast, when it is gone. */
+  async function current(owner: AgentsView, id: string): Promise<AgentProfile | null> {
+    await owner.refresh();
+    const fresh = owner.snapshot?.profiles.find(profile => profile.id === id);
+    if (fresh) return fresh;
+    store.reportError(new Error(owner.loadError || strings.connection.unavailable), 'minor');
+    return null;
   }
   function pickMachine(id: string | null) {
     const entries = machines.flatMap(machine => machine.store.projects.map(project => ({ machine, project })));
@@ -209,7 +307,7 @@
   let ContactRequestNotice = $state<typeof import('./home/ContactRequestNotice.svelte').default>();
   $effect(() => {
     if (!contactsOn || ContactRequestNotice) return;
-    void contactsParts?.ContactRequestNotice().then(module => { ContactRequestNotice = module.default; }).catch(() => {});
+    void contactsParts.ContactRequestNotice().then(module => { ContactRequestNotice = module.default; }).catch(() => {});
   });
 </script>
 
@@ -240,12 +338,14 @@
   <span class="rail-card framed" aria-hidden="true"></span>
   <div class="slot" class:selected={onThreads}>
     <button type="button" class="rail-button" class:on={onThreads} aria-current={onThreads ? 'page' : undefined}
-      aria-label={working ? `${strings.sidebar.threads}, ${workingLabel}` : strings.sidebar.threads}
+      aria-label={busyLabel ? `${strings.sidebar.threads}, ${busyLabel}` : strings.sidebar.threads}
       data-testid="view-threads" onclick={showThreads}>
       <MessageSquare size={19} strokeWidth={1.75} />
-      {#if working}<span class="count work" data-testid="rail-threads-working">{tally(working)}</span>{/if}
+      {#if working || helpers}<span class="count work" class:pair={working && helpers}
+        >{#if working}<span data-testid="rail-threads-working">{tally(working)}</span>{/if}{#if helpers}<span class="helpers" data-testid="rail-threads-subagents">{tally(helpers)}</span>{/if}</span
+      >{/if}
     </button>
-    {@render railName(strings.sidebar.threads, null, working ? workingLabel : null)}
+    {@render railName(strings.sidebar.threads, null, busyLabel)}
   </div>
   <div class="slot" class:selected={onActivity}>
     <button type="button" class="rail-button" class:on={onActivity} aria-current={onActivity ? 'page' : undefined}
@@ -282,7 +382,7 @@
             <button type="button" class="bot" class:dim={state === 'paused'} aria-label={unread && !selected ? `${labelOf(bot.row.profile.name, state)}, ${unreadLabel(unreadCount)}` : labelOf(bot.row.profile.name, state)}
               aria-current={selected ? 'page' : undefined} aria-keyshortcuts="ArrowUp ArrowDown Home End" data-testid="rail-bot" data-agent-id={bot.row.profile.id} data-state={state} data-look={look}
               onpointerdown={(event) => reorder.start(event, entry.key)} onkeydown={(event) => reorder.keyboard(event, entry.key)}
-              onclick={() => workspace.showAgents(bot.machine.store, bot.row.profile.id)}>
+              onclick={() => workspace.showAgents(bot.machine.store, bot.row.profile.id)} oncontextmenu={(event) => botMenu(event, bot)}>
               <AgentAvatar kind="profile" id={bot.row.profile.id} name={bot.row.profile.name} avatar={bot.row.profile.avatar} size={44} squircle={selected} mood={moodOfState(state, look)}
                 lit={look === 'working' || avatarLit({ open: selected, attention: state === 'waiting', failed: state === 'failed', unread })} />
               <!-- At work: an arc of the accent runs around the whole picture, its disc or its squircle. Asleep: a "z" rises beside it. -->
@@ -303,7 +403,7 @@
             <button type="button" class="bot team" aria-label={news ? `${row.team.name}, ${strings.app.rail.unread}` : row.team.name} aria-current={selected ? 'page' : undefined}
               aria-keyshortcuts="ArrowUp ArrowDown Home End" data-testid="rail-team" data-team-id={row.team.id}
               onpointerdown={(event) => reorder.start(event, entry.key)} onkeydown={(event) => reorder.keyboard(event, entry.key)}
-              onclick={() => openTeamChat(row)}>
+              onclick={() => openTeamChat(row)} oncontextmenu={(event) => teamMenu(event, row)}>
               <AgentAvatar kind="team" id={row.team.id} name={row.team.name} members={pictures(row)} size={44} squircle lit={avatarLit({ open: selected, unread: news })} />
               {#if news}<span class="badge" aria-hidden="true"><span class="news"></span></span>{/if}
             </button>
@@ -329,7 +429,7 @@
     </div>
     <!-- Each with the same name card as every rail button; a slot with no button (nothing to update) takes no room. -->
     {#if !narrow.current}<div class="slot extra"><Deferred part={parts.UpdatesNotice} quiet>{#snippet children(UpdatesNotice)}<UpdatesNotice name={statusName} />{/snippet}</Deferred></div>{/if}
-    {#if experimentOn('whip') && whipEntry.feature}{@const WhipButton = whipEntry.feature.WhipButton}<div class="slot extra"><WhipButton name={statusName} /></div>{/if}
+    {#if featureOn('whip') && whipEntry.feature}{@const WhipButton = whipEntry.feature.WhipButton}<div class="slot extra"><WhipButton name={statusName} /></div>{/if}
     <div class="slot extra limits-slot"><LimitsButton {store} name={limitsName} /></div>
     <div class="slot" class:selected={store.page === 'settings'}>
       <button type="button" class="ghost icon" class:on={store.page === 'settings'} aria-current={store.page === 'settings' ? 'page' : undefined}
@@ -518,6 +618,10 @@
   }
   /* The threads at work: the same pill, the digit in the accent the working rows' arc wears. */
   .count.work { color: var(--color-accent); }
+  /* Their subagents at work: a second number in the same pill, the accent lightened, so it reads as theirs, a step under. */
+  .count .helpers { color: color-mix(in oklch, var(--color-accent) 60%, var(--color-foreground)); }
+  /* Both numbers: side by side, the pill's right edge held a little past the tile's so it stays on the card. */
+  .count.pair { left: auto; right: -6px; display: flex; gap: 4px; }
   .rail-button:hover:not(:disabled) { --count-ring: var(--color-surface-2); }
   .rail-button.on, .rail-button.on:hover:not(:disabled) { --count-ring: var(--color-surface-3); }
   /* A bot's or a team's one overlay, bottom right of its picture, cut out of the card: the amber dot for its turn,

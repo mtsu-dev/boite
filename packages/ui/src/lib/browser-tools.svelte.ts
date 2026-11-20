@@ -4,7 +4,6 @@ import { browserBridge } from './browser-bridge';
 import { automateBrowser } from './browser-automation';
 import { BrowserRecorder, warmRecordingEncoder } from './browser-recording';
 import { RecordingIndicators } from './recording-indicators';
-import { isExperimentEnabled } from './experiments';
 import { recordingCodec, recordingFrameRate } from './recording-settings';
 
 /** The testing tools of one of the user's own desktop browser tabs, from its tools menu. */
@@ -77,9 +76,8 @@ export async function runBrowserAction(id: string, action: BrowserAction): Promi
         await protocol(id, 'Emulation.setEmulatedMedia', { features: action.colorScheme === 'system' ? [] : [{ name: 'prefers-color-scheme', value: action.colorScheme }] });
         patch(id, { colorScheme: action.colorScheme }); break;
       case 'recording-start': {
-        if (action.indicators && !isExperimentEnabled('recording-indicators')) throw new Error('enable the recording-indicators experiment on this desktop first');
         if (!browserTools(id).recording && !browserTools(id).result) { recorders.get(id)?.dispose(); recorders.delete(id); }
-        const next = recorder(id, action.indicators !== false && isExperimentEnabled('recording-indicators'));
+        const next = recorder(id, action.indicators !== false);
         await next.start(action.frameRate ?? recordingFrameRate(), action.codec ?? recordingCodec());
         break;
       }

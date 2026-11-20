@@ -7,7 +7,8 @@ import { Core } from '../src/core.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnContext, TurnResult } from '../src/drivers/types.ts';
 import { startServer } from '../src/server.ts';
-import { AUTO_CONTINUE, AUTO_CONTINUE_LABEL } from '../src/threads/auto-continue.ts';
+import { AUTO_CONTINUE } from '../src/threads/auto-continue.ts';
+import { RESUME_TEXT } from '../src/threads/resume-text.ts';
 import { CRASH_RESUMING, CRASH_WHILE_RUNNING } from '../src/threads/recovery.ts';
 import { echoThread, removeDir, rolledBackArchive, startTestCore, waitFor, type TestCore } from './harness.ts';
 
@@ -73,7 +74,7 @@ test('a turn that ends on an API error resumes by itself with the error and a ca
     expect(asked).toHaveLength(2);
     expect(asked[1]!.prompt).toContain('ECONNREFUSED');
     expect(asked[1]!.prompt).toContain('Continue the current task from where it stopped');
-    expect(openingOf(h, threadId, resume.id).label).toBe(AUTO_CONTINUE_LABEL.error);
+    expect(openingOf(h, threadId, resume.id).label).toBe(RESUME_TEXT.error.label);
     expect(h.core.journal.getTurn(first.id)?.status).toBe('error');
     expect(retries).toContain('auto-continue 1/2');
     expect(h.core.threads.require(threadId)).toMatchObject({ status: 'idle' });
@@ -241,7 +242,7 @@ test('a turn that ends right after a compaction, with no answer after it, resume
     await client.call('turns.start', { threadId, prompt: 'port the renderer' });
     await waitFor(() => turns(h, threadId).length === 2 && turns(h, threadId)[1]!.status === 'done');
     expect(asked[1]!.prompt).toContain('compacted');
-    expect(openingOf(h, threadId, turns(h, threadId)[1]!.id).label).toBe(AUTO_CONTINUE_LABEL.compaction);
+    expect(openingOf(h, threadId, turns(h, threadId)[1]!.id).label).toBe(RESUME_TEXT.compaction.label);
     // The resume answered after its own compaction: nothing more.
     await Bun.sleep(150);
     expect(turns(h, threadId)).toHaveLength(2);
@@ -272,7 +273,7 @@ test('background work that ends without waking its agent resumes the thread; a S
     await waitFor(() => turns(h, threadId).length === 2 && turns(h, threadId)[1]!.status === 'done');
     expect(asked[1]!.prompt).toContain('cargo build --release');
     expect(asked[1]!.prompt).toContain('the task failed');
-    expect(openingOf(h, threadId, turns(h, threadId)[1]!.id).label).toBe(AUTO_CONTINUE_LABEL.background);
+    expect(openingOf(h, threadId, turns(h, threadId)[1]!.id).label).toBe(RESUME_TEXT.background.label);
     setSystemTime();
   } finally { await h.stop(); }
 
@@ -337,7 +338,7 @@ test('a core that dies mid-turn resumes that turn once the next core starts, quo
     expect(asked[0]!.prompt).toContain('Boite stopped unexpectedly');
     expect(asked[0]!.prompt).toContain('migrate the journal to schema 38');
     const opening = next.core.threads.get(threadId).messages.find(message => message.turnId === resume.id && message.role === 'system')!.parts[0]!;
-    expect(opening.type === 'text' && opening.displayText).toBe(AUTO_CONTINUE_LABEL.crash);
+    expect(opening.type === 'text' && opening.displayText).toBe(RESUME_TEXT.crash.label);
   } finally { await next.stop(); }
 });
 

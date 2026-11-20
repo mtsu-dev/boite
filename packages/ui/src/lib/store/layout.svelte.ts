@@ -27,12 +27,20 @@ import type { DropKind } from '../native-drop';
 import { clampSidebar, SIDEBAR_DEFAULT, writeLayout } from '../prefs';
 import { rightPanel, type BoundPanel } from '../right-panel.svelte';
 import { strings } from '../strings';
-import type { Page, SettingsTab } from '../store.svelte';
+import type { Page, SettingsTab, Store } from '../store.svelte';
 import type { StoreContext } from './context';
 import { contactsShown } from '../contacts-rail.svelte';
 
-/** The kinds are this device's whichever machine is shown: one state every Store's Layout reads. */
-const deviceKinds = $state({ list: readNotificationKinds() });
+/** The switch and its kinds are this device's whichever machine is shown: one state every Store's Layout reads. */
+const device = $state({ on: readNotifications(), kinds: readNotificationKinds() });
+
+/** The Store on screen, set by the workspace; without one, a Store says a device notice itself. */
+let noticeStore: (() => Pick<Store, 'error'>) | null = null;
+
+/** Where a notice about the whole device goes, whichever machine's Store found it: the view on screen. */
+export function showDeviceNotices(pick: (() => Pick<Store, 'error'>) | null): void {
+  noticeStore = pick;
+}
 
 /** What the window shows around the chat: the page, the sidebar, the palette, the panel, the toasts. */
 /** What opens over an agent's conversation: its settings, or its brain (instructions and memory). */
@@ -40,10 +48,11 @@ export type AgentPane = 'settings' | 'brain';
 
 export class Layout {
   projectPickerOpen = $state(false);
-  /** Toasts for threads the user is not looking at, per machine. */
-  notifications = $state(readNotifications());
+  /** Toasts for threads the user is not looking at, from every machine: the device's switch. */
+  get notifications(): boolean { return device.on; }
+  set notifications(value: boolean) { device.on = value; }
   /** The kinds of toast and push this device keeps, under that switch. */
-  get notificationKinds(): NotifyKind[] { return deviceKinds.list; }
+  get notificationKinds(): NotifyKind[] { return device.kinds; }
   /** The command palette, `Ctrl+K`. */
   paletteOpen = $state(false);
   /** Set by the palette's Rename: the chat header opens its title field and clears it. */
@@ -212,7 +221,7 @@ export class Layout {
       // A push already brings this one to the device: this page's core, or a member forwarding to the device's push home.
       if (await pushCovers(origin, core !== undefined && s.group !== null)) return;
       const body = typeof detail === 'function' ? await detail().catch(() => null) : detail;
-      await sendNotification({ ...toastFor(kind, key, title, body), coreThreadId: threadId, origin, ...(core === undefined ? {} : { core }) });
+      if (!await sendNotification({ ...toastFor(kind, key, title, body), coreThreadId: threadId, origin, ...(core === undefined ? {} : { core }) })) this.notificationsUnavailable();
     })();
   }
 
@@ -227,7 +236,7 @@ export class Layout {
     void (async () => {
       const core = origin !== undefined && origin !== location.origin ? notificationCore(s) : undefined;
       if (await pushCovers(origin, core !== undefined && s.group !== null)) return;
-      await sendNotification({ ...limitToast(alert, limitsKey(s.machineId)), origin, ...(core === undefined ? {} : { core }) });
+      if (!await sendNotification({ ...limitToast(alert, limitsKey(s.machineId)), origin, ...(core === undefined ? {} : { core }) })) this.notificationsUnavailable();
     })();
   }
 
@@ -237,15 +246,35 @@ export class Layout {
     writeNotifications(enabled);
     this.syncPushKinds();
     if (!enabled) return;
-    const granted = await requestNotificationPermission();
-    if (!granted) this.ctx.store.error = strings.settings.notificationsDenied;
+    const answer = await requestNotificationPermission();
+    if (answer === 'unavailable') this.notificationsUnavailable();
+    else if (answer === 'denied') this.deviceNotice(strings.settings.notificationsDenied);
+  }
+
+  /**
+   * The desktop shell cannot show a toast on this machine (a Linux desktop
+   * without `notify-send`): the switch goes off and the user hears it once,
+   * rather than a switch that stays on and shows nothing. The switch is the
+   * device's, so the view on screen hears it, even when a machine in the
+   * background tried to send.
+   */
+  private notificationsUnavailable(): void {
+    if (!readNotifications()) return;
+    this.notifications = false;
+    writeNotifications(false);
+    this.syncPushKinds();
+    this.deviceNotice(strings.settings.notificationsUnavailable);
+  }
+
+  private deviceNotice(text: string): void {
+    (noticeStore?.() ?? this.ctx.store).error = text;
   }
 
   /** One kind's switch, under the main one. */
   setNotificationKind(kind: NotifyKind, on: boolean): void {
     const kinds = readNotificationKinds().filter((k) => k !== kind);
     writeNotificationKinds(on ? [...kinds, kind] : kinds);
-    deviceKinds.list = readNotificationKinds();
+    device.kinds = readNotificationKinds();
     this.syncPushKinds();
   }
 

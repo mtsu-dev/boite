@@ -1,6 +1,6 @@
 import type { BrowserProfile } from './browser';
 import type { AccountId, ProviderId, RequestId } from './ids';
-import type { ExperimentId } from './experiments.ts';
+import type { ExperimentId, FinishedExperimentId } from './experiments.ts';
 import type { ClientPreferences, SettingAsk, SettingRequestParams } from './setting-requests.ts';
 import type { AutoCompact, CacheKeepalive } from './settings-validation.ts';
 import type { SubscriptionProxy } from './subscription-proxy';
@@ -171,9 +171,15 @@ export interface Settings {
    */
   goalTracker?: GoalTrackerModel | null;
   /**
-   * With the `auto-goal` experiment on in the sending app, a prompt of at
-   * least this many characters that starts a turn also starts a reviewed goal
-   * with that prompt as its objective (`docs/internals/goals.md`). Missing:
+   * Automatic goals (`docs/internals/goals.md`): a long prompt starts a
+   * reviewed goal, and `boite goal track` lets an agent start one. False
+   * turns both off on this machine; missing or true, they are on.
+   */
+  autoGoals?: boolean;
+  /**
+   * With automatic goals on, a prompt of at least this many characters that
+   * starts a turn also starts a reviewed goal with that prompt as its
+   * objective (`docs/internals/goals.md`). Missing:
    * `AUTO_GOAL_MIN_CHARS.default`.
    */
   autoGoalMinChars?: number;
@@ -371,10 +377,11 @@ export interface SettingsRpcMethods {
   'telemetry.export': { params: Record<string, never>; result: Record<string, unknown> };
   'telemetry.retryForget': { params: Record<string, never>; result: TelemetryState };
   /**
-   * The settings in force. `stored` asks for the ones that are experiments as
-   * saved rather than as this build reads them (a Release reads them as off):
-   * what the copy to a following machine sends, so a hidden choice is never
-   * copied as "off". A core older than the stages ignores it and hides nothing.
+   * The settings in force. `stored` asks for them as saved: a core from
+   * before cacheKeepalive, backgroundCompaction and deviceStream became
+   * ordinary settings reads them as off in a Release, and the copy to a
+   * following machine must not take that reading for a choice. A current
+   * core reads nothing as off and answers the same either way.
    */
   'settings.get': { params: { stored?: boolean }; result: Settings };
   'settings.set': { params: Partial<Settings>; result: Settings };
@@ -395,7 +402,7 @@ export interface SettingsRpcMethods {
    * follows the computer's switches from its first hello. A core from before
    * `desktopChosen` answers without it.
    */
-  'client.preferences': { params: ClientPreferences; result: { ok: true; desktop: ExperimentId[] | null; desktopChosen?: ExperimentId[] | null } };
+  'client.preferences': { params: ClientPreferences; result: { ok: true; desktop: (ExperimentId | FinishedExperimentId)[] | null; desktopChosen?: (ExperimentId | FinishedExperimentId)[] | null } };
 }
 
 export interface SettingsRpcEvents {
@@ -409,8 +416,9 @@ export interface SettingsRpcEvents {
    * the stages takes it for: a Release names no experiment there. `chosen`
    * is the list as that app chose it, not cut down: the device that follows
    * it keeps this one and reads it for the build that decides, so a Release
-   * in between erases nobody's switches. A core from before `chosen` sends
+   * in between erases nobody's switches. Both also name every finished id
+   * (`FINISHED_EXPERIMENT_IDS`), for an app from before its removal. A core from before `chosen` sends
    * `experiments` alone. Kept in memory, like the reports.
    */
-  'client.desktopExperiments': { experiments: ExperimentId[]; chosen?: ExperimentId[] };
+  'client.desktopExperiments': { experiments: (ExperimentId | FinishedExperimentId)[]; chosen?: (ExperimentId | FinishedExperimentId)[] };
 }

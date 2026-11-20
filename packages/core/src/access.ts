@@ -39,20 +39,19 @@
  * on or off; its kind, URLs and key stay owner-only (subscriptionProxy.configure).
  * push.kinds lets a paired device choose which kinds of notification its own
  * subscription receives; it reaches no other device's destination.
- * secrets.answer and secrets.delete reach a paired device only over an
- * encrypted link (`Connection.encrypted`): loopback, Tailscale, or HTTPS
- * terminated on this machine. Plain HTTP from the LAN is refused with the
- * reason, so a key or its deletion never crosses the network in clear.
+ * secrets.answer reaches a paired device only over an encrypted link
+ * (`Connection.encrypted`): loopback, Tailscale, or HTTPS terminated on this
+ * machine. Plain HTTP from the LAN is refused with the reason, so a key never
+ * crosses the network in clear.
  * policy.get lets a paired device draw the controls the admin policy locks,
  * as the desktop does. It holds no secret, only what the file says and where
  * it lies; no RPC changes it, only an administrator editing the file.
  */
 
-import { AGENT_EVENTS, AGENT_METHODS, accessRefusal, DEVICE_EVENTS, DEVICE_METHODS, mayHearEvent, PLUGIN_SELF_EVENTS, type RpcEventName, type RpcMethodName } from '@boite/contracts';
+import { accessRefusal, mayHearEvent, PLUGIN_SELF_EVENTS, type RpcEventName, type RpcMethodName } from '@boite/contracts';
 import { refused } from './errors.ts';
 import type { Connection } from './router.ts';
 
-export { AGENT_EVENTS, AGENT_METHODS, DEVICE_EVENTS, DEVICE_METHODS };
 
 /** Whether the connection hears the event; a plugin hears its own settings change, never another plugin's. */
 export function mayReceiveEvent(name: RpcEventName, connection: Connection, payload?: unknown): boolean {

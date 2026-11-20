@@ -8,7 +8,7 @@ import { T0 } from './shared.ts';
  * costs to open when the weight is in the text the page parses, not in tool
  * calls (`bench/ui-frames.ts`, "open heavy thread"). Deterministic: one seed.
  */
-export const MARKDOWN_THREAD = 't-markdown';
+const MARKDOWN_THREAD = 't-markdown';
 
 function generator(seed: number): () => number {
   return () => {

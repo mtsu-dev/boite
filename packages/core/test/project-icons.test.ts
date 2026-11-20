@@ -279,11 +279,15 @@ describe('the project store', () => {
     expect(detected).toHaveLength(2);
   });
 
-  test('a removed project leaves no icon behind', async () => {
-    const added = await client.call('projects.add', { path: folder({ 'logo.svg': SVG }) });
+  test('a removed project keeps its icon for when its folder comes back', async () => {
+    const path = folder({ 'logo.svg': SVG });
+    const added = await client.call('projects.add', { path });
     await waitFor(() => harness.core.journal.projectIconImage(added.id) !== null);
     await client.call('projects.remove', { projectId: added.id });
-    expect(harness.core.journal.projectIcons().has(added.id)).toBe(false);
+    expect(harness.core.journal.projectIcons().has(added.id)).toBe(true);
+    const restored = await client.call('projects.add', { path });
+    expect(restored.id).toBe(added.id);
+    expect(harness.core.journal.projectIconImage(added.id)).not.toBeNull();
   });
 
   test('a paired device reads an icon but cannot make the core read a folder', () => {

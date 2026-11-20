@@ -1,18 +1,20 @@
 import { join } from 'node:path';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { MODEL_ROUTE_FAMILIES, nativeModelId, subscriptionProxyName, subscriptionProxyOf, type ModelFamily, type ModelInfo, type ProviderDescriptor, type ProviderId, type SubscriptionProxy } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { invalidParams, refused, unavailable, RpcFailure } from './errors.ts';
 import { isOpenCode, OPENCODE_V2 } from './providers/opencode.ts';
-import { profileFor } from './providers/resolve.ts';
-import { ensureLocalProxyKey, prepareLocalProxyKey, hasProxyKey, proxyKey, validateProxyKey as validateKey, writeProxyKey as writeKey, PROXY_AUTH_ERROR } from './subscription-proxy-auth.ts';
+import { hostAgentsEnabled, profileFor } from './providers/resolve.ts';
+import { shareProfile } from './profile-share.ts';
+import { ensureLocalProxyKey, prepareLocalProxyKey, proxyKey, validateProxyKey as validateKey, writeProxyKey as writeKey, PROXY_AUTH_ERROR } from './subscription-proxy-auth.ts';
 export { proxyKey } from './subscription-proxy-auth.ts';
 
 /** The gateway models both OpenCode versions were last offered, kept so a restart can start a turn on one. */
 const OPENCODE_MODELS_SETTING = 'subscription-proxy-opencode-models';
-export const PROXY_URL_ENV = 'BOITE_SUBSCRIPTION_PROXY_URL';
-export const PROXY_KEY_ENV = 'BOITE_SUBSCRIPTION_PROXY_KEY';
+const PROXY_URL_ENV = 'BOITE_SUBSCRIPTION_PROXY_URL';
+const PROXY_KEY_ENV = 'BOITE_SUBSCRIPTION_PROXY_KEY';
+const CODEX_CATALOG_ENV = 'BOITE_SUBSCRIPTION_PROXY_CODEX_CATALOG';
 /**
  * The start of every model id the core injected into an agent as a provider of
  * its own, `douane/`. An agent may take such a model without listing it among
@@ -20,6 +22,7 @@ export const PROXY_KEY_ENV = 'BOITE_SUBSCRIPTION_PROXY_KEY';
  */
 export const PROXY_PREFIX_ENV = 'BOITE_SUBSCRIPTION_PROXY_PREFIX';
 const GROK: ProviderId = 'grok';
+const ANTIGRAVITY: ProviderId = 'antigravity';
 
 export function activeSubscriptionProxy(core: Core, provider: ProviderDescriptor): SubscriptionProxy | null {
   return subscriptionProxyOf(core.settings.get(), provider, core.quotas?.gateway.state());
@@ -137,6 +140,7 @@ export function subscriptionProxyEnv(core: Core, provider: ProviderDescriptor): 
   if (provider.id === 'muse') return museGatewayEnv(core, proxy, key);
   if (isOpenCode(provider.id)) return openCodeGatewayEnv(core, provider, proxy, key);
   if (provider.id === GROK) return grokGatewayEnv(core, proxy, key);
+  if (provider.id === ANTIGRAVITY) return antigravityGatewayEnv(core, provider, proxy, key);
   if (provider.protocol === 'claude-sdk') return {
     ANTHROPIC_BASE_URL: proxyApiUrl(proxy).replace(/\/v1$/, ''),
     ANTHROPIC_AUTH_TOKEN: key, ANTHROPIC_API_KEY: '',
@@ -149,7 +153,14 @@ export function subscriptionProxyEnv(core: Core, provider: ProviderDescriptor): 
     CLAUDE_CODE_PROMPT_CACHE_TTL: '1h',
     CLAUDE_CODE_SKIP_FAST_MODE_ORG_CHECK: '1',
   };
-  return { [PROXY_URL_ENV]: proxyApiUrl(proxy), [PROXY_KEY_ENV]: key };
+  const api = proxyApiUrl(proxy);
+  return {
+    [PROXY_URL_ENV]: api,
+    [PROXY_KEY_ENV]: key,
+    ...(proxy.kind === 'douane' && provider.protocol === 'codex-appserver'
+      ? { [CODEX_CATALOG_ENV]: `${api}/codex/models` }
+      : {}),
+  };
 }
 
 /** Muse serve takes its endpoint from settings, never the TUI's --base-url flag. Keep native settings and logins intact. */
@@ -164,8 +175,51 @@ function museGatewayEnv(core: Core, proxy: SubscriptionProxy, key: string): Reco
   return { XDG_CONFIG_HOME: directory, META_API_KEY: key };
 }
 
-/** Only the address is an argument; Codex reads the key from its child's environment. */
-export function subscriptionProxyCodexArgs(args: string[], env: Record<string, string>): string[] {
+/**
+ * Antigravity's server has a gateway mode of its own: `auth.type: "gateway"` in
+ * `<GEMINI_HOME>/antigravity-acp/settings.json`, the gateway's origin in
+ * `AGY_LLM_GATEWAY_URL` (no `/v1`: it calls `/v1beta/models` and
+ * `/v1beta/models/<model>:streamGenerateContent` under it) and the key, sent as
+ * a bearer token, in `AGY_LLM_GATEWAY_API_KEY`. It then lists the gateway's
+ * models itself. The settings live in a home of their own per gateway, so the
+ * account's home keeps its `oauth-personal` settings and its sign-in for when
+ * the proxy is off. The profile's shared paths (skills) are mirrored into that
+ * home as into an account's. Applied after the profile's unsetEnv and isolation.
+ */
+const gatewayShareLog = new Map<string, string>();
+
+function antigravityGatewayEnv(core: Core, provider: ProviderDescriptor, proxy: SubscriptionProxy, key: string): Record<string, string> {
+  const origin = proxyApiUrl(proxy).replace(/\/v1$/, '');
+  const identity = createHash('sha256').update(origin).digest('hex').slice(0, 24);
+  const home = join(core.dataDir, 'subscription-proxy', 'antigravity', identity);
+  const settings = join(home, 'antigravity-acp', 'settings.json');
+  mkdirSync(join(home, 'antigravity-acp'), { recursive: true });
+  let current: Record<string, unknown> = {};
+  try {
+    const read: unknown = JSON.parse(readFileSync(settings, 'utf8'));
+    if (read !== null && typeof read === 'object' && !Array.isArray(read)) current = read as Record<string, unknown>;
+  } catch {
+    // Missing or not JSON: written anew below.
+  }
+  const auth = current['auth'];
+  if (auth === null || typeof auth !== 'object' || (auth as Record<string, unknown>)['type'] !== 'gateway') {
+    // What the agent keeps beside the auth type stays.
+    writeFileSync(settings, JSON.stringify({ ...current, auth: { type: 'gateway' } }));
+  }
+  const profile = profileFor(provider);
+  if (profile !== undefined && hostAgentsEnabled()) {
+    const said = shareProfile(home, profile, provider.shared ?? []).map((problem) => `${problem.path}: ${problem.message}`).join('; ');
+    // Said once per change, as for an account: this runs before every spawn.
+    if (said !== (gatewayShareLog.get(home) ?? '')) {
+      gatewayShareLog.set(home, said);
+      if (said.length > 0) core.log('warn', `subscription proxy: the Antigravity gateway home does not share ${said}`);
+    }
+  }
+  return { GEMINI_HOME: home, AGY_LLM_GATEWAY_URL: origin, AGY_LLM_GATEWAY_API_KEY: key };
+}
+
+/** Only addresses go on the command line; Codex reads the key from its environment. */
+export async function subscriptionProxyCodexArgs(args: string[], env: Record<string, string>): Promise<string[]> {
   const baseUrl = env[PROXY_URL_ENV];
   if (!baseUrl) return args;
   const provider = 'boite_subscription_proxy';
@@ -178,6 +232,20 @@ export function subscriptionProxyCodexArgs(args: string[], env: Record<string, s
     `model_providers.${provider}.requires_openai_auth=false`,
     `model_providers.${provider}.env_key="${PROXY_KEY_ENV}"`,
   ];
+  const catalog = env[CODEX_CATALOG_ENV];
+  // An explicit Codex catalog replaces its bundled list. Older gateways keep
+  // the bundled models until they support the native catalog endpoint.
+  if (catalog) {
+    const response = await fetch(catalog, {
+      method: 'HEAD', headers: { Authorization: `Bearer ${env[PROXY_KEY_ENV]}` },
+      signal: AbortSignal.timeout(3_000), redirect: 'error',
+    }).catch(() => null);
+    if (response?.ok && response.headers.get('content-type')?.startsWith('application/json')) {
+      // Douane routes bare ids from this key's catalog to Codex.
+      config.push(`model_providers.${provider}.model_catalog_url=${JSON.stringify(catalog)}`,
+        `model_providers.${provider}.http_headers={"x-douane-model-catalog"="codex"}`);
+    }
+  }
   return [...args, ...config.flatMap(value => ['--config', value])];
 }
 
@@ -225,7 +293,7 @@ const OPEN_MODEL = /gpt-oss|kimi|qwen|llama|deepseek|mistral|mixtral|glm/i;
  * `antigravity/claude-opus-5-5` is a Claude model; an unknown name falls back
  * to a vendor prefix, so `codex/computer-use-preview` is an OpenAI model.
  */
-export function proprietaryFamily(id: string): ModelFamily | null {
+function proprietaryFamily(id: string): ModelFamily | null {
   const slash = id.lastIndexOf('/');
   const name = id.slice(slash + 1);
   if (OPEN_MODEL.test(name)) return null;
@@ -250,6 +318,8 @@ export async function readSubscriptionProxyModels(core: Core, provider: Provider
   }
   // Grok's CLI reads the gateway's list itself and takes no model outside it: its discovery is the whole catalog.
   if (provider.id === GROK) return null;
+  // Antigravity lists the gateway's Gemini API models itself (`/v1beta/models`): an OpenAI catalog would add nothing it can run.
+  if (provider.id === ANTIGRAVITY) return null;
   let response: Response;
   try {
     response = await fetch(`${proxyApiUrl(proxy)}/models`, {
@@ -275,7 +345,7 @@ export async function readSubscriptionProxyModels(core: Core, provider: Provider
     const own = provider.protocol === 'claude-sdk' ? 'anthropic' : 'openai';
     const family = proprietaryFamily(row.id);
     // A gateway can translate any model to any API; a proprietary model still stays in its own harness.
-    // Gemini's harness, Antigravity, cannot go through a gateway, so its models stay usable in both.
+    // Gemini's models stay usable in both: Antigravity, their harness, goes through Douane alone and by its own API.
     if (family !== null && family !== 'google' && family !== own) continue;
     if (Array.isArray(endpoints) && !endpoints.includes(provider.protocol === 'claude-sdk' ? 'anthropic' : 'openai-response')) continue;
     // Older gateways omit endpoint metadata; their known native model families remain selectable.
@@ -329,15 +399,6 @@ function openCodeModels(core: Core, proxy: SubscriptionProxy, rows: Record<strin
 }
 
 export function registerSubscriptionProxy(core: Core): void {
-  core.router.register('subscriptionProxy.key', async ({ key }) => {
-    validateKey(key);
-    try { writeKey(core, key); }
-    catch { throw unavailable('Subscription proxy key could not be saved'); }
-    // The last answer was read with the previous key.
-    core.quotas.gateway.reset();
-    await prepareLocalProxyKey(core);
-    return { configured: hasProxyKey(core) };
-  });
   core.router.register('subscriptionProxy.quotas', ({ refresh }) => {
     if (refresh !== undefined && typeof refresh !== 'boolean') throw invalidParams('subscriptionProxy.quotas refresh must be a boolean');
     return core.quotas.gateway.read(refresh === true);

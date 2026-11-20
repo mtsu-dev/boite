@@ -353,8 +353,6 @@ export const BROWSER_HOST_BATCH_MAX = 256;
  * stays far under it.
  */
 export const BROWSER_HOST_BATCH_BYTES = RPC_MAX_FRAME_BYTES - 64 * 1024;
-/** The longest message the core takes, in characters: one alone in a reply still fits its frame. */
-export const BROWSER_HOST_MESSAGE_MAX = BROWSER_HOST_BATCH_BYTES;
 
 /** A cookie as the DevTools protocol exchanges it. Without `expires` it lasts as long as its browser session. */
 export interface BrowserCookie {

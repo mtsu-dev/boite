@@ -20,7 +20,7 @@ export const THROTTLE_GAP_MS = 5000;
  * One part in this many of the time since the last sample must be stall time: 200 ms
  * per second. Whole numbers, so an exact fifth is not lost to rounding.
  */
-export const THROTTLE_STALL_ONE_IN = 5;
+const THROTTLE_STALL_ONE_IN = 5;
 
 export interface ThrottleReading {
   /** The group the counters belong to. Another path is another limit. */

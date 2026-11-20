@@ -1,8 +1,8 @@
 import { afterEach, expect, test } from 'bun:test';
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { SubscriptionProxy } from '@boite/contracts';
-import { checkSettingsPatch } from '@boite/contracts';
+import { checkSettingsPatch, subscriptionProxyServes } from '@boite/contracts';
 import { connect } from '../src/client.ts';
 import { getDriver, probedModelsOf, setDriver } from '../src/drivers/index.ts';
 import { readNativeList, saveCatalog } from '../src/providers/saved-catalogs.ts';
@@ -110,7 +110,7 @@ test('configuration and private key roll back together without leaking to events
   const oldKey = 'previous-private-proxy-token', newKey = 'replacement-private-proxy-token';
   harness = await startTestCore({ settings: { subscriptionProxy: previous } });
   const owner = await harness.connect();
-  await owner.call('subscriptionProxy.key', { key: oldKey });
+  await owner.call('subscriptionProxy.configure', { subscriptionProxy: previous, key: oldKey });
   const broadcasts: unknown[] = [];
   const errors: unknown[] = [];
   const off = owner.on('settings.updated', value => broadcasts.push(value));
@@ -152,8 +152,13 @@ test('configuration and private key roll back together without leaking to events
 
 test('real RPC discovers gateway models, separates the key and restores native accounts when disabled', async () => {
   const auth: string[] = [], paths: string[] = [];
+  let nativeCatalog = false;
   gateway = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch(request) {
     auth.push(request.headers.get('authorization') ?? ''); paths.push(new URL(request.url).pathname);
+    if (paths.at(-1) === '/v1/codex/models') {
+      expect(request.method).toBe('HEAD');
+      return nativeCatalog ? Response.json({ models: [] }) : new Response(null, { status: 404 });
+    }
     return Response.json({ data: [
       { id: 'pooled-claude', name: 'Claude pool', supported_endpoint_types: ['anthropic'] },
       { id: 'codex/gpt-6.1-sol', name: 'Codex pool', supported_endpoint_types: ['openai-response'],
@@ -190,10 +195,18 @@ test('real RPC discovers gateway models, separates the key and restores native a
   expect(claudeEnv).toMatchObject({ _CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL: '1', CLAUDE_CODE_PROMPT_CACHE_TTL: '1h', CLAUDE_CODE_SKIP_FAST_MODE_ORG_CHECK: '1' });
   expect(childEnv(claudeEnv).CLAUDE_CODE_PROMPT_CACHE_TTL).toBe('1h');
   const codexEnv = subscriptionProxyEnv(harness.core, harness.core.providers.require('codex'));
-  const args = subscriptionProxyCodexArgs(['app-server'], codexEnv);
+  const catalogArg = `model_providers.boite_subscription_proxy.model_catalog_url="http://127.0.0.1:${gateway.port}/v1/codex/models"`;
+  const routeArg = 'model_providers.boite_subscription_proxy.http_headers={"x-douane-model-catalog"="codex"}';
+  expect(await subscriptionProxyCodexArgs(['app-server'], codexEnv)).not.toContain(catalogArg);
+  nativeCatalog = true;
+  const args = await subscriptionProxyCodexArgs(['app-server'], codexEnv);
   expect(args.join(' ')).not.toContain(key);
   expect(args).toContain('model_providers.boite_subscription_proxy.wire_api="responses"');
   expect(args).toContain('model_providers.boite_subscription_proxy.supports_websockets=true');
+  expect(args).toContain(catalogArg);
+  expect(args).toContain(routeArg);
+  expect(paths.slice(-2)).toEqual(['/v1/codex/models', '/v1/codex/models']);
+  expect(auth.slice(-2)).toEqual([`Bearer ${key}`, `Bearer ${key}`]);
   // Douane answers for the limits; this machine's own logins are not listed beside it.
   const quotas = await owner.call('quotas.list', { refresh: true });
   expect(quotas.some(row => row.accountId === claude.id || row.accountId === codex.id)).toBe(false);
@@ -202,7 +215,6 @@ test('real RPC discovers gateway models, separates the key and restores native a
   const phone = await connect(harness.url, '', { grant, client: { name: 'pwa', version: 'test' } });
   try {
     expect((await phone.call('settings.get', {})).subscriptionProxy).toEqual(proxy);
-    expect(await thrown(phone.call('subscriptionProxy.key', { key: null }))).toThrow('owner');
     expect(await thrown(phone.call('subscriptionProxy.configure', { subscriptionProxy: proxy, key: null }))).toThrow('owner');
     expect((await phone.call('providers.probe', { providerId: 'codex', accountId: codex.id })).models).toEqual(b.models);
     // The phone switches the owner's gateway off, and only that: the address and key stay.
@@ -263,7 +275,7 @@ for (const providerId of ['opencode', 'opencode-v2'] as const) test(`${providerI
   const url = `http://127.0.0.1:${gateway.port}/v1`;
   harness = await startTestCore({ settings: { subscriptionProxy: config(url) } });
   const owner = await harness.connect();
-  await owner.call('subscriptionProxy.key', { key: 'gateway-key' });
+  await owner.call('subscriptionProxy.configure', { subscriptionProxy: config(url), key: 'gateway-key' });
   await owner.call('providers.setEnabled', { providerId, enabled: true });
   // The gateway is the login: no sign-in of OpenCode's own is asked for.
   const account = await owner.call('accounts.add', { providerId, label: 'Gateway OpenCode' });
@@ -401,7 +413,7 @@ test('Grok runs through Douane by its environment alone, and keeps its own sign-
   const url = `http://127.0.0.1:${gateway.port}/v1`;
   harness = await startTestCore({ settings: { subscriptionProxy: config(url) } });
   const owner = await harness.connect();
-  await owner.call('subscriptionProxy.key', { key: 'gateway-key' });
+  await owner.call('subscriptionProxy.configure', { subscriptionProxy: config(url), key: 'gateway-key' });
   const provider = harness.core.providers.require('grok');
   // The gateway is the login: no sign-in of Grok's own is asked for.
   const account = await owner.call('accounts.add', { providerId: 'grok', label: 'Gateway Grok' });
@@ -449,6 +461,53 @@ test('Grok runs through Douane by its environment alone, and keeps its own sign-
   expect(harness.core.accounts.require(account.id).status).toBe('ok');
   await owner.call('settings.set', { subscriptionProxy: config(url, 'cliproxyapi') });
   expect(harness.core.accounts.require(account.id).status).toBe('ok');
+});
+
+test('Antigravity runs through Douane in a gateway home of its own, and keeps its own sign-in behind CLIProxyAPI', async () => {
+  const antigravity = { id: 'antigravity', protocol: 'acp' } as const;
+  expect(subscriptionProxyServes(antigravity, 'douane')).toBe(true);
+  expect(subscriptionProxyServes(antigravity, 'cliproxyapi')).toBe(false);
+  let listed = 0;
+  gateway = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch() { listed += 1; return Response.json({ data: [] }); } });
+  const origin = `http://127.0.0.1:${gateway.port}`;
+  harness = await startTestCore({ settings: { subscriptionProxy: config(`${origin}/v1`) } });
+  const owner = await harness.connect();
+  await owner.call('subscriptionProxy.configure', { subscriptionProxy: config(`${origin}/v1`), key: 'gateway-key' });
+  const provider = harness.core.providers.require('antigravity');
+  // The gateway is the login: no Google sign-in of the account is asked for.
+  const account = await owner.call('accounts.add', { providerId: 'antigravity', label: 'Gateway Antigravity' });
+  expect(account.status).toBe('ok');
+  const own = join(account.isolationDir!, 'antigravity-acp', 'settings.json');
+
+  const spawned = agentEnv(provider, harness.core.accounts.accountEnv(harness.core.accounts.require(account.id), provider),
+    { AGY_LLM_GATEWAY_URL: 'https://inherited.test', AGY_LLM_GATEWAY_API_KEY: 'inherited-key', GEMINI_HOME: '/inherited' });
+  const home = spawned['GEMINI_HOME']!;
+  expect(home).toMatch(/subscription-proxy[\\/]antigravity[\\/][0-9a-f]{24}$/);
+  expect(home.startsWith(harness.core.dataDir)).toBe(true);
+  // The origin, without /v1: the agent calls /v1beta under it.
+  expect(spawned['AGY_LLM_GATEWAY_URL']).toBe(origin);
+  expect(spawned['AGY_LLM_GATEWAY_API_KEY']).toBe('gateway-key');
+  expect(JSON.parse(readFileSync(join(home, 'antigravity-acp', 'settings.json'), 'utf8'))).toEqual({ auth: { type: 'gateway' } });
+  // The account's home keeps its own sign-in settings.
+  expect(JSON.parse(readFileSync(own, 'utf8'))).toEqual({ auth: { type: 'oauth-personal' } });
+  // A settings file the agent rewrote with another auth type is put back on gateway, its other keys kept.
+  writeFileSync(join(home, 'antigravity-acp', 'settings.json'), '{"auth":{"type":"oauth-personal"},"theme":"dark"}');
+  subscriptionProxyEnv(harness.core, provider);
+  expect(JSON.parse(readFileSync(join(home, 'antigravity-acp', 'settings.json'), 'utf8'))).toEqual({ auth: { type: 'gateway' }, theme: 'dark' });
+  // The agent lists the gateway's Gemini API models itself: the core reads no OpenAI catalog.
+  expect(await readSubscriptionProxyModels(harness.core, provider)).toBeNull();
+  expect(listed).toBe(0);
+
+  // CLIProxyAPI serves no Gemini API: the account answers for itself, in its own home.
+  await owner.call('settings.set', { subscriptionProxy: config(`${origin}/v1`, 'cliproxyapi') });
+  expect(subscriptionProxyEnv(harness.core, provider)).toEqual({});
+  const native = agentEnv(provider, harness.core.accounts.accountEnv(harness.core.accounts.require(account.id), provider),
+    { AGY_LLM_GATEWAY_URL: 'https://inherited.test', AGY_LLM_GATEWAY_API_KEY: 'inherited-key' });
+  expect(native['GEMINI_HOME']).toBe(account.isolationDir!);
+  expect(native['AGY_LLM_GATEWAY_URL']).toBeUndefined();
+  expect(native['AGY_LLM_GATEWAY_API_KEY']).toBeUndefined();
+  expect(JSON.parse(readFileSync(own, 'utf8'))).toEqual({ auth: { type: 'oauth-personal' } });
+  expect((await owner.call('accounts.check', { accountId: account.id })).status).toBe('unauthenticated');
 });
 
 test('legacy CLIProxy catalogs select native families and malformed gateway errors cannot echo the key', async () => {

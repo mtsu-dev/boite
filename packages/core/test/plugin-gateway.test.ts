@@ -7,7 +7,7 @@ import { checkSettingsPatch, type PluginState, type SubscriptionProxy } from '@b
 import type { CoreClient } from '../src/client.ts';
 import { parseManifest, platformKey } from '../src/plugins/manifest.ts';
 import { DOUANE_BINARY_ENV } from '../src/plugins/gateway.ts';
-import { recommendedPlugins } from '../src/plugins.ts';
+import { recommendedPlugins } from '../src/plugins/record.ts';
 import { readSubscriptionProxyModels, subscriptionProxyEnv } from '../src/subscription-proxy.ts';
 import { startTestCore, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
@@ -155,7 +155,7 @@ test.each(['subscriptionProxy.setEnabled', 'settings.set'] as const)('%s provisi
   expect(subscriptionProxyEnv(harness!.core, harness!.core.providers.require('claude')).ANTHROPIC_AUTH_TOKEN).toBe('dk_fixture-local-client');
 }, 30_000);
 
-test.each(['settings.set', 'subscriptionProxy.configure', 'subscriptionProxy.setEnabled', 'subscriptionProxy.key'] as const)('%s reports its saved mutation when local client creation fails', async (method) => {
+test.each(['settings.set', 'subscriptionProxy.configure', 'subscriptionProxy.setEnabled'] as const)('%s reports its saved mutation when local client creation fails', async (method) => {
   process.env.FAKE_DOUANE_CLIENT_KEYS = '1';
   const { owner } = await core();
   await owner.call('subscriptionProxy.configure', { subscriptionProxy: { ...LOCAL, enabled: false } });
@@ -166,10 +166,7 @@ test.each(['settings.set', 'subscriptionProxy.configure', 'subscriptionProxy.set
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     return url.endsWith('/admin/api/clients') ? new Response('private fixture response', { status: 503 }) : realFetch(input, init);
   }) as typeof fetch);
-  if (method === 'subscriptionProxy.key') {
-    await owner.call('subscriptionProxy.configure', { subscriptionProxy: LOCAL, key: 'dk_manual-fixture' });
-    expect(await owner.call(method, { key: null })).toEqual({ configured: false });
-  } else if (method === 'subscriptionProxy.setEnabled') {
+  if (method === 'subscriptionProxy.setEnabled') {
     expect((await owner.call(method, { enabled: true })).subscriptionProxy?.enabled).toBe(true);
   } else {
     expect((await owner.call(method, { subscriptionProxy: LOCAL })).subscriptionProxy?.enabled).toBe(true);
@@ -215,7 +212,7 @@ test('a saved local client key is kept on 401 and removing it creates a working 
   expect(await thrown(readSubscriptionProxyModels(harness!.core, claude))).toThrow('subscription proxy settings');
   expect(subscriptionProxyEnv(harness!.core, claude).ANTHROPIC_AUTH_TOKEN).toBe('dk_owner-key');
   expect(existsSync(join(harness!.dataDir, 'douane', 'douane.toml.client-key'))).toBe(false);
-  expect(await owner.call('subscriptionProxy.key', { key: null })).toEqual({ configured: true });
+  await owner.call('subscriptionProxy.configure', { subscriptionProxy: LOCAL, key: null });
   expect(subscriptionProxyEnv(harness!.core, claude).ANTHROPIC_AUTH_TOKEN).toBe('dk_fixture-local-client');
   expect((await owner.call('subscriptionProxy.quotas', { refresh: true })).status).toBe('ready');
   expect(subscriptionProxyEnv(harness!.core, claude).ANTHROPIC_AUTH_TOKEN).toBe('dk_fixture-local-client');
@@ -447,7 +444,9 @@ test.skipIf(process.platform !== 'linux')('turned off while its start waits on a
   // A gateway a previous core left running, which takes a second to go once asked.
   const gateways = harness!.core.plugins.gateways;
   const config = join(gateways.dataDir('douane'), 'douane.toml');
-  const orphan = Bun.spawn(['sh', '-c', 'trap "sleep 1; exit 0" TERM; while :; do sleep 0.1; done', 'sh', config]);
+  const orphan = Bun.spawn(['sh', '-c', 'trap "sleep 1; exit 0" TERM; echo ready; while :; do sleep 0.1; done', 'sh', config], { stdout: 'pipe' });
+  // Its trap is set once it says so: a TERM before that would end it at once, and the start would not wait.
+  await orphan.stdout.getReader().read();
   writeFileSync(join(gateways.dataDir('douane'), 'gateway.pid'), `${JSON.stringify({ pid: orphan.pid, config })}\n`);
   try {
     await owner.call('plugins.setEnabled', { id: 'douane', enabled: true });

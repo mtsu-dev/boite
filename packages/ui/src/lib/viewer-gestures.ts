@@ -12,7 +12,7 @@ export interface Point { x: number; y: number }
 
 export const MAX_SCALE = 4;
 /** What a double tap zooms to. */
-export const TAP_SCALE = 2;
+const TAP_SCALE = 2;
 export const FITTED: View = { scale: 1, x: 0, y: 0 };
 
 const clamp = (value: number, low: number, high: number): number => Math.min(high, Math.max(low, value));

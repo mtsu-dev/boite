@@ -53,7 +53,7 @@ test('abandoning an in-flight preparation releases its exact id again after the 
   expect(store.threads.some(row => row.id === 'stale-thread')).toBe(false);
 });
 
-test('a draft prepared in the drafts and sent after removing them goes to new drafts, not the removed project', async ({ ready }) => {
+test('sending a draft after removing Drafts restores the project without claiming a stale preparation', async ({ ready }) => {
   visible();
   const { store, client } = await ready();
   const spy = vi.spyOn(client, 'call');
@@ -66,13 +66,15 @@ test('a draft prepared in the drafts and sent after removing them goes to new dr
   await vi.waitFor(() => expect(store.draftsProject?.id).toBe(first.projectId));
   // The draft has no project of its own: it lists under the drafts.
   expect(store.draftEntries.find(entry => entry.active)).toMatchObject({ projectId: first.projectId });
+  const oldPreparations = callsOf(spy, 'drafts.prepare').map(([, params]) => (params as RpcParams<'drafts.prepare'>).preparationId);
   await store.removeProject(first.projectId);
   expect(store.draft).toMatchObject({ projectId: null });
   expect(store.composerStates[DRAFT_STASH_KEY]?.text).toBe('Sort my photos');
   expect(await store.submit('Sort my photos', store.draftChoice!)).toBe(true);
   const created = callsOf(spy, 'threads.create').at(-1)![1] as RpcParams<'threads.create'>;
-  expect(created.projectId).not.toBe(first.projectId);
+  expect(created.projectId).toBe(first.projectId);
   expect(created.projectId).toBe(store.draftsProject?.id);
+  expect(oldPreparations).not.toContain(created.preparationId);
   expect(store.error).toBeNull();
 });
 

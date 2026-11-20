@@ -28,7 +28,7 @@
     border: 1px solid var(--color-border);
     border-radius: var(--radius-full);
     background: var(--color-surface-2);
-    color: var(--color-muted-foreground);
+    color: var(--color-suggestion);
     font-size: var(--text-sm);
     transition: background-color var(--dur-1) var(--ease-out-quint);
   }

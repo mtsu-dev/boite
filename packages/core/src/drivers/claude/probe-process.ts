@@ -4,7 +4,7 @@ import type { ProbeContext } from '../types.ts';
 import type { PromptQueue } from './query.ts';
 
 /** How long a CLI started for one read may take to exit once its input ended. */
-export const PROBE_EXIT_GRACE_MS = 30_000;
+const PROBE_EXIT_GRACE_MS = 30_000;
 
 /**
  * The CLI one read (models, quota) starts, from its spawn to its end.

@@ -10,7 +10,7 @@
  */
 
 export const QUIT_HOLD_MS = 1200;
-export const QUIT_DOUBLE_MS = 500;
+const QUIT_DOUBLE_MS = 500;
 
 export interface QuitHoldOptions {
   holdMs?: number;

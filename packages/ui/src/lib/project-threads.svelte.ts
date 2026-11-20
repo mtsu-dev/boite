@@ -4,7 +4,7 @@ import { groupWorkingThread, recentPreferences, workingThread } from './recent.s
 import { threadOrder } from './thread-order';
 import { rowAsks } from './status-order';
 
-export type ProjectThreadKind = 'working' | 'done' | 'archived';
+type ProjectThreadKind = 'working' | 'done' | 'archived';
 /** The two kinds of row in the fold under the project list: projects with no open conversation, and projects put out of the list. */
 export type ProjectShelfKind = 'idle' | 'archived';
 /** Where the Projects view lists a project: at work at the top, open, set aside, or in the idle fold. */
@@ -24,7 +24,7 @@ export function archiveKindOf(thread: ThreadSummary): ArchiveKind {
 }
 
 /** Expansion follows a project across desktop and phone, without mixing machines. */
-export class ProjectThreadView {
+class ProjectThreadView {
   working = $state<string[]>([]);
   done = $state<string[]>([]);
   archived = $state<string[]>([]);
@@ -75,7 +75,7 @@ export function activeProject(entry: ProjectEntry): boolean {
  * Open: any other conversation or draft. Later: nothing open, but conversations archived by hand to pick up again.
  * Idle: none of these, at most a done history.
  */
-export function projectSection(entry: ProjectEntry): ProjectSection {
+function projectSection(entry: ProjectEntry): ProjectSection {
   const store = entry.machine.store;
   const threads = store.threadsOf(entry.project.id);
   if (threads.length > 0 && threads.every(thread => groupWorkingThread(store, thread))
@@ -99,7 +99,7 @@ export function projectSections(entries: readonly ProjectEntry[], groupIdle: boo
 }
 
 /** Protected working rows stay visible while folded and appear only once when unfolded. */
-export function projectThreadLists(entry: ProjectEntry, threads: ThreadSummary[], workingOpen: boolean): {
+function projectThreadLists(entry: ProjectEntry, threads: ThreadSummary[], workingOpen: boolean): {
   working: ThreadSummary[]; attention: ThreadSummary[];
 } {
   const store = entry.machine.store;

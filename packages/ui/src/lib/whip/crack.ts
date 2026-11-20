@@ -1,4 +1,3 @@
-import { markFeature } from '@boite/contracts';
 /**
  * Legacy's crack: six recordings in one 34 KB sprite, with the synthesized
  * burst as the fallback while the sprite decodes or if it never does.
@@ -18,7 +17,7 @@ const SAMPLE_RATE_JITTER = 0.03;
 const VOLUME = 0.35;
 
 /** Next slice, never the same recording twice running. `roll` is 0..1. */
-export function pickCrack(last: number | null, count: number, roll: number): number {
+function pickCrack(last: number | null, count: number, roll: number): number {
   if (count <= 1) return 0;
   let index = Math.min(Math.floor(roll * count), count - 1);
   if (last !== null && index === last) index = (index + 1) % count;
@@ -110,6 +109,3 @@ export function closeCrackAudio(): void {
   lastCrack = null;
   if (context) void context.close().catch(() => {});
 }
-
-// Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
-markFeature('boite-feature:whip');

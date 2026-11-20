@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest';
 import type { MessagePart } from '@boite/contracts';
 import { MessageRuns } from './memory-timeline';
-import { activityShown, agentSummary, commandOf, liveLabel, pairPermissions, partRuns, programOf, runKey, runSpan, runSummary, thinkingShown, ThoughtTitleScan, thoughtTitle, toolLine, unwrapCommand, type ToolPart } from './tool-groups';
+import { activityShown, agentSummary, commandOf, liveLabel, pairPermissions, partRuns, runKey, runSpan, runSummary, thinkingShown, ThoughtTitleScan, thoughtTitle, toolLine, unwrapCommand, type ToolPart } from './tool-groups';
 
 function tool(name: string, input: unknown, extra: Partial<ToolPart> = {}): ToolPart {
   return { type: 'tool', toolId: `${name}-${JSON.stringify(input)}`, name, input, output: 'ok', status: 'done', ...extra };
@@ -19,11 +19,11 @@ test('a shell wrapper reads as the command it runs', () => {
 });
 
 test('the program of a command skips where it runs and what it sets', () => {
-  expect(programOf('cd packages/ui && bun run test')).toBe('bun');
-  expect(programOf(`pwsh -Command 'Set-Location D:/x; git status'`)).toBe('git');
-  expect(programOf('FOO=1 BAR=2 node script.mjs')).toBe('node');
-  expect(programOf(`& "C:\\Program Files\\Go\\bin\\go.exe" test ./...`)).toBe('go');
-  expect(programOf('rg -n boite | head')).toBe('rg');
+  expect(commandOf('cd packages/ui && bun run test')).toBe('bun run test');
+  expect(commandOf(`pwsh -Command 'Set-Location D:/x; git status'`)).toBe('git status');
+  expect(commandOf('FOO=1 BAR=2 node script.mjs')).toBe('node');
+  expect(commandOf(`& "C:\\Program Files\\Go\\bin\\go.exe" test ./...`)).toBe('go test');
+  expect(commandOf('rg -n boite | head')).toBe('rg');
 });
 
 test('a run of calls reads as one sentence, edits counted by file', () => {

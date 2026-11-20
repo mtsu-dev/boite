@@ -22,7 +22,7 @@ import { publishArtifact, readArtifact } from './artifacts.ts';
 import { checkView, publishView, viewBlock } from './views.ts';
 
 /** More than a plan, and the tasks surface stops being readable anyway. */
-export const TASKS_MAX = 200;
+const TASKS_MAX = 200;
 const TASK_STATUSES: readonly AgentTask['status'][] = ['pending', 'in_progress', 'completed'];
 
 /** One token per thread, in memory, minted on demand and forgotten with the thread. */
@@ -182,7 +182,7 @@ export function checkSurface(cwd: string, surface: PanelSurface): PanelSurface {
   return { kind: kind as 'trace' | 'tasks' };
 }
 
-export function checkTasks(tasks: unknown): AgentTask[] {
+function checkTasks(tasks: unknown): AgentTask[] {
   if (!Array.isArray(tasks)) throw refused('threads.tasks.set takes a list of tasks', {});
   if (tasks.length > TASKS_MAX) {
     throw refused(`threads.tasks.set takes at most ${TASKS_MAX} tasks, got ${tasks.length}`, { count: tasks.length });

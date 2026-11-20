@@ -73,7 +73,7 @@ function utf16(bytes: Uint8Array, offset: number, maxChars: number): string {
 }
 
 /** Hardware adapters, the software rasterizer left out. */
-export function enumerateAdapters(): Adapter[] {
+function enumerateAdapters(): Adapter[] {
   dxgi ??= loadDxgi().symbols;
   const out = new BigUint64Array(1);
   if (dxgi.CreateDXGIFactory1(ptr(IID_IDXGIFactory1), ptr(out)) !== S_OK || out[0] === 0n) return [];

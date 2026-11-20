@@ -26,8 +26,8 @@ run('three real models review a plan alone, read-only, in a folder without git, 
   try {
     writeFileSync(join(folder, 'plan.md'), 'Keep the app language in one settings key, read once at startup. A change asks for a restart.\n');
     const owner = await harness.connect();
-    if (KEY.length > 0) await owner.call('subscriptionProxy.key', { key: KEY });
-    await owner.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: ['debates'], labels: {} });
+    if (KEY.length > 0) await owner.call('subscriptionProxy.configure', { subscriptionProxy: (await owner.call('settings.get', {})).subscriptionProxy!, key: KEY });
+    await owner.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: [], labels: {} });
     const project = await owner.call('projects.add', { path: folder, name: 'plain' });
     const accounts = await owner.call('accounts.list', {});
     const { id: threadId } = await owner.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: accounts.find(entry => entry.providerId === 'echo')!.id, title: 'A plan' });

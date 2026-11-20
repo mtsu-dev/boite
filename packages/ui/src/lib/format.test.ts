@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { ago, bytes, clockTime, dayClock, effortName, elapsed, formatTokens, levelName, levelTitle, longDay, millis, quotaLimitName, quotaResetTime, quotaWindowName, relativeTime, shortPath } from './format';
+import { ago, bytes, clockTime, dayClock, effortName, elapsed, formatTokens, levelName, longDay, millis, quotaLimitName, quotaResetTime, quotaWindowName, relativeTime, shortPath } from './format';
 import { setLocaleSetting } from './i18n.svelte';
 
 test('elapsed reads like a stopwatch', () => {
@@ -51,11 +51,9 @@ test('durations, sizes, effort levels and quota windows follow the language the 
   expect(millis(38_000)).toBe('38s');
   expect(millis(89_000)).toBe('1m 29s');
   expect(millis(120)).toBe('120 ms');
-  // Xhigh and ultrathink read in plain words, whatever label the core sends; the tooltip keeps the agent's word.
+  // Xhigh and ultrathink read in plain words, whatever label the core sends.
   expect(levelName({ id: 'xhigh', label: 'Xhigh' })).toBe('Extra high');
   expect(levelName({ id: 'ultrathink', label: 'Ultrathink' })).toBe('Ultra');
-  expect(levelTitle({ id: 'ultrathink', description: 'Extended thinking' })).toBe('Extended thinking (ultrathink)');
-  expect(levelTitle({ id: 'high', description: 'Deeper reasoning' })).toBe('Deeper reasoning');
   expect(quotaLimitName('Weekly')).toBe('weekly');
   expect(quotaLimitName('5 hours')).toBe('5-hour');
   await setLocaleSetting('fr');

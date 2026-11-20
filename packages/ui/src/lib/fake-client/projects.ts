@@ -51,19 +51,39 @@ function deviceProjectFolder(path: string): void {
 /** A checked folder registered on `ctx`, as the core's `ProjectStore.add`: the project already there answers as it is. */
 export function addFakeProject(ctx: FakeContext, folder: { path: string; name?: string }): { project: Project; added: boolean } {
   const { path } = folder;
+  const key = pathKey(path);
+  const isDrafts = key === pathKey(FAKE_DRAFTS_PATH);
   if (missingFolder(path)) {
     throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'a project path must be an existing directory', data: { path } });
   }
   // As the core on Windows: the same folder in another case is the project already there.
-  const existing = ctx.projects.find((p) => pathKey(p.path) === pathKey(path));
+  const existing = ctx.projects.find((p) => pathKey(p.path) === key);
   if (existing) return { project: describedProject(ctx, existing), added: false };
+  // As the core: a removed folder comes back under its id, with every thread it had.
+  const removed = ctx.removedProjects.get(key);
+  if (removed) {
+    ctx.removedProjects.delete(key);
+    const back: Project = { ...removed.project, ...(folder.name ? { name: folder.name } : {}) };
+    delete back.archived;
+    ctx.projects.push(back);
+    const summary = describedProject(ctx, back);
+    ctx.emit('project.added', summary);
+    for (const thread of removed.threads) {
+      if (removed.open.includes(thread.id)) thread.archived = false;
+      ctx.threads.set(thread.id, thread);
+      ctx.emit('thread.created', structuredClone(toSummary(thread)));
+    }
+    ctx.emit('thread.deletionsUpdated', {});
+    return { project: summary, added: true };
+  }
   const project: Project = {
     id: `p-${++ctx.seq}`,
     name: folder.name ?? path.split(/[\\/]/).filter(Boolean).pop() ?? path,
     path,
     createdAt: ctx.now(),
-    // No disk here: a folder the fake is handed counts as a repository.
-    repository: true
+    // The fake treats user-added folders as repositories. Drafts are a system folder.
+    repository: !isDrafts,
+    ...(isDrafts ? { kind: 'drafts' as const } : {}),
   };
   ctx.projects.push(project);
   const summary = describedProject(ctx, project);
@@ -151,20 +171,7 @@ export function projectMethods(ctx: FakeContext) {
       return addFakeProject(ctx, folder).project;
     },
     'projects.drafts': async () => {
-      const existing = ctx.projects.find((p) => p.kind === 'drafts');
-      if (existing) return describedProject(ctx, existing);
-      const project: Project = {
-        id: `p-${++ctx.seq}`,
-        name: 'Drafts',
-        path: FAKE_DRAFTS_PATH,
-        createdAt: ctx.now(),
-        repository: false,
-        kind: 'drafts'
-      };
-      ctx.projects.push(project);
-      const summary = describedProject(ctx, project);
-      ctx.emit('project.added', summary);
-      return summary;
+      return addFakeProject(ctx, { path: FAKE_DRAFTS_PATH, name: 'Drafts' }).project;
     },
     'projects.remove': async (params) => {
       if (!ctx.projects.some((p) => p.id === params.projectId)) throw ctx.notFound('project', params.projectId);
@@ -175,25 +182,23 @@ export function projectMethods(ctx: FakeContext) {
           data: { projectId: params.projectId }
         });
       }
+      const project = ctx.projects.find((p) => p.id === params.projectId)!;
       ctx.projects = ctx.projects.filter((p) => p.id !== params.projectId);
-      for (const [id, family] of ctx.deletedThreads) if (family.threads.some(t => t.projectId === params.projectId)) {
-        for (const thread of family.threads) { ctx.mergedPrFixtures.delete(thread.id); ctx.mergedPrArchive.delete(thread.id); }
-        ctx.deletedThreads.delete(id);
-      }
-      ctx.emit('thread.deletionsUpdated', {});
       const threads = [...ctx.threads.values()].filter((thread) => thread.projectId === params.projectId);
-      // As the core: each thread is archived, and says so, before the records go.
-      for (const thread of threads) {
+      // As the core: each open thread is archived, and says so, then leaves the lists; an incognito one is erased, nothing else.
+      const open = threads.filter((thread) => !thread.archived && !thread.incognito).map((thread) => thread.id);
+      const shown = threads.filter((thread) => !thread.archived);
+      for (const thread of shown) {
         thread.archived = true;
         ctx.touch(thread);
       }
-      await Promise.all(threads.map((thread) => putAway(ctx, thread)));
+      await Promise.all(shown.map((thread) => putAway(ctx, thread)));
+      ctx.removedProjects.set(pathKey(project.path), { project, threads: threads.filter((thread) => !thread.incognito), open });
       for (const thread of threads) {
-        ctx.mergedPrFixtures.delete(thread.id);
-        ctx.mergedPrArchive.delete(thread.id);
         ctx.threads.delete(thread.id);
-        ctx.emit('thread.removed', { threadId: thread.id });
+        ctx.emit('thread.removed', { threadId: thread.id, undoable: !thread.incognito });
       }
+      ctx.emit('thread.deletionsUpdated', {});
       ctx.emit('project.removed', { projectId: params.projectId });
       return { ok: true };
     },

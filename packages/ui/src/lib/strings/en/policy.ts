@@ -17,7 +17,6 @@ export const strings = {
     },
     none: 'The file locks nothing.',
     failedClosed: 'The file cannot be read, so every setting it can lock takes its strictest value until it is fixed.',
-    problemsTopic: 'Policy problems',
     problemsOne: 'Your organization\'s policy has a problem',
     problemsMany: 'Your organization\'s policy has {count} problems',
     closedTitle: 'Your organization\'s policy cannot be read',
@@ -50,7 +49,8 @@ export const strings = {
       'network.groups': 'Groups',
       'network.contacts': 'Contacts',
       'network.push': 'Push notifications',
-      pullRequests: 'Pull requests'
+      pullRequests: 'Pull requests',
+      modelPrices: 'Model price updates'
     },
     values: {
       on: 'Allowed',

@@ -1,4 +1,3 @@
-import { markFeature } from '@boite/contracts';
 import { desktopShell } from '../shell-platform';
 /**
  * The hit a crack lands: the native window shakes, or the whole interface when
@@ -45,6 +44,3 @@ export function cancelShake(): void {
   animation = undefined;
   shaking = false;
 }
-
-// Marks this module in a bundle: a call no bundler drops (scripts/ci/feature-cut.ts).
-markFeature('boite-feature:whip');

@@ -29,14 +29,22 @@ if (existsSync(outdir)) {
 
 const defines = defineFlags(version);
 const minify = ['--minify-whitespace', '--minify-syntax', '--minify-identifiers'];
+// Desktop installers copy these workers beside the sidecar, outside core/.
+// Bundle each on its own so it can load without the core's split chunks.
+const workers = [
+  'src/artifact-retention-worker.ts',
+  'src/platform/windows/jobs-worker.ts',
+  'src/platform/windows/guard-worker.ts',
+  'src/platform/linux-tcp-worker.ts',
+];
 // The CLI, not Bun.build: `--env=BOITE_RELEASE_*` inlines what the process started with (src/telemetry.ts).
 const steps = [
-  ['build', 'src/main.ts', 'src/artifact-retention-worker.ts', 'src/platform/windows/jobs-worker.ts', 'src/platform/windows/guard-worker.ts', '--target', 'bun', '--env=BOITE_RELEASE_*',
-    '--outdir', outdir, '--splitting', '--sourcemap=none', '--entry-naming', '[name].[ext]', ...minify, ...defines],
-  ['build', 'src/platform/linux-tcp-worker.ts', '--target', 'bun', '--outfile', resolve(outdir, 'linux-tcp-worker.js'), ...minify, ...defines],
+  ['src/main.ts', '--splitting', '--env=BOITE_RELEASE_*'],
+  ...workers.map(entry => [entry]),
 ];
+const options = ['--target', 'bun', '--outdir', outdir, '--sourcemap=none', '--entry-naming', '[name].[ext]', ...minify, ...defines];
 for (const step of steps) {
-  const child = Bun.spawn([process.execPath, ...step], { cwd: root, stdout: 'inherit', stderr: 'inherit', stdin: 'ignore', windowsHide: true });
+  const child = Bun.spawn([process.execPath, 'build', ...step, ...options], { cwd: root, stdout: 'inherit', stderr: 'inherit', stdin: 'ignore', windowsHide: true });
   const code = await child.exited;
   if (code !== 0) process.exit(code);
 }

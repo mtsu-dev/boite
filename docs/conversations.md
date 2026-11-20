@@ -49,7 +49,8 @@ Fold a project to hide its threads. Its heading shows the thread count just
 after the project name, on desktop and phone.
 
 The Threads button in the app rail, and the Threads tab on a phone, show how
-many threads are at work across your machines.
+many threads are at work across your machines. When subagents are at work too,
+a second, lighter number beside it counts them.
 
 ## Drafts without a project
 
@@ -140,8 +141,10 @@ above the message box or the bottom tabs.
   Settings, General, Archived threads, for the number of days set in Keep
   deleted conversations for.
 - Archive project takes a project out of the list. Its threads keep running,
-  and a new thread brings it back. Remove from Boite removes the project and
-  its threads; the files on disk stay.
+  and a new thread brings it back. Remove from Boite takes the project and its
+  threads out of the app but keeps them saved, with their history and usage:
+  add the same folder again and they come back, the open ones reopened. The
+  files on disk stay.
 
 ## Import a Claude Code or Codex session
 
@@ -169,7 +172,7 @@ logo, pick Refresh icon in Manage project.
 - [First steps](first-steps.md): your first project and conversation.
 - [Models](models.md): change the agent or model in a conversation.
 - [Secrets](secrets.md): give an agent a key without pasting it in the chat.
-- [Experiments](experiments.md): unfinished features, in Nightly builds.
+- [Experiments](experiments.md): unfinished features, in Nightly builds; none today.
 - Technical reference: [drafts](internals/drafts.md),
   [titles](internals/titles.md), [imports](internals/imports.md),
   [project icons](internals/project-icons.md).

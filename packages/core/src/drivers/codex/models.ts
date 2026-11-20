@@ -90,7 +90,7 @@ function modelsFrom(provider: ProviderDescriptor, data: CodexModel[]): ModelInfo
 }
 
 /** Same bounded pagination for a prepared host and a disposable discovery process. */
-export async function listModels(rpc: CodexRpc, provider: ProviderDescriptor): Promise<ModelInfo[]> {
+async function listModels(rpc: CodexRpc, provider: ProviderDescriptor): Promise<ModelInfo[]> {
   const data: CodexModel[] = [];
   let cursor: string | null = null;
   const deadline = Date.now() + PROBE_TIMEOUT_MS;
@@ -125,7 +125,8 @@ export async function readModels(ctx: ProbeContext): Promise<ModelInfo[]> {
     throw unavailable(`no ${ctx.provider.id} executable on this machine`, { providerId: ctx.provider.id });
   }
 
-  const child = ctx.spawnChild(executable, subscriptionProxyCodexArgs(profile?.launch?.args ?? [], ctx.accountEnv), {
+  const args = await subscriptionProxyCodexArgs(profile?.launch?.args ?? [], ctx.accountEnv);
+  const child = ctx.spawnChild(executable, args, {
     cwd: ctx.cwd,
     env: { ...process.env, ...ctx.accountEnv },
   });

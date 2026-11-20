@@ -686,16 +686,13 @@ describe('providers', () => {
 
   test('an empty static catalog is refused, while native descriptors can discover theirs', async () => {
     const client = await harness.connect();
-    const file = writeUserDescriptor('empty.json', { ...validDescriptor(), protocol: 'echo', models: [] });
-    const refused = await client.call('providers.dryRun', { file });
-    expect(refused.ok).toBe(false);
-    if (refused.ok) throw new Error('echo requires a static model');
-    expect(refused.rejected.field).toBe('models');
+    writeUserDescriptor('empty.json', { ...validDescriptor(), protocol: 'echo', models: [] });
+    const refused = await client.call('providers.reload', {});
+    expect(refused.rejected.map((entry) => entry.field)).toEqual(['models']);
     writeUserDescriptor('empty.json', { ...validDescriptor(), protocol: 'acp', models: [] });
-    const native = await client.call('providers.dryRun', { file });
-    expect(native.ok).toBe(true);
-    if (!native.ok) throw new Error(native.rejected.message);
-    expect(native.summary.models).toEqual([]);
+    const native = await client.call('providers.reload', {});
+    expect(native.rejected).toEqual([]);
+    expect(native.loaded.find((provider) => provider.id === 'mine')?.models).toEqual([]);
   });
 
   test('a user descriptor with a well formed effort scale loads', async () => {
@@ -819,53 +816,13 @@ describe('providers', () => {
     expect(claude?.source).toBe('shipped');
   });
 
-  test('dryRun validates and returns the plan without loading', async () => {
-    const file = writeUserDescriptor('dry.json', validDescriptor());
-    const client = await harness.connect();
-    const result = await client.call('providers.dryRun', { file });
-    expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error('the descriptor was refused');
-    expect(result.summary.id).toBe('mine');
-    expect(result.plan.roots).toEqual(['{isolationDir}']);
-    expect(result.plan.env).toEqual(['MINE_HOME']);
-    expect(result.plan.closes).toEqual(process.platform === 'win32' ? ['mine.exe'] : []);
-  });
-
-  test('dryRun reads the providers directory and nothing else on the machine', async () => {
-    const client = await harness.connect();
-    const outside = join(harness.dataDir, 'core.json');
-    const expected = `a .json file under ${join(harness.dataDir, 'providers')}`;
-    // A path the caller names used to be read and parsed: the parse error came
-    // back with a line of the file in it, which turned dryRun into a way to
-    // read the machine one message at a time.
-    for (const file of [outside, join(harness.dataDir, 'providers', '..', '..', 'core.json'), 'C:\\Windows\\win.ini']) {
-      const result = await client.call('providers.dryRun', { file });
-      expect(result.ok).toBe(false);
-      if (result.ok) throw new Error(`${file} should have been refused`);
-      expect(result.rejected.expected).toBe(expected);
-      expect(result.rejected.message).toBe(
-        'a descriptor is read from the providers directory of the data directory, nowhere else',
-      );
-    }
-
-    // Inside the directory, but not a descriptor file: refused the same way.
-    mkdirSync(join(harness.dataDir, 'providers'), { recursive: true });
-    const notJson = join(harness.dataDir, 'providers', 'notes.txt');
-    writeFileSync(notJson, 'not a descriptor', 'utf8');
-    const refused = await client.call('providers.dryRun', { file: notJson });
-    expect(refused.ok).toBe(false);
-    if (refused.ok) throw new Error('notes.txt should have been refused');
-    expect(refused.rejected.expected).toBe(expected);
-  });
-
-  test('dryRun reports the refusal with file, field and expected', async () => {
+  test('a refused descriptor is reported with file, field and expected', async () => {
     const file = writeUserDescriptor('dry-bad.json', { ...validDescriptor(), protocol: 'smoke-signals' });
     const client = await harness.connect();
-    const result = await client.call('providers.dryRun', { file });
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error('the descriptor should have been refused');
-    expect(result.rejected.file).toBe(file);
-    expect(result.rejected.field).toBe('protocol');
-    expect(result.rejected.expected).toContain('claude-sdk');
+    const { rejected } = await client.call('providers.reload', {});
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]?.file).toBe(file);
+    expect(rejected[0]?.field).toBe('protocol');
+    expect(rejected[0]?.expected).toContain('claude-sdk');
   });
 });

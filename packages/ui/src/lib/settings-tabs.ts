@@ -42,7 +42,7 @@ const PAGES: Record<SettingsTab, SettingsPage> = {
   machines: { phone: 'page' },
   advanced: { machine: true, phone: 'sections' },
   diagnostics: { owner: true, machine: true, phone: 'page' },
-  experiments: { machine: true, phone: 'page' }
+  experiments: { device: true, phone: 'page' }
 };
 
 /** The cards of a long desktop page that a phone shows on a page of their own, and that page. */
@@ -137,7 +137,7 @@ export function navOf(family: SettingsFamily, owner: boolean): SettingsTab[] {
  * Experiments exists only where the primary machine's build runs experiments
  * (a Nightly or a source build, never a Release).
  */
-export function pageAvailable(tab: SettingsTab, owner: boolean): boolean {
+function pageAvailable(tab: SettingsTab, owner: boolean): boolean {
   return (owner || !ownerOnly(tab)) && (tab !== 'experiments' || experimentsShown());
 }
 

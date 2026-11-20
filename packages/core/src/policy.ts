@@ -24,7 +24,7 @@ import { POLICY_KEYS, type AdminPolicy, type PolicyKey, type PolicyProblem, type
 import { refused, unavailable, type RpcFailure } from './errors.ts';
 
 /** How often the file is looked at for a change: a stat, nothing read unless it moved. */
-export const POLICY_POLL_MS = 3000;
+const POLICY_POLL_MS = 3000;
 /** A policy is a few hundred bytes; anything past this is not one. */
 const MAX_POLICY_BYTES = 256 * 1024;
 const UPDATE_VALUES: readonly UpdatePolicy[] = ['off', 'check', 'auto'];
@@ -68,6 +68,7 @@ export const STRICTEST_POLICY: AdminPolicy = Object.freeze({
   agentDesktop: false,
   network: { lan: false, tailscaleServe: false, groups: false, contacts: false, push: false },
   pullRequests: false,
+  modelPrices: false,
 }) as AdminPolicy;
 
 interface Parsed { values: AdminPolicy; problems: PolicyProblem[]; failedClosed: boolean }
@@ -197,7 +198,8 @@ export function parsePolicy(text: string | null, file: string): Parsed {
         break;
       }
       case 'pullRequests': values.pullRequests = flag('pullRequests', value); break;
-      default: problem(key, 'one of analytics, updates, providers, gateway, quotaReads, plugins, issueReports, dictation, previews, agentBrowser, agentDesktop, network, pullRequests', 'an unknown key');
+      case 'modelPrices': values.modelPrices = flag('modelPrices', value); break;
+      default: problem(key, 'one of analytics, updates, providers, gateway, quotaReads, plugins, issueReports, dictation, previews, agentBrowser, agentDesktop, network, pullRequests, modelPrices', 'an unknown key');
     }
   }
   return { values, problems, failedClosed: false };
@@ -254,6 +256,7 @@ const FORBIDS: Record<PolicyKey, string> = {
   'network.contacts': 'Contacts',
   'network.push': 'Push notifications',
   pullRequests: 'Pull request reads',
+  modelPrices: 'Model price updates',
 };
 
 /** A provider that is off refuses to start: by the user's switch, or by the admin policy, which no switch overrides. */
@@ -372,6 +375,7 @@ export class PolicyStore {
   searchUrl(): string | null { return typeof this.values.agentBrowser === 'object' ? this.values.agentBrowser.searchUrl : null; }
   networkOff(item: 'lan' | 'tailscaleServe' | 'groups' | 'contacts' | 'push'): boolean { return this.values.network?.[item] === false; }
   pullRequestsOff(): boolean { return this.values.pullRequests === false; }
+  modelPricesOff(): boolean { return this.values.modelPrices === false; }
 
   /** The settings the policy decides, whatever the user saved: the store reads these over its own. `values` reads an earlier policy. */
   lockedSettings(settings: Settings, values: AdminPolicy = this.values): Partial<Settings> {

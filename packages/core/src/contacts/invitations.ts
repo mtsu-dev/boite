@@ -17,7 +17,7 @@ import { encodeInvite, INVITE_TTL_MS, tokenHash } from './invite.ts';
 import type { ContactStore } from './store.ts';
 
 export const INVITES = 'contacts:invites';
-export const MAX_INVITES = 16;
+const MAX_INVITES = 16;
 
 /** The invitations neither spent nor expired, by token hash. */
 export function liveInvites(core: Core): [string, { expiresAt: number }][] {

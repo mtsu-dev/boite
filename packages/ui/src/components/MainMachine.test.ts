@@ -1,7 +1,8 @@
 import { afterEach, expect, test } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import { FakeClient } from '../lib/fake-client';
-import { MAIN_STORAGE_KEY, readMainMachine } from '../lib/endpoint';
+import { MAIN_STORAGE_KEY } from '../lib/endpoint-main';
+import { readMainMachine } from '../lib/endpoint';
 import { Store, store as primary } from '../lib/store.svelte';
 import { strings } from '../lib/strings';
 import { workspace, type Machine } from '../lib/workspace.svelte';

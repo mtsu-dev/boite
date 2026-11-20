@@ -99,7 +99,7 @@ size and kind, never run a downloaded program unless the user asked for that fil
 archive into its own empty folder. BOITE_BROWSER names another Chromium-based browser.`;
 
 /** The first bytes of each recording format: an MP4 `ftyp` box, a WebM EBML header. */
-export function recordingMagic(mime: keyof typeof BROWSER_RECORDING_TYPES, bytes: Uint8Array): boolean {
+function recordingMagic(mime: keyof typeof BROWSER_RECORDING_TYPES, bytes: Uint8Array): boolean {
   const head = Buffer.from(bytes.subarray(0, 8));
   return mime === 'video/mp4' ? head.length === 8 && head.subarray(4, 8).toString('latin1') === 'ftyp' : head.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]));
 }

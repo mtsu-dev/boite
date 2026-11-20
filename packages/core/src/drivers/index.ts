@@ -220,12 +220,7 @@ export function setDriver(protocol: Protocol, driver: Driver): () => void {
 
 export type {
   Driver,
-  TurnContext,
-  TurnHandle,
   TurnResult,
-  EmitSink,
-  ToolPatch,
-  PermissionTicket,
   ProbeContext,
   ProbeFilter,
   ProbeResult,

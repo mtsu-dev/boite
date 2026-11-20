@@ -106,7 +106,7 @@ function scriptIn(root: string, name: string, bin: string | null): string | null
 }
 
 /** Node beside the install first, since that is the one its shims would run, then PATH, then Bun. */
-export function scriptRuntime(root: string): string | null {
+function scriptRuntime(root: string): string | null {
   const windows = currentOs() === 'windows';
   const exe = windows ? 'node.exe' : 'node';
   const beside = windows ? join(root, '..', exe) : join(root, '..', '..', 'bin', exe);
@@ -161,7 +161,7 @@ export interface NpmInstall {
 }
 
 /** The command names a package's `bin` declares, read from its own `package.json`. */
-function binNames(packageDir: string): string[] {
+export function binNames(packageDir: string): string[] {
   try {
     const parsed = JSON.parse(readFileSync(join(packageDir, 'package.json'), 'utf8')) as { name?: unknown; bin?: unknown };
     if (typeof parsed.bin === 'string' && typeof parsed.name === 'string') return [parsed.name.split('/').at(-1)!];

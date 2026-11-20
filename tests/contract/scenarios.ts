@@ -165,6 +165,23 @@ export const SCENARIOS: Record<string, Scenario> = {
   ...CONTACT_MAIL_SCENARIOS,
   ...CONTACTS_BOT_SCENARIOS,
   ...TEAM_SCENARIOS,
+  'thread usage applies the execution provider and reports coverage for the range': async (env) => {
+    const setup = await echo(env);
+    const { id: threadId } = await thread(env, setup);
+    await finishedTurn(env, threadId);
+    const finishedAt = (await env.call('threads.get', { threadId })).turns[0]?.finishedAt;
+    check(typeof finishedAt === 'number', 'the turn has no finish time');
+    const edges = [finishedAt, finishedAt + 1];
+    const detail = await env.call('usage.thread', { threadId, edges, providerId: setup.provider.id });
+    same(detail.thread.threadId, threadId, 'thread usage identity');
+    same(detail.thread.turns, 1, 'finished turns');
+    same(detail.turns.map((turn) => turn.providerId), [setup.provider.id], 'provider of the finished turn');
+    same(detail.reported, detail.turns.filter((turn) => turn.usage !== null).length, 'reported turns');
+    same(detail.priced, detail.turns.filter((turn) => turn.usage?.costUsdEquivalent != null).length, 'priced turns');
+    const other = await env.call('usage.thread', { threadId, edges, providerId: 'absent-provider' });
+    same([other.thread.turns, other.turns.length, other.reported, other.priced], [0, 0, 0, 0], 'usage for another provider');
+    await refusedWith(env.call('usage.thread', { threadId, edges, providerId: ' ' }), RpcErrorCode.InvalidParams);
+  },
   'where mochi creation asks first, a thread gets a card: Approve creates the mochi with full access, Decline creates none': async (env) => {
     const before = await env.call('settings.get', {});
     const setup = await echo(env);
@@ -882,10 +899,19 @@ export const SCENARIOS: Record<string, Scenario> = {
       check((await env.call('threads.get', { threadId: created.id })).messages.some(m => m.role === 'user' && m.parts.some(p => p.type === 'text' && p.text === 'a conversation to delete')), 'undo lost the conversation history');
       check(!(await env.call('threads.deleted', {})).some(t => t.id === created.id), 'the restored conversation is still offered for undo');
     }
+    const open = await thread(env, setup);
+    const done = await thread(env, setup);
+    await env.call('threads.archive', { threadId: done.id });
     await env.call('threads.remove', { threadId: kept.id });
     await env.call('projects.remove', { projectId: setup.projectId });
-    check(!(await env.call('threads.deleted', {})).some(t => t.id === kept.id), 'project removal left a recoverable deletion');
+    check(!(await env.call('threads.deleted', {})).some(t => t.id === kept.id), 'a removed project still offers its deletion');
     await refusedWith(env.call('threads.restore', { threadId: kept.id }), RpcErrorCode.NotFound, ['threadId']);
+    // The folder added again brings the project back whole: its deletion, its open thread, its archive.
+    same((await env.call('projects.add', { path: setup.projectPath })).id, setup.projectId, 'the project added again');
+    check(!(await env.call('threads.get', { threadId: open.id })).archived, 'the open thread did not reopen');
+    check((await env.call('threads.get', { threadId: done.id })).archived, 'the archived thread reopened');
+    check((await env.call('threads.deleted', {})).some(t => t.id === kept.id), 'the deletion did not come back with its project');
+    same((await env.call('threads.restore', { threadId: kept.id })).id, kept.id, 'the deletion restored after the project came back');
     await refusedWith(env.call('threads.remove', { threadId: 'thr_missing' }), RpcErrorCode.NotFound, ['threadId']);
   },
   'threads.stats counts the prompts sent and refuses a missing conversation': async env => {
@@ -907,6 +933,15 @@ export const SCENARIOS: Record<string, Scenario> = {
       .filter((event) => event.name === 'project.removed' || (event.payload as { id?: string; threadId?: string }).id === created.id || (event.payload as { threadId?: string }).threadId === created.id)
       .map((event) => (event.name === 'thread.updated' ? `thread.updated archived=${(event.payload as ThreadSummary).archived}` : event.name));
     same(order.filter((entry, index) => index === 0 || entry !== order[index - 1]), ['thread.updated archived=true', 'thread.removed', 'project.removed'], 'the events');
+  },
+  'projects.drafts reopens the same drafts project and its open threads after removal': async (env) => {
+    const setup = await echo(env);
+    const drafts = await env.call('projects.drafts', {});
+    const created = await thread(env, { ...setup, projectId: drafts.id });
+    await env.call('projects.remove', { projectId: drafts.id });
+    const restored = await env.call('projects.drafts', {});
+    same([restored.id, restored.kind], [drafts.id, 'drafts'], 'the restored drafts project');
+    same((await summary(env, created.id)).archived, false, 'the restored thread');
   },
   'a group is created, invites, refuses what names the wrong machine, and is left': async (env) => {
     same(await env.call('group.get', {}), null, 'the group before any');
@@ -943,6 +978,16 @@ export const SCENARIOS: Record<string, Scenario> = {
     events.stop();
     // The invitation it minted names this machine: pasted here, it is refused by field.
     same((await refusedWith(env.call('group.join', { invite }), RpcErrorCode.Refused, ['field'])).field, 'invite', 'joining its own invitation');
+  },
+  'resources.keepAwake says whether the machine is held awake and whether it can be, to the owner only': async (env) => {
+    const status = await env.call('resources.keepAwake', {});
+    same(Object.keys(status).sort(), ['available', 'held'], 'the keys');
+    same(status.held, false, 'held with no turn');
+    check(typeof status.available === 'boolean', 'available is not a boolean');
+    const setup = await echo(env);
+    const own = await thread(env, setup, 'own');
+    const agent = await env.peer({ agentThreadId: own.id });
+    await refusedWith(agent.call('resources.keepAwake', {}), RpcErrorCode.Refused);
   },
 };
 

@@ -15,7 +15,7 @@ const TICKS = 2;
 const BOUNCES = 2;
 
 /** One item per clause: a line, a sentence or an "and". */
-export function draftItems(objective: string): GoalChecklistItem[] {
+function draftItems(objective: string): GoalChecklistItem[] {
   const clauses = objective.split(/\n+|[.;!?]\s+|,\s*|\s+(?:and|et|puis|then)\s+/i).map((clause) => clause.trim().replace(/[.;!?]$/, '')).filter((clause) => clause.length > 2);
   return clauses.slice(0, 8).map((source, index) => ({ id: index + 1, text: source.charAt(0).toUpperCase() + source.slice(1, 80), source, status: 'open' }));
 }
