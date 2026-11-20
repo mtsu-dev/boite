@@ -149,6 +149,19 @@
   // Wider than a phone (an iPhone on its side, a tablet, a desktop browser)
   // a lost or revoked pairing gets the same screen rather than a stale page.
   const wideRecovery = $derived(!narrow.current && mobileRecovery && store.pairingRequired && store.page !== 'settings');
+
+  let beforeSettings: 'chat' | 'agents' | 'home' = 'chat';
+  function leaveSettings() {
+    if (beforeSettings === 'agents') store.showAgents();
+    else if (beforeSettings === 'home') store.showHome();
+    else store.showChat();
+  }
+  $effect.pre(() => {
+    const page = store.page;
+    if (page !== 'settings') beforeSettings = page;
+    // Register the home before a settings detail mounts, including while the phone header loads.
+    else if (!inShell && narrow.current && booted && !mobileRecovery) return mobileOverlay(leaveSettings);
+  });
   let documentVisible = $state(!document.hidden);
   // What the first screen does not draw stays out of the first chunk: the right
   // panel and its six surfaces, the palette and the two dialogs were a third of
@@ -548,7 +561,7 @@
       <MobilePairing {store} screen={mobileScreen} navigate={(screen) => { mobileScreen = screen; }} onpaired={() => { mobileScreen = 'threads'; }} />
     {:else if mobileNavigation.current}
       {@const MobileNavigation = mobileNavigation.current}
-      <MobileNavigation {store} recover={mobileRecovery} bind:screen={mobileScreen} bind:tabbed={mobileTabs} />
+      <MobileNavigation {store} recover={mobileRecovery} onleavesettings={leaveSettings} bind:screen={mobileScreen} bind:tabbed={mobileTabs} />
     {:else if narrow.current && mobileNavigation.failed}
       <p class="mobile-navigation-failed" role="alert" data-testid="mobile-navigation-failed">
         <span>{strings.parts.navigationFailed}</span>

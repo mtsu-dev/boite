@@ -39,7 +39,7 @@ async function size(width: number, height: number) {
 beforeAll(async () => {
   const port = await freePort();
   server = await startUi(port);
-  page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&open=recent`, windowSize: { width: 1280, height: 900 } });
+  page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&open=recent&contactNotice=0`, windowSize: { width: 1280, height: 900 } });
   await size(1280, 900);
   await page.waitFor(`document.querySelector('[data-thread-id="t-trace"]')`);
   await page.click('[data-thread-id="t-trace"]');

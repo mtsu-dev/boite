@@ -65,7 +65,13 @@
   import { doneFilter, feedPlace, feedThread, inbox } from '../lib/inbox.svelte';
   import { followActivityReturn, leaveForAct, restoreActivity } from '../lib/activity-return.svelte';
 
-  let { store, recover = false, screen = $bindable('chat'), tabbed = $bindable(false) }: { store: Store; recover?: boolean; screen: 'chat' | 'threads' | 'activity'; tabbed?: boolean } = $props();
+  let { store, recover = false, onleavesettings = () => store.showChat(), screen = $bindable('chat'), tabbed = $bindable(false) }: {
+    store: Store;
+    recover?: boolean;
+    onleavesettings?: () => void;
+    screen: 'chat' | 'threads' | 'activity';
+    tabbed?: boolean;
+  } = $props();
   const narrow = new MediaQuery('(max-width: 720px)');
   /**
    * A conversation slides in over the list it opens from, and back off it to
@@ -196,19 +202,6 @@
     screen = 'chat';
   });
 
-  /*
-   * Settings is a page over the place it was opened from, not a place of its
-   * own: the header's arrow, and the phone's Back, return there.
-   */
-  let before: 'chat' | 'agents' | 'home' = 'chat';
-  $effect(() => { const page = store.page; if (page !== 'settings') before = page; });
-  function leaveSettings() {
-    if (before === 'agents') store.showAgents();
-    else if (before === 'home') store.showHome();
-    else store.showChat();
-  }
-  $effect(() => { if (narrow.current && store.page === 'settings' && !recover) return mobileOverlay(leaveSettings); });
-
   function show(next: typeof screen) {
     store.showChat();
     store.sidebarOpen = false;
@@ -307,7 +300,7 @@
       <button class="ghost icon back" data-testid="mobile-back" aria-label={elsewhere ? `${strings.sidebar.threads}, ${fill(strings.mobile.waitingElsewhere, { count: String(elsewhere) })}` : strings.sidebar.threads} onclick={() => show('threads')}><ArrowLeft size={20} /></button>
     {/if}
   {:else if store.page === 'settings' && !recover}
-    <button class="ghost icon back" data-testid="mobile-settings-leave" aria-label={strings.mobile.settingsLeave} title={strings.mobile.settingsLeave} onclick={leaveSettings}><ArrowLeft size={20} /></button>
+    <button class="ghost icon back" data-testid="mobile-settings-leave" aria-label={strings.mobile.settingsLeave} title={strings.mobile.settingsLeave} onclick={onleavesettings}><ArrowLeft size={20} /></button>
   {:else if recover}
     <img class="brand-icon" src={appMark()} alt="" width="30" height="30" />
   {/if}

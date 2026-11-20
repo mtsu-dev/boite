@@ -271,6 +271,13 @@ test('the limits tab is its own page, one card per account, no scrolling through
   await page.waitFor(`document.querySelector('[data-testid=mobile-settings-detail] [data-testid=limits-page]')`);
   expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
   await capture('limits-phone-dark.png');
+
+  // Resizing from a desktop detail puts the settings home below it in the phone's history.
+  await page.waitFor(`document.querySelector('[data-testid=mobile-settings-leave]')`);
+  await page.evaluate('history.back()');
+  await page.waitFor(`document.querySelector('[data-testid=mobile-settings-home]:not([inert] *)')`);
+  await page.click('[data-testid=settings-tab-limits]');
+  await page.waitFor(`document.querySelector('[data-testid=mobile-settings-detail] [data-testid=limits-page]')`);
   await leavePhoneDetail();
   await viewport(1280, 800);
   expect(page.errors()).toEqual([]);
