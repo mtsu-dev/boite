@@ -85,12 +85,14 @@ test('Activity shows a new interruption in a read conversation until that interr
   const parent = await echoThread(harness, owner, 'Parent');
   const child = await echoThread(harness, owner, 'Child');
   const thread = core.journal.getThread(child.threadId)!;
-  core.journal.putThread({ ...thread, parentThreadId: parent.threadId });
   const stopped = async (request: string) => {
+    // Establish the parent link after Echo finishes so its result does not wake the parent.
+    core.journal.putThread({ ...core.journal.getThread(thread.id)!, parentThreadId: null });
     const done = owner.next('turn.finished', turn => turn.threadId === thread.id);
     await owner.call('turns.start', { threadId: thread.id, prompt: 'Track a build', clientRequestId: request });
     const turn = await done;
     expect(turn.status).toBe('done');
+    core.journal.putThread({ ...core.journal.getThread(thread.id)!, parentThreadId: parent.threadId });
     await owner.call('threads.markRead', { threadId: thread.id });
     const history = core.threads.agentState.backgroundHistory;
     const origin = { providerId: thread.providerId, sessionGeneration: thread.sessionGeneration ?? 0, parentTurnId: turn.id };
