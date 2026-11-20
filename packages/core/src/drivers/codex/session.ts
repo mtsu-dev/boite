@@ -60,6 +60,12 @@ const STOP_GRACE_MS = 3_000;
 const SQLITE_INIT_ATTEMPTS = 3;
 const SQLITE_INIT_BACKOFF_MS = 500;
 const SQLITE_INIT_CLOSE_MS = 2_000;
+/**
+ * How long the writer waits for `close` after `exit`. A tool the agent started
+ * can inherit its pipes and outlive it, and `close` waits for that tool; the
+ * rollout writer ended with the app-server process.
+ */
+const WRITER_CLOSE_GRACE_MS = 2_000;
 
 // ---------------------------------------------------------------------------
 // The session: one agent process per thread
@@ -478,6 +484,7 @@ export class CodexSession {
       child.once('exit', (code) => {
         if (this.#child === child) this.#exitCode = code;
         resolve(code);
+        setTimeout(closed, WRITER_CLOSE_GRACE_MS).unref?.();
       });
       // `close` and not `exit`: stderr is flushed by then, so the sentence the
       // turn fails with carries the line the agent printed on its way out.
