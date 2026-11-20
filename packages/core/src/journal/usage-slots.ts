@@ -54,9 +54,9 @@ function dropEmpty(db: Database): void {
   db.query('DELETE FROM usage_slots WHERE turns = 0').run();
 }
 
-/** The stored turns of the threads in `?1` (a JSON array), with their thread's row. */
+/** The stored turns of the threads in `?1` (a JSON array), with their thread's row, each turn once even when an id repeats. */
 const STORED_THREAD_TURNS = `SELECT t.finished_at AS f, t.usage AS u, t.execution AS e, th.project_id AS pid, th.provider_id AS tp, th.model AS tm
-  FROM json_each(?1) j CROSS JOIN turns t ON t.thread_id = j.value LEFT JOIN threads th ON th.id = t.thread_id WHERE t.finished_at IS NOT NULL`;
+  FROM (SELECT DISTINCT value FROM json_each(?1)) j CROSS JOIN turns t ON t.thread_id = j.value LEFT JOIN threads th ON th.id = t.thread_id WHERE t.finished_at IS NOT NULL`;
 
 /** Creates the table, then sums every finished turn and removed turn into it: the migration's build. */
 export function createUsageSlots(db: Database): void {

@@ -103,7 +103,8 @@ test('the slots equal a sum of the raw turns after a write, a rewrite, a move, a
   journal.putThread(hidden);
   journal.putTurn(turn(hidden, D0 + 3, usage(9, 9, 1)));
   agree(journal);
-  journal.deleteThreads([hidden.id]);
+  // An id given twice (roots and children concatenated) gives its turns back once.
+  journal.deleteThreads([hidden.id, hidden.id]);
   agree(journal);
   expect(journal.db.query('SELECT SUM(turns) AS turns FROM usage_slots').get()).toEqual({ turns: 7 });
 

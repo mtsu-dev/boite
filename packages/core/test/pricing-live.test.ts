@@ -110,6 +110,32 @@ test('a 304 keeps the table, sends the stored ETag and bumps the fetch time', as
   expect(pricingStatus()).toMatchObject({ origin: 'live', updatedAt: later.clock.now });
 });
 
+test('a 304 that ends after another init changes neither that init nor the cache', async () => {
+  const dir = dataDir();
+  start(dir, () => ok(catalogue(NEW_MODEL), '"v7"'));
+  priceOf('claude-opus-5-5');
+  await pricingIdle();
+  const fetchedAt = stored(dir).fetchedAt;
+
+  // The 304's body cancels slowly; a new init lands meanwhile.
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  let cancelling!: () => void;
+  const cancelled = new Promise<void>((resolve) => { cancelling = resolve; });
+  const later = start(dir, () => new Response(new ReadableStream({ cancel: () => { cancelling(); return gate; } }), { status: 304 }));
+  later.clock.now = fetchedAt + RATES_TTL_MS + 1;
+  priceOf('claude-opus-5-5');
+  await cancelled;
+  const other = dataDir();
+  start(other, () => ok(catalogue()));
+  release();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  expect(stored(dir).fetchedAt).toBe(fetchedAt);
+  expect(existsSync(join(other, 'pricing', 'rates.json'))).toBe(false);
+  expect(pricingStatus()).toMatchObject({ origin: 'bundled' });
+});
+
 test('a document without OpenAI, or that lost most bundled models, is rejected with one warning and the previous table kept', async () => {
   const dir = dataDir();
   const harness = start(dir, () => ok(catalogue(NEW_MODEL, ['anthropic'])));

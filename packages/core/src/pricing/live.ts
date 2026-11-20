@@ -200,6 +200,7 @@ async function fetchRates(init: PricingInit, source: string, started: number): P
     if (!current()) return;
     if (response.status === 304 && previous !== null) {
       await response.body?.cancel().catch(() => {});
+      if (!current()) return;
       save(init, { ...previous, fetchedAt: now() });
       failedAt = null;
       return;
