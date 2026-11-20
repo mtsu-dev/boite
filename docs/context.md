@@ -67,6 +67,16 @@ summary once it is ready, behind a small divider. With a token limit, the copy
 also starts once the conversation reaches 85% of it, while you keep working. It works with Claude and Codex; OpenCode 2 uses its
 own. Copies spend the same account and are not counted in usage.
 
+### When compaction cannot help
+
+Claude Code stops a turn when three compactions in a row refilled the context
+to its limit within three turns ("Autocompact is thrashing"). What every
+request carries is then too big for a summary to shrink, most often an
+instruction file such as `AGENTS.md` or `CLAUDE.md`. The error names each one
+over 40,000 bytes in the thread's folder and its parents. Boite does not
+resume such a turn by itself, since a resume fails the same way. Shrink the
+named files, or raise the token limit, then write to the thread.
+
 ## Queue a message while the agent works
 
 1. Press Enter while a turn runs. The message waits above the box with a

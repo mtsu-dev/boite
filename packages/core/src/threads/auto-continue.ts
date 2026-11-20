@@ -153,8 +153,10 @@ export class AutoContinues {
     // A refusal has its own retry: a spent usage window resumes at its reset or
     // not at all (`limit-resume.ts`), capacity got its tries in the turn, and a
     // capacity wait the user cancelled must stay failed.
-    // A folder that is gone stays gone until someone puts it back.
-    if (result.refusal || result.cwdGone) return;
+    // A folder that is gone stays gone until someone puts it back, and a
+    // context its own compaction cannot shrink stays full until someone
+    // shrinks what fills it.
+    if (result.refusal || result.cwdGone || result.contextFull) return;
     const error = (turn.error ?? result.error ?? 'unknown error').trim();
     const quoted = error.length > ERROR_QUOTE ? `${error.slice(0, ERROR_QUOTE)} [cut]` : error;
     this.#plan(thread.id, turn, 'error', `Your previous turn ended on an error before it finished: ${quoted}\n\nBoite resumed the thread by itself. ${CARRY_ON}`);

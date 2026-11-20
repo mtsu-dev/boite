@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { ChildProcess } from 'node:child_process';
+import { rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { MessagePart, RpcEvents } from '@boite/contracts';
 import { waitFor } from './harness.ts';
 import {
@@ -84,6 +86,31 @@ describe('claude driver', () => {
     });
     expect(await runTurn(client, threadId, 'show the screenshots')).toBe('error');
     expect(harness.core.journal.listTurns(threadId).at(-1)?.error).toBe(`Claude refused the request as invalid. ${said}`);
+  });
+
+  test('a context compaction cannot shrink names the instruction file that fills it and resumes nothing', async () => {
+    const client = await harness.connect();
+    const threadId = await claudeThread(client);
+    // The project entry an agent grew into a 364 KB log of its work (2026-11-20).
+    const entry = join(harness.dataDir, 'AGENTS.md');
+    writeFileSync(entry, 'x'.repeat(60 * 1024));
+    const said = 'Autocompact is thrashing: the context refilled to the limit within 3 turns of the previous compact, 3 times in a row. A file being read or a tool output is likely too large for the context window. Try reading in smaller chunks, or use /clear to start fresh.';
+    try {
+      scripted(fake => {
+        // What CLI 2.1.329 emits once three compactions in a row could not hold.
+        fake.emit(sdk({ ...(assistant('sess-full', [{ type: 'text', text: said }]) as object), error: 'invalid_request', is_api_error_message: true }));
+        fake.emit(sdk({ ...(success('sess-full') as object), is_error: true, result: said }));
+        fake.end();
+      });
+      expect(await runTurn(client, threadId, 'go on')).toBe('error');
+      const error = harness.core.journal.listTurns(threadId).at(-1)?.error ?? '';
+      expect(error).toContain('Claude could not compact this conversation');
+      expect(error).toContain(`Loaded into every request: ${entry} (60 KB)`);
+      expect(error).not.toContain('refused the request as invalid');
+      await Bun.sleep(100);
+      expect(harness.core.journal.listTurns(threadId)).toHaveLength(1);
+      expect((await client.call('threads.get', { threadId })).retry).toBeNull();
+    } finally { rmSync(entry, { force: true }); }
   });
 
   test('an API error the CLI cannot name shows its text, once', async () => {
