@@ -172,11 +172,8 @@ function localePreload(): Plugin {
 }
 
 /**
- * The phone's navigation is a chunk the page imports outside the shell
- * (`src/lib/mobile-navigation.ts`), not a file index.html names, so the service
- * worker would not store it at install and an offline phone would open with
- * no header. index.html gets its static graph, JavaScript and styles, in a
- * meta tag the browser fetches nothing for and `public/sw.js` precaches.
+ * The connected views are loaded on demand. Keep them available offline as
+ * before: index.html lists their scripts and styles for the service worker.
  */
 function offlineParts(): Plugin {
   return {
@@ -186,10 +183,6 @@ function offlineParts(): Plugin {
       order: 'post',
       handler(_html, context) {
         const bundle = context.bundle ?? {};
-        const navigation = Object.values(bundle).find(
-          (file) => file.type === 'chunk' && /[\\/]src[\\/]components[\\/]MobileNavigation\.svelte$/.test(file.facadeModuleId ?? '')
-        );
-        if (!navigation) throw new Error('src/components/MobileNavigation.svelte is not a chunk of its own: lib/mobile-navigation.ts must import it dynamically');
         const files = new Set<string>();
         const visit = (name: string) => {
           const file = bundle[name];
@@ -198,7 +191,12 @@ function offlineParts(): Plugin {
           for (const css of file.viteMetadata?.importedCss ?? []) files.add(css);
           for (const imported of file.imports) visit(imported);
         };
-        visit(navigation.fileName);
+        for (const view of ['MobileNavigation', 'Sidebar', 'ChatView', 'AgentsLayout']) {
+          const suffix = `/${view}.svelte`;
+          const chunks = Object.values(bundle).filter((file) => file.type === 'chunk' && file.facadeModuleId?.replaceAll('\\', '/').endsWith(suffix));
+          if (chunks.length === 0) throw new Error(`${view}.svelte is missing its offline entry`);
+          for (const chunk of chunks) visit(chunk.fileName);
+        }
         return [{ tag: 'meta', attrs: { name: 'boite-offline', content: [...files].map((name) => `./${name}`).join(' ') }, injectTo: 'head' }];
       },
     },

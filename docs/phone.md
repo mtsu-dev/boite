@@ -49,6 +49,7 @@ offline need HTTPS.
    copied link and tap Paste the link.
 3. The phone lists every machine of the group and opens on that computer.
 
+- On a slow connection, Boite shows Starting while it loads.
 - The code works once, for ten minutes: treat it like a password.
 - To take a phone out, press Remove from the group on its row there.
   A fresh link adds it again, including when the phone was offline during removal.

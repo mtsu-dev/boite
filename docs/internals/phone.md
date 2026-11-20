@@ -507,9 +507,11 @@ Safari 17 and Chrome 114 for the complete layout:
 This table describes features in the built CSS and `lib/floating.ts`. It does
 not record real Safari 15/16 device testing.
 
-A browser under the floor fails to parse the app, so `main.ts` never runs. An
-inline script in `index.html` notices on `load` and writes one sentence in the
-page instead: this browser cannot start Boite, and the versions it needs. A
+The HTML paints a localized Starting message while the app files load. On a
+fresh phone, the scan and paste controls can open before the conversations
+navigation is fetched. A browser under the floor fails to parse the app, so
+`main.ts` never runs. On `load`, an inline script in `index.html` replaces the
+status with a notice listing the browser versions Boite needs. A
 browser that has `Array.prototype.at`, `Object.hasOwn`, `structuredClone` and
 `oklch()`, which Safari 15.4 and Chrome 111 are the first to have together,
 failed before the entry ran instead, most often on a chunk lost on the way

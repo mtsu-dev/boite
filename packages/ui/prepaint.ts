@@ -2,7 +2,7 @@ import { minifySync, type Plugin } from 'vite';
 import { parse, type DefaultTreeAdapterTypes } from 'parse5';
 import { tooNewForFloor } from './src/lib/browser-floor.ts';
 
-/** Compress the two prepaint blocks Vite leaves outside its JS pipeline. */
+/** Keep first paint independent of Vite's styles and compress the boot scripts. */
 export function prepaintMinify(): Plugin {
   const comments = [' Painted before the stylesheet arrives,', ' The same rule as lib/theme.ts,', ' A browser under the floor (Safari 15.4, Chrome 111: docs/internals/phone.md)'];
   return {
@@ -19,6 +19,10 @@ export function prepaintMinify(): Plugin {
           if (!location) continue;
           if (node.nodeName === '#comment' && 'data' in node && comments.some(comment => node.data.startsWith(comment))) {
             edits.push({ start: location.startOffset, end: location.endOffset, text: '' });
+          }
+          if ('tagName' in node && node.tagName === 'link' && node.attrs.some(({ name, value }) => name === 'rel' && value === 'stylesheet')) {
+            const tag = html.slice(location.startOffset, location.endOffset);
+            edits.push({ start: location.startOffset, end: location.endOffset, text: tag.replace('rel="stylesheet"', 'rel="preload" as="style" data-boot-style') });
           }
           if (!('tagName' in node) || node.tagName !== 'script' || node.attrs.length) continue;
           const { startTag, endTag } = node.sourceCodeLocation ?? {};

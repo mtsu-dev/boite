@@ -26,18 +26,38 @@ const quotas = new URLSearchParams(location.search).get('view') === 'quotas';
 // jumps. The quota popup is its own webview and keeps its size.
 const zoomed = quotas ? Promise.resolve() : startZoom();
 
-// The language before the first frame, so nothing is drawn in English and
-// swapped a tick later, and `<html lang>` is right for the first paint. Every
+// The page shows its own startup status while the files are arriving. The app
+// mounts in the chosen language and with its styles already applied. Every
 // language, English included, is its own chunk, which index.html preloaded.
 // A promise chain rather than a top-level await: with one, Rolldown split the
 // entry into twice as many startup files. The quota window is a chunk of its own.
 function boot(): Promise<void> {
-  return startLocale().then(async () => {
+  return Promise.all([startLocale(), loadBootStyles()]).then(async () => {
     mount(quotas ? (await import('./QuotaApp.svelte')).default : App, { target });
+    document.getElementById('boot-status')?.remove();
     // Edge scrollbars and load on press follow their switches for the page's life.
     if (!quotas) void import('./lib/interactions').then(({ startInteractions }) => startInteractions());
     revealShell();
   });
+}
+
+function loadBootStyles(): Promise<unknown> {
+  return Promise.all([...document.querySelectorAll<HTMLLinkElement>('link[data-boot-style]')].map((preload) => {
+    const loaded = [...document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')].some((link) => link.href === preload.href && link.sheet !== null);
+    if (loaded) return;
+    const style = document.createElement('link');
+    style.rel = 'stylesheet';
+    style.href = preload.href;
+    if (preload.crossOrigin !== null) style.crossOrigin = preload.crossOrigin;
+    return new Promise<void>((resolve, reject) => {
+      style.onload = () => resolve();
+      style.onerror = () => {
+        style.remove();
+        reject(new Error(`Could not load ${style.href}`));
+      };
+      preload.after(style);
+    });
+  }));
 }
 boot().catch(() => {
   // No catalogue at all: no app, which would have no sentence to draw, but a
