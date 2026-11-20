@@ -93,7 +93,7 @@ test('the Machines page lists no agent and starts no agent check of its own', as
       ? { ...update, state: 'failed', failedPhase, message: 'Could not reach the registry' } : update);
     await settle();
     expect(document.querySelector('[data-testid="machine-updates-state"]')?.textContent).toBe(label);
-    expect(document.querySelector('[data-testid="machine-update-failure"]')?.textContent).toContain('Claude · Could not reach the registry');
+    expect(document.querySelector('[data-testid="machine-update-failure"]')?.textContent).toContain('Claude Code · Could not reach the registry');
   }
 });
 
