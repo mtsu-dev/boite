@@ -22,6 +22,7 @@ async function deleteArchived(page: BrowserPage, threadId: string): Promise<void
   await page.click(`[data-testid="archived-menu-${threadId}-menu"] [data-testid=archived-delete]`);
   await page.waitFor(`document.querySelector('[data-testid=confirm-ok]')`);
   await page.click('[data-testid=confirm-ok]');
+  await page.waitFor(`!document.querySelector('[data-testid=confirm-dialog]')`);
 }
 let port: number;
 
@@ -73,7 +74,6 @@ for (const width of [1280, 390]) {
         const drawer = '[data-testid=archived-list]';
         await deleteArchived(page, await page.evaluate<string>(`document.querySelector('${drawer} li').dataset.threadId`));
         await page.waitFor(`document.querySelectorAll('${drawer} li').length === 6`);
-        await page.waitFor(`!document.querySelector('[data-testid=confirm-dialog]')`);
         await page.click('[data-testid=undo-action]');
         await page.waitFor(`globalThis.__boiteTest.workspace.active.openThread?.archived`);
         await page.click('[data-testid=nav-settings]');
@@ -105,6 +105,7 @@ for (const width of [1280, 390]) {
         await page.waitFor(`document.querySelector('[data-testid=confirm-dialog]')`);
         expect(await page.evaluate(`document.querySelector('[data-testid=confirm-dialog]').textContent.includes('30 days')`)).toBe(true);
         expect(await page.evaluate(`document.querySelector('[data-testid=confirm-alt]').textContent.trim()`)).toBe('Archive');
+        await page.evaluate(`Promise.all(document.querySelector('[data-testid=confirm-dialog]').parentElement.getAnimations({subtree:true}).map(animation => animation.finished.catch(() => {})))`);
         await page.screenshot(join(import.meta.dir, '.artifacts', `thread-delete-confirm-${width}.png`));
         await page.click('[data-testid=confirm-ok]');
       };
@@ -143,8 +144,8 @@ for (const width of [1280, 390]) {
       await page.waitFor(`!document.querySelector('[data-testid=archived-list] [data-thread-id="${archivedId}"]')`);
       expect(await page.evaluate(`globalThis.__boiteTest.workspace.active.client.call('threads.list', { includeArchived: true }).then(rows => rows.some(t => t.id === ${JSON.stringify(archivedId)}))`)).toBe(false);
       expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
-      if (width < 720) await page.click('[data-testid=mobile-settings-back]');
-      else {
+      // Phones show the retention controls on the same page as the archive.
+      if (width >= 720) {
         await page.click('[data-testid=nav-settings]');
         await page.click('[data-testid=settings-tab-general]');
       }
