@@ -17,8 +17,14 @@ struct NB_PROCESS {
   DWORD id, parent, first; HANDLE handle, measurement; NB_STEP step; NB_THREAD_HANDLE *threads; size_t thread_count, thread_capacity;
   ULONGLONG startup_deadline, step_deadline;
   uintptr_t ntdll, sites[2]; BYTE originals[2]; DWORD flags; int startup, image;
+  char image_sha[65];
 };
-typedef struct {NB_PROCESS *processes; HANDLE job; PSID package, registry; DWORD root, last_pid, last_tid, last_event; int stopping;} NB_DEBUG;
+typedef struct {
+  DWORD error, event, pid, tid;
+  const wchar_t *stage;
+  char image_sha[65];
+} NB_FAILURE;
+typedef struct {NB_PROCESS *processes; HANDLE job; PSID package, registry; DWORD root; int stopping; NB_FAILURE failure;} NB_DEBUG;
 static NB_PROCESS *nb_process(NB_DEBUG *d, DWORD id) {
   for (NB_PROCESS *p = d->processes; p; p = p->next) if (p->id == id) return p;
   return NULL;
@@ -129,29 +135,45 @@ static int nb_export(NB_PROCESS *p, const IMAGE_NT_HEADERS64 *nt, const char *wa
   }
   return 0;
 }
-static int nb_image(NB_PROCESS *p, HANDLE file, void *base) {
+static int nb_image(NB_PROCESS *p, HANDLE file, void *base, const wchar_t **stage) {
   /* Basename is only a candidate filter. Kernel file identity AND full hash are
    * checked before the sole supported startup site is used. */
   wchar_t path[32768], system[MAX_PATH];
   if (!file) return 1; /* Missing ntdll provenance still fails at startup. */
+  *stage = L"dll-path";
   if (!GetFinalPathNameByHandleW(file, path, 32768, FILE_NAME_NORMALIZED)) return 0;
   wchar_t *leaf = wcsrchr(path, L'\\');
   if (!leaf || _wcsicmp(leaf + 1, L"ntdll.dll")) return 1;
-  if (p->ntdll || !GetSystemDirectoryW(system, MAX_PATH) || wcslen(system) + 11 >= MAX_PATH) return 0;
+  *stage = L"ntdll-duplicate";
+  if (p->ntdll) return 0;
+  *stage = L"ntdll-system-file";
+  if (!GetSystemDirectoryW(system, MAX_PATH) || wcslen(system) + 11 >= MAX_PATH) return 0;
   memcpy(system + wcslen(system), L"\\ntdll.dll", sizeof(L"\\ntdll.dll"));
   HANDLE reference = CreateFileW(system, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, 0, NULL);
-  BY_HANDLE_FILE_INFORMATION a, b; char sha[65]; int verified = reference != INVALID_HANDLE_VALUE &&
-    GetFileInformationByHandle(file, &a) && GetFileInformationByHandle(reference, &b) && a.dwVolumeSerialNumber == b.dwVolumeSerialNumber &&
-    a.nFileIndexHigh == b.nFileIndexHigh && a.nFileIndexLow == b.nFileIndexLow && nb_file_sha(file, sha) && !strcmp(sha, NB_NTDLL_SHA);
-  if (reference != INVALID_HANDLE_VALUE) CloseHandle(reference);
-  if (!verified) return 0;
+  if (reference == INVALID_HANDLE_VALUE) return 0;
+  *stage = L"ntdll-file-identity";
+  BY_HANDLE_FILE_INFORMATION a, b; char sha[65];
+  int identity = GetFileInformationByHandle(file, &a) && GetFileInformationByHandle(reference, &b) &&
+    a.dwVolumeSerialNumber == b.dwVolumeSerialNumber && a.nFileIndexHigh == b.nFileIndexHigh && a.nFileIndexLow == b.nFileIndexLow;
+  int hashed = identity && nb_file_sha(file, sha);
+  CloseHandle(reference);
+  if (!identity) return 0;
+  *stage = L"ntdll-sha256-read";
+  if (!hashed) return 0;
+  memcpy(p->image_sha, sha, sizeof(p->image_sha));
+  *stage = L"ntdll-sha256-match";
+  if (strcmp(sha, NB_NTDLL_SHA)) return 0;
+
+  *stage = L"ntdll-pe";
   p->ntdll = (uintptr_t)base;
   IMAGE_DOS_HEADER dos; IMAGE_NT_HEADERS64 nt; BYTE loader[sizeof(route_loader_code)];
   if (!nb_read(p, p->ntdll, &dos, sizeof(dos)) || dos.e_magic != IMAGE_DOS_SIGNATURE || dos.e_lfanew < 0 || dos.e_lfanew > 4096 ||
       !nb_read(p, p->ntdll + dos.e_lfanew, &nt, sizeof(nt)) || nt.Signature != IMAGE_NT_SIGNATURE || nt.FileHeader.Machine != IMAGE_FILE_MACHINE_AMD64 ||
-      nt.FileHeader.TimeDateStamp != 0x64d8ddf5 || nt.OptionalHeader.SizeOfImage != 0x264000 || nt.OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC ||
-      !nb_read(p, p->ntdll + ROUTE_LOADER_START, loader, sizeof(loader)) || memcmp(loader, route_loader_code, sizeof(loader))) return 0;
+      nt.FileHeader.TimeDateStamp != 0x64d8ddf5 || nt.OptionalHeader.SizeOfImage != 0x264000 || nt.OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC) return 0;
+  *stage = L"ntdll-loader-bytes";
+  if (!nb_read(p, p->ntdll + ROUTE_LOADER_START, loader, sizeof(loader)) || memcmp(loader, route_loader_code, sizeof(loader))) return 0;
   /* RSDS matches the provenance header in addition to the full file hash. */
+  *stage = L"ntdll-rsds";
   IMAGE_DATA_DIRECTORY dd = nt.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG]; int guid = 0;
   if (dd.Size > 4096 || dd.Size % sizeof(IMAGE_DEBUG_DIRECTORY)) return 0;
   for (DWORD i = 0; i < dd.Size / sizeof(IMAGE_DEBUG_DIRECTORY); ++i) {
@@ -162,13 +184,17 @@ static int nb_image(NB_PROCESS *p, HANDLE file, void *base) {
         nb_read(p, p->ntdll + debug.AddressOfRawData, &rsds, sizeof(rsds)) && rsds.magic == 0x53445352 &&
         !memcmp(&rsds.guid, &route_native_guid, sizeof(GUID)) && rsds.age == 1) guid = 1;
   }
-  if (!guid || !nb_export(p, &nt, "NtCreateFile", &p->sites[0]) || !nb_export(p, &nt, "NtOpenFile", &p->sites[1]) || p->sites[0] == p->sites[1]) return 0;
+  if (!guid) return 0;
+  *stage = L"ntdll-exports";
+  if (!nb_export(p, &nt, "NtCreateFile", &p->sites[0]) || !nb_export(p, &nt, "NtOpenFile", &p->sites[1]) || p->sites[0] == p->sites[1]) return 0;
   const char *names[] = {"NtCreateFile", "NtOpenFile"};
   for (unsigned i = 0; i < 2; ++i) {
+    *stage = L"ntdll-export-bytes";
     BYTE code[8]; void *host = (void *)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), names[i]);
     if (!nb_read(p, p->sites[i], code, sizeof(code)) || memcmp(code, "\x4c\x8b\xd1\xb8", 4) || memcmp(code, host, sizeof(code)) ||
         p->sites[i] - p->ntdll != (uintptr_t)host - (uintptr_t)GetModuleHandleW(L"ntdll.dll")) return 0;
     p->originals[i] = code[0];
+    *stage = L"ntdll-install-sites";
     if (!nb_patch(p, p->sites[i], 0xcc)) return 0;
   }
   p->image = 1; return 1;
@@ -274,11 +300,12 @@ static int nb_delegate(NB_DEBUG *d, NB_PROCESS *p, DWORD tid, CONTEXT *c, int ap
   return 1;
 }
 
-static int nb_exception(NB_DEBUG *d, NB_PROCESS *p, DEBUG_EVENT *e, DWORD *continuation) {
+static int nb_exception(NB_DEBUG *d, NB_PROCESS *p, DEBUG_EVENT *e, DWORD *continuation, const wchar_t **stage) {
   DWORD code = e->u.Exception.ExceptionRecord.ExceptionCode; uintptr_t address = (uintptr_t)e->u.Exception.ExceptionRecord.ExceptionAddress;
   HANDLE thread = nb_thread_handle(p, e->dwThreadId); CONTEXT c; ZeroMemory(&c, sizeof(c)); c.ContextFlags = CONTEXT_FULL;
   *continuation = DBG_EXCEPTION_NOT_HANDLED;
   if (code == EXCEPTION_BREAKPOINT && p->image && !p->startup && e->dwThreadId == p->first && address == p->ntdll + ROUTE_LOADER_BREAK) {
+    *stage = L"startup-loader-bytes";
     BYTE code_bytes[sizeof(route_loader_code)];
     if (!nb_read(p, p->ntdll + ROUTE_LOADER_START, code_bytes, sizeof(code_bytes)) || memcmp(code_bytes, route_loader_code, sizeof(code_bytes))) return 0;
     p->startup = 1; p->startup_deadline = 0; *continuation = DBG_CONTINUE;
@@ -333,41 +360,64 @@ static int nb_close_process(NB_PROCESS *p) {
   if (p->measurement && !CloseHandle(p->measurement)) ok = 0;
   free(p->threads); nb_dispose(&p->step); free(p); return ok;
 }
-static void nb_stop(NB_DEBUG *d, DWORD *error, DWORD reason, ULONGLONG *drain) {
-  if (reason && !*error) *error = reason;
+static void nb_fail(NB_DEBUG *d, DWORD error, const wchar_t *stage, const DEBUG_EVENT *e, const NB_PROCESS *p) {
+  NB_FAILURE *failure = &d->failure;
+  if (failure->error) return;
+  failure->error = error;
+  failure->stage = stage;
+  if (e) {
+    failure->event = e->dwDebugEventCode;
+    failure->pid = e->dwProcessId;
+    failure->tid = e->dwThreadId;
+  } else if (p) failure->pid = p->id;
+  if (p) memcpy(failure->image_sha, p->image_sha, sizeof(failure->image_sha));
+}
+static void nb_stop(NB_DEBUG *d, ULONGLONG *drain, const DEBUG_EVENT *e, const NB_PROCESS *p) {
   if (!d->stopping) {
     d->stopping = 1; *drain = GetTickCount64() + 8000;
-    if (!TerminateJobObject(d->job, 125) && !*error) *error = GetLastError();
+    if (!TerminateJobObject(d->job, 125)) nb_fail(d, GetLastError(), L"terminate-job", e, p);
   }
 }
 DWORD protected_null_run(HANDLE job, PROCESS_INFORMATION *root, PSID package, PSID registry, BOOL terminating, DWORD *root_exit) {
   NB_DEBUG d; ZeroMemory(&d, sizeof(d)); d.job = job; d.package = package; d.registry = registry; d.root = root->dwProcessId;
-  DWORD error = 0; ULONGLONG drain = 0, initial = GetTickCount64() + 15000;
-  if (terminating) nb_stop(&d, &error, 0, &drain);
-  if (!nb_resolve() || !DebugSetProcessKillOnExit(TRUE)) nb_stop(&d, &error, ERROR_NOT_SUPPORTED, &drain);
+  ULONGLONG drain = 0, initial = GetTickCount64() + 15000;
+  if (terminating) nb_stop(&d, &drain, NULL, NULL);
+  if (!nb_resolve() || !DebugSetProcessKillOnExit(TRUE)) {
+    nb_fail(&d, ERROR_NOT_SUPPORTED, L"debugger-init", NULL, NULL);
+    nb_stop(&d, &drain, NULL, NULL);
+  }
   for (;;) {
     ULONGLONG now = GetTickCount64();
     if (!d.stopping) {
-      if (initial && now > initial) nb_stop(&d, &error, ERROR_TIMEOUT, &drain);
-      for (NB_PROCESS *p = d.processes; p && !d.stopping; p = p->next) {
-        if ((p->startup_deadline && now > p->startup_deadline) || (p->step.owner && now > p->step_deadline))
-          nb_stop(&d, &error, ERROR_TIMEOUT, &drain);
+      if (initial && now > initial) {
+        nb_fail(&d, ERROR_TIMEOUT, L"initial-timeout", NULL, NULL);
+        nb_stop(&d, &drain, NULL, NULL);
       }
-    } else if (now > drain) {if (!error) error = ERROR_TIMEOUT; break;}
+      for (NB_PROCESS *p = d.processes; p && !d.stopping; p = p->next) {
+        int startup_timeout = p->startup_deadline && now > p->startup_deadline;
+        if (startup_timeout || (p->step.owner && now > p->step_deadline)) {
+          nb_fail(&d, ERROR_TIMEOUT, startup_timeout ? L"startup-timeout" : L"step-timeout", NULL, p);
+          nb_stop(&d, &drain, NULL, p);
+        }
+      }
+    } else if (now > drain) {nb_fail(&d, ERROR_TIMEOUT, L"drain-timeout", NULL, NULL); break;}
     DEBUG_EVENT e; ZeroMemory(&e, sizeof(e));
     if (!WaitForDebugEvent(&e, 100)) {
       DWORD wait_error = GetLastError();
-      if (wait_error != ERROR_SEM_TIMEOUT) {if (!error) error = wait_error; break;}
+      if (wait_error != ERROR_SEM_TIMEOUT) {nb_fail(&d, wait_error, L"wait-event", NULL, NULL); break;}
       if (d.stopping && !d.processes) {
         JOBOBJECT_BASIC_ACCOUNTING_INFORMATION a;
-        if (!QueryInformationJobObject(job, JobObjectBasicAccountingInformation, &a, sizeof(a), NULL)) {if (!error) error = GetLastError(); break;}
+        if (!QueryInformationJobObject(job, JobObjectBasicAccountingInformation, &a, sizeof(a), NULL)) {
+          nb_fail(&d, GetLastError(), L"drain-job-accounting", NULL, NULL); break;
+        }
         if (!a.ActiveProcesses) break;
       }
       continue;
     }
-    d.last_pid = e.dwProcessId; d.last_tid = e.dwThreadId; d.last_event = e.dwDebugEventCode;
+    const wchar_t *stage = L"event-type";
     NB_PROCESS *p = nb_process(&d, e.dwProcessId); DWORD continuation = DBG_CONTINUE; int ok = 1, retire = 0, departed = 0;
     if (e.dwDebugEventCode == CREATE_PROCESS_DEBUG_EVENT) {
+      stage = L"create-process";
       if (p) ok = 0;
       else {
         p = calloc(1, sizeof(*p));
@@ -391,31 +441,41 @@ DWORD protected_null_run(HANDLE job, PROCESS_INFORMATION *root, PSID package, PS
             }
           }
           if (ok && !d.stopping) {
+            stage = L"process-binding";
             p->parent = nb_parent(p->handle);
             ok = p->parent && (p->id == d.root ? p->parent == GetCurrentProcessId() : nb_process(&d, p->parent) != NULL) &&
               nb_binding(&d, p) && nb_add_thread(p, e.dwThreadId, e.u.CreateProcessInfo.hThread);
           }
         }
       }
-      if (e.u.CreateProcessInfo.hFile && !CloseHandle(e.u.CreateProcessInfo.hFile)) ok = 0;
+      if (e.u.CreateProcessInfo.hFile && !CloseHandle(e.u.CreateProcessInfo.hFile) && ok) {
+        stage = L"close-event-file"; ok = 0;
+      }
     } else if (!p) {
       /* An allocation failure may leave an untracked process during drain. */
-      if (!d.stopping) ok = 0;
-      if (e.dwDebugEventCode == LOAD_DLL_DEBUG_EVENT && e.u.LoadDll.hFile && !CloseHandle(e.u.LoadDll.hFile)) ok = 0;
+      if (!d.stopping) {stage = L"unknown-process"; ok = 0;}
+      if (e.dwDebugEventCode == LOAD_DLL_DEBUG_EVENT && e.u.LoadDll.hFile && !CloseHandle(e.u.LoadDll.hFile) && ok) {
+        stage = L"close-event-file"; ok = 0;
+      }
       if (e.dwDebugEventCode == EXCEPTION_DEBUG_EVENT) continuation = DBG_EXCEPTION_NOT_HANDLED;
     } else switch (e.dwDebugEventCode) {
       case CREATE_THREAD_DEBUG_EVENT:
+        stage = L"create-thread";
         if (!d.stopping) ok = nb_add_thread(p, e.dwThreadId, e.u.CreateThread.hThread);
         break;
       case LOAD_DLL_DEBUG_EVENT:
-        if (!d.stopping) ok = nb_image(p, e.u.LoadDll.hFile, e.u.LoadDll.lpBaseOfDll);
-        if (e.u.LoadDll.hFile && !CloseHandle(e.u.LoadDll.hFile)) ok = 0;
+        if (!d.stopping) ok = nb_image(p, e.u.LoadDll.hFile, e.u.LoadDll.lpBaseOfDll, &stage);
+        if (e.u.LoadDll.hFile && !CloseHandle(e.u.LoadDll.hFile) && ok) {
+          stage = L"close-event-file"; ok = 0;
+        }
         break;
       case EXCEPTION_DEBUG_EVENT:
+        stage = L"exception";
         if (d.stopping) continuation = DBG_EXCEPTION_NOT_HANDLED;
-        else ok = nb_exception(&d, p, &e, &continuation);
+        else ok = nb_exception(&d, p, &e, &continuation, &stage);
         break;
       case EXIT_THREAD_DEBUG_EVENT: {
+        stage = L"exit-thread";
         NB_THREAD_STATE *t = nb_thread(&p->step, e.dwThreadId);
         if (!d.stopping) {
           departed = t && t->terminating;
@@ -428,13 +488,16 @@ DWORD protected_null_run(HANDLE job, PROCESS_INFORMATION *root, PSID package, PS
         break;
       }
       case EXIT_PROCESS_DEBUG_EVENT:
-        if (!d.stopping && (!p->startup || !p->image || p->step.owner)) ok = 0;
+        if (!d.stopping && (!p->startup || !p->image || p->step.owner)) {
+          stage = L"exit-process-validation"; ok = 0;
+        }
         if (p->id == d.root) {
           *root_exit = e.u.ExitProcess.dwExitCode;
-          nb_stop(&d, &error, 0, &drain);
+          if (ok) nb_stop(&d, &drain, &e, p);
         }
         retire = 1; break;
       case UNLOAD_DLL_DEBUG_EVENT:
+        stage = L"unload-ntdll";
         if ((uintptr_t)e.u.UnloadDll.lpBaseOfDll == p->ntdll) ok = 0;
         break;
       case OUTPUT_DEBUG_STRING_EVENT: break;
@@ -442,25 +505,40 @@ DWORD protected_null_run(HANDLE job, PROCESS_INFORMATION *root, PSID package, PS
     }
     /* An invalid event cannot execute another target instruction. Kill first,
      * then continue the outstanding event so exit events can be drained. */
-    if (!ok) nb_stop(&d, &error, ERROR_NOT_SUPPORTED, &drain);
-    if (!ContinueDebugEvent(e.dwProcessId, e.dwThreadId, continuation)) {if (!error) error = GetLastError(); break;}
-    if (departed && ok && !d.stopping && !nb_wake(&p->step, nb_release, p)) nb_stop(&d, &error, ERROR_NOT_SUPPORTED, &drain);
+    if (!ok) {
+      nb_fail(&d, ERROR_NOT_SUPPORTED, stage, &e, p);
+      nb_stop(&d, &drain, &e, p);
+    }
+    if (!ContinueDebugEvent(e.dwProcessId, e.dwThreadId, continuation)) {
+      nb_fail(&d, GetLastError(), L"continue-event", &e, p); break;
+    }
+    if (departed && ok && !d.stopping && !nb_wake(&p->step, nb_release, p)) {
+      nb_fail(&d, ERROR_NOT_SUPPORTED, L"wake-step", &e, p);
+      nb_stop(&d, &drain, &e, p);
+    }
     if (retire && p) {
       NB_PROCESS **link = &d.processes;
       while (*link != p) link = &(*link)->next;
       *link = p->next;
-      if (!nb_close_process(p)) nb_stop(&d, &error, ERROR_INVALID_HANDLE, &drain);
+      if (!nb_close_process(p)) {
+        nb_fail(&d, ERROR_INVALID_HANDLE, L"close-process", &e, NULL);
+        nb_stop(&d, &drain, &e, NULL);
+      }
     }
   }
-  if (error) TerminateJobObject(job, 125);
+  NB_FAILURE *failure = &d.failure;
+  if (failure->error) TerminateJobObject(job, 125);
   JOBOBJECT_BASIC_ACCOUNTING_INFORMATION a; ZeroMemory(&a, sizeof(a));
-  if (!QueryInformationJobObject(job, JobObjectBasicAccountingInformation, &a, sizeof(a), NULL)) {if (!error) error = GetLastError();}
-  if ((d.processes || a.ActiveProcesses) && !error) error = ERROR_BUSY;
+  if (!QueryInformationJobObject(job, JobObjectBasicAccountingInformation, &a, sizeof(a), NULL))
+    nb_fail(&d, GetLastError(), L"final-job-accounting", NULL, NULL);
+  if (d.processes || a.ActiveProcesses) nb_fail(&d, ERROR_BUSY, L"live-processes", NULL, NULL);
   while (d.processes) {
     NB_PROCESS *next = d.processes->next;
-    if (!nb_close_process(d.processes) && !error) error = ERROR_INVALID_HANDLE;
+    if (!nb_close_process(d.processes)) nb_fail(&d, ERROR_INVALID_HANDLE, L"close-process", NULL, NULL);
     d.processes = next;
   }
-  if (error) fwprintf(stderr, L"execution.windows.null-broker: event validation or drain failed (%lu), event=%lu pid=%lu tid=%lu\n", error, d.last_event, d.last_pid, d.last_tid);
-  return error;
+  if (failure->error) fwprintf(stderr,
+    L"execution.windows.null-broker: event validation or drain failed (%lu), event=%lu pid=%lu tid=%lu stage=%ls image-sha256=%hs\n",
+    failure->error, failure->event, failure->pid, failure->tid, failure->stage, failure->image_sha[0] ? failure->image_sha : "unavailable");
+  return failure->error;
 }
