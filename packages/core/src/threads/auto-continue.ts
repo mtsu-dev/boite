@@ -156,7 +156,12 @@ export class AutoContinues {
     // A folder that is gone stays gone until someone puts it back, and a
     // context its own compaction cannot shrink stays full until someone
     // shrinks what fills it.
-    if (result.refusal || result.cwdGone || result.contextFull) return;
+    if (result.refusal) return;
+    if (result.cwdGone || result.contextFull) {
+      // Handled: a later start that finds work this thread held (a team, a workflow run) resumes nothing either.
+      this.#resumes.settle(thread.id, { streak: 0, handled: turn.id });
+      return;
+    }
     const error = (turn.error ?? result.error ?? 'unknown error').trim();
     const quoted = error.length > ERROR_QUOTE ? `${error.slice(0, ERROR_QUOTE)} [cut]` : error;
     this.#plan(thread.id, turn, 'error', `Your previous turn ended on an error before it finished: ${quoted}\n\nBoite resumed the thread by itself. ${CARRY_ON}`);

@@ -476,6 +476,25 @@ test('a crash that paused the subagent team of an answered thread wakes its agen
   } finally { setSystemTime(); await next.stop(); }
 });
 
+test('a crash after a turn that failed on a full context resumes nothing, though it paused the team', async () => {
+  const h = await startTestCore();
+  scripted({ ...failed('Claude could not compact this conversation'), contextFull: true });
+  const client = await h.connect();
+  const { threadId } = await echoThread(h, client);
+  await client.call('turns.start', { threadId, prompt: 'go on' });
+  await waitFor(() => turns(h, threadId)[0]?.status === 'error' && h.core.threads.require(threadId).status !== 'running');
+  h.core.journal.setSetting(`delegation:${threadId}`, { ...h.core.delegation.config(threadId), enabled: true, paused: true, pausedBy: 'restart', pausedAt: Date.now() + 60_000 });
+  client.close();
+  await crash(h);
+  const asked = scripted(done);
+  const next = await restart(h);
+  try {
+    await Bun.sleep(150);
+    expect(asked).toHaveLength(0);
+    expect(next.core.threads.get(threadId).turns).toHaveLength(1);
+  } finally { await next.stop(); }
+});
+
 test('a resume planned before a crash survives it and goes out from the next core', async () => {
   // Long enough to crash first; the plan keeps its time across the restart.
   AUTO_CONTINUE.delaysMs = [1_500, 1_500];
