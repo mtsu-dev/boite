@@ -81,6 +81,13 @@ describe('the plugin permission table', () => {
     expect(mayHearEvent('policy.changed', 'plugin', ['status.read'])).toBe(false);
     // A queued composer line goes out as the owner's own, so a plugin sends with turns.start or turns.steer.
     expect(accessRefusal('composer.put', writer)?.message).toStartWith('composer.put is never open to plugins: a queued line goes out as the owner');
+    // The new client sync and Git probe surfaces stay closed even to a plugin with every grant.
+    const all = { ...caller, permissions: PLUGIN_PERMISSION_NAMES };
+    for (const method of ['composer.listPage', 'composer.get', 'projects.git'] as const) {
+      expect(accessRefusal(method, all)?.message).toStartWith(`${method} is never open to plugins:`);
+    }
+    expect(mayHearEvent('composer.revision', 'plugin', all.permissions)).toBe(false);
+    expect(mayHearEvent('thread.progress', 'plugin', all.permissions)).toBe(false);
   });
 
   test('an older name in a manifest reads as the permissions it stands for', () => {
