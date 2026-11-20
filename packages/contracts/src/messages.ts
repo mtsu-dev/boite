@@ -420,8 +420,11 @@ export function proofPart(source: ProofSource, parts: readonly MessagePart[]): E
     return command ? [command] : [];
   });
   if (commands.length !== 1) throw new ProofInputError('line', 'expected a line from exactly one completed command in this message');
-  const lines = [commands[0], line].join('\n').split(/\r?\n/).map(row => `    ${row}`);
-  return { type: 'text', text: `${lines.join('\n')}\n\n${source.unchecked.trim()}`, proof: true };
+  const evidence = `${commands[0]}\n${line}`;
+  let fenceLength = 3;
+  for (const run of evidence.matchAll(/`{3,}/g)) fenceLength = Math.max(fenceLength, run[0].length + 1);
+  const fence = '`'.repeat(fenceLength);
+  return { type: 'text', text: `${fence}\n${evidence}\n${fence}\n\n${source.unchecked.trim()}`, proof: true };
 }
 
 export interface MessagesRpcMethods {

@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import type { Message } from '@boite/contracts';
+import { proofPart, type Message } from '@boite/contracts';
 import { claudeKeywords, lastAnswer, promptSegments, sliceSegments, visibleAnswer, visibleUserText } from './message-display';
 
 test('the keywords count only for a Claude model run by Claude Code', () => {
@@ -77,6 +77,17 @@ test('an indented fence keeps its indent through the stream, so its code outdent
     expect(code(renderMarkdown(text))).toEqual([expected]);
     expect(code(blocks.map(block => renderMarkdown(block)).join(''))).toEqual([expected]);
   }
+});
+test('a published command and its output render literally even when they contain Markdown', () => {
+  const command = 'cat <<EOF\n```\nEOF';
+  const line = '**test passed**';
+  const proof = proofPart({ threadId: 'thread', messageId: 'message', line, unchecked: 'Windows pending.' }, [
+    { type: 'tool', toolId: 'tool', name: 'Bash', status: 'done', input: { command }, output: line },
+  ]);
+  const box = document.createElement('div');
+  box.innerHTML = paragraphBlocks(proof.text).map(block => renderMarkdown(block)).join('');
+  expect(box.querySelector('pre code')?.textContent).toBe(`${command}\n${line}`);
+  expect(box.querySelector('p')?.textContent).toBe('Windows pending.');
 });
 test('an indented heading stays a heading, in a completed block and in the final tail', () => {
   const heading = /^<h[1-6][^>]*>Heading<\/h[1-6]>$/;
