@@ -67,14 +67,12 @@ describe('exists', () => {
   const active = workspace.active;
   afterEach(() => { workspace.active = active; });
 
-  test('a Contacts page is no place to return to on a client that is not the owner; an old Contacts switch off changes nothing', () => {
+  test('a Contacts page is no place to return to on a client that is not the owner', () => {
     // Class instances, as Stores are: a plain object would come back from the workspace as a proxy.
     const client = (owner: boolean) => new (class { owner = owner })() as unknown as Store;
     const owner = client(true);
     workspace.active = owner;
     const page: View = { store: owner, page: 'home', contact: 'core-chris' };
-    expect(exists(page)).toBe(true);
-    // Contacts are on in every build: the switch a device kept from when they were an experiment is not read.
     expect(exists(page)).toBe(true);
     const paired = client(false);
     workspace.active = paired;
