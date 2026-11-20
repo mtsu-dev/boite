@@ -39,8 +39,9 @@ server listens, each eligible entry is handled separately:
 - A queued turn re-enters the scheduler with its existing prompt and identity.
 - A cut running turn gets a continuation shown as "Resumed after a restart".
   It resumes the native session and asks the agent to check interrupted command
-  results before continuing. Up to 8,000 characters of the original request
-  accompany it; images are not resent.
+  results before continuing. It carries the complete request, any corrections
+  made during the turn and the current task list. Attachments follow the
+  provider's capabilities and the usual per-turn limits.
 - A turn left running when the old core was killed is closed as stopped, without
   an error part, then gets the same continuation.
 

@@ -11,7 +11,7 @@ import { announceFinished, finishTurn, userStopKey } from './turn-settlement.ts'
 import { addErrorPart, closeAsError, openTurnMessage } from './turn-error.ts';
 
 /** What a turn a dead core left behind says, once the next core has closed it. */
-export const CRASH_WHILE_RUNNING = 'The core stopped while this turn was running; send the prompt again.';
+export const CRASH_WHILE_RUNNING = 'The core stopped while this turn was running.';
 /** The same, for a turn that resumes by itself once the core started (`threads/auto-continue.ts`). */
 export const CRASH_RESUMING = 'The core stopped while this turn was running; Boite resumes it.';
 export const CRASH_WHILE_QUEUED = 'The core stopped while this turn was queued; send the prompt again.';

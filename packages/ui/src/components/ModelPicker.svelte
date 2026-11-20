@@ -120,7 +120,7 @@
     aria-expanded={popover.open}
     aria-label={actionLabel ?? [label, accountLabel].filter(Boolean).join(', ')}
     title={actionLabel ?? (hint || (locked ? strings.composer.lockedHint : strings.composer.picker))}
-    data-testid="composer-picker"
+    data-testid={actionLabel ? 'recovery-model-picker' : 'composer-picker'}
     {disabled}
     onclick={toggle}
     {onkeydown}

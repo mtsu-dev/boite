@@ -56,6 +56,9 @@
   <!-- The one notice form, on the conversation's column: what will run again, its countdown, the way to give it up. -->
   <Notice icon={Hourglass} testid="thread-retry" kind={retry.kind} {title} label={title} docked actions={giveUp}>
     <span class="countdown" role="timer" aria-live="off">{body}</span>
+    {#if retry.kind === 'usage-limit' && retry.resetsAt !== null}
+      <span>{fill(strings.thread.resumeKnownReset, { time: clockTime(retry.resetsAt, now) })}</span>
+    {/if}
   </Notice>
 {/if}
 
