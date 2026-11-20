@@ -196,7 +196,6 @@ const RULES: Partial<Record<RpcMethodName, Rule>> = {
   'providers.update': (values, params, ctx) => updatesOff(values, 'agents') ? 'updates.agents' : provider(values, params, ctx),
   'providers.install': provider,
   'providers.probe': provider,
-  'providers.dryRun': provider,
   'providers.setEnabled': (values, params, ctx) => params.enabled === true ? provider(values, params, ctx) : null,
   'subscriptionProxy.configure': (values, params) => {
     const proxy = params.subscriptionProxy as Settings['subscriptionProxy'];
@@ -204,7 +203,6 @@ const RULES: Partial<Record<RpcMethodName, Rule>> = {
     return proxy?.enabled ? gatewayBlockOf(values, proxy.baseUrl) : null;
   },
   'subscriptionProxy.setEnabled': (values, params, ctx) => params.enabled === true ? gatewayBlockOf(values, ctx.settings.subscriptionProxy?.baseUrl ?? null) : null,
-  'subscriptionProxy.key': when('gateway', (values, params) => gatewayOff(values) && params.key !== null),
   'subscriptionProxy.quotas': when('gateway', gatewayOff),
   'subscriptionProxy.move': when('gateway', gatewayOff),
   'subscriptionProxy.movePlan': when('gateway', gatewayOff),

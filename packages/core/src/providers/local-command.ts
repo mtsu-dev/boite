@@ -1,7 +1,7 @@
 /**
  * Settings > Providers > Local ACP command: an ACP agent the owner describes by
  * the command that starts it, written as an ordinary user descriptor under
- * `<dataDir>/providers/`, so the loader, the ACP driver and `providers.dryRun`
+ * `<dataDir>/providers/`, so the loader and the ACP driver
  * treat it like a file written by hand.
  */
 import { existsSync, mkdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';

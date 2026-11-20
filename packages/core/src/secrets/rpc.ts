@@ -27,12 +27,4 @@ export function registerSecretMethods(core: Core): void {
     if (projectId === null && !('threadId' in params)) throw refused('secrets.list: expected threadId or projectId', { field: 'projectId', expected: 'a project id' });
     return { ...(await core.secrets.list(projectId)), encrypted: ctx.connection.encrypted === true };
   });
-  core.router.register('secrets.delete', async (params, ctx) => {
-    if (ctx.connection.identity.principal !== 'owner' && ctx.connection.encrypted !== true) {
-      throw refused('secrets.delete: a paired device deletes a key only over an encrypted link; use the PC or HTTPS', { field: 'connection', expected: 'loopback, Tailscale or HTTPS' });
-    }
-    core.projects.require(params.projectId);
-    await core.secrets.delete(params.projectId, params.name);
-    return { ok: true as const };
-  });
 }

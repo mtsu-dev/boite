@@ -7,7 +7,7 @@ import { invalidParams, refused, unavailable, RpcFailure } from './errors.ts';
 import { isOpenCode, OPENCODE_V2 } from './providers/opencode.ts';
 import { hostAgentsEnabled, profileFor } from './providers/resolve.ts';
 import { shareProfile } from './profile-share.ts';
-import { ensureLocalProxyKey, prepareLocalProxyKey, hasProxyKey, proxyKey, validateProxyKey as validateKey, writeProxyKey as writeKey, PROXY_AUTH_ERROR } from './subscription-proxy-auth.ts';
+import { ensureLocalProxyKey, prepareLocalProxyKey, proxyKey, validateProxyKey as validateKey, writeProxyKey as writeKey, PROXY_AUTH_ERROR } from './subscription-proxy-auth.ts';
 export { proxyKey } from './subscription-proxy-auth.ts';
 
 /** The gateway models both OpenCode versions were last offered, kept so a restart can start a turn on one. */
@@ -399,15 +399,6 @@ function openCodeModels(core: Core, proxy: SubscriptionProxy, rows: Record<strin
 }
 
 export function registerSubscriptionProxy(core: Core): void {
-  core.router.register('subscriptionProxy.key', async ({ key }) => {
-    validateKey(key);
-    try { writeKey(core, key); }
-    catch { throw unavailable('Subscription proxy key could not be saved'); }
-    // The last answer was read with the previous key.
-    core.quotas.gateway.reset();
-    await prepareLocalProxyKey(core);
-    return { configured: hasProxyKey(core) };
-  });
   core.router.register('subscriptionProxy.quotas', ({ refresh }) => {
     if (refresh !== undefined && typeof refresh !== 'boolean') throw invalidParams('subscriptionProxy.quotas refresh must be a boolean');
     return core.quotas.gateway.read(refresh === true);
