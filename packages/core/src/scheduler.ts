@@ -1,6 +1,7 @@
 import type { AccountId, DelegationConfig, ProviderId, SchedulerState, ThreadId, Timestamp, Turn, TurnId } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { logMessageOf } from './log-errors.ts';
+import { waitForVersion } from './providers/versions.ts';
 
 interface Entry {
   turnId: TurnId;
@@ -167,16 +168,9 @@ export class Scheduler {
 
   #waitForVersion(providerId: ProviderId | undefined): boolean {
     const read = providerId === undefined ? undefined : this.#core.providers.pendingVersion(providerId);
-    if (read === undefined) return false;
-    if (!this.#versionReads.has(read)) {
-      this.#versionReads.add(read);
-      const retry = (): void => {
-        this.#versionReads.delete(read);
-        if (!this.#core.journal.isClosed()) this.onSettingsChanged();
-      };
-      void read.then(retry, retry);
-    }
-    return true;
+    return waitForVersion(read, this.#versionReads, () => {
+      if (!this.#core.journal.isClosed()) this.onSettingsChanged();
+    });
   }
 
   #start(entry: Entry): void {

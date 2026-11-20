@@ -2,6 +2,7 @@ import { ATTACHMENTS_PER_TURN, ATTACHMENTS_TOTAL_MAX_BYTES, decodedBytes, type A
 import { messageExcerpt } from '../continuation.ts';
 import type { Core } from '../core.ts';
 import { messageOf } from '../errors.ts';
+import { waitForVersion } from '../providers/versions.ts';
 import type { ThreadStore } from '../threads.ts';
 import { RESUME_TEXT } from './resume-text.ts';
 import type { TurnInput } from './turn-origin.ts';
@@ -216,10 +217,7 @@ export class RestartHandoff {
             continue;
           }
           const read = this.#core.providers.pendingVersion(thread.providerId);
-          if (read !== undefined) {
-            this.#waitForVersion(read);
-            continue;
-          }
+          if (waitForVersion(read, this.#versionReads, () => this.resume())) continue;
           const continuation = this.#threads.startTurn(thread.id, this.continuation(turn), { kind: 'resume', reason: 'handoff', requestId: this.#requestId(entry) });
           this.#remember(entry, continuation.id);
           resumed += 1;
@@ -234,16 +232,6 @@ export class RestartHandoff {
     }
     if (resumed > 0) this.#core.log('info', `restart handoff: resumed ${resumed} threads`);
     return resumed;
-  }
-
-  #waitForVersion(read: Promise<void>): void {
-    if (this.#versionReads.has(read)) return;
-    this.#versionReads.add(read);
-    const retry = (): void => {
-      this.#versionReads.delete(read);
-      this.resume();
-    };
-    void read.then(retry, retry);
   }
 
   #requestId(entry: Entry): string { return `restart_${entry.turnId}`; }
