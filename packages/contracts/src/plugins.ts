@@ -177,6 +177,7 @@ export const PLUGIN_CLOSED: readonly { name: string; reason: string }[] = [
   { name: 'push.', reason: 'notifications belong to the device that subscribed' },
   { name: 'client.', reason: 'each app\'s language and experiments are its own' },
   { name: 'threads.focus', reason: 'which conversation the person is looking at decides their notifications' },
+  { name: 'threads.previewAccountSwitch', reason: 'the owner\'s clients confirm account changes and can preview whether a saved provider session will resume' },
   { name: 'thread.progress', reason: 'the live progress feed publishes provider activity and timing for the owner\'s clients' },
   { name: 'projects.git', reason: 'an on-demand Git probe of a local project can start work on the host' },
   { name: 'speech.', reason: 'the microphone belongs to the person speaking to the app' },

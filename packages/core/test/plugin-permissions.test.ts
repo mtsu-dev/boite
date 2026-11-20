@@ -83,7 +83,7 @@ describe('the plugin permission table', () => {
     expect(accessRefusal('composer.put', writer)?.message).toStartWith('composer.put is never open to plugins: a queued line goes out as the owner');
     // The new client sync and Git probe surfaces stay closed even to a plugin with every grant.
     const all = { ...caller, permissions: PLUGIN_PERMISSION_NAMES };
-    for (const method of ['composer.listPage', 'composer.get', 'projects.git'] as const) {
+    for (const method of ['composer.listPage', 'composer.get', 'projects.git', 'threads.previewAccountSwitch'] as const) {
       expect(accessRefusal(method, all)?.message).toStartWith(`${method} is never open to plugins:`);
     }
     expect(mayHearEvent('composer.revision', 'plugin', all.permissions)).toBe(false);
