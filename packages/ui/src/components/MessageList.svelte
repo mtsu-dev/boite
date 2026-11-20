@@ -50,7 +50,7 @@
   import { ReadingAnchor, type RowAnchor } from '../lib/reading-anchor';
   import { MediaQuery } from 'svelte/reactivity';
   import { MessageReveal } from '../lib/message-reveal.svelte';
-  import { ViewPlacement, turnViews, viewPart } from '../lib/inline-view';
+  import { ViewPlacement, turnViews, viewLines, viewPart } from '../lib/inline-view';
   import { filesLast, firstAssistantByTurn, firstByTurn, publishedFile, quietKeepalives } from '../lib/message-order';
 
   /** A phone has no room left of the bubbles for the outline rail: it is not drawn there. */
@@ -92,7 +92,11 @@
   const views = $derived.by(() => (shownViews = turnViews(grouped.timeline, shownViews)));
   /** A finished turn's published files go after its answer, its pages after them; Boite's cache pings are one line; an agent's own thread folds its finished turns (`lib/agent-turns.ts`). */
   const agentTimeline = new AgentTimeline(), viewPlacement = new ViewPlacement();
-  const placed = $derived(viewPlacement.build(filesLast(grouped.timeline, shownTurns), shownTurns, views));
+  const ordered = $derived(filesLast(grouped.timeline, shownTurns));
+  /** Only the answers of turns with a view are read for a line placing one, apart from the walk over the timeline: a token of any other answer, or one that places nothing new, leaves `placed` alone. */
+  const answersWithViews = $derived(viewLines(ordered, views));
+  const inlineViews = $derived(viewPlacement.inline(answersWithViews, views));
+  const placed = $derived(viewPlacement.build(ordered, shownTurns, views, inlineViews));
   const shaped = $derived(agentTimeline.build(quietKeepalives(placed, shownTurns), shownTurns, memoryPassOf(store, threadId)));
   const timeline = $derived(shaped.timeline);
   const days = $derived(dayBreaks(timeline)); // The messages that open a new day, a divider above each.
