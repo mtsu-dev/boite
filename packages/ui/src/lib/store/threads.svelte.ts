@@ -186,11 +186,8 @@ export class Threads {
 
   async compact(): Promise<void> {
     const thread = this.openThread;
-    const client = this.ctx.client;
-    const clientGeneration = this.ctx.clientGeneration;
-    if (!thread || !client) return;
-    try { await client.call('threads.compact', { threadId: thread.id, expectedSelectionVersion: thread.selectionVersion ?? 0 }); }
-    catch (error) { if (this.ctx.currentClient(client, clientGeneration)) this.ctx.fail(error); }
+    if (!thread) return;
+    return this.ctx.command('threads.compact', { threadId: thread.id, expectedSelectionVersion: thread.selectionVersion ?? 0 });
   }
 
   /**
@@ -636,20 +633,7 @@ export class Threads {
     threadId: ThreadId,
     patch: { title?: string; accountId?: string; model?: string | null; effort?: string | null; speed?: string | null; permissionMode?: PermissionMode; expectedSelectionVersion?: number }
   ): Promise<boolean> {
-    const client = this.ctx.client;
-    const clientGeneration = this.ctx.clientGeneration;
-    if (!client) return false;
-    try {
-      const summary = await client.call('threads.update', { threadId, ...patch });
-      if (!this.ctx.currentClient(client, clientGeneration)) return false;
-      this.upsertThread(summary);
-      const open = this.openThread;
-      if (open && open.id === threadId) patchFields(open, summary);
-      return true;
-    } catch (error) {
-      if (this.ctx.currentClient(client, clientGeneration)) this.ctx.fail(error);
-      return false;
-    }
+    return (await this.updateRow(threadId, client => client.call('threads.update', { threadId, ...patch }))) !== null;
   }
 
   async setPermissionMode(mode: PermissionMode): Promise<void> {
@@ -672,10 +656,7 @@ export class Threads {
     this.retitling = [...this.retitling, threadId];
     try {
       const summary = await client.call('threads.retitle', { threadId });
-      if (!this.ctx.currentClient(client, clientGeneration)) return;
-      this.upsertThread(summary);
-      const open = this.openThread;
-      if (open && open.id === threadId) patchFields(open, summary);
+      if (this.ctx.currentClient(client, clientGeneration)) this.#applyThreadRow(threadId, summary);
     } catch (error) {
       if (this.ctx.currentClient(client, clientGeneration)) this.ctx.fail(error);
     } finally {
@@ -726,29 +707,33 @@ export class Threads {
    * from either.
    */
   async move(threadId: ThreadId, projectId: ProjectId, stopBackground?: boolean): Promise<ThreadSummary | null> {
-    return this.moveCall(threadId, (client) => client.call('threads.move', { threadId, projectId, ...(stopBackground === undefined ? {} : { stopBackground }) }));
+    return this.updateRow(threadId, client => client.call('threads.move', { threadId, projectId, ...(stopBackground === undefined ? {} : { stopBackground }) }));
   }
 
   /** The move waiting for the turn to end goes; the thread stays where it is. */
   async cancelMove(threadId: ThreadId): Promise<ThreadSummary | null> {
-    return this.moveCall(threadId, (client) => client.call('threads.moveCancel', { threadId }));
+    return this.updateRow(threadId, client => client.call('threads.moveCancel', { threadId }));
   }
 
-  private async moveCall(threadId: ThreadId, call: (client: NonNullable<typeof this.ctx.client>) => Promise<ThreadSummary>): Promise<ThreadSummary | null> {
+  private async updateRow(threadId: ThreadId, call: (client: NonNullable<typeof this.ctx.client>) => Promise<ThreadSummary>): Promise<ThreadSummary | null> {
     const client = this.ctx.client;
     const clientGeneration = this.ctx.clientGeneration;
     if (!client) return null;
     try {
       const summary = await call(client);
       if (!this.ctx.currentClient(client, clientGeneration)) return null;
-      this.upsertThread(summary);
-      const open = this.openThread;
-      if (open && open.id === threadId) patchFields(open, summary);
+      this.#applyThreadRow(threadId, summary);
       return summary;
     } catch (error) {
       if (this.ctx.currentClient(client, clientGeneration)) this.ctx.fail(error);
       return null;
     }
+  }
+
+  #applyThreadRow(threadId: ThreadId, summary: ThreadSummary): void {
+    this.upsertThread(summary);
+    const open = this.openThread;
+    if (open && open.id === threadId) patchFields(open, summary);
   }
 
   async archive(threadId: ThreadId, onlyIfIdle = false): Promise<void> {

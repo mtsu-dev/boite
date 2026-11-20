@@ -12,7 +12,9 @@ import type {
   GitStatus,
   ProcessRecord,
   ProjectId,
+  RpcMethodName,
   RpcParams,
+  RpcResult,
   ThreadId,
   ThreadResources,
   Todo
@@ -148,83 +150,60 @@ export class Workbench {
     return s.threads.find((thread) => thread.id === threadId)?.projectId ?? null;
   }
 
-  async gitStatus(threadId: ThreadId): Promise<FileAnswer<GitStatus>> {
+  /** File and Git surfaces get their own error instead of a toast. */
+  async #fileCall<M extends RpcMethodName>(
+    method: M,
+    params: RpcParams<M>,
+    reject: (error: unknown) => Extract<FileAnswer<never>, { ok: false }> = error => ({ ok: false, error: this.ctx.reason(error) }),
+    map: (value: RpcResult<M>) => RpcResult<M> = value => value
+  ): Promise<FileAnswer<RpcResult<M>>> {
     const client = this.ctx.client;
     const clientGeneration = this.ctx.clientGeneration;
     if (!client) return { ok: false, error: strings.errors.noEndpoint };
     try {
-      const value = await client.call('git.status', { threadId });
+      const value = await client.call(method, params);
       if (!this.ctx.currentClient(client, clientGeneration)) return { ok: false, error: strings.errors.noEndpoint };
-      return { ok: true, value };
+      return { ok: true, value: map(value) };
     } catch (error) {
-      return { ok: false, error: this.#gitReadError(error) };
+      return reject(error);
     }
+  }
+
+  gitStatus(threadId: ThreadId): Promise<FileAnswer<GitStatus>> {
+    return this.#fileCall('git.status', { threadId }, this.#gitReadError);
   }
 
   /** `oldPath` is the origin `git.status` gave the path, null for none; undefined lets the core ask git. */
-  async gitDiff(threadId: ThreadId, path: string, ref?: string, oldPath?: string | null): Promise<FileAnswer<GitDiff>> {
-    const client = this.ctx.client;
-    const clientGeneration = this.ctx.clientGeneration;
-    if (!client) return { ok: false, error: strings.errors.noEndpoint };
-    try {
-      const result = await client.call('git.diff', { threadId, path, ...(ref === undefined ? {} : { ref }), ...(oldPath === undefined ? {} : { oldPath }) });
-      if (!this.ctx.currentClient(client, clientGeneration)) return { ok: false, error: strings.errors.noEndpoint };
-      return { ok: true, value: result };
-    } catch (error) {
-      return { ok: false, error: this.#gitReadError(error) };
-    }
+  gitDiff(threadId: ThreadId, path: string, ref?: string, oldPath?: string | null): Promise<FileAnswer<GitDiff>> {
+    return this.#fileCall('git.diff', { threadId, path, ...(ref === undefined ? {} : { ref }), ...(oldPath === undefined ? {} : { oldPath }) }, this.#gitReadError);
   }
 
-  #gitReadError(error: unknown): string {
+  #gitReadError = (error: unknown): { ok: false; error: string } => {
     const outside = error instanceof RpcFailure && (error.data as Partial<GitOutsideRepository> | undefined)?.reason === 'not-a-repository';
-    return outside ? strings.changes.outsideRepository : this.ctx.reason(error);
-  }
+    return { ok: false, error: outside ? strings.changes.outsideRepository : this.ctx.reason(error) };
+  };
 
-  async listFiles(threadId: ThreadId, path?: string): Promise<FileAnswer<FileEntry[]>> {
-    const client = this.ctx.client;
-    const clientGeneration = this.ctx.clientGeneration;
-    if (!client) return { ok: false, error: strings.errors.noEndpoint };
-    try {
-      const value = await client.call('files.list', { threadId, ...(path === undefined ? {} : { path }) });
-      if (!this.ctx.currentClient(client, clientGeneration)) return { ok: false, error: strings.errors.noEndpoint };
-      return { ok: true, value };
-    } catch (error) {
+  listFiles(threadId: ThreadId, path?: string): Promise<FileAnswer<FileEntry[]>> {
+    return this.#fileCall('files.list', { threadId, ...(path === undefined ? {} : { path }) }, error => {
       const inaccessible = error instanceof RpcFailure && [RpcErrorCode.NotFound, RpcErrorCode.Refused, RpcErrorCode.Unauthorized].some(code => code === error.code);
       return { ok: false, error: this.ctx.reason(error), ...(inaccessible ? { inaccessible: true as const } : {}) };
-    }
+    });
   }
 
   /** The files a chat link names in the thread's directory: `files.locate`. */
-  async locateFile(threadId: ThreadId, path: string): Promise<FileAnswer<string[]>> {
-    const client = this.ctx.client;
-    const clientGeneration = this.ctx.clientGeneration;
-    if (!client) return { ok: false, error: strings.errors.noEndpoint };
-    try {
-      const value = await client.call('files.locate', { threadId, path });
-      if (!this.ctx.currentClient(client, clientGeneration)) return { ok: false, error: strings.errors.noEndpoint };
-      return { ok: true, value };
-    } catch (error) {
-      return { ok: false, error: this.ctx.reason(error) };
-    }
+  locateFile(threadId: ThreadId, path: string): Promise<FileAnswer<string[]>> {
+    return this.#fileCall('files.locate', { threadId, path });
   }
 
-  async readFile(threadId: ThreadId, path: string): Promise<FileAnswer<FileContent>> {
-    const client = this.ctx.client;
-    const clientGeneration = this.ctx.clientGeneration;
-    const s = this.ctx.store;
-    if (!client) return { ok: false, error: strings.errors.noEndpoint };
-    try {
-      const value = await client.call('files.read', { threadId, path });
-      if (!this.ctx.currentClient(client, clientGeneration)) return { ok: false, error: strings.errors.noEndpoint };
+  readFile(threadId: ThreadId, path: string): Promise<FileAnswer<FileContent>> {
+    return this.#fileCall('files.read', { threadId, path }, undefined, value => {
       // The core answers a path on its own HTTP server: the origin is the one
       // this client reached it by, which a core cannot know from where it runs.
-      if (value.kind !== 'text' && value.url.startsWith('/') && s.endpointUrl !== null) {
-        return { ok: true, value: { ...value, url: coreHref(s.endpointUrl, value.url) } };
-      }
-      return { ok: true, value };
-    } catch (error) {
-      return { ok: false, error: this.ctx.reason(error) };
-    }
+      const endpoint = this.ctx.store.endpointUrl;
+      return value.kind !== 'text' && value.url.startsWith('/') && endpoint !== null
+        ? { ...value, url: coreHref(endpoint, value.url) }
+        : value;
+    });
   }
 
   /** `view` asks for the address a published view opens as a page at, which a frame loads; without it the address downloads. */
@@ -255,30 +234,17 @@ export class Workbench {
     path: string,
     text: string
   ): Promise<FileAnswer<{ bytes: number; modifiedAt: number }>> {
-    const client = this.ctx.client;
-    const clientGeneration = this.ctx.clientGeneration;
-    if (!client || !this.ctx.store.owner) return { ok: false, error: strings.rightPanel.ownerOnly };
-    try {
-      const value = await client.call('files.write', { threadId, path, text });
-      if (!this.ctx.currentClient(client, clientGeneration)) return { ok: false, error: strings.errors.noEndpoint };
-      return { ok: true, value };
-    } catch (error) {
-      return { ok: false, error: this.ctx.reason(error) };
-    }
+    if (!this.ctx.client || !this.ctx.store.owner) return { ok: false, error: strings.rightPanel.ownerOnly };
+    return this.#fileCall('files.write', { threadId, path, text });
   }
 
   /** The agent's task list, whole. The answer arrives as `thread.activity` too. */
   async setTasks(threadId: ThreadId, tasks: AgentTask[]): Promise<void> {
     const s = this.ctx.store;
-    const client = this.ctx.client;
-    const clientGeneration = this.ctx.clientGeneration;
-    if (!client || !s.owner) return;
-    try {
-      const activity = await client.call('threads.tasks.set', { threadId, tasks });
-      if (this.ctx.currentClient(client, clientGeneration) && s.openThread?.id === threadId) s.openThread.activity = activity;
-    } catch (error) {
-      if (this.ctx.currentClient(client, clientGeneration)) this.ctx.fail(error);
-    }
+    if (!s.owner) return;
+    return this.ctx.command('threads.tasks.set', { threadId, tasks }, activity => {
+      if (s.openThread?.id === threadId) s.openThread.activity = activity;
+    });
   }
 
   /** The owner's, and a paired device's once its core serves the project board. */
@@ -304,26 +270,14 @@ export class Workbench {
   }
 
   /** Stops one pull request watch; the thread's row and panel follow from `thread.updated`. A phone may too. */
-  async unwatchPullRequest(threadId: ThreadId, url: string): Promise<void> {
-    const client = this.ctx.client;
-    const clientGeneration = this.ctx.clientGeneration;
-    if (!client) return;
-    try {
-      await client.call('threads.unwatchPullRequest', { threadId, url });
-    } catch (error) {
-      if (this.ctx.currentClient(client, clientGeneration)) this.ctx.fail(error);
-    }
+  unwatchPullRequest(threadId: ThreadId, url: string): Promise<void> {
+    return this.ctx.command('threads.unwatchPullRequest', { threadId, url });
   }
 
   async addTodo(threadId: ThreadId, text: string): Promise<void> {
-    const client = this.ctx.client;
-    const clientGeneration = this.ctx.clientGeneration;
-    if (!client || !this.#mayTodos() || text.trim().length === 0) return;
-    try {
-      await client.call('todos.add', { threadId, text: text.trim() });
-    } catch (error) {
-      if (this.ctx.currentClient(client, clientGeneration)) this.ctx.fail(error);
-    }
+    const trimmed = text.trim();
+    if (!this.#mayTodos() || !trimmed) return;
+    return this.ctx.command('todos.add', { threadId, text: trimmed });
   }
 
   async updateTodo(
@@ -331,25 +285,13 @@ export class Workbench {
     todoId: string,
     patch: { status?: Todo['status']; text?: string; goalThreadId?: ThreadId | null }
   ): Promise<void> {
-    const client = this.ctx.client;
-    const clientGeneration = this.ctx.clientGeneration;
-    if (!client || !this.#mayTodos()) return;
-    try {
-      await client.call('todos.update', { threadId, todoId, ...patch });
-    } catch (error) {
-      if (this.ctx.currentClient(client, clientGeneration)) this.ctx.fail(error);
-    }
+    if (!this.#mayTodos()) return;
+    return this.ctx.command('todos.update', { threadId, todoId, ...patch });
   }
 
   async removeTodo(threadId: ThreadId, todoId: string): Promise<void> {
-    const client = this.ctx.client;
-    const clientGeneration = this.ctx.clientGeneration;
-    if (!client || !this.#mayTodos()) return;
-    try {
-      await client.call('todos.remove', { threadId, todoId });
-    } catch (error) {
-      if (this.ctx.currentClient(client, clientGeneration)) this.ctx.fail(error);
-    }
+    if (!this.#mayTodos()) return;
+    return this.ctx.command('todos.remove', { threadId, todoId });
   }
 
   /**
@@ -415,15 +357,7 @@ export class Workbench {
     }
   }
 
-  async killTree(threadId: ThreadId): Promise<void> {
-    const client = this.ctx.client;
-    const clientGeneration = this.ctx.clientGeneration;
-    if (!client) return;
-    try {
-      await client.call('resources.killTree', { threadId });
-      if (this.ctx.currentClient(client, clientGeneration)) await this.ctx.store.refreshResources();
-    } catch (error) {
-      if (this.ctx.currentClient(client, clientGeneration)) this.ctx.fail(error);
-    }
+  killTree(threadId: ThreadId): Promise<void> {
+    return this.ctx.command('resources.killTree', { threadId }, () => this.ctx.store.refreshResources());
   }
 }
