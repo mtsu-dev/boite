@@ -328,6 +328,29 @@ describe('journal', () => {
     expect(journal.db.query('PRAGMA user_version').get()).toEqual({ user_version: SCHEMA_VERSION });
   });
 
+  test('a schema 52 journal preserves conversations and persists interruption acknowledgements after upgrade', () => {
+    const project = { id: 'prj_migrated', name: 'Existing project', path: dir, createdAt: 1 };
+    const thread = { id: 'thr_test', projectId: project.id, title: 'Existing conversation', titleSource: 'user', providerId: 'echo', accountId: 'acc', model: null, effort: null, cwd: dir, branch: null, permissionMode: 'default', status: 'idle', unread: true, archived: false, pinned: false, sessionId: null, load: null, context: null, createdAt: 1, updatedAt: 2 } as const;
+    const message: Message = { ...sampleMessage('kept'), state: 'complete', parts: [{ type: 'text', text: 'Existing message' }] };
+    journal.putProject(project);
+    journal.putThread(thread);
+    journal.putMessage(message);
+    journal.db.exec('ALTER TABLE threads DROP COLUMN interruption_read_at; PRAGMA user_version = 52');
+
+    journal.close(); journal = new Journal(file);
+    expect(journal.schema).toEqual({ from: 52, to: SCHEMA_VERSION });
+    expect(SCHEMA_VERSION).toBeGreaterThan(52);
+    expect(journal.getThread(thread.id)).toMatchObject(thread);
+    expect(journal.getThread(thread.id)?.interruptionReadAt).toBeUndefined();
+    expect(journal.getMessage(message.id)).toEqual(message);
+    journal.putThread({ ...thread, interruptionReadAt: 3 });
+
+    journal.close(); journal = new Journal(file);
+    expect(journal.schema).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
+    expect(journal.getThread(thread.id)?.interruptionReadAt).toBe(3);
+    expect(journal.getMessage(message.id)).toEqual(message);
+  });
+
   test('the schema version is stamped and WAL is on', () => {
     const version = journal.db.query('PRAGMA user_version').get() as { user_version: number };
     expect(version.user_version).toBe(SCHEMA_VERSION);
