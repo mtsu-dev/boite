@@ -3,6 +3,7 @@ import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmdirSync, sy
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_DELEGATION_CONFIG, checkSteps } from '@boite/contracts';
+import { keyOf } from '../src/checkouts.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnContext, TurnResult } from '../src/drivers/types.ts';
 import type { SpawnedPipedProcess, SpawnedProcess } from '../src/procs.ts';
@@ -120,10 +121,16 @@ test.each(['during stop', 'ignored during stop', 'ignored after the last status'
     if (timing !== 'ignored after the last status' && worktree?.state === 'active') writeFileSync(join(worktree.path, 'late-note.txt'), 'keep me');
   });
   const spawn = s.h.core.procs.spawn.bind(s.h.core.procs);
+  let wroteAfterStatus = false;
   const removing = spyOn(s.h.core.procs, 'spawn').mockImplementation((id, command, args, options) => {
     if (timing === 'ignored after the last status' && command === 'git' && args[0] === 'worktree' && (args[1] === 'move' || args[1] === 'remove')) {
       const worktree = s.h.core.delegation.worktrees.get(id);
-      if (worktree && args.at(args[1] === 'move' ? -2 : -1) === worktree.path) writeFileSync(join(worktree.path, 'late-note.txt'), 'keep me');
+      const location = args.at(args[1] === 'move' ? -2 : -1);
+      // Git's worktree list uses forward slashes even when the recorded path uses Windows separators.
+      if (worktree && location && keyOf(location) === keyOf(worktree.path)) {
+        writeFileSync(join(worktree.path, 'late-note.txt'), 'keep me');
+        wroteAfterStatus = true;
+      }
     }
     return spawn(id, command, args, options);
   });
@@ -131,6 +138,7 @@ test.each(['during stop', 'ignored during stop', 'ignored after the last status'
     const child = await s.client.call('delegation.spawn', { threadId: s.threadId, task: 'Read the project.', worktree: true, requestId: 'late-file' });
     const { path, branch } = child.worktree!;
     await waitFor(() => s.results().length === 1, SLOW_GIT_MS);
+    if (timing === 'ignored after the last status') expect(wroteAfterStatus).toBe(true);
     expect(s.h.core.delegation.worktrees.get(child.thread.id)).toMatchObject({ state: 'kept', dirty: true });
     expect(readFileSync(join(path, 'late-note.txt'), 'utf8')).toBe('keep me');
     expect(branchExists(s.repo, branch)).toBe(true);

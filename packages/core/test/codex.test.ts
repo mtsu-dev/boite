@@ -46,15 +46,24 @@ test('native collaboration is journalled and appears in Team without using Boite
 
 test('Send now during Codex startup stops the old turn and starts one new native turn before output', async () => {
   const { client, threadId } = await startThread();
-  process.env['CODEX_FAKE_SLOW_START'] = '250';
+  const startupGate = join(harness!.dataDir, 'codex-startup-ready');
   const outputGate = join(harness!.dataDir, 'codex-output-ready');
+  process.env['CODEX_FAKE_STARTUP_GATE'] = startupGate;
   process.env['CODEX_FAKE_OUTPUT_GATE'] = outputGate;
   const turn = await client.call('turns.start', { threadId, prompt: '[slow] Keep working' });
-  await waitFor(() => harness!.core.threads.runner.handles.has(threadId));
+  await waitFor(() => fakeLog().includes('thread/start approvalPolicy='));
   expect(harness!.core.threads.progress.get(threadId)?.phase).toBe('starting');
-  await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0, sendNow: true,
-    value: { input: { text: 'still typing', attachments: [], paused: false,
-      queued: [{ id: 'codex-startup-followup', text: 'also check the mochis', attachments: [] }] } } });
+  const stopping = spyOn(harness!.core.threads.runner.handles.get(threadId)!, 'stop');
+  try {
+    await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0, sendNow: true,
+      value: { input: { text: 'still typing', attachments: [], paused: false,
+        queued: [{ id: 'codex-startup-followup', text: 'also check the mochis', attachments: [] }] } } });
+    await waitFor(() => stopping.mock.calls.length > 0);
+    expect(fakeLog()).not.toContain('turn/start ');
+  } finally {
+    stopping.mockRestore();
+    writeFileSync(startupGate, 'ready');
+  }
   await waitFor(() => harness!.core.journal.getTurn(turn.id)?.status === 'stopped');
   await waitFor(() => harness!.core.composer.storage.get('inputs', threadId).value?.input.queued.length === 0);
   await waitFor(() => fakeLog().split('\n').filter(line => line.startsWith('turn/start ')).length === 1);
@@ -157,6 +166,7 @@ afterEach(async () => {
   harness = null;
   delete process.env['CODEX_FAKE_LOG'];
   delete process.env['CODEX_FAKE_USAGE_GATE'];
+  delete process.env['CODEX_FAKE_STARTUP_GATE'];
   for (const name of FAKE_SWITCHES) delete process.env[name];
   if (open !== null) await open.stop();
 });

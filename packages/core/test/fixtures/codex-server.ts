@@ -21,6 +21,7 @@
  * `CODEX_FAKE_SKILLS=<json>` is what `skills/list` lists for the folder, and
  * each skill item of `turn/start` is logged as `skill <name> <path> text=<text>`.
  * `CODEX_FAKE_SLOW_SKILLS=<ms>` delays that answer.
+ * `CODEX_FAKE_STARTUP_GATE=<path>` holds the `thread/start` reply until the file exists.
  * `CODEX_FAKE_OUTPUT_GATE=<path>` holds turn output until the file exists.
  *
  * The wire is copied from the real server on purpose: responses and
@@ -286,9 +287,13 @@ function commandItem(itemId: string, status: string, output: string | null): unk
   };
 }
 
+async function waitForGate(path: string): Promise<void> {
+  while (!existsSync(path)) await Bun.sleep(10);
+}
+
 async function runTurn(turnId: string, text: string): Promise<void> {
   const outputGate = process.env['CODEX_FAKE_OUTPUT_GATE'];
-  while (outputGate && !existsSync(outputGate)) await Bun.sleep(10);
+  if (outputGate) await waitForGate(outputGate);
   const instructions = instructionsOf(text);
   notify('turn/started', { threadId, turn: turnRecord(turnId, 'inProgress') });
   if (instructions.includes('[retry-progress]')) {
@@ -730,6 +735,8 @@ function handle(method: string, raw: unknown): unknown {
       );
       recordProvider(threadId);
       const opened = { thread: threadRecord(), model: 'fake-codex', modelProvider: 'fake', serviceTier: null };
+      const startupGate = process.env['CODEX_FAKE_STARTUP_GATE'];
+      if (startupGate) return waitForGate(startupGate).then(() => opened);
       // `CODEX_FAKE_SLOW_START=<ms>`: an app-server slow to open its thread.
       const slow = Number(process.env['CODEX_FAKE_SLOW_START'] ?? '0');
       if (slow > 0) return Bun.sleep(slow).then(() => opened);
