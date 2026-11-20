@@ -324,13 +324,14 @@
     if (!id || lifting || !viewport) return;
     const frame = requestAnimationFrame(() => {
       if (!viewport || promptTarget !== id) return;
-      if (room <= 1) {
+      const top = promptTop(id); // Bottom padding can scroll away without cutting off the answer.
+      if (room <= 1 && viewport.scrollHeight - viewport.clientHeight - top > endRoom) {
         viewport.scrollTop = viewport.scrollHeight;
         scrollTop = viewport.scrollTop;
         pinned = true;
       } else {
         pinned = false;
-        viewport.scrollTop = promptTop(id);
+        viewport.scrollTop = top;
         scrollTop = viewport.scrollTop;
         behind = false;
         markSeen();

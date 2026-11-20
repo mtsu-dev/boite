@@ -154,7 +154,14 @@ for (const phone of [false, true]) {
         const inset = Math.min(96, Math.max(48, box.clientHeight * 0.12));
         return row ? Math.abs(row.getBoundingClientRect().top - box.getBoundingClientRect().top - inset) : Infinity;
       })()`;
-      await page.waitFor(`${offset} < 2 && document.querySelector('[data-testid=permission-card]')`);
+      await page.waitFor(`${offset} < 2 && document.querySelector('[data-testid=permission-card]')`).catch(async error => {
+        const state = await page.evaluate(`(() => {
+          const box = document.querySelector('${timeline}');
+          return { offset: ${offset}, height: box.clientHeight, top: box.scrollTop, content: box.scrollHeight,
+            leading: box.style.paddingTop, focus: window.__boiteTest.workspace.active.promptFocus };
+        })()`);
+        throw new Error(`Sent prompt failed to align: ${JSON.stringify(state)}`, { cause: error });
+      });
       expect(await page.evaluate<number>(offset)).toBeLessThan(2);
       // A phone has no room for the message rail.
       if (phone) expect(await page.evaluate(`document.querySelector('[data-testid=message-marker]') === null`)).toBe(true);

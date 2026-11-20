@@ -16,6 +16,8 @@ draft folder when you have no project yet.
 
 The chat shows Starting agent while the agent launches, then Working for once
 it starts working. The startup timer counts the current turn.
+Your message stays near the top while the reply fits below it. When the reply
+outgrows that space, the chat follows the latest text until you scroll up.
 The conversation header and list show what it is waiting on and how long the
 wait has lasted when the start time is available. They show how many sub-agents
 are still working after the conversation's turn ends. When a pull request watch
