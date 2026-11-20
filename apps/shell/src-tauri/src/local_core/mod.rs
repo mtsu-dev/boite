@@ -144,7 +144,7 @@ pub struct CoreState {
     /// replace its files, and nothing may start it again from the old ones.
     held: AtomicBool,
     #[cfg(unix)]
-    install_lock: Mutex<Option<std::fs::File>>,
+    install_lock: Mutex<Option<crate::update_stop::InstallLock>>,
 }
 
 /// The refusal a caller gets while an update installs.

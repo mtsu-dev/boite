@@ -152,7 +152,10 @@ policy permits automatic installation and both conditions hold:
   work can be in flight. A quiet update never asks for a turn handoff.
 
 On Linux and macOS the shell takes `core.lock` after an acknowledged stop
-and holds it through installation, until restart or failure. It can also
+and holds it through installation, until restart or failure. It writes
+its own pid there as a core does, so a core older than the OS lock, which
+reads only that record, stays out too; the record goes when the lock is
+let go, unless another core replaced the file meanwhile. It can also
 repair a failed startup if it can take the lock and confirm no core is
 starting or running. Windows still requires authenticated admission. The
 shell exits as NSIS launches, and NSIS does not hold the lock during copying.
