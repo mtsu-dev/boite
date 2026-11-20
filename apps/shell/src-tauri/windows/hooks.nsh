@@ -4,7 +4,7 @@
 ; the generated installer only closes the shell. A reinstall or an uninstall
 ; over a running core cannot write or delete boite-core.exe ("Error opening
 ; file for writing"), so these hooks obtain idle admission before installation,
-; or carry the user's accepted Kill prompt to the resident core. Explicit
+; or request a restart handoff after the interactive confirmation. Explicit
 ; uninstall also stops the core of this install, with stop-core.ps1.
 ;
 ; The shell is closed here too, by the full path of its executable
@@ -218,8 +218,8 @@ Var BoiteCoreLock
     Pop $0
     Abort
   boite_shell_accepted:
-  ; Only the interactive Kill prompt grants an explicit stop, including the
-  ; resident core. Silent and passive updates continue to require idle admission.
+  ; The interactive confirmation authorizes a restart handoff. Silent and
+  ; passive updates require idle admission.
   StrCpy $2 "1"
   boite_shell_stop:
   !insertmacro BOITE_SHELL_SCRIPT stop
@@ -245,7 +245,7 @@ Var BoiteCoreLock
   Pop $0
   !if "${IDLE_ONLY}" == "1"
     StrCmp $0 "0" boite_core_admitted
-      DetailPrint "Boite is still working or cannot confirm an idle core. Finish its work or stop it explicitly, then retry."
+      DetailPrint "Boite could not confirm safe update admission and core exit. Let its work finish, then retry."
       Pop $2
       Pop $1
       Pop $0

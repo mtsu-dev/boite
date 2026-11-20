@@ -641,6 +641,7 @@ bun run dev:instance            # build what is stale, start, print the address
 bun run dev:instance status
 bun run dev:instance cli projects
 bun run dev:instance capture shot.png --width 1280 --height 800
+bun run dev:instance restart     # pass active work to the new core
 bun run dev:instance stop
 ```
 
@@ -674,6 +675,10 @@ It also prints how to open, drive and stop the instance:
   `boite`, `--channel dev` included, to that thread's own core, so
   `projects add` would land there. The subcommand passes none of them on and
   names the instance's data directory.
+- `restart` asks the live core holding the instance's data for
+  `POST /shutdown-for-update` with its expected PID. It waits for that process
+  to exit and starts this checkout again on the same data. Pass any `--env`
+  options needed by the next instance.
 - `stop` asks the core to shut down over `POST /shutdown`, waits for the
   process captured at spawn and removes temporary data and the output
   file. The state keeps each

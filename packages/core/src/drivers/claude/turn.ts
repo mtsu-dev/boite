@@ -9,6 +9,7 @@ import {
   accountVendor,
   apiErrorReason,
   apiErrorStatusOf,
+  apiRefusal,
   cacheLifeOf,
   commandsOf,
   contentBlocks,
@@ -539,8 +540,9 @@ export class ClaudeTurn extends TurnParts {
         else this.#authFrame = { content };
         return;
       }
-      if (this.#status !== 'error') this.#refusal = message.error === 'overloaded' ? { kind: 'capacity' } : message.error === 'rate_limit' ? { kind: 'usage-limit', resetsAt: this.#rejectedUntil } : undefined;
-      this.fail(apiErrorReason(message.error, content, accountVendor(this.ctx.thread.model)));
+      const reason = apiErrorReason(message.error, content, accountVendor(this.ctx.thread.model));
+      if (this.#status !== 'error') this.#refusal = apiRefusal(message.error, reason, this.#rejectedUntil);
+      this.fail(reason);
       return;
     }
     const body = message.message as { id?: string; model?: string; content?: unknown; usage?: unknown } | undefined;

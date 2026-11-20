@@ -1,5 +1,5 @@
 import { startDiagnosticsReport } from './diagnostics-report';
-import { RpcErrorCode, type AgentShape, type Message, type MessageId, type PermissionMode, type ProjectId, type ProviderId, type ThreadId } from '@boite/contracts';
+import { RpcErrorCode, type AgentShape, type Message, type MessageId, type PermissionMode, type ProjectId, type ProviderId, type RpcParams, type ThreadId } from '@boite/contracts';
 import type { Client } from './client';
 import { RpcFailure, wasClosed, wasDropped } from './rpc-error';
 import { readModelDefaults } from './model-defaults';
@@ -615,6 +615,16 @@ export class Store {
   createThread(...args: Parameters<Threads['createThread']>) { return this.#ctx.threads.createThread(...args); }
   update(...args: Parameters<Threads['update']>) { return this.#ctx.threads.update(...args); }
   recoverTurn(...args: Parameters<Threads['recoverTurn']>) { return this.#ctx.threads.recoverTurn(...args); }
+  async resumeTurn(params: RpcParams<'turns.resume'>): Promise<void> {
+    const { client, clientGeneration, threads } = this.#ctx;
+    if (!client) return;
+    try {
+      const turn = await client.call('turns.resume', params);
+      if (this.#ctx.currentClient(client, clientGeneration)) threads.upsertTurn(params.threadId, turn);
+    } catch (error) {
+      if (this.#ctx.currentClient(client, clientGeneration) && this.openThread?.id === params.threadId) this.#ctx.fail(error);
+    }
+  }
   /** Gives up the retry the core planned for the thread; its row's `retry` clears with the core's update. */
   async cancelRetry(threadId: ThreadId) {
     const client = this.#ctx.client;

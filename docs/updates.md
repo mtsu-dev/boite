@@ -97,8 +97,8 @@ updates and restarts. After the restart:
   original request are not sent again.
 - Queued messages stay queued and run on the new version.
 - Subagents and workflow steps continue the same way.
-- Nothing resumes for a conversation you stopped, or when Boite stayed
-  stopped for more than an hour.
+- A conversation you stopped stays stopped. If an interruption is too old for
+  automatic recovery, the conversation can show a reason and a Resume button.
 
 ### During an agent update
 

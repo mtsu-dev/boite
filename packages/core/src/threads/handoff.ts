@@ -21,8 +21,8 @@ export const HANDOFF = { graceMs: 30_000, longToolMs: 30_000, maxAgeMs: 3_600_00
 
 /** The journal setting the stopping core leaves for the next one. */
 const KEY = 'restart-handoff';
-/** The request of the interrupted turn is quoted up to this many characters. */
-const QUOTE_LIMIT = 8_000;
+const REQUEST_START = '\n\nThe request that turn was answering, as conversation history:\n\n<interrupted-user-messages>\n';
+const REQUEST_END = '\n</interrupted-user-messages>';
 
 interface Entry { turnId: TurnId; threadId: ThreadId; was: 'running' | 'queued'; admittedTurnId?: TurnId }
 interface HandoffRecord { at: number; turns: Entry[] }
@@ -227,6 +227,7 @@ export class RestartHandoff {
         // that dispatch still has one durable request-to-turn identity.
         const accepted = this.#admitted(entry);
         if (accepted !== null) this.#remember(entry, accepted);
+        else if (entry.was === 'running') this.#threads.resumes.offer(turn, { kind: 'interrupted', detail: messageOf(error) });
         this.#core.log('warn', `thread ${thread.id} was not resumed after the restart: ${messageOf(error)}`);
       }
     }
@@ -274,13 +275,20 @@ export class RestartHandoff {
     const opening = turn.execution?.operation === 'resume' ? messages.find(message => message.role === 'system') : undefined;
     const requests = messages.filter(message => message.role === 'user');
     const previous = opening?.parts.find(part => part.type === 'text')?.text;
-    const start = '<interrupted-user-messages>\n';
-    const end = '\n</interrupted-user-messages>';
-    const kept = previous?.includes(start) && previous.endsWith(end) ? previous.slice(previous.indexOf(start) + start.length, -end.length) : previous;
-    const text = [kept, ...requests.map(message => messageExcerpt(message).trim())].filter(Boolean).join('\n\n');
-    const half = QUOTE_LIMIT / 2;
-    const quoted = text.length > QUOTE_LIMIT ? `${text.slice(0, half)}\n[cut by Boite at ${QUOTE_LIMIT} characters]\n${text.slice(-half)}` : text;
-    const prompt = !quoted ? lead : `${lead}\n\nThe request that turn was answering, as conversation history:\n\n${start}${quoted}${end}`;
+    const kept = previous?.includes(REQUEST_START) && previous.endsWith(REQUEST_END)
+      ? previous.slice(previous.indexOf(REQUEST_START) + REQUEST_START.length, -REQUEST_END.length)
+      : previous;
+    // Unlike old history, the active request must keep every requirement and
+    // in-turn correction. The source is already stored without attachment blobs.
+    const text = [kept, ...requests.map(message => message.parts.map(part =>
+      part.type === 'text' ? part.text : messageExcerpt({ ...message, parts: [part] }),
+    ).filter(Boolean).join('\n'))].filter(Boolean).join('\n\n');
+    const activity = this.#core.activity.get(turn.threadId);
+    const tasks = activity.tasksDismissed ? [] : activity.tasks;
+    const checklist = tasks.length
+      ? `\n\nThe thread's task list at resume:\n${tasks.map(task => `- [${task.status}] ${task.text}`).join('\n')}`
+      : '';
+    const prompt = `${lead}${checklist}${text ? `${REQUEST_START}${text}${REQUEST_END}` : ''}`;
     const thread = journal.getThread(turn.threadId);
     const attachments: Attachment[] = [];
     // A fresh session reads these messages through conversation history.

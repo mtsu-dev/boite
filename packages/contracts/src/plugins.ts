@@ -96,7 +96,7 @@ export const PLUGIN_PERMISSIONS: Readonly<Record<PluginPermission, PluginPermiss
       'threads.create', 'threads.update', 'threads.retitle', 'threads.archive', 'threads.remove', 'threads.restore', 'threads.pin', 'threads.markRead',
       'threads.move', 'threads.moveCancel', 'threads.fork', 'threads.rewind', 'threads.mergeBack', 'threads.compact',
       'threads.btw', 'threads.btw.cancel', 'threads.btw.fork', 'threads.activity.set', 'threads.activity.control', 'threads.unwatchPullRequest',
-      'turns.start', 'turns.steer', 'turns.stop', 'turns.recover', 'turns.cancelRetry',
+      'turns.start', 'turns.steer', 'turns.stop', 'turns.recover', 'turns.resume', 'turns.cancelRetry',
       'composer.asset.put', 'drafts.prepare', 'drafts.release', 'attachments.upload', 'attachments.release',
     ],
     events: [],

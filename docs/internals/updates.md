@@ -278,9 +278,8 @@ within 12 seconds. Peer bodies awaiting authentication do not block that
 admission; they are limited to 262144 bytes and five seconds, and a peer
 authenticated after admission is refused.
 
-The Windows installer run by hand, for an update or a reinstall, still requires
-idle admission: the in-app update has stopped the core before the installer
-starts. Its hooks (`windows/hooks.nsh`, `windows/stop-shell.ps1` and
+The in-app update stops the core before the Windows installer starts. For an
+installer run by hand, its hooks (`windows/hooks.nsh`, `windows/stop-shell.ps1` and
 `windows/stop-core.ps1`) first close a running shell, with the installer's own
 "Boite is running" question: an open window would start the core again within
 seconds, from the file about to be replaced. Only a shell running from that
@@ -291,12 +290,12 @@ installer, is skipped. They then find the
 `boite-core.exe` processes running that install's exact file, plus a core
 hosted by `bun.exe` when its PID matches `core.json` and its parsed arguments
 name that install's `core/main.js` and data directory. Other Bun processes
-are left alone. Accepting the interactive Kill prompt also authorizes stopping
-that resident core, including an older core without idle admission. Silent
-and passive installations still require idle admission. In those modes a busy,
-unreachable or older core without idle admission aborts installation before
-files are replaced. An admitted core that has not exited after 15 seconds also
-aborts installation. Explicit uninstall still requests ordinary shutdown and
+are left alone. Accepting the interactive prompt authorizes a restart handoff
+for the resident core. The installer verifies the expected PID in the reply and
+gives the core up to 60 seconds to exit. Silent and passive installations, and
+cores without handoff support, require idle admission with a 15-second exit
+deadline. Installation aborts before replacing files if admission or exit
+cannot be confirmed. Explicit uninstall still requests ordinary shutdown and
 ends any core of that install left after 15 seconds. Boite Dev's core runs
 another file and is left alone. The stop script opens no window. Once the core
 is stopped, the install hook removes the install's `core/` and `ui/`

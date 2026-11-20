@@ -35,6 +35,7 @@ import {
   type RpcResult,
   type ThreadId,
   type ThreadRetry,
+  type ThreadRecovery,
   type ThreadWorktreeRemoval,
   type TeamPostRef,
 } from '@boite/contracts';
@@ -89,7 +90,7 @@ import { worktreeMethods } from './fake-client/worktrees';
 import { serverUpdateMethods } from './fake-client/server-update';
 import { planRetry, retryMethods, seedRetry } from './fake-client/retry';
 import { closeSideQuestions } from './fake-client/side-questions';
-import { holdAfterRestart } from './fake-client/recovery';
+import { holdAfterRestart, offerRecovery } from './fake-client/recovery';
 import { journalInspectionMethods } from './fake-client/journal-inspection';
 import { forkReturnMethods } from './fake-client/fork-return';
 import { startLoad } from './fake-client/load';
@@ -242,6 +243,9 @@ export class FakeClient implements ObservableClient {
   /** A fixture for a retry the core planned: the thread's row carries it until it is cancelled. */
   planRetry(threadId: ThreadId, retry: ThreadRetry) {
     planRetry(this.#ctx, threadId, retry);
+  }
+  offerRecovery(threadId: ThreadId, recovery: ThreadRecovery) {
+    offerRecovery(this.#ctx, threadId, recovery);
   }
 
 

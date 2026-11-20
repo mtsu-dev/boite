@@ -38,12 +38,13 @@ export class LimitResumes {
    * reset the agent reported, null when it said none. Nothing waits on it.
    */
   turnFailed(thread: ThreadSummary, turn: Turn, resetsAt: number | null): void {
-    if (this.core.settings.get().autoResumeLimitedThreads !== true) return;
     // Sub-threads answer to their parent; a compaction or a letter is not worth repeating. A bot's wake is:
     // its routine may not come due again for a day, and the facts an event turn carried are spent.
     if (thread.parentThreadId) return;
     const operation = turn.execution?.operation;
     if (operation !== undefined && operation !== 'resume' && operation !== 'routine' && operation !== 'event') return;
+    this.resumes.offer(turn, { kind: 'usage-limit', resetsAt });
+    if (this.core.settings.get().autoResumeLimitedThreads !== true) return;
     const accountId = turn.execution?.accountId ?? thread.accountId;
     void (async () => {
       const reset = resetsAt ?? await this.spentWindowReset(accountId);
@@ -53,16 +54,21 @@ export class LimitResumes {
 
   private plan(threadId: string, turn: Turn, resetsAt: number | null): void {
     if (this.core.journal.isClosed()) return;
-    const skip = (message: string, reason: string) => this.resumes.log('info', threadId, message, 'skipped', null, { reason }, 'limit');
+    if (this.core.settings.get().autoResumeLimitedThreads !== true) return;
+    const skip = (message: string, reason: string) => {
+      this.resumes.offer(turn, { kind: 'usage-limit', resetsAt, detail: message });
+      this.resumes.log('info', threadId, `Turn ${turn.id}: ${message}`, 'skipped', null, { reason }, 'limit');
+    };
     const failedAt = turn.finishedAt ?? Date.now();
-    if (resetsAt === null) return skip(`Turn ${turn.id} failed on a usage limit whose reset is unknown; it does not resume by itself`, 'unknown-reset');
+    if (resetsAt === null) return skip('the quota reset time is unknown', 'unknown-reset');
     // A failure that reports a window already reset would resume at once and fail again: no loop.
-    if (resetsAt <= failedAt) return skip(`Turn ${turn.id} failed on a usage limit that reports a window already reset; it does not resume by itself`, 'expired-window');
+    if (resetsAt <= failedAt) return skip('the reported quota window already reset', 'expired-window');
     const resumed = this.resumes.entry(threadId)?.resumedWindow;
-    if (resumed !== undefined && Math.abs(resumed - resetsAt) < SAME_WINDOW_MS) return skip(`Turn ${turn.id} failed again in the window it already resumed after; it does not resume twice`, 'same-window');
+    if (resumed !== undefined && Math.abs(resumed - resetsAt) < SAME_WINDOW_MS) return skip('the thread already resumed once for this quota window', 'same-window');
     const thread = this.core.journal.getThread(threadId);
     // The user moved on while the reset was read.
     if (thread === null || thread.archived || this.resumes.lastTurn(threadId)?.id !== turn.id) return;
+    if (this.resumes.recoveryOf(thread)?.resetsAt !== resetsAt) this.resumes.offer(turn, { kind: 'usage-limit', resetsAt });
     const at = resetsAt + LIMIT_RESUME.marginMs;
     this.resumes.schedule(threadId, turn, {
       reason: 'limit', at, prompt: RESUME_TEXT.limit.prompt, resetsAt,

@@ -117,6 +117,9 @@ test('two resumes in a row that fail again end the row: the last failure stays f
     expect(asked).toHaveLength(3);
     expect(turns(h, threadId).map(turn => [turn.status, turn.execution?.operation ?? 'user'])).toEqual([['error', 'user'], ['error', 'resume'], ['error', 'resume']]);
     expect(h.core.threads.list({ includeArchived: true }).find(thread => thread.id === threadId)?.retry).toBeNull();
+    expect((await client.call('threads.get', { threadId })).recovery).toMatchObject({
+      kind: 'interrupted', turnId: turns(h, threadId)[2]!.id, detail: 'automatic recovery attempts ran out',
+    });
     // The user's next prompt starts a new row.
     await client.call('turns.start', { threadId, prompt: 'try again' });
     await waitFor(() => turns(h, threadId).length === 6);
@@ -251,7 +254,9 @@ test('an archive that rolls back keeps the planned resume, which still fires', a
 
 test('a turn that ends right after a compaction, with no answer after it, resumes', async () => {
   const h = await startTestCore();
-  const asked = scripted(ctx => {
+  const compact = Promise.withResolvers<void>();
+  const asked = scripted(async ctx => {
+    await compact.promise;
     say(ctx, { type: 'text', text: 'Reading the renderer.' }, { type: 'compaction', trigger: 'auto', preTokens: 190_000, postTokens: 30_000 });
     return done;
   }, ctx => {
@@ -261,14 +266,25 @@ test('a turn that ends right after a compaction, with no answer after it, resume
   try {
     const client = await h.connect();
     const { threadId } = await echoThread(h, client);
-    await client.call('turns.start', { threadId, prompt: 'port the renderer' });
+    const first = await client.call('turns.start', {
+      threadId, prompt: `Port the renderer. ${'x'.repeat(4_500)} Preserve transparent shadows. ${'y'.repeat(4_500)} Keep the blue button.`,
+    });
+    await waitFor(() => h.core.threads.runner.handles.has(threadId));
+    expect(await client.call('turns.steer', { threadId, turnId: first.id, prompt: 'Correction: use a green button.', clientRequestId: 'resume_compact_1' })).toEqual({ accepted: true });
+    await client.call('threads.tasks.set', { threadId, tasks: [
+      { id: 'renderer', text: 'Port the renderer', status: 'completed' },
+      { id: 'button', text: 'Use a green button', status: 'pending' },
+    ] });
+    compact.resolve();
     await waitFor(() => turns(h, threadId).length === 2 && turns(h, threadId)[1]!.status === 'done');
     expect(asked[1]!.prompt).toContain('compacted');
+    expect(asked[1]!.prompt).toMatch(/Port the renderer[\s\S]*Preserve transparent shadows[\s\S]*Keep the blue button[\s\S]*Correction: use a green button/);
+    expect(asked[1]!.prompt).toContain('[pending] Use a green button');
     expect(openingOf(h, threadId, turns(h, threadId)[1]!.id).label).toBe(AUTO_CONTINUE_LABEL.compaction);
     // The resume answered after its own compaction: nothing more.
     await Bun.sleep(150);
     expect(turns(h, threadId)).toHaveLength(2);
-  } finally { await h.stop(); }
+  } finally { compact.resolve(); await h.stop(); }
 });
 
 test('background work that ends without waking its agent resumes the thread; a Stop that ended it does not', async () => {
@@ -419,6 +435,34 @@ test('a crash over an hour ago, or a core stopped on purpose, resumes nothing', 
     await Bun.sleep(150);
     expect(next.core.threads.get(threadId).turns).toHaveLength(1);
     expect(after).toHaveLength(0);
+  } finally { await next.stop(); }
+});
+
+test('a manual resume that crashed before dispatch retains its admitted turn and replaces the automatic plan', async () => {
+  AUTO_CONTINUE.delaysMs = [60_000, 60_000];
+  const h = await startTestCore();
+  scripted(failed());
+  const client = await h.connect();
+  const { threadId, accountId } = await echoThread(h, client);
+  const source = await client.call('turns.start', { threadId, prompt: 'save my interrupted request' });
+  await waitFor(() => h.core.threads.get(threadId).retry?.kind === 'auto-continue');
+  holdAccountTurns(h, accountId);
+  const manual = await client.call('turns.resume', { threadId, turnId: source.id });
+  expect(manual.status).toBe('queued');
+  expect(h.core.threads.get(threadId).retry).toBeNull();
+  client.close();
+  await crash(h);
+
+  const asked = scripted(done);
+  const next = await restart(h);
+  try {
+    const reopened = await next.connect();
+    expect((await reopened.call('turns.resume', { threadId, turnId: source.id })).id).toBe(manual.id);
+    await waitFor(() => next.core.journal.getTurn(manual.id)?.status === 'done');
+    expect(next.core.threads.get(threadId)).toMatchObject({ retry: null, recovery: null });
+    expect(next.core.threads.get(threadId).turns.map(turn => turn.id)).toEqual([source.id, manual.id]);
+    expect(asked).toHaveLength(1);
+    expect(asked[0]?.prompt).toContain('save my interrupted request');
   } finally { await next.stop(); }
 });
 

@@ -281,6 +281,10 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
     if (params.action === 'resume') await requireCwd(core, params.threadId);
     return core.threads.recoverTurn(params);
   });
+  core.router.register('turns.resume', async params => {
+    await requireCwd(core, params.threadId);
+    return core.threads.resumes.resume(params);
+  });
   core.router.register('turns.cancelRetry', (params) => ({ cancelled: core.threads.cancelRetry(params.threadId) }));
   core.router.register('turns.steer', (params, ctx) => steerUser(core, core.threads, params, promptOrigin(ctx.connection, core.clients.use(ctx.connection)), pluginActor(core, ctx.connection.identity)));
   core.router.register('permissions.list', (params) => core.threads.listPermissions(params.threadId));

@@ -66,3 +66,20 @@ test('a rate limit on a gateway route names the provider of its model, not a Cla
   const turn = (await client.call('threads.get', { threadId })).turns.at(-1);
   expect(turn?.error).toBe(`This antigravity account has hit its rate limit. ${text}`);
 });
+
+test.each([
+  ['rate_limit', "API Error: Request rejected (429) · this client's share is used up until 2030-02-03T04:05:06Z; its share cap is reached", 'usage-limit', Date.parse('2030-02-03T04:05:06Z')],
+  ['server_error', 'API Error: 503 no available subscription for this model; connect an account or wait for its quota reset.', 'usage-limit', null],
+  ['server_error', 'API Error: 503 upstream unavailable', 'interrupted', undefined],
+] as const)('a Claude %s with %s offers the matching recovery', async (code, text, kind, resetsAt) => {
+  const client = await harness.connect();
+  const threadId = await claudeThread(client);
+  scripted(() => {}, fake => {
+    fake.emit(init('sess-recovery'));
+    for (const message of apiError('sess-recovery', code, text)) fake.emit(message);
+  });
+  expect(await runTurn(client, threadId, 'keep my request')).toBe('error');
+  const { recovery } = await client.call('threads.get', { threadId });
+  expect(recovery?.kind).toBe(kind);
+  expect(recovery?.resetsAt).toBe(resetsAt);
+});
