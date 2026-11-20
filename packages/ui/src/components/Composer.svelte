@@ -42,21 +42,21 @@
   import SideAnswer from './SideAnswer.svelte';
   import { permissionRedirect } from '../lib/permission-redirect.svelte';
   import { ComposerSide } from '../lib/composer-side.svelte';
-  import { chipChoice, queuedChoice, sendToTarget, type ComposerTarget } from '../lib/composer-target';
+  import { chipChoice, queuedChoice } from '../lib/composer-choice';
 
   /**
-   * A centred draft drops the bottom padding so its heading and input form one block. A `target` makes it an agent's box.
+   * A centred draft drops the bottom padding so its heading and input form one block.
    * `notice` is what stands in the box's slot, under the strip, while the core runs nothing here (`stopped`).
    */
-  let { store, centered = false, target = null, notice }: { store: Store; centered?: boolean; target?: ComposerTarget | null; notice?: Snippet } = $props();
+  let { store, centered = false, notice }: { store: Store; centered?: boolean; notice?: Snippet } = $props();
 
   const MAX_LINES = 8, sizesItself = selfSizing();
   const side = new ComposerSide();
   $effect(() => { void key; void store.client; return () => side.clear(); });
-  let key = $derived(target?.key ?? store.openThread?.id ?? DRAFT_STASH_KEY);
+  let key = $derived(store.openThread?.id ?? DRAFT_STASH_KEY);
   $effect(() => { const left = key; if (left === DRAFT_STASH_KEY) void store.draft?.id; return () => closeDraftUndo(left); }); // A phone's Undo toast ends as the box moves to another draft, new conversations included.
   /** The thread this box sends to: none when it speaks to an agent, whatever thread is open behind it. */
-  let thread = $derived(target ? null : store.openThread);
+  let thread = $derived(store.openThread);
   let composer = $derived(store.composerStates[key]);
   /** How tall the strip above the box stands: the band of tasks floats above it, not over it. */
   let text = $derived(composer?.text ?? '');
@@ -110,7 +110,7 @@
   $effect(() => {
     void store.providers;
     void store.accounts;
-    choice = botProfile && !target ? store.composerChoice({ ...botProfile.selection, speed: null }) : chipChoice(store, thread, target);
+    choice = botProfile ? store.composerChoice({ ...botProfile.selection, speed: null }) : chipChoice(store, thread);
   });
 
   /** Desktop drafts take the keyboard; touch navigation leaves it closed. */
@@ -122,9 +122,9 @@
   });
 
   /** This thread's own sent prompts, most recent first: what ArrowUp walks. */
-  let sent = $derived(target ? target.sent : sentPrompts(thread?.messages ?? []));
+  let sent = $derived(sentPrompts(thread?.messages ?? []));
 
-  let provider = $derived(target ? target.provider : choice ? store.providerOf(choice.providerId) : null);
+  let provider = $derived(choice ? store.providerOf(choice.providerId) : null);
   $effect(() => {
     if (provider?.available && provider.protocol !== 'echo' && choice) {
       const id = provider.id, accountId = choice.accountId;
@@ -143,7 +143,7 @@
    * once the machine is back. The core starts a draft's conversation from its queue; an
    * incognito draft is never kept on the device, so it waits for the machine.
    */
-  let offline = $derived(!target && store.connection !== 'ready' && (thread !== null ? !store.draft : !!store.draft && !store.draft.incognito));
+  let offline = $derived(store.connection !== 'ready' && (thread !== null ? !store.draft : !!store.draft && !store.draft.incognito));
   /** Out of reach past its first hello: the notice over the box says so once, with Reconnect. */
   let away = $derived(offline && !!thread && (store.connection === 'closed' || store.booted));
   let machineLabel = $derived.by(() => { const found = workspace.machines.find((machine) => machine.store === store); return found ? machineName(found) : strings.machines.local; });
@@ -152,7 +152,7 @@
    * answers it with the card's picks, the text and the attachments
    * (`lib/question-reply.svelte.ts`). Editing a sent message takes precedence.
    */
-  let reply = $derived(target ? null : replyTarget(store));
+  let reply = $derived(replyTarget(store));
   /** The open thread's first page is still on its way: the field says so and Send waits (ChatView draws the shapes meanwhile). */
   let loadingThread = $derived(!!thread && store.loadingThreadId === thread.id && thread.messages.length === 0);
   // An answer counts the card's picks, needs no model and cannot wait in the outbox.
@@ -160,7 +160,7 @@
     (text.trim().length > 0 || attachments.length > 0 || (reply ? !!repliesOf(store).picks[reply.id]?.length : previewReferences.length > 0)) &&
       recallRead === null &&
       !attachments.some(unresolvedAssetId) &&
-      (reply !== null || choice !== null || target !== null) &&
+      (reply !== null || choice !== null) &&
       (store.connection === 'ready' || (offline && !reply)) &&
       !picking && !dictating && !loadingThread &&
       // A prompt on its way holds back an edit, an answer and a draft's second prompt; on a thread the next one queues.
@@ -182,13 +182,13 @@
   /** The bot's account is gone: its chips point at the banner's remedy (`agents/AgentProblem.svelte`). */
   const botGone = $derived(!!botProfile && routeGone(store, botProfile.selection));
   /** The account behind the box is gone with no other to move to: the box locks, its placeholder the remedy (the banner's or the model chip's). */
-  let accountGone = $derived(!target && (botGone || (!!thread && store.accounts.length > 0 && store.accountOf(thread.accountId) === null
+  let accountGone = $derived((botGone || (!!thread && store.accounts.length > 0 && store.accountOf(thread.accountId) === null
     && store.usableAccountOf(thread.providerId, thread.accountId) === null)));
 
   /** The thread's oldest ask to run a tool, on its command row in the timeline; a message sent meanwhile declines it and redirects (`redirect`). */
-  let permission = $derived(target || !thread ? null : store.pendingPermissions.find((request) => request.threadId === thread.id) ?? null);
+  let permission = $derived(!thread ? null : store.pendingPermissions.find((request) => request.threadId === thread.id) ?? null);
   /** The question on screen at the top of the box, whose options 1 to 9 pick while the field is empty. */
-  let docked = $derived(target ? undefined : store.pendingQuestions.find((question) => question.id === repliesOf(store).docked && question.threadId === thread?.id));
+  let docked = $derived(store.pendingQuestions.find((question) => question.id === repliesOf(store).docked && question.threadId === thread?.id));
 
   /**
    * The core runs nothing here: the thread's folder or worktree is gone, or
@@ -196,7 +196,7 @@
    * so the box is not drawn under it; it stays mounted, keeping what was
    * written for when the thread runs again.
    */
-  let stopped = $derived(!target && (!!thread?.worktreeRemoved || (store.openProject?.missing === true && !thread?.agentSessionId)
+  let stopped = $derived((!!thread?.worktreeRemoved || (store.openProject?.missing === true && !thread?.agentSessionId)
     || (!!thread?.contactHold && !thread.archived)));
   /** The turn runs and the round button is Send (an answer, words typed, files to wait for): the turn's Stop goes to
    *  the foot's line, so a finger, which has no Escape, can still end it. */
@@ -204,7 +204,7 @@
 
   // What Send does to the question at the top of the box (composerPlaceholder's `answer`) or to a waiting permission.
   let answer = $derived(reply ? (reply.options.length ? 'options' as const : 'text' as const) : docked && docked.threadId === thread?.id && !docked.async && store.busy ? 'after' as const : null);
-  let placeholder = $derived(composerPlaceholder({ target, replying: !!thread && store.busy, answer, permission: !reply ? permission : null, bot, offline, away, accountGone, onThread: !!thread, machine: machineLabel, provider: provider?.name ?? null }));
+  let placeholder = $derived(composerPlaceholder({ replying: !!thread && store.busy, answer, permission: !reply ? permission : null, bot, offline, away, accountGone, onThread: !!thread, machine: machineLabel, provider: provider?.name ?? null }));
 
   // -- the slash menu -----------------------------------------------------------
   // `/` on an empty box, then the word being typed: nothing else opens it, and a
@@ -220,7 +220,7 @@
   let mentionQuery = $derived(mentionQueryOf(text, caret, previewReferences));
 
   /** A mention wins over the slash menu on the odd `/@word`: it is the word under the caret. */
-  let slashOpen = $derived(!target && slashQuery !== null && mentionQuery === null && focused && !slashDismissed);
+  let slashOpen = $derived(slashQuery !== null && mentionQuery === null && focused && !slashDismissed);
 
   /** Typing anything takes the box out of the dismissal Escape put it in. */
   $effect(() => {
@@ -229,10 +229,10 @@
     mentions.dismissed = false;
   });
 
-  let mentionOpen = $derived(!target && mentionQuery !== null && focused && !mentions.dismissed);
+  let mentionOpen = $derived(mentionQuery !== null && focused && !mentions.dismissed);
 
   /** The project whose files are named: the open thread's, or the draft's. */
-  let mentionProject = $derived(target ? null : thread?.projectId ?? store.draft?.projectId ?? null);
+  let mentionProject = $derived(thread?.projectId ?? store.draft?.projectId ?? null);
 
   $effect(() => mentions.follow(mentionQuery, mentionProject, store.client));
 
@@ -249,7 +249,7 @@
   /** Agent commands first, so a tie goes to the agent's own. */
   let slashItems = $derived(rankItems(slashQuery ?? '', [...agentItems, ...skillItems, ...boiteItems]));
   let commandToken = $derived.by(() => {
-    const token = target ? undefined : /^\/[^\s]+/.exec(text)?.[0];
+    const token = /^\/[^\s]+/.exec(text)?.[0];
     return token && [...agentItems, ...skillItems, ...boiteItems].some(item => item.label === token) ? token : '';
   });
   let keywords = $derived(claudeKeywords(provider?.protocol, choice?.model));
@@ -426,11 +426,6 @@
     }
     const ready = readyToSend(store, stateForInput(), stateForInput, () => [text, previewReferences, choice]); if (!(typeof ready === 'boolean' ? ready : await ready)) return; // Pictures being fitted go once they fit, in the same box (`lib/composer-attachments.ts`); an answer waits in `sendAnswer`.
     const prompt = text, images = attachments, references = previewReferences;
-    if (target) {
-      if (canSend && await sendToTarget(target, stateForInput(), prompt, images)) recall = null;
-      requestAnimationFrame(grow);
-      return;
-    }
     if (!canSend || !choice) return;
     const inputStore = store, inputKey = key, sendChoice = choice;
     const state = stateForInput();
@@ -754,12 +749,12 @@
       if (older()) event.preventDefault();
     } else if (event.key === 'ArrowDown' && !event.shiftKey) {
       if (newer()) event.preventDefault();
-    } else if (event.key === 'Escape' && !reply && (target ? target.busy && !!target.stop : !away && (store.busy || thread?.activity?.goal?.status === 'active' || thread?.activity?.loop?.status === 'active'))) {
+    } else if (event.key === 'Escape' && !reply && !away && (store.busy || thread?.activity?.goal?.status === 'active' || thread?.activity?.loop?.status === 'active')) {
       // Not while the box answers a question: a thread waiting on one opens
       // with the focus there, and an Escape pressed out of habit threw the
       // question away with the turn. Skip and the stop button still end it.
       event.preventDefault();
-      if (target) target.stop?.(); else void store.stop();
+      void store.stop();
     } else if (event.key === 'Escape' && (composer?.editing || recallRead !== null)) {
       event.preventDefault();
       cancelEdit();
@@ -774,7 +769,7 @@
     event.preventDefault(); event.stopPropagation();
   }
 }}>
-  {#if !target}<ComposerStrip />{/if}
+  <ComposerStrip />
   {#if away && !stopped}<ThreadOfflineNotice {store} machine={machineLabel} />{/if}
   {#if accountGone && !botGone}<AccountGoneNotice onpick={() => void toolbar?.openChip('composer-picker')} />{/if}
   <ComposerFoot {store} {key} {thread} {composer} machine={machineLabel} {sendNow} alone={stopped} {stopsTurn} blocked={text.length > 0 || attachments.length > 0 || previewReferences.length > 0} onrestore={restoreQueued} onsendnow={sendQueuedNow} />
@@ -785,7 +780,7 @@
     onkeydown(event);
     event.stopPropagation();
   }}>
-    <ComposerDeck {store} {thread} agentBox={!!target} />
+    <ComposerDeck {store} {thread} />
     <ComposerIntent editing={!!composer?.editing} oncancel={cancelEdit} />
 
     {#if side.current && side.current.threadId === thread?.id}<SideAnswer {...side.current} {store} onclose={() => { side.clear(); focusInitial(box, box?.closest<HTMLElement>('[data-testid=composer]')); }} />{/if}
@@ -812,8 +807,8 @@
     <!-- A bot's gone account said once, to a screen reader: the placeholder and its banner (AgentProblem) show it. -->
     {#if botGone}<span class="visually-hidden" role="status" data-testid="composer-bot-gone">{bot ? fill(strings.composer.botAccountGone, { name: bot }) : strings.accounts.removedHint}</span>{/if}
 
-    <ComposerBar bind:this={toolbar} {store} {key} {target} {bot} {botGone} {botRoute} {provider} canSend={sendable && !stopped && !accountGone} typed={!reply || text.trim().length > 0 || attachments.length > 0} waiting={sendWhenLoaded !== null} answering={reply} declining={!reply && !offline ? permission : null}
-      onmention={!target && !reply && mentionProject !== null ? startMention : undefined} oncommand={!target && !reply && text.trim() === '' ? startCommand : undefined} bind:choice bind:picking bind:dictating
+    <ComposerBar bind:this={toolbar} {store} {key} {bot} {botGone} {botRoute} {provider} canSend={sendable && !stopped && !accountGone} typed={!reply || text.trim().length > 0 || attachments.length > 0} waiting={sendWhenLoaded !== null} answering={reply} declining={!reply && !offline ? permission : null}
+      onmention={!reply && mentionProject !== null ? startMention : undefined} oncommand={!reply && text.trim() === '' ? startCommand : undefined} bind:choice bind:picking bind:dictating
       onsubmit={() => void submit()}
       onfiles={(files) => void take(files)}
       onpreview={(text, status, error) => { speechPreview = text; speechStatus = status; speechError = error; }}
