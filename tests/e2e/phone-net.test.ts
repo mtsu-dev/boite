@@ -196,8 +196,8 @@ test('the installed phone app is added with a pasted link, and a removed one get
       expect(replacement).toHaveLength(1);
       expect(replacement[0]?.id).not.toBe(devices[0]!.id);
 
-      // Settings offers the link form the moment the active device disconnects.
-      // It must not try to admit the old key, even before a reconnect can run.
+      // Settings offers the link form as the active device disconnects. The
+      // saved key is cleared only after the core signs its refusal on reconnect.
       await phone.send('Emulation.setDeviceMetricsOverride', PHONE);
       await mobileAction(phone, 'mobile-settings');
       await phone.waitFor(screensSettled);
@@ -207,6 +207,7 @@ test('the installed phone app is added with a pasted link, and a removed one get
       const fresh = await owner.call('group.addDevice', {});
       await owner.call('group.revokeDevice', { id: replacement[0]!.id });
       await phone.waitFor(`document.querySelector('${id('machine-paste-open')}')`);
+      await phone.waitFor("localStorage.getItem('boite.device') === null", 20_000);
       await capture(phone, 'repair-while-in-settings-phone.png');
       expect(await phone.evaluate("localStorage.getItem('boite.device') === null")).toBe(true);
       await phone.click(id('machine-paste-open'));
