@@ -1,4 +1,4 @@
-import { activityEvents, activityKind, activityThreadState, feedThread, NEEDS_RANK, rowAsks, statusRank, threadState, unreadInterruptionAt, type ActivityKind, type Delegated, type PermissionRequest, type Project, type QuestionRequest, type RowSource, type RpcParams, type ThreadState, type ThreadSummary } from '@boite/contracts';
+import { activityEvents, activityKind, activityThreadState, feedThread, NEEDS_RANK, rowAsks, statusRank, unreadInterruptionAt, type ActivityKind, type Delegated, type PermissionRequest, type Project, type QuestionRequest, type RowSource, type RpcParams, type ThreadState, type ThreadSummary } from '@boite/contracts';
 import { projectName } from './format';
 import { fill, strings } from './strings';
 import { describeTool, permissionSentence } from './tool-summary';
