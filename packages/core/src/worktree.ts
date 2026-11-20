@@ -410,7 +410,7 @@ export class Worktrees {
     };
     const ref = `refs/heads/${placed.branch}`;
     return withRegistration(project.path, async () => {
-      const git = (args: string[]) => this.git(threadId, project.path, args, remaining());
+      const git = (args: string[], indexFile?: string) => this.git(threadId, project.path, args, remaining(), undefined, indexFile);
       await restoreInterruptedCheckout(this.#core, project, placed.path, placed.branch, git);
       const keep = (why: string) => {
         this.#core.log('warn', `kept ${placed.path} or its branch ${placed.branch}: ${why}`, { threadId });

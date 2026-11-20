@@ -199,7 +199,7 @@ export class WorktreeSweep {
     // `remove` (git 2.55 exits 0 on it); `prune --expire` would keep it for an hour.
     const removal = ['worktree', 'remove', ...(branchRule === 'force' ? ['--force'] : []), target.path];
     // Reserve immediately after the final occupancy check and hold through removal.
-    const git = (args: string[]) => this.git(project, project.path, args);
+    const git = (args: string[], indexFile?: string) => this.git(project, project.path, args, indexFile);
     const remove = () => typeof branchRule === 'string' ? git(removal) : removeCleanCheckout(this.core, target.path, git);
     const removed = await this.registered(project, async () => {
       if (typeof branchRule !== 'string') await restoreInterruptedCheckout(this.core, project, target.path, target.branch, git);
@@ -343,10 +343,10 @@ export class WorktreeSweep {
   }
 
   /** A change under the project's trace id. No deadline: deleting a large tree takes what it takes. */
-  private async git(project: Project, cwd: string, args: string[]): Promise<GitRun> {
+  private async git(project: Project, cwd: string, args: string[], indexFile?: string): Promise<GitRun> {
     let spawned;
     try {
-      spawned = this.core.procs.spawn(traceId(project.id), 'git', args, { cwd });
+      spawned = this.core.procs.spawn(traceId(project.id), 'git', args, { cwd, env: indexFile === undefined ? undefined : { GIT_INDEX_FILE: indexFile } });
     } catch (error) {
       throw refused(`git did not start in ${cwd} (${messageOf(error)}): the worktree list needs git on PATH`, { projectId: project.id, cwd });
     }

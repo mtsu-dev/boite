@@ -84,13 +84,16 @@ function homeCredentialEntry(home: string, real: string): string | null {
   return first.startsWith('.') || /^(appdata|library)$/i.test(first) ? first : null;
 }
 
-function isDedicatedCredentialStore(core: Core, home: string, path: string, real: string): boolean {
-  const roots = [
-    ...DEVICE_HOME_CREDENTIAL_STORES.map(name => join(home, name)),
-    ...core.providers.credentialRoots(),
-    ...core.accounts.list().flatMap(account => account.isolationDir === null ? [] : [account.isolationDir]),
-  ];
-  return roots.some(store => contains(store, path) || contains(realOf(store), real));
+function isCredentialPath(core: Core, home: string, path: string, real: string): boolean {
+  const { roots, files } = core.providers.credentialPaths(core.accounts.list());
+  for (const name of DEVICE_HOME_CREDENTIAL_STORES) roots.add(join(home, name));
+  for (const root of roots) {
+    if (contains(root, path) || contains(realOf(root), real)) return true;
+  }
+  for (const file of files) {
+    if (relative(file, path) === '' || relative(realOf(file), real) === '') return true;
+  }
+  return false;
 }
 
 /**
@@ -116,7 +119,7 @@ export function assertDeviceFile(core: Core, threadId: ThreadId, cwd: string, pa
   const parts = relative(base, target).split(sep).filter(Boolean);
   const home = realOf(homePath());
   const entry = [base, ...deviceRoots(core, threadId)].some((root) => contains(root, home)) ? homeCredentialEntry(home, target) : null;
-  if (entry !== null || isDedicatedCredentialStore(core, home, resolve(cwd, path ?? ''), target)
+  if (entry !== null || isCredentialPath(core, home, resolve(cwd, path ?? ''), target)
     || parts.some((part) => DEVICE_SECRET_DIRS.has(part.toLowerCase())) || DEVICE_SECRET_FILE.test(basename(target))) {
     throw refused(`a paired device does not read credential files${entry === null ? '' : ` (the home folder's ${entry} holds logins)`}; open ${path ?? ''} on the owner's machine`, { threadId });
   }
@@ -139,7 +142,7 @@ export function assertDeviceProjectFolder(core: Core, folder: string): void {
   if (contains(real, home) || dirname(real) === real) {
     throw refused(`a paired device does not add the home folder, a folder that contains it or a disk root as a project, since it holds every login on this machine; add a folder inside it, or add ${folder} on the owner's machine`, { field: 'path', path: folder, expected: `a folder inside ${home}, not ${home} itself or a parent of it` });
   }
-  if (isDedicatedCredentialStore(core, home, resolve(folder), real) || real.split(sep).some((part) => DEVICE_SECRET_DIRS.has(part.toLowerCase()))) {
+  if (isCredentialPath(core, home, resolve(folder), real) || real.split(sep).some((part) => DEVICE_SECRET_DIRS.has(part.toLowerCase()))) {
     throw refused(`a paired device does not add a folder that holds keys or tokens as a project: ${folder}`, { field: 'path', path: folder, expected: 'a project folder outside credential stores' });
   }
 }

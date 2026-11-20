@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'bun:test';
 import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { secretMask } from '@boite/contracts';
+import { SECRET_TRANSIT_TTL_MS, secretMask } from '@boite/contracts';
 import { parse } from '../src/cli-args.ts';
 import { runCli } from '../src/cli.ts';
 import type { CoreClient } from '../src/client.ts';
@@ -47,10 +47,12 @@ test.skipIf(process.platform !== 'linux').each(['os', 'osd'] as const)('a BoiteO
   const { owner, root, threadId } = await repoThread();
   const realRoute = h.core.procs.platform.secretPipeRecipient;
   let compatible = false;
+  let routed = 0;
   const legacyUsage = 'error: os agent exec: usage: os agent exec -- <program> <args...>; next: os agent exec -- <program> <args...>';
   const legacyDaemon = 'error: agent exec: bad request: unknown field `secretCheckout`; next: os agent exec -- <program> <args...>';
   const recipient = ['-e', `require('node:fs').writeFileSync('recipient-ran', String((await Bun.stdin.text()).length))`];
   h.core.procs.platform.secretPipeRecipient = (command, args, env, cwd) => {
+    routed++;
     const route = realRoute!(command, args, env, cwd);
     if (compatible) return { command, args, env };
     const signal = component === 'osd' ? `require('node:fs').writeSync(3, 'OD');` : '';
@@ -62,14 +64,37 @@ test.skipIf(process.platform !== 'linux').each(['os', 'osd'] as const)('a BoiteO
   process.env.BOITEOS_AGENTS_SOCKET = '/fixture/agents.sock';
   delete process.env.BOITEOS_THREAD;
   try {
+    const since = h.core.secrets.now();
+    h.core.secrets.now = () => since;
     const ref = await saveSecret(h, owner, threadId, 'API_KEY', secretValue());
     const use = { action: 'pipe' as const, command: bun, args: recipient, cwd: root };
-    for (const checkArgs of [[], undefined]) {
-      const error = await thrown(owner.call('secrets.use', { threadId, ref, use: { ...use, checkArgs } }));
+    for (const check of [component === 'os', component !== 'os']) {
+      const replay = { ...use, cwd: check ? root : '.', checkArgs: check ? [] : undefined };
+      const error = await thrown(owner.call('secrets.use', { threadId, ref, use: replay }));
       expect(error).toThrow(`BoiteOS version mismatch: update ${component} `);
       expect(error).toThrow(component === 'osd' ? 'unknown field `secretCheckout`' : 'usage: os agent exec');
       expect(existsSync(join(root, 'recipient-ran'))).toBe(false);
     }
+    mkdirSync(join(root, 'other'));
+    for (const change of [
+      { ...use, command: 'other-program', checkArgs: [] },
+      { ...use, args: ['-e', 'process.exit(0)'] },
+      { ...use, cwd: 'other' },
+      { ...use, action: 'run' as const, as: 'TOKEN' },
+      { action: 'write' as const, key: 'TOKEN', path: '.env' },
+    ]) {
+      expect(await thrown(owner.call('secrets.use', { threadId, ref, use: change }))).toThrow('retry the same recipient');
+      expect(routed).toBe(2);
+    }
+    expect(existsSync(join(root, '.env'))).toBe(false);
+
+    const expiring = await saveSecret(h, owner, threadId, 'EXPIRING', secretValue());
+    h.core.secrets.now = () => since + SECRET_TRANSIT_TTL_MS - 10_000;
+    expect(await thrown(owner.call('secrets.use', { threadId, ref: expiring, use }))).toThrow('BoiteOS version mismatch');
+    h.core.secrets.now = () => since + SECRET_TRANSIT_TTL_MS;
+    expect(await thrown(owner.call('secrets.use', { threadId, ref: expiring, use }))).toThrow('expired');
+    expect(routed).toBe(3);
+    h.core.secrets.now = () => since;
     compatible = true;
     expect(await owner.call('secrets.use', { threadId, ref, use })).toMatchObject({ exitCode: 0 });
     expect(Number(readFileSync(join(root, 'recipient-ran'), 'utf8'))).toBeGreaterThan(0);

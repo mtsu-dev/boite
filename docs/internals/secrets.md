@@ -90,8 +90,9 @@ link requirement enforced by the real core.
 
 On a BoiteOS host, a pipe recipient runs through the checkout's registered
 route. If the `os` launcher or `osd` rejects the protocol as too new before
-launch, Boite names the component to update and the same ref remains usable
-until its normal expiry. This also applies to a `--check` refusal.
+launch, Boite names the component to update. Until the original expiry, the
+same ref can retry the original action, command, arguments and resolved
+working directory. This also applies to a `--check` refusal.
 
 ## Migration from the project key store
 

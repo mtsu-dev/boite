@@ -1,9 +1,10 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { forgetWhich } from './which.ts';
 import {
   acpSteeringKind,
   threadActive,
+  type Account,
   type PolicyRefusalData,
   type ProviderDescriptor,
   type ProviderId,
@@ -37,18 +38,11 @@ import { detectionLogger, installLogger } from './install-log.ts';
 import { registerLocalCommands } from './local-command.ts';
 import { homePath } from '../paths.ts';
 import { ISOLATION_DEFAULTS, variableHome } from '../profile-share.ts';
-import { providerLoginHome, providerSessionFiles } from './session-paths.ts';
+import { addSessionFilePaths, providerLoginHome, providerSessionFiles } from './session-paths.ts';
 
 function below(root: string, path: string): boolean {
   const child = relative(root, path);
   return child !== '' && child !== '..' && !child.startsWith(`..${sep}`) && !isAbsolute(child);
-}
-
-/** XDG homes are shared. Protect a provider's subtree, or the file itself when it has no subtree. */
-function protectSessionFile(roots: Set<string>, home: string, name: string): void {
-  const path = join(home, name);
-  const parent = dirname(path);
-  if (path !== home) roots.add(below(home, parent) ? parent : path);
 }
 
 /**
@@ -428,9 +422,10 @@ export class ProviderRegistry {
     return this.entries.get(id)?.descriptor;
   }
 
-  /** Declared roots, relocations and the default account's login files. */
-  credentialRoots(): string[] {
+  /** Dedicated login directories and individual session files, including leaves outside their directories. */
+  credentialPaths(accounts: readonly Account[]): { roots: Set<string>; files: Set<string> } {
     const protectedRoots = new Set<string>();
+    const files = new Set<string>();
     for (const { descriptor } of this.entries.values()) {
       const roots = descriptor.roots.filter(root => isAbsolute(root) && !root.includes('{isolationDir}'));
       for (const root of roots) protectedRoots.add(root);
@@ -441,11 +436,7 @@ export class ProviderRegistry {
       if (login.variable === null || !login.variable.startsWith('XDG_')) {
         protectedRoots.add(loginRoot);
       }
-      const { session, sqlite } = providerSessionFiles(descriptor, profile);
-      for (const name of session) protectSessionFile(protectedRoots, loginRoot, name);
-      if (sqlite !== undefined) {
-        for (const suffix of ['', '-wal', '-shm', '-journal']) protectSessionFile(protectedRoots, loginRoot, sqlite.file + suffix);
-      }
+      addSessionFilePaths(files, loginRoot, providerSessionFiles(descriptor, profile));
       for (const key of Object.keys(profile?.isolation ?? {})) {
         const location = variableHome(key, profile);
         if (location === null || !isAbsolute(location)) continue;
@@ -462,7 +453,13 @@ export class ProviderRegistry {
         }
       }
     }
-    return [...protectedRoots];
+    for (const { isolationDir, providerId } of accounts) {
+      if (isolationDir === null) continue;
+      protectedRoots.add(isolationDir);
+      const descriptor = this.get(providerId);
+      if (descriptor !== undefined) addSessionFilePaths(files, isolationDir, providerSessionFiles(descriptor));
+    }
+    return { roots: protectedRoots, files };
   }
 
   require(id: ProviderId): ProviderDescriptor {

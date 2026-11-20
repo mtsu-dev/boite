@@ -1,10 +1,12 @@
-import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmdirSync, utimesSync, writeFileSync, writeSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, rmdirSync, symlinkSync, utimesSync, writeFileSync, writeSync } from 'node:fs';
+import * as fs from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import type { ThreadSummary } from '@boite/contracts';
 import { assertAllowed } from '../src/access.ts';
 import { runCli } from '../src/cli.ts';
 import { realKey, restoreInterruptedCheckout } from '../src/checkout-removal.ts';
+import { finishCheckoutRecovery } from '../src/checkout-recovery.ts';
 import { Journal } from '../src/journal.ts';
 import { WorktreeCleanup } from '../src/worktree-cleanup.ts';
 import { worktreeRoot } from '../src/worktree.ts';
@@ -39,10 +41,16 @@ const FIXTURE_GIT_ENV = {
   GIT_COMMITTER_EMAIL: 'test@boite.invalid',
 };
 
+function gitResult(cwd: string, args: string[], indexFile?: string) {
+  const env = indexFile === undefined ? FIXTURE_GIT_ENV : { ...FIXTURE_GIT_ENV, GIT_INDEX_FILE: indexFile };
+  const run = Bun.spawnSync({ cmd: ['git', ...args], cwd, env, stdout: 'pipe', stderr: 'pipe', windowsHide: true });
+  return { code: run.exitCode, stdout: run.stdout.toString(), stderr: run.stderr.toString() };
+}
+
 function git(cwd: string, ...args: string[]): string {
-  const run = Bun.spawnSync({ cmd: ['git', ...args], cwd, env: FIXTURE_GIT_ENV, stdout: 'pipe', stderr: 'pipe', windowsHide: true });
-  if (!run.success) throw new Error(`git ${args.join(' ')} failed: ${run.stderr.toString()}`);
-  return run.stdout.toString().trim();
+  const result = gitResult(cwd, args);
+  if (result.code !== 0) throw new Error(`git ${args.join(' ')} failed: ${result.stderr}`);
+  return result.stdout.trim();
 }
 
 async function repoProject(): Promise<{ id: string; path: string }> {
@@ -276,6 +284,85 @@ describe('settled worktree cleanup', () => {
     }
   });
 
+  test.skipIf(process.platform !== 'linux').each([false, true])('keeps an atomic save at compaction unlink (symlink=%s)', async symlink => {
+    const project = await repoProject();
+    const name = symlink ? 'link' : 'README.md';
+    if (symlink) {
+      symlinkSync('README.md', join(project.path, name));
+      git(project.path, 'add', name);
+      git(project.path, 'commit', '-qm', 'add link');
+    }
+    const saved = join(harness.dataDir, 'atomic-save', 'saved');
+    mkdirSync(saved, { recursive: true });
+    const path = join(saved, name);
+    if (symlink) symlinkSync('README.md', path);
+    else writeFileSync(path, 'hello\n');
+    const replacement = join(dirname(saved), 'replacement');
+    if (symlink) symlinkSync('late-target', replacement);
+    else writeFileSync(replacement, 'late save\n');
+    const unlink = fs.unlinkSync;
+    let injected = false;
+    const intercept = spyOn(fs, 'unlinkSync').mockImplementation(candidate => {
+      if (typeof candidate === 'string' && basename(candidate) === name && !injected) {
+        renameSync(replacement, path);
+        injected = true;
+      }
+      return unlink(candidate);
+    });
+    try {
+      await finishCheckoutRecovery(harness.core, { path: project.path, commit: git(project.path, 'rev-parse', 'HEAD'), recoveryPath: saved },
+        async (args, index) => gitResult(project.path, args, index));
+      expect(injected).toBe(true);
+      expect(existsSync(saved)).toBe(true);
+      expect(symlink ? readlinkSync(path) : readFileSync(path, 'utf8')).toBe(symlink ? 'late-target' : 'late save\n');
+    } finally { intercept.mockRestore(); }
+  });
+
+  test.skipIf(process.platform !== 'linux')('compacts clean CRLF and filtered files using their Git attributes', async () => {
+    const project = await repoProject();
+    writeFileSync(join(project.path, '.gitattributes'), '*.txt text eol=crlf\n*.fixture filter=recovery\n');
+    git(project.path, 'config', 'filter.recovery.clean', 'tr a-z A-Z');
+    git(project.path, 'config', 'filter.recovery.smudge', 'tr A-Z a-z');
+    writeFileSync(join(project.path, 'doc.txt'), 'one\ntwo\n');
+    writeFileSync(join(project.path, 'doc.fixture'), 'TEXT\n');
+    git(project.path, 'add', '.');
+    git(project.path, 'commit', '-qm', 'attributes');
+    const thread = await worktreeThread(project, 'Clean conversions');
+    expect(readFileSync(join(thread.cwd, 'doc.txt'), 'utf8')).toBe('one\r\ntwo\r\n');
+    expect(readFileSync(join(thread.cwd, 'doc.fixture'), 'utf8')).toBe('text\n');
+    expect(git(thread.cwd, 'status', '--porcelain')).toBe('');
+    // The current repository tree must not supply the removed checkout's attributes.
+    writeFileSync(join(project.path, '.gitattributes'), '*.txt -text\n*.fixture -filter\n');
+    await client.call('threads.archive', { threadId: thread.id });
+    expect(await cleanup.run()).toEqual([expect.objectContaining({ branch: thread.branch })]);
+    expect(await client.call('worktrees.recoveries', {})).toEqual([]);
+    expect(readdirSync(dirname(thread.cwd)).filter(name => name.startsWith('.boite-removing-'))).toEqual([]);
+  });
+
+  test('keeps the captured edit when its public name is published again', async () => {
+    const project = await repoProject();
+    const saved = join(harness.dataDir, 'captured-edit', 'saved');
+    mkdirSync(saved, { recursive: true });
+    const path = join(saved, 'README.md');
+    writeFileSync(path, 'captured edit\n');
+    const rename = fs.renameSync;
+    let captured: string | undefined;
+    const intercept = spyOn(fs, 'renameSync').mockImplementation((from, to) => {
+      rename(from, to);
+      if (from === path && typeof to === 'string') {
+        captured = to;
+        writeFileSync(path, 'published again\n');
+      }
+    });
+    try {
+      await finishCheckoutRecovery(harness.core, { path: project.path, commit: git(project.path, 'rev-parse', 'HEAD'), recoveryPath: saved },
+        async (args, index) => gitResult(project.path, args, index));
+      expect(captured).toBeDefined();
+      expect(readFileSync(captured!, 'utf8')).toBe('captured edit\n');
+      expect(readFileSync(path, 'utf8')).toBe('published again\n');
+    } finally { intercept.mockRestore(); }
+  });
+
   test('detaches a recovery when a completed Git removal was interrupted', async () => {
     const project = await repoProject();
     const thread = await worktreeThread(project, 'Interrupted removal');
@@ -298,10 +385,7 @@ describe('settled worktree cleanup', () => {
 
     // Git can now reuse the old administrative directory for another checkout.
     git(project.path, 'worktree', 'add', '--detach', path);
-    await restoreInterruptedCheckout(harness.core, projectRow, path, thread.branch!, async args => {
-      const result = Bun.spawnSync({ cmd: ['git', ...args], cwd: project.path, env: FIXTURE_GIT_ENV, windowsHide: true });
-      return { code: result.exitCode, stdout: result.stdout.toString(), stderr: result.stderr.toString() };
-    });
+    await restoreInterruptedCheckout(harness.core, projectRow, path, thread.branch!, async (args, index) => gitResult(project.path, args, index));
     expect(existsSync(join(saved, '.git'))).toBe(false);
     if (process.platform !== 'darwin') expect(readdirSync(saved)).toEqual(['notes.txt']);
     expect(readFileSync(join(saved, 'notes.txt'), 'utf8')).toBe('untracked recovery\n');
@@ -317,6 +401,9 @@ describe('settled worktree cleanup', () => {
     });
     expect(cli).toBe(0);
     expect(JSON.parse(output)).toEqual([recovery]);
+    rmSync(saved, { recursive: true });
+    expect(await client.call('worktrees.recoveries', {})).toEqual([]);
+    expect(harness.core.journal.getSetting('checkout-recoveries') ?? []).toEqual([]);
   });
 
   test('keeps a branch that advances to another merged commit during cleanup', async () => {
