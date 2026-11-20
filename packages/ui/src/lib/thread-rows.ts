@@ -1,6 +1,6 @@
 import type { MessageId, MessagePart, ProjectId, Thread, ThreadId, ThreadLoad, ThreadSummary } from '@boite/contracts';
 import { resumeAnchor } from '@boite/contracts';
-export { resumeAnchor, workingChildren, type WorkingChildren } from '@boite/contracts';
+export { workingChildren, type WorkingChildren } from '@boite/contracts';
 
 /** Same value: primitives by identity, the small objects of a summary (load, context, cache) by content. */
 function same(a: unknown, b: unknown): boolean {

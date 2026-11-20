@@ -106,9 +106,6 @@ export const SIBLING_MIN = 360;
 
 export const AGENTS_SURFACE_ID = 'agents';
 
-/** A browser surface walks the interface zoom's own ladder (`lib/zoom.ts`). */
-export { ZOOM_DEFAULT, ZOOM_STEPS, stepZoom } from './zoom';
-
 interface Persisted {
   version: number;
   threads: Record<string, PanelState>;

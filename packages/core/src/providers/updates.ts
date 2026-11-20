@@ -52,7 +52,6 @@ export function updateThreadId(providerId: ProviderId): string {
   return `update:${providerId}`;
 }
 
-export { compareVersions } from './install-latest.ts';
 
 /** True when the path sits under that directory, a sibling sharing its first letters left out. */
 export function inside(dir: string, path: string): boolean {

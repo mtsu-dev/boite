@@ -7,7 +7,7 @@ import { checkSettingsPatch, type PluginState, type SubscriptionProxy } from '@b
 import type { CoreClient } from '../src/client.ts';
 import { parseManifest, platformKey } from '../src/plugins/manifest.ts';
 import { DOUANE_BINARY_ENV } from '../src/plugins/gateway.ts';
-import { recommendedPlugins } from '../src/plugins.ts';
+import { recommendedPlugins } from '../src/plugins/record.ts';
 import { readSubscriptionProxyModels, subscriptionProxyEnv } from '../src/subscription-proxy.ts';
 import { startTestCore, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';

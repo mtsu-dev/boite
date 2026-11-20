@@ -12,7 +12,6 @@ export const LOG_FILE_BYTES = 2 * 1024 * 1024;
 export const LOG_FILE_COUNT = 8;
 /** The shell writes `shell.0..3.ndjson` beside the core's files, in the same format. */
 export const SHELL_LOG_FILE_COUNT = 4;
-export { LOG_MESSAGE_CHARS } from '@boite/contracts';
 const PENDING_RECORDS = 1024;
 /** Records kept in memory only: written while persistence fails, or dropped from a full pending buffer. */
 const UNPERSISTED_RECORDS = 4096;
@@ -44,7 +43,6 @@ export type LogContext = Pick<CoreLogRecord, 'source' | 'event' | 'threadId' | '
 /** Who a thread is, so every record about it names its agent. */
 export type ThreadIdentity = { providerId: string; model: string | null; parentThreadId: string | null };
 
-export { normalizeCoreLogText as redactLogText } from '@boite/contracts';
 
 /** Persistent diagnostics are separate from the transactional operational journal. */
 export class DiagnosticLogs {

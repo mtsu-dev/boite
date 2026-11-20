@@ -9,7 +9,7 @@ import { CoordinationLookups } from './coordination-directory.ts';
 import { PeerDesk } from './coordination-peer.ts';
 import { askContact, CoordinationBridge } from './coordination-bridge.ts';
 import { dropGroupRead, policedRoutes, policyAllowsLetter } from './coordination-group.ts';
-import { address, coordinationGuide, coordinationUrl, LETTER_TTL_MS, letterPrompt, RESIDENT_LETTER_TTL_MS, same, text, SWEEP_PROBES } from './coordination-letter.ts';
+import { address, coordinationGuide, coordinationUrl, LETTER_TTL_MS, RESIDENT_LETTER_TTL_MS, same, text, SWEEP_PROBES } from './coordination-letter.ts';
 import { withProjects, withRelations } from './coordination-relation.ts';
 import { firstAnswer, PeerGone, PeerRefusal, post, settle, type Answer, type Envelope, type Operation } from './coordination-wire.ts';
 import { checkTailnetName } from './contacts/invite.ts';
@@ -37,7 +37,7 @@ const AUTO_PAUSE_PREFIX = 'coordination-autopause:';
 const BATCH = 4;
 /** The longest `collaboration.wait`: a CLI call stays under its five-minute RPC deadline. */
 export const WAIT_MAX_MS = 300_000;
-export { coordinationUrl, letterPrompt, RESIDENT_LETTER_TTL_MS, SWEEP_PROBES };
+export { coordinationUrl, RESIDENT_LETTER_TTL_MS, SWEEP_PROBES };
 type Row = { data: string; fingerprint: string | null };
 
 export class Coordination {
