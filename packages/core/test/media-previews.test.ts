@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { crc32, deflateSync } from 'node:zlib';
 import { INITIAL_PAGE_BYTES, type Message, type RpcResult } from '@boite/contracts';
+import { noisyPng as png } from './fixtures/noisy-png.ts';
 import { echoThread, startTestCore, waitFor } from './harness.ts';
 import type { TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
@@ -15,35 +16,6 @@ beforeEach(async () => {
 afterEach(async () => {
   await harness.stop();
 });
-
-/** A real PNG with noise in it, base64: past the inline limit, and Bun can decode and blur it. */
-function png(width: number, height: number, flat = false): string {
-  const chunk = (type: string, data: Buffer) => {
-    const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
-    const length = Buffer.alloc(4);
-    length.writeUInt32BE(data.length);
-    const sum = Buffer.alloc(4);
-    sum.writeUInt32BE(crc32(body));
-    return Buffer.concat([length, body, sum]);
-  };
-  const header = Buffer.alloc(13);
-  header.writeUInt32BE(width, 0);
-  header.writeUInt32BE(height, 4);
-  header[8] = 8;
-  header[9] = 2;
-  const rows = Buffer.alloc((width * 3 + 1) * height);
-  let seed = width * 31 + height;
-  for (let at = 0; at < rows.length; at += 1) {
-    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-    rows[at] = flat || at % (width * 3 + 1) === 0 ? 0 : seed >> 23;
-  }
-  return Buffer.concat([
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    chunk('IHDR', header),
-    chunk('IDAT', deflateSync(rows)),
-    chunk('IEND', Buffer.alloc(0)),
-  ]).toString('base64');
-}
 
 /** A screenshot-like PNG: a gradient with grain, which compresses badly as PNG and well as WebP. */
 function grainy(width: number, height: number): string {
@@ -130,7 +102,7 @@ describe('deferred pictures', () => {
     const client = await harness.connect();
     const { threadId } = await echoThread(harness, client);
     // A flat screenshot can be under the wire threshold despite a large decoded surface.
-    const flat = Buffer.from(await new Bun.Image(Buffer.from(png(2000, 1125, true), 'base64')).webp().bytes()).toString('base64');
+    const flat = Buffer.from(await new Bun.Image(Buffer.from(png(2000, 1125, { flat: true }), 'base64')).webp().bytes()).toString('base64');
     expect(flat.length).toBeLessThan(8192);
     const messageId = 'msg_large_compact';
     harness.core.journal.putMessage({

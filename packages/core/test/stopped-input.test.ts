@@ -1,15 +1,26 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { ATTACHMENTS_PER_TURN, type Attachment } from '@boite/contracts';
+import { ATTACHMENTS_PER_TURN, ATTACHMENTS_TOTAL_MAX_BYTES, decodedBytes, type Attachment } from '@boite/contracts';
 import { Core } from '../src/core.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnContext, TurnResult } from '../src/drivers/types.ts';
+import { noisyPng } from './fixtures/noisy-png.ts';
 import { echoThread, holdAccountTurns, startTestCore, waitFor, type TestCore } from './harness.ts';
 
 let h: TestCore;
 let restore: (() => void) | undefined;
 beforeEach(async () => { h = await startTestCore(); });
 afterEach(async () => { await h.stop(); restore?.(); restore = undefined; });
+
+const imageAttachment = (name: string, data = noisyPng(16, 16)) =>
+  ({ kind: 'image' as const, mimeType: 'image/png' as const, data, name });
+
+function expectOriginal(prompt: string, file: Attachment): void {
+  const reference = prompt.split('\n').find(line => line.startsWith('{') && line.includes(`"name":${JSON.stringify(file.name)}`));
+  expect(reference).toBeDefined();
+  const { path } = JSON.parse(reference!.replace(/ \(file only\)$/, '')) as { path: string };
+  expect(readFileSync(path).equals(Buffer.from(file.data, 'base64'))).toBe(true);
+}
 
 async function setup(nativeSession: string | null = null) {
   const client = await h.connect();
@@ -46,14 +57,15 @@ async function setup(nativeSession: string | null = null) {
 
 test('stopping the first prompt before a native session exists preserves its text and attachments for the next request', async () => {
   const { threadId, seen, start, stop } = await setup();
-  const image = { kind: 'image' as const, mimeType: 'image/png' as const, data: 'aGVsbG8=', name: 'reference.png' };
+  const image = imageAttachment('reference.png');
   const file = { kind: 'file' as const, mimeType: 'text/plain', data: Buffer.from('original brief').toString('base64'), name: 'brief.txt' };
   await start('Use blue widgets from the attached brief', [image, file]);
   await stop();
   await start('Make them larger');
   expect(seen[1]?.prompt).toContain('Use blue widgets from the attached brief');
   expect(seen[1]?.prompt).toContain('Make them larger');
-  expect(seen[1]?.prompt).toContain('brief.txt');
+  expectOriginal(seen[1]!.prompt, file);
+  expectOriginal(seen[1]!.prompt, image);
   expect(seen[1]?.attachments).toEqual([image]);
   const users = h.core.journal.listMessages(threadId).filter(message => message.role === 'user');
   expect(users).toHaveLength(2);
@@ -152,46 +164,52 @@ test('interrupted images carried into the next turn stay within its byte total, 
   const { seen, start, stop, complete } = await setup('native-session');
   await start('Establish the native session');
   await complete();
-  const heavy = (name: string) => ({ kind: 'image' as const, mimeType: 'image/png' as const, data: Buffer.alloc(3 * 1024 * 1024, name.length).toString('base64'), name });
-  const images = [heavy('a.png'), heavy('bb.png'), heavy('ccc.png')];
+  const heavy = (name: string, width: number) => imageAttachment(name, noisyPng(width, 960, { compressionLevel: 0 }));
+  const images = [heavy('a.png', 1100), heavy('bb.png', 1101), heavy('ccc.png', 1102)];
+  const current = heavy('current.png', 1103);
+  const total = (files: readonly Attachment[]) => files.reduce((sum, file) => sum + decodedBytes(file.data), 0);
+  expect(total([...images, current])).toBeGreaterThan(ATTACHMENTS_TOTAL_MAX_BYTES);
+  expect(total([...images.slice(1), current])).toBeLessThan(ATTACHMENTS_TOTAL_MAX_BYTES);
   await start('Three heavy screenshots', images);
   await stop();
-  const current = heavy('current.png');
   await start('And this one', [current]);
-  // 3 MB now leaves 7 MB: the two newest fit, the oldest goes as a file.
-  expect(seen[2]?.attachments).toEqual([images[1]!, images[2]!, current]);
-  expect(seen[2]!.prompt.split('\n').some(line => line.startsWith('{') && line.includes('a.png'))).toBe(true);
+  // Two originals fit the remaining carry budget and are sent at preview size.
+  const { attachments, prompt } = seen[2]!;
+  expect(attachments.map(image => image.name)).toEqual(['bb.png', 'ccc.png', 'current.png']);
+  expect(attachments.at(-1)).toEqual(current);
+  expect(total(attachments)).toBeLessThan(ATTACHMENTS_TOTAL_MAX_BYTES);
+  for (const preview of attachments.slice(0, -1)) {
+    expect(preview.mimeType).toBe('image/webp');
+    expect(await new Bun.Image(Buffer.from(preview.data, 'base64')).metadata()).toMatchObject({ format: 'webp', height: 720 });
+  }
+  for (const original of images) expectOriginal(prompt, original);
 });
 
 test('current files count against the interrupted images a turn carries', async () => {
   const { seen, start, stop, complete } = await setup('native-session');
   await start('Establish the native session');
   await complete();
-  const images = Array.from({ length: ATTACHMENTS_PER_TURN }, (_, index) => ({
-    kind: 'image' as const, mimeType: 'image/png' as const, data: Buffer.from(`image-${index}`).toString('base64'), name: `image-${index}.png`,
-  }));
+  const images = Array.from({ length: ATTACHMENTS_PER_TURN }, (_, index) =>
+    imageAttachment(`image-${index}.png`, noisyPng(16 + index, 16)));
   await start('Keep these references', images);
   await stop();
   const files = Array.from({ length: 10 }, (_, index) => ({ kind: 'file' as const, mimeType: 'text/plain', data: Buffer.from(`notes ${index}`).toString('base64'), name: `notes-${index}.txt` }));
   await start('Read these notes against them', files);
   // Ten files and forty images make the turn's fifty; the driver reads the files by path, the ten oldest images too.
   expect(seen[2]?.attachments).toEqual(images.slice(10));
-  expect(seen[2]!.prompt.split('\n').some(line => line.startsWith('{') && line.includes('image-9.png'))).toBe(true);
+  for (const image of images.slice(0, 10)) expectOriginal(seen[2]!.prompt, image);
 });
 
 test('interrupted images keep native attachment limits and leave overflow readable as files', async () => {
   const { seen, start, stop, complete } = await setup('native-session');
   await start('Establish the native session');
   await complete();
-  const images = Array.from({ length: ATTACHMENTS_PER_TURN }, (_, index) => ({
-    kind: 'image' as const, mimeType: 'image/png' as const, data: Buffer.from(`image-${index}`).toString('base64'), name: `image-${index}.png`,
-  }));
+  const images = Array.from({ length: ATTACHMENTS_PER_TURN }, (_, index) =>
+    imageAttachment(`image-${index}.png`, noisyPng(16 + index, 16)));
   await start('Keep these references', images);
   await stop();
   const current = { ...images[0]!, name: 'current.png' };
   await start('Compare with this one', [current]);
   expect(seen[2]?.attachments).toEqual([...images.slice(1), current]);
-  const reference = seen[2]!.prompt.split('\n').find(line => line.startsWith('{') && line.includes('image-0.png'));
-  expect(reference).toBeDefined();
-  expect(readFileSync(JSON.parse(reference!).path, 'utf8')).toBe('image-0');
+  expectOriginal(seen[2]!.prompt, images[0]!);
 });

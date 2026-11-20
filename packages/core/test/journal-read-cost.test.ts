@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import type { Message, ThreadSummary, Turn } from '@boite/contracts';
 import type { Core } from '../src/core.ts';
 import { Journal } from '../src/journal.ts';
+import { SCHEMA_VERSION } from '../src/journal/schema.ts';
 import { finalText } from '../src/agents/runtime.ts';
 
 let dir: string, journal: Journal;
@@ -112,7 +113,8 @@ test('schema 49 gains lazy statistics without rewriting historical messages', ()
   const before = journal.db.query('SELECT * FROM messages').all();
   journal.db.exec('DROP TABLE message_compactions; PRAGMA user_version = 49');
   journal.close(); journal = new Journal(join(dir, 'journal.db'));
-  expect(journal.schema).toEqual({ from: 49, to: 51 });
+  expect(journal.schema).toEqual({ from: 49, to: SCHEMA_VERSION });
+  expect(journal.db.query('PRAGMA user_version').get()).toEqual({ user_version: SCHEMA_VERSION });
   expect(journal.db.query('SELECT * FROM messages').all()).toEqual(before);
   expect(journal.db.query('SELECT COUNT(*) AS n FROM message_compactions').get()).toEqual({ n: 0 });
   expect(journal.threadStats('thread')).toEqual({ compactions: 1, prompts: 0 });

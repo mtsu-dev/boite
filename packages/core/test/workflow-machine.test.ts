@@ -300,7 +300,8 @@ test('a run stopped before the start answer came stops its subagent there once a
 });
 
 test('a restart of the other machine keeps its step at work, and the turn it resumes settles the step', async () => {
-  const { held, prompts } = scripted(prompt => (prompt.startsWith('Boite restarted') ? 'Read after the restart.' : prompt.includes('step slow') ? null : 'ok'));
+  const restartLead = 'Boite restarted during the previous turn.';
+  const { held, prompts } = scripted(prompt => (prompt.includes(restartLead) ? 'Read after the restart.' : prompt.includes('step slow') ? null : 'ok'));
   const pcDir = restartable();
   const { desk, pc, owner, threadId, deskId, machine, onPc, run } = await setup(true, { pc: pcDir });
   const started = await owner.call('workflows.start', { threadId, requestId: 'member-restart-1', plan: { name: 'Restart', steps: [{ id: 'slow', machine, project: 'notes', task: 'Read.' }] } });
@@ -336,7 +337,7 @@ test('a restart of the other machine keeps its step at work, and the turn it res
   cores.push(await startTestCore({ dataDir: pcDir, port }));
 
   await waitFor(() => run(started.id).status === 'done', 10_000);
-  expect(prompts.get(childId)!.at(-1)).toStartWith('Boite restarted');
+  expect(prompts.get(childId)!.at(-1)).toContain(`${restartLead} Verify interrupted commands and resume where you stopped.`);
   expect(run(started.id).nodes[0]!.instances[0]).toMatchObject({ status: 'done', result: 'Read after the restart.' });
 });
 
