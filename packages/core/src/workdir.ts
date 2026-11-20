@@ -208,23 +208,8 @@ async function writeAll(handle: FileHandle, data: Uint8Array): Promise<void> {
 }
 
 /** Open the real directory checked a moment ago. The handle stays on that inode if its path is renamed. */
-export async function openHeldDirectory(real: string, dev: bigint, ino: bigint, what: string, path: string): Promise<FileHandle> {
-  let handle: FileHandle;
-  try {
-    handle = await open(real, constants.O_RDONLY | (constants.O_DIRECTORY ?? 0) | NOFOLLOW);
-  } catch {
-    throw refused(`${what} changed while it was opened: ${path}`, { what, path });
-  }
-  try {
-    const stats = await handle.stat({ bigint: true });
-    if (!stats.isDirectory() || stats.dev !== dev || stats.ino !== ino) {
-      throw refused(`${what} changed while it was opened: ${path}`, { what, path });
-    }
-    return handle;
-  } catch (error) {
-    await handle.close();
-    throw error;
-  }
+export function openHeldDirectory(real: string, dev: bigint, ino: bigint, what: string, path: string): Promise<FileHandle> {
+  return openChecked(real, constants.O_RDONLY | (constants.O_DIRECTORY ?? 0), dev, ino, what, path, 'dir');
 }
 
 /**
@@ -243,7 +228,9 @@ export async function createExclusiveFile(dir: FileHandle, name: string, fallbac
 }
 
 /** Open the real file checked a moment ago, and refuse a symlink swapped in since. */
-export async function openChecked(real: string, flags: number, dev: bigint, ino: bigint, what: string, path: string): Promise<FileHandle> {
+export async function openChecked(
+  real: string, flags: number, dev: bigint, ino: bigint, what: string, path: string, expect: 'file' | 'dir' = 'file',
+): Promise<FileHandle> {
   let handle: FileHandle;
   try {
     handle = await open(real, flags | NOFOLLOW);
@@ -252,7 +239,8 @@ export async function openChecked(real: string, flags: number, dev: bigint, ino:
   }
   try {
     const stats = await handle.stat({ bigint: true });
-    if (!stats.isFile() || stats.dev !== dev || stats.ino !== ino) {
+    const matches = expect === 'dir' ? stats.isDirectory() : stats.isFile();
+    if (!matches || stats.dev !== dev || stats.ino !== ino) {
       throw refused(`${what} changed while it was opened: ${path}`, { what, path });
     }
     return handle;
