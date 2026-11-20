@@ -1,6 +1,7 @@
 import { threadActive, type Attachment, type RpcParams, type ThreadRecovery, type Turn } from '@boite/contracts';
 import type { FakeContext } from './context';
-import { checkRunnable } from './checks';
+import { checkModel, checkRunnable } from './checks';
+import { modelsOf } from './provider-catalog';
 import { refusal } from './shared';
 import { requireFakeCwd } from './worktrees';
 
@@ -77,7 +78,7 @@ export function resumeTurn(ctx: FakeContext, { threadId, turnId, model, expected
   const account = ctx.accounts.find(entry => entry.id === thread.accountId);
   if (!provider || !account) throw refusal('the saved provider and account must be available');
   checkRunnable(provider, account);
-  if (changed && model !== null && !provider.models.some(entry => entry.id === model)) throw refusal('the provider does not offer this model');
+  if (changed) checkModel(provider, account.id, modelsOf(ctx, provider.id, account.id), model, ctx.modelCatalogs.has(`${provider.id}::${account.id}`));
   const messages = thread.messages.filter(message => message.turnId === turnId && (message.role === 'user' || message.role === 'system'));
   const parts = messages.flatMap(message => message.parts);
   const text = parts.flatMap(part => part.type === 'text' ? [part.text] : []).join('\n\n');
