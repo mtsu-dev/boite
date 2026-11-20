@@ -75,6 +75,8 @@ const DOWNLOAD_BEGIN_MS = 2000;
 /** A capture still running after this long lets the next capture of its tab go: one stuck in the browser never freezes the tab's frames. */
 const SCREEN_TURN_MS = 5000;
 const HISTORY_MAX = 100;
+/** How long a command that names no tab waits for Chrome's list of its targets before it goes on with the windows it knows. */
+const TARGETS_LIST_MS = 2000;
 const TAB_ID = /^browser:[a-zA-Z0-9:-]{1,100}$/;
 /**
  * What each step of a queued command may take before the command fails and
@@ -139,6 +141,8 @@ export class AgentBrowser {
   stepMs: Record<BrowserCommandStep, number> = { ...BROWSER_STEP_MS };
   /** Tabs being attached: the limits count them, and a command that names no tab waits for a window a page opened. */
   readonly joining = new TabsJoining();
+  /** Windows pages opened that `#adopt` took, per engine, until Chrome reports them gone: the event and the list never take one twice. */
+  #adopted = new WeakMap<Engine, Set<string>>();
   #announce = new Map<ThreadId, ReturnType<typeof setTimeout>>();
   #closed = false;
   /** Browsers started to check a page (`probe`): no conversation lists them, so they are closed by name. */
@@ -294,8 +298,6 @@ export class AgentBrowser {
     watchPage(tab, on, (accept, promptText) => void engine.cdp.send('Page.handleJavaScriptDialog', { accept, ...(promptText === undefined ? {} : { promptText }) }, sessionId).catch(() => {}),
       url => { tab.url = url; this.#remote.stale(tab); this.#changed(threadId); this.#engines.saveCookiesSoon(engine); });
     watchNetwork(() => tab.network, on);
-    // Sent before the script or the click that opened the window returns; Chrome's targetCreated can come after the next command (`TabsJoining.announce`).
-    on('Page.windowOpen', () => this.joining.announce(threadId, targetId));
     on('Page.frameAttached', params => { if (tab.frames.size < 500) tab.frames.add(String(params.frameId)); });
     on('Page.frameNavigated', params => { const frame = params.frame as { id: string }; if (tab.frames.size < 500) tab.frames.add(String(frame.id)); });
     // A frame moving to another process (`swap`) is still the page's: only a removed one goes.
@@ -342,19 +344,21 @@ export class AgentBrowser {
     if (info.type !== 'page' || !info.openerId) return;
     const opener = [...engine.tabs].map(id => this.#tabs.get(id)).find(tab => tab?.targetId === info.openerId);
     if (!opener) return;
+    // Chrome's targetCreated and its list of targets (`#listed`) both bring a window here: the first one takes it.
+    const adopted = this.#adopted.get(engine) ?? new Set<string>();
+    this.#adopted.set(engine, adopted);
+    if (adopted.has(info.targetId) || this.#tabAt(engine, info.targetId)) return;
+    adopted.add(info.targetId);
     const { threadId } = opener;
     const shut = () => engine.cdp.send('Target.closeTarget', { targetId: info.targetId }).then(() => {}, () => {});
     // Checked and held in the event's own turn: a burst of windows sees each other, and a command never waits on a refusal.
-    if (this.#full(threadId)) { this.joining.adopted(info.openerId); return shut(); }
+    if (this.#full(threadId)) return shut();
     const release = this.joining.reserve(threadId);
-    const joined = this.joining.window(threadId, async () => {
+    return this.joining.window(threadId, async () => {
       // A window nobody can drive is closed, and so is one whose conversation was archived while it attached.
       const tab = await this.#attach(engine, threadId, info.targetId, info.url).catch(() => null).finally(release);
       if (!tab) await shut();
     });
-    // Held before the page's announcement of it ends, so a command waiting on that sees this attach.
-    this.joining.adopted(info.openerId);
-    return joined;
   }
 
   #info(engine: Engine, info: { targetId: string; url: string; title: string }): void {
@@ -370,6 +374,7 @@ export class AgentBrowser {
   }
 
   #gone(engine: Engine, targetId: string): void {
+    this.#adopted.get(engine)?.delete(targetId);
     const tab = this.#tabAt(engine, targetId);
     if (tab) this.#drop(tab.id);
   }
@@ -387,7 +392,6 @@ export class AgentBrowser {
     tab.engine.tabs.delete(id);
     this.#engines.idle(tab.engine);
     this.#remote.dropTab(id);
-    this.joining.forget(tab.targetId);
     const state = this.#threads.get(tab.threadId);
     if (state) {
       state.order = state.order.filter(other => other !== id);
@@ -526,7 +530,27 @@ export class AgentBrowser {
 
   /** The current tab is the last window a page opened: a command that names no tab waits for those still joining. */
   async #joined(threadId: ThreadId): Promise<void> {
+    await this.#listed(threadId);
     if (await this.joining.windows(threadId)) this.#require(threadId);
+  }
+
+  /**
+   * Windows the pages of `threadId` opened that Chrome already lists, taken
+   * as its targetCreated would: that event can reach the core after the click
+   * or the script that opened the window returned, and after the next command
+   * began. Only windows that exist are listed, so a window a sandbox refused
+   * holds nothing. The desktop app's webviews list no targets: their
+   * windows still come by the event alone.
+   */
+  async #listed(threadId: ThreadId): Promise<void> {
+    const engines = new Set((this.#threads.get(threadId)?.order ?? []).flatMap(id => { const engine = this.#tabs.get(id)?.engine; return engine && !engine.hosted ? [engine] : []; }));
+    await Promise.all([...engines].map(async engine => {
+      const listed = await engine.cdp.send<{ targetInfos?: Array<{ targetId: string; type: string; openerId?: string; url: string }> }>('Target.getTargets', {}, undefined, TARGETS_LIST_MS).catch(() => null);
+      for (const info of listed?.targetInfos ?? []) {
+        const opener = info.openerId ? this.#tabAt(engine, info.openerId) : undefined;
+        if (opener?.threadId === threadId) void this.#adopt(engine, info);
+      }
+    }));
   }
 
   async #run(threadId: ThreadId, tabId: string | undefined, action: BrowserAction, running: Running | null): Promise<BrowserReply> {
