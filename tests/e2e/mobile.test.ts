@@ -243,10 +243,56 @@ test('model sheets stay on screen and browser Back closes the sheet without losi
   await capture('mobile-installation.png');
 }, 15_000);
 
+test('phone list search and the composer survive a round trip through desktop width', async () => {
+  const origin = await page.evaluate<string>('location.origin');
+  const resize = (mobile: boolean) => page.send('Emulation.setDeviceMetricsOverride', {
+    width: mobile ? 390 : 1280, height: 844, deviceScaleFactor: 1, mobile,
+  });
+  const composer = "document.querySelector('[data-testid=composer-input]')";
+  const header = "document.querySelector('[data-testid=mobile-header]')";
+  const list = "document.querySelector('[data-testid=mobile-list]')";
+  const search = "document.querySelector('[data-testid=mobile-search]')";
+  const captures = process.env['BOITE_E2E_CAPTURES'];
+  await page.navigate('about:blank');
+  await resize(false);
+  await page.navigate(`${origin}/?fake=1&open=recent`);
+  await page.waitFor(composer);
+  expect(await page.evaluate(`!${header}`)).toBe(true);
+  await page.evaluate(`void (globalThis.__resizeComposer = ${composer})`);
+  await resize(true);
+  await page.waitFor(header);
+  await navigateMobile('mobile-conversations');
+  await page.waitFor(`${list}?.querySelectorAll('[data-thread-id]').length > 1`);
+  const unfiltered = await page.evaluate<number>(`${list}.querySelectorAll('[data-thread-id]').length`);
+  await page.click('[data-testid=mobile-search-open]');
+  await page.type('[data-testid=mobile-search]', 'Boite');
+  await page.waitFor(`${list}?.querySelectorAll('[data-thread-id]').length < ${unfiltered}`);
+  const filtered = await page.evaluate(`[...${list}.querySelectorAll('[data-thread-id]')].map(row => row.dataset.threadId)`);
+  expect(filtered).not.toHaveLength(0);
+  await page.waitFor(screensSettled);
+  await resize(false);
+  await page.waitFor(`innerWidth === 1280 && (!${header} || !${header}.checkVisibility())`);
+  expect(await page.evaluate(`${composer} === globalThis.__resizeComposer`)).toBe(true);
+  if (captures) {
+    await page.settleAnimations();
+    await page.screenshot(join(captures, 'resize-desktop-1280.png'));
+  }
+  await resize(true);
+  await page.waitFor(`innerWidth === 390 && ${list}?.checkVisibility()`);
+  if (captures) {
+    await page.waitFor(`!document.querySelector('.app > .body')?.checkVisibility({ contentVisibilityAuto: true, visibilityProperty: true }) && ${screensSettled}`);
+    await page.settleAnimations();
+    await page.screenshot(join(captures, 'resize-phone-390.png'));
+  }
+  expect(await page.evaluate(`${search}?.value ?? null`)).toBe('Boite');
+  expect(await page.evaluate(`[...${list}.querySelectorAll('[data-thread-id]')].map(row => row.dataset.threadId)`)).toEqual(filtered);
+  expect(await page.evaluate(`${composer} === globalThis.__resizeComposer`)).toBe(true);
+}, 15_000);
+
 test('returning to a long conversation preserves the reading position', async () => {
   const origin = await page.evaluate<string>('location.origin');
   await page.navigate(`${origin}/?fake=1&open=recent&long=1`);
-  await page.waitFor(`document.querySelector('[data-testid=thread-title]')?.textContent.includes('Four hundred')`);
+  await page.waitFor(`document.querySelector('[data-testid=thread-title]')?.textContent.includes('Four hundred') && document.querySelector('[data-testid=timeline] [data-mid]')`);
   await page.evaluate(`(() => { const t=document.querySelector('[data-testid=timeline]'); t.scrollTop = t.scrollHeight - t.clientHeight - 1200; t.dispatchEvent(new Event('scroll')); })()`);
   await capture('mobile-long-reading.png');
   const visibleAnchor = `(() => { const t=document.querySelector('[data-testid=timeline]'); const top=t.getBoundingClientRect().top; const m=[...t.querySelectorAll('[data-mid]')].find(m=>m.getBoundingClientRect().bottom>top); return {id:m.dataset.mid,offset:m.getBoundingClientRect().top-top}; })()`;
@@ -281,7 +327,7 @@ test('leaving a long conversation right after a scroll returns to that scroll', 
   })()` }) as { identifier: string };
   try { await page.navigate(`${origin}/?fake=1&open=recent&long=1`); }
   finally { await page.send('Page.removeScriptToEvaluateOnNewDocument', { identifier }); }
-  await page.waitFor(`document.querySelector('[data-testid=thread-title]')?.textContent.includes('Four hundred')`);
+  await page.waitFor(`document.querySelector('[data-testid=thread-title]')?.textContent.includes('Four hundred') && document.querySelector('[data-testid=timeline] [data-mid]')`);
   await page.settleAnimations();
   await page.evaluate('new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))');
   await page.evaluate(`(() => { globalThis.__holdMeasurements = true; const t=document.querySelector('[data-testid=timeline]'); t.scrollTop = t.scrollHeight - t.clientHeight - 1200; t.dispatchEvent(new Event('scroll')); })()`);

@@ -609,12 +609,15 @@ the turn's other events, which no channel holds back.
   subscription, unread acknowledgement and fresh snapshot run in the background.
   Unchanged messages and turns keep their identities through revalidation.
   If the snapshot only proves part of the held window, bounded pages
-  revalidate the rest while that window stays on screen. On browsers with
-  idle callbacks, a return starts that extra work after the cached paint.
+  start revalidating the rest at once. The snapshot's replacements appear
+  while those reads are in flight. The completed window can wait for idle
+  to reconcile, up to 100 ms or until visibility changes. Navigation
+  cancels that wait.
   The cache retains up to 16 visits, at most 4 MiB of text per thread and
   16 MiB in total, with a 2,000-message bound per thread. The open thread
-  maintains the weight of its held messages in blocks of 64. A leave reuses
-  those weights to reserve space or reject an oversized page. The cache
+  maintains the weight of its held messages in blocks of 64. Those blocks
+  stay with the held window, so a return can reuse them. A leave reuses the
+  weights to reserve space or reject an oversized page. The cache
   projects eligible pages at idle or on a quick return. An unchanged page
   keeps its reactive row projection, message placement and slot totals within
   the visit bounds. Off-screen Markdown preparation starts at idle.

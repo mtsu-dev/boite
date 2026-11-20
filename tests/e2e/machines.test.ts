@@ -1,6 +1,7 @@
 import { mobileAction } from './lib/mobile.ts';
 import { afterAll, beforeAll, expect, test } from 'bun:test';
-import { basename, join } from 'node:path';
+import { realpathSync } from 'node:fs';
+import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
 import { showThreadView } from './lib/views.ts';
 import { startUi } from './lib/ui.ts';
@@ -249,19 +250,44 @@ test('two real cores pair, route turns independently, reconnect and survive a re
     await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, ...terminalPoint });
     await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', clickCount: 1, ...terminalPoint });
     await page.waitFor(`document.activeElement?.classList.contains('xterm-helper-textarea')`);
-    // Reloading summaries for the same conversation must preserve terminal focus.
-    await page.evaluate('globalThis.__boiteTest.workspace.active.reload()');
-    expect(await page.evaluate(`document.activeElement?.classList.contains('xterm-helper-textarea')`)).toBe(true);
     // Ordinary keyboard events exercise xterm's key handler, unlike insertText.
-    for (const command of [process.platform === 'win32' ? 'cmd /c cd' : 'pwd', 'echo remote-terminal-e2e']) {
+    const typeCommand = async (command: string) => {
       for (const char of command) {
         await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: char, text: char });
         await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: char });
       }
-      await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
-      await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
-    }
-    await page.waitFor(`${terminalText}?.includes(${JSON.stringify(basename(second.dataDir))}) && ${terminalText}?.split('remote-terminal-e2e').length >= 3`);
+      await press('Enter', 13);
+    };
+    const waitForLine = (line: string) => page.waitFor(`(() => {
+      const expected = ${JSON.stringify(line)};
+      const lines = Array.from(document.querySelectorAll('[data-testid=terminal-drawer] .xterm-rows > div'),
+        row => row.textContent.replaceAll('\u00a0', ' '));
+      return lines.some((start, index) => {
+        if (!start.trim() || !expected.startsWith(start.trimEnd())) return false;
+        let text = start;
+        // A narrow pane can wrap the path across several rendered rows.
+        while (text.length < expected.length && expected.startsWith(text) && ++index < lines.length) text += lines[index];
+        return text.trimEnd() === expected;
+      });
+    })()`);
+    const cwd = realpathSync(second.dataDir);
+    const checkCwd = async (left: string, right: string) => {
+      const command = `bun -e "console.log('${left}' + require('node:fs').realpathSync('.') + '${right}')"`;
+      await typeCommand(command);
+      await waitForLine(left + cwd + right);
+      if (process.platform !== 'win32') {
+        const rendered = await page.evaluate<string>(terminalText);
+        // Ignore the column padding readline adds where a command wraps.
+        expect(rendered.replace(/\s/g, '')).toContain(command.replace(/\s/g, ''));
+      }
+    };
+    await checkCwd('[[', ']]');
+    // Reloading summaries for the same conversation must preserve terminal focus.
+    await page.evaluate('globalThis.__boiteTest.workspace.active.reload()');
+    expect(await page.evaluate(`document.activeElement?.classList.contains('xterm-helper-textarea')`)).toBe(true);
+    await checkCwd('{{', '}}');
+    await typeCommand('echo remote-terminal-e2e');
+    await waitForLine('remote-terminal-e2e');
     await capture('terminal-remote-real-desktop.png');
     await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
     await capture('terminal-remote-real-phone.png');

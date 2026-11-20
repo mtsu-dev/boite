@@ -184,7 +184,7 @@
   /** The list a conversation was opened from: Back returns to it. The landing conversation has none, so Back leaves. */
   let from = $state<'threads' | 'activity' | null>(null);
   $effect(() => {
-    if (store.page !== 'chat' || screen !== 'chat' || !from) return;
+    if (!narrow.current || store.page !== 'chat' || screen !== 'chat' || !from) return;
     const list = from;
     return mobileOverlay(() => { from = null; screen = list; });
   });
@@ -215,10 +215,13 @@
     screen = next;
   }
   // Allow, Answer or Review pressed in Activity: once the thread no longer needs the user, Activity comes back where it stood.
-  followActivityReturn({
-    activity: () => screen === 'activity',
-    chat: () => screen === 'chat',
-    reopen: () => { show('activity'); void tick().then(() => { if (scrollRoot) void restoreActivity(scrollRoot); }); }
+  $effect(() => {
+    if (!narrow.current) return;
+    followActivityReturn({
+      activity: () => screen === 'activity',
+      chat: () => screen === 'chat',
+      reopen: () => { show('activity'); void tick().then(() => { if (scrollRoot) void restoreActivity(scrollRoot); }); }
+    });
   });
   /** The threads of a project that need the user, its heading's count, and how many of them failed, as on the desktop card. */
   function needsCount(entry: ProjectEntry): { count: number; failed: number } {
@@ -289,6 +292,8 @@
   </button>
 {/snippet}
 
+<!-- Resizing releases the phone's controls, but keeps this navigation's filters and list state. -->
+{#if narrow.current}
 <header class="mobile-header" class:chatting={chatting && !firstRun} class:settings={store.page !== 'chat'} data-testid="mobile-header" data-slide={slide.direction} bind:this={header}>
   {#if chatting && !firstRun}
     <!-- The only way out of a conversation on a phone. A thread that waits elsewhere is in its name and the tab bar's count, not a dot on the arrow. -->
@@ -347,7 +352,7 @@
   {/if}
   <!-- The filters on, in words on a line of their own: the row above keeps the views, the machine and three squares. -->
   {#if threadViews && !chatting}<FilterChips entries={groups} owner={store} prefix="mobile-" compact {atWork} />{/if}
-  {#if narrow.current && tabbed && !recover && listScreen === 'threads'}<ThreadListNotice {machines} />{/if}
+  {#if tabbed && !recover && listScreen === 'threads'}<ThreadListNotice {machines} />{/if}
 </header>
 
 {#if tabbed || leaving}
@@ -358,9 +363,9 @@
   {#if SidebarContacts && contactsShown(store)}<div class="contacts-slot"><SidebarContacts {store} {machines} /></div>{/if}
 {/snippet}
 
-{#if narrow.current && store.page === 'chat' && (screen !== 'chat' || recover || leaving)}
+{#if store.page === 'chat' && (screen !== 'chat' || recover || leaving)}
   <section class="mobile-list scroll-edges" class:recent={inRecent} class:tabbed={tabbed || leaving} inert={leaving} bind:this={scrollRoot} style:--cut={cut ? `${cut}px` : undefined} onscroll={() => { if (scrollRoot) scrollPositions.set(listKey, scrollRoot.scrollTop); }} data-testid="mobile-list" aria-label={listScreen === 'activity' ? strings.mobile.activity : strings.sidebar.threads}>
-    {#if recover && narrow.current}
+    {#if recover}
       <MobileConnect {store} onpaired={() => show('threads')} />
     {:else}
     <!-- Recent's filters are the display menu's, counted on its button: the list starts with its rows. -->
@@ -508,6 +513,7 @@
     {/if}
     {/if}
   </section>
+{/if}
 {/if}
 
 <style>
