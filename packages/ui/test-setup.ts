@@ -70,13 +70,21 @@ await loadLocale('en');
 const lib = join(dirname(fileURLToPath(import.meta.url)), 'src', 'lib');
 const registries = ['deferred-parts', 'nested-parts', 'idle-parts', 'mobile-navigation'].map((name) => join(lib, `${name}.ts`).replaceAll('\\', '/'));
 type ModuleNode = { id?: string; evaluated?: boolean; promise?: unknown };
+type ModuleMap = Map<string, Set<ModuleNode>>;
+// The module itself, not a `?url` or `?raw` import of its file.
+const ran = (modules: ModuleMap, file: string) => [...(modules.get(file) ?? [])].some((node) => node.id === file && (node.evaluated || node.promise));
+const self = fileURLToPath(import.meta.url).replaceAll('\\', '/');
 function reachedRegistry(): boolean {
-  const modules = (globalThis as { __vitest_worker__?: { evaluatedModules?: { fileToModulesMap?: Map<string, Set<ModuleNode>> } } })
-    .__vitest_worker__?.evaluatedModules?.fileToModulesMap;
-  // A Vitest that no longer exposes the map preloads for every file, as before.
-  if (!modules) return true;
-  // The module itself, not a `?url` or `?raw` import of its file.
-  return registries.some((file) => [...(modules.get(file) ?? [])].some((node) => node.id === file && (node.evaluated || node.promise)));
+  try {
+    const modules = (globalThis as { __vitest_worker__?: { evaluatedModules?: { fileToModulesMap?: ModuleMap } } })
+      .__vitest_worker__?.evaluatedModules?.fileToModulesMap;
+    // A Vitest whose map is gone or changed shape, so that even this file is
+    // not found in it, preloads for every file, as before.
+    if (!modules || !ran(modules, self)) return true;
+    return registries.some((file) => ran(modules, file));
+  } catch {
+    return true;
+  }
 }
 
 // The parts the app fetches once it is idle (`lib/deferred-parts.ts`) are here
@@ -87,7 +95,6 @@ function reachedRegistry(): boolean {
 // have cached unmocked.
 let preloaded = false;
 async function preloadParts(): Promise<void> {
-  preloaded = true;
   const { prefetchParts, parts } = await import('./src/lib/deferred-parts');
   const { mobileNavigation } = await import('./src/lib/mobile-navigation');
   prefetchParts();
@@ -97,6 +104,8 @@ async function preloadParts(): Promise<void> {
   // And the decision card and the permission card, which the composer fetches at idle (`lib/idle-parts.ts`).
   const idle = await import('./src/lib/idle-parts');
   await Promise.all([idle.threadDecision.load(), idle.permissionCard.load()]);
+  // Only once it all landed: a failed load is tried again before the next test.
+  preloaded = true;
   // A cold worker transforms these modules first: several seconds on a busy machine.
 }
 beforeAll(async () => {

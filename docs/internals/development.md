@@ -752,7 +752,7 @@ matches `:popover-open`, so its own sheet hides every `[popover]`. `test-setup.t
 shows them again; the app mounts a popover only while it is open.
 
 `test-setup.ts` also loads the parts the app fetches at idle (`lib/deferred-parts.ts`,
-the phone's navigation and the composer's idle cards) before a file's first
+`lib/nested-parts.ts`, the phone's navigation and the composer's idle cards) before a file's first
 test, as a user's first open finds them, but only for a file whose imports ran
 one of those registries. The other files, about three in four, draw none of
 them and skip it, which was about half the CPU time of a small file. A test
