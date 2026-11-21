@@ -71,6 +71,35 @@ describe('procs', () => {
       await registry.close();
     }
   });
+  test('disown keeps the pids it could not release and can be retried', async () => {
+    const base = createPosixPlatform('linux', null);
+    let refused: number | undefined;
+    const removed: number[] = [];
+    const platform: ProcessPlatform = {
+      ...base,
+      untieGroup: (pid, exited) => (!exited && pid === refused) ? false : base.untieGroup!(pid, exited),
+      pidRemoved: (_threadId, pid) => { removed.push(pid); },
+    };
+    const registry = new ProcRegistry(harness.core.journal, new Bus(), platform);
+    const thread = 'partial-disown';
+    const children = [0, 1].map(() => registry.spawn(thread, process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { agentRoot: false }));
+    const kept = children[0]!.record.pid;
+    const released = children[1]!.record.pid;
+    try {
+      refused = kept;
+      expect(registry.disown(thread)).toEqual([kept]);
+      expect(removed).toEqual([released]);
+      expect(registry.liveOf(thread).map(record => record.pid)).toEqual([kept]);
+      refused = undefined;
+      expect(registry.disown(thread)).toEqual([]);
+      expect(removed).toEqual([released, kept]);
+      expect(registry.liveOf(thread)).toEqual([]);
+    } finally {
+      for (const child of children) child.proc.kill('SIGKILL');
+      await Promise.all(children.map(child => child.exited));
+      await registry.close();
+    }
+  });
   test('a managed stop hands its root to the tree backend only while that root has not exited', async () => {
     // On Windows the backend is taskkill /T /PID: a root that exited may have given its pid to a stranger.
     const handed: number[] = [];

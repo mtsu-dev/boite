@@ -695,8 +695,9 @@ Because the core keeps its own pidfd of every group, a guard never costs a
 group its identity. A guard found gone (the next launch fails with EPIPE
 before the agent runs, or its exit is seen) or stopped while a launch waits
 on it is replaced by a new one that receives every group still held, the new
-guard first, then SIGKILL to the old one. A wait on the guard or the launcher
-looks every 50 ms whether that process is stopped (`T` or `t` in
+guard first, then SIGKILL to the old one. While waiting for a socket to
+accept a request or produce a reply, the core looks every 50 ms whether the
+guard or launcher is stopped (`T` or `t` in
 `/proc/<pid>/stat`); a running one is waited for, so a slow guard is never a
 failure. A group the new guard refuses stays held by the core's pidfd: the
 core logs `groups.unguarded` and offers it again every second, without
@@ -705,8 +706,8 @@ all, every group is held that way. A drop the guard does not take at once (a
 full or broken socket) replaces it with a guard that never holds the group;
 when that replacement cannot start either, the old guard and the group stay
 as they were, the release returns false to its caller (`untieGroup`,
-`disown` for the keeper) with `groups.unguarded`, and the group still ends
-with the core. A group launched under a number an earlier group still held
+`disown` for the keeper) with `groups.unguarded`. The registry keeps the
+failed entries so shutdown can stop them. A group launched under a number an earlier group still held
 is held under its own tag before that stale group is dropped, so a guard the
 drop replaces takes the new group along. What is left untied: groups that no
 guard holds at the moment the core dies, which is every group of a core
@@ -715,8 +716,9 @@ while a new guard refuses them.
 
 At its first launch the core checks the whole path on the launcher itself:
 pidfd_open, the guard's admission, signal 0 through the pidfd from the core,
-then SIGTERM and SIGKILL from the guard to that probe group, which ignores
-SIGTERM. A syscall filter that refuses any of them, signal 0 alone allowed
+then SIGTERM and SIGKILL from the guard to that probe group, which confirms
+it ignores SIGTERM before the check. Closing the private probe socket also
+ends the probe if the signals are refused. A syscall filter that refuses any of them, signal 0 alone allowed
 included, sends groups to the watcher with `groups.late`. The launcher sits
 next to the compiled core (`bin/compile.ts` builds it, static, and fails
 without it) or in `native/build` from source (`bin/build-launcher.ts`, run by

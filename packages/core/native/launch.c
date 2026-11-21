@@ -26,7 +26,8 @@
  * The pidfd names the group, through PIDFD_SIGNAL_PROCESS_GROUP, whatever pid
  * numbers the kernel hands out later.
  *
- * `probe`: ignores SIGTERM and waits to be killed, the group of that check.
+ * `probe`: ignores SIGTERM, announces readiness on stdin and waits for a
+ * signal or for the core to close that socket.
  */
 #define _GNU_SOURCE
 #include <errno.h>
@@ -145,10 +146,20 @@ static int guard(void) {
   return 0;
 }
 
+static int probe(void) {
+  if (signal(SIGTERM, SIG_IGN) == SIG_ERR) return 1;
+  const int ready = 1;
+  ssize_t sent;
+  do { sent = send(0, &ready, sizeof ready, MSG_NOSIGNAL); } while (sent < 0 && errno == EINTR);
+  if (sent != sizeof ready) return 1;
+  char unused;
+  while (read(0, &unused, sizeof unused) < 0 && errno == EINTR) {}
+  return 0;
+}
+
 int main(int argc, char **argv) {
   if (argc == 2 && strcmp(argv[1], "guard") == 0) return guard();
-  /* `probe`: the target of the capability check at the core's start. */
-  if (argc == 2 && strcmp(argv[1], "probe") == 0) { signal(SIGTERM, SIG_IGN); for (;;) pause(); }
+  if (argc == 2 && strcmp(argv[1], "probe") == 0) return probe();
   if (argc < 7 || strcmp(argv[1], "launch") != 0) return 2;
   int status = atoi(argv[2]), sock = atoi(argv[3]);
   unsigned tag = (unsigned)strtoul(argv[4], NULL, 10);

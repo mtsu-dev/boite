@@ -73,11 +73,13 @@ const MSG_DONTWAIT = 0x40;
 const MSG_NOSIGNAL = 0x4000;
 const MSG_CMSG_CLOEXEC = 0x40000000;
 const EINTR = 4;
+const EAGAIN = 11;
 const ESRCH = 3;
 const EPIPE = 32;
 const ECONNRESET = 104;
 const SIGTERM = 15;
 const POLLIN = 1;
+const POLLOUT = 4;
 /** How often a wait on the guard or the launcher looks whether that process was stopped: not a deadline, a running one is waited for. */
 const STOP_CHECK_MS = 50;
 /** What Bun searches for a bare name when the child's PATH is unset or empty. */
@@ -212,14 +214,27 @@ export class NativeTie {
    * filter would leave every group untied without a word.
    */
   #probe(): string | null {
+    const life = this.#pair();
+    if (typeof life === 'string') {
+      this.#stopGuard();
+      return `the launcher probe's socket: ${life}`;
+    }
     let proc: Bun.Subprocess;
-    try { proc = this.#launch({ cmd: [this.#launcher!, 'probe'], env: {}, stdio: ['ignore', 'ignore', 'ignore'] }, this.#guard!); } catch (error) {
+    try { proc = this.#launch({ cmd: [this.#launcher!, 'probe'], env: {}, stdio: [life[1], 'ignore', 'ignore'] }, this.#guard!); } catch (error) {
+      this.#libc!.close(life[0]);
       this.#stopGuard();
       return `the launcher could not tie a group: ${error instanceof Error ? error.message : String(error)}`;
+    } finally {
+      this.#libc!.close(life[1]);
     }
     const tag = this.#byPid.get(proc.pid)!;
     const held = this.#held.get(tag)!;
     const refused = (() => {
+      const word = new Int32Array(1);
+      const ready = this.#receive(life[0], word, [proc.pid]);
+      if ('errno' in ready) return `the launcher probe did not become ready: errno ${ready.errno}`;
+      if (ready.fd !== null) this.#libc!.close(ready.fd);
+      if (ready.length !== word.byteLength || ready.truncated || ready.fd !== null || word[0] !== 1) return 'the launcher probe did not become ready';
       const own = this.#signal(held.fd, 0);
       if (own !== true) return `a group signal through a pidfd fails: errno ${own}`;
       for (const signal of [SIGTERM, SIGKILL]) {
@@ -228,9 +243,8 @@ export class NativeTie {
       }
       return null;
     })();
-    this.#signal(held.fd, SIGKILL);
-    // By number too, through kill(2): a filter that refused the pidfd's signals must not leave the probe waiting.
-    try { process.kill(proc.pid, 'SIGKILL'); } catch { /* gone */ }
+    // Closing the life socket also ends a probe when a filter prevents either process from signalling it.
+    this.#libc!.close(life[0]);
     this.#drop(tag);
     if (refused !== null) this.#stopGuard();
     return refused;
@@ -296,17 +310,16 @@ export class NativeTie {
   }
 
   /**
-   * Waits until `sock` has something to read, its end or an error included;
-   * false once one of `watched` is stopped first, as a SIGSTOP or a tracer
-   * leaves it, so a stopped guard or launcher never holds the core's loop.
+   * Waits for a socket event, including its end or an error. Returns false
+   * if a watched process is stopped before it can help the wait finish.
    */
-  #readable(sock: number, watched: number[]): boolean {
-    const fds = new Int32Array([sock, POLLIN]); // struct pollfd: fd, then events and revents as two shorts
+  #waitForSocket(sock: number, events: number, watched: number[]): boolean {
+    const fds = new Int32Array([sock, events]); // struct pollfd: fd, then events and revents as two shorts
     for (;;) {
-      fds[1] = POLLIN;
+      fds[1] = events;
       const ready = this.#libc!.poll(fds, 1, STOP_CHECK_MS);
       if (ready > 0) return true;
-      if (ready < 0 && this.#errno() !== EINTR) return true; // recvmsg says what is wrong
+      if (ready < 0 && this.#errno() !== EINTR) return true; // The socket operation reports the error.
       if (watched.some(stopped)) return false;
     }
   }
@@ -322,11 +335,11 @@ export class NativeTie {
     message[4] = BigInt(ptr(control));
     message[5] = 24n;
     for (;;) {
-      if (!this.#readable(sock, watched)) return { errno: STOPPED };
+      if (!this.#waitForSocket(sock, POLLIN, watched)) return { errno: STOPPED };
       const length = Number(this.#libc!.recvmsg(sock, message, MSG_CMSG_CLOEXEC | MSG_DONTWAIT));
       if (length < 0) {
         const errno = this.#errno();
-        if (errno === EINTR || errno === 11) continue; // EAGAIN: another reader took it
+        if (errno === EINTR || errno === EAGAIN) continue;
         return { errno };
       }
       const [level, type, fd] = new Int32Array(control.buffer, 8, 3);
@@ -337,11 +350,16 @@ export class NativeTie {
 
   /** Sends `data` (and `fd`) to the guard and reads its answer for `tag`: 0, an errno, or STOPPED when the guard stopped before it answered. */
   #request(guard: Guard, data: Uint32Array, fd: number | null, tag: number): number {
-    const sent = this.#send(guard.sock, data, fd, 0);
+    const watched = [guard.proc.pid];
+    let sent = this.#send(guard.sock, data, fd, MSG_DONTWAIT);
+    while (sent === EAGAIN) {
+      if (stopped(guard.proc.pid) || !this.#waitForSocket(guard.sock, POLLOUT, watched)) return STOPPED;
+      sent = this.#send(guard.sock, data, fd, MSG_DONTWAIT);
+    }
     if (sent !== 0) return sent;
     const answer = new Int32Array(2);
     for (;;) {
-      const got = this.#receive(guard.sock, answer, [guard.proc.pid]);
+      const got = this.#receive(guard.sock, answer, watched);
       if ('errno' in got) return got.errno;
       if (got.fd !== null) this.#libc!.close(got.fd);
       if (got.length === 0) return EPIPE;
@@ -361,6 +379,7 @@ export class NativeTie {
     const old = this.#guard;
     let next: Guard | string = this.#startGuard();
     const refused: number[] = [];
+    const readmitted = new Set<number>();
     if (typeof next !== 'string') {
       for (const [tag, held] of this.#held) {
         if (tag === drop) continue;
@@ -373,7 +392,7 @@ export class NativeTie {
           break;
         }
         if (answer !== 0) refused.push(answer);
-        else held.guard = next;
+        else readmitted.add(tag);
       }
     }
     if (typeof next === 'string') {
@@ -389,6 +408,7 @@ export class NativeTie {
       return false;
     }
     this.#guard = next;
+    for (const [tag, held] of this.#held) held.guard = readmitted.has(tag) ? next : null;
     if (old !== null) {
       // SIGKILL: an old guard that saw its input close would end every group it holds.
       old.proc.kill('SIGKILL');

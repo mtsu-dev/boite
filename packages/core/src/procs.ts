@@ -368,9 +368,21 @@ export class ProcRegistry {
     const byPid = this.#live.get(threadId);
     if (byPid === undefined) return [];
     const tied: number[] = [];
-    for (const pid of byPid.keys()) { this.platform.pidRemoved(threadId, pid, !this.#shown.has(threadId)); this.unassigned.delete(pid); if (this.platform.untieGroup?.(pid, false) === false) tied.push(pid); }
-    this.#live.delete(threadId);
-    this.known.delete(threadId);
+    const known = this.known.get(threadId);
+    for (const pid of byPid.keys()) {
+      if (this.platform.untieGroup?.(pid, false) === false) {
+        tied.push(pid);
+        continue;
+      }
+      this.platform.pidRemoved(threadId, pid, !this.#shown.has(threadId));
+      this.unassigned.delete(pid);
+      byPid.delete(pid);
+      known?.delete(pid);
+    }
+    if (byPid.size === 0) {
+      this.#live.delete(threadId);
+      this.known.delete(threadId);
+    }
     return tied;
   }
 

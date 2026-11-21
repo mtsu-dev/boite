@@ -66,6 +66,22 @@ const deny = (rule: string) => {
   return [path, rule];
 };
 
+
+/** In a core fixture, capture its new guard socket and fill the queue of a guard we stopped. */
+const fillGuardQueue = `
+  const { dlopen, FFIType: T, ptr } = await import('bun:ffi');
+  const { readdirSync, readlinkSync } = await import('node:fs');
+  const sockets = () => readdirSync('/proc/self/fd').filter(fd => {
+    try { return readlinkSync('/proc/self/fd/' + fd).startsWith('socket:'); } catch { return false; }
+  });
+  const before = new Set(sockets());
+  const libc = dlopen('libc.so.6', { send: { args: [T.i32, T.ptr, T.u64, T.i32], returns: T.i64 } }).symbols;
+  const fill = () => {
+    const [sock] = sockets().filter(fd => !before.has(fd)).map(Number);
+    if (sock === undefined) throw new Error('guard socket was not captured');
+    const junk = new Uint32Array([0xffffffff]);
+    while (Number(libc.send(sock, ptr(junk), 4, 0x40 | 0x4000)) >= 0) {}
+  };`;
 describe('the launcher gates', () => {
   test('the core looks next to itself, then in the source tree build, and the kernel gate reads releases', () => {
     expect(launcherCandidates('/opt/boite/boite-core')[0]).toBe('/opt/boite/boite-launch');
@@ -77,7 +93,7 @@ describe('the launcher gates', () => {
   });
 
   test.skipIf(!linux)('a missing launcher or an old kernel is refused with its reason', () => {
-    expect(new NativeTie([join(dir, 'none')]).ready()).toContain('no boite-launch');
+    expect(new NativeTie([join(dir, 'none')], '6.9.0').ready()).toContain('no boite-launch');
     expect(new NativeTie(launcherCandidates(), '6.1.0').ready()).toContain('6.9 or later');
   });
 
@@ -413,6 +429,120 @@ describe.skipIf(capability !== null)('the Linux launcher', () => {
       await settle(() => !isAlive(out.kept as number) && !isAlive(out.released as number));
       expect([isAlive(out.kept as number), isAlive(out.released as number)]).toEqual([false, false]);
     } finally { quietKill(out.kept); quietKill(out.released); quietKill(out.guard); }
+  }, 20000);
+
+  test('a failed handoff after a partial readmission leaves subsequent drops with the old guard', async () => {
+    const switchGuard = join(dir, 'partial-next');
+    const nextPid = join(dir, 'partial-next-pid');
+    // Reply to the first readmission, then stop before the second. The old guard still owns both.
+    const stopAfterAck = `import { dlopen, FFIType as T, ptr } from 'bun:ffi';
+      import { writeFileSync } from 'node:fs';
+      writeFileSync(${JSON.stringify(nextPid)}, String(process.pid));
+      const libc = dlopen('libc.so.6', {
+        recv: { args: [T.i32, T.ptr, T.u64, T.i32], returns: T.i64 },
+        send: { args: [T.i32, T.ptr, T.u64, T.i32], returns: T.i64 },
+      }).symbols;
+      const answer = new Uint32Array(2);
+      if (Number(libc.recv(0, ptr(answer), 4, 0)) !== 4) process.exit(2);
+      if (Number(libc.send(0, ptr(answer), 8, 0)) !== 8) process.exit(3);
+      process.kill(process.pid, 'SIGSTOP');`;
+    const quote = (text: string) => "'" + text.replaceAll("'", "'\\''") + "'";
+    const wrapper = wrapped('partial', `if [ "$1" = guard ] && [ -e ${quote(switchGuard)} ]; then exec ${quote(process.execPath)} -e ${quote(stopAfterAck)}; fi`);
+    const pids = join(dir, 'partial-pids');
+    const out = await crash(`
+      ${fillGuardQueue}
+      const { writeFileSync } = await import('node:fs');
+      const tie = new NativeTie([${JSON.stringify(wrapper)}]);
+      if (tie.ready() !== null) throw new Error(tie.ready());
+      const spawn = (cmd, ...args) => tie.spawn({ cmd: [cmd, ...args], env: {}, stdio: ['ignore', 'ignore', 'ignore'] });
+      const [first, second, rejected] = [93, 94, 95].map(seconds => spawn('/bin/sleep', String(seconds)));
+      const old = tie.guardPid;
+      writeFileSync(${JSON.stringify(pids)}, JSON.stringify([first.pid, second.pid, rejected.pid, old]));
+      writeFileSync(${JSON.stringify(switchGuard)}, '');
+      process.kill(old, 'SIGSTOP');
+      fill();
+      out.failedDrop = tie.release(rejected.pid);
+      out.keptOld = tie.guardPid === old;
+      process.kill(old, 'SIGCONT');
+      await spawn('/bin/true').exited;
+      out.releasedFirst = tie.release(first.pid);`, [], 6000);
+    const [first, second, rejected, old] = JSON.parse(readFileSync(pids, 'utf8')) as number[];
+    try {
+      expect(out.hung).toBeUndefined();
+      expect(out.failedDrop).toBe(false);
+      expect(out.keptOld).toBe(true);
+      expect(out.releasedFirst).toBe(true);
+      await settle(() => !isAlive(second!) && !isAlive(rejected!));
+      expect([isAlive(first!), isAlive(second!), isAlive(rejected!)]).toEqual([true, false, false]);
+    } finally {
+      for (const pid of [first, second, rejected, old]) quietKill(pid);
+      if (existsSync(nextPid)) quietKill(Number(readFileSync(nextPid, 'utf8')));
+    }
+  }, 20000);
+
+  test.each([false, true])('a capability probe exits without a numeric kill (signals refused=%s)', async (blocked) => {
+    const probePid = join(dir, 'probe-pid');
+    const wrapper = wrapped('probe-lifetime', `if [ "$1" = probe ]; then printf '%s' "$$" > ${JSON.stringify(probePid)}; fi`);
+    rmSync(probePid, { force: true });
+    const out = await crash(`
+      const { existsSync, readFileSync } = await import('node:fs');
+      const tie = new NativeTie([${JSON.stringify(wrapper)}]);
+      const kill = process.kill;
+      let numericKills = 0;
+      process.kill = () => { numericKills++; return true; };
+      try { out.reason = tie.ready(); } finally { process.kill = kill; }
+      out.numericKills = numericKills;
+      const file = ${JSON.stringify(probePid)};
+      for (let i = 0; i < 50 && !existsSync(file); i++) await Bun.sleep(20);
+      if (existsSync(file)) {
+        out.probe = Number(readFileSync(file, 'utf8'));
+        for (let i = 0; i < 50 && alive(out.probe); i++) await Bun.sleep(20);
+        out.probeAlive = alive(out.probe);
+      }`, blocked ? deny('424:nonzero') : [], 6000);
+    try {
+      expect(out.hung).toBeUndefined();
+      if (blocked) {
+        expect(String(out.reason)).toContain('signal 15');
+        expect(out.probeAlive).toBe(false);
+      } else expect(out.reason).toBeNull();
+      expect(out.numericKills).toBe(0);
+    } finally { quietKill(out.probe); }
+  }, 20000);
+
+  test('a stopped guard with a full queue does not block readmission', async () => {
+    const shrink = join(dir, 'recover-shrink');
+    const pids = join(dir, 'recover-pids');
+    const wrapper = wrapped('recover', `if [ "$1" = guard ] && [ -e ${JSON.stringify(shrink)} ]; then ulimit -n 4; fi`);
+    const out = await crash(`
+      ${fillGuardQueue}
+      const { writeFileSync, rmSync } = await import('node:fs');
+      const tie = new NativeTie([${JSON.stringify(wrapper)}], undefined, 100);
+      if (tie.ready() !== null) throw new Error(tie.ready());
+      const agents = [96, 97].map(seconds => tie.spawn({ cmd: ['/bin/sleep', String(seconds)], env: {}, stdio: ['ignore', 'ignore', 'ignore'] }).pid);
+      const cleanup = ${JSON.stringify(pids)};
+      const initial = tie.guardPid;
+      writeFileSync(cleanup, JSON.stringify([...agents, initial]));
+      writeFileSync(${JSON.stringify(shrink)}, '');
+      let stoppedGuard;
+      tie.onTrouble(message => {
+        if (stoppedGuard !== undefined || !message.includes('the new guard refused')) return;
+        stoppedGuard = tie.guardPid;
+        writeFileSync(cleanup, JSON.stringify([...agents, initial, stoppedGuard]));
+        rmSync(${JSON.stringify(shrink)});
+        process.kill(stoppedGuard, 'SIGSTOP');
+        fill();
+      });
+      process.kill(initial, 'SIGKILL');
+      await Bun.sleep(700);
+      out.restored = stoppedGuard !== undefined && tie.guardPid !== stoppedGuard && agents.every(pid => tie.guarded(pid));`, [], 5000);
+    const captured = JSON.parse(readFileSync(pids, 'utf8')) as number[];
+    try {
+      expect(out.hung).toBeUndefined();
+      expect(out.restored).toBe(true);
+      const agents = captured.slice(0, 2);
+      await settle(() => agents.every(pid => !isAlive(pid)));
+      expect(agents.map(isAlive)).toEqual([false, false]);
+    } finally { for (const pid of captured) quietKill(pid); }
   }, 20000);
 
   test('the launcher runs nothing before the core says it holds the pidfd', async () => {
