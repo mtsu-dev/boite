@@ -229,6 +229,7 @@ export function createAcpDriver(deps: AcpDeps, memory: AcpMemory = { costPerProc
       const warmMs = Math.max(0, ctx.warmProcessMinutes) * MINUTE_MS;
       const running = acquire(ctx, true);
       running.attach(turn, warmMs);
+      const steerOpenCode: NonNullable<TurnHandle['steer']> = (text, attachments, onAccepted, signal) => running.steerOpenCode(turn, text, attachments, onAccepted, signal);
       return {
         done: turn.done,
         ...(isGrok(ctx.provider) || ctx.protectedExecution ? {} : { setPermissionMode: (mode: TurnContext['thread']['permissionMode']) => running.setPermissionMode(turn, mode) }),
@@ -236,8 +237,13 @@ export function createAcpDriver(deps: AcpDeps, memory: AcpMemory = { costPerProc
         stop: (): void => {
           running.stopTurn(turn);
         },
-        ...(steering === 'grok' ? { steer: (text: string) => running.steer(turn, text) } : {}),
-        ...(steering === 'opencode' ? { steer: (text, attachments, onAccepted, signal) => running.steerOpenCode(turn, text, attachments, onAccepted, signal) } : {}),
+        // Plain ACP has no input while a prompt runs. Grok adds one; OpenCode 2
+        // takes it only over its native server, not over ACP behind a sandbox.
+        get steer() {
+          if (steering === 'grok') return (text: string) => running.steer(turn, text);
+          if (steering === 'opencode' && running.steersOpenCode()) return steerOpenCode;
+          return undefined;
+        },
       };
     },
 
