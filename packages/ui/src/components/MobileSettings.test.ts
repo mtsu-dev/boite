@@ -6,7 +6,6 @@ import { closeTour } from '../lib/onboarding.svelte';
 import { archiveThread } from '../lib/archive';
 import type { FakeClient } from '../lib/fake-client';
 import { workspace } from '../lib/workspace.svelte';
-import { experimentOn } from '../lib/experiments.svelte';
 import { strings } from '../lib/strings';
 
 /** The phone has no General page: the archive it can fill must be reachable from its own settings list. */
@@ -135,7 +134,7 @@ test('the phone settings list the desktop\'s families, each page a peer row, Gen
   await waitFor(home);
   expect(rows('mobile-settings-home')).toEqual([
     'settings-tab-general', 'settings-tab-voice', 'settings-tab-appearance', 'settings-tab-accounts', 'settings-tab-plugins', 'settings-tab-brain', 'settings-tab-limits', 'settings-tab-usage',
-    'settings-tab-browser', 'mobile-settings-connection', 'settings-tab-advanced', 'settings-tab-experiments', 'settings-tab-diagnostics'
+    'settings-tab-browser', 'mobile-settings-connection', 'settings-tab-advanced', 'settings-tab-diagnostics'
   ]);
   // A row holding one value shows it before its chevron: the theme and language, the machine reached, dictation on or off once read.
   expect(query('[data-testid=settings-tab-appearance-value]').textContent).toBe(`${strings.settings.themeSystem} · ${strings.settings.languageNames.en}`);
@@ -170,7 +169,7 @@ test('the phone settings list the desktop\'s families, each page a peer row, Gen
   // A page carries its own header, so the app drops its own over it: one header a screen.
   expect(query('[data-testid=settings]').dataset.detail).toBe('true');
   await back();
-  // Experiments and Diagnostics are rows of Home now, so System's index holds its compaction card alone; the task
+  // Diagnostics is a row of Home now, so System's index holds its compaction card alone; the task
   // manager is the last section of Diagnostics, so the owner's Home has no row of its own for it.
   expect(document.querySelector('[data-testid=settings-tab-task-manager]')).toBeNull();
   await open('settings-tab-advanced', advanced);
@@ -178,16 +177,8 @@ test('the phone settings list the desktop\'s families, each page a peer row, Gen
   expect(document.querySelector('[data-testid=setting-group-working-threads]')).toBeNull();
   await back();
 
-  // Experiments are this phone's own: its page lists the switches of a build that runs them, Bots not among them.
-  expect(experimentOn('resident-agents')).toBe(true);
-  query<HTMLButtonElement>('[data-testid=settings-tab-experiments]').click();
-  await waitFor(() => document.querySelector('[data-testid=experiment-whip]') !== null);
-  expect(document.querySelector('[data-testid=experiment-resident-agents]')).toBeNull();
-  query<HTMLInputElement>('[data-testid=experiment-whip]').click();
-  // The bar waits under the page, which is Settings' own; the switch is what took.
-  await waitFor(() => experimentOn('whip'));
-  expect(document.querySelector('[data-testid=mobile-tabs]')).toBeNull();
-  await back();
+  // Every feature is finished: Settings has no Experiments page to list switches on, the Whip's sits in Appearance.
+  expect(document.querySelector('[data-testid=settings-tab-experiments]')).toBeNull();
   await open('settings-tab-advanced', advanced);
 
   Element.prototype.scrollIntoView ??= vi.fn();
@@ -229,6 +220,7 @@ test('the phone settings list the desktop\'s families, each page a peer row, Gen
   query<HTMLButtonElement>('[data-testid=settings-tab-appearance]').click();
   await waitFor(() => document.querySelector('[data-testid=appearance-page]') !== null);
   for (const id of ['chat-width-comfortable', 'terminal-gpu', 'settings-buttons', 'start-in-drafts', 'setting-edge-scrollbars', 'setting-chat-artifacts', 'chat-group-changes']) expect(document.querySelector(`[data-testid=${id}]`)).toBeNull();
+  expect(query<HTMLInputElement>('[data-testid=setting-whip]').checked).toBe(true);
   await back();
 
   // The conversation switches sit under General, as on the desktop.

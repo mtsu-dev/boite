@@ -163,7 +163,7 @@ export interface TeamReading {
 }
 
 export interface TeamsRpcMethods {
-  /** The teams this machine holds, or the teams the calling bot's thread belongs to, on any machine. Refused while the `teams` experiment is off. */
+  /** The teams this machine holds, or the teams the calling bot's thread belongs to, on any machine. */
   'teams.list': { params: { threadId?: ThreadId; archived?: boolean }; result: { teams: Team[] } };
   /** `members` are bot names or ids, `<machine>/<bot>` on another machine of the group. `card` applies a bot's proposal card and settles it. */
   'teams.create': { params: { name: string; brief?: string; members: string[]; card?: RequestId }; result: Team };

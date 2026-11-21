@@ -1,4 +1,4 @@
-import { experimentRefusal, threadActive } from '@boite/contracts';
+import { threadActive } from '@boite/contracts';
 import type { ActivityTurn, AgentTask, Attachment, ComposerChoice, GoalReview, MessagePart, RpcParams, ThreadActivity, ThreadSummary, Turn } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { invalidParams, messageOf, refused } from './errors.ts';
@@ -10,6 +10,7 @@ import type { ChildRoute } from './delegation/routes.ts';
 import { GoalTracker, modelRead, newChecklist } from './goal-tracker.ts';
 import type { ProviderProbe } from './providers/probe.ts';
 import { needsModelDiscovery } from './threads/selection.ts';
+import { backgroundWork } from './threads/background-work.ts';
 import { unlinkGoalCards } from './todos.ts';
 import { autoGoalCode } from './auto-goal-entry.ts';
 
@@ -18,10 +19,16 @@ type PendingAttachments = Partial<Record<'goal' | 'loop', Attachment[]>>;
 /** How a goal stopped working: met, waiting on the user, or paused by a failed or stopped turn. */
 export interface GoalOutcome { threadId: string; outcome: 'complete' | 'blocked' | 'stopped'; text: string }
 /** Reviews of a `/goal2` before it stops for the user. */
-export const GOAL_REVIEW_ROUNDS = 5;
+const GOAL_REVIEW_ROUNDS = 5;
 const newReview = (): GoalReview => ({ phase: 'working', maxRounds: GOAL_REVIEW_ROUNDS, reviewerThreadId: null, claimTurnId: null, delivered: 0, verdicts: [] });
 /** Completion claims one open checklist item may send back before the review decides alone. */
-export const CHECKLIST_BOUNCES = 2;
+const CHECKLIST_BOUNCES = 2;
+/**
+ * How often a goal held by work its agent started looks again. The turn that
+ * brings that work's result back reschedules it at once; this only covers
+ * work that ends without waking the conversation.
+ */
+const BACKGROUND_RECHECK_MS = 30_000;
 /** The review a reviewer conversation's first turn answers. */
 interface ReviewRun { threadId: string; generation: number; round: number }
 
@@ -158,19 +165,16 @@ export class ActivityStore {
   }
 
   /**
-   * An automatic goal (`auto-goal.ts`, behind its experiment's build flag):
-   * the user's message becomes a reviewed goal's objective. False, and
-   * nothing changes, when it cannot start or the build has no automatic goals.
+   * An automatic goal (`auto-goal.ts`): the user's message becomes a
+   * reviewed goal's objective. False, and nothing changes, when it cannot start.
    */
   autoGoal(threadId: string, turnId: string, messageId: string, objective: string, executionChoice?: ComposerChoice): boolean {
-    return autoGoalCode()?.autoGoal(this.#core, this, threadId, turnId, messageId, objective, executionChoice) ?? false;
+    return autoGoalCode().autoGoal(this.#core, this, threadId, turnId, messageId, objective, executionChoice);
   }
 
-  /** `boite goal track`: an automatic goal on the user's last prompt, or the refusal of a build without them. */
+  /** `boite goal track`: an automatic goal on the user's last prompt. */
   track(threadId: string): ThreadActivity {
-    const code = autoGoalCode();
-    if (!code) throw refused(experimentRefusal('auto-goal', this.#core.version) ?? 'automatic goals are not in this build', { reason: 'experiment-off' });
-    return code.track(this.#core, this, threadId);
+    return autoGoalCode().track(this.#core, this, threadId);
   }
 
   /** The goal just set takes the turn still under way as its first run: its claim or blocker counts, and no second run starts before them. */
@@ -405,6 +409,15 @@ export class ActivityStore {
     // The checklist's check of the last turn decides what the next turn hears, or whether a claim goes back.
     if (kind === 'goal' && this.tracker.holds(threadId)) return;
     if (review?.phase === 'reviewing') { this.#startReview(threadId, thread); return; }
+    // While its subagents or a workflow run, a goal turn past its first could only say they still run: the goal waits,
+    // and the turn that brings their result back schedules the next run (`#finished`). The agent's own tasks may be a
+    // server that runs for hours, so they hold nothing.
+    if (kind === 'goal' && state.goal!.iterations > 0 && backgroundWork(this.#core, threadId, { ownTasks: false, skip: child => this.#reviewers.has(child) || this.tracker.owns(child) })) {
+      // An active loop keeps its own time: the look comes at the nearer of the two.
+      const loopDue = state.loop?.status === 'active' && state.loop.nextRunAt !== null ? Math.max(0, state.loop.nextRunAt - Date.now()) : Infinity;
+      this.#schedule(threadId, Math.min(BACKGROUND_RECHECK_MS, loopDue));
+      return;
+    }
     const last = review?.verdicts.at(-1);
     // Only the first turn after a review carries its findings; later ones have them in the history.
     const feedback = review && last && last.verdict !== 'pass' && review.delivered < review.verdicts.length ? { round: last.round, feedback: last.summary } : undefined;
@@ -609,7 +622,7 @@ export function validateLoop(loop: NonNullable<RpcParams<'threads.activity.set'>
   if (!Number.isInteger(loop.intervalMs) || loop.intervalMs > 86_400_000 || (loop.intervalMs !== 0 && loop.intervalMs < 1000) || (loop.intervalMs === 0 && !loop.maxIterations)) throw invalidParams('loop.intervalMs must be from 1000 to 86400000, or 0 with maxIterations');
 }
 
-export function taskStatus(value: unknown): AgentTask['status'] { return value === 'completed' ? 'completed' : value === 'in_progress' || value === 'inProgress' ? 'in_progress' : 'pending'; }
+function taskStatus(value: unknown): AgentTask['status'] { return value === 'completed' ? 'completed' : value === 'in_progress' || value === 'inProgress' ? 'in_progress' : 'pending'; }
 
 function createdTaskId(text: string | null): string | null {
   try {
@@ -644,7 +657,7 @@ function pauseActivity(state: ThreadActivity, error: string | null): boolean {
 }
 
 /** Only a final standalone marker outside fenced or indented code is a signal. */
-export function goalSignal(text: string): 'complete' | 'blocked' | null {
+function goalSignal(text: string): 'complete' | 'blocked' | null {
   let fence: string | null = null;
   let last = '';
   for (const line of text.split(/\r?\n/)) {
@@ -661,7 +674,7 @@ export function goalSignal(text: string): 'complete' | 'blocked' | null {
   if (/^ {0,3}\[BOITE_GOAL_BLOCKED\][ \t]*$/.test(last)) return 'blocked';
   return null;
 }
-export function normalizeTasks(items: unknown[]): AgentTask[] {
+function normalizeTasks(items: unknown[]): AgentTask[] {
   return items.flatMap((value, index) => {
     if (!value || typeof value !== 'object') return [];
     const row = value as Record<string, unknown>;

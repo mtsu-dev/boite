@@ -112,6 +112,23 @@ test.each([false, true])('switching types awaits the previous save before anothe
 });
 
 
+test('a background switch flipped while a limit saves keeps both in one type', async () => {
+  const store = render();
+  await click('compaction-target-subagent');
+  await flip('compaction-customize', true);
+  let answer!: () => void;
+  store.saveSettings.mockImplementationOnce((patch: Partial<Settings>) => new Promise<boolean>(resolve => {
+    answer = () => { store.settings = { ...store.settings, ...patch }; resolve(true); };
+  }));
+  await click('auto-compact-preset-400000');
+  await flip('background-compaction-on', false);
+  answer();
+  await settle();
+  expect(store.settings.compactionByType?.subagent).toEqual({
+    autoCompact: { tokens: 400_000, moments: ['cache-expiry'] }, backgroundCompaction: false,
+  });
+});
+
 test('summary instructions flush to their original scope and empty text restores native guidance', async () => {
   const store = render();
   const type = async (text: string) => {

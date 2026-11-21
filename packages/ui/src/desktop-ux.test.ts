@@ -48,7 +48,7 @@ afterEach(() => {
 });
 
 test('a maximized panel stays with its thread: the Contacts page beside the list is not squeezed to nothing', async () => {
-  writeExperiments(['contacts']);
+  writeExperiments([]);
   await mountOnFake();
   try {
     if (!store.panelOpen) store.togglePanel();
@@ -66,7 +66,7 @@ test('a maximized panel stays with its thread: the Contacts page beside the list
 });
 
 test('contacts are a place at the top of the rail, under Activity and above the bots, never a side of the Mochis column: its head folds the column on the right, a row opens a contact', async () => {
-  writeExperiments(['resident-agents', 'contacts']);
+  writeExperiments(['resident-agents']);
   await mountOnFake();
   try {
     // A first start finds the column folded; the rail keeps Contacts with the places, right under Activity.
@@ -120,7 +120,7 @@ test('contacts are a place at the top of the rail, under Activity and above the 
 });
 
 test('a panel widened while the contacts column was folded gives the chat its room back when the column unfolds', async () => {
-  writeExperiments(['contacts']);
+  writeExperiments([]);
   expect(contactsRail.folded).toBe(true);
   const stored = rightPanel.width;
   rightPanel.width = 700;
@@ -185,7 +185,7 @@ test('a docked side panel leaves the list column alone: the thread list beside a
 });
 
 test('the rail puts teams first, and a picture moved with the keyboard keeps its new place on this device', async () => {
-  writeExperiments(['resident-agents', 'teams']);
+  writeExperiments(['resident-agents']);
   localStorage.removeItem('boite.rail.order');
   await mountOnFake('/?fake=1&agents=1');
   try {
@@ -281,7 +281,7 @@ test("a right click on a mochi's rail picture opens its menu, not the webview's,
 });
 
 test("a right click on a team's rail picture opens the team's menu, and its picks reach the team", async () => {
-  writeExperiments(['resident-agents', 'teams']);
+  writeExperiments(['resident-agents']);
   await mountOnFake('/?fake=1&agents=1');
   try {
     const view = AgentsView.of(store);

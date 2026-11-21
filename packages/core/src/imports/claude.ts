@@ -8,6 +8,14 @@
  * thinking or tool_use) of a message several records share. Sidechain records
  * are subagents' and are left out. `ai-title` and `summary` records name the
  * session in the agent's own words.
+ *
+ * The CLI also files its own records as `user` ones: meta records (a skill's
+ * body, a caveat), the compaction summary, background task notifications,
+ * a command's output and the interrupt marker. None of them is something the
+ * user typed, so none becomes a prompt. A slash command and a shell command
+ * are kept as the user typed them, `/review args` and `!ls`. The CLI's
+ * `<synthetic>` assistant records are an error it shows, kept, or a filler
+ * reply, left out; neither is the agent answering.
  */
 
 import { IMAGE_MIME_TYPES } from '@boite/contracts';
@@ -28,7 +36,10 @@ export interface TranscriptTurn {
 }
 
 export interface Transcript {
+  /** Empty for a session of bare commands the agent never answered. */
   turns: TranscriptTurn[];
+  /** The first prompt that is not a command, else the first command: what names the session. */
+  titlePrompt: string | null;
   /** The agent's own title, from the last `ai-title` or `summary` record. */
   agentTitle: string | null;
   /** The working directory the first prompt was sent from. */
@@ -49,7 +60,10 @@ interface Record {
   cwd?: unknown;
   aiTitle?: unknown;
   summary?: unknown;
-  message?: { content?: unknown; model?: unknown };
+  isMeta?: unknown;
+  isCompactSummary?: unknown;
+  isApiErrorMessage?: unknown;
+  message?: { id?: unknown; content?: unknown; model?: unknown };
 }
 
 type Block = { type?: unknown; [key: string]: unknown };
@@ -74,10 +88,51 @@ function resultText(content: unknown): string {
   return text.length > TOOL_OUTPUT_MAX ? `${text.slice(0, TOOL_OUTPUT_MAX)}\n[cut]` : text;
 }
 
-/** The prompt of a `user` record, or null when the record answers a tool. */
-function promptOf(record: Record): { text: string; images: TranscriptTurn['images'] } | null {
+/** Records the CLI writes as the user's: what they open with. */
+const CLI_RECORDS = [
+  '<task-notification>',
+  '<local-command-stdout>',
+  '<local-command-stderr>',
+  '<local-command-caveat>',
+  '<bash-stdout>',
+  '<bash-stderr>',
+];
+
+/** The CLI's marker for a turn the user stopped. */
+const INTERRUPTS = new Set(['[Request interrupted by user]', '[Request interrupted by user for tool use]']);
+
+/** The model the CLI names on an assistant record it wrote itself. */
+const SYNTHETIC_MODEL = '<synthetic>';
+
+/**
+ * A user record's text as the user typed it: a slash command as `/name args`,
+ * a shell command as `!command`. Null for a record the CLI wrote.
+ */
+function typedOf(text: string): { text: string; command: boolean } | null {
+  const trimmed = text.trim();
+  if (INTERRUPTS.has(trimmed) || CLI_RECORDS.some((tag) => trimmed.startsWith(tag))) return null;
+  const shell = /^<bash-input>([\s\S]*)<\/bash-input>$/.exec(trimmed);
+  if (shell !== null) return { text: `!${shell[1]}`, command: true };
+  if (trimmed.startsWith('<command-name>') || trimmed.startsWith('<command-message>')) {
+    const name = /<command-name>([\s\S]*?)<\/command-name>/.exec(trimmed)?.[1]?.trim();
+    if (name !== undefined && name.length > 0) {
+      // Up to the last closing tag: the CLI writes the arguments as typed, tags included.
+      const args = /<command-args>([\s\S]*)<\/command-args>/.exec(trimmed)?.[1]?.trim() ?? '';
+      const slash = name.startsWith('/') ? name : `/${name}`;
+      return { text: args.length > 0 ? `${slash} ${args}` : slash, command: true };
+    }
+  }
+  return { text, command: false };
+}
+
+/** The prompt of a `user` record, or null when the record answers a tool or the CLI wrote it. */
+function promptOf(record: Record): { text: string; images: TranscriptTurn['images']; command: boolean } | null {
+  if (record.isMeta === true || record.isCompactSummary === true) return null;
   const content = record.message?.content;
-  if (typeof content === 'string') return { text: content, images: [] };
+  if (typeof content === 'string') {
+    const typed = typedOf(content);
+    return typed === null ? null : { ...typed, images: [] };
+  }
   const blocks = blocksOf(content);
   if (blocks.some((block) => block['type'] === 'tool_result')) return null;
   const text = blocks
@@ -93,7 +148,9 @@ function promptOf(record: Record): { text: string; images: TranscriptTurn['image
     images.push({ mimeType: mimeType as ImageMimeType, data });
   }
   if (text.length === 0 && images.length === 0) return null;
-  return { text, images };
+  if (text.length === 0) return { text, images, command: false };
+  const typed = typedOf(text);
+  return typed === null ? null : { ...typed, images };
 }
 
 function parse(line: string): Record | null {
@@ -118,22 +175,49 @@ function titleOf(record: Record): string | null {
   return null;
 }
 
+/** An assistant block as a part, or null for an empty or unknown one. */
+function partOf(block: Block): MessagePart | null {
+  if (block['type'] === 'text' && typeof block['text'] === 'string') {
+    return block['text'].length === 0 ? null : { type: 'text', text: block['text'] };
+  }
+  if (block['type'] === 'thinking' && typeof block['thinking'] === 'string') {
+    return block['thinking'].trim().length === 0 ? null : { type: 'thinking', text: block['thinking'] };
+  }
+  if (block['type'] === 'tool_use' && typeof block['id'] === 'string' && typeof block['name'] === 'string') {
+    return { type: 'tool', toolId: block['id'], name: block['name'], input: block['input'] ?? null, output: null, status: 'running' };
+  }
+  return null;
+}
+
 /** Consumes records one at a time; `finish()` closes the tools no result reached. */
-export class TranscriptReader {
+class TranscriptReader {
   private readonly turns: TranscriptTurn[] = [];
   private agentTitle: string | null = null;
   private cwd: string | null = null;
   private model: string | null = null;
+  /** The first turn that is not a command. */
+  private firstPrompt: TranscriptTurn | null = null;
+  /** True once the agent itself answered a turn, a synthetic error aside. */
+  private answered = false;
+  /** The message the last assistant record belongs to: text merges within one. */
+  private message: unknown = undefined;
   private readonly tools = new Map<string, Extract<MessagePart, { type: 'tool' }>>();
 
-  /** True once a prompt has been seen: what a listing stops at. */
+  /** A listing keeps no reply, only whether there was one: commands before the first prompt can carry megabytes. */
+  constructor(private readonly listing = false) {}
+
+  /**
+   * True once a prompt that is not a command has been seen: what a listing
+   * stops at, since it names the session and makes it worth importing.
+   */
   get hasPrompt(): boolean {
-    return this.turns.length > 0;
+    return this.firstPrompt !== null;
   }
 
   /**
    * A listing needs the first prompt and the title records: once the prompt
    * is in hand, every other line is skipped on a substring test, no parse.
+   * Commands before it are read through, with the replies they got.
    */
   lineForListing(line: string): void {
     if (this.hasPrompt && !mayBeTitle(line)) return;
@@ -157,8 +241,10 @@ export class TranscriptReader {
     const at = timeOf(record);
     const prompt = promptOf(record);
     if (prompt !== null) {
-      if (!this.hasPrompt) this.cwd = typeof record.cwd === 'string' ? record.cwd : null;
-      this.turns.push({ prompt: prompt.text, images: prompt.images, promptAt: at, parts: [], answerAt: null, lastAt: at });
+      if (this.turns.length === 0) this.cwd = typeof record.cwd === 'string' ? record.cwd : null;
+      const turn: TranscriptTurn = { prompt: prompt.text, images: prompt.images, promptAt: at, parts: [], answerAt: null, lastAt: at };
+      this.turns.push(turn);
+      if (!prompt.command && this.firstPrompt === null) this.firstPrompt = turn;
       return;
     }
     const current = this.turns[this.turns.length - 1];
@@ -177,30 +263,24 @@ export class TranscriptReader {
     const current = this.turns[this.turns.length - 1];
     if (current === undefined) return;
     const at = timeOf(record);
-    if (typeof record.message?.model === 'string') this.model = record.message.model;
+    const synthetic = record.message?.model === SYNTHETIC_MODEL;
+    // The CLI's filler after an interrupt, "No response requested.": nothing happened.
+    if (synthetic && record.isApiErrorMessage !== true) return;
+    if (!synthetic && typeof record.message?.model === 'string') this.model = record.message.model;
+    const id = record.message?.id;
+    // Text merges into the last part only within one message, this record's earlier blocks included.
+    let sameMessage = id !== undefined && id === this.message;
+    this.message = id;
     for (const block of blocksOf(record.message?.content)) {
+      const part = partOf(block);
+      if (part === null) continue;
+      if (!synthetic) this.answered = true;
+      if (this.listing) continue;
       const last = current.parts[current.parts.length - 1];
-      if (block['type'] === 'text' && typeof block['text'] === 'string') {
-        if (block['text'].length === 0) continue;
-        if (last !== undefined && last.type === 'text') last.text += block['text'];
-        else current.parts.push({ type: 'text', text: block['text'] });
-      } else if (block['type'] === 'thinking' && typeof block['thinking'] === 'string') {
-        if (block['thinking'].trim().length === 0) continue;
-        current.parts.push({ type: 'thinking', text: block['thinking'] });
-      } else if (block['type'] === 'tool_use' && typeof block['id'] === 'string' && typeof block['name'] === 'string') {
-        const tool: Extract<MessagePart, { type: 'tool' }> = {
-          type: 'tool',
-          toolId: block['id'],
-          name: block['name'],
-          input: block['input'] ?? null,
-          output: null,
-          status: 'running',
-        };
-        current.parts.push(tool);
-        this.tools.set(block['id'], tool);
-      } else {
-        continue;
-      }
+      if (part.type === 'text' && sameMessage && last !== undefined && last.type === 'text') last.text += part.text;
+      else current.parts.push(part);
+      if (part.type === 'tool') this.tools.set(part.toolId, part);
+      sameMessage = true;
       if (current.answerAt === null) current.answerAt = at;
       current.lastAt = Math.max(current.lastAt, at);
     }
@@ -213,7 +293,10 @@ export class TranscriptReader {
       tool.output = 'no result in the transcript';
     }
     this.tools.clear();
-    return { turns: this.turns, agentTitle: this.agentTitle, cwd: this.cwd, model: this.model };
+    // Bare commands the agent never answered: nothing was asked of it.
+    const turns = this.firstPrompt !== null || this.answered ? this.turns : [];
+    const titlePrompt = this.firstPrompt?.prompt ?? turns[0]?.prompt ?? null;
+    return { turns, titlePrompt, agentTitle: this.agentTitle, cwd: this.cwd, model: this.model };
   }
 }
 
@@ -223,7 +306,7 @@ export class TranscriptReader {
  * only, which is what a list of sessions needs.
  */
 export async function readTranscript(file: string, listing = false): Promise<Transcript> {
-  const reader = new TranscriptReader();
+  const reader = new TranscriptReader(listing);
   await readLines(file, listing ? (line) => reader.lineForListing(line) : (line) => reader.line(line));
   return reader.finish();
 }
@@ -261,7 +344,9 @@ export const LISTING_TAIL_BYTES = 256 * 1024;
 
 /** What a list of sessions shows of one transcript. */
 export interface TranscriptListing {
+  /** The first prompt that is not a command, else the first command. */
   prompt: string;
+  /** When the first turn, command or not, was sent. */
   promptAt: number;
   /** The working directory the first prompt was sent from. */
   cwd: string | null;
@@ -277,15 +362,15 @@ export interface TranscriptListing {
  * `summary` near the head need. Null when the transcript has no prompt.
  */
 export async function listTranscript(file: string): Promise<TranscriptListing | null> {
-  const reader = new TranscriptReader();
+  const reader = new TranscriptReader(true);
   const whole = await readLines(file, (line) => {
     reader.lineForListing(line);
     return !reader.hasPrompt;
   });
   const head = reader.finish();
   const first = head.turns[0];
-  if (first === undefined) return null;
-  const listing = { prompt: first.prompt, promptAt: first.promptAt, cwd: head.cwd };
+  if (first === undefined || head.titlePrompt === null) return null;
+  const listing = { prompt: head.titlePrompt, promptAt: first.promptAt, cwd: head.cwd };
   // The head reached the end: it saw every title record already.
   if (whole) return { ...listing, agentTitle: head.agentTitle };
   const blob = Bun.file(file);

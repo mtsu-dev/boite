@@ -5,13 +5,15 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
-import { executionsUsed, type WorkflowNode, type WorkflowPlan, type WorkflowRun, type WorkflowStepPlan } from '@boite/contracts';
+import { executionsUsed, type WorkflowInstance, type WorkflowNode, type WorkflowPlan, type WorkflowRun, type WorkflowStepPlan } from '@boite/contracts';
 import type { CoreClient } from './client.ts';
+import { Usage } from './cli-args.ts';
 import { worktreeLine } from './delegation/messages.ts';
 
 export const WORKFLOW_HELP = `A workflow is a JSON plan the core runs for you: every step is a child
 agent, a step starts as soon as the steps it depends on end, and the results
-come back to you in one message. Nothing has to be enabled first.
+come back to you in one message. Delegation need not be enabled. If it is
+enabled and paused, the pause blocks plan checks and new runs.
 
 {
   "name": "Review the parser",
@@ -62,7 +64,9 @@ step, "review.bugs" collects the bugs of every item into one list.
 Run it: write the plan to a file, boite workflow check plan.json, then
 boite workflow run plan.json. Report the run ID, then keep working or end your
 turn: the results arrive as one message, do not poll. boite delegate list
-shows its progress; boite workflow show <run-id> prints every step's result.
+shows its progress; boite workflow show <run-id> reports each step's state.
+Add a step id or execution key (such as review#0) for its result, or
+--details for the full run.
 
 A step with output returns it with boite workflow output '<json>' or a final
 \`\`\`json block; the core checks the shape and asks once more on a mismatch.
@@ -80,7 +84,7 @@ Steps after a loop read it through its closing step; worktree and machine
 steps do not run in a loop.`;
 
 function readPlan(raw: string | undefined, cwd: string, what: string): unknown {
-  if (raw === undefined || raw.length === 0) throw new Error(`${what}: pass a JSON file or inline JSON`);
+  if (raw === undefined || raw.length === 0) throw new Usage(`${what}: pass a JSON file or inline JSON`);
   const trimmed = raw.trim();
   let body = trimmed;
   if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
@@ -96,12 +100,13 @@ function readPlan(raw: string | undefined, cwd: string, what: string): unknown {
 }
 
 const MARK: Record<WorkflowNode['status'], string> = { waiting: '[ ]', running: '[>]', done: '[x]', failed: '[!]', skipped: '[-]', stopped: '[s]' };
+const shortError = (error: string | null) => error && error.length > 160 ? error.slice(0, 157) + '...' : error;
 
-function nodeRow(node: WorkflowNode): string {
+function nodeRow(node: WorkflowNode, detailed = false): string {
   const counts = `${node.forEach === null ? '' : ` ${node.instances.filter(i => i.status === 'done').length}/${node.instances.length}`}${node.round ? ` round=${node.round}` : ''}`;
   const inst = node.instances.find(i => i.model);
   const model = inst ? `${inst.providerId}/${inst.model}${inst.effort ? ` effort=${inst.effort}` : ''}` : '';
-  return `${MARK[node.status]} ${node.id}${counts} ${node.status}${model ? ` ${model}` : ''}${node.error ? ` error=${JSON.stringify(node.error)}` : ''}`;
+  return `${MARK[node.status]} ${node.id}${counts} ${node.status}${model ? ` ${model}` : ''}${node.error ? ` error=${JSON.stringify(detailed ? node.error : shortError(node.error))}` : ''}`;
 }
 
 function runHead(run: WorkflowRun): string[] {
@@ -116,16 +121,59 @@ function value(output: unknown, result: string | null): string {
 
 type Print = (lines: string[], value: unknown) => void;
 
+// Workflow cores that retain retry conversations include these thread IDs.
+const previousAttempts = (instance: WorkflowInstance): string[] | undefined =>
+  (instance as WorkflowInstance & { previousAttempts?: string[] }).previousAttempts;
+
+function showRun(run: WorkflowRun, selector: string | undefined, print: Print): void {
+  const detailed = selector !== undefined;
+  const all = selector === '--details';
+  const nodes = !detailed || all ? run.nodes : run.nodes.flatMap(node => {
+    if (node.id === selector) return [node];
+    const instances = node.instances.filter(instance => instance.key === selector);
+    return instances.length ? [{ ...node, instances, previous: undefined }] : [];
+  });
+  if (!nodes.length && detailed && !all) throw new Error(`workflow show: no step or execution ${JSON.stringify(selector)} in ${run.id}`);
+  const lines = runHead(detailed ? run : { ...run, error: shortError(run.error) });
+  for (const node of nodes) {
+    lines.push(nodeRow(node, detailed));
+    for (const inst of node.instances) {
+      const label = inst.label ? ` ${JSON.stringify(inst.label)}` : '';
+      lines.push(`    ${inst.key}${label} ${inst.status}${inst.threadId ? ` thread=${inst.threadId}` : ''}${inst.error ? ` error=${JSON.stringify(detailed ? inst.error : shortError(inst.error))}` : ''}`);
+      const attempts = previousAttempts(inst);
+      if (attempts?.length) lines.push(`      previous attempts: ${attempts.join(', ')}`);
+      if (detailed) {
+        const shown = value(inst.output, inst.result);
+        if (shown) lines.push(`      ${shown}`);
+        if (inst.worktree) lines.push(`      ${worktreeLine(inst.worktree)}`);
+      }
+    }
+  }
+  if (detailed) {
+    print(lines, all ? run : { id: run.id, status: run.status, nodes });
+    return;
+  }
+  lines.push(`Results: boite workflow show ${run.id} <step-or-execution>`);
+  print(lines, {
+    id: run.id, name: run.name, status: run.status, error: shortError(run.error), limits: run.limits, usage: run.usage,
+    nodes: nodes.map(({ id, status, round, error, instances }) => ({
+      id, status, round, error: shortError(error),
+      instances: instances.map(instance => ({ key: instance.key, label: instance.label, status: instance.status,
+        threadId: instance.threadId, error: shortError(instance.error), previousAttempts: previousAttempts(instance) })),
+    })),
+  });
+}
+
 export async function workflowCommand(client: CoreClient, threadId: string, rest: string[], io: { cwd: string }, print: Print, requestId?: string): Promise<void> {
   const action = rest[0] ?? 'help';
   const request = requestId ?? crypto.randomUUID();
   const runId = (): string => {
-    if (!rest[1]) throw new Error(`workflow ${action} needs a run id from boite workflow list`);
+    if (!rest[1] || rest[1] === '--details') throw new Usage(`workflow ${action} needs a run id from boite workflow list`);
     return rest[1];
   };
   const control = async (verb: 'pause' | 'resume' | 'stop' | 'retry', stepId?: string) => {
     const run = await client.call('workflows.control', { threadId, runId: runId(), action: verb, ...(stepId ? { stepId } : {}) });
-    print([...runHead(run), ...run.nodes.map(nodeRow)], run);
+    print([...runHead(run), ...run.nodes.map(node => nodeRow(node))], run);
   };
   switch (action) {
     case 'help':
@@ -141,7 +189,7 @@ export async function workflowCommand(client: CoreClient, threadId: string, rest
       const plan = readPlan(rest.slice(1).join(' '), io.cwd, 'workflow run') as WorkflowPlan;
       const run = await client.call('workflows.start', { threadId, plan, requestId: request });
       const shown = await client.call('panel.open', { threadId, surface: { kind: 'workflow', runId: run.id } }).catch(() => ({ shown: false }));
-      print([...runHead(run), ...run.nodes.map(nodeRow), `shown to the user: ${shown.shown ? 'yes' : 'no'}`, 'The results arrive as one message when the run ends. Do other work or end your turn; do not poll.'], run);
+      print([...runHead(run), ...run.nodes.map(node => nodeRow(node)), `shown to the user: ${shown.shown ? 'yes' : 'no'}`, 'The results arrive as one message when the run ends. Do other work or end your turn; do not poll.'], run);
       return;
     }
     case 'start': {
@@ -152,35 +200,28 @@ export async function workflowCommand(client: CoreClient, threadId: string, rest
       if (!template) throw new Error(`no template ${JSON.stringify(name)}; boite workflow templates lists them`);
       const run = await client.call('workflows.start', { threadId, plan: template.plan, templateId: template.id, requestId: request });
       await client.call('panel.open', { threadId, surface: { kind: 'workflow', runId: run.id } }).catch(() => undefined);
-      print([...runHead(run), ...run.nodes.map(nodeRow)], run);
+      print([...runHead(run), ...run.nodes.map(node => nodeRow(node))], run);
       return;
     }
     case 'list': {
       const runs = await client.call('workflows.list', { threadId });
-      print(runs.length === 0 ? ['workflows: none'] : runs.map(r => `${r.id} ${r.status} ${JSON.stringify(r.name)} ${r.nodes.filter(n => n.status === 'done' || n.status === 'skipped').length}/${r.nodes.length} steps`), runs);
+      const rows = runs.map(run => ({ id: run.id, name: run.name, status: run.status,
+        completedSteps: run.nodes.filter(node => node.status === 'done' || node.status === 'skipped').length,
+        totalSteps: run.nodes.length, updatedAt: run.updatedAt, error: shortError(run.error) }));
+      print(rows.length === 0 ? ['workflows: none'] : rows.map(row => `${row.id} ${row.status} ${JSON.stringify(row.name)} ${row.completedSteps}/${row.totalSteps} steps`), rows);
       return;
     }
     case 'show': {
+      if (rest.length > 3) throw new Usage('workflow show takes one run id and optionally a step, execution, or --details');
       const run = await client.call('workflows.get', { threadId, runId: runId() });
-      const lines = [...runHead(run)];
-      for (const node of run.nodes) {
-        lines.push(nodeRow(node));
-        for (const inst of node.instances) {
-          const label = inst.label ? ` ${JSON.stringify(inst.label)}` : '';
-          lines.push(`    ${inst.key}${label} ${inst.status}${inst.threadId ? ` thread=${inst.threadId}` : ''}${inst.error ? ` error=${JSON.stringify(inst.error)}` : ''}`);
-          const shown = value(inst.output, inst.result);
-          if (shown) lines.push(`      ${shown}`);
-          if (inst.worktree) lines.push(`      ${worktreeLine(inst.worktree)}`);
-        }
-      }
-      print(lines, run);
+      showRun(run, rest[2], print);
       return;
     }
     case 'extend': {
       const steps = readPlan(rest.slice(2).join(' '), io.cwd, 'workflow extend');
       const list = (Array.isArray(steps) ? steps : (steps as { steps?: unknown }).steps) as WorkflowStepPlan[];
       const run = await client.call('workflows.extend', { threadId, runId: runId(), steps: list, requestId: request });
-      print([...runHead(run), ...run.nodes.map(nodeRow)], run);
+      print([...runHead(run), ...run.nodes.map(node => nodeRow(node))], run);
       return;
     }
     case 'pause':
@@ -220,6 +261,6 @@ export async function workflowCommand(client: CoreClient, threadId: string, rest
       return;
     }
     default:
-      throw new Error(`workflow: unknown action ${action}; boite workflow help`);
+      throw new Usage(`workflow: unknown action ${action}`);
   }
 }

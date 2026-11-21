@@ -1,57 +1,67 @@
-import { afterEach, expect, test, vi } from 'vitest';
-import { flushSync, mount, unmount } from 'svelte';
-import type { Settings } from '@boite/contracts';
-import type { Store } from '../lib/store.svelte';
+import { afterEach, expect, test } from 'vitest';
+import { flushSync, mount, tick, unmount } from 'svelte';
 import AutoGoalSetting from './AutoGoalSetting.svelte';
+import type { Store } from '../lib/store.svelte';
 
-let mounted: ReturnType<typeof mount> | undefined;
-afterEach(async () => {
-  if (mounted) await unmount(mounted);
-  mounted = undefined;
+let running: Record<string, unknown> | null = null;
+afterEach(() => {
+  if (running) unmount(running, { outro: false });
+  running = null;
   document.body.innerHTML = '';
 });
 
-const settle = async () => { for (let i = 0; i < 20; i++) { await Promise.resolve(); flushSync(); } };
-const field = () => document.querySelector<HTMLInputElement>('[data-testid="auto-goal-min-chars"]')!;
-const type = async (value: string) => {
-  field().value = value;
-  field().dispatchEvent(new Event('input', { bubbles: true }));
-  field().dispatchEvent(new Event('change', { bubbles: true }));
-  await settle();
+const settle = async () => { for (let i = 0; i < 5; i++) { flushSync(); await tick(); } };
+const query = <T extends Element>(selector: string): T => {
+  const node = document.querySelector<T>(selector);
+  if (!node) throw new Error(`no ${selector}`);
+  return node;
 };
 
-test('a length typed back to the saved one still follows a change saved elsewhere', async () => {
-  const store = $state({
-    owner: true,
-    settings: { autoGoalMinChars: 1500 } as Partial<Settings>,
-    saveSettings: vi.fn(async () => true),
-  });
-  mounted = mount(AutoGoalSetting, { target: document.body, props: { store: store as unknown as Store } });
-  flushSync();
-  await type('1600');
-  await type('1500');
-  expect(store.saveSettings).toHaveBeenCalledTimes(1);
-
-  store.settings = { autoGoalMinChars: 3000 };
+test('automatic goals are on by default; the threshold row sits under the switch, saves a valid length, and goes with the switch', async () => {
+  const saved: unknown[] = [];
+  const store = $state({ owner: true, settings: {} as Record<string, unknown>, saveSettings: async (patch: Record<string, unknown>) => { saved.push(patch); store.settings = { ...store.settings, ...patch }; return true; } });
+  running = mount(AutoGoalSetting, { target: document.body, props: { store: store as unknown as Store } });
   await settle();
-  expect(field().value).toBe('3000');
+  const toggle = query<HTMLInputElement>('[data-testid=setting-auto-goals]');
+  expect(toggle.checked).toBe(true);
+  expect(toggle.closest('label')?.textContent).toContain('Automatic goals');
+  const row = query('[data-testid=auto-goal-settings]');
+  expect(toggle.closest('label')!.nextElementSibling).toBe(row);
+  const field = query<HTMLInputElement>('[data-testid=auto-goal-min-chars]');
+  expect(field.value).toBe('1500');
+  expect(row.textContent).toContain('Prompt length');
+
+  field.value = '150';
+  field.dispatchEvent(new Event('input', { bubbles: true }));
+  field.dispatchEvent(new Event('change', { bubbles: true }));
+  await settle();
+  expect(query('[data-testid=auto-goal-min-chars-error]').textContent).toContain('200 to 20000');
+  expect(saved).toEqual([]);
+
+  field.value = '800';
+  field.dispatchEvent(new Event('input', { bubbles: true }));
+  field.dispatchEvent(new Event('change', { bubbles: true }));
+  await settle();
+  expect(saved).toEqual([{ autoGoalMinChars: 800 }]);
+
+  // Off, the machine starts no automatic goal and the threshold has nothing to say.
+  toggle.click();
+  await settle();
+  expect(saved.at(-1)).toEqual({ autoGoals: false });
+  expect(document.querySelector('[data-testid=auto-goal-settings]')).toBeNull();
 });
 
-test('a length typed back before the field loses focus, so with no change event, still follows a change saved elsewhere', async () => {
-  const store = $state({
-    owner: true,
-    settings: { autoGoalMinChars: 1500 } as Partial<Settings>,
-    saveSettings: vi.fn(async () => true),
-  });
-  mounted = mount(AutoGoalSetting, { target: document.body, props: { store: store as unknown as Store } });
-  flushSync();
-  for (const value of ['1600', '1500']) {
-    field().value = value;
-    field().dispatchEvent(new Event('input', { bubbles: true }));
-    await settle();
-  }
-  store.settings = { autoGoalMinChars: 3000 };
+test('a refused switch goes back, and a paired device sees neither the switch nor the threshold', async () => {
+  const store = { owner: true, settings: {}, saveSettings: async () => false };
+  running = mount(AutoGoalSetting, { target: document.body, props: { store: store as unknown as Store } });
   await settle();
-  expect(field().value).toBe('3000');
-  expect(store.saveSettings).not.toHaveBeenCalled();
+  const toggle = query<HTMLInputElement>('[data-testid=setting-auto-goals]');
+  toggle.click();
+  await settle();
+  expect(toggle.checked).toBe(true);
+  unmount(running, { outro: false });
+  running = mount(AutoGoalSetting, { target: document.body, props: { store: { ...store, owner: false } as unknown as Store } });
+  await settle();
+  expect(document.querySelector('[data-testid=setting-auto-goals]')).toBeNull();
+  expect(document.querySelector('[data-testid=auto-goal-settings]')).toBeNull();
 });

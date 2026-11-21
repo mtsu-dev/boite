@@ -5,7 +5,7 @@ import { GRANT_QUERY_PARAM, PAIR_QUERY_PARAM } from '../../../packages/contracts
 import { connect } from '../../../packages/core/src/client.ts';
 import { E2E_DIR_PREFIX, killProcessTreeAsync, removeDirectory } from './cleanup.ts';
 
-export { E2E_DIR_PREFIX, killProcessTree, killProcessTreeAsync, removeDirectory, sweepStaleDirectories } from './cleanup.ts';
+export { killProcessTree, removeDirectory } from './cleanup.ts';
 
 const MAIN = join(import.meta.dir, '..', '..', '..', 'packages', 'core', 'src', 'main.ts');
 /** The default: the end to end suite proves the sources, a bench may point elsewhere. */
@@ -53,7 +53,7 @@ export async function startCore(options: StartCoreOptions = {}): Promise<Running
       ...(options.args ?? []),
     ],
     // An inherited UI override would serve an installed app instead of this checkout.
-    env: { ...process.env, BOITE_UI_DIR: '', BOITE_DATA_DIR: dataDir, BOITE_DRAFTS_DIR: join(dataDir, 'Documents', 'Boite'), BOITE_ECHO: '1', BOITE_HOST_AGENTS: '0', BOITE_TELEMETRY_URL: '', BOITE_TAILNET: '0', ...options.env },
+    env: { ...process.env, BOITE_UI_DIR: '', BOITE_DATA_DIR: dataDir, BOITE_DRAFTS_DIR: join(dataDir, 'Documents', 'Boite'), BOITE_ECHO: '1', BOITE_HOST_AGENTS: '0', BOITE_TELEMETRY_URL: '', BOITE_MODEL_PRICES_URL: '', BOITE_TAILNET: '0', ...options.env },
     stdout: 'pipe',
     stderr: 'pipe',
   });

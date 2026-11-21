@@ -60,7 +60,7 @@ models` lists the choices.
 | `when` | `{ "path", "equals" }`, `{ "path", "notEquals" }`, `{ "path", "in": [values] }`, `{ "path", "notEmpty": true }` or `{ "path", "empty": true }`, with a string, number, boolean or null. A false condition skips the step |
 | `repeat` | Optional. `{ "from", "until", "max" }` runs the steps from `from` to this one again until `until`, a condition like `when`, holds ([loops](#loops)) |
 | `output` | The JSON shape the step must return: `"string"`, `"number"`, `"boolean"`, `"any"`, `[shape]` or `{ "key": shape }` |
-| `worktree` | Optional. `true` runs the step in a git worktree of its own on a new branch from the conversation's HEAD, as `delegate spawn --worktree` does ([delegation](delegation.md#children-in-their-own-worktree)). The step's `worktree` record, `boite workflow show` and the run's summary name the branch to merge, or say it was removed with nothing in it |
+| `worktree` | Optional. `true` runs the step in a git worktree of its own on a new branch from the conversation's HEAD, as `delegate spawn --worktree` does ([delegation](delegation.md#children-in-their-own-worktree)). The step's `worktree` record, `boite workflow show <run-id> <step-or-execution>` and the run's summary name the branch to merge, or say it was removed with nothing in it |
 | `machine` | Optional. Another machine of the group, by name or core id prefix as `delegate spawn --machine` takes it. The step runs there ([below](#steps-on-another-machine)). Not with `compute` |
 | `project` | Optional, with `machine` only. One of that machine's projects, as `delegate spawn --project`. Left out, the one named like this conversation's project |
 
@@ -255,8 +255,10 @@ cut to an equal share of 10,000 characters. A larger one is held to those
 value (less only when the floors of every text together pass the budget, all of
 them shrinking alike), errors and the answers of the last steps (those no other
 step reads) then grow evenly, then the other values. Each shortened text ends in `[cut]`, and the
-summary's first line counts them and points to `boite workflow show <run-id>`
-and the steps' conversations for the whole text.
+summary's first line counts them. Read a result with
+`boite workflow show <run-id> <step-or-execution>`, or the whole run with
+`boite workflow show <run-id> --details`. Each step's conversation keeps its
+full answer.
 
 Handing the summary back is a turn of the parent. If the team is paused before
 delivery, the run keeps the reason as `deliveryError` and the panel shows it.
@@ -355,8 +357,10 @@ it](../images/workflow-loop-step.png) · [the loop on a phone](../images/workflo
 boite workflow help                     # plan format and command help
 boite workflow check <plan.json|json>   # validate and print the columns
 boite workflow run <plan.json|json>     # start a run and open its panel
-boite workflow list
-boite workflow show <run-id>            # executions, threads and output
+boite workflow list                     # run summaries, including in JSON
+boite workflow show <run-id>            # execution states and thread IDs
+boite workflow show <run-id> <step-or-execution>  # selected result
+boite workflow show <run-id> --details  # full plan and results
 boite workflow extend <run-id> <steps>
 boite workflow pause|resume|stop <run-id>
 boite workflow retry <run-id> [step]

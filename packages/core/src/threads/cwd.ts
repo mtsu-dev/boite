@@ -29,6 +29,13 @@ export async function requireThreadCwd(threadId: ThreadId, cwd: string): Promise
   if (!(await folderPresent(cwd))) throw new ThreadCwdGone(threadId, cwd);
 }
 
+/** Verify the execution folder before a user turn, restoring a worktree whose branch survived. */
+export async function ensureThreadCwd(core: Core, thread: ThreadSummary): Promise<void> {
+  if (await folderPresent(thread.cwd)) return;
+  await restoreThreadCwd(core, thread);
+  await requireThreadCwd(thread.id, thread.cwd);
+}
+
 /**
  * A thread in a worktree of its own whose folder went while its branch stayed
  * (`git worktree remove` from a script, a deleted folder): the branch is

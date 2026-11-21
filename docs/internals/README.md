@@ -10,11 +10,10 @@ working on the code. To learn how to use Boite, read the [user guide](../README.
 - [The tour](onboarding.md): first launch, language, appearance and workspace choices.
 - [Accounts](accounts.md): agent sign-ins and isolated accounts on the machine running them.
 - [Phone access](phone.md): pairing, mobile navigation, permissions and offline behavior.
-- [Android client app](android.md): the APK that opens the phone UI and connects to an existing core.
 - [Native Android app](android-native.md): the Tauri client in `apps/mobile`, built for Play and phones without Google services.
 - [Headless server](server.md): run a core with Docker or without the desktop app.
 - [Android server](android-server.md): host a core and agents on a phone with Termux and the separate Boite Server app.
-- [Experiments](experiments.md): stages, and switches for unfinished features in Nightly and source builds. Contacts remain experimental; Mochis are finished.
+- [Experiments](experiments.md): stages, and switches for unfinished features in Nightly and source builds; none today, every feature is finished.
 
 ## Conversations and tools
 
@@ -23,10 +22,10 @@ working on the code. To learn how to use Boite, read the [user guide](../README.
 - [Context](context.md): usage, compaction, queued prompts, goals, loops and side questions.
 - [Subagents](delegation.md): delegate to child conversations, steer them and follow their results.
 - [Workflows](workflows.md): plans of delegated steps, conditions, templates and the graph.
-- [The council](council.md): experimental read-only reviews by several models, each alone with a score, the salon and the table of rounds, in any project, with or without git.
+- [The council](council.md): read-only reviews by several models, each alone with a score, the salon and the table of rounds, in any project, with or without git.
 - [The right panel](panel.md): browser, changes, files, tasks and trace beside the chat.
 - [The agent's browser](browser.md): headless browser commands and watching a page from any device.
-- [Devices](devices.md): simulators, emulators and connected Android devices; live video is experimental.
+- [Devices](devices.md): simulators, emulators and connected Android devices; live video is an owner setting, off by default.
 - [Windows](windows.md): desktop-window captures and the Window panel, with the owner's consent.
 - [Virtual desktop](desktop.md): a private Linux desktop in memory where an agent runs GUI apps and drives them through their accessibility tree.
 - [Chat files and previews](chat-files.md): attachments, file links, inline previews and pages drawn in an answer.
@@ -50,10 +49,10 @@ working on the code. To learn how to use Boite, read the [user guide](../README.
 
 - [Machines](machines.md): connect cores, switch between them and keep each thread on its owning machine.
 - [Groups](groups.md): one owner's machines and devices, invitations, addresses and trust.
-- [Contacts](contacts.md): experimental collaboration with another owner on explicitly shared projects.
+- [Contacts](contacts.md): collaboration with another owner on explicitly shared projects.
 - [Agent coordination](coordination.md): messages between threads and machines, discussions and permissions.
 - [Mochis](mochis.md): persistent agents with their own identity, thread, memory, desk and routines.
-- [Teams](teams.md): experimental groups of mochis and the owner, routing by name, group or private posts, `boite team`.
+- [Teams](teams.md): groups of mochis and the owner, routing by name, group or private posts, `boite team`.
 - [Agent brain](brain.md): shared instructions, skill discovery and Git synchronization.
 - [Agent hooks](hooks.md): hooks on each account and what they blocked.
 - [Plugins](plugins.md): install recommended plugins or a Git URL, and write your own.

@@ -399,6 +399,32 @@ real('a command that names no tab waits for every window still joining, and a wi
   expect(tabs()).toEqual([]);
 }, 60_000);
 
+real('a window a frame of another site opens is the current tab, and one its sandbox refuses holds no command', async () => {
+  const { agent, threadId, harness } = browserFixture;
+  const io: CliIo = { cwd: harness.dataDir, env: {}, out: () => {}, err: () => {} };
+  const cli = async (...args: string[]) => (await browserCommand(args, io, agent, threadId)).lines.join('\n');
+  const tabs = () => harness.core.browser.status({ threadId }).tabs;
+  await cli('open', url());
+  // A sandbox without allow-popups refuses the window: there is nothing to wait for.
+  await evaluate(`new Promise(done => { const frame = document.createElement('iframe'); frame.id = 'boxed'; frame.sandbox = 'allow-scripts allow-same-origin'; frame.src = '/shop'; frame.onload = () => done(true); document.body.append(frame); })`);
+  expect(await evaluate(`boxed.contentWindow.eval("window.open('/popup?boxed', '_blank') !== null")`)).toBe(false);
+  const asked = performance.now();
+  expect(await evaluate('location.pathname')).toBe('/');
+  expect(performance.now() - asked).toBeLessThan(2_000);
+  expect(tabs()).toHaveLength(1);
+  const framed = url('/frame-popup').replace('127.0.0.1', 'localhost');
+  await evaluate(`new Promise(done => { const frame = document.createElement('iframe'); frame.src = ${JSON.stringify(framed)}; frame.onload = () => done(true); document.body.append(frame); })`);
+  const ref = /button "Open popup" \[ref=(e\d+)\]/.exec(await cli('snapshot', '-i'))?.[1];
+  expect(ref).toBeDefined();
+  // The click returns before Chrome may have told the core of the window: the page printed is still that window's.
+  expect(await cli('click', `@${ref}`)).toMatch(/a new window is the current tab: browser:/);
+  expect(tabs().find(tab => tab.active)?.url).toBe(`${framed.replace('/frame-popup', '/popup')}?frame`);
+  await cli('click', '-q', '#shut');
+  for (let i = 0; i < 50 && tabs().length > 1; i++) await Bun.sleep(100);
+  expect(tabs()).toHaveLength(1);
+
+}, 60_000);
+
 real('a target that moves away from the native pointer is not clicked, and the next command can reach it', async () => {
   const { agent, threadId } = browserFixture;
   await agent.call('browser.command', { threadId, action: { kind: 'open', url: url() } });

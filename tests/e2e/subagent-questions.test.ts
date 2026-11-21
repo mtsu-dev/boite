@@ -44,7 +44,7 @@ test('chatbar alerts open the child and written answers reach only that child on
         expect(await page.evaluate('!!document.querySelector("[data-testid=composer-send][data-answers]")')).toBe(false);
         expect(await page.evaluate('Array.from(document.querySelectorAll("[data-testid=activity-subagent-question]")).every(row => row.closest("[data-testid=thread-decision]"))')).toBe(true);
         await page.waitFor(`document.querySelector('${alert}').getBoundingClientRect().x >= 0`);
-        await page.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
+        await page.settleAnimations();
         if (!async) await page.screenshot(join(import.meta.dir, `.artifacts/subagent-alert-${mobile ? 'phone' : 'desktop'}.png`));
         await page.click(alert);
         await page.waitFor('document.querySelector("[data-testid=delegation-back-parent]") && document.querySelector("[data-testid=composer-reply]")');

@@ -5,7 +5,7 @@ import type { SpeechLocal } from './speech-local.ts';
 import { refused } from './errors.ts';
 import { speechThreads } from './speech-server.ts';
 
-export const WHISTLE_LANGUAGES = ['en', 'de', 'fr', 'es', 'it', 'nl', 'pl'];
+const WHISTLE_LANGUAGES = ['en', 'de', 'fr', 'es', 'it', 'nl', 'pl'];
 
 /** Join overlapping audio windows without repeating their shared words. */
 function append(before: string, after: string): string {

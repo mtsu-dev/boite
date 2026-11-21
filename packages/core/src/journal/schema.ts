@@ -14,11 +14,12 @@ import { createSharedReview } from '../contacts/review-journal.ts';
 import { createTeamMachines, createTeams } from '../teams/journal.ts';
 import { createCouncil } from '../council/journal.ts';
 import { createRemovedTurnUsage } from './usage-sums.ts';
+import { createUsageSlots } from './usage-slots.ts';
 import { createKeptProcesses } from './kept-processes.ts';
 import { createMessageStats } from './thread-stats.ts';
 import { ARTIFACT_ROW } from './artifact-references.ts';
 
-export const SCHEMA_VERSION = 51;
+export const SCHEMA_VERSION = 53;
 
 /** Raised when the journal was written by a newer core than this one. */
 export class JournalTooNewError extends Error {
@@ -189,7 +190,7 @@ export function migrate(db: Database, file: string): { from: number; to: number 
   }
   if (version < 10) { db.exec('ALTER TABLE threads ADD COLUMN speed TEXT'); version = 10; }
   // `foreign_keys` is off, so the REFERENCES ... ON DELETE CASCADE clauses below
-  // are dead and deleteThreadsOfProject clears these tables itself. Turning it
+  // are dead and deleteThreads clears these tables itself. Turning it
   // on first needs putThread and putTurn moved from INSERT OR REPLACE to
   // INSERT ... ON CONFLICT(id) DO UPDATE: a REPLACE deletes the old row, and the
   // cascade would wipe that thread's coordination rows and that turn's request
@@ -510,6 +511,17 @@ export function migrate(db: Database, file: string): { from: number; to: number 
   if (!hasColumn('turns', 'switched')) {
     db.exec('ALTER TABLE turns ADD COLUMN switched TEXT');
     version = 51;
+  }
+  // A removed project keeps its row, its threads and everything they wrote: it
+  // only leaves the lists, and adding its folder again brings it all back.
+  if (!hasColumn('projects', 'removed_at')) {
+    db.exec('ALTER TABLE projects ADD COLUMN removed_at INTEGER');
+    version = 52;
+  }
+  // The usage page's sums per 15 minutes, kept by the turn and thread writers and built once from every finished turn (`usage-slots.ts`).
+  if (version < 53) {
+    createUsageSlots(db);
+    version = 53;
   }
   createSharedProjects(db);
   createSharedBoard(db);

@@ -33,7 +33,7 @@ export function defaultPrefs(): ComposerPrefs {
   return { providerId: null, accountId: null, permissionMode: 'default', model: null, effort: null };
 }
 
-export function defaultLayout(): LayoutPrefs {
+function defaultLayout(): LayoutPrefs {
   return { sidebarWidth: SIDEBAR_DEFAULT, sidebarCollapsed: false };
 }
 

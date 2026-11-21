@@ -97,7 +97,7 @@ const VENDORS: Record<string, string> = { '0x1002': 'AMD', '0x8086': 'Intel', '0
  * DRM cards from sysfs: amdgpu reports its load and VRAM there, other drivers
  * only that the card exists. NVIDIA cards come from nvidia-smi when it answers.
  */
-export function drmGpus(root = '/sys/class/drm', skipNvidia = false): MachineGpu[] {
+function drmGpus(root = '/sys/class/drm', skipNvidia = false): MachineGpu[] {
   let cards: string[] = [];
   try { cards = readdirSync(root).filter(name => /^card\d+$/.test(name)).sort(); } catch { return []; }
   return cards.flatMap(card => {

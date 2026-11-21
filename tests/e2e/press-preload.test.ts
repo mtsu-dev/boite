@@ -17,7 +17,7 @@ async function load(): Promise<void> {
   await page.navigate(url);
   await page.waitFor('document.querySelector("[data-testid=thread-row]") && globalThis.__boiteTest?.workspace.active.loadingThreadId === null', 30_000);
   // The sidebar slides in on load: a row is pressed where it comes to rest.
-  await page.evaluate(`Promise.all(document.getAnimations().filter(animation => animation.timeline === document.timeline).map(animation => animation.finished.catch(() => {})))`);
+  await page.settleAnimations();
   await page.waitFor(`[...document.querySelectorAll('[data-testid=thread-row]')].every(row => row.getBoundingClientRect().left >= 0)`);
   await page.evaluate(`(() => {
     const client = globalThis.__boiteTest.workspace.active.client;
@@ -31,7 +31,8 @@ async function load(): Promise<void> {
 beforeAll(async () => {
   const port = await freePort();
   server = await startUi(port);
-  url = `http://127.0.0.1:${port}/?fake=1&open=recent&rtt=${RTT_MS}`;
+  // `contactNotice=0`: no demo contact notice in the window the presses land in.
+  url = `http://127.0.0.1:${port}/?fake=1&open=recent&rtt=${RTT_MS}&contactNotice=0`;
   // `BrowserPage.launch` tells every page it is driven, as the guard expects to see.
   page = await BrowserPage.launch({ url, windowSize: { width: 1280, height: 900 } });
   await page.waitFor('document.querySelector("[data-testid=thread-row]")', 30_000);

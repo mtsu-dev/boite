@@ -53,7 +53,7 @@ finite or below zero writes nothing.
 
 | Provider | The reading | The window | The divider |
 |---|---|---|---|
-| Claude | `usage` on each `assistant` message of the SDK stream, the last one wins; `conversation_reset` (`/clear`) sets it to 0 at once, keeping the window | `modelUsage[<model>].contextWindow` on the result message, the thread's model first, else the one model the turn ran on | the `compact_boundary` system message, with `pre_tokens` and `post_tokens` |
+| Claude | `usage` on each `assistant` message of the SDK stream, the last one wins; `conversation_reset` (`/clear`) sets it to 0 at once and `compact_boundary` to its `post_tokens`, both keeping the window; a request after a compaction measures again | `modelUsage[<model>].contextWindow` on the result message, the thread's model first, else the one model the turn ran on | the `compact_boundary` system message, with `pre_tokens` and `post_tokens` |
 | echo | 100 plus one token per character of the prompt | 2000 | `[compact]` in the prompt draws one, 1800 to 300 tokens, and lowers the reading to 300 |
 | Codex | `tokenUsage.last.totalTokens` in `thread/tokenUsage/updated` | `tokenUsage.modelContextWindow` when reported | completed `contextCompaction` items |
 | Muse Code | `usedTokens` in `session/contextUsage` | `windowTokens` when reported | completed `compaction` items, with `tokensBefore` and `tokensAfter` |
@@ -144,7 +144,7 @@ disables Boite's automatic triggers and restores the driver's native policy
 for that target. Removing a target restores live inheritance, without copying
 thresholds. The override map replaces the previous map on `settings.set` and
 follows the group's settings home alongside `autoCompact`. The common
-`backgroundCompaction` experiment stays local to its machine.
+`backgroundCompaction` setting stays local to its machine.
 
 All drivers resolve the policy at preparation and before each turn. Idle
 compaction and background copies use the same resolver. A policy change
@@ -312,8 +312,8 @@ is the detail its summary drops.
 
 ### Background compaction
 
-`Settings.backgroundCompaction` is an experiment, off by default, that the
-owner turns on under Settings, Experiments, for the machine picked above the
+`Settings.backgroundCompaction` is off by default. The owner turns it on
+under Settings, System, Automatic compaction, for the machine picked above the
 card, the one that runs the thread (an agent asks with
 `boite settings request backgroundCompaction true --why "..."`). It works
 with the `autoCompact` rule above and does nothing without one. Like `deviceStream`,
@@ -420,7 +420,7 @@ and resident mochis use the policy for their own type. Incognito threads and a
 session waiting to resume at an entry take no copy; their token limit still
 applies.
 
-Limits of the experiment: copies are held in memory, so a restart forgets them
+Limits: copies are held in memory, so a restart forgets them
 (the tail marker is persisted). A copy runs outside the scheduler's account
 slots and its usage is recorded on no turn; the running totals it ends on are
 kept for the session that resumes it ([usage](usage.md#the-api-estimate)). An unused Claude copy's transcript
@@ -706,7 +706,8 @@ applies both every 6 hours, and the end of a turn trims a thread once it holds
 checkpoints are kept for the newest 50 turns of a conversation". The same
 pass, and the removal of a thread's checkpoints, then deletes the shared
 files no thread links to any more.
-They survive restarts and leave with a permanently removed project or thread.
+They survive restarts and leave with a purged thread; a removed project keeps
+them for when its folder comes back.
 
 Each snapshot is limited to 20000 files and 128 MiB of saved content. A file
 above 16 MiB is not copied: the snapshot keeps only its metadata, so a change

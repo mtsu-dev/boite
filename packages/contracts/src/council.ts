@@ -31,7 +31,7 @@ export const COUNCIL_LIMITS = {
  * One flagship per provider. The catalogue does not say which model of a
  * provider is its flagship, so the default is written here; `--models` replaces it.
  */
-export const COUNCIL_DEFAULT_MODELS = ['claude/claude-opus-5-5', 'codex/gpt-6.1-sol', 'antigravity/gemini-4-argon'] as const;
+export const COUNCIL_DEFAULT_MODELS = ['claude/claude-opus-5-5', 'codex/gpt-6.2-sol', 'antigravity/gemini-4-argon'] as const;
 export const COUNCIL_DEFAULT_EFFORT = 'xhigh';
 
 /**
@@ -54,13 +54,6 @@ export function councilNearestEffort(levels: readonly string[], asked: string): 
   return levels.filter(level => EFFORT_ORDER.includes(level) && EFFORT_ORDER.indexOf(level) <= limit)
     .sort((a, b) => EFFORT_ORDER.indexOf(b) - EFFORT_ORDER.indexOf(a))[0] ?? null;
 }
-
-/**
- * The experiment's id, under the feature's first name. Every device stores it
- * and an app drops the ids it does not know, so a new id would turn the feature
- * off for whoever had it on, and an older phone would keep reporting this one.
- */
-export const COUNCIL_EXPERIMENT = 'debates';
 
 /** The owner's posts. */
 export const COUNCIL_OWNER = 'owner';
@@ -255,7 +248,7 @@ export interface CouncilRpcMethods {
    * at the same effort may not. A level written on a route that its model lacks
    * refuses the council, as does a route that cannot run: a member is never
    * replaced. `roles` gives a member, named as `models` writes it, a text of its
-   * own beside the request. Refused while the experiment is off.
+   * own beside the request.
    */
   'council.start': {
     params: { threadId: ThreadId; request: string; models?: string[]; effort?: string | null; roles?: Record<string, string>; timeoutMinutes?: number; requestId?: string };

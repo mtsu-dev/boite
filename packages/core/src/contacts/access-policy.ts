@@ -11,7 +11,6 @@ import type { SharedPeerContext } from './projects.ts';
 import { accessBinding, computeBinding, type AccessBinding } from './access-scopes.ts';
 import {letterScope} from './letter-scopes.ts';
 import {SharedNativeExecution} from './native-execution.ts';
-import { contactsGate } from './gate.ts';
 
 type FileAction = 'read' | 'publish';
 interface PublicationFile {path: string; identity: string; content: SharedSecretClass | null}
@@ -24,7 +23,7 @@ const WORKER_METHODS = new Set<string>([
   'artifacts.viewCheck',
   'sharedProjects.list', 'sharedProjects.get', 'sharedProjects.threads', 'sharedProjects.search', 'sharedProjects.read', 'sharedProjects.subscribe',
   'sharedBoard.get', 'sharedBoard.apply', 'sharedBoard.start', 'sharedCompute.models', 'sharedCompute.start', 'sharedCompute.list', 'sharedCompute.get', 'sharedCompute.send', 'sharedCompute.cancel',
-  'sharedAccess.get', 'workflows.output', 'threads.tasks.get', 'threads.tasks.set', 'threads.capabilities',
+  'sharedAccess.get', 'workflows.output', 'threads.tasks.get', 'threads.tasks.set', 'threads.tasks.change', 'threads.capabilities',
   'collaboration.get', 'collaboration.wait',
 ]);
 export type AccessReason = 'normal-file' | 'host-override' | 'secret-file' | 'path-boundary' | 'secret-content' | 'unsupported-tool' | 'scoped-request' | 'request-denied' | 'override-created' | 'override-revoked' | 'publication';
@@ -140,7 +139,7 @@ export class SharedAccess {
       // The normal sender path still checks the exact destination grant/association.
       return;
     }
-    if (id && letters?.legacy && !['collaboration.get', 'collaboration.wait', 'threads.capabilities', 'threads.tasks.get', 'threads.tasks.set'].includes(method)) this.denyTool(id);
+    if (id && letters?.legacy && !['collaboration.get', 'collaboration.wait', 'threads.capabilities', 'threads.tasks.get', 'threads.tasks.set', 'threads.tasks.change'].includes(method)) this.denyTool(id);
     if (!record) return;
     if (!WORKER_METHODS.has(method)) this.denyTool(record.threadId);
   }
@@ -282,6 +281,6 @@ export function registerSharedAccess(core: Core): void {
   core.router.register('sharedAccess.get', (p, c) => core.sharedAccess.get(p, c.connection));
   core.router.register('sharedAccess.reviewConfig', p => core.sharedReview.config(p.sharedProjectId));
   core.router.register('sharedAccess.overrides', p => core.sharedAccess.overrides(p.sharedProjectId));
-  core.router.register('sharedAccess.override', p => { contactsGate(core); return core.sharedAccess.override(p); });
+  core.router.register('sharedAccess.override', p => core.sharedAccess.override(p));
   core.router.register('sharedAccess.revokeOverride', p => core.sharedAccess.revokeOverride(p));
 }

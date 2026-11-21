@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { RpcErrorCode, type DiagnosticReportRecord, type RpcMethodName } from '@boite/contracts';
-import { RpcFailure, unansweredFailure, type ClientState } from './client';
+import { RpcFailure, type ClientState } from './client';
+import { unansweredFailure } from './rpc-error';
 import { cleanStack, DiagnosticsReporter, REPORT_BATCH, REPORT_INTERVAL_MS, REPORT_QUEUE, startDiagnosticsReport } from './diagnostics-report';
 
 /** A client whose answers the test decides, with the state changes a socket makes. */

@@ -200,10 +200,10 @@ export const DEVICE_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>
   'questions.openPage', // The address a pending question of the subscribed conversation carries, rechecked by the core.
   // Paired phones can dismiss the same question cards as the owner's chat.
   'questions.skip',
-  // A secret card answered from the phone, with list/delete retained for older clients. The core
-  // refuses an answer or legacy deletion over an unencrypted link (core secrets/rpc.ts): the value or
-  // the decision must not cross a LAN in clear. The list carries names and dates, never a value.
-  'secrets.answer', 'secrets.list', 'secrets.delete',
+  // A secret card answered from the phone, and the list an older client still reads. The core
+  // refuses an answer over an unencrypted link (core secrets/rpc.ts): the value must not cross a
+  // LAN in clear. The list carries names and dates, never a value.
+  'secrets.answer', 'secrets.list',
   'secrets.pending', // Restore open cards independently of history; metadata only, never values.
   // A phone says its own language and experiments, so the agent reads the screen the user reads; nothing the core trusts.
   'client.preferences',
@@ -225,6 +225,9 @@ export const DEVICE_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>
   // Sums of the same finished turns per day, provider and model. The thread
   // titles it names are the ones `threads.list` already shows the device.
   'usage.history',
+  // One thread's turns with their usage and model: what `usage.history` already
+  // sums for the device, turn by turn, with no message text.
+  'usage.thread',
   // The limit bars of the accounts `accounts.list` already names, and the gateway's.
   // A device reads what the core holds: forcing a refresh, switching monitoring and
   // spending a reset stay the owner's (core access.ts).
@@ -268,7 +271,7 @@ export const DEVICE_EVENTS: ReadonlySet<RpcEventName> = new Set<RpcEventName>([
   'turn.toolCompleted',
   'message.started', 'message.delta', 'message.part', 'message.completed', 'message.truncated',
   'permission.requested', 'permission.resolved', 'question.asked', 'question.answered',
-  'secret.requested', 'secret.resolved', 'secrets.changed', // Names, reasons and refs, never a value.
+  'secret.requested', 'secret.resolved', // Names, reasons and refs, never a value.
   'scheduler.updated', 'accounts.updated', 'accounts.removed',
   'quotas.updated', 'quotas.progress', 'subscriptionProxy.quotasUpdated', // What quotas.list and subscriptionProxy.quotas answer.
   'quotas.alerted', // One window of a row quotas.list already answers the device.
@@ -449,6 +452,7 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['artifacts.previewClose', 'closing only an HTML preview belonging to its own conversation'],
   ['threads.tasks.set', 'the plan the tasks surface draws, from an agent whose protocol carries no todo tool'],
   ['threads.tasks.get', 'the same plan read back, so a new process continues the list it did not write'],
+  ['threads.tasks.change', 'edit one task in the agent’s own plan atomically'],
   ['todos.list', 'the project cards, shared with the other threads of the project'],
   ['todos.add', 'what surfaced during the work and belongs to the project, not to this turn'],
   ['todos.update', 'claiming a card it finished, which is a request for confirmation, never the confirmation'],

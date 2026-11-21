@@ -1,7 +1,7 @@
 import type { AgentAddress, AgentLetter, AgentProfile, AgentRelation, Message, ThreadStatus, Turn } from '@boite/contracts';
 import type { Store } from './store.svelte';
 
-export type MailDirection = 'incoming' | 'outgoing';
+type MailDirection = 'incoming' | 'outgoing';
 export interface AgentMail {
   letter: AgentLetter;
   self: AgentAddress;

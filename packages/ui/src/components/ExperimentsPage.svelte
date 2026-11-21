@@ -1,26 +1,17 @@
 <script lang="ts">
   import InfoTip from './InfoTip.svelte';
-  import CompactionSettings from './CompactionSettings.svelte';
-  import CacheKeepaliveSettings from './CacheKeepaliveSettings.svelte';
-  import DeviceStreamSettings from './DeviceStreamSettings.svelte';
-  import { loadAutoGoalSetting } from '../lib/auto-goal-entry';
-  import { untrack, type Snippet } from 'svelte';
-  import { EXPERIMENT_STAGES, buildKindOf, experimentsRun } from '@boite/contracts';
+  import { untrack } from 'svelte';
+  import { EXPERIMENT_STAGES, buildKindOf } from '@boite/contracts';
   import { canFollowDesktop, desktopExperiments, experimentsBuild, followsDesktop, listedSwitches, readExperiments, setExperiment, setFollowDesktop, subscribeExperiments, type ExperimentId } from '../lib/experiments';
   import { experimentCopy } from '../lib/experiment-copy';
   import { strings } from '../lib/strings';
-  import { ensureOperator } from '../lib/operator';
-  import { workspace } from '../lib/workspace.svelte';
-  import type { Store } from '../lib/store.svelte';
 
   /**
    * The switches of this device: the experiments the primary machine's build
-   * lists (none on a Release, where Settings has no such page), with the
-   * Automatic goals threshold of `store`, this window's machine; then the
-   * experiments of `target`, the machine `bar` picks. A machine's own are
-   * experiments too: they show only while its core is not a Release.
+   * lists. Settings has the page only while there is one to list
+   * (`experimentsAvailable`): none on a Release, and none while every feature
+   * is finished. A machine's own settings live on the pages they belong to.
    */
-  let { store, target = store, bar }: { store?: Store; target?: Store; bar?: Snippet } = $props();
   const uid = $props.id();
 
   let copy = $derived(experimentCopy());
@@ -35,14 +26,8 @@
    * and the dev-only ones stand out. A Nightly lists one tag: nothing to tell apart.
    */
   let tagged = $state(untrack(() => buildKindOf(experimentsBuild()) === 'dev'));
-  /** The machine being configured runs experiments: a Release core refuses them and reads them as off. */
-  let machineRuns = $derived(target !== undefined && experimentsRun(target.core?.version));
-  let thresholdRuns = $derived(store !== undefined && experimentsRun(store.core?.version));
-
   function toggle(id: ExperimentId, on: boolean) {
     setExperiment(id, on);
-    // The group's one Operator, made where `operatorHost` says when no machine has it yet.
-    if (id === 'contacts' && on && store) void ensureOperator(store, workspace.machinesOr(store).map(machine => machine.store));
   }
 
   // The desktop app can change them while the page is open.
@@ -53,9 +38,6 @@
     following = followsDesktop();
     heard = desktopExperiments() !== null;
   }));
-  // The threshold loads with the page, out of the builds below the experiment's tag (lib/auto-goal-entry.ts).
-  let AutoGoalSetting = $state.raw<typeof import('./AutoGoalSetting.svelte').default>();
-  void loadAutoGoalSetting()?.then(module => { AutoGoalSetting = module.default; }).catch(() => {});
 </script>
 
 <div class="page" data-testid="experiments-page">
@@ -92,21 +74,11 @@
           onchange={(event) => toggle(id, event.currentTarget.checked)}
         />
       </label>
-      <!-- Its threshold is the core's, under the switch while it is on. -->
-      {#if id === 'auto-goal' && store && thresholdRuns && enabled.includes(id) && AutoGoalSetting}<AutoGoalSetting {store} />{/if}
     {/each}
   </section>
-
-  {#if target && bar}{@render bar()}{/if}
-  {#if target && machineRuns}<CacheKeepaliveSettings store={target} /><CompactionSettings store={target} backgroundOnly /><DeviceStreamSettings store={target} />{/if}
 </div>
 
 <style>
-  /* The bar heads the machine's half as the page's header heads the page: the same room under it. */
-  .page > :global(.machine-bar) { margin-bottom: var(--space-6); }
-  @media (max-width: 720px) {
-    .page > :global(.machine-bar) { margin-bottom: var(--space-5); }
-  }
   .tag { flex: none; padding: 0 var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-sm); color: var(--color-muted-foreground); font-size: var(--text-xs); line-height: 1.5; white-space: nowrap; }
   .tag.dev { color: var(--color-foreground); border-color: var(--color-muted-foreground); }
 </style>

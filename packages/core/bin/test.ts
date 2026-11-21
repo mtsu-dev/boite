@@ -37,7 +37,7 @@ if (!all.length) throw new Error(`${resolve(core, 'test')}: expected at least on
 // Longest recorded first, so a slow file does not start last and hold the run alone.
 const files = coreShards(all, shard?.count ?? 1, runnerKey())[(shard?.index ?? 1) - 1]!.files;
 if (shard) console.log(`Core shard ${shard.index}/${shard.count}: ${files.length} of ${all.length} files`);
-const running = new Set<Bun.Subprocess>();
+const running = new Map<Bun.Subprocess, () => Promise<void>>();
 const failures: string[] = [];
 const retried: string[] = [];
 const totals = { pass: 0, skip: 0, fail: 0 };
@@ -50,22 +50,36 @@ let interrupted = false;
 function stop() {
   interrupted = true;
   halted = true;
-  for (const child of running) child.kill();
+  for (const terminate of running.values()) void terminate();
 }
 process.once('SIGINT', stop);
 process.once('SIGTERM', stop);
 
 async function attempt(file: string, extra: string[]) {
-  const child = Bun.spawn([process.execPath, 'test', resolve(core, 'test', file), ...args, ...extra], {
+  // The capture process and its fixtures need a private WinSta0 desktop.
+  const desktop = process.platform === 'win32' && file === 'window-capture-windows.test.ts';
+  const entry = desktop ? resolve(core, 'test/fixtures/window-capture-desktop.ts') : 'test';
+  const child = Bun.spawn([process.execPath, entry, resolve(core, 'test', file), ...args, ...extra], {
     cwd: core, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe', windowsHide: true,
     env: { ...process.env, NO_COLOR: '1', FORCE_COLOR: '0' },
   });
-  running.add(child);
+  let stopping: Promise<void> | undefined;
+  const terminate = () => stopping ??= (async () => {
+    if (child.exitCode !== null) return;
+    if (desktop) {
+      // The launcher starts Bun and its PowerShell fixtures on the private desktop.
+      const { treeKill } = await import('../src/platform/windows/tree-kill.ts');
+      if (child.exitCode !== null) return;
+      await treeKill(child.pid);
+    }
+    if (child.exitCode === null) child.kill();
+  })();
+  running.set(child, terminate);
   let overdue = false;
   const begun = performance.now();
   const deadline = setTimeout(() => {
     overdue = true;
-    child.kill();
+    void terminate();
   }, fileDeadlineMs);
   try {
     const [stdout, stderr, code] = await Promise.all([
@@ -81,7 +95,7 @@ async function attempt(file: string, extra: string[]) {
   } finally {
     clearTimeout(deadline);
     // Also reap a captured process if reading its output failed.
-    if (child.exitCode === null) child.kill();
+    await terminate();
     await child.exited;
     running.delete(child);
   }
@@ -120,8 +134,8 @@ try {
   if (errors.length) throw new AggregateError(errors.map(result => result.reason), 'Core test runner failed');
 } finally {
   halted = true;
-  for (const child of running) child.kill();
-  await Promise.all([...running].map(child => child.exited));
+  await Promise.all([...running.values()].map(terminate => terminate()));
+  await Promise.all([...running.keys()].map(child => child.exited));
   process.removeListener('SIGINT', stop);
   process.removeListener('SIGTERM', stop);
 }

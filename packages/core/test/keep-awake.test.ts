@@ -60,13 +60,14 @@ test('the machine is held awake while a turn runs or is queued, not for a thread
     expect([holds, releases]).toEqual([2, 2]);
     await pause(250);
     expect(holds).toBe(2);
-    // The setting off gives it back at once, without the 150 ms, and work no longer holds.
+    // The setting off gives it back once the 100 ms settle ends, without the 150 ms after it, and work no longer holds.
     status('running');
     await waitFor(() => keeper.held);
     const before = performance.now();
     h.core.settings.set({ keepAwake: false });
     await waitFor(() => !keeper.held);
-    expect(performance.now() - before).toBeLessThan(140);
+    // Under 250 ms (settle and release delay together): a loaded Windows runner took 156 ms for the settle alone.
+    expect(performance.now() - before).toBeLessThan(250);
     expect([holds, releases]).toEqual([3, 3]);
     status('idle');
     status('running');
@@ -128,11 +129,12 @@ test.skipIf(process.platform === 'win32')('the helper holds until released, a re
   const dir = mkdtempSync(join(tmpdir(), 'boite-awake-'));
   const helper = join(dir, 'inhibit');
   // Refuses to block sleep as logind does for a user with no active session; holds anything else while its command runs.
-  writeFileSync(helper, `#!/bin/sh\nwhat="$1"; shift 4\ncase "$what" in --what=sleep:idle) echo "Failed to inhibit: Access denied" 1>&2; exit 1;; esac\ntrap 'rm -f "${dir}/held"' EXIT\ntrap 'exit 0' TERM\necho "$$ $what" > "${dir}/held"\n"$@"\n`);
+  writeFileSync(helper, `#!/bin/sh\nwhat="$1"; shift 4\ncase "$what" in --what=sleep*) echo "Failed to inhibit: Access denied" 1>&2; exit 1;; esac\ntrap 'rm -f "${dir}/held"' EXIT\ntrap 'exit 0' TERM\necho "$$ $what" > "${dir}/held"\n"$@"\n`);
   chmodSync(helper, 0o755);
   const commands = keepAwakeCommands('linux', name => name === 'systemd-inhibit' ? helper : Bun.which(name));
   expect(commands.map(command => command.slice(1, 5))).toEqual([
-    ['--what=sleep:idle', '--who=Boite', '--why=Agents are working', '--mode=block'],
+    // Sleep alone first: an idle inhibitor would keep a desktop session from locking and blanking its screen.
+    ['--what=sleep', '--who=Boite', '--why=Agents are working', '--mode=block'],
     ['--what=idle', '--who=Boite', '--why=Agents are working', '--mode=block'],
   ]);
   expect(keepAwakeCommands('linux', () => null)).toEqual([]);

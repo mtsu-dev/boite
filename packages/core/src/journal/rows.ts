@@ -10,6 +10,8 @@ export interface ProjectRow {
   /** Absent from a row read before schema 21. */
   archived?: number;
   worktree_default?: number;
+  /** When `projects.remove` took it out of the lists; null while it is listed. */
+  removed_at?: number | null;
 }
 
 /** A row of `project_icons` without its bytes. */

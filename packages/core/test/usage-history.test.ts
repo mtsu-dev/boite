@@ -314,7 +314,7 @@ function kept(): { finished_at: number; provider_id: string; model: string | nul
   return harness.core.journal.db.query('SELECT * FROM removed_turn_usage ORDER BY finished_at, rowid').all() as ReturnType<typeof kept>;
 }
 
-test('removing a project leaves usage.history as it was, to the turn and the token, and only its ranking loses the threads', async () => {
+test('removing a project leaves usage.history as it was, to the turn and the token, its ranking included', async () => {
   const { echo, codex } = await threads();
   const journal = harness.core.journal;
   journal.putProject({ id: 'prj_staying', name: 'Staying', path: harness.dataDir, createdAt: D0 });
@@ -350,9 +350,15 @@ test('removing a project leaves usage.history as it was, to the turn and the tok
   await client.call('projects.remove', { projectId: echo.projectId! });
   expect(journal.getThread(echo.id)).toBeNull();
   expect(journal.getThread(codex.id)).toBeNull();
+  // Only two flags move: removal archives the threads it stops, and its project is now marked removed.
+  const unarchived = (histories: typeof before) => histories.map((history) => ({
+    ...history,
+    threads: history.threads.map((thread) => ({ ...thread, archived: false })),
+    projects: history.projects?.map((project) => ({ ...project, removed: false })),
+  }));
   const after = await read();
-  expect(after.map((history) => history.rows)).toEqual(before.map((history) => history.rows));
-  expect(after.map((history) => history.threads.map((thread) => thread.threadId))).toEqual([[staying.id], [], [staying.id], []]);
+  expect(after[0]!.projects?.find((project) => project.projectId === echo.projectId)?.removed).toBe(true);
+  expect(unarchived(after)).toEqual(unarchived(before));
 });
 
 test('purging a deleted conversation leaves usage.history as it was', async () => {
@@ -375,27 +381,6 @@ test('purging a deleted conversation leaves usage.history as it was', async () =
   const after = await read();
   expect(after.rows).toEqual(before.rows);
   expect(after.threads.map((thread) => thread.threadId)).toEqual([codex.id]);
-});
-
-test('a removed project keeps no title, prompt, answer, path or project id: only each finished turn\'s time, route and usage', async () => {
-  const client = await harness.connect();
-  const { threadId } = await echoThread(harness, client, 'Secret plans');
-  const thread = harness.core.threads.require(threadId);
-  const finished = client.next('turn.finished', (finishedTurn) => finishedTurn.threadId === threadId, 10000);
-  await client.call('turns.start', { threadId, prompt: 'whisper the launch codes' });
-  const done = await finished;
-  expect(harness.core.journal.listMessages(threadId).length).toBeGreaterThan(0);
-
-  await client.call('projects.remove', { projectId: thread.projectId! });
-  const rows = kept();
-  expect(rows.map((row) => ({ ...row, usage: JSON.parse(row.usage!) as unknown }))).toEqual([
-    { finished_at: done.finishedAt!, provider_id: 'echo', model: done.execution?.model ?? null, usage: done.usage },
-  ]);
-  const values = rows.flatMap((row) => Object.values(row)).map(String);
-  for (const secret of ['Secret plans', 'launch codes', thread.projectId!, thread.cwd, threadId, done.id]) {
-    expect(values.filter((value) => value.includes(secret))).toEqual([]);
-  }
-  expect(harness.core.journal.listMessages(threadId)).toEqual([]);
 });
 
 test('an incognito conversation leaves no usage behind, whether erased, purged at startup or swept with a project', async () => {

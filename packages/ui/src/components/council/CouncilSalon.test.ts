@@ -1,8 +1,12 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
-import { COUNCIL_EXPERIMENT, type Message } from '@boite/contracts';
-import { setExperiment } from '../../lib/experiments';
+import { RpcErrorCode, type ExperimentId, type Message } from '@boite/contracts';
+
+/** The Council's id while it was an experiment, as an older core still reports it. */
+const COUNCIL_EXPERIMENT = 'debates' as unknown as ExperimentId;
 import { FakeClient } from '../../lib/fake-client';
+import { RpcFailure } from '../../lib/rpc-error';
+import { strings } from '../../lib/strings';
 import { Store } from '../../lib/store.svelte';
 import { workspace } from '../../lib/workspace.svelte';
 import AssistantMessage from '../AssistantMessage.svelte';
@@ -16,7 +20,6 @@ afterEach(async () => {
   for (const component of mounted.splice(0)) await unmount(component);
   for (const close of closers.splice(0)) close();
   workspace.machines = []; workspace.active = previousActive;
-  setExperiment(COUNCIL_EXPERIMENT, false);
   vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear();
 });
 
@@ -38,10 +41,9 @@ const tableRows = () => all('[data-testid=council-table] tr').map(row => [...row
 /**
  * The demo thread (`?fake=1&council=1`): a council closed after two rounds, one in
  * its second round with GPT-6 Astra still reviewing, and a debate from before the council.
- * `on` is the Council experiment, in the app and on the core alike.
+ * `on` is the device's old Council switch, which no build reads any more.
  */
 async function demo(on = true) {
-  setExperiment(COUNCIL_EXPERIMENT, on);
   const client = new FakeClient({ delayMs: 0, councilDemo: true });
   const store = new Store();
   store.attach(client);
@@ -106,16 +108,15 @@ test('the card says where each council stands and opens the salon in the panel',
   expect(store.panel.active).toMatchObject({ kind: 'council', councilId: 'cnl_demo_done' });
 });
 
-test('with the experiment off, the thread draws no card, not even an old debate\'s, and the salon says how to turn it on', async () => {
+test('a device whose old Council switch is off still draws the cards and the salon: the Council is on in every build', async () => {
   const { store } = await demo(false);
   card(store, 'm-council-3');
   card(store, 'm-council-4');
   salon(store, 'cnl_demo_live');
-  await settle();
-  expect(document.body.textContent).toContain('A second council is reviewing');
-  expect(document.querySelector('[data-testid=council-card]')).toBeNull();
-  expect(query('[data-testid=council-unavailable]').textContent).toContain('Settings, Experiments');
-  expect(document.querySelector('[data-testid=council-composer]')).toBeNull();
+  await vi.waitFor(() => expect(all('[data-testid=council-member]')).toHaveLength(3));
+  expect(all('[data-testid=council-card]').length).toBeGreaterThan(0);
+  expect(document.querySelector('[data-testid=council-unavailable]')).toBeNull();
+  expect(document.querySelector('[data-testid=council-composer]')).not.toBeNull();
 });
 
 test('the in-memory core answers a council as the real one: the exact route, the nearest effort, no table for an old debate', async () => {
@@ -131,29 +132,29 @@ test('the in-memory core answers a council as the real one: the exact route, the
   await expect(client.call('council.table', { councilId: 'dbt_demo_old' })).rejects.toThrow('a debate from before the council has no scores, so no table');
 });
 
-test('the app with the experiment on, before the core has it, still draws no salon', async () => {
-  setExperiment(COUNCIL_EXPERIMENT, true);
+test('an older core that refuses councils until its desktop turns them on: the salon says so, then reads them unopened', async () => {
   const client = new FakeClient({ delayMs: 0, councilDemo: true });
   const store = new Store();
   store.attach(client);
   closers.push(() => { store.detach(); client.close(); });
   await store.connect();
-  client.reportDesktopExperiments([]);
+  const call = client.call.bind(client);
+  let mode: 'refused' | 'timeout' | 'answer' = 'refused';
+  vi.spyOn(client, 'call').mockImplementation(((method: string, params: unknown) => {
+    if (method !== 'council.get' || mode === 'answer') return call(method as never, params as never);
+    if (mode === 'timeout') { mode = 'answer'; return Promise.reject(new Error('Request timed out')); }
+    return Promise.reject(new RpcFailure({ code: RpcErrorCode.Refused, message: 'council.get needs the Council experiment' }));
+  }) as typeof client.call);
   salon(store, 'cnl_demo_live');
   await vi.waitFor(() => expect(document.querySelector('[data-testid=council-unavailable]')).not.toBeNull());
+  expect(text('[data-testid=council-unavailable]')).toBe(strings.council.unavailable);
   // A read that times out says nothing about councils: the salon keeps what it said.
-  const call = client.call.bind(client);
-  let timedOut = false;
-  vi.spyOn(client, 'call').mockImplementation(((method: string, params: unknown) => {
-    if (method !== 'council.get' || timedOut) return call(method as never, params as never);
-    timedOut = true;
-    return Promise.reject(new Error('Request timed out'));
-  }) as typeof client.call);
+  mode = 'timeout';
   client.reportDesktopExperiments([COUNCIL_EXPERIMENT]);
-  await vi.waitFor(() => expect(timedOut).toBe(true));
+  await vi.waitFor(() => expect(mode).toBe('answer'));
   await settle();
   expect(document.querySelector('[data-testid=council-unavailable]')).not.toBeNull();
-  // Turned on afterwards, the salon reads the council without being reopened.
+  // That core's desktop turning the switch on again, the salon reads the council without being reopened.
   client.reportDesktopExperiments([COUNCIL_EXPERIMENT]);
   await vi.waitFor(() => expect(all('[data-testid=council-member]')).toHaveLength(3));
 });

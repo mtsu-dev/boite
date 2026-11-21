@@ -35,7 +35,7 @@ import { contactFace } from './face.ts';
 /** The member's first offer must come back before the caller's own request times out. */
 const OFFER_MS = 3500;
 const ID = /^[A-Za-z0-9_-]{1,100}$/;
-export const HOST_GONE = 'Not delivered: the group\'s Mochis host stayed unreachable for 7 days';
+const HOST_GONE = 'Not delivered: the group\'s Mochis host stayed unreachable for 7 days';
 
 function within<T>(job: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;

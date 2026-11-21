@@ -11,7 +11,7 @@ import { fill, strings } from './strings';
 /** Monday first, the order a week is picked in. */
 export const WEEK: number[] = [1, 2, 3, 4, 5, 6, 0];
 export const WEEKDAYS: number[] = [1, 2, 3, 4, 5];
-export const WEEKEND: number[] = [0, 6];
+const WEEKEND: number[] = [0, 6];
 /** The intervals a person picks from, in minutes. */
 export const INTERVALS: number[] = [15, 30, 60, 120, 360, 720, 1440];
 
@@ -22,7 +22,7 @@ export function weekdayName(day: number, width: 'long' | 'short' | 'narrow' = 'l
 }
 
 /** "Every hour", "Every 30 minutes", "Every 2 days": each unit has its own sentence, French agrees them. */
-export function everyName(minutes: number): string {
+function everyName(minutes: number): string {
   const t = strings.agents.when;
   if (minutes % 1440 === 0) return minutes === 1440 ? t.everyDay : fill(t.everyDays, { count: String(minutes / 1440) });
   if (minutes % 60 === 0) return minutes === 60 ? t.everyHour : fill(t.everyHours, { count: String(minutes / 60) });
@@ -84,7 +84,7 @@ export function dateTime(at: number, now = Date.now()): string {
 }
 
 /** Local calendar days from `now` to `at`: 0 today, 1 tomorrow, -1 yesterday. */
-export function dayOffset(at: number, now = Date.now()): number {
+function dayOffset(at: number, now = Date.now()): number {
   const start = (value: number) => { const d = new Date(value); d.setHours(0, 0, 0, 0); return d.getTime(); };
   return Math.round((start(at) - start(now)) / 86_400_000);
 }

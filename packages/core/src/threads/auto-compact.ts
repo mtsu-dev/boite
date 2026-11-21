@@ -232,7 +232,7 @@ export class AutoCompaction {
  * an ordinary conversation is the user's, so only the mochi's thread, with a
  * context of `minTokens` or more and a cache that lives `minCacheMs` or longer.
  */
-export function coldWake(thread: Pick<ThreadSummary, 'agentSessionId' | 'parentThreadId' | 'context'>, cache: { ttlSeconds: number }): boolean {
+function coldWake(thread: Pick<ThreadSummary, 'agentSessionId' | 'parentThreadId' | 'context'>, cache: { ttlSeconds: number }): boolean {
   if (!thread.agentSessionId || thread.parentThreadId) return false;
   if ((thread.context?.tokens ?? 0) < COLD_WAKE.minTokens) return false;
   return cache.ttlSeconds * 1000 >= COLD_WAKE.minCacheMs;

@@ -26,7 +26,6 @@ afterAll(async () => {
 }, 30_000);
 
 const STORE = `globalThis.__boiteTest.workspace.active`;
-const settle = `Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`;
 const testid = (name: string) => `[data-testid="${name}"]`;
 /** The line as read: the shared model, each side, then what follows, without the agents' marks. */
 const line = (name: string) => `Array.from(document.querySelectorAll('${testid(name)} :is(.lead, [data-testid="switch-from"], [data-testid="switch-to"], .said)'), part => part.textContent).join(' | ')`;
@@ -34,7 +33,7 @@ const line = (name: string) => `Array.from(document.querySelectorAll('${testid(n
 const box = (name: string) => `(() => { const row = document.querySelector('${testid(name)}'); const column = row.parentElement.getBoundingClientRect(); const own = row.getBoundingClientRect(); const tops = new Set(Array.from(row.querySelectorAll('.lead, [data-testid="switch-from"], [data-testid="switch-to"]'), part => Math.round(part.getBoundingClientRect().top + part.getBoundingClientRect().height / 2))); return { inside: own.left >= column.left - 1 && own.right <= column.right + 1, wide: Math.round(own.width) >= Math.round(column.width) - 80, height: Math.round(own.height), rows: tops.size }; })()`;
 
 async function shot(page: BrowserPage, name: string): Promise<void> {
-  await page.evaluate(settle);
+  await page.settleAnimations();
   await page.screenshot(join(import.meta.dir, '.artifacts', `${name}.png`));
 }
 

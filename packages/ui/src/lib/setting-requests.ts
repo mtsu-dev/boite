@@ -31,6 +31,8 @@ function graduated(key: string): { title: string; switched: boolean } | null {
   if (id === 'open-chat-links') return { title: strings.features.openChatLinks.title, switched: true };
   if (id === 'preview-comments') return { title: strings.features.previewComments.title, switched: true };
   if (id === 'edge-scrollbars') return { title: strings.features.edgeScrollbars.title, switched: true };
+  if (id === 'whip') return { title: strings.features.whip.title, switched: true };
+  if (id === 'auto-goal') return { title: strings.settings.autoGoals, switched: true };
   if (id === 'press-preload') return { title: strings.settingRequest.loadOnPress, switched: false };
   // Finished since: on in every build, with no switch (`EXPERIMENT_STAGES`).
   if (id === 'resident-agents') return { title: strings.agents.heading, switched: false };
@@ -39,6 +41,9 @@ function graduated(key: string): { title: string; switched: boolean } | null {
   if (id === 'pinned-quotas') return { title: strings.quotas.pin, switched: false };
   if (id === 'prompt-cache') return { title: strings.settingRequest.promptCacheTimer, switched: false };
   if (id === 'recording-indicators') return { title: strings.settingRequest.recordingActions, switched: false };
+  if (id === 'contacts') return { title: strings.contacts.heading, switched: false };
+  if (id === 'teams') return { title: strings.teamChat.heading, switched: false };
+  if (id === 'debates') return { title: strings.council.salon, switched: false };
   const known = experimentOf(key);
   if (known !== null && EXPERIMENT_STAGES[known] === 'release') return { title: strings.settingRequest.formerExperiment, switched: false };
   return null;
@@ -94,6 +99,7 @@ export function settingHelp(key: RequestableKey): string | null {
     shortAnswers: [effects.shortAnswers, s.shortAnswersHint],
     toolSummaries: [effects.toolSummaries, s.toolSummariesHint],
     titleModel: [s.titleModelHint],
+    autoGoals: [effects.autoGoals, s.autoGoalsHint],
     threadDoneRetentionDays: [s.archived.doneRetentionHint],
     threadDeletionRetentionDays: [s.deleted.retentionHint],
     worktreeStorage: [`${worktrees.storageProject}: ${worktrees.storageProjectHint} .boite/worktrees`, `${worktrees.storageShared}: ${worktrees.storageSharedHint}`, worktrees.storageNewOnly],
@@ -115,6 +121,7 @@ export function settingHelp(key: RequestableKey): string | null {
     compactionByType: [s.compactionInheritanceHint],
     compactionSummary: [s.compactionSummaryHint],
     autoResumeLimitedThreads: [effects.autoResume, strings.quotas.autoResumeHint],
+    cacheKeepalive: [effects.cacheKeepalive, s.cacheKeepaliveHint],
     backgroundCompaction: [effects.backgroundCompaction, s.backgroundCompactionHint],
     deviceStream: [effects.deviceStream, s.deviceStreamHint],
     groupThreads: [strings.machines.groupThreadsHint],
@@ -220,6 +227,7 @@ export function settingsSectionLabel(section: string, providers: readonly Provid
     execution: settings.execution,
     origins: strings.machines.browserOrigins,
     'auto-compact': settings.autoCompact,
+    'cache-keepalive': settings.cacheKeepalive,
     'device-stream': settings.deviceStream,
     'background-compaction': settings.backgroundCompaction,
   };
@@ -229,7 +237,7 @@ export function settingsSectionLabel(section: string, providers: readonly Provid
 /** Pages a paired device's Settings leaves out: `OWNER_TABS` in `SettingsShell.svelte`. */
 const OWNER_PAGES: readonly SettingsPage[] = ['accounts', 'plugins', 'resources', 'brain'];
 /** Cards of the shared pages that only the owner's Settings draws there. */
-const OWNER_SECTIONS: readonly string[] = ['quiet', 'agents-alone', 'agent-replies', 'worktrees', 'privacy', 'execution', 'origins', 'auto-compact', 'device-stream', 'background-compaction'];
+const OWNER_SECTIONS: readonly string[] = ['quiet', 'agents-alone', 'agent-replies', 'worktrees', 'privacy', 'execution', 'origins', 'cache-keepalive', 'auto-compact', 'device-stream', 'background-compaction'];
 /**
  * What a phone browser's Settings (`MobileSettings.svelte`) draws: the pages
  * it opens whole, then the cards it has of the others. Keep it in step with
@@ -240,14 +248,27 @@ const PHONE_CARDS: Partial<Record<SettingsPage, readonly string[]>> = {
   resources: ['limits', 'tasks'],
   machines: ['machines', 'group'],
   general: ['archived', 'worktrees', 'conversations', 'quiet', 'agents-alone', 'agent-replies'],
-  advanced: ['auto-compact'],
+  advanced: ['cache-keepalive', 'auto-compact', 'background-compaction', 'device-stream'],
 };
+
+/**
+ * Where a card's setting is now. A card asked while the prompt cache
+ * keepalive, background compaction and the live device stream were
+ * experiments still names the Experiments
+ * page; their switches are in System since, and no build lists that page.
+ */
+const MOVED_TO_SYSTEM: readonly string[] = ['cache-keepalive', 'background-compaction', 'device-stream'];
+export function settingPlace(setting: SettingAsk): Pick<SettingAsk, 'page' | 'section'> {
+  if (setting.page === 'experiments' && setting.section !== null && MOVED_TO_SYSTEM.includes(setting.section)) return { page: 'advanced', section: setting.section };
+  return { page: setting.page, section: setting.section };
+}
 
 /**
  * Whether this client's Settings has the card a settings card points at. A
  * button that would land on Home instead is not offered.
  */
-export function settingsReachable(setting: SettingAsk, client: { owner: boolean; phone: boolean }): boolean {
+export function settingsReachable(asked: SettingAsk, client: { owner: boolean; phone: boolean }): boolean {
+  const setting = settingPlace(asked);
   const section = setting.section;
   // A Release has no Experiments page.
   if (setting.page === 'experiments' && !experimentsShown()) return false;
@@ -260,7 +281,8 @@ export function settingsReachable(setting: SettingAsk, client: { owner: boolean;
 }
 
 /** `Resources › Limits`, the trail under a card. */
-export function settingPlaceText(setting: SettingAsk, providers: readonly ProviderSummary[] = []): string {
+export function settingPlaceText(asked: SettingAsk, providers: readonly ProviderSummary[] = []): string {
+  const setting = settingPlace(asked);
   const section = setting.section === null ? null : settingsSectionLabel(setting.section, providers);
   return [settingsPageLabel(setting.page), section].filter((part): part is string => part !== null).join(' › ');
 }

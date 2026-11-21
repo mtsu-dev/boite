@@ -20,7 +20,7 @@ size and last write, the time of the first prompt, the title, and the thread
 that already carries the session if one does. A file with no prompt is left
 out, and one whose first prompt was recorded in another directory is skipped
 with a line on the log. The listing reads a file from its start up to the
-first prompt, then its last 256 KB for the latest title record, since the CLI
+first prompt that is not a command ([below](#what-is-a-prompt)), then its last 256 KB for the latest title record, since the CLI
 writes that record again all along the session. A file whose tail holds no
 title, such as an old transcript with one `summary` near its start, is read
 whole. The core keeps each file's entry while its size and last write stay the
@@ -77,6 +77,29 @@ under the model provider that recorded it.
 OpenCode, pi, Antigravity, Grok and Muse Code have their own stores; none is
 read yet.
 
+## What is a prompt
+
+Claude Code files its own records as the user's beside what the user typed.
+Only what the user typed becomes a prompt:
+
+- a slash command shows as typed, `/review the last commit`, rebuilt from its
+  `<command-name>` and `<command-args>` tags;
+- a shell command `<bash-input>ls</bash-input>` shows as `!ls`;
+- left out: a record that opens with `<task-notification>`,
+  `<local-command-stdout>`, `<local-command-stderr>`, `<local-command-caveat>`,
+  `<bash-stdout>` or `<bash-stderr>`, the interrupt markers
+  `[Request interrupted by user]` and
+  `[Request interrupted by user for tool use]`, a meta record (`isMeta`: a
+  skill's or a command's body, a notice) and the compaction summary
+  (`isCompactSummary`);
+- an assistant record the CLI wrote itself (model `<synthetic>`) shows when it
+  is an error (`isApiErrorMessage`) and is left out otherwise ("No response
+  requested."); it never counts as the agent's answer.
+
+A session made only of commands is left out of the listing and refused by
+`imports.run` unless the agent itself answered one of them: a `/model` and its
+output, or a `/compact` answered by an API error, is nothing to resume.
+
 ## What is imported
 
 `imports.run` reads the whole file and writes one thread in one transaction,
@@ -87,15 +110,16 @@ so no client ever sees it empty:
 - one assistant message per turn holding, in order, the reasoning (`thinking`
   parts), the tool calls (`tool` parts with the input, the result the CLI
   recorded, `done` or `error` as the CLI marked it, the output cut at 20 KB)
-  and the text, consecutive text blocks joined;
+  and the text, consecutive text blocks of one message joined;
 - subagent conversations (the `isSidechain` records) left out;
 - a call the transcript never answered closed as an error, "no result in the
   transcript";
 - for Codex, two agent messages in a row joined by a blank line, and no
   images but those the rollout holds as `data:` URLs;
 - the title: the CLI's own (`ai-title` or `summary` record, source `agent`)
-  when it wrote one, the first line of the first prompt otherwise (source
-  `prompt`, [titles.md](titles.md));
+  when it wrote one, the first line of the first prompt that is not a command
+  otherwise, of the first command in a session of commands (source `prompt`,
+  [titles.md](titles.md));
 - the model the last answer names when the provider lists it, the default
   otherwise;
 - `sessionId` set, so the first turn started on the thread passes `resume` to
@@ -107,7 +131,7 @@ what Boite ran itself.
 ## From the UI
 
 The import was an experiment and is now on in every build, with no switch
-(`session-import` is `normal` in `EXPERIMENT_STAGES`,
+(its old id `session-import` left `EXPERIMENT_STAGES`,
 [experiments](experiments.md)): the project menu has the row, the palette the
 command, and the `import-session` chord runs it.
 
@@ -125,7 +149,7 @@ its provider's name.
 - the account's agent is neither Claude nor Codex;
 - the session id carries anything but letters, digits, dashes and underscores;
 - no file at the path the folder rule gives, which the error prints;
-- the file has no prompt;
+- the file has no prompt, or only commands the agent never answered;
 - the session is already a thread, which the error names;
 - for Codex: no rollout whose file name ends with the id under the home's
   `sessions`, a first line that cannot be used (the error names the field), a
@@ -138,7 +162,8 @@ dialects under an isolated Codex account and checks the listing, the import,
 the cache, the skipped files with their log lines and each refusal.
 `packages/core/test/imports.test.ts` files a fixture transcript under an
 isolated account and checks the listing, the import, the second attempt and
-each refusal. The browser e2e does the same from the project menu on the real
+each refusal; two more fixtures check that Claude Code's own records never
+become prompts and that a session of bare commands is left out. The browser e2e does the same from the project menu on the real
 core. `codex.live.test.ts`, behind `BOITE_E2E_CODEX=1`, runs `codex exec` itself in a
 temporary folder with a word to remember, imports the session it left in
 `~/.codex/sessions`, asks for the word on the imported thread and checks the

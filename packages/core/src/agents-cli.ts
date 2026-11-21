@@ -14,7 +14,7 @@ import type { CoreClient } from './client.ts';
 export const NO_CONTACT = 'no other thread is reachable; the user can turn communication on in the thread\'s Communication settings and link machines in Machines';
 
 /** The default wait stays under a two-minute tool timeout. */
-export const WAIT_DEFAULT_S = 90;
+const WAIT_DEFAULT_S = 90;
 export const WAIT_MAX_S = 300;
 
 export interface AgentsOptions {
@@ -50,14 +50,21 @@ function clock(at: number): string {
 }
 
 /** What to type to reach a contact: its thread id here, `<machine>/<thread>` elsewhere. */
-export function shortAddress(contact: AgentContact, selfCore: string): string {
+function shortAddress(contact: AgentContact, selfCore: string): string {
   return contact.coreId === selfCore ? contact.threadId : `${contact.machine.replace(/\s+/g, '-')}/${contact.threadId}`;
 }
 
-export function contactLine(contact: AgentContact, selfCore: string, now = Date.now()): string {
-  const working = threadActive(contact.status);
+export const INACTIVE_CONTACT_WARNING = 'warning: contacting an inactive thread is allowed but discouraged unless it completed work in the last 15 minutes.';
+
+export function inactiveContact(contact: AgentContact, now: number): boolean {
   const completed = contact.lastCompletedAt;
   const recent = typeof completed === 'number' && completed <= now && now - completed <= COORDINATION_RECENT_COMPLETION_MS;
+  return contact.status !== 'error' && !threadActive(contact.status) && !recent;
+}
+
+export function contactLine(contact: AgentContact, selfCore: string, now = Date.now(), warnInactive = true): string {
+  const working = threadActive(contact.status);
+  const completed = contact.lastCompletedAt;
   const completion = typeof completed === 'number' ? `last completed ${ago(completed, now)}` : completed === null ? 'no completed turn' : 'last completion unknown';
   const facts = [contact.project, contact.coreId === selfCore ? 'this machine' : contact.machine, `${contact.status} (${working ? 'working' : 'not working'})`, contact.agent, contact.branch ?? undefined,
     contact.activeAt === undefined ? undefined : `active ${ago(contact.activeAt, now)}`, completion,
@@ -65,8 +72,8 @@ export function contactLine(contact: AgentContact, selfCore: string, now = Date.
     .filter((fact): fact is string => typeof fact === 'string' && fact.length > 0);
   const resources = contact.resources ? `\n    resources: ${contact.resources}` : '';
   // A failed thread left its work unfinished: a message wakes it to resume, unlike one that is merely done.
-  const warning = working ? '' : contact.status === 'error' ? '\n    note: its last turn failed; a message wakes it to resume.'
-    : !recent ? '\n    warning: contacting this inactive thread is allowed but discouraged unless it completed work in the last 15 minutes.' : '';
+  const warning = contact.status === 'error' ? '\n    note: its last turn failed; a message wakes it to resume.'
+    : warnInactive && inactiveContact(contact, now) ? `\n    ${INACTIVE_CONTACT_WARNING}` : '';
   return `${shortAddress(contact, selfCore)}  ${JSON.stringify(contact.title)}  (${facts.join(', ')})${resources}${warning}`;
 }
 
@@ -94,7 +101,7 @@ const RELATION: Record<AgentRelation, string> = {
   resident: 'the mochi your project is entrusted to', project: 'same project', 'other-project': 'other project', machine: 'other machine',
 };
 /** Past this, `send` and `reply` remind the agent that a message is read best short. */
-export const COMPACT_CHARS = 600;
+const COMPACT_CHARS = 600;
 
 function letterLine(letter: AgentLetter, self: AgentAddress): string {
   const incoming = letter.to.coreId === self.coreId && letter.to.threadId === self.threadId;
@@ -181,12 +188,13 @@ export async function agentsCommand(client: CoreClient, threadId: string, rest: 
     const query = rest.slice(1).join(' ');
     if (!query) throw new AgentsUsage('threads find needs words to look for');
     const [{ self }, result] = await Promise.all([view(), client.call('collaboration.search', { threadId, query })]);
+    const now = Date.now();
     const lines = result.matches.map((match: AgentMatch) => [
-      `${contactLine(match, self.coreId)}\n    matched: ${match.matched.join(', ')}`,
+      `${contactLine(match, self.coreId, now, false)}\n    matched: ${match.matched.join(', ')}`,
       ...match.excerpts.map(text => `    > ${text}`),
     ].join('\n'));
     if (lines.length === 0) lines.push(`no reachable thread matches ${JSON.stringify(query)}`);
-    print([...lines, ...result.unavailable.map(name => `unavailable: ${name}`)], result);
+    print([...lines, ...(result.matches.some(match => inactiveContact(match, now)) ? [INACTIVE_CONTACT_WARNING] : []), ...result.unavailable.map(name => `unavailable: ${name}`)], result);
   } else if (action === 'read') {
     const typed = want(1, 'a thread from boite threads');
     // Its own id needs no directory: the history a fresh session carries points at its own tool output.

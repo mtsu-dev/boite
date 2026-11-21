@@ -1,5 +1,4 @@
 import { browserBridge } from './browser-bridge';
-import { isExperimentEnabled } from './experiments';
 
 interface Mark { x?: number; y?: number; key?: string; at: number }
 interface InputFrame { width: number; height: number; marks: Mark[] }
@@ -33,7 +32,6 @@ export class RecordingIndicators {
     return result.result?.value;
   }
   private async read(): Promise<InputFrame | null> {
-    if (!isExperimentEnabled('recording-indicators')) return null;
     const frame = await this.evaluate(`(() => {
       const key = ${JSON.stringify(this.key)};
       if (!globalThis[key]) {

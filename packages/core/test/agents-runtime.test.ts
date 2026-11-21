@@ -46,10 +46,9 @@ const lines = (threadId: string) => h.core.journal.listMessages(threadId).filter
 test('a mochi\'s Boite guide is the thread guide less the project-bound commands, ending with the mochi section; its block carries that section only with the guide off', async () => {
   const bot = agentGuide(true, false, [], true);
   const thread = agentGuide(true, false, [], false);
-  expect(bot).toEndWith(`${BOT_GUIDE}\n\n`);
-  // With Teams on, a bot also learns its teams: where its answer goes, group or private, when to propose one.
-  expect(agentGuide(true, false, [], true, false, true)).toEndWith(`${BOT_GUIDE}\n${TEAM_GUIDE}\n\n`);
-  expect(agentGuide(true, false, [], false, false, true)).not.toContain(TEAM_GUIDE);
+  // A bot also learns its teams: where its answer goes, group or private, when to propose one.
+  expect(bot).toEndWith(`${BOT_GUIDE}\n${TEAM_GUIDE}\n\n`);
+  expect(agentGuide(true, false, [], false)).not.toContain(TEAM_GUIDE);
   for (const team of ['[quiet]', 'boite team say', 'boite team dm', 'boite team propose', 'Go private only']) expect(TEAM_GUIDE).toContain(team);
   expect(TEAM_GUIDE).not.toMatch(/question/i);
   expect(thread).not.toContain(BOT_GUIDE);

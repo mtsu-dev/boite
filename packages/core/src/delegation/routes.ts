@@ -5,7 +5,7 @@
  * provider's usable login. A child runs on a speed tier only when the request
  * names one: it never inherits the parent's.
  */
-import { CONVERSATION_PROFILE_ID, matchSpeed, SPEED_NEEDS_MODEL, speedRefusal } from '@boite/contracts';
+import { CONVERSATION_PROFILE_ID, loggedInAccount, matchSpeed, SPEED_NEEDS_MODEL, speedRefusal } from '@boite/contracts';
 import type { Account, DelegationConfig, DelegationModelChoice, DelegationModels, DelegationProfile, ProviderId, ThreadSummary } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { invalidParams, messageOf, refused } from '../errors.ts';
@@ -51,12 +51,7 @@ export function accountFor(core: Core, parent: Asker, providerId: ProviderId): A
   return loggedInAccount(accounts);
 }
 
-/** A provider's logged-in login, the default location first; undefined when none is signed in. */
-export function loggedInAccount(accounts: readonly Account[]): Account | undefined {
-  const usable = accounts.filter(account => account.status !== 'unauthenticated');
-  return usable.find(a => a.isolationDir === null && a.status === 'ok') ?? usable.find(a => a.status === 'ok')
-    ?? usable.find(a => a.isolationDir === null) ?? usable[0];
-}
+export { loggedInAccount };
 
 /** Every model a child can start on right now, from descriptors and the last probes. Reads no process. */
 export function catalog(core: Core, parent: Asker, withLegacy = false): DelegationModels & { legacy: DelegationModelChoice[] } {
@@ -116,7 +111,7 @@ export function providersNamed(core: Core, model: string): ProviderId[] | undefi
 }
 
 /** How long a list re-read for a missing model answers the next miss on that provider and account. */
-export const MISS_REFRESH_MS = 60_000;
+const MISS_REFRESH_MS = 60_000;
 /** Per core: when each provider and account's list was re-read for a miss, and the read while it runs. */
 const missRefreshes = new WeakMap<Core, Map<string, { at: number; read: Promise<unknown> }>>();
 

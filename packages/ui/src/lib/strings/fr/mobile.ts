@@ -7,7 +7,6 @@ export const fr: Translation = {
     draftTitle: 'Que voulez-vous faire ?', draftHint: 'Lancez une tâche, posez une question ou reprenez votre travail.',
     pairTitle: 'Votre Boite, sur votre téléphone',
     pairBody: 'Sur l’une de vos machines, ouvrez Réglages, Machines, Ajouter un appareil, puis scannez son QR code ici.',
-    pairStep: 'Sur votre ordinateur : Réglages, Machines, Ajouter un appareil.',
     pairInstalled: 'Vous venez d’installer Boite ? Ajoutez-la ici aussi : sur iPhone, l’application garde sa connexion séparément du navigateur.',
     pairPrivacy: 'Le QR code ne sert qu’une fois et expire en quelques minutes. Ce téléphone atteint ensuite toutes les machines du groupe.',
     scanInApp: "Utilisez le bouton Scanner ici plutôt que l'app Appareil photo : celle-ci ouvre le lien dans Safari, qui garde sa propre connexion.",

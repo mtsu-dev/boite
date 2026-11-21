@@ -72,9 +72,6 @@ export function refuseTeamChats(ctx: FakeContext, methods: FakeMethods): FakeMet
 export function teamMethods(ctx: FakeContext): TeamMethods {
   const self = () => ctx.identity.coreId;
   const key = (botId: string) => teamMemberKey(self(), botId);
-  const gate = () => {
-    if (!ctx.experimentsInForce().includes('teams')) throw refused('teams need the Teams experiment, which is off in the desktop app (Settings, Experiments)', { reason: 'experiment-off' });
-  };
   const all = () => [...state(ctx).teams.values()];
   const changed = (team: Team) => ctx.emit('teams.changed', { teamId: team.id, version: team.version });
   const save = (team: Team, change: Partial<Team>): Team => {
@@ -109,9 +106,6 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
     }
     const there = fakeCore(peer.coreId);
     if (!there) throw refused(`${field}: ${peer.name} did not answer; its mochis can join once it answers`, { field, reason: 'unreachable' });
-    if (!there.experimentsInForce().includes('teams')) {
-      throw refused(`${peer.name}: teams need the Teams experiment, which is off in the desktop app (Settings, Experiments)`, { field, reason: 'experiment-off' });
-    }
     const found = among(there.agents.liveProfiles(), name);
     if (!found) throw refused(`${peer.name}: bot: no mochi ${JSON.stringify(name)}`, { field, reason: 'peer-refused' });
     return { ...found, coreId: peer.coreId, machine: peer.name };
@@ -266,13 +260,11 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
 
   return {
     'teams.list': async (params) => {
-      gate();
       const reader = params?.threadId === undefined ? TEAM_OWNER : key(caller(params.threadId).id);
       const pool = reader === TEAM_OWNER ? all() : reachable();
       return { teams: structuredClone(pool.filter(team => (params?.archived === true || !team.archived) && (reader === TEAM_OWNER || team.members.some(entry => entry.key === reader)))) };
     },
     'teams.create': async (params) => {
-      gate();
       const ask = params.card === undefined ? null : card(params.card, 'create');
       const name = checkName(params.name);
       const brief = checkBrief(params.brief);
@@ -297,7 +289,6 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
       return structuredClone(team);
     },
     'teams.update': async (params) => {
-      gate();
       const team = require(params.teamId);
       const change: Partial<Team> = {};
       if (params.name !== undefined) change.name = checkName(params.name, team.id);
@@ -307,7 +298,6 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
       return saved;
     },
     'teams.archive': async (params) => {
-      gate();
       const team = require(params.teamId);
       if (typeof params.archived !== 'boolean') throw invalid('archived: expected a boolean');
       if (team.archived === params.archived) return structuredClone(team);
@@ -316,13 +306,11 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
       return save(team, { archived: params.archived, ...(kept.length === team.members.length ? {} : { members: kept }) });
     },
     'teams.pause': async (params) => {
-      gate();
       const team = require(params.teamId);
       if (typeof params.paused !== 'boolean') throw invalid('paused: expected a boolean');
       return team.paused === params.paused ? structuredClone(team) : save(team, { paused: params.paused });
     },
     'teams.members.add': async (params) => {
-      gate();
       const team = require(params.teamId);
       const ask = params.card === undefined ? null : card(params.card, 'invite');
       if (ask !== null && ask.kind === 'invite' && ask.teamId !== team.id) throw refused(`card: it asks about another team, ${ask.teamName}`, { field: 'card' });
@@ -335,7 +323,6 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
       return saved;
     },
     'teams.members.remove': async (params) => {
-      gate();
       const team = require(params.teamId);
       const ask = params.card === undefined ? null : card(params.card, 'leave');
       if (ask !== null && ask.kind === 'leave' && ask.teamId !== team.id) throw refused(`card: it asks about another team, ${ask.teamName}`, { field: 'card' });
@@ -345,7 +332,6 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
       return saved;
     },
     'teams.post': async (params) => {
-      gate();
       const team = require(params.teamId);
       const audience = params.audience ?? 'team';
       if (audience !== 'team' && audience !== 'private') throw invalid('audience: expected team or private');
@@ -353,7 +339,6 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
       return post(team, { id: params.id, author: TEAM_OWNER, text: params.text, audience, to, inReplyTo: params.inReplyTo });
     },
     'teams.read': async (params) => {
-      gate();
       const reader = params.threadId === undefined ? TEAM_OWNER : key(caller(params.threadId).id);
       const team = named(params.team, reader, reader === TEAM_OWNER ? all() : reachable());
       const limit = params.limit ?? 30;
@@ -367,12 +352,10 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
       return structuredClone({ team, posts, deliveries, more: visible.length > posts.length });
     },
     'teams.say': async (params) => {
-      gate();
       const { team, member: author } = mine(params.threadId, params.team);
       return post(team, { id: params.id ?? autoPostId(), author, text: params.text, audience: 'team', inReplyTo: params.inReplyTo });
     },
     'teams.dm': async (params) => {
-      gate();
       const { team, member: author } = mine(params.threadId, params.team);
       const wanted = typeof params.to === 'string' ? params.to.trim() : '';
       if (!wanted) throw invalid('to: expected a member or owner');
@@ -380,7 +363,6 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
       return post(team, { id: params.id ?? autoPostId(), author, text: params.text, audience: 'private', to: [recipient] });
     },
     'teams.propose': async (params) => {
-      gate();
       const agent = caller(params.threadId);
       const name = checkName(params.name);
       const brief = checkBrief(params.brief);
@@ -391,14 +373,12 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
         { kind: 'create', by: agent.id, name, brief, members: members.map(refOf) });
     },
     'teams.invite': async (params) => {
-      gate();
       const { team, agent } = mine(params.threadId, params.team);
       const guest = bot(params.bot, 'bot');
       if (isMember(team, guest)) throw refused(`${guest.name} is already a member of ${team.name}`, { field: 'bot' });
       return draw(params.threadId, `${agent.name} asks to add ${labelOf(guest)} to the team ${JSON.stringify(team.name)}.`, { kind: 'invite', by: agent.id, teamId: team.id, teamName: team.name, botId: refOf(guest) });
     },
     'teams.leave': async (params) => {
-      gate();
       const { team, agent } = mine(params.threadId, params.team);
       return draw(params.threadId, `${agent.name} asks to leave the team ${JSON.stringify(team.name)}.`, { kind: 'leave', by: agent.id, teamId: team.id, teamName: team.name, botId: agent.id });
     }
