@@ -307,6 +307,7 @@ test('empty link event must fence the lookup it replaces', async () => {
 
 test('terminal link event must allow newer OPEN discovery in same response', async () => {
   const { thread, project } = await connectBranched();
+  vi.spyOn(Date, 'now').mockReturnValue(Date.now());
   const old = {number: 9872, url: 'https://github.com/example/repo/pull/9872', state: 'CLOSED' as const};
   const opened = {...old, number: 9873, url: 'https://github.com/example/repo/pull/9873', state: 'OPEN' as const};
   let release!: (value: typeof opened) => void;
@@ -316,11 +317,15 @@ test('terminal link event must allow newer OPEN discovery in same response', asy
   await show(project, thread, { showProject: false });
   const receive = listeners.mock.calls.find(([name]) => name === 'threads.pullRequestsChanged')![1] as (event: { threadId: string; pullRequests: typeof old[] }) => void;
   receive({threadId: thread.id, pullRequests: [old]});
+  window.dispatchEvent(new Event('pagehide'));
   release(opened); await settle();
   expect(document.querySelector('[data-testid=thread-pr]')?.textContent).toContain('#9873');
   // A poll's identical linked-list event must not replace automatic discovery.
   receive({ threadId: thread.id, pullRequests: [old] }); await settle();
   expect(document.querySelector('[data-testid=thread-pr]')?.textContent).toContain('#9873');
+  window.dispatchEvent(new Event('pagehide'));
+  const key = Object.keys(localStorage).find(key => key.startsWith('boite.pull-requests.v1:'))!;
+  expect(JSON.parse(localStorage.getItem(key)!)).toMatchObject({ pullRequest: opened });
 });
 
 test('removing one of two links must fence its pending answer', async () => {

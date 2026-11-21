@@ -1,7 +1,8 @@
 import { RpcErrorCode, type ThreadId, type ThreadSummary } from '@boite/contracts';
 import { RpcFailure, type Client } from './client';
+import { observePullRequest, type PullRequestObservation } from './pull-request-cache';
 
-type Lookup = { supported: false } | { supported: true; pullRequest: ThreadSummary['pullRequest'] };
+type Lookup = { supported: false } | { supported: true; pullRequest: ThreadSummary['pullRequest']; observation: PullRequestObservation };
 // Probe once per connection, including when several sidebar rows mount together.
 const support = new WeakMap<Client, Promise<boolean>>();
 interface Lookups {
@@ -96,8 +97,10 @@ export async function lookupPullRequest(client: Client, threadId: ThreadId, refr
   const key = JSON.stringify([threadId, refresh, checkout]);
   const pending = state.pending.get(key);
   if (pending) return pending;
+  // Track the original request time even if a newly mounted tracker joins it later.
+  const observation = observePullRequest(refresh);
   // A sidebar remount shares its lookup; metadata leaves room for interactive RPCs.
-  const request = limitedLookup(state, refresh, () => readPullRequest(client, threadId, refresh))
+  const request = limitedLookup(state, refresh, () => readPullRequest(client, threadId, refresh, observation))
     .finally(() => state.pending.delete(key));
   state.pending.set(key, request);
   return request;
@@ -118,7 +121,7 @@ async function limitedLookup(state: Lookups, refresh: boolean, read: () => Promi
   }
 }
 
-async function readPullRequest(client: Client, threadId: ThreadId, refresh: boolean): Promise<Lookup> {
+async function readPullRequest(client: Client, threadId: ThreadId, refresh: boolean, observation: PullRequestObservation): Promise<Lookup> {
   const known = support.get(client);
   if (known && !(await known)) return { supported: false };
   const request = client.call('threads.pullRequest', refresh ? { threadId, refresh } : { threadId });
@@ -130,7 +133,7 @@ async function readPullRequest(client: Client, threadId: ThreadId, refresh: bool
     }));
   }
   try {
-    return { supported: true, pullRequest: await request };
+    return { supported: true, pullRequest: await request, observation };
   } catch (error) {
     if (error instanceof RpcFailure && error.code === RpcErrorCode.MethodNotFound) {
       support.set(client, Promise.resolve(false));

@@ -4,7 +4,7 @@ import type { Store } from './store.svelte';
 import { errorText } from './errors';
 import { strings } from './strings';
 import { lookupPullRequest, PULL_REQUEST_POLL_MS, watchPullRequests, WORKING_PULL_REQUEST_POLL_MS } from './pull-request';
-import { cachedPullRequest, rememberPullRequest } from './pull-request-cache';
+import { cachedPullRequest, observePullRequestLinks, rememberPullRequest } from './pull-request-cache';
 
 type PullRequest = NonNullable<ThreadSummary['pullRequest']>;
 const summary = (pr: PullRequest): PullRequest => ({ number: pr.number, url: pr.url, state: pr.state });
@@ -27,10 +27,9 @@ export function trackThreadPullRequest(input: () => { owner: Store; thread: Thre
     const client = owner.client;
     if (!client || loading || (!manual && (hidden || owner.connection !== 'ready' || document.hidden))) return;
     const key = checkoutKey;
-    const checkedAt = Date.now();
     const held = reuseFresh && !thread.incognito ? cachedPullRequest(key) : undefined;
     if (held && held.checkedAt !== null) {
-      const age = checkedAt - held.checkedAt;
+      const age = Date.now() - held.checkedAt;
       if (age >= 0 && age < cadence) {
         value = held.pullRequest;
         return;
@@ -52,8 +51,7 @@ export function trackThreadPullRequest(input: () => { owner: Store; thread: Thre
       // including URLs whose owner/repository casing differs from GitHub's.
       const merged = next && links.find(pr => pr.state === 'MERGED' && pr.url.toLowerCase() === next?.url.toLowerCase());
       if (merged) next = summary(merged);
-      if (!thread.incognito) rememberPullRequest(key, next, checkedAt);
-      value = next;
+      value = thread.incognito ? next : rememberPullRequest(key, next, result.observation);
     } catch (error) {
       if (requestedRevision === revision && manual) owner.error = errorText(error);
     } finally {
@@ -121,8 +119,8 @@ export function trackThreadPullRequest(input: () => { owner: Store; thread: Thre
       if (signature === linkSignature) return;
       linkSignature = signature;
       links = event.pullRequests;
-      value = selected(links);
-      if (!thread.incognito) rememberPullRequest(checkoutKey, value);
+      const next = selected(links);
+      value = thread.incognito ? next : rememberPullRequest(checkoutKey, next, observePullRequestLinks(event));
       // An event can remove just one of several links. Wait for the old
       // deduplicated lookup, then read the current membership once more.
       if (loading) recheck = true;

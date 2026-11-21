@@ -1,23 +1,46 @@
 import type { ThreadSummary } from '@boite/contracts';
 
 type PullRequest = NonNullable<ThreadSummary['pullRequest']>;
-interface CachedPullRequest {
-  pullRequest: PullRequest | null;
+export interface PullRequestObservation {
+  observedAt: number;
   /** A link event can update the badge without having checked for automatic matches. */
   checkedAt: number | null;
-  observedAt: number;
+  order?: [source: string, sequence: number];
+  manual?: true;
+}
+
+interface CachedPullRequest extends PullRequestObservation {
+  pullRequest: PullRequest | null;
 }
 
 const STORAGE_PREFIX = 'boite.pull-requests.v1:';
 const MAX_ENTRIES = 500;
+const source = Math.random().toString(36).slice(2);
+let sequence = 0;
 const cache = new Map<string, CachedPullRequest>();
 const pending = new Map<string, CachedPullRequest>();
+const linkObservations = new WeakMap<object, PullRequestObservation>();
 let writeTimer: number | undefined;
+
+export function observePullRequest(manual = false): PullRequestObservation {
+  const observedAt = Date.now();
+  return { observedAt, checkedAt: observedAt, order: [source, ++sequence], ...(manual ? { manual: true } : {}) };
+}
+
+/** The header and card see the same event, even when the first one starts a lookup. */
+export function observePullRequestLinks(event: object): PullRequestObservation {
+  const previous = linkObservations.get(event);
+  if (previous) return previous;
+  const observation = { ...observePullRequest(), checkedAt: null };
+  linkObservations.set(event, observation);
+  return observation;
+}
 
 function isEntry(value: unknown): value is CachedPullRequest {
   if (!value || typeof value !== 'object') return false;
-  const { pullRequest: pr, checkedAt, observedAt } = value as Partial<CachedPullRequest>;
+  const { pullRequest: pr, checkedAt, observedAt, order } = value as Partial<CachedPullRequest>;
   if (!Number.isFinite(observedAt) || (checkedAt !== null && !Number.isFinite(checkedAt))) return false;
+  if (order !== undefined && (!Array.isArray(order) || typeof order[0] !== 'string' || !Number.isSafeInteger(order[1]))) return false;
   return pr === null || (!!pr && Number.isSafeInteger(pr.number) && pr.number > 0 &&
     typeof pr.url === 'string' && pr.url.startsWith('https://') &&
     (pr.state === 'OPEN' || pr.state === 'CLOSED' || pr.state === 'MERGED'));
@@ -31,8 +54,14 @@ function read(key: string): CachedPullRequest | undefined {
 }
 
 function supersedes(current: CachedPullRequest, incoming: CachedPullRequest): boolean {
-  return current.observedAt > incoming.observedAt ||
-    (current.observedAt === incoming.observedAt && current.checkedAt === null && incoming.checkedAt !== null);
+  if (current.observedAt !== incoming.observedAt) return current.observedAt > incoming.observedAt;
+  // A lookup started by a link event can replace that event in the same millisecond.
+  if ((current.checkedAt === null || incoming.checkedAt === null) &&
+      current.order && incoming.order && current.order[0] === incoming.order[0]) {
+    return current.order[1] > incoming.order[1];
+  }
+  // Across windows, link events win ties. Explicit refreshes win ties with automatic checks.
+  return incoming.checkedAt !== null && (current.checkedAt === null || (current.manual === true && incoming.manual !== true));
 }
 
 function prune(): void {
@@ -68,7 +97,7 @@ function save(): void {
 }
 
 export function cachedPullRequest(key: string): CachedPullRequest | undefined {
-  const memory = cache.get(key);
+  const memory = cache.get(key) ?? pending.get(key);
   const saved = read(STORAGE_PREFIX + key);
   const entry = saved && (!memory || supersedes(saved, memory)) ? saved : memory;
   if (entry) keepInMemory(key, entry);
@@ -81,13 +110,17 @@ function keepInMemory(key: string, entry: CachedPullRequest): void {
   if (cache.size > MAX_ENTRIES) cache.delete(cache.keys().next().value!);
 }
 
-export function rememberPullRequest(key: string, pullRequest: PullRequest | null, checkedAt: number | null = null): void {
-  // An older request can finish after a newer link event, even in another window.
-  const entry = { pullRequest, checkedAt, observedAt: checkedAt ?? Date.now() };
+export function rememberPullRequest(key: string, pullRequest: PullRequest | null, observation: PullRequestObservation): PullRequest | null {
+  const entry: CachedPullRequest = { ...observation, pullRequest };
+  // A tracker must use the winner from its own pending writes or another window's saved result.
+  const current = cachedPullRequest(key);
+  if (current && supersedes(current, entry)) return current.pullRequest;
   keepInMemory(key, entry);
   pending.set(key, entry);
-  if (writeTimer !== undefined) return;
-  // The page owns the timer and flushes the batch on pagehide.
-  writeTimer = window.setTimeout(save, 500);
-  window.addEventListener('pagehide', save);
+  if (writeTimer === undefined) {
+    // The page owns the timer and flushes the batch on pagehide.
+    writeTimer = window.setTimeout(save, 500);
+    window.addEventListener('pagehide', save);
+  }
+  return pullRequest;
 }

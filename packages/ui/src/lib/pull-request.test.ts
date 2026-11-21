@@ -7,26 +7,31 @@ test('PR answers from two windows keep their freshness on remount and reload', a
   const firstWindow = await import('./pull-request-cache');
   const pr = { number: 42, url: 'https://github.com/example/project/pull/42', state: 'OPEN' as const };
   const merged = { pullRequest: { ...pr, state: 'MERGED' }, checkedAt: null };
-  const checkedAt = Date.now() - 10;
-  firstWindow.rememberPullRequest('thread-with-pr', pr, checkedAt);
+  const mergedAt = Date.now();
+  const checkedAt = mergedAt - 10;
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(checkedAt);
+  firstWindow.rememberPullRequest('thread-with-pr', pr, firstWindow.observePullRequest());
   window.dispatchEvent(new Event('pagehide'));
   vi.resetModules();
   const secondWindow = await import('./pull-request-cache');
-  secondWindow.rememberPullRequest('thread-without-pr', null, checkedAt);
-  const mergedAt = Date.now();
-  const clock = vi.spyOn(Date, 'now').mockReturnValueOnce(mergedAt);
-  secondWindow.rememberPullRequest('thread-with-pr', { ...pr, state: 'MERGED' });
-  clock.mockRestore();
+  secondWindow.rememberPullRequest('thread-without-pr', null, secondWindow.observePullRequest());
+  clock.mockReturnValue(mergedAt);
+  secondWindow.rememberPullRequest('thread-with-pr', { ...pr, state: 'MERGED' }, secondWindow.observePullRequestLinks({}));
   window.dispatchEvent(new Event('pagehide'));
   // Lookups started before and in the same millisecond as the merge both finish after it.
-  firstWindow.rememberPullRequest('thread-with-pr', pr, checkedAt + 1);
+  clock.mockReturnValue(checkedAt + 1);
+  const displayed = firstWindow.rememberPullRequest('thread-with-pr', pr, firstWindow.observePullRequest());
   const remounted = firstWindow.cachedPullRequest('thread-with-pr');
   window.dispatchEvent(new Event('pagehide'));
-  firstWindow.rememberPullRequest('thread-with-pr', pr, mergedAt);
+  clock.mockReturnValue(mergedAt);
+  const displayedOnTie = firstWindow.rememberPullRequest('thread-with-pr', pr, firstWindow.observePullRequest());
   const remountedOnTie = firstWindow.cachedPullRequest('thread-with-pr');
+  clock.mockRestore();
   window.dispatchEvent(new Event('pagehide'));
   vi.resetModules();
   const { cachedPullRequest } = await import('./pull-request-cache');
+  expect(displayed).toEqual(merged.pullRequest);
+  expect(displayedOnTie).toEqual(merged.pullRequest);
   expect(remounted).toMatchObject(merged);
   expect(remountedOnTie).toMatchObject(merged);
   expect(cachedPullRequest('thread-with-pr')).toMatchObject(merged);
@@ -35,10 +40,10 @@ test('PR answers from two windows keep their freshness on remount and reload', a
 
 test('a pending PR cache write is discarded when the window is gone', async () => {
   vi.resetModules();
-  const { rememberPullRequest } = await import('./pull-request-cache');
+  const { observePullRequest, rememberPullRequest } = await import('./pull-request-cache');
   vi.useFakeTimers();
   try {
-    rememberPullRequest('closing-window', null);
+    rememberPullRequest('closing-window', null, observePullRequest());
     // The test host can keep its timers running after discarding the window.
     vi.stubGlobal('window', undefined);
     await vi.advanceTimersByTimeAsync(500);
@@ -63,8 +68,8 @@ test('a supported core returns each thread PR and a different core probes indepe
   const pr = {number:42,url:'https://github.com/example/project/pull/42',state:'OPEN'};
   const call = vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(pr);
   const client = {call} as unknown as Client;
-  expect(await lookupPullRequest(client,'one')).toEqual({supported:true,pullRequest:null});
-  expect(await lookupPullRequest(client,'two')).toEqual({supported:true,pullRequest:pr});
+  expect(await lookupPullRequest(client,'one')).toMatchObject({supported:true,pullRequest:null});
+  expect(await lookupPullRequest(client,'two')).toMatchObject({supported:true,pullRequest:pr});
 });
 
 test('authorization and transport errors are still reported and can be retried', async () => {
@@ -72,7 +77,7 @@ test('authorization and transport errors are still reported and can be retried',
   const call = vi.fn().mockRejectedValueOnce(failure).mockResolvedValue(null);
   const client = {call} as unknown as Client;
   await expect(lookupPullRequest(client,'one')).rejects.toBe(failure);
-  expect(await lookupPullRequest(client,'one')).toEqual({supported:true,pullRequest:null});
+  expect(await lookupPullRequest(client,'one')).toMatchObject({supported:true,pullRequest:null});
 });
 
 test('reconnecting after an upgrade probes again', async () => {
@@ -80,7 +85,7 @@ test('reconnecting after an upgrade probes again', async () => {
   const client = {call} as unknown as Client;
   expect(await lookupPullRequest(client,'one')).toEqual({supported:false});
   resetPullRequestSupport(client);
-  expect(await lookupPullRequest(client,'one')).toEqual({supported:true,pullRequest:null});
+  expect(await lookupPullRequest(client,'one')).toMatchObject({supported:true,pullRequest:null});
 });
 
 test('only a refresh the user asked for tells the core to read the repository again', async () => {
@@ -99,7 +104,7 @@ test('a moved thread does not reuse the pending read for its old checkout', asyn
   await lookupPullRequest(client, 'probe');
   const old = lookupPullRequest(client, 'one', false, 'old-checkout');
   try {
-    expect(await lookupPullRequest(client, 'one', false, 'new-checkout')).toEqual({ supported: true, pullRequest: null });
+    expect(await lookupPullRequest(client, 'one', false, 'new-checkout')).toMatchObject({ supported: true, pullRequest: null });
     expect(call).toHaveBeenCalledTimes(3);
   } finally { release(null); await old; }
 });
@@ -122,7 +127,7 @@ test('a thousand sidebar lookups share duplicates, leave RPC capacity and priori
     await vi.waitFor(() => expect(active).toBeGreaterThan(1));
     expect(maximum).toBeLessThanOrEqual(4);
     const other = { call: vi.fn().mockResolvedValue(null) } as unknown as Client;
-    expect(await lookupPullRequest(other, 'independent')).toEqual({ supported: true, pullRequest: null });
+    expect(await lookupPullRequest(other, 'independent')).toMatchObject({ supported: true, pullRequest: null });
     refresh = lookupPullRequest(client, 'manual', true);
     const before = call.mock.calls.length;
     gates[0]!();
