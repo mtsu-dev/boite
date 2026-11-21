@@ -622,10 +622,12 @@
   .count .helpers { color: color-mix(in oklch, var(--color-accent) 60%, var(--color-foreground)); }
   /* Both numbers: stacked in one upright pill, the threads over their subagents, its foot where the single pill's
      stands. It sits past the tile, its ring flush with the rail's right edge (the column beside starts there), so it
-     stays clear of the glyph; nothing clips it there, the rail's overflow is visible. */
+     stays clear of the glyph; nothing clips it there, the rail's overflow is visible. Its ring keeps the rail's
+     ground when the tile is hovered or open: it stands on the rail, not on the tile. */
   .count.pair {
     left: auto; right: calc((var(--rail-button) - var(--app-rail)) / 2 + 2px); top: auto; bottom: calc(50% - 17px);
     height: auto; padding: 3px 5px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+    --count-ring: var(--rail-ground);
   }
   /* Two digits or "99+" in either: a tighter pill, the text still at 11 px, the smallest a count reads at (MobileTabs.svelte). */
   .count.pair.wide { padding: 2px 3px; gap: 1px; }
