@@ -176,9 +176,9 @@
   .body { position: relative; display: flow-root; touch-action: pan-y; transform: translateX(var(--swipe, 0px)); transition: transform var(--dur-3) var(--ease-out-quint); background: var(--row-background, var(--color-background)); }
   .body:global(.dragging) { transition: none; }
   @media (hover: hover) {
-    .body:has(> .thread:hover) .list-meta { --avatar-rest: none; }
+    .thread:hover + .list-meta { --avatar-rest: none; }
   }
-  .body:has(> .thread:focus-visible) .list-meta { --avatar-rest: none; }
+  .thread:focus-visible + .list-meta { --avatar-rest: none; }
   /* The title's line, its mark and time at its end, then where it lives: a finger's 44 px at least. */
   .thread { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 4px; width: 100%; min-height: var(--touch-target); height: auto; padding: 10px 12px; border-radius: 0; text-align: left; font-size: var(--text-reading); color: var(--color-foreground); }
   /* The line under the title, in the list's quiet ink, from the title's edge: where the row lives, or a sub-agent
