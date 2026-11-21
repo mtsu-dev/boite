@@ -89,7 +89,7 @@ export class TurnContexts {
     const member = !!thread.parentThreadId && this.#core.council?.owns(thread.id) === true;
     const skills = member ? written.filter(skill => skill.name !== COUNCIL_SKILL.name && skill.name !== PROVE_IT_SKILL.name) : written;
     const plugins = pluginGuideLines(this.#core.plugins.installedPlugins(), message => { try { this.#core.logs.warn(message, { source: 'plugins', event: 'plugins.skill-write-failed' }); } catch { /* The guide is built without that skill. */ } });
-    return agentGuide(provider.protocol !== 'echo' && settings.asyncQuestions !== false, logAccess, skills, !!thread.agentSessionId, goalTrack, plugins);
+    return agentGuide(provider.protocol !== 'echo' && settings.asyncQuestions !== false, logAccess, skills, !!thread.agentSessionId, goalTrack, plugins, !thread.parentThreadId && !thread.agentSessionId);
   }
 
   /**

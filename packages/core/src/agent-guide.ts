@@ -15,6 +15,14 @@ export const SHORT_ANSWERS = 'Answer style: reduce text before or between tool c
  */
 export const CHAT_VISUALS = 'Visuals need no command: chat draws a ```mermaid fence (flowchart, sequenceDiagram, xychart-beta with "quoted" labels, pie, gantt, timeline, quadrantChart, sankey-beta, mindmap), TeX in `$$` or backslash-parens, never single `$`, and a ```view fence of HTML, SVG, CSS and script for an interactive or animated piece, drawn offline in the app\'s theme: write no fixed color. Use them when asked for a visual or when a picture explains better than text.';
 
+/**
+ * A conversation's agent closes its own thread in the turn its last PR merges:
+ * waiting for Boite's question after the merge costs one more turn over the
+ * whole history (`merged-pr-ask.ts`). Top-level conversations only: `agent.done`
+ * refuses a subagent's or a mochi's thread.
+ */
+export const OWN_DONE = 'Once your last PR is merged and nothing is left, run `boite thread done` in that turn, unasked.';
+
 type ListedSkill = { name: string; description: string; path: string };
 
 /**
@@ -60,8 +68,9 @@ export const TEAM_GUIDE = [
  * `bot`: a bot's thread, which has no checkout or project of its own: the
  * project-bound commands go and the bot section comes last, with its team
  * section.
+ * `ownDone`: a top-level conversation, told to put itself in Done once its PRs merged.
  */
-export function agentGuide(asyncQuestions: boolean, logAccess = false, skills: readonly ListedSkill[] = [], bot = false, goalTrack = false, pluginLines: readonly string[] = []): string {
+export function agentGuide(asyncQuestions: boolean, logAccess = false, skills: readonly ListedSkill[] = [], bot = false, goalTrack = false, pluginLines: readonly string[] = [], ownDone = false): string {
   const report = skills.find(skill => skill.name === REPORT_ISSUE_SKILL.name);
   const others = skills.filter(skill => skill !== report);
   const pullRequests = 'Link each PR: `boite pr link <url>`, then `boite pr watch`: it wakes you on CI, reviews and conflicts, so do not poll.';
@@ -69,7 +78,7 @@ export function agentGuide(asyncQuestions: boolean, logAccess = false, skills: r
     'You run in Boite: your text renders as Markdown in a chat with a panel, on desktop and phones, not in a terminal. Processes are traced.',
     bot
       ? `\`boite help\` lists commands. \`boite browser|device help\`: agent-browser/emulators; browser actions print the page they leave; batch steps: \`&&\` or \`boite browser run -\`. ${pullRequests}`
-      : `\`boite help\` lists commands; \`boite where\` shows cwd/project/branch. Stay in the checkout. \`boite browser|device help\`: agent-browser/emulators; browser actions print the page they leave; batch steps: \`&&\` or \`boite browser run -\`. ${pullRequests}`,
+      : `\`boite help\` lists commands; \`boite where\` shows cwd/project/branch. Stay in the checkout. \`boite browser|device help\`: agent-browser/emulators; browser actions print the page they leave; batch steps: \`&&\` or \`boite browser run -\`. ${pullRequests}${ownDone ? ` ${OWN_DONE}` : ''}`,
     '`boite show <file>[:line]`, `boite diff [file]`, `boite browse <url>` open the panel. `boite preview <file.html>` previews HTML/assets; `boite attach <file>` sends files (512 MB max).',
     'Inline `path:line` opens this checkout\'s files. Use `boite attach` for media across machines.',
     // Only Linux has a virtual desktop (docs/internals/desktop.md): elsewhere the line would point at a refusal.
