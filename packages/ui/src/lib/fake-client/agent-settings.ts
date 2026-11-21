@@ -14,6 +14,7 @@ import {
 } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import type { AgentSettingMethod } from '../fake-agents';
+import { newSession } from './new-session';
 import type { FakeContext } from './context';
 import { pickModel } from './delegation';
 import { modelsOf } from './provider-catalog';
@@ -200,6 +201,8 @@ function saveBot(ctx: FakeContext, bot: AgentCreation): AgentCreated {
 
 export function agentSettingMethods(ctx: FakeContext): Handlers {
   return {
+    // A mochi's new conversation drops its thread's session (new-session.ts).
+    'agents.session.new': params => newSession(ctx, params),
     'agents.create': params => {
       const thread = ctx.thread(params.threadId);
       if (thread.archived) throw refused('an archived thread cannot create a mochi', { threadId: thread.id });
