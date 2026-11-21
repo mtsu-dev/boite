@@ -29,6 +29,7 @@ import { noteReady } from '../driver-log.ts';
 import { SessionRetention } from '../session-retention.ts';
 import { endOnClose, releaseChild } from '../session-close.ts';
 import {protectedPi} from './protected.ts';
+import { writeCacheWarmingExtension } from './cache-warming.ts';
 import { COMPACTION_ENV, extensionWriter, isBackgroundCompaction, writeCompactionExtension } from './compaction.ts';
 
 type Timer = ReturnType<typeof setTimeout>;
@@ -477,7 +478,9 @@ export class PiSession {
     ];
     if (this.#protection) args.push(...this.#protection.args);
     // `--extension` loads even under `--no-extensions`, as the protected one does.
-    if (this.compaction !== null) args.push('--extension', writeCompactionExtension(this.#protection?.asset ?? extensionWriter()));
+    const writeExtension = this.#protection?.asset ?? extensionWriter();
+    if (this.compaction !== null) args.push('--extension', writeCompactionExtension(writeExtension));
+    args.push('--extension', writeCacheWarmingExtension(writeExtension));
     const child = ctx.spawnChild(launch.executable, args, {
       cwd: this.#protection?.cwd ?? ctx.thread.cwd,
       env: {...agentEnv(ctx.accountEnv), ...this.#protection?.env, ...(this.compaction === null ? {} : {[COMPACTION_ENV]: this.compaction})},

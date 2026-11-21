@@ -75,8 +75,9 @@
     const onkey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       event.stopPropagation();
-      close();
+      // Restoring keyboard focus can open the tip again from its focus handler.
       trigger?.focus();
+      close();
     };
     const onpress = (event: PointerEvent) => {
       const target = event.target as Node | null;

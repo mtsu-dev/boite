@@ -14,11 +14,10 @@
 /* Held while a thread loads (notify-corner.ts): out of sight until the page lands and its slot exists. */
 .notify-corner[data-held], .toast-slot[data-held] { visibility: hidden; }
 
-/* Phones centre cards in the room their timeline or list keeps. */
+/* Phones centre cards in the room the visible screen keeps. */
 .notify-corner[data-slot='bottom'] { right: auto; left: var(--toast-left, 50%); translate: -50% 0; }
 
-/* The room a page keeps for the toasts (notify-corner.ts sets it), so they
-   cover nothing: the timeline or the phone's list gives way at its bottom. */
+/* The visible phone screen gives way at its bottom so notices cover no controls. */
 [data-corner-room='bottom'] { margin-bottom: var(--corner-room); }
 [data-testid=mobile-list] { transition: margin var(--dur-2) var(--ease-out-quint); }
 

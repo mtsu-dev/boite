@@ -526,7 +526,18 @@ close of the last open PR carries the same question (`WATCH_DONE_HINT`) in that
 wake and marks those PRs asked, so the conversation gets one turn, not two:
 while a watch holds a close it has not told, the sweep and detections wait for
 that wake. The hint follows the same ask-once and restore rules. A
-merge made by the agent's own account wakes no watch: the sweep asks then.
+merge made by the agent's own account during one of its turns, to GitHub's
+second (`closedAt`), wakes no watch: the agent did it,
+and the sweep asks after that turn if it did not put itself in Done. The same
+account while the agent rests is the user merging by hand with the login the
+agent's `gh` shares, or an auto-merge the agent armed: that wake tells it like
+anyone else's, whatever the cache, so the thread does not stay open unasked;
+read while a later turn runs, that wake waits for the turn to end.
+The question and the hint make Done the default (`DONE_RULE`): only something
+new for the user or a part of the task beyond these PRs keeps a thread open.
+The guide of a top-level conversation (not a subagent's or a mochi's, which
+`agent.done` refuses) also tells its agent to run `boite thread done` in the
+turn its last PR merged, which saves the question's turn.
 
 `agent.done` (`threads/agent-done.ts`) puts only the caller's own top-level
 conversation in Done; mochis' threads and sub-threads are refused. While a turn
@@ -750,6 +761,14 @@ closing menus in the same tick ([jsdom#4347](https://github.com/jsdom/jsdom/issu
 Since 30.1.2 `focus()` refuses an element hidden by `display`, and jsdom never
 matches `:popover-open`, so its own sheet hides every `[popover]`. `test-setup.ts`
 shows them again; the app mounts a popover only while it is open.
+
+`test-setup.ts` also loads the parts the app fetches at idle (`lib/deferred-parts.ts`,
+`lib/nested-parts.ts`, the phone's navigation and the composer's idle cards) before a file's first
+test, as a user's first open finds them, but only for a file whose imports ran
+one of those registries. The other files, about three in four, draw none of
+them and skip it, which was about half the CPU time of a small file. A test
+that imports a registry inside its body fails with a message to import it at
+the top of the file instead.
 
 The UI keeps `typescript` 6 beside `@typescript/native` (TypeScript 7):
 svelte-check refuses `--tsgo` unless both are installed. As of 4.7.7 its

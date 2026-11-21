@@ -1,5 +1,5 @@
 import { afterEach, expect, spyOn, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Bus } from '../src/bus.ts';
@@ -26,20 +26,22 @@ test('every core build inlines the release flag present at build time and only t
   const scripts = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).scripts as Record<string, string>;
   expect(scripts['build:linux']).toContain('bun run bin/compile.ts ');
   expect(scripts.build).toBe('bun run bin/build.ts');
-  for (const command of [readFileSync(join(root, 'bin', 'build.ts'), 'utf8'), readFileSync(join(root, 'bin', 'compile.ts'), 'utf8')]) {
-    expect(command).toContain('--env=BOITE_RELEASE_*');
-  }
-  // The CLI, as the build scripts run it: Bun.build reads the environment its process started with.
+  expect(readFileSync(join(root, 'bin', 'compile.ts'), 'utf8')).toContain('--env=BOITE_RELEASE_*');
   const bundle = (release: string | undefined) => {
     const { BOITE_RELEASE_TELEMETRY: _, ...env } = process.env;
-    const result = Bun.spawnSync([process.execPath, 'build', join(root, 'src', 'telemetry.ts'), '--target', 'bun', '--env=BOITE_RELEASE_*'], {
-      env: release === undefined ? env : { ...env, BOITE_RELEASE_TELEMETRY: release }, windowsHide: true,
-    });
-    expect(result.exitCode).toBe(0);
-    return result.stdout.toString();
+    const outdir = mkdtempSync(join(tmpdir(), 'boite-telemetry-build-'));
+    try {
+      const result = Bun.spawnSync([process.execPath, join(root, 'bin', 'build.ts'), '--outdir', outdir], {
+        cwd: root, env: release === undefined ? env : { ...env, BOITE_RELEASE_TELEMETRY: release }, windowsHide: true,
+      });
+      if (result.exitCode !== 0) throw new Error(result.stderr.toString());
+      return readdirSync(outdir).filter(name => name.endsWith('.js')).some(name => readFileSync(join(outdir, name), 'utf8').includes('process.env.BOITE_RELEASE_TELEMETRY'));
+    } finally {
+      rmSync(outdir, { recursive: true, force: true });
+    }
   };
-  expect(bundle(undefined)).toContain('process.env.BOITE_RELEASE_TELEMETRY');
-  expect(bundle('1')).not.toContain('process.env.BOITE_RELEASE_TELEMETRY');
+  expect(bundle(undefined)).toBe(true);
+  expect(bundle('1')).toBe(false);
 });
 
 test('enhanced normalization preserves canonical defaults across host and relay', () => {

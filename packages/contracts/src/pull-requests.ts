@@ -135,18 +135,24 @@ export function settledLinks(links: readonly Pick<LinkedPullRequest, 'url' | 'nu
   return { urls: links.map(pr => pr.url), summary: links.map(pr => `#${pr.number} ${pr.state.toLowerCase()}`).join(', ') };
 }
 
+/**
+ * When an agent keeps its thread open after its pull requests settled. Done is
+ * the default: an agent that keeps a thread open with nothing to say leaves the
+ * user to close it by hand, and every later turn rereads the whole history.
+ */
+const DONE_RULE = 'Run `boite thread done` now, unless the user still needs something new from this thread (a result they have not seen, a failure, a decision to make) or its task has a part left beyond these pull requests (another step they asked for, a parallel PR). Nothing else keeps it open: not a recap of what they already read, main\'s CI, cleanup or an optional idea. The thread goes to Done once this turn ends; the user can restore it.';
+
 /** The prompt that asks, and the short line the timeline shows for it. */
 export function doneQuestion(settled: SettledPullRequests): { text: string; label: string } {
   return {
     text: [
       `Boite: every pull request of this thread is now merged or closed (${settled.summary}).`,
-      'If the work here is finished and nothing is left to tell the user, run `boite thread done`: this thread goes to Done once this turn ends, and the user can still restore it.',
-      'If something remains (a follow-up, a check, an open question), leave it open and carry on or end your turn.',
-      'Either way, answer in one short line.',
+      DONE_RULE,
+      'Answer in one short line: what remains when you keep it open, a few words otherwise.',
     ].join('\n'),
     label: `Is this thread done? ${settled.summary}`,
   };
 }
 
 /** The line a pull request watch adds to a wake that tells of a merge or a close, so no second turn asks the same. */
-export const WATCH_DONE_HINT = 'Every pull request of this thread is now merged or closed: if the work here is finished and nothing is left to tell the user, run `boite thread done`, and this thread goes to Done once this turn ends.';
+export const WATCH_DONE_HINT = `Every pull request of this thread is now merged or closed. ${DONE_RULE}`;

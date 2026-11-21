@@ -28,11 +28,10 @@ export function androidBunPin(installer: string): { version: string; sha256: str
  * the scripts of `bun run build`, run by the Bun the bundle names, with the
  * controller that installs and supervises it in Termux (docs/internals/android-server.md).
  */
-export function androidServerBundle(dist: string, ui: string, termux: string, version: string): Uint8Array {
+export async function androidServerBundle(dist: string, ui: string, termux: string, version: string): Promise<Uint8Array> {
   if (!/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(version)) throw new Error('Server bundle version must be a semantic version');
   const bun = androidBunPin(readFileSync(join(termux, 'install.sh'), 'utf8'));
   const entries: Record<string, Uint8Array> = {
-    'boite-server.ts': readFileSync(join(termux, 'boite-server.ts')),
     'managed-update.ts': readFileSync(join(termux, 'managed-update.ts')),
     'server-release.json': Buffer.from(JSON.stringify({ version, bun })),
     // The echo provider's login script, which the core finds beside its scripts (Dockerfile).
@@ -46,6 +45,10 @@ export function androidServerBundle(dist: string, ui: string, termux: string, ve
   if (!entries['core/main.js']) throw new Error(`${dist} has no main.js: run bun run build:core first`);
   addTree(entries, ui, 'ui/');
   if (!entries['ui/index.html']) throw new Error('Server UI bundle is missing index.html');
+  // Existing installers and supervisors copy the controller as a single file.
+  const { outputs: [controller] } = await Bun.build({ entrypoints: [join(termux, 'boite-server.ts')], target: 'bun' });
+  if (!controller) throw new Error('Android server controller build produced no output');
+  entries['boite-server.ts'] = new Uint8Array(await controller.arrayBuffer());
   return zipSync(entries, { level: 6 });
 }
 

@@ -1,4 +1,4 @@
-import { agentDefaultsToWrite, checkSettingsPatch, DEFAULT_AUTO_COMPACT, followedPatch, keepLaterFavorites, readSettings, MACHINE_SETTINGS, DEFAULT_THREAD_DONE_RETENTION_DAYS, DEFAULT_THREAD_DELETION_RETENTION_DAYS, subscriptionProxyOf, type AdminPolicy, type Settings, type SubscriptionProxy } from '@boite/contracts';
+import { agentDefaultsToWrite, checkSettingsPatch, defaultSettings, followedPatch, keepLaterFavorites, readSettings, MACHINE_SETTINGS, subscriptionProxyOf, type AdminPolicy, type Settings, type SubscriptionProxy } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { writesTitles } from './drivers/index.ts';
 import { invalidParams } from './errors.ts';
@@ -7,23 +7,7 @@ import { prepareLocalProxyKey } from './subscription-proxy-auth.ts';
 import { announceMachineSetting } from './threads/group-spawn.ts';
 import { isAbsolute, resolve } from 'node:path';
 
-export const DEFAULT_SETTINGS: Settings = {
-  threadDoneRetentionDays: DEFAULT_THREAD_DONE_RETENTION_DAYS,
-  threadDeletionRetentionDays: DEFAULT_THREAD_DELETION_RETENTION_DAYS,
-  worktreeStorage: { mode: 'project', directory: null },
-  warmProcessMinutes: 0,
-  listenOnLan: false,
-  agentCpuCapPercent: 75,
-  agentMemoryBudgetPercent: 60,
-  threadMemoryCapMb: 0,
-  memoryReserveMb: 0,
-  memoryProtection: true,
-  focusGuard: true,
-  muteAgents: true,
-  reapOrphans: true,
-  autoUpdateHarnesses: false,
-  autoCompact: DEFAULT_AUTO_COMPACT,
-};
+export const DEFAULT_SETTINGS = defaultSettings();
 
 /**
  * Defaults a save of another setting leaves out of the store: their key stays
@@ -47,11 +31,11 @@ export class SettingsStore {
   /** The user's own choices as saved; a policy that goes away gives them back untouched. */
   stored(): Settings {
     const stored = this.#core.journal.getSetting('settings');
-    if (typeof stored !== 'object' || stored === null) return { ...DEFAULT_SETTINGS };
+    if (typeof stored !== 'object' || stored === null) return defaultSettings();
     const patch = { ...stored } as Partial<Settings>;
     Reflect.deleteProperty(patch, 'maxConcurrentTurns');
     Reflect.deleteProperty(patch, 'perAccountConcurrency');
-    return { ...DEFAULT_SETTINGS, ...patch };
+    return { ...defaultSettings(), ...patch };
   }
 
   /**

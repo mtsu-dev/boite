@@ -4,6 +4,7 @@
  */
 
 import type { KeybindingCommand } from '@boite/contracts';
+import { drawerCommandAvailable } from './command-table';
 import type { PaletteItem } from './palette';
 import { strings } from './strings';
 import type { Store } from './store.svelte';
@@ -58,7 +59,7 @@ export function appCommands(store: Store, phone: boolean): PaletteItem[] {
       items.push(row('tasks', strings.palette.tasks, 'todo goal loop'));
       // A button put away in Appearance stays here: the palette is the way back to it.
       items.push(row('trace', strings.palette.trace, 'processes load'));
-      items.push(row('terminal', strings.palette.terminal, 'shell console powershell cmd bash'));
+      if (drawerCommandAvailable(store)) items.push(row('terminal', strings.palette.terminal, 'shell console powershell cmd bash'));
     }
   }
   items.push(row('sidebar', strings.palette.sidebar));

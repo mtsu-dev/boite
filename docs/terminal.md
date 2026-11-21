@@ -1,6 +1,6 @@
 # Terminal
 
-Each conversation has its own shells in a drawer under the chat, opened in the
+In Conversations, each chat has its own shells in a drawer, opened in the
 conversation's working directory. Use them to run a command yourself while the
 agent works, or to finish a sign-in that asks questions in a terminal.
 
@@ -11,6 +11,8 @@ agent works, or to finish a sign-in that asks questions in a terminal.
 2. Drag the drawer's top edge to set its height. Each device keeps its own.
 3. Hiding the drawer stops nothing. The cross ends the shell that has the
    keyboard, and a tab's cross ends every shell of that tab.
+
+In a mochi or team chat, `Ctrl+J` keeps you in that conversation.
 
 The shell keeps running when you switch conversations, reload the app or open
 a second window: the screen comes back with its recent output. On macOS and

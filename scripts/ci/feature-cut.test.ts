@@ -81,16 +81,40 @@ test('the five finished features left the registry, their lazy entries load with
 });
 
 test('the UI build and the core build define the kind and the flags of the stamped version', async () => {
+  const root = join(import.meta.dir, '..', '..');
   const { default: config } = await import('../../packages/ui/vite.config.ts');
-  const version = (JSON.parse(readFileSync(join(import.meta.dir, '..', '..', 'package.json'), 'utf8')) as { version: string }).version;
-  for (const mode of ['production', 'mobile']) {
-    expect(config({ command: 'build', mode }).define).toMatchObject(featureDefines(version));
-  }
-  // The bundle and the compiled sidecar both pass the same flags.
   const { defineFlags } = await import('../../packages/core/bin/defines.ts');
+  const { buildKindOf } = await import('../../packages/contracts/src/experiments.ts');
+  const uiVersion = (JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { version: string }).version;
+  for (const mode of ['production', 'mobile']) expect(config({ command: 'build', mode }).define).toMatchObject(featureDefines(uiVersion));
+
+  // The compiled sidecar still invokes the Bun CLI.
   expect(defineFlags('2.0.0')).toEqual(Object.entries(featureDefines('2.0.0')).flatMap(([name, value]) => ['--define', `${name}=${value}`]));
-  for (const script of ['build.ts', 'compile.ts']) expect(readFileSync(join(import.meta.dir, '..', '..', 'packages', 'core', 'bin', script), 'utf8'), script).toContain('defineFlags(');
-});
+  const core = join(root, 'packages', 'core');
+  expect(readFileSync(join(core, 'bin', 'compile.ts'), 'utf8')).toContain('defineFlags(');
+
+  // Record the defines passed to each real Bun.build in a fresh process.
+  const dir = bundle({ 'report-defines.ts': `
+    const build = Bun.build;
+    Bun.build = (options) => {
+      console.log('defines: ' + JSON.stringify(options.define ?? null));
+      return build(options);
+    };
+  ` });
+  const coreVersion = (JSON.parse(readFileSync(join(core, 'package.json'), 'utf8')) as { version: string }).version;
+  const override = buildKindOf(coreVersion) === 'nightly' ? '0.0.0' : '0.0.0-nightly.20260101.1';
+  for (const { version, args } of [{ version: coreVersion, args: [] }, { version: override, args: ['--version', override] }]) {
+    const child = Bun.spawn([
+      process.execPath, '--preload', join(dir, 'report-defines.ts'), join(core, 'bin', 'build.ts'),
+      '--outdir', join(dir, 'out'), ...args,
+    ], { cwd: core, stdout: 'pipe', stderr: 'inherit', windowsHide: true, timeout: 30_000 });
+    const stdout = await child.stdout.text();
+    expect(await child.exited, stdout).toBe(0);
+    const defineLines = stdout.split('\n').filter(line => line.startsWith('defines: '));
+    expect(defineLines.length, stdout).toBeGreaterThan(0);
+    for (const line of defineLines) expect(JSON.parse(line.slice('defines: '.length)), version).toEqual(featureDefines(version));
+  }
+}, 65_000);
 
 /** The sources of the UI and the core, as paths from the root. */
 function sources(root: string, directory: string): string[] {

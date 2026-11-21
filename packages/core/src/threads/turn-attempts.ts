@@ -288,6 +288,8 @@ export class TurnAttempts {
       assertDriverRunnable(provider.protocol, this.#core.providers.summary(provider.id), account);
       const settings = this.#liveSettings.get(threadId)?.settings;
       try {
+        // Before the turn starts: the title waits for the agent's first message, which may come at once.
+        if (!resumed && !retriedLostSession && capacityTries === 0 && !queued.execution?.operation) this.threads.titles.autoTitle(threadId, turnId);
         const handle = driver.startTurn(context);
         this.handles.set(threadId, handle);
         this.#core.composer.inputReady(threadId);
@@ -297,7 +299,6 @@ export class TurnAttempts {
         this.#stopDeadlines.set(threadId, { handle, forced, timer: null });
         // A turn that starts while its agent waits to update pauses at its first tool boundary too.
         if (this.#core.updates.wantsPause(provider.id)) this.#pauseWanted.set(threadId, provider.id);
-        if (!resumed && !retriedLostSession && capacityTries === 0 && !queued.execution?.operation) this.threads.titles.autoTitle(threadId, turnId);
         result = await Promise.race([handle.done, forced.promise]);
       } catch (error) {
         // A driver that failed to start or blew up mid-attempt: what it had

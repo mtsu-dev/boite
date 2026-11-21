@@ -54,7 +54,11 @@ dependency is required too.
 
 | Change | Selected checks |
 | --- | --- |
-| `docs/*.md` and nested Markdown, listed root policies, issue/PR templates, CODEOWNERS, labeler rules, topics, `.coderabbit.yaml` | Plan and repository checks only |
+| `docs/*.md` and nested Markdown, the pictures and clips under `docs/`, listed root policies, issue/PR templates, CODEOWNERS, labeler rules, topics, `.coderabbit.yaml` | Plan and repository checks only |
+| The tests of `scripts/ci/` the Windows installer job runs (`INSTALLER_SCRIPTS`) | Desktop and E2E checks |
+| `.oxlintrc.json`, the other tests of `scripts/ci/` except `changes.test.ts`, the scripts in `REPOSITORY_SCRIPTS`, workflows other than `ci.yml` and the three it calls, `apps/mobile/` except its `package.json` | Plan and repository checks only: they run oxlint, actionlint and `bun test scripts/ci`; `mobile.yml` builds the native Android app |
+| `tests/contract/` | Core tests, type checks and UI tests: the real core and the fake client both pass its scenarios |
+| `scripts/ci/core-durations.json`, `ui-durations.json`, `e2e-durations.json` | The suite those seconds cut into shards: core, UI, or desktop/E2E |
 | `apps/shell/` | Windows installer, Rust and native shell E2E; five browser/core E2E shards; portable desktop jobs |
 | `tests/e2e/` | Desktop and E2E checks plus `check:e2e`; `tests/e2e/lib/` also selects stress |
 | `Dockerfile`, `.dockerignore`, `docker/` | Native x64 and ARM64 Docker smoke tests |
@@ -66,7 +70,7 @@ dependency is required too.
 | Other `bench/` files, `scripts/architecture/`, `packages/plugin-sdk/`, `examples/plugins/` | Full type checks and UI tests; the repository checks run the SDK's tests |
 | `packages/core/` | All checks except the shell's Rust tests and the APKs |
 | `packages/contracts/` | All checks except the shell's Rust tests and the Boite Server APK |
-| Dependencies, shared builds, other workflows and unknown paths | All checks |
+| Dependencies, shared builds, `ci.yml`, `desktop.yml`, `server-verify.yml`, the selection itself and unknown paths | All checks |
 | Release or manual full run | All checks, except jobs the caller replaces through explicit inputs |
 
 Contacts changes exercise the core/fake contract scenarios plus the real
@@ -298,15 +302,18 @@ A pull request, draft or ready, runs `pr` mode: the plan, the repository
 checks, the two Linux x64 core shards, the two UI shards, `Bundle size`, and
 the focused telemetry and E2E type checks, each only when its paths changed.
 Protection code, protected fixtures and shared toolchain inputs also select
-the two Windows core shards and `Native Windows protection`. Each Windows core
-shard builds the userspace sandbox helper and runs its half of the ordinary
-suite with it; the native job builds the helper again and runs the opt-in
-native protection fixtures, about 11 minutes, beside them instead of before
-the suite. Other pull requests leave Windows out. macOS, desktop packages, E2E, stress,
+the two Windows core shards, `Native Windows protection` and `Native Windows
+protection (MinGW)`. Each Windows core shard builds the userspace sandbox
+helper and runs its half of the ordinary suite with it. The two native jobs
+build both helpers again and run the opt-in native protection fixtures beside
+them instead of before the suite, one job per helper (`NATIVE_HELPER`): the
+SDK build, with the diagnostics below, and the MinGW build. Each takes about
+7.5 minutes where one job ran both helpers in 12.7 (median of 23 pull
+requests, 2026-11-21), so the Windows core shards end such a run again. Other pull requests leave Windows out. macOS, desktop packages, E2E, stress,
 Docker and the APKs skip: the [merge queue](#merge-queue) runs them on top of
 `main`.
 
-The native job also archives `windows-null-access-matrix`: a standalone,
+The SDK job also archives `windows-null-access-matrix`: a standalone,
 opt-in comparison of host and LPAC NUL opens with four requested access masks.
 It derives the frozen historical v1 helper in
 `tests/diagnostics/windows-protected-reference.c` and preserves that reference's
@@ -339,14 +346,15 @@ always reports `productionAccepted=false`; its non-blocking CI step does not
 replace the blocking native production protection tests. The production v2 helper has
 its own explicitly linked Null broker module; diagnostic reference hashes never
 attest that production executable. Required useful-tool, provider/shared and
-Muse MSP scenarios execute with both SDK and MinGW helpers. The Windows core
-job has a 30-minute budget for both matrices and the general suite. A run on
-2026-10-27 spent nearly eight minutes in setup/diagnostics, then exceeded its
-old 15-minute budget during the second provider matrix. Individual scenario
+Muse MSP scenarios execute with both SDK and MinGW helpers, one native job
+per helper with a 25-minute budget each; each Windows core shard has 20
+minutes for its half of the general suite. A run on 2026-10-27 spent nearly
+eight minutes in setup/diagnostics, then exceeded its old 15-minute budget
+during the second provider matrix. Individual scenario
 deadlines and all admission checks remain unchanged. Shared Git fixtures set
 their synthetic identity in each repository, including the commit consumer,
 and ignore host system/global Git configuration.
-Once the helpers build, provider preparation and both provider matrices run
+Once the helpers build, provider preparation and the provider matrix of a job run
 even if protected-tools tests fail. A failed preparation still blocks those
 matrices; cancellation stops them. Each test step retains its failing exit code.
 The setup ACL root contains only the private view, runtime and home. Synthetic
