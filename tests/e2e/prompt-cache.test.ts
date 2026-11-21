@@ -43,7 +43,7 @@ async function open(size: { width: number; height: number }, cache: { minutesAgo
 async function capture(page: BrowserPage, name: string): Promise<void> {
   await page.click('[data-testid="context-trigger"]');
   await page.waitFor(`document.querySelector('[data-testid="prompt-cache-detail"]')`);
-  await page.evaluate(`Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`);
+  await page.settleAnimations();
   await page.screenshot(join(import.meta.dir, '.artifacts', `${name}.png`));
 }
 
@@ -120,7 +120,7 @@ test('an active turn hides the old cache clock until its new result arrives', as
   await phone.click('[data-testid="context-trigger"]');
   await phone.waitFor(`document.querySelector('[data-testid="context-popup"]')`);
   expect(await phone.evaluate<boolean>(`!!document.querySelector('[data-testid="prompt-cache-detail"]')`)).toBe(false);
-  await phone.evaluate(`Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`);
+  await phone.settleAnimations();
   await phone.screenshot(join(import.meta.dir, '.artifacts', 'prompt-cache-running-phone.png'));
 }, 90_000);
 

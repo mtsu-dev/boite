@@ -28,7 +28,7 @@ test('queued prompts sit above the activity dock attached to the input', async (
     const HISTORY_FULL = 640;
     for (const width of [1300, 390]) {
       await page.send('Emulation.setDeviceMetricsOverride', { width, height: HISTORY_FULL, deviceScaleFactor: 1, mobile: width === 390 });
-      await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+      await page.settleAnimations();
       await page.evaluate(`(() => { const timeline = document.querySelector('[data-testid="timeline"]'); timeline.scrollTop = timeline.scrollHeight; })()`);
       const gap = await page.evaluate<number>(`(() => {
         const last = [...document.querySelectorAll(${LAST})].at(-1);
@@ -65,7 +65,7 @@ test('queued prompts sit above the activity dock attached to the input', async (
       // The dock is the composer card's top row: the queue above the card clears it without a lift of its own.
       await page.waitFor(`(() => { const dock = document.querySelector('[data-testid="thread-activity"]'); return dock?.offsetHeight > 0 && dock.closest('[data-testid="composer"]') !== null; })()`);
       await page.evaluate(`(() => { const timeline = document.querySelector('[data-testid="timeline"]'); timeline.scrollTop = timeline.scrollHeight; })()`);
-      await page.evaluate(`Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`);
+      await page.settleAnimations();
       const gap = await page.evaluate<number>(`document.querySelector('[data-testid="composer-queued"]').getBoundingClientRect().top - [...document.querySelectorAll(${LAST})].at(-1).getBoundingClientRect().bottom`);
       expect(gap).toBeGreaterThanOrEqual(12);
       expect(gap).toBeLessThanOrEqual(40);
@@ -79,10 +79,10 @@ test('queued prompts sit above the activity dock attached to the input', async (
       expect(placement.gap).toBeLessThanOrEqual(4);
       expect(placement.queueBottom).toBeLessThanOrEqual(placement.dockTop);
       await page.click('[data-testid="activity-tasks-toggle"]');
-      await page.evaluate(`Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`);
+      await page.settleAnimations();
       await page.waitFor(`document.querySelector('[data-testid="composer-queued"]').getBoundingClientRect().bottom <= document.querySelector('[data-testid="thread-activity"]').getBoundingClientRect().top`);
       await page.click('[data-testid="activity-tasks-toggle"]');
-      await page.evaluate(`Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`);
+      await page.settleAnimations();
     }
     // A short pinned history starts at zero, but a new dock can make it overflow.
     await page.evaluate(`(() => {
@@ -93,7 +93,7 @@ test('queued prompts sit above the activity dock attached to the input', async (
     await page.send('Emulation.setDeviceMetricsOverride', { width: 1300, height: 850, deviceScaleFactor: 1, mobile: false });
     // At rest: no queue and no dock left above the box.
     await page.waitFor(`!document.querySelector('[data-testid="composer-queued"]') && !document.querySelector('[data-testid="thread-activity"]')`);
-    await page.evaluate(`Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`);
+    await page.settleAnimations();
     // The window that leaves the history 20 px of room under its end, whether it overflows now or ends short of the box.
     const fittedHeight = await page.evaluate<number>(`(() => {
       const t = document.querySelector('[data-testid="timeline"]'), last = [...document.querySelectorAll(${LAST})].at(-1);

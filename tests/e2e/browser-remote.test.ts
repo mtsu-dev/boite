@@ -20,7 +20,7 @@ async function openPhoneBrowser(page: BrowserPage) {
 }
 
 async function capture(name: string) {
-  await page.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
+  await page.settleAnimations();
   await page.screenshot(join(artifacts, name));
 }
 /** What the agent's page says it received, through the agent's own snapshot. */

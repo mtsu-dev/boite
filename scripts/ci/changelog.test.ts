@@ -104,8 +104,8 @@ test('release downloads link the actual installers by platform before the change
     `Boite_${version}_arm64.deb`, `Boite_${version}_aarch64.AppImage`,
     `boite-server_${version}_x64.zip`, `boite-server_${version}_arm64.zip`,
     `boite-server_${version}_android.zip`, `boite-mobile_${version}_android.apk`,
-    // Reused APKs keep their own versions, independently of the desktop release.
-    'boite-android-1.0.1.apk', 'boite-server-android-1.0.0.apk',
+    // A reused APK keeps its own version, independently of the desktop release.
+    'boite-server-android-1.0.0.apk',
   ];
   const notes = releaseNotes([{ sha: 'a'.repeat(40), subject: 'feat: ship this change' }],
     'example/boite', `v${version}`, 'v2.0.0-beta.1', 'An announcement.', [
@@ -149,18 +149,18 @@ test('the publication CLI reads desktop and reused Android artifacts from separa
     run(['git', 'init', '-q']);
     run(['git', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-qm', 'feat: fixture']);
     writeFileSync(join(directory, 'released.json'), '[]');
-    for (const folder of ['artifacts', 'android', 'android-server']) mkdirSync(join(directory, folder));
+    for (const folder of ['artifacts', 'android-server', 'mobile']) mkdirSync(join(directory, folder));
     writeFileSync(join(directory, 'artifacts', 'Boite_2.0.0-nightly.20261025.1_x64-setup.exe'), 'fixture');
-    writeFileSync(join(directory, 'android', 'boite-android-1.0.1.apk'), 'fixture');
     writeFileSync(join(directory, 'android-server', 'boite-server-android-1.0.0.apk'), 'fixture');
-    run([process.execPath, join(import.meta.dir, 'changelog.ts'), 'released.json', 'artifacts/release-notes.md', 'artifacts', 'android', 'android-server'], {
+    writeFileSync(join(directory, 'mobile', 'boite-mobile_2.0.0-nightly.20261025.1_android.apk'), 'fixture');
+    run([process.execPath, join(import.meta.dir, 'changelog.ts'), 'released.json', 'artifacts/release-notes.md', 'artifacts', 'android-server', 'mobile'], {
       GITHUB_REPOSITORY: 'example/boite', RELEASE_TAG: 'v2.0.0-nightly.20261025.1', RELEASE_ANNOUNCEMENT: '',
     });
     const notes = readFileSync(join(directory, 'artifacts/release-notes.md'), 'utf8');
     expect(notes).toContain('unstable');
     expect(notes).toContain('Boite_2.0.0-nightly.20261025.1_x64-setup.exe');
-    expect(notes).toContain('boite-android-1.0.1.apk');
     expect(notes).toContain('boite-server-android-1.0.0.apk');
+    expect(notes).toContain('boite-mobile_2.0.0-nightly.20261025.1_android.apk');
     expect(notes).toContain('feat: fixture');
   } finally {
     rmSync(directory, { recursive: true, force: true });

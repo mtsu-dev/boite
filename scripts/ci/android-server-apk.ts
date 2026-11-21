@@ -12,14 +12,14 @@ import {
   run,
   signerDigest,
   versionCode,
-} from './android-apk.ts';
+} from './android-version.ts';
 
 /**
  * Boite Server (`apps/android-server/app`) is a native app: its screens are in
  * the APK, and the core it drives arrives in the release bundle. It counts its
- * version like the Boite app (scripts/ci/android-apk.ts): `VERSION` holds
- * MAJOR.MINOR, a rebuild takes the next patch of the last published APK. The
- * nightly signs it with the same key. `reuse` keeps the latest published APK
+ * own version (scripts/ci/android-version.ts): `VERSION` holds MAJOR.MINOR, a
+ * rebuild takes the next patch of the last published APK. The nightly signs
+ * it with the key of Boite's other Android apps. `reuse` keeps the latest published APK
  * when nothing that goes into it moved: everything under `apps/android-server`
  * except `termux/`, which ships in the bundle, and the key that signed it.
  */
@@ -57,7 +57,7 @@ export function serverNextVersion(base: { major: number; minor: number }, previo
 
 /**
  * An update signed with another key is one Android refuses, so a reused or
- * rebuilt APK must carry the certificate the Boite app does: the one
+ * rebuilt APK must carry the certificate every Boite APK does: the one
  * assetlinks.json publishes.
  */
 export function checkServerSigner(apk: string): string | null {

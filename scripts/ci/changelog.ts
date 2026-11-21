@@ -75,7 +75,7 @@ function downloadNotes(repository: string, tag: string, files: string[]): string
     ['macOS (Intel)', [match('Disk image (.dmg)', /_x64\.dmg$/)]],
     ['Linux (x64)', [target('Debian / Ubuntu (.deb)', 'linux-x86_64-deb'), target('AppImage', 'linux-x86_64-appimage')]],
     ['Linux (ARM64)', [target('Debian / Ubuntu (.deb)', 'linux-aarch64-deb'), target('AppImage', 'linux-aarch64-appimage')]],
-    ['Android (client)', [match('Boite (.apk)', /^boite-android-\d+\.\d+\.\d+\.apk$/), match('Native app, ARM64 (.apk)', /^boite-mobile_[\w.-]+_android\.apk$/)]],
+    ['Android (client, ARM64)', [match('Boite (.apk)', /^boite-mobile_[\w.-]+_android\.apk$/)]],
     ['Android (server, ARM64)', [match('Boite Server (.apk)', /^boite-server-android-\d+\.\d+\.\d+\.apk$/)]],
   ]);
   const server = table([
@@ -87,7 +87,7 @@ function downloadNotes(repository: string, tag: string, files: string[]): string
   const docs = `${base}/blob/${encodedTag}/docs`;
   return [
     '## Downloads', desktop,
-    `[Desktop installation](${docs}/portability.md) · [Android app](${docs}/android.md) · [Android server setup (Termux required)](${docs}/android-server.md)`,
+    `[Desktop installation](${docs}/portability.md) · [Android app](${docs}/phone.md) · [Android server setup (Termux required)](${docs}/android-server.md)`,
     ...(server ? ['### Headless server', server, `[Self-hosting guide](${docs}/server.md)`] : []),
   ].filter(Boolean).join('\n\n');
 }
