@@ -110,6 +110,8 @@ that runs a core on a phone, comes beside it as
   entries that land them beside the installed sidecar. The end to end suite wants
   the same files beside `apps/shell/src-tauri/target/release/boite-shell`, with
   `.exe` on Windows, so the script copies there whenever that executable exists.
+  On Linux it also stages `boite-launch`, which `compile.ts` builds beside the
+  core, as `binaries/boite-launch-<target triple>` and beside the shell, mode 755.
   The Windows shell refuses a sidecar missing any worker and names the missing file.
 - `build:shell` runs the Tauri build with the bundle overlay and produces the
   NSIS installer on Windows, Debian and AppImage packages on Linux, or an
@@ -184,7 +186,10 @@ bun run --cwd apps/shell tauri build --no-bundle
 `apps/shell/src-tauri/tauri.conf.json` is the base config without a sidecar.
 `tauri.bundle.conf.json` adds `bundle.externalBin` and the resource map for the
 core, Windows workers, CLI shims and built UI. The base can build before core
-compilation; distributable builds use the overlay.
+compilation; distributable builds use the overlay. On Linux
+`apps/shell/scripts/tauri.ts` adds `tauri.bundle.linux.conf.json` after it, whose
+`externalBin` also lists `binaries/boite-launch`: the core looks for its launcher
+only beside its own executable, which a resource never reaches on Linux.
 
 ```json
 {

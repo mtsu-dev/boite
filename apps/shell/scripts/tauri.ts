@@ -14,7 +14,6 @@ if (process.platform === 'linux') {
     env.PATCHELF = wrapper;
   }
 }
-// The Windows sidecar is the runtime plus a `core` directory (stage-sidecar.ts): a build that bundles names it too.
 const args = process.argv.slice(2);
 // A cross build (Intel macOS from Apple Silicon) names its triple once, in BOITE_TARGET, for the core and the shell alike.
 if (process.env.BOITE_TARGET && ['build', 'bundle'].includes(args[0] ?? '') && !args.includes('--target')) {
@@ -26,9 +25,14 @@ if (process.env.BOITE_SIGN_UPDATES === '1') {
   env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD ??= '';
   args.push('--config', 'src-tauri/tauri.updater.conf.json');
 }
+// The Windows sidecar is the runtime plus a `core` directory (stage-sidecar.ts): a build that bundles names it too.
 const bundleConfig = args.findIndex((arg) => arg.endsWith('tauri.bundle.conf.json'));
 if (process.platform === 'win32' && bundleConfig !== -1) {
   args.splice(bundleConfig + 1, 0, '--config', 'src-tauri/tauri.bundle.windows.conf.json');
+}
+// A Linux core looks for its launcher beside itself, so it ships as a second sidecar in the same directory (stage-sidecar.ts).
+if (process.platform === 'linux' && bundleConfig !== -1) {
+  args.splice(bundleConfig + 1, 0, '--config', 'src-tauri/tauri.bundle.linux.conf.json');
 }
 const child = Bun.spawn(['bun', 'run', '--cwd', resolve(import.meta.dir, '..'), 'tauri', ...args], {
   env, stdout: 'inherit', stderr: 'inherit', stdin: 'inherit', windowsHide: true,
