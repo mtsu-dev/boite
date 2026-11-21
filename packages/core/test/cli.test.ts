@@ -371,6 +371,9 @@ describe('usage', () => {
     const help = await boite(['help']);
     expect(help.code).toBe(0);
     expect(help.err).toContain('usage: boite');
+    expect(help.err).toContain('projects recoveries');
+    expect(help.err).toContain('proof <message-id> <output-line> <unchecked> [capture]');
+    expect(help.err).toContain('mochi new-session');
     expect(Buffer.byteLength(help.err)).toBeLessThanOrEqual(18_922);
     expect(help.out).toBe('');
     // Help names bots and threads; the old spellings still run but are not shown.
