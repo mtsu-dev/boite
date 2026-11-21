@@ -36,7 +36,7 @@ export type TurnOrigin =
   /** `owner`: a team letter with the owner's post among its triggers, a wake no bot pause or budget holds (`docs/internals/teams.md`). */
   | Keyed & { kind: 'coordination'; owner?: true }
   /** `followUp`: whoever delegated this thread's work writes to it again, as opposed to its own agents reporting or Boite running a step. */
-  | Keyed & { kind: 'delegation'; followUp?: true }
+  | Keyed & { kind: 'delegation'; followUp?: true; workflowSummary?: true }
   | Keyed & { kind: 'goal-check' | 'background' | 'pull-request' | 'routine' | 'event' };
 
 export interface StartTurnOptions {

@@ -78,7 +78,8 @@ its output, with Open conversation. Back to the graph returns to the run.
 - An update or a restart from the app hands the run over: the next start of
   Boite runs the cut steps again. After a crash, or when Boite stayed stopped
   for more than an hour, running runs pause until you or the agent resume
-  them.
+  them. A finished or failed run with a summary still waiting sends it after
+  restart, once the conversation is free.
 - The owner can pause, resume and stop from a phone. A paired phone can
   follow the run and stop it.
 

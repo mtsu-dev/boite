@@ -340,7 +340,12 @@ them in SQLite:
   filtered request, the page reports the unsupported filter and asks for an
   update instead of showing those totals as filtered usage.
 - A removed project keeps its conversations and turns. Usage can still filter
-  by that project and show its ranked conversations. Adding the folder again
+  by that project and show its ranked conversations to the owner. Paired
+  devices see the same unfiltered totals. Their project filters, rankings,
+  per-thread totals and turn details use the same visibility as the project
+  and conversation views. A removed project has no named entry on a paired
+  device, and deleted or hidden conversations have no entry even as subagents
+  of a visible conversation. Adding the folder again
   restores the project and reopens the conversations archived by the removal.
   When a deleted conversation is purged (`threadDeletionRetentionDays`),
   its turns leave the journal. The same transaction first copies each finished

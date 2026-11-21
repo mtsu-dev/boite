@@ -132,7 +132,8 @@ any statistics or pruning work, without changing the batch size. Stopping
 retention or closing the journal prevents further ticks.
 Project removal sets `projects.removed_at`, archives the project's saved threads
 and hides the project and its threads from the app's lists. Saved turns still
-count toward usage totals. Their ranking entries return with the project.
+count toward usage totals. Their ranking entries stay available to the owner
+and return to paired devices with the project.
 Adding the same folder again clears
 `removed_at` and reopens the saved threads that were open. Removal erases
 incognito threads and their transcripts, as on any close.

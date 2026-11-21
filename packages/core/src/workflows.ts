@@ -26,7 +26,6 @@ import { SharedWorkflowCompute } from './workflows/shared-compute.ts';
 import { MachineWorkflowSteps } from './workflows/machine-steps.ts';
 import { loopPrompt, stepPrompt, stepRole } from './workflows/prompt.ts';
 import { sentBack } from './workflows/follow-up.ts';
-import type { StartTurnOptions } from './threads/turn-origin.ts';
 import { delivered, endLeftovers, shapedOutput, stepAnswer } from './workflows/step-result.ts';
 export { registerWorkflowMethods } from './workflows/register.ts';
 
@@ -626,12 +625,12 @@ export class Workflows {
     if (threadActive(root.status)) { this.#core.threads.cacheKeepalive.yieldTo(root.id); return; }
     const display = `Workflow "${run.name}" ${run.status === 'done' ? 'finished' : 'failed'}`;
     try {
-      this.#handTo(root, runSummary(run), display, () => {
+      this.#core.threads.startTurn(root.id, { prompt: runSummary(run), display }, { kind: 'delegation', workflowSummary: true }, { persistAdmission: () => {
         // Commit the delivery with its turn so a restarted core cannot admit it twice.
         const accepted = { ...run, delivered: true, deliveryError: null };
         this.#write(accepted);
         return () => this.#published(accepted);
-      });
+      } });
     } catch (error) {
       // Said on the run, so the panel shows why the summary is held rather than waiting in silence.
       const reason = messageOf(error);
@@ -650,17 +649,12 @@ export class Workflows {
     if (!run || !root || root.archived || threadActive(root.status)) return;
     const notice = failureNotice(run, failed);
     try {
-      this.#handTo(root, notice.prompt, notice.display);
+      this.#core.threads.startTurn(root.id, { prompt: notice.prompt, display: notice.display }, { kind: 'delegation' });
       this.#mutate(run.id, current => { current.failuresNoticed = [...current.failuresNoticed ?? [], ...notice.keys]; });
     } catch (error) {
       if (isAgentHeld(error)) this.#core.agentRuntime.whenAdmitted(root.id, `workflow-failures:${run.id}`, () => this.#noticeFailures(run.id));
       this.#core.log('warn', `workflow ${run.id} failure not told to ${root.id}: ${messageOf(error)}`);
     }
-  }
-
-  /** One turn of the root carrying a prompt, on a persistent agent's thread as on any other. */
-  #handTo(root: ThreadSummary, prompt: string, display: string, persistAdmission?: StartTurnOptions['persistAdmission']): void {
-    this.#core.threads.startTurn(root.id, { prompt, display }, { kind: 'delegation' }, { persistAdmission });
   }
 
   /** A held summary goes again once the owner resumes the team. */
@@ -734,12 +728,12 @@ export class Workflows {
     return resumed;
   }
 
-  /** Once the server listens, resume running steps and hand over finished results left pending. */
+  /** Once the server listens, resume running steps and hand over results left pending. */
   resumeAfterRestart(): number {
     if (this.#closed || this.#core.journal.isClosed()) return 0;
     const runs = this.#runsWhere("status = 'running'");
     for (const run of runs) this.#advance(run.id);
-    for (const run of this.#runsWhere("status = 'done' AND json_extract(data, '$.delivered') = 0")) this.#deliver(run.id);
+    for (const run of this.#runsWhere("status IN ('done', 'failed') AND json_extract(data, '$.delivered') = 0")) this.#deliver(run.id);
     return runs.length;
   }
 

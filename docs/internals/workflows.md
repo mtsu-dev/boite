@@ -286,9 +286,10 @@ that line in their prompt ([restart handoff](restart-handoff.md)). After a
 crash or a handoff older than an hour, running runs pause, marked as held by
 a restart, and each interrupted execution waits on its own thread. Resume runs
 it again with the same line in its prompt. At startup, the core also attempts
-delivery of completed results still pending. A busy parent receives the result
-after its turn finishes. Admission of the summary turn and the delivery record
-commit together.
+delivery of pending summaries for successful and failed runs. A busy parent
+receives the result after its turn finishes. Admission of the summary turn and
+the delivery record commit together. If the core stops before starting that
+turn, the next core queues the same turn with its original prompt and ID.
 
 A step sent back to work in its own conversation still counts for its run. When
 the owner stops a step, the run fails with it; a turn started later in that

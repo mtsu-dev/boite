@@ -675,6 +675,7 @@ export class ThreadStore {
         sessionGeneration: thread.sessionGeneration ?? 0, selectionVersion: thread.selectionVersion ?? 0,
         ...(executionChoice ? { frozenSelection: true as const } : {}),
         ...(operation ? { operation } : {}), ...(automatic ? { automatic: true as const } : {}),
+        ...(origin.kind === 'delegation' && origin.workflowSummary ? { workflowSummary: true as const } : {}),
         ...(originAgentWrites(origin) && threadAtRest(this.#core, thread) ? { opensRequest: true as const } : {}),
         ...(accountLeft ? { accountLeft } : {}),
       },

@@ -277,8 +277,13 @@ minutes per pass. A worktree qualifies when all of these hold:
   recorded move on the next open after a crash. Once Git has removed its
   registration, Boite moves each candidate to a private directory and
   compares it byte for byte with the content Git checks out from the recorded
-  commit, including smudge filters and line endings. It discards a regular file
-  only while the filesystem excludes writers and the comparison succeeds. A file
+  commit with Git's built-in conversions, including line endings. Paths with
+  a filter attribute keep their captured bytes because external filters can
+  produce different output at the original checkout path. Regular files also
+  stay when the original Git config or attribute sources cannot be established
+  in the comparison, such as with checkout-specific config, conditional
+  includes or a custom attributes file. Boite discards a regular file only
+  while the filesystem excludes writers and the comparison succeeds. A file
   that stays open for writing can still receive edits after cleanup returns.
   Files with differences, open writers or unverifiable contents remain in
   the sibling directory's `saved` folder. If the original name is already

@@ -240,9 +240,9 @@ export const DEVICE_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>
   // Machine-wide totals: model names, sizes and loads, no paths beyond drive letters or mount points.
   'resources.machine',
   'scheduler.get',
-  'usage.get',
-  // Sums of the same finished turns per day, provider and model. The thread
-  // titles it names are the ones `threads.list` already shows the device.
+  'usage.get', // Machine totals and counts for threads visible to the device.
+  // Sums by day, provider and model, with names limited to the projects and
+  // threads the device can still open.
   'usage.history',
   // One thread's turns with their usage and model: what `usage.history` already
   // sums for the device, turn by turn, with no message text.
