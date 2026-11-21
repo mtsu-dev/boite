@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { CI_WORKFLOWS, REPOSITORY_SCRIPTS, affectedChecks, ciMode, lastGreen, needsCodeChecks, needsNativeWindows, needsWorkflowLint, plan } from './changes.ts';
+import { CI_WORKFLOWS, INSTALLER_SCRIPTS, REPOSITORY_SCRIPTS, affectedChecks, ciMode, lastGreen, needsCodeChecks, needsNativeWindows, needsWorkflowLint, plan } from './changes.ts';
 
 const none = { core: false, web: false, desktop: false, shellRust: false, server: false, androidServer: false, telemetry: false, e2eTypes: false, stress: false };
 const allChecks = { core: true, web: true, desktop: true, shellRust: true, server: true, androidServer: true, telemetry: true, e2eTypes: true, stress: true };
@@ -97,16 +97,29 @@ test('what only the repository checks run selects no other job', () => {
   }
 });
 
+const root = new URL('../../', import.meta.url).pathname;
+/** Tracked files with a match for `pattern`, each with its matches. */
+function grep(pattern: string): string[][] {
+  const result = Bun.spawnSync(['git', 'grep', '-ozE', pattern], { cwd: root, stdout: 'pipe', stderr: 'pipe' });
+  // 1 is no match; anything else is a failed search, not a clean tree.
+  expect([0, 1], result.stderr.toString()).toContain(result.exitCode);
+  return result.stdout.toString().split('\n').filter(Boolean).map((line) => line.split('\0'));
+}
+
 test('no job a ci run executes and no package uses a repository-only script', () => {
-  const root = new URL('../../', import.meta.url).pathname;
-  // ci.yml's repository checks run every script's tests, which name the scripts they test.
+  // A file is read by a ci job unless it selects none: a test of scripts/ci
+  // the repository checks alone run names the script it tests, harmlessly.
   const reads = (file: string) => CI_WORKFLOWS.includes(file) || file.startsWith('.github/actions/') ||
-    (file.startsWith('scripts/ci/') ? !file.endsWith('.test.ts') && !REPOSITORY_SCRIPTS.includes(file) && file !== 'scripts/ci/changes.ts' : !file.startsWith('.github/'));
+    (file.startsWith('scripts/ci/') ? !['scripts/ci/changes.ts', 'scripts/ci/changes.test.ts'].includes(file) && needsCodeChecks([file]) : !file.startsWith('.github/'));
   const names = REPOSITORY_SCRIPTS.map((script) => script.slice('scripts/ci/'.length).replace(/\.ts$/, ''));
   // A path to one: `scripts/ci/nightly.ts`, `../ci/nightly`, or `./nightly` beside it.
-  const grep = Bun.spawnSync(['git', 'grep', '-ozE', `(ci/|['"]\\./)(${names.join('|')})(\\.ts)?['"[:space:])]`], { cwd: root, stdout: 'pipe' });
-  const users = grep.stdout.toString().split('\n').filter(Boolean).map((line) => line.split('\0')).filter(([file]) => reads(file));
+  const users = grep(`(ci/|['"]\\./)(${names.join('|')})(\\.ts)?['"[:space:])]`).filter(([file]) => reads(file));
   expect(users).toEqual([]);
+  // A script a ci workflow runs by name selects at least the job that runs it.
+  const named = grep('scripts/ci/[A-Za-z0-9_.-]+\\.(ts|mts|sh)').filter(([file]) => CI_WORKFLOWS.includes(file)).flatMap(([, ...hits]) => hits);
+  expect(named).toContain('scripts/ci/installer-hooks.test.ts');
+  for (const script of named) expect(needsCodeChecks([script]), script).toBe(true);
+  for (const script of INSTALLER_SCRIPTS) expect(affectedChecks([script]), script).toEqual({ ...none, desktop: true });
 });
 
 test('contract scenarios and recorded seconds select the suites that read them', () => {
@@ -128,15 +141,14 @@ test('workflow lint follows workflows, local actions and their decision scripts'
 });
 
 test('native Windows proof follows protection code and shared toolchain inputs', () => {
-  for (const file of ['packages/core/src/platform/windows/protected-tool.c', 'packages/core/src/platform/index.ts', 'packages/core/src/platform/protected-checkout.ts', 'packages/core/src/execution-policy.ts', 'packages/core/src/drivers/muse/protected.ts', 'packages/core/src/drivers/protected-bridge.ts', 'packages/core/src/contacts/native-execution.ts', 'packages/core/bin/install-windows-sandbox.ts', 'packages/core/test/protected-windows.test.ts', 'bun.lock', 'package.json', '.github/workflows/ci.yml', 'scripts/ci/changes.ts', 'new-config.json']) {
+  for (const file of ['packages/core/src/platform/windows/protected-tool.c', 'packages/core/src/platform/protected-checkout.ts', 'packages/core/src/execution-policy.ts', 'packages/core/src/drivers/muse/protected.ts', 'packages/core/src/drivers/protected-bridge.ts', 'packages/core/src/contacts/native-execution.ts', 'packages/core/bin/install-windows-sandbox.ts', 'packages/core/test/protected-windows.test.ts', 'bun.lock', 'package.json', '.github/workflows/ci.yml', 'scripts/ci/changes.ts', 'new-config.json']) {
     expect(needsNativeWindows([file]), file).toBe(true);
     const pr = plan(affectedChecks([file]), 'pr', needsNativeWindows([file]));
     expect(pr.nativeWindows).toBe(true);
     expect(JSON.parse(pr.coreRunners).map((runner: { os: string }) => runner.os)).toEqual(['ubuntu-24.04', 'windows-2025']);
     expect(pr.desktop).toBe(false);
   }
-  // The Linux, POSIX and macOS backends never load on Windows: the queue still runs the Windows suite.
-  for (const file of ['docs/internals/ci.md', 'packages/ui/src/App.svelte', 'packages/core/src/cli.ts', 'Dockerfile', 'packages/core/src/platform/posix-keep-awake.ts', 'packages/core/src/platform/linux-protected.ts', 'packages/core/src/platform/macos-memory.ts', 'packages/core/src/platform/x11-window-capture.ts']) {
+  for (const file of ['docs/internals/ci.md', 'packages/ui/src/App.svelte', 'packages/core/src/cli.ts', 'Dockerfile']) {
     expect(needsNativeWindows([file]), file).toBe(false);
     expect(plan(affectedChecks([file]), 'pr', needsNativeWindows([file])).coreRunners).toBe(plan(affectedChecks([file]), 'pr').coreRunners);
   }

@@ -55,7 +55,8 @@ dependency is required too.
 | Change | Selected checks |
 | --- | --- |
 | `docs/*.md` and nested Markdown, the pictures and clips under `docs/`, listed root policies, issue/PR templates, CODEOWNERS, labeler rules, topics, `.coderabbit.yaml` | Plan and repository checks only |
-| `.oxlintrc.json`, the tests of `scripts/ci/` other than `changes.test.ts`, the scripts in `REPOSITORY_SCRIPTS`, workflows other than `ci.yml` and the three it calls, `apps/mobile/` except its `package.json` | Plan and repository checks only: they run oxlint, actionlint and `bun test scripts/ci`; `mobile.yml` builds the native Android app |
+| The tests of `scripts/ci/` the Windows installer job runs (`INSTALLER_SCRIPTS`) | Desktop and E2E checks |
+| `.oxlintrc.json`, the other tests of `scripts/ci/` except `changes.test.ts`, the scripts in `REPOSITORY_SCRIPTS`, workflows other than `ci.yml` and the three it calls, `apps/mobile/` except its `package.json` | Plan and repository checks only: they run oxlint, actionlint and `bun test scripts/ci`; `mobile.yml` builds the native Android app |
 | `tests/contract/` | Core tests, type checks and UI tests: the real core and the fake client both pass its scenarios |
 | `scripts/ci/core-durations.json`, `ui-durations.json`, `e2e-durations.json` | The suite those seconds cut into shards: core, UI, or desktop/E2E |
 | `apps/shell/` | Windows installer, Rust and native shell E2E; five browser/core E2E shards; portable desktop jobs |
@@ -295,9 +296,7 @@ A pull request, draft or ready, runs `pr` mode: the plan, the repository
 checks, the two Linux x64 core shards, the two UI shards, `Bundle size`, and
 the focused telemetry and E2E type checks, each only when its paths changed.
 Protection code, protected fixtures and shared toolchain inputs also select
-the two Windows core shards and `Native Windows protection`; the
-`linux-`, `posix-`, `macos-` and `x11-` files of `platform/` never load on
-Windows and leave them to the queue. Each Windows core
+the two Windows core shards and `Native Windows protection`. Each Windows core
 shard builds the userspace sandbox helper and runs its half of the ordinary
 suite with it; the native job builds the helper again and runs the opt-in
 native protection fixtures, about 11 minutes, beside them instead of before

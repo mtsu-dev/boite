@@ -8,7 +8,10 @@ export const CI_WORKFLOWS = ['.github/workflows/ci.yml', '.github/workflows/desk
  * CI_WORKFLOWS runs, or only their tests import. `changes.test.ts` fails when
  * a job of CI_WORKFLOWS or a package starts using one.
  */
-export const REPOSITORY_SCRIPTS = ['changelog.ts', 'commit-ci.ts', 'installer-prerequisites.ts', 'feature-modules.ts', 'nightly-retry.ts', 'nightly.ts', 'pr-title.ts', 'server-provenance.ts'].map((name) => `scripts/ci/${name}`);
+export const REPOSITORY_SCRIPTS = ['changelog.ts', 'commit-ci.ts', 'feature-modules.ts', 'nightly-retry.ts', 'nightly.ts', 'pr-title.ts', 'server-provenance.ts'].map((name) => `scripts/ci/${name}`);
+
+/** The script tests the Windows installer job runs (desktop.yml), and the helper they share. */
+export const INSTALLER_SCRIPTS = ['installer-hooks.test.ts', 'installer-shortcuts.test.ts', 'installed-cli-windows.test.ts', 'stop-core.test.ts', 'installer-prerequisites.ts', 'installer-prerequisites.test.ts'].map((name) => `scripts/ci/${name}`);
 
 // Unknown files run the complete suite. Documentation-only PRs still get the
 // required job, so branch protection never waits for a filtered-out workflow.
@@ -26,7 +29,7 @@ export function affectedChecks(files: string[]) {
       // workflows it calls reaches needs nothing more.
       file === '.oxlintrc.json' ||
       (/^\.github\/workflows\/[^/]+\.yml$/.test(file) && !CI_WORKFLOWS.includes(file)) ||
-      (/^scripts\/ci\/[^/]+\.test\.ts$/.test(file) && file !== 'scripts/ci/changes.test.ts') ||
+      (/^scripts\/ci\/[^/]+\.test\.ts$/.test(file) && file !== 'scripts/ci/changes.test.ts' && !INSTALLER_SCRIPTS.includes(file)) ||
       REPOSITORY_SCRIPTS.includes(file) ||
       // The native Android app has its own workflow (mobile.yml); its
       // package.json is a workspace member and stays a shared input.
@@ -55,6 +58,8 @@ export function affectedChecks(files: string[]) {
       // The scenarios both transports pass: the real core's contract tests
       // and the fake client's (packages/ui/src/lib/fake-client.contract.test.ts).
       checks.core = checks.web = true;
+    } else if (INSTALLER_SCRIPTS.includes(file)) {
+      checks.desktop = true;
     } else if (file === 'scripts/ci/core-durations.json') {
       // Recorded seconds only move files between shards of the same suite.
       checks.core = true;
@@ -94,7 +99,7 @@ export function needsWorkflowLint(files: string[]): boolean {
 
 /** Protection and shared inputs need the actual Windows boundary, including on pull requests. */
 export function needsNativeWindows(files: string[]): boolean {
-  return files.some((file) => /^packages\/core\/(src\/(platform\/(?!(?:linux|posix|macos|x11)-)|execution-|drivers\/(?:[^/]+\/)?protected[^/]*\.ts$|contacts\/native-execution\.ts$)|bin\/install-windows-sandbox\.ts$|test\/protected)/.test(file)
+  return files.some((file) => /^packages\/core\/(src\/(platform\/|execution-|drivers\/(?:[^/]+\/)?protected[^/]*\.ts$|contacts\/native-execution\.ts$)|bin\/install-windows-sandbox\.ts$|test\/protected)/.test(file)
     || ['package.json', 'bun.lock', '.github/workflows/ci.yml', '.github/actions/setup/action.yml', 'scripts/ci/changes.ts', 'scripts/ci/changes.test.ts'].includes(file))
     || Object.values(affectedChecks(files)).every(Boolean);
 }
