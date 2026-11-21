@@ -1,6 +1,6 @@
 import { expect, spyOn, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { thrown } from '../../../packages/core/test/settle.ts';
@@ -19,6 +19,7 @@ test('cancelling during a Bun change cannot remove the runtime archive or stagin
     mkdirSync(`${root}/runtime`);
     // Keep the real private function, its downloader and its unzip commands in an isolated controller.
     const controller = `${root}/controller.ts`;
+    copyFileSync(join(import.meta.dir, 'minisign.ts'), `${root}/minisign.ts`);
     writeFileSync(controller, readFileSync(join(import.meta.dir, 'boite-server.ts'), 'utf8') + '\nexport { ensureRuntime };\n');
     process.env.BOITE_SERVER_HOME = root;
     const { ensureRuntime } = await import(controller) as { ensureRuntime(bun: { version: string; sha256: string }, say: (text: string) => void): Promise<string> };
@@ -72,6 +73,7 @@ test.each(['digest', 'extract', 'stream', 'signature', 'local'])('failed %s prep
   let fetcher: ReturnType<typeof spyOn> | undefined;
   try {
     const controller = `${root}/controller.ts`;
+    copyFileSync(join(import.meta.dir, 'minisign.ts'), `${root}/minisign.ts`);
     writeFileSync(controller, readFileSync(join(import.meta.dir, 'boite-server.ts'), 'utf8') + '\nexport { ensureRuntime, prepareRelease };\n');
     process.env.BOITE_SERVER_HOME = root;
     const { ensureRuntime, prepareRelease } = await import(controller);
@@ -99,7 +101,7 @@ test.each(['digest', 'extract', 'stream', 'signature', 'local'])('failed %s prep
       const digest = failure === 'digest' ? '0'.repeat(64) : createHash('sha256').update(bytes).digest('hex');
       expect(await thrown(ensureRuntime({ version: '9.9.9', sha256: digest }, () => {}))).toThrow(failure === 'digest' ? 'hashes to' : failure === 'extract' ? 'ENOENT' : 'download interrupted');
     } else if (failure === 'signature') {
-      expect(await thrown(prepareRelease({ offer: { version: '2.0.0', url: 'https://fixture.invalid/bundle.zip', signature: 'invalid' } }, () => {}))).toThrow('not a Minisign packet');
+      expect(await thrown(prepareRelease({ offer: { version: '2.0.0', url: 'https://fixture.invalid/bundle.zip', signature: 'invalid' } }, () => {}))).toThrow('invalid Minisign packet');
     } else {
       const local = `${root}/local.zip`;
       writeFileSync(local, archive);

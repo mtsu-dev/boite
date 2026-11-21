@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { BROWSER_RECORDING_CHUNK_BYTES, BROWSER_RECORDING_MAX_BYTES, browserActionError } from '@boite/contracts';
-import { BrowserRecorder, recordingBitrate, recordingCodecTypes, recordingSize, recordingTypeCodec } from './browser-recording';
+import { BROWSER_RECORDING_CHUNK_BYTES, BROWSER_RECORDING_MAX_BYTES, browserActionError, recordingBitrate, recordingSize, recordingTypeCodec } from '@boite/contracts';
+import { BrowserRecorder, recordingCodecTypes } from './browser-recording';
 
 test('each codec records into MP4 with the first type the engine encodes, and none stands in for another', () => {
   // What WebView2 154 answered on 2026-10-04: H.264 and AV1, no HEVC, WebM.

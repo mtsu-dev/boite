@@ -1,29 +1,13 @@
-import { BROWSER_RECORDING_CHUNK_BYTES, BROWSER_RECORDING_CODECS, BROWSER_RECORDING_CODEC_LABELS, BROWSER_RECORDING_MAX_BYTES, DEFAULT_BROWSER_RECORDING_CODEC, DEFAULT_BROWSER_RECORDING_FRAME_RATE, type BrowserRecording, type BrowserRecordingCodec, type BrowserRecordingFrameRate } from '@boite/contracts';
+import { BROWSER_RECORDING_CHUNK_BYTES, BROWSER_RECORDING_CODECS, BROWSER_RECORDING_CODEC_LABELS, BROWSER_RECORDING_CODEC_TYPES, BROWSER_RECORDING_MAX_BYTES, DEFAULT_BROWSER_RECORDING_CODEC, DEFAULT_BROWSER_RECORDING_FRAME_RATE, recordingBitrate, recordingSize, recordingTypeCodec, type BrowserRecording, type BrowserRecordingCodec, type BrowserRecordingFrameRate } from '@boite/contracts';
 import type { RecordingRect } from './recording-indicators';
 
-/**
- * The MediaRecorder types tried for each codec, all MP4. Plain `video/mp4` is
- * not listed, since the engine would pick the codec. WebView2 154 on Windows
- * encodes H.264 and AV1 into MP4 but not HEVC, even where the GPU has an HEVC
- * encoder (checked 2026-10-04).
- */
-const CODEC_TYPES: Record<BrowserRecordingCodec, string[]> = {
-  h264: ['video/mp4;codecs=avc1.640028', 'video/mp4;codecs=avc1.4d0028', 'video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1'],
-  hevc: ['video/mp4;codecs=hvc1.1.6.L123.B0', 'video/mp4;codecs=hev1.1.6.L123.B0', 'video/mp4;codecs=hvc1', 'video/mp4;codecs=hev1'],
-  av1: ['video/mp4;codecs=av01', 'video/mp4;codecs=av01.0.08M.08'],
-};
 /** The type each codec records with on this engine, or null for a codec it cannot encode. */
 export function recordingCodecTypes(supported: (type: string) => boolean): Record<BrowserRecordingCodec, string | null> {
-  return Object.fromEntries(BROWSER_RECORDING_CODECS.map(codec => [codec, CODEC_TYPES[codec].find(type => supported(type)) ?? null])) as Record<BrowserRecordingCodec, string | null>;
+  return Object.fromEntries(BROWSER_RECORDING_CODECS.map(codec => [codec, BROWSER_RECORDING_CODEC_TYPES[codec].find(type => supported(type)) ?? null])) as Record<BrowserRecordingCodec, string | null>;
 }
 /** The codecs this desktop records, for its menu; none where MediaRecorder is missing. */
 export function supportedRecordingCodecs(): Record<BrowserRecordingCodec, string | null> {
   return recordingCodecTypes(type => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(type));
-}
-/** The codec a MediaRecorder type names, to report the one actually encoded. */
-export function recordingTypeCodec(type: string): BrowserRecordingCodec | null {
-  const codecs = /codecs=([^;]*)/i.exec(type)?.[1]?.toLowerCase() ?? '';
-  return /\bavc[13]/.test(codecs) ? 'h264' : /\b(hvc1|hev1)/.test(codecs) ? 'hevc' : /\bav01/.test(codecs) ? 'av1' : null;
 }
 /** The MP4 type of a recording in this codec, at the profile it records, to ask a player before loading it. */
 export function recordingVideoType(codec: BrowserRecordingCodec | undefined): string {
@@ -33,18 +17,6 @@ export function recordingVideoType(codec: BrowserRecordingCodec | undefined): st
 function unsupportedCodecError(codec: BrowserRecordingCodec, types: Record<BrowserRecordingCodec, string | null>): string {
   const available = BROWSER_RECORDING_CODECS.filter(other => types[other]).map(other => BROWSER_RECORDING_CODEC_LABELS[other]);
   return `${BROWSER_RECORDING_CODEC_LABELS[codec]} recording is not available on this desktop: its browser engine does not encode ${BROWSER_RECORDING_CODEC_LABELS[codec]} into MP4. ${available.length ? `It records ${available.join(', ')}.` : 'It records no MP4 codec.'}`;
-}
-/**
- * T3 Code's budget: encoder defaults blur page text, so the bitrate follows the
- * pixels and frames recorded, within 2.5 and 50 Mbit/s. 1080p at 30 fps gets 3.1.
- */
-export function recordingBitrate(width: number, height: number, frameRate: number): number {
-  return Math.round(Math.min(50_000_000, Math.max(2_500_000, width * height * frameRate * 0.05)));
-}
-/** The video's size: the page's own up to 1920×1080, even sides for H.264. */
-export function recordingSize(width: number, height: number): { width: number; height: number } {
-  const scale = Math.min(1, 1920 / width, 1080 / height);
-  return { width: Math.max(2, Math.round(width * scale / 2) * 2), height: Math.max(2, Math.round(height * scale / 2) * 2) };
 }
 /** Without a page frame for this long the video repeats its last one, so a still page stays in the timeline. */
 const IDLE_MS = 1000;

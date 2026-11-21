@@ -9,6 +9,7 @@ import { Coordination, coordinationUrl, LETTER_RETENTION_MS, SWEEP_PROBES } from
 import { letterPrompt } from '../src/coordination-letter.ts';
 import { senderContext } from '../src/coordination-relation.ts';
 import { contactAnswer } from '../src/contacts/answers.ts';
+import { searchJournalChat, type ChatSearchReply } from '../src/journal-reads.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import { echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { rejection, thrown } from './settle.ts';
@@ -29,6 +30,73 @@ function dest(h: TestCore, threadId: string): AgentAddress { return h.core.coord
 function send(h: TestCore, from: string, to: AgentAddress, text = 'May I restart the VM?', requestId: string = crypto.randomUUID()) {
   return h.core.coordination.send({ threadId: from, to, text, requestId });
 }
+
+test('the server handles health requests during a conversation search', async () => {
+  const { h, a, b } = await setup();
+  enable(h, a, b);
+  h.core.journal.putMessage({ id: 'old-spoken-text', threadId: b, turnId: 'history', role: 'user', state: 'complete', createdAt: 1,
+    parts: [{ type: 'text', text: 'a durable unique phrase' }] });
+  // Exercise a long history without depending on any wall-clock performance threshold.
+  h.core.journal.db.query(`WITH RECURSIVE n(i) AS (VALUES(1) UNION ALL SELECT i + 1 FROM n WHERE i < 128)
+    INSERT INTO messages (id, thread_id, turn_id, role, state, created_at, parts)
+    SELECT 'bulk-' || i, ?, 'history', 'assistant', 'complete', i + 1, ? FROM n`).run(b,
+    JSON.stringify([{ type: 'text', text: 'ordinary history '.repeat(32_768) }]));
+  const health = fetch(h.url.replace(/^ws/, 'http').replace(/\/rpc$/, '/health')).then(async response => { await response.text(); return response.status; });
+  const search = h.core.coordination.search(a, 'durable deployment');
+  expect(await Promise.race([search.then(() => 'search'), health])).toBe(200);
+  expect((await search).matches).toMatchObject([{ threadId: b, matched: ['title', 'chat'], excerpts: ['a durable unique phrase'] }]);
+});
+
+test('a cancelled queued search releases its caller before the active reader finishes', async () => {
+  const { h, a, b } = await setup();
+  enable(h, a, b);
+  let finished = false;
+  const active = h.core.coordination.search(a, 'deployment').finally(() => { finished = true; });
+  const caller = new AbortController();
+  const queued = h.core.coordination.search(a, 'deployment', caller.signal);
+  caller.abort();
+  try {
+    expect(await thrown(queued)).toThrow('Conversation search cancelled');
+    expect(finished).toBe(false);
+  } finally { await active; }
+  expect((await h.core.coordination.search(a, 'deployment')).matches).toMatchObject([{ threadId: b }]);
+});
+
+test('an interrupted reader keeps its slot until the worker closes', async () => {
+  const { h } = await setup();
+  const workers: PausedWorker[] = [];
+  class PausedWorker extends EventTarget {
+    onmessage?: (event: MessageEvent<ChatSearchReply>) => void;
+    constructor() { super(); workers.push(this); }
+    postMessage(): void {}
+    terminate(): void {}
+  }
+  const original = globalThis.Worker;
+  globalThis.Worker = PausedWorker as unknown as typeof Worker;
+  const db = h.core.journal.db;
+  const query = { candidates: [], words: ['test'], redact: false, results: 1 };
+  const caller = new AbortController();
+  const next = new AbortController();
+  const wait = thrown(searchJournalChat(db, query, { signal: caller.signal }));
+  const waiting = searchJournalChat(db, query, { signal: next.signal });
+  try {
+    await waitFor(() => workers.length === 1);
+    caller.abort();
+    expect(await wait).toThrow('Conversation search cancelled');
+    await Bun.sleep(0);
+    expect(workers).toHaveLength(1);
+    workers[0]!.dispatchEvent(new Event('close'));
+    await waitFor(() => workers.length === 2);
+    workers[1]!.onmessage?.(new MessageEvent('message', { data: { hits: [] } }));
+    expect(await waiting).toEqual([]);
+  } finally {
+    caller.abort();
+    next.abort();
+    await waiting.catch(() => {});
+    for (const worker of workers) worker.dispatchEvent(new Event('close'));
+    globalThis.Worker = original;
+  }
+});
 
 test('contact answer letters distinguish automatic decisions from explicit owner decisions', async () => {
   const { h, a, b } = await setup();

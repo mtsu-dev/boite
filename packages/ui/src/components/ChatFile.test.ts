@@ -164,7 +164,10 @@ test("an agent's deferred picture shows its blur, then its light copy near the s
     const waiting = query<HTMLElement>('[data-testid=artifact-open-original]');
     // As wide as the picture, or as its height capped at min(480px, 65vh) allows.
     const width = waiting.style.width;
-    expect(width).toMatch(/^min\(1280px, calc\(min\(480px, 65vh\) ?\* ?1280 ?\/ ?720\)\)$/);
+    const expected = document.createElement('div').style;
+    expected.width = 'min(1280px, calc(min(480px, 65vh) * 1280 / 720))';
+    expect(width).not.toBe('');
+    expect(width).toBe(expected.width);
     expect(waiting.style.aspectRatio).toBe('1280 / 720');
     expect(query('[data-testid=artifact-blur]').getAttribute('src')).toBe('data:image/png;base64,BLUR');
     expect(query('[data-testid=artifact-launch]').textContent).toContain('1280 × 720');

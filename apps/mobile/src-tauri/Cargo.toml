@@ -3,7 +3,7 @@ name = "boite-mobile"
 version = "2.0.0-beta.1"
 description = "Boite for Android: the UI as a native app, paired with a core elsewhere"
 edition = "2021"
-rust-version = "1.82"
+rust-version = "1.90"
 publish = false
 license = "MIT"
 

@@ -43,7 +43,9 @@ curl -fsSL https://raw.githubusercontent.com/mtsu-dev/boite/main/apps/android-se
    repository has it.
 2. Downloads Bun's Android build, `bun-linux-aarch64-android.zip`, at the
    version pinned in the script, and refuses it unless its SHA-256 matches.
-3. Writes the `boite-server` command on Termux's `PATH` and sets
+3. Builds the controller as a standalone file from the Git ref or uses
+   the controller already bundled in the release ZIP. Writes the
+   `boite-server` command on Termux's `PATH` and sets
    `allow-external-apps = true` in `~/.termux/termux.properties`, without
    which Termux refuses the app's commands.
 4. Runs `boite-server install`: the signed release, Claude Code, then the

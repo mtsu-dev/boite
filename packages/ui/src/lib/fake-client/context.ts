@@ -11,9 +11,7 @@ import {
   type ExperimentId,
   type QuotaAlerts,
   ChangeLog,
-  DEFAULT_AUTO_COMPACT,
-  DEFAULT_THREAD_DELETION_RETENTION_DAYS,
-  DEFAULT_THREAD_DONE_RETENTION_DAYS,
+  defaultSettings,
   PROTOCOL_VERSION,
   SPEECH_DEFAULT_MODEL,
   normalizeCoreLogText,
@@ -596,21 +594,7 @@ export class FakeContext {
       publicKey: `fake-public-key-${coreId}`
     };
     this.settings = {
-      threadDeletionRetentionDays: DEFAULT_THREAD_DELETION_RETENTION_DAYS,
-      threadDoneRetentionDays: DEFAULT_THREAD_DONE_RETENTION_DAYS,
-      warmProcessMinutes: 0,
-      worktreeStorage: { mode: 'project', directory: null },
-      listenOnLan: false,
-      agentCpuCapPercent: 75,
-      agentMemoryBudgetPercent: 60,
-      threadMemoryCapMb: 0,
-      memoryReserveMb: 0,
-      memoryProtection: true,
-      focusGuard: true,
-      muteAgents: true,
-      reapOrphans: true,
-      autoUpdateHarnesses: false,
-      autoCompact: DEFAULT_AUTO_COMPACT,
+      ...defaultSettings(),
       // The demo machine reads as an install older than these two settings, as the core leaves one: open.
       // `?agents=closed` shows a new install.
       ...(closedAgents() ? CLOSED_AGENT_DEFAULTS : OPEN_AGENT_DEFAULTS)

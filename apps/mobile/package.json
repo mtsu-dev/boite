@@ -10,6 +10,6 @@
     "build:android:apk": "tauri android build --apk --target aarch64"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "2.12.4"
+    "@tauri-apps/cli": "2.12.6"
   }
 }

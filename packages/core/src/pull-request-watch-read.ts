@@ -50,18 +50,22 @@ export interface Fingerprint {
   remarks: string;
 }
 
-/** Who merged or closed the pull request, read once when it stops being open. */
+/** Who merged or closed the pull request, and when, read once when it stops being open. */
 export const CLOSER_QUERY = `query($owner:String!,$name:String!,$number:Int!){viewer{login} repository(owner:$owner,name:$name){pullRequest(number:$number){
-state mergedBy{login} timelineItems(last:1,itemTypes:[CLOSED_EVENT]){nodes{... on ClosedEvent{actor{login}}}}
+state closedAt mergedBy{login} timelineItems(last:1,itemTypes:[CLOSED_EVENT]){nodes{... on ClosedEvent{actor{login}}}}
 }}}`;
 
-/** The account that ended the pull request, empty when GitHub names none, and whether it is the agent's own. */
-export function parseCloser(raw: string): { state: Fingerprint['state']; by: string; own: boolean } {
+/**
+ * The account that ended the pull request, empty when GitHub names none,
+ * whether it is the agent's own, and when, null when GitHub gives no time.
+ */
+export function parseCloser(raw: string): { state: Fingerprint['state']; by: string; own: boolean; at: number | null } {
   const data = graphqlData(raw);
   const pr = pullRequestOf(data);
   const state = prState(pr.state);
   const by = state === 'MERGED' ? text(row(pr.mergedBy).login, 100) : text(row(row(list(row(pr.timelineItems).nodes)[0]).actor).login, 100);
-  return { state, by, own: by !== '' && by.toLowerCase() === text(row(data.viewer).login, 100).toLowerCase() };
+  const at = typeof pr.closedAt === 'string' ? Date.parse(pr.closedAt) : Number.NaN;
+  return { state, by, own: by !== '' && by.toLowerCase() === text(row(data.viewer).login, 100).toLowerCase(), at: Number.isFinite(at) ? at : null };
 }
 
 function graphqlData(raw: string): Row {

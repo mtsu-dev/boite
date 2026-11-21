@@ -38,11 +38,13 @@ export function searchChat(db: Database | null, { candidates, words, redact, res
   if (db && candidates.length > 0) {
     const ids = JSON.stringify(candidates.map(candidate => candidate.threadId));
     // A redacted search judges each message, so its rows carry the text and are read one at a time.
-    const scan = db.query(`SELECT ${redact ? "m.thread_id AS id, j.value->>'text' AS text" : 'DISTINCT m.thread_id AS id'} FROM messages m, json_each(m.parts) j WHERE m.thread_id IN (SELECT value FROM json_each(?)) AND ${CHAT_TEXT} AND instr(lower(j.value->>'text'), ?) > 0`);
-    for (const word of words) {
-      const hit = new Set<string>();
-      for (const row of scan.iterate(ids, word) as Iterable<{ id: string; text?: string }>) if (row.text === undefined || kept(row.text)) hit.add(row.id);
-      inChat.set(word, hit);
+    const columns = redact ? "m.thread_id AS id, w.value AS word, j.value->>'text' AS text" : 'DISTINCT m.thread_id AS id, w.value AS word';
+    const scan = db.query<{ id: string; word: string; text?: string }, [string, string]>(`SELECT ${columns}
+      FROM messages m CROSS JOIN json_each(m.parts) j CROSS JOIN json_each(?) w
+      WHERE m.thread_id IN (SELECT value FROM json_each(?)) AND ${CHAT_TEXT} AND instr(lower(j.value->>'text'), w.value) > 0`);
+    for (const word of words) inChat.set(word, new Set());
+    for (const row of scan.iterate(JSON.stringify(words), ids)) {
+      if (row.text === undefined || kept(row.text)) inChat.get(row.word)!.add(row.id);
     }
   }
   const matches = candidates.flatMap(candidate => {

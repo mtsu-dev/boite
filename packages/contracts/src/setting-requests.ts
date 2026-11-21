@@ -277,7 +277,7 @@ const MISSING: Partial<Record<RequestableSetting, unknown>> = {
   asyncQuestions: true,
   autoInstallUpdates: false,
   autoResumeLimitedThreads: false,
-  autoGoals: true,
+  autoGoals: false,
   cacheKeepalive: null,
   backgroundCompaction: false,
   deviceStream: false,

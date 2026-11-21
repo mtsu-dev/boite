@@ -558,6 +558,12 @@ const smallTargets = `(() => {
 
 test('every phone control on the chat, the panel, the list and Appearance takes a finger', async () => {
   const origin = await page.evaluate<string>('location.origin');
+  const noticeBelow = (testId: string) => `(() => {
+    const notice = Array.from(document.querySelectorAll('[data-testid=contact-request-notice]'), node => node.getBoundingClientRect())
+      .find(box => box.height > 0);
+    const content = document.querySelector('[data-testid=${testId}]')?.getBoundingClientRect();
+    return notice && content && notice.top >= content.bottom && notice.bottom <= innerHeight;
+  })()`;
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
   try {
@@ -576,10 +582,13 @@ test('every phone control on the chat, the panel, the list and Appearance takes 
     await page.click('[data-testid=launch-changes]');
     // The strip shows its scroll chevrons for a frame while the new tab lays out.
     await page.waitFor(`document.querySelector('[data-testid=panel-tab-close]') && !document.querySelector('[data-testid=right-panel] .chev')`);
+    // The contact card stays on screen below the panel's controls.
+    await page.waitFor(noticeBelow('changes-panel'));
     await capture('mobile-panel-tab-touch.png');
     expect(await page.evaluate<string[]>(smallTargets)).toEqual([]);
     await page.click('[data-testid=panel-close]');
     await page.waitFor(`!document.querySelector('[data-testid=right-panel]')`);
+    await page.waitFor(noticeBelow('timeline'));
     await navigateMobile('mobile-conversations');
     await page.waitFor(`document.querySelector('[data-testid=mobile-list] .thread')`);
     expect(await page.evaluate<string[]>(smallTargets)).toEqual([]);
