@@ -61,6 +61,8 @@ export const AGENT_ROUTINE_NAME_MAX = 80;
 export const AGENT_ROUTINE_PROMPT_MAX = 4000;
 /** A routine's check command, in characters. */
 export const AGENT_ROUTINE_CHECK_MAX = 2000;
+/** The handoff note `agents.session.new` carries into a mochi's next conversation, in characters. */
+export const AGENT_HANDOFF_MAX = 4000;
 /**
  * A daily schedule with `days` runs only on those weekdays, numbered 0 (Sunday) to 6 in
  * its timezone. Absent means every day; the core drops a list of all seven.
@@ -419,6 +421,16 @@ export interface AgentsRpcMethods {
    * (`placeMemoryNote`).
    */
   'agents.memory.note': { params: { threadId?: string; agentId?: string; text: string; replace?: string; section?: string }; result: AgentBrain };
+  /**
+   * Starts a new conversation on the mochi's thread: its next turn opens a
+   * fresh provider session that carries none of the earlier messages, while
+   * memory, routines, desk, settings and the visible history stay. A marker
+   * in the thread says so. `note` (at most `AGENT_HANDOFF_MAX` characters)
+   * reaches that first turn once, in its context block. Asked while a turn
+   * runs, even by the mochi in its own turn, it applies when that turn ends
+   * (`when: 'turn-end'`). From its own thread or the owner.
+   */
+  'agents.session.new': { params: { threadId?: string; agentId?: string; note?: string }; result: { agentId: string; threadId: string; when: 'done' | 'turn-end' } };
   'agents.routine.save': { params: AgentSave<AgentRoutine> & { threadId?: string }; result: AgentRoutine };
   'agents.routine.remove': { params: { routineId: string; threadId?: string }; result: { removed: true } };
   /** Runs a routine now, as a turn on the agent's thread. Refused while that thread has a turn in flight. */

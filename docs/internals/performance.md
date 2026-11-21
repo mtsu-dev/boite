@@ -1121,6 +1121,46 @@ totaled 349,916 bytes, bringing combined request bytes to 350,301. Both paths
 preserved journal bytes, the native image URL and file contents. These counts
 exclude compression, responses, release calls and other RPCs.
 
+## First word of a new thread
+
+`BOITE_BENCH_HARNESS=1 bun run bench/harness-startup.ts --runs 4 --ab-titles`
+sends one short prompt to a new thread of each logged-in agent through a real
+core on a fresh data directory, and times the agent's own process and the
+first word of the answer's text, reasoning left out. `--ab-titles` adds a row
+where the echo provider writes the title, so the two rows differ only by the
+title call. `--core <main.ts>` measures another checkout's core; `--verbose`
+prints each process and event of the turn. Rows alternate their order each
+run. Every run spends one turn per row on the agent's account.
+
+The first title used to start with the turn, so its own `codex app-server` or
+`claude` process started beside the agent's. It now starts once the agent
+writes text, reasoning or a tool call ([titles](titles.md)): in every `--verbose`
+run on 2026-11-21 the title process started within 20 ms of its first message,
+after the first word or with it.
+
+On 2026-11-21, Linux, load average 23 to 36, Codex 0.171.0 on its default
+model, the previous core (`--core`) and this one, one run each per round, four
+rounds in alternating order:
+
+| first word, median (slowest) | before | after |
+| --- | ---: | ---: |
+| codex | 6,681 ms (8,029) | 5,039 ms (6,675) |
+| claude | 4,809 ms (5,459) | 6,564 ms (7,027) |
+
+The Claude rows are noise at four runs: six more runs of the new core with
+`--ab-titles` gave 5,448 ms with the title and 4,886 ms with the echo title,
+and the slowest default run's title process started 2 ms after the first
+message, after 7.1 s of Claude's own wait.
+
+What remains is the agent itself. Without Boite, four `codex app-server` runs
+with the same arguments and thread config took 0.6 to 2.3 s to `turn/started`
+and 2.5 to 3.5 s more to the first text, 4.0 to 5.7 s in all. A heavy Codex
+home slows the first part: with 4,095 rollout files (12 GB) and a 176 MB
+`state_5.sqlite`, `initialize` and `thread/start` took up to 5 s at a load
+average near 45, and each new thread's start logs a `state db returned stale
+rollout path` line per missing rollout. Codex keeps each thread's first user
+message in that database.
+
 ## Core startup
 
 The entry loads the CLI for commands and the Core/server graph for server
@@ -1547,6 +1587,50 @@ load.
 Cutting answers trades the open for the scroll: one answer drawn whole is
 2,681 nodes the open lays out at once and a wheel only composites, where cut
 rows mount and style as they come. The load of the machine was not controlled.
+
+## What a tap costs
+
+`bench/ui-latency.ts` times a phone's navigation in headless Chrome at
+390 x 844, on the in-memory fake client: from the finger coming down (held
+40 ms, then lifted) or the Back, to the first DOM change, to the first frame
+after it, and to the end of the move it starts. `--cpu 4` slows the page four
+times, about a mid-range phone's WebView; `--cpu 1` is this machine's speed,
+about a desktop's. "System Back" is `history.back()`, a browser's Back and the
+Android app's before it answered Back itself; "app Back" is
+`answerAndroidBack()` ([Back](android-native.md#back)).
+
+What makes a Back quick:
+
+- The thread or activity list stays built under a conversation and under
+  Settings (`.mobile-list.covered`: hidden, inert, `content-visibility:
+  hidden`). Back shows it instead of building every row again. A phone that
+  lands in a conversation builds it once the page is idle. Kept, it answers
+  to `mobile-list-kept`, so what looks for the list on screen (toasts, the
+  return from Activity) never finds the hidden one.
+- On a phone, Settings opened from the chat is a layer over it
+  (`.settings-layer`), which stays built under it. Leaving Settings used to
+  build the whole chat again. Opened from Mochis or Contacts, Settings still
+  replaces the page, so no chat is built for nothing.
+- The Android app answers Back in the page, without a round trip through the
+  WebView's history.
+
+First frame, median of 5 runs in ms, two interleaved rounds of the build before
+(`24f44f9fd`) and after, `bun bench/ui-latency.ts --bundle <dir> --cpu <n>
+--runs 5`, 2026-11-19, on a shared 16-thread Ryzen under load from other jobs:
+
+| Step | CPU 4x before | CPU 4x after | CPU 1x before | CPU 1x after |
+| --- | --- | --- | --- | --- |
+| Open a conversation (tap) | 195, 177 | 173, 184 | 87, 72 | 77, 73 |
+| Back to the list (arrow tap) | 406, 410 | 170, 161 | 94, 103 | 71, 63 |
+| Back to the list (system Back) | 355, 249 | 136, 83 | 76, 51 | 16, 16 |
+| Back to the list (app Back) | | 82, 96 | | 17, 14 |
+| Open Settings (tap) | 161, 142 | 139, 179 | 60, 70 | 76, 54 |
+| Leave Settings (system Back) | 445, 407 | 89, 84 | 65, 71 | 15, 19 |
+
+A tap's numbers include the 40 ms the finger is down: the action runs on
+release. The move after the first frame is the slide, `--dur-3` (220 ms).
+At 4x, what is left of a Back is mostly the style of the revealed list, worked
+out for its first frame; `--profile <dir>` writes a CPU profile of each step.
 
 ## What the UI costs at rest
 
@@ -2263,6 +2347,7 @@ bun bench/claude-turn-heap.ts                  # heap a scripted Claude turn lea
 bun bench/codex-live-output.ts                 # redraws and characters of one running Codex command's live output
 bun run bench/live-output-channels.ts --seconds 20   # bytes a remote phone receives for a long command, with and without liveOutput
 bun bench/provider-list.ts                     # time per providers list() and summary(); ONLY=1 under strace -c
+BOITE_BENCH_HARNESS=1 bun run bench/harness-startup.ts --ab-titles   # first word of a new thread per logged-in agent; spends turns
 bun run bench/continuation.ts 100 1024 25 1100            # history a fresh session carries: messages, tool KiB, files, file KiB
 bun run bench/queue-admission.ts 1024 16                  # one scheduler pass over held child turns: turns, teams
 bun bench/ui-heap.ts --machines --load 4 --tick 25 --switch 0 --minutes 9   # heap, DOM and private bytes of a page left open on busy agents

@@ -12,8 +12,8 @@ set -euo pipefail
 
 # The Bun every release runs on: android-server-bundle.ts copies this pin into
 # server-release.json, so an update downloads the same build.
-BUN_VERSION=1.4.4
-BUN_SHA256=d72e42c60e895ccbc16144bb1e0e0ad7ee384841c35b5501a7ec28b4d6d759c9
+BUN_VERSION=1.4.5
+BUN_SHA256=587471d26c8cc685debc5655cd5bf6d95d052a3b4a4956bdc922f8c6f1779396
 
 REPOSITORY=mtsu-dev/boite
 REF=main
@@ -92,7 +92,19 @@ controller="$ROOT/boite-server.ts"
 if [ -n "$BUNDLE" ]; then
   unzip -p "$BUNDLE" boite-server.ts >"$controller.tmp"
 else
-  curl -fsSL --retry 3 -o "$controller.tmp" "https://raw.githubusercontent.com/$REPOSITORY/$REF/apps/android-server/termux/boite-server.ts"
+  work=$(mktemp -d "$ROOT/downloads/controller.XXXXXX")
+  trap 'rm -rf "$work"' EXIT
+  base="https://raw.githubusercontent.com/$REPOSITORY/$REF/apps/android-server/termux"
+  curl -fsSL --retry 3 -o "$work/boite-server.ts" "$base/boite-server.ts"
+  # Older refs already ship a standalone controller.
+  if grep -Fq "from './minisign.ts'" "$work/boite-server.ts"; then
+    curl -fsSL --retry 3 -o "$work/minisign.ts" "$base/minisign.ts"
+    "$ROOT/bin/bun" build "$work/boite-server.ts" --target=bun --outfile="$controller.tmp"
+  else
+    mv "$work/boite-server.ts" "$controller.tmp"
+  fi
+  rm -rf "$work"
+  trap - EXIT
 fi
 [ -s "$controller.tmp" ] || fail "could not get boite-server.ts"
 mv -f "$controller.tmp" "$controller"

@@ -361,11 +361,12 @@ export class AppUpdater {
   install(): void {
     if (!this.ready || this.#active) return;
     const generation = this.#generation;
+    const offered = this.snapshot;
     this.#pendingCheck = null;
     this.#downloadRequested = false;
     this.snapshot = { ...this.snapshot, phase: 'waiting', error: null };
     this.#active = this.#backend.install()
-      .catch((error) => this.#fail(error, generation))
+      .catch((error) => this.#installFailed(error, generation, offered))
       .finally(() => {
         if (generation !== this.#generation) return;
         this.#active = null;
@@ -455,8 +456,9 @@ export class AppUpdater {
     if (!still() || !['available', 'ready'].includes(this.snapshot.phase)) return false;
     if (!await this.prepare() || !still() || !this.ready || this.#active || !this.#backend.installQuietly) return false;
     let started = false;
+    const offered = this.snapshot;
     const active = this.#backend.installQuietly()
-      .then((value) => { started = value; }, (error) => this.#fail(error, generation))
+      .then((value) => { started = value; }, (error) => this.#installFailed(error, generation, offered))
       .finally(() => {
         if (generation !== this.#generation) return;
         this.#active = null;
@@ -465,6 +467,19 @@ export class AppUpdater {
     this.#active = active;
     await active;
     return started;
+  }
+
+  async #installFailed(error: unknown, generation: number, offered: UpdateSnapshot): Promise<void> {
+    if (generation !== this.#generation) return;
+    // The command can fail while native code still holds the verified payload.
+    // Read its state in case the ready event and the rejection arrived out of order.
+    const current = await this.#backend.status().catch(() => null);
+    if (generation !== this.#generation) return;
+    if (current?.phase === 'ready' && current.version === offered.version && current.channel === offered.channel) {
+      this.#apply({ ...current, error: current.error ?? errorText(error) });
+      return;
+    }
+    this.#fail(error, generation);
   }
 
   /**

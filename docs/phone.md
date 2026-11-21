@@ -10,18 +10,17 @@ once and it reaches every machine of your [group](machines.md).
 | --- | --- |
 | Web app on iPhone | Open a machine's HTTPS address in Safari, then Share, Add to Home Screen. There is no iOS package. |
 | Web app on Android | Install Boite on the phone's Settings, Notifications screen, or the browser's install menu. |
-| Android app | Download `boite-android-<version>.apk` from a nightly release on the phone, allow the browser to install unknown apps, open Boite. |
-| Native Android app, preview | Download `boite-mobile_<version>_android.apk` from a nightly release on the phone, allow the browser to install unknown apps, open Boite. It needs no Chrome. |
+| Android app, preview | Download `boite-mobile_<version>_android.apk` from a nightly release on the phone, allow the browser to install unknown apps, open Boite. It needs no Chrome. |
 
-The Android app opens Boite's own address, `https://boite.mtsu.dev`, in
-Chrome, so app updates need no new APK. That address only serves the app:
-conversations go from the phone to your machines, never to it.
-
-The native app carries its own screens, so each release brings a new APK. It
+The Android app carries its own screens, so each release brings a new APK. It
 looks for one by itself: when Manage machines shows Update available, tap
 Update. The browser downloads the new APK; open it and confirm the install,
 as for the first one. A nightly build carries the night icon, on the home
 screen and in the app.
+
+The older Android app, which opened Boite in Chrome, is no longer built. If
+it is on your phone, install the one above, add the phone again from it, then
+uninstall the old one.
 
 ## Make your computer reachable
 
@@ -84,11 +83,12 @@ the VPN or the Wi-Fi.
 - In the [agent's browser](browser.md), press Show, tap to click, drag to
   scroll and type in the field below the preview.
 
-Provider accounts, keyboard shortcuts, resource limits, the brain,
-the task manager, worktrees, diagnostics, voice engines, server settings,
-forks and moving a conversation stay on the desktop. The terminal is the
-owner's: a phone connected as the owner has it, with each shell in its own
-tab, and a paired device has none.
+Tap a conversation's title to move it when the menu offers Move. Its plan
+appears in the chat. On a phone connected as the owner, Settings includes
+Accounts, Providers, Brain, Worktrees, Voice and Diagnostics. The task manager
+is in Diagnostics for the owner and has its own Settings entry on a paired
+phone. The owner can open the terminal, with each shell in its own tab.
+Keyboard shortcut settings, server settings and conversation forks are on desktop.
 
 ## What a phone may do
 
@@ -98,7 +98,7 @@ A paired phone is limited to this:
 | --- | --- |
 | Read, start and answer conversations and the agents' cards | Change settings or sign agents in |
 | Add a project on a machine of the group | Use Boite's data folder or folders like `.git` and `.ssh` as one |
-| Read the Changes and Files panels | Edit files, open the terminal or Tasks |
+| Read the plan in a conversation, the task manager in Settings and the Changes and Files panels | Edit files or open the terminal |
 | Click and type in the agent's browser, on sites signed in on that machine | Run scripts in it |
 | See the devices in Machines | Add or remove machines and devices |
 
@@ -141,4 +141,4 @@ computer screen.
 - [Server](server.md): a machine without the desktop app, or on Android.
 - [Mochis](mochis.md): the Mochis tab.
 - [Contacts](contacts.md): other owners' Boites, in the contacts section under the projects.
-- Technical reference: [phone](internals/phone.md), [Android](internals/android.md).
+- Technical reference: [phone](internals/phone.md), [Android app](internals/android-native.md).

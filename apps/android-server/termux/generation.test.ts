@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { coreReadiness, FILES, judgeCoreHealth, planActivation, startTimeOf, type Layout } from './boite-server.ts';
 
-const CONTROLLER = join(import.meta.dir, 'boite-server.ts');
+const { outputs: [controller] } = await Bun.build({ entrypoints: [join(import.meta.dir, 'boite-server.ts')], target: 'bun' });
+const CONTROLLER = await controller!.text();
 const BUN = { version: '1.4.3', sha256: 'a'.repeat(64) };
 const cleanups: (() => unknown)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
@@ -34,7 +35,7 @@ test('a core that exits while its answer is on the way is not ready', async () =
 });
 
 /** A release directory as a bundle unpacks: the core is a stand-in that answers `/health` as its release. */
-function release(dir: string, version: string, controller: string | Uint8Array = readFileSync(CONTROLLER)) {
+function release(dir: string, version: string, controller: string | Uint8Array = CONTROLLER) {
   mkdirSync(join(dir, 'core'), { recursive: true });
   mkdirSync(join(dir, 'ui'), { recursive: true });
   writeFileSync(join(dir, 'server-release.json'), JSON.stringify({ version, bun: BUN }));
@@ -168,7 +169,7 @@ async function server(root: string) {
     return zip;
   };
   // The first install puts this controller where the supervisor runs it from.
-  writeFileSync(join(root, 'boite-server.ts'), readFileSync(CONTROLLER));
+  writeFileSync(join(root, 'boite-server.ts'), CONTROLLER);
   cleanups.push(() => run('stop'));
   return { run, bundle, port };
 }
@@ -201,7 +202,7 @@ test.skipIf(process.platform !== 'linux')('an update whose way back fails too sa
   const sabotage = `if (process.argv[2] === 'supervise') { require('node:fs').mkdirSync(require('node:path').join(process.env.BOITE_SERVER_HOME, 'boite-server.ts.tmp', 'occupied'), { recursive: true }); process.exit(1); }\n`;
   cleanups.push(() => rmSync(join(root, 'boite-server.ts.tmp'), { recursive: true, force: true }));
 
-  const failed = await run('update', '--bundle', bundle('2.0.0', sabotage + readFileSync(CONTROLLER, 'utf8')));
+  const failed = await run('update', '--bundle', bundle('2.0.0', sabotage + CONTROLLER));
   expect(failed).toMatchObject({ ok: false });
   const error = String(failed.error);
   expect(error).toStartWith('Boite 2.0.0 did not start, and going back to 1.0.0 failed: the previous installation is only partly back: EISDIR');
@@ -235,7 +236,7 @@ test('a controller installed by an older updater launches its managed worker fro
   mkdirSync(join(root, 'data'));
   mkdirSync(directory);
   symlinkSync(current, join(root, 'current'), process.platform === 'win32' ? 'junction' : 'dir');
-  writeFileSync(join(root, 'boite-server.ts'), readFileSync(CONTROLLER));
+  writeFileSync(join(root, 'boite-server.ts'), CONTROLLER);
   writeFileSync(join(root, 'config.json'), JSON.stringify({ channel: 'nightly' }));
   const file = `${directory}/plan.json`;
   writeFileSync(file, JSON.stringify({ id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', root, dataDir: `${root}/data`, version: '2.0.0', previousVersion: '1.0.0', originalPid: 999999, channel: 'nightly' }));

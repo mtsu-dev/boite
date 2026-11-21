@@ -19,7 +19,7 @@ export function projectContact(core: Core, local: SharedProjectRef, peerId: stri
   return core.contacts.members.relayedOf(peerId).find(entry => entry.via === local.ownerCoreId);
 }
 
-export async function receiveProject(core: Core, peerId: string, payload: unknown, relayed: boolean): Promise<unknown> {
+export async function receiveProject(core: Core, peerId: string, payload: unknown, relayed: boolean, signal?: AbortSignal): Promise<unknown> {
   const route = projectRoute(payload), self = core.coordination.card().coreId;
   if (route) {
     if (route.source.ownerCoreId !== peerId) throw refused('route.source: expected the authenticated contact owner');
@@ -35,7 +35,7 @@ export async function receiveProject(core: Core, peerId: string, payload: unknow
     }
     if (!projectContact(core, route.target, peerId)) throw refused('route.target: expected a current contact admission on this endpoint');
   } else if (relayed) throw refused('route: member requests require explicit canonical endpoints');
-  return core.sharedProjects.receive(peerId, payload);
+  return core.sharedProjects.receive(peerId, payload, signal);
 }
 
 export function checkProjectRoute(value: unknown, local: SharedProjectRef, remote: SharedProjectRef): void {

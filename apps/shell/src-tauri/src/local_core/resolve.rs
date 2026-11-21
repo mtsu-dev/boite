@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use super::health::{endpoint_of, health, probe, read_core_file, same_core, CoreStart, Probe};
+use super::health::{endpoint_of, health, probe, read_core_file, same_core, CoreFile, CoreStart, Probe};
 use super::spawn::spawn_core;
 use super::starting::{read_starting, STARTING_CAP};
 use super::{CoreState, Resolved, HELD, POLL_INTERVAL};
@@ -18,11 +18,11 @@ use crate::resident;
 /// running, so a new resolution waits on it rather than starting a second
 /// core the data directory's lock would refuse. A core that has exited is
 /// dropped here, after its exit status and last lines are logged.
-fn running_child(state: &CoreState) -> Option<Arc<AtomicBool>> {
+fn running_child(state: &CoreState) -> Option<(u32, Arc<AtomicBool>)> {
     let mut guard = state.child.lock().ok()?;
     let polled = guard.as_mut()?.child.try_wait();
     let status = match polled {
-        Ok(None) => return guard.as_ref().map(|spawned| spawned.ready.clone()),
+        Ok(None) => return guard.as_ref().map(|spawned| (spawned.child.id(), spawned.ready.clone())),
         Ok(Some(status)) => Some(status),
         Err(error) => {
             // As before this log existed, the child counts as gone; the record says why.
@@ -70,6 +70,25 @@ fn exited_early(state: &CoreState) -> Option<String> {
     Some(format!("the core exited ({status}) before it was ready{}", spawned.output.quoted()))
 }
 
+fn adopt(state: &CoreState, core: &CoreFile) -> Resolved {
+    let watched = core.pid.and_then(platform::process::Watched::open);
+    if let Ok(mut adopted) = state.adopted.lock() { *adopted = watched; }
+    shell_log::info("core", "shell.core.attached", format!("attached to the running core pid {} on port {}",
+        core.pid.map(|pid| pid.to_string()).unwrap_or_else(|| "unknown".into()), core.port),
+        json!({ "pid": core.pid, "port": core.port }));
+    (endpoint_of(core), core.pid, core.start())
+}
+
+fn replace_stale(state: &CoreState, core: &CoreFile, version: &str) -> Result<(), String> {
+    let launch = &state.launch;
+    shell_log::info("core", "shell.core.stale", format!("the running core is version {version} and this shell {}: stopping it", launch.version),
+        json!({ "pid": core.pid, "coreVersion": version, "shellVersion": launch.version }));
+    resident::stop_identified_core(core, &launch.directory.join("core.json"), resident::GRACE).map_err(|error| {
+        format!("the core of version {version} an earlier install left running could not be stopped: {error}")
+    })?;
+    Ok(())
+}
+
 /// Finds the core this shell talks to: the one `core.json` names when it runs
 /// this shell's version, else one this shell starts. A core of another version
 /// is the one an update or a reinstall left running: it is stopped first,
@@ -90,22 +109,8 @@ pub(super) fn resolve_core(state: &CoreState) -> Result<Resolved, String> {
     match read_core_file(&file) {
         Ok(Some(existing)) => {
             match probe(&existing, &launch.version, launch.bundle_hash.as_deref()) {
-                Probe::Current => {
-                    let watched = existing.pid.and_then(platform::process::Watched::open);
-                    if let Ok(mut adopted) = state.adopted.lock() { *adopted = watched; }
-                    shell_log::info("core", "shell.core.attached", format!("attached to the running core pid {} on port {}",
-                        existing.pid.map(|pid| pid.to_string()).unwrap_or_else(|| "unknown".into()), existing.port),
-                        json!({ "pid": existing.pid, "port": existing.port }));
-                    return Ok((endpoint_of(&existing), existing.pid, existing.start()));
-                }
-                Probe::Stale(version) => {
-                    eprintln!("[shell] the running core is version {version} and this shell {}: stopping it", launch.version);
-                    shell_log::info("core", "shell.core.stale", format!("the running core is version {version} and this shell {}: stopping it", launch.version),
-                        json!({ "pid": existing.pid, "coreVersion": version.to_string(), "shellVersion": launch.version }));
-                    resident::stop_local_core(&launch.directory, resident::GRACE).map_err(|error| {
-                        format!("the core of version {version} an earlier install left running could not be stopped: {error}")
-                    })?;
-                }
+                Probe::Current => return Ok(adopt(state, &existing)),
+                Probe::Stale(version) => replace_stale(state, &existing, &version)?,
                 Probe::Absent => {}
             }
             before = Some(existing.identity());
@@ -137,9 +142,9 @@ pub(super) fn resolve_core(state: &CoreState) -> Result<Resolved, String> {
             slot.announced = Some(Instant::now());
         }
     }
-    let ready = match (child, &foreign) {
-        (Some(ready), _) => ready,
-        (None, Some(_)) => Arc::new(AtomicBool::new(false)),
+    let (expected_pid, ready) = match (child, &foreign) {
+        (Some(child), _) => child,
+        (None, Some((pid, _, _))) => (*pid, Arc::new(AtomicBool::new(false))),
         (None, None) => {
             // Asked again here: stopping an older core above takes seconds.
             if state.held.load(Ordering::SeqCst) {
@@ -151,10 +156,10 @@ pub(super) fn resolve_core(state: &CoreState) -> Result<Resolved, String> {
             shell_log::info("core", "shell.core.spawned", format!("started the core as pid {} ({})", spawned.child.id(),
                 if launch.resident { "resident, it outlives this window" } else { "owned, it stops with this window" }),
                 json!({ "pid": spawned.child.id(), "resident": launch.resident }));
-            let ready = spawned.ready.clone();
+            let child = (spawned.child.id(), spawned.ready.clone());
             if let Ok(mut guard) = state.child.lock() { *guard = Some(spawned); }
             if let Ok(mut guard) = state.job.lock() { *guard = job; }
-            ready
+            child
         }
     };
 
@@ -167,9 +172,21 @@ pub(super) fn resolve_core(state: &CoreState) -> Result<Resolved, String> {
         if launch.resident || ready.load(Ordering::Acquire) || started.elapsed() > Duration::from_secs(1) {
             if let Ok(Some(found)) = read_core_file(&file) {
                 let fresh = before != Some(found.identity());
-                // Any version: this is the core the shell just started.
-                if let Some(pid) = found.pid.filter(|pid| fresh && platform::process::alive(*pid)) {
-                    if health(found.port, pid).is_some() {
+                let matches_expected = |pid: &u32| fresh && *pid == expected_pid
+                    && same_core(*pid, &found.start())
+                    && foreign.as_ref().is_none_or(|(_, start, _)| same_core(*pid, start));
+                if let Some(pid) = found.pid.filter(matches_expected) {
+                    if foreign.is_some() {
+                        match probe(&found, &launch.version, launch.bundle_hash.as_deref()) {
+                            Probe::Current => return Ok(adopt(state, &found)),
+                            Probe::Stale(version) => {
+                                replace_stale(state, &found, &version)?;
+                                return resolve_core(state);
+                            }
+                            Probe::Absent => {}
+                        }
+                    // Our own command may be a fixture or a developer override.
+                    } else if health(found.port, pid).is_some() {
                         let took = started.elapsed();
                         shell_log::timed(Level::Info, "core", "shell.core.ready",
                             format!("the core pid {pid} answered on port {} after {} ms", found.port, took.as_millis()),

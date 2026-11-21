@@ -1,18 +1,17 @@
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { parseBase, previousApk } from './android-apk.ts';
+import { parseBase } from './android-version.ts';
 import { SOURCES, VERSION_FILE, previousServerApk, serverApkVersion, serverNextVersion } from './android-server-apk.ts';
 
 const asset = (name: string) => ({ name });
 
-test('each app reuses its own APK when a release carries both', () => {
+test('Boite Server reuses its own signed APK, never another app\'s or an unsigned build', () => {
   const releases = [
     { tag_name: 'v2.0.0-nightly.20261027.1', draft: true, assets: [asset('boite-server-android-1.0.2.apk')] },
     { tag_name: 'v2.0.0-nightly.20261026.1', draft: false, assets: [asset('boite-server-android-1.0.1-unsigned.apk'), asset('boite-android-1.0.4.apk')] },
     { tag_name: 'v2.0.0-nightly.20261025.1', draft: false, assets: [asset('boite-android-1.0.3.apk'), asset('boite-server-android-1.0.0.apk')] },
   ];
   expect(previousServerApk(releases)).toEqual({ tag: 'v2.0.0-nightly.20261025.1', name: 'boite-server-android-1.0.0.apk' });
-  expect(previousApk(releases)).toEqual({ tag: 'v2.0.0-nightly.20261026.1', name: 'boite-android-1.0.4.apk' });
   expect(previousServerApk([{ tag_name: 'v2.0.0', draft: false, assets: [asset('boite-android-1.0.3.apk')] }])).toBeNull();
 });
 

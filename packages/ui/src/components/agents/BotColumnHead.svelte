@@ -3,6 +3,7 @@
   import { Brain, Ellipsis, Settings2 } from '@lucide/svelte';
   import type { AgentProfile, AgentStatus, Team, ThreadSummary } from '@boite/contracts';
   import { agentMenuItems, pickAgentAction } from '../../lib/agent-menu';
+  import { hasConversation } from '../../lib/agent-new-session';
   import { botLeaving } from '../../lib/agent-move-flow';
   import { liveState, liveStep, waitingOn, type AgentsView } from '../../lib/agents.svelte';
   import { routeGone } from '../../lib/agent-route';
@@ -95,7 +96,7 @@
 
   const items = $derived.by((): MenuItem[] => {
     if (!agent) return [];
-    const base = agentMenuItems(store, agent, { open: !!thread, leaving: botLeaving(view, agent.id) !== null });
+    const base = agentMenuItems(store, agent, { open: !!thread, leaving: botLeaving(view, agent.id) !== null, conversation: hasConversation(view, agent.id) });
     return [
       ...base,
       { id: 'brain', label: labels.brain, glyph: Brain },

@@ -1,26 +1,47 @@
 import { appendFileSync } from 'node:fs';
 
+/** The workflows a `ci` run executes: itself and the ones it calls. */
+export const CI_WORKFLOWS = ['.github/workflows/ci.yml', '.github/workflows/desktop.yml', '.github/workflows/server-verify.yml', '.github/workflows/android-server.yml'];
+
+/**
+ * Scripts only the nightly, a release or another workflow outside
+ * CI_WORKFLOWS runs, or only their tests import. `changes.test.ts` fails when
+ * a job of CI_WORKFLOWS or a package starts using one.
+ */
+export const REPOSITORY_SCRIPTS = ['changelog.ts', 'commit-ci.ts', 'feature-modules.ts', 'nightly-retry.ts', 'nightly.ts', 'pr-title.ts', 'server-provenance.ts'].map((name) => `scripts/ci/${name}`);
+
+/** The script tests the Windows installer job runs (desktop.yml), and the helper they share. */
+export const INSTALLER_SCRIPTS = ['installer-hooks.test.ts', 'installer-shortcuts.test.ts', 'installed-cli-windows.test.ts', 'stop-core.test.ts', 'installer-prerequisites.ts', 'installer-prerequisites.test.ts'].map((name) => `scripts/ci/${name}`);
+
 // Unknown files run the complete suite. Documentation-only PRs still get the
 // required job, so branch protection never waits for a filtered-out workflow.
 export function affectedChecks(files: string[]) {
-  const checks = { core: false, web: false, desktop: false, shellRust: false, server: false, android: false, androidServer: false, telemetry: false, e2eTypes: false, stress: false };
+  const checks = { core: false, web: false, desktop: false, shellRust: false, server: false, androidServer: false, telemetry: false, e2eTypes: false, stress: false };
   for (const file of files) {
     if (
       /^(docs\/.*\.md|README\.md|AGENTS\.md|CONTRIBUTING\.md|SECURITY\.md|CODE_OF_CONDUCT\.md|LICENSE)$/.test(file) ||
       /^\.github\/(ISSUE_TEMPLATE\/|pull_request_template\.md$|topics\.json$|CODEOWNERS$|labeler\.yml$)/.test(file) ||
-      file === '.coderabbit.yaml'
+      file === '.coderabbit.yaml' ||
+      // Pictures and clips the docs show; code under docs/ still runs everything.
+      /^docs\/.*\.(png|gif|jpe?g|webp|svg|mp4|webm)$/.test(file) ||
+      // Repository checks, on every change, run oxlint, actionlint and the
+      // tests of scripts/ci. A workflow or a script no job of ci.yml or the
+      // workflows it calls reaches needs nothing more.
+      file === '.oxlintrc.json' ||
+      (/^\.github\/workflows\/[^/]+\.yml$/.test(file) && !CI_WORKFLOWS.includes(file)) ||
+      (/^scripts\/ci\/[^/]+\.test\.ts$/.test(file) && file !== 'scripts/ci/changes.test.ts' && !INSTALLER_SCRIPTS.includes(file)) ||
+      REPOSITORY_SCRIPTS.includes(file) ||
+      // The native Android app has its own workflow (mobile.yml); its
+      // package.json is a workspace member and stays a shared input.
+      (file.startsWith('apps/mobile/') && file !== 'apps/mobile/package.json')
     ) continue;
-    if (file.startsWith('apps/android/') || file === '.github/workflows/android.yml' || file === 'scripts/ci/android-apk.ts') {
-      // The wrapper loads the UI from the core, so nothing else goes into the APK.
-      // Boite Server's pipeline counts its version with the same script.
-      checks.android = true;
-      if (file === 'scripts/ci/android-apk.ts') checks.androidServer = true;
-    } else if (file.startsWith('apps/android-server/termux/')) {
+    if (file.startsWith('apps/android-server/termux/')) {
       // The release bundle: the core suite packs it, the web job type-checks
       // it and the Linux x64 desktop job builds it. The changes job always
       // runs its tests.
       checks.core = checks.web = checks.desktop = true;
-    } else if (file.startsWith('apps/android-server/') || file === '.github/workflows/android-server.yml' || file === 'scripts/ci/android-server-apk.ts') {
+      if (file === 'apps/android-server/termux/minisign.ts') checks.server = true;
+    } else if (file.startsWith('apps/android-server/') || file === '.github/workflows/android-server.yml' || file === 'scripts/ci/android-server-apk.ts' || file === 'scripts/ci/android-version.ts') {
       // Boite Server's APK drives the core through Termux and reads nothing from it.
       checks.androidServer = true;
     } else if (file.startsWith('apps/shell/')) {
@@ -28,14 +49,25 @@ export function affectedChecks(files: string[]) {
     } else if (/^packages\/(core|contracts)\//.test(file)) {
       // The shell's Rust tests compile apps/shell/src-tauri and start inline
       // fake cores, never this code; its build.rs reads only SCHEMA_VERSION,
-      // which the desktop builds compile. The APK build reads APP_ORIGIN from the
-      // contracts and nothing from the core.
+      // which the desktop builds compile.
       checks.core = checks.web = checks.desktop = checks.server = checks.telemetry = checks.e2eTypes = checks.stress = true;
-      if (file.startsWith('packages/contracts/')) checks.android = true;
     } else if (file.startsWith('tests/e2e/')) {
       checks.desktop = checks.e2eTypes = true;
       // Stress fixtures use the same isolated core and browser harness.
       if (file.startsWith('tests/e2e/lib/')) checks.stress = true;
+    } else if (file.startsWith('tests/contract/')) {
+      // The scenarios both transports pass: the real core's contract tests
+      // and the fake client's (packages/ui/src/lib/fake-client.contract.test.ts).
+      checks.core = checks.web = true;
+    } else if (INSTALLER_SCRIPTS.includes(file)) {
+      checks.desktop = true;
+    } else if (file === 'scripts/ci/core-durations.json') {
+      // Recorded seconds only move files between shards of the same suite.
+      checks.core = true;
+    } else if (file === 'scripts/ci/ui-durations.json') {
+      checks.web = true;
+    } else if (file === 'scripts/ci/e2e-durations.json') {
+      checks.desktop = true;
     } else if (/^(Dockerfile$|\.dockerignore$|docker\/)/.test(file)) {
       checks.server = true;
     } else if (file.startsWith('packages/ui/')) {
@@ -52,7 +84,7 @@ export function affectedChecks(files: string[]) {
       checks.web = true;
     } else {
       // Dependencies, shared builds and unknown inputs stay safe.
-      checks.core = checks.web = checks.desktop = checks.shellRust = checks.server = checks.android = checks.androidServer = checks.telemetry = checks.e2eTypes = checks.stress = true;
+      checks.core = checks.web = checks.desktop = checks.shellRust = checks.server = checks.androidServer = checks.telemetry = checks.e2eTypes = checks.stress = true;
     }
   }
   return checks;
@@ -90,7 +122,8 @@ export const PORTABLE_ALL = [LINUX_X64, LINUX_ARM64, MACOS_ARM64, MACOS_X64];
 // pushes, releases and manual runs keep it.
 // `shards` splits a runner's files over that many jobs, cut on recorded seconds
 // (scripts/ci/core-shards.ts): Linux x64 gates every pull request and Windows
-// is the slowest suite. Each shard is a job of its own in ci.yml.
+// is the slowest suite; the Intel Mac's ran out of its 15 minutes. Each shard
+// is a job of its own in ci.yml.
 export type CoreRunner = { os: string; name: string; shards?: number };
 const CORE_QUEUE: CoreRunner[] = [
   { os: 'ubuntu-24.04', name: 'Linux x64', shards: 2 },
@@ -98,7 +131,7 @@ const CORE_QUEUE: CoreRunner[] = [
   { os: 'windows-2025', name: 'Windows x64', shards: 2 },
   { os: 'macos-15', name: 'macOS arm64' },
 ];
-export const CORE_ALL: CoreRunner[] = [...CORE_QUEUE, { os: 'macos-15-intel', name: 'macOS x64' }];
+export const CORE_ALL: CoreRunner[] = [...CORE_QUEUE, { os: 'macos-15-intel', name: 'macOS x64', shards: 2 }];
 
 // `queue` gates a merge in the merge queue, `warm` follows it on main, `full`
 // is a release or a manual run. Main runs the extra portable architectures,
@@ -128,7 +161,7 @@ const CORE_PR: CoreRunner[] = CORE_QUEUE.slice(0, 1);
 
 export function plan(checks: ReturnType<typeof affectedChecks>, mode: Mode, nativeWindows = false) {
   if (mode === 'pr') {
-    const pr = plan({ ...checks, desktop: false, server: false, android: false, androidServer: false, stress: false }, 'queue', nativeWindows);
+    const pr = plan({ ...checks, desktop: false, server: false, androidServer: false, stress: false }, 'queue', nativeWindows);
     const runners = nativeWindows ? CORE_QUEUE.filter((runner) => runner.os === 'ubuntu-24.04' || runner.os === 'windows-2025') : CORE_PR;
     // The queue skips Bundle size, which compares a pull request with its base.
     return { ...pr, size: checks.desktop, coreRunners: JSON.stringify(runners) };

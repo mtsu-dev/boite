@@ -33,6 +33,25 @@ const ATTACH_TIMEOUT_MS = 90_000;
 /** How long a killed browser may take to exit: 30.6 s was measured on a loaded machine. */
 const EXIT_TIMEOUT_MS = 30_000;
 const CALL_TIMEOUT_MS = 20_000;
+
+/** In-page wait for drawn finite animations and fonts. Returns any unfinished work at the deadline. */
+export const SETTLE_ANIMATIONS = `new Promise((resolve) => {
+  let live = true, fonts = false;
+  const done = (ok) => { if (!live) return; live = false; resolve(ok ? null : watched.filter((a) => !ended.has(a) && drawn(a))
+    .map((a) => (a.animationName ?? a.transitionProperty ?? a.id) + ' on .' + String(a.effect?.target?.className ?? '?').split(' ')[0] + ' ' + a.playState).concat(fonts ? [] : [...document.fonts].filter((f) => f.status === 'loading').map((f) => 'font ' + f.family + ' ' + f.weight + ' loading').concat(['document.fonts ' + document.fonts.status]))); };
+  const drawn = (a) => !(a.effect instanceof KeyframeEffect) || a.effect.target?.checkVisibility?.({ contentVisibilityAuto: true }) !== false;
+  const ended = new Set();
+  const watched = document.getAnimations().filter((a) => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity && drawn(a));
+  for (const a of watched) a.finished.then(() => ended.add(a), () => ended.add(a));
+  document.fonts.ready.then(() => { fonts = true; });
+  const frame = () => {
+    if (!live) return;
+    if (fonts && watched.every((a) => ended.has(a) || !drawn(a))) return done(true);
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+  setTimeout(() => done(false), ${CALL_TIMEOUT_MS - 5_000});
+})`;
 const POLL_MS = 100;
 /** Distinct debugging-port answers a failed wait reports. */
 const MAX_POLL_ANSWERS = 12;
@@ -746,23 +765,7 @@ ${await this.#historyReport()}`);
    */
   async settleAnimations(): Promise<void> {
     // The page gives up first, so the frame pump never outlives the call.
-    const running = await this.evaluate<string[] | null>(`new Promise((resolve) => {
-      let live = true, fonts = false;
-      const done = (ok) => { if (!live) return; live = false; resolve(ok ? null : watched.filter((a) => !ended.has(a) && drawn(a))
-        .map((a) => (a.animationName ?? a.transitionProperty ?? a.id) + ' on .' + String(a.effect?.target?.className ?? '?').split(' ')[0] + ' ' + a.playState).concat(fonts ? [] : [...document.fonts].filter((f) => f.status === 'loading').map((f) => 'font ' + f.family + ' ' + f.weight + ' loading').concat(['document.fonts ' + document.fonts.status]))); };
-      const drawn = (a) => !(a.effect instanceof KeyframeEffect) || a.effect.target?.checkVisibility?.({ contentVisibilityAuto: true }) !== false;
-      const ended = new Set();
-      const watched = document.getAnimations().filter((a) => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity && drawn(a));
-      for (const a of watched) a.finished.then(() => ended.add(a), () => ended.add(a));
-      document.fonts.ready.then(() => { fonts = true; });
-      const frame = () => {
-        if (!live) return;
-        if (fonts && watched.every((a) => ended.has(a) || !drawn(a))) return done(true);
-        requestAnimationFrame(frame);
-      };
-      requestAnimationFrame(frame);
-      setTimeout(() => done(false), ${CALL_TIMEOUT_MS - 5_000});
-    })`);
+    const running = await this.evaluate<string[] | null>(SETTLE_ANIMATIONS);
     if (running) throw new Error(`animations still running ${(CALL_TIMEOUT_MS - 5_000) / 1000} s after settleAnimations(): ${running.join(', ')}
 In flight: ${JSON.stringify(this.#inFlight())}`);
   }

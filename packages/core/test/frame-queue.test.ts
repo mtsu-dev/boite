@@ -142,26 +142,42 @@ test('requests of closed connections that ignore their signal cannot push runnin
   const frame = (method: string) => JSON.stringify({ jsonrpc: '2.0', id: 1, method, params: {} });
   const gate = Promise.withResolvers<void>();
   const refused: { connection: ServerConnection; message: string }[] = [], warnings: string[] = [];
+  const pending: Promise<void>[] = [];
+  let frameObserved: (() => void) | undefined;
   let running = 0, maximum = 0, handled = 0;
   const queue = new FrameQueue(async (_connection, raw) => {
     handled++;
+    frameObserved?.();
     if (raw.includes('"where"')) return;
     running++; maximum = Math.max(maximum, running);
     // Ignores its signal, as a handler with no abort path does.
     await gate.promise;
     running--;
-  }, { refuse: (connection, _raw, message) => refused.push({ connection, message }), warn: message => warnings.push(message) });
+  }, {
+    refuse: (connection, _raw, message) => {
+      refused.push({ connection, message });
+      frameObserved?.();
+    },
+    warn: message => warnings.push(message),
+  });
+  const disconnectBatch = async (client: ServerConnection, methodAt: (index: number) => string) => {
+    const observed = Promise.withResolvers<void>();
+    let remaining = 8;
+    frameObserved = () => { if (--remaining === 0) observed.resolve(); };
+    for (let i = 0; i < 8; i++) pending.push(queue.enqueue(client, frame(methodAt(i))));
+    // A pump slice can yield with frames still queued. Drop only after each frame starts or is refused.
+    await observed.promise;
+    frameObserved = undefined;
+    queue.drop(client);
+  };
   try {
-    const pending: Promise<void>[] = [];
     // 20 clients each send 8 waits and reconnect: 160 handlers would run without the caps.
     for (let round = 0; round < 20; round++) {
-      const client = agent();
-      for (let i = 0; i < 8; i++) pending.push(queue.enqueue(client, frame(i % 4 === 0 ? 'threads.wait' : 'browser.command')));
-      await Bun.sleep(5);
-      queue.drop(client);
+      await disconnectBatch(agent(), i => i % 4 === 0 ? 'threads.wait' : 'browser.command');
     }
     expect(maximum).toBeLessThanOrEqual(96);
-    expect(refused.length).toBeGreaterThan(0);
+    expect(queue.counts.detachedAgents).toBe(48);
+    expect(refused).toHaveLength(20 * 8 - 48);
     expect(refused[0]!.message).toMatch(/browser\.command x\d+/);
     expect(refused[0]!.message).toMatch(/threads\.wait x\d+/);
     expect(warnings).toHaveLength(1);
@@ -178,10 +194,7 @@ test('requests of closed connections that ignore their signal cannot push runnin
     await queue.enqueue(owner(), frame('where'));
     expect(handled).toBe(count + 1);
     for (let round = 0; round < 2; round++) {
-      const client = owner();
-      for (let i = 0; i < 8; i++) pending.push(queue.enqueue(client, frame('browser.command')));
-      await Bun.sleep(5);
-      queue.drop(client);
+      await disconnectBatch(owner(), () => 'browser.command');
     }
     expect(queue.counts.detached).toBe(64);
     const late = owner();
@@ -190,7 +203,6 @@ test('requests of closed connections that ignore their signal cannot push runnin
     // The detached work ends: requests are admitted again, and nothing is freed twice.
     gate.resolve();
     await Promise.all(pending);
-    await Bun.sleep(10);
     expect(queue.counts).toEqual({ active: 0, activeAgents: 0, detached: 0, detachedAgents: 0 });
     count = handled;
     await queue.enqueue(agent(), frame('where'));

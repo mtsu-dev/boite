@@ -10,6 +10,9 @@
 !apps/shell/package.json
 !apps/shell/src-tauri/
 !apps/shell/src-tauri/tauri.conf.json
+!apps/android-server/
+!apps/android-server/termux/
+!apps/android-server/termux/minisign.ts
 !packages/
 !packages/contracts/
 !packages/contracts/**

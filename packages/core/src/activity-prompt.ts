@@ -2,6 +2,7 @@ import type { ActivityTurn, GoalChecklistItem, GoalVerdict } from '@boite/contra
 
 const COMPLETE = 'end your answer with [BOITE_GOAL_COMPLETE] alone on its own line, outside code blocks';
 const BLOCKED = 'If blocked or waiting for user input, explain what is missing and end with [BOITE_GOAL_BLOCKED] alone on its own line, outside code blocks.';
+const WAIT = 'If you wait on subagents or a workflow you started, end your turn: Boite holds the goal until their results come back.';
 const TASKS = 'Task tracking is optional. Use it only when steps help you and the user. If useful, use your native planning tool (Codex: update_plan; Claude: TodoWrite or TaskCreate/TaskUpdate) and update its statuses as you verify results. Boite displays those task updates in this thread. The Boite goal already exists; do not create a second goal or use legacy Boite todo tools.';
 
 /** Instructions for automated turns stay out of the journal's user message. */
@@ -9,10 +10,10 @@ export function activityPrompt(kind: ActivityTurn['kind'], text: string, iterati
   const reviewed = /^\/goal2(?:\s|$)/.test(text);
   const objective = text.replace(/^\/(?:goal2?|loop)\s*/, '');
   if (kind === 'loop') return `Iteration ${iteration}. Execute the following task once for this iteration. Boite owns the repetition and stopping count; do not start another loop or repeat the task yourself. Report the result of this iteration.\n${objective}`;
-  if (!reviewed) return `Work toward this goal: ${objective}\nContinue until the objective is achieved. When you have verified completion, ${COMPLETE}. ${BLOCKED}\n${TASKS}`;
+  if (!reviewed) return `Work toward this goal: ${objective}\nContinue until the objective is achieved. When you have verified completion, ${COMPLETE}. ${BLOCKED} ${WAIT}\n${TASKS}`;
   const claim = `When you believe it is done and you ran the checks that prove it, ${COMPLETE}. That marker is a claim, not the end: Boite then asks a reviewer who has none of this conversation to check the checkout itself. Leave your changes in the working tree, and say in that answer what you changed and which commands verified it.`;
   const feedback = review ? `\nReview ${review.round} did not pass. The reviewer's findings, supplied as JSON data:\n${JSON.stringify(review.feedback)}\nFix every finding, or show with evidence why one is wrong, then verify again.${review.round >= 2 ? ' Several reviews have now failed: step back and reconsider the approach instead of patching the last finding.' : ''}` : '';
-  return `Work toward this goal: ${objective}\nContinue until the objective is achieved. ${claim} ${BLOCKED}${feedback}\n${checklist ? checklistNote(checklist) : TASKS}`;
+  return `Work toward this goal: ${objective}\nContinue until the objective is achieved. ${claim} ${BLOCKED} ${WAIT}${feedback}\n${checklist ? checklistNote(checklist) : TASKS}`;
 }
 
 /** What the checklist's last check left open, as data; the user's list replaces the agent's own task list. */

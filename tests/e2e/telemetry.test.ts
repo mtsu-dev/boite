@@ -64,7 +64,7 @@ test('owner controls consent on desktop and phone; captures both layouts', async
   await page.evaluate(`document.querySelectorAll('${card} input')[1].click()`);
   await page.waitFor(`document.querySelectorAll('${card} input')[1].checked`);
   await page.evaluate(`document.querySelector('${card}').scrollIntoView(); document.fonts.ready`);
-  await page.evaluate(`Promise.all(document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`);
+  await page.settleAnimations();
   await page.screenshot(join(import.meta.dir, '.artifacts/telemetry-desktop.png'));
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   // Privacy is a card at the foot of the phone's General page, the page the desktop left open.

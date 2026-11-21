@@ -47,7 +47,7 @@ test('a phone row that needs you says it beside its dot, and an Activity row rea
   expect(document.querySelector('[data-testid=thread-state]')).toBeNull();
   const place = document.querySelector('[data-testid=mobile-row-where]')!;
   const ask = document.querySelector('[data-testid=mobile-row-reason]')!;
-  expect(place.textContent).toBe('orbit');
+  expect(place.textContent?.trim()).toBe('orbit');
   expect(ask.textContent?.trim()).toBe('Build the project');
   expect(place.compareDocumentPosition(ask) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(document.querySelector('[data-testid=thread-operation]')!.textContent).toBe(command);

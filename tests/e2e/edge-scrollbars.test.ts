@@ -13,9 +13,7 @@ const POINTER = '(hover: hover) and (pointer: fine)';
 interface Box { left: number; right: number; top: number; bottom: number; client: number; offset: number; column: number; composer: number }
 
 async function settled() {
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations()
-    .filter(animation => animation.timeline === document.timeline && animation.effect?.getTiming().iterations !== Infinity)
-    .map(animation => animation.finished.catch(() => {}))])`);
+  await page.settleAnimations();
 }
 
 /** Two frames, so the overlay has drawn what the last pointer event asked for. */

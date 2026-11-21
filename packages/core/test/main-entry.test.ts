@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { startCore } from '../../../tests/e2e/lib/core.ts';
+import { connect } from '../src/client.ts';
 import { removeDir } from '../src/fs-retry.ts';
 import { Journal } from '../src/journal.ts';
 import { pluginLaunch } from '../src/plugins/launch.ts';
@@ -158,6 +159,16 @@ console.log(JSON.stringify({ main: import.meta.main, args: process.argv.slice(2)
     try {
       expect((await fetch(`${core.url}/health`)).status).toBe(200);
       if (mode === 'http') {
+        const client = await connect(core.url, core.token);
+        try {
+          const project = await client.call('projects.add', { path: shutdownDataDir, name: 'Search fixture' });
+          const account = (await client.call('accounts.list', {})).find(a => a.providerId === 'echo')!;
+          const source = await client.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: account.id, title: 'Caller' });
+          const target = await client.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: account.id, title: 'Search target' });
+          for (const thread of [source, target]) await client.call('collaboration.configure', { threadId: thread.id, config: { mode: 'brief', remote: false, resources: '', paused: false } });
+          const result = await client.call('collaboration.search', { threadId: source.id, query: 'target' });
+          expect(result.matches).toMatchObject([{ threadId: target.id, matched: ['title'] }]);
+        } finally { client.close(); }
         const response = await fetch(`${core.url}/shutdown`, { method: 'POST', headers: { Authorization: `Bearer ${core.token}` } });
         expect(response.status).toBe(202);
         expect(await response.json()).toEqual({ ok: true, pid: core.pid });

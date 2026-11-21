@@ -17,14 +17,10 @@
   import { hasUnsentDraft } from '../lib/composer-queue';
   import { threadState } from '../lib/thread-state';
   import { openExternal } from '../lib/links';
-  import { ago, exactTime } from '../lib/format';
+  import { agentLabel, ago, exactTime } from '../lib/format';
   import { wordFit } from '../lib/word-fit';
   import ProjectTile from './ProjectTile.svelte';
   import ProviderLogo from './ProviderLogo.svelte';
-  import { agentLabel } from '../lib/format';
-  import AgentAvatar from './agents/AgentAvatar.svelte';
-  import { agentDirectory } from '../lib/agent-directory.svelte';
-  import { avatarLit } from '../lib/avatar-lit';
   import ThreadState from './ThreadState.svelte';
 
   /**
@@ -32,9 +28,9 @@
    * lists: the title takes the width, then an unsent draft, the pin, the pull
    * request when there is one, and the state at the end, in one slot, with the
    * time after it. The provider's mark leads the title in its own colours, so
-   * the agent behind each row reads at a glance; a bot's thread wears the bot's
-   * face there instead, and a flat list (`tile`) shows the project's tile, since
-   * no card names it. The state is its mark and its word; `fit` lets the
+   * the model behind each row reads at a glance. A flat list (`tile`) shows the
+   * project's tile, since no card names it, and keeps the provider mark when
+   * a bot is named below. The state is its mark and its word; `fit` lets the
    * word give way on a narrow desktop list (ThreadState.svelte). `ask` (Activity) is one line under the title, which
    * keeps the row's width. `at` is the row's time (its last message in the
    * lists, since when in Activity): it follows the mark, and stands alone when
@@ -51,6 +47,7 @@
     now,
     open = false,
     tile,
+    showProvider = false,
     pullRequest = null,
     fit = false,
     ask,
@@ -65,6 +62,8 @@
     open?: boolean;
     /** The project's tile, in a list that mixes projects. */
     tile?: Project;
+    /** Keep the provider visible beside a project tile when a bot is named below. */
+    showProvider?: boolean;
     /** The thread's pull request, looked up by the row. */
     pullRequest?: ThreadSummary['pullRequest'];
     fit?: boolean;
@@ -75,16 +74,6 @@
   const kind = $derived(threadState(thread, rowAsks(owner, thread.id)));
   let draft = $derived(!open && hasUnsentDraft(owner.composerStates[thread.id]));
   const prLabel = $derived(pullRequest && pullRequestLabel(pullRequest));
-  /** The bot whose work the thread is (its session, its parent's, an entrustment, or a thread on its desk it started
-     or was handed): its face leads the title, grey at rest by the owner's rule (lib/avatar-lit.ts), lit while it
-     waits on the user or the row is open. A thread it only follows stays the owner's. */
-  const bot = $derived.by(() => {
-    const directory = agentDirectory(owner);
-    const snapshot = directory.snapshot;
-    if (!snapshot) return null;
-    const desk = snapshot.watches.find(watch => watch.threadId === thread.id && watch.coreId === undefined && (watch.origin === 'started' || watch.origin === 'entrusted'));
-    return directory.ownerOf(thread) ?? directory.entrustmentOf(thread.id)?.agent ?? (desk && snapshot.profiles.find(agent => agent.id === desk.agentId)) ?? null;
-  });
   function openPullRequest(event: MouseEvent) {
     if (!pullRequest) return;
     event.stopPropagation();
@@ -95,8 +84,7 @@
 
 <span class="headline" class:unread={thread.unread} class:hot={open || kind !== null} class:offline>
   {#if tile}<ProjectTile project={tile} store={owner} size={16} />{/if}
-  {#if bot}<span class="bot" title={bot.name} data-testid="thread-bot"><AgentAvatar kind="profile" id={bot.id} name={bot.name} avatar={bot.avatar} size={16} lit={avatarLit({ open, attention: kind === 'waiting' })} /></span>
-  {:else if !tile}<span class="provider" title={agentLabel(owner, thread)} data-testid="thread-provider"><ProviderLogo providerId={thread.providerId} size={14} /></span>{/if}
+  {#if !tile || showProvider}<span class="provider" title={agentLabel(owner, thread)} data-testid="thread-provider"><ProviderLogo providerId={thread.providerId} size={14} /></span>{/if}
   {#if ask}<span class="lead"><span class="title ui-label" use:wordFit={thread.title}></span>{@render ask()}</span>{:else}<span class="title ui-label" use:wordFit={thread.title}></span>{/if}
   {#if draft}<span class="draft" data-testid="thread-draft" title={strings.sidebar.unsentDraft} aria-label={strings.sidebar.unsentDraft}><PencilLine size={12} /></span>{/if}
   {#if thread.pinned}<span class="pin"><Pin size={12} /></span>{/if}
@@ -166,7 +154,6 @@
   .headline.offline .title {
     color: var(--color-muted-foreground);
   }
-  .bot,
   .provider,
   .draft,
   .pin,
