@@ -86,8 +86,10 @@ A right click on a row, or a long press on a phone, opens the row's menu
 (`agentMenuItems` and `pickAgentAction`, `lib/agent-menu.ts`). It is cut
 from the thread menu: the same groups in the same order, with the same words
 and glyphs where a thread has the action. A desktop lists Open | Pin | Pause or
-Resume, Archive | Rename, Edit, Move to a machine | Copy path. A phone lists
-Pin, Rename, Edit | Pause or Resume, Archive. A built-in mochi shows Reset in
+Resume, Archive | Rename, Edit, New conversation, Move to a machine | Copy
+path. A phone lists Pin, Rename, Edit, New conversation | Pause or Resume,
+Archive. New conversation shows once the mochi has a thread
+([A new conversation](#a-new-conversation)). A built-in mochi shows Reset in
 Archive's place. Saving a profile is the owner's: a paired desktop keeps Open
 and Copy path, and a paired phone has no menu. Each action goes through the
 machine that holds the mochi:
@@ -482,7 +484,8 @@ their questions within its rules, never repeating a thread's question to the
 user; wake on `routine` and `event` turns and end one that needs nothing with
 `[quiet]`; keep its routines matching its instructions (`boite mochi
 routines|schedule|unschedule`); note durable facts (`boite mochi remember`);
-put threads on or off its desk (`boite mochi watch|unwatch`); ask the user with
+put threads on or off its desk (`boite mochi watch|unwatch`); start a new
+conversation with a handoff note (`boite mochi new-session`); ask the user with
 `boite ask`, `--open <url>` for a login; propose a change to its own settings
 with `boite settings mochi request` as soon as one stops fitting (the user's
 words contradict its instructions, most wakes end in `[quiet]`, its model or
@@ -526,6 +529,69 @@ compaction; a record from before `memory` existed gets the block once. Each turn
 that carries either appends an `agent.context.sent` event to its thread
 (`turnId`, `kind` `block` or `memory`, `characters`, `hash`), in the same
 transaction as the record, so the size sent is measured, not guessed.
+
+## A new conversation
+
+A mochi has one thread and, in it, one provider session that only compaction
+shortens. `agents.session.new` (`agents/new-session.ts`) ends that session and
+keeps everything else: MEMORY.md, the brain, routines, desk, settings, teams
+and the thread with its whole history. The mochi asks for it with `boite mochi
+new-session [--note <text>]` (its own thread only, `AGENT_METHODS`), the owner
+with the same command and `--thread <id>`, or the RPC with `agentId`.
+
+It stays the same thread on purpose: the thread is the mochi's address
+(`agentSessionId`, desk rows, team letters, entrustments, notifications and the
+page all point at it), and a compaction, an account switch or a move already
+start a fresh session in place. A second thread would have to move all of that.
+
+It never lands in the middle of a turn. Asked while one runs, even by the
+mochi during its own turn, the request waits in `agents:new-session:<thread>`
+(a second one replaces it) and the turn runner applies it once the turn's end
+is written, after the account and cache bookkeeping that still read the old
+session and before any next turn (`newSessions.applyWaiting`). A request that
+survives a restart applies at the next turn end. Asked on an idle thread it
+applies at once. The RPC answers `when: 'done' | 'turn-end'`.
+
+Applying it, in one journal write (`agent.session.new`):
+
+- a system line on the turn that ended, a text part with `newConversation:
+  { by: 'user' | 'mochi', note? }` that the thread shows as the marker;
+- `history-start:<thread>` (`{ messageId, turnId, at, by }`): `continuationInput`
+  (`continuation.ts`) never reads past it, so a later fresh session (a lost
+  one, an account switch) carries the new conversation only;
+- `agents:handoff:<thread>` (`{ by, note, turnId }`) for the first turn;
+- `account-sessions:`, `compaction-tail:` and `agents:context:` of the thread
+  cleared.
+
+Then the thread gets `sessionId: null` and a new `sessionGeneration`, with its
+context and prompt cache reset; its idle compaction and cache keepalive are
+cancelled and queued turns take the new generation, as after a move.
+
+The next turn starts a fresh session, so it carries the whole context block,
+followed by one line: `Boite: this is a new conversation (you asked for it /
+the user asked for it)`, then the handoff note quoted as data. The note is at
+most `AGENT_HANDOFF_MAX` (4,000) characters, about a page: what to carry over,
+not a transcript. It goes once: a turn that carried it and ended clears it, a
+failed one leaves it for the next turn.
+
+Against a loop, a mochi may not ask again within 30 minutes of the last
+conversation it started itself (`MOCHI_NEW_SESSION_GAP_MS`, refused with
+`reason: 'too-soon'`); the owner always may. The guide's line about it is
+plain and suggests nothing automatic: when the conversation has grown long or
+reached a clean stopping point.
+
+In the app, the owner's menus offer New conversation once the mochi has a
+thread: the row menu (`agentMenuItems`, after Edit, on a phone too) and the
+menu at the top of its conversation (`AgentHeader.svelte`). Both go through
+`startNewConversation` (`lib/agent-new-session.ts`), on the mochi's own
+machine like the menu's other actions: one confirm with the optional note
+(`confirm.note`, a text field limited to `AGENT_HANDOFF_MAX` with its count),
+whose button reads After this turn while the thread is active. A paired device
+gets neither entry. The thread draws the system line as
+`NewConversationMarker.svelte` (who asked, the note folded); it never closes
+its turn, so the answer above it keeps its copy and fork bar. When markers end
+the thread, its closing line stands above the first of them
+(`closingMarkerOf` in `lib/message-display.ts`), with the turn they follow.
 
 ## Free to act
 
@@ -1201,6 +1267,7 @@ in `agent_entities`, unread.
 From its own thread a mochi calls `agents.snapshot` (its own identity,
 routines, desk and status only), `agents.brain.get`, `agents.memory.note`,
 `agents.routine.save|remove`, `agents.watch` on its own desk,
+`agents.session.new` for its own thread,
 `agents.settings.read|request` and the `resident.*` methods
 (`packages/core/src/access.ts`, each with its reason); `resident.*` reaches
 the projects of another machine through that machine's `groupBots`
@@ -1220,6 +1287,10 @@ outcomes, a routine's check waking the mochi only on new output and who may
 set one, a wake that failed on a usage limit resuming after the reset, quiet
 events, budget, pauses, fact batching, instructions changed, an outside event
 from a paired device),
+`agents-new-session.test.ts` (a new conversation: a fresh session without the
+earlier messages, memory, routines and desk kept, the note read once and kept
+after a failed turn, a request during the mochi's own turn applied at its end,
+the 30 minute gap),
 `agents-desk.test.ts` (desk rows from a started, an entrusted and a watched
 thread, follows kept while open and dropped a day after done, the open cap,
 the stall event once per turn, an entrusted goal waking the mochi, pull

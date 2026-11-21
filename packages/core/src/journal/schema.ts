@@ -14,11 +14,12 @@ import { createSharedReview } from '../contacts/review-journal.ts';
 import { createTeamMachines, createTeams } from '../teams/journal.ts';
 import { createCouncil } from '../council/journal.ts';
 import { createRemovedTurnUsage } from './usage-sums.ts';
+import { createUsageSlots } from './usage-slots.ts';
 import { createKeptProcesses } from './kept-processes.ts';
 import { createMessageStats } from './thread-stats.ts';
 import { ARTIFACT_ROW } from './artifact-references.ts';
 
-export const SCHEMA_VERSION = 52;
+export const SCHEMA_VERSION = 53;
 
 /** Raised when the journal was written by a newer core than this one. */
 export class JournalTooNewError extends Error {
@@ -516,6 +517,11 @@ export function migrate(db: Database, file: string): { from: number; to: number 
   if (!hasColumn('projects', 'removed_at')) {
     db.exec('ALTER TABLE projects ADD COLUMN removed_at INTEGER');
     version = 52;
+  }
+  // The usage page's sums per 15 minutes, kept by the turn and thread writers and built once from every finished turn (`usage-slots.ts`).
+  if (version < 53) {
+    createUsageSlots(db);
+    version = 53;
   }
   createSharedProjects(db);
   createSharedBoard(db);

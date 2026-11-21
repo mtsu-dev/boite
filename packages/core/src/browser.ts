@@ -55,6 +55,7 @@ import { automate, awaitDocument, documentToken, PAGE_ACTIONS, settleLoaded } fr
 import { pageFrames } from './browser/page-frames.ts';
 import { sleepState, TabSleep } from './browser/sleep.ts';
 import { TabsJoining } from './browser/joining.ts';
+import { BrowserPopups, type PopupTarget } from './browser/popups.ts';
 import { BrowserDownloads } from './browser/downloads.ts';
 import { BrowserRecipes } from './browser/recipes.ts';
 import { historyChallenge, settleChallenge } from './browser/challenge.ts';
@@ -139,6 +140,11 @@ export class AgentBrowser {
   stepMs: Record<BrowserCommandStep, number> = { ...BROWSER_STEP_MS };
   /** Tabs being attached: the limits count them, and a command that names no tab waits for a window a page opened. */
   readonly joining = new TabsJoining();
+  readonly #popups = new BrowserPopups(this.joining, {
+    tabAt: (engine, targetId) => this.#tabAt(engine, targetId),
+    full: threadId => this.#full(threadId) !== null,
+    attach: (engine, threadId, targetId, url) => this.#attach(engine, threadId, targetId, url),
+  });
   #announce = new Map<ThreadId, ReturnType<typeof setTimeout>>();
   #closed = false;
   /** Browsers started to check a page (`probe`): no conversation lists them, so they are closed by name. */
@@ -265,7 +271,7 @@ export class AgentBrowser {
 
   /** Pages that open a window (a sign-in popup) are adopted as tabs of the same conversation. */
   #targets(engine: Engine): void {
-    engine.cdp.on('Target.targetCreated', params => void this.#adopt(engine, params.targetInfo as { targetId: string; type: string; openerId?: string; url: string }));
+    engine.cdp.on('Target.targetCreated', params => void this.#popups.adopt(engine, params.targetInfo as PopupTarget));
     engine.cdp.on('Target.targetDestroyed', params => this.#gone(engine, String(params.targetId)));
     engine.cdp.on('Target.targetInfoChanged', params => this.#info(engine, params.targetInfo as { targetId: string; url: string; title: string }));
     engine.cdp.on('Target.targetCrashed', params => this.#crashed(this.#tabAt(engine, String(params.targetId)), String(params.status ?? 'unknown').slice(0, 40)));
@@ -335,23 +341,6 @@ export class AgentBrowser {
     return null;
   }
 
-  /** A window a tab opened joins its conversation as a new tab, or is closed when it has no room. */
-  async #adopt(engine: Engine, info: { targetId: string; type: string; openerId?: string; url: string }): Promise<void> {
-    if (info.type !== 'page' || !info.openerId) return;
-    const opener = [...engine.tabs].map(id => this.#tabs.get(id)).find(tab => tab?.targetId === info.openerId);
-    if (!opener) return;
-    const { threadId } = opener;
-    const shut = () => engine.cdp.send('Target.closeTarget', { targetId: info.targetId }).then(() => {}, () => {});
-    // Checked and held in the event's own turn: a burst of windows sees each other, and a command never waits on a refusal.
-    if (this.#full(threadId)) return shut();
-    const release = this.joining.reserve(threadId);
-    return this.joining.window(threadId, async () => {
-      // A window nobody can drive is closed, and so is one whose conversation was archived while it attached.
-      const tab = await this.#attach(engine, threadId, info.targetId, info.url).catch(() => null).finally(release);
-      if (!tab) await shut();
-    });
-  }
-
   #info(engine: Engine, info: { targetId: string; url: string; title: string }): void {
     const tab = this.#tabAt(engine, info.targetId);
     if (!tab || (tab.url === info.url && tab.title === info.title)) return;
@@ -365,6 +354,7 @@ export class AgentBrowser {
   }
 
   #gone(engine: Engine, targetId: string): void {
+    this.#popups.destroyed(engine, targetId);
     const tab = this.#tabAt(engine, targetId);
     if (tab) this.#drop(tab.id);
   }
@@ -520,7 +510,14 @@ export class AgentBrowser {
 
   /** The current tab is the last window a page opened: a command that names no tab waits for those still joining. */
   async #joined(threadId: ThreadId): Promise<void> {
-    if (await this.joining.windows(threadId)) this.#require(threadId);
+    const engines = new Set<Engine>();
+    for (const id of this.#threads.get(threadId)?.order ?? []) {
+      const engine = this.#tabs.get(id)?.engine;
+      if (engine && !engine.hosted) engines.add(engine);
+    }
+    await this.#popups.adoptListed(threadId, engines);
+    await this.joining.windows(threadId);
+    this.#require(threadId);
   }
 
   async #run(threadId: ThreadId, tabId: string | undefined, action: BrowserAction, running: Running | null): Promise<BrowserReply> {

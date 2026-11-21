@@ -21,8 +21,7 @@ to download it, how to install it on each system and which channel to follow.
 | macOS | The DMG for Apple Silicon or the DMG for Intel |
 | Debian or Ubuntu | The `.deb` package, x64 or ARM64 |
 | Other Linux distributions | The AppImage, x64 or ARM64 |
-| Android phone | The `boite-android-<version>.apk` file, when the release has one |
-| Android phone, native app preview | The `boite-mobile_<version>_android.apk` file, in nightly releases |
+| Android phone, preview | The `boite-mobile_<version>_android.apk` file, in nightly releases, ARM64 |
 
 ## System requirements
 
@@ -62,6 +61,13 @@ xattr -cr /Applications/Boite.app
 Boite keeps its data in `$XDG_DATA_HOME/boite2` when that variable names an
 absolute folder, otherwise in `~/.local/share/boite2`.
 
+## When the desktop window stops responding
+
+On Windows, Boite tries to reload the window after a rendering failure. If
+the window still stays blank, choose Quit from the Boite icon in the
+notification area, then open Boite again. Quitting the window leaves your
+local engine running.
+
 ## Stable and nightly channels
 
 Boite has two channels, chosen in Settings, Machines and updates, under
@@ -82,11 +88,13 @@ how to switch and what to back up first.
 The Android app shows Boite on your phone. It connects to a computer or a
 server that already runs Boite; the agents run there, not on the phone.
 
-1. Download the APK on the phone from the release page.
+1. Download the `boite-mobile` APK on the phone from a nightly release page.
 2. Allow your browser to install unknown apps when Android asks.
 3. Open Boite and pair it with your computer ([phone](phone.md)).
 
-An APK from a newer release installs over the old one.
+The app offers each newer build itself. The older Android app, which opened
+Boite in Chrome, is no longer built and does not update to this one: install
+it beside the old one, pair the phone again, then uninstall the old app.
 
 ## After installing
 
@@ -104,4 +112,4 @@ An APK from a newer release installs over the old one.
   without a screen.
 - Technical reference: [desktop updates](internals/updates.md),
   [platform readiness](internals/portability.md),
-  [Android app](internals/android.md).
+  [Android app](internals/android-native.md).

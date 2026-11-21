@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
@@ -245,11 +245,29 @@ describe('the Device panel over RPC', () => {
   test('an emulator that cannot start fails its session with the reason', async () => {
     const sdk = fakeSdk({ avds: ['Pixel_8'], emulatorFails: 'PANIC: Missing emulator engine program for x86 CPU.' });
     sdkEnv = linux({ ANDROID_HOME: sdk.root });
-    await agent.call('devices.open', { threadId });
-    const session = await ready('Pixel_8');
-    expect(session.state).toBe('failed');
-    expect(session.error).toContain('PANIC: Missing emulator engine');
-    expect(await thrown(owner.call('devices.frame', { threadId, deviceId: 'Pixel_8' }))).toThrow('PANIC');
+    const spawn = harness.core.procs.spawn.bind(harness.core.procs);
+    const intercepted = spyOn(harness.core.procs, 'spawn').mockImplementation((...args) => {
+      const child = spawn(...args);
+      if (args[2][0] !== '-avd') return child;
+      // Windows can report process exit before it delivers the last stderr bytes.
+      const stderr = child.proc.stderr.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+        async transform(chunk, controller) {
+          await child.exited;
+          controller.enqueue(chunk);
+        },
+      }));
+      Object.defineProperty(child.proc, 'stderr', { value: stderr });
+      return child;
+    });
+    try {
+      await agent.call('devices.open', { threadId });
+      const session = await ready('Pixel_8');
+      expect(session.state).toBe('failed');
+      expect(session.error).toContain('PANIC: Missing emulator engine');
+      expect(await thrown(owner.call('devices.frame', { threadId, deviceId: 'Pixel_8' }))).toThrow('PANIC');
+    } finally {
+      intercepted.mockRestore();
+    }
   });
 
   test('an iOS Simulator boots, streams view-only and shuts down on a Mac', async () => {

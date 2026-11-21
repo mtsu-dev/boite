@@ -141,10 +141,25 @@ function placedPaths(message: Message): string[] {
   return paths;
 }
 
+/** How many times a timeline with views was walked to place them: a streamed token must not add one (`MessageList.test.ts`). */
+export const viewStats = { placements: 0 };
+
+const NO_LINES: readonly Message[] = [];
+
+/**
+ * The messages whose text can place one of `views`: everything but the views
+ * of a turn that published one. Reads no text, so a streamed token does not
+ * run it again; the same empty array comes back when there is no view.
+ */
+export function viewLines(timeline: readonly Message[], views: ReadonlyMap<string, Message[]>): readonly Message[] {
+  if (views.size === 0) return NO_LINES;
+  return timeline.filter((message) => views.has(message.turnId) && !viewPart(message));
+}
+
 /** The views a line of their own turn's answer places: drawn there by the answer, not after it. */
-function placedViews(timeline: readonly Message[], views: ReadonlyMap<string, Message[]>): Set<Message> {
+export function placedViews(lines: readonly Message[], views: ReadonlyMap<string, Message[]>): Set<Message> {
   const placed = new Set<Message>();
-  for (const message of timeline) {
+  for (const message of lines) {
     const list = views.get(message.turnId);
     if (!list || viewPart(message)) continue;
     for (const path of placedPaths(message)) {
@@ -165,13 +180,15 @@ function placedViews(timeline: readonly Message[], views: ReadonlyMap<string, Me
  * being written stays the last thing in the thread and the page arrives with
  * the finished answer. A view whose turn has nothing else in `timeline` (the
  * rest is on a page not loaded yet) stays where it is. The same array comes
- * back when there is no view.
+ * back when there is no view. `inline` is what `placedViews` found, passed
+ * in by a caller that reads the answers' text apart from this walk.
  */
-export function placeViews(timeline: Message[], turns: readonly Pick<Turn, 'id' | 'status'>[], views = turnViews(timeline)): Message[] {
+export function placeViews(timeline: Message[], turns: readonly Pick<Turn, 'id' | 'status'>[], views = turnViews(timeline),
+  inline: ReadonlySet<Message> = placedViews(viewLines(timeline, views), views)): Message[] {
   if (views.size === 0) return timeline;
+  viewStats.placements += 1;
   const live = new Set(turns.filter((turn) => turn.status === 'running' || turn.status === 'queued').map((turn) => turn.id));
   const running = (turnId: string) => live.has(turnId);
-  const inline = placedViews(timeline, views);
   const lastOther = new Map<string, number>();
   timeline.forEach((message, index) => { if (!viewPart(message)) lastOther.set(message.turnId, index); });
   const after = (turn: string) => (views.get(turn) ?? []).filter((message) => !inline.has(message));
@@ -192,13 +209,25 @@ export function placeViews(timeline: Message[], turns: readonly Pick<Turn, 'id' 
 /**
  * A token can add a line placing a view without moving any messages. Keep
  * the placed array until its order changes, so downstream windowing and
- * scroll effects do not run again on every character of that answer.
+ * scroll effects do not run again on every character of that answer. The
+ * text is read by `inline` alone, over the answers of turns with a view, and
+ * the same set comes back until a line places another view: the walk over
+ * the whole timeline in `build` then waits for a token that moves a view.
  */
 export class ViewPlacement {
   #previous: Message[] | undefined;
+  #inline: ReadonlySet<Message> | undefined;
 
-  build(timeline: Message[], turns: readonly Pick<Turn, 'id' | 'status'>[], views = turnViews(timeline)): Message[] {
-    const next = placeViews(timeline, turns, views);
+  inline(lines: readonly Message[], views: ReadonlyMap<string, Message[]>): ReadonlySet<Message> {
+    const next = placedViews(lines, views);
+    const previous = this.#inline;
+    if (previous?.size === next.size && [...next].every((message) => previous.has(message))) return previous;
+    return this.#inline = next;
+  }
+
+  build(timeline: Message[], turns: readonly Pick<Turn, 'id' | 'status'>[], views = turnViews(timeline),
+    inline: ReadonlySet<Message> = this.inline(viewLines(timeline, views), views)): Message[] {
+    const next = placeViews(timeline, turns, views, inline);
     if (this.#previous?.length === next.length && next.every((message, index) => message === this.#previous![index])) return this.#previous;
     return this.#previous = next;
   }

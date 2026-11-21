@@ -7,7 +7,7 @@
   import InfoTip from './InfoTip.svelte';
 
   /**
-   * The `autoGoals` switch of the machine, on unless turned off, and under it
+   * The `autoGoals` switch of the machine, off unless turned on, and under it
    * while on the `autoGoalMinChars` setting: how long a prompt must be before
    * it starts a reviewed goal (`docs/internals/goals.md`). A row of the card
    * How agents answer (`AgentRepliesSettings.svelte`).
@@ -25,7 +25,7 @@
   });
   let valid = $derived(typeof chars === 'number' && Number.isInteger(chars) && chars >= AUTO_GOAL_MIN_CHARS.min && chars <= AUTO_GOAL_MIN_CHARS.max);
 
-  let on = $derived(store.settings?.autoGoals !== false);
+  let on = $derived(store.settings?.autoGoals === true);
   /** A switch saves when it flips; a refusal puts it back. */
   let switching = $state(false);
   async function toggle(input: HTMLInputElement) {

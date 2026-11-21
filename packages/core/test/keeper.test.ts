@@ -204,7 +204,12 @@ describe.skipIf(!keeperEnabled({ BOITE_KEEPER: '1' }))('keeper', () => {
     // 30 MB while this core does not read: past the 16 MiB the keeper queues for it.
     const { client, kept, text, dataDir } = await keptShell('/bin/sh', ['-c', 'sleep 0.3; head -c 30000000 /dev/zero | tr "\\0" x; echo; echo end-$((2+3)); exec sleep 300'], logs);
     try {
-      Bun.sleepSync(5_000);
+      // Keep this reader blocked until the keeper confirms that its queue overflowed.
+      const logFile = join(dataDir, 'logs', 'keeper.log');
+      const overflow = 'a core stopped reading: its connection is dropped';
+      const deadline = performance.now() + SHELL_MS;
+      while (performance.now() < deadline && !readFileSync(logFile, 'utf8').includes(overflow)) Bun.sleepSync(20);
+      expect(readFileSync(logFile, 'utf8')).toContain(overflow);
       await waitFor(() => text().includes('end-5'), 30_000);
       expect(logs.some((line) => line.includes('1 kept processes attached again'))).toBe(true);
       expect(kept.running).toBe(true);

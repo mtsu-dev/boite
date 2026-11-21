@@ -7,7 +7,7 @@ export function failedRun(timeline: readonly Message[], start: number, memory?: 
   let at = start;
   while (at < timeline.length) {
     const first = timeline[at]!;
-    const wake = first.role === 'system' && first.parts.length > 0 && first.parts.every(part => part.type === 'text' && !part.moved && !part.started) ? first : undefined;
+    const wake = first.role === 'system' && first.parts.length > 0 && first.parts.every(part => part.type === 'text' && !part.moved && !part.newConversation && !part.started) ? first : undefined;
     const error = wake ? timeline[at + 1] : first;
     if (!error || error.role !== 'assistant' || error.state === 'streaming' ||
       error.parts.find(part => part.type !== 'text' || part.text.trim())?.type !== 'error' ||

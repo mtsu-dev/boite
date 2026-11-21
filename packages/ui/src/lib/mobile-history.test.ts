@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { browserAnimatedBack, mobileOverlay } from './mobile-history';
+import { answerBack, browserAnimatedBack, mobileOverlay } from './mobile-history';
 
 /** jsdom lands a `history.back()` in a later task, as a browser does. */
 const landed = () => new Promise<void>((resolve) => window.addEventListener('popstate', () => setTimeout(resolve, 0), { once: true }));
@@ -115,6 +115,30 @@ describe('mobileOverlay', () => {
     expect(during).toEqual([false]);
     expect(seen).toEqual([true, false]);
     touch('touchstart', 200);
+  });
+
+  test("the Android app's own Back closes the top overlay in the same task, pops its entry, then says there is nothing left", async () => {
+    const closed: string[] = [];
+    const start = history.state?.boiteDepth ?? 0;
+    const below: () => void = mobileOverlay(() => { closed.push('conversation'); below(); });
+    const top: () => void = mobileOverlay(() => { closed.push('sheet'); top(); });
+    const popped = landed();
+    expect(answerBack()).toBe(true);
+    // No wait for the WebView's history: the sheet is gone before Back returns.
+    expect(closed).toEqual(['sheet']);
+    // A picker opened while that pop is in flight waits to push its entry, yet the next Back closes it, not the app.
+    const picker: () => void = mobileOverlay(() => { closed.push('picker'); picker(); });
+    expect(answerBack()).toBe(true);
+    expect(closed).toEqual(['sheet', 'picker']);
+    await popped;
+    expect(history.state?.boiteDepth).toBe(start + 1);
+    const second = landed();
+    expect(answerBack()).toBe(true);
+    await second;
+    expect(closed).toEqual(['sheet', 'picker', 'conversation']);
+    expect(history.state?.boiteDepth ?? 0).toBe(start);
+    // Nothing open: Back leaves the app.
+    expect(answerBack()).toBe(false);
   });
 
   test('a desktop width pushes nothing', () => {

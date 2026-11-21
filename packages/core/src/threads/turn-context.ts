@@ -84,7 +84,7 @@ export class TurnContexts {
     // Echo treats "question" as a test directive, including in injected help.
     // A persistent agent's thread has no checkout of its own: no pull request to watch, no project to add.
     // `boite goal track` needs automatic goals on (Settings, the machine's own switch) and a top-level thread of the user's.
-    const goalTrack = !thread.parentThreadId && !thread.agentSessionId && settings.autoGoals !== false;
+    const goalTrack = !thread.parentThreadId && !thread.agentSessionId && settings.autoGoals === true;
     // A council's member reviews read-only and starts no council: neither that skill nor the one about proving a change is for it.
     const member = !!thread.parentThreadId && this.#core.council?.owns(thread.id) === true;
     const skills = member ? written.filter(skill => skill.name !== COUNCIL_SKILL.name && skill.name !== PROVE_IT_SKILL.name) : written;
