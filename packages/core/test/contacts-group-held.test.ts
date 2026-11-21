@@ -24,9 +24,12 @@ test('a contact a member still holds is the whole group\'s: asked from the Mochi
   const xThread = await thread(xClient, (await project(x, xClient, 'xray')).id, 'Xray work');
   const aThread = await thread(aClient, (await project(a, aClient, 'alpha')).id, 'Alpha work');
   const yThread = await thread(yClient, (await project(y, yClient, 'yankee')).id, 'Yankee work');
-  const cThread = await thread(cClient, (await project(c, cClient, 'mine')).id, 'Guest work');
+  const mine = await project(c, cClient, 'mine');
+  const cThread = await thread(cClient, mine.id, 'Guest work');
   for (const [side, id] of [[x, xThread], [a, aThread], [y, yThread], [c, cThread]] as const) remoteOn(side, id);
   await cClient.call('contacts.update', { coreId: aId, trusted: true });
+  // The mochi connects only to a thread of a project opened to the contact.
+  c.core.contacts.grant({ coreId: aId, projectId: mine.id });
   const cBot = await contactsBotOf(c, cClient);
   // X hosts the bots, but C cannot reach X (it is on another network): A keeps the link.
   await contactsBotOf(x, xClient);

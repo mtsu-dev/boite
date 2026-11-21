@@ -90,7 +90,8 @@ export class ContactFlags {
    */
   scan(letter: AgentLetter): ContactFlag | null {
     if (!letter.contact) return null;
-    const found = scanLetter(letter.text);
+    // The sender writes its thread's title, project, agent and branch too, and the agent reads them beside the text.
+    const found = scanLetter([letter.text, ...Object.values(letter.from).filter(value => typeof value === 'string')].join('\n'));
     if (!found) return null;
     const relation = this.#core.contacts.relations.list().find(entry => entry.coreId === letter.contact!.coreId && entry.local.threadId === letter.to.threadId && entry.remote.threadId === letter.from.threadId);
     return this.raise({

@@ -88,7 +88,8 @@ export const PLUGIN_PERMISSIONS: Readonly<Record<PluginPermission, PluginPermiss
       'composer.updated', 'threads.pullRequestsChanged',
     ],
   },
-  // Starts, steers, stops, renames, moves, forks and archives conversations: it spends the owner's agent quota.
+  // Starts, steers, stops, renames, moves, forks, rewinds and removes conversations: it spends the owner's agent quota,
+  // and the plugin writes the prompt an agent then runs under the owner's permission mode, which the owner did not approve.
   // `threads.archive` stays idle-only and never restores (threads/plugin-archive.ts, access.ts).
   'threads.write': {
     methods: [
@@ -99,6 +100,7 @@ export const PLUGIN_PERMISSIONS: Readonly<Record<PluginPermission, PluginPermiss
       'composer.asset.put', 'drafts.prepare', 'drafts.release', 'attachments.upload', 'attachments.release',
     ],
     events: [],
+    danger: true,
   },
   // The projects' icons, file lists and changes, and the composer's skill menu (the list itself is threads.read's).
   'projects.read': {
