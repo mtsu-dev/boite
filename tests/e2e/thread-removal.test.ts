@@ -102,7 +102,7 @@ for (const width of [1280, 390]) {
         await page.evaluate(`Array.from(document.querySelectorAll('[role=menu]:not(.closing) [role=menuitem]')).find(b => b.textContent.trim() === 'Delete').click()`);
       };
       await openMenu();
-      await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+      await page.settleAnimations();
       await page.screenshot(join(import.meta.dir, '.artifacts', `thread-delete-menu-${width}.png`));
       await chooseDelete();
       await page.waitFor(`!globalThis.__boiteTest.workspace.active.threads.some(t => t.id === ${JSON.stringify(id)})`);
@@ -131,7 +131,7 @@ for (const width of [1280, 390]) {
       }
       await page.waitFor(`document.querySelector('[data-testid=archived-list] li [data-testid^=archived-menu-]')`);
       const archivedId = await page.evaluate<string>(`document.querySelector('[data-testid=archived-list] li [data-testid^=archived-menu-]').closest('li').dataset.threadId`);
-      await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+      await page.settleAnimations();
       await page.screenshot(join(import.meta.dir, '.artifacts', `thread-delete-archive-${width}.png`));
       await deleteArchived(page, archivedId);
       expect(await page.evaluate(`document.querySelector('[data-testid=confirm-dialog]') === null`)).toBe(true);
@@ -147,7 +147,7 @@ for (const width of [1280, 390]) {
       expect(await page.evaluate(`document.querySelectorAll('[data-testid=deleted-list] .expiry').length`)).toBe(2);
       // Out of the capture: the undo toast's close, never its Undo, which would bring the deleted thread back.
       await page.evaluate(`document.querySelector('[data-testid=deleted-threads]').scrollIntoView({block:'center'}); document.querySelector('[data-testid=undo-toast] .dismiss')?.click()`);
-      await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+      await page.settleAnimations();
       await page.screenshot(join(import.meta.dir, '.artifacts', `thread-delete-retention-${width}.png`));
       await page.click(`[data-testid=deleted-list] [data-thread-id="${archivedId}"] [data-testid=deleted-restore]`);
       await page.waitFor(`!document.querySelector('[data-testid=deleted-list] [data-thread-id="${archivedId}"]')`);

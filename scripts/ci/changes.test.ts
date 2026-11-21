@@ -1,14 +1,14 @@
 import { expect, test } from 'bun:test';
 import { affectedChecks, ciMode, lastGreen, needsCodeChecks, needsNativeWindows, needsWorkflowLint, plan } from './changes.ts';
 
-const none = { core: false, web: false, desktop: false, shellRust: false, server: false, android: false, androidServer: false, telemetry: false, e2eTypes: false, stress: false };
-const allChecks = { core: true, web: true, desktop: true, shellRust: true, server: true, android: true, androidServer: true, telemetry: true, e2eTypes: true, stress: true };
+const none = { core: false, web: false, desktop: false, shellRust: false, server: false, androidServer: false, telemetry: false, e2eTypes: false, stress: false };
+const allChecks = { core: true, web: true, desktop: true, shellRust: true, server: true, androidServer: true, telemetry: true, e2eTypes: true, stress: true };
 
 test('checks follow runtime boundaries and combine changed paths', () => {
   expect(affectedChecks(['apps/shell/src-tauri/src/main.rs'])).toEqual({ ...none, desktop: true, shellRust: true });
   expect(affectedChecks(['Dockerfile'])).toEqual({ ...none, server: true });
   expect(affectedChecks(['packages/ui/src/app.css'])).toEqual({ ...none, web: true, desktop: true, server: true, stress: true });
-  expect(affectedChecks(['packages/core/src/main.ts'])).toEqual({ ...allChecks, shellRust: false, android: false, androidServer: false });
+  expect(affectedChecks(['packages/core/src/main.ts'])).toEqual({ ...allChecks, shellRust: false, androidServer: false });
   expect(affectedChecks(['tests/e2e/ui.test.ts', 'docker/compose.yml'])).toEqual({ ...none, desktop: true, server: true, e2eTypes: true });
 });
 
@@ -30,21 +30,8 @@ test('the shell Rust tests run only for the inputs they compile', () => {
   }
 });
 
-test('the APK follows the contracts it reads, not the core', () => {
-  expect(affectedChecks(['packages/core/src/main.ts']).android).toBe(false);
-  expect(affectedChecks(['packages/contracts/src/index.ts']).android).toBe(true);
-});
-
-test('only the wrapper and its own pipeline build the APK', () => {
-  for (const file of ['apps/android/app/build.gradle', '.github/workflows/android.yml']) {
-    expect(affectedChecks([file])).toEqual({ ...none, android: true });
-  }
-  // Boite Server counts its version with the same script.
-  expect(affectedChecks(['scripts/ci/android-apk.ts'])).toEqual({ ...none, android: true, androidServer: true });
-});
-
 test('Boite Server builds its APK for the app and the bundle checks for its Termux scripts', () => {
-  for (const file of ['apps/android-server/app/src/main/java/com/boite/server/App.kt', 'apps/android-server/VERSION', '.github/workflows/android-server.yml', 'scripts/ci/android-server-apk.ts']) {
+  for (const file of ['apps/android-server/app/src/main/java/com/boite/server/App.kt', 'apps/android-server/VERSION', '.github/workflows/android-server.yml', 'scripts/ci/android-server-apk.ts', 'scripts/ci/android-version.ts']) {
     expect(affectedChecks([file])).toEqual({ ...none, androidServer: true });
   }
   // The release bundle carries termux/, not the APK.
@@ -56,7 +43,7 @@ test('ordinary benches and architecture scripts keep the cheap type-check route'
   for (const file of ['bench/retitle.ts', 'scripts/architecture/check.ts', 'packages/plugin-sdk/src/connect.ts', 'examples/plugins/hello/src/main.ts']) {
     expect(affectedChecks([file])).toEqual({ ...none, web: true });
   }
-  expect(affectedChecks(['bench/retitle.ts', 'packages/core/src/main.ts'])).toEqual({ ...allChecks, shellRust: false, android: false, androidServer: false });
+  expect(affectedChecks(['bench/retitle.ts', 'packages/core/src/main.ts'])).toEqual({ ...allChecks, shellRust: false, androidServer: false });
 });
 
 test('telemetry-only changes require behavioral relay coverage on PRs and main', () => {
@@ -159,7 +146,7 @@ test('main pushes run affected tests while warming the extra portable architectu
 test('a pull request runs only the Linux checks and leaves the rest to the merge queue', () => {
   const all = affectedChecks(['packages/core/src/main.ts']);
   const pr = plan(all, 'pr');
-  expect(pr).toMatchObject({ core: true, web: true, desktop: false, e2e: false, server: false, android: false, androidServer: false, stress: false });
+  expect(pr).toMatchObject({ core: true, web: true, desktop: false, e2e: false, server: false, androidServer: false, stress: false });
   expect(JSON.parse(pr.coreRunners)).toEqual([{ os: 'ubuntu-24.04', name: 'Linux x64', shards: 2 }]);
   // Bundle size still measures a desktop change: the queue skips it.
   expect(pr.size).toBe(true);

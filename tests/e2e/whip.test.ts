@@ -11,9 +11,7 @@ let button = '[data-testid="whip-button"]';
 const toggle = '[data-testid="setting-whip"]';
 
 async function settled() {
-  await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations()
-    .filter(animation => animation.timeline === document.timeline && animation.effect?.getTiming().iterations !== Infinity)
-    .map(animation => animation.finished.catch(() => {}))])`);
+  await page.settleAnimations();
 }
 
 async function menuAboveWhip(capture: string) {

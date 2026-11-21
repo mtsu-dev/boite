@@ -1,10 +1,11 @@
 {
   "$schema": "../gen/schemas/mobile-schema.json",
   "identifier": "default",
-  "description": "The page may open web links in the system browser, nothing else.",
+  "description": "The page may open web links in the system browser and answer the Back button, nothing else.",
   "windows": ["main"],
   "permissions": [
     "core:event:default",
+    "core:app:allow-register-listener",
     { "identifier": "opener:allow-open-url", "allow": [{ "url": "http://*" }, { "url": "https://*" }] }
   ]
 }

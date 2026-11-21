@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, test } from 'bun:test';
 import type { Account, MessagePart } from '@boite/contracts';
 import type { CoreClient } from '../src/client.ts';
 import { LISTING_TAIL_BYTES, claudeProjectFolder, listTranscript } from '../src/imports/claude.ts';
-import { claudeSessionFixture, FIXTURE_SESSION_ID } from './fixtures/claude-session.ts';
+import { claudeCliRecordsFixture, claudeCommandsOnlyFixture, claudeSessionFixture, FIXTURE_SESSION_ID } from './fixtures/claude-session.ts';
 import { startTestCore, testProject } from './harness.ts';
 import type { TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
@@ -148,6 +148,53 @@ test('refused by name: another provider, a bad id, a missing file, a transcript 
   });
   const listed = await client.call('imports.list', { projectId: emptyProject });
   expect(listed.map((session) => session.sessionId)).toEqual([FIXTURE_SESSION_ID]);
+});
+
+test('an imported thread shows only what the user typed, and is named after the first prompt', async () => {
+  const client = await harness.connect();
+  // The test project's folder is the data directory.
+  const { projectId, account } = await seeded(client, { sessionId: 'cli-records', body: claudeCliRecordsFixture(harness.dataDir, 'cli-records') });
+
+  const listed = (await client.call('imports.list', { projectId })).find((session) => session.sessionId === 'cli-records');
+  expect(listed).toMatchObject({ title: 'Now fix the typo in README.md', startedAt: Date.parse('2026-09-11T09:00:01.000Z') });
+
+  const summary = await client.call('imports.run', { projectId, accountId: account.id, sessionId: 'cli-records' });
+  expect(summary).toMatchObject({ title: 'Now fix the typo in README.md', titleSource: 'prompt', model: 'claude-sonnet-5' });
+  const thread = await client.call('threads.get', { threadId: summary.id });
+  const shown = thread.messages.map((message) => ({
+    role: message.role,
+    text: message.parts.map((part) => (part.type === 'text' ? part.text : part.type)).join(' | '),
+  }));
+  expect(shown).toEqual([
+    { role: 'user', text: '/model' },
+    { role: 'user', text: '!git status' },
+    // Arguments are written as typed, a closing tag among them.
+    { role: 'user', text: '/review the </command-args> tag' },
+    { role: 'assistant', text: 'The commit looks fine.' },
+    { role: 'user', text: 'Now fix the typo in README.md' },
+    // The reply to the task's notice stays the agent's, a part of its own.
+    { role: 'assistant', text: 'Started the build in the background. | The build passed.' },
+    { role: 'user', text: 'Thanks' },
+    { role: 'assistant', text: 'API Error: 529 overloaded' },
+  ]);
+});
+
+test('a session of bare commands is imported only when the agent itself answered one', async () => {
+  const client = await harness.connect();
+  const { projectId, account, file } = await seeded(client);
+  const folder = join(file, '..');
+  for (const answer of ['none', 'error', 'reply'] as const) {
+    writeFileSync(join(folder, `commands-${answer}.jsonl`), claudeCommandsOnlyFixture(harness.dataDir, `commands-${answer}`, answer));
+  }
+
+  const listed = await client.call('imports.list', { projectId });
+  expect(listed.map((session) => session.sessionId).sort()).toEqual(['commands-reply', FIXTURE_SESSION_ID].sort());
+  expect(listed.find((session) => session.sessionId === 'commands-reply')!.title).toBe('/compact keep the plan');
+  for (const sessionId of ['commands-none', 'commands-error']) {
+    expect(await thrown(client.call('imports.run', { projectId, accountId: account.id, sessionId }))).toThrow('no prompt to import');
+  }
+  const summary = await client.call('imports.run', { projectId, accountId: account.id, sessionId: 'commands-reply' });
+  expect(summary.title).toBe('/compact keep the plan');
 });
 
 /** Assistant records of accented text, so a byte offset can fall inside a character. */
